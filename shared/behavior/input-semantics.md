@@ -83,7 +83,15 @@ Runtime 使用布局无关的稳定物理键名。左右修饰键必须区分，
 
 Windows XInput 的 0–3 user index 只作为当前连接的 `device_id`；同一 slot 断开再连接必须分配新 generation。signed thumb axis 按负半轴 `32768`、正半轴 `32767` 归一化到完整 `[-1, 1]`，trigger 按 `0..255` 归一化到 `[0, 1]`。adapter 不应用 `XINPUT_GAMEPAD_*_DEADZONE` 或 trigger threshold 常量，避免平台默认值覆盖产品配置与共享 `0.5` 按钮语义。
 
-macOS `FlagsChanged` 必须在 event-tap callback 中结合事件自身 flags、keycode 和 callback decoder 记录的该 key 前一边沿状态，固定左右修饰键的 pressed/released 方向；同类左右键同时按住时，聚合 flag 仍为 true，但已在 decoder set 中的触发 key 表示单侧 release。decoder set 只解决平台 packet 歧义，不是 runtime pressed state，并随任何 `reset` 清空。consumer 不得在稍后 drain 时查询当前全局状态来反推旧边沿，因为同一批次可能已经包含后续 release。无法识别方向的 modifier event 触发带计数的安全 `reset`；`CGEventSourceKeyState` 只用于候选 pressed set 的周期校正。
+macOS listen-only tap 必须创建在 HID 层 head 位置（`kCGHIDEventTap` + `kCGHeadInsertEventTap`，与 rdev 的 listen 一致）；实测 macOS 26 的 session tail 位置收不到右 Shift 的释放 `FlagsChanged`，HID head 位置能收到全部修饰键的完整事件对。
+
+macOS `FlagsChanged` 必须在 event-tap callback 中固定 down/up 方向，按优先级依次判定：
+
+1. 事件 flags 相对上一个 `FlagsChanged` 事件的设备位（flags 低 8 位，每个物理修饰键一个独立 bit）发生跳变时，以设备位方向为准；设备位是物理键私有状态，左右修饰键天然区分，同侧兄弟键按住导致家族 flag 不清零时仍能识别单边沿。
+2. 否则使用家族 flag 位跳变方向。
+3. 否则按 callback 记录的该 key 前一边沿交替。HID head tap 下右 Shift 的按下/释放事件对完整、设备位跳变正常；CapsLock 的 `AlphaShift` 位反映锁存状态而非物理边沿，必须依赖交替回退（该回退同时兜底 session tail 等异常环境下观察到的事件缺失序列）。
+
+decoder 状态只解决平台 packet 歧义，不是 runtime pressed state，并随任何 `reset` 清空；周期校正强制释放候选 key 时必须同步清除 decoder 中对应 key 的记录，使交替回退重新对齐。consumer 不得在稍后 drain 时查询当前全局状态来反推旧边沿，因为同一批次可能已经包含后续 release。无法识别方向的 modifier event 触发带计数的安全 `reset`；`CGEventSourceKeyState` 只用于候选 pressed set 的周期校正，且对右侧修饰键键码（54/60/61/62，实测按住时也返回 false）必须同时查询家族主键码（55/56/58/59）。
 
 ## 手部状态
 

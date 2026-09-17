@@ -397,8 +397,9 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   会在调用线程上构造 `PolicyManager`/`FocusManager` 并触碰共享 `NSApplication`，而 `gpui_macos` 的
   `MacPlatform::run` 需要该实例是自带 `platform` ivar 的 `GPUIApplication` 子类（ADR-0032「macOS 弹框实现修正」）。
 - 监听 tap 被系统禁用、超时和 session 变化，并自动重建。
-- `FlagsChanged` 的 down/up 方向必须在 callback 中从事件自身 flags、左右修饰键 keycode 和 callback decoder 的前一边沿状态冻结；这样左右同类修饰键同时按下时仍能识别单侧 release。decoder 状态不属于 runtime pressed state，并随任何 `Reset` 清空；不得等到 consumer drain 时用较新的全局状态反推旧事件，无法识别的修饰键必须触发可观测 `Reset`。
-- 对键盘和鼠标 pressed set 分别使用 `CGEventSourceKeyState`、`CGEventSourceButtonState` 校正；保留 0–31 号 mouse button 身份，按统一的 `250 ms`/连续 `2` 次缺失策略确认释放，睡眠、锁屏、权限变化和 tap 重启时直接复位。
+- listen-only tap 必须创建在 `kCGHIDEventTap` 的 `kCGHeadInsertEventTap` 位置（与 rdev 的 listen 一致），不得使用 session 层 tail append。实测 macOS 26.5.2：session tail 位置收不到右 Shift 的释放 `FlagsChanged`，且重复按下事件 flags 逐字节相同；同一台机器的 HID head 位置能收到全部修饰键的完整 press/release 对。tap 是 listen-only，只观察不修改、不吞事件；HID 层事件流跨用户会话可见，锁屏/快速用户切换仍依赖既有 session 生命周期 Reset 清空 pressed state。
+- `FlagsChanged` 的 down/up 方向必须在 callback 中冻结，按优先级依次使用：事件 flags 相对上一个 `FlagsChanged` 事件的**设备位**跳变（flags 低 8 位中每个物理修饰键有独立 bit，左右天然区分，同侧兄弟键按住时家族 flag 不清零也不影响）、家族 flag 位跳变（rdev `LAST_FLAGS` 同思路）、按 callback 记录的前一边沿交替。HID head tap 下设备位跳变覆盖全部常规修饰键事件；CapsLock 的 `AlphaShift` 位反映锁存状态而非物理边沿，必须依赖交替回退；session tail 上观察到的右 Shift 事件缺失/不变序列也由交替回退兜底。decoder 状态不属于 runtime pressed state，并随任何 `Reset` 清空，周期校正强制释放候选时必须同步清除 decoder 记录。不得等到 consumer drain 时用较新的全局状态反推旧事件，无法识别的修饰键必须触发可观测 `Reset`。
+- 对键盘和鼠标 pressed set 分别使用 `CGEventSourceKeyState`、`CGEventSourceButtonState` 校正；右侧修饰键键码（54/60/61/62）在按住时也返回 false，必须同时查询其家族主键码（55/56/58/59）作为状态来源；保留 0–31 号 mouse button 身份，按统一的 `250 ms`/连续 `2` 次缺失策略确认释放，睡眠、锁屏、权限变化和 tap 重启时直接复位。
 - GameController owner 在服务期启用后台事件，连接分配新的 generation；按钮/连接边沿进入可靠队列，axis 进入固定容量 keyed latest-values，断开后旧 generation 的 callback 和待消费样本不得作用于重连设备。
 - callback 只做映射和入队，不执行模型、文件或 UI 工作。
 

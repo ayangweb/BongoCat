@@ -311,6 +311,16 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `ModelInputSnapshot`，并以 `capture_queue_overflows=0`、`runtime_queue_overflows=0`、
     `callback_panics=0` 有序停止；runtime 提前停止路径亦已证明统一 disable/remove/join 后
     可立即重建第二个 tap。物理输入、系统自然丢事件与生命周期实测仍待完成，因此保持未勾选。
+  - 状态（2026-09-17）：实机探针（listen-only tap 采集真实 FlagsChanged 事件，macOS 26.5.2/
+    Apple M1 Pro）发现右侧修饰键两类系统行为并已修复：session tail 位置收不到右 Shift 的
+    释放事件且重复按下事件 flags 完全相同；`CGEventSourceKeyState` 对右侧键码（54/60/61/62）
+    按住时也返回 false，导致周期校正误杀 ShiftRight/AltRight。对照 rdev 确认其能正确捕获
+    右 Shift 释放的根因是 tap 创建在 `kCGHIDEventTap` + `kCGHeadInsertEventTap`：同机 HID
+    head 位置实测收到全部修饰键的完整 press/release 对。tap 位置已切换为 HID head，
+    `FlagsChanged` 方向采用设备位跳变 → 家族位跳变 → 前一边沿交替的 decoder（CapsLock 固定
+    走交替）；周期校正对右侧键码追加家族主键码（55/56/58/59）查询，强制释放时同步清除
+    decoder 记录；冒烟测试合成事件改投 HID 层。单元测试覆盖实测序列；修复后的物理键盘
+    全键矩阵仍待实机验证。
 - [x] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
   - 验收证据（2026-08-29）：release probe 现在严格校验每个 cycle 的 enabled 恢复、callback panic、queue overflow/closed event 和 NSWorkspace observer 成对注销，任一失败均非零退出。`leaks --atExit` 的 100-cycle 报告 `0 leaks for 0 total leaked bytes`、physical footprint `5232K`，`NSZombieEnabled=YES` 另完成 100/100；两次均为 `queue_overflows=0 callback_panics=0 clean_shutdown=true`，且每个 tap worker 都已 join。timeout/user-disable 各 20 次恢复已另行通过；权限故障循环留在 TCC 矩阵，不阻塞本 restart owner 子项。
 - [x] 记录 monio 对照结果，但不引入生产依赖；`docs/phase-0/monio-comparison.md` 基于 commit `d1766e0dcd20dea0435be16cd80adaa749b86e30` 记录 Raw Input、channel、reconciliation、Reset、callback 和许可证差异。
@@ -872,6 +882,12 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 验收证据（2026-08-30）：macOS virtual keycode 映射为稳定 USB HID usage；
     `FlagsChanged` 结合事件 flags 和 callback-time modifier set 区分左右修饰键方向，
     unit test 与 left Shift callback→runtime 集成测试均通过。
+  - 验收证据（2026-09-17）：实机探针发现旧方向判定在 macOS 26 上对右 Shift（session tail
+    位置释放事件缺失、按下事件 flags 不变）与 CapsLock（flag 反映锁存状态）失效，`AltRight`
+    被 `CGEventSourceKeyState` 右侧键码恒 false 的周期校正误杀；对照 rdev 定位 tap 位置为
+    决定性差异，tap 切换到 HID head 后右 Shift 释放事件完整到达；decoder 改为设备位跳变 →
+    家族位跳变 → 前一边沿交替，校正追加家族主键码查询，新增 7 项 decoder 单元测试
+    覆盖实测序列，platform 测试通过。
 - [ ] 处理 tap timeout、user disable、权限变化和自动重建。
   - 状态（2026-09-01）：正式服务识别 timeout/user-disable 后先停止 callback 接收、丢弃未消费
     capture、向 runtime 发送 `ServiceRestart` Reset，再从同一稳定 callback context 创建并启用新的

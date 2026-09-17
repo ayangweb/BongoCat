@@ -14,7 +14,7 @@ const TIMEOUT: Duration = Duration::from_secs(2);
 fn post_key(key_code: u16, down: bool) {
     let source = CGEventSource::new(CGEventSourceStateID::Private).expect("event source");
     let event = CGEvent::new_keyboard_event(Some(&source), key_code, down).expect("keyboard event");
-    CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&event));
+    CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&event));
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn synthetic_shift_reaches_runtime_and_releases_cleanly() {
         .last_input_sequence
         .unwrap_or(0)
         .saturating_add(1);
-    CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&down));
+    CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&down));
     let pressed = client
         .wait_for_input_sequence(down_sequence, TIMEOUT)
         .expect("shift down reached runtime");
@@ -64,7 +64,7 @@ fn synthetic_shift_reaches_runtime_and_releases_cleanly() {
         .last_input_sequence
         .expect("shift down input sequence")
         .saturating_add(1);
-    CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&up));
+    CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&up));
     let released = client
         .wait_for_input_sequence(up_sequence, TIMEOUT)
         .expect("shift up reached runtime");
@@ -113,7 +113,7 @@ fn synthetic_cursor_reaches_runtime_latest_value_snapshot() {
         CGMouseButton::Left,
     )
     .expect("mouse moved event");
-    CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&moved));
+    CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&moved));
 
     let snapshot = client
         .wait_for_cursor_samples(baseline_consumed + 1, TIMEOUT)
@@ -155,7 +155,7 @@ fn runtime_stop_cleans_up_tap_before_a_second_service_starts() {
 
     let source = CGEventSource::new(CGEventSourceStateID::Private).expect("event source");
     let down = CGEvent::new_keyboard_event(Some(&source), 0, true).expect("key down");
-    CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&down));
+    CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&down));
     std::thread::sleep(Duration::from_millis(100));
     assert_eq!(service.stop(), Err(PlatformInputError::RuntimeStopped));
 

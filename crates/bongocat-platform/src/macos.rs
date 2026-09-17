@@ -901,7 +901,7 @@ struct TapCallbackContext {
     accepting: Arc<AtomicBool>,
     recovery_requested: Arc<AtomicBool>,
     tap_disabled: Arc<AtomicBool>,
-    modifier_keys: Arc<Mutex<BTreeSet<u16>>>,
+    modifier_decoder: Arc<Mutex<ModifierDecoder>>,
     cursor: LatestCursor,
     counters: Arc<CallbackCounters>,
 }
@@ -915,7 +915,7 @@ impl TapCallbackContext {
             &self.accepting,
             &self.recovery_requested,
             &self.tap_disabled,
-            &self.modifier_keys,
+            &self.modifier_decoder,
             &self.cursor,
             &self.counters,
         );
@@ -965,10 +965,16 @@ fn create_event_tap(
 ) -> Result<(CFRetained<CFMachPort>, CFRetained<CFRunLoopSource>), PlatformInputError> {
     // SAFETY: the caller keeps `callback_context` alive until the returned tap
     // is disabled and detached from its run loop.
+    // The tap must sit at the HID layer's head, matching rdev's listen setup.
+    // Measured on macOS 26.5.2: at the session tail, Right Shift release
+    // `FlagsChanged` events are never delivered (and repeated presses arrive
+    // with byte-identical flags), while the HID head receives complete
+    // press/release pairs for every modifier. Listen-only, so events are only
+    // observed, never modified or swallowed.
     let tap = unsafe {
         CGEvent::tap_create(
-            CGEventTapLocation::SessionEventTap,
-            CGEventTapPlacement::TailAppendEventTap,
+            CGEventTapLocation::HIDEventTap,
+            CGEventTapPlacement::HeadInsertEventTap,
             CGEventTapOptions::ListenOnly,
             input_event_mask(),
             Some(event_tap_callback),
@@ -1160,7 +1166,7 @@ fn run_input_worker(
         Arc::clone(&counters),
     );
     let tap_disabled = Arc::new(AtomicBool::new(false));
-    let modifier_keys = Arc::new(Mutex::new(BTreeSet::<u16>::new()));
+    let modifier_decoder = Arc::new(Mutex::new(ModifierDecoder::default()));
     let latest_cursor = LatestCursor::default();
     let (capture_sender, capture_receiver) = mpsc::sync_channel(CAPTURE_QUEUE_CAPACITY);
     let mut gamepad_owner = MacGamepadOwner::new(
@@ -1179,7 +1185,7 @@ fn run_input_worker(
         accepting: Arc::clone(&accepting),
         recovery_requested: Arc::clone(&recovery_requested),
         tap_disabled: Arc::clone(&tap_disabled),
-        modifier_keys: Arc::clone(&modifier_keys),
+        modifier_decoder: Arc::clone(&modifier_decoder),
         cursor: latest_cursor.clone(),
         counters: Arc::clone(&counters),
     });
@@ -1263,7 +1269,7 @@ fn run_input_worker(
                     if let Some(dispatcher) = shortcut_dispatcher.as_mut() {
                         dispatcher.reset();
                     }
-                    modifier_keys
+                    modifier_decoder
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
                         .clear();
@@ -1314,7 +1320,7 @@ fn run_input_worker(
             if let Some(dispatcher) = shortcut_dispatcher.as_mut() {
                 dispatcher.reset();
             }
-            modifier_keys
+            modifier_decoder
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .clear();
@@ -1388,8 +1394,11 @@ fn run_input_worker(
                             InputControl::Mouse(_) | InputControl::Gamepad(_) => None,
                         }));
                     }
-                    let controls = candidates.keys().copied().collect::<Vec<_>>();
-                    for control in controls {
+                    let candidates_snapshot = candidates
+                        .iter()
+                        .map(|(control, system)| (*control, *system))
+                        .collect::<Vec<_>>();
+                    for (control, system) in candidates_snapshot {
                         if pressed.contains(&control) {
                             missing_confirmations.remove(&control);
                         } else {
@@ -1398,6 +1407,12 @@ fn run_input_worker(
                             if *confirmations >= REQUIRED_MISSING_CONFIRMATIONS {
                                 candidates.remove(&control);
                                 missing_confirmations.remove(&control);
+                                if let SystemControl::Key(key_code) = system {
+                                    modifier_decoder
+                                        .lock()
+                                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                        .set_pressed(key_code, false);
+                                }
                             }
                         }
                     }
@@ -1613,7 +1628,7 @@ fn capture_callback_event(
     accepting: &AtomicBool,
     recovery_requested: &AtomicBool,
     tap_disabled: &AtomicBool,
-    modifier_keys: &Mutex<BTreeSet<u16>>,
+    modifier_decoder: &Mutex<ModifierDecoder>,
     cursor: &LatestCursor,
     counters: &CallbackCounters,
 ) {
@@ -1621,7 +1636,7 @@ fn capture_callback_event(
         event_type,
         CGEventType::TapDisabledByTimeout | CGEventType::TapDisabledByUserInput
     ) {
-        modifier_keys
+        modifier_decoder
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clear();
@@ -1656,12 +1671,11 @@ fn capture_callback_event(
                 counters.unmapped_keys.fetch_add(1, Ordering::Relaxed);
                 return;
             };
-            let mut pressed = modifier_keys
+            let flags = CGEvent::flags(Some(event)).bits();
+            let mut decoder = modifier_decoder
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let was_pressed = pressed.contains(&key_code);
-            let Some(is_pressed) = modifier_pressed(event, key_code, was_pressed) else {
-                pressed.clear();
+            let Some(edge) = decoder.decode(key_code, flags) else {
                 enqueue_event(
                     CapturedEvent::Reset,
                     sender,
@@ -1671,19 +1685,10 @@ fn capture_callback_event(
                 );
                 return;
             };
-            if is_pressed {
-                pressed.insert(key_code);
-            } else {
-                pressed.remove(&key_code);
-            }
             Some(CapturedEvent::Edge {
                 control: InputControl::Key(key),
                 system: SystemControl::Key(key_code),
-                edge: if is_pressed {
-                    InputEdge::Down
-                } else {
-                    InputEdge::Up
-                },
+                edge,
             })
         }
         CGEventType::LeftMouseDown
@@ -1919,17 +1924,111 @@ fn event_key_code(event: &CGEvent) -> u16 {
         .clamp(0, i64::from(u16::MAX)) as u16
 }
 
-fn modifier_pressed(event: &CGEvent, key_code: u16, was_pressed: bool) -> Option<bool> {
-    let mask = match key_code {
-        54 | 55 => CGEventFlags::MaskCommand,
-        56 | 60 => CGEventFlags::MaskShift,
-        57 => CGEventFlags::MaskAlphaShift,
-        58 | 61 => CGEventFlags::MaskAlternate,
-        59 | 62 => CGEventFlags::MaskControl,
-        63 => CGEventFlags::MaskSecondaryFn,
-        _ => return None,
-    };
-    Some(CGEvent::flags(Some(event)).contains(mask) && !was_pressed)
+/// Device-dependent modifier bits carried in the low 8 bits of
+/// `CGEventGetFlags` (NX device-dependent mask range). Each physical key owns
+/// one bit, so device bits distinguish left/right and keep working while the
+/// family flag stays set for a held sibling. Measured on macOS 26.5.2:
+/// pressing Right Shift reports `0x00020104` (family shift + `0x04`).
+mod modifier_device_flags {
+    pub const LEFT_CONTROL: u64 = 0x01;
+    pub const LEFT_SHIFT: u64 = 0x02;
+    pub const RIGHT_SHIFT: u64 = 0x04;
+    pub const LEFT_COMMAND: u64 = 0x08;
+    pub const RIGHT_COMMAND: u64 = 0x10;
+    pub const LEFT_ALT: u64 = 0x20;
+    pub const RIGHT_ALT: u64 = 0x40;
+    pub const RIGHT_CONTROL: u64 = 0x80;
+}
+
+const CAPS_LOCK_KEY_CODE: u16 = 57;
+
+fn modifier_device_bit(key_code: u16) -> u64 {
+    match key_code {
+        59 => modifier_device_flags::LEFT_CONTROL,
+        62 => modifier_device_flags::RIGHT_CONTROL,
+        56 => modifier_device_flags::LEFT_SHIFT,
+        60 => modifier_device_flags::RIGHT_SHIFT,
+        55 => modifier_device_flags::LEFT_COMMAND,
+        54 => modifier_device_flags::RIGHT_COMMAND,
+        58 => modifier_device_flags::LEFT_ALT,
+        61 => modifier_device_flags::RIGHT_ALT,
+        _ => 0,
+    }
+}
+
+fn modifier_family_bit(key_code: u16) -> u64 {
+    match key_code {
+        54 | 55 => CGEventFlags::MaskCommand.bits(),
+        56 | 60 => CGEventFlags::MaskShift.bits(),
+        57 => CGEventFlags::MaskAlphaShift.bits(),
+        58 | 61 => CGEventFlags::MaskAlternate.bits(),
+        59 | 62 => CGEventFlags::MaskControl.bits(),
+        63 => CGEventFlags::MaskSecondaryFn.bits(),
+        _ => 0,
+    }
+}
+
+/// Freezes the down/up direction of `FlagsChanged` events at callback time.
+///
+/// The decoder is callback-local packet state, not the runtime pressed state.
+/// It must be cleared on every `Reset` and whenever the reconciliation pass
+/// force-releases a modifier candidate so the alternation fallback stays in
+/// sync with the runtime.
+///
+/// Direction rules, in priority order (measured on macOS 26.5.2):
+/// 1. A device-bit transition is authoritative for left/right modifiers.
+/// 2. Otherwise a family-flag transition decides — rdev's `LAST_FLAGS` diff.
+/// 3. Otherwise the recorded edge alternates. Current macOS does not deliver
+///    Right Shift release events and re-delivers presses with identical
+///    flags, and CapsLock toggles a latch instead of reporting the physical
+///    edge, so no flag transition is available for those events.
+#[derive(Default)]
+struct ModifierDecoder {
+    last_flags: u64,
+    pressed: BTreeSet<u16>,
+}
+
+impl ModifierDecoder {
+    fn decode(&mut self, key_code: u16, flags: u64) -> Option<InputEdge> {
+        let device_bit = modifier_device_bit(key_code);
+        let family_bit = modifier_family_bit(key_code);
+        if device_bit == 0 && family_bit == 0 {
+            self.last_flags = flags;
+            return None;
+        }
+        let changed = flags ^ self.last_flags;
+        self.last_flags = flags;
+        let is_down = if device_bit != 0 && changed & device_bit != 0 {
+            flags & device_bit != 0
+        } else if key_code != CAPS_LOCK_KEY_CODE && family_bit != 0 && changed & family_bit != 0 {
+            flags & family_bit != 0
+        } else {
+            !self.pressed.contains(&key_code)
+        };
+        if is_down {
+            self.pressed.insert(key_code);
+        } else {
+            self.pressed.remove(&key_code);
+        }
+        Some(if is_down {
+            InputEdge::Down
+        } else {
+            InputEdge::Up
+        })
+    }
+
+    fn set_pressed(&mut self, key_code: u16, pressed: bool) {
+        if pressed {
+            self.pressed.insert(key_code);
+        } else {
+            self.pressed.remove(&key_code);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.last_flags = 0;
+        self.pressed.clear();
+    }
 }
 
 fn map_mouse_button(button: u8) -> MouseButton {
@@ -2058,10 +2157,33 @@ fn map_key_code(key_code: u16) -> Option<PhysicalKey> {
     Some(PhysicalKey::from_hid_usage(usage))
 }
 
+/// Returns the family representative keycode to query as a fallback state
+/// source for right-side modifiers. Measured on macOS 26.5.2:
+/// `CGEventSourceKeyState` reports false for keycodes 54/60/61/62 even while
+/// the physical key is held, while the family keycode (55/56/58/59) does
+/// report the combined state.
+fn family_state_keycode(key_code: u16) -> Option<u16> {
+    match key_code {
+        54 => Some(55),
+        60 => Some(56),
+        61 => Some(58),
+        62 => Some(59),
+        _ => None,
+    }
+}
+
 fn system_pressed(system: SystemControl) -> bool {
     match system {
         SystemControl::Key(key_code) => {
-            CGEventSource::key_state(CGEventSourceStateID::CombinedSessionState, key_code)
+            if CGEventSource::key_state(CGEventSourceStateID::CombinedSessionState, key_code) {
+                return true;
+            }
+            match family_state_keycode(key_code) {
+                Some(family) => {
+                    CGEventSource::key_state(CGEventSourceStateID::CombinedSessionState, family)
+                }
+                None => false,
+            }
         }
         SystemControl::Mouse(button) => CGEventSource::button_state(
             CGEventSourceStateID::CombinedSessionState,
@@ -2141,14 +2263,16 @@ mod tests {
             let accepting = Arc::new(AtomicBool::new(true));
             let recovery = Arc::new(AtomicBool::new(false));
             let tap_disabled = Arc::new(AtomicBool::new(false));
-            let modifier_keys = Arc::new(Mutex::new(BTreeSet::from([56])));
+            let mut seeded_decoder = ModifierDecoder::default();
+            seeded_decoder.set_pressed(56, true);
+            let modifier_decoder = Arc::new(Mutex::new(seeded_decoder));
             let counters = Arc::new(CallbackCounters::default());
             let context = TapCallbackContext {
                 sender,
                 accepting: Arc::clone(&accepting),
                 recovery_requested: recovery,
                 tap_disabled: Arc::clone(&tap_disabled),
-                modifier_keys: Arc::clone(&modifier_keys),
+                modifier_decoder: Arc::clone(&modifier_decoder),
                 cursor: LatestCursor::default(),
                 counters,
             };
@@ -2158,7 +2282,13 @@ mod tests {
 
             assert!(!accepting.load(Ordering::Acquire));
             assert!(tap_disabled.load(Ordering::Acquire));
-            assert!(modifier_keys.lock().expect("modifier keys").is_empty());
+            assert!(
+                modifier_decoder
+                    .lock()
+                    .expect("modifier decoder")
+                    .pressed
+                    .is_empty()
+            );
             assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
         }
     }
@@ -2190,6 +2320,93 @@ mod tests {
                 .resolve_hid_usage(modifiers, mapped.hid_usage())
                 .is_some()
         );
+    }
+
+    #[test]
+    fn right_shift_taps_alternate_despite_identical_flags() {
+        // Observed on macOS 26.5.2: Right Shift taps deliver one FlagsChanged
+        // per press with identical flags and no release events at all.
+        let mut decoder = ModifierDecoder::default();
+        assert_eq!(
+            decoder.decode(60, 0x0002_0104),
+            Some(InputEdge::Down),
+            "first press: device bit transition"
+        );
+        assert_eq!(
+            decoder.decode(60, 0x0002_0104),
+            Some(InputEdge::Up),
+            "second press arrives with unchanged flags"
+        );
+        assert_eq!(decoder.decode(60, 0x0002_0104), Some(InputEdge::Down));
+
+        // Reconciliation force-releases the candidate once the family keycode
+        // stops reporting the held shift; the decoder must re-align so the
+        // next tap decodes as a press again.
+        decoder.set_pressed(60, false);
+        assert_eq!(decoder.decode(60, 0x0002_0104), Some(InputEdge::Down));
+    }
+
+    #[test]
+    fn right_shift_release_pairs_arrive_at_the_hid_head_tap() {
+        // Observed on macOS 26.5.2 with the tap at HID head (rdev's setup):
+        // every Right Shift press and release is delivered with proper flag
+        // transitions, unlike the session tail which drops the releases.
+        let mut decoder = ModifierDecoder::default();
+        for _ in 0..3 {
+            assert_eq!(decoder.decode(60, 0x0002_0104), Some(InputEdge::Down));
+            assert_eq!(decoder.decode(60, 0x0000_0100), Some(InputEdge::Up));
+        }
+        // Held press then release.
+        assert_eq!(decoder.decode(60, 0x0002_0104), Some(InputEdge::Down));
+        assert_eq!(decoder.decode(60, 0x0000_0100), Some(InputEdge::Up));
+    }
+
+    #[test]
+    fn right_alt_press_release_pairs_follow_device_bit_transitions() {
+        let mut decoder = ModifierDecoder::default();
+        for _ in 0..3 {
+            assert_eq!(decoder.decode(61, 0x0008_0140), Some(InputEdge::Down));
+            assert_eq!(decoder.decode(61, 0x0000_0100), Some(InputEdge::Up));
+        }
+    }
+
+    #[test]
+    fn caps_lock_decodes_by_alternation_even_when_the_latch_hides_the_edge() {
+        let mut decoder = ModifierDecoder::default();
+        // Latch off: press sets AlphaShift, release clears it.
+        assert_eq!(decoder.decode(57, 0x0001_0100), Some(InputEdge::Down));
+        assert_eq!(decoder.decode(57, 0x0000_0100), Some(InputEdge::Up));
+        // Latch on: both events carry a cleared AlphaShift bit, yet the press
+        // must still decode as Down.
+        assert_eq!(decoder.decode(57, 0x0000_0100), Some(InputEdge::Down));
+        assert_eq!(decoder.decode(57, 0x0000_0100), Some(InputEdge::Up));
+    }
+
+    #[test]
+    fn sibling_modifiers_stay_independent_via_device_bits() {
+        let mut decoder = ModifierDecoder::default();
+        assert_eq!(decoder.decode(56, 0x0002_0102), Some(InputEdge::Down));
+        assert_eq!(
+            decoder.decode(60, 0x0002_0106),
+            Some(InputEdge::Down),
+            "right press while left shift keeps the family flag set"
+        );
+        assert_eq!(decoder.decode(56, 0x0002_0104), Some(InputEdge::Up));
+        assert_eq!(decoder.decode(60, 0x0000_0100), Some(InputEdge::Up));
+    }
+
+    #[test]
+    fn family_only_fallback_covers_synthetic_flags_without_device_bits() {
+        let mut decoder = ModifierDecoder::default();
+        assert_eq!(decoder.decode(56, 0x0002_0100), Some(InputEdge::Down));
+        assert_eq!(decoder.decode(56, 0x0000_0100), Some(InputEdge::Up));
+    }
+
+    #[test]
+    fn unknown_modifier_keycodes_request_reset() {
+        let mut decoder = ModifierDecoder::default();
+        assert_eq!(decoder.decode(130, 0x0000_0100), None);
+        assert_eq!(decoder.last_flags, 0x0000_0100, "flags still recorded");
     }
 
     #[test]
