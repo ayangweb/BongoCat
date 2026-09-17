@@ -16,7 +16,7 @@ use bongocat_model::{
     ModelImportStage, ModelOrigin, ModelPackageLimits, ModelSourceContent, ModelStore,
     ModelStoreError, MverInputMode, PresetModelCatalog,
 };
-use bongocat_render::{ModelCommitToken, RenderConsumer};
+use bongocat_render::{FUNCTION_KEY_USAGES, ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
     CursorProducer, ExpressionId, ExpressionIdError, GamepadAxisProducer, GamepadAxisSettings,
     GamepadButton, HandSide, InputBindings, InputProducer, ModelSettings, MotionId, MotionIdError,
@@ -1717,6 +1717,17 @@ fn input_bindings_for_model(origin: ModelOrigin, model_id: &str) -> InputBinding
         for usage in 0x04..=0x27 {
             key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
         }
+        // The top function row, F1-F24. The shipped models draw all of it with
+        // `Fn.png`, so these keys must still carry a hand: without one
+        // `InputState::model_snapshot` drops the press and no overlay is drawn.
+        // They sit above the left half of the board, next to the already-left
+        // `Escape`. `FUNCTION_KEY_USAGES` is the same table the key-image
+        // resolver names its assets from.
+        for (first, last) in FUNCTION_KEY_USAGES {
+            for usage in first..=last {
+                key_hands.insert(PhysicalKey::from_hid_usage(usage), HandSide::Left);
+            }
+        }
         for usage in [
             0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x35, 0x38, 0x39, 0x4c, 0xe0, 0xe1, 0xe2, 0xe3, 0xe4,
             0xe5, 0xe6, 0xe7,
@@ -2130,6 +2141,110 @@ mod tests {
             gamepad.hand_for(PhysicalKey::from_hid_usage(0x4f)),
             Some(HandSide::Right)
         );
+    }
+
+    /// `InputState::model_snapshot` drops any press without a hand assignment, so
+    /// a function key missing from this map can never draw its `Fn.png` overlay.
+    #[test]
+    fn keyboard_models_assign_the_whole_function_row_to_the_left_hand() {
+        for (origin, id) in [
+            (ModelOrigin::Installed, "custom-model"),
+            (ModelOrigin::Preset, "standard"),
+            (ModelOrigin::Preset, "keyboard"),
+        ] {
+            let bindings = input_bindings_for_model(origin, id);
+            for (first, last) in bongocat_render::FUNCTION_KEY_USAGES {
+                for usage in first..=last {
+                    assert_eq!(
+                        bindings.hand_for(PhysicalKey::from_hid_usage(usage)),
+                        Some(HandSide::Left),
+                        "{id} 0x{usage:02x}"
+                    );
+                }
+            }
+            // PrintScreen sits directly after F12 and is not a function key.
+            assert_eq!(
+                bindings.hand_for(PhysicalKey::from_hid_usage(0x46)),
+                None,
+                "{id} must not bind PrintScreen"
+            );
+        }
+
+        // The gamepad model keeps its button-only mapping.
+        let gamepad = input_bindings_for_model(ModelOrigin::Preset, "gamepad");
+        assert_eq!(gamepad.hand_for(PhysicalKey::from_hid_usage(0x3a)), None);
+        assert_eq!(gamepad.hand_for(PhysicalKey::from_hid_usage(0x68)), None);
+    }
+
+    /// The binding test above proves the Map; this proves the press actually
+    /// survives the whole path for the model that is active at runtime. F1 and
+    /// F13 bracket the two HID function-key ranges.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn function_key_presses_reach_the_model_snapshot_with_the_left_hand() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout_internal(
+            layout,
+            repository_preset_root().as_path(),
+            true,
+            Language::EnglishUnitedStates,
+        )
+        .expect("start rendering application");
+        let token = application
+            .prepare_model(ModelOrigin::Preset, "standard")
+            .expect("prepare standard model");
+        let consumer = application
+            .take_render_consumer()
+            .expect("take render consumer");
+        let frame = wait_for_model_commit_frame(&consumer, token);
+        consumer
+            .report_model_commit(ModelCommitFeedback {
+                token: frame.model_commit.expect("commit token"),
+                outcome: ModelCommitOutcome::Prepared,
+            })
+            .expect("commit standard model");
+        application
+            .runtime_client()
+            .wait_for_command(token.command_sequence, RUNTIME_TIMEOUT)
+            .expect("standard model activation");
+
+        let input = application.input_producer();
+        let mut sequence = 0;
+        for hid_usage in [0x3au16, 0x68] {
+            for edge in [InputEdge::Down, InputEdge::Up] {
+                sequence += 1;
+                let published = input
+                    .publish(InputEvent::Edge {
+                        control: InputControl::Key(PhysicalKey::from_hid_usage(hid_usage)),
+                        edge,
+                        source: InputSource::Capture,
+                        at: MonotonicMillis::new(sequence),
+                    })
+                    .expect("key edge");
+                let snapshot = application
+                    .runtime_client()
+                    .wait_for_input_sequence(published, RUNTIME_TIMEOUT)
+                    .expect("key projection");
+                let presses = snapshot.model_input.key_presses;
+                if edge == InputEdge::Down {
+                    assert!(snapshot.model_input.left_hand_down, "0x{hid_usage:02x}");
+                    let press = presses
+                        .iter()
+                        .find(|press| press.hid_usage == hid_usage)
+                        .unwrap_or_else(|| {
+                            panic!("0x{hid_usage:02x} never reached the model snapshot")
+                        });
+                    assert_eq!(press.side, bongocat_render::KeySide::Left);
+                } else {
+                    assert!(
+                        !presses.iter().any(|press| press.hid_usage == hid_usage),
+                        "0x{hid_usage:02x} must be released"
+                    );
+                }
+            }
+        }
+        application.shutdown().expect("clean shutdown");
     }
 
     #[test]

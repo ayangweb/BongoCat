@@ -4048,8 +4048,27 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       按键仅置 hand-down/stick 标志，因此 gamepad 键位图与预置 gamepad 模型一样目前不可达；
       ②`standard.mouse_left/right/side` 与 `mouse*.png` 没有可映射的 overlay 通道，与参考实现
       一致地不转换；③转换按 `F1`…`F12` 命名以保留模型区分度，但
-      `bongocat-live2d::key_name_candidates` 目前把功能键统一回退到 `Fn`，逐键 F 图暂不可达
-      （预置模型只有 `Fn.png`、真实样本键位表也不含功能键，缺少可验证数据，未改运行时）。
+      `bongocat-live2d::key_name_candidates` 当时把功能键统一回退到 `Fn`，逐键 F 图不可达
+      （预置模型只有 `Fn.png`、真实样本键位表也不含功能键，当时缺少可验证数据）。
+      **③ 已于 2026-09-17 闭合**：HID 功能键布局收敛为 `bongocat-render` 的单一表
+      `FUNCTION_KEY_USAGES` / `FUNCTION_KEY_NAMES`（`0x3a..=0x45` 与 `0x68..=0x73` 两段，共
+      F1-F24），`key_name_candidates` 由它派生精确名、`Fn` 仍为末位候选，专属图存在即生效、
+      缺失即回退到该模型共享的 `Fn.png`。同一张表也让 `bongocat-app::input_bindings_for_model`
+      把整行功能键绑到左手——**这一步是本次发现的必要前提**：`InputState::model_snapshot`
+      对 `hand_for == None` 的按键走 `None => {}` 直接丢弃，而当时的手表只有 0x04-0x27、0x28-0x2c
+      、0x35、0x38、0x39、0x4c 和修饰键，功能键一个都没有，所以 F1-F12 的 `Fn.png` 在实机上也
+      从未画出来过。逐键 F 图现在可达。
+      验收证据：`bongocat-render` 15 测试（新增 1：两段区间总数与名字数量一致、F1/F12/F13/F24
+      命名、PrintScreen 0x46 / 数字键盘 0x67 / Execute 0x74 不享受功能键语义）；
+      `bongocat-live2d` 43 测试（候选顺序与逐键回退覆盖两段区间、出厂 `standard`/`keyboard` 模型的
+      F1-F24 全部解析到磁盘上的 `resources/left-keys/Fn.png`、磁盘上同时存在 `F13.png` 时优先选中
+      它）；`bongocat-app` 126 测试（新增 2：三种键盘模型的整行功能键左手绑定且 PrintScreen 不绑定、
+      platform-gated 端到端用例发布 F1/F13 的 Down/Up 后 `model_input.key_presses` 出现
+      `side = Left` 的对应 press）。反向对照：临时把绑定循环置空后这两条用例均失败，证明手表缺失
+      是真实阻塞而非推断。**仍未覆盖**：Windows 的 `map_key_code` 没有 0x68-0x73 入口
+      （UEFI 表的 AT 101/102 列对 F13 及以上为 N/A，缺可依据的扫描码，未猜值），
+      `legacy_virtual_key_name` 的 VK 表也仍止于 F12（0x70-0x7B），因此 Legacy 源里绑定 F13+
+      的条目依旧会被跳过。
 
 ## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

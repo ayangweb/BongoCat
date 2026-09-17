@@ -19,6 +19,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - Added a Diagnostics page for viewing runtime, rendering, and input status, exporting anonymous diagnostic reports, opening the backup folder, and restoring default settings when needed.
 - Improved the update experience with a dedicated update window, download progress, signature verification, Markdown release notes, installation and restart states, and retry support. If an update fails, the current version remains installed.
 - Added startup permission guidance when needed. On macOS, you can go directly to Input Monitoring settings; on Windows, BongoCat explains how administrator permissions affect global input. The model still starts when input permission is unavailable.
+- Models can draw F1 to F24 with their own `F1.png` to `F24.png` images. A function key whose dedicated image is missing falls back to the model's shared `Fn.png`, so a model that ships only `Fn.png` keeps the previous behavior.
 
 ### ⚡️ Performance
 

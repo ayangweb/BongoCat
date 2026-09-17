@@ -465,8 +465,11 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 
 模型资源中的 `resources/background.png` 作为独立背景资产随渲染资源提交，在 drawable
 之前绘制；背景缺失时保持透明 overlay，背景文件损坏则拒绝该模型提交。按键图片从
-`resources/left-keys` 和 `resources/right-keys` 按目录绑定，当前按下键优先使用精确文件名，
-F1-F12 和左右修饰键仅在存在约定通用资源名时回退；没有匹配资源时不绘制按键层。
+`resources/left-keys` 和 `resources/right-keys` 按目录绑定，当前按下键优先使用精确文件名；
+HID 功能键 F1-F24 缺少专属 `F1.png`…`F24.png` 时回退到该模型共享的 `Fn.png`，左右修饰键同理回退到
+`Control`/`Shift`/`Alt`/`Meta`；没有匹配资源时不绘制按键层。功能键的范围、名字和左右手归属由
+`bongocat-render` 的同一张 HID 表给出（`0x3a..=0x45` 与 `0x68..=0x73` 两段，中间是 PrintScreen
+至方向键和数字键盘），避免按键图片解析和 runtime 绑定各自定义；没有 hand 归属的按键不产生按键层。
 
 ### 11.1 Cubism 边界
 

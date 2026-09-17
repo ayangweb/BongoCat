@@ -106,6 +106,51 @@ impl KeyPressSet {
     }
 }
 
+/// HID Keyboard/Keypad (page 0x07) function keys, i.e. F1 … F24.
+///
+/// The set is two ranges rather than one because the HID page puts PrintScreen
+/// (`0x46`) through PageDown (`0x4e`), the four arrows, and the whole keypad
+/// block between F12 (`0x45`) and F13 (`0x68`). Treating the family as
+/// contiguous — or as an open-ended "F followed by a number" — would name
+/// PrintScreen `F13` and every keypad key after it.
+pub const FUNCTION_KEY_USAGES: [(u16, u16); 2] = [(0x3a, 0x45), (0x68, 0x73)];
+
+/// Names of [`FUNCTION_KEY_USAGES`] in HID order: `F1` … `F12`, `F13` … `F24`.
+///
+/// These are model asset ids, so they must match what the loader derives from a
+/// key image's file stem (`F13.png` → `F13`).
+pub const FUNCTION_KEY_NAMES: [&str; 24] = [
+    "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "F13", "F14", "F15",
+    "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", "F24",
+];
+
+/// Position of `hid_usage` inside [`FUNCTION_KEY_NAMES`], `None` for every
+/// other key.
+///
+/// Derived from [`FUNCTION_KEY_USAGES`] so the key-image resolver and the
+/// runtime's hand assignment cannot disagree about what a function key is.
+pub const fn function_key_index(hid_usage: u16) -> Option<usize> {
+    let mut index = 0;
+    let mut range = 0;
+    while range < FUNCTION_KEY_USAGES.len() {
+        let (first, last) = FUNCTION_KEY_USAGES[range];
+        if hid_usage >= first && hid_usage <= last {
+            return Some(index + (hid_usage - first) as usize);
+        }
+        index += (last - first + 1) as usize;
+        range += 1;
+    }
+    None
+}
+
+/// The model asset name a function key is drawn with, e.g. `F13`.
+pub const fn function_key_name(hid_usage: u16) -> Option<&'static str> {
+    match function_key_index(hid_usage) {
+        Some(index) => Some(FUNCTION_KEY_NAMES[index]),
+        None => None,
+    }
+}
+
 impl ModelBounds {
     pub const fn from_canvas(canvas: CanvasInfo) -> Self {
         let half_width = canvas.width / canvas.pixels_per_unit * 0.5;
@@ -665,6 +710,36 @@ pub fn latest_render_channel() -> (RenderProducer, RenderConsumer) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn function_key_table_covers_f1_through_f24_and_stops_at_the_gaps() {
+        let mut counted = 0;
+        for (first, last) in FUNCTION_KEY_USAGES {
+            assert!(first <= last);
+            counted += usize::from(last - first + 1);
+        }
+        assert_eq!(
+            counted,
+            FUNCTION_KEY_NAMES.len(),
+            "every usage in the table needs exactly one name"
+        );
+
+        assert_eq!(function_key_name(0x3a), Some("F1"));
+        assert_eq!(function_key_name(0x45), Some("F12"));
+        assert_eq!(function_key_name(0x68), Some("F13"));
+        assert_eq!(function_key_name(0x73), Some("F24"));
+        assert_eq!(function_key_index(0x73), Some(23));
+
+        // The HID page puts PrintScreen…ArrowUp, the keypad block and Execute
+        // between the two ranges, so none of them is a function key.
+        for hid_usage in [0x46, 0x48, 0x4c, 0x52, 0x62, 0x67, 0x74, 0x7d] {
+            assert_eq!(
+                function_key_name(hid_usage),
+                None,
+                "0x{hid_usage:02x} must not be named as a function key"
+            );
+        }
+    }
 
     fn frame(number: u64) -> RenderFrame {
         RenderFrame {

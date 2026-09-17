@@ -834,7 +834,17 @@ fn load_key_assets(root: &std::path::Path) -> Result<Vec<bongocat_render::KeyAss
     Ok(assets)
 }
 
+/// Asset names a pressed key can be drawn with, most specific first.
+///
+/// A model may ship one image per key or a single shared image for a whole key
+/// family. The HID function keys F1 … F24 therefore resolve to their own
+/// `F1.png` … `F24.png` when the model provides one and fall back to the shared
+/// `Fn.png` otherwise; every other key only ever has an exact name plus, for the
+/// four modifier pairs, the shared side-independent asset (`Control`, `Shift`,
+/// `Alt`, `Meta`). A name that the model does not provide is skipped, so an
+/// incomplete model simply draws nothing for that key.
 fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
+    let function_key = bongocat_render::function_key_name(hid_usage);
     let exact = match hid_usage {
         0x04..=0x1d => Some(KEY_LETTERS[usize::from(hid_usage - 0x04)]),
         0x1e..=0x27 => Some(KEY_NUMBERS[usize::from(hid_usage - 0x1e)]),
@@ -858,14 +868,21 @@ fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
         0xe5 => Some("ShiftRight"),
         0xe6 => Some("AltRight"),
         0xe7 => Some("MetaRight"),
-        _ => None,
+        // Function keys are the only named keys left, and the whole HID range is
+        // covered by one arithmetic lookup instead of 24 arms here.
+        _ => function_key,
     };
     let mut candidates = Vec::with_capacity(2);
     if let Some(exact) = exact {
         candidates.push(exact);
     }
+    if function_key.is_some() {
+        // The model's shared function-key image, and always the last candidate:
+        // a dedicated `F1.png` … `F24.png` wins, every function key the model
+        // did not draw individually lands on `Fn.png`.
+        candidates.push("Fn");
+    }
     match hid_usage {
-        0x3a..=0x45 => candidates.push("Fn"),
         0xe0 | 0xe4 => candidates.push("Control"),
         0xe1 | 0xe5 => candidates.push("Shift"),
         0xe2 | 0xe6 => candidates.push("Alt"),
@@ -1007,6 +1024,190 @@ mod tests {
             side: KeySide::Left,
         });
         assert!(resolve_key_overlays(&resources, presses).is_empty());
+    }
+
+    #[test]
+    fn function_keys_prefer_their_own_image_and_fall_back_to_the_shared_fn_asset() {
+        use bongocat_render::{
+            KeyAsset, KeyAssetId, KeyPress, KeyPressSet, KeySide, RenderResources,
+        };
+        use std::path::PathBuf;
+
+        let asset = |id: usize, name: &str| KeyAsset {
+            id: KeyAssetId::new(id),
+            side: KeySide::Left,
+            name: name.to_owned(),
+            path: PathBuf::from(format!("{name}.png")),
+            width: 612,
+            height: 354,
+        };
+        // One model draws F1, F5 and F13 individually next to the shared image;
+        // the other ships nothing but the shared image.
+        let partially_specific = RenderResources {
+            textures: Vec::new(),
+            key_assets: vec![
+                asset(0, "Fn"),
+                asset(1, "F1"),
+                asset(2, "F5"),
+                asset(3, "F13"),
+            ],
+            background: None,
+        };
+        let shared_only = RenderResources {
+            textures: Vec::new(),
+            key_assets: vec![asset(0, "Fn")],
+            background: None,
+        };
+        let resolve = |resources: &RenderResources, hid_usage: u16| {
+            let mut presses = KeyPressSet::default();
+            presses.push(KeyPress {
+                hid_usage,
+                side: KeySide::Left,
+            });
+            resolve_key_overlays(resources, presses)
+                .first()
+                .map(|overlay| overlay.asset_id.index())
+        };
+
+        assert_eq!(
+            resolve(&partially_specific, 0x3a),
+            Some(1),
+            "F1 has its own"
+        );
+        assert_eq!(
+            resolve(&partially_specific, 0x3e),
+            Some(2),
+            "F5 has its own"
+        );
+        assert_eq!(
+            resolve(&partially_specific, 0x68),
+            Some(3),
+            "F13 has its own, past the F12 boundary"
+        );
+        assert_eq!(resolve(&partially_specific, 0x3b), Some(0), "F2 uses Fn");
+        assert_eq!(resolve(&partially_specific, 0x45), Some(0), "F12 uses Fn");
+        assert_eq!(resolve(&partially_specific, 0x73), Some(0), "F24 uses Fn");
+
+        for hid_usage in 0x3a..=0x45 {
+            assert_eq!(
+                resolve(&shared_only, hid_usage),
+                Some(0),
+                "0x{hid_usage:02x} must fall back to the shared Fn image"
+            );
+        }
+        for hid_usage in 0x68..=0x73 {
+            assert_eq!(
+                resolve(&shared_only, hid_usage),
+                Some(0),
+                "0x{hid_usage:02x} must fall back to the shared Fn image"
+            );
+        }
+        // PrintScreen (0x46), Keypad = (0x67) and Execute (0x74) sit next to the
+        // two function-key ranges and must not inherit the `Fn` fallback.
+        for hid_usage in [0x46, 0x67, 0x74] {
+            assert_eq!(
+                resolve(&shared_only, hid_usage),
+                None,
+                "0x{hid_usage:02x} is not a function key"
+            );
+        }
+        assert_eq!(
+            resolve(&shared_only, 0x29),
+            None,
+            "the fallback covers function keys only"
+        );
+    }
+
+    #[test]
+    fn shipped_keyboard_models_draw_every_function_key_with_the_shipped_fn_image() {
+        use bongocat_model::{ModelPackageLimits, PresetModelCatalog};
+        use bongocat_render::{KeyPress, KeyPressSet, KeySide, RenderResources};
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/models");
+        let catalog =
+            PresetModelCatalog::open(&root, ModelPackageLimits::default()).expect("catalog");
+        // The gamepad model is driven by gamepad buttons and ships no `Fn.png`,
+        // so only the two keyboard-vocabulary models are covered here.
+        for id in ["standard", "keyboard"] {
+            let model = catalog
+                .load(&bongocat_model::ModelId::parse(id).expect("model id"))
+                .expect("preset model");
+            let resources = RenderResources {
+                textures: Vec::new(),
+                key_assets: load_key_assets(model.root()).expect("key assets"),
+                background: None,
+            };
+            assert!(
+                !resources
+                    .key_assets
+                    .iter()
+                    .any(|asset| asset.name.starts_with('F') && asset.name != "Fn"),
+                "{id} must not ship a dedicated function-key image yet"
+            );
+            for hid_usage in (0x3a..=0x45u16).chain(0x68..=0x73) {
+                let mut presses = KeyPressSet::default();
+                presses.push(KeyPress {
+                    hid_usage,
+                    side: KeySide::Left,
+                });
+                let overlays = resolve_key_overlays(&resources, presses);
+                let asset = &resources.key_assets[overlays[0].asset_id.index()];
+                assert_eq!(asset.name, "Fn", "{id} 0x{hid_usage:02x}");
+                assert!(
+                    asset.path.ends_with("resources/left-keys/Fn.png"),
+                    "{id} 0x{hid_usage:02x} resolved to {}",
+                    asset.path.display()
+                );
+            }
+        }
+    }
+
+    /// The other half of the contract: when the model *does* ship a dedicated
+    /// image, the loader must pick it up from disk and the resolver must prefer
+    /// it over the shared one.
+    #[test]
+    fn a_model_shipping_a_dedicated_function_key_image_uses_it() {
+        use bongocat_render::{KeyPress, KeyPressSet, KeySide, RenderResources};
+        use tempfile::tempdir;
+
+        let shipped = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../resources/models/standard/resources/left-keys");
+        let root = tempdir().expect("root");
+        let left_keys = root.path().join("resources/left-keys");
+        fs::create_dir_all(&left_keys).expect("left keys directory");
+        // The shipped standard model has no dedicated function-key image, so its
+        // `Fn.png` bytes stand in for one: this test asserts which file wins, not
+        // what the file contains.
+        let shared = fs::read(shipped.join("Fn.png")).expect("shipped Fn.png");
+        for name in ["Fn", "F13"] {
+            fs::write(left_keys.join(format!("{name}.png")), &shared)
+                .unwrap_or_else(|error| panic!("write {name}.png: {error}"));
+        }
+
+        let resources = RenderResources {
+            textures: Vec::new(),
+            key_assets: load_key_assets(root.path()).expect("key assets"),
+            background: None,
+        };
+        let resolve = |hid_usage: u16| {
+            let mut presses = KeyPressSet::default();
+            presses.push(KeyPress {
+                hid_usage,
+                side: KeySide::Left,
+            });
+            let overlays = resolve_key_overlays(&resources, presses);
+            resources.key_assets[overlays[0].asset_id.index()]
+                .path
+                .clone()
+        };
+
+        assert!(
+            resolve(0x68).ends_with("left-keys/F13.png"),
+            "F13 has its own"
+        );
+        assert!(resolve(0x69).ends_with("left-keys/Fn.png"), "F14 uses Fn");
+        assert!(resolve(0x3a).ends_with("left-keys/Fn.png"), "F1 uses Fn");
+        assert!(resolve(0x73).ends_with("left-keys/Fn.png"), "F24 uses Fn");
     }
 
     #[test]
