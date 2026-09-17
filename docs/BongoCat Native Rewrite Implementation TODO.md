@@ -4137,6 +4137,44 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       **未运行**：Windows/macOS 实机按键、UI 实机点击。
       **行为变化（尚未实机确认观感）**：标点键、`PrintScreen`、导航键现在都会让左爪下压，
       此前完全无反应；除 `Delete.png` 外，本次补的名字都还没有美术，需要模型补图才有视觉效果。
+      （该行为变化已由下一项 ADR-0042 闭合：缺图按键不再产生任何动作。）
+    - 缺图按键不再触发按键动作（2026-09-17，ADR-0042）：修正 ADR-0041 残余风险 1 记录的缺陷
+      ——预置 `standard` 没有 `Dot.png` 等资源，按下这些键时左爪仍会下压，用户看到的是"爪子按下去
+      却什么都没出现"。① `bongocat-live2d` 新增 `KeyImageInventory`（`read`/`provides`/`can_draw`）：
+      不解码图片地列出 `resources/left-keys`/`right-keys` 的资源名，并按 `key_name_candidates` 的
+      候选顺序（精确名、`Fn`/修饰键家族图、`AltGr`/`Return` 旧名、`Kp*`→主键盘回退）回答"这个键
+      能不能画出来"；`load_key_assets` 与它共用同一个私有目录扫描 `key_image_files`，因此清单与
+      渲染实际加载的资产不可能漂移。② `bongocat-app::input_bindings_for_model` 只把 `can_draw`
+      为真的键写进 `InputBindings`：写入 runtime 的每模型绑定 = 静态 hand 表 ∩ 该模型键位图。
+      于是 `InputState::model_snapshot` 在 `hand_for == None` 处丢弃缺图按键，既不置
+      `left_hand_down`/`right_hand_down`（不驱动 `CatParamLeftHandDown`/`CatParamRightHandDown`），
+      也不产生按键层——按键层与爪部反馈从此一致。判断放在绑定层而非 renderer：renderer 不得决定
+      动作，runtime 也不该为了解图片资源而依赖 Cubism/图片解码；`prepare_model` 与 `select_model`
+      两条激活路径都传入 `CommittedModel::root()` 的清单，启动恢复与设置页切换同规则。
+      **保持不变的既有行为**：`Delete.png`（ADR-0041 恢复）继续可画，小键盘数字/Enter/`KpDivide`
+      继续回退 `Num*`/`Enter`/`Slash`，功能键继续优先专属图并回退 `Fn`，修饰键继续精确名+家族图；
+      模型补图后绑定自动恢复，命名不以美术存在为前提这条契约不变。**作用范围仅键位图**：鼠标
+      （`ParamMouseLeftDown`/`ParamMouseRightDown` 是指针状态）与手柄按钮（无键位图词表，其美术
+      本就不进入按键层）不在本规则内。
+      验收证据：`bongocat-live2d` 52 测试（新增 2：
+      `key_image_inventory_lists_exactly_the_assets_the_renderer_loads` 对三个预置模型断言清单与
+      `load_key_assets` 的 (side, name) 集合逐侧相等；
+      `a_shipped_model_can_draw_only_the_keys_it_ships_artwork_for` 逐键断言 `standard` 能画
+      `KeyA`/`Delete`/功能键/小键盘数字与小键盘 Enter，不能画 `.`/`-`/`PrintScreen`/`NumLock`/
+      小键盘 `.`/小键盘 `=` 与方向键）；`bongocat-app` `--lib` 125 测试（新增 1、改写 3：
+      `a_key_the_active_model_cannot_draw_never_moves_the_paw` 启动真实渲染应用并激活预置
+      `standard`，断言按下 `A` 置 `left_hand_down` 且进入 `key_presses`、按下 `.` 两者皆无；
+      `keyboard_models_bind_every_drawable_key_of_the_standard_layout` 断言绑定等于"静态表 ∩
+      模型键位图"并逐条抽查 9 个键；功能键用例改为断言 `PrintScreen` 不再绑定；
+      `installed_models_get_default_keyboard_bindings` 断言 `gamepad` 预置不绑任何键盘键、
+      手柄按钮映射不变）。`just check` 六道门全过（fmt、三组 clippy、`cargo test --workspace`、
+      release check）。
+      **未运行**：Windows/macOS 实机按键与观感确认、UI 实机点击、真实社区模型回归。
+      **行为变化（尚未实机确认观感）**：`gamepad` 预置不再响应任何键盘键；完全没有键位图的导入模型
+      键盘输入完全无动作（模型仍由指针、呼吸、眨眼驱动）；只有另一手有图时该键仍不可达（side
+      严格性，与按键层一致）。**既有缺口（不由本项引入）**：`bongocat-overlay` 的
+      `preview_input_bindings` 仍是 ADR-0041 之前的独立静态表，不感知键位图，人工预览 `gamepad`
+      时行为与产品不同。
 
 ## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

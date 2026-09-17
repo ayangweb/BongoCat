@@ -467,7 +467,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 之前绘制；背景缺失时保持透明 overlay，背景文件损坏则拒绝该模型提交。按键图片从
 `resources/left-keys` 和 `resources/right-keys` 按目录绑定，当前按下键优先使用精确文件名；
 HID 功能键 F1-F24 缺少专属 `F1.png`…`F24.png` 时回退到该模型共享的 `Fn.png`，左右修饰键同理回退到
-`Control`/`Shift`/`Alt`/`Meta`；没有匹配资源时不绘制按键层。左右修饰键的精确名是两侧各自的
+`Control`/`Shift`/`Alt`/`Meta`；没有匹配资源时不绘制按键层，也不产生任何按键动作（见下）。左右修饰键的精确名是两侧各自的
 canonical 名（`AltLeft`/`AltRight`、`ControlLeft`/`ControlRight`、`ShiftLeft`/`ShiftRight`、
 `MetaLeft`/`MetaRight`），`Alt`/`Control`/`Shift`/`Meta` 只作为两侧共用的家族图；`AltGr` 是唯一保留的
 旧名，只对右 Alt 生效，用于兼容没有经过导入归一化的包（见 ADR-0038）。小键盘（HID `0x53`…`0x63`）的
@@ -478,7 +478,15 @@ canonical 名（`AltLeft`/`AltRight`、`ControlLeft`/`ControlRight`、`ShiftLeft
 覆盖标准 104/105 布局与小键盘的全部按键，范围由两个平台 adapter 实际能产出的 usage 界定，且**不以
 预置模型当前是否有图**为前提：命名是与模型作者的契约，模型提供 `Dot.png`、`Minus.png`、`Delete.png`
 等任何键位图都必须在不改产品代码的前提下生效；`hand` 归属覆盖同一集合，因为
-`InputState::model_snapshot` 会丢弃没有 hand 归属的按键（见 ADR-0041）。功能键的范围、名字和左右手归属由
+`InputState::model_snapshot` 会丢弃没有 hand 归属的按键（见 ADR-0041）。
+
+**只有模型确实提供对应键位图时，按键才产生动作**（见 ADR-0042）：`bongocat-app` 在激活模型时用
+`bongocat-live2d::KeyImageInventory` 读取该模型的键位图清单（与渲染侧加载共用同一次目录扫描和同一套
+候选回退），并只把清单里能画出来的键写进 `InputBindings`。写入 runtime 的每模型绑定因此是
+"静态 hand 表 ∩ 该模型的键位图"：缺图的按键不进入 `InputState::model_snapshot`，既不驱动
+`CatParamLeftHandDown`/`CatParamRightHandDown`，也不产生按键层，所以按键层与爪部反馈永远一致。
+判断在 runtime 之前完成，renderer 仍只消费不可变 `RenderSnapshot`，不决定动作；该规则只覆盖键位图，
+鼠标指针/按键与手柄按钮不属于键位图资源。功能键的范围、名字和左右手归属由
 `bongocat-render` 的同一张 HID 表给出（`0x3a..=0x45` 与 `0x68..=0x73` 两段，中间是 PrintScreen
 至方向键和数字键盘），避免按键图片解析和 runtime 绑定各自定义；没有 hand 归属的按键不产生按键层。
 

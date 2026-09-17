@@ -4,12 +4,14 @@
 )]
 
 use bongocat_model::CommittedModel;
-use bongocat_render::{RenderResources, RenderSnapshot, TextureAsset, TextureId};
+use bongocat_render::{KeySide, RenderResources, RenderSnapshot, TextureAsset, TextureId};
 use image::ImageReader;
-use std::{collections::BTreeMap, fmt, fs, sync::Arc};
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use std::collections::BTreeSet;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt, fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 mod expression;
 pub use expression::{
@@ -790,12 +792,83 @@ pub fn resolve_key_overlays(
     selected.into_iter().flatten().collect()
 }
 
-fn load_key_assets(root: &std::path::Path) -> Result<Vec<bongocat_render::KeyAsset>, Live2dError> {
-    let mut assets = Vec::new();
-    for (side, directory) in [
-        (bongocat_render::KeySide::Left, "left-keys"),
-        (bongocat_render::KeySide::Right, "right-keys"),
-    ] {
+/// The key images a model package ships, grouped by the hand that draws them.
+///
+/// The inventory is the same directory scan [`load_key_assets`] performs and is
+/// answered against the same candidate names [`resolve_key_overlays`] walks, so
+/// it decides exactly what the renderer will decide: whether a press of a key
+/// has an image to show. That is what lets the product check *before* it reacts
+/// to a key at all — a key whose artwork the model does not ship must not move
+/// the paw either, because `CatParamLeftHandDown`/`CatParamRightHandDown`
+/// without a key image on screen is feedback for something that cannot be seen
+/// (`bongocat-app::input_bindings_for_model`).
+///
+/// Reading it never decodes an image, so building it once per model activation
+/// costs no more than the directory listing the renderer does anyway.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct KeyImageInventory {
+    left: BTreeSet<String>,
+    right: BTreeSet<String>,
+}
+
+impl KeyImageInventory {
+    /// Read the key images `root` provides.
+    ///
+    /// A missing or unreadable key directory contributes no names, exactly as it
+    /// contributes no assets to the renderer: the model simply draws no keys of
+    /// that hand.
+    pub fn read(root: &Path) -> Self {
+        let mut inventory = Self::default();
+        for (side, name, _) in key_image_files(root) {
+            inventory.names_mut(side).insert(name);
+        }
+        inventory
+    }
+
+    /// Whether the model ships an image called `name` for `side`.
+    pub fn provides(&self, side: KeySide, name: &str) -> bool {
+        self.names(side).contains(name)
+    }
+
+    /// Whether the model can draw a press of `hid_usage` on `side`.
+    ///
+    /// True when any candidate of that key is an image the model ships for that
+    /// side: the exact name, a shared family image (`Fn`, `Control`), a legacy
+    /// alias, or the main keyboard key a keypad key duplicates. This is the same
+    /// lookup `resolve_key_overlays` performs, so "can draw" and "draws" cannot
+    /// disagree.
+    pub fn can_draw(&self, side: KeySide, hid_usage: u16) -> bool {
+        key_name_candidates(hid_usage)
+            .iter()
+            .any(|name| self.provides(side, name))
+    }
+
+    fn names(&self, side: KeySide) -> &BTreeSet<String> {
+        match side {
+            KeySide::Left => &self.left,
+            KeySide::Right => &self.right,
+        }
+    }
+
+    fn names_mut(&mut self, side: KeySide) -> &mut BTreeSet<String> {
+        match side {
+            KeySide::Left => &mut self.left,
+            KeySide::Right => &mut self.right,
+        }
+    }
+}
+
+/// Every key image a package provides, in the order the loader consumes them:
+/// `resources/left-keys` before `resources/right-keys`, each sorted by path.
+///
+/// Only a regular `.png` directly inside one of those directories counts, and
+/// the name is the file stem — the model author's contract with the key
+/// vocabulary. [`load_key_assets`] and [`KeyImageInventory::read`] share this
+/// one scan so the images a model reports and the images it draws can never
+/// drift apart.
+fn key_image_files(root: &Path) -> Vec<(KeySide, String, PathBuf)> {
+    let mut images = Vec::new();
+    for (side, directory) in [(KeySide::Left, "left-keys"), (KeySide::Right, "right-keys")] {
         let path = root.join("resources").join(directory);
         let Ok(entries) = fs::read_dir(path) else {
             continue;
@@ -812,24 +885,30 @@ fn load_key_assets(root: &std::path::Path) -> Result<Vec<bongocat_render::KeyAss
             .collect::<Vec<_>>();
         files.sort();
         for file in files {
-            let image = ImageReader::open(&file)
-                .map_err(|error| Live2dError::new(Live2dErrorCode::ResourceIo, error.to_string()))?
-                .decode()
-                .map_err(|error| {
-                    Live2dError::new(Live2dErrorCode::ResourceIo, error.to_string())
-                })?;
             let Some(name) = file.file_stem().and_then(|name| name.to_str()) else {
                 continue;
             };
-            assets.push(bongocat_render::KeyAsset {
-                id: bongocat_render::KeyAssetId::new(assets.len()),
-                side,
-                name: name.to_owned(),
-                path: file,
-                width: image.width(),
-                height: image.height(),
-            });
+            images.push((side, name.to_owned(), file));
         }
+    }
+    images
+}
+
+fn load_key_assets(root: &Path) -> Result<Vec<bongocat_render::KeyAsset>, Live2dError> {
+    let mut assets = Vec::new();
+    for (side, name, path) in key_image_files(root) {
+        let image = ImageReader::open(&path)
+            .map_err(|error| Live2dError::new(Live2dErrorCode::ResourceIo, error.to_string()))?
+            .decode()
+            .map_err(|error| Live2dError::new(Live2dErrorCode::ResourceIo, error.to_string()))?;
+        assets.push(bongocat_render::KeyAsset {
+            id: bongocat_render::KeyAssetId::new(assets.len()),
+            side,
+            name,
+            path,
+            width: image.width(),
+            height: image.height(),
+        });
     }
     Ok(assets)
 }
@@ -1682,6 +1761,109 @@ mod tests {
                 "0x{hid_usage:02x} has no artwork in the shipped vocabulary"
             );
         }
+    }
+
+    /// The inventory exists to be asked before the product reacts to a key, so
+    /// it has to name exactly the assets the renderer will load: a name the
+    /// inventory reports and the loader does not have would move the paw for an
+    /// image that can never appear, and the reverse would drop a key that draws
+    /// perfectly well.
+    #[test]
+    fn key_image_inventory_lists_exactly_the_assets_the_renderer_loads() {
+        use bongocat_model::{ModelPackageLimits, PresetModelCatalog};
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/models");
+        let catalog =
+            PresetModelCatalog::open(&root, ModelPackageLimits::default()).expect("catalog");
+        for id in ["standard", "keyboard", "gamepad"] {
+            let model = catalog
+                .load(&bongocat_model::ModelId::parse(id).expect("model id"))
+                .expect("preset model");
+            let inventory = KeyImageInventory::read(model.root());
+            let assets = load_key_assets(model.root()).expect("key assets");
+            assert!(
+                !assets.is_empty(),
+                "{id} ships no key artwork, so the test proves nothing"
+            );
+            for (side, names) in [
+                (KeySide::Left, &inventory.left),
+                (KeySide::Right, &inventory.right),
+            ] {
+                let loaded = assets
+                    .iter()
+                    .filter(|asset| asset.side == side)
+                    .map(|asset| asset.name.clone())
+                    .collect::<BTreeSet<_>>();
+                assert_eq!(names, &loaded, "{id} {side:?}");
+            }
+        }
+    }
+
+    /// The rule the product applies before it reacts to any key: a model can
+    /// draw a key only when it ships artwork that key resolves to. `standard`
+    /// draws the letters, `Delete` and the keypad digits that fall back to the
+    /// number row, and cannot draw `.`, PrintScreen, NumLock, keypad `.` or the
+    /// arrow cluster — none of which it ships.
+    #[test]
+    fn a_shipped_model_can_draw_only_the_keys_it_ships_artwork_for() {
+        use bongocat_model::{ModelPackageLimits, PresetModelCatalog};
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/models");
+        let catalog =
+            PresetModelCatalog::open(&root, ModelPackageLimits::default()).expect("catalog");
+        let load = |id: &str| {
+            let model = catalog
+                .load(&bongocat_model::ModelId::parse(id).expect("model id"))
+                .expect("preset model");
+            KeyImageInventory::read(model.root())
+        };
+
+        let standard = load("standard");
+        for (hid_usage, drawable, why) in [
+            (0x04, true, "KeyA.png"),
+            (0x1e, true, "Num1.png"),
+            (0x28, true, "Enter.png"),
+            (0x3a, true, "Fn.png covers the function row"),
+            (0x4c, true, "Delete.png"),
+            (0x58, true, "keypad Enter falls back to Enter.png"),
+            (0x59, true, "keypad 1 falls back to Num1.png"),
+            (0x2d, false, "Minus.png is not shipped"),
+            (0x37, false, "Dot.png is not shipped"),
+            (0x46, false, "PrintScreen.png is not shipped"),
+            (0x53, false, "NumLock.png is not shipped"),
+            (0x63, false, "keypad . has no artwork to fall back to"),
+            (0x67, false, "keypad = is not shipped"),
+        ] {
+            assert_eq!(
+                standard.can_draw(KeySide::Left, hid_usage),
+                drawable,
+                "standard 0x{hid_usage:02x}: {why}"
+            );
+        }
+        // The arrow cluster is the other hand's artwork, and `standard` ships no
+        // `right-keys` directory at all.
+        assert!(
+            !standard.can_draw(KeySide::Left, 0x52),
+            "standard left UpArrow"
+        );
+        assert!(
+            !standard.can_draw(KeySide::Right, 0x52),
+            "standard right UpArrow"
+        );
+
+        let keyboard = load("keyboard");
+        assert!(keyboard.can_draw(KeySide::Right, 0x52), "keyboard UpArrow");
+        assert!(
+            !keyboard.can_draw(KeySide::Left, 0x52),
+            "keyboard left UpArrow"
+        );
+        assert!(!keyboard.can_draw(KeySide::Left, 0x37), "keyboard Dot.png");
+
+        let gamepad = load("gamepad");
+        assert!(
+            !gamepad.can_draw(KeySide::Left, 0x04),
+            "the gamepad model ships no keyboard artwork"
+        );
     }
 
     /// The shipped contract: the bundled keyboard models must expose both Alt

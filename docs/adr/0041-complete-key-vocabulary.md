@@ -70,6 +70,12 @@ F13..F24（0x68..=0x73）              → 左手
 方向键仍归右手，且仍只对 `Installed`/`keyboard`/`gamepad` 生效（`standard` 预置照旧不绑方向键，
 与既有契约测试一致）；`gamepad` 预置仍是按钮专用映射。左爪画键盘区、右爪画方向键，这条分工不变。
 
+> **修订（2026-09-17，同日，见 ADR-0042）：** 本节描述的是**候选** hand 表，它仍然覆盖整块布局。
+> 真正写入 runtime 的每模型绑定是该表与"该模型确实有的键位图"的交集：模型没有图的按键不再进入
+> `InputState::model_snapshot`，因此既不驱动 `CatParamLeftHandDown`/`CatParamRightHandDown`，
+> 也不产生按键图层。残余风险 1 记录的"缺图也有爪部反馈"由 ADR-0042 消除；命名不以美术存在为
+> 前提这一条不变——模型补图后绑定自动恢复。
+
 ### 3. `PrintScreen` 绑定，但明确不是功能键
 
 `FUNCTION_KEY_USAGES` 的边界（`0x3a..=0x45` 与 `0x68..=0x73`）**不变**，`PrintScreen` 不享受
