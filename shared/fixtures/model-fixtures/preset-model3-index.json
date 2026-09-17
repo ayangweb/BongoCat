@@ -182,6 +182,14 @@
           }
         },
         {
+          "id": "Enter",
+          "image": {
+            "file": "resources/left-keys/Enter.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
           "id": "Escape",
           "image": {
             "file": "resources/left-keys/Escape.png",
@@ -489,14 +497,6 @@
           "id": "Num9",
           "image": {
             "file": "resources/left-keys/Num9.png",
-            "width": 612,
-            "height": 354
-          }
-        },
-        {
-          "id": "Return",
-          "image": {
-            "file": "resources/left-keys/Return.png",
             "width": 612,
             "height": 354
           }
@@ -742,6 +742,14 @@
           }
         },
         {
+          "id": "Enter",
+          "image": {
+            "file": "resources/left-keys/Enter.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
           "id": "Escape",
           "image": {
             "file": "resources/left-keys/Escape.png",
@@ -1049,14 +1057,6 @@
           "id": "Num9",
           "image": {
             "file": "resources/left-keys/Num9.png",
-            "width": 612,
-            "height": 354
-          }
-        },
-        {
-          "id": "Return",
-          "image": {
-            "file": "resources/left-keys/Return.png",
             "width": 612,
             "height": 354
           }

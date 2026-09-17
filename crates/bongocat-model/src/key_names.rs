@@ -2,18 +2,19 @@
 //!
 //! The old `rdev`-based input layer spelled the two Alt keys `Alt` and `AltGr`,
 //! and every model authored against it — including the models this product
-//! shipped before the rename — stores its artwork under those names. The
-//! runtime resolves a pressed key against canonical HID names
-//! (`AltLeft`/`AltRight`, see `bongocat-live2d::key_name_candidates`), so an
-//! imported package has to speak the same vocabulary. This module rewrites the
-//! legacy stems while the package is still the store's own staging copy, which
-//! is why an import is the only place that can do it: the user's source
-//! directory and archive are read-only inputs and are never modified.
+//! shipped before the rename — stores its artwork under those names. The same
+//! input layer spelled the main Enter key `Return`, which community models in
+//! the wild still ship. The runtime resolves a pressed key against canonical
+//! HID names (`AltLeft`/`AltRight`, `Enter`, see
+//! `bongocat-live2d::key_name_candidates`), so an imported package has to
+//! speak the same vocabulary. This module rewrites the legacy stems while the
+//! package is still the store's own staging copy, which is why an import is
+//! the only place that can do it: the user's source directory and archive are
+//! read-only inputs and are never modified.
 //!
-//! The runtime additionally keeps `AltGr` as a right-Alt-only alias, so a model
-//! that reaches the store without this rewrite (an install that predates it, or
-//! a directory placed by hand) still draws the right artwork instead of the
-//! left one.
+//! The runtime additionally keeps `AltGr` and `Return` as legacy aliases, so a
+//! model that reaches the store without this rewrite (an install that predates
+//! it, or a directory placed by hand) still draws the right artwork.
 
 use crate::store::{ModelStoreDiagnostic, ModelStoreError};
 use std::{fs, path::Path};
@@ -22,7 +23,11 @@ use std::{fs, path::Path};
 const KEY_IMAGE_DIRECTORIES: [&str; 2] = ["resources/left-keys", "resources/right-keys"];
 
 /// The pre-rename key-image stems and the canonical name that replaces each.
-const LEGACY_KEY_IMAGE_NAMES: [(&str, &str); 2] = [("Alt", "AltLeft"), ("AltGr", "AltRight")];
+const LEGACY_KEY_IMAGE_NAMES: [(&str, &str); 3] = [
+    ("Alt", "AltLeft"),
+    ("AltGr", "AltRight"),
+    ("Return", "Enter"),
+];
 
 /// Rename every pre-rename key image inside `root` to its canonical name.
 ///
@@ -85,6 +90,7 @@ mod tests {
         let root = tempdir().expect("root");
         write(root.path(), "resources/left-keys/Alt.png", b"left");
         write(root.path(), "resources/left-keys/AltGr.png", b"right");
+        write(root.path(), "resources/left-keys/Return.png", b"enter");
         write(
             root.path(),
             "resources/right-keys/Alt.png",
@@ -96,6 +102,7 @@ mod tests {
 
         assert!(!root.path().join("resources/left-keys/Alt.png").exists());
         assert!(!root.path().join("resources/left-keys/AltGr.png").exists());
+        assert!(!root.path().join("resources/left-keys/Return.png").exists());
         assert_eq!(
             fs::read(root.path().join("resources/left-keys/AltLeft.png")).expect("left alt"),
             b"left"
@@ -103,6 +110,10 @@ mod tests {
         assert_eq!(
             fs::read(root.path().join("resources/left-keys/AltRight.png")).expect("right alt"),
             b"right"
+        );
+        assert_eq!(
+            fs::read(root.path().join("resources/left-keys/Enter.png")).expect("main enter"),
+            b"enter"
         );
         assert_eq!(
             fs::read(root.path().join("resources/right-keys/AltLeft.png")).expect("right hand"),
@@ -119,6 +130,16 @@ mod tests {
         let root = tempdir().expect("root");
         write(root.path(), "resources/left-keys/Alt.png", b"legacy");
         write(root.path(), "resources/left-keys/AltLeft.png", b"canonical");
+        write(
+            root.path(),
+            "resources/left-keys/Return.png",
+            b"legacy enter",
+        );
+        write(
+            root.path(),
+            "resources/left-keys/Enter.png",
+            b"canonical enter",
+        );
 
         normalize_legacy_key_image_names(root.path()).expect("normalize");
 
@@ -129,6 +150,14 @@ mod tests {
         assert_eq!(
             fs::read(root.path().join("resources/left-keys/Alt.png")).expect("legacy kept"),
             b"legacy"
+        );
+        assert_eq!(
+            fs::read(root.path().join("resources/left-keys/Enter.png")).expect("enter canonical"),
+            b"canonical enter"
+        );
+        assert_eq!(
+            fs::read(root.path().join("resources/left-keys/Return.png")).expect("return kept"),
+            b"legacy enter"
         );
     }
 

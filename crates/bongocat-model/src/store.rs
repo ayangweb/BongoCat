@@ -2766,6 +2766,7 @@ mod tests {
             let canonical = match name.as_str() {
                 "Alt.png" => "AltLeft.png",
                 "AltGr.png" => "AltRight.png",
+                "Return.png" => "Enter.png",
                 _ => {
                     expected.insert((directory, name), bytes);
                     continue;

@@ -839,24 +839,30 @@ fn load_key_assets(root: &std::path::Path) -> Result<Vec<bongocat_render::KeyAss
 /// A model may ship one image per key or a single shared image for a whole key
 /// family. The HID function keys F1 … F24 therefore resolve to their own
 /// `F1.png` … `F24.png` when the model provides one and fall back to the shared
-/// `Fn.png` otherwise; every other key only ever has an exact name plus, for the
-/// four modifier pairs, the shared side-independent asset (`Control`, `Shift`,
-/// `Alt`, `Meta`). A name that the model does not provide is skipped, so an
-/// incomplete model simply draws nothing for that key.
+/// `Fn.png` otherwise; the keypad Enter key falls back to the main `Enter`
+/// artwork when the model does not draw a dedicated `KpEnter.png`; every other
+/// key only ever has an exact name plus, for the four modifier pairs, the
+/// shared side-independent asset (`Control`, `Shift`, `Alt`, `Meta`). A name
+/// that the model does not provide is skipped, so an incomplete model simply
+/// draws nothing for that key.
 ///
-/// `AltGr` is the one legacy name in this table. BongoCat models written before
-/// the import normalizer existed ship the right Alt artwork as
-/// `AltGr.png` — the name the old `rdev`-based input layer used — and a package
-/// that reaches the model store without passing through that normalizer (an
-/// install predating it, or a model directory placed by hand) still has to draw
-/// the right artwork instead of the left one. It is deliberately right-Alt-only:
-/// `Alt.png` stays the shared family image, exactly as it was before.
+/// `AltGr` and `Return` are the two legacy names in this table. BongoCat models
+/// written before the import normalizer existed ship the right Alt artwork as
+/// `AltGr.png` and the main Enter artwork as `Return.png` — the names the old
+/// `rdev`-based input layer used — and a package that reaches the model store
+/// without passing through that normalizer (an install predating it, or a model
+/// directory placed by hand) still has to draw them. `AltGr` is deliberately
+/// right-Alt-only: `Alt.png` stays the shared family image, exactly as it was
+/// before. `Return` is the old spelling of the main Enter key (HID `0x28`) and
+/// ranks after the canonical `Enter`, so both spellings can never disagree on
+/// which artwork a key means.
 fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
     let function_key = bongocat_render::function_key_name(hid_usage);
     let exact = match hid_usage {
         0x04..=0x1d => Some(KEY_LETTERS[usize::from(hid_usage - 0x04)]),
         0x1e..=0x27 => Some(KEY_NUMBERS[usize::from(hid_usage - 0x1e)]),
-        0x28 => Some("Return"),
+        0x28 => Some("Enter"),
+        0x58 => Some("KpEnter"),
         0x29 => Some("Escape"),
         0x2a => Some("Backspace"),
         0x2b => Some("Tab"),
@@ -889,6 +895,20 @@ fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
         // a dedicated `F1.png` … `F24.png` wins, every function key the model
         // did not draw individually lands on `Fn.png`.
         candidates.push("Fn");
+    }
+    if hid_usage == 0x28 {
+        // Main Enter keeps its pre-rename name as an alias between the exact
+        // `Enter` and nothing else: a legacy model draws its own `Return`
+        // artwork when it has one. Community models in the wild ship it, and
+        // an install that predates the import normalizer is never rewritten
+        // in place (`next` has no migration path).
+        candidates.push("Return");
+    }
+    if hid_usage == 0x58 {
+        // Keypad Enter: the model's dedicated `KpEnter.png` wins, and a model
+        // that only drew the main Enter key still shows something for the
+        // keypad's Return. Always the last candidate.
+        candidates.push("Enter");
     }
     match hid_usage {
         0xe0 | 0xe4 => candidates.push("Control"),
@@ -1202,6 +1222,129 @@ mod tests {
         let shared = resources(&["Alt"]);
         assert_eq!(resolve(&shared, 0xe2).as_deref(), Some("Alt"));
         assert_eq!(resolve(&shared, 0xe6).as_deref(), Some("Alt"));
+    }
+
+    /// Main Enter and keypad Enter are distinct physical keys (HID `0x28` and
+    /// `0x58`). The main key keeps its pre-rename `Return` name as a legacy
+    /// alias, the keypad key prefers a dedicated `KpEnter.png` and falls back
+    /// to the main `Enter` artwork when the model did not draw one.
+    #[test]
+    fn enter_keys_resolve_distinct_names_with_a_keypad_fallback() {
+        use bongocat_render::{
+            KeyAsset, KeyAssetId, KeyPress, KeyPressSet, KeySide, RenderResources,
+        };
+        use std::path::PathBuf;
+
+        assert_eq!(
+            key_name_candidates(0x28),
+            vec!["Enter", "Return"],
+            "main Enter prefers the canonical name and keeps the legacy alias"
+        );
+        assert_eq!(
+            key_name_candidates(0x58),
+            vec!["KpEnter", "Enter"],
+            "keypad Enter prefers its own image and falls back to the main artwork"
+        );
+
+        // Every asset sits in `left-keys`: the side dimension is not what this
+        // test varies.
+        let resources = |names: &[&str]| RenderResources {
+            textures: Vec::new(),
+            key_assets: names
+                .iter()
+                .enumerate()
+                .map(|(index, name)| KeyAsset {
+                    id: KeyAssetId::new(index),
+                    side: KeySide::Left,
+                    name: (*name).to_owned(),
+                    path: PathBuf::from(format!("{name}.png")),
+                    width: 612,
+                    height: 354,
+                })
+                .collect(),
+            background: None,
+        };
+        let resolve = |model: &RenderResources, hid_usage: u16| {
+            let mut presses = KeyPressSet::default();
+            presses.push(KeyPress {
+                hid_usage,
+                side: KeySide::Left,
+            });
+            resolve_key_overlays(model, presses)
+                .first()
+                .map(|overlay| model.key_assets[overlay.asset_id.index()].name.clone())
+        };
+
+        // A renamed (or freshly imported) model without keypad artwork: the
+        // keypad key draws the main Enter image.
+        let renamed = resources(&["Enter"]);
+        assert_eq!(resolve(&renamed, 0x28).as_deref(), Some("Enter"));
+        assert_eq!(resolve(&renamed, 0x58).as_deref(), Some("Enter"));
+
+        // A model that drew both keys uses each artwork for its own key.
+        let dedicated = resources(&["Enter", "KpEnter"]);
+        assert_eq!(resolve(&dedicated, 0x28).as_deref(), Some("Enter"));
+        assert_eq!(resolve(&dedicated, 0x58).as_deref(), Some("KpEnter"));
+
+        // A model that predates the rename: the legacy `Return` image still
+        // draws for the main key. The keypad key has no candidate for it —
+        // `Return` was never the keypad key's name — so nothing is drawn.
+        let legacy = resources(&["Return"]);
+        assert_eq!(resolve(&legacy, 0x28).as_deref(), Some("Return"));
+        assert_eq!(resolve(&legacy, 0x58), None);
+
+        // The two keys never collapse into one candidate list.
+        let none = resources(&[]);
+        assert_eq!(resolve(&none, 0x28), None);
+        assert_eq!(resolve(&none, 0x58), None);
+    }
+
+    /// The bundled keyboard models must speak the renamed vocabulary: no
+    /// `Return.png` on disk, the main Enter key resolves to the renamed file,
+    /// and the keypad Enter key falls back to the very same artwork because
+    /// the presets ship no dedicated `KpEnter.png`.
+    #[test]
+    fn shipped_keyboard_models_draw_both_enter_keys_from_the_renamed_artwork() {
+        use bongocat_model::{ModelPackageLimits, PresetModelCatalog};
+        use bongocat_render::{KeyPress, KeyPressSet, KeySide, RenderResources};
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/models");
+        let catalog =
+            PresetModelCatalog::open(&root, ModelPackageLimits::default()).expect("catalog");
+        for id in ["standard", "keyboard"] {
+            let model = catalog
+                .load(&bongocat_model::ModelId::parse(id).expect("model id"))
+                .expect("preset model");
+            let resources = RenderResources {
+                textures: Vec::new(),
+                key_assets: load_key_assets(model.root()).expect("key assets"),
+                background: None,
+            };
+            assert!(
+                !resources
+                    .key_assets
+                    .iter()
+                    .any(|asset| asset.name == "Return"),
+                "{id} must not ship the pre-rename `Return` image"
+            );
+
+            let resolve = |hid_usage: u16| {
+                let mut presses = KeyPressSet::default();
+                presses.push(KeyPress {
+                    hid_usage,
+                    side: KeySide::Left,
+                });
+                let overlays = resolve_key_overlays(&resources, presses);
+                let asset = &resources.key_assets[overlays[0].asset_id.index()];
+                (asset.name.clone(), asset.path.clone())
+            };
+            let (main_name, main_path) = resolve(0x28);
+            let (keypad_name, keypad_path) = resolve(0x58);
+            assert_eq!(main_name, "Enter", "{id} main Enter");
+            assert_eq!(keypad_name, "Enter", "{id} keypad Enter falls back");
+            assert!(main_path.ends_with("resources/left-keys/Enter.png"));
+            assert_eq!(main_path, keypad_path, "{id} shares the Enter artwork");
+        }
     }
 
     /// The shipped contract: the bundled keyboard models must expose both Alt

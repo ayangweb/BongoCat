@@ -997,6 +997,9 @@ const fn legacy_key_name(mode: MverInputMode, control_code: i64) -> Option<&'sta
 /// `VK_MENU`: the legacy keyboard chart's `18`, worn by both Alt keys.
 const LEGACY_VK_MENU: i64 = 0x12;
 
+/// `VK_RETURN`: the legacy keyboard chart's `13`, worn by both Enter keys.
+const LEGACY_VK_RETURN: i64 = 0x0D;
+
 /// The BongoCat key-image names one legacy control code addresses.
 ///
 /// Almost every code names exactly one image, and callers must treat every name
@@ -1016,9 +1019,21 @@ const LEGACY_VK_MENU: i64 = 0x12;
 /// same way and keep their shared family name, which the runtime resolves for
 /// both sides; widening this expansion to them is a separate change because it
 /// would move an output the real legacy sample's conversion already records.
+///
+/// `VK_RETURN` (`0x0D`) is ambiguous in the same family way: the application
+/// reads it with `GetKeyState`, which reports the main Enter key and the keypad
+/// Enter key alike, and the legacy table numbers both `13`. The product names
+/// the two keys distinctly (`Enter` and `KpEnter`), so the conversion installs
+/// the one overlay for both names — the runtime then draws it for whichever key
+/// was actually pressed.
 fn legacy_key_names(mode: MverInputMode, control_code: i64) -> Vec<&'static str> {
-    if mode != MverInputMode::Gamepad && control_code == LEGACY_VK_MENU {
-        return vec!["AltLeft", "AltRight"];
+    if mode != MverInputMode::Gamepad {
+        if control_code == LEGACY_VK_MENU {
+            return vec!["AltLeft", "AltRight"];
+        }
+        if control_code == LEGACY_VK_RETURN {
+            return vec!["Enter", "KpEnter"];
+        }
     }
     legacy_key_name(mode, control_code).into_iter().collect()
 }
@@ -1027,7 +1042,7 @@ const fn legacy_virtual_key_name(virtual_key: i64) -> Option<&'static str> {
     match virtual_key {
         0x08 => Some("Backspace"),
         0x09 => Some("Tab"),
-        0x0D => Some("Return"),
+        0x0D => Some("Enter"),
         0x10 => Some("Shift"),
         0x11 => Some("Control"),
         0x12 => Some("Alt"),
@@ -1940,8 +1955,12 @@ mod tests {
             (Standard, 0x12, "Alt"),
             (Standard, 0xA4, "AltLeft"),
             (Keyboard, 0xA5, "AltRight"),
+            // The shared Enter code keeps the legacy table's own name, updated
+            // to the product spelling: `legacy_key_names` is what turns it into
+            // the product's two Enter keys.
+            (Standard, 0x0D, "Enter"),
             // The gamepad mode addresses buttons, not virtual keys: index 13 is
-            // the D-pad down button, while virtual key 0x0D is Return.
+            // the D-pad down button, while virtual key 0x0D is the Enter keys.
             (Gamepad, 13, "DPadDown"),
             (Gamepad, 10, "DPadLeft"),
             (Gamepad, 4, "LeftTrigger"),
@@ -1965,7 +1984,9 @@ mod tests {
 
     /// Left and right Alt may never collapse into one name again. The legacy
     /// chart numbers both Alt keys `18`, so that one code has to reach both
-    /// sides; a table that does name a side keeps it.
+    /// sides; a table that does name a side keeps it. The two Enter keys are
+    /// ambiguous in the same way (`13` for both) and expand to their own two
+    /// product names.
     #[test]
     fn alt_control_codes_never_collapse_left_and_right() {
         use MverInputMode::{Gamepad, Keyboard, Standard};
@@ -1980,6 +2001,14 @@ mod tests {
         );
         assert_eq!(legacy_key_names(Standard, 0xA4), vec!["AltLeft"]);
         assert_eq!(legacy_key_names(Standard, 0xA5), vec!["AltRight"]);
+        // The shared Enter code reaches both Enter keys, each under its own
+        // product name; the runtime resolves whichever key was pressed.
+        assert_eq!(
+            legacy_key_names(Standard, 0x0D),
+            vec!["Enter", "KpEnter"],
+            "the shared VK_RETURN code must reach both Enter keys"
+        );
+        assert_eq!(legacy_key_names(Keyboard, 0x0D), vec!["Enter", "KpEnter"]);
         // Every other code still names exactly one image.
         assert_eq!(legacy_key_names(Standard, 0x41), vec!["KeyA"]);
         assert_eq!(legacy_key_names(Gamepad, 10), vec!["DPadLeft"]);
@@ -1987,6 +2016,11 @@ mod tests {
         assert!(
             legacy_key_names(Gamepad, 0x12).is_empty(),
             "gamepad control codes are button indexes, not virtual keys"
+        );
+        assert_eq!(
+            legacy_key_names(Gamepad, 0x0D),
+            vec!["DPadDown"],
+            "gamepad control code 13 is the D-pad down button, not a virtual key"
         );
     }
 
@@ -2041,6 +2075,51 @@ mod tests {
                 "{name} must be installed"
             );
         }
+    }
+
+    /// The planned output for the ambiguous Enter binding: both Enter keys are
+    /// destinations for the same composed overlay, so a converted model draws
+    /// it for the main key and for the keypad key alike — exactly what the
+    /// legacy application did with its one `GetKeyState` code.
+    #[test]
+    fn one_shared_enter_binding_installs_the_same_overlay_for_both_keys() {
+        let root = tempdir().expect("root");
+        legacy_source(
+            root.path(),
+            &[(
+                MverInputMode::Standard,
+                r#"{"hand":[[13]],"keyboard":[[13]]}"#,
+            )],
+            true,
+        );
+        write(
+            root.path(),
+            "img/standard/hand/0.png",
+            &flat([255, 0, 0, 255]),
+        );
+        write(
+            root.path(),
+            "img/standard/keyboard/0.png",
+            &flat([0, 0, 255, 255]),
+        );
+
+        let plan = inspect_directory(root.path()).expect("legacy plan");
+        let mode = plan_mode(&plan, MverInputMode::Standard);
+        assert_eq!(
+            mode.slots
+                .iter()
+                .map(|slot| slot.reference.as_str())
+                .collect::<Vec<_>>(),
+            vec!["left-keys/Enter.png", "left-keys/KpEnter.png"]
+        );
+        assert_eq!(mode.slots[0].image, mode.slots[1].image);
+
+        let staging = tempdir().expect("staging");
+        convert(root.path(), &mode, staging.path()).expect("convert");
+        assert_eq!(
+            fs::read(staging.path().join("resources/left-keys/Enter.png")).expect("main enter"),
+            fs::read(staging.path().join("resources/left-keys/KpEnter.png")).expect("keypad enter")
+        );
     }
 
     #[test]
