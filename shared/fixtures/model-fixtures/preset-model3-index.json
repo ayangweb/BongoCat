@@ -553,7 +553,7 @@
       "right_keys": []
     },
     "package_file_count": 71,
-    "package_total_bytes": 1524540,
+    "package_total_bytes": 1374411,
     "unreferenced_files": [
       "exp_1.exp3.json",
       "exp_2.exp3.json"
@@ -1146,7 +1146,7 @@
       ]
     },
     "package_file_count": 75,
-    "package_total_bytes": 1490448,
+    "package_total_bytes": 1369492,
     "unreferenced_files": [
       "exp_1.exp3.json",
       "exp_2.exp3.json"
@@ -1363,7 +1363,7 @@
       ]
     },
     "package_file_count": 28,
-    "package_total_bytes": 1206645,
+    "package_total_bytes": 1043646,
     "unreferenced_files": [
       "exp_1.exp3.json",
       "exp_2.exp3.json"
