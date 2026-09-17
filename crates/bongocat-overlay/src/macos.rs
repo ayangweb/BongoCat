@@ -277,7 +277,6 @@ impl ProductOverlaySession {
         interaction_sinks: OverlayInteractionSinks,
     ) -> Result<Self, OverlayError> {
         let OverlayInteractionSinks {
-            shortcut_dispatcher,
             context_menu_sender,
         } = interaction_sinks;
         validate_product_options(options)?;
@@ -338,12 +337,11 @@ impl ProductOverlaySession {
         let diagnostics_producer = runtime_client.platform_input_diagnostics_producer();
         let (input_service, input_start_error) =
             super::start_platform_input(&diagnostics_producer, || {
-                MacInputService::start_with_diagnostics_and_shortcuts(
+                MacInputService::start_with_diagnostics(
                     input_producer,
                     cursor_producer,
                     gamepad_axis_producer,
                     diagnostics_producer.clone(),
-                    shortcut_dispatcher,
                 )
             });
         let context_menu_monitor = install_context_menu_monitor(

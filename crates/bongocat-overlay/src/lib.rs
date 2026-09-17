@@ -16,7 +16,7 @@ mod hover;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::PlatformInputServiceStatus;
-use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError, ShortcutDispatcher};
+use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_render::BlendMode;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -463,7 +463,6 @@ pub struct OverlayContextMenuRequest;
 /// Optional application-owned event handoffs consumed by the native overlay.
 /// They carry no overlay state and are never used to render or mutate config.
 pub struct OverlayInteractionSinks {
-    pub shortcut_dispatcher: Option<ShortcutDispatcher>,
     pub context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
 }
 
@@ -476,26 +475,6 @@ impl ProductOverlaySession {
         render_consumer: RenderConsumer,
         options: OverlaySessionOptions,
     ) -> Result<Self, OverlayError> {
-        Self::start_with_shortcuts(
-            runtime_client,
-            input_producer,
-            cursor_producer,
-            gamepad_axis_producer,
-            render_consumer,
-            options,
-            None,
-        )
-    }
-
-    pub fn start_with_shortcuts(
-        runtime_client: RuntimeClient,
-        input_producer: InputProducer,
-        cursor_producer: CursorProducer,
-        gamepad_axis_producer: GamepadAxisProducer,
-        render_consumer: RenderConsumer,
-        options: OverlaySessionOptions,
-        shortcut_dispatcher: Option<ShortcutDispatcher>,
-    ) -> Result<Self, OverlayError> {
         Self::start_with_interaction_sinks(
             runtime_client,
             input_producer,
@@ -504,7 +483,6 @@ impl ProductOverlaySession {
             render_consumer,
             options,
             OverlayInteractionSinks {
-                shortcut_dispatcher,
                 context_menu_sender: None,
             },
         )

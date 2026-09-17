@@ -1,6 +1,6 @@
 use crate::{
     DisplayBounds, InputPermission, PlatformInputDiagnostics, PlatformInputError,
-    PlatformInputServiceStatus, ShortcutDispatcher,
+    PlatformInputServiceStatus,
 };
 use block2::RcBlock;
 use bongocat_config::Language;
@@ -1039,22 +1039,6 @@ impl MacInputService {
         gamepad_axis_producer: GamepadAxisProducer,
         diagnostics_producer: PlatformInputDiagnosticsProducer,
     ) -> Result<Self, PlatformInputError> {
-        Self::start_with_diagnostics_and_shortcuts(
-            producer,
-            cursor_producer,
-            gamepad_axis_producer,
-            diagnostics_producer,
-            None,
-        )
-    }
-
-    pub fn start_with_diagnostics_and_shortcuts(
-        producer: InputProducer,
-        cursor_producer: CursorProducer,
-        gamepad_axis_producer: GamepadAxisProducer,
-        diagnostics_producer: PlatformInputDiagnosticsProducer,
-        shortcut_dispatcher: Option<ShortcutDispatcher>,
-    ) -> Result<Self, PlatformInputError> {
         if input_monitoring_permission() != InputPermission::Granted {
             return Err(PlatformInputError::PermissionDenied);
         }
@@ -1071,7 +1055,6 @@ impl MacInputService {
                         cursor_producer,
                         gamepad_axis_producer,
                         diagnostics_producer,
-                        shortcut_dispatcher,
                         worker_stop,
                         startup_sender,
                     )
@@ -1150,7 +1133,6 @@ fn run_input_worker(
     cursor_producer: CursorProducer,
     gamepad_axis_producer: GamepadAxisProducer,
     diagnostics_producer: PlatformInputDiagnosticsProducer,
-    shortcut_dispatcher: Option<ShortcutDispatcher>,
     stop: Arc<AtomicBool>,
     startup: SyncSender<Result<(), PlatformInputError>>,
 ) -> Result<PlatformInputDiagnostics, PlatformInputError> {
@@ -1178,7 +1160,6 @@ fn run_input_worker(
         Arc::clone(&recovery_requested),
         Arc::clone(&counters),
     );
-    let mut shortcut_dispatcher = shortcut_dispatcher;
 
     let mut callback_context = Box::new(TapCallbackContext {
         sender: capture_sender,
@@ -1266,9 +1247,6 @@ fn run_input_worker(
                 Ok(_) => {
                     candidates.clear();
                     missing_confirmations.clear();
-                    if let Some(dispatcher) = shortcut_dispatcher.as_mut() {
-                        dispatcher.reset();
-                    }
                     modifier_decoder
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1317,9 +1295,6 @@ fn run_input_worker(
             accepting.store(false, Ordering::Release);
             candidates.clear();
             missing_confirmations.clear();
-            if let Some(dispatcher) = shortcut_dispatcher.as_mut() {
-                dispatcher.reset();
-            }
             modifier_decoder
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1347,7 +1322,6 @@ fn run_input_worker(
                 &mut candidates,
                 &mut missing_confirmations,
                 &mut diagnostics,
-                &mut shortcut_dispatcher,
             ) {
                 match error {
                     InputPublishError::QueueFull(_) => {
@@ -1388,12 +1362,6 @@ fn run_input_worker(
                 Ok(_) => {
                     diagnostics.reconciliation_runs =
                         diagnostics.reconciliation_runs.saturating_add(1);
-                    if let Some(dispatcher) = shortcut_dispatcher.as_mut() {
-                        dispatcher.reconcile(pressed.iter().filter_map(|control| match control {
-                            InputControl::Key(key) => Some(*key),
-                            InputControl::Mouse(_) | InputControl::Gamepad(_) => None,
-                        }));
-                    }
                     let candidates_snapshot = candidates
                         .iter()
                         .map(|(control, system)| (*control, *system))
@@ -1772,7 +1740,6 @@ fn publish_captured(
     candidates: &mut BTreeMap<InputControl, SystemControl>,
     missing_confirmations: &mut BTreeMap<InputControl, u8>,
     diagnostics: &mut PlatformInputDiagnostics,
-    shortcut_dispatcher: &mut Option<ShortcutDispatcher>,
 ) -> Result<(), InputPublishError> {
     match captured {
         CapturedEvent::Edge {
@@ -1786,28 +1753,6 @@ fn publish_captured(
                 source: InputSource::Capture,
                 at,
             })?;
-            if let InputControl::Key(key) = control
-                && let Some(dispatcher) = shortcut_dispatcher.as_mut()
-            {
-                match dispatcher.apply(key, edge) {
-                    Ok(_) => {}
-                    Err(crate::ShortcutDispatchError::Runtime(
-                        bongocat_runtime::SendError::QueueFull(_),
-                    ))
-                    | Err(crate::ShortcutDispatchError::ApplicationQueueFull) => {
-                        diagnostics.runtime_queue_overflows =
-                            diagnostics.runtime_queue_overflows.saturating_add(1);
-                    }
-                    Err(crate::ShortcutDispatchError::Runtime(
-                        bongocat_runtime::SendError::RuntimeStopped(_),
-                    )) => {
-                        return Err(InputPublishError::RuntimeStopped(InputEvent::Reset {
-                            reason: InputResetReason::ServiceRestart,
-                            at,
-                        }));
-                    }
-                }
-            }
             match edge {
                 InputEdge::Down => {
                     candidates.insert(control, system);
@@ -1837,9 +1782,6 @@ fn publish_captured(
             producer.recover(InputResetReason::ServiceRestart, at)?;
             candidates.clear();
             missing_confirmations.clear();
-            if let Some(dispatcher) = shortcut_dispatcher.as_mut() {
-                dispatcher.reset();
-            }
             diagnostics.recovery_resets = diagnostics.recovery_resets.saturating_add(1);
         }
     }
@@ -2520,7 +2462,6 @@ mod tests {
             &mut candidates,
             &mut missing,
             &mut diagnostics,
-            &mut None,
         )
         .expect("button down published");
         let down_snapshot = client
@@ -2548,7 +2489,6 @@ mod tests {
             &mut candidates,
             &mut missing,
             &mut diagnostics,
-            &mut None,
         )
         .expect("button up published");
         let released = client

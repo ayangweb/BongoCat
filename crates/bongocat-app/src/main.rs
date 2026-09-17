@@ -16,7 +16,7 @@ use bongocat_overlay::{
     ProductOverlaySession,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use bongocat_platform::ShortcutDispatcher;
+use bongocat_platform::{GlobalShortcutService, ShortcutDispatcher};
 #[cfg(target_os = "windows")]
 use bongocat_platform::{
     SingleInstance, SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceStart,
@@ -592,6 +592,7 @@ struct ProductCoordinator {
     frame_source_running: bool,
     frame_source_shutdown: FrameSourceShutdown,
     shortcut_signals: bongocat_app::ApplicationShortcutSignals,
+    shortcut_service: Option<bongocat_platform::GlobalShortcutService>,
     frame_ticks: u64,
     expect_visible_frame: bool,
     failures: Arc<Mutex<Vec<String>>>,
@@ -832,6 +833,13 @@ fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
         let mut overlay = coordinator.overlay.borrow_mut();
         overlay.take().expect("product overlay owner is present")
     };
+    // Registered hotkeys must stop consuming keys before any service that
+    // would re-trigger them is torn down.
+    if let Some(shortcut_service) = coordinator.shortcut_service.take()
+        && let Err(error) = shortcut_service.stop()
+    {
+        record_failure(&coordinator.failures, error.to_string());
+    }
     if let Err(error) = overlay.stop_input() {
         record_failure(&coordinator.failures, error.to_string());
     }
@@ -2220,11 +2228,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "windows")]
     let initial_taskbar_icon_visible = application.config().application.show_taskbar_icon;
     let shortcut_signals = bongocat_app::ApplicationShortcutSignals::default();
-    let shortcut_dispatcher = Some(ShortcutDispatcher::with_application_sink(
-        application.shortcut_table(),
-        runtime_client.clone(),
-        shortcut_sender,
-    ));
     let input_producer = application.input_producer();
     let cursor_producer = application.cursor_producer();
     let gamepad_axis_producer = application.gamepad_axis_producer();
@@ -2234,6 +2237,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let frame_source_shutdown = FrameSourceShutdown::default();
     let failures = Arc::new(Mutex::new(Vec::new()));
     let run_failures = Arc::clone(&failures);
+    // Global shortcuts are OS registrations owned by a dedicated platform
+    // service thread (ADR-0044); the input pipeline no longer matches edges.
+    let shortcut_service = match GlobalShortcutService::start(
+        application.shortcut_table(),
+        ShortcutDispatcher::with_application_sink(runtime_client.clone(), shortcut_sender),
+    ) {
+        Ok(service) => Some(service),
+        Err(error) => {
+            return Err(Box::new(ProductRunError {
+                failures: vec![error.to_string()],
+            }));
+        }
+    };
     #[cfg(target_os = "windows")]
     let shutdown_requested = Arc::new(AtomicBool::new(false));
     let gpui_application = gpui_application().with_assets(Assets);
@@ -2270,7 +2286,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             render_consumer,
             overlay_options,
             OverlayInteractionSinks {
-                shortcut_dispatcher,
                 context_menu_sender: Some(context_menu_sender),
             },
         ) {
@@ -2401,6 +2416,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             frame_source_running: true,
             frame_source_shutdown: frame_source_shutdown.clone(),
             shortcut_signals,
+            shortcut_service,
             frame_ticks: 0,
             expect_visible_frame,
             failures: Arc::clone(&run_failures),
