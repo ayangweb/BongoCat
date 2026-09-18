@@ -512,7 +512,7 @@ pub struct SettingsView {
     overlay_focus: FocusHandle,
     overlay_topmost_focus: FocusHandle,
     overlay_click_through_focus: FocusHandle,
-    overlay_keep_inside_work_area_focus: FocusHandle,
+    overlay_keep_inside_screen_focus: FocusHandle,
     overlay_hide_on_pointer_hover_focus: FocusHandle,
     overlay_hover_hide_delay_decrease_focus: FocusHandle,
     overlay_hover_hide_delay_increase_focus: FocusHandle,

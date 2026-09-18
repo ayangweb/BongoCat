@@ -751,7 +751,7 @@ impl Application {
         next_config.overlay.hide_on_pointer_hover = settings.hide_on_pointer_hover;
         next_config.overlay.hide_on_pointer_hover_delay_seconds =
             settings.hide_on_pointer_hover_delay_seconds;
-        next_config.overlay.keep_inside_work_area = settings.keep_inside_work_area;
+        next_config.overlay.keep_inside_screen = settings.keep_inside_screen;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1624,7 +1624,7 @@ fn overlay_settings_from_config(config: &NativeConfig) -> OverlaySettings {
         corner_radius_percent: config.overlay.corner_radius_percent,
         hide_on_pointer_hover: config.overlay.hide_on_pointer_hover,
         hide_on_pointer_hover_delay_seconds: config.overlay.hide_on_pointer_hover_delay_seconds,
-        keep_inside_work_area: config.overlay.keep_inside_work_area,
+        keep_inside_screen: config.overlay.keep_inside_screen,
     }
 }
 
@@ -2749,7 +2749,7 @@ mod tests {
             corner_radius_percent: 25,
             hide_on_pointer_hover: true,
             hide_on_pointer_hover_delay_seconds: 1,
-            keep_inside_work_area: false,
+            keep_inside_screen: false,
         };
         let settings_snapshot = application
             .set_overlay_settings(overlay_settings)
@@ -2768,7 +2768,7 @@ mod tests {
                 .hide_on_pointer_hover_delay_seconds,
             1
         );
-        assert!(!application.config().overlay.keep_inside_work_area);
+        assert!(!application.config().overlay.keep_inside_screen);
 
         application
             .set_appearance_theme(ConfigTheme::Dark)

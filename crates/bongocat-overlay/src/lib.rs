@@ -14,6 +14,11 @@ mod windows;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod hover;
 
+/// Overlay placement constraint and its settle delay. Gated with the native
+/// sessions for the same reason as [`hover`].
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod placement;
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::PlatformInputServiceStatus;
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
@@ -99,7 +104,11 @@ pub struct OverlaySessionOptions {
     /// v1 configuration stores whole seconds; the millisecond value is derived
     /// once, when the runtime settings are applied to the session.
     pub hide_on_pointer_hover_delay_ms: u32,
-    pub keep_inside_work_area: bool,
+    /// Keep the overlay window fully on a display. The region is the union of
+    /// the connected displays' frames rather than one display's work area, so a
+    /// window may sit over a taskbar, Dock or menu bar. The correction itself is
+    /// delayed; see the placement module.
+    pub keep_inside_screen: bool,
     pub maximum_fps: u16,
     pub window_bounds: Option<OverlayWindowBounds>,
 }
@@ -116,7 +125,7 @@ impl OverlaySessionOptions {
             hide_on_pointer_hover_delay_ms: hover_hide_delay_ms(
                 settings.hide_on_pointer_hover_delay_seconds,
             ),
-            keep_inside_work_area: settings.keep_inside_work_area,
+            keep_inside_screen: settings.keep_inside_screen,
             maximum_fps: self.maximum_fps,
             window_bounds: self.window_bounds,
         }
@@ -130,7 +139,7 @@ impl OverlaySessionOptions {
         self.scale_percent != next.scale_percent
             || self.opacity_percent != next.opacity_percent
             || self.corner_radius_percent != next.corner_radius_percent
-            || self.keep_inside_work_area != next.keep_inside_work_area
+            || self.keep_inside_screen != next.keep_inside_screen
     }
 }
 
@@ -144,7 +153,7 @@ impl Default for OverlaySessionOptions {
             corner_radius_percent: 0,
             hide_on_pointer_hover: false,
             hide_on_pointer_hover_delay_ms: 0,
-            keep_inside_work_area: true,
+            keep_inside_screen: true,
             maximum_fps: 60,
             window_bounds: None,
         }
@@ -194,33 +203,44 @@ impl OverlayWindowBounds {
         }
     }
 
+    /// Move the window box so that it lands fully on `screen`, without changing
+    /// its size.
+    ///
+    /// The origin is clamped to the display's own origin when the window is
+    /// larger than the display on an axis, so an oversized window stays pinned
+    /// to the display's top-left corner instead of being resized or pushed off
+    /// the opposite edge.
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    pub(crate) fn clamp_to(self, work_area: OverlayWorkArea) -> Self {
-        let maximum_x = if self.width <= work_area.width {
-            work_area
-                .x
-                .saturating_add_unsigned(work_area.width - self.width)
+    pub(crate) fn clamp_to(self, screen: OverlayScreenBounds) -> Self {
+        let maximum_x = if self.width <= screen.width {
+            screen.x.saturating_add_unsigned(screen.width - self.width)
         } else {
-            work_area.x
+            screen.x
         };
-        let maximum_y = if self.height <= work_area.height {
-            work_area
+        let maximum_y = if self.height <= screen.height {
+            screen
                 .y
-                .saturating_add_unsigned(work_area.height - self.height)
+                .saturating_add_unsigned(screen.height - self.height)
         } else {
-            work_area.y
+            screen.y
         };
         Self {
-            x: self.x.clamp(work_area.x, maximum_x),
-            y: self.y.clamp(work_area.y, maximum_y),
+            x: self.x.clamp(screen.x, maximum_x),
+            y: self.y.clamp(screen.y, maximum_y),
             ..self
         }
     }
 }
 
+/// One display's full frame in the shared virtual-desktop coordinate space.
+///
+/// This is the display's visible extent, including the strip a taskbar, Dock or
+/// menu bar occupies, so the placement constraint keeps the overlay on a screen
+/// without pushing it clear of the desktop chrome. Coordinates may be negative
+/// for a display placed left of or above the primary one.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct OverlayWorkArea {
+pub(crate) struct OverlayScreenBounds {
     pub x: i32,
     pub y: i32,
     pub width: u32,
@@ -237,7 +257,10 @@ impl HasWindowHandle for ProductOverlaySession {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProductOverlayReport {
     pub frames_presented: u64,
-    pub work_area_constraint_satisfied: bool,
+    /// Whether the overlay window was fully on a display when the session
+    /// finished, or the constraint was off. A window that is still waiting out
+    /// its settle delay after a drag is reported as `false`.
+    pub placement_fully_visible: bool,
     pub dynamic_snapshots: u64,
     pub model_commit_rejections: u64,
     pub input_start_error: Option<PlatformInputError>,
@@ -1097,20 +1120,22 @@ mod tests {
     }
 
     #[test]
-    fn overlay_bounds_clamp_to_work_area_without_changing_size() {
-        let work_area = OverlayWorkArea {
+    fn overlay_bounds_clamp_to_a_screen_without_changing_size() {
+        let screen = OverlayScreenBounds {
             x: -1_920,
-            y: 40,
+            y: 0,
             width: 1_920,
-            height: 1_040,
+            height: 1_080,
         };
         assert_eq!(
-            OverlayWindowBounds::new(-2_100, 900, 400, 300).clamp_to(work_area),
+            OverlayWindowBounds::new(-2_100, 900, 400, 300).clamp_to(screen),
             OverlayWindowBounds::new(-1_920, 780, 400, 300)
         );
+        // A window larger than the display keeps its size and is pinned to the
+        // display origin rather than being pushed off the opposite edge.
         assert_eq!(
-            OverlayWindowBounds::new(-1_500, 100, 2_400, 1_200).clamp_to(work_area),
-            OverlayWindowBounds::new(-1_920, 40, 2_400, 1_200)
+            OverlayWindowBounds::new(-1_500, 100, 2_400, 1_200).clamp_to(screen),
+            OverlayWindowBounds::new(-1_920, 0, 2_400, 1_200)
         );
     }
 

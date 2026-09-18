@@ -518,13 +518,13 @@ impl SettingsView {
                     ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA,
                     bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
-                        "settings.overlay.keep_inside_work_area.label",
+                        "settings.overlay.keep_inside_screen.label",
                     ),
                     bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
-                        "settings.overlay.keep_inside_work_area.description",
+                        "settings.overlay.keep_inside_screen.description",
                     ),
-                    snapshot.overlay.keep_inside_work_area,
+                    snapshot.overlay.keep_inside_screen,
                 ),
                 (
                     ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER,

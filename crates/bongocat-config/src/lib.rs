@@ -283,7 +283,12 @@ pub struct OverlayConfig {
     /// boundary, because the hover state machine compares against the
     /// monotonic millisecond clock.
     pub hide_on_pointer_hover_delay_seconds: u32,
-    pub keep_inside_work_area: bool,
+    /// Keep the overlay window fully on a display. `next` keeps the window on
+    /// the union of the connected displays, so it may cover a taskbar, Dock or
+    /// menu bar, and a window dragged off the desktop is moved back only after
+    /// the drag has stopped. This replaces the earlier work-area constraint,
+    /// which forbade the desktop chrome strip entirely.
+    pub keep_inside_screen: bool,
 }
 
 /// Upper bound of the hover hide delay, in whole seconds.
@@ -945,7 +950,7 @@ impl Default for NativeConfig {
                 corner_radius_percent: 0,
                 hide_on_pointer_hover: false,
                 hide_on_pointer_hover_delay_seconds: 0,
-                keep_inside_work_area: true,
+                keep_inside_screen: true,
             },
             input: InputConfig {
                 gamepad_stick_dead_zone: 0.15,

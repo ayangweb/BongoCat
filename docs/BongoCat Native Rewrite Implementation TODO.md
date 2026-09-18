@@ -3443,6 +3443,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       严格 Clippy、隔离 macOS release 设置窗口/state smoke 和 119 帧 Metal Live2D preview 均通过，
       已通过。实现 commit `22cd56e` 的 CI run `33935203737` 全绿；Windows/macOS/Ubuntu workspace
       jobs `101221672187`/`101221672371`/`101221672243` 均通过完整 workspace 门禁和对应产品 smoke。
+    - 状态（2026-09-18，历史）：该决策已被第 83 项 `P0-OVERLAY-SCREEN-BOUNDS` 取代。维护者要求
+      约束范围从工作区改为屏幕范围（允许覆盖任务栏等区域），并把“拖出屏幕后立即拉回”改为延迟
+      收敛；`overlay.keep_inside_work_area` 已随语义改名为 `overlay.keep_inside_screen`。本行只
+      保留当时状态。
 
 68. [ ] `P7-SIGNED-UPDATE-MANIFEST`：建立首发更新的离线信任判断核心。
     - 依赖：ADR-0021、不可变 Development/Production 环境、四个首发 target、发布版本与公钥流程。
@@ -4251,6 +4255,64 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `/Applications` 安装态 `--startup-item-smoke`（需 Production 签名构建，留给发布门禁）；
       macOS 13+ 系统设置后台项目列表的可见性为文档预期、未实机核验。
     - 决策记录：ADR-0043（ADR-0013 标记 Superseded，Technical Design 启动项段落同步）。
+
+83. [x] `P0-OVERLAY-SCREEN-BOUNDS`：把 overlay 放置约束从工作区改为屏幕范围，并改成延迟收敛。
+    - 依赖：ADR-0045、被取代的第 67 项、当前 v1 `overlay.keep_inside_screen`（由
+      `keep_inside_work_area` 改名）、`bongocat-overlay` 的 `placement` 模块、runtime overlay
+      settings、持久化窗口 bounds、Win32 `EnumDisplayMonitors`、AppKit `NSScreen`。
+    - 退出条件：约束区域从单块显示器的 `rcWork` / `visibleFrame` 改为所有显示器矩形
+      （`rcMonitor` / `NSScreen.frame`）的并集；“完整显示”按并集覆盖判定，跨显示器摆放不纠正；
+      只在窗口真正离开桌面时纠正，目标为交叠面积最大（无交叠取中心最近）的显示器且不改变窗口尺寸；
+      创建/缩放重建/模型重建立即收敛，拖动后的收敛延迟 `PLACEMENT_SETTLE_DELAY`（1s）执行并在每次
+      观测到位移时重新计时，因此不影响跨显示器拖拽；放置检查缓存不超过
+      `PLACEMENT_INSPECTION_INTERVAL`（500ms），使显示器变化在静止窗口下仍被纠正；判定与倒计时为
+      平台无关可测代码；字段、中英文案、共享 schema/fixture、契约表与 AX/UIA 语义同步；完整 Native
+      门禁与双平台 CI 通过。
+    - 实现说明（2026-09-18）：新增 `bongocat-overlay/src/placement.rs`——`bounds_inside_screens`
+      按显示器边界切片做并集覆盖判定（可处理 L 形排列、重叠显示器与负坐标），
+      `correction_for_screens` 选出最大交叠（无交叠取最近）显示器并复用不改变尺寸的
+      `OverlayWindowBounds::clamp_to`，`OverlayPlacementConstraint` 实现“静止 1 秒后才纠正 + 每次
+      位移重新计时 + 500ms 重评估”。Windows 用 `EnumDisplayMonitors` + `GetMonitorInfoW(rcMonitor)`
+      枚举显示器，`centered_position` 改为按 `rcMonitor` 居中；macOS 用 `NSScreen::frame` 枚举并按
+      `frame` 居中；两平台的 `ensure_inside_work_area` 换成只移动原点的 `set_origin`，tick 里改为
+      喂约束状态机；会话原 `hover_started` 改名 `session_started`，作为 hover 淡出与放置延迟共用的
+      单调时钟（一个会话只读一次墙上时钟）。`ProductOverlayReport.work_area_constraint_satisfied`
+      改为 `placement_fully_visible` 并按并集判定。字段改名同步 config/runtime/ui/app、i18n 中英
+      （标签改为“保持在屏幕内”并重写描述）、共享 JSON Schema 与 14 个 config fixture、契约表以及
+      隔离的 config-store spike。
+    - 验收证据（2026-09-18）：`cargo test --locked --workspace` 全绿（overlay 43 项，其中放置约束
+      新增 15 项、原 28 项；app 128 + bin 21、ui 115、platform 58、runtime 73、model 93、
+      config 51、live2d 53、update 36、packaging 23、render 15、i18n 4、shared input fixtures 2）；
+      workspace 严格 Clippy 与 `bongocat-app` 两组 feature 的严格 Clippy 全过；
+      `cargo check --locked --workspace --release` 通过；`tools/validate-json-schema.py`
+      （14 config + 6 state + 9/9 input/expected）、`tools/validate-fixtures.py`（9 输入 + 8 模型用例）、
+      `tools/validate-locales.py`（383 键 × 2）、`tools/tests` 63 项通过。
+    - 实机证据（2026-09-18，macOS）：`cargo run --locked -p bongocat-app --release -- --run-seconds 4
+      --settings-window-smoke` 退出码 0，stderr 无任何 `bongocat:` 失败行，即开放放置约束的产品
+      overlay 会话在默认 `keep_inside_screen = true` 下未触发 `placement_fully_visible == false`
+      的 shutdown 断言，窗口在 4 秒运行期间保持完整可见。
+    - Windows 目标验证（2026-09-18）：本机无法交叉构建 `bongocat-overlay --target
+      x86_64-pc-windows-msvc`（传递依赖 `libdeflate-sys` 的 C 构建在 macOS 主机上以
+      `stdlib.h file not found` 失败，属既有工具链限制，与本次改动无关）。因此用一个独立的
+      `windows = 0.62.2` 形态探针 crate 在 `--target x86_64-pc-windows-msvc` 下通过
+      `cargo clippy -- -D warnings` 验证了本次用到的全部 Win32 形态：`EnumDisplayMonitors(None,
+      None, Some(cb), LPARAM)`、回调 `unsafe extern "system" fn(HMONITOR, HDC, *mut RECT, LPARAM)
+      -> BOOL`、`GetMonitorInfoW` + `MONITORINFO` 初始化、let-chain 里的元组模式绑定、
+      `BOOL` 取自 `windows::core`（不在 `Win32::Foundation`）以及 `SetWindowPos` 收敛调用形态。
+      真实 Windows 编译、严格 Clippy 与实机行为仍由 CI Windows job 承担。
+    - **未运行**：两平台真实鼠标拖拽观感、多显示器实机跨屏拖拽、显示器热插拔（拔掉外接屏后的自动
+      纠正）、macOS 覆盖菜单栏/程序坞的观感、Windows 实机 `EnumDisplayMonitors` 行为。
+    - **既有门禁问题（不由本项引入）**：HEAD `95a0b7e` 上 `cargo fmt --all -- --check` 已经不通过，
+      差异只在 `crates/bongocat-platform/src/lib.rs` 与 `src/shortcut.rs`：用本仓库固定工具链的
+      rustfmt 1.9.0-stable（rustc 1.97.1）对 HEAD 内容重新格式化即产生这些 hunk。按 §3.3.6 不在本项
+      内顺手格式化这两个无关文件，留待独立提交处理。
+    - CHANGELOG 判定（2026-09-18 修正）：写入 `CHANGELOG.md` 与 `CHANGELOG.zh-CN.md` 的 `2.0.0`
+      →「界面与体验」/「UI and Experience」。最初按第 81 项口径判为跳过（`git tag` 最新为 `v1.1.0`，
+      旧行为从未出厂）；复核 `docs/phase-0/behavior-inventory.md` 后确认旧版 v1.1.0 的「保持在屏幕内」
+      是「移动/缩放后按光标所在显示器边界 clamp」，即本次同时包含面向用户的行为改变（窗口可覆盖
+      任务栏；返回时机由松手即回改为停止拖拽后约 1 秒），按 §15 必须记录。配置字段改名本身不构成
+      升级注意事项：v1.1.0 的配置从不被导入。
+    - 决策记录：ADR-0045。
 
 ## 13. 待决策清单
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

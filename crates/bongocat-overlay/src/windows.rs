@@ -1,9 +1,11 @@
 use crate::{
     BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, MAXIMUM_CORNER_RADIUS_PERCENT,
     OverlayContextMenuRequest, OverlayError, OverlayInteractionSinks, OverlayPresentationState,
-    OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, OverlayWorkArea, PreviewReport,
-    ProductOverlayReport, blend_factors, corner_radius_uniform, default_overlay_window_dimensions,
+    OverlayScreenBounds, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds,
+    PreviewReport, ProductOverlayReport, blend_factors, corner_radius_uniform,
+    default_overlay_window_dimensions,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
+    placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
     validate_frame_smoke, validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
@@ -80,8 +82,8 @@ use windows::{
                 IDXGIFactory2, IDXGISwapChain1,
             },
             Gdi::{
-                GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO,
-                MonitorFromPoint, MonitorFromRect,
+                EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST,
+                MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromPoint, MonitorFromRect,
             },
         },
         System::{
@@ -108,7 +110,7 @@ use windows::{
             },
         },
     },
-    core::{Error, HRESULT, Interface, PCSTR, Result as WindowsResult, s, w},
+    core::{BOOL, Error, HRESULT, Interface, PCSTR, Result as WindowsResult, s, w},
 };
 
 const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
@@ -142,12 +144,7 @@ fn current_cursor_position() -> POINT {
     point
 }
 
-fn centered_position(
-    cursor: POINT,
-    width: u32,
-    height: u32,
-    keep_inside_work_area: bool,
-) -> (i32, i32) {
+fn centered_position(cursor: POINT, width: u32, height: u32) -> (i32, i32) {
     // SAFETY: the monitor handle is used only for the immediate bounds query,
     // whose output points to initialized stack storage.
     unsafe {
@@ -161,11 +158,9 @@ fn centered_position(
         if monitor.is_invalid() || !GetMonitorInfoW(monitor, &mut info).as_bool() {
             return (80, 80);
         }
-        let area = if keep_inside_work_area {
-            info.rcWork
-        } else {
-            info.rcMonitor
-        };
+        // The full monitor rectangle, not `rcWork`: the overlay is allowed over
+        // the taskbar, so only the display itself bounds it.
+        let area = info.rcMonitor;
         (
             area.left + (area.right - area.left - width as i32) / 2,
             area.top + (area.bottom - area.top - height as i32) / 2,
@@ -173,35 +168,60 @@ fn centered_position(
     }
 }
 
-fn work_area_for_bounds(bounds: OverlayWindowBounds) -> Option<OverlayWorkArea> {
-    let rect = RECT {
-        left: bounds.x,
-        top: bounds.y,
-        right: bounds.x.saturating_add_unsigned(bounds.width),
-        bottom: bounds.y.saturating_add_unsigned(bounds.height),
+/// Every display's full rectangle, including the strip the taskbar occupies.
+///
+/// A failed enumeration yields an empty list rather than a guess; the placement
+/// constraint then leaves the window where it is.
+fn screen_bounds_all() -> Vec<OverlayScreenBounds> {
+    let mut screens = Vec::new();
+    let data = LPARAM(std::ptr::from_mut(&mut screens) as isize);
+    // SAFETY: the callback receives `data`, which borrows `screens` for the
+    // duration of this synchronous enumeration, and the enumeration call ends
+    // before that borrow does.
+    let enumerated = unsafe { EnumDisplayMonitors(None, None, Some(collect_monitor), data) };
+    if enumerated.as_bool() {
+        screens
+    } else {
+        Vec::new()
+    }
+}
+
+unsafe extern "system" fn collect_monitor(
+    monitor: HMONITOR,
+    _device: HDC,
+    _rect: *mut RECT,
+    data: LPARAM,
+) -> BOOL {
+    // SAFETY: EnumDisplayMonitors hands back the pointer `screen_bounds_all`
+    // supplied, which stays valid for the whole enumeration and is only touched
+    // from the calling thread.
+    let screens = unsafe { &mut *(data.0 as *mut Vec<OverlayScreenBounds>) };
+    let mut info = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        rcMonitor: RECT::default(),
+        rcWork: RECT::default(),
+        dwFlags: 0,
     };
-    // SAFETY: the monitor handle is used only for this immediate bounds query,
-    // whose output points to initialized stack storage.
-    unsafe {
-        let monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST);
-        let mut info = MONITORINFO {
-            cbSize: size_of::<MONITORINFO>() as u32,
-            rcMonitor: RECT::default(),
-            rcWork: RECT::default(),
-            dwFlags: 0,
-        };
-        if monitor.is_invalid() || !GetMonitorInfoW(monitor, &mut info).as_bool() {
-            return None;
-        }
-        let width = u32::try_from(info.rcWork.right - info.rcWork.left).ok()?;
-        let height = u32::try_from(info.rcWork.bottom - info.rcWork.top).ok()?;
-        (width > 0 && height > 0).then_some(OverlayWorkArea {
-            x: info.rcWork.left,
-            y: info.rcWork.top,
+    // SAFETY: `monitor` was supplied by the enumeration and `info` is
+    // initialized stack storage with the size the call requires. A monitor that
+    // cannot be queried is skipped instead of failing the whole enumeration.
+    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        return true.into();
+    }
+    if let (Ok(width), Ok(height)) = (
+        u32::try_from(info.rcMonitor.right - info.rcMonitor.left),
+        u32::try_from(info.rcMonitor.bottom - info.rcMonitor.top),
+    ) && width > 0
+        && height > 0
+    {
+        screens.push(OverlayScreenBounds {
+            x: info.rcMonitor.left,
+            y: info.rcMonitor.top,
             width,
             height,
-        })
+        });
     }
+    true.into()
 }
 
 fn overlay_bounds_visible(bounds: OverlayWindowBounds) -> bool {
@@ -498,12 +518,20 @@ impl OverlayWindow {
             value.height
         });
         let (x, y) = bounds.map_or_else(
-            || centered_position(cursor, width, height, options.keep_inside_work_area),
+            || centered_position(cursor, width, height),
             |value| (value.x, value.y),
         );
         let bounds = OverlayWindowBounds::new(x, y, width, height);
-        let bounds = if options.keep_inside_work_area {
-            work_area_for_bounds(bounds).map_or(bounds, |area| bounds.clamp_to(area))
+        // A brand new window has no drag to interrupt, so an unusable placement
+        // is corrected immediately: this is the restore path for a saved box and
+        // the centering path for a window that has never been placed.
+        let bounds = if options.keep_inside_screen {
+            let screens = screen_bounds_all();
+            if bounds_inside_screens(&screens, bounds) {
+                bounds
+            } else {
+                correction_for_screens(&screens, bounds).unwrap_or(bounds)
+            }
         } else {
             bounds
         };
@@ -572,28 +600,24 @@ impl OverlayWindow {
         .validate()
     }
 
-    fn ensure_inside_work_area(&self) -> Result<(), OverlayError> {
-        let bounds = self.bounds()?;
-        let Some(work_area) = work_area_for_bounds(bounds) else {
-            return Ok(());
-        };
-        let clamped = bounds.clamp_to(work_area);
-        if clamped.x == bounds.x && clamped.y == bounds.y {
-            return Ok(());
-        }
+    /// Move the window to a corrected box without touching its size, z-order or
+    /// activation. The caller has already compared the box against the live
+    /// window rectangle, so an unchanged origin is a no-op.
+    fn set_origin(&self, bounds: OverlayWindowBounds) -> Result<(), OverlayError> {
+        self.assert_owner_thread();
         // SAFETY: the HWND is live and confined to its owner thread. This only
         // corrects its origin while preserving size, z-order, and activation.
         unsafe {
             SetWindowPos(
                 self.hwnd,
                 None,
-                clamped.x,
-                clamped.y,
+                bounds.x,
+                bounds.y,
                 0,
                 0,
                 SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER,
             )
-            .map_err(windows_error("keep overlay inside work area"))?;
+            .map_err(windows_error("keep the overlay on a display"))?;
         }
         Ok(())
     }
@@ -1206,7 +1230,11 @@ pub(super) struct ProductOverlaySession {
     retry_backoff: FrameRetryBackoff,
     context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     hover: PointerHoverHide,
-    hover_started: Instant,
+    placement: OverlayPlacementConstraint,
+    /// Monotonic base for every time-based rule in this session. The hover fade
+    /// and the placement settle delay both measure elapsed time from it, so the
+    /// session needs exactly one wall-clock reading at start.
+    session_started: Instant,
 }
 
 impl HasWindowHandle for ProductOverlaySession {
@@ -1295,7 +1323,8 @@ impl ProductOverlaySession {
             retry_backoff: FrameRetryBackoff::default(),
             context_menu_sender,
             hover: PointerHoverHide::default(),
-            hover_started: Instant::now(),
+            placement: OverlayPlacementConstraint::default(),
+            session_started: Instant::now(),
         })
     }
 
@@ -1355,8 +1384,17 @@ impl ProductOverlaySession {
             }
             self.options = next_options;
         }
-        if self.options.keep_inside_work_area {
-            self.overlay.window.ensure_inside_work_area()?;
+        if self.options.keep_inside_screen {
+            let bounds = self.overlay.window.bounds()?;
+            // A box that is still outside the displays is only corrected once it
+            // has been observed at rest for the settle delay, so a drag that is
+            // still in progress is never interrupted.
+            let correction =
+                self.placement
+                    .observe(bounds, self.session_started.elapsed(), screen_bounds_all);
+            if let Some(correction) = correction {
+                self.overlay.window.set_origin(correction)?;
+            }
         }
         // Pointer routing and window opacity are applied every tick rather than
         // only when the settings change, because the hover hide changes both
@@ -1523,7 +1561,7 @@ impl ProductOverlaySession {
             enabled: options.hide_on_pointer_hover && input_running,
             delay: Duration::from_millis(u64::from(options.hide_on_pointer_hover_delay_ms)),
             pointer_inside,
-            now: self.hover_started.elapsed(),
+            now: self.session_started.elapsed(),
         });
         let alpha = f32::from(options.opacity_percent) / 100.0 * fade as f32;
         self.overlay
@@ -1594,12 +1632,11 @@ impl ProductOverlaySession {
         }
         while self.render_consumer.take_latest().is_some() {}
         let bounds = self.overlay.window.bounds()?;
-        let work_area_constraint_satisfied = !self.options.keep_inside_work_area
-            || work_area_for_bounds(bounds)
-                .is_some_and(|work_area| bounds.clamp_to(work_area) == bounds);
+        let placement_fully_visible =
+            !self.options.keep_inside_screen || bounds_inside_screens(&screen_bounds_all(), bounds);
         Ok(ProductOverlayReport {
             frames_presented: self.frames_presented,
-            work_area_constraint_satisfied,
+            placement_fully_visible,
             dynamic_snapshots: self.dynamic_snapshots,
             model_commit_rejections: self.model_commit_rejections,
             input_start_error: self.input_start_error,
@@ -2913,22 +2950,41 @@ mod tests {
     }
 
     #[test]
-    fn current_monitor_exposes_a_non_empty_work_area() {
-        let cursor = current_cursor_position();
-        let bounds = OverlayWindowBounds::new(cursor.x, cursor.y, 64, 64);
-        let work_area = work_area_for_bounds(bounds).expect("current monitor work area");
-        assert!(work_area.width >= 64);
-        assert!(work_area.height >= 64);
-        let clamped = bounds.clamp_to(work_area);
-        assert!(clamped.x >= work_area.x);
-        assert!(clamped.y >= work_area.y);
+    fn enumerated_displays_are_non_empty_and_cover_their_own_center() {
+        let screens = screen_bounds_all();
+        assert!(!screens.is_empty(), "the desktop has at least one display");
+        for screen in &screens {
+            assert!(screen.width >= 128 && screen.height >= 128);
+            let center = OverlayWindowBounds::new(
+                screen.x + (screen.width / 2) as i32 - 32,
+                screen.y + (screen.height / 2) as i32 - 32,
+                64,
+                64,
+            );
+            assert!(bounds_inside_screens(&screens, center));
+        }
+        // A box starting one display-width past the right-most display cannot
+        // intersect any of them.
+        let right_most = screens
+            .iter()
+            .max_by_key(|screen| screen.x + screen.width as i32)
+            .expect("at least one display");
+        let off_desktop = OverlayWindowBounds::new(
+            right_most.x + right_most.width as i32 + 1_000,
+            right_most.y,
+            350,
+            350,
+        );
+        assert!(!bounds_inside_screens(&screens, off_desktop));
     }
 
     #[test]
-    fn overlay_window_creation_clamps_partially_offscreen_bounds() {
-        let cursor = current_cursor_position();
-        let work_area = work_area_for_bounds(OverlayWindowBounds::new(cursor.x, cursor.y, 64, 64))
-            .expect("current monitor work area");
+    fn overlay_window_creation_corrects_a_saved_box_off_the_desktop() {
+        let screens = screen_bounds_all();
+        let left_most = screens
+            .iter()
+            .min_by_key(|screen| screen.x)
+            .expect("at least one display");
         let canvas = CanvasInfo {
             width: 2_048.0,
             height: 2_048.0,
@@ -2936,12 +2992,9 @@ mod tests {
             origin_y: 1_024.0,
             pixels_per_unit: 1_024.0,
         };
-        let candidate = OverlayWindowBounds::new(
-            work_area.x.saturating_add_unsigned(work_area.width - 32),
-            work_area.y.saturating_add_unsigned(work_area.height - 32),
-            350,
-            350,
-        );
+        let candidate = OverlayWindowBounds::new(left_most.x - 10_000, left_most.y, 350, 350);
+        let expected =
+            correction_for_screens(&screens, candidate).expect("a display to correct into");
         let window = OverlayWindow::create(
             OverlaySessionOptions::default(),
             canvas,
@@ -2949,10 +3002,9 @@ mod tests {
             None,
         )
         .expect("create constrained overlay window");
-        assert_eq!(
-            window.bounds().expect("constrained bounds"),
-            candidate.clamp_to(work_area)
-        );
+        let created = window.bounds().expect("constrained bounds");
+        assert_eq!(created, expected);
+        assert!(bounds_inside_screens(&screen_bounds_all(), created));
     }
 
     #[test]

@@ -1,10 +1,11 @@
 use crate::{
     BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, FrameTimingCollector,
     MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
-    OverlayInteractionSinks, OverlayPresentationState, OverlaySessionOptions, OverlayTickOutcome,
-    OverlayWindowBounds, OverlayWorkArea, PreviewReport, ProductOverlayReport, blend_factors,
+    OverlayInteractionSinks, OverlayPresentationState, OverlayScreenBounds, OverlaySessionOptions,
+    OverlayTickOutcome, OverlayWindowBounds, PreviewReport, ProductOverlayReport, blend_factors,
     corner_radius_uniform, default_overlay_window_dimensions,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
+    placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
     validate_frame_smoke, validate_model_generation_advance,
 };
 use block2::RcBlock;
@@ -263,7 +264,11 @@ pub(super) struct ProductOverlaySession {
     context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     context_menu_monitor: Option<Retained<AnyObject>>,
     hover: PointerHoverHide,
-    hover_started: Instant,
+    placement: OverlayPlacementConstraint,
+    /// Monotonic base for every time-based rule in this session. The hover fade
+    /// and the placement settle delay both measure elapsed time from it, so the
+    /// session needs exactly one wall-clock reading at start.
+    session_started: Instant,
 }
 
 impl ProductOverlaySession {
@@ -370,7 +375,8 @@ impl ProductOverlaySession {
             context_menu_sender,
             context_menu_monitor,
             hover: PointerHoverHide::default(),
-            hover_started: Instant::now(),
+            placement: OverlayPlacementConstraint::default(),
+            session_started: Instant::now(),
         })
     }
 
@@ -449,11 +455,22 @@ impl ProductOverlaySession {
             }
             self.options = next_options;
         }
-        if self.options.keep_inside_work_area {
+        if self.options.keep_inside_screen {
             let mtm = MainThreadMarker::new().ok_or_else(|| {
-                OverlayError::new("macOS overlay work-area correction lost the main thread")
+                OverlayError::new("macOS overlay placement check lost the main thread")
             })?;
-            self.overlay.ensure_inside_work_area(mtm)?;
+            let bounds = self.window_bounds()?;
+            // A box that is still outside the displays is only corrected once it
+            // has been observed at rest for the settle delay, so a drag that is
+            // still in progress is never interrupted.
+            let correction = self
+                .placement
+                .observe(bounds, self.session_started.elapsed(), || {
+                    screen_bounds_all(mtm).unwrap_or_default()
+                });
+            if let Some(correction) = correction {
+                self.overlay.set_origin(correction);
+            }
         }
         // Pointer routing and window alpha are applied every tick rather than
         // only when the settings change, because the hover hide changes both
@@ -678,7 +695,7 @@ impl ProductOverlaySession {
             enabled: options.hide_on_pointer_hover && input_running,
             delay: Duration::from_millis(u64::from(options.hide_on_pointer_hover_delay_ms)),
             pointer_inside,
-            now: self.hover_started.elapsed(),
+            now: self.session_started.elapsed(),
         });
         let alpha = f64::from(options.opacity_percent) / 100.0 * fade;
         self.overlay
@@ -757,12 +774,11 @@ impl ProductOverlaySession {
         let mtm = MainThreadMarker::new()
             .ok_or_else(|| OverlayError::new("macOS overlay shutdown lost the main thread"))?;
         let bounds = self.window_bounds()?;
-        let work_area_constraint_satisfied = !self.options.keep_inside_work_area
-            || work_area_for_bounds(mtm, bounds)?
-                .is_some_and(|work_area| bounds.clamp_to(work_area) == bounds);
+        let placement_fully_visible = !self.options.keep_inside_screen
+            || bounds_inside_screens(&screen_bounds_all(mtm)?, bounds);
         Ok(ProductOverlayReport {
             frames_presented: self.frames_presented,
-            work_area_constraint_satisfied,
+            placement_fully_visible,
             dynamic_snapshots: self.dynamic_snapshots,
             model_commit_rejections: self.model_commit_rejections,
             input_start_error: self.input_start_error,
@@ -1387,14 +1403,7 @@ impl NativeOverlay {
             f64::from(bounds.height)
         });
         let origin = bounds.map_or_else(
-            || {
-                centered_origin(
-                    mtm,
-                    window_width,
-                    window_height,
-                    options.keep_inside_work_area,
-                )
-            },
+            || centered_origin(mtm, window_width, window_height),
             |bounds| NSPoint::new(f64::from(bounds.x), f64::from(bounds.y)),
         );
         let candidate_bounds = OverlayWindowBounds::new(
@@ -1403,11 +1412,18 @@ impl NativeOverlay {
             rounded_u32(window_width)?,
             rounded_u32(window_height)?,
         );
-        let origin = if options.keep_inside_work_area {
-            work_area_for_bounds(mtm, candidate_bounds)?.map_or(origin, |area| {
-                let clamped = candidate_bounds.clamp_to(area);
-                NSPoint::new(f64::from(clamped.x), f64::from(clamped.y))
-            })
+        // A brand new window has no drag to interrupt, so an unusable placement
+        // is corrected immediately: this is the restore path for a saved box and
+        // the centering path for a window that has never been placed.
+        let origin = if options.keep_inside_screen {
+            let screens = screen_bounds_all(mtm)?;
+            if bounds_inside_screens(&screens, candidate_bounds) {
+                origin
+            } else {
+                correction_for_screens(&screens, candidate_bounds).map_or(origin, |corrected| {
+                    NSPoint::new(f64::from(corrected.x), f64::from(corrected.y))
+                })
+            }
         } else {
             origin
         };
@@ -1510,24 +1526,14 @@ impl NativeOverlay {
         }
     }
 
-    fn ensure_inside_work_area(&self, mtm: MainThreadMarker) -> Result<(), OverlayError> {
-        let frame = self.panel.frame();
-        let bounds = OverlayWindowBounds::new(
-            rounded_i32(frame.origin.x)?,
-            rounded_i32(frame.origin.y)?,
-            rounded_u32(frame.size.width)?,
-            rounded_u32(frame.size.height)?,
-        )
-        .validate()?;
-        let Some(work_area) = work_area_for_bounds(mtm, bounds)? else {
-            return Ok(());
-        };
-        let clamped = bounds.clamp_to(work_area);
-        if clamped.x != bounds.x || clamped.y != bounds.y {
-            self.panel
-                .setFrameOrigin(NSPoint::new(f64::from(clamped.x), f64::from(clamped.y)));
+    /// Move the window to a corrected box without touching its size, z-order or
+    /// activation. The caller has already compared the box against the live
+    /// frame, so an unchanged origin is a no-op.
+    fn set_origin(&self, bounds: OverlayWindowBounds) {
+        let origin = NSPoint::new(f64::from(bounds.x), f64::from(bounds.y));
+        if self.panel.frame().origin != origin {
+            self.panel.setFrameOrigin(origin);
         }
-        Ok(())
     }
 
     fn sync_frame(&mut self, frame: &RenderFrame) -> Result<bool, OverlayError> {
@@ -1819,12 +1825,7 @@ impl NativeOverlay {
     }
 }
 
-fn centered_origin(
-    mtm: MainThreadMarker,
-    width: f64,
-    height: f64,
-    keep_inside_work_area: bool,
-) -> NSPoint {
+fn centered_origin(mtm: MainThreadMarker, width: f64, height: f64) -> NSPoint {
     let mouse = NSEvent::mouseLocation();
     let screens = NSScreen::screens(mtm);
     let screen = screens
@@ -1836,22 +1837,8 @@ fn centered_origin(
                 && mouse.y >= frame.origin.y
                 && mouse.y < frame.origin.y + frame.size.height
         })
-        .map(|screen| {
-            if keep_inside_work_area {
-                screen.visibleFrame()
-            } else {
-                screen.frame()
-            }
-        })
-        .or_else(|| {
-            NSScreen::mainScreen(mtm).map(|screen| {
-                if keep_inside_work_area {
-                    screen.visibleFrame()
-                } else {
-                    screen.frame()
-                }
-            })
-        });
+        .map(|screen| screen.frame())
+        .or_else(|| NSScreen::mainScreen(mtm).map(|screen| screen.frame()));
     screen.map_or(NSPoint::new(80.0, 80.0), |screen| {
         NSPoint::new(
             screen.origin.x + (screen.size.width - width) / 2.0,
@@ -1860,46 +1847,21 @@ fn centered_origin(
     })
 }
 
-fn work_area_for_bounds(
-    mtm: MainThreadMarker,
-    bounds: OverlayWindowBounds,
-) -> Result<Option<OverlayWorkArea>, OverlayError> {
-    let left = f64::from(bounds.x);
-    let bottom = f64::from(bounds.y);
-    let right = left + f64::from(bounds.width);
-    let top = bottom + f64::from(bounds.height);
-    let mut selected = None;
-    let mut selected_intersection = 0.0;
-    let mut selected_distance = f64::INFINITY;
-    let center_x = (left + right) / 2.0;
-    let center_y = (bottom + top) / 2.0;
+/// Every display's full frame, including the strips the menu bar and the Dock
+/// occupy, so the placement constraint allows the overlay over desktop chrome
+/// while still keeping it on a screen.
+fn screen_bounds_all(mtm: MainThreadMarker) -> Result<Vec<OverlayScreenBounds>, OverlayError> {
+    let mut bounds = Vec::new();
     for screen in NSScreen::screens(mtm) {
         let frame = screen.frame();
-        let intersection_width =
-            (right.min(frame.origin.x + frame.size.width) - left.max(frame.origin.x)).max(0.0);
-        let intersection_height =
-            (top.min(frame.origin.y + frame.size.height) - bottom.max(frame.origin.y)).max(0.0);
-        let intersection = intersection_width * intersection_height;
-        let screen_center_x = frame.origin.x + frame.size.width / 2.0;
-        let screen_center_y = frame.origin.y + frame.size.height / 2.0;
-        let distance = (center_x - screen_center_x).powi(2) + (center_y - screen_center_y).powi(2);
-        if intersection > selected_intersection
-            || (selected_intersection == 0.0 && intersection == 0.0 && distance < selected_distance)
-        {
-            selected = Some(screen.visibleFrame());
-            selected_intersection = intersection;
-            selected_distance = distance;
-        }
+        bounds.push(OverlayScreenBounds {
+            x: rounded_i32(frame.origin.x)?,
+            y: rounded_i32(frame.origin.y)?,
+            width: rounded_u32(frame.size.width)?,
+            height: rounded_u32(frame.size.height)?,
+        });
     }
-    let Some(frame) = selected else {
-        return Ok(None);
-    };
-    Ok(Some(OverlayWorkArea {
-        x: rounded_i32(frame.origin.x)?,
-        y: rounded_i32(frame.origin.y)?,
-        width: rounded_u32(frame.size.width)?,
-        height: rounded_u32(frame.size.height)?,
-    }))
+    Ok(bounds)
 }
 
 fn overlay_bounds_visible(mtm: MainThreadMarker, bounds: OverlayWindowBounds) -> bool {

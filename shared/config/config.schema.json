@@ -49,7 +49,7 @@
     "overlay": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["visible", "click_through", "always_on_top", "scale_percent", "opacity_percent", "corner_radius_percent", "hide_on_pointer_hover", "hide_on_pointer_hover_delay_seconds", "keep_inside_work_area"],
+      "required": ["visible", "click_through", "always_on_top", "scale_percent", "opacity_percent", "corner_radius_percent", "hide_on_pointer_hover", "hide_on_pointer_hover_delay_seconds", "keep_inside_screen"],
       "properties": {
         "visible": { "type": "boolean" },
         "click_through": { "type": "boolean" },
@@ -59,7 +59,7 @@
         "corner_radius_percent": { "type": "integer", "minimum": 0, "maximum": 50 },
         "hide_on_pointer_hover": { "type": "boolean" },
         "hide_on_pointer_hover_delay_seconds": { "type": "integer", "minimum": 0, "maximum": 60 },
-        "keep_inside_work_area": { "type": "boolean" }
+        "keep_inside_screen": { "type": "boolean" }
       }
     },
     "input": {

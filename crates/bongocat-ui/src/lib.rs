@@ -527,7 +527,10 @@ pub struct SettingsOverlay {
     /// How long the pointer must rest on the overlay before the hover hide
     /// starts, in whole seconds. `0` hides as soon as the pointer enters.
     pub hide_on_pointer_hover_delay_seconds: u32,
-    pub keep_inside_work_area: bool,
+    /// Keep the overlay fully on a display. The window is allowed over a
+    /// taskbar, Dock or menu bar, and a window dragged off the desktop returns
+    /// after the drag ends rather than being pulled back mid-drag.
+    pub keep_inside_screen: bool,
 }
 
 impl Default for SettingsOverlay {
@@ -540,7 +543,7 @@ impl Default for SettingsOverlay {
             corner_radius_percent: 0,
             hide_on_pointer_hover: false,
             hide_on_pointer_hover_delay_seconds: 0,
-            keep_inside_work_area: true,
+            keep_inside_screen: true,
         }
     }
 }

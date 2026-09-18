@@ -27,7 +27,7 @@ impl Render for SettingsView {
                     ACCESSIBILITY_OVERLAY_TOPMOST => Some(&self.overlay_topmost_focus),
                     ACCESSIBILITY_OVERLAY_CLICK_THROUGH => Some(&self.overlay_click_through_focus),
                     ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA => {
-                        Some(&self.overlay_keep_inside_work_area_focus)
+                        Some(&self.overlay_keep_inside_screen_focus)
                     }
                     ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER => {
                         Some(&self.overlay_hide_on_pointer_hover_focus)
@@ -364,7 +364,7 @@ impl Render for SettingsView {
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.overlay.keep_inside_work_area.label",
+                            "settings.overlay.keep_inside_screen.label",
                         ),
                         SettingField::switch(
                             {
@@ -373,7 +373,7 @@ impl Render for SettingsView {
                                     view.read(app)
                                         .snapshot
                                         .as_ref()
-                                        .is_some_and(|s| s.overlay.keep_inside_work_area)
+                                        .is_some_and(|s| s.overlay.keep_inside_screen)
                                 }
                             },
                             {
@@ -382,7 +382,7 @@ impl Render for SettingsView {
                                     view.update(app, |view, cx| {
                                         if let Some(snapshot) = view.snapshot.as_ref() {
                                             let mut settings = snapshot.overlay;
-                                            settings.keep_inside_work_area = value;
+                                            settings.keep_inside_screen = value;
                                             view.set_overlay_settings(settings, cx);
                                         }
                                     });
@@ -392,7 +392,7 @@ impl Render for SettingsView {
                     )
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.overlay.keep_inside_work_area.description",
+                        "settings.overlay.keep_inside_screen.description",
                     )),
                     SettingItem::new(
                         bongocat_i18n::text(

@@ -228,7 +228,12 @@ pub struct OverlaySettings {
     /// How long the pointer must stay inside the overlay window before the
     /// hover hide starts, in whole seconds. `0` hides immediately.
     pub hide_on_pointer_hover_delay_seconds: u32,
-    pub keep_inside_work_area: bool,
+    /// Keep the overlay window fully on a display. The region is the union of
+    /// the connected displays rather than one display's work area, so the
+    /// window may cover a taskbar, Dock or menu bar; a window dragged off the
+    /// desktop is moved back after a short settle delay instead of snapping
+    /// during the drag.
+    pub keep_inside_screen: bool,
 }
 
 impl Default for OverlaySettings {
@@ -241,7 +246,7 @@ impl Default for OverlaySettings {
             corner_radius_percent: 0,
             hide_on_pointer_hover: false,
             hide_on_pointer_hover_delay_seconds: 0,
-            keep_inside_work_area: true,
+            keep_inside_screen: true,
         }
     }
 }
@@ -2973,7 +2978,7 @@ mod tests {
             corner_radius_percent: 25,
             hide_on_pointer_hover: true,
             hide_on_pointer_hover_delay_seconds: 1,
-            keep_inside_work_area: false,
+            keep_inside_screen: false,
         };
         let sequence = client
             .send(RuntimeCommand::SetOverlaySettings(settings))

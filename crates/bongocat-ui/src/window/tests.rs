@@ -733,7 +733,7 @@ fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
         corner_radius_percent: 25,
         hide_on_pointer_hover: true,
         hide_on_pointer_hover_delay_seconds: 2,
-        keep_inside_work_area: false,
+        keep_inside_screen: false,
     };
     assert_eq!(stepped_overlay_scale(settings, -25).scale_percent, 75);
     assert_eq!(stepped_overlay_scale(settings, 25).scale_percent, 125);
@@ -750,7 +750,7 @@ fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
     assert_eq!(changed.corner_radius_percent, 25);
     assert!(changed.hide_on_pointer_hover);
     assert_eq!(changed.hide_on_pointer_hover_delay_seconds, 2);
-    assert!(!changed.keep_inside_work_area);
+    assert!(!changed.keep_inside_screen);
 }
 
 #[test]

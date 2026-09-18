@@ -412,10 +412,13 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   宽度，高度按 Cubism Core 返回的当前模型 Canvas 宽高比自适应，两者再应用缩放
   设置；已保存 bounds 优先，设置/模型切换时重建窗口；非 click-through 模式的
   客户区支持拖动，click-through 仍返回 `HTTRANSPARENT`。
-  `keep_inside_work_area` 开启时，创建、设置/模型重建和每次 frame tick 都以窗口矩形选择最近
-  monitor，并按 `MONITORINFO.rcWork` 收敛原点；负坐标保持有效，窗口大于工作区时保留尺寸并把
-  原点贴到工作区边缘。关闭时不执行该收敛，但完全离开现存显示器的持久化 bounds 仍按 state
-  恢复规则回退。
+  `keep_inside_screen` 开启时，窗口必须完整落在所有显示器矩形（`EnumDisplayMonitors` +
+  `MONITORINFO.rcMonitor`）的并集内，因此允许覆盖任务栏，负坐标保持有效；跨显示器摆放只要不越过
+  桌面边界就不纠正。创建、缩放/设置重建和模型重建立即收敛一个不可用的放置（窗口大于显示器时保留
+  尺寸并把原点贴到显示器原点）；拖动后的收敛由 frame tick 驱动的延迟约束完成：窗口静止累计 1 秒后
+  才移回显示器内，期间任何被观测到的位移都重新计时，因此跨显示器拖拽不会被打断。约束缓存最多
+  `500ms` 复用一次放置检查，显示器变化（含拔掉外接屏）在静止窗口下也会被重新评估并纠正。关闭时
+  不执行该收敛，但完全离开现存显示器的持久化 bounds 仍按 state 恢复规则回退。
 - Renderer：D3D11 + DXGI + DirectComposition/DWM，预乘 alpha。
 - DPI：Per-Monitor-V2，处理 `WM_DPICHANGED`、显示器热插拔和负坐标。
 - 输入：Raw Input、状态校正、可选低级 hook、XInput 手柄。
@@ -449,9 +452,13 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   `always_on_top` 开启时使用高于程序坞的 AppKit main-menu window level，关闭时恢复 normal
   window level。配置的 runtime snapshot 变化和任何 overlay 重建都必须立即重放当前层级，
   不能由其他路径覆盖。
-  `keep_inside_work_area` 开启时，创建、设置/模型重建和每次 frame tick 都选择与窗口交叠面积
-  最大的 screen；完全无交叠时选择中心距离最近的 screen，再按 `NSScreen.visibleFrame` 收敛原点。
-  负坐标保持有效，窗口大于工作区时保留尺寸并把原点贴到工作区边缘。关闭时不执行该收敛，但
+  `keep_inside_screen` 开启时，窗口必须完整落在所有 `NSScreen` 的 `frame`（含菜单栏与程序坞
+  占用条）并集内，因此允许覆盖系统区域，负坐标保持有效；跨显示器摆放只要不越过桌面边界就不纠正。
+  需要纠正时选择与窗口交叠面积最大的 screen，完全无交叠时选择中心距离最近的 screen，再收敛原点。
+  创建、缩放/设置重建和模型重建立即收敛一个不可用的放置（窗口大于显示器时保留尺寸并把原点贴到
+  显示器原点）；拖动后的收敛由 frame tick 驱动的延迟约束完成：窗口静止累计 1 秒后才移回显示器内，
+  期间任何被观测到的位移都重新计时，因此跨显示器拖拽不会被打断。约束缓存最多 `500ms` 复用一次
+  放置检查，显示器变化（含拔掉外接屏）在静止窗口下也会被重新评估并纠正。关闭时不执行该收敛，但
   完全离开现存显示器的持久化 bounds 仍按 state 恢复规则回退。
 - Renderer：Metal + `CAMetalLayer`，drawable size 跟随 backing scale。
 - Spaces：按配置设置 collection behavior 和 full-screen auxiliary。
@@ -587,7 +594,7 @@ blend 使用相同 linear premultiplied 输入。clipping mask 只携带 alpha�
 在片元着色器中按 drawable 像素位置求该椭圆的 coverage，并把它乘进每次绘制的 alpha，因此圆角
 只改变窗口边缘的合成结果，不改变 `RenderSnapshot`、模型资源、绘制顺序或 blend 模式。该值只
 作用于 overlay 窗口；GPUI 设置窗口和其他产品窗口保持各自的平台边框。改变圆角与改变缩放、
-不透明度、工作区约束一样需要重建原生窗口资源。
+不透明度、屏幕范围约束一样需要重建原生窗口资源。
 
 指针悬停隐藏是 overlay 窗口的临时呈现状态，不是窗口可见性。`overlay.hide_on_pointer_hover`
 开启时，指针进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_seconds` 之后，owner 把

@@ -486,9 +486,9 @@
         "label": "Click-through overlay",
         "description": "Let pointer input pass through the model window."
       },
-      "keep_inside_work_area": {
-        "label": "Keep inside work area",
-        "description": "Keep the overlay clear of taskbars, menu bars and screen edges."
+      "keep_inside_screen": {
+        "label": "Keep inside the screen",
+        "description": "Keep the model window fully on a screen, where it may cover a taskbar, Dock or menu bar. A window dragged off the screen comes back once you stop dragging, so moving it between screens is not interrupted."
       },
       "hide_on_pointer_hover": {
         "label": "Hide on pointer hover",

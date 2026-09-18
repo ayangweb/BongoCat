@@ -632,7 +632,7 @@ fn run_service(
                     hide_on_pointer_hover: settings.hide_on_pointer_hover,
                     hide_on_pointer_hover_delay_seconds: settings
                         .hide_on_pointer_hover_delay_seconds,
-                    keep_inside_work_area: settings.keep_inside_work_area,
+                    keep_inside_screen: settings.keep_inside_screen,
                 };
                 let result = require_operational(&application)
                     .map_err(map_application_error)
@@ -1197,7 +1197,7 @@ fn snapshot(
             hide_on_pointer_hover_delay_seconds: runtime
                 .overlay_settings
                 .hide_on_pointer_hover_delay_seconds,
-            keep_inside_work_area: runtime.overlay_settings.keep_inside_work_area,
+            keep_inside_screen: runtime.overlay_settings.keep_inside_screen,
         },
         motion_audio_enabled: runtime.motion_audio_enabled,
         behavior_shortcuts_enabled: application.config().model.enable_behavior_shortcuts,
@@ -4113,7 +4113,7 @@ mod tests {
             corner_radius_percent: 25,
             hide_on_pointer_hover: true,
             hide_on_pointer_hover_delay_seconds: 1,
-            keep_inside_work_area: false,
+            keep_inside_screen: false,
         };
         let configured = client
             .set_overlay_settings_blocking(selected_config_revision, overlay_settings)
@@ -4187,7 +4187,7 @@ mod tests {
         assert!(persisted.contains("\"selected_model_origin\": \"preset\""));
         assert!(persisted.contains("\"click_through\": true"));
         assert!(persisted.contains("\"opacity_percent\": 80"));
-        assert!(persisted.contains("\"keep_inside_work_area\": false"));
+        assert!(persisted.contains("\"keep_inside_screen\": false"));
         assert!(persisted.contains("\"mirror\": true"));
         assert!(persisted.contains("\"mirror_pointer_tracking\": true"));
         assert!(persisted.contains("\"ignore_pointer\": true"));
@@ -4213,7 +4213,7 @@ mod tests {
                 .runtime_client()
                 .snapshot()
                 .overlay_settings
-                .keep_inside_work_area
+                .keep_inside_screen
         );
         restarted
             .shutdown()
@@ -4239,7 +4239,7 @@ mod tests {
             corner_radius_percent: 25,
             hide_on_pointer_hover: true,
             hide_on_pointer_hover_delay_seconds: 1,
-            keep_inside_work_area: false,
+            keep_inside_screen: false,
         };
         let committed = client
             .set_overlay_settings_blocking(initial_config_revision, original_settings)
@@ -4254,7 +4254,7 @@ mod tests {
             corner_radius_percent: 50,
             hide_on_pointer_hover: false,
             hide_on_pointer_hover_delay_seconds: 0,
-            keep_inside_work_area: true,
+            keep_inside_screen: true,
         };
         let error = client
             .set_overlay_settings_blocking(initial_config_revision, stale_settings)

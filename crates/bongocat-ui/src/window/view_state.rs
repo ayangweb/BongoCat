@@ -206,7 +206,7 @@ impl SettingsView {
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),
             overlay_topmost_focus: cx.focus_handle().tab_index(13).tab_stop(true),
             overlay_click_through_focus: cx.focus_handle().tab_index(14).tab_stop(true),
-            overlay_keep_inside_work_area_focus: cx.focus_handle().tab_index(44).tab_stop(true),
+            overlay_keep_inside_screen_focus: cx.focus_handle().tab_index(44).tab_stop(true),
             overlay_hide_on_pointer_hover_focus: cx.focus_handle().tab_index(46).tab_stop(true),
             overlay_hover_hide_delay_decrease_focus: cx.focus_handle().tab_index(47).tab_stop(true),
             overlay_hover_hide_delay_increase_focus: cx.focus_handle().tab_index(48).tab_stop(true),

@@ -40,7 +40,7 @@ shortcuts
 | `overlay`     | `corner_radius_percent`               | 窗口圆角百分比，`[0, 50]`              |
 | `overlay`     | `hide_on_pointer_hover`               | 指针悬停在窗口上时隐藏内容并临时穿透   |
 | `overlay`     | `hide_on_pointer_hover_delay_seconds` | 悬停隐藏前的等待秒数，`[0, 60]`        |
-| `overlay`     | `keep_inside_work_area`               | 保持在可见工作区                       |
+| `overlay`     | `keep_inside_screen`                  | 保持在所有屏幕范围内，允许覆盖任务栏等区域 |
 | `input`       | `gamepad_stick_dead_zone`             | 左/右摇杆死区，`[0, 1)`                |
 | `input`       | `gamepad_trigger_dead_zone`           | 扳机死区，`[0, 1)`                     |
 | `model`       | `selected_model_id`                   | 当前模型稳定 ID，与 origin 成对为空    |

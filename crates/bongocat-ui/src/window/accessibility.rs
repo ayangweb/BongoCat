@@ -397,19 +397,19 @@ impl SettingsView {
             AccessibilityToggle::Off
         })
         .disabled(disabled);
-        let mut keep_inside_work_area_node = AccessibilityNode::new(
+        let mut keep_inside_screen_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA,
             AccessibilityRole::Switch,
             bongocat_i18n::text(
                 language.catalog_locale(),
-                "settings.overlay.keep_inside_work_area.label",
+                "settings.overlay.keep_inside_screen.label",
             ),
         )
         .with_value(bongocat_i18n::text(
             language.catalog_locale(),
-            "settings.overlay.keep_inside_work_area.description",
+            "settings.overlay.keep_inside_screen.description",
         ))
-        .with_toggle(if overlay_settings.keep_inside_work_area {
+        .with_toggle(if overlay_settings.keep_inside_screen {
             AccessibilityToggle::On
         } else {
             AccessibilityToggle::Off
@@ -469,7 +469,7 @@ impl SettingsView {
         if !disabled {
             topmost_node = topmost_node.clickable().focusable();
             click_through_node = click_through_node.clickable().focusable();
-            keep_inside_work_area_node = keep_inside_work_area_node.clickable().focusable();
+            keep_inside_screen_node = keep_inside_screen_node.clickable().focusable();
             hide_on_pointer_hover_node = hide_on_pointer_hover_node.clickable().focusable();
             if hover_hide_delay_seconds > 0 {
                 hover_hide_delay_decrease_node =
@@ -1030,7 +1030,7 @@ impl SettingsView {
             overlay_node,
             topmost_node,
             click_through_node,
-            keep_inside_work_area_node,
+            keep_inside_screen_node,
             hide_on_pointer_hover_node,
             hover_hide_delay_decrease_node,
             hover_hide_delay_increase_node,
@@ -1196,7 +1196,7 @@ impl SettingsView {
             ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     let mut settings = snapshot.overlay;
-                    settings.keep_inside_work_area = !settings.keep_inside_work_area;
+                    settings.keep_inside_screen = !settings.keep_inside_screen;
                     self.set_overlay_settings(settings, cx);
                 }
             }
@@ -1364,7 +1364,7 @@ impl SettingsView {
             ),
             (
                 ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA,
-                &self.overlay_keep_inside_work_area_focus,
+                &self.overlay_keep_inside_screen_focus,
             ),
             (
                 ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER,

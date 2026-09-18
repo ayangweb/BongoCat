@@ -15,7 +15,7 @@
     "corner_radius_percent": 25,
     "hide_on_pointer_hover": false,
     "hide_on_pointer_hover_delay_seconds": 0,
-    "keep_inside_work_area": true
+    "keep_inside_screen": true
   },
   "input": {
     "gamepad_stick_dead_zone": 0.15,

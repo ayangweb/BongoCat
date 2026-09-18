@@ -185,7 +185,7 @@ pub struct OverlayConfig {
     /// How long the pointer must stay inside the overlay box before the hover
     /// hide starts, in whole seconds. `0` hides as soon as the pointer enters.
     pub hide_on_pointer_hover_delay_seconds: u32,
-    pub keep_inside_work_area: bool,
+    pub keep_inside_screen: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -274,7 +274,7 @@ impl Default for NativeConfig {
                 corner_radius_percent: 0,
                 hide_on_pointer_hover: false,
                 hide_on_pointer_hover_delay_seconds: 0,
-                keep_inside_work_area: true,
+                keep_inside_screen: true,
             },
             input: InputConfig {
                 gamepad_stick_dead_zone: 0.15,

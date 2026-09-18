@@ -486,9 +486,9 @@
         "label": "鼠标穿透",
         "description": "让指针事件穿过模型窗口。"
       },
-      "keep_inside_work_area": {
-        "label": "保持在工作区内",
-        "description": "让模型窗口避开任务栏、菜单栏和屏幕边缘。"
+      "keep_inside_screen": {
+        "label": "保持在屏幕内",
+        "description": "让模型窗口始终完整显示在屏幕上，可以覆盖任务栏、程序坞等系统区域。窗口被拖出屏幕后会等拖拽结束后再自动拉回，不影响跨屏幕拖动。"
       },
       "hide_on_pointer_hover": {
         "label": "鼠标悬停时隐藏",
