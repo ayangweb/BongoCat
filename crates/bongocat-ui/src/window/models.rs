@@ -357,7 +357,7 @@ pub(super) fn content(
                 false,
             ),
             (_, true) => (
-                bongocat_i18n::text(language.catalog_locale(), "models.catalog.error").into(),
+                bongocat_i18n::text(language.catalog_locale(), "models.catalog.load_failed").into(),
                 true,
             ),
             _ => ("".into(), false),

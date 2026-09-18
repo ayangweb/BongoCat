@@ -217,7 +217,7 @@ pub(super) fn input_diagnostic_metrics(
         "captured_releases",
         "reconciled_releases",
         "fallback_releases",
-        "reset_releases",
+        "released_by_reset",
         "duplicate_presses",
         "unmatched_releases",
         "invalid_sources",
@@ -312,7 +312,7 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::StartupItemUpdateFailed => "startup_item_update_failed",
         SettingsErrorCode::StatusIconUpdateFailed => "status_icon_update_failed",
         SettingsErrorCode::TaskbarIconUpdateFailed => "taskbar_icon_update_failed",
-        SettingsErrorCode::WindowUnavailable => "window_unavailable",
+        SettingsErrorCode::WindowHideFailed => "window_hide_failed",
         SettingsErrorCode::StatePersistFailed => "state_persist_failed",
         SettingsErrorCode::ShutdownFailed => "shutdown_failed",
     };

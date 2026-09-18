@@ -921,7 +921,7 @@ pub enum SettingsErrorCode {
     StartupItemUpdateFailed,
     StatusIconUpdateFailed,
     TaskbarIconUpdateFailed,
-    WindowUnavailable,
+    WindowHideFailed,
     StatePersistFailed,
     ShutdownFailed,
 }
@@ -963,7 +963,7 @@ impl SettingsErrorCode {
         Self::StartupItemUpdateFailed,
         Self::StatusIconUpdateFailed,
         Self::TaskbarIconUpdateFailed,
-        Self::WindowUnavailable,
+        Self::WindowHideFailed,
         Self::StatePersistFailed,
         Self::ShutdownFailed,
     ];
@@ -1005,7 +1005,7 @@ impl SettingsErrorCode {
             Self::StartupItemUpdateFailed => "startup_item_update_failed",
             Self::StatusIconUpdateFailed => "status_icon_update_failed",
             Self::TaskbarIconUpdateFailed => "taskbar_icon_update_failed",
-            Self::WindowUnavailable => "window_unavailable",
+            Self::WindowHideFailed => "window_hide_failed",
             Self::StatePersistFailed => "state_persist_failed",
             Self::ShutdownFailed => "shutdown_failed",
         }
@@ -1097,7 +1097,7 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::TaskbarIconUpdateFailed => {
                 "taskbar icon visibility could not be updated"
             }
-            SettingsErrorCode::WindowUnavailable => "settings window could not be hidden",
+            SettingsErrorCode::WindowHideFailed => "settings window could not be hidden",
             SettingsErrorCode::StatePersistFailed => "window layout could not be saved",
             SettingsErrorCode::ShutdownFailed => "application shutdown did not complete",
         })

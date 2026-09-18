@@ -124,7 +124,7 @@ pub fn open_settings_window(
                                 cx.notify();
                             }
                             Err(_) => view.report_service_error(
-                                SettingsError::new(crate::SettingsErrorCode::WindowUnavailable),
+                                SettingsError::new(crate::SettingsErrorCode::WindowHideFailed),
                                 cx,
                             ),
                         });

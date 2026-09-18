@@ -31,7 +31,7 @@
     "show_overlay": "Show Model Window",
     "hide_overlay": "Hide Model Window",
     "click_through": "Mouse Click-Through",
-    "check_for_updates": "Check for New Version",
+    "check_for_updates": "Check for Updates",
     "open_source": "View Project Source",
     "restart": "Restart Application",
     "quit": "Quit Application",
@@ -64,7 +64,7 @@
       },
       "third_party_licenses": {
         "title": "Third-Party Licenses",
-        "description": "Third-party Rust dependencies are governed by their own license notices and are checked against the project's approved license policy."
+        "description": "Third-party Rust dependencies use their own license notices."
       },
       "cubism_attribution": {
         "title": "Live2D Cubism",
@@ -85,12 +85,12 @@
       "activating": "Activating model...",
       "deleting": "Deleting model...",
       "refreshing": "Refreshing models...",
-      "error": "Catalog unavailable",
+      "load_failed": "Model catalog could not be loaded",
       "available": "Available models"
     },
     "installed": {
       "title": "Installed Models",
-      "description": "Import a model folder or archive, validate package safety and choose the active model. A BongoCatMver model is converted to the BongoCat format on import; each input mode it carries becomes its own model."
+      "description": "Import a model folder or archive, then choose the active model."
     },
     "identity": {
       "title": "Model name",
@@ -275,7 +275,7 @@
         "captured_releases": "Captured releases",
         "reconciled_releases": "Reconciled releases",
         "fallback_releases": "Fallback releases",
-        "reset_releases": "Released by reset",
+        "released_by_reset": "Released by reset",
         "duplicate_presses": "Duplicate presses",
         "unmatched_releases": "Unmatched releases",
         "invalid_sources": "Invalid sources",
@@ -310,7 +310,7 @@
       "title": "Diagnostics export",
       "none": "No report exported",
       "action": "Export diagnostics",
-      "description": "Write an anonymous diagnostics report to the current environment logs",
+      "description": "Write an anonymous diagnostics report to the current environment's log folder.",
       "summary": "Report v%{format_version}: %{bytes_written} bytes · Preview bundle v%{preview_bundle_format_version}: %{preview_bundle_entry_count} entries, %{preview_bundle_bytes_written} bytes · Skipped %{skipped_source_files} source logs"
     },
     "configuration": {
@@ -318,9 +318,9 @@
       "backups": "Backups",
       "current_state": "Current state",
       "restore_defaults": "Restore default configuration",
-      "restore_defaults_description": "Archive the invalid configuration and create verified defaults",
+      "restore_defaults_description": "Archive the invalid configuration and create defaults.",
       "open_backups_folder": "Open configuration backups folder",
-      "open_backups_folder_description": "Open the current environment's backup folder",
+      "open_backups_folder_description": "Open the current environment's backup folder.",
       "defaults_restored": "Defaults restored",
       "restart_to_continue": "Restart the application to continue",
       "recovered_from_backup": "Recovered from backup",
@@ -340,7 +340,7 @@
       "clear_all": "Clear all shortcuts",
       "capture": "Capture",
       "clear": "Clear",
-      "restore_defaults_description": "Replace custom shortcut bindings with the verified defaults",
+      "restore_defaults_description": "Replace custom shortcut bindings with the defaults.",
       "clear_all_description": "Remove all custom shortcut bindings",
       "decrease_overlay_scale": "Decrease window scale",
       "increase_overlay_scale": "Increase window scale",
@@ -397,7 +397,7 @@
       "gpu_preparation_failed": "GPU preparation failed",
       "platform_unsupported": "Platform unsupported",
       "transport_closed": "Runtime transport closed",
-      "no_renderer": "No renderer error"
+      "no_renderer_error": "No renderer error"
     },
     "models": {
       "load_failed": "Model load failed",
@@ -445,7 +445,7 @@
       "startup_item_update_failed": "startup setting could not be updated",
       "status_icon_update_failed": "status icon visibility could not be updated",
       "taskbar_icon_update_failed": "taskbar icon visibility could not be updated",
-      "window_unavailable": "settings window could not be hidden",
+      "window_hide_failed": "settings window could not be hidden",
       "state_persist_failed": "window layout could not be saved",
       "shutdown_failed": "application shutdown did not complete"
     }
@@ -476,7 +476,7 @@
       "title": "Overlay",
       "visibility": {
         "label": "Show model window",
-        "description": "Keep the model window visible."
+        "description": "Show or hide the model window."
       },
       "always_on_top": {
         "label": "Always on top",
@@ -488,15 +488,15 @@
       },
       "keep_inside_screen": {
         "label": "Keep inside the screen",
-        "description": "Keep the model window fully on a screen, where it may cover a taskbar, Dock or menu bar. A window dragged off the screen comes back once you stop dragging, so moving it between screens is not interrupted."
+        "description": "Keep the model window fully on a screen, where it may cover the taskbar, Dock or menu bar."
       },
       "hide_on_pointer_hover": {
         "label": "Hide on pointer hover",
-        "description": "Fade the model window out while the pointer rests on it so whatever is underneath stays reachable, and restore it when the pointer leaves. The window is not closed, and click-through stays in effect while it is hidden."
+        "description": "Fade the model window out while the pointer rests on it, and restore it when the pointer leaves."
       },
       "hide_on_pointer_hover_delay": {
         "label": "Hover hide delay (s)",
-        "description": "How long the pointer must rest on the model window before it hides, in whole seconds from 0 to 60. Set to 0 to hide as soon as the pointer enters."
+        "description": "Delay before the model window hides while the pointer rests on it, from 0 to 60 seconds; 0 hides it on entry."
       },
       "motion_audio": {
         "label": "Motion audio",
@@ -512,7 +512,7 @@
       },
       "corner_radius": {
         "label": "Window corner radius",
-        "description": "Round the model window corners from 0% to 50% of its width and height. 0% keeps square corners and 50% clips the window to a full ellipse."
+        "description": "Round the model window corners from 0% to 50% of its width and height."
       },
       "maximum_fps": {
         "label": "Maximum FPS",
@@ -520,7 +520,7 @@
       },
       "release_fallback_timeout": {
         "label": "Key release fallback (ms)",
-        "description": "Release a captured keyboard key only if normal release and reconciliation both fail. Set to 0 to disable."
+        "description": "Release a captured key only when normal release and state reconciliation both fail; 0 disables it."
       }
     },
     "runtime": {
@@ -562,7 +562,7 @@
       "title": "Application",
       "status_icon": {
         "label": "Show status icon",
-        "description": "Show the application in the system tray or menu bar."
+        "description": "Show the status icon in the system tray or menu bar."
       },
       "taskbar_icon": {
         "label": "Show taskbar icon",
@@ -570,7 +570,7 @@
       },
       "auto_update": {
         "label": "Check for updates automatically",
-        "description": "Check for a new signed release when the application starts and every 24 hours."
+        "description": "Check for updates at startup and every 24 hours."
       },
       "open_at_login": {
         "label": "Open at login"

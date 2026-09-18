@@ -544,7 +544,10 @@ pub(super) fn runtime_diagnostics_presentation(
     let (title, attention) = match diagnostics.render_error {
         Some(error) => (runtime_error_title(language, error), true),
         None => (
-            bongocat_i18n::text(language.catalog_locale(), "errors.runtime.no_renderer"),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "errors.runtime.no_renderer_error",
+            ),
             false,
         ),
     };
