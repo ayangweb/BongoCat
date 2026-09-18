@@ -1,5 +1,7 @@
 use bongocat_config::{ModelBehaviorAction, ShortcutTarget};
-use bongocat_runtime::{ExpressionId, MotionId, MotionPriority, RuntimeClient, SendError, ShortcutAction};
+use bongocat_runtime::{
+    ExpressionId, MotionId, MotionPriority, RuntimeClient, SendError, ShortcutAction,
+};
 use std::sync::mpsc::SyncSender;
 
 /// Dispatches matched model behavior shortcuts without exposing configuration
@@ -97,9 +99,7 @@ impl ShortcutDispatcher {
 #[cfg(test)]
 mod dispatcher_tests {
     use super::*;
-    use bongocat_config::{
-        CompiledShortcuts, ShortcutBinding, ShortcutCommand, ShortcutConfig,
-    };
+    use bongocat_config::{CompiledShortcuts, ShortcutBinding, ShortcutCommand, ShortcutConfig};
 
     fn compiled(shortcut: &str, command: &str) -> CompiledShortcuts {
         ShortcutConfig {
@@ -212,14 +212,16 @@ mod global {
     //!   cannot register and are reported as registration failures instead of
     //!   blocking the remaining bindings.
     use super::{ShortcutDispatchError, ShortcutDispatcher};
-    use bongocat_config::{CompiledShortcuts, ShortcutChord, ShortcutModifiers, ShortcutTable, ShortcutTarget};
+    use bongocat_config::{
+        CompiledShortcuts, ShortcutChord, ShortcutModifiers, ShortcutTable, ShortcutTarget,
+    };
     use bongocat_runtime::SendError;
     use global_hotkey::hotkey::{Code, HotKey, Modifiers};
     use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
     use std::collections::{BTreeSet, HashMap};
     use std::panic::{AssertUnwindSafe, catch_unwind};
-    use std::sync::mpsc;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
@@ -341,9 +343,9 @@ mod global {
         pub fn stop(mut self) -> Result<(), GlobalShortcutServiceError> {
             self.stop.store(true, Ordering::Release);
             match self.owner.take() {
-                Some(owner) => {
-                    owner.join().map_err(|_| GlobalShortcutServiceError::WorkerPanicked)
-                }
+                Some(owner) => owner
+                    .join()
+                    .map_err(|_| GlobalShortcutServiceError::WorkerPanicked),
                 None => Ok(()),
             }
         }
@@ -516,7 +518,9 @@ mod global {
                     hotkey,
                     target: shortcut.target().clone(),
                 }),
-                Err(error) => unsupported.push(format!("{}: {error}", shortcut.chord().canonical())),
+                Err(error) => {
+                    unsupported.push(format!("{}: {error}", shortcut.chord().canonical()))
+                }
             }
         }
         (registrations, unsupported)
@@ -582,7 +586,9 @@ mod global {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use bongocat_config::{ModelBehaviorBinding, ShortcutBinding, ShortcutCommand, ShortcutConfig};
+        use bongocat_config::{
+            ModelBehaviorBinding, ShortcutBinding, ShortcutCommand, ShortcutConfig,
+        };
 
         fn hotkey(chord: &str) -> HotKey {
             shortcut_hotkey(&ShortcutChord::parse(chord).expect("valid chord"))

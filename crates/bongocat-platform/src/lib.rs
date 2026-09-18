@@ -35,11 +35,11 @@ mod single_instance;
 pub use single_instance::{SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceError};
 
 mod shortcut;
-pub use shortcut::{ShortcutDispatch, ShortcutDispatchError, ShortcutDispatcher};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use shortcut::{
     GlobalShortcutCounters, GlobalShortcutService, GlobalShortcutServiceError, ShortcutHotkeyError,
 };
+pub use shortcut::{ShortcutDispatch, ShortcutDispatchError, ShortcutDispatcher};
 #[cfg(target_os = "windows")]
 mod single_instance_windows;
 #[cfg(target_os = "windows")]
