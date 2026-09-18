@@ -1,6 +1,6 @@
 # ADR-0032: Startup Permission Prompt Boundary
 
-状态：已接受（2026-09-14）；同日实机验收发现 macOS 侧必须使用不触碰 AppKit 的 `rfd` 路径，见「macOS 弹框实现修正」；2026-09-15 修正检查执行方式为专用 worker 线程上的非阻塞检查，见「非阻塞执行修正」；同日启用 Windows 自定义按钮文案，见「Windows 按钮文案修正」
+状态：已接受（2026-09-14）；同日实机验收发现 macOS 侧必须使用不触碰 AppKit 的 `rfd` 路径，见「macOS 弹框实现修正」；2026-09-15 修正检查执行方式为专用 worker 线程上的非阻塞检查，见「非阻塞执行修正」；同日启用 Windows 自定义按钮文案，见「Windows 按钮文案修正」；2026-09-18 为修复主题跟随把 macOS 提示改为主线程 `NSAlert`，见「主题外观修正」
 
 ## 背景
 
@@ -59,11 +59,11 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
 
   | 平台 | 只读查询 | 提示实现 | 「授权/去设置」动作 |
   | --- | --- | --- | --- |
-  | macOS | `CGPreflightListenEventAccess` | `rfd::AsyncMessageDialog`（无父窗口，仅 `CFUserNotification`），调用线程用 `async_io::block_on` 等待 | `CGRequestListenEventAccess` + `NSWorkspace` 打开 `x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent` |
+  | macOS | `CGPreflightListenEventAccess` | 主线程 `NSAlert`（经 `dispatch2::run_on_main` 投递，2026-09-18 起，见「主题外观修正」） | `CGRequestListenEventAccess` + `NSWorkspace` 打开 `x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent` |
   | Windows | `TokenElevation` | `rfd::MessageDialog`（`TaskDialogIndirect`，调用线程，见「Windows 按钮文案修正」） | `opener::reveal` 定位当前可执行文件，正文给出「属性 → 兼容性 → 勾选以管理员身份运行」路径 |
 
-- macOS 必须使用上表中的异步实现，不能用同一 crate 的同步实现：原因与证据见「macOS 弹框实现修正」。
-  这是启动阶段的硬约束，不是风格选择；`bongocat-platform` 用一条 contract 测试固定它。
+- macOS 曾要求使用 `rfd` 的无父窗口异步实现（见「macOS 弹框实现修正」），2026-09-18 起改为
+  主线程 `NSAlert`；同 crate 的同步实现仍被 contract 测试禁止，原因不变（见「主题外观修正」）。
 
 - macOS 先调用 TCC 请求 API 再打开面板：请求是产品出现在「输入监控」列表里的唯一途径，否则用户
   还要手动添加应用。该调用仍严格位于用户点击之后，满足 ADR-0024 「启动、轮询和服务恢复不得弹出
@@ -165,9 +165,9 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
 
 - 提示运行在专用 worker 线程上（2026-09-15 修正，原始的「主线程阻塞等待用户应答」已被取代）：
   主线程继续 GPUI run loop，overlay、输入服务和 runtime 的启动不等待用户应答；worker 只拥有
-  语言与文案字符串，不与渲染或输入生命周期共享任何锁。macOS 的对话框本身运行在 `rfd` 的工作
-  线程上，worker 用 `async_io::block_on` 等待其结果；`rfd` 的同步 macOS 路径在该线程上被禁止
-  （见上方修正与 contract 测试）。
+  语言与文案字符串，不与渲染或输入生命周期共享任何锁。macOS 的对话框在 2026-09-18 起经
+  `dispatch2::run_on_main` 在主线程上运行，worker 阻塞等待其结果（见「主题外观修正」）；
+  `rfd` 的同步 macOS 路径在该线程上仍被禁止（见上方修正与 contract 测试）。
 - 平台对话框的 owner 是 `rfd`，产品不持有任何 dialog handle；不注册回调，不在回调中做阻塞工作。
 - macOS 侧只使用 `CGPreflightListenEventAccess`（只读）与用户点击后的
   `CGRequestListenEventAccess`；不调用任何 Accessibility trust/prompt API，不扩大 TCC 面
@@ -239,18 +239,61 @@ manifest 另加来源。
 - 验证：workspace 构建链接通过；链接产物 `bongocat_app.exe` 内含且仅含一份 RT_MANIFEST，
   内容即 gpui 的 ComCtl32 v6 manifest。
 
+## 主题外观修正（2026-09-18）
+
+ADR-0048 把用户选择的浅色/深色接到原生表面后，实机发现启动权限提示在应用深色下仍是浅色。根因：
+macOS 的 `rfd` 无父窗口消息框（同步与异步都是）最终调用 `CFUserNotificationDisplayAlert`
+（`rfd 0.17.2` `src/backend/macos/utils/user_alert.rs`），这条路径完全不经过 AppKit，不继承
+`NSApplication.appearance`，只会跟随系统外观。ADR-0048 修复的正是 `NSApp.appearance` 继承链，
+而本提示当时根本不在链上。
+
+### 变更
+
+- macOS 提示改用 `objc2-app-kit` 的 `NSAlert`（`NSAlertStyle::Warning`，两个自定义按钮文案不变，
+  返回值经既有 `requested_permission_flow` 映射，Windows 侧零改动）。`NSAlert` 的窗口继承应用
+  appearance，从第一帧起跟随启动时设置的进程级主题（ADR-0048 的 `apply_process_theme`）。
+- 呈现通过 `dispatch2::run_on_main` 投递主线程并同步等待结果（`dispatch2 =0.3.1` 因此从
+  dev-dependencies 转为正式依赖）：worker 仍负责只读查询与阻塞等待，AppKit 窗口只允许在主线程
+  构建。worker 在 GPUI run loop 内 spawn（2026-09-15 修正），`GPUIApplication` 已存在，因此
+  09-14「不得触碰共享 `NSApplication`」约束的场景（GPUI 平台建立之前）不适用于呈现阶段；
+  `rfd` 同步消息框仍被 contract 测试禁止，原因不变（它会在调用线程上构造共享 `NSApplication`
+  的 plumbing）。
+- `runModal` 从主队列 block 执行，位于 GPUI 事件之间而非某个事件处理器栈内。模型选择器注释记录的
+  `RefCell already borrowed` 重入崩溃发生在「GPUI 事件处理器内同步 `runModal`」，与此处不同；
+  `rfd` 自身的文件对话框同样经 `run_on_main` 在主线程上运行模态，是该模式的既有先例。
+- 提示出现时调用 `activateIgnoringOtherApps(true)` 把产品带到前台（`-activate` 为 macOS 14+，
+  产品支持 12+，故用旧选择器并 `#[allow(deprecated)]`）。这是相对 `CFUserNotification` 的行为
+  变化：提示现在是模态的，应答前主线程处于 modal panel run loop（GPUI 的渲染走 display link，
+  不受影响），与文件对话框先例一致。
+- 响应常量不用 `objc2-app-kit` 的 `NSModalResponseOK`/`NSModalResponseCancel`：该绑定把弃用的
+  `NSOKButton`(1)/`NSCancelButton`(0) 值挂在了这两个名字上，而 `-runModal` 对自定义按钮返回
+  `NSAlertFirstButtonReturn`(1000)/`NSAlertSecondButtonReturn`(1001)。已对照 macOS SDK 的
+  `NSAlert.h` 核实（2026-09-18），crate 内以自有常量 `ALERT_FIRST_BUTTON_RESPONSE` 固定。
+
+### 证据与验证
+
+- 根因证据：`rfd 0.17.2` 源码调用链 + 实机截图（应用深色、提示浅色）与该路径「只跟随系统外观」
+  的行为一致；SDK 头文件确认 `NSAlert` 返回值与绑定常量的出入。
+- `cargo check` / `cargo clippy --all-targets -p bongocat-platform` 通过；platform 全部单测通过，
+  含更新后的 contract 测试：仍禁止 `rfd::MessageDialog::new`、要求 macOS 模块经 `run_on_main`
+  呈现、禁止回退 `AsyncMessageDialog`。
+- 深浅两色下弹框外观的实机肉眼验收未完成，归入 ADR-0048 既有的「双平台实机主题验收」门禁。
+
 ## 替换边界
 
 替换点只有 `bongocat-platform` 的私有 `startup_permission` adapter 和 `bongocat-app` 的文案
-构造。升级 `rfd` 时必须复验：无父窗口消息框在两平台仍为原生实现、macOS 自定义按钮标题仍保留、
-macOS **异步**路径仍不创建共享 `NSApplication`（本约束的唯一已知可复现崩溃来源）、Windows 在
+构造。升级 `rfd` 时只需复验 **Windows** 侧：无父窗口消息框仍为原生实现、在
 `common-controls-v6` + ComCtl32 v6 manifest 齐备时仍通过 `TaskDialogIndirect` 显示自定义按钮、
 manifest 缺失时仍回退到 `MB_OKCANCEL` 且结果被当作「稍后设置」、以及无父窗口路径仍不需要应用
-已运行。`common-controls-v6` feature 与 executable 内嵌的 ComCtl32 v6 manifest 必须同时存在，缺一会让
+已运行（macOS 提示已不再使用 `rfd`，见「主题外观修正」）。`common-controls-v6` feature 与
+executable 内嵌的 ComCtl32 v6 manifest 必须同时存在，缺一会让
 Windows 对话框静默失败或按钮回退为系统标准文案。manifest 的唯一来源是 `gpui-pre` 静态库内嵌
 的 `gpui.lib` manifest：升级/更换 `gpui-pre` 时必须重新核实该 manifest 仍声明 Common-Controls
 v6（可用字节扫描 `Common-Controls` 复核），且不得在产品自有 `.rc` 里再嵌入 manifest
-（RT_MANIFEST ID 1 冲突，`CVT1100`）。
-升级 `opener` 时必须复验 `reveal` feature 与失败语义。adapter 之外不得依赖 `rfd` 类型。
+（RT_MANIFEST ID 1 冲突，`CVT1100`）。升级 `opener` 时必须复验 `reveal` feature 与失败语义。
+adapter 之外不得依赖 `rfd` 类型。升级 `objc2-app-kit` 时必须复验两件事：`NSAlert` 绑定的方法面
+（本提示依赖 `runModal`/`addButtonWithTitle`/`setMessageText`/`setInformativeText`/
+`setAlertStyle`）与 `NSModalResponseOK`/`NSModalResponseCancel` 常量值是否仍与
+`-runModal` 实际返回值不符（当前不符，crate 内用 `NSAlert.h` 的 1000/1001 自有常量）。
 若升级 `gpui-kit`/`gpui-pre-macos`，必须复验 `GPUIApplication` 子类与 `platform` ivar 的约束是否
 仍然成立：一旦 GPUI 不再依赖该 ivar，本 ADR 的 macOS 同步/异步选择可以重新评估。

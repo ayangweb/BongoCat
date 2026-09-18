@@ -10,9 +10,9 @@
 //! capability is never asked. The decision is always the current platform state, never product
 //! state (ADR-0032).
 //!
-//! Both platforms present the prompt through `rfd`, which owns the native dialog on each target: a
-//! parentless `rfd` message dialog is a `CFUserNotification` alert on macOS and a `MessageBoxW` on
-//! Windows. No product UI is built for this.
+//! Both platforms present the prompt through a native dialog owned by the platform: macOS an
+//! `NSAlert` on the main thread, which follows the application appearance (ADR-0048), Windows an
+//! `rfd` message dialog, which maps to a Task Dialog. No product UI is built for this.
 
 /// Localized text for the startup prompt.
 ///
@@ -74,24 +74,38 @@ pub fn check_startup_permission(prompt: &StartupPermissionPrompt) -> StartupPerm
 /// Presents the startup prompt and blocks the calling thread until the user answers it.
 ///
 /// The caller is the dedicated startup-permission worker, never the main thread, so a pending
-/// dialog cannot delay any product window.
+/// dialog cannot delay any product window. macOS hands the presentation to the main thread via
+/// `dispatch2::run_on_main` and waits for the answer there: AppKit windows must be built on the
+/// main thread, and the GPUI platform already exists because the worker is spawned inside the
+/// GPUI run loop (ADR-0032, non-blocking amendment).
 ///
-/// The macOS implementation deliberately avoids `rfd`'s synchronous dialog even though the GPUI
-/// platform already exists when the worker runs: the synchronous path would run its `NSAlert`
-/// modal machinery on the worker thread, while the parentless *asynchronous* implementation only
-/// builds a `CFUserNotification` and never touches `NSApplication`. This is the same `rfd` +
-/// `async_io` pattern the model directory picker already uses on this platform (ADR-0032); the
-/// module test below keeps this choice pinned.
+/// The dialog is an `NSAlert` rather than the parentless `rfd` async dialog the module used
+/// before 2026-09-18. That rfd path is a `CFUserNotification`, which never touches AppKit and
+/// therefore never inherits `NSApplication.appearance` — it stayed on the system appearance
+/// while the product ran dark (ADR-0048), which is exactly the defect this switch repairs.
+/// `NSAlert` windows inherit the application appearance, so the prompt follows the theme the
+/// product applies at startup. `rfd`'s *synchronous* macOS dialog remains banned for a
+/// different, older reason: it would still create the shared `NSApplication` on this worker
+/// before GPUI's subclass owns it (the contract test below keeps pinning that).
 #[cfg(target_os = "macos")]
 mod platform {
     use crate::{
         InputPermission, StartupPermissionPrompt, input_monitoring_permission,
         request_input_monitoring_permission,
     };
+    use objc2_app_kit::{NSAlert, NSAlertStyle, NSApplication, NSModalResponse};
+    use objc2_foundation::NSString;
 
     /// System Settings → Privacy & Security → Input Monitoring.
     const INPUT_MONITORING_SETTINGS_URL: &str =
         "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
+
+    /// The response `-runModal` returns for the first added button, `NSAlertFirstButtonReturn`
+    /// from AppKit's `NSAlert.h`. The constants named `NSModalResponseOK`/`NSModalResponseCancel`
+    /// in `objc2-app-kit` carry the deprecated `NSOKButton`(1)/`NSCancelButton`(0) values from
+    /// `NSPanel.h` instead, which `-runModal` does not return for custom buttons, so they must
+    /// not be used here (verified against the macOS SDK header, 2026-09-18).
+    const ALERT_FIRST_BUTTON_RESPONSE: NSModalResponse = 1000;
 
     pub const CAPABILITY: &str = "input_monitoring";
 
@@ -100,15 +114,36 @@ mod platform {
     }
 
     pub fn present_prompt(prompt: &StartupPermissionPrompt) -> rfd::MessageDialogResult {
-        let dialog = rfd::AsyncMessageDialog::new()
-            .set_level(rfd::MessageLevel::Warning)
-            .set_title(prompt.title.clone())
-            .set_description(prompt.description.clone())
-            .set_buttons(rfd::MessageButtons::OkCancelCustom(
-                prompt.primary.clone(),
-                prompt.secondary.clone(),
-            ));
-        async_io::block_on(dialog.show())
+        let title = prompt.title.clone();
+        let description = prompt.description.clone();
+        let primary = prompt.primary.clone();
+        let secondary = prompt.secondary.clone();
+        // `runModal` runs from a main-queue block, which AppKit dispatches between GPUI
+        // events — never nested inside a GPUI event handler, which is the reentrancy that
+        // forced the model pickers to require a sheet parent (ADR-0032).
+        dispatch2::run_on_main(move |mtm| {
+            // The prompt asks for a user decision at first start, when another application is
+            // usually the active one; without this the modal alert can sit behind it. The
+            // selector exists on every supported release while the replacement `-activate` is
+            // macOS 14+ and the product supports 12+.
+            #[allow(deprecated)]
+            NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
+            let alert = NSAlert::new(mtm);
+            alert.setAlertStyle(NSAlertStyle::Warning);
+            alert.setMessageText(&NSString::from_str(&title));
+            alert.setInformativeText(&NSString::from_str(&description));
+            // Added most-to-least prominent: the flow button first (Return key), the
+            // dismiss button second.
+            alert.addButtonWithTitle(&NSString::from_str(&primary));
+            alert.addButtonWithTitle(&NSString::from_str(&secondary));
+            if alert.runModal() == ALERT_FIRST_BUTTON_RESPONSE {
+                // The adapter-internal contract with `check_startup_permission` stays the rfd
+                // result type so both platforms map through the same code below.
+                rfd::MessageDialogResult::Custom(primary)
+            } else {
+                rfd::MessageDialogResult::Cancel
+            }
+        })
     }
 
     /// Runs the user-initiated permission flow.
@@ -276,16 +311,18 @@ mod tests {
         ));
     }
 
-    /// Guards the AppKit-free dialog path on the startup-permission worker.
+    /// Pins the two macOS dialog constraints.
     ///
-    /// `rfd`'s parentless *synchronous* macOS message dialog builds its `NSAlert` plumbing
-    /// (`PolicyManager`/`FocusManager`) on the calling thread, and a historical pre-GPUI caller
-    /// even crashed the product by creating the plain shared `NSApplication` there
-    /// (`objc-0.2.7`: "Ivar platform not found on class NSApplication"). The worker must keep
-    /// using the asynchronous implementation, which only builds a `CFUserNotification` and never
-    /// touches `NSApplication`. The behaviour itself needs a human to answer a real system alert,
-    /// which no automated test can do, so this contract pins the implementation that keeps the
-    /// worker thread safe.
+    /// 1. `rfd`'s *synchronous* message dialog is still banned: it builds its `NSAlert` plumbing
+    ///    (`PolicyManager`/`FocusManager`) on the calling thread, and a historical pre-GPUI caller
+    ///    even crashed the product by creating the plain shared `NSApplication` there
+    ///    (`objc-0.2.7`: "Ivar platform not found on class NSApplication"). The product then
+    ///    aborts with `Ivar platform not found on class NSApplication` if anything constructs the
+    ///    shared application before GPUI's `GPUIApplication` subclass.
+    /// 2. The themed `NSAlert` must be handed to the main thread (`run_on_main`): AppKit windows
+    ///    may only be built there, and `runModal` must run between GPUI events instead of inside
+    ///    one of its handlers. The behaviour itself needs a human to answer a real system alert,
+    ///    which no automated test can do, so this contract pins the implementation.
     #[cfg(target_os = "macos")]
     #[test]
     fn macos_prompt_keeps_the_appkit_free_dialog_path() {
@@ -302,6 +339,16 @@ mod tests {
             "the macOS startup prompt must not use rfd's synchronous message dialog: it creates \
              the plain NSApplication before GPUI's platform runs, and the product then aborts \
              with `Ivar platform not found on class NSApplication`"
+        );
+        assert!(
+            macos_module.contains("run_on_main"),
+            "the macOS startup prompt must present its NSAlert on the main thread: AppKit windows \
+             are main-thread-only and `runModal` must not run inside a GPUI event handler"
+        );
+        assert!(
+            !macos_module.contains("AsyncMessageDialog"),
+            "the macOS startup prompt must not go back to rfd's parentless CFUserNotification: it \
+             does not follow the application appearance (ADR-0048)"
         );
     }
 

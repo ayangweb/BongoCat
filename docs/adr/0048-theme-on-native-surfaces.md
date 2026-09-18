@@ -199,6 +199,14 @@ smoke 断言都调它。**smoke 此前用 `component_theme_mode(theme, cx.window
    （已用变异确认）。解析本身的正确性依赖 `NSApplication.effectiveAppearance` 与
    `appearanceNamed:` 这两个文档化 API，以及两个不变量单测；没有端到端的正确性测试。
 
+## 后记（2026-09-18）：启动权限弹框的例外已修复
+
+本文档的「alerts | application theme」一行只覆盖经 `NSApplication.appearance` 继承链的 AppKit
+弹框。落地当天的实机截图显示启动权限提示在应用深色下仍是浅色：该提示当时走 `rfd` 的无父窗口
+消息框 = `CFUserNotification`，完全不经过 AppKit，不在继承链上——ADR-0048 的实现没有错，是
+这个提示本身不在被修复的路径上。已按 ADR-0032「主题外观修正（2026-09-18）」把它改为主线程
+`NSAlert`，本表格自此对产品全部系统弹框成立。
+
 ## 验证
 
 已完成（2026-09-18，本机 macOS arm64，固定工具链 1.97.1）：
