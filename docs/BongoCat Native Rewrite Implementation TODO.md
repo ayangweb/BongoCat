@@ -1052,6 +1052,21 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     绘制三个预置模型，并消费与 Metal 相同的 immutable frame、model generation 和
     commit token。完整 resize、device-loss、D3D debug layer 与实机 GPU 矩阵仍待完成，
     因此保持未勾选。
+- [ ] `P3-WINDOWS-SRGB-ENCODE`：Windows 后端的最终 linear -> sRGB 编码在实机与跨平台像素对照下成立。
+  - 状态（2026-09-18）：`COMPOSITION_FORMAT` 保持 flip model 要求的 `B8G8R8A8_UNORM`，
+    但 back buffer 的 render target view 改为同族的 `B8G8R8A8_UNORM_SRGB`（常量
+    `COMPOSITION_RENDER_TARGET_FORMAT`），编码由硬件在写入时完成，与 macOS
+    `BGRA8Unorm_sRGB` drawable 语义一致；alpha-only mask target 保持 linear UNORM。修复前
+    Windows 把 linear 预乘值写进被 DirectComposition 当作 sRGB 的 surface，中间调 ≈ v^2.2，
+    是两平台明显色差的唯一代码来源（详见 ADR-0046）。
+  - 已核实（2026-09-18）：`cargo fmt -p bongocat-overlay -- --check`、`cargo clippy -p
+    bongocat-overlay --all-targets --all-features -- -D warnings`、`cargo test -p
+    bongocat-overlay` 通过；改动涉及的 D3D11 调用形态用独立探针在
+    `--target x86_64-pc-windows-msvc` 下 check 与 clippy 通过后删除。本机
+    （macOS 26.5.2 / Apple M1 Pro / toolchain 1.97.1）无法为 Windows 目标构建
+    `bongocat-overlay`：`libdeflate-sys` 经 `oxipng` 进入依赖图，交叉构建缺 MSVC C 头文件。
+  - 尚缺：`windows.rs` 的格式契约单元测试只在 Windows job 执行，本机未运行；Windows 实机首帧
+    与同 snapshot 的两平台 readback 色值对照未做。因此本项保持未勾选。
 - [ ] 配置变化时切换 HWND_TOPMOST/HWND_NOTOPMOST，禁止帧轮询。
 - [ ] 切换 click-through 并验证拖动模式。
 - [ ] 处理 device lost、resize、休眠和 GPU 切换。
@@ -1127,6 +1142,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     UNORM format。两端 shader 都在
     采样解码后的 linear RGB 执行 multiply/screen、mask 和预乘，format contract 单元测试覆盖
     两个实现。嵌入 ICC/wide-gamut profile 的转换尚未实现，v1 明确不依赖平台默认色彩管理。
+  - 更正（2026-09-18）：本条的结论不成立于当时的实现。D3D11 侧只把 swapchain 固定为
+    `B8G8R8A8_UNORM`，没有同时把 back buffer 的 render target view 设为 `_SRGB`，因此 Windows
+    缺少最终 linear -> sRGB 编码，两平台颜色语义实际相反而不是一致。单元测试只断言了常量组合，
+    没有断言“两端都执行编码”，所以当时无法发现；修复与证据见 §4.2 和 ADR-0046。
 - [ ] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。
   - 状态（2026-09-06）：macOS 的 `CAMetalLayer::next_drawable == None` 已分类为临时
     presentation unavailable；产品 frame source 收到非错误的 deferred tick，以 `100 ms` 起、
@@ -1377,6 +1396,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     运算。`color_formats_decode_assets_and_encode_the_composited_frame_as_srgb` 的双 backend unit
     contract 固定这组格式；Technical Design 已将嵌入 ICC/wide-gamut profile 的转换明确排除在 v1
     范围外，因此不依赖平台默认颜色管理。
+  - 更正（2026-09-18）：“最终 pre-multiplied composition attachment 固定为 sRGB”只对 Metal 成立；
+    D3D11 的 attachment 是 `B8G8R8A8_UNORM`，编码本应来自 render target view 而没有设置。修复见
+    §4.2，两端编码语义现已由常量与单元测试固定。
 - [x] 只在 dirty 时更新必要 GPU 资源。
   - 验收证据（2026-09-06）：`CoreModel::update_and_snapshot` 在 reset Core dynamic flags 前复制六个
     drawable change bits；immutable `DrawableSnapshot` 将这些 flags 交给两端 GPU owner。Metal 与

@@ -580,12 +580,17 @@ Cubism Core 在每次 `UpdateModel` 后的 drawable dynamic flags 必须随 `Ren
 
 所有 v1 PNG RGBA 贴图（Cubism texture、背景与按键 overlay）按 sRGB 编码解释；Windows 使用
 `R8G8B8A8_UNORM_SRGB`、macOS 使用 `RGBA8Unorm_sRGB`，使 shader sampling 和颜色计算在
-linear 空间进行。最终预乘 alpha 颜色写入 composition/drawable surface；macOS 使用
-`BGRA8Unorm_sRGB`，Windows DirectComposition swapchain 使用 API 要求的
-`B8G8R8A8_UNORM`（该 API 不接受 sRGB swapchain format）；normal、additive 与 multiplicative
-blend 使用相同 linear premultiplied 输入。clipping mask 只携带 alpha，保持 linear UNORM，避免
-对 coverage 作 gamma 转换。v1 不解释或转换嵌入 ICC/wide-gamut profile；模型导入将此类颜色
-管理作为明确的后续能力，而不是让平台默认行为决定结果。
+linear 空间进行。最终预乘 alpha 颜色在两端都必须经过 linear -> sRGB 编码：macOS 将它交给
+`BGRA8Unorm_sRGB` drawable，Windows 的 flip presentation model 只能使用非 sRGB 的
+`B8G8R8A8_UNORM` back buffer，因此编码由该 buffer 的 render target view 以
+`B8G8R8A8_UNORM_SRGB` 承担；normal、additive 与 multiplicative blend 使用相同 linear
+premultiplied 输入。clipping mask 只携带 alpha，保持 linear UNORM，避免对 coverage 作
+gamma 转换。缺少这一编码时 linear 值会按已编码值被直接扫描输出，中间调整体偏暗（黑与白不受
+影响），并让两平台观感不一致。v1 不解释或转换嵌入 ICC/wide-gamut profile；模型导入将此类颜色
+管理作为明确的后续能力，而不是让平台默认行为决定结果。系统级显示色彩管理仍存在平台差异：
+macOS 由 Core Animation 把 sRGB 内容转换到显示器色彩空间，Windows DirectComposition 不做
+这一步，因此同一组 sRGB 值在广色域显示器上的绝对观感仍可能不同；这属于合成器行为，不由
+renderer 消除。
 
 窗口圆角是 overlay 窗口自身的形状属性，与模型、动作和输入无关。`overlay.corner_radius_percent`
 按窗口宽高的百分比给出四个角的椭圆半径：`N%` 表示水平半轴为窗口宽度的 `N%`、垂直半轴为窗口

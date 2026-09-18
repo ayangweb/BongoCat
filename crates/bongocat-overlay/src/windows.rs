@@ -58,7 +58,8 @@ use windows::{
                 D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CULL_NONE, D3D11_FILL_SOLID,
                 D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_INPUT_ELEMENT_DESC,
                 D3D11_INPUT_PER_VERTEX_DATA, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE,
-                D3D11_RASTERIZER_DESC, D3D11_RENDER_TARGET_BLEND_DESC, D3D11_SAMPLER_DESC,
+                D3D11_RASTERIZER_DESC, D3D11_RENDER_TARGET_BLEND_DESC,
+                D3D11_RENDER_TARGET_VIEW_DESC, D3D11_RTV_DIMENSION_TEXTURE2D, D3D11_SAMPLER_DESC,
                 D3D11_SDK_VERSION, D3D11_SUBRESOURCE_DATA, D3D11_TEXTURE_ADDRESS_CLAMP,
                 D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING, D3D11_VIEWPORT,
                 D3D11CreateDevice, ID3D11BlendState, ID3D11Buffer, ID3D11ClassLinkage,
@@ -73,8 +74,8 @@ use windows::{
             Dxgi::{
                 Common::{
                     DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM,
-                    DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R16_UINT,
-                    DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC,
+                    DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+                    DXGI_FORMAT_R16_UINT, DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC,
                 },
                 DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_PRESENT, DXGI_QUERY_VIDEO_MEMORY_INFO,
                 DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
@@ -130,11 +131,20 @@ const SWITCH_WARMUP_CYCLES: u64 = 100;
 const THREAD_SETTLE_INTERVAL: Duration = Duration::from_millis(10);
 const THREAD_SETTLE_SAMPLES: u32 = 25;
 const THREAD_SETTLE_TIMEOUT: Duration = Duration::from_secs(2);
-// DirectComposition composition swapchains reject sRGB DXGI formats. Keep the
-// required UNORM surface and sample source textures as sRGB; alpha remains
-// premultiplied for the compositor. Masks carry alpha only.
+// The flip presentation model used by composition swapchains has no sRGB back
+// buffer format, so the swap chain keeps the UNORM member of the family. Alpha
+// remains premultiplied for the compositor and masks carry alpha only.
 const COMPOSITION_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
+// The back buffer stays UNORM, but its render target view is created as the
+// sRGB member of the same family: that view is what makes the hardware encode
+// the linear shader result on store, exactly like the macOS
+// `BGRA8Unorm_sRGB` drawable. Without it the linear premultiplied output is
+// scanned out as if it were already sRGB-encoded, which darkens every midtone
+// (black and white are unaffected) and makes the two platforms disagree.
+const COMPOSITION_RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
 const MODEL_TEXTURE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+// Alpha-only coverage must stay linear; an sRGB view here would gamma-convert
+// the mask and double-apply the encode.
 const MASK_TEXTURE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 
 fn current_cursor_position() -> POINT {
@@ -747,7 +757,9 @@ impl Renderer {
             composition_device.Commit()?;
         }
         let back_buffer: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0)? };
-        let render_target = unsafe { create_render_target(&device, &back_buffer)? };
+        let render_target = unsafe {
+            create_render_target(&device, &back_buffer, COMPOSITION_RENDER_TARGET_FORMAT)?
+        };
         let staging_texture = unsafe { create_staging_texture(&device, &back_buffer)? };
         let pipelines = unsafe { create_pipelines(&device)? };
         let model = unsafe {
@@ -2673,7 +2685,7 @@ unsafe fn create_mask_target(
     let mut texture = None;
     unsafe { device.CreateTexture2D(&descriptor, None, Some(&mut texture))? };
     let texture = required(texture, "mask texture")?;
-    let render_target = unsafe { create_render_target(device, &texture)? };
+    let render_target = unsafe { create_render_target(device, &texture, MASK_TEXTURE_FORMAT)? };
     let mut shader_resource = None;
     unsafe { device.CreateShaderResourceView(&texture, None, Some(&mut shader_resource))? };
     Ok(MaskTarget {
@@ -2683,12 +2695,27 @@ unsafe fn create_mask_target(
     })
 }
 
+/// Create a render target view, possibly with a format the texture itself does
+/// not carry.
+///
+/// A view may name any format in the same family as the resource, which is how
+/// a UNORM flip-model back buffer still gets the hardware sRGB encode. The
+/// caller owns that pairing: a view format from an unrelated family fails here
+/// instead of rendering with the wrong semantics.
+/// `..Default::default()` zeroes the descriptor union, selecting its
+/// `Texture2D { MipSlice: 0 }` member.
 unsafe fn create_render_target(
     device: &ID3D11Device,
     texture: &ID3D11Texture2D,
+    format: DXGI_FORMAT,
 ) -> WindowsResult<ID3D11RenderTargetView> {
+    let descriptor = D3D11_RENDER_TARGET_VIEW_DESC {
+        Format: format,
+        ViewDimension: D3D11_RTV_DIMENSION_TEXTURE2D,
+        ..Default::default()
+    };
     let mut target = None;
-    unsafe { device.CreateRenderTargetView(texture, None, Some(&mut target))? };
+    unsafe { device.CreateRenderTargetView(texture, Some(&descriptor), Some(&mut target))? };
     required(target, "render target")
 }
 
@@ -2927,6 +2954,14 @@ mod tests {
     fn color_formats_decode_assets_and_encode_the_composited_frame_as_srgb() {
         assert_eq!(MODEL_TEXTURE_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
         assert_eq!(COMPOSITION_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM);
+        // The encode lives in the render target view, because a flip-model back
+        // buffer has no sRGB format. Dropping it here darkens every midtone
+        // instead of failing, so it is pinned rather than left to the caller.
+        assert_eq!(
+            COMPOSITION_RENDER_TARGET_FORMAT,
+            DXGI_FORMAT_B8G8R8A8_UNORM_SRGB
+        );
+        // Alpha-only coverage stays linear so the mask is not gamma-converted.
         assert_eq!(MASK_TEXTURE_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM);
     }
 

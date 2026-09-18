@@ -65,7 +65,9 @@ const SWITCH_SETTLE_FRAMES: u64 = 30;
 const PRESET_MODEL_IDS: [&str; 3] = ["standard", "keyboard", "gamepad"];
 // PNG RGBA payloads are encoded sRGB. Sampling and color blending therefore
 // happen in linear space, while the drawable encodes its premultiplied result
-// back to sRGB for the window compositor. Masks carry alpha only.
+// back to sRGB for the window compositor. Masks carry alpha only. The Windows
+// backend reaches the same contract through its `_SRGB` render target view, so
+// either side changing this format must keep the other in step.
 const COLOR_ATTACHMENT_FORMAT: MTLPixelFormat = MTLPixelFormat::BGRA8Unorm_sRGB;
 const MODEL_TEXTURE_FORMAT: MTLPixelFormat = MTLPixelFormat::RGBA8Unorm_sRGB;
 const MASK_TEXTURE_FORMAT: MTLPixelFormat = MTLPixelFormat::BGRA8Unorm;
