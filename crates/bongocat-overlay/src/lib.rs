@@ -53,6 +53,12 @@ const MIN_OVERLAY_WINDOW_DIMENSION: f32 = 64.0;
 /// inscribed ellipse; the legacy implementation scaled every larger radius back
 /// down to that same ellipse, so `50` is the effective ceiling rather than an
 /// arbitrary limit.
+///
+/// Gated with the native sessions for the same reason as [`hover`]: the only
+/// readers are the platform modules and the renderer payload they share, so an
+/// unguarded declaration would be dead code on the targets that cannot create
+/// an overlay.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) const MAXIMUM_CORNER_RADIUS_PERCENT: u8 = 50;
 
 /// Build the renderer's corner-radius uniform payload.
