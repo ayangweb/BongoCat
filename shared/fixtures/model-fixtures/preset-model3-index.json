@@ -553,7 +553,7 @@
       "right_keys": []
     },
     "package_file_count": 71,
-    "package_total_bytes": 1374411,
+    "package_total_bytes": 1378997,
     "unreferenced_files": [
       "exp_1.exp3.json",
       "exp_2.exp3.json"
@@ -1146,7 +1146,7 @@
       ]
     },
     "package_file_count": 75,
-    "package_total_bytes": 1369492,
+    "package_total_bytes": 1374095,
     "unreferenced_files": [
       "exp_1.exp3.json",
       "exp_2.exp3.json"
