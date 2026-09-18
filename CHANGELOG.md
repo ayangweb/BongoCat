@@ -20,6 +20,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - Improved the update experience with a dedicated update window, download progress, signature verification, Markdown release notes, installation and restart states, and retry support. If an update fails, the current version remains installed.
 - Added startup permission guidance when needed. On macOS, you can go directly to Input Monitoring settings; on Windows, BongoCat explains how administrator permissions affect global input. The model still starts when input permission is unavailable.
 - Models can draw F1 to F24 with their own `F1.png` to `F24.png` images. A function key whose dedicated image is missing falls back to the model's shared `Fn.png`, so a model that ships only `Fn.png` keeps the previous behavior.
+- The light and dark appearance choice now covers the native surfaces the operating system draws. The settings window's title bar follows the theme on both platforms; on macOS the app's alerts — including the startup permission prompt — its menus, the tray menu, and the open/save panels follow it too, and the model window's context menu is themed from the first launch. On Windows the window frame follows the theme, while its alerts, menus, and file dialogs keep following the system theme, which those surfaces cannot opt out of.
 
 ### ⚡️ Performance
 
