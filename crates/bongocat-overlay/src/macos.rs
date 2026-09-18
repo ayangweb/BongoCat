@@ -1395,7 +1395,15 @@ impl NativeOverlay {
         options: OverlaySessionOptions,
         bounds: Option<OverlayWindowBounds>,
     ) -> Result<Self, OverlayError> {
-        let bounds = bounds.filter(|bounds| overlay_bounds_visible(mtm, *bounds));
+        // A saved box that no longer touches any display is only restorable when
+        // the placement constraint can pull it back onto one. With the
+        // constraint enabled the correction below is what makes such a box
+        // usable, so the box is kept as the candidate and clamped; without it
+        // there is nothing to recover the window with, and restoring a box that
+        // no longer intersects a display would leave an unreachable window, so
+        // the window falls back to the cursor's display instead.
+        let bounds = bounds
+            .filter(|bounds| options.keep_inside_screen || overlay_bounds_visible(mtm, *bounds));
         let window_scale = f64::from(options.scale_percent) / 100.0;
         let (base_width, base_height) = default_overlay_window_dimensions(frame.snapshot.canvas);
         let window_width = bounds.map_or(f64::from(base_width) * window_scale, |bounds| {
