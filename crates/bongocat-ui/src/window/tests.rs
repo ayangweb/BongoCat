@@ -5,6 +5,27 @@ use crate::{
 };
 use gpui_kit::{Keystroke, Modifiers};
 
+/// A catalog entry for tests that do not care where the model lives.
+///
+/// Only the settings page reads `directory` and `cover`; every other assertion
+/// in this module is about identity, availability or actions, so those two stay
+/// unset unless the test is specifically about opening a location or showing a
+/// cover.
+fn model_entry(
+    id: &str,
+    origin: SettingsModelOrigin,
+    availability: SettingsModelAvailability,
+) -> SettingsModelEntry {
+    SettingsModelEntry {
+        id: id.to_owned(),
+        title: "untitled".to_owned(),
+        origin,
+        availability,
+        directory: None,
+        cover: None,
+    }
+}
+
 #[test]
 fn shutdown_flush_chains_each_patch_from_the_latest_confirmed_revision() {
     let mut current_revision = Some(7);
@@ -199,11 +220,10 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
         ],
     };
     let entries = vec![
-        SettingsModelEntry {
-            id: "standard".to_owned(),
-            title: "untitled".to_owned(),
-            origin: SettingsModelOrigin::Preset,
-            availability: SettingsModelAvailability::Ready {
+        model_entry(
+            "standard",
+            SettingsModelOrigin::Preset,
+            SettingsModelAvailability::Ready {
                 texture_count: 1,
                 expression_count: 1,
                 motion_count: 1,
@@ -217,12 +237,11 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
                     },
                 ],
             },
-        },
-        SettingsModelEntry {
-            id: "keyboard".to_owned(),
-            title: "untitled".to_owned(),
-            origin: SettingsModelOrigin::Preset,
-            availability: SettingsModelAvailability::Ready {
+        ),
+        model_entry(
+            "keyboard",
+            SettingsModelOrigin::Preset,
+            SettingsModelAvailability::Ready {
                 texture_count: 1,
                 expression_count: 1,
                 motion_count: 0,
@@ -230,7 +249,7 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
                     name: "ignored".to_owned(),
                 }],
             },
-        },
+        ),
     ];
     let targets = shortcut_targets(&shortcuts, Some(&active_model), &entries);
     assert_eq!(targets.len(), 7);
@@ -769,8 +788,7 @@ fn cancellation_requested_while_starting_reaches_the_created_operation() {
     assert!(!operation.is_cancelled());
     draft.apply_starting_cancellation(&operation);
     assert!(operation.is_cancelled());
-    let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
-    assert!(!failed);
+    let status = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
     assert_eq!(status, "Cancelling import...");
 }
 
@@ -806,8 +824,7 @@ fn model_catalog_and_import_statuses_cover_loading_empty_error_and_cancellation(
         state: ModelImportState::Cancelled,
         ..ModelImportDraft::default()
     };
-    let (status, failed) = model_import_status(&cancelled, SettingsLanguage::ChineseSimplified);
-    assert!(!failed);
+    let status = model_import_status(&cancelled, SettingsLanguage::ChineseSimplified);
     assert_eq!(status, "已取消导入");
 }
 
@@ -880,17 +897,16 @@ fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states(
     assert_eq!(unavailable.value.as_deref(), Some("模型列表不可用"));
 
     let available = SettingsModelCatalog {
-        entries: vec![SettingsModelEntry {
-            id: "preset".to_owned(),
-            title: "untitled".to_owned(),
-            origin: SettingsModelOrigin::Preset,
-            availability: SettingsModelAvailability::Ready {
+        entries: vec![model_entry(
+            "preset",
+            SettingsModelOrigin::Preset,
+            SettingsModelAvailability::Ready {
                 texture_count: 1,
                 expression_count: 0,
                 motion_count: 0,
                 behaviors: Vec::new(),
             },
-        }],
+        )],
         ..SettingsModelCatalog::default()
     };
     assert!(
@@ -903,35 +919,45 @@ fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states(
 }
 
 #[test]
-fn picker_status_never_contains_the_selected_path() {
+fn picker_and_import_statuses_never_contain_the_selected_path() {
     let mut draft = ModelImportDraft {
         title: "custom-model".to_owned(),
         source_root: Some(PathBuf::from("/private/secret/model")),
         state: ModelImportState::PickerCancelled,
         ..ModelImportDraft::default()
     };
-    let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
-    assert!(!failed);
+    let status = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
     assert_eq!(status, "Selection cancelled; previous selection retained");
     assert!(!status.contains("private"));
 
-    draft.state = ModelImportState::PickerFailed(ModelSourcePickerError::SelectionInvalid);
-    let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
-    assert!(failed);
-    assert_eq!(status, "Selected folder is unavailable");
+    // A failed dialog is reported by notification, so the inline status keeps
+    // describing the selection that is still in effect instead of restating the
+    // failure a second time.
+    draft.state = ModelImportState::PickerFailed;
+    let status = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
+    assert_eq!(status, "Folder selected");
     assert!(!status.contains("secret"));
 
     // An archive source reports the archive's own wording, so the page never
     // claims a folder was chosen when the user chose a `.zip`.
     draft.source_kind = ModelSourceKind::Archive;
-    let (status, failed) = model_import_status(&draft, SettingsLanguage::ChineseSimplified);
-    assert!(failed);
-    assert_eq!(status, "所选压缩包不可用");
+    let status = model_import_status(&draft, SettingsLanguage::ChineseSimplified);
+    assert_eq!(status, "已选择压缩包");
 
     draft.state = ModelImportState::Ready;
-    let (status, failed) = model_import_status(&draft, SettingsLanguage::ChineseSimplified);
-    assert!(!failed);
+    let status = model_import_status(&draft, SettingsLanguage::ChineseSimplified);
     assert_eq!(status, "已选择压缩包");
+
+    // With nothing selected yet the same failure falls back to the neutral
+    // "nothing chosen" wording.
+    let empty = ModelImportDraft {
+        state: ModelImportState::PickerFailed,
+        ..ModelImportDraft::default()
+    };
+    assert_eq!(
+        model_import_status(&empty, SettingsLanguage::EnglishUnitedStates),
+        "No folder selected"
+    );
 }
 
 #[test]
@@ -945,16 +971,14 @@ fn picker_open_state_blocks_conflicting_import_actions() {
 
     assert!(draft.is_picker_open());
     assert!(!draft.can_import());
-    let (status, failed) = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
-    assert!(!failed);
+    let status = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
     assert_eq!(status, "Choosing folder...");
 
     let archive = ModelImportDraft {
         source_kind: ModelSourceKind::Archive,
         ..draft
     };
-    let (status, failed) = model_import_status(&archive, SettingsLanguage::EnglishUnitedStates);
-    assert!(!failed);
+    let status = model_import_status(&archive, SettingsLanguage::EnglishUnitedStates);
     assert_eq!(status, "Choosing archive...");
 }
 
@@ -979,29 +1003,23 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
         motion_count: 0,
         behaviors: Vec::new(),
     };
-    let preset = SettingsModelEntry {
-        id: "duplicate".to_owned(),
-        title: "untitled".to_owned(),
-        origin: SettingsModelOrigin::Preset,
-        availability: ready.clone(),
-    };
-    let installed = SettingsModelEntry {
-        id: "duplicate".to_owned(),
-        title: "untitled".to_owned(),
-        origin: SettingsModelOrigin::Installed,
-        availability: ready,
-    };
+    let preset = model_entry("duplicate", SettingsModelOrigin::Preset, ready.clone());
+    let installed = model_entry("duplicate", SettingsModelOrigin::Installed, ready);
     let active_preset = SettingsModelKey {
         id: "duplicate".to_owned(),
         origin: SettingsModelOrigin::Preset,
     };
 
+    // A preset is app-bundled content: it can be activated but never deleted or
+    // edited, whichever model the user is on.
     assert_eq!(
         model_row_actions(&preset, Some(&active_preset), false),
         ModelRowActions {
             active: true,
             can_activate: false,
             can_delete: false,
+            can_edit: false,
+            can_open_location: false,
         }
     );
     assert_eq!(
@@ -1010,6 +1028,25 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
             active: false,
             can_activate: true,
             can_delete: true,
+            can_edit: true,
+            can_open_location: false,
+        }
+    );
+
+    // "Open location" needs a directory that actually resolved, so an entry
+    // whose files are gone offers no button instead of a dead one.
+    let located = SettingsModelEntry {
+        directory: Some(PathBuf::from("/private/models/duplicate")),
+        ..installed.clone()
+    };
+    assert_eq!(
+        model_row_actions(&located, Some(&active_preset), false),
+        ModelRowActions {
+            active: false,
+            can_activate: true,
+            can_delete: true,
+            can_edit: true,
+            can_open_location: true,
         }
     );
 
@@ -1025,6 +1062,8 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
             active: false,
             can_activate: false,
             can_delete: true,
+            can_edit: true,
+            can_open_location: false,
         }
     );
     assert_eq!(
@@ -1033,6 +1072,8 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
             active: false,
             can_activate: false,
             can_delete: false,
+            can_edit: false,
+            can_open_location: false,
         }
     );
     assert!(model_delete_confirmation_is_valid(
@@ -1051,11 +1092,7 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
 }
 
 #[test]
-fn model_behavior_preview_keys_are_scoped_to_model_and_behavior_identity() {
-    let model = SettingsModelKey {
-        id: "standard".to_owned(),
-        origin: SettingsModelOrigin::Preset,
-    };
+fn behavior_targets_stay_scoped_to_model_and_behavior_identity() {
     let motion = SettingsModelBehavior::Motion {
         group: "CAT_motion".to_owned(),
         index: 0,
@@ -1063,21 +1100,51 @@ fn model_behavior_preview_keys_are_scoped_to_model_and_behavior_identity() {
     let expression = SettingsModelBehavior::Expression {
         name: "live2d_expression0.exp3.json".to_owned(),
     };
-
-    assert_ne!(
-        ModelBehaviorKey::new(&model, &motion),
-        ModelBehaviorKey::new(&model, &expression)
-    );
-    assert_ne!(
-        ModelBehaviorKey::new(&model, &motion),
-        ModelBehaviorKey::new(
-            &SettingsModelKey {
-                id: "keyboard".to_owned(),
-                origin: SettingsModelOrigin::Preset,
+    let entries = vec![
+        model_entry(
+            "standard",
+            SettingsModelOrigin::Preset,
+            SettingsModelAvailability::Ready {
+                texture_count: 1,
+                expression_count: 1,
+                motion_count: 1,
+                behaviors: vec![motion.clone(), expression],
             },
-            &motion,
+        ),
+        model_entry(
+            "keyboard",
+            SettingsModelOrigin::Preset,
+            SettingsModelAvailability::Ready {
+                texture_count: 1,
+                expression_count: 0,
+                motion_count: 1,
+                behaviors: vec![motion],
+            },
+        ),
+    ];
+    // Behavior identity now lives with the shortcut rows the page that owns them
+    // renders, so this is where "a motion and an expression are different
+    // targets, and the same motion on two models is two targets" has to hold.
+    let targets = |id: &str| {
+        shortcut_behavior_rows(
+            &SettingsShortcuts::default(),
+            Some(&SettingsModelKey {
+                id: id.to_owned(),
+                origin: SettingsModelOrigin::Preset,
+            }),
+            &entries,
         )
-    );
+        .into_iter()
+        .map(|row| row.target)
+        .collect::<Vec<_>>()
+    };
+
+    let standard = targets("standard");
+    let keyboard = targets("keyboard");
+    assert_eq!(standard.len(), 2);
+    assert_ne!(standard[0], standard[1]);
+    assert_eq!(keyboard.len(), 1);
+    assert_ne!(keyboard[0], standard[0]);
 }
 
 #[test]
@@ -1091,22 +1158,20 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
         index: 0,
     };
     let entries = vec![
-        SettingsModelEntry {
-            id: "standard".to_owned(),
-            title: "untitled".to_owned(),
-            origin: SettingsModelOrigin::Preset,
-            availability: SettingsModelAvailability::Ready {
+        model_entry(
+            "standard",
+            SettingsModelOrigin::Preset,
+            SettingsModelAvailability::Ready {
                 texture_count: 1,
                 expression_count: 0,
                 motion_count: 1,
                 behaviors: vec![behavior.clone()],
             },
-        },
-        SettingsModelEntry {
-            id: "keyboard".to_owned(),
-            title: "untitled".to_owned(),
-            origin: SettingsModelOrigin::Preset,
-            availability: SettingsModelAvailability::Ready {
+        ),
+        model_entry(
+            "keyboard",
+            SettingsModelOrigin::Preset,
+            SettingsModelAvailability::Ready {
                 texture_count: 1,
                 expression_count: 1,
                 motion_count: 0,
@@ -1114,26 +1179,27 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
                     name: "inactive".to_owned(),
                 }],
             },
-        },
+        ),
     ];
 
+    // The page no longer previews behaviors: the shortcuts page owns that list,
+    // so the targets are only reached through the shortcut rows it renders.
     assert_eq!(
-        super::model_actions::active_model_behavior_targets(&entries, Some(&active)),
-        vec![(active, behavior)]
+        shortcut_behavior_rows(&SettingsShortcuts::default(), Some(&active), &entries).len(),
+        1
     );
-    assert!(super::model_actions::active_model_behavior_targets(&entries, None).is_empty());
+    assert!(shortcut_behavior_rows(&SettingsShortcuts::default(), None, &entries).is_empty());
 }
 
 #[test]
 fn invalid_model_status_is_stable_and_path_free() {
-    let entry = SettingsModelEntry {
-        id: "private-model".to_owned(),
-        title: "untitled".to_owned(),
-        origin: SettingsModelOrigin::Installed,
-        availability: SettingsModelAvailability::Invalid {
+    let entry = model_entry(
+        "private-model",
+        SettingsModelOrigin::Installed,
+        SettingsModelAvailability::Invalid {
             diagnostic: SettingsModelDiagnostic::ModelReferenceSymlinkEscape,
         },
-    };
+    );
     let status = model_availability_status(&entry, false, SettingsLanguage::EnglishUnitedStates);
     assert_eq!(status, "Installed · Package layout is invalid");
     assert!(!status.contains("private-model"));
@@ -1142,30 +1208,28 @@ fn invalid_model_status_is_stable_and_path_free() {
 
 #[test]
 fn model_presentations_follow_the_resolved_language() {
-    let ready = SettingsModelEntry {
-        id: "preset-model".to_owned(),
-        title: "untitled".to_owned(),
-        origin: SettingsModelOrigin::Preset,
-        availability: SettingsModelAvailability::Ready {
+    let ready = model_entry(
+        "preset-model",
+        SettingsModelOrigin::Preset,
+        SettingsModelAvailability::Ready {
             texture_count: 2,
             expression_count: 3,
             motion_count: 4,
             behaviors: Vec::new(),
         },
-    };
+    );
     assert_eq!(
         model_availability_status(&ready, true, SettingsLanguage::ChineseSimplified),
         "预置 · 当前使用 · 2 个纹理 · 3 个表情 · 4 个动作"
     );
 
-    let invalid = SettingsModelEntry {
-        id: "installed-model".to_owned(),
-        title: "untitled".to_owned(),
-        origin: SettingsModelOrigin::Installed,
-        availability: SettingsModelAvailability::Invalid {
+    let invalid = model_entry(
+        "installed-model",
+        SettingsModelOrigin::Installed,
+        SettingsModelAvailability::Invalid {
             diagnostic: SettingsModelDiagnostic::ModelTextureMissing,
         },
-    };
+    );
     let invalid_status =
         model_availability_status(&invalid, false, SettingsLanguage::ChineseSimplified);
     assert_eq!(invalid_status, "已安装 · 纹理无效");
@@ -1174,25 +1238,26 @@ fn model_presentations_follow_the_resolved_language() {
         "已安装 · 纹理无效 · 确认删除"
     );
 
-    let (import_status, failed) = model_import_status(
+    let import_status = model_import_status(
         &ModelImportDraft::default(),
         SettingsLanguage::ChineseSimplified,
     );
-    assert!(!failed);
     assert_eq!(import_status, "尚未选择文件夹");
     assert_eq!(
         model_import_progress(SettingsLanguage::ChineseSimplified, "正在复制", 5, 1024),
         "正在复制 · 5 个文件 · 1024 字节"
     );
 
+    // A failed import reports itself through a notification only, so the tag
+    // has nothing left to say rather than a second copy of the same error.
     let failed_import = ModelImportDraft {
-        state: ModelImportState::Failed(SettingsError::new(SettingsErrorCode::ModelImportFailed)),
+        state: ModelImportState::Failed,
         ..ModelImportDraft::default()
     };
-    let (failed_status, failed) =
-        model_import_status(&failed_import, SettingsLanguage::ChineseSimplified);
-    assert!(failed);
-    assert_eq!(failed_status, "无法导入模型");
+    assert_eq!(
+        model_import_status(&failed_import, SettingsLanguage::ChineseSimplified),
+        ""
+    );
 }
 
 #[test]
@@ -1201,16 +1266,22 @@ fn model_delete_confirmation_tab_order_matches_visual_order() {
         model_row_action_tab_indices(40, false),
         ModelRowActionTabIndices {
             activate: 40,
-            delete: 41,
-            cancel_delete: 42,
+            open_location: 41,
+            edit: 42,
+            delete: 43,
+            cancel_delete: 44,
         }
     );
+    // Confirming hides the leaving actions, so the two remaining controls close
+    // the gap rather than keeping indices for buttons that are not rendered.
     assert_eq!(
         model_row_action_tab_indices(40, true),
         ModelRowActionTabIndices {
             activate: 40,
-            cancel_delete: 41,
-            delete: 42,
+            open_location: 41,
+            edit: 42,
+            delete: 41,
+            cancel_delete: 42,
         }
     );
 }

@@ -1007,6 +1007,10 @@ impl Render for SettingsView {
                 }),
         ]);
 
+        // The page shell already carries the title and description, and the
+        // model list is one flat grid, so the group and item render without
+        // their own labels — labelling each nesting level is what turned this
+        // page into stacked boxes in the first place.
         let models_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.models.title",
@@ -1015,35 +1019,18 @@ impl Render for SettingsView {
             language.catalog_locale(),
             "navigation.models.description",
         ))
-        .group(
-            SettingGroup::new()
-                .title(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "models.catalog.title",
-                ))
-                .item(
-                    SettingItem::new(
-                        bongocat_i18n::text(language.catalog_locale(), "models.installed.title"),
-                        SettingField::element({
-                            let view = view_entity.clone();
-                            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
-                                let snapshot = view.read(app).snapshot.clone();
-                                let tokens = Tokens::from_theme(app);
-                                view.update(app, move |view, cx| {
-                                    view.page = SettingsPage::Models;
-                                    models::content(view, window, cx, snapshot.as_ref(), tokens)
-                                })
-                                .into_any_element()
-                            }
-                        }),
-                    )
-                    .layout(Axis::Vertical)
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "models.installed.description",
-                    )),
-                ),
-        );
+        .group(SettingGroup::new().item(SettingItem::render({
+            let view = view_entity.clone();
+            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                let snapshot = view.read(app).snapshot.clone();
+                let tokens = Tokens::from_theme(app);
+                view.update(app, move |view, cx| {
+                    view.page = SettingsPage::Models;
+                    models::content(view, window, cx, snapshot.as_ref(), tokens)
+                })
+                .into_any_element()
+            }
+        })));
 
         let shortcuts_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),

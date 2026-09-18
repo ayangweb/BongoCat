@@ -78,19 +78,11 @@
   },
   "models": {
     "catalog": {
-      "title": "模型目录",
       "loading": "正在加载模型...",
       "unavailable": "模型列表不可用",
       "empty": "没有可用模型",
-      "activating": "正在启用模型...",
-      "deleting": "正在删除模型...",
-      "refreshing": "正在刷新模型...",
       "load_failed": "无法加载模型列表",
       "available": "可用模型"
-    },
-    "installed": {
-      "title": "已安装模型",
-      "description": "导入模型文件夹或压缩包，然后选择当前使用的模型。"
     },
     "identity": {
       "title": "模型名称",
@@ -103,8 +95,20 @@
         "unavailable": "不可用"
       }
     },
+    "card": {
+      "cover_missing": "暂无封面"
+    },
+    "edit": {
+      "cover": {
+        "choose": "选择封面图",
+        "replace": "更换封面"
+      }
+    },
     "actions": {
       "activate": "启用",
+      "edit": "编辑",
+      "open_location": "打开模型位置",
+      "save": "保存",
       "delete": "删除",
       "confirm_deletion": "确认删除"
     },
@@ -120,21 +124,16 @@
       "folder": {
         "none_selected": "尚未选择文件夹",
         "selected": "已选择文件夹",
-        "choosing": "正在选择文件夹...",
-        "selected_unavailable": "所选文件夹不可用",
-        "picker_unavailable": "文件夹选择器不可用"
+        "choosing": "正在选择文件夹..."
       },
       "archive": {
         "none_selected": "尚未选择压缩包",
         "selected": "已选择压缩包",
-        "choosing": "正在选择压缩包...",
-        "selected_unavailable": "所选压缩包不可用",
-        "picker_unavailable": "压缩包选择器不可用"
+        "choosing": "正在选择压缩包..."
       },
       "picker": {
         "cancelled": "已取消选择",
-        "cancelled_previous_retained": "已取消选择；保留之前的选择",
-        "requires_ui_thread": "模型来源选择器必须在 UI 线程运行"
+        "cancelled_previous_retained": "已取消选择；保留之前的选择"
       },
       "progress": {
         "cancelling": "正在取消导入...",
@@ -152,7 +151,8 @@
         "choose_archive": "选择压缩包",
         "choosing": "选择中...",
         "import": "导入"
-      }
+      },
+      "title": "导入模型"
     },
     "legacy": {
       "mode": {
@@ -162,12 +162,7 @@
       }
     },
     "behaviors": {
-      "title": "模型行为",
-      "empty": "没有声明的行为",
-      "motion": "动作",
-      "expression": "表情",
-      "preview": "预览",
-      "previewing": "正在预览行为..."
+      "empty": "没有声明的行为"
     },
     "summary": {
       "active": "%{origin} · %{active} · %{texture_count} 个纹理 · %{expression_count} 个表情 · %{motion_count} 个动作",
@@ -426,8 +421,12 @@
       "configuration_recovery_failed": "无法恢复默认配置",
       "model_unavailable": "所选模型不可用",
       "model_switch_failed": "无法启用所选模型",
-      "model_behavior_preview_unavailable": "所选行为不适用于当前模型",
-      "model_behavior_preview_failed": "无法预览所选行为",
+      "model_title_invalid": "模型名称不可用",
+      "preset_model_metadata_immutable": "内置模型的名称和封面不可修改",
+      "model_cover_invalid": "封面图必须是 PNG 文件",
+      "model_cover_update_failed": "模型封面更新失败",
+      "model_source_picker_unavailable": "无法打开文件选择窗口",
+      "model_location_open_failed": "无法打开模型所在位置",
       "invalid_model_id": "模型 ID 无效",
       "model_already_installed": "该模型 ID 已安装",
       "model_import_invalid_package": "模型包无效",

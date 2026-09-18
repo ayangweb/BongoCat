@@ -48,7 +48,7 @@ use std::fs;
 use std::{
     collections::BTreeMap,
     fmt,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -196,6 +196,7 @@ impl ApplicationSettingsService {
             },
             backup_location,
             diagnostics_export,
+            Arc::new(SystemModelLocation),
             shortcut_receiver,
             shortcut_signals,
         )
@@ -217,17 +218,47 @@ impl ApplicationSettingsService {
             },
             backup_location,
             diagnostics_export,
+            Arc::new(UnavailableModelLocation),
             None,
             None,
         )
     }
 
+    /// Like `start_with_capabilities`, but with a model-location recorder, for
+    /// the one test that asserts "open model folder" without launching a real
+    /// file manager.
+    #[cfg(test)]
+    fn start_with_model_location(
+        application: Application,
+        model_location: Arc<dyn ModelLocationCapability>,
+    ) -> Result<Self, SettingsServiceJoinError> {
+        Self::start_with_capabilities_and_shortcuts(
+            application,
+            Arc::new(SystemStartupItem),
+            VisibilityCapabilities {
+                status_icon: Arc::new(UnavailableStatusIcon),
+                taskbar_icon: Arc::new(UnavailableTaskbarIcon),
+            },
+            Arc::new(SystemBackupLocation {
+                path: PathBuf::new(),
+            }),
+            Arc::new(SystemDiagnosticsExport {
+                path: PathBuf::new(),
+            }),
+            model_location,
+            None,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn start_with_capabilities_and_shortcuts(
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
         visibility: VisibilityCapabilities,
         backup_location: Arc<dyn BackupLocationCapability>,
         diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
+        model_location: Arc<dyn ModelLocationCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
         shortcut_signals: Option<ApplicationShortcutSignals>,
     ) -> Result<Self, SettingsServiceJoinError> {
@@ -248,6 +279,7 @@ impl ApplicationSettingsService {
                     visibility,
                     backup_location,
                     diagnostics_export,
+                    model_location,
                     worker_window_state,
                 )
             })
@@ -341,6 +373,15 @@ trait BackupLocationCapability: Send + Sync + 'static {
     fn open(&self) -> Result<(), SettingsError>;
 }
 
+/// Opening a model's own folder in the system file manager.
+///
+/// The same seam the configuration backup folder uses: a unit test must be able
+/// to assert the outcome of "open model folder" without actually launching a
+/// window manager, so the system call sits behind a capability.
+trait ModelLocationCapability: Send + Sync + 'static {
+    fn open(&self, path: &Path) -> Result<(), SettingsError>;
+}
+
 trait DiagnosticsExportCapability: Send + Sync + 'static {
     fn export(
         &self,
@@ -360,6 +401,13 @@ struct UnavailableTaskbarIcon;
 struct SystemBackupLocation {
     path: PathBuf,
 }
+
+struct SystemModelLocation;
+
+/// The test seam for a file manager that is not there. Refusing is a real
+/// outcome the page reports, and it keeps a test from opening a real window.
+#[cfg(test)]
+struct UnavailableModelLocation;
 
 struct SystemDiagnosticsExport {
     path: PathBuf,
@@ -394,6 +442,21 @@ impl TaskbarIconCapability for UnavailableTaskbarIcon {
 impl BackupLocationCapability for SystemBackupLocation {
     fn open(&self) -> Result<(), SettingsError> {
         system_open_backup_location(&self.path)
+    }
+}
+
+impl ModelLocationCapability for SystemModelLocation {
+    fn open(&self, path: &Path) -> Result<(), SettingsError> {
+        system_open_model_location(path)
+    }
+}
+
+#[cfg(test)]
+impl ModelLocationCapability for UnavailableModelLocation {
+    fn open(&self, _path: &Path) -> Result<(), SettingsError> {
+        Err(SettingsError::new(
+            SettingsErrorCode::ModelLocationOpenFailed,
+        ))
     }
 }
 
@@ -436,6 +499,7 @@ impl fmt::Display for SettingsServiceJoinError {
 
 impl std::error::Error for SettingsServiceJoinError {}
 
+#[allow(clippy::too_many_arguments)]
 fn run_service(
     mut application: Application,
     endpoint: SettingsServiceEndpoint,
@@ -443,6 +507,7 @@ fn run_service(
     visibility: VisibilityCapabilities,
     backup_location: Arc<dyn BackupLocationCapability>,
     diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
+    model_location: Arc<dyn ModelLocationCapability>,
     window_state: SettingsWindowState,
 ) {
     let mut clock = SettingsSnapshotClock::new(application.config_revision());
@@ -896,15 +961,53 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
-            SettingsCommand::PreviewModelBehavior {
+            SettingsCommand::SetModelTitle {
+                expected_config_revision,
                 model,
-                behavior,
+                title,
                 reply,
             } => {
                 let result = require_operational(&application)
                     .map_err(map_application_error)
-                    .and_then(|()| preview_model_behavior(&application, &model, behavior))
-                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                    .and_then(|()| {
+                        if application.config_revision() != Some(expected_config_revision) {
+                            return Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated));
+                        }
+                        application
+                            .set_model_title(model_origin(model.origin), model.id, title)
+                            .map_err(map_model_metadata_error)
+                    })
+                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetModelCover {
+                model,
+                source,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        application
+                            .set_model_cover(model_origin(model.origin), model.id, source)
+                            .map(|_| ())
+                            .map_err(map_model_cover_error)
+                    })
+                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::OpenModelLocation { model, reply } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        let directory = application
+                            .model_directory(model_origin(model.origin), &model.id)
+                            .ok_or_else(|| {
+                                SettingsError::new(SettingsErrorCode::ModelLocationOpenFailed)
+                            })?;
+                        model_location.open(&directory)
+                    })
+                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
             SettingsCommand::ImportModel {
@@ -1049,6 +1152,18 @@ fn system_open_backup_location(path: &std::path::Path) -> Result<(), SettingsErr
 fn system_open_backup_location(_path: &std::path::Path) -> Result<(), SettingsError> {
     Err(SettingsError::new(
         SettingsErrorCode::BackupLocationOpenFailed,
+    ))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn system_open_model_location(path: &std::path::Path) -> Result<(), SettingsError> {
+    open_directory(path).map_err(|_| SettingsError::new(SettingsErrorCode::ModelLocationOpenFailed))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn system_open_model_location(_path: &std::path::Path) -> Result<(), SettingsError> {
+    Err(SettingsError::new(
+        SettingsErrorCode::ModelLocationOpenFailed,
     ))
 }
 
@@ -1572,7 +1687,7 @@ fn settings_model_catalog(application: &Application) -> SettingsModelCatalog {
         Ok(entries) => SettingsModelCatalog {
             entries: entries
                 .into_iter()
-                .map(|entry| settings_model_entry(entry, &titles))
+                .map(|entry| settings_model_entry(application, entry, &titles))
                 .collect(),
             error: None,
         },
@@ -1610,11 +1725,13 @@ const fn model_origin(origin: SettingsModelOrigin) -> ModelOrigin {
 }
 
 fn settings_model_entry(
+    application: &Application,
     entry: ModelCatalogEntry,
     installed_titles: &BTreeMap<&str, &str>,
 ) -> SettingsModelEntry {
     let id = entry.id().as_str().to_owned();
-    let origin = match entry.origin() {
+    let model_origin = entry.origin();
+    let origin = match model_origin {
         ModelOrigin::Preset => SettingsModelOrigin::Preset,
         ModelOrigin::Installed => SettingsModelOrigin::Installed,
     };
@@ -1639,11 +1756,21 @@ fn settings_model_entry(
             diagnostic: settings_model_diagnostic(code),
         },
     };
+    // The directory and the cover are read here rather than in the page: the
+    // page only ever displays a path, and a package that ships no cover is
+    // reported as `None` instead of a path that does not resolve.
+    let directory = application.model_directory(model_origin, &id);
+    let cover = directory.as_ref().and_then(|root| {
+        let cover = bongocat_model::package_cover_path(root);
+        cover.is_file().then_some(cover)
+    });
     SettingsModelEntry {
         id,
         title,
         origin,
         availability,
+        directory,
+        cover,
     }
 }
 
@@ -1654,29 +1781,6 @@ fn settings_model_behavior(behavior: ModelBehaviorSnapshot) -> SettingsModelBeha
         }
         ModelBehaviorSnapshot::Expression { name } => SettingsModelBehavior::Expression { name },
     }
-}
-
-fn preview_model_behavior(
-    application: &Application,
-    model: &SettingsModelKey,
-    behavior: SettingsModelBehavior,
-) -> Result<(), SettingsError> {
-    let runtime = application.runtime_client().snapshot();
-    let active_matches = runtime.active_model.is_some_and(|active| {
-        active.id.as_str() == model.id
-            && application.active_model_origin() == Some(model_origin(model.origin))
-    });
-    if !active_matches {
-        return Err(SettingsError::new(
-            SettingsErrorCode::ModelBehaviorPreviewUnavailable,
-        ));
-    }
-
-    let result = match behavior {
-        SettingsModelBehavior::Motion { group, index } => application.preview_motion(group, index),
-        SettingsModelBehavior::Expression { name } => application.set_expression(name),
-    };
-    result.map(|_| ()).map_err(map_preview_error)
 }
 
 #[derive(Serialize)]
@@ -2182,17 +2286,40 @@ fn map_application_error(error: ApplicationError) -> SettingsError {
     SettingsError::new(code)
 }
 
-fn map_preview_error(error: ApplicationError) -> SettingsError {
-    match error {
-        ApplicationError::MotionId(_)
-        | ApplicationError::ExpressionId(_)
-        | ApplicationError::RuntimeCommand(_)
-        | ApplicationError::RuntimeCommandFailed(_)
-        | ApplicationError::RuntimeDidNotPublish => {
-            SettingsError::new(SettingsErrorCode::ModelBehaviorPreviewFailed)
+/// Map a rename failure to its own code.
+///
+/// The three outcomes a user can act on differently — a name the configuration
+/// will not accept, a model whose metadata is app-bundled, and a model that is
+/// no longer on disk — each get their own code instead of collapsing into the
+/// generic settings failure.
+fn map_model_metadata_error(error: ApplicationError) -> SettingsError {
+    let code = match error {
+        ApplicationError::Model(error) if error.code == ModelDiagnostic::InvalidModelId => {
+            SettingsErrorCode::InvalidModelId
         }
-        other => map_application_error(other),
-    }
+        ApplicationError::PresetModelMetadata(_) => SettingsErrorCode::PresetModelMetadataImmutable,
+        ApplicationError::ModelTitleInvalid => SettingsErrorCode::ModelTitleInvalid,
+        ApplicationError::ModelNotInstalled(_) => SettingsErrorCode::ModelNotInstalled,
+        error => return map_application_error(error),
+    };
+    SettingsError::new(code)
+}
+
+fn map_model_cover_error(error: ApplicationError) -> SettingsError {
+    let code = match error {
+        ApplicationError::Model(error) if error.code == ModelDiagnostic::InvalidModelId => {
+            SettingsErrorCode::InvalidModelId
+        }
+        ApplicationError::PresetModelMetadata(_) => SettingsErrorCode::PresetModelMetadataImmutable,
+        ApplicationError::ModelCoverInvalid => SettingsErrorCode::ModelCoverInvalid,
+        ApplicationError::ModelNotInstalled(_) => SettingsErrorCode::ModelNotInstalled,
+        ApplicationError::ModelStore(error) if error.code == ModelStoreDiagnostic::NotFound => {
+            SettingsErrorCode::ModelNotInstalled
+        }
+        ApplicationError::ModelStore(_) => SettingsErrorCode::ModelCoverUpdateFailed,
+        error => return map_application_error(error),
+    };
+    SettingsError::new(code)
 }
 
 fn map_configuration_recovery_error(error: ApplicationError) -> SettingsError {
@@ -2480,6 +2607,43 @@ mod tests {
         }
     }
 
+    struct TestModelLocation {
+        opened: Mutex<Vec<PathBuf>>,
+        fail: AtomicBool,
+    }
+
+    impl TestModelLocation {
+        fn new() -> Self {
+            Self {
+                opened: Mutex::new(Vec::new()),
+                fail: AtomicBool::new(false),
+            }
+        }
+
+        fn opened(&self) -> Vec<PathBuf> {
+            self.opened
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+    }
+
+    impl ModelLocationCapability for TestModelLocation {
+        fn open(&self, path: &Path) -> Result<(), SettingsError> {
+            self.opened
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(path.to_owned());
+            if self.fail.load(Ordering::Acquire) {
+                Err(SettingsError::new(
+                    SettingsErrorCode::ModelLocationOpenFailed,
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
     struct TestDiagnosticsExport;
 
     impl DiagnosticsExportCapability for TestDiagnosticsExport {
@@ -2612,6 +2776,10 @@ mod tests {
                             motion_count: 0,
                             behaviors: Vec::new(),
                         },
+                        // The exported document is counts and codes only, so
+                        // these page-facing paths must not reach it.
+                        directory: Some(PathBuf::from("/private/secret/model")),
+                        cover: Some(PathBuf::from("/private/secret/model/resources/cover.png")),
                     },
                     SettingsModelEntry {
                         id: "broken-private-model".to_owned(),
@@ -2620,6 +2788,8 @@ mod tests {
                         availability: SettingsModelAvailability::Invalid {
                             diagnostic: SettingsModelDiagnostic::ModelJsonInvalid,
                         },
+                        directory: None,
+                        cover: None,
                     },
                 ],
                 error: None,
@@ -4064,30 +4234,15 @@ mod tests {
         assert!(behaviors.contains(&SettingsModelBehavior::Expression {
             name: "live2d_expression0.exp3.json".to_owned(),
         }));
-        let preview_error = client
-            .preview_model_behavior_blocking(
-                SettingsModelKey {
-                    id: "keyboard".to_owned(),
-                    origin: SettingsModelOrigin::Preset,
-                },
-                SettingsModelBehavior::Motion {
-                    group: "CAT_motion".to_owned(),
-                    index: 0,
-                },
-            )
-            .expect_err("inactive model behavior preview must be rejected");
-        assert_eq!(
-            preview_error.code(),
-            SettingsErrorCode::ModelBehaviorPreviewUnavailable
+        // Every preset ships its own folder and cover, so the catalog the page
+        // renders has a real image and a real "open folder" target to work with.
+        assert!(
+            standard
+                .directory
+                .as_ref()
+                .is_some_and(|path| path.is_dir())
         );
-        assert_eq!(
-            client
-                .read_snapshot_blocking()
-                .expect("snapshot after rejected preview")
-                .config_revision,
-            initial.config_revision,
-            "preview must never persist configuration"
-        );
+        assert!(standard.cover.as_ref().is_some_and(|path| path.is_file()));
         let selected = client
             .select_model_blocking(
                 initial_config_revision,
@@ -4584,6 +4739,201 @@ mod tests {
                 .code(),
             SettingsErrorCode::ServiceUnavailable
         );
+    }
+
+    #[test]
+    fn service_renames_and_recovers_an_installed_models_title_and_cover() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let models_root = layout.models.clone();
+        let config_path = layout.config.clone();
+        let application = Application::start_with_layout(layout).expect("application start");
+        // The store canonicalizes its own root, and on macOS `$TMPDIR` resolves
+        // through `/private`, so the expected paths are canonical too. The root
+        // only exists once the application has created it.
+        let canonical_models_root = models_root.canonicalize().expect("canonical models root");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+
+        let imported = client
+            .import_model_blocking(SettingsModelImportRequest {
+                title: "原始名称".to_owned(),
+                source_root: model_fixture(),
+            })
+            .expect("import model");
+        let revision = imported.config_revision.expect("config revision");
+        let entry = imported
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .expect("installed entry")
+            .clone();
+        let key = SettingsModelKey {
+            id: entry.id.clone(),
+            origin: SettingsModelOrigin::Installed,
+        };
+        // The page needs the package directory and, since this fixture ships no
+        // cover, must be told there is none rather than guessing a path.
+        assert_eq!(entry.directory, Some(canonical_models_root.join(&entry.id)));
+        assert_eq!(entry.cover, None);
+
+        let renamed = client
+            .set_model_title_blocking(revision, key.clone(), "我的猫".to_owned())
+            .expect("rename model");
+        let renamed_entry = renamed
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == entry.id && entry.origin == key.origin)
+            .expect("renamed entry");
+        assert_eq!(renamed_entry.title, "我的猫");
+        // The title is configuration metadata, so it survives as configuration
+        // rather than living only in the snapshot the page happens to hold.
+        let persisted = std::fs::read_to_string(&config_path).expect("persisted config");
+        assert!(persisted.contains("我的猫"));
+
+        let revision = renamed.config_revision.expect("config revision");
+        assert_eq!(
+            client
+                .set_model_title_blocking(revision, key.clone(), "   ".to_owned())
+                .expect_err("an empty title is not a name")
+                .code(),
+            SettingsErrorCode::ModelTitleInvalid
+        );
+
+        // A cover is written into the package itself and reported back through
+        // the catalog, so the page can render it without knowing the layout.
+        let cover_source = base.path().join("cover-source.png");
+        let cover_bytes = b"\x89PNG\r\n\x1a\npairing artwork";
+        std::fs::write(&cover_source, cover_bytes).expect("cover source");
+        let covered = client
+            .set_model_cover_blocking(key.clone(), cover_source.clone())
+            .expect("replace cover");
+        let covered_entry = covered
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == key.id && entry.origin == key.origin)
+            .expect("covered entry");
+        let expected_cover = canonical_models_root
+            .join(&key.id)
+            .join("resources/cover.png");
+        assert_eq!(covered_entry.cover, Some(expected_cover.clone()));
+        assert_eq!(
+            std::fs::read(&expected_cover).expect("installed cover"),
+            cover_bytes
+        );
+
+        // A file that is not a PNG is refused, and the installed cover stays.
+        let not_an_image = base.path().join("notes.txt");
+        std::fs::write(&not_an_image, b"not an image").expect("plain file");
+        assert_eq!(
+            client
+                .set_model_cover_blocking(key.clone(), not_an_image)
+                .expect_err("a non-PNG cover is refused")
+                .code(),
+            SettingsErrorCode::ModelCoverInvalid
+        );
+        assert_eq!(
+            std::fs::read(&expected_cover).expect("unchanged cover"),
+            cover_bytes
+        );
+
+        // Preset models are app-bundled content, so neither rename nor cover
+        // edit is offered for them.
+        let preset = SettingsModelKey {
+            id: "standard".to_owned(),
+            origin: SettingsModelOrigin::Preset,
+        };
+        let revision = covered.config_revision.expect("config revision");
+        assert_eq!(
+            client
+                .set_model_title_blocking(revision, preset.clone(), "我的预设".to_owned())
+                .expect_err("a preset title is not editable")
+                .code(),
+            SettingsErrorCode::PresetModelMetadataImmutable
+        );
+        assert_eq!(
+            client
+                .set_model_cover_blocking(preset, cover_source)
+                .expect_err("a preset cover is not editable")
+                .code(),
+            SettingsErrorCode::PresetModelMetadataImmutable
+        );
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_opens_a_models_own_folder_without_advancing_revision() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let models_root = layout.models.clone();
+        let application = Application::start_with_layout(layout).expect("application start");
+        let canonical_models_root = models_root.canonicalize().expect("canonical models root");
+        let model_location = Arc::new(TestModelLocation::new());
+        let service = ApplicationSettingsService::start_with_model_location(
+            application,
+            model_location.clone(),
+        )
+        .expect("service start");
+        let client = service.client();
+
+        client
+            .import_model_blocking(SettingsModelImportRequest {
+                title: "我的猫".to_owned(),
+                source_root: model_fixture(),
+            })
+            .expect("import model");
+        let snapshot = client.read_snapshot_blocking().expect("snapshot");
+        let entry = snapshot
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .expect("installed entry");
+        let key = SettingsModelKey {
+            id: entry.id.clone(),
+            origin: SettingsModelOrigin::Installed,
+        };
+
+        let opened = client
+            .open_model_location_blocking(key.clone())
+            .expect("open model folder");
+        assert_eq!(
+            model_location.opened(),
+            vec![canonical_models_root.join(&key.id)]
+        );
+        assert_eq!(
+            opened.config_revision, snapshot.config_revision,
+            "opening a folder is not a configuration change"
+        );
+
+        // A file manager that refuses is reported as its own outcome rather than
+        // as a silent no-op.
+        model_location.fail.store(true, Ordering::Release);
+        assert_eq!(
+            client
+                .open_model_location_blocking(key.clone())
+                .expect_err("failed open")
+                .code(),
+            SettingsErrorCode::ModelLocationOpenFailed
+        );
+
+        // A model whose directory is gone has nothing to open.
+        std::fs::remove_dir_all(models_root.join(&key.id)).expect("remove model directory");
+        assert_eq!(
+            client
+                .open_model_location_blocking(key)
+                .expect_err("missing model directory")
+                .code(),
+            SettingsErrorCode::ModelLocationOpenFailed
+        );
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
     }
 
     #[test]

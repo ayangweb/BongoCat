@@ -1,4 +1,4 @@
-//! Native pickers for a model source.
+//! Native pickers for a model source and for a model's own cover image.
 //!
 //! A model reaches the product either as the folder a user exported or as the
 //! `.zip` archive a model site handed out, so this module owns one picker per
@@ -10,7 +10,9 @@
 //! accepts any regular file rather than filtering on the file name, because the
 //! model store recognizes an archive by content and reports one stable
 //! diagnostic when the file is not one. Rejecting a renamed archive here would
-//! turn a working import into a dialog-level failure.
+//! turn a working import into a dialog-level failure. The cover picker keeps the
+//! same split: it offers PNG in the dialog as a convenience, and the settings
+//! service still validates the bytes before they replace an existing cover.
 
 use std::{fmt, path::PathBuf};
 
@@ -26,6 +28,11 @@ use objc2_app_kit::NSApplication;
 /// finding an export, never a rule the import depends on.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ARCHIVE_EXTENSIONS: [&str; 1] = ["zip"];
+
+/// The file names the cover dialog offers. Like the archive filter this is a
+/// convenience: the settings service validates the selected bytes themselves.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const COVER_EXTENSIONS: [&str; 1] = ["png"];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModelSourcePickerOutcome {
@@ -180,12 +187,67 @@ where
     })
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) fn pick_model_cover<F>(on_complete: F) -> Result<(), ModelSourcePickerError>
+where
+    F: FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
+{
+    let mtm = MainThreadMarker::new().ok_or(ModelSourcePickerError::WrongThread)?;
+    if !asynchronous_sheet_is_available(mtm) {
+        return Err(ModelSourcePickerError::BackendUnavailable);
+    }
+
+    let task = autoreleasepool(|_| {
+        rfd::AsyncFileDialog::new()
+            .set_can_create_directories(false)
+            .add_filter("Cover image", &COVER_EXTENSIONS)
+            .pick_file()
+    });
+    spawn_picker_worker(on_complete, move || match async_io::block_on(task) {
+        Some(handle) => validate_selected_image(handle.path().to_path_buf()),
+        None => Ok(ModelSourcePickerOutcome::Cancelled),
+    })
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn pick_model_cover<F>(on_complete: F) -> Result<(), ModelSourcePickerError>
+where
+    F: FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
+{
+    spawn_picker_worker(on_complete, || {
+        match rfd::FileDialog::new()
+            .set_can_create_directories(false)
+            .add_filter("Cover image", &COVER_EXTENSIONS)
+            .pick_file()
+        {
+            Some(path) => validate_selected_image(path),
+            None => Ok(ModelSourcePickerOutcome::Cancelled),
+        }
+    })
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows", test))]
 pub(crate) fn validate_selected_directory(
     selected: PathBuf,
 ) -> Result<ModelSourcePickerOutcome, ModelSourcePickerError> {
     let canonical = canonicalize_selection(&selected)?;
     if !canonical.is_dir() {
+        return Err(ModelSourcePickerError::SelectionInvalid);
+    }
+    Ok(ModelSourcePickerOutcome::Selected(canonical))
+}
+
+/// Validate a selected cover image.
+///
+/// "A real regular file" is all the dialog layer claims, for the same reason as
+/// the archive picker: whether the bytes are a usable PNG is the settings
+/// service's judgement, and it reports one stable code when they are not.
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+pub(crate) fn validate_selected_image(
+    selected: PathBuf,
+) -> Result<ModelSourcePickerOutcome, ModelSourcePickerError> {
+    let canonical = canonicalize_selection(&selected)?;
+    if !canonical.is_file() {
         return Err(ModelSourcePickerError::SelectionInvalid);
     }
     Ok(ModelSourcePickerOutcome::Selected(canonical))
@@ -350,12 +412,19 @@ mod tests {
         let archive = std::thread::spawn(|| pick_model_archive(|_| {}))
             .join()
             .expect("picker test thread");
+        let cover = std::thread::spawn(|| pick_model_cover(|_| {}))
+            .join()
+            .expect("picker test thread");
         assert_eq!(
             directory.expect_err("background picker"),
             ModelSourcePickerError::WrongThread
         );
         assert_eq!(
             archive.expect_err("background picker"),
+            ModelSourcePickerError::WrongThread
+        );
+        assert_eq!(
+            cover.expect_err("background picker"),
             ModelSourcePickerError::WrongThread
         );
     }

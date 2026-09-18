@@ -18,12 +18,14 @@ use bongocat_platform::{
     AccessibilityRole, AccessibilityToggle, AccessibilityTree, SettingsAccessibilityBridge,
 };
 use bongocat_platform::{
-    ModelSourcePickerError, ModelSourcePickerOutcome, pick_model_archive, pick_model_directory,
+    ModelSourcePickerError, ModelSourcePickerOutcome, pick_model_archive, pick_model_cover,
+    pick_model_directory,
 };
 use gpui_kit::component::{
-    ActiveTheme, Disableable, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled, WindowExt,
+    ActiveTheme, Disableable, Icon, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled,
+    WindowExt,
     button::Button,
-    group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants},
+    group_box::GroupBoxVariant,
     input::{Input, InputEvent, InputState},
     notification::{Notification, NotificationType},
     select::{SearchableVec, Select, SelectEvent, SelectState},
@@ -36,9 +38,9 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Focusable,
-    Hsla, KeyDownEvent, KeyUpEvent, Modifiers, Pixels, Render, SharedString, Stateful,
-    TitlebarOptions, VisualContext, WeakEntity, Window, WindowAppearance, WindowBounds,
-    WindowHandle, WindowOptions, div, point, prelude::*, px, size,
+    Hsla, ImageSource, KeyDownEvent, KeyUpEvent, Modifiers, ObjectFit, Pixels, Render,
+    SharedString, Stateful, TitlebarOptions, VisualContext, WeakEntity, Window, WindowAppearance,
+    WindowBounds, WindowHandle, WindowOptions, div, img, point, prelude::*, px, size,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use raw_window_handle::HasWindowHandle;
@@ -83,9 +85,24 @@ const WINDOW_HEIGHT: f32 = 600.0;
 const WINDOW_MIN_WIDTH: f32 = crate::MIN_SETTINGS_WINDOW_WIDTH as f32;
 const WINDOW_MIN_HEIGHT: f32 = crate::MIN_SETTINGS_WINDOW_HEIGHT as f32;
 
+/// Tab indices of the controls on an editing model card. Only one card can be
+/// editing at a time, so they sit above the per-card action range instead of
+/// joining its stride.
+const MODEL_EDIT_TITLE_TAB_INDEX: isize = 70;
+const MODEL_EDIT_COVER_TAB_INDEX: isize = 71;
+const MODEL_EDIT_SAVE_TAB_INDEX: isize = 72;
+const MODEL_EDIT_CANCEL_TAB_INDEX: isize = 73;
+
 struct SettingsServiceErrorNotification;
 
 struct ShortcutConflictNotification;
+
+/// Marks the notification pushed when the model catalog cannot be read.
+///
+/// A notification is a prompt, and a catalog that stays unreadable would repeat
+/// that prompt on every snapshot, so the view remembers that it already spoke
+/// and only the transition back to a readable catalog re-arms it.
+struct ModelCatalogErrorNotification;
 
 fn accepts_snapshot_revision(current: Option<u64>, incoming: u64) -> bool {
     current.is_none_or(|current| incoming >= current)
@@ -146,8 +163,6 @@ const ACCESSIBILITY_CLEAR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::
 const ACCESSIBILITY_SHORTCUT_CAPTURE_BASE: u64 = 1_000;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_SHORTCUT_CLEAR_BASE: u64 = 2_000;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_MODEL_BEHAVIOR_PREVIEW_BASE: u64 = 3_000;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MIRROR: AccessibilityNodeId = AccessibilityNodeId::new(19);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -252,7 +267,8 @@ enum PendingOperation {
     StartupItem,
     ModelSelection,
     ModelDeletion,
-    ModelBehaviorPreview,
+    ModelMetadata,
+    ModelLocation,
     OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
     RestoreDefaultShortcuts,
@@ -328,11 +344,18 @@ enum ModelImportState {
     Ready,
     Picking,
     PickerCancelled,
-    PickerFailed(ModelSourcePickerError),
-    Starting { cancel_requested: bool },
+    /// A source dialog failed. The draft keeps whatever it already held, and the
+    /// failure itself is reported through a notification, so this state exists
+    /// only to keep the inline status from claiming a selection was made.
+    PickerFailed,
+    Starting {
+        cancel_requested: bool,
+    },
     Running(SettingsModelImportMonitor),
     Succeeded,
-    Failed(SettingsError),
+    /// The import run failed. The error itself was delivered as a notification
+    /// and is not held here, so the page has no second copy to display.
+    Failed,
     Cancelled,
 }
 
@@ -366,23 +389,29 @@ impl ModelRowKey {
 #[derive(Clone)]
 struct ModelRowFocus {
     activate: FocusHandle,
+    open_location: FocusHandle,
+    edit: FocusHandle,
     delete: FocusHandle,
     cancel_delete: FocusHandle,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct ModelBehaviorKey {
-    model: ModelRowKey,
-    behavior: SettingsModelBehavior,
-}
-
-impl ModelBehaviorKey {
-    fn new(model: &SettingsModelKey, behavior: &SettingsModelBehavior) -> Self {
-        Self {
-            model: ModelRowKey::new(model.origin, &model.id),
-            behavior: behavior.clone(),
-        }
-    }
+/// The one model card that is open for editing.
+///
+/// The draft owns the title field and a cover the user picked but has not saved
+/// yet, so cancelling is dropping this value: nothing reaches the settings
+/// service until save, and a half-finished edit never appears in the catalog.
+struct ModelEditDraft {
+    model: SettingsModelKey,
+    title: String,
+    /// A cover chosen in this edit, still to be written to the model's package.
+    cover: Option<PathBuf>,
+    input: Entity<InputState>,
+    input_focus: FocusHandle,
+    cover_focus: FocusHandle,
+    save_focus: FocusHandle,
+    cancel_focus: FocusHandle,
+    /// A cover dialog is open for this draft.
+    picking: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -390,11 +419,17 @@ struct ModelRowActions {
     active: bool,
     can_activate: bool,
     can_delete: bool,
+    /// Only installed models own editable metadata: preset names and covers are
+    /// app-bundled content, so the row offers no edit affordance at all.
+    can_edit: bool,
+    can_open_location: bool,
 }
 
 #[derive(Clone, Copy)]
 enum ModelRowAction {
     Activate,
+    OpenLocation,
+    Edit,
     Delete,
     CancelDelete,
 }
@@ -482,7 +517,10 @@ pub struct SettingsView {
     quit_after_flush: bool,
     model_delete_confirmation: Option<SettingsModelKey>,
     model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
-    model_behavior_preview_focus: BTreeMap<ModelBehaviorKey, FocusHandle>,
+    model_edit: Option<ModelEditDraft>,
+    /// Whether the unreadable-catalog notification has already been pushed for
+    /// the current failure, so it is not repeated on every snapshot.
+    model_catalog_error_reported: bool,
     shortcut_capture: Option<ShortcutCapture>,
     shortcut_capture_blur_subscription: Option<gpui_kit::Subscription>,
     shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
@@ -1629,16 +1667,21 @@ fn model_row_actions(
     };
     let active = active_model == Some(&model);
     let ready = matches!(&entry.availability, SettingsModelAvailability::Ready { .. });
+    let installed = entry.origin == SettingsModelOrigin::Installed;
     ModelRowActions {
         active,
         can_activate: ready && !active && !commands_blocked,
-        can_delete: entry.origin == SettingsModelOrigin::Installed && !active && !commands_blocked,
+        can_delete: installed && !active && !commands_blocked,
+        can_edit: installed && !commands_blocked,
+        can_open_location: entry.directory.is_some() && !commands_blocked,
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ModelRowActionTabIndices {
     activate: isize,
+    open_location: isize,
+    edit: isize,
     delete: isize,
     cancel_delete: isize,
 }
@@ -1647,12 +1690,30 @@ fn model_row_action_tab_indices(
     first_tab_index: isize,
     confirming_delete: bool,
 ) -> ModelRowActionTabIndices {
-    let second = first_tab_index.saturating_add(1);
-    let third = first_tab_index.saturating_add(2);
-    ModelRowActionTabIndices {
-        activate: first_tab_index,
-        delete: if confirming_delete { third } else { second },
-        cancel_delete: if confirming_delete { second } else { third },
+    let activate = first_tab_index;
+    let open_location = first_tab_index.saturating_add(1);
+    let edit = first_tab_index.saturating_add(2);
+    let delete = first_tab_index.saturating_add(3);
+    let cancel_delete = first_tab_index.saturating_add(4);
+    if confirming_delete {
+        // Confirming deletion replaces the other card actions, which are not
+        // rendered and therefore not tab stops, so the two remaining controls
+        // take the first positions instead of leaving a gap in the tab order.
+        ModelRowActionTabIndices {
+            activate,
+            open_location,
+            edit,
+            delete: open_location,
+            cancel_delete: edit,
+        }
+    } else {
+        ModelRowActionTabIndices {
+            activate,
+            open_location,
+            edit,
+            delete,
+            cancel_delete,
+        }
     }
 }
 
@@ -1733,10 +1794,13 @@ fn model_availability_status(
     }
 }
 
-fn model_import_status(
-    draft: &ModelImportDraft,
-    language: SettingsLanguage,
-) -> (SharedString, bool) {
+/// The inline status of the import draft.
+///
+/// Only progress and selection states are reported here. Every failure on the
+/// model page — a source dialog, an import run, a cover dialog, a catalog that
+/// cannot be read — is delivered through the shared notification component, so
+/// there is exactly one place an error is shown and exactly one style it has.
+fn model_import_status(draft: &ModelImportDraft, language: SettingsLanguage) -> SharedString {
     // The status names whichever source the user actually chose, so an archive
     // import never reports that a folder was selected.
     let selected_key = match draft.source_kind {
@@ -1751,79 +1815,49 @@ fn model_import_status(
         ModelSourceKind::Directory => "models.import.folder.choosing",
         ModelSourceKind::Archive => "models.import.archive.choosing",
     };
-    let unavailable_key = match draft.source_kind {
-        ModelSourceKind::Directory => "models.import.folder.selected_unavailable",
-        ModelSourceKind::Archive => "models.import.archive.selected_unavailable",
-    };
-    let picker_unavailable_key = match draft.source_kind {
-        ModelSourceKind::Directory => "models.import.folder.picker_unavailable",
-        ModelSourceKind::Archive => "models.import.archive.picker_unavailable",
-    };
     match &draft.state {
-        ModelImportState::Empty => (
-            bongocat_i18n::text(language.catalog_locale(), none_selected_key).into(),
-            false,
-        ),
-        ModelImportState::Ready => (
-            bongocat_i18n::text(language.catalog_locale(), selected_key).into(),
-            false,
-        ),
-        ModelImportState::Picking => (
-            bongocat_i18n::text(language.catalog_locale(), choosing_key).into(),
-            false,
-        ),
-        // Cancelling and the picker-thread failure are properties of the picker
-        // itself, so they read the same whichever source was being chosen.
-        ModelImportState::PickerCancelled if draft.source_root.is_some() => (
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "models.import.picker.cancelled_previous_retained",
-            )
-            .into(),
-            false,
-        ),
-        ModelImportState::PickerCancelled => (
-            bongocat_i18n::text(language.catalog_locale(), "models.import.picker.cancelled").into(),
-            false,
-        ),
-        ModelImportState::PickerFailed(error) => {
-            let message = match error {
-                ModelSourcePickerError::WrongThread => "models.import.picker.requires_ui_thread",
-                ModelSourcePickerError::SelectionInvalid => unavailable_key,
-                ModelSourcePickerError::UnsupportedPlatform
-                | ModelSourcePickerError::BackendUnavailable
-                | ModelSourcePickerError::SelectionUnavailable => picker_unavailable_key,
-            };
-            (
-                bongocat_i18n::text(language.catalog_locale(), message).into(),
-                true,
-            )
+        // A failed dialog is reported by notification, so the status falls back
+        // to describing the selection that is still in effect.
+        ModelImportState::Empty | ModelImportState::PickerFailed => {
+            if draft.source_root.is_some() {
+                bongocat_i18n::text(language.catalog_locale(), selected_key).into()
+            } else {
+                bongocat_i18n::text(language.catalog_locale(), none_selected_key).into()
+            }
+        }
+        ModelImportState::Ready => {
+            bongocat_i18n::text(language.catalog_locale(), selected_key).into()
+        }
+        ModelImportState::Picking => {
+            bongocat_i18n::text(language.catalog_locale(), choosing_key).into()
+        }
+        // Cancelling is a property of the picker itself, so it reads the same
+        // whichever source was being chosen.
+        ModelImportState::PickerCancelled if draft.source_root.is_some() => bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.picker.cancelled_previous_retained",
+        )
+        .into(),
+        ModelImportState::PickerCancelled => {
+            bongocat_i18n::text(language.catalog_locale(), "models.import.picker.cancelled").into()
         }
         ModelImportState::Starting {
             cancel_requested: true,
-        } => (
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "models.import.progress.cancelling",
-            )
-            .into(),
-            false,
-        ),
+        } => bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.progress.cancelling",
+        )
+        .into(),
         ModelImportState::Starting {
             cancel_requested: false,
-        } => (
-            bongocat_i18n::text(language.catalog_locale(), "models.import.progress.starting")
-                .into(),
-            false,
-        ),
-        ModelImportState::Running(monitor) if monitor.is_cancelled() => (
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "models.import.progress.cancelling",
-            )
-            .into(),
-            false,
-        ),
+        } => {
+            bongocat_i18n::text(language.catalog_locale(), "models.import.progress.starting").into()
+        }
+        ModelImportState::Running(monitor) if monitor.is_cancelled() => bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.progress.cancelling",
+        )
+        .into(),
         ModelImportState::Running(monitor) => {
             let progress = monitor.progress();
             let stage = match progress.stage {
@@ -1832,31 +1866,25 @@ fn model_import_status(
                 SettingsModelImportStage::Validating => "models.import.progress.validating",
                 SettingsModelImportStage::Committing => "models.import.progress.committing",
             };
-            (
-                model_import_progress(
-                    language,
-                    bongocat_i18n::text(language.catalog_locale(), stage),
-                    progress.files_copied,
-                    progress.bytes_copied,
-                )
-                .into(),
-                false,
+            model_import_progress(
+                language,
+                bongocat_i18n::text(language.catalog_locale(), stage),
+                progress.files_copied,
+                progress.bytes_copied,
             )
+            .into()
         }
-        ModelImportState::Succeeded => (
-            bongocat_i18n::text(language.catalog_locale(), "models.import.progress.complete")
-                .into(),
-            false,
-        ),
-        ModelImportState::Failed(error) => (settings_error(language, *error).into(), true),
-        ModelImportState::Cancelled => (
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "models.import.progress.cancelled",
-            )
-            .into(),
-            false,
-        ),
+        ModelImportState::Succeeded => {
+            bongocat_i18n::text(language.catalog_locale(), "models.import.progress.complete").into()
+        }
+        // The failure was already pushed as a notification; leaving it out here
+        // is what keeps the two from becoming the same message twice.
+        ModelImportState::Failed => "".into(),
+        ModelImportState::Cancelled => bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.progress.cancelled",
+        )
+        .into(),
     }
 }
 
@@ -1978,7 +2006,7 @@ fn command_button(
 fn icon_command_button(
     id: &'static str,
     label: &'static str,
-    icon: IconName,
+    icon: impl Into<Icon>,
     focus: &FocusHandle,
     tab_index: isize,
     disabled: bool,

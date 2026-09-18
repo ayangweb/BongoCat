@@ -14,8 +14,8 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 - Added a persistent model library for importing model folders or ZIP archives, with validation, progress, cancellation, and rejection of unsafe archives.
 - BongoCatMver models can be imported directly. Each input mode the source carries (standard, keyboard, or gamepad) becomes a separate model named after the source and its mode, so the converter tool is no longer needed.
-- The model library lets you rename, enable, and delete models and restores the last active model on startup. If a model cannot be activated, the currently working model remains available.
-- Model details list the available motions and expressions, which can be previewed and assigned to global behavior shortcuts.
+- The model library shows each model as a card with its own cover image and name. From a card you can switch models, open the model's folder, rename it, replace its cover image, or delete it, and the last active model is restored on startup. If a model cannot be activated, the currently working model remains available. Names and covers of the built-in models are part of the app and cannot be changed; import a copy to customise them.
+- A model's motions and expressions are listed on the Shortcuts page, where each one can be assigned its own global shortcut.
 - Added a Diagnostics page for viewing runtime, rendering, and input status, exporting anonymous diagnostic reports, opening the backup folder, and restoring default settings when needed.
 - Improved the update experience with a dedicated update window, download progress, signature verification, Markdown release notes, installation and restart states, and retry support. If an update fails, the current version remains installed.
 - Added startup permission guidance when needed. On macOS, you can go directly to Input Monitoring settings; on Windows, BongoCat explains how administrator permissions affect global input. The model still starts when input permission is unavailable.
@@ -46,6 +46,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - Added a "Hide on pointer hover" setting that fades the model window out and lets pointer input pass through while the pointer rests on it, restoring it when the pointer leaves. The hover delay is configurable from 0 to 60 seconds, where 0 hides immediately.
 - The model window stays fully on screen while being allowed over the taskbar, Dock and menu bar. A window dragged off the screen returns after you stop dragging instead of springing back the moment you let go, so moving it between screens is not interrupted.
 - Added dead-zone settings for gamepad sticks and triggers.
+- Model management reports its errors consistently: a folder or cover dialog that cannot open, a failed import, a model folder that cannot be read, and a rename or cover change that fails all appear as the same kind of notification instead of inline text.
 
 ### 💻 Platform Changes
 
@@ -58,5 +59,6 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 - Settings, shortcuts, model configuration, and installed models from previous versions are no longer imported automatically.
 - Models can no longer be imported by dragging them into the window. Use the folder or ZIP import options in the model library instead.
+- The per-model expression button is gone. A model's expressions and motions are listed on the Shortcuts page, next to the shortcut they are bound to, so the same list is not shown in two places.
 - Removed Traditional Chinese, Portuguese, and Vietnamese language options. Available choices are System, Simplified Chinese, and English.
 - The Windows key auto-release delay is now configured in milliseconds as a release fallback timeout instead of seconds.

@@ -52,10 +52,16 @@ impl SettingsView {
         self.verify_models_localization_for_smoke(snapshot, active_entry, true)?;
 
         let mut has_activation_target = false;
+        let mut has_location_target = false;
         for entry in &snapshot.model_catalog.entries {
             let actions = model_row_actions(entry, Some(active_model), false);
             if entry.origin == SettingsModelOrigin::Preset && actions.can_delete {
                 return Err("models page exposed deletion for a preset model".to_owned());
+            }
+            // Preset names and covers are app-bundled content, so the page must
+            // not offer to edit them.
+            if entry.origin == SettingsModelOrigin::Preset && actions.can_edit {
+                return Err("models page exposed editing for a preset model".to_owned());
             }
             if matches!(
                 &entry.availability,
@@ -65,9 +71,22 @@ impl SettingsView {
                 return Err("models page exposed activation for an invalid model".to_owned());
             }
             has_activation_target |= actions.can_activate;
+            has_location_target |= actions.can_open_location;
         }
         if !has_activation_target {
             return Err("models page has no ready inactive activation target".to_owned());
+        }
+        if !has_location_target {
+            return Err("models page has no model whose folder can be opened".to_owned());
+        }
+        // The page renders the package's own cover, so a catalog entry the user
+        // can see must point at a real image rather than a guessed path.
+        let active_cover = active_entry
+            .cover
+            .as_ref()
+            .ok_or_else(|| "models page active model has no cover".to_owned())?;
+        if !active_cover.is_file() {
+            return Err("models page cover does not point at a file".to_owned());
         }
         Ok(())
     }
@@ -121,13 +140,12 @@ impl SettingsView {
         {
             return Err("models page did not localize the model status".to_owned());
         }
-        let (import_status, import_failed) = model_import_status(&self.model_import, language);
-        if import_failed
-            || import_status
-                != bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "models.import.folder.none_selected",
-                )
+        let import_status = model_import_status(&self.model_import, language);
+        if import_status
+            != bongocat_i18n::text(
+                language.catalog_locale(),
+                "models.import.folder.none_selected",
+            )
         {
             return Err("models page did not localize the initial import status".to_owned());
         }
@@ -866,8 +884,10 @@ impl SettingsView {
             .nodes
             .into_iter()
             .filter(|node| {
+                // Generated node ids are allocated in 1_000-wide blocks, so a
+                // shortcut block ends where the next base would begin.
                 node.id.get() >= ACCESSIBILITY_SHORTCUT_CLEAR_BASE
-                    && node.id.get() < ACCESSIBILITY_MODEL_BEHAVIOR_PREVIEW_BASE
+                    && node.id.get() < ACCESSIBILITY_SHORTCUT_CLEAR_BASE + 1_000
             })
             .collect::<Vec<_>>();
         if clear_nodes.len() != expected_clear_rows.len()

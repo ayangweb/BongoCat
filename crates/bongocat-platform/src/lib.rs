@@ -160,6 +160,24 @@ pub fn pick_model_archive(
     }
 }
 
+/// Let the user choose the image that replaces a model's cover.
+///
+/// The selection vocabulary is shared with the model source pickers: the
+/// failures a dialog can produce are properties of the dialog, and the settings
+/// service reports its own stable code when the chosen bytes are not a cover.
+pub fn pick_model_cover(
+    on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
+) -> Result<(), ModelSourcePickerError> {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    return model_source_picker::pick_model_cover(on_complete);
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = on_complete;
+        Err(ModelSourcePickerError::UnsupportedPlatform)
+    }
+}
+
 pub fn startup_item_state(
     environment: StartupItemEnvironment,
 ) -> Result<StartupItemState, StartupItemError> {

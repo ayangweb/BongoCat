@@ -795,6 +795,14 @@ pub struct SettingsModelEntry {
     pub title: String,
     pub origin: SettingsModelOrigin,
     pub availability: SettingsModelAvailability,
+    /// The package directory the model's files live in, when it is present.
+    /// The settings page opens it, and derives nothing else from it: every
+    /// other model fact already has its own field.
+    pub directory: Option<PathBuf>,
+    /// The cover image the package ships, if it ships one. A package without a
+    /// cover is an ordinary package, so the page renders a placeholder instead
+    /// of treating the entry as degraded.
+    pub cover: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -902,8 +910,12 @@ pub enum SettingsErrorCode {
     ConfigurationRecoveryFailed,
     ModelUnavailable,
     ModelSwitchFailed,
-    ModelBehaviorPreviewUnavailable,
-    ModelBehaviorPreviewFailed,
+    ModelTitleInvalid,
+    PresetModelMetadataImmutable,
+    ModelCoverInvalid,
+    ModelCoverUpdateFailed,
+    ModelSourcePickerUnavailable,
+    ModelLocationOpenFailed,
     InvalidModelId,
     ModelAlreadyInstalled,
     ModelImportInvalidPackage,
@@ -927,7 +939,7 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 38] = [
+    pub const ALL: [Self; 42] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -944,8 +956,12 @@ impl SettingsErrorCode {
         Self::ConfigurationRecoveryFailed,
         Self::ModelUnavailable,
         Self::ModelSwitchFailed,
-        Self::ModelBehaviorPreviewUnavailable,
-        Self::ModelBehaviorPreviewFailed,
+        Self::ModelTitleInvalid,
+        Self::PresetModelMetadataImmutable,
+        Self::ModelCoverInvalid,
+        Self::ModelCoverUpdateFailed,
+        Self::ModelSourcePickerUnavailable,
+        Self::ModelLocationOpenFailed,
         Self::InvalidModelId,
         Self::ModelAlreadyInstalled,
         Self::ModelImportInvalidPackage,
@@ -986,8 +1002,12 @@ impl SettingsErrorCode {
             Self::ConfigurationRecoveryFailed => "configuration_recovery_failed",
             Self::ModelUnavailable => "model_unavailable",
             Self::ModelSwitchFailed => "model_switch_failed",
-            Self::ModelBehaviorPreviewUnavailable => "model_behavior_preview_unavailable",
-            Self::ModelBehaviorPreviewFailed => "model_behavior_preview_failed",
+            Self::ModelTitleInvalid => "model_title_invalid",
+            Self::PresetModelMetadataImmutable => "preset_model_metadata_immutable",
+            Self::ModelCoverInvalid => "model_cover_invalid",
+            Self::ModelCoverUpdateFailed => "model_cover_update_failed",
+            Self::ModelSourcePickerUnavailable => "model_source_picker_unavailable",
+            Self::ModelLocationOpenFailed => "model_location_open_failed",
             Self::InvalidModelId => "invalid_model_id",
             Self::ModelAlreadyInstalled => "model_already_installed",
             Self::ModelImportInvalidPackage => "model_import_invalid_package",
@@ -1066,12 +1086,16 @@ impl fmt::Display for SettingsError {
             }
             SettingsErrorCode::ModelUnavailable => "selected model is unavailable",
             SettingsErrorCode::ModelSwitchFailed => "selected model could not be activated",
-            SettingsErrorCode::ModelBehaviorPreviewUnavailable => {
-                "the selected behavior is not available for the active model"
+            SettingsErrorCode::ModelTitleInvalid => "model name is not usable",
+            SettingsErrorCode::PresetModelMetadataImmutable => {
+                "built-in model names and covers cannot be edited"
             }
-            SettingsErrorCode::ModelBehaviorPreviewFailed => {
-                "the selected behavior could not be previewed"
+            SettingsErrorCode::ModelCoverInvalid => "cover image must be a PNG file",
+            SettingsErrorCode::ModelCoverUpdateFailed => "model cover could not be updated",
+            SettingsErrorCode::ModelSourcePickerUnavailable => {
+                "the file dialog could not be opened"
             }
+            SettingsErrorCode::ModelLocationOpenFailed => "model folder could not be opened",
             SettingsErrorCode::InvalidModelId => "model id is invalid",
             SettingsErrorCode::ModelAlreadyInstalled => "model id is already installed",
             SettingsErrorCode::ModelImportInvalidPackage => "model package is invalid",
@@ -1221,9 +1245,19 @@ pub enum SettingsCommand {
         model: SettingsModelKey,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
-    PreviewModelBehavior {
+    SetModelTitle {
+        expected_config_revision: u64,
         model: SettingsModelKey,
-        behavior: SettingsModelBehavior,
+        title: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetModelCover {
+        model: SettingsModelKey,
+        source: PathBuf,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    OpenModelLocation {
+        model: SettingsModelKey,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     ImportModel {
@@ -1559,17 +1593,40 @@ impl SettingsClient {
         .await
     }
 
-    pub async fn preview_model_behavior(
+    pub async fn set_model_title(
         &self,
+        expected_config_revision: u64,
         model: SettingsModelKey,
-        behavior: SettingsModelBehavior,
+        title: String,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::PreviewModelBehavior {
+        self.request(|reply| SettingsCommand::SetModelTitle {
+            expected_config_revision,
             model,
-            behavior,
+            title,
             reply,
         })
         .await
+    }
+
+    pub async fn set_model_cover(
+        &self,
+        model: SettingsModelKey,
+        source: PathBuf,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetModelCover {
+            model,
+            source,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn open_model_location(
+        &self,
+        model: SettingsModelKey,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::OpenModelLocation { model, reply })
+            .await
     }
 
     pub async fn import_model(
@@ -1853,16 +1910,37 @@ impl SettingsClient {
         })
     }
 
-    pub fn preview_model_behavior_blocking(
+    pub fn set_model_title_blocking(
         &self,
+        expected_config_revision: u64,
         model: SettingsModelKey,
-        behavior: SettingsModelBehavior,
+        title: String,
     ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request_blocking(|reply| SettingsCommand::PreviewModelBehavior {
+        self.request_blocking(|reply| SettingsCommand::SetModelTitle {
+            expected_config_revision,
             model,
-            behavior,
+            title,
             reply,
         })
+    }
+
+    pub fn set_model_cover_blocking(
+        &self,
+        model: SettingsModelKey,
+        source: PathBuf,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetModelCover {
+            model,
+            source,
+            reply,
+        })
+    }
+
+    pub fn open_model_location_blocking(
+        &self,
+        model: SettingsModelKey,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::OpenModelLocation { model, reply })
     }
 
     pub fn import_model_blocking(

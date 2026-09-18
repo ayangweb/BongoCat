@@ -833,6 +833,15 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 模型目录身份是 `(origin, model_id)`。同一 `model_id` 的 preset 与 installed 条目都保留，
   排序固定为 `model_id` 升序、同 ID 时 preset 在前；后续选择 command 必须携带 origin，
   不得以静默覆盖解决冲突。
+- 模型元数据编辑只属于用户导入的模型（见 ADR-0047）。`installed_models[].title` 是可编辑显示名，
+  也是**唯一一条存放在模型目录之外**的模型事实；封面是包内文件，位于 `resources/cover.png`，
+  由 `bongocat-model` 的 `package_cover_path` 与 BongoCatMver 转换共用同一组常量，替换走
+  `ModelStore::replace_cover` 的同目录原子替换。预置模型是 product files，既没有元数据记录，
+  也不提供改名、换封面或删除：显示名沿用稳定 id，`Application::set_model_title`/
+  `set_model_cover` 对 preset origin 一律拒绝。
+- settings 快照把页面需要、但不属于配置的模型事实一并投影：每个模型条目携带自己的包目录与包内
+  封面路径（包内没有封面时为 `None`），页面因此只显示模型自己的图并可直接打开模型文件夹，
+  而不自行推导任何路径。
 - 模型选择 command 携带完整复合身份。应用先校验并加载候选，再以 expected revision
   持久化选择并启动 runtime/renderer 两阶段提交；候选被拒绝时 runtime 保留旧模型，应用
   使用刚取得的 config revision 原子恢复旧选择。配置写入失败时不得发送激活 command。

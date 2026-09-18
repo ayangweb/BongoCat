@@ -28,8 +28,8 @@ use bongocat_runtime::{
 use bongocat_update::{UpdateDiagnostics, UpdateDiagnosticsTracker};
 use std::{
     collections::BTreeMap,
-    fmt,
-    path::Path,
+    fmt, fs,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -79,6 +79,12 @@ const AUDIO_COMMAND_CAPACITY: usize = 16;
 const RUNTIME_TIMEOUT: Duration = Duration::from_secs(2);
 pub const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// PNG file signature, checked before a user-chosen image replaces a model's
+/// cover. Only the signature is verified: the cover is display artwork for the
+/// settings catalog, so a PNG that no decoder can read is a wrong picture, not
+/// a broken model.
+const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+
 #[cfg(feature = "production")]
 pub const BUILD_ENVIRONMENT: BuildEnvironment = BuildEnvironment::Production;
 
@@ -110,6 +116,10 @@ pub enum ApplicationError {
     ExpressionId(ExpressionIdError),
     PresetModelDeletion(ModelId),
     SelectedModelDeletion(ModelId),
+    PresetModelMetadata(ModelId),
+    ModelNotInstalled(ModelId),
+    ModelTitleInvalid,
+    ModelCoverInvalid,
     RuntimeCommand(SendError),
     RuntimeCommandFailed(RuntimeCommandFailure),
     RuntimeDidNotPublish,
@@ -142,6 +152,20 @@ impl fmt::Display for ApplicationError {
                     "selected model cannot be deleted: {}",
                     id.as_str()
                 )
+            }
+            Self::PresetModelMetadata(id) => {
+                write!(
+                    formatter,
+                    "preset model metadata is not editable: {}",
+                    id.as_str()
+                )
+            }
+            Self::ModelNotInstalled(id) => {
+                write!(formatter, "installed model was not found: {}", id.as_str())
+            }
+            Self::ModelTitleInvalid => formatter.write_str("model title is not usable"),
+            Self::ModelCoverInvalid => {
+                formatter.write_str("model cover must be a PNG image within the size limit")
             }
             Self::RuntimeCommand(error) => write!(formatter, "runtime command failed: {error}"),
             Self::RuntimeCommandFailed(failure) => write!(
@@ -1016,6 +1040,96 @@ impl Application {
         self.active_model_origin
     }
 
+    /// Where a model's own files live, when the model is actually present.
+    ///
+    /// The settings catalog needs this twice: to offer "open model folder", and
+    /// to find the cover image the package may ship. Nothing in the runtime or
+    /// renderer path uses it, and a missing directory is reported as `None`
+    /// rather than an error, because a catalog entry and the directory behind it
+    /// are re-read independently.
+    pub fn model_directory(&self, origin: ModelOrigin, id: &str) -> Option<PathBuf> {
+        let Ok(id) = ModelId::parse(id) else {
+            return None;
+        };
+        let root = match origin {
+            ModelOrigin::Preset => self.preset_models.root(),
+            ModelOrigin::Installed => self.model_store.root(),
+        };
+        let directory = root.join(id.as_str());
+        directory.is_dir().then_some(directory)
+    }
+
+    /// Rename an installed model.
+    ///
+    /// A title is user-editable metadata in the configuration, so this is the
+    /// only model fact that lives outside the model directory. Preset models
+    /// carry no metadata record at all: their display name is derived from the
+    /// app-bundled id, and letting it be edited would make the configuration a
+    /// second source of truth for content the build owns.
+    pub fn set_model_title(
+        &mut self,
+        origin: ModelOrigin,
+        id: impl Into<String>,
+        title: impl Into<String>,
+    ) -> Result<(), ApplicationError> {
+        let id = ModelId::parse(id)?;
+        if origin == ModelOrigin::Preset {
+            return Err(ApplicationError::PresetModelMetadata(id));
+        }
+        let title =
+            normalize_model_title(&title.into()).ok_or(ApplicationError::ModelTitleInvalid)?;
+        if !self.model_store.root().join(id.as_str()).is_dir() {
+            return Err(ApplicationError::ModelNotInstalled(id));
+        }
+        let mut installed_models = self.config.model.installed_models.clone();
+        match installed_models
+            .iter_mut()
+            .find(|metadata| metadata.id == id.as_str())
+        {
+            Some(metadata) => metadata.title = title,
+            // A model directory can legitimately exist without a record — one
+            // copied into the store by hand, or an import interrupted after the
+            // directory was committed — so naming it creates the record instead
+            // of failing on a missing one.
+            None => installed_models.push(InstalledModelMetadata {
+                id: id.as_str().to_owned(),
+                title,
+            }),
+        }
+        self.commit_installed_models(installed_models)
+    }
+
+    /// Replace an installed model's cover image with a user-chosen PNG.
+    ///
+    /// The cover is display artwork for the settings catalog, so the check here
+    /// is the file contract the package layout implies — a PNG within the
+    /// package's own per-file limit — and the bytes are installed verbatim,
+    /// exactly as the BongoCatMver conversion installs a legacy cover.
+    pub fn set_model_cover(
+        &mut self,
+        origin: ModelOrigin,
+        id: impl Into<String>,
+        source: impl AsRef<Path>,
+    ) -> Result<PathBuf, ApplicationError> {
+        let id = ModelId::parse(id)?;
+        if origin == ModelOrigin::Preset {
+            return Err(ApplicationError::PresetModelMetadata(id));
+        }
+        let source = source.as_ref();
+        let metadata = fs::metadata(source).map_err(|_| ApplicationError::ModelCoverInvalid)?;
+        if !metadata.is_file() || metadata.len() > ModelPackageLimits::default().maximum_file_bytes
+        {
+            return Err(ApplicationError::ModelCoverInvalid);
+        }
+        let bytes = fs::read(source).map_err(|_| ApplicationError::ModelCoverInvalid)?;
+        if !bytes.starts_with(&PNG_SIGNATURE) {
+            return Err(ApplicationError::ModelCoverInvalid);
+        }
+        self.model_store
+            .replace_cover(&id, &bytes)
+            .map_err(ApplicationError::ModelStore)
+    }
+
     pub fn start_motion(
         &self,
         group: impl Into<String>,
@@ -1600,6 +1714,21 @@ fn clamp_model_title(value: &str) -> String {
         .collect::<String>()
         .trim_end()
         .to_owned()
+}
+
+/// Normalize a user-typed title before it is written to the metadata record.
+///
+/// The settings page sanitizes the field as it is typed, and the configuration
+/// re-validates the record when it loads; this is the service's own gate in
+/// between, so a caller that bypasses the page cannot store a title the next
+/// config load would reject.
+fn normalize_model_title(value: &str) -> Option<String> {
+    let filtered: String = value
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect();
+    let title = clamp_model_title(filtered.trim());
+    (!title.is_empty()).then_some(title)
 }
 
 /// The source-folder default title; over-long or missing folder names

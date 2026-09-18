@@ -73,12 +73,12 @@ const LEGACY_STANDARD_BACKGROUND: &str = "mousebg.png";
 const LEGACY_BACKGROUND: &str = "bg.png";
 const LEGACY_COVER: &str = "cat.png";
 
-/// Package-relative destinations of the converted resources.
-const OUTPUT_RESOURCES: &str = "resources";
+/// Package-relative destinations of the converted resources. The resources
+/// directory and the cover keep their names from [`crate`], because the
+/// settings cover editor reads the same file this conversion writes.
 const OUTPUT_LEFT_KEYS: &str = "left-keys";
 const OUTPUT_RIGHT_KEYS: &str = "right-keys";
 const OUTPUT_BACKGROUND: &str = "background.png";
-const OUTPUT_COVER: &str = "cover.png";
 
 /// The suffix entry discovery looks for at a package root.
 const MODEL_ENTRY_SUFFIX: &str = ".model3.json";
@@ -712,7 +712,7 @@ where
     // model's own artwork, not something the conversion produces.
     for (reference, target) in [
         (plan.background.as_deref(), OUTPUT_BACKGROUND),
-        (plan.cover.as_deref(), OUTPUT_COVER),
+        (plan.cover.as_deref(), crate::PACKAGE_COVER_FILE),
     ] {
         let Some(reference) = reference else {
             continue;
@@ -721,7 +721,7 @@ where
         let bytes = source.read(reference)?;
         write_staging_file(
             destination,
-            &format!("{OUTPUT_RESOURCES}/{target}"),
+            &format!("{}/{target}", crate::PACKAGE_RESOURCES_DIRECTORY),
             &bytes,
             &mut created,
             statistics,
@@ -731,7 +731,7 @@ where
 
     for slot in &plan.slots {
         observation.check_cancelled()?;
-        let target = format!("{OUTPUT_RESOURCES}/{}", slot.reference);
+        let target = format!("{}/{}", crate::PACKAGE_RESOURCES_DIRECTORY, slot.reference);
         let bytes = match &slot.image {
             MverSlotImage::Verbatim(hand) => source.read(hand)?,
             MverSlotImage::Composite { hand, keyboard } => {

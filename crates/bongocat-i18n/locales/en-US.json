@@ -78,19 +78,11 @@
   },
   "models": {
     "catalog": {
-      "title": "Model Catalog",
       "loading": "Loading models...",
       "unavailable": "Model catalog is unavailable",
       "empty": "No models available",
-      "activating": "Activating model...",
-      "deleting": "Deleting model...",
-      "refreshing": "Refreshing models...",
       "load_failed": "Model catalog could not be loaded",
       "available": "Available models"
-    },
-    "installed": {
-      "title": "Installed Models",
-      "description": "Import a model folder or archive, then choose the active model."
     },
     "identity": {
       "title": "Model name",
@@ -103,8 +95,20 @@
         "unavailable": "Unavailable"
       }
     },
+    "card": {
+      "cover_missing": "No cover"
+    },
+    "edit": {
+      "cover": {
+        "choose": "Choose cover",
+        "replace": "Replace cover"
+      }
+    },
     "actions": {
       "activate": "Activate",
+      "edit": "Edit",
+      "open_location": "Open model folder",
+      "save": "Save",
       "delete": "Delete",
       "confirm_deletion": "Confirm deletion"
     },
@@ -120,21 +124,16 @@
       "folder": {
         "none_selected": "No folder selected",
         "selected": "Folder selected",
-        "choosing": "Choosing folder...",
-        "selected_unavailable": "Selected folder is unavailable",
-        "picker_unavailable": "Folder picker is unavailable"
+        "choosing": "Choosing folder..."
       },
       "archive": {
         "none_selected": "No archive selected",
         "selected": "Archive selected",
-        "choosing": "Choosing archive...",
-        "selected_unavailable": "Selected archive is unavailable",
-        "picker_unavailable": "Archive picker is unavailable"
+        "choosing": "Choosing archive..."
       },
       "picker": {
         "cancelled": "Selection cancelled",
-        "cancelled_previous_retained": "Selection cancelled; previous selection retained",
-        "requires_ui_thread": "Model source picker requires the UI thread"
+        "cancelled_previous_retained": "Selection cancelled; previous selection retained"
       },
       "progress": {
         "cancelling": "Cancelling import...",
@@ -152,7 +151,8 @@
         "choose_archive": "Choose archive",
         "choosing": "Choosing...",
         "import": "Import"
-      }
+      },
+      "title": "Import model"
     },
     "legacy": {
       "mode": {
@@ -162,12 +162,7 @@
       }
     },
     "behaviors": {
-      "title": "Model behaviors",
-      "empty": "No declared behaviors",
-      "motion": "Motion",
-      "expression": "Expression",
-      "preview": "Preview",
-      "previewing": "Previewing behavior..."
+      "empty": "No declared behaviors"
     },
     "summary": {
       "active": "%{origin} · %{active} · %{texture_count} textures · %{expression_count} expressions · %{motion_count} motions",
@@ -426,8 +421,12 @@
       "configuration_recovery_failed": "default configuration could not be restored",
       "model_unavailable": "selected model is unavailable",
       "model_switch_failed": "selected model could not be activated",
-      "model_behavior_preview_unavailable": "the selected behavior is not available for the active model",
-      "model_behavior_preview_failed": "the selected behavior could not be previewed",
+      "model_title_invalid": "model name is not usable",
+      "preset_model_metadata_immutable": "built-in model names and covers cannot be edited",
+      "model_cover_invalid": "cover image must be a PNG file",
+      "model_cover_update_failed": "model cover could not be updated",
+      "model_source_picker_unavailable": "the file dialog could not be opened",
+      "model_location_open_failed": "model folder could not be opened",
       "invalid_model_id": "model id is invalid",
       "model_already_installed": "model id is already installed",
       "model_import_invalid_package": "model package is invalid",

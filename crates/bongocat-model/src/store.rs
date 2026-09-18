@@ -447,6 +447,54 @@ impl ModelStore {
         })
     }
 
+    /// Replace an installed model's cover image.
+    ///
+    /// The cover is display-only artwork, so this is a plain atomic file
+    /// replacement inside the model's own directory: a torn write could only
+    /// ever produce a wrong picture, never a broken model. The caller owns the
+    /// format decision, and the bytes are stored exactly as handed over, which
+    /// is also what the BongoCatMver conversion does with a legacy `cat.png`.
+    pub fn replace_cover(&self, id: &ModelId, bytes: &[u8]) -> Result<PathBuf, ModelStoreError> {
+        let _lock = self.acquire_lock()?;
+        let root = self.installed_path(id)?;
+        let resources = root.join(crate::PACKAGE_RESOURCES_DIRECTORY);
+        fs::create_dir_all(&resources).map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                Some(id.as_str().to_owned()),
+                format!("model resources directory cannot be created: {error}"),
+            )
+        })?;
+        set_private_directory(&resources).map_err(|error| {
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                Some(id.as_str().to_owned()),
+                format!("model resources directory cannot be secured: {error}"),
+            )
+        })?;
+
+        let cover = resources.join(crate::PACKAGE_COVER_FILE);
+        let staging = resources.join(format!(".{}.new", crate::PACKAGE_COVER_FILE));
+        let write = || -> io::Result<()> {
+            let mut file = File::create(&staging)?;
+            set_private_file(&file)?;
+            file.write_all(bytes)?;
+            file.sync_all()?;
+            fs::rename(&staging, &cover)
+        };
+        write().map_err(|error| {
+            // A failed replace must not leave a half-written cover behind: the
+            // previous one is still in place until the rename above succeeds.
+            let _ = fs::remove_file(&staging);
+            ModelStoreError::new(
+                ModelStoreDiagnostic::IoError,
+                Some(id.as_str().to_owned()),
+                format!("model cover cannot be replaced: {error}"),
+            )
+        })?;
+        Ok(cover)
+    }
+
     /// Import a BongoCat model package from a directory or a `.zip` archive.
     ///
     /// A BongoCatMver source is not a package: ask [`ModelStore::inspect_source`]
@@ -1318,6 +1366,43 @@ mod tests {
             ModelPackageLimits::default(),
         )
         .expect("model store")
+    }
+
+    #[test]
+    fn a_cover_replacement_lands_on_the_package_cover_and_leaves_no_staging_file() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let id = ModelId::parse("cover").expect("model id");
+        let installed = store
+            .import(id.clone(), fixture("非 ASCII 模型"))
+            .expect("import model");
+
+        let replacement = b"\x89PNG\r\n\x1a\nreplacement".to_vec();
+        let cover = store
+            .replace_cover(&id, &replacement)
+            .expect("replace cover");
+
+        assert_eq!(cover, installed.root().join("resources/cover.png"));
+        assert_eq!(fs::read(&cover).expect("stored cover"), replacement);
+        let leftovers = fs::read_dir(installed.root().join("resources"))
+            .expect("resources directory")
+            .map(|entry| entry.expect("resource entry").file_name())
+            .filter(|name| name.to_string_lossy().ends_with(".new"))
+            .collect::<Vec<_>>();
+        assert!(
+            leftovers.is_empty(),
+            "staging files left behind: {leftovers:?}"
+        );
+    }
+
+    #[test]
+    fn a_cover_cannot_be_replaced_on_a_model_that_is_not_installed() {
+        let data = tempdir().expect("data root");
+        let store = model_store(data.path());
+        let error = store
+            .replace_cover(&ModelId::parse("absent").expect("model id"), b"bytes")
+            .expect_err("missing model");
+        assert_eq!(error.code, ModelStoreDiagnostic::NotFound);
     }
 
     #[test]

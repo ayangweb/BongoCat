@@ -1594,6 +1594,13 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     日志设置和其余 General 文案本地化仍待完成，因此保持未勾选。
 - [ ] 窗口：显示器、位置、缩放、透明度、置顶、穿透和显隐。
 - [ ] 模型：预置/用户模型、导入、删除、切换和兼容诊断。
+  - 状态（2026-09-18）：页面按 ADR-0047 重做为「网格首位导入卡片 + 封面卡片」：每张卡片显示包内
+    `resources/cover.png`（无封面时占位）、标题与可用性，操作行提供选中、打开模型位置、编辑
+    （改名/换封面）和删除（仅导入模型，两段确认）。新增
+    `SetModelTitle`/`SetModelCover`/`OpenModelLocation` 三个 typed command、
+    `SettingsModelEntry.directory`/`cover` 投影、`ModelStore::replace_cover` 与共享的包布局常量；
+    打开模型位置经 `ModelLocationCapability` 注入，与配置备份目录同一 seam。双平台实机点击与
+    `--settings-window-smoke` 仍未运行，因此总项保持未勾选。
 - [ ] 输入：键鼠、手柄、忽略鼠标、单键模式和校正状态。
 - [ ] 快捷键：捕获、冲突、清除和恢复默认。
   - 状态（2026-09-01）：正式 `bongocat-config` 已加入平台无关的 typed chord 校验和 canonicalization；修饰键别名、顺序和多余空白会稳定化，重复修饰键、多 key、空片段和非法 key 会被拒绝，`commands` 与 `model_behaviors` 共享冲突命名空间。settings service 现以 typed command 完成 revision-checked 原子持久化、snapshot 投影、重启恢复和 `RestoreDefaultShortcuts` 恢复默认；空集合可清除全部绑定。平台输入 owner 已将匹配 target 投递到 runtime 或 settings handoff；UI 编辑入口、平台注册/捕获和实机证据仍待完成。
@@ -1606,6 +1613,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     线程安全 signal 交给 GPUI frame source 重开设置窗口，服务关闭和队列满均有边界处理。注册/捕获 UI、
     GPUI 清除/恢复默认入口和 Windows/macOS 实机快捷键证据仍未完成。
 - [ ] 动作/表情：绑定、预览 command 和错误状态。
+  - 状态（2026-09-18）：模型页不再列出或预览行为（表情列表已在快捷键页，属重复入口），
+    `PreviewModelBehavior` command、对应 client 方法、服务端处理、
+    `SettingsErrorCode::ModelBehaviorPreviewUnavailable/Failed`、AccessKit preview node/action 与
+    相关文案全部移除；行为目录仍由快捷键页的绑定行独占消费，行为标识作用域改由
+    `shortcut_behavior_rows` 断言。runtime 侧 `Application::preview_motion`/`set_expression` 保留。
   - 状态（2026-09-05）：已验证模型目录现将实际声明的 `(motion group, index)` 与 expression name
     作为只读强类型 behavior 投影到 settings snapshot；标识只来自通过包验证的模型索引，不包含包路径。
     settings service 的无持久化 preview command 已仅允许当前 runtime model，并以 Force priority
@@ -1644,6 +1656,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] 800x600 和常见缩放无文本重叠或溢出。
 - [ ] Windows 125/150/200% 和 macOS Retina 截图检查。
 - [x] 模型扫描/导入具有 loading、empty、error、cancel 状态。
+  - 状态（2026-09-18）：模型页的**错误呈现统一到通用 Notification 组件**（ADR-0047 决策 6）：
+    源选择器失败、导入失败、封面选择器失败、目录读不出、改名/换封面/打开位置失败一律
+    `NotificationType::Error`；内联 `Tag`/文本只表达进度与选择状态，失败态标签留空。目录读取
+    失败只在「从可读转为不可读」时推送一次（`model_catalog_error_reported`），空状态占位符改为
+    中性色，不再是第二处危险色错误文本。导入状态机与 cancel 语义不变。
   - 验收证据（2026-09-07）：Models 页面在 snapshot 缺席、catalog 不可用和空 catalog 时分别显示
     `LoadingModels`、`ModelCatalogUnavailable` 和 `NoModelsAvailable`；导入状态机覆盖 picker/source
     错误、start/running progress、取消请求和最终 cancelled/succeeded/failed，运行中 Import 控件切换为
@@ -4336,7 +4353,51 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       升级注意事项：v1.1.0 的配置从不被导入。
     - 决策记录：ADR-0045。
 
+84. [x] `P0-MODELS-PAGE-CARDS`：模型管理页按旧版交互重做为封面卡片，并统一元数据编辑与错误呈现。
+    - 依赖：ADR-0047、ADR-0036（导入边界）、ADR-0037（Mver 转换写入的 `cover.png`）、
+      当前 v1 `model.installed_models[].title`、`bongocat-model` 包布局、`bongocat-platform` 的
+      `open_directory` 与 `opener`、GPUI 的 `img(PathBuf)` 本地文件加载。
+    - 退出条件：模型页展示每个模型的 `cover.png` 与标题并提供「打开模型位置」；表情入口移除；
+      页面只支持切换/选择模型与编辑标题/封面；错误提示统一走通用 Notification 组件。
+    - 实现说明（2026-09-18）：`bongocat-model` 新增 `PACKAGE_RESOURCES_DIRECTORY`、
+      `PACKAGE_COVER_FILE`、`package_cover_path`（Mver 转换改用同一组常量，删除私有
+      `OUTPUT_RESOURCES`/`OUTPUT_COVER`）与 `ModelStore::replace_cover`（同目录临时文件 + rename，
+      失败清理暂存文件）；`bongocat-platform` 新增 `pick_model_cover`（PNG 过滤，选择语义与模型来源
+      选择器共用）；`bongocat-app` 新增 `Application::model_directory`/`set_model_title`/
+      `set_model_cover` 与 `PresetModelMetadata`/`ModelNotInstalled`/`ModelTitleInvalid`/
+      `ModelCoverInvalid` 错误，快照投影 `directory`/`cover`，服务端新增三个 command 处理与
+      `ModelLocationCapability`；`bongocat-ui` 的 `SettingsModelEntry` 增加两字段，新增
+      `SetModelTitle`/`SetModelCover`/`OpenModelLocation`，移除 `PreviewModelBehavior` 全链路与
+      AccessKit preview node，模型页重写为固定宽度卡片网格（封面 `object_fit: Cover` 裁切、
+      无封面占位、两段确认删除只对导入模型开放、内联编辑标题与封面），封面替换成功后显式
+      `ImageSource::remove_asset` 失效按路径命中的图像缓存。文案删除 12 键、新增 15 键并使
+      `models.behaviors.*` 只保留快捷键页仍在用的 `empty`。
+    - 验收证据（2026-09-18）：`cargo test --locked --workspace` 全绿（app 130 + bin 21、ui 115、
+      model 95、platform 58、runtime 73、config 51、live2d 53、overlay 43、update 36、packaging 23、
+      render 15、i18n 4 等）；三组严格 Clippy 与 `cargo check --locked --workspace --release` 通过；
+      `tools/validate-locales.py`（386 键 × 2）、`tools/validate-json-schema.py`、
+      `tools/validate-fixtures.py`、`tools/tests`（63 项）通过；`cargo fmt --all -- --check` 通过。
+      新增回归：store 封面替换原子性与缺失模型、平台封面选择器校验、服务端改名/换封面/打开位置的
+      成功与全部拒绝路径、模型行动作与 tab 顺序（含预设只读）。
+    - 语义漂移核查：以脚本比对 Rust 中 203 个字面量文案键与目录，发现并修复一处
+      `models.edit.cover.selected` → `models.edit.cover.replace` 的静默失配；`models.` 与
+      `errors.settings.` 命名空间无孤立键。该项应成为后续文案改动的固定检查步骤。
+    - **未运行**：双平台实机点击（选中/编辑/换封面/打开文件夹）、`--settings-window-smoke`、
+      模型页 opt-in smoke、Windows 实机 `open_directory`、真实社区模型回归。
+    - 决策记录：ADR-0047。Technical Design §10 模型元数据段落已同步。
+
+85. [x] `P1-PRESET-SCAN-STRAY-FILES`：预置模型目录扫描对陌生条目的容忍。
+    - 背景（2026-09-18）：`just check` 的 app 测试在主树失败、在干净 worktree 通过，二分定位到
+      `resources/models` 里被 Finder 写入的 `.DS_Store`：`PresetModelCatalog::list` 对无法解析为
+      `ModelId` 的目录项直接 `?` 中止，一个杂散文件就让整个预置目录不可用。这不是测试环境问题，
+      而是真实产品缺陷——用户在 Finder 打开过模型目录后，模型列表就会挂掉。
+    - 修复：预置扫描与 store 扫描语义对齐——非 UTF-8 名称、无法解析为模型 ID 的条目一律跳过；
+      仍是合法 ID 但内容损坏的目录照旧以 `Invalid` 条目呈现。新增回归
+      `a_stray_file_in_the_preset_root_never_takes_the_catalog_down`。
+    - 验收证据（2026-09-18）：`just check` 六道门全绿（model 96 项测试）。
+
 ## 13. 待决策清单
+
 | 决策                                                          | 最迟完成              | 阻塞内容                           |
 | ------------------------------------------------------------- | --------------------- | ---------------------------------- |
 | Windows/macOS 首发 CPU 架构和 target triple                   | `P0-DOC-CONSISTENCY`  | CI、SDK 二进制、签名和安装包矩阵   |

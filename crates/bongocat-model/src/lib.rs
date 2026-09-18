@@ -25,7 +25,24 @@ pub const INDEX_SCHEMA_VERSION: u32 = 1;
 /// Maximum byte length of a portable model id; also the directory name limit
 /// for installed models.
 pub const MODEL_ID_MAXIMUM_LENGTH: usize = 64;
+/// Directory inside a model package that holds every image the package ships:
+/// the background, the cover and the per-key artwork.
+pub const PACKAGE_RESOURCES_DIRECTORY: &str = "resources";
+/// The cover image a package may ship. It is display artwork for the settings
+/// model catalog, so a package without one is a package with nothing to show,
+/// not an invalid package.
+pub const PACKAGE_COVER_FILE: &str = "cover.png";
 const MOTION_TIME_TOLERANCE: f32 = 0.000_001;
+
+/// Absolute path of a package root's cover image, whether or not it exists.
+///
+/// The layout is shared with the BongoCatMver conversion, which installs the
+/// legacy `cat.png` under exactly this name, so both sides read one constant
+/// instead of repeating the path.
+pub fn package_cover_path(root: &Path) -> PathBuf {
+    root.join(PACKAGE_RESOURCES_DIRECTORY)
+        .join(PACKAGE_COVER_FILE)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModelPackageLimits {
@@ -417,14 +434,17 @@ impl PresetModelCatalog {
                     format!("preset catalog entry cannot be read: {error}"),
                 )
             })?;
-            let name = entry.file_name().into_string().map_err(|_| {
-                ModelError::new(
-                    ModelDiagnostic::InvalidModelId,
-                    None,
-                    "preset catalog contains a non-UTF-8 entry",
-                )
-            })?;
-            let id = ModelId::parse(name)?;
+            // An entry that cannot even be a model id — a `.DS_Store` a file
+            // manager dropped here, for example — is not a broken model, it is
+            // not a model at all. Skipping keeps one stray file from taking the
+            // whole preset catalog down, matching the store scan's semantics.
+            let name = match entry.file_name().into_string() {
+                Ok(name) => name,
+                Err(_) => continue,
+            };
+            let Ok(id) = ModelId::parse(name) else {
+                continue;
+            };
             let catalog_entry = match self.load(&id) {
                 Ok(model) => ModelCatalogEntry::Ready {
                     origin: ModelOrigin::Preset,
@@ -3067,6 +3087,29 @@ mod tests {
             assert_eq!(model.root().parent(), Some(catalog.root()));
             assert!(!model.index().textures.is_empty());
         }
+    }
+
+    #[test]
+    fn a_stray_file_in_the_preset_root_never_takes_the_catalog_down() {
+        // A file manager dropping a `.DS_Store` next to the bundled models is
+        // routine, so listing must skip what cannot be a model id instead of
+        // reporting the whole catalog unavailable.
+        let root = tempdir().expect("preset root");
+        fs::write(root.path().join(".DS_Store"), b"junk").expect("stray file");
+        fs::write(root.path().join("not a model"), b"junk").expect("stray file");
+        fs::create_dir(root.path().join("standard")).expect("model directory");
+        fs::write(
+            root.path().join("standard").join("cat.model3.json"),
+            br#"{"version":3}"#,
+        )
+        .expect("model json");
+
+        let catalog = PresetModelCatalog::open(root.path(), ModelPackageLimits::default())
+            .expect("preset catalog");
+        let entries = catalog.list().expect("preset catalog listing");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id().as_str(), "standard");
     }
 
     #[test]
