@@ -110,7 +110,9 @@ smoke 断言都调它。**smoke 此前用 `component_theme_mode(theme, cx.window
 ### 4. Windows：窗口框用官方 API，其余表面接受"跟随系统主题"
 
 - 窗口框：`DwmSetWindowAttribute` + `DWMWA_USE_IMMERSIVE_DARK_MODE`（唯一有文档的做法）。
-  `theme = None` 时**什么都不做**——系统偏好由 Windows 自己读，没有属性需要清。
+  `theme = None`（跟随系统）时以 **gpui 同源的 `UISettings` 查询**重推导系统外观并显式写入
+  该属性——该属性一旦被写过便不再自动跟随系统偏好，且写入必须与 gpui 的写入同源，否则两个
+  写入方会互相覆盖。见文末「修正（2026-09-18）」。
 - 弹框 / 菜单 / 文件框：**产品不自绘**，接受跟随系统主题。为了让它们在系统为暗色时真的变暗，
   进程在创建任何窗口之前调用一次未文档化的 `SetPreferredAppMode`（`uxtheme.dll` 序号 135），
   取 `PreferredAppMode::AllowDark`（= 1）。
@@ -169,9 +171,11 @@ smoke 断言都调它。**smoke 此前用 `component_theme_mode(theme, cx.window
    未在 macOS 上确认标题栏、弹框、托盘菜单、文件面板随应用主题切换。
 4. **`NSApplication.appearance` 的作用面比需求更宽。** 它是进程级的，会作用于产品没有列出的
    表面（例如 AppKit 自己画的一切）。当前没有观察到副作用，但这是一个"比要求做得更多"的选择。
-5. **更新窗口的乐观路径有滞后。** 设置页下拉切换主题时
+5. **更新窗口/设置页的原生表面有滞后。** 设置页下拉切换主题时
    `apply_optimistic_component_theme` 只改组件主题、不碰原生表面（该函数拿不到 `Window`），
-   原生表面要等配置往返 + 下一次 snapshot 轮询才更新。滞后一个轮询周期，最终一致。
+   原生表面要等配置往返 + 下一次 snapshot 轮询才更新。滞后一个轮询周期，最终一致。（修正后
+   `System` 的**组件半边**在点击瞬间就解析生效——见文末修正第 2 条；原生窗口框仍滞后一个往返，
+   该边界不变。）
 6. **`AccessibilityHighContrastDarkAqua` 只在提高对比度时出现。** 把它算作暗色是有意为之
    （见决策 2：gpui 会把它判成浅色），但它没有在提高对比度 + 暗色的实机上验证过。
 7. **`apply_theme` 要求主线程（macOS），但 UI 层丢掉了结果。** 非主线程调用返回 `WrongThread`
@@ -206,6 +210,37 @@ smoke 断言都调它。**smoke 此前用 `component_theme_mode(theme, cx.window
 消息框 = `CFUserNotification`，完全不经过 AppKit，不在继承链上——ADR-0048 的实现没有错，是
 这个提示本身不在被修复的路径上。已按 ADR-0032「主题外观修正（2026-09-18）」把它改为主线程
 `NSAlert`，本表格自此对产品全部系统弹框成立。
+
+## 修正（2026-09-18）：Windows 上 `System` 回退不再是 no-op，乐观路径覆盖 `System`
+
+实机（Windows，浅色固定 → 切「跟随系统」且系统为暗色）发现两个回归，均由本文档错误的前提
+引起，已修复；修复本身又暴露出第二个写入源问题，同日二次修正：
+
+1. **标题栏在手动切换主题后不再跟随系统。** 根因：`DWMWA_USE_IMMERSIVE_DARK_MODE` 一旦被
+   显式写入（例如选过浅色），Windows 就按写入值绘制窗口框，**不再自动跟随系统偏好**；初次
+   启动能跟随只是因为 gpui 后端在窗口创建时以 WinRT `UISettings` 查询系统外观并显式写入了
+   正确值。决策 4 原文「`theme = None` 时什么都不做」的前提因此不成立。修复：Windows
+   `apply` 在 `None` 时**以 gpui 同源的 `UISettings.GetColorValue(Foreground)` 查询**（同一
+   API、同一亮度公式）重推导系统外观并显式写入该属性，WinRT 不可用时回退
+   `AppsUseLightTheme` 注册表值、再失败回退浅色（文档化兜底）。偏好为 `System` 期间系统偏好
+   翻转时，设置窗口的 `observe_window_appearance` 回调会重新调用该入口重推导。写入后以
+   `SetWindowPos(SWP_FRAMECHANGED)` 触发非客户区重绘，保证可见窗口上的实时切换立即生效。
+2. **切换瞬间出现浅色留白/闪烁。** 根因：`apply_optimistic_component_theme` 此前只对固定的
+   Light/Dark 生效，`System` 分支完全不动组件主题，UI 要等配置往返 + snapshot 才变暗（即
+   残余风险 5 的滞后，在最常见路径上被放大成可见闪烁）。修复：乐观路径对 `System` 也立即
+   解析——macOS 先清应用级覆盖再解析（与 `apply_component_theme`「先原生后解析」同序，否则
+   读到的还是刚被清除的固定值）；Windows 无进程级覆盖可清，`apply_process_theme(None)` 为
+   no-op，窗口框由往返后的 `apply_component_theme` 修正。请求失败时原有
+   `applied_theme = None` 的重同步路径保证回滚。
+3. **二次修正：跟随系统的查询必须与 gpui 同源。** 第一版修复用 `AppsUseLightTheme`
+   注册表值推导，实机发现标题栏仍为浅色：gpui 创建窗口时已按 `UISettings` 写入暗色，而
+   注册表推导给出了浅色，**后写的注册表结果覆盖了 gpui 的正确值**。两个写入源不一致时，
+   时间在后的一方总是获胜，所以"跟随系统"的推导不允许存在第二个事实来源——现统一为
+   gpui 所用的 `UISettings`，注册表值仅作 WinRT 不可用时的兜底。
+
+验证：`cargo check` / `cargo clippy -D warnings`（platform、ui、app）与
+`cargo test -p bongocat-platform -p bongocat-ui`（52 + 117 通过）全绿；Windows 实机切换
+浅色 → 跟随系统（暗）的标题栏与无闪烁表现待复测。
 
 ## 验证
 

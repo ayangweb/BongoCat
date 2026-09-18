@@ -4457,6 +4457,21 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `ForceDark`）；`SetPreferredAppMode` 是未文档化的 `uxtheme.dll` 序号 135 导出，缺失时静默
       退化；picker/prompt 的 `set_parent`（调研文档 B5）是模态归属缺陷而非主题缺陷，本次不改；
       设置页下拉切换主题时原生表面滞后一个 snapshot 轮询周期。
+    - 修正（2026-09-18，Windows 实机回归）：① 切换主题后标题栏不再跟随系统——
+      `DWMWA_USE_IMMERSIVE_DARK_MODE` 一旦显式写入便不再自动跟随系统偏好，"None 时什么都不做"
+      的前提不成立；`apply` 在 `None` 时改为重推导系统外观并显式写入该属性，偏好为 `System`
+      时由设置窗口的 `observe_window_appearance` 回调在系统外观变化后重推导。② 切到 `System`
+      时界面短暂浅色闪烁——`apply_optimistic_component_theme` 此前对 `System` 不生效，现改为
+      立即解析（macOS 先清应用级覆盖再解析，与 `apply_component_theme` 同序；请求失败由
+      `applied_theme = None` 的重同步回滚）。③ 二次修正：跟随系统的推导必须与 gpui 同源——
+      第一版用 `AppsUseLightTheme` 注册表值，实机发现其结果与 gpui 创建窗口时按 WinRT
+      `UISettings` 写入的值不一致，后写的注册表推导覆盖了 gpui 的正确暗色；现统一为
+      `UISettings.GetColorValue(Foreground)`（同 API、同亮度公式，`windows` 增加
+      `UI_ViewManagement` feature），注册表仅作 WinRT 不可用时的兜底；写入后以
+      `SetWindowPos(SWP_FRAMECHANGED)` 触发非客户区重绘保证实时切换生效。验证：
+      `cargo check` / `clippy -D warnings`（platform、ui、app）与
+      `cargo test -p bongocat-platform -p bongocat-ui`（52 + 117 通过）；Windows 实机切换
+      表现待复测。决策记录见 ADR-0048「修正（2026-09-18）」。
     - 决策记录：ADR-0048。调研报告 `docs/theme-mode-native-surface-research.md`；主题色的 crate
       边界评估见 `docs/theme-color-extraction-evaluation.md`（结论：不拆 crate）。
 

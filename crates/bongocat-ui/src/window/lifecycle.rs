@@ -80,6 +80,12 @@ pub fn open_settings_window(
                         });
                         if follows_system {
                             sync_system_component_theme(window, cx);
+                            // The frame is a native surface too. Its attribute was last
+                            // written by an explicit choice or by a re-derivation of the
+                            // system preference, and either way it stops tracking the
+                            // system once written, so the new appearance has to be
+                            // re-derived for it here.
+                            apply_native_theme(SettingsTheme::System, window);
                         }
                     })
                     .detach();

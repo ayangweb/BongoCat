@@ -114,14 +114,17 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   前执行 compare-and-swap，避免输入诊断等无关变化制造假冲突。
 - `appearance.theme` 通过独立 `SettingsTheme` 投影和 revision-checked typed command 修改，由
   Application owner 原子持久化，不进入 runtime。GPUI 收到新 snapshot 后调用组件库公开的
-  `Theme::change` 即时更新内容；`light`/`dark` 同时请求匹配的原生窗口外观，`system` 清除覆盖并
-  仅在该模式下响应系统外观通知。Entity 只缓存已经应用的显示模式以避免重复刷新，不成为配置
-  事实来源。
+  `Theme::change` 即时更新内容；选择在快照往返前先乐观应用（`system` 在 macOS 上先清应用级
+  覆盖再解析，见 ADR-0048 修正）；`light`/`dark` 同时请求匹配的原生窗口外观，`system` 清除
+  覆盖并仅在该模式下响应系统外观通知。Entity 只缓存已经应用的显示模式以避免重复刷新，不成为
+  配置事实来源。
 - **原生表面（窗口框、系统弹框、右键菜单、托盘菜单、文件选择框）的主题由 `bongocat-platform`
   的 theme 模块独占（ADR-0048）**，UI 层不再直接调用平台外观 API。该模块只接受**已解析**的
   `AppTheme`（`System` 不往下传），并按平台能力矩阵落地：macOS 用进程级
   `NSApplication.appearance`，一处覆盖窗口框、弹框、菜单和面板；Windows 用
-  `DWMWA_USE_IMMERSIVE_DARK_MODE` 覆盖窗口框，其余表面接受**跟随系统主题**，由进程在创建任何
+  `DWMWA_USE_IMMERSIVE_DARK_MODE` 覆盖窗口框——该属性一旦显式写入便不再自动跟随系统，因此
+  偏好为 `system` 时（平台层收到的是 `None`，`System` 不往下传）以 gpui 同源的
+  `UISettings` 查询实时重推导并写入该属性；其余表面接受**跟随系统主题**，由进程在创建任何
   窗口前调用一次未文档化的 `SetPreferredAppMode(AllowDark)` 使其生效。`system` 的解析口径统一
   在平台层（macOS 查 `NSApplication.effectiveAppearance`）且全 UI crate 只有一处解析入口，
   render 路径与 smoke 断言共用它——不读 gpui 的窗口外观缓存，因为该缓存只在延迟触发的

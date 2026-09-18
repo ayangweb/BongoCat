@@ -1975,10 +1975,20 @@ fn resolved_theme_mode(theme: SettingsTheme, window: Option<&Window>, cx: &App) 
     }
 }
 
+/// Applies the preference to the component colours before the configuration roundtrip,
+/// so the user sees the switch on the frame they clicked rather than one snapshot later.
+///
+/// `System` resolves against the live system appearance, which on macOS is only the
+/// truth once the application override a pinned Light/Dark installed has been dropped —
+/// so the override is dropped first, mirroring the ordering of `apply_component_theme`
+/// (native first, then resolve). Windows has no process override to drop; its frame is
+/// corrected by the roundtrip's `apply_component_theme` right after this.
 fn apply_optimistic_component_theme(theme: SettingsTheme, cx: &mut App) {
-    if let Some(mode) = pinned_theme_mode(theme)
-        && cx.theme().mode != mode
-    {
+    if theme == SettingsTheme::System {
+        let _ = bongocat_platform::apply_process_theme(None);
+    }
+    let mode = resolved_theme_mode(theme, None, cx);
+    if cx.theme().mode != mode {
         Theme::change(mode, None, cx);
     }
 }

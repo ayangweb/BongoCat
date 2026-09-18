@@ -220,12 +220,16 @@ mod platform {
 mod platform {
     use super::{AppTheme, NativeThemeError};
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    use std::{ffi::c_void, mem::size_of, ptr::from_ref, sync::OnceLock};
+    use std::{ffi::c_void, mem::size_of, ptr::from_mut, ptr::from_ref, sync::OnceLock};
     use windows::{
         Win32::{
             Foundation::HWND,
             Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute},
             System::LibraryLoader::{GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW},
+            UI::WindowsAndMessaging::{
+                SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+                SetWindowPos,
+            },
         },
         core::{BOOL, PCSTR, w},
     };
@@ -268,6 +272,61 @@ mod platform {
         Ok(())
     }
 
+    /// Whether the system's application appearance is dark, derived from the same
+    /// source gpui's Windows backend uses: the WinRT `UISettings` foreground colour.
+    ///
+    /// Using gpui's own source is not a style choice. gpui reads exactly this value
+    /// when it creates a window (and on `WM_SETTINGCHANGE`) and pins the frame
+    /// attribute with it, so it is the authority the frame already follows. Any other
+    /// source can disagree with gpui's answer, and the later of the two writes would
+    /// then silently win — a registry-only query did exactly that, overwriting a
+    /// correctly dark frame with light (ADR-0048, 修正 2026-09-18).
+    ///
+    /// Falls back to the personalization registry value when WinRT is unavailable,
+    /// and to Light — the documented fallback for every surface here — when both
+    /// fail.
+    fn system_appearance_is_dark() -> bool {
+        use windows::UI::ViewManagement::{UIColorType, UISettings};
+
+        if let Ok(ui_settings) = UISettings::new()
+            && let Ok(foreground) = ui_settings.GetColorValue(UIColorType::Foreground)
+        {
+            // Same formula as gpui's Windows backend: a light foreground on a dark
+            // surface is what dark mode paints, and the weights come from the
+            // luminance approximation Microsoft documents for that page.
+            return (5 * u32::from(foreground.G))
+                + (2 * u32::from(foreground.R))
+                + u32::from(foreground.B)
+                > 8 * 128;
+        }
+        !system_registry_prefers_light_fallback()
+    }
+
+    /// The registry spelling of the same preference, kept as the fallback for
+    /// environments where the WinRT `UISettings` activation fails. Reports Light
+    /// (the documented fallback) when the value cannot be read.
+    fn system_registry_prefers_light_fallback() -> bool {
+        use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+
+        let mut light: u32 = 1;
+        let mut size = size_of::<u32>() as u32;
+        // SAFETY: `RegGetValueW` reads one DWORD out of `HKEY_CURRENT_USER` and writes
+        // it through the out pointers below. Both out values live for the duration of
+        // the call, and the key and value names are static wide literals.
+        let result = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+                w!("AppsUseLightTheme"),
+                RRF_RT_REG_DWORD,
+                None,
+                Some(from_mut(&mut light).cast::<c_void>()),
+                Some(&mut size),
+            )
+        };
+        result.is_ok() && light == 0
+    }
+
     fn resolve_set_preferred_app_mode() -> Option<unsafe extern "system" fn(i32) -> i32> {
         // SAFETY: `uxtheme.dll` is resolved through the system search path, so no
         // attacker-controlled directory can substitute it, and the module is intentionally
@@ -295,11 +354,16 @@ mod platform {
         window: &impl HasWindowHandle,
         theme: Option<AppTheme>,
     ) -> Result<(), NativeThemeError> {
-        let Some(theme) = theme else {
-            // The product follows the system: Windows draws the frame from the system
-            // preference on its own, so there is nothing to override and no attribute to
-            // clear. gpui already applied that value when it created the window.
-            return Ok(());
+        // "Follow the system" is not "leave the attribute alone". Once the product has
+        // pinned the frame with an explicit Light or Dark, the attribute stops tracking
+        // the system preference, so restoring the system look means re-deriving the
+        // system's own choice and pinning the frame to that value. The derivation uses
+        // gpui's own source (see `system_appearance_is_dark`) so this write can never
+        // fight the one gpui already made. The UI layer re-issues this call whenever
+        // the system appearance flips while the product follows it.
+        let dark = match theme {
+            Some(theme) => theme.is_dark(),
+            None => system_appearance_is_dark(),
         };
         let handle = window
             .window_handle()
@@ -307,19 +371,38 @@ mod platform {
         let RawWindowHandle::Win32(handle) = handle.as_raw() else {
             return Err(NativeThemeError::UnsupportedWindowHandle);
         };
-        let dark: BOOL = theme.is_dark().into();
+        let hwnd = HWND(handle.hwnd.get() as *mut c_void);
+        let dark: BOOL = dark.into();
         // SAFETY: the HWND belongs to a window this process created, and `window` keeps
         // it alive for the duration of the call. DWM reads one `BOOL` from the pointer
         // and the length passed matches it.
-        unsafe {
+        let result = unsafe {
             DwmSetWindowAttribute(
-                HWND(handle.hwnd.get() as *mut c_void),
+                hwnd,
                 DWMWA_USE_IMMERSIVE_DARK_MODE,
                 from_ref(&dark).cast::<c_void>(),
                 size_of::<BOOL>() as u32,
             )
+        };
+        // A live toggle (Light -> follow-system on a visible window) does not always
+        // repaint the caption on its own — gpui only ever writes this attribute before
+        // a window is shown or on a system-theme change, where DWM repaints for its own
+        // reasons. Nudging the non-client area forces the new colour out immediately.
+        // SAFETY: `hwnd` is alive for the duration of the call; the position arguments
+        // are all suppressed, so the call only triggers a non-client recalulation.
+        unsafe {
+            SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            )
         }
-        .map_err(|_| NativeThemeError::NativeCallFailed)
+        .map_err(|_| NativeThemeError::NativeCallFailed)?;
+        result.map_err(|_| NativeThemeError::NativeCallFailed)
     }
 }
 
