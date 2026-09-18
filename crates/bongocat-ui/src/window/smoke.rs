@@ -191,8 +191,12 @@ impl SettingsView {
         let controls_disabled = self.pending.is_some()
             || self.model_import.is_running()
             || snapshot.configuration_status != SettingsConfigurationStatus::Ready;
-        let expected_theme_mode =
-            component_theme_mode(snapshot.appearance_theme, cx.window_appearance());
+        // Derived through the product's own resolution rather than a second copy of the
+        // formula. The smoke exists to prove what the product does, so re-deriving the
+        // expected value independently would let the two drift apart unnoticed — and on
+        // macOS they already had: this assertion used gpui's appearance while the render
+        // path had moved to the platform query.
+        let expected_theme_mode = resolved_theme_mode(snapshot.appearance_theme, None, cx);
         if self.applied_theme != Some(snapshot.appearance_theme)
             || cx.theme().mode != expected_theme_mode
         {

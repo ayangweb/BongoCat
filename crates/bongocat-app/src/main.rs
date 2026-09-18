@@ -574,6 +574,13 @@ struct ProductCoordinator {
     /// every 50 ms; the update window then opens without a blocking read on the GPUI
     /// thread and keeps itself in sync afterwards.
     update_language: bongocat_ui::SettingsLanguage,
+    /// The appearance the update window opens with.
+    ///
+    /// The same reason as `update_language`: the update window has to apply the
+    /// product's theme on its first frame, and the settings snapshot only reaches it
+    /// on the next poll. Opening on the default would let it clear an override the
+    /// settings window has already installed (ADR-0048).
+    update_appearance_theme: bongocat_ui::SettingsTheme,
     /// When a completed install that needs a restart was first observed.
     #[cfg(target_os = "macos")]
     update_installed_since: Option<Instant>,
@@ -662,6 +669,17 @@ fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .push(failure.into());
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const fn native_theme_for_startup(
+    theme: bongocat_config::Theme,
+) -> Option<bongocat_platform::AppTheme> {
+    match theme {
+        bongocat_config::Theme::System => None,
+        bongocat_config::Theme::Light => Some(bongocat_platform::AppTheme::Light),
+        bongocat_config::Theme::Dark => Some(bongocat_platform::AppTheme::Dark),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -853,6 +871,24 @@ fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn exit_after_automated_smoke(failures: &Arc<Mutex<Vec<String>>>) {
+    let failures = failures
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if failures.is_empty() {
+        return;
+    }
+    let mut stderr = io::stderr().lock();
+    let _ = writeln!(stderr, "product run failed: {}", failures.join("; "));
+    let _ = stderr.flush();
+    // AppKit terminates the process after gpui's `on_app_quit` future completes, without
+    // returning from `NSApplication::run()`. This is therefore the only reachable exit-code
+    // boundary on macOS automated runs (TODO P7-MACOS-SMOKE-EXIT-CODE). Normal product quits
+    // never call this helper: they do not set `automated_verification`.
+    std::process::exit(1);
+}
+
 #[cfg(target_os = "windows")]
 fn windows_product_exit_code(failures: &Arc<Mutex<Vec<String>>>) -> i32 {
     let failures = failures
@@ -921,7 +957,7 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
 /// the existing window instead of stacking another one.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn ensure_update_window(cx: &mut App) -> Result<bongocat_ui::UpdateWindowHandle, String> {
-    let (existing, update_client, settings_client, language) = {
+    let (existing, update_client, settings_client, language, appearance_theme) = {
         let coordinator = cx
             .try_global::<ProductCoordinator>()
             .ok_or_else(|| "product coordinator is unavailable".to_owned())?;
@@ -939,6 +975,7 @@ fn ensure_update_window(cx: &mut App) -> Result<bongocat_ui::UpdateWindowHandle,
             update_service.client(),
             settings_client,
             coordinator.update_language,
+            coordinator.update_appearance_theme,
         )
     };
     if let Some(window_handle) = existing
@@ -947,8 +984,13 @@ fn ensure_update_window(cx: &mut App) -> Result<bongocat_ui::UpdateWindowHandle,
         cx.activate(true);
         return Ok(window_handle);
     }
-    let window_handle =
-        bongocat_ui::open_update_window(update_client, settings_client, language, cx)?;
+    let window_handle = bongocat_ui::open_update_window(
+        update_client,
+        settings_client,
+        language,
+        appearance_theme,
+        cx,
+    )?;
     cx.global_mut::<ProductCoordinator>().update_window = Some(window_handle.clone());
     Ok(window_handle)
 }
@@ -2107,6 +2149,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(error) => return Err(Box::new(error)),
     };
+    // The native surfaces that can only follow the *system* theme — the ComCtl32 alerts,
+    // the Win32 menus and the shell file dialog — render dark only if the process asks
+    // for it before the first window exists, so this is the earliest point that can ask.
+    // A failure is not fatal: those surfaces then keep the system appearance, which is
+    // the documented fallback, and refusing to start over a cosmetic switch would be
+    // worse (ADR-0048).
+    let _ = bongocat_platform::init_native_theme();
     #[cfg(feature = "storage-test-injection")]
     if run_options.configuration_recovery_smoke {
         return run_configuration_recovery_smoke();
@@ -2176,6 +2225,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // settings service is what moves it out of reach.
     let update_diagnostics = bongocat_update::UpdateDiagnosticsTracker::default();
     application.set_update_diagnostics_tracker(update_diagnostics.clone());
+    // Resolve the persisted preference before moving `application` into the settings
+    // service. The process-wide native appearance must be installed before the overlay
+    // window exists; otherwise its native context menu only becomes themed after the
+    // settings window happens to apply the same preference (ADR-0048).
+    let initial_native_theme = native_theme_for_startup(application.config().appearance.theme);
 
     // The startup permission check is non-blocking (ADR-0032, amended 2026-09-15): the
     // language is resolved here, but the check itself runs on its own worker after the
@@ -2275,6 +2329,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     gpui_application.run(move |cx: &mut App| {
+        // This is the first main-thread point at which AppKit's process appearance and
+        // the overlay's native window can be ordered. Do this before creating the overlay;
+        // its right-click menu must not depend on a settings window having existed first.
+        if let Err(error) = bongocat_platform::apply_process_theme(initial_native_theme) {
+            record_failure(&run_failures, format!("apply startup native theme: {error}"));
+        }
         let overlay = match ProductOverlaySession::start_with_interaction_sinks(
             runtime_client,
             input_producer,
@@ -2397,6 +2457,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             update_service: Some(update_service),
             update_window: None,
             update_language: bongocat_ui::SettingsLanguage::EnglishUnitedStates,
+            update_appearance_theme: bongocat_ui::SettingsTheme::System,
             #[cfg(target_os = "macos")]
             update_installed_since: None,
             #[cfg(target_os = "macos")]
@@ -2528,6 +2589,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .detach();
 
+        #[cfg(target_os = "macos")]
+        let fail_on_smoke_failure = run_options.automated_verification;
         cx.on_app_quit(move |cx| {
             #[cfg(target_os = "macos")]
             if run_options.application_reopen_smoke
@@ -2539,9 +2602,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let shutdown = cx
                 .has_global::<ProductCoordinator>()
                 .then(|| begin_product_shutdown(cx));
+            #[cfg(target_os = "macos")]
+            if fail_on_smoke_failure
+                && let Some(shutdown) = shutdown.as_ref()
+            {
+                // AppKit can terminate before the async shutdown future reaches its final
+                // instruction. Smoke failures are recorded before quit is requested, so inspect
+                // the accumulator at this reachable boundary instead of relying on code after
+                // `finish().await` (TODO P7-MACOS-SMOKE-EXIT-CODE).
+                exit_after_automated_smoke(&shutdown.coordinator.failures);
+            }
             async move {
                 if let Some(shutdown) = shutdown {
-                    let _ = shutdown.finish().await;
+                    #[cfg(target_os = "macos")]
+                    let _ = fail_on_smoke_failure;
+                    let failures = shutdown.finish().await;
+                    let _ = failures;
                 }
             }
         })
@@ -2561,12 +2637,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     let presentation = system_menu_presentation(&snapshot);
                     let language = snapshot.resolved_language;
+                    let appearance_theme = snapshot.appearance_theme;
                     let result = cx.update(|cx| {
                         if !cx.has_global::<ProductCoordinator>() {
                             return Ok(());
                         }
                         let coordinator = cx.global_mut::<ProductCoordinator>();
                         coordinator.update_language = language;
+                        coordinator.update_appearance_theme = appearance_theme;
                         coordinator
                             .system_menu
                             .as_mut()
@@ -3982,6 +4060,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn persisted_theme_resolves_for_process_startup_without_a_settings_window() {
+        assert_eq!(
+            native_theme_for_startup(bongocat_config::Theme::System),
+            None
+        );
+        assert_eq!(
+            native_theme_for_startup(bongocat_config::Theme::Light),
+            Some(bongocat_platform::AppTheme::Light)
+        );
+        assert_eq!(
+            native_theme_for_startup(bongocat_config::Theme::Dark),
+            Some(bongocat_platform::AppTheme::Dark)
+        );
+    }
 
     #[test]
     fn overlay_placement_debouncer_coalesces_drag_updates_and_flushes_latest() {

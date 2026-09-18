@@ -742,6 +742,65 @@ fn appearance_theme_selection_has_stable_indices_and_system_projection() {
     );
 }
 
+/// A preference must resolve to the same mode no matter what the operating system is
+/// doing, and only the "follow the system" choice may depend on it.
+///
+/// This is the invariant that keeps the two halves of the appearance together: if a
+/// pinned preference ever delegated to the system for the component colours while the
+/// native half stayed pinned, the product would paint itself in one theme inside a window
+/// frame drawn in another. It is checked against every appearance the platform can
+/// report, not just light and dark.
+#[test]
+fn only_the_system_choice_lets_the_system_decide() {
+    let appearances = [
+        WindowAppearance::Light,
+        WindowAppearance::Dark,
+        WindowAppearance::VibrantLight,
+        WindowAppearance::VibrantDark,
+    ];
+    for theme in [
+        SettingsTheme::System,
+        SettingsTheme::Light,
+        SettingsTheme::Dark,
+    ] {
+        let pinned = pinned_theme_mode(theme);
+        for appearance in appearances {
+            let resolved = component_theme_mode(theme, appearance);
+            match pinned {
+                Some(pinned) => assert_eq!(
+                    resolved, pinned,
+                    "{theme:?} pinned the component half but resolved to {resolved:?} for {appearance:?}"
+                ),
+                None => assert_eq!(
+                    resolved,
+                    ThemeMode::from(appearance),
+                    "{theme:?} is not pinned, so it must follow {appearance:?}"
+                ),
+            }
+        }
+    }
+}
+
+/// The native half pins exactly when the component half does.
+///
+/// `pinned_theme_mode` and `pinned_native_theme` are two spellings of one decision, so a
+/// change to either that forgets the other would silently split the appearance.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[test]
+fn the_native_and_component_halves_pin_together() {
+    for theme in [
+        SettingsTheme::System,
+        SettingsTheme::Light,
+        SettingsTheme::Dark,
+    ] {
+        assert_eq!(
+            pinned_native_theme(theme).map(bongocat_platform::AppTheme::is_dark),
+            pinned_theme_mode(theme).map(|mode| mode == ThemeMode::Dark),
+            "{theme:?} pinned one half of the appearance and not the other"
+        );
+    }
+}
+
 #[test]
 fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
     let settings = SettingsOverlay {

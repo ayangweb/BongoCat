@@ -12,7 +12,7 @@ use std::{cell::RefCell, rc::Rc, time::Duration};
 use crate::{
     SettingsClient, SettingsLanguage, SettingsTheme, UPDATE_STATE_POLL_INTERVAL, UpdateClient,
     UpdateFailureStage, UpdatePhase, UpdateProgressInfo, UpdateSnapshot, UpdateUnavailableReason,
-    window::{Tokens, apply_component_theme, sync_system_component_theme},
+    window::{Tokens, apply_component_theme},
 };
 use bongocat_i18n::{format_text, text};
 use gpui_kit::component::{Disableable, Root, Theme, button::Button, progress::Progress};
@@ -30,8 +30,9 @@ const WINDOW_HEIGHT: f32 = 460.0;
 const WINDOW_MIN_WIDTH: f32 = 460.0;
 const WINDOW_MIN_HEIGHT: f32 = 340.0;
 
-/// How often the window re-reads the settings snapshot for the display language.
-const LANGUAGE_POLL_INTERVAL: Duration = Duration::from_secs(1);
+/// How often the window re-reads the settings snapshot for the display language and the
+/// appearance.
+const SETTINGS_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
 pub struct UpdateWindowHandle {
@@ -89,6 +90,10 @@ pub struct UpdateView {
     client: UpdateClient,
     settings_client: SettingsClient,
     language: SettingsLanguage,
+    /// The appearance the product is configured with, kept in sync by
+    /// [`Self::start_settings_polling`]. Seeded at open so the first frame already
+    /// matches, instead of clearing the override the settings window installed.
+    appearance_theme: SettingsTheme,
     snapshot: UpdateSnapshot,
     applied_theme: Option<SettingsTheme>,
     observed_revision: Option<u64>,
@@ -108,6 +113,7 @@ impl UpdateView {
         client: UpdateClient,
         settings_client: SettingsClient,
         language: SettingsLanguage,
+        appearance_theme: SettingsTheme,
         cx: &mut Context<Self>,
     ) -> Self {
         let snapshot = client.snapshot();
@@ -115,6 +121,7 @@ impl UpdateView {
             client,
             settings_client,
             language,
+            appearance_theme,
             observed_revision: Some(snapshot.revision),
             snapshot,
             applied_theme: None,
@@ -177,11 +184,16 @@ impl UpdateView {
         .detach();
     }
 
-    fn start_language_polling(&self, cx: &mut Context<Self>) {
+    /// Keeps the window on the settings the product is configured with.
+    ///
+    /// The window opens on the values the application cached, and this poll is what
+    /// makes a change made while it is open take effect: the display language and the
+    /// appearance, which the update window used to read as a constant.
+    fn start_settings_polling(&self, cx: &mut Context<Self>) {
         let executor = cx.background_executor().clone();
         cx.spawn(async move |this, cx| {
             loop {
-                executor.timer(LANGUAGE_POLL_INTERVAL).await;
+                executor.timer(SETTINGS_POLL_INTERVAL).await;
                 let client = match this.update(cx, |view, _| view.settings_client.clone()) {
                     Ok(client) => client,
                     Err(_) => break,
@@ -191,8 +203,11 @@ impl UpdateView {
                 };
                 if this
                     .update(cx, |view, cx| {
-                        if view.language != snapshot.resolved_language {
+                        let language_changed = view.language != snapshot.resolved_language;
+                        let theme_changed = view.appearance_theme != snapshot.appearance_theme;
+                        if language_changed || theme_changed {
                             view.language = snapshot.resolved_language;
+                            view.appearance_theme = snapshot.appearance_theme;
                             cx.notify();
                         }
                     })
@@ -242,7 +257,7 @@ impl Render for UpdateView {
         let language = self.language;
         let locale = language.catalog_locale();
         window.set_window_title(text(locale, "update.window.title"));
-        self.sync_component_theme(SettingsTheme::System, window, cx);
+        self.sync_component_theme(self.appearance_theme, window, cx);
 
         let tokens = Tokens::from_theme(cx);
         let phase = self.snapshot.phase.clone();
@@ -638,13 +653,14 @@ fn human_bytes(bytes: u64) -> String {
 
 /// Open the update window.
 ///
-/// `language` is the display language at open time; the window keeps itself in sync
-/// with the settings snapshot afterwards, so a language change does not need the
-/// caller to reopen it.
+/// `language` and `appearance_theme` are the display language and the appearance at open
+/// time; the window keeps itself in sync with the settings snapshot afterwards, so
+/// neither a language nor a theme change needs the caller to reopen it.
 pub fn open_update_window(
     client: UpdateClient,
     settings_client: SettingsClient,
     language: SettingsLanguage,
+    appearance_theme: SettingsTheme,
     cx: &mut App,
 ) -> Result<UpdateWindowHandle, String> {
     let bounds = WindowBounds::Windowed(gpui_kit::Bounds::centered(
@@ -672,21 +688,27 @@ pub fn open_update_window(
                     gpui_kit::init(cx);
                 }
                 Theme::global_mut(cx).notification.placement = Anchor::BottomRight;
-                sync_system_component_theme(window, cx);
+                apply_component_theme(appearance_theme, window, cx);
                 let view = cx.new(|cx| {
-                    let view = UpdateView::new(client, settings_client, language, cx);
+                    let view =
+                        UpdateView::new(client, settings_client, language, appearance_theme, cx);
                     view.start_polling(cx);
-                    view.start_language_polling(cx);
+                    view.start_settings_polling(cx);
                     view
                 });
                 opened_view.borrow_mut().replace(view.clone());
                 let appearance_view = view.downgrade();
                 window
                     .observe_window_appearance(move |window, cx| {
-                        if appearance_view.upgrade().is_none_or(|view| {
-                            view.read(cx).applied_theme == Some(SettingsTheme::System)
-                        }) {
-                            sync_system_component_theme(window, cx);
+                        // The callback is the system announcing that it changed. That is only
+                        // the product's business while the product follows the system: a pinned
+                        // preference was already handed to the platform, and it does not move
+                        // because the system did.
+                        let theme = appearance_view
+                            .upgrade()
+                            .map_or(SettingsTheme::System, |view| view.read(cx).appearance_theme);
+                        if theme == SettingsTheme::System {
+                            apply_component_theme(theme, window, cx);
                         }
                     })
                     .detach();
@@ -835,6 +857,7 @@ mod render_tests {
                     client,
                     settings_client,
                     SettingsLanguage::EnglishUnitedStates,
+                    SettingsTheme::System,
                     cx,
                 )
             });

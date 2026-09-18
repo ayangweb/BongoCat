@@ -117,6 +117,17 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   `Theme::change` 即时更新内容；`light`/`dark` 同时请求匹配的原生窗口外观，`system` 清除覆盖并
   仅在该模式下响应系统外观通知。Entity 只缓存已经应用的显示模式以避免重复刷新，不成为配置
   事实来源。
+- **原生表面（窗口框、系统弹框、右键菜单、托盘菜单、文件选择框）的主题由 `bongocat-platform`
+  的 theme 模块独占（ADR-0048）**，UI 层不再直接调用平台外观 API。该模块只接受**已解析**的
+  `AppTheme`（`System` 不往下传），并按平台能力矩阵落地：macOS 用进程级
+  `NSApplication.appearance`，一处覆盖窗口框、弹框、菜单和面板；Windows 用
+  `DWMWA_USE_IMMERSIVE_DARK_MODE` 覆盖窗口框，其余表面接受**跟随系统主题**，由进程在创建任何
+  窗口前调用一次未文档化的 `SetPreferredAppMode(AllowDark)` 使其生效。`system` 的解析口径统一
+  在平台层（macOS 查 `NSApplication.effectiveAppearance`）且全 UI crate 只有一处解析入口，
+  render 路径与 smoke 断言共用它——不读 gpui 的窗口外观缓存，因为该缓存只在延迟触发的
+  `appearance_changed` 中更新；也不复用 gpui 的外观名映射，因为它不识别
+  `AccessibilityHighContrastDarkAqua`，会把开启「提高对比度」的暗色系统判成浅色。主题失败一律
+  降级为该表面保持系统外观，不报错、不改配置、不阻止启动。
 - `appearance.language` 只接受 `system`、`zh-CN` 和 `en-US` 三个当前 v1 值，默认 `system`。
   平台 adapter 在启动时读取系统首选 locale；仅简体中文解析为 `zh-CN`，英语及其它 locale 都
   回退 `en-US`，不把解析结果写回配置。UI 通过独立 `SettingsLanguage`、revision-checked typed

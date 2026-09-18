@@ -4396,6 +4396,92 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `a_stray_file_in_the_preset_root_never_takes_the_catalog_down`。
     - 验收证据（2026-09-18）：`just check` 六道门全绿（model 96 项测试）。
 
+86. [ ] `P7-NATIVE-THEME-SURFACES`：让窗口框、系统弹框、右键菜单、托盘菜单和文件选择框跟随主题。
+    - 依赖：`P5-APPEARANCE-THEME`（三态偏好已闭环）、`P7-SYSTEM-MENU-LIFECYCLE`（托盘与菜单
+      owner）、`P7-MODEL-DIRECTORY-PICKER`（原生 picker 入口）、ADR-0030、ADR-0031、ADR-0020。
+    - 背景（2026-09-18）：用户要求窗口标题栏、系统弹框、右键菜单、托盘菜单、文件选择框跟随应用
+      主题，不支持跟随应用主题的退化为跟随系统主题。调研（
+      `docs/theme-mode-native-surface-research.md`）确认**不存在可直接使用的现成 crate**：能力
+      已在依赖树内的 `windows 0.62.2` 与 `objc2-app-kit 0.3.2` 中；`muda::MenuTheme` 上游明确不覆盖
+      popup，`dark-light` 只检测不设置，`tao`/`winit` 是完整窗口库。根因是结构性的——
+      `bongocat-platform` 没有主题入口，主题知识只存在于 UI 层，而原生表面的 owner 在平台层。
+    - 退出条件：`bongocat-platform` 提供唯一的原生主题入口（`apply_theme` / `init_native_theme` /
+      macOS `system_appearance`），`AppTheme` 为已解析取值、`System` 不在平台层出现；`System` 的
+      解析口径统一到平台层而不再读 gpui 的窗口外观缓存；macOS 以进程级 `NSApplication.appearance`
+      覆盖窗口框/弹框/菜单/面板，Windows 以 `DWMWA_USE_IMMERSIVE_DARK_MODE` 覆盖窗口框并在创建
+      任何窗口前以 `SetPreferredAppMode(AllowDark)` 让弹框/菜单/文件框跟随系统主题；主题失败一律
+      降级为系统外观且不阻止启动、不改配置；更新窗口携带应用外观而非硬编码 `System`；不新增第三方
+      依赖；定向测试、完整 Native workspace 与**双平台实机**主题切换（含托盘菜单、文件面板、
+      弹框、标题栏）通过。
+    - 状态（2026-09-18，**未完成**）：代码、ADR-0048 与平台能力矩阵已落地。
+      `crates/bongocat-platform/src/theme.rs` 新建（4 类型 + 2 函数 + macOS `system_appearance`，
+      非 mac/win 平台为有文档的 no-op）；`window.rs` 的 `apply_component_theme` 改为先落原生主题
+      再推导组件模式，`System` 分支在 macOS 走平台查询以避开 gpui 的窗口外观缓存；System 解析
+      收敛为 `resolved_theme_mode` 单一入口，render 路径与 `smoke.rs` 断言共用（smoke 原先用
+      `component_theme_mode(theme, cx.window_appearance())` 独立推导期望值，与产品实际路径不是
+      同一条，已消除）；`update_window.rs` 的 `UpdateView` 增加 `appearance_theme` 字段与
+      `open_update_window` 参数，`start_language_polling` 扩为 `start_settings_polling`，外观回调
+      只在偏好为 `System` 时响应；`main.rs` 在解析 RunOptions 后、任何窗口前调用一次
+      `init_native_theme()`，并在创建 overlay 前从持久化 `appearance.theme` 调用一次
+      `apply_process_theme()`；`objc2-app-kit` 增加 `NSAppearance` feature、`windows` 增加
+      `Win32_Graphics_Dwm` feature。模型窗口及右键菜单不再依赖设置窗口曾经打开。
+    - 附带发现：gpui 的原生外观映射（`gpui-pre-macos-0.3.5/src/window_appearance.rs`）只识别
+      `Aqua`/`DarkAqua`/`VibrantLight`/`VibrantDark`，其余一律打印到 stdout 并回退成 `Light`；
+      macOS 开启「提高对比度」后 AppKit 报 `AccessibilityHighContrastDarkAqua`，gpui 会把暗色系统
+      判成浅色。这是 gpui 的既存缺陷，产品不复用该映射（§3.1 评估记录见 ADR-0048 决策 2）。
+    - 验收证据（2026-09-18）：`just check` 六道门全绿（format、三组严格 Clippy、workspace
+      **748 passed / 0 failed**、release check）；`cargo check --locked --workspace --all-targets`
+      通过且三个受影响 crate 无告警；`bongocat-platform` 新增 2 个单测（error code 唯一性、
+      `is_dark` 语义），`bongocat-ui` 新增 2 个不变量测试（`only_the_system_choice_lets_the_system_decide`
+      覆盖四种系统外观、`the_native_and_component_halves_pin_together` 覆盖两半同时固定），两者均以
+      变异测试确认有牙齿后还原；Windows 分支经隔离 crate `/tmp/theme-win-check`
+      （`raw-window-handle 0.6.2` + `windows 0.62.2`，同 features）按
+      `--target x86_64-pc-windows-msvc` 单独 `cargo check` 与 `cargo clippy -- -D warnings` 通过
+      （以临时注入 `compile_error!` 确认文件确实被编译后还原）——workspace 无法交叉编译到该目标，
+      `libdeflate-sys`（来自 `oxipng`）需要 Windows C 工具链。
+    - **未运行**：Windows 实机 DWM 暗色边框与暗色弹框/菜单/文件框；macOS 实机肉眼确认标题栏、
+      弹框、托盘菜单、文件面板的深浅色；运行中切换系统主题后的跟随行为；`SetPreferredAppMode` 在
+      Windows 10 1903 / 11 各版本上的行为。**类型正确不等于运行时正确**，因此本项保持未勾选。
+    - macOS 运行时冒烟（`just dev-smoke`）已跑通且 exit 0：设置窗口打开、辅助功能桥挂上、主题代码
+      在真实主线程上执行完且无 panic。**但该结果不作为主题正确性的证据**：实测确认这个 smoke 在
+      macOS 上无法失败（见第 87 项），且其主题断言只验证一致性（见 ADR-0048 残余风险 11）。
+    - 已知取舍：Windows 的弹框/菜单/文件框**不自绘**，接受跟随系统主题（`AllowDark` 而非
+      `ForceDark`）；`SetPreferredAppMode` 是未文档化的 `uxtheme.dll` 序号 135 导出，缺失时静默
+      退化；picker/prompt 的 `set_parent`（调研文档 B5）是模态归属缺陷而非主题缺陷，本次不改；
+      设置页下拉切换主题时原生表面滞后一个 snapshot 轮询周期。
+    - 决策记录：ADR-0048。调研报告 `docs/theme-mode-native-surface-research.md`；主题色的 crate
+      边界评估见 `docs/theme-color-extraction-evaluation.md`（结论：不拆 crate）。
+
+87. [ ] `P7-MACOS-SMOKE-EXIT-CODE`：macOS 上被记录的 smoke 失败不影响进程退出码。
+    - 背景（2026-09-18，做 `P7-NATIVE-THEME-SURFACES` 时顺带发现）：`--settings-window-smoke` 在
+      macOS 上无论记录多少失败都以 0 退出，因此 CI 的
+      `Smoke macOS settings window lifecycle`、`Smoke hidden overlay model switching`、
+      `Smoke native system menu lifecycle` 三个步骤**在 macOS 上无法失败**——它们都是裸
+      `cargo run`，只靠退出码判定。这不只影响本项，而是影响所有以 macOS smoke 为证据的条目。
+    - 根因（已用探针逐步确认，非推测）：`App::quit()` 在 macOS 上走
+      `msg_send![NSApplication, terminate: nil]`（`gpui-pre-macos-0.3.5/src/platform.rs:557-575`），
+      AppKit 的终止流程调用 `applicationWillTerminate:` → gpui 的 `will_terminate`
+      （同文件 `1392`）→ `App::shutdown()`（`gpui-pre-0.3.5/src/app.rs:944`）→ 跑 `on_app_quit`
+      观察者并 `block_with_timeout(SHUTDOWN_TIMEOUT)` 等待，然后 AppKit 直接 `exit(0)`。
+      `NSApplication::run()` 不返回，所以 `bongocat-app/src/main.rs` 末尾的失败汇总
+      （`let failures = match Arc::try_unwrap(failures)`）对 macOS **不可达**。
+    - 实现（2026-09-18）：新增 macOS-only `exit_after_automated_smoke`。automated verification
+      在 `on_app_quit` 调 `begin_product_shutdown` 后、等待可能无法完成的异步 `finish()` 前，检查
+      `ProductShutdown.coordinator.failures`；已有失败则写入固定的 `product run failed: ...` 并
+      `std::process::exit(1)`。正常产品启动（没有 smoke/diagnostic 参数）不走该路径；Windows 仍
+      使用原有的 `windows_product_exit_code`。
+    - 变异证据（本机 macOS arm64 release）：故意在 settings smoke 分支记录
+      `forced smoke failure`，`--run-seconds 4 --settings-window-smoke` 得到 **exit 1** 且 stderr
+      输出 `product run failed: forced smoke failure`；还原后干净 smoke 得到 **exit 0**。此前
+      已用探针确认失败确实进入 accumulator；所有探针与变异均已还原。
+    - 当前边界：如果失败只在 `ProductShutdown::finish()` 内新产生，而 AppKit 在 future 完成前终止，
+      仍可能无法反映到退出码；当前 smoke 断言和绝大多数 runtime failure 都在 quit 之前已记录。
+      因此本项仍保持 `[ ]`，直到 Windows cfg 编译/CI 与 finish 内失败传播有证据。
+    - 退出条件：macOS 上被记录的失败使进程以非零码退出；用变异确认退出码变化；Windows 行为不回归；
+      finish 内失败传播策略明确；相关 ADR/TODO 中所有以 macOS smoke 为依据的证据重新核对。
+    - 依赖：无（可独立实施）。与 ADR-0048 的关系：ADR-0048 残余风险 10 已更新为当前边界，
+      残余风险 11（smoke 只证明一致性，不证明解析正确）仍然有效。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

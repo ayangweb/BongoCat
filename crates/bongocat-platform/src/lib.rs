@@ -45,6 +45,14 @@ mod single_instance_windows;
 #[cfg(target_os = "windows")]
 pub use single_instance_windows::{SingleInstance, SingleInstanceStart};
 
+mod theme;
+#[cfg(target_os = "macos")]
+pub use theme::system_appearance;
+pub use theme::{
+    AppTheme, NativeThemeError, SystemAppearance, apply_process_theme, apply_theme,
+    init_native_theme,
+};
+
 mod system_menu;
 pub use system_menu::{SystemMenuAction, SystemMenuError, SystemMenuPresentation};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
