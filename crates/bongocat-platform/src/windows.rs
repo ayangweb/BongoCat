@@ -1,6 +1,5 @@
 use crate::{
     DisplayBounds, PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus,
-    ShortcutDispatcher,
 };
 use bongocat_config::Language;
 use bongocat_runtime::{
@@ -725,7 +724,6 @@ impl WindowState {
                 ..PlatformInputDiagnostics::default()
             },
             diagnostics_producer,
-            shortcut_dispatcher,
         }
     }
 
@@ -876,9 +874,6 @@ impl WindowState {
                 Ok(_) => {
                     self.candidates.clear();
                     self.missing_confirmations.clear();
-                    if let Some(dispatcher) = self.shortcut_dispatcher.as_mut() {
-                        dispatcher.reset();
-                    }
                     if let Err(error) = self.gamepad_poller.reseed(&self.producer, self.monotonic())
                     {
                         match error {
@@ -999,9 +994,6 @@ impl WindowState {
                             .recover(InputResetReason::ServiceRestart, self.monotonic())?;
                         self.candidates.clear();
                         self.missing_confirmations.clear();
-                        if let Some(dispatcher) = self.shortcut_dispatcher.as_mut() {
-                            dispatcher.reset();
-                        }
                         self.gamepad_poller
                             .reseed(&self.producer, self.monotonic())?;
                         self.diagnostics.recovery_resets =
@@ -1015,12 +1007,6 @@ impl WindowState {
                 })?;
                 self.diagnostics.reconciliation_runs =
                     self.diagnostics.reconciliation_runs.saturating_add(1);
-                if let Some(dispatcher) = self.shortcut_dispatcher.as_mut() {
-                    dispatcher.reconcile(pressed.iter().filter_map(|control| match control {
-                        InputControl::Key(key) => Some(*key),
-                        InputControl::Mouse(_) | InputControl::Gamepad(_) => None,
-                    }));
-                }
                 let controls = self.candidates.keys().copied().collect::<Vec<_>>();
                 for control in controls {
                     if pressed.contains(&control) {
@@ -1159,7 +1145,6 @@ impl WindowsInputService {
                         cursor_producer,
                         gamepad_axis_producer,
                         diagnostics_producer,
-                        shortcut_dispatcher,
                         worker_stop,
                         worker_system_termination_requested,
                         options,
@@ -1230,7 +1215,6 @@ fn run_input_worker(
     cursor_producer: CursorProducer,
     gamepad_axis_producer: GamepadAxisProducer,
     diagnostics_producer: PlatformInputDiagnosticsProducer,
-    shortcut_dispatcher: Option<ShortcutDispatcher>,
     stop: Arc<AtomicBool>,
     system_termination_requested: Arc<AtomicBool>,
     options: WorkerOptions,
@@ -1259,7 +1243,6 @@ unsafe fn run_input_worker_inner(
     cursor_producer: CursorProducer,
     gamepad_axis_producer: GamepadAxisProducer,
     diagnostics_producer: PlatformInputDiagnosticsProducer,
-    shortcut_dispatcher: Option<ShortcutDispatcher>,
     stop: Arc<AtomicBool>,
     system_termination_requested: Arc<AtomicBool>,
     options: WorkerOptions,
@@ -1292,7 +1275,6 @@ unsafe fn run_input_worker_inner(
         stop,
         system_termination_requested,
         options,
-        shortcut_dispatcher,
     ));
     let state_ptr = (&mut *state) as *mut WindowState;
     let window = match unsafe {
@@ -1849,7 +1831,6 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
             WorkerOptions::default(),
-            None,
         );
         assert!(!state.system_termination_requested());
         state.request_system_termination();
@@ -2005,7 +1986,6 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
             WorkerOptions::default(),
-            None,
         );
 
         state.capture_raw_input(RawInputPacket::Keyboard(RawKeyboardPacket {
@@ -2179,7 +2159,6 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
             WorkerOptions::default(),
-            None,
         );
         state.gamepad_poller.slots[0] = Some(XInputSlot {
             connection,
@@ -2299,7 +2278,6 @@ mod tests {
             runtime.cursor_producer(),
             runtime.gamepad_axis_producer(),
             runtime.platform_input_diagnostics_producer(),
-            None,
             WorkerOptions {
                 drop_next_key_release: true,
             },

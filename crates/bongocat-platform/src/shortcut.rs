@@ -482,12 +482,9 @@ mod global {
 
     #[cfg(target_os = "windows")]
     fn wait_and_pump(interval: Duration) {
-        use windows::Win32::Foundation::HWND;
-        use windows::Win32::System::Threading::{
-            MWMO_INPUTAVAILABLE, MsgWaitForMultipleObjectsEx, QS_ALLINPUT,
-        };
         use windows::Win32::UI::WindowsAndMessaging::{
-            DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
+            DispatchMessageW, MSG, MWMO_INPUTAVAILABLE, MsgWaitForMultipleObjectsEx, PM_REMOVE,
+            PeekMessageW, QS_ALLINPUT, TranslateMessage,
         };
         // SAFETY: no Win32 objects are created here; the calls only wait for
         // and drain this thread's message queue so the `WM_HOTKEY` messages
@@ -495,7 +492,6 @@ mod global {
         // window procedure.
         unsafe {
             let _ = MsgWaitForMultipleObjectsEx(
-                0,
                 None,
                 interval.as_millis().min(u32::MAX as u128) as u32,
                 QS_ALLINPUT,
