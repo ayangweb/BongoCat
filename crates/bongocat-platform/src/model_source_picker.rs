@@ -323,6 +323,28 @@ mod tests {
     }
 
     #[test]
+    fn selected_cover_image_is_revalidated_and_canonicalized() {
+        let root = tempdir().expect("selected cover root");
+        let cover = root.path().join("cover.png");
+        fs::write(&cover, b"\x89PNG\r\n\x1a\n").expect("selected cover");
+        assert_eq!(
+            validate_selected_image(cover.clone()).expect("valid selected cover"),
+            ModelSourcePickerOutcome::Selected(cover.canonicalize().expect("canonical cover"))
+        );
+        // Whether the bytes are a usable PNG is the settings service's judgement
+        // rather than the dialog layer's, so a file that is not a PNG is still a
+        // valid selection.
+        let plain = root.path().join("not-an-image.bin");
+        fs::write(&plain, b"payload").expect("selected plain file");
+        assert!(validate_selected_image(plain).is_ok());
+        // A directory is not a regular file, so it never passes this check.
+        assert_eq!(
+            validate_selected_image(root.path().to_owned()).expect_err("directory as cover"),
+            ModelSourcePickerError::SelectionInvalid
+        );
+    }
+
+    #[test]
     fn a_directory_is_not_an_archive_and_an_archive_is_not_a_directory() {
         let root = tempdir().expect("picker root");
         let archive = root.path().join("模型.zip");
