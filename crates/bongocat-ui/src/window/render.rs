@@ -1,4 +1,5 @@
 use super::*;
+use gpui_kit::assets::IconName;
 
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -181,6 +182,7 @@ impl Render for SettingsView {
             language.catalog_locale(),
             "navigation.general.title",
         ))
+        .icon(IconName::Settings)
         .default_open(true)
         .description(bongocat_i18n::text(
             language.catalog_locale(),
@@ -1012,6 +1014,7 @@ impl Render for SettingsView {
             language.catalog_locale(),
             "navigation.models.title",
         ))
+        .icon(IconName::Cat)
         .description(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.models.description",
@@ -1033,6 +1036,7 @@ impl Render for SettingsView {
             language.catalog_locale(),
             "navigation.shortcuts.title",
         ))
+        .icon(IconName::Keyboard)
         .description(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.shortcuts.description",
@@ -1081,6 +1085,7 @@ impl Render for SettingsView {
             language.catalog_locale(),
             "navigation.diagnostics.title",
         ))
+        .icon(IconName::Activity)
         .description(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.diagnostics.description",
@@ -1126,6 +1131,7 @@ impl Render for SettingsView {
             language.catalog_locale(),
             "navigation.about.title",
         ))
+        .icon(IconName::Info)
         .description(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.about.description",

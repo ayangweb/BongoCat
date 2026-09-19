@@ -53,6 +53,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - The model window stays fully on screen while being allowed over the taskbar, Dock and menu bar. A window dragged off the screen returns after you stop dragging instead of springing back the moment you let go, so moving it between screens is not interrupted.
 - Added dead-zone settings for gamepad sticks and triggers.
 - Model management reports its errors consistently: a folder or cover dialog that cannot open, a failed import, a model folder that cannot be read, and a rename or cover change that fails all appear as the same kind of notification instead of inline text.
+- Each top-level page in the settings sidebar — General, Models, Shortcuts, Diagnostics, and About — now carries its own icon, so the pages can be told apart at a glance.
 
 ### 💻 Platform Changes
 

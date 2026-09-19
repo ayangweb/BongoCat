@@ -35,7 +35,7 @@ use bongocat_ui::{
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use gpui_kit::{
-    App, Application as GpuiApplication, Global, QuitMode, assets::Assets,
+    App, Application as GpuiApplication, Global, QuitMode, assets::AllAssets,
     platform::current_platform,
 };
 #[cfg(target_os = "windows")]
@@ -1389,7 +1389,7 @@ fn run_configuration_recovery_mode(
     let settings_service = bongocat_app::ApplicationSettingsService::start(application)?;
     let settings_client = settings_service.client();
     let window_state = settings_service.window_state();
-    let gpui_application = gpui_application().with_assets(Assets);
+    let gpui_application = gpui_application().with_assets(AllAssets);
     gpui_application.run(move |cx| {
         if let Err(error) = open_settings_window(
             settings_client.clone(),
@@ -1475,7 +1475,7 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
     ) {
         return Err("recovery smoke did not project the expected recovery snapshot".into());
     }
-    let gpui_application = gpui_application().with_assets(Assets);
+    let gpui_application = gpui_application().with_assets(AllAssets);
     let smoke_client = client.clone();
     gpui_application.run(move |cx| {
         let window = match open_settings_window(
@@ -1573,7 +1573,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     let service = bongocat_app::ApplicationSettingsService::start(application)?;
     let client = service.client();
     let window_state = service.window_state();
-    let gpui_application = gpui_application().with_assets(Assets);
+    let gpui_application = gpui_application().with_assets(AllAssets);
     gpui_application.run(move |cx| {
         let window =
             match open_settings_window(
@@ -2303,7 +2303,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     #[cfg(target_os = "windows")]
     let shutdown_requested = Arc::new(AtomicBool::new(false));
-    let gpui_application = gpui_application().with_assets(Assets);
+    let gpui_application = gpui_application().with_assets(AllAssets);
     let reopen_failures = Arc::clone(&run_failures);
     #[cfg(target_os = "macos")]
     let application_reopen_smoke = run_options.application_reopen_smoke;
