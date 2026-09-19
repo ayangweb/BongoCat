@@ -492,20 +492,35 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 之前绘制；背景缺失时保持透明 overlay，背景文件损坏则拒绝该模型提交。按键图片从
 `resources/left-keys` 和 `resources/right-keys` 按目录绑定，当前按下键优先使用精确文件名；
 HID 功能键 F1-F24 缺少专属 `F1.png`…`F24.png` 时回退到该模型共享的 `Fn.png`，左右修饰键同理回退到
-`Control`/`Shift`/`Alt`/`Meta`；没有匹配资源时不绘制按键层，也不产生任何按键动作（见下）。左右修饰键的精确名是两侧各自的
+`Control`/`Shift`/`Alt`/`Meta`；没有匹配资源时不绘制按键层，也不产生任何按键动作（见下）。**`Fn` 是这张
+共享功能键图的名字，不是 Fn 键**：旧版输入层把"模型没逐键画图"的 `F<数字>` 重写成 `Fn`，两个预置键盘
+模型出厂的共享图就在这个主干下，所以它既不改名也不迁移。左右修饰键的精确名是两侧各自的
 canonical 名（`AltLeft`/`AltRight`、`ControlLeft`/`ControlRight`、`ShiftLeft`/`ShiftRight`、
-`MetaLeft`/`MetaRight`），`Alt`/`Control`/`Shift`/`Meta` 只作为两侧共用的家族图；`AltGr` 是唯一保留的
-旧名，只对右 Alt 生效，用于兼容没有经过导入归一化的包（见 ADR-0038）。小键盘（HID `0x53`…`0x63`）的
+`MetaLeft`/`MetaRight`），`Alt`/`Control`/`Shift`/`Meta` 只作为两侧共用的家族图；`AltGr` 是只对右 Alt
+生效的旧名（见 ADR-0038），`Return` 是主 Enter 的旧拼写（见 ADR-0039），`Function` 是地球键的旧名
+（见 ADR-0049）——三者都排在最具体名之后，用于兼容没有经过导入归一化的包。小键盘（HID `0x53`…`0x63`）的
 精确名是 `NumLock` 与 Mver 词汇表的 `Kp*`，其中在主键盘上重复的七个键回退到主键盘的键位图
 （`Kp1`…`Kp9`、`Kp0` → `Num1`…`Num9`、`Num0`，`KpEnter` → `Enter`，`KpDivide` → `Slash`）；
 `NumLock`、`KpMultiply`、`KpMinus`、`KpPlus`、`KpDecimal` 在主键盘上没有对应键，缺图时不绘制。
 小键盘整块归左手，因为可复用的数字、Enter 和 Slash 图只存在于 `left-keys`（见 ADR-0040）。键位词表
-覆盖标准 104/105 布局与小键盘的全部按键，范围由两个平台 adapter 实际能产出的 usage 界定，即
-`0x04..=0x65` ∪ `{0x67}` ∪ `0x68..=0x73` ∪ `0xe0..=0xe7`（八个修饰键 usage；`0x66` `Power`
-两边都不产出），且**不以预置模型当前是否有图**为前提：命名是与模型作者的契约，模型提供 `Dot.png`、
-`Minus.png`、`Delete.png` 等任何键位图都必须在不改产品代码的前提下生效；`hand` 归属覆盖同一集合
-（含修饰键块，见 ADR-0041 事实 4 修订），因为 `InputState::model_snapshot` 会丢弃没有 hand 归属的
-按键，且该集合由契约测试遍历而不是由实现恰好用到的区间决定。
+覆盖标准 104/105 布局、小键盘与 Apple 地球键的全部按键，范围是
+`0x04..=0x65` ∪ `{0x67}` ∪ `0x68..=0x73` ∪ `0xe0..=0xe7` ∪ `{0xff03}`（八个修饰键 usage；`0x66`
+`Power` 两边都不产出）。这是**词表覆盖的上界，不等于"两个 adapter 实际能产出的集合"**：`IntlHash`
+`0x32` 与 F21–F24 `0x70..=0x73` 目前两个平台都产不出，仍然命名。命名**不以预置模型当前是否有图、
+也不以今天有没有硬件能按**为前提：它是与模型作者的契约，模型提供 `Dot.png`、`Minus.png`、
+`Delete.png` 等任何键位图都必须在不改产品代码的前提下生效。反过来，"某个 adapter 能产出某个 usage"
+必须有该 adapter 自己的断言支撑，不得从这张并集推断——`Apps` `0x65` 就曾在这个并集里躺了很久，而
+两个平台都没有映射，于是 `Apps.png` 永远画不出来（见 ADR-0041 修订与 TODO 第 90 项）；`hand` 归属
+覆盖同一集合（含修饰键块，见 ADR-0041 事实 4 修订），因为 `InputState::model_snapshot` 会丢弃没有
+hand 归属的按键，且该集合由契约测试遍历而不是由实现恰好用到的区间决定。
+
+地球键是这套词表里唯一不在 HID Keyboard/Keypad 页的键：它的 usage 是 Apple 厂商页 `0xFF` 的 `0x03`
+（`KeyboardFn`）折叠成 `0xff00 | usage`，即 `bongocat-render::GLOBE_KEY_USAGE` = `0xff03`。任何
+`0x04..=0xe7` 式区间都覆盖不到它，所以命名、绑定和两处契约并集都必须显式写出。它的精确名是 `Globe`，
+旧名 `Function` 作为末位别名；它与功能键的候选列表完全不相交（见 ADR-0049）。平台可达性：macOS 经
+CGEvent keycode `63`（`kVK_Function`）以 `FlagsChanged` + `MaskSecondaryFn` 到达，Windows 的 Fn 键由
+键盘固件处理、Raw Input 从不报告，所以没有 Windows 映射。同理，F13–F24 在 Windows 侧没有可依据的扫描码
+（不猜值）、在 macOS 侧 Carbon 没有 `kVK_F21`…`kVK_F24`，`0x70..=0x73` 属于"命名到位但两个平台都不可达"。
 
 **只有模型确实提供对应键位图时，按键才产生动作**（见 ADR-0042）：`bongocat-app` 在激活模型时用
 `bongocat-live2d::KeyImageInventory` 读取该模型的键位图清单（与渲染侧加载共用同一次目录扫描和同一套

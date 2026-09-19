@@ -49,6 +49,26 @@ ADR-0040 把 `Kp0..Kp9`、`KpMultiply` 等接入了运行时候选，但当时�
    这些当前代码没有 arm 的名字。图中的空格只是排版（`Back Quote` → `BackQuote`、
    `Kp Divide` → `KpDivide`），实际资源名无空格。
 
+   > **读图约定（2026-09-19，与作者确认）。** 参考图上有两类**不承载实现语义**的记号，另有一条
+   > 关于范围的说明，核对时都不要当成缺口：
+   >
+   > - **多词标签的折行是排版，不是名字的一部分。** `Back Quote`、`Control Left`、`Kp Divide`
+   >   都是换行显示的单段名字。
+   > - **右上角那三个绿点（Num Lock / Caps Lock / Scroll Lock）是纯装饰**，只用来把三个锁定键标成
+   >   一类。**它不表示应用会显示锁定状态**——当前实现没有任何锁定状态指示，也不打算加（`next`
+   >   首版范围之外）。核对时若把它读成"应显示 Caps Lock 灯"，那是对图的过度解读。
+   > - **图是物理布局参考，不是"每个平台都画得出来"的承诺。** 图上有几个键只在单个平台可达：
+   >   `PrintScreen`/`ScrollLock`/`Pause`/`Insert` 仅 Windows，`Globe` 仅 macOS。
+   >   照图做美术仍然正确——平台产不出的键只是那个平台画不出来，不是命名错了。平台边界见事实 4。
+   >
+   > 三个锁定键本身在词表与绑定里都是正常成员：`0x39` `CapsLock`、`0x47` `ScrollLock`、
+   > `0x53` `NumLock` 各有名字（`bongocat-live2d::key_name_candidates`），都被
+   > `input_bindings_for_model` 的 `0x04..=0x65` 循环绑到左手，是否真的画得出来只取决于模型有没有
+   > 对应美术（ADR-0042；预置模型没出这三张图，所以当前画不出，这是设计如此）。
+   > 可达性按两个 adapter 的实际产出：`CapsLock`（macOS keycode `57`）与 `NumLock`（macOS keycode
+   > `71`）双平台可达，`ScrollLock` **仅 Windows**——macOS 没有对应 keycode，见 macOS 侧那条
+   > 穷举测试的期望集合里没有 `0x47`。
+
 ## 决策
 
 ### 1. 命名标准布局 + 小键盘的全部按键
@@ -105,6 +125,24 @@ F13..F24（0x68..=0x73）              → 左手
 
 - **不为这些键新增任何预置美术**：名字先就位，图由模型决定；预置模型保持现状。
 - **不命名平台 adapter 产不出的 usage**：`0x66`（`Power`）两边都不映射，保持无名（有测试断言）。
+
+> **修订（2026-09-19）：** 上一条的原则是"不为纯理论 usage 造名字"，但它当时的表述过宽，而且
+> 没有被完全执行。`Apps`（`0x65`）被命名并绑定，却**两个平台都产不出**：Windows `map_scan_code`
+> 的 E0 分支没有 `0x5d`（菜单键的扩展扫描码），macOS `map_key_code` 没有 `110`
+> （`kVK_ContextualMenu`）。产不出的键永远进不了绑定表，所以 `Apps.png` 一直画不出来——名字、
+> 绑定、文档三者都"到位"，只有平台层没有。同日补上两处映射（Windows `0x5d => 0x65`、macOS
+> `110 => 0x65`），并给**两个 adapter 各加一条穷举断言**把"本 adapter 实际能产出哪些 usage"逐项
+> 固定：`bongocat-platform::macos::tests::this_adapter_reports_exactly_the_keycodes_the_platform_defines`
+> 与 `bongocat-platform::windows::tests::this_adapter_reports_exactly_the_scan_codes_the_platform_defines`
+> （见 TODO 第 90 项）。
+>
+> 修订后的原则分两层，不要再混为一谈：
+>
+> - **词表可以命名不可达的键。** 名字是给模型作者的契约：模型提供美术就必须生效，与今天有没有
+>   硬件能按无关。`IntlHash`（`0x32`，macOS 把 ISO `#` 与 ANSI `\` 给了同一个键码）与 F21–F24
+>   （`0x70..=0x73`，Carbon 无键码、Windows 无可依据的扫描码）属于这一类，维持现状。
+> - **"某个 adapter 能产出它"这句话必须有该 adapter 自己的断言支撑**，不得从并集推断。本 ADR
+>   事实 4 的并集、以及两处 `adapter_keyboard_usages()` 的注释都曾经比事实宽。
 - **不改 `resolve_key_overlays` 的 side 严格性**：缺同侧资源时不绘制是既有契约。
 - **不改 `FUNCTION_KEY_USAGES` 的边界**：`PrintScreen` 依旧不是功能键。
 

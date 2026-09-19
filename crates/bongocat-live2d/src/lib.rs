@@ -924,6 +924,15 @@ fn load_key_assets(root: &Path) -> Result<Vec<bongocat_render::KeyAsset>, Live2d
 /// (`Control`, `Shift`, `Alt`, `Meta`). A name that the model does not provide is
 /// skipped, so an incomplete model simply draws nothing for that key.
 ///
+/// **`Fn` is the name of that shared function-row image, not of the Fn key.**
+/// The old `rdev`-based input layer derived it by rewriting an unsupported
+/// `F<number>` to `Fn`, so every model authored against it — including both
+/// shipped keyboard presets — stores its shared function-row artwork under that
+/// stem. The physical Fn / globe key is a different key with a different name
+/// (`Globe`), and the two share no candidate: a model's `Fn.png` can never be
+/// drawn by the globe key, and its `Globe.png` can never be drawn by a function
+/// key.
+///
 /// The table covers the whole standard 104/105-key layout plus the keypad, not
 /// just the keys the shipped models draw. A name is a contract with model
 /// authors: `Dot`, `Minus`, `Insert` and the rest ship no artwork today, but a
@@ -934,16 +943,18 @@ fn load_key_assets(root: &Path) -> Result<Vec<bongocat_render::KeyAsset>, Live2d
 /// (`bongocat-app::input_bindings_for_model`), so the two tables cover the same
 /// set.
 ///
-/// `AltGr` and `Return` are the two legacy names in this table. BongoCat models
-/// written before the import normalizer existed ship the right Alt artwork as
-/// `AltGr.png` and the main Enter artwork as `Return.png` — the names the old
-/// `rdev`-based input layer used — and a package that reaches the model store
-/// without passing through that normalizer (an install predating it, or a model
-/// directory placed by hand) still has to draw them. `AltGr` is deliberately
-/// right-Alt-only: `Alt.png` stays the shared family image, exactly as it was
-/// before. `Return` is the old spelling of the main Enter key (HID `0x28`) and
-/// ranks after the canonical `Enter`, so both spellings can never disagree on
-/// which artwork a key means.
+/// `AltGr`, `Return` and `Function` are the legacy names in this table. BongoCat
+/// models written before the import normalizer existed ship the right Alt
+/// artwork as `AltGr.png` and the main Enter artwork as `Return.png` — the names
+/// the old `rdev`-based input layer used — and a package that reaches the model
+/// store without passing through that normalizer (an install predating it, or a
+/// model directory placed by hand) still has to draw them. `AltGr` is
+/// deliberately right-Alt-only: `Alt.png` stays the shared family image, exactly
+/// as it was before. `Return` is the old spelling of the main Enter key (HID
+/// `0x28`) and ranks after the canonical `Enter`, so both spellings can never
+/// disagree on which artwork a key means. `Function` is the same treatment for
+/// the globe key: `rdev`'s name for that key, ranked after the canonical
+/// `Globe`.
 ///
 /// The keypad block (HID `0x53` … `0x63`) carries the `Kp*` vocabulary that the
 /// Mver conversion has always emitted, plus `NumLock`, and falls back to the
@@ -1027,6 +1038,12 @@ fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
         0xe5 => Some("ShiftRight"),
         0xe6 => Some("AltRight"),
         0xe7 => Some("MetaRight"),
+        // The Apple Fn / globe key — the one key in this table that is not on
+        // the HID Keyboard/Keypad page. Its usage folds Apple's vendor page into
+        // the same `u16` (see `bongocat_render::GLOBE_KEY_USAGE`), so no range
+        // over page `0x07` can ever reach it and it has to be named explicitly
+        // here and bound explicitly in `bongocat-app`.
+        bongocat_render::GLOBE_KEY_USAGE => Some("Globe"),
         // Function keys are the only named keys left, and the whole HID range is
         // covered by one arithmetic lookup instead of 24 arms here.
         _ => function_key,
@@ -1041,13 +1058,37 @@ fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
         // did not draw individually lands on `Fn.png`.
         candidates.push("Fn");
     }
-    if hid_usage == 0x28 {
-        // Main Enter keeps its pre-rename name as an alias between the exact
-        // `Enter` and nothing else: a legacy model draws its own `Return`
-        // artwork when it has one. Community models in the wild ship it, and
-        // an install that predates the import normalizer is never rewritten
-        // in place (`next` has no migration path).
-        candidates.push("Return");
+    if hid_usage == bongocat_render::GLOBE_KEY_USAGE {
+        // The globe key's pre-rename name, and always the last candidate. The
+        // old `rdev`-based input layer spelled this key `Function`
+        // (`Key::Function`, macOS keycode 63), and a model that shipped
+        // `Function.png` did draw it: the model store's key set was the
+        // package's own file stems, so the name was reachable even though no
+        // shipped model ever carried the artwork. Ranking it after `Globe`
+        // keeps a normalised package and an already-installed one agreeing on
+        // which image the key means.
+        //
+        // Deliberately not `Fn`: that name is the F1 … F24 fallback above, and
+        // one image name may only ever carry one meaning. This is the whole
+        // reason the key is `Globe` and not `Fn`.
+        candidates.push("Function");
+    }
+    // Pre-rename spellings of a canonical name, always ranked after it so a
+    // package that still carries the old file and one that carries the new one
+    // can never disagree about which artwork a key means. Both are needed for
+    // already-installed models: an import rewrites the package's own staging
+    // copy, but a store entry that predates the normalizer is never rewritten
+    // in place (`next` has no migration path).
+    match hid_usage {
+        // The main Enter key: community models in the wild ship `Return.png`.
+        0x28 => candidates.push("Return"),
+        // `BackSlash` is spelled `Backslash` by the legacy converter's key
+        // table and by `rdev`. The two differ only in case, and neither macOS
+        // nor Windows distinguishes case in a path, so a package that ships the
+        // old spelling keeps it — `KeyImageInventory::provides` compares the
+        // file's real stem, which is why only this candidate can make it draw.
+        0x31 => candidates.push("Backslash"),
+        _ => {}
     }
     match hid_usage {
         // Keypad fallbacks: the exact `Kp*` name above wins when the model drew
@@ -1224,6 +1265,94 @@ mod tests {
             side: KeySide::Left,
         });
         assert!(resolve_key_overlays(&resources, presses).is_empty());
+    }
+
+    /// The globe key and the F1 … F24 fallback are two different keys with two
+    /// different images, and neither can reach the other's artwork.
+    ///
+    /// `Fn` is the shared function-row image the old `rdev` layer derived from
+    /// an unsupported `F<number>`, so every model authored against it — the two
+    /// shipped keyboard presets included — carries that stem. `Globe` is the
+    /// globe key's own name and `Function` is the pre-rename spelling of that
+    /// same key. The two candidate lists are disjoint, which is the whole point:
+    /// a model shipping only `Fn.png` cannot draw the globe key, and a model
+    /// shipping only `Globe.png` cannot draw a function key.
+    #[test]
+    fn the_globe_key_never_shares_an_image_with_the_function_row() {
+        use bongocat_render::{
+            KeyAsset, KeyAssetId, KeyPress, KeyPressSet, KeySide, RenderResources,
+        };
+        use std::path::PathBuf;
+
+        assert_eq!(
+            key_name_candidates(bongocat_render::GLOBE_KEY_USAGE),
+            vec!["Globe", "Function"],
+            "the globe key's own name, then its pre-rename spelling"
+        );
+        for hid_usage in (0x3a..=0x45u16).chain(0x68..=0x73) {
+            let candidates = key_name_candidates(hid_usage);
+            assert!(
+                candidates.contains(&"Fn"),
+                "0x{hid_usage:02x} keeps the shared function-row fallback"
+            );
+            assert!(
+                !candidates
+                    .iter()
+                    .any(|name| matches!(*name, "Globe" | "Function")),
+                "0x{hid_usage:02x} must not inherit a globe name: {candidates:?}"
+            );
+        }
+
+        let asset = |name: &str| KeyAsset {
+            id: KeyAssetId::new(0),
+            side: KeySide::Left,
+            name: name.to_owned(),
+            path: PathBuf::from(format!("{name}.png")),
+            width: 612,
+            height: 354,
+        };
+        let resources = |name: &str| RenderResources {
+            textures: Vec::new(),
+            key_assets: vec![asset(name)],
+            background: None,
+        };
+        let resolve = |name: &str, hid_usage: u16| {
+            let mut presses = KeyPressSet::default();
+            presses.push(KeyPress {
+                hid_usage,
+                side: KeySide::Left,
+            });
+            resolve_key_overlays(&resources(name), presses)
+                .first()
+                .map(|overlay| overlay.asset_id.index())
+        };
+
+        assert_eq!(
+            resolve("Fn", 0x3b),
+            Some(0),
+            "F2 draws the shared row image"
+        );
+        assert_eq!(
+            resolve("Fn", bongocat_render::GLOBE_KEY_USAGE),
+            None,
+            "the shared row image is not the globe key's"
+        );
+        assert_eq!(resolve("Globe", bongocat_render::GLOBE_KEY_USAGE), Some(0));
+        assert_eq!(
+            resolve("Globe", 0x3b),
+            None,
+            "the globe image is not a function key's"
+        );
+        assert_eq!(
+            resolve("Function", bongocat_render::GLOBE_KEY_USAGE),
+            Some(0),
+            "a package that still carries the pre-rename spelling draws"
+        );
+        assert_eq!(
+            resolve("Function", 0x3b),
+            None,
+            "and it is not a function key's image either"
+        );
     }
 
     #[test]
@@ -1621,19 +1750,42 @@ mod tests {
         }
     }
 
-    /// The vocabulary has no holes: every key the platform adapters can report
-    /// carries at least one candidate name, so a model that ships artwork for it
-    /// is honoured without a product change. That set is the main block, keypad
-    /// `=` (macOS reports it separately), F13 … F24 and the eight modifier usages
-    /// `0xe0..=0xe7`; HID `0x66` (Power) is the only usage in the block neither
-    /// adapter ever produces, so it stays unnamed.
-    #[test]
-    fn every_key_the_platform_adapters_can_report_has_a_name() {
-        for usage in (0x04..=0x65)
+    /// Every HID usage the key vocabulary has to cover, written out rather than
+    /// derived from the ranges this crate happens to use.
+    ///
+    /// This is a **superset** of what either platform adapter can produce, and
+    /// deliberately so: the vocabulary is a contract with model authors, so a
+    /// key is named even when no keyboard can press it. Two usages here are
+    /// unreachable on both platforms today — `IntlHash` (`0x32`, macOS gives the
+    /// ISO `#` key the same keycode as ANSI `\`) and `F21` … `F24`
+    /// (`0x70..=0x73`, no Carbon keycode and no Windows scan code this adapter
+    /// maps). Everything else is reachable on at least one platform; each
+    /// adapter has its own exhaustive test pinning exactly which
+    /// (`bongocat-platform`'s `this_adapter_reports_exactly_the_keycodes_the_platform_defines`
+    /// and the Windows scan-code matrix).
+    ///
+    /// The modifier block sits outside `0x04..=0x65` and outside `0x68..=0x73`,
+    /// and the globe key is not on the Keyboard/Keypad page at all, so no range
+    /// over that page can be made to include it. Both were dropped once by a
+    /// rewrite that only looked at the ranges the implementation used.
+    fn adapter_keyboard_usages() -> Vec<u16> {
+        (0x04..=0x65)
             .chain([0x67])
             .chain(0x68..=0x73)
             .chain(0xe0..=0xe7)
-        {
+            .chain([bongocat_render::GLOBE_KEY_USAGE])
+            .collect()
+    }
+
+    /// The vocabulary has no holes: every key the platform adapters can report
+    /// carries at least one candidate name, so a model that ships artwork for it
+    /// is honoured without a product change. That set is the main block, keypad
+    /// `=` (macOS reports it separately), F13 … F24, the eight modifier usages
+    /// `0xe0..=0xe7` and the Apple Fn / globe key; HID `0x66` (Power) is the only
+    /// usage in the block neither adapter ever produces, so it stays unnamed.
+    #[test]
+    fn every_key_the_platform_adapters_can_report_has_a_name() {
+        for usage in adapter_keyboard_usages() {
             assert!(
                 !key_name_candidates(usage).is_empty(),
                 "0x{usage:02x} has no candidate name"
@@ -1643,6 +1795,70 @@ mod tests {
             key_name_candidates(0x66).is_empty(),
             "Power is not a key either adapter maps"
         );
+    }
+
+    /// Every image name the Mver conversion can install is a name the runtime
+    /// resolves, and resolves *first*.
+    ///
+    /// Two separate things have to hold, and only checking the first is not
+    /// enough. The name must reach a key at all — otherwise the conversion
+    /// installs an image nothing can draw, and the key does nothing whatsoever,
+    /// because a press without a hand assignment is dropped before the resolver
+    /// ever sees it (ADR-0042). And it must be the name the runtime reaches
+    /// first, not a legacy alias that happens to save it: `Backslash` was
+    /// precisely the second failure, spelled `Backslash` by the conversion while
+    /// the product spells it `BackSlash`, so every converted backslash image was
+    /// unreachable (ADR-0050). A name that only resolves through an alias would
+    /// let that drift back in silently, because the alias keeps the artwork
+    /// reachable either way.
+    ///
+    /// `Shift` and `Control` are the two deliberate exceptions: the legacy chart
+    /// gives each of them a single code for both sides, so the conversion emits
+    /// the family name and the runtime resolves it for either side (ADR-0038
+    /// decision 4). They are asserted to still need the exception, so the list
+    /// cannot quietly become dead. The set of conversion outputs comes from
+    /// `bongocat-model`, so a new code in the legacy table is covered here
+    /// without touching this test.
+    #[test]
+    fn every_key_image_name_the_conversion_can_install_resolves_to_a_key() {
+        const FAMILY_NAMES: [&str; 2] = ["Shift", "Control"];
+
+        let candidates = |usage: u16| key_name_candidates(usage);
+        let resolvable: std::collections::BTreeSet<&str> = adapter_keyboard_usages()
+            .into_iter()
+            .flat_map(key_name_candidates)
+            .collect();
+        let canonical: std::collections::BTreeSet<&str> = adapter_keyboard_usages()
+            .into_iter()
+            .filter_map(|usage| candidates(usage).first().copied())
+            .collect();
+
+        let outputs = bongocat_model::legacy_keyboard_key_image_names();
+        let unresolvable: Vec<&str> = outputs
+            .iter()
+            .copied()
+            .filter(|name| !resolvable.contains(name))
+            .collect();
+        assert!(
+            unresolvable.is_empty(),
+            "no key resolves these conversion outputs: {unresolvable:?}"
+        );
+        let alias_only: Vec<&str> = outputs
+            .iter()
+            .copied()
+            .filter(|name| !canonical.contains(name) && !FAMILY_NAMES.contains(name))
+            .collect();
+        assert!(
+            alias_only.is_empty(),
+            "these conversion outputs are only reachable through a legacy alias: {alias_only:?}"
+        );
+
+        for family in FAMILY_NAMES {
+            assert!(
+                !canonical.contains(family),
+                "{family} has a canonical name now; drop it from the exception list"
+            );
+        }
     }
 
     /// A name is a contract with model authors, not a list of the images the
@@ -1823,6 +2039,8 @@ mod tests {
             (0x1e, true, "Num1.png"),
             (0x28, true, "Enter.png"),
             (0x3a, true, "Fn.png covers the function row"),
+            (0x68, true, "Fn.png covers F13, past the F12 boundary"),
+            (0x73, true, "Fn.png covers F24"),
             (0x4c, true, "Delete.png"),
             (0x58, true, "keypad Enter falls back to Enter.png"),
             (0x59, true, "keypad 1 falls back to Num1.png"),
@@ -1832,12 +2050,39 @@ mod tests {
             (0x53, false, "NumLock.png is not shipped"),
             (0x63, false, "keypad . has no artwork to fall back to"),
             (0x67, false, "keypad = is not shipped"),
+            (
+                bongocat_render::GLOBE_KEY_USAGE,
+                false,
+                "Globe.png is not shipped, and Fn.png is not its image",
+            ),
         ] {
             assert_eq!(
                 standard.can_draw(KeySide::Left, hid_usage),
                 drawable,
                 "standard 0x{hid_usage:02x}: {why}"
             );
+        }
+        // The shared function-row image is the only function-key artwork the
+        // keyboard presets ship, so the whole row is drawable from it — F13 …
+        // F24 included. `can_draw` is what gates the binding
+        // (`bongocat-app::input_bindings_for_model`), so a model that ships
+        // `Fn.png` alone still binds all 24 keys and still draws whichever one a
+        // keyboard reports. F21 … F24 are named and bound but unreachable on both
+        // platforms today, which is exactly why the fallback has to hold for the
+        // whole range: the vocabulary promises them whether or not hardware can
+        // press them.
+        //
+        // Both keyboard presets are checked because both ship `Fn.png` and
+        // neither ships a per-key `F<number>.png`: the fallback is the contract,
+        // not a property of `standard`.
+        let keyboard = load("keyboard");
+        for (id, inventory) in [("standard", &standard), ("keyboard", &keyboard)] {
+            for hid_usage in (0x3a..=0x45u16).chain(0x68..=0x73) {
+                assert!(
+                    inventory.can_draw(KeySide::Left, hid_usage),
+                    "{id} 0x{hid_usage:02x} must be drawable from Fn.png"
+                );
+            }
         }
         // The arrow cluster is the other hand's artwork, and `standard` ships no
         // `right-keys` directory at all.
@@ -1850,7 +2095,6 @@ mod tests {
             "standard right UpArrow"
         );
 
-        let keyboard = load("keyboard");
         assert!(keyboard.can_draw(KeySide::Right, 0x52), "keyboard UpArrow");
         assert!(
             !keyboard.can_draw(KeySide::Left, 0x52),

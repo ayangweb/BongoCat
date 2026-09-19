@@ -1663,6 +1663,13 @@ fn map_scan_code(make_code: u16, flags: u16) -> Option<PhysicalKey> {
             0x53 => 0x4c,
             0x5b => 0xe3,
             0x5c => 0xe7,
+            // The Menu / Application key. It was named and bound from the start
+            // (`Apps`, HID `0x65`) but never mapped here, so no model could ever
+            // draw `Apps.png`: a press that the adapter cannot produce never
+            // reaches the binding table at all. E0 `0x5D` is the scan code the
+            // key sends, the same prefix every other extended key in this arm
+            // uses.
+            0x5d => 0x65,
             _ => return None,
         }
     } else {
@@ -1897,6 +1904,7 @@ mod tests {
             (0x53, 0x4c), // Delete
             (0x5b, 0xe3), // Left GUI
             (0x5c, 0xe7), // Right GUI
+            (0x5d, 0x65), // Menu / Application
         ] {
             assert_eq!(
                 map_scan_code(make_code, RI_KEY_E0).map(PhysicalKey::hid_usage),
@@ -1920,6 +1928,53 @@ mod tests {
             Some(0x48),
             "E1 Pause break"
         );
+    }
+
+    /// The exact set of HID usages this adapter can produce, so a key the
+    /// vocabulary names and the runtime binds but no scan code reaches is caught
+    /// here. That is how `Apps` (`0x65`) was found: named, bound, on the
+    /// reference diagram, and unreachable on both platforms.
+    ///
+    /// Raw Input covers the whole main block except one hole, and the gaps are
+    /// deliberate:
+    ///
+    /// - `0x32` `IntlHash`: the ISO `#` key sends the same scan code as ANSI
+    ///   `\` (`0x2B`), which maps to `BackSlash` (`0x31`). The two cannot be told
+    ///   apart through this API, so the usage stays unreachable.
+    /// - `0x66` `Power`: neither adapter reports it, so the vocabulary leaves it
+    ///   unnamed.
+    /// - `0x67` `KpEqual`, `0x68..=0x73` `F13` … `F24`, `0xff03` `Globe`: no scan
+    ///   code this adapter maps. `KpEqual` is macOS-only; F13+ has no dependable
+    ///   AT scan code and the project decided not to guess one; the globe key is
+    ///   handled by the keyboard firmware and never reaches Raw Input.
+    ///
+    /// The macOS adapter has the mirror-image test,
+    /// `this_adapter_reports_exactly_the_keycodes_the_platform_defines`.
+    ///
+    /// This runs on Windows CI only — `windows.rs` is `cfg(windows)`, so it never
+    /// compiles on a macOS host.
+    #[test]
+    fn this_adapter_reports_exactly_the_scan_codes_the_platform_defines() {
+        let mut reachable = Vec::new();
+        for make_code in 0u16..=0xff {
+            // The three paths through the match: plain, E0 extended, and the E1
+            // Pause special case.
+            for flags in [0u16, RI_KEY_E0, RI_KEY_E1] {
+                if let Some(key) = map_scan_code(make_code, flags) {
+                    reachable.push(key.hid_usage());
+                }
+            }
+        }
+        reachable.sort_unstable();
+        reachable.dedup();
+
+        let mut expected: Vec<u16> = (0x04..=0x31)
+            .chain(0x33..=0x65)
+            .chain(0xe0..=0xe7)
+            .collect();
+        expected.sort_unstable();
+
+        assert_eq!(reachable, expected, "reachable HID usages");
     }
 
     #[test]

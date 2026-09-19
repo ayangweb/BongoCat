@@ -1038,6 +1038,35 @@ fn legacy_key_names(mode: MverInputMode, control_code: i64) -> Vec<&'static str>
     legacy_key_name(mode, control_code).into_iter().collect()
 }
 
+/// Every key-image name the conversion can install, for both keyboard modes.
+///
+/// The conversion writes the product's own key vocabulary (ADR-0037 §7), so this
+/// is the set `bongocat-live2d::key_name_candidates` has to be able to resolve:
+/// a name in this list that no candidate list produces is an image the
+/// conversion installs and the runtime can never draw. Making the set
+/// traversable is what lets a contract test catch that instead of a user —
+/// `Backslash` had drifted from the product's `BackSlash` for exactly that
+/// reason (ADR-0050).
+///
+/// Gamepad button names are deliberately absent: they are the bundled gamepad
+/// model's artwork stems, not key images, and the key-image resolver has no
+/// vocabulary for them (ADR-0037). The globe key is absent for a different
+/// reason: the legacy code space has no code for it at all, so the conversion
+/// can never emit `Globe.png`.
+pub fn legacy_keyboard_key_image_names() -> Vec<&'static str> {
+    let mut names = Vec::new();
+    for mode in [MverInputMode::Standard, MverInputMode::Keyboard] {
+        // A Windows virtual key is a `WORD`; the conversion reads one as `i64`
+        // and every code outside that range resolves to `None`.
+        for control_code in 0..=0xFF {
+            names.extend(legacy_key_names(mode, control_code));
+        }
+    }
+    names.sort_unstable();
+    names.dedup();
+    names
+}
+
 const fn legacy_virtual_key_name(virtual_key: i64) -> Option<&'static str> {
     match virtual_key {
         0x08 => Some("Backspace"),
@@ -1127,6 +1156,25 @@ const fn legacy_virtual_key_name(virtual_key: i64) -> Option<&'static str> {
         0x79 => Some("F10"),
         0x7A => Some("F11"),
         0x7B => Some("F12"),
+        // `VK_F13` … `VK_F24`. The reference converter's own picker stopped at
+        // F12 (`BongoCat-Converter/src/utils/keyMap.ts` numbers 112 … 123), so
+        // no model authored with it can carry these codes — but the range is
+        // API-defined and contiguous (`windows`'s KeyboardAndMouse module
+        // declares 124 … 135), and a hand-written key table can address it.
+        // Each code maps to its own image, the same way F1 … F12 do, so an
+        // F13 binding draws `F13.png` and never the shared `Fn.png`.
+        0x7C => Some("F13"),
+        0x7D => Some("F14"),
+        0x7E => Some("F15"),
+        0x7F => Some("F16"),
+        0x80 => Some("F17"),
+        0x81 => Some("F18"),
+        0x82 => Some("F19"),
+        0x83 => Some("F20"),
+        0x84 => Some("F21"),
+        0x85 => Some("F22"),
+        0x86 => Some("F23"),
+        0x87 => Some("F24"),
         0x90 => Some("NumLock"),
         0x91 => Some("ScrollLock"),
         // `VK_LMENU` / `VK_RMENU`: the side-specific Alt codes a hand-written
@@ -1141,7 +1189,11 @@ const fn legacy_virtual_key_name(virtual_key: i64) -> Option<&'static str> {
         0xBF => Some("Slash"),
         0xC0 => Some("BackQuote"),
         0xDB => Some("LeftBracket"),
-        0xDC => Some("Backslash"),
+        // The legacy chart spells this key `Backslash`; the product's runtime
+        // and its shipped presets spell it `BackSlash`. The product spelling
+        // wins, the same way `Backspace` beats the chart's `BackSpace` above,
+        // so the image this installs is the one the resolver looks up.
+        0xDC => Some("BackSlash"),
         0xDD => Some("RightBracket"),
         0xDE => Some("Quote"),
         _ => None,
@@ -1947,8 +1999,12 @@ mod tests {
             (Standard, 0x30, "Num0"),
             (Standard, 0x5B, "MetaLeft"),
             (Standard, 0x70, "F1"),
+            (Standard, 0x7B, "F12"),
+            (Standard, 0x7C, "F13"),
+            (Standard, 0x87, "F24"),
             (Standard, 0xC0, "BackQuote"),
             (Standard, 0xBF, "Slash"),
+            (Standard, 0xDC, "BackSlash"),
             (Keyboard, 0x52, "KeyR"),
             // The side-independent Alt code keeps the legacy table's own name:
             // `legacy_key_names` is what turns it into the product's two sides.
@@ -1980,6 +2036,72 @@ mod tests {
         );
         assert_eq!(legacy_key_name(Standard, 0x1234), None);
         assert_eq!(legacy_key_name(Gamepad, 16), None);
+    }
+
+    /// Every function key has its own converted name, and the globe key has none.
+    ///
+    /// `VK_F13` … `VK_F24` are `124` … `135` — API-defined constants of the
+    /// `windows` crate's `KeyboardAndMouse` module, not a guessed hardware table
+    /// — and the conversion maps each to its own image, so an F13 binding draws
+    /// `F13.png` and never the shared `Fn.png`. The reference converter's picker
+    /// stopped at F12 (`BongoCat-Converter/src/utils/keyMap.ts` numbers 112 …
+    /// 123), so no model authored with it carries these codes; a hand-written
+    /// key table can. The globe key has no Windows virtual key at all — the Fn
+    /// key is handled by the keyboard firmware — so the conversion can never
+    /// emit `Globe.png` or its pre-rename spelling.
+    #[test]
+    fn every_function_key_has_its_own_converted_name() {
+        let converted: Vec<&str> = (0x70..=0x87).filter_map(legacy_virtual_key_name).collect();
+        let expected: Vec<String> = (1..=24).map(|index| format!("F{index}")).collect();
+        assert_eq!(
+            converted, expected,
+            "F1 … F24 are contiguous in the legacy virtual-key space"
+        );
+
+        let names = legacy_keyboard_key_image_names();
+        for absent in ["Fn", "Globe", "Function"] {
+            assert!(
+                !names.contains(&absent),
+                "{absent} is not a conversion output: {names:?}"
+            );
+        }
+    }
+
+    /// The conversion emits the product's spelling for every key image, so the
+    /// image it installs is the one the runtime looks up.
+    ///
+    /// This is the conversion's half of the contract; `bongocat-live2d` owns the
+    /// other half (it can see both tables and asserts every name here resolves to
+    /// a key). `Backslash` had drifted from the product's `BackSlash` for exactly
+    /// this reason, and a converted backslash image was unreachable from the day
+    /// the feature shipped (ADR-0050).
+    #[test]
+    fn the_conversion_emits_the_product_spelling_for_every_key_image() {
+        let names = legacy_keyboard_key_image_names();
+        for (present, absent) in [
+            ("BackSlash", "Backslash"),
+            ("Backspace", "BackSpace"),
+            ("Enter", "Return"),
+            ("AltLeft", "Alt"),
+            ("AltRight", "Alt"),
+        ] {
+            assert!(names.contains(&present), "{present} missing: {names:?}");
+            assert!(!names.contains(&absent), "{absent} emitted: {names:?}");
+        }
+        // The two keys the legacy chart gives to a whole family keep their family
+        // name: the runtime resolves `Shift`/`Control` for both sides (ADR-0038
+        // decision 4).
+        assert!(names.contains(&"Shift"));
+        assert!(names.contains(&"Control"));
+        assert!(names.contains(&"KpEnter"));
+        assert!(names.contains(&"KeyA"));
+        // No name is a path or contains whitespace: they are resource stems.
+        for name in &names {
+            assert!(
+                !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric()),
+                "{name:?} is not a resource stem"
+            );
+        }
     }
 
     /// Left and right Alt may never collapse into one name again. The legacy

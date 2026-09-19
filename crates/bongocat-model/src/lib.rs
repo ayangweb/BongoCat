@@ -15,7 +15,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-pub use mver::{ModelSourceContent, MverInputMode};
+pub use mver::{ModelSourceContent, MverInputMode, legacy_keyboard_key_image_names};
 pub use store::{
     InstalledModelCatalog, ModelCatalogEntry, ModelImportProgress, ModelImportStage, ModelStore,
     ModelStoreDiagnostic, ModelStoreError, ModelStoreRecovery,

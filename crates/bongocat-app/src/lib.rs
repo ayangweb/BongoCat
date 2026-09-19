@@ -1914,6 +1914,20 @@ fn input_bindings_for_model(
         for usage in 0xe0..=0xe7 {
             bind_drawable_key(&mut key_hands, usage, HandSide::Left, key_images);
         }
+        // The Apple Fn / globe key. It is the one key of this block that is not
+        // on the HID Keyboard/Keypad page — its usage folds Apple's vendor page
+        // into the same `u16` — so every range above misses it and it has to be
+        // written out, exactly as it has to be named explicitly in
+        // `bongocat-live2d::key_name_candidates`. Windows never reports the key
+        // (the firmware owns it), so the binding is inert there. It is still
+        // gated on the model's artwork like every other key: a model without a
+        // `Globe.png` (or the legacy `Function.png`) gets no reaction at all.
+        bind_drawable_key(
+            &mut key_hands,
+            bongocat_render::GLOBE_KEY_USAGE,
+            HandSide::Left,
+            key_images,
+        );
     } else {
         bind_drawable_key(
             &mut key_hands,
@@ -2340,21 +2354,35 @@ mod tests {
         KeyImageInventory::read(model.root())
     }
 
-    /// Every HID usage the two platform adapters can report, which is the set the
-    /// binding table has to cover: the main block (punctuation, PrintScreen and
-    /// the navigation cluster included), keypad `=`, F13 … F24, and the eight
-    /// modifier usages. `0x66` (Power) is the only gap, because neither adapter
-    /// maps it.
+    /// Every HID usage the key vocabulary covers, which is the set the binding
+    /// table has to stay consistent with: the main block (punctuation,
+    /// PrintScreen and the navigation cluster included), keypad `=`, F13 … F24,
+    /// the eight modifier usages, and the Apple Fn / globe key. `0x66` (Power) is
+    /// the only gap, because neither adapter maps it.
+    ///
+    /// This is a **superset** of what either adapter can produce, not a list of
+    /// what they do produce. Naming and binding deliberately cover more than the
+    /// hardware delivers, so a model shipping artwork for a key no keyboard can
+    /// press is still honoured; each adapter's own tests pin what it can really
+    /// report (`bongocat-platform`'s
+    /// `this_adapter_reports_exactly_the_keycodes_the_platform_defines` for
+    /// macOS, the scan-code matrix for Windows). Do not read a usage being listed
+    /// here as proof that the key is reachable — `Apps` (`0x65`) sat in this list
+    /// for as long as the vocabulary existed while no adapter mapped it, which is
+    /// why `Apps.png` could never be drawn.
     ///
     /// The modifier block is written out instead of relying on the ranges the
     /// implementation uses: it sits above `0x04..=0x65` and below nothing else,
     /// so a rewrite of the binding loops dropped Shift, Control, Alt and Meta
-    /// without any range looking wrong.
+    /// without any range looking wrong. The globe key is written out for the
+    /// same reason and one more: it is not on the Keyboard/Keypad page at all,
+    /// so no range over that page can ever be made to include it.
     fn adapter_keyboard_usages() -> Vec<u16> {
         (0x04..=0x65)
             .chain([0x67])
             .chain(0x68..=0x73)
             .chain(0xe0..=0xe7)
+            .chain([bongocat_render::GLOBE_KEY_USAGE])
             .collect()
     }
 
@@ -2441,6 +2469,54 @@ mod tests {
         );
         assert_eq!(gamepad.hand_for(PhysicalKey::from_hid_usage(0x3a)), None);
         assert_eq!(gamepad.hand_for(PhysicalKey::from_hid_usage(0x68)), None);
+    }
+
+    /// The globe key is gated on artwork like every other key, and it is the one
+    /// key outside the HID Keyboard/Keypad page, so no range over that page can
+    /// reach it — it has to be bound explicitly.
+    ///
+    /// Every model shipped today predates the key and carries no artwork for it,
+    /// so pressing it must do nothing at all: no key layer and no paw movement
+    /// (ADR-0042). A model that does ship the image is bound to the left hand,
+    /// under the canonical name or the pre-rename spelling, because the binding
+    /// asks the same `can_draw` the renderer draws with.
+    #[test]
+    fn the_globe_key_binds_only_for_a_model_that_ships_its_image() {
+        let globe = PhysicalKey::from_hid_usage(bongocat_render::GLOBE_KEY_USAGE);
+        for (origin, id, images) in [
+            (ModelOrigin::Installed, "custom-model", "keyboard"),
+            (ModelOrigin::Preset, "standard", "standard"),
+            (ModelOrigin::Preset, "keyboard", "keyboard"),
+            (ModelOrigin::Preset, "gamepad", "gamepad"),
+        ] {
+            let bindings = input_bindings_for_model(origin, id, &shipped_key_images(images));
+            assert_eq!(
+                bindings.hand_for(globe),
+                None,
+                "{id} ships no Globe.png, so the key must be inert"
+            );
+        }
+
+        for name in ["Globe", "Function"] {
+            let root = tempdir().expect("root");
+            let left_keys = root.path().join("resources/left-keys");
+            fs::create_dir_all(&left_keys).expect("left keys directory");
+            fs::write(left_keys.join(format!("{name}.png")), b"globe").expect("globe image");
+            let inventory = KeyImageInventory::read(root.path());
+            let bindings =
+                input_bindings_for_model(ModelOrigin::Installed, "custom-model", &inventory);
+            assert_eq!(
+                bindings.hand_for(globe),
+                Some(HandSide::Left),
+                "{name}.png must bind the globe key"
+            );
+            // And the shared function-row image is still a different key's.
+            assert_eq!(
+                bindings.hand_for(PhysicalKey::from_hid_usage(0x3a)),
+                None,
+                "{name}.png must not bind a function key"
+            );
+        }
     }
 
     /// The static table still covers the whole standard 104/105-key layout plus

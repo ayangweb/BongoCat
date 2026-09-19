@@ -74,7 +74,13 @@ Runtime 使用布局无关的稳定物理键名。左右修饰键必须区分，
 
 平台 adapter 必须把系统原始码映射到以下协议名称；名称不会随键盘布局、本地化或设备厂商变化：
 
-- `PhysicalKey`：使用 `KeyA`、`Digit1`、`Enter`、`Escape`、`Space`、`Tab`、`Backspace`、`ShiftLeft`/`ShiftRight`、`ControlLeft`/`ControlRight`、`AltLeft`/`AltRight`、`MetaLeft`/`MetaRight`、`ArrowUp`/`ArrowDown`/`ArrowLeft`/`ArrowRight`、`PrintScreen`、`Pause` 等 DOM/USB 语义名；无法识别的码保留 `Unknown(<platform-code>)` 诊断值，不得映射成字符。
+- `PhysicalKey`：是布局无关的稳定物理键 identity（承载 `u16` HID usage）。**同一个物理键有两套互不通用的名字**，改任何一处之前先确认改的是哪一套：
+
+  - **键位图名**：模型美术的文件主干，事实来源是 `bongocat-live2d::key_name_candidates`。模型作者按这套名字把图片放进 `resources/<side>-keys/<名>.png`。例：`KeyA`、`Num1`、`Enter`、`Escape`、`Space`、`Tab`、`Backspace`、`ShiftLeft`/`ShiftRight`、`ControlLeft`/`ControlRight`、`AltLeft`/`AltRight`、`MetaLeft`/`MetaRight`、`UpArrow`/`DownArrow`/`LeftArrow`/`RightArrow`、`LeftBracket`、`RightBracket`、`BackQuote`、`SemiColon`、`BackSlash`、`Dot`、`PrintScreen`、`Pause`。Apple 地球键的键位图名是 `Globe`（见下一条）。
+  - **快捷键名**：设置页热键文本，事实来源是 `bongocat-config::NAMED_SHORTCUT_KEYS`，沿用 DOM `KeyboardEvent.code` 风格。例：`ArrowUp`/`ArrowDown`/`ArrowLeft`/`ArrowRight`、`BracketLeft`、`BracketRight`、`Backquote`、`Semicolon`、`Backslash`、`Period`；数字的 canonical 形式是 `1`，`Digit1` 只是被接受的别名。
+
+  ⚠️ **只有键位图名能解析到图片**。照快捷键名做出 `Digit1.png` 或 `ArrowUp.png` 不会被任何键画出来：同一物理键在两套名字下的拼写可能只差大小写（`BackQuote` vs `Backquote`）或词序（`UpArrow` vs `ArrowUp`）。无法识别的平台码保留 `Unknown(<platform-code>)` 诊断值，不得映射成字符。
+- 唯一不在 HID Keyboard/Keypad 页（`0x07`）的物理键是 Apple 地球键（Fn 键）：它是厂商页 `0xFF` 的 usage `0x03`（`KeyboardFn`）折叠成 `0xff00 | usage` = `0xff03`，协议名 `Globe`。**键位图名是 `Globe`，不是 `Fn`**：`Fn` 是模型可为 F1–F24 提供的共享回退图名，一个图片名只能有一个语义（ADR-0049）。该键的旧名 `Function` 只作为末位候选别名，用于兼容未经导入归一化的包。Windows 的 Fn 键由键盘固件处理、Raw Input 从不报告它，因此没有 Windows 映射。
 - `MouseButton`：`left`、`right`、`middle`、`back`、`forward`。
 - `GamepadButton`：优先使用标准位置名 `south`、`east`、`west`、`north`、`left_shoulder`、`right_shoulder`、`left_trigger`、`right_trigger`、`select`、`start`、`left_stick`、`right_stick`、`dpad_up`、`dpad_down`、`dpad_left`、`dpad_right`；不能识别的位置保留设备 profile 的稳定诊断名。
 - `GamepadAxis`：使用 `left_stick_x`、`left_stick_y`、`right_stick_x`、`right_stick_y`、`left_trigger`、`right_trigger`；数值归一化到 `[-1, 1]`，trigger 的无效负值由 adapter 钳制为 `0` 并计入诊断。

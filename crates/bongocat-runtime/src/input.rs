@@ -29,6 +29,11 @@ impl PhysicalKey {
     pub const KEY_A: Self = Self(0x04);
     pub const LEFT_CONTROL: Self = Self(0xe0);
     pub const LEFT_ALT: Self = Self(0xe2);
+    /// The Apple Fn / globe key, which lives on Apple's vendor-defined HID page
+    /// rather than on the Keyboard/Keypad page; see
+    /// [`bongocat_render::GLOBE_KEY_USAGE`] for why the value is `0xff03` and
+    /// why the name is `Globe` rather than `Fn`.
+    pub const GLOBE: Self = Self(bongocat_render::GLOBE_KEY_USAGE);
 
     pub const fn from_hid_usage(usage: u16) -> Self {
         Self(usage)
@@ -1034,6 +1039,60 @@ mod tests {
         assert_eq!(
             state.model_snapshot(&bindings, NormalizedCursorPosition::default()),
             ModelInputSnapshot::default()
+        );
+    }
+
+    /// The globe key travels the same path as every other key.
+    ///
+    /// Its usage is `0xff03` — Apple's vendor page folded into the same `u16` a
+    /// Keyboard/Keypad usage uses — so this pins that nothing on the way to the
+    /// model snapshot narrows it to a byte, indexes a table by it, or treats a
+    /// usage above `0x00ff` as "not a key". A press without a hand assignment is
+    /// dropped, so the binding is what makes it observable.
+    #[test]
+    fn the_globe_key_projects_through_the_model_snapshot_like_any_other_key() {
+        assert_eq!(PhysicalKey::GLOBE.hid_usage(), 0xff03);
+        let unbound = InputBindings::new(BTreeMap::new());
+        let bindings = InputBindings::new(BTreeMap::from([(PhysicalKey::GLOBE, HandSide::Left)]));
+        let mut state = InputState::default();
+        state.apply(edge(
+            0,
+            0,
+            InputControl::Key(PhysicalKey::GLOBE),
+            InputEdge::Down,
+        ));
+
+        assert_eq!(
+            state.model_snapshot(&unbound, NormalizedCursorPosition::default()),
+            ModelInputSnapshot::default(),
+            "an unbound globe key is inert, like any other unbound key"
+        );
+        assert_eq!(
+            state.model_snapshot(&bindings, NormalizedCursorPosition::default()),
+            ModelInputSnapshot {
+                key_presses: {
+                    let mut presses = KeyPressSet::default();
+                    presses.push(KeyPress {
+                        hid_usage: PhysicalKey::GLOBE.hid_usage(),
+                        side: KeySide::Left,
+                    });
+                    presses
+                },
+                left_hand_down: true,
+                ..ModelInputSnapshot::default()
+            }
+        );
+
+        state.apply(edge(
+            1,
+            1,
+            InputControl::Key(PhysicalKey::GLOBE),
+            InputEdge::Up,
+        ));
+        assert_eq!(
+            state.model_snapshot(&bindings, NormalizedCursorPosition::default()),
+            ModelInputSnapshot::default(),
+            "and it releases like any other key"
         );
     }
 

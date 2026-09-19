@@ -151,6 +151,27 @@ pub const fn function_key_name(hid_usage: u16) -> Option<&'static str> {
     }
 }
 
+/// HID usage of the Apple keyboard's Fn / globe key.
+///
+/// The key is not on the HID Keyboard/Keypad page at all: it is usage `0x03`
+/// (`KeyboardFn`) of Apple's vendor-defined page `0xFF`, folded into
+/// `0xff00 | usage` so it can travel through the same `u16` a page-`0x07` usage
+/// does. `PhysicalKey` carries raw usages and never masks the page out, and no
+/// page-`0x07` usage reaches `0xff00`, so no range over that page can ever
+/// cover this key: every place that enumerates keys has to name it explicitly.
+///
+/// The platform reaches it through macOS CGEvent keycode `63` (`kVK_Function`),
+/// which arrives as `FlagsChanged` carrying `MaskSecondaryFn` — the same
+/// keycode `ModifierDecoder` already decodes. Windows has no equivalent: the
+/// Fn key is handled by the keyboard firmware and is never reported to Raw
+/// Input, so there is nothing to map there.
+///
+/// `Globe` rather than `Fn`: `Fn` is already the name of the shared artwork a
+/// model may ship for the whole F1 … F24 row (see `bongocat-live2d`), and one
+/// image name may only ever carry one meaning. The key is drawn as a globe on
+/// current Apple keyboards and is the "globe key" in macOS itself.
+pub const GLOBE_KEY_USAGE: u16 = 0xff03;
+
 impl ModelBounds {
     pub const fn from_canvas(canvas: CanvasInfo) -> Self {
         let half_width = canvas.width / canvas.pixels_per_unit * 0.5;

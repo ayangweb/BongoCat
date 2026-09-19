@@ -2047,6 +2047,15 @@ fn map_key_code(key_code: u16) -> Option<PhysicalKey> {
         60 => 0xe5,
         61 => 0xe6,
         62 => 0xe4,
+        // `kVK_Function`: the Fn / globe key. It is the only key in this table
+        // that is not on the HID Keyboard/Keypad page, so its usage is Apple's
+        // vendor page folded into the same `u16` — taken from the one place
+        // that defines it instead of restating the value (see
+        // `bongocat_render::GLOBE_KEY_USAGE`). The key arrives as
+        // `FlagsChanged` carrying `MaskSecondaryFn`, which `ModifierDecoder`
+        // already decodes; the missing arm here was the only reason it never
+        // reached the runtime.
+        63 => PhysicalKey::GLOBE.hid_usage(),
         64 => 0x6c,
         65 => 0x63,
         67 => 0x55,
@@ -2080,6 +2089,12 @@ fn map_key_code(key_code: u16) -> Option<PhysicalKey> {
         106 => 0x6b,
         107 => 0x69,
         109 => 0x43,
+        // The Menu / Application key (`kVK_ContextualMenu`). It was named and
+        // bound from the start (`Apps`, HID `0x65`) but never mapped here, so no
+        // model could ever draw `Apps.png`: a press the adapter cannot produce
+        // never reaches the binding table at all. Apple keyboards have no such
+        // key, but a third-party one sends this keycode.
+        110 => 0x65,
         111 => 0x45,
         113 => 0x6a,
         115 => 0x4a,
@@ -2242,6 +2257,15 @@ mod tests {
         assert_eq!(map_key_code(60).map(PhysicalKey::hid_usage), Some(0xe5));
         assert_eq!(map_key_code(123).map(PhysicalKey::hid_usage), Some(0x50));
         assert_eq!(map_key_code(124).map(PhysicalKey::hid_usage), Some(0x4f));
+        // `kVK_ContextualMenu`: the Menu / Application key. Apple keyboards have
+        // no such key, but a third-party one sends this keycode, and `Apps` was
+        // named and bound in the vocabulary long before the adapter could
+        // report it.
+        assert_eq!(map_key_code(110).map(PhysicalKey::hid_usage), Some(0x65));
+        // `kVK_Function`: the Fn / globe key, the one key outside the HID
+        // Keyboard/Keypad page.
+        assert_eq!(map_key_code(63), Some(PhysicalKey::GLOBE));
+        assert_eq!(map_key_code(63).map(PhysicalKey::hid_usage), Some(0xff03));
         assert_eq!(map_key_code(u16::MAX), None);
 
         let shortcuts = bongocat_config::ShortcutConfig {
@@ -2262,6 +2286,88 @@ mod tests {
                 .resolve_hid_usage(modifiers, mapped.hid_usage())
                 .is_some()
         );
+    }
+
+    /// Which function keys this adapter can actually report, so a vocabulary
+    /// that claims more than the platform delivers is caught here instead of
+    /// being copied from one document into the next.
+    ///
+    /// Carbon defines `kVK_F13` … `kVK_F20` and no keycode at all for F21 … F24,
+    /// so the reachable function keys stop at HID `0x6f`. `0x70..=0x73` are
+    /// named by the key vocabulary — a model may ship that artwork and it has to
+    /// work — but no macOS keyboard can ever press them. The globe key is the
+    /// only usage this adapter produces that is not on the Keyboard/Keypad page.
+    #[test]
+    fn this_adapter_reports_f1_through_f20_and_the_globe_key_only() {
+        let mut function_keys = Vec::new();
+        let mut outside_the_keyboard_page = Vec::new();
+        for key_code in 0..=u16::MAX {
+            let Some(key) = map_key_code(key_code) else {
+                continue;
+            };
+            let usage = key.hid_usage();
+            if (0x3a..=0x45).contains(&usage) || (0x68..=0x73).contains(&usage) {
+                function_keys.push(usage);
+            }
+            if usage >= 0xff00 {
+                outside_the_keyboard_page.push((key_code, usage));
+            }
+        }
+        function_keys.sort_unstable();
+        function_keys.dedup();
+        let expected: Vec<u16> = (0x3a..=0x45).chain(0x68..=0x6f).collect();
+        assert_eq!(function_keys, expected, "reachable function keys");
+        assert_eq!(
+            outside_the_keyboard_page,
+            vec![(63, 0xff03)],
+            "the globe key is the only vendor-page usage this adapter reports"
+        );
+    }
+
+    /// The exact set of HID usages this adapter can produce, so a key that the
+    /// vocabulary names and the runtime binds but no keycode reaches is caught
+    /// here. That is how `Apps` (`0x65`) was found: named, bound, on the
+    /// reference diagram, and unreachable on both platforms.
+    ///
+    /// The gaps are deliberate, and each has a reason:
+    ///
+    /// - `0x32` `IntlHash`: macOS gives the ISO `#` key the same keycode it
+    ///   gives ANSI `\` (42), which maps to `BackSlash` (`0x31`). The two are
+    ///   indistinguishable through this API.
+    /// - `0x46` `PrintScreen`, `0x47` `ScrollLock`, `0x48` `Pause`, `0x49`
+    ///   `Insert`: no Apple keyboard carries them. The F13/F14/F15 keycodes sit
+    ///   in those physical positions and report as F13/F14/F15 above, which is
+    ///   the correct identity for the key that is actually pressed.
+    /// - `0x64` `IntlBackslash`: `kVK_ISO_Section` (10) is left unmapped; the ISO
+    ///   extra key beside the left Shift has no HID usage macOS can distinguish
+    ///   from the ANSI layout's absent key.
+    /// - `0x70..=0x73` `F21` … `F24`: Carbon defines no keycode for them.
+    #[test]
+    fn this_adapter_reports_exactly_the_keycodes_the_platform_defines() {
+        let mut reachable = Vec::new();
+        for key_code in 0..=u16::MAX {
+            if let Some(key) = map_key_code(key_code) {
+                reachable.push(key.hid_usage());
+            }
+        }
+        reachable.sort_unstable();
+        reachable.dedup();
+
+        let mut expected: Vec<u16> = (0x04..=0x31)
+            .chain([0x33])
+            .chain(0x34..=0x39)
+            .chain(0x3a..=0x45)
+            .chain(0x4a..=0x4e)
+            .chain(0x4f..=0x52)
+            .chain(0x53..=0x63)
+            .chain([0x65, 0x67])
+            .chain(0x68..=0x6f)
+            .chain(0xe0..=0xe7)
+            .chain([PhysicalKey::GLOBE.hid_usage()])
+            .collect();
+        expected.sort_unstable();
+
+        assert_eq!(reachable, expected, "reachable HID usages");
     }
 
     #[test]

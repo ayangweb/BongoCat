@@ -4509,6 +4509,89 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 依赖：无（可独立实施）。与 ADR-0048 的关系：ADR-0048 残余风险 10 已更新为当前边界，
       残余风险 11（smoke 只证明一致性，不证明解析正确）仍然有效。
 
+88. [ ] `P1-GLOBE-KEY-AND-FUNCTION-KEY-NAMING`：地球键独立命名，`Fn` 保持功能键回退语义。
+    - 背景（2026-09-19）：需求是"F1–F24 与 macOS 左下角地球键都要完整支持，且不能共用一张图"。
+      考古修正了前提：**`Fn` 从来不是地球键的名字**，它是旧版
+      `pre-refactor:src/composables/useDevice.ts:105-110` 的 `key.replace(/F(\d+)/, 'Fn')` 产生的
+      F 编号通配符，即 F1–F24 的共享回退图名（两个预置键盘模型都出厂了这张图）。地球键在旧版里
+      叫 `Function`（`rdev` 的 `Key::Function`，macOS keycode 63），而且**可达**——旧版 model store
+      的键集就是包自己的文件名主干，所以提供 `Function.png` 的模型能画出它，只是无已知模型这么做。
+      在 Native Rewrite 里地球键完全不可达：`map_key_code` 没有 keycode 63 的 arm，而
+      `FlagsChanged` 分支先查表再解码，查不到即计入 `unmapped_keys` 丢弃。
+    - 决策（ADR-0049）：地球键 = `Globe`（usage `0xff03`，即 Apple 厂商页 `0xFF` 的 usage `0x03`
+      `KeyboardFn` 的折叠值）；**`Fn` 保持原义，`Fn.png` 不改名、不迁移**——若地球键取 `Fn`，旧包
+      里的 `Fn.png`（功能键共享图）与新地球键美术同名，导入归一化无法区分，而 `next` 无迁移路径、
+      已安装模型不会被重新归一化，结果是按 F3 画出地球图、按地球键画出功能键图的双向回归。
+      旧名 `Function` 走导入归一化（`Function.png` → `Globe.png`）+ 运行时候选末位别名。
+    - 改动：`bongocat-render` 新增 `GLOBE_KEY_USAGE` 作为六处唯一来源；`bongocat-runtime` 新增
+      `PhysicalKey::GLOBE`；`bongocat-platform` 的 `map_key_code` 加 `63 => GLOBE`；
+      `bongocat-live2d` 的 `key_name_candidates` 加 `0xff03 => Globe` 与 `Function` 末位别名；
+      `bongocat-model` 的 `LEGACY_KEY_IMAGE_NAMES` 加 `("Function", "Globe")`、
+      `legacy_virtual_key_name` 补 `VK_F13`…`VK_F24`（`0x7C..=0x87`）；`bongocat-app` 显式绑定
+      地球键到左手。**预置资源零改动。**
+    - 证据（本机 macOS / aarch64）：`bongocat-live2d` 55（+2）、`bongocat-platform` 62（+1）、
+      `bongocat-runtime` 74（+1）、`bongocat-model` 100（+5）、`bongocat-app --lib`（+1）全绿；
+      6 处改动逐个变异还原，对应测试全部变红（exit 101），随后逐个还原并复核文件内容一致。
+    - 未运行：macOS 实机地球键与爪部观感、Windows 实机、真实社区模型回归、UI 实机点击。
+    - 平台边界（不得当成能力）：F13–F24 在 Windows 缺可依据的扫描码（沿用 `P4-MODEL-LEGACY-SOURCE`
+      的"不猜值"结论）、在 macOS 没有 `kVK_F21`…`kVK_F24`，所以 `0x70..=0x73` 是"命名到位但两个平台
+      都不可达"；地球键在 Windows 由键盘固件处理、Raw Input 从不报告。
+    - 残余风险：`CGEventSourceKeyState(63)` 的周期校正是否误释放地球键只有合成事件证据（无真实 HID
+      状态）；`Function.png` 兼容路径无真实样本；`Fn` 这个名字仍然容易误读，靠文档反复强调。
+    - 退出条件：macOS 实机确认地球键按下/释放与爪部动作；确认周期校正不误释放该键；社区模型回归。
+    - 依赖：ADR-0049。与 `P4-CONVERTED-KEY-NAMES-RESOLVE`（ADR-0050）是同一批改动。
+
+89. [ ] `P4-CONVERTED-KEY-NAMES-RESOLVE`：转换输出的键位图名必须与产品词表逐字一致。
+    - 背景（2026-09-19，做 88 时把"映射完全一致"做成可检验的检查）：把
+      `mver::legacy_virtual_key_name` 与 `live2d::key_name_candidates`（含 `KEY_LETTERS`、
+      `KEY_NUMBERS`、`KEYPAD_DIGIT_NAMES`、`bongocat-render::FUNCTION_KEY_NAMES`）里的名字字面量
+      程序化求差集，**114 个转换输出名里恰好一个漏网：`Backslash`**。`mver.rs` 照抄参考工具
+      `BongoCat-Converter/src/utils/keyMap.ts` 的 `220: "Backslash"`，而产品词表是 `0x31 => BackSlash`。
+      转换安装的 `Backslash.png` 从功能上线起就永远选不中，按 ADR-0042 该键**完全不产生动作**。
+    - 决策（ADR-0050）：转换输出改产品拼写 `BackSlash`；运行时候选 `0x31 => ["BackSlash", "Backslash"]`；
+      导入归一化加 `("Backslash", "BackSlash")`——在两个首发平台上通常是空操作（只差大小写，大小写不
+      敏感的文件系统里目标名就是源文件本身），真正让已安装包能画的是运行时候选别名；新增
+      `bongocat_model::legacy_keyboard_key_image_names()` 把"转换能安装的名字"做成可遍历契约。
+    - 关键教训（可复用）：**只断言"能解析"的契约测试挡不住这类漂移**。别名一旦存在，旧拼写也能解析，
+      于是"转换输出能解析"在漂移回退时仍然通过——变异验证证实了这一点。断言必须同时要求该名字是
+      canonical 名（某个可达 usage 的候选第一项）；`Shift`/`Control` 两个家族名用显式例外列表记录，
+      并断言例外仍然必要，避免列表变成死代码。
+    - 证据（本机 macOS / aarch64）：修复前契约测试变红并精确报出
+      `no key resolves these conversion outputs: ["Backslash"]`（先红后绿）；把 `0xDC` 改回
+      `Backslash` 后变红（exit 101），还原后绿。`bongocat-model` 新增
+      `the_conversion_emits_the_product_spelling_for_every_key_image` 与
+      `a_case_only_legacy_stem_keeps_its_artwork_under_the_canonical_name`。
+    - 未运行：真实 Mver 样本回归（唯一真实样本 `bongo_cat_mver_0.1.6_64` 的键位表不含 `0xDC`）、
+      Windows 实机归一化路径。
+    - 退出条件：用携带 `0xDC` 的真实 Mver 样本跑通"转换 → 安装 → 按键绘制"整条链路。
+    - 依赖：ADR-0050。与 88 同一批改动。
+
+90. [ ] `P1-APPS-KEY-REACHABLE`：`Apps` 键在两个平台都必须真正可达。
+    - 背景（2026-09-19，核对键位映射图时程序化求差发现）：`Apps`（HID `0x65`）从 ADR-0041 起就有名字、
+      有绑定、也出现在键位映射图上，但**两个平台都产不出它**：Windows `map_scan_code` 的 E0 分支有
+      `0x5b`/`0x5c` 却没有 `0x5d`（菜单键的扩展扫描码），macOS `map_key_code` 有 `109`/`111` 却没有
+      `110`（`kVK_ContextualMenu`）。产不出的键永远不会进入绑定表，所以 `Apps.png` 永远画不出来——
+      命名、绑定、图三者都"做到了"，只有平台层没有。
+    - 同类但**保持现状**的还有两个，见 88 的残余风险：`IntlHash`（`0x32`，macOS 把 ISO `#` 与 ANSI `\`
+      给了同一个键码，无法区分）与 F21–F24（`0x70..=0x73`，Carbon 无键码、Windows 无可依据的扫描码）。
+      它们继续"命名到位但不可达"，不得为了凑齐而猜平台码。
+    - 改动：Windows 加 `0x5d => 0x65`；macOS 加 `110 => 0x65`；`bongocat-live2d` 与 `bongocat-app`
+      两处 `adapter_keyboard_usages()` 的注释改成准确表述（它是词表覆盖的**超集**，不是"两个 adapter
+      能报告的集合"，`Apps` 在这个列表里躺了很久却没人能产）；`shared/behavior/input-semantics.md`
+      把"键位图名 / 快捷键名"两套名字空间拆开（原先把 `Digit1`、`ArrowUp` 与 `KeyA`、`ShiftLeft` 混在
+      一行，照它做 `Digit1.png` 解析不到任何键）。
+    - 证据（本机 macOS / aarch64）：新增
+      `bongocat-platform::macos::tests::this_adapter_reports_exactly_the_keycodes_the_platform_defines`
+      （遍历全部 `u16` keycode，断言可达 usage 集合逐项相等，并写明每个缺口的成因）先红后绿；
+      `mac_key_codes_map_to_usb_hid_usages` 补 `110` 断言。Windows 侧被 `libdeflate-sys` 挡住交叉编译
+      （见"环境与工具陷阱"），改用隔离 crate 把 `map_scan_code` 原文抽出到 `/tmp/win-scancheck` 在宿主上
+      运行，3/3 通过，且为 `x86_64-pc-windows-msvc` 编译通过。3/3 变异全部变红后按内容哈希校验还原
+      （macOS 去掉 `110`、Windows 去掉 `0x5d`、live2d 把 `Fn` 回退限制到 F1–F12）。
+    - 未运行：两个平台的实机 `Apps` 键（macOS 需要第三方键盘，苹果键盘没有这个键；Windows 需要实机）。
+      本机的 Windows 单元测试根本不会编译执行（`windows.rs` 是 `cfg(windows)`），这一点在报告里已写明。
+    - 退出条件：在带菜单键的键盘上，macOS 与 Windows 各确认一次 `Apps.png` 能被画出。
+    - 依赖：ADR-0041。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |
