@@ -1,5 +1,6 @@
 use super::*;
 use crate::SettingsInputMonitoringPermission;
+use bongocat_config::ModelBehaviorAction;
 
 pub(super) fn is_activation_key(event: &KeyDownEvent) -> bool {
     !event.keystroke.modifiers.control
@@ -212,11 +213,25 @@ pub(super) fn shortcut_targets(
         .collect()
 }
 
+/// The canonical `behavior_id` spelling, taken from `bongocat-config` rather
+/// than re-implemented here.
+///
+/// The row lookup below is a plain string match between a binding's
+/// `behavior_id` and this value, so a second copy of the format that drifted
+/// would silently render every row without its chord. `bongocat-config` is the
+/// single owner of the spelling; the auto-assignment and the import
+/// normalization both go through it too.
 fn model_behavior_id(behavior: &SettingsModelBehavior) -> String {
     match behavior {
-        SettingsModelBehavior::Motion { group, index } => format!("motion:{group}:{index}"),
-        SettingsModelBehavior::Expression { name } => format!("expression:{name}"),
+        SettingsModelBehavior::Motion { group, index } => ModelBehaviorAction::Motion {
+            group: group.clone(),
+            index: *index,
+        },
+        SettingsModelBehavior::Expression { name } => {
+            ModelBehaviorAction::Expression { name: name.clone() }
+        }
     }
+    .behavior_id()
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
