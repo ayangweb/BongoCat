@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name={{{name}}}
-Exec={{{exec}}}
-Icon={{{icon}}}
-Categories={{{categories}}}
-Comment={{{comment}}}
-StartupWMClass={{{Bongo-cat}}}
-Terminal=false

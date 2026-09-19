@@ -1,0 +1,794 @@
+use super::*;
+
+pub(super) fn content(
+    view: &mut SettingsView,
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+    snapshot: Option<&SettingsSnapshot>,
+    disabled: bool,
+    tokens: Tokens,
+) -> Stateful<Div> {
+    let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+        snapshot.resolved_language
+    });
+    div()
+        .min_w_0()
+        .flex_1()
+        .h_full()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .p_5()
+        .bg(tokens.canvas)
+        .text_color(tokens.text)
+        .id("diagnostics-content")
+        .child(div().text_2xl().child(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.diagnostics.title",
+        )))
+        .child(
+            div()
+                .text_sm()
+                .text_color(tokens.muted)
+                .child(match snapshot {
+                    None => bongocat_i18n::text(language.catalog_locale(), "diagnostics.loading")
+                        .to_owned(),
+                    Some(_) => bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "diagnostics.input.reliability_counters",
+                    )
+                    .to_owned(),
+                }),
+        )
+        .child(
+            div()
+                .id("input-diagnostics")
+                .min_h_0()
+                .flex_1()
+                .overflow_y_scroll()
+                .when_some(snapshot.as_ref(), |content, snapshot| {
+                    let metrics = input_diagnostic_metrics(language, snapshot.input_diagnostics);
+                    let input_service =
+                        input_service_presentation(snapshot.input_diagnostics, language);
+                    let runtime_diagnostics =
+                        runtime_diagnostics_presentation(snapshot.runtime_diagnostics, language);
+                    let recovery = config_recovery_presentation(
+                        snapshot.configuration_status,
+                        snapshot.config_recovery,
+                        language,
+                    );
+                    let config_action_disabled = view.pending.is_some();
+                    let shortcut_action_disabled = disabled;
+                    content
+                        .child(
+                            div()
+                                .id("build-information")
+                                .pb_3()
+                                .mb_3()
+                                .border_b_1()
+                                .border_color(tokens.border)
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_4()
+                                .child(div().text_sm().text_color(tokens.muted).child(
+                                    bongocat_i18n::text(
+                                        language.catalog_locale(),
+                                        "diagnostics.build.title",
+                                    ),
+                                ))
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .text_sm()
+                                        .child(build_info_detail(language, &snapshot.build_info)),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .id("runtime-diagnostics")
+                                .pb_3()
+                                .mb_3()
+                                .border_b_1()
+                                .border_color(tokens.border)
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_4()
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_1()
+                                        .child(div().text_sm().text_color(tokens.muted).child(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.renderer.title",
+                                            ),
+                                        ))
+                                        .child(div().text_sm().child(runtime_diagnostics.title)),
+                                )
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .text_sm()
+                                        .text_color(if runtime_diagnostics.attention {
+                                            tokens.danger
+                                        } else {
+                                            tokens.muted
+                                        })
+                                        .child(runtime_diagnostics.detail),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .id("diagnostics-export")
+                                .pb_3()
+                                .mb_3()
+                                .border_b_1()
+                                .border_color(tokens.border)
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_4()
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_1()
+                                        .child(div().text_sm().text_color(tokens.muted).child(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.export.title",
+                                            ),
+                                        ))
+                                        .child(div().text_sm().child(diagnostics_export_status(
+                                            language,
+                                            snapshot.diagnostics_export,
+                                        ))),
+                                )
+                                .child(
+                                    command_button(
+                                        bongocat_i18n::text(
+                                            language.catalog_locale(),
+                                            "diagnostics.export.action",
+                                        ),
+                                        &view.export_diagnostics_focus,
+                                        32,
+                                        window,
+                                        tokens,
+                                        config_action_disabled,
+                                    )
+                                    .id("export-diagnostics")
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        if view.pending.is_none() {
+                                            window.focus(&view.export_diagnostics_focus, cx);
+                                            view.export_diagnostics(cx);
+                                        }
+                                    }))
+                                    .on_key_down(cx.listener(|view, event, window, cx| {
+                                        if view.pending.is_none() && is_activation_key(event) {
+                                            cx.stop_propagation();
+                                            window.focus(&view.export_diagnostics_focus, cx);
+                                            view.export_diagnostics(cx);
+                                        }
+                                    })),
+                                ),
+                        )
+                        .when(view.page == SettingsPage::Shortcuts, |content| {
+                            content.child(
+                                div()
+                                    .id("shortcut-diagnostics")
+                                    .pb_3()
+                                    .mb_3()
+                                    .border_b_1()
+                                    .border_color(tokens.border)
+                                    .flex()
+                                    .flex_col()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .justify_between()
+                                            .gap_3()
+                                            .child(div().text_sm().text_color(tokens.muted).child(
+                                                bongocat_i18n::text(
+                                                    language.catalog_locale(),
+                                                    "navigation.shortcuts.title",
+                                                ),
+                                            ))
+                                            .child(
+                                                command_button(
+                                                    bongocat_i18n::text(
+                                                        language.catalog_locale(),
+                                                        "shortcuts.actions.restore_defaults",
+                                                    ),
+                                                    &view.restore_shortcuts_focus,
+                                                    33,
+                                                    window,
+                                                    tokens,
+                                                    shortcut_action_disabled,
+                                                )
+                                                .id("restore-default-shortcuts")
+                                                .on_click(cx.listener(|view, _, window, cx| {
+                                                    if view.pending.is_none() {
+                                                        window.focus(
+                                                            &view.restore_shortcuts_focus,
+                                                            cx,
+                                                        );
+                                                        view.restore_default_shortcuts(cx);
+                                                    }
+                                                }))
+                                                .on_key_down(cx.listener(
+                                                    |view, event, window, cx| {
+                                                        if view.pending.is_none()
+                                                            && is_activation_key(event)
+                                                        {
+                                                            cx.stop_propagation();
+                                                            window.focus(
+                                                                &view.restore_shortcuts_focus,
+                                                                cx,
+                                                            );
+                                                            view.restore_default_shortcuts(cx);
+                                                        }
+                                                    },
+                                                )),
+                                            )
+                                            .child(
+                                                command_button(
+                                                    bongocat_i18n::text(
+                                                        language.catalog_locale(),
+                                                        "shortcuts.actions.clear_all",
+                                                    ),
+                                                    &view.clear_shortcuts_focus,
+                                                    34,
+                                                    window,
+                                                    tokens,
+                                                    shortcut_action_disabled
+                                                        || snapshot.shortcuts.commands.is_empty()
+                                                            && snapshot
+                                                                .shortcuts
+                                                                .model_behaviors
+                                                                .is_empty(),
+                                                )
+                                                .id("clear-shortcuts")
+                                                .on_click(cx.listener(|view, _, window, cx| {
+                                                    if view.pending.is_none() {
+                                                        window
+                                                            .focus(&view.clear_shortcuts_focus, cx);
+                                                        view.clear_shortcuts(cx);
+                                                    }
+                                                }))
+                                                .on_key_down(cx.listener(
+                                                    |view, event, window, cx| {
+                                                        if view.pending.is_none()
+                                                            && is_activation_key(event)
+                                                        {
+                                                            cx.stop_propagation();
+                                                            window.focus(
+                                                                &view.clear_shortcuts_focus,
+                                                                cx,
+                                                            );
+                                                            view.clear_shortcuts(cx);
+                                                        }
+                                                    },
+                                                )),
+                                            ),
+                                    )
+                                    .when_some(
+                                        view.shortcut_capture.as_ref(),
+                                        |content, capture| {
+                                            content.child(
+                                                div().text_sm().text_color(tokens.accent).child(
+                                                    match &capture.target {
+                                                        ShortcutCaptureTarget::Command(_) => {
+                                                            bongocat_i18n::text(
+                                                                language.catalog_locale(),
+                                                                "shortcuts.capture.command_prompt",
+                                                            )
+                                                        }
+                                                        ShortcutCaptureTarget::ModelBehavior {
+                                                            ..
+                                                        } => bongocat_i18n::text(
+                                                            language.catalog_locale(),
+                                                            "shortcuts.capture.behavior_prompt",
+                                                        ),
+                                                    },
+                                                ),
+                                            )
+                                        },
+                                    )
+                                    .children(snapshot.shortcuts.commands.iter().enumerate().map(
+                                        |(index, binding)| {
+                                            let target = ShortcutCaptureTarget::Command(
+                                                binding.command.clone(),
+                                            );
+                                            let target_name =
+                                                shortcut_target_name(language, &target);
+                                            let capturing = view
+                                                .shortcut_capture
+                                                .as_ref()
+                                                .is_some_and(|capture| capture.target == target);
+                                            let disabled = shortcut_action_disabled;
+                                            let focus = view
+                                                .shortcut_row_focus
+                                                .get(&target)
+                                                .expect("shortcut row focus is synchronized")
+                                                .clone();
+                                            let clear_focus = view
+                                                .shortcut_clear_focus
+                                                .get(&target)
+                                                .expect("shortcut clear focus is synchronized")
+                                                .clone();
+                                            let clear_key_focus = clear_focus.clone();
+                                            let tab_index = shortcut_capture_tab_index(index);
+                                            let keyboard_target = target.clone();
+                                            let clear_target = target.clone();
+                                            let clear_key_target = target.clone();
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .justify_between()
+                                                .gap_3()
+                                                .text_sm()
+                                                .child(div().min_w_0().flex_1().child(target_name))
+                                                .child(
+                                                    div()
+                                                        .text_color(tokens.muted)
+                                                        .child(shortcut_display(&binding.shortcut)),
+                                                )
+                                                .child(
+                                                    command_button(
+                                                        bongocat_i18n::text(
+                                                            language.catalog_locale(),
+                                                            if capturing {
+                                                                "shortcuts.capture.press_key"
+                                                            } else {
+                                                                "shortcuts.actions.capture"
+                                                            },
+                                                        ),
+                                                        &focus,
+                                                        tab_index,
+                                                        window,
+                                                        tokens,
+                                                        disabled,
+                                                    )
+                                                    .id(("capture-command", index))
+                                                    .on_click(cx.listener(
+                                                        move |view, _, window, cx| {
+                                                            view.begin_shortcut_capture(
+                                                                target.clone(),
+                                                                window,
+                                                                cx,
+                                                            );
+                                                        },
+                                                    ))
+                                                    .when(capturing, |this| {
+                                                        this.on_mouse_down_out(cx.listener(
+                                                            |view, _, window, cx| {
+                                                                view.cancel_shortcut_capture(cx);
+                                                                window.blur(cx);
+                                                            },
+                                                        ))
+                                                    })
+                                                    .on_key_down(cx.listener(
+                                                        move |view, event, window, cx| {
+                                                            if view.shortcut_capture.is_none()
+                                                                && is_activation_key(event)
+                                                            {
+                                                                cx.stop_propagation();
+                                                                view.begin_shortcut_capture(
+                                                                    keyboard_target.clone(),
+                                                                    window,
+                                                                    cx,
+                                                                );
+                                                            }
+                                                        },
+                                                    )),
+                                                )
+                                                .child(
+                                                    command_button(
+                                                        bongocat_i18n::text(
+                                                            language.catalog_locale(),
+                                                            "shortcuts.actions.clear",
+                                                        ),
+                                                        &clear_focus,
+                                                        shortcut_clear_tab_index(index),
+                                                        window,
+                                                        tokens,
+                                                        disabled,
+                                                    )
+                                                    .id(("clear-command", index))
+                                                    .on_click(cx.listener(
+                                                        move |view, _, window, cx| {
+                                                            window.focus(&clear_focus, cx);
+                                                            view.clear_shortcut(
+                                                                clear_target.clone(),
+                                                                cx,
+                                                            );
+                                                        },
+                                                    ))
+                                                    .on_key_down(cx.listener(
+                                                        move |view, event, window, cx| {
+                                                            if is_activation_key(event) {
+                                                                cx.stop_propagation();
+                                                                window.focus(&clear_key_focus, cx);
+                                                                view.clear_shortcut(
+                                                                    clear_key_target.clone(),
+                                                                    cx,
+                                                                );
+                                                            }
+                                                        },
+                                                    )),
+                                                )
+                                        },
+                                    ))
+                                    .children(
+                                        shortcut_behavior_rows(
+                                            &snapshot.shortcuts,
+                                            snapshot.active_model.as_ref(),
+                                            &snapshot.model_catalog.entries,
+                                        )
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(
+                                            |(index, row)| {
+                                                let target = row.target;
+                                                let target_name =
+                                                    shortcut_target_name(language, &target);
+                                                let capturing =
+                                                    view.shortcut_capture.as_ref().is_some_and(
+                                                        |capture| capture.target == target,
+                                                    );
+                                                let disabled = shortcut_action_disabled;
+                                                let focus = view
+                                                    .shortcut_row_focus
+                                                    .get(&target)
+                                                    .expect("shortcut row focus is synchronized")
+                                                    .clone();
+                                                let clear_focus = view
+                                                    .shortcut_clear_focus
+                                                    .get(&target)
+                                                    .expect("shortcut clear focus is synchronized")
+                                                    .clone();
+                                                let clear_key_focus = clear_focus.clone();
+                                                let tab_index = shortcut_capture_tab_index(
+                                                    snapshot.shortcuts.commands.len() + index,
+                                                );
+                                                let keyboard_target = target.clone();
+                                                let clear_target = target.clone();
+                                                let clear_key_target = target.clone();
+                                                let has_binding = row.shortcut.is_some();
+                                                div()
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_between()
+                                                    .gap_3()
+                                                    .text_sm()
+                                                    .child(
+                                                        div().min_w_0().flex_1().child(target_name),
+                                                    )
+                                                    .child(
+                                                        div().text_color(tokens.muted).child(
+                                                            row.shortcut
+                                                                .as_deref()
+                                                                .map(shortcut_display)
+                                                                .unwrap_or_else(|| {
+                                                                    bongocat_i18n::text(
+                                                                        language.catalog_locale(),
+                                                                        "shortcuts.state.not_set",
+                                                                    )
+                                                                    .to_owned()
+                                                                }),
+                                                        ),
+                                                    )
+                                                    .child(
+                                                        command_button(
+                                                            bongocat_i18n::text(
+                                                                language.catalog_locale(),
+                                                                if capturing {
+                                                                    "shortcuts.capture.press_key"
+                                                                } else {
+                                                                    "shortcuts.actions.capture"
+                                                                },
+                                                            ),
+                                                            &focus,
+                                                            tab_index,
+                                                            window,
+                                                            tokens,
+                                                            disabled,
+                                                        )
+                                                        .id(("capture-behavior", index))
+                                                        .on_click(cx.listener(
+                                                            move |view, _, window, cx| {
+                                                                view.begin_shortcut_capture(
+                                                                    target.clone(),
+                                                                    window,
+                                                                    cx,
+                                                                );
+                                                            },
+                                                        ))
+                                                        .when(capturing, |this| {
+                                                            this.on_mouse_down_out(cx.listener(
+                                                                |view, _, window, cx| {
+                                                                    view.cancel_shortcut_capture(
+                                                                        cx,
+                                                                    );
+                                                                    window.blur(cx);
+                                                                },
+                                                            ))
+                                                        })
+                                                        .on_key_down(cx.listener(
+                                                            move |view, event, window, cx| {
+                                                                if view.shortcut_capture.is_none()
+                                                                    && is_activation_key(event)
+                                                                {
+                                                                    cx.stop_propagation();
+                                                                    view.begin_shortcut_capture(
+                                                                        keyboard_target.clone(),
+                                                                        window,
+                                                                        cx,
+                                                                    );
+                                                                }
+                                                            },
+                                                        )),
+                                                    )
+                                                    .when(has_binding, |actions| {
+                                                        actions.child(
+                                                            command_button(
+                                                                bongocat_i18n::text(
+                                                                    language.catalog_locale(),
+                                                                    "shortcuts.actions.clear",
+                                                                ),
+                                                                &clear_focus,
+                                                                shortcut_clear_tab_index(
+                                                                    snapshot
+                                                                        .shortcuts
+                                                                        .commands
+                                                                        .len()
+                                                                        + index,
+                                                                ),
+                                                                window,
+                                                                tokens,
+                                                                disabled,
+                                                            )
+                                                            .id(("clear-behavior", index))
+                                                            .on_click(cx.listener(
+                                                                move |view, _, window, cx| {
+                                                                    window.focus(&clear_focus, cx);
+                                                                    view.clear_shortcut(
+                                                                        clear_target.clone(),
+                                                                        cx,
+                                                                    );
+                                                                },
+                                                            ))
+                                                            .on_key_down(cx.listener(
+                                                                move |view, event, window, cx| {
+                                                                    if is_activation_key(event) {
+                                                                        cx.stop_propagation();
+                                                                        window.focus(
+                                                                            &clear_key_focus,
+                                                                            cx,
+                                                                        );
+                                                                        view.clear_shortcut(
+                                                                            clear_key_target
+                                                                                .clone(),
+                                                                            cx,
+                                                                        );
+                                                                    }
+                                                                },
+                                                            )),
+                                                        )
+                                                    })
+                                            },
+                                        ),
+                                    ),
+                            )
+                        })
+                        .child(
+                            div()
+                                .id("input-service-diagnostics")
+                                .pb_3()
+                                .mb_3()
+                                .border_b_1()
+                                .border_color(tokens.border)
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_4()
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_1()
+                                        .child(div().text_sm().text_color(tokens.muted).child(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.input.service",
+                                            ),
+                                        ))
+                                        .child(div().text_sm().child(input_service.title)),
+                                )
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .text_sm()
+                                        .text_color(if input_service.attention {
+                                            tokens.danger
+                                        } else if input_service.running {
+                                            tokens.accent
+                                        } else {
+                                            tokens.muted
+                                        })
+                                        .child(input_service.detail),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .id("config-recovery-diagnostics")
+                                .pb_3()
+                                .mb_3()
+                                .border_b_1()
+                                .border_color(tokens.border)
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_4()
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_1()
+                                        .child(div().text_sm().text_color(tokens.muted).child(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.configuration.title",
+                                            ),
+                                        ))
+                                        .child(div().text_sm().child(recovery.title)),
+                                )
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .flex()
+                                        .items_center()
+                                        .gap_3()
+                                        .text_sm()
+                                        .text_color(if recovery.attention {
+                                            tokens.danger
+                                        } else if recovery.recovered {
+                                            tokens.accent
+                                        } else {
+                                            tokens.muted
+                                        })
+                                        .child(recovery.detail)
+                                        .child(
+                                            icon_command_button(
+                                                "open-config-backups-control",
+                                                bongocat_i18n::text(
+                                                    language.catalog_locale(),
+                                                    "diagnostics.configuration.backups",
+                                                ),
+                                                IconName::FolderOpen,
+                                                &view.open_backups_focus,
+                                                28,
+                                                config_action_disabled,
+                                            )
+                                            .id("open-config-backups")
+                                            .on_click(cx.listener(|view, _, window, cx| {
+                                                if view.pending.is_none() {
+                                                    window.focus(&view.open_backups_focus, cx);
+                                                    view.open_config_backup_location(cx);
+                                                }
+                                            }))
+                                            .on_key_down(cx.listener(|view, event, window, cx| {
+                                                if view.pending.is_none()
+                                                    && is_activation_key(event)
+                                                {
+                                                    cx.stop_propagation();
+                                                    window.focus(&view.open_backups_focus, cx);
+                                                    view.open_config_backup_location(cx);
+                                                }
+                                            })),
+                                        )
+                                        .when(recovery.can_restore, |content| {
+                                            content.child(
+                                                command_button(
+                                                    bongocat_i18n::text(
+                                                        language.catalog_locale(),
+                                                        "shortcuts.actions.restore_defaults",
+                                                    ),
+                                                    &view.restore_defaults_focus,
+                                                    29,
+                                                    window,
+                                                    tokens,
+                                                    config_action_disabled,
+                                                )
+                                                .id("restore-default-configuration")
+                                                .on_click(cx.listener(|view, _, window, cx| {
+                                                    if view.pending.is_none() {
+                                                        window.focus(
+                                                            &view.restore_defaults_focus,
+                                                            cx,
+                                                        );
+                                                        view.restore_default_configuration(cx);
+                                                    }
+                                                }))
+                                                .on_key_down(cx.listener(
+                                                    |view, event, window, cx| {
+                                                        if view.pending.is_none()
+                                                            && is_activation_key(event)
+                                                        {
+                                                            cx.stop_propagation();
+                                                            window.focus(
+                                                                &view.restore_defaults_focus,
+                                                                cx,
+                                                            );
+                                                            view.restore_default_configuration(cx);
+                                                        }
+                                                    },
+                                                )),
+                                            )
+                                        }),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_start()
+                                .gap_5()
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .child(diagnostic_group(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.configuration.current_state",
+                                            ),
+                                            &metrics[..2],
+                                            tokens,
+                                        ))
+                                        .child(diagnostic_group(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.input.processing",
+                                            ),
+                                            &metrics[2..10],
+                                            tokens,
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .child(diagnostic_group(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.input.sequence_recovery",
+                                            ),
+                                            &metrics[10..15],
+                                            tokens,
+                                        ))
+                                        .child(diagnostic_group(
+                                            bongocat_i18n::text(
+                                                language.catalog_locale(),
+                                                "diagnostics.input.transport",
+                                            ),
+                                            &metrics[15..],
+                                            tokens,
+                                        )),
+                                ),
+                        )
+                }),
+        )
+}

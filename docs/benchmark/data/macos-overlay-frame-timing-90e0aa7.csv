@@ -1,0 +1,2 @@
+commit,build_profile,model,duration_seconds,target_fps,frames_presented,timing_sample_count,timing_samples_dropped,draw_p50_us,draw_p95_us,draw_p99_us,missed_deadlines,dynamic_snapshots,runtime_input_events,render_frames_consumed,gpu_bytes_before,gpu_bytes_after,drawables,masked_drawables,textures
+90e0aa7a219889c4106966555be54de91c6d8321,release,standard,30,60,1798,1798,0,1741,3148,4274,2,1334,78,1337,72876032,72876032,21,5,3

@@ -1,0 +1,1538 @@
+#![forbid(unsafe_code)]
+
+mod xinput;
+
+pub use xinput::*;
+
+use bongocat_input_queue_spike::{QueueErrorKind, ReliableQueue};
+use std::collections::{BTreeMap, BTreeSet};
+
+pub const RI_KEY_BREAK: u16 = 0x0001;
+pub const RI_KEY_E0: u16 = 0x0002;
+pub const RI_KEY_E1: u16 = 0x0004;
+pub const RI_MOUSE_LEFT_BUTTON_DOWN: u16 = 0x0001;
+pub const RI_MOUSE_LEFT_BUTTON_UP: u16 = 0x0002;
+pub const RI_MOUSE_RIGHT_BUTTON_DOWN: u16 = 0x0004;
+pub const RI_MOUSE_RIGHT_BUTTON_UP: u16 = 0x0008;
+pub const RI_MOUSE_MIDDLE_BUTTON_DOWN: u16 = 0x0010;
+pub const RI_MOUSE_MIDDLE_BUTTON_UP: u16 = 0x0020;
+pub const RI_MOUSE_BACK_BUTTON_DOWN: u16 = 0x0040;
+pub const RI_MOUSE_BACK_BUTTON_UP: u16 = 0x0080;
+pub const RI_MOUSE_FORWARD_BUTTON_DOWN: u16 = 0x0100;
+pub const RI_MOUSE_FORWARD_BUTTON_UP: u16 = 0x0200;
+pub const MOUSE_MOVE_ABSOLUTE: u16 = 0x0001;
+pub const MOUSE_VIRTUAL_DESKTOP: u16 = 0x0002;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PhysicalKey {
+    Escape,
+    Digit1,
+    Digit2,
+    Digit3,
+    Digit4,
+    Digit5,
+    Digit6,
+    Digit7,
+    Digit8,
+    Digit9,
+    Digit0,
+    Minus,
+    Equal,
+    Backspace,
+    Tab,
+    Q,
+    W,
+    E,
+    R,
+    T,
+    Y,
+    U,
+    I,
+    O,
+    P,
+    BracketLeft,
+    BracketRight,
+    Enter,
+    ControlLeft,
+    ControlRight,
+    A,
+    S,
+    D,
+    F,
+    G,
+    H,
+    J,
+    K,
+    L,
+    Semicolon,
+    Apostrophe,
+    Grave,
+    ShiftLeft,
+    Backslash,
+    Z,
+    X,
+    C,
+    V,
+    B,
+    N,
+    M,
+    Comma,
+    Period,
+    Slash,
+    ShiftRight,
+    AltLeft,
+    AltRight,
+    Space,
+    CapsLock,
+    PrintScreen,
+    Pause,
+    Insert,
+    Delete,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    ArrowDown,
+    MetaLeft,
+    MetaRight,
+    Unknown { scan_code: u16, flags: u16 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RawKeyboardPacket {
+    pub make_code: u16,
+    pub flags: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RawMousePacket {
+    pub button_flags: u16,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RawPointerMovement {
+    pub x: i32,
+    pub y: i32,
+    pub absolute: bool,
+    pub virtual_desktop: bool,
+}
+
+impl RawPointerMovement {
+    pub fn has_motion(self) -> bool {
+        self.x != 0 || self.y != 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+    Back,
+    Forward,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MouseButtonEdge {
+    pub button: MouseButton,
+    pub pressed: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RawInputHeader {
+    pub declared_size: usize,
+    pub input_type: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RawInputError {
+    TruncatedHeader,
+    DeclaredSizeExceedsBuffer,
+    UnsupportedInputType,
+    TruncatedKeyboardPayload,
+    TruncatedMousePayload,
+}
+
+/// Decode only the stable button-flag prefix of a `RAWMOUSE` payload.
+///
+/// `usButtonFlags` is the low word of the `ulButtons` union at payload offset
+/// four. Movement, wheel data and device handles remain outside this boundary.
+pub fn decode_raw_mouse_bytes(
+    header: RawInputHeader,
+    bytes: &[u8],
+    header_size: usize,
+) -> Result<RawMousePacket, RawInputError> {
+    if bytes.len() < header_size || bytes.len() < 8 {
+        return Err(RawInputError::TruncatedHeader);
+    }
+    if header.declared_size > bytes.len() {
+        return Err(RawInputError::DeclaredSizeExceedsBuffer);
+    }
+    if header.input_type != 0 {
+        return Err(RawInputError::UnsupportedInputType);
+    }
+    let button_flags_offset = header_size
+        .checked_add(4)
+        .ok_or(RawInputError::TruncatedMousePayload)?;
+    let mouse_end = button_flags_offset
+        .checked_add(2)
+        .ok_or(RawInputError::TruncatedMousePayload)?;
+    if header.declared_size < mouse_end || bytes.len() < mouse_end {
+        return Err(RawInputError::TruncatedMousePayload);
+    }
+    Ok(RawMousePacket {
+        button_flags: u16::from_le_bytes([
+            bytes[button_flags_offset],
+            bytes[button_flags_offset + 1],
+        ]),
+    })
+}
+
+/// Decode the stable movement fields of a `RAWMOUSE` payload.
+///
+/// Relative samples contain deltas; absolute samples contain the documented
+/// normalized coordinates. The callback does not accumulate either form in a
+/// reliable edge queue. It uses the sample only to mark cursor state dirty.
+pub fn decode_raw_pointer_movement(
+    header: RawInputHeader,
+    bytes: &[u8],
+    header_size: usize,
+) -> Result<RawPointerMovement, RawInputError> {
+    if bytes.len() < header_size || bytes.len() < 8 {
+        return Err(RawInputError::TruncatedHeader);
+    }
+    if header.declared_size > bytes.len() {
+        return Err(RawInputError::DeclaredSizeExceedsBuffer);
+    }
+    if header.input_type != 0 {
+        return Err(RawInputError::UnsupportedInputType);
+    }
+    let movement_end = header_size
+        .checked_add(20)
+        .ok_or(RawInputError::TruncatedMousePayload)?;
+    if header.declared_size < movement_end || bytes.len() < movement_end {
+        return Err(RawInputError::TruncatedMousePayload);
+    }
+    let flags = u16::from_le_bytes([bytes[header_size], bytes[header_size + 1]]);
+    let x_offset = header_size + 12;
+    let y_offset = header_size + 16;
+    Ok(RawPointerMovement {
+        x: i32::from_le_bytes([
+            bytes[x_offset],
+            bytes[x_offset + 1],
+            bytes[x_offset + 2],
+            bytes[x_offset + 3],
+        ]),
+        y: i32::from_le_bytes([
+            bytes[y_offset],
+            bytes[y_offset + 1],
+            bytes[y_offset + 2],
+            bytes[y_offset + 3],
+        ]),
+        absolute: flags & MOUSE_MOVE_ABSOLUTE != 0,
+        virtual_desktop: flags & MOUSE_VIRTUAL_DESKTOP != 0,
+    })
+}
+
+pub fn decode_mouse_button_edges(packet: RawMousePacket) -> impl Iterator<Item = MouseButtonEdge> {
+    [
+        (
+            MouseButton::Left,
+            RI_MOUSE_LEFT_BUTTON_DOWN,
+            RI_MOUSE_LEFT_BUTTON_UP,
+        ),
+        (
+            MouseButton::Right,
+            RI_MOUSE_RIGHT_BUTTON_DOWN,
+            RI_MOUSE_RIGHT_BUTTON_UP,
+        ),
+        (
+            MouseButton::Middle,
+            RI_MOUSE_MIDDLE_BUTTON_DOWN,
+            RI_MOUSE_MIDDLE_BUTTON_UP,
+        ),
+        (
+            MouseButton::Back,
+            RI_MOUSE_BACK_BUTTON_DOWN,
+            RI_MOUSE_BACK_BUTTON_UP,
+        ),
+        (
+            MouseButton::Forward,
+            RI_MOUSE_FORWARD_BUTTON_DOWN,
+            RI_MOUSE_FORWARD_BUTTON_UP,
+        ),
+    ]
+    .into_iter()
+    .flat_map(move |(button, down_flag, up_flag)| {
+        [
+            (packet.button_flags & down_flag != 0).then_some(MouseButtonEdge {
+                button,
+                pressed: true,
+            }),
+            (packet.button_flags & up_flag != 0).then_some(MouseButtonEdge {
+                button,
+                pressed: false,
+            }),
+        ]
+        .into_iter()
+        .flatten()
+    })
+}
+
+/// Decode the stable byte layout returned by `GetRawInputData` for a keyboard.
+///
+/// The platform wrapper must pass the header size reported by the target ABI:
+/// 16 bytes for 32-bit and 24 bytes for 64-bit Windows. No pointer or handle
+/// from the native header is exposed beyond this validation boundary.
+pub fn decode_raw_keyboard_bytes(
+    header: RawInputHeader,
+    bytes: &[u8],
+    header_size: usize,
+) -> Result<RawKeyboardPacket, RawInputError> {
+    if bytes.len() < header_size || bytes.len() < 8 {
+        return Err(RawInputError::TruncatedHeader);
+    }
+    if header.declared_size > bytes.len() {
+        return Err(RawInputError::DeclaredSizeExceedsBuffer);
+    }
+    if header.input_type != 1 {
+        return Err(RawInputError::UnsupportedInputType);
+    }
+    let keyboard_offset = header_size;
+    let keyboard_end = keyboard_offset
+        .checked_add(4)
+        .ok_or(RawInputError::TruncatedKeyboardPayload)?;
+    if header.declared_size < keyboard_end || bytes.len() < keyboard_end {
+        return Err(RawInputError::TruncatedKeyboardPayload);
+    }
+    let make_code = u16::from_le_bytes([bytes[keyboard_offset], bytes[keyboard_offset + 1]]);
+    let flags = u16::from_le_bytes([bytes[keyboard_offset + 2], bytes[keyboard_offset + 3]]);
+    Ok(RawKeyboardPacket { make_code, flags })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyboardEdge {
+    pub key: PhysicalKey,
+    pub pressed: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RawInputDeviceChange {
+    Arrival,
+    Removal,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaptureResetReason {
+    DeviceRemoved,
+    SessionChanged,
+    PowerChanged,
+    ServiceStopped,
+    UnqueryableKey,
+    StateQueryUnavailable,
+    QueueOverflow,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CapturedInputEvent {
+    Keyboard(KeyboardEdge),
+    MouseButton(MouseButtonEdge),
+    Reset(CaptureResetReason),
+    Reconcile,
+    PointerTick,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SequencedCaptureEvent {
+    pub sequence: u64,
+    pub event: CapturedInputEvent,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaptureQueuePushError {
+    Full,
+    Closed,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CaptureQueueCounters {
+    pub enqueued: u64,
+    pub consumed: u64,
+    pub overflows: u64,
+    pub recovery_resets: u64,
+    pub discarded: u64,
+    pub closed_pushes: u64,
+}
+
+/// Platform callback queue for reliable key/button edges and lifecycle events.
+///
+/// A full queue invalidates the buffered edge history. The queue atomically
+/// replaces that history with a sequenced Reset marker and exposes every loss
+/// through counters. Mouse movement and controller axes do not enter this
+/// queue; they belong in a coalescing latest-value path.
+#[derive(Debug)]
+pub struct CaptureEventQueue {
+    queue: ReliableQueue<SequencedCaptureEvent>,
+    next_sequence: u64,
+    counters: CaptureQueueCounters,
+}
+
+impl CaptureEventQueue {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            queue: ReliableQueue::with_capacity(capacity),
+            next_sequence: 0,
+            counters: CaptureQueueCounters::default(),
+        }
+    }
+
+    pub fn push(&mut self, event: CapturedInputEvent) -> Result<(), CaptureQueuePushError> {
+        let sequenced = SequencedCaptureEvent {
+            sequence: self.next_sequence,
+            event,
+        };
+        // Exhaustion is practically unreachable, but wrapping keeps the FFI
+        // producer path non-panicking and makes the anomaly observable as a
+        // non-monotonic sequence if it ever occurs.
+        self.next_sequence = self.next_sequence.wrapping_add(1);
+        let reset = SequencedCaptureEvent {
+            sequence: sequenced.sequence,
+            event: CapturedInputEvent::Reset(CaptureResetReason::QueueOverflow),
+        };
+        match self.queue.push_with_overflow_reset(sequenced, reset) {
+            Ok(()) => {
+                self.counters.enqueued += 1;
+                Ok(())
+            }
+            Err(error) if error.kind == QueueErrorKind::Full => {
+                self.counters.enqueued += 1;
+                self.counters.overflows += 1;
+                self.counters.recovery_resets += 1;
+                self.counters.discarded = self.queue.recovery_discard_count();
+                Err(CaptureQueuePushError::Full)
+            }
+            Err(_) => {
+                self.counters.closed_pushes += 1;
+                Err(CaptureQueuePushError::Closed)
+            }
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<SequencedCaptureEvent> {
+        let event = self.queue.pop()?;
+        self.counters.consumed += 1;
+        Some(event)
+    }
+
+    pub fn close(&mut self) {
+        self.queue.close();
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.queue.is_closed()
+    }
+
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.queue.capacity()
+    }
+
+    pub fn counters(&self) -> CaptureQueueCounters {
+        self.counters
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CaptureSequenceDiagnostics {
+    next_expected: u64,
+    pub gaps: u64,
+    pub duplicates_or_out_of_order: u64,
+}
+
+impl CaptureSequenceDiagnostics {
+    pub fn observe(&mut self, sequence: u64) {
+        if sequence == self.next_expected {
+            self.next_expected = self.next_expected.saturating_add(1);
+        } else if sequence > self.next_expected {
+            self.gaps += sequence - self.next_expected;
+            self.next_expected = sequence.saturating_add(1);
+        } else {
+            self.duplicates_or_out_of_order += 1;
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CandidateCounters {
+    pub captured_down: u64,
+    pub captured_up: u64,
+    pub duplicate_down: u64,
+    pub unmatched_up: u64,
+    pub resets: u64,
+    pub reset_releases: u64,
+    pub device_removed_resets: u64,
+    pub session_change_resets: u64,
+    pub power_change_resets: u64,
+    pub service_stopped_resets: u64,
+    pub unqueryable_key_resets: u64,
+    pub state_query_unavailable_resets: u64,
+    pub queue_overflow_resets: u64,
+    pub reconciled_releases: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CandidateReconciliation {
+    pub checked: usize,
+    pub released: usize,
+    pub still_pressed: usize,
+    pub pending_confirmations: usize,
+    pub reset: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InvalidMissingConfirmations;
+
+/// Platform-local candidate cache used only to scope key-state queries.
+///
+/// The product runtime remains the pressed-state owner. This cache must be
+/// reset on device/service lifecycle changes so it cannot retain stale keys.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PressedKeyCandidates {
+    keys: BTreeSet<PhysicalKey>,
+    missing_confirmations: BTreeMap<PhysicalKey, u8>,
+    counters: CandidateCounters,
+}
+
+impl PressedKeyCandidates {
+    pub fn apply_edge(&mut self, edge: KeyboardEdge) {
+        if edge.pressed {
+            self.missing_confirmations.remove(&edge.key);
+            if self.keys.insert(edge.key) {
+                self.counters.captured_down += 1;
+            } else {
+                self.counters.duplicate_down += 1;
+            }
+        } else {
+            self.counters.captured_up += 1;
+            if !self.keys.remove(&edge.key) {
+                self.counters.unmatched_up += 1;
+            }
+            self.missing_confirmations.remove(&edge.key);
+        }
+    }
+
+    pub fn apply_device_change(&mut self, change: RawInputDeviceChange) -> bool {
+        if change != RawInputDeviceChange::Removal {
+            return false;
+        }
+        self.reset(CaptureResetReason::DeviceRemoved);
+        true
+    }
+
+    pub fn reset(&mut self, reason: CaptureResetReason) {
+        self.counters.reset_releases += self.keys.len() as u64;
+        self.keys.clear();
+        self.counters.resets += 1;
+        match reason {
+            CaptureResetReason::DeviceRemoved => self.counters.device_removed_resets += 1,
+            CaptureResetReason::SessionChanged => self.counters.session_change_resets += 1,
+            CaptureResetReason::PowerChanged => self.counters.power_change_resets += 1,
+            CaptureResetReason::ServiceStopped => self.counters.service_stopped_resets += 1,
+            CaptureResetReason::UnqueryableKey => self.counters.unqueryable_key_resets += 1,
+            CaptureResetReason::StateQueryUnavailable => {
+                self.counters.state_query_unavailable_resets += 1
+            }
+            CaptureResetReason::QueueOverflow => self.counters.queue_overflow_resets += 1,
+        }
+        self.missing_confirmations.clear();
+    }
+
+    pub fn reconcile(
+        &mut self,
+        snapshot: &KeyStateSnapshot,
+        required_missing_confirmations: u8,
+    ) -> Result<CandidateReconciliation, InvalidMissingConfirmations> {
+        if required_missing_confirmations == 0 {
+            return Err(InvalidMissingConfirmations);
+        }
+        if snapshot.reset_required {
+            let checked = self.keys.len();
+            self.reset(CaptureResetReason::UnqueryableKey);
+            return Ok(CandidateReconciliation {
+                checked,
+                reset: true,
+                ..Default::default()
+            });
+        }
+
+        let checked = self.keys.len();
+        let mut released = 0usize;
+        let candidates = self.keys.iter().copied().collect::<Vec<_>>();
+        for key in candidates {
+            if snapshot.still_pressed.contains(&key) {
+                self.missing_confirmations.remove(&key);
+                continue;
+            }
+            let confirmations = self.missing_confirmations.entry(key).or_insert(0);
+            *confirmations = confirmations.saturating_add(1);
+            if *confirmations >= required_missing_confirmations {
+                self.keys.remove(&key);
+                self.missing_confirmations.remove(&key);
+                released += 1;
+            }
+        }
+        self.counters.reconciled_releases += released as u64;
+        Ok(CandidateReconciliation {
+            checked,
+            released,
+            still_pressed: self.keys.len(),
+            pending_confirmations: self.missing_confirmations.len(),
+            reset: false,
+        })
+    }
+
+    pub fn keys(&self) -> &BTreeSet<PhysicalKey> {
+        &self.keys
+    }
+
+    pub fn counters(&self) -> CandidateCounters {
+        self.counters
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PressedMouseCandidates {
+    buttons: BTreeSet<MouseButton>,
+    missing_confirmations: BTreeMap<MouseButton, u8>,
+    counters: CandidateCounters,
+}
+
+impl PressedMouseCandidates {
+    pub fn apply_edge(&mut self, edge: MouseButtonEdge) {
+        if edge.pressed {
+            self.missing_confirmations.remove(&edge.button);
+            if self.buttons.insert(edge.button) {
+                self.counters.captured_down += 1;
+            } else {
+                self.counters.duplicate_down += 1;
+            }
+        } else {
+            self.counters.captured_up += 1;
+            if !self.buttons.remove(&edge.button) {
+                self.counters.unmatched_up += 1;
+            }
+            self.missing_confirmations.remove(&edge.button);
+        }
+    }
+
+    pub fn reset(&mut self, reason: CaptureResetReason) {
+        self.counters.reset_releases += self.buttons.len() as u64;
+        self.buttons.clear();
+        self.counters.resets += 1;
+        match reason {
+            CaptureResetReason::DeviceRemoved => self.counters.device_removed_resets += 1,
+            CaptureResetReason::SessionChanged => self.counters.session_change_resets += 1,
+            CaptureResetReason::PowerChanged => self.counters.power_change_resets += 1,
+            CaptureResetReason::ServiceStopped => self.counters.service_stopped_resets += 1,
+            CaptureResetReason::UnqueryableKey => self.counters.unqueryable_key_resets += 1,
+            CaptureResetReason::StateQueryUnavailable => {
+                self.counters.state_query_unavailable_resets += 1
+            }
+            CaptureResetReason::QueueOverflow => self.counters.queue_overflow_resets += 1,
+        }
+        self.missing_confirmations.clear();
+    }
+
+    pub fn reconcile(
+        &mut self,
+        snapshot: &MouseButtonStateSnapshot,
+        required_missing_confirmations: u8,
+    ) -> Result<CandidateReconciliation, InvalidMissingConfirmations> {
+        if required_missing_confirmations == 0 {
+            return Err(InvalidMissingConfirmations);
+        }
+        let checked = self.buttons.len();
+        let mut released = 0usize;
+        let candidates = self.buttons.iter().copied().collect::<Vec<_>>();
+        for button in candidates {
+            if snapshot.still_pressed.contains(&button) {
+                self.missing_confirmations.remove(&button);
+                continue;
+            }
+            let confirmations = self.missing_confirmations.entry(button).or_insert(0);
+            *confirmations = confirmations.saturating_add(1);
+            if *confirmations >= required_missing_confirmations {
+                self.buttons.remove(&button);
+                self.missing_confirmations.remove(&button);
+                released += 1;
+            }
+        }
+        self.counters.reconciled_releases += released as u64;
+        Ok(CandidateReconciliation {
+            checked,
+            released,
+            still_pressed: self.buttons.len(),
+            pending_confirmations: self.missing_confirmations.len(),
+            reset: false,
+        })
+    }
+
+    pub fn buttons(&self) -> &BTreeSet<MouseButton> {
+        &self.buttons
+    }
+
+    pub fn counters(&self) -> CandidateCounters {
+        self.counters
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VirtualKeyCode(u16);
+
+impl VirtualKeyCode {
+    pub const fn as_i32(self) -> i32 {
+        self.0 as i32
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct KeyStateSnapshot {
+    pub still_pressed: BTreeSet<PhysicalKey>,
+    pub queried: usize,
+    pub unqueryable: usize,
+    pub reset_required: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MouseButtonStateSnapshot {
+    pub still_pressed: BTreeSet<MouseButton>,
+    pub queried: usize,
+}
+
+/// Build an OS-state snapshot for keys that the local runtime believes are down.
+///
+/// Unknown keys are retained instead of being falsely released. The caller must
+/// respond to `reset_required` with a lifecycle Reset because Windows cannot
+/// reliably query those keys by virtual-key code.
+pub fn collect_key_state_snapshot_with(
+    candidates: &BTreeSet<PhysicalKey>,
+    mut is_pressed: impl FnMut(VirtualKeyCode) -> bool,
+) -> KeyStateSnapshot {
+    let mut report = KeyStateSnapshot::default();
+    for key in candidates {
+        let Some(virtual_key) = virtual_key_for_reconciliation(*key) else {
+            report.still_pressed.insert(*key);
+            report.unqueryable += 1;
+            report.reset_required = true;
+            continue;
+        };
+        report.queried += 1;
+        if is_pressed(virtual_key) {
+            report.still_pressed.insert(*key);
+        }
+    }
+    report
+}
+
+pub fn collect_mouse_button_state_snapshot_with(
+    candidates: &BTreeSet<MouseButton>,
+    mut is_pressed: impl FnMut(VirtualKeyCode) -> bool,
+) -> MouseButtonStateSnapshot {
+    let mut report = MouseButtonStateSnapshot::default();
+    for button in candidates {
+        report.queried += 1;
+        if is_pressed(virtual_key_for_mouse_button(*button)) {
+            report.still_pressed.insert(*button);
+        }
+    }
+    report
+}
+
+pub const fn virtual_key_for_mouse_button(button: MouseButton) -> VirtualKeyCode {
+    VirtualKeyCode(match button {
+        MouseButton::Left => 0x01,
+        MouseButton::Right => 0x02,
+        MouseButton::Middle => 0x04,
+        MouseButton::Back => 0x05,
+        MouseButton::Forward => 0x06,
+    })
+}
+
+pub const fn virtual_key_for_reconciliation(key: PhysicalKey) -> Option<VirtualKeyCode> {
+    let value = match key {
+        PhysicalKey::Escape => 0x1b,
+        PhysicalKey::Digit1 => 0x31,
+        PhysicalKey::Digit2 => 0x32,
+        PhysicalKey::Digit3 => 0x33,
+        PhysicalKey::Digit4 => 0x34,
+        PhysicalKey::Digit5 => 0x35,
+        PhysicalKey::Digit6 => 0x36,
+        PhysicalKey::Digit7 => 0x37,
+        PhysicalKey::Digit8 => 0x38,
+        PhysicalKey::Digit9 => 0x39,
+        PhysicalKey::Digit0 => 0x30,
+        PhysicalKey::Minus => 0xbd,
+        PhysicalKey::Equal => 0xbb,
+        PhysicalKey::Backspace => 0x08,
+        PhysicalKey::Tab => 0x09,
+        PhysicalKey::Q => 0x51,
+        PhysicalKey::W => 0x57,
+        PhysicalKey::E => 0x45,
+        PhysicalKey::R => 0x52,
+        PhysicalKey::T => 0x54,
+        PhysicalKey::Y => 0x59,
+        PhysicalKey::U => 0x55,
+        PhysicalKey::I => 0x49,
+        PhysicalKey::O => 0x4f,
+        PhysicalKey::P => 0x50,
+        PhysicalKey::BracketLeft => 0xdb,
+        PhysicalKey::BracketRight => 0xdd,
+        PhysicalKey::Enter => 0x0d,
+        PhysicalKey::ControlLeft => 0xa2,
+        PhysicalKey::ControlRight => 0xa3,
+        PhysicalKey::A => 0x41,
+        PhysicalKey::S => 0x53,
+        PhysicalKey::D => 0x44,
+        PhysicalKey::F => 0x46,
+        PhysicalKey::G => 0x47,
+        PhysicalKey::H => 0x48,
+        PhysicalKey::J => 0x4a,
+        PhysicalKey::K => 0x4b,
+        PhysicalKey::L => 0x4c,
+        PhysicalKey::Semicolon => 0xba,
+        PhysicalKey::Apostrophe => 0xde,
+        PhysicalKey::Grave => 0xc0,
+        PhysicalKey::ShiftLeft => 0xa0,
+        PhysicalKey::Backslash => 0xdc,
+        PhysicalKey::Z => 0x5a,
+        PhysicalKey::X => 0x58,
+        PhysicalKey::C => 0x43,
+        PhysicalKey::V => 0x56,
+        PhysicalKey::B => 0x42,
+        PhysicalKey::N => 0x4e,
+        PhysicalKey::M => 0x4d,
+        PhysicalKey::Comma => 0xbc,
+        PhysicalKey::Period => 0xbe,
+        PhysicalKey::Slash => 0xbf,
+        PhysicalKey::ShiftRight => 0xa1,
+        PhysicalKey::AltLeft => 0xa4,
+        PhysicalKey::AltRight => 0xa5,
+        PhysicalKey::Space => 0x20,
+        PhysicalKey::CapsLock => 0x14,
+        PhysicalKey::PrintScreen => 0x2c,
+        PhysicalKey::Pause => 0x13,
+        PhysicalKey::Insert => 0x2d,
+        PhysicalKey::Delete => 0x2e,
+        PhysicalKey::Home => 0x24,
+        PhysicalKey::End => 0x23,
+        PhysicalKey::PageUp => 0x21,
+        PhysicalKey::PageDown => 0x22,
+        PhysicalKey::ArrowLeft => 0x25,
+        PhysicalKey::ArrowRight => 0x27,
+        PhysicalKey::ArrowUp => 0x26,
+        PhysicalKey::ArrowDown => 0x28,
+        PhysicalKey::MetaLeft => 0x5b,
+        PhysicalKey::MetaRight => 0x5c,
+        PhysicalKey::Unknown { .. } => return None,
+    };
+    Some(VirtualKeyCode(value))
+}
+
+pub fn decode_keyboard_packet(packet: RawKeyboardPacket) -> KeyboardEdge {
+    KeyboardEdge {
+        key: map_scan_code(packet.make_code, packet.flags),
+        pressed: packet.flags & RI_KEY_BREAK == 0,
+    }
+}
+
+pub fn map_scan_code(make_code: u16, flags: u16) -> PhysicalKey {
+    let extended = flags & RI_KEY_E0 != 0;
+    let e1 = flags & RI_KEY_E1 != 0;
+    if e1 && make_code == 0x1d {
+        return PhysicalKey::Pause;
+    }
+    if extended {
+        return match make_code {
+            0x1c => PhysicalKey::Enter,
+            0x1d => PhysicalKey::ControlRight,
+            0x35 => PhysicalKey::Slash,
+            0x37 => PhysicalKey::PrintScreen,
+            0x38 => PhysicalKey::AltRight,
+            0x47 => PhysicalKey::Home,
+            0x48 => PhysicalKey::ArrowUp,
+            0x49 => PhysicalKey::PageUp,
+            0x4b => PhysicalKey::ArrowLeft,
+            0x4d => PhysicalKey::ArrowRight,
+            0x4f => PhysicalKey::End,
+            0x50 => PhysicalKey::ArrowDown,
+            0x51 => PhysicalKey::PageDown,
+            0x52 => PhysicalKey::Insert,
+            0x53 => PhysicalKey::Delete,
+            0x5b => PhysicalKey::MetaLeft,
+            0x5c => PhysicalKey::MetaRight,
+            _ => PhysicalKey::Unknown {
+                scan_code: make_code,
+                flags,
+            },
+        };
+    }
+    match make_code {
+        0x01 => PhysicalKey::Escape,
+        0x02 => PhysicalKey::Digit1,
+        0x03 => PhysicalKey::Digit2,
+        0x04 => PhysicalKey::Digit3,
+        0x05 => PhysicalKey::Digit4,
+        0x06 => PhysicalKey::Digit5,
+        0x07 => PhysicalKey::Digit6,
+        0x08 => PhysicalKey::Digit7,
+        0x09 => PhysicalKey::Digit8,
+        0x0a => PhysicalKey::Digit9,
+        0x0b => PhysicalKey::Digit0,
+        0x0c => PhysicalKey::Minus,
+        0x0d => PhysicalKey::Equal,
+        0x0e => PhysicalKey::Backspace,
+        0x0f => PhysicalKey::Tab,
+        0x10 => PhysicalKey::Q,
+        0x11 => PhysicalKey::W,
+        0x12 => PhysicalKey::E,
+        0x13 => PhysicalKey::R,
+        0x14 => PhysicalKey::T,
+        0x15 => PhysicalKey::Y,
+        0x16 => PhysicalKey::U,
+        0x17 => PhysicalKey::I,
+        0x18 => PhysicalKey::O,
+        0x19 => PhysicalKey::P,
+        0x1a => PhysicalKey::BracketLeft,
+        0x1b => PhysicalKey::BracketRight,
+        0x1c => PhysicalKey::Enter,
+        0x1d => PhysicalKey::ControlLeft,
+        0x1e => PhysicalKey::A,
+        0x1f => PhysicalKey::S,
+        0x20 => PhysicalKey::D,
+        0x21 => PhysicalKey::F,
+        0x22 => PhysicalKey::G,
+        0x23 => PhysicalKey::H,
+        0x24 => PhysicalKey::J,
+        0x25 => PhysicalKey::K,
+        0x26 => PhysicalKey::L,
+        0x27 => PhysicalKey::Semicolon,
+        0x28 => PhysicalKey::Apostrophe,
+        0x29 => PhysicalKey::Grave,
+        0x2a => PhysicalKey::ShiftLeft,
+        0x2b => PhysicalKey::Backslash,
+        0x2c => PhysicalKey::Z,
+        0x2d => PhysicalKey::X,
+        0x2e => PhysicalKey::C,
+        0x2f => PhysicalKey::V,
+        0x30 => PhysicalKey::B,
+        0x31 => PhysicalKey::N,
+        0x32 => PhysicalKey::M,
+        0x33 => PhysicalKey::Comma,
+        0x34 => PhysicalKey::Period,
+        0x35 => PhysicalKey::Slash,
+        0x36 => PhysicalKey::ShiftRight,
+        0x38 => PhysicalKey::AltLeft,
+        0x39 => PhysicalKey::Space,
+        0x3a => PhysicalKey::CapsLock,
+        _ => PhysicalKey::Unknown {
+            scan_code: make_code,
+            flags,
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn break_flag_is_the_only_pressed_edge_boundary() {
+        assert_eq!(
+            decode_keyboard_packet(RawKeyboardPacket {
+                make_code: 0x1e,
+                flags: 0
+            }),
+            KeyboardEdge {
+                key: PhysicalKey::A,
+                pressed: true
+            }
+        );
+        assert_eq!(
+            decode_keyboard_packet(RawKeyboardPacket {
+                make_code: 0x1e,
+                flags: RI_KEY_BREAK
+            }),
+            KeyboardEdge {
+                key: PhysicalKey::A,
+                pressed: false
+            }
+        );
+    }
+
+    #[test]
+    fn extended_flags_distinguish_right_modifiers_and_navigation() {
+        assert_eq!(map_scan_code(0x1d, RI_KEY_E0), PhysicalKey::ControlRight);
+        assert_eq!(map_scan_code(0x1d, 0), PhysicalKey::ControlLeft);
+        assert_eq!(map_scan_code(0x38, RI_KEY_E0), PhysicalKey::AltRight);
+        assert_eq!(map_scan_code(0x38, 0), PhysicalKey::AltLeft);
+        assert_eq!(map_scan_code(0x4b, RI_KEY_E0), PhysicalKey::ArrowLeft);
+    }
+
+    #[test]
+    fn e1_pause_sequence_is_not_mistaken_for_left_control() {
+        assert_eq!(map_scan_code(0x1d, RI_KEY_E1), PhysicalKey::Pause);
+        assert_eq!(
+            map_scan_code(0x1d, RI_KEY_E1 | RI_KEY_BREAK),
+            PhysicalKey::Pause
+        );
+    }
+
+    #[test]
+    fn print_screen_and_unknown_codes_are_retained() {
+        assert_eq!(map_scan_code(0x37, RI_KEY_E0), PhysicalKey::PrintScreen);
+        assert_eq!(
+            map_scan_code(0x7f, 0),
+            PhysicalKey::Unknown {
+                scan_code: 0x7f,
+                flags: 0
+            }
+        );
+    }
+
+    #[test]
+    fn reconciliation_uses_distinct_modifier_virtual_keys() {
+        assert_eq!(
+            virtual_key_for_reconciliation(PhysicalKey::ControlLeft),
+            Some(VirtualKeyCode(0xa2))
+        );
+        assert_eq!(
+            virtual_key_for_reconciliation(PhysicalKey::ControlRight),
+            Some(VirtualKeyCode(0xa3))
+        );
+        assert_eq!(
+            virtual_key_for_reconciliation(PhysicalKey::AltLeft),
+            Some(VirtualKeyCode(0xa4))
+        );
+        assert_eq!(
+            virtual_key_for_reconciliation(PhysicalKey::AltRight),
+            Some(VirtualKeyCode(0xa5))
+        );
+    }
+
+    #[test]
+    fn device_removal_resets_pressed_candidates_but_arrival_does_not() {
+        let mut candidates = PressedKeyCandidates::default();
+        candidates.apply_edge(KeyboardEdge {
+            key: PhysicalKey::A,
+            pressed: true,
+        });
+        assert!(!candidates.apply_device_change(RawInputDeviceChange::Arrival));
+        assert_eq!(candidates.keys(), &BTreeSet::from([PhysicalKey::A]));
+        assert!(candidates.apply_device_change(RawInputDeviceChange::Removal));
+        assert!(candidates.keys().is_empty());
+        assert_eq!(candidates.counters().resets, 1);
+        assert_eq!(candidates.counters().device_removed_resets, 1);
+    }
+
+    #[test]
+    fn service_stop_resets_candidates_and_edge_anomalies_are_counted() {
+        let mut candidates = PressedKeyCandidates::default();
+        let down = KeyboardEdge {
+            key: PhysicalKey::ControlLeft,
+            pressed: true,
+        };
+        candidates.apply_edge(down);
+        candidates.apply_edge(down);
+        candidates.apply_edge(KeyboardEdge {
+            key: PhysicalKey::A,
+            pressed: false,
+        });
+        candidates.reset(CaptureResetReason::ServiceStopped);
+        let counters = candidates.counters();
+        assert!(candidates.keys().is_empty());
+        assert_eq!(counters.captured_down, 1);
+        assert_eq!(counters.captured_up, 1);
+        assert_eq!(counters.duplicate_down, 1);
+        assert_eq!(counters.unmatched_up, 1);
+        assert_eq!(counters.resets, 1);
+        assert_eq!(counters.reset_releases, 1);
+        assert_eq!(counters.service_stopped_resets, 1);
+    }
+
+    #[test]
+    fn session_and_power_resets_release_pressed_candidates() {
+        let mut candidates = PressedKeyCandidates::default();
+        for reason in [
+            CaptureResetReason::SessionChanged,
+            CaptureResetReason::PowerChanged,
+        ] {
+            candidates.apply_edge(KeyboardEdge {
+                key: PhysicalKey::A,
+                pressed: true,
+            });
+            candidates.reset(reason);
+            assert!(candidates.keys().is_empty());
+        }
+        let counters = candidates.counters();
+        assert_eq!(counters.resets, 2);
+        assert_eq!(counters.reset_releases, 2);
+        assert_eq!(counters.session_change_resets, 1);
+        assert_eq!(counters.power_change_resets, 1);
+    }
+
+    #[test]
+    fn two_missing_snapshots_are_required_for_reconciled_release() {
+        let mut candidates = PressedKeyCandidates::default();
+        candidates.apply_edge(KeyboardEdge {
+            key: PhysicalKey::A,
+            pressed: true,
+        });
+        let empty = KeyStateSnapshot {
+            queried: 1,
+            ..Default::default()
+        };
+        let first = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(first.released, 0);
+        assert_eq!(first.pending_confirmations, 1);
+        assert_eq!(candidates.keys(), &BTreeSet::from([PhysicalKey::A]));
+        let second = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(second.released, 1);
+        assert_eq!(second.pending_confirmations, 0);
+        assert!(candidates.keys().is_empty());
+        assert_eq!(candidates.counters().reconciled_releases, 1);
+    }
+
+    #[test]
+    fn held_snapshot_cancels_pending_release_confirmation() {
+        let mut candidates = PressedKeyCandidates::default();
+        candidates.apply_edge(KeyboardEdge {
+            key: PhysicalKey::A,
+            pressed: true,
+        });
+        candidates
+            .reconcile(
+                &KeyStateSnapshot {
+                    queried: 1,
+                    ..Default::default()
+                },
+                2,
+            )
+            .unwrap();
+        let held = KeyStateSnapshot {
+            still_pressed: BTreeSet::from([PhysicalKey::A]),
+            queried: 1,
+            ..Default::default()
+        };
+        let report = candidates.reconcile(&held, 2).unwrap();
+        assert_eq!(report.released, 0);
+        assert_eq!(report.pending_confirmations, 0);
+        assert_eq!(candidates.keys(), &BTreeSet::from([PhysicalKey::A]));
+    }
+
+    #[test]
+    fn unqueryable_snapshot_resets_candidates_without_waiting() {
+        let mut candidates = PressedKeyCandidates::default();
+        candidates.apply_edge(KeyboardEdge {
+            key: PhysicalKey::Unknown {
+                scan_code: 0x7f,
+                flags: RI_KEY_E0,
+            },
+            pressed: true,
+        });
+        let snapshot = collect_key_state_snapshot_with(candidates.keys(), |_| false);
+        let report = candidates.reconcile(&snapshot, 2).unwrap();
+        assert!(report.reset);
+        assert!(candidates.keys().is_empty());
+        assert_eq!(candidates.counters().unqueryable_key_resets, 1);
+    }
+
+    #[test]
+    fn reconciliation_rejects_zero_missing_confirmation_threshold() {
+        let mut candidates = PressedKeyCandidates::default();
+        assert_eq!(
+            candidates.reconcile(&KeyStateSnapshot::default(), 0),
+            Err(InvalidMissingConfirmations)
+        );
+    }
+
+    #[test]
+    fn reconciliation_only_queries_local_pressed_candidates() {
+        let candidates = BTreeSet::from([
+            PhysicalKey::ControlLeft,
+            PhysicalKey::AltLeft,
+            PhysicalKey::A,
+        ]);
+        let mut queried = Vec::new();
+        let report = collect_key_state_snapshot_with(&candidates, |virtual_key| {
+            queried.push(virtual_key);
+            virtual_key == VirtualKeyCode(0xa2)
+        });
+        assert_eq!(queried.len(), 3);
+        assert_eq!(report.queried, 3);
+        assert_eq!(report.unqueryable, 0);
+        assert!(!report.reset_required);
+        assert_eq!(
+            report.still_pressed,
+            BTreeSet::from([PhysicalKey::ControlLeft])
+        );
+    }
+
+    #[test]
+    fn unknown_keys_require_reset_instead_of_false_release() {
+        let unknown = PhysicalKey::Unknown {
+            scan_code: 0x7f,
+            flags: RI_KEY_E0,
+        };
+        let candidates = BTreeSet::from([unknown]);
+        let mut query_count = 0;
+        let report = collect_key_state_snapshot_with(&candidates, |_| {
+            query_count += 1;
+            false
+        });
+        assert_eq!(query_count, 0);
+        assert_eq!(report.queried, 0);
+        assert_eq!(report.unqueryable, 1);
+        assert!(report.reset_required);
+        assert_eq!(report.still_pressed, candidates);
+    }
+
+    #[test]
+    fn raw_input_decoder_rejects_truncated_or_non_keyboard_packets() {
+        let header = RawInputHeader {
+            declared_size: 28,
+            input_type: 1,
+        };
+        assert_eq!(
+            decode_raw_keyboard_bytes(header, &[0; 12], 24),
+            Err(RawInputError::TruncatedHeader)
+        );
+        assert_eq!(
+            decode_raw_keyboard_bytes(
+                RawInputHeader {
+                    declared_size: 28,
+                    input_type: 2,
+                },
+                &[0; 28],
+                24,
+            ),
+            Err(RawInputError::UnsupportedInputType)
+        );
+        assert_eq!(
+            decode_raw_keyboard_bytes(
+                RawInputHeader {
+                    declared_size: 40,
+                    input_type: 1,
+                },
+                &[0; 28],
+                24,
+            ),
+            Err(RawInputError::DeclaredSizeExceedsBuffer)
+        );
+    }
+
+    #[test]
+    fn raw_input_decoder_reads_keyboard_make_code_and_flags() {
+        let mut bytes = vec![0u8; 28];
+        bytes[24..26].copy_from_slice(&0x1du16.to_le_bytes());
+        bytes[26..28].copy_from_slice(&RI_KEY_E0.to_le_bytes());
+        let packet = decode_raw_keyboard_bytes(
+            RawInputHeader {
+                declared_size: bytes.len(),
+                input_type: 1,
+            },
+            &bytes,
+            24,
+        )
+        .unwrap();
+        assert_eq!(
+            decode_keyboard_packet(packet).key,
+            PhysicalKey::ControlRight
+        );
+        assert!(decode_keyboard_packet(packet).pressed);
+    }
+
+    #[test]
+    fn raw_mouse_decoder_reads_button_flags_without_pointer_layout_leakage() {
+        let mut bytes = vec![0u8; 48];
+        let flags = RI_MOUSE_LEFT_BUTTON_DOWN | RI_MOUSE_FORWARD_BUTTON_UP;
+        bytes[28..30].copy_from_slice(&flags.to_le_bytes());
+        let packet = decode_raw_mouse_bytes(
+            RawInputHeader {
+                declared_size: bytes.len(),
+                input_type: 0,
+            },
+            &bytes,
+            24,
+        )
+        .unwrap();
+        assert_eq!(packet.button_flags, flags);
+        assert_eq!(
+            decode_mouse_button_edges(packet).collect::<Vec<_>>(),
+            vec![
+                MouseButtonEdge {
+                    button: MouseButton::Left,
+                    pressed: true,
+                },
+                MouseButtonEdge {
+                    button: MouseButton::Forward,
+                    pressed: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn raw_mouse_decoder_rejects_truncated_or_keyboard_payloads() {
+        assert_eq!(
+            decode_raw_mouse_bytes(
+                RawInputHeader {
+                    declared_size: 28,
+                    input_type: 0,
+                },
+                &[0; 28],
+                24,
+            ),
+            Err(RawInputError::TruncatedMousePayload)
+        );
+        assert_eq!(
+            decode_raw_mouse_bytes(
+                RawInputHeader {
+                    declared_size: 48,
+                    input_type: 1,
+                },
+                &[0; 48],
+                24,
+            ),
+            Err(RawInputError::UnsupportedInputType)
+        );
+    }
+
+    #[test]
+    fn raw_pointer_decoder_preserves_relative_and_absolute_movement() {
+        let mut relative = [0u8; 48];
+        relative[36..40].copy_from_slice(&17i32.to_le_bytes());
+        relative[40..44].copy_from_slice(&(-9i32).to_le_bytes());
+        let relative = decode_raw_pointer_movement(
+            RawInputHeader {
+                declared_size: 48,
+                input_type: 0,
+            },
+            &relative,
+            24,
+        )
+        .unwrap();
+        assert_eq!(
+            relative,
+            RawPointerMovement {
+                x: 17,
+                y: -9,
+                absolute: false,
+                virtual_desktop: false,
+            }
+        );
+        assert!(relative.has_motion());
+
+        let mut absolute = [0u8; 40];
+        absolute[16..18]
+            .copy_from_slice(&(MOUSE_MOVE_ABSOLUTE | MOUSE_VIRTUAL_DESKTOP).to_le_bytes());
+        absolute[28..32].copy_from_slice(&32_767i32.to_le_bytes());
+        absolute[32..36].copy_from_slice(&65_535i32.to_le_bytes());
+        let absolute = decode_raw_pointer_movement(
+            RawInputHeader {
+                declared_size: 40,
+                input_type: 0,
+            },
+            &absolute,
+            16,
+        )
+        .unwrap();
+        assert!(absolute.absolute);
+        assert!(absolute.virtual_desktop);
+        assert_eq!((absolute.x, absolute.y), (32_767, 65_535));
+    }
+
+    #[test]
+    fn raw_pointer_decoder_rejects_short_payloads() {
+        assert_eq!(
+            decode_raw_pointer_movement(
+                RawInputHeader {
+                    declared_size: 28,
+                    input_type: 0,
+                },
+                &[0; 28],
+                24,
+            ),
+            Err(RawInputError::TruncatedMousePayload)
+        );
+    }
+
+    #[test]
+    fn raw_mouse_button_mapping_preserves_all_canonical_edges() {
+        let all_flags = RI_MOUSE_LEFT_BUTTON_DOWN
+            | RI_MOUSE_LEFT_BUTTON_UP
+            | RI_MOUSE_RIGHT_BUTTON_DOWN
+            | RI_MOUSE_RIGHT_BUTTON_UP
+            | RI_MOUSE_MIDDLE_BUTTON_DOWN
+            | RI_MOUSE_MIDDLE_BUTTON_UP
+            | RI_MOUSE_BACK_BUTTON_DOWN
+            | RI_MOUSE_BACK_BUTTON_UP
+            | RI_MOUSE_FORWARD_BUTTON_DOWN
+            | RI_MOUSE_FORWARD_BUTTON_UP;
+        let edges = decode_mouse_button_edges(RawMousePacket {
+            button_flags: all_flags,
+        })
+        .collect::<Vec<_>>();
+        assert_eq!(edges.len(), 10);
+        assert_eq!(
+            edges.first(),
+            Some(&MouseButtonEdge {
+                button: MouseButton::Left,
+                pressed: true,
+            })
+        );
+        assert_eq!(
+            edges.last(),
+            Some(&MouseButtonEdge {
+                button: MouseButton::Forward,
+                pressed: false,
+            })
+        );
+        assert_eq!(
+            decode_mouse_button_edges(RawMousePacket { button_flags: 0 }).count(),
+            0
+        );
+    }
+
+    #[test]
+    fn mouse_candidates_reconcile_missing_release_after_two_snapshots() {
+        let mut candidates = PressedMouseCandidates::default();
+        candidates.apply_edge(MouseButtonEdge {
+            button: MouseButton::Left,
+            pressed: true,
+        });
+        let empty = MouseButtonStateSnapshot {
+            queried: 1,
+            ..Default::default()
+        };
+        let first = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(first.pending_confirmations, 1);
+        assert_eq!(first.released, 0);
+        let second = candidates.reconcile(&empty, 2).unwrap();
+        assert_eq!(second.released, 1);
+        assert!(candidates.buttons().is_empty());
+        assert_eq!(candidates.counters().reconciled_releases, 1);
+    }
+
+    #[test]
+    fn mouse_candidates_count_duplicate_unmatched_and_lifecycle_reset() {
+        let mut candidates = PressedMouseCandidates::default();
+        let down = MouseButtonEdge {
+            button: MouseButton::Back,
+            pressed: true,
+        };
+        candidates.apply_edge(down);
+        candidates.apply_edge(down);
+        candidates.apply_edge(MouseButtonEdge {
+            button: MouseButton::Forward,
+            pressed: false,
+        });
+        candidates.reset(CaptureResetReason::DeviceRemoved);
+        let counters = candidates.counters();
+        assert_eq!(counters.captured_down, 1);
+        assert_eq!(counters.captured_up, 1);
+        assert_eq!(counters.duplicate_down, 1);
+        assert_eq!(counters.unmatched_up, 1);
+        assert_eq!(counters.reset_releases, 1);
+        assert_eq!(counters.device_removed_resets, 1);
+        assert!(candidates.buttons().is_empty());
+    }
+
+    #[test]
+    fn mouse_reconciliation_queries_only_pressed_buttons_with_stable_vks() {
+        let candidates = BTreeSet::from([MouseButton::Left, MouseButton::Back]);
+        let mut queried = Vec::new();
+        let snapshot = collect_mouse_button_state_snapshot_with(&candidates, |virtual_key| {
+            queried.push(virtual_key);
+            virtual_key == virtual_key_for_mouse_button(MouseButton::Back)
+        });
+        assert_eq!(queried.len(), 2);
+        assert_eq!(snapshot.queried, 2);
+        assert_eq!(snapshot.still_pressed, BTreeSet::from([MouseButton::Back]));
+        assert_eq!(
+            virtual_key_for_mouse_button(MouseButton::Forward).as_i32(),
+            0x06
+        );
+    }
+
+    #[test]
+    fn capture_queue_overflow_replaces_untrusted_edges_with_sequenced_reset() {
+        let mut queue = CaptureEventQueue::with_capacity(2);
+        let down = CapturedInputEvent::Keyboard(KeyboardEdge {
+            key: PhysicalKey::A,
+            pressed: true,
+        });
+        queue.push(down).unwrap();
+        queue.push(down).unwrap();
+        assert_eq!(queue.push(down), Err(CaptureQueuePushError::Full));
+
+        let recovery = queue.pop().expect("overflow Reset must be consumable");
+        assert_eq!(recovery.sequence, 2);
+        assert_eq!(
+            recovery.event,
+            CapturedInputEvent::Reset(CaptureResetReason::QueueOverflow)
+        );
+        assert!(queue.is_empty());
+        assert_eq!(
+            queue.counters(),
+            CaptureQueueCounters {
+                enqueued: 3,
+                consumed: 1,
+                overflows: 1,
+                recovery_resets: 1,
+                discarded: 2,
+                closed_pushes: 0,
+            }
+        );
+
+        let mut sequence = CaptureSequenceDiagnostics::default();
+        sequence.observe(recovery.sequence);
+        assert_eq!(sequence.gaps, 2);
+        assert_eq!(sequence.duplicates_or_out_of_order, 0);
+    }
+
+    #[test]
+    fn closed_capture_queue_drains_existing_events_and_rejects_late_pushes() {
+        let mut queue = CaptureEventQueue::with_capacity(1);
+        queue.push(CapturedInputEvent::Reconcile).unwrap();
+        queue.close();
+        assert_eq!(
+            queue.push(CapturedInputEvent::Reconcile),
+            Err(CaptureQueuePushError::Closed)
+        );
+        assert!(queue.is_closed());
+        assert_eq!(queue.pop().unwrap().sequence, 0);
+        assert!(queue.is_empty());
+        assert_eq!(queue.counters().closed_pushes, 1);
+    }
+
+    #[test]
+    fn sequence_diagnostics_count_gaps_and_non_monotonic_events() {
+        let mut diagnostics = CaptureSequenceDiagnostics::default();
+        for sequence in [0, 1, 4, 4, 3, 5] {
+            diagnostics.observe(sequence);
+        }
+        assert_eq!(diagnostics.gaps, 2);
+        assert_eq!(diagnostics.duplicates_or_out_of_order, 2);
+    }
+}

@@ -1,0 +1,15 @@
+[package]
+name = "bongocat-cubism-core-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[workspace]
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+dbg_macro = "deny"
+print_stderr = "deny"

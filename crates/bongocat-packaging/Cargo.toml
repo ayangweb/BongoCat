@@ -1,0 +1,25 @@
+[package]
+name = "bongocat-packaging"
+description = "Project-level build, bundle and installer packaging entry point."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+cargo-packager.workspace = true
+flate2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tar.workspace = true
+
+# Test-only: the merge test deserializes the manifest it writes with the update
+# library's own reader type, so a manifest shape the runtime cannot read fails here
+# instead of on a user's machine. The reader is the one `bongocat-update` runs.
+[dev-dependencies]
+cargo-packager-updater.workspace = true
+
+[lints]
+workspace = true

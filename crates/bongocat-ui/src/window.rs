@@ -1,0 +1,2103 @@
+use crate::{
+    RuntimeHealth, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
+    SettingsConfigRecovery, SettingsConfigurationStatus, SettingsError, SettingsErrorCode,
+    SettingsGamepadAxisSettings, SettingsInputDiagnostics, SettingsInputServiceStatus,
+    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
+    SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
+};
+use bongocat_config::ShortcutChord;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_platform::{
+    AccessibilityAction, AccessibilityActionRequest, AccessibilityNode, AccessibilityNodeId,
+    AccessibilityRole, AccessibilityToggle, AccessibilityTree, SettingsAccessibilityBridge,
+};
+use bongocat_platform::{
+    ModelSourcePickerError, ModelSourcePickerOutcome, pick_model_archive, pick_model_cover,
+    pick_model_directory,
+};
+use gpui_kit::component::{
+    ActiveTheme, Disableable, Icon, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled,
+    WindowExt,
+    button::Button,
+    group_box::GroupBoxVariant,
+    input::{Input, InputEvent, InputState},
+    notification::{Notification, NotificationType},
+    select::{SearchableVec, Select, SelectEvent, SelectState},
+    setting::{
+        NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
+        Settings,
+    },
+    tab::{Tab, TabBar},
+    tag::Tag,
+};
+use gpui_kit::{
+    Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Focusable,
+    Hsla, ImageSource, KeyDownEvent, KeyUpEvent, Modifiers, ObjectFit, Pixels, Render,
+    SharedString, Stateful, TitlebarOptions, VisualContext, WeakEntity, Window, WindowAppearance,
+    WindowBounds, WindowHandle, WindowOptions, div, img, point, prelude::*, px, size,
+};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use raw_window_handle::HasWindowHandle;
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+    path::PathBuf,
+    rc::Rc,
+    time::{Duration, Instant},
+};
+
+mod presentation;
+use presentation::*;
+mod about;
+use about::ABOUT_SECTIONS;
+mod accessibility;
+mod diagnostics;
+mod lifecycle;
+mod localization;
+mod model_actions;
+mod models;
+mod render;
+mod settings;
+mod shortcuts;
+mod shortcuts_page;
+mod smoke;
+mod view_state;
+pub use lifecycle::open_settings_window;
+use localization::{
+    backup_candidates_checked, build_info_detail, diagnostics_export_status,
+    input_diagnostic_metrics, input_service_attempts, model_availability_summary,
+    model_delete_confirmation, model_import_progress, model_invalid_summary,
+    recovered_backup_detail, runtime_command_failure, runtime_shutdown_failures, runtime_status,
+    settings_error, shortcut_accessibility_label, shortcut_conflict_message, shortcut_target_name,
+};
+#[cfg(test)]
+mod tests;
+
+const WINDOW_WIDTH: f32 = 800.0;
+const WINDOW_HEIGHT: f32 = 600.0;
+const WINDOW_MIN_WIDTH: f32 = crate::MIN_SETTINGS_WINDOW_WIDTH as f32;
+const WINDOW_MIN_HEIGHT: f32 = crate::MIN_SETTINGS_WINDOW_HEIGHT as f32;
+
+/// Tab indices of the controls on an editing model card. Only one card can be
+/// editing at a time, so they sit above the per-card action range instead of
+/// joining its stride.
+const MODEL_EDIT_TITLE_TAB_INDEX: isize = 70;
+const MODEL_EDIT_COVER_TAB_INDEX: isize = 71;
+const MODEL_EDIT_SAVE_TAB_INDEX: isize = 72;
+const MODEL_EDIT_CANCEL_TAB_INDEX: isize = 73;
+
+struct SettingsServiceErrorNotification;
+
+struct ShortcutConflictNotification;
+
+/// Marks the notification pushed when the model catalog cannot be read.
+///
+/// A notification is a prompt, and a catalog that stays unreadable would repeat
+/// that prompt on every snapshot, so the view remembers that it already spoke
+/// and only the transition back to a readable catalog re-arms it.
+struct ModelCatalogErrorNotification;
+
+fn accepts_snapshot_revision(current: Option<u64>, incoming: u64) -> bool {
+    current.is_none_or(|current| incoming >= current)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_ROOT: AccessibilityNodeId = AccessibilityNodeId::new(1);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_GENERAL: AccessibilityNodeId = AccessibilityNodeId::new(2);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODELS: AccessibilityNodeId = AccessibilityNodeId::new(3);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(4);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(5);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_ABOUT: AccessibilityNodeId = AccessibilityNodeId::new(6);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY: AccessibilityNodeId = AccessibilityNodeId::new(10);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_AUDIO: AccessibilityNodeId = AccessibilityNodeId::new(11);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_STARTUP: AccessibilityNodeId = AccessibilityNodeId::new(12);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_TOPMOST: AccessibilityNodeId = AccessibilityNodeId::new(13);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_CLICK_THROUGH: AccessibilityNodeId = AccessibilityNodeId::new(14);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA: AccessibilityNodeId =
+    AccessibilityNodeId::new(44);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_SCALE_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(15);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_SCALE_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(16);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_OPACITY_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(17);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_OPACITY_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(18);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MAXIMUM_FPS_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(24);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MAXIMUM_FPS_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(25);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OPEN_BACKUPS: AccessibilityNodeId = AccessibilityNodeId::new(28);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_RESTORE_DEFAULTS: AccessibilityNodeId = AccessibilityNodeId::new(29);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_EXPORT_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(32);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_RESTORE_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(33);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_CLEAR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(34);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_SHORTCUT_CAPTURE_BASE: u64 = 1_000;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_SHORTCUT_CLEAR_BASE: u64 = 2_000;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MIRROR: AccessibilityNodeId = AccessibilityNodeId::new(19);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MIRROR_POINTER: AccessibilityNodeId = AccessibilityNodeId::new(20);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_IGNORE_POINTER: AccessibilityNodeId = AccessibilityNodeId::new(21);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_STICK_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId::new(22);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_TRIGGER_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId::new(23);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_THEME: AccessibilityNodeId = AccessibilityNodeId::new(35);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_STATUS_ICON: AccessibilityNodeId = AccessibilityNodeId::new(38);
+#[cfg(target_os = "windows")]
+const ACCESSIBILITY_TASKBAR_ICON: AccessibilityNodeId = AccessibilityNodeId::new(39);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_LANGUAGE: AccessibilityNodeId = AccessibilityNodeId::new(40);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_BEHAVIOR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(41);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_RELEASE_FALLBACK_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(42);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_RELEASE_FALLBACK_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(43);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK: AccessibilityNodeId = AccessibilityNodeId::new(45);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODEL_CHOOSE_FOLDER: AccessibilityNodeId = AccessibilityNodeId::new(46);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODEL_IMPORT: AccessibilityNodeId = AccessibilityNodeId::new(47);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODEL_IMPORT_STATUS: AccessibilityNodeId = AccessibilityNodeId::new(48);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODEL_CATALOG_STATUS: AccessibilityNodeId = AccessibilityNodeId::new(49);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE: AccessibilityNodeId = AccessibilityNodeId::new(50);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER: AccessibilityNodeId =
+    AccessibilityNodeId::new(51);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE: AccessibilityNodeId =
+    AccessibilityNodeId::new(52);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE: AccessibilityNodeId =
+    AccessibilityNodeId::new(53);
+
+/// A request the settings window forwards to the application rather than acting
+/// on itself.
+///
+/// `None` means the window has no owner for that request, so the matching control
+/// is not offered at all.
+pub(crate) type SettingsWindowRequest = Option<Rc<dyn Fn(&mut App)>>;
+
+type LanguageSelectState = SelectState<SearchableVec<&'static str>>;
+type ThemeSelectState = SelectState<SearchableVec<&'static str>>;
+
+#[derive(Clone, Copy)]
+pub(crate) struct Tokens {
+    pub(crate) canvas: Hsla,
+    pub(crate) border: Hsla,
+    pub(crate) text: Hsla,
+    pub(crate) muted: Hsla,
+    pub(crate) accent: Hsla,
+    pub(crate) danger: Hsla,
+}
+
+impl Tokens {
+    pub(crate) fn from_theme(cx: &App) -> Self {
+        let theme = cx.theme();
+        Self {
+            canvas: theme.background,
+            border: theme.border,
+            text: theme.foreground,
+            muted: theme.muted_foreground,
+            accent: theme.primary,
+            danger: theme.danger,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PendingOperation {
+    Refresh,
+    AppearanceTheme,
+    Language,
+    StatusIconVisibility,
+    #[cfg(target_os = "windows")]
+    TaskbarIconVisibility,
+    AutomaticUpdateCheck,
+    OverlayVisibility,
+    OverlaySettings,
+    OverlayScale,
+    OverlayOpacity,
+    OverlayCornerRadius,
+    OverlayHoverHideDelay,
+    MotionAudio,
+    BehaviorShortcuts,
+    MaximumFps,
+    ReleaseFallbackTimeout,
+    ModelSettings,
+    GamepadAxisSettings,
+    StartupItem,
+    ModelSelection,
+    ModelDeletion,
+    ModelMetadata,
+    ModelLocation,
+    OpenConfigBackupLocation,
+    RestoreDefaultConfiguration,
+    RestoreDefaultShortcuts,
+    ClearShortcuts,
+    SetShortcuts,
+    BeginShortcutCapture,
+    CancelShortcutCapture,
+    ExportDiagnostics,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum ShortcutCaptureTarget {
+    Command(String),
+    ModelBehavior {
+        model_id: String,
+        behavior_id: String,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ShortcutCapture {
+    target: ShortcutCaptureTarget,
+    modifiers: Modifiers,
+    keys: BTreeSet<String>,
+}
+
+impl ShortcutCapture {
+    fn new(target: ShortcutCaptureTarget) -> Self {
+        Self {
+            target,
+            modifiers: Modifiers::default(),
+            keys: BTreeSet::new(),
+        }
+    }
+
+    fn clear_temporary_input(&mut self) {
+        self.modifiers = Modifiers::default();
+        self.keys.clear();
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum SettingsPage {
+    #[default]
+    General,
+    Models,
+    Shortcuts,
+    Diagnostics,
+    About,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum ShortcutSettingsTab {
+    #[default]
+    Window,
+    Model,
+}
+
+/// Which native picker the page is waiting on.
+///
+/// The two sources get two buttons because the native dialogs are separate: no
+/// platform offers one panel that selects "a folder or a file". Recording the
+/// kind keeps the status text truthful while the dialog is open and lets the
+/// selected source be described as what the user actually chose.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ModelSourceKind {
+    Directory,
+    Archive,
+}
+
+enum ModelImportState {
+    Empty,
+    Ready,
+    Picking,
+    PickerCancelled,
+    /// A source dialog failed. The draft keeps whatever it already held, and the
+    /// failure itself is reported through a notification, so this state exists
+    /// only to keep the inline status from claiming a selection was made.
+    PickerFailed,
+    Starting {
+        cancel_requested: bool,
+    },
+    Running(SettingsModelImportMonitor),
+    Succeeded,
+    /// The import run failed. The error itself was delivered as a notification
+    /// and is not held here, so the page has no second copy to display.
+    Failed,
+    Cancelled,
+}
+
+struct ModelImportDraft {
+    title: String,
+    source_root: Option<PathBuf>,
+    /// Which picker produced `source_root`, so the status text names the source
+    /// the user actually chose instead of always reporting a folder.
+    source_kind: ModelSourceKind,
+    state: ModelImportState,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ModelRowKey {
+    origin_rank: u8,
+    id: String,
+}
+
+impl ModelRowKey {
+    fn new(origin: SettingsModelOrigin, id: &str) -> Self {
+        Self {
+            origin_rank: match origin {
+                SettingsModelOrigin::Preset => 0,
+                SettingsModelOrigin::Installed => 1,
+            },
+            id: id.to_owned(),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct ModelRowFocus {
+    activate: FocusHandle,
+    open_location: FocusHandle,
+    edit: FocusHandle,
+    delete: FocusHandle,
+    cancel_delete: FocusHandle,
+}
+
+/// The one model card that is open for editing.
+///
+/// The draft owns the title field and a cover the user picked but has not saved
+/// yet, so cancelling is dropping this value: nothing reaches the settings
+/// service until save, and a half-finished edit never appears in the catalog.
+struct ModelEditDraft {
+    model: SettingsModelKey,
+    title: String,
+    /// A cover chosen in this edit, still to be written to the model's package.
+    cover: Option<PathBuf>,
+    input: Entity<InputState>,
+    input_focus: FocusHandle,
+    cover_focus: FocusHandle,
+    save_focus: FocusHandle,
+    cancel_focus: FocusHandle,
+    /// A cover dialog is open for this draft.
+    picking: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ModelRowActions {
+    active: bool,
+    can_activate: bool,
+    can_delete: bool,
+    /// Only installed models own editable metadata: preset names and covers are
+    /// app-bundled content, so the row offers no edit affordance at all.
+    can_edit: bool,
+    can_open_location: bool,
+}
+
+#[derive(Clone, Copy)]
+enum ModelRowAction {
+    Activate,
+    OpenLocation,
+    Edit,
+    Delete,
+    CancelDelete,
+}
+
+impl Default for ModelImportDraft {
+    fn default() -> Self {
+        Self {
+            title: String::new(),
+            source_root: None,
+            source_kind: ModelSourceKind::Directory,
+            state: ModelImportState::Empty,
+        }
+    }
+}
+
+impl ModelImportDraft {
+    fn is_running(&self) -> bool {
+        matches!(
+            self.state,
+            ModelImportState::Starting { .. } | ModelImportState::Running(_)
+        )
+    }
+
+    fn can_import(&self) -> bool {
+        self.source_root.is_some()
+            && !self.title.is_empty()
+            && !self.is_running()
+            && !self.is_picker_open()
+    }
+
+    fn is_picker_open(&self) -> bool {
+        matches!(self.state, ModelImportState::Picking)
+    }
+
+    fn running_operation_id(&self) -> Option<SettingsOperationId> {
+        match &self.state {
+            ModelImportState::Running(monitor) => Some(monitor.operation_id()),
+            _ => None,
+        }
+    }
+
+    fn apply_starting_cancellation(&self, operation: &SettingsModelImportOperation) {
+        if matches!(
+            self.state,
+            ModelImportState::Starting {
+                cancel_requested: true
+            }
+        ) {
+            operation.cancel();
+        }
+    }
+
+    fn reset_result_state(&mut self) {
+        self.state = if self.source_root.is_some() {
+            ModelImportState::Ready
+        } else {
+            ModelImportState::Empty
+        };
+    }
+}
+
+pub struct SettingsView {
+    client: SettingsClient,
+    snapshot: Option<SettingsSnapshot>,
+    pending: Option<PendingOperation>,
+    pending_notification: Option<SettingsError>,
+    page: SettingsPage,
+    shortcut_tab: ShortcutSettingsTab,
+    model_import: ModelImportDraft,
+    overlay_scale_debouncer: crate::SettingsPatchDebouncer<u16>,
+    overlay_scale_timer_generation: u64,
+    overlay_opacity_debouncer: crate::SettingsPatchDebouncer<u8>,
+    overlay_opacity_timer_generation: u64,
+    overlay_corner_radius_debouncer: crate::SettingsPatchDebouncer<u8>,
+    overlay_corner_radius_timer_generation: u64,
+    overlay_hover_hide_delay_debouncer: crate::SettingsPatchDebouncer<u32>,
+    overlay_hover_hide_delay_timer_generation: u64,
+    gamepad_dead_zone_debouncer: crate::SettingsPatchDebouncer<SettingsGamepadAxisSettings>,
+    gamepad_dead_zone_timer_generation: u64,
+    maximum_fps_debouncer: crate::SettingsPatchDebouncer<u16>,
+    maximum_fps_timer_generation: u64,
+    release_fallback_timeout_debouncer: crate::SettingsPatchDebouncer<u32>,
+    release_fallback_timeout_timer_generation: u64,
+    flush_pending_requested: bool,
+    quit_after_flush: bool,
+    model_delete_confirmation: Option<SettingsModelKey>,
+    model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
+    model_edit: Option<ModelEditDraft>,
+    /// Whether the unreadable-catalog notification has already been pushed for
+    /// the current failure, so it is not repeated on every snapshot.
+    model_catalog_error_reported: bool,
+    shortcut_capture: Option<ShortcutCapture>,
+    shortcut_capture_blur_subscription: Option<gpui_kit::Subscription>,
+    shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
+    shortcut_clear_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
+    window_hidden: bool,
+    applied_theme: Option<SettingsTheme>,
+    language_select: Entity<LanguageSelectState>,
+    theme_select: Entity<ThemeSelectState>,
+    request_quit: Rc<dyn Fn(&mut App)>,
+    /// Opens the update window and starts a check.
+    ///
+    /// The settings window does not own the update worker, so it asks the
+    /// application to open the window rather than driving the update protocol
+    /// itself. `None` hides the entry: a window with no update owner must not offer
+    /// a control that cannot do anything, which is why the recovery and smoke
+    /// windows leave it out instead of showing a dead button.
+    request_update: SettingsWindowRequest,
+    general_focus: FocusHandle,
+    models_focus: FocusHandle,
+    shortcuts_focus: FocusHandle,
+    diagnostics_focus: FocusHandle,
+    about_focus: FocusHandle,
+    status_icon_focus: FocusHandle,
+    #[cfg(target_os = "windows")]
+    taskbar_icon_focus: FocusHandle,
+    automatic_update_check_focus: FocusHandle,
+    overlay_focus: FocusHandle,
+    overlay_topmost_focus: FocusHandle,
+    overlay_click_through_focus: FocusHandle,
+    overlay_keep_inside_screen_focus: FocusHandle,
+    overlay_hide_on_pointer_hover_focus: FocusHandle,
+    overlay_hover_hide_delay_decrease_focus: FocusHandle,
+    overlay_hover_hide_delay_increase_focus: FocusHandle,
+    overlay_scale_decrease_focus: FocusHandle,
+    overlay_scale_increase_focus: FocusHandle,
+    overlay_opacity_decrease_focus: FocusHandle,
+    overlay_opacity_increase_focus: FocusHandle,
+    maximum_fps_decrease_focus: FocusHandle,
+    maximum_fps_increase_focus: FocusHandle,
+    release_fallback_decrease_focus: FocusHandle,
+    release_fallback_increase_focus: FocusHandle,
+    audio_focus: FocusHandle,
+    behavior_shortcuts_focus: FocusHandle,
+    mirror_focus: FocusHandle,
+    mirror_pointer_focus: FocusHandle,
+    ignore_pointer_focus: FocusHandle,
+    stick_dead_zone_focus: FocusHandle,
+    trigger_dead_zone_focus: FocusHandle,
+    startup_item_focus: FocusHandle,
+    model_id_focus: FocusHandle,
+    choose_model_focus: FocusHandle,
+    choose_archive_focus: FocusHandle,
+    import_model_focus: FocusHandle,
+    open_backups_focus: FocusHandle,
+    restore_defaults_focus: FocusHandle,
+    restore_shortcuts_focus: FocusHandle,
+    clear_shortcuts_focus: FocusHandle,
+    export_diagnostics_focus: FocusHandle,
+    /// The only settings text field the window actually renders.
+    ///
+    /// The overlay and gamepad numbers are drawn by the component library's
+    /// `NumberField`, which owns its own `InputState` through
+    /// `Window::use_keyed_state` and calls the setter directly, so this view
+    /// must not keep a second copy of those entities: a subscription to one
+    /// would never fire because nothing renders it.
+    model_id_input: Entity<InputState>,
+    syncing_component_inputs: bool,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    accessibility: Option<SettingsAccessibilityBridge>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    accessibility_focus: Option<AccessibilityNodeId>,
+}
+#[derive(Clone)]
+pub struct SettingsWindowHandle {
+    window: WindowHandle<Root>,
+    view: WeakEntity<SettingsView>,
+}
+
+impl SettingsWindowHandle {
+    pub fn read(&self, cx: &App) -> gpui_kit::Result<()> {
+        self.window.read(cx)?;
+        self.view
+            .upgrade()
+            .map(|_| ())
+            .ok_or_else(|| std::io::Error::other("settings view was released").into())
+    }
+
+    pub fn update<C, R>(
+        &self,
+        cx: &mut C,
+        update: impl FnOnce(&mut SettingsView, &mut Window, &mut Context<SettingsView>) -> R,
+    ) -> gpui_kit::Result<R>
+    where
+        C: AppContext,
+    {
+        self.window.update(cx, |_, window, cx| {
+            self.view.update(cx, |view, cx| update(view, window, cx))
+        })?
+    }
+
+    /// Requests application shutdown after all unacknowledged debounced patches
+    /// have been submitted successfully.
+    pub fn request_quit_after_flush(&self, cx: &mut App) -> gpui_kit::Result<()> {
+        self.update(cx, |view, _, cx| {
+            view.request_quit_after_flush(cx);
+        })
+    }
+
+    pub fn flush_pending_settings(&self, cx: &mut App) -> gpui_kit::Result<()> {
+        self.update(cx, |view, _, cx| {
+            view.flush_pending_settings(cx);
+        })
+    }
+}
+
+impl PartialEq for SettingsWindowHandle {
+    fn eq(&self, other: &Self) -> bool {
+        self.window == other.window
+    }
+}
+
+impl Eq for SettingsWindowHandle {}
+
+impl SettingsView {
+    fn schedule_overlay_scale_flush(&mut self, cx: &mut Context<Self>) {
+        self.overlay_scale_timer_generation = self.overlay_scale_timer_generation.saturating_add(1);
+        let generation = self.overlay_scale_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.overlay_scale_timer_generation != generation || view.pending.is_some() {
+                    return;
+                }
+                let Some(scale_percent) = view.overlay_scale_debouncer.ready(Instant::now()) else {
+                    return;
+                };
+                let Some(snapshot) = view.snapshot.as_ref() else {
+                    return;
+                };
+                let Some(expected_config_revision) = snapshot.config_revision else {
+                    return;
+                };
+                let mut settings = snapshot.overlay;
+                settings.scale_percent = scale_percent;
+                view.start_request(
+                    PendingOperation::OverlayScale,
+                    Some(SettingValue::OverlayScale {
+                        expected_config_revision,
+                        scale_percent,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
+    fn schedule_overlay_opacity_flush(&mut self, cx: &mut Context<Self>) {
+        self.overlay_opacity_timer_generation =
+            self.overlay_opacity_timer_generation.saturating_add(1);
+        let generation = self.overlay_opacity_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.overlay_opacity_timer_generation != generation || view.pending.is_some() {
+                    return;
+                }
+                let Some(opacity_percent) = view.overlay_opacity_debouncer.ready(Instant::now())
+                else {
+                    return;
+                };
+                let Some(snapshot) = view.snapshot.as_ref() else {
+                    return;
+                };
+                let Some(expected_config_revision) = snapshot.config_revision else {
+                    return;
+                };
+                let mut settings = snapshot.overlay;
+                settings.opacity_percent = opacity_percent;
+                view.start_request(
+                    PendingOperation::OverlayOpacity,
+                    Some(SettingValue::OverlayOpacity {
+                        expected_config_revision,
+                        opacity_percent,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
+    fn schedule_overlay_corner_radius_flush(&mut self, cx: &mut Context<Self>) {
+        self.overlay_corner_radius_timer_generation = self
+            .overlay_corner_radius_timer_generation
+            .saturating_add(1);
+        let generation = self.overlay_corner_radius_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.overlay_corner_radius_timer_generation != generation
+                    || view.pending.is_some()
+                {
+                    return;
+                }
+                let Some(corner_radius_percent) =
+                    view.overlay_corner_radius_debouncer.ready(Instant::now())
+                else {
+                    return;
+                };
+                let Some(snapshot) = view.snapshot.as_ref() else {
+                    return;
+                };
+                let Some(expected_config_revision) = snapshot.config_revision else {
+                    return;
+                };
+                let mut settings = snapshot.overlay;
+                settings.corner_radius_percent = corner_radius_percent;
+                view.start_request(
+                    PendingOperation::OverlayCornerRadius,
+                    Some(SettingValue::OverlayCornerRadius {
+                        expected_config_revision,
+                        corner_radius_percent,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
+    fn schedule_overlay_hover_hide_delay_flush(&mut self, cx: &mut Context<Self>) {
+        self.overlay_hover_hide_delay_timer_generation = self
+            .overlay_hover_hide_delay_timer_generation
+            .saturating_add(1);
+        let generation = self.overlay_hover_hide_delay_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.overlay_hover_hide_delay_timer_generation != generation
+                    || view.pending.is_some()
+                {
+                    return;
+                }
+                let Some(hide_on_pointer_hover_delay_seconds) = view
+                    .overlay_hover_hide_delay_debouncer
+                    .ready(Instant::now())
+                else {
+                    return;
+                };
+                let Some(snapshot) = view.snapshot.as_ref() else {
+                    return;
+                };
+                let Some(expected_config_revision) = snapshot.config_revision else {
+                    return;
+                };
+                let mut settings = snapshot.overlay;
+                settings.hide_on_pointer_hover_delay_seconds = hide_on_pointer_hover_delay_seconds;
+                view.start_request(
+                    PendingOperation::OverlayHoverHideDelay,
+                    Some(SettingValue::OverlayHoverHideDelay {
+                        expected_config_revision,
+                        hide_on_pointer_hover_delay_seconds,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
+    fn schedule_gamepad_dead_zone_flush(&mut self, cx: &mut Context<Self>) {
+        self.gamepad_dead_zone_timer_generation =
+            self.gamepad_dead_zone_timer_generation.saturating_add(1);
+        let generation = self.gamepad_dead_zone_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.gamepad_dead_zone_timer_generation != generation || view.pending.is_some() {
+                    return;
+                }
+                let Some(settings) = view.gamepad_dead_zone_debouncer.ready(Instant::now()) else {
+                    return;
+                };
+                let Some(expected_config_revision) = view
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.config_revision)
+                else {
+                    return;
+                };
+                view.start_request(
+                    PendingOperation::GamepadAxisSettings,
+                    Some(SettingValue::GamepadAxisSettings {
+                        expected_config_revision,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
+    fn schedule_maximum_fps_flush(&mut self, cx: &mut Context<Self>) {
+        self.maximum_fps_timer_generation = self.maximum_fps_timer_generation.saturating_add(1);
+        let generation = self.maximum_fps_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.maximum_fps_timer_generation != generation || view.pending.is_some() {
+                    return;
+                }
+                let Some(maximum_fps) = view.maximum_fps_debouncer.ready(Instant::now()) else {
+                    return;
+                };
+                let Some(expected_config_revision) = view
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.config_revision)
+                else {
+                    return;
+                };
+                view.start_request(
+                    PendingOperation::MaximumFps,
+                    Some(SettingValue::MaximumFps {
+                        expected_config_revision,
+                        maximum_fps,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
+    fn schedule_release_fallback_timeout_flush(&mut self, cx: &mut Context<Self>) {
+        self.release_fallback_timeout_timer_generation = self
+            .release_fallback_timeout_timer_generation
+            .saturating_add(1);
+        let generation = self.release_fallback_timeout_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.release_fallback_timeout_timer_generation != generation
+                    || view.pending.is_some()
+                {
+                    return;
+                }
+                let Some(timeout_ms) = view
+                    .release_fallback_timeout_debouncer
+                    .ready(Instant::now())
+                else {
+                    return;
+                };
+                let Some(expected_config_revision) = view
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.config_revision)
+                else {
+                    return;
+                };
+                view.start_request(
+                    PendingOperation::ReleaseFallbackTimeout,
+                    Some(SettingValue::ReleaseFallbackTimeout {
+                        expected_config_revision,
+                        timeout_ms,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
+    fn flush_pending_setting_patches(&mut self, cx: &mut Context<Self>) {
+        if self.pending.is_some() {
+            return;
+        }
+        let now = Instant::now();
+        let Some(snapshot) = self.snapshot.clone() else {
+            self.flush_pending_requested = false;
+            let should_quit = self.quit_after_flush;
+            self.quit_after_flush = false;
+            if should_quit {
+                (self.request_quit)(cx);
+            }
+            return;
+        };
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            self.flush_pending_requested = false;
+            let should_quit = self.quit_after_flush;
+            self.quit_after_flush = false;
+            if should_quit {
+                (self.request_quit)(cx);
+            }
+            return;
+        };
+        if let Some(scale_percent) = self.overlay_scale_debouncer.flush(now) {
+            let mut settings = snapshot.overlay;
+            settings.scale_percent = scale_percent;
+            self.start_request(
+                PendingOperation::OverlayScale,
+                Some(SettingValue::OverlayScale {
+                    expected_config_revision,
+                    scale_percent,
+                    settings,
+                }),
+                cx,
+            );
+        } else if let Some(opacity_percent) = self.overlay_opacity_debouncer.flush(now) {
+            let mut settings = snapshot.overlay;
+            settings.opacity_percent = opacity_percent;
+            self.start_request(
+                PendingOperation::OverlayOpacity,
+                Some(SettingValue::OverlayOpacity {
+                    expected_config_revision,
+                    opacity_percent,
+                    settings,
+                }),
+                cx,
+            );
+        } else if let Some(corner_radius_percent) = self.overlay_corner_radius_debouncer.flush(now)
+        {
+            let mut settings = snapshot.overlay;
+            settings.corner_radius_percent = corner_radius_percent;
+            self.start_request(
+                PendingOperation::OverlayCornerRadius,
+                Some(SettingValue::OverlayCornerRadius {
+                    expected_config_revision,
+                    corner_radius_percent,
+                    settings,
+                }),
+                cx,
+            );
+        } else if let Some(hide_on_pointer_hover_delay_seconds) =
+            self.overlay_hover_hide_delay_debouncer.flush(now)
+        {
+            let mut settings = snapshot.overlay;
+            settings.hide_on_pointer_hover_delay_seconds = hide_on_pointer_hover_delay_seconds;
+            self.start_request(
+                PendingOperation::OverlayHoverHideDelay,
+                Some(SettingValue::OverlayHoverHideDelay {
+                    expected_config_revision,
+                    hide_on_pointer_hover_delay_seconds,
+                    settings,
+                }),
+                cx,
+            );
+        } else if let Some(settings) = self.gamepad_dead_zone_debouncer.flush(now) {
+            self.start_request(
+                PendingOperation::GamepadAxisSettings,
+                Some(SettingValue::GamepadAxisSettings {
+                    expected_config_revision,
+                    settings,
+                }),
+                cx,
+            );
+        } else if let Some(maximum_fps) = self.maximum_fps_debouncer.flush(now) {
+            self.start_request(
+                PendingOperation::MaximumFps,
+                Some(SettingValue::MaximumFps {
+                    expected_config_revision,
+                    maximum_fps,
+                }),
+                cx,
+            );
+        } else if let Some(timeout_ms) = self.release_fallback_timeout_debouncer.flush(now) {
+            self.start_request(
+                PendingOperation::ReleaseFallbackTimeout,
+                Some(SettingValue::ReleaseFallbackTimeout {
+                    expected_config_revision,
+                    timeout_ms,
+                }),
+                cx,
+            );
+        } else {
+            self.flush_pending_requested = false;
+            let should_quit = self.quit_after_flush;
+            self.quit_after_flush = false;
+            if should_quit {
+                (self.request_quit)(cx);
+            }
+        }
+    }
+
+    pub(super) fn flush_pending_settings(&mut self, cx: &mut Context<Self>) {
+        self.flush_pending_requested = true;
+        self.flush_pending_setting_patches(cx);
+    }
+
+    pub(super) fn request_quit_after_flush(&mut self, cx: &mut Context<Self>) {
+        self.flush_pending_requested = true;
+        self.quit_after_flush = true;
+        self.flush_pending_setting_patches(cx);
+    }
+
+    fn start_request(
+        &mut self,
+        operation: PendingOperation,
+        value: Option<SettingValue>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.pending.is_some() {
+            return;
+        }
+        let is_refresh = operation == PendingOperation::Refresh;
+        if !is_refresh {
+            self.pending = Some(operation);
+            cx.notify();
+        }
+        let client = self.client.clone();
+        let sent_overlay_scale = match value.as_ref() {
+            Some(SettingValue::OverlayScale { scale_percent, .. }) => Some(*scale_percent),
+            _ => None,
+        };
+        let sent_overlay_opacity = match value.as_ref() {
+            Some(SettingValue::OverlayOpacity {
+                opacity_percent, ..
+            }) => Some(*opacity_percent),
+            _ => None,
+        };
+        let sent_overlay_corner_radius = match value.as_ref() {
+            Some(SettingValue::OverlayCornerRadius {
+                corner_radius_percent,
+                ..
+            }) => Some(*corner_radius_percent),
+            _ => None,
+        };
+        let sent_overlay_hover_hide_delay = match value.as_ref() {
+            Some(SettingValue::OverlayHoverHideDelay {
+                hide_on_pointer_hover_delay_seconds,
+                ..
+            }) => Some(*hide_on_pointer_hover_delay_seconds),
+            _ => None,
+        };
+        let sent_gamepad_dead_zone = match value.as_ref() {
+            Some(SettingValue::GamepadAxisSettings { settings, .. }) => Some(*settings),
+            _ => None,
+        };
+        let sent_maximum_fps = match value.as_ref() {
+            Some(SettingValue::MaximumFps { maximum_fps, .. }) => Some(*maximum_fps),
+            _ => None,
+        };
+        let sent_release_fallback_timeout = match value.as_ref() {
+            Some(SettingValue::ReleaseFallbackTimeout { timeout_ms, .. }) => Some(*timeout_ms),
+            _ => None,
+        };
+        cx.spawn(async move |this, cx| {
+            let result = match value {
+                None => client.read_snapshot().await,
+                Some(SettingValue::AppearanceTheme {
+                    expected_config_revision,
+                    theme,
+                }) => {
+                    client
+                        .set_appearance_theme(expected_config_revision, theme)
+                        .await
+                }
+                Some(SettingValue::Language {
+                    expected_config_revision,
+                    language,
+                }) => {
+                    client
+                        .set_language(expected_config_revision, language)
+                        .await
+                }
+                Some(SettingValue::StatusIconVisible {
+                    expected_config_revision,
+                    visible,
+                }) => {
+                    client
+                        .set_status_icon_visible(expected_config_revision, visible)
+                        .await
+                }
+                #[cfg(target_os = "windows")]
+                Some(SettingValue::TaskbarIconVisible {
+                    expected_config_revision,
+                    visible,
+                }) => {
+                    client
+                        .set_taskbar_icon_visible(expected_config_revision, visible)
+                        .await
+                }
+                Some(SettingValue::CheckForUpdatesAutomatically {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_check_for_updates_automatically(expected_config_revision, enabled)
+                        .await
+                }
+                Some(SettingValue::OverlayVisible {
+                    expected_config_revision,
+                    visible,
+                }) => {
+                    client
+                        .set_overlay_visible(expected_config_revision, visible)
+                        .await
+                }
+                Some(SettingValue::OverlaySettings {
+                    expected_config_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_overlay_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::OverlayScale {
+                    expected_config_revision,
+                    settings,
+                    ..
+                }) => {
+                    client
+                        .set_overlay_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::OverlayOpacity {
+                    expected_config_revision,
+                    settings,
+                    ..
+                }) => {
+                    client
+                        .set_overlay_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::OverlayCornerRadius {
+                    expected_config_revision,
+                    settings,
+                    ..
+                }) => {
+                    client
+                        .set_overlay_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::OverlayHoverHideDelay {
+                    expected_config_revision,
+                    settings,
+                    ..
+                }) => {
+                    client
+                        .set_overlay_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::MotionAudioEnabled {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_motion_audio_enabled(expected_config_revision, enabled)
+                        .await
+                }
+                Some(SettingValue::BehaviorShortcutsEnabled {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_behavior_shortcuts_enabled(expected_config_revision, enabled)
+                        .await
+                }
+                Some(SettingValue::MaximumFps {
+                    expected_config_revision,
+                    maximum_fps,
+                }) => {
+                    client
+                        .set_maximum_fps(expected_config_revision, maximum_fps)
+                        .await
+                }
+                Some(SettingValue::ReleaseFallbackTimeout {
+                    expected_config_revision,
+                    timeout_ms,
+                }) => {
+                    client
+                        .set_release_fallback_timeout(expected_config_revision, timeout_ms)
+                        .await
+                }
+                Some(SettingValue::ModelSettings {
+                    expected_config_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_model_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::GamepadAxisSettings {
+                    expected_config_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_gamepad_axis_settings(expected_config_revision, settings)
+                        .await
+                }
+                Some(SettingValue::StartupItemEnabled(enabled)) => {
+                    client.set_startup_item_enabled(enabled).await
+                }
+                Some(SettingValue::OpenConfigBackupLocation) => {
+                    client.open_config_backup_location().await
+                }
+                Some(SettingValue::RestoreDefaultConfiguration) => {
+                    client.restore_default_configuration().await
+                }
+                Some(SettingValue::RestoreDefaultShortcuts {
+                    expected_config_revision,
+                }) => {
+                    client
+                        .restore_default_shortcuts(expected_config_revision)
+                        .await
+                }
+                Some(SettingValue::Shortcuts {
+                    expected_config_revision,
+                    shortcuts,
+                }) => {
+                    client
+                        .set_shortcuts(expected_config_revision, shortcuts)
+                        .await
+                }
+                Some(SettingValue::ExportDiagnostics) => client.export_diagnostics().await,
+            };
+            let refreshed = if result
+                .as_ref()
+                .is_err_and(|error| error.code() == SettingsErrorCode::SnapshotOutdated)
+            {
+                client.read_snapshot().await.ok()
+            } else {
+                None
+            };
+            let _ = this.update(cx, |view, cx| {
+                let mut snapshot_changed = false;
+                if !is_refresh {
+                    view.pending = None;
+                }
+                if result.is_ok()
+                    && let Some(scale_percent) = sent_overlay_scale
+                {
+                    view.overlay_scale_debouncer.mark_sent(&scale_percent);
+                    if view.overlay_scale_debouncer.is_pending() {
+                        view.schedule_overlay_scale_flush(cx);
+                    }
+                }
+                if result.is_ok()
+                    && let Some(opacity_percent) = sent_overlay_opacity
+                {
+                    view.overlay_opacity_debouncer.mark_sent(&opacity_percent);
+                    if view.overlay_opacity_debouncer.is_pending() {
+                        view.schedule_overlay_opacity_flush(cx);
+                    }
+                }
+                if result.is_ok()
+                    && let Some(corner_radius_percent) = sent_overlay_corner_radius
+                {
+                    view.overlay_corner_radius_debouncer
+                        .mark_sent(&corner_radius_percent);
+                    if view.overlay_corner_radius_debouncer.is_pending() {
+                        view.schedule_overlay_corner_radius_flush(cx);
+                    }
+                }
+                if result.is_ok()
+                    && let Some(hide_on_pointer_hover_delay_seconds) = sent_overlay_hover_hide_delay
+                {
+                    view.overlay_hover_hide_delay_debouncer
+                        .mark_sent(&hide_on_pointer_hover_delay_seconds);
+                    if view.overlay_hover_hide_delay_debouncer.is_pending() {
+                        view.schedule_overlay_hover_hide_delay_flush(cx);
+                    }
+                }
+                if result.is_ok()
+                    && let Some(settings) = sent_gamepad_dead_zone
+                {
+                    view.gamepad_dead_zone_debouncer.mark_sent(&settings);
+                    if view.gamepad_dead_zone_debouncer.is_pending() {
+                        view.schedule_gamepad_dead_zone_flush(cx);
+                    }
+                }
+                if result.is_ok()
+                    && let Some(maximum_fps) = sent_maximum_fps
+                {
+                    view.maximum_fps_debouncer.mark_sent(&maximum_fps);
+                    if view.maximum_fps_debouncer.is_pending() {
+                        view.schedule_maximum_fps_flush(cx);
+                    }
+                }
+                if result.is_ok()
+                    && let Some(timeout_ms) = sent_release_fallback_timeout
+                {
+                    view.release_fallback_timeout_debouncer
+                        .mark_sent(&timeout_ms);
+                    if view.release_fallback_timeout_debouncer.is_pending() {
+                        view.schedule_release_fallback_timeout_flush(cx);
+                    }
+                }
+                if result.is_err() {
+                    if operation == PendingOperation::AppearanceTheme {
+                        view.applied_theme = None;
+                    }
+                    // Keep failed debounced patches alive and retry after the stable window.
+                    // The debouncer only clears a value after a successful acknowledgement.
+                    if sent_overlay_scale.is_some() {
+                        view.schedule_overlay_scale_flush(cx);
+                    }
+                    if sent_overlay_opacity.is_some() {
+                        view.schedule_overlay_opacity_flush(cx);
+                    }
+                    if sent_overlay_corner_radius.is_some() {
+                        view.schedule_overlay_corner_radius_flush(cx);
+                    }
+                    if sent_overlay_hover_hide_delay.is_some() {
+                        view.schedule_overlay_hover_hide_delay_flush(cx);
+                    }
+                    if sent_gamepad_dead_zone.is_some() {
+                        view.schedule_gamepad_dead_zone_flush(cx);
+                    }
+                    if sent_maximum_fps.is_some() {
+                        view.schedule_maximum_fps_flush(cx);
+                    }
+                    if sent_release_fallback_timeout.is_some() {
+                        view.schedule_release_fallback_timeout_flush(cx);
+                    }
+                }
+                if let Some(snapshot) = refreshed
+                    && accepts_snapshot_revision(
+                        view.snapshot.as_ref().map(|current| current.revision),
+                        snapshot.revision,
+                    )
+                    && view.snapshot.as_ref() != Some(&snapshot)
+                {
+                    view.snapshot = Some(snapshot);
+                    snapshot_changed = true;
+                }
+                match result {
+                    Ok(ref snapshot)
+                        if accepts_snapshot_revision(
+                            view.snapshot.as_ref().map(|current| current.revision),
+                            snapshot.revision,
+                        ) =>
+                    {
+                        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
+                            && view.page != SettingsPage::Diagnostics
+                        {
+                            view.page = SettingsPage::Diagnostics;
+                            snapshot_changed = true;
+                        }
+                        if view.snapshot.as_ref() != Some(snapshot) {
+                            view.snapshot = Some(snapshot.clone());
+                            snapshot_changed = true;
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        if view.pending_notification.as_ref() != Some(&error) {
+                            snapshot_changed = true;
+                        }
+                        view.pending_notification = Some(error);
+                    }
+                }
+                // The next shutdown patch must use the revision returned by this request.
+                if view.flush_pending_requested {
+                    if result.is_ok() {
+                        view.flush_pending_setting_patches(cx);
+                    } else {
+                        view.flush_pending_requested = false;
+                        view.quit_after_flush = false;
+                    }
+                }
+                if !is_refresh || snapshot_changed {
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+}
+
+/// The title is free-form display text: control characters are dropped and
+/// the value is trimmed and bounded to the metadata title limit. The store
+/// key never comes from this field.
+fn sanitize_model_title_input(value: &str) -> String {
+    let filtered: String = value.chars().filter(|c| !c.is_control()).collect();
+    let filtered = filtered.trim();
+    filtered.chars().take(128).collect()
+}
+
+#[derive(Clone)]
+enum SettingValue {
+    AppearanceTheme {
+        expected_config_revision: u64,
+        theme: SettingsTheme,
+    },
+    Language {
+        expected_config_revision: u64,
+        language: SettingsLanguage,
+    },
+    StatusIconVisible {
+        expected_config_revision: u64,
+        visible: bool,
+    },
+    #[cfg(target_os = "windows")]
+    TaskbarIconVisible {
+        expected_config_revision: u64,
+        visible: bool,
+    },
+    CheckForUpdatesAutomatically {
+        expected_config_revision: u64,
+        enabled: bool,
+    },
+    OverlayVisible {
+        expected_config_revision: u64,
+        visible: bool,
+    },
+    OverlaySettings {
+        expected_config_revision: u64,
+        settings: SettingsOverlay,
+    },
+    OverlayScale {
+        expected_config_revision: u64,
+        scale_percent: u16,
+        settings: SettingsOverlay,
+    },
+    OverlayOpacity {
+        expected_config_revision: u64,
+        opacity_percent: u8,
+        settings: SettingsOverlay,
+    },
+    OverlayCornerRadius {
+        expected_config_revision: u64,
+        corner_radius_percent: u8,
+        settings: SettingsOverlay,
+    },
+    OverlayHoverHideDelay {
+        expected_config_revision: u64,
+        hide_on_pointer_hover_delay_seconds: u32,
+        settings: SettingsOverlay,
+    },
+    MotionAudioEnabled {
+        expected_config_revision: u64,
+        enabled: bool,
+    },
+    BehaviorShortcutsEnabled {
+        expected_config_revision: u64,
+        enabled: bool,
+    },
+    MaximumFps {
+        expected_config_revision: u64,
+        maximum_fps: u16,
+    },
+    ReleaseFallbackTimeout {
+        expected_config_revision: u64,
+        timeout_ms: u32,
+    },
+    ModelSettings {
+        expected_config_revision: u64,
+        settings: SettingsModelSettings,
+    },
+    GamepadAxisSettings {
+        expected_config_revision: u64,
+        settings: SettingsGamepadAxisSettings,
+    },
+    StartupItemEnabled(bool),
+    OpenConfigBackupLocation,
+    RestoreDefaultConfiguration,
+    RestoreDefaultShortcuts {
+        expected_config_revision: u64,
+    },
+    Shortcuts {
+        expected_config_revision: u64,
+        shortcuts: SettingsShortcuts,
+    },
+    ExportDiagnostics,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StartupItemAction {
+    None,
+    Retry,
+    SetEnabled(bool),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct StartupItemPresentation {
+    description: &'static str,
+    enabled: bool,
+    action: StartupItemAction,
+}
+
+fn startup_item_presentation(
+    status: Option<SettingsStartupItemStatus>,
+    blocked: bool,
+    language: SettingsLanguage,
+) -> StartupItemPresentation {
+    let mut presentation = match status {
+        None => StartupItemPresentation {
+            description: bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.application.startup.checking",
+            ),
+            enabled: false,
+            action: StartupItemAction::None,
+        },
+        Some(SettingsStartupItemStatus::ReadError(_)) => StartupItemPresentation {
+            description: bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.application.startup.unavailable",
+            ),
+            enabled: false,
+            action: StartupItemAction::Retry,
+        },
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled)) => {
+            StartupItemPresentation {
+                description: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.startup.disabled",
+                ),
+                enabled: false,
+                action: StartupItemAction::SetEnabled(true),
+            }
+        }
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled)) => {
+            StartupItemPresentation {
+                description: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.startup.enabled",
+                ),
+                enabled: true,
+                action: StartupItemAction::SetEnabled(false),
+            }
+        }
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Stale)) => {
+            StartupItemPresentation {
+                description: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.startup.stale",
+                ),
+                enabled: false,
+                action: StartupItemAction::SetEnabled(true),
+            }
+        }
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::RequiresApproval)) => {
+            StartupItemPresentation {
+                description: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.startup.requires_approval",
+                ),
+                enabled: true,
+                action: StartupItemAction::SetEnabled(false),
+            }
+        }
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::NotFound)) => {
+            StartupItemPresentation {
+                description: bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.startup.not_found",
+                ),
+                enabled: false,
+                action: StartupItemAction::SetEnabled(true),
+            }
+        }
+        Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(reason))) => {
+            StartupItemPresentation {
+                description: match reason {
+                    SettingsStartupItemUnsupportedReason::Platform => bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.application.startup.unsupported_platform",
+                    ),
+                    SettingsStartupItemUnsupportedReason::OperatingSystem => bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.application.startup.unsupported_os",
+                    ),
+                    SettingsStartupItemUnsupportedReason::BuildEnvironment => bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.application.startup.unsupported_build",
+                    ),
+                },
+                enabled: false,
+                action: StartupItemAction::None,
+            }
+        }
+    };
+    if blocked {
+        presentation.action = StartupItemAction::None;
+    }
+    presentation
+}
+
+fn diagnostic_group(
+    title: &'static str,
+    metrics: &[(&'static str, u64)],
+    tokens: Tokens,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .pb_3()
+        .mb_3()
+        .child(div().pb_2().text_sm().text_color(tokens.muted).child(title))
+        .children(metrics.iter().map(|(label, value)| {
+            div()
+                .h(px(30.0))
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .text_sm()
+                .child(div().min_w_0().flex_1().child(*label))
+                .child(
+                    div()
+                        .flex_none()
+                        .text_color(tokens.muted)
+                        .child(value.to_string()),
+                )
+        }))
+        .child(div().border_b_1().border_color(tokens.border))
+}
+
+/// The import suggestion shown to the user is the chosen source's own name. A
+/// folder and the `.zip` archive made from it therefore suggest the same title,
+/// because `model_source_display_name` drops the archive extension. The portable
+/// store id is allocated by the settings service at import time, so the
+/// displayed name never needs ASCII folding; hand-typed edits are still
+/// sanitized by `sanitize_model_title_input`.
+fn suggested_model_title(source_root: &Path) -> String {
+    crate::model_source_display_name(source_root).unwrap_or_else(|| "custom-model".to_owned())
+}
+
+fn model_row_actions(
+    entry: &SettingsModelEntry,
+    active_model: Option<&SettingsModelKey>,
+    commands_blocked: bool,
+) -> ModelRowActions {
+    let model = SettingsModelKey {
+        id: entry.id.clone(),
+        origin: entry.origin,
+    };
+    let active = active_model == Some(&model);
+    let ready = matches!(&entry.availability, SettingsModelAvailability::Ready { .. });
+    let installed = entry.origin == SettingsModelOrigin::Installed;
+    ModelRowActions {
+        active,
+        can_activate: ready && !active && !commands_blocked,
+        can_delete: installed && !active && !commands_blocked,
+        can_edit: installed && !commands_blocked,
+        can_open_location: entry.directory.is_some() && !commands_blocked,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ModelRowActionTabIndices {
+    activate: isize,
+    open_location: isize,
+    edit: isize,
+    delete: isize,
+    cancel_delete: isize,
+}
+
+fn model_row_action_tab_indices(
+    first_tab_index: isize,
+    confirming_delete: bool,
+) -> ModelRowActionTabIndices {
+    let activate = first_tab_index;
+    let open_location = first_tab_index.saturating_add(1);
+    let edit = first_tab_index.saturating_add(2);
+    let delete = first_tab_index.saturating_add(3);
+    let cancel_delete = first_tab_index.saturating_add(4);
+    if confirming_delete {
+        // Confirming deletion replaces the other card actions, which are not
+        // rendered and therefore not tab stops, so the two remaining controls
+        // take the first positions instead of leaving a gap in the tab order.
+        ModelRowActionTabIndices {
+            activate,
+            open_location,
+            edit,
+            delete: open_location,
+            cancel_delete: edit,
+        }
+    } else {
+        ModelRowActionTabIndices {
+            activate,
+            open_location,
+            edit,
+            delete,
+            cancel_delete,
+        }
+    }
+}
+
+fn model_delete_confirmation_is_valid(
+    entries: &[SettingsModelEntry],
+    active_model: Option<&SettingsModelKey>,
+    model: &SettingsModelKey,
+) -> bool {
+    model.origin == SettingsModelOrigin::Installed
+        && active_model != Some(model)
+        && entries
+            .iter()
+            .any(|entry| entry.origin == model.origin && entry.id == model.id)
+}
+
+fn model_availability_status(
+    entry: &SettingsModelEntry,
+    active: bool,
+    language: SettingsLanguage,
+) -> SharedString {
+    match &entry.availability {
+        SettingsModelAvailability::Ready {
+            texture_count,
+            expression_count,
+            motion_count,
+            ..
+        } => model_availability_summary(
+            language,
+            entry.origin,
+            active,
+            *texture_count,
+            *expression_count,
+            *motion_count,
+        )
+        .into(),
+        SettingsModelAvailability::Invalid { diagnostic } => {
+            let diagnostic = match diagnostic {
+                SettingsModelDiagnostic::InvalidModelId
+                | SettingsModelDiagnostic::ModelEntryAmbiguous
+                | SettingsModelDiagnostic::ModelEntryMissing
+                | SettingsModelDiagnostic::ModelReferenceEscapesRoot
+                | SettingsModelDiagnostic::ModelReferenceInvalid
+                | SettingsModelDiagnostic::ModelReferenceSymlinkEscape
+                | SettingsModelDiagnostic::ModelSymlinkDirectoryUnsupported => {
+                    "models.validation.package_layout_invalid"
+                }
+                SettingsModelDiagnostic::ModelFileCountExceeded
+                | SettingsModelDiagnostic::ModelFileTooLarge
+                | SettingsModelDiagnostic::ModelJsonTooLarge
+                | SettingsModelDiagnostic::ModelPackageDepthExceeded
+                | SettingsModelDiagnostic::ModelPackageSizeExceeded
+                | SettingsModelDiagnostic::ModelTextureDimensionExceeded => {
+                    "models.validation.package_safety_limits_exceeded"
+                }
+                SettingsModelDiagnostic::ModelJsonInvalid
+                | SettingsModelDiagnostic::ModelUnsupportedVersion => {
+                    "models.validation.model_definition_unsupported"
+                }
+                SettingsModelDiagnostic::ModelTextureInvalidPng
+                | SettingsModelDiagnostic::ModelTextureMissing => {
+                    "models.validation.texture_invalid"
+                }
+                SettingsModelDiagnostic::ModelIoError => "models.validation.files_unavailable",
+                SettingsModelDiagnostic::ModelMocMissing
+                | SettingsModelDiagnostic::ModelResourceInvalid
+                | SettingsModelDiagnostic::ModelResourceMissing
+                | SettingsModelDiagnostic::ModelResourceNotFile => {
+                    "models.validation.resource_invalid"
+                }
+            };
+            model_invalid_summary(
+                language,
+                entry.origin,
+                bongocat_i18n::text(language.catalog_locale(), diagnostic),
+            )
+            .into()
+        }
+    }
+}
+
+/// The inline status of the import draft.
+///
+/// Only progress and selection states are reported here. Every failure on the
+/// model page — a source dialog, an import run, a cover dialog, a catalog that
+/// cannot be read — is delivered through the shared notification component, so
+/// there is exactly one place an error is shown and exactly one style it has.
+fn model_import_status(draft: &ModelImportDraft, language: SettingsLanguage) -> SharedString {
+    // The status names whichever source the user actually chose, so an archive
+    // import never reports that a folder was selected.
+    let selected_key = match draft.source_kind {
+        ModelSourceKind::Directory => "models.import.folder.selected",
+        ModelSourceKind::Archive => "models.import.archive.selected",
+    };
+    let none_selected_key = match draft.source_kind {
+        ModelSourceKind::Directory => "models.import.folder.none_selected",
+        ModelSourceKind::Archive => "models.import.archive.none_selected",
+    };
+    let choosing_key = match draft.source_kind {
+        ModelSourceKind::Directory => "models.import.folder.choosing",
+        ModelSourceKind::Archive => "models.import.archive.choosing",
+    };
+    match &draft.state {
+        // A failed dialog is reported by notification, so the status falls back
+        // to describing the selection that is still in effect.
+        ModelImportState::Empty | ModelImportState::PickerFailed => {
+            if draft.source_root.is_some() {
+                bongocat_i18n::text(language.catalog_locale(), selected_key).into()
+            } else {
+                bongocat_i18n::text(language.catalog_locale(), none_selected_key).into()
+            }
+        }
+        ModelImportState::Ready => {
+            bongocat_i18n::text(language.catalog_locale(), selected_key).into()
+        }
+        ModelImportState::Picking => {
+            bongocat_i18n::text(language.catalog_locale(), choosing_key).into()
+        }
+        // Cancelling is a property of the picker itself, so it reads the same
+        // whichever source was being chosen.
+        ModelImportState::PickerCancelled if draft.source_root.is_some() => bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.picker.cancelled_previous_retained",
+        )
+        .into(),
+        ModelImportState::PickerCancelled => {
+            bongocat_i18n::text(language.catalog_locale(), "models.import.picker.cancelled").into()
+        }
+        ModelImportState::Starting {
+            cancel_requested: true,
+        } => bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.progress.cancelling",
+        )
+        .into(),
+        ModelImportState::Starting {
+            cancel_requested: false,
+        } => {
+            bongocat_i18n::text(language.catalog_locale(), "models.import.progress.starting").into()
+        }
+        ModelImportState::Running(monitor) if monitor.is_cancelled() => bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.progress.cancelling",
+        )
+        .into(),
+        ModelImportState::Running(monitor) => {
+            let progress = monitor.progress();
+            let stage = match progress.stage {
+                SettingsModelImportStage::Preparing => "models.import.progress.preparing",
+                SettingsModelImportStage::Copying => "models.import.progress.copying",
+                SettingsModelImportStage::Validating => "models.import.progress.validating",
+                SettingsModelImportStage::Committing => "models.import.progress.committing",
+            };
+            model_import_progress(
+                language,
+                bongocat_i18n::text(language.catalog_locale(), stage),
+                progress.files_copied,
+                progress.bytes_copied,
+            )
+            .into()
+        }
+        ModelImportState::Succeeded => {
+            bongocat_i18n::text(language.catalog_locale(), "models.import.progress.complete").into()
+        }
+        // The failure was already pushed as a notification; leaving it out here
+        // is what keeps the two from becoming the same message twice.
+        ModelImportState::Failed => "".into(),
+        ModelImportState::Cancelled => bongocat_i18n::text(
+            language.catalog_locale(),
+            "models.import.progress.cancelled",
+        )
+        .into(),
+    }
+}
+
+pub(crate) fn sync_system_component_theme(window: &mut Window, cx: &mut App) {
+    Theme::sync_system_appearance(Some(window), cx);
+}
+
+/// The component-library mode a preference pins, or `None` when it follows the system.
+const fn pinned_theme_mode(theme: SettingsTheme) -> Option<ThemeMode> {
+    match theme {
+        SettingsTheme::System => None,
+        SettingsTheme::Light => Some(ThemeMode::Light),
+        SettingsTheme::Dark => Some(ThemeMode::Dark),
+    }
+}
+
+/// The native appearance a preference pins, or `None` when it follows the system.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const fn pinned_native_theme(theme: SettingsTheme) -> Option<bongocat_platform::AppTheme> {
+    match theme {
+        SettingsTheme::System => None,
+        SettingsTheme::Light => Some(bongocat_platform::AppTheme::Light),
+        SettingsTheme::Dark => Some(bongocat_platform::AppTheme::Dark),
+    }
+}
+
+/// Hands the preference to the platform layer, which owns every native surface that has
+/// to follow it: the window frame, the alerts, the tray and context menus, and the
+/// open/save panels.
+///
+/// A failure is not raised. The surfaces that can refuse are the ones that cannot follow
+/// an application theme at all on that platform, and their documented fallback is the
+/// system appearance — which is what refusing leaves them on. The product still applies
+/// the choice to everything it paints itself, so the user's selection is never lost to a
+/// cosmetic failure.
+fn apply_native_theme(theme: SettingsTheme, window: &Window) {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    let _ = bongocat_platform::apply_theme(window, pinned_native_theme(theme));
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let _ = (theme, window);
+}
+
+/// The appearance the operating system is using, for the "follow the system" choice.
+///
+/// macOS asks the platform layer rather than gpui, for two separate reasons:
+///
+/// - `Window::appearance()` is a cached field, refreshed from a deferred
+///   `appearance_changed` callback. On the frame where the application override is
+///   cleared the cache still reports the value that was just cleared, and `SettingsView`
+///   remembers that it already applied the preference, so it would never correct itself.
+/// - `App::window_appearance()` is live — it and the platform query both read
+///   `NSApplication.effectiveAppearance` — but its name mapping only recognises `Aqua`,
+///   `DarkAqua`, `VibrantLight` and `VibrantDark`, and falls through to `Light` (printing
+///   to stdout) for anything else. With "Increase contrast" on, AppKit reports
+///   `AccessibilityHighContrastDarkAqua`, so gpui would call a dark system light and the
+///   product would paint a light UI inside a dark one. The platform query knows that name.
+///
+/// `window` is only consulted off macOS, and only when there is one. A caller without a
+/// window — the smoke assertions — falls back to the application appearance, which is the
+/// same platform query.
+fn system_appearance(window: Option<&Window>, cx: &App) -> WindowAppearance {
+    #[cfg(target_os = "macos")]
+    {
+        // Neither argument is consulted: the whole point of this branch is to avoid the
+        // value gpui holds, and the platform query needs no window.
+        let _ = (window, cx);
+        match bongocat_platform::system_appearance() {
+            bongocat_platform::SystemAppearance::Light => WindowAppearance::Light,
+            bongocat_platform::SystemAppearance::Dark => WindowAppearance::Dark,
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        window.map_or_else(|| cx.window_appearance(), Window::appearance)
+    }
+}
+
+/// The component-library mode a preference resolves to.
+///
+/// One definition for the whole crate. The render path, the optimistic path and the smoke
+/// assertions all have to agree on what a preference means, and the way to make them agree
+/// is to have only one of them compute it — the smoke exists to prove what the product
+/// does, so it must not re-derive the answer with a second formula.
+fn resolved_theme_mode(theme: SettingsTheme, window: Option<&Window>, cx: &App) -> ThemeMode {
+    match pinned_theme_mode(theme) {
+        Some(mode) => mode,
+        None => component_theme_mode(theme, system_appearance(window, cx)),
+    }
+}
+
+/// Applies the preference to the component colours before the configuration roundtrip,
+/// so the user sees the switch on the frame they clicked rather than one snapshot later.
+///
+/// `System` resolves against the live system appearance, which on macOS is only the
+/// truth once the application override a pinned Light/Dark installed has been dropped —
+/// so the override is dropped first, mirroring the ordering of `apply_component_theme`
+/// (native first, then resolve). Windows has no process override to drop; its frame is
+/// corrected by the roundtrip's `apply_component_theme` right after this.
+fn apply_optimistic_component_theme(theme: SettingsTheme, cx: &mut App) {
+    if theme == SettingsTheme::System {
+        let _ = bongocat_platform::apply_process_theme(None);
+    }
+    let mode = resolved_theme_mode(theme, None, cx);
+    if cx.theme().mode != mode {
+        Theme::change(mode, None, cx);
+    }
+}
+
+/// Applies a preference to both halves of the appearance: the native surfaces the
+/// platform draws, and the component colours the product draws.
+///
+/// The order is not interchangeable. On macOS the native call installs the very override
+/// that the component mode is derived from when the preference is `System`, so asking
+/// for the mode first would resolve against the previous override.
+pub(crate) fn apply_component_theme(theme: SettingsTheme, window: &mut Window, cx: &mut App) {
+    apply_native_theme(theme, window);
+    let mode = resolved_theme_mode(theme, Some(window), cx);
+    if cx.theme().mode != mode {
+        Theme::change(mode, Some(window), cx);
+    }
+}
+
+fn component_theme_mode(theme: SettingsTheme, system_appearance: WindowAppearance) -> ThemeMode {
+    match theme {
+        SettingsTheme::System => system_appearance.into(),
+        SettingsTheme::Light => ThemeMode::Light,
+        SettingsTheme::Dark => ThemeMode::Dark,
+    }
+}
+
+const fn theme_index(theme: SettingsTheme) -> usize {
+    match theme {
+        SettingsTheme::System => 0,
+        SettingsTheme::Light => 1,
+        SettingsTheme::Dark => 2,
+    }
+}
+
+fn theme_options(language: SettingsLanguage) -> [&'static str; 3] {
+    [
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.appearance.theme.options.system",
+        ),
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.appearance.theme.options.light",
+        ),
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.appearance.theme.options.dark",
+        ),
+    ]
+}
+
+fn theme_display_name(theme: SettingsTheme, language: SettingsLanguage) -> &'static str {
+    theme_options(language)[theme_index(theme)]
+}
+
+fn theme_from_display_name(name: &str, language: SettingsLanguage) -> Option<SettingsTheme> {
+    theme_options(language)
+        .into_iter()
+        .position(|option| option == name)
+        .and_then(theme_from_index)
+}
+
+const fn theme_from_index(index: usize) -> Option<SettingsTheme> {
+    match index {
+        0 => Some(SettingsTheme::System),
+        1 => Some(SettingsTheme::Light),
+        2 => Some(SettingsTheme::Dark),
+        _ => None,
+    }
+}
+
+fn stepped_overlay_scale(mut settings: SettingsOverlay, delta: i16) -> SettingsOverlay {
+    let next = i32::from(settings.scale_percent) + i32::from(delta);
+    settings.scale_percent = next.clamp(25, 400) as u16;
+    settings
+}
+
+fn stepped_overlay_opacity(mut settings: SettingsOverlay, delta: i16) -> SettingsOverlay {
+    let next = i16::from(settings.opacity_percent) + delta;
+    settings.opacity_percent = next.clamp(1, 100) as u8;
+    settings
+}
+
+fn command_button(
+    label: &'static str,
+    focus: &FocusHandle,
+    tab_index: isize,
+    _window: &Window,
+    _tokens: Tokens,
+    disabled: bool,
+) -> Div {
+    div()
+        .key_context("SettingsControl")
+        .track_focus(focus)
+        .tab_index(tab_index)
+        .child(Button::new(label).label(label).disabled(disabled))
+}
+
+fn icon_command_button(
+    id: &'static str,
+    label: &'static str,
+    icon: impl Into<Icon>,
+    focus: &FocusHandle,
+    tab_index: isize,
+    disabled: bool,
+) -> Div {
+    div()
+        .key_context("SettingsControl")
+        .track_focus(focus)
+        .tab_index(tab_index)
+        .child(
+            Button::new(id)
+                .icon(icon)
+                .tooltip(label)
+                .accessibility_label(label)
+                .disabled(disabled),
+        )
+}

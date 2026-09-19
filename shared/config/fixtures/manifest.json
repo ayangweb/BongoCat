@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    { "id": "default", "file": "default.json", "expected": "accept" },
+    { "id": "corner-radius", "file": "accept-corner-radius.json", "expected": "accept" },
+    { "id": "unknown-field", "file": "invalid-unknown-field.json", "expected": "reject" },
+    { "id": "corner-radius-out-of-range", "file": "invalid-corner-radius.json", "expected": "reject" },
+    { "id": "hover-hide", "file": "accept-hover-hide.json", "expected": "accept" },
+    { "id": "hover-hide-delay", "file": "accept-hover-hide-delay.json", "expected": "accept" },
+    { "id": "hover-hide-delay-out-of-range", "file": "invalid-hover-hide-delay.json", "expected": "reject" },
+    { "id": "unpaired-model-selection", "file": "invalid-unpaired-model-selection.json", "expected": "reject" },
+    { "id": "out-of-range", "file": "invalid-out-of-range.json", "expected": "reject" },
+    { "id": "gamepad-dead-zone", "file": "invalid-gamepad-dead-zone.json", "expected": "reject" },
+    { "id": "unsupported-language", "file": "invalid-unsupported-language.json", "expected": "reject" },
+    { "id": "blank-binding", "file": "invalid-blank-binding.json", "expected": "reject" },
+    { "id": "duplicate-installed-model-id", "file": "invalid-duplicate-installed-model-id.json", "expected": "reject" },
+    { "id": "blank-installed-model-title", "file": "invalid-blank-installed-model-title.json", "expected": "reject" }
+  ]
+}

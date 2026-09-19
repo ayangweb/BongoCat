@@ -1,0 +1,40 @@
+version: 2
+
+# Every entry must be an existing directory that holds a `Cargo.toml`. The list
+# is checked against the filesystem by
+# `tools/tests/test_dependabot_contract.py`, so a workspace that moves or a
+# directory that is deleted fails the Phase 0 fixture gate instead of silently
+# going unmonitored.
+updates:
+  - package-ecosystem: cargo
+    directories:
+      # Root Native product workspace. Dependabot reads the root manifest, so
+      # this one entry covers every `crates/*` member (ADR-0033) and Cargo.lock.
+      - /
+      # Independent Phase 0 spike workspaces, each with its own manifest and lockfile.
+      - /spikes/config-store
+      - /spikes/fixture-runner
+      - /spikes/gpui-overlay-macos
+      - /spikes/gpui-settings
+      - /spikes/input-macos
+      - /spikes/input-queue
+      - /spikes/input-state
+      - /spikes/input-windows
+      - /spikes/model-package
+      - /spikes/overlay-lifecycle
+      - /spikes/overlay-windows
+      - /spikes/runtime-contract
+      # Independent tool workspaces.
+      - /tools/cubism-bindgen
+      - /tools/cubism-core-probe
+    target-branch: next
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    groups:
+      native-rust-dependencies:
+        patterns:
+          - '*'

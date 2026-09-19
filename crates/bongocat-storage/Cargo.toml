@@ -1,0 +1,23 @@
+[package]
+name = "bongocat-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Same-directory atomic replacement with an explicit Unix mode. Product state is
+# user-private, so the replacement file has to be created with the project's own
+# mode instead of inheriting the umask or the mode of the file it replaces.
+# Only the library entry point is used; the mode is set through
+# `atomic_write_file::unix::OpenOptionsExt`, so the crate never appears in this
+# workspace's public API.
+atomic-write-file.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,7 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "placeholder.moc3",
+    "Textures": ["textures/huge.png"]
+  }
+}

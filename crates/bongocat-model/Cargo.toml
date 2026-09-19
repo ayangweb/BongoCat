@@ -1,0 +1,43 @@
+[package]
+name = "bongocat-model"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+bongocat-storage.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Importing a model handed out as a `.zip` needs a decompressor, so the reader
+# enables the crate's flate2-backed deflate support instead of the writer-only
+# `Stored` path the diagnostics bundle uses. Every other archive feature stays
+# off: model archives are never encrypted or LZMA/Zstd/Bzip2 compressed, and an
+# unsupported method is rejected with a stable diagnostic.
+zip = { workspace = true, features = ["deflate-flate2"] }
+# `zip` declares `flate2` with `default-features = false`, which selects no
+# backend at all and fails flate2's own `compile_error!`. Depending on the
+# workspace pin directly makes `rust_backend` (miniz_oxide, pure Rust) part of
+# this crate's feature set in every build graph instead of relying on whichever
+# sibling crate happens to enable flate2's defaults.
+flate2.workspace = true
+# A BongoCatMver model keeps its key images as separate hand and device layers,
+# so converting one composes them into a single RGBA image. `image` already backs
+# the Live2D texture reader at the same pinned version and with the same
+# `png`-only feature set.
+image.workspace = true
+# The composed images are written as PNG; the ordinary encoder is a correct but
+# uncompressed baseline, so each one is handed to oxipng for a lossless recode.
+oxipng.workspace = true
+# v4 random UUIDs are the source of installed model store keys; std has no RNG
+# and the store must never derive identity from user-visible names.
+uuid = { version = "=1.26.1", default-features = false, features = ["std", "v4"] }
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
