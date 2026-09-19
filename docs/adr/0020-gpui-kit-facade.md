@@ -10,15 +10,19 @@ assets。应用必须手工保证四个 source 的类型一致，manifest、impo
 
 ## 决策
 
-- Native workspace 只直接依赖精确固定的 crates.io `gpui-kit = "=0.6.1"`，提交完整
+- Native workspace 只直接依赖精确固定的 crates.io `gpui-kit = "=0.6.4"`，提交完整
   `cargo update` 后的 `Cargo.lock`。不再直接声明 `gpui`、`gpui_platform`、
   `gpui-component` 或独立 assets crate，也不使用 git source 覆写 GPUI。
 - 代码从 `gpui_kit` 根使用 GPUI 类型，从 `gpui_kit::platform`、`gpui_kit::component` 和
   `gpui_kit::assets` 使用对应层；组件初始化统一调用 `gpui_kit::init`。
-- `gpui-kit 0.6.1` 使用 Apache-2.0 许可证。它的 GPUI 依赖
-  通过 crates.io `gpui-pre` 同步包交付；当前 lockfile 解析到 `0.3.3`，包元数据声明对应
+- `gpui-kit 0.6.4` 使用 Apache-2.0 许可证。它的 GPUI 依赖
+  通过 crates.io `gpui-pre` 同步包交付；当前 lockfile 解析到 `0.3.5`，包元数据声明对应
   Zed `gpui 0.2.2` revision `5b055fa789a8b8d38ac951a6e0cde272f66b4495`。因此项目不再直接
   覆写 GPUI，但也不把该传递包误记为 crates.io 包名 `gpui = 0.2.2`。
+- 2026-09-19：`gpui-kit` 由 `=0.6.1` 升级到 `=0.6.4`（v0.6.2 功能版与 v0.6.4 补丁的
+  最新稳定版；无 breaking API 变化），gpui-base/gpui-component/gpui-kit-assets 同步到
+  `0.6.4`，`gpui-pre` 保持 `0.3.5`。升级范围仍在 `bongocat-ui` 与 `bongocat-app`，
+  不改变本 ADR 的替换边界。
 - GPUI Kit 默认 component/assets feature 正好覆盖当前设置窗口。tree-sitter、decimal、
   inspector 和 test-support 等可选 feature 不启用。其 native facade 还会引入配套 HTTP client
   与 TLS 传递依赖；这些依赖不得进入 BongoCat 的业务 API。

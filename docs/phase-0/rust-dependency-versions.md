@@ -37,7 +37,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级                                          |
 | `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级                                          |
 | `embed-resource`                      |       `3.0.11` | Windows 产品图标新增时最新                               |
-| `gpui-kit`                            |        `0.6.1` | 从 `0.6.0` 升级；2026-09-09 release notes/API 审查后最新 |
+| `gpui-kit`                            |        `0.6.4` | 从 `0.6.1` 升级；2026-09-19 release notes/API 审查后最新 |
 | `futures-lite`                        |        `2.6.1` | 已是最新                                                 |
 | `gpui`                                |        `0.2.2` | 已是最新                                                 |
 | `libc`                                |      `0.2.189` | 新增时即为最新稳定版                                     |
