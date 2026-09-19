@@ -2,6 +2,7 @@ use crate::archive::{self, ModelSourceKind};
 use crate::key_names::normalize_legacy_key_image_names;
 use crate::mver::{self, ModelSourceContent, MverInputMode, MverSource};
 use crate::{InstalledModel, ModelError, ModelId, ModelPackageLimits, PreparedModel};
+use bongocat_storage::{set_private_directory, set_private_file};
 use std::{
     fmt, fs,
     fs::{File, OpenOptions, TryLockError},
@@ -13,30 +14,6 @@ use std::{
 static STAGING_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 const IMPORTING_PREFIX: &str = ".importing-";
 const DELETING_PREFIX: &str = ".deleting-";
-
-// Installed models and their lock metadata are user-owned data. Unix modes
-// enforce that boundary; Windows relies on the profile directory ACL.
-pub(crate) fn set_private_directory(path: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
-}
-
-pub(crate) fn set_private_file(file: &File) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(not(unix))]
-    let _ = file;
-    Ok(())
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelStoreDiagnostic {

@@ -845,6 +845,7 @@ dependencies = [
  "bongocat-platform",
  "bongocat-render",
  "bongocat-runtime",
+ "bongocat-storage",
  "bongocat-ui",
  "bongocat-update",
  "embed-resource",
@@ -866,7 +867,7 @@ dependencies = [
 name = "bongocat-config"
 version = "1.1.0"
 dependencies = [
- "atomic-write-file",
+ "bongocat-storage",
  "dirs 6.0.0",
  "serde",
  "serde_json",
@@ -888,6 +889,7 @@ dependencies = [
  "bongocat-log",
  "bongocat-model",
  "bongocat-render",
+ "bongocat-storage",
  "image",
  "serde",
  "serde_json",
@@ -905,6 +907,7 @@ dependencies = [
 name = "bongocat-model"
 version = "1.1.0"
 dependencies = [
+ "bongocat-storage",
  "flate2",
  "image",
  "oxipng",
@@ -996,6 +999,14 @@ dependencies = [
  "bongocat-model",
  "bongocat-render",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "bongocat-storage"
+version = "1.1.0"
+dependencies = [
+ "atomic-write-file",
  "tempfile",
 ]
 

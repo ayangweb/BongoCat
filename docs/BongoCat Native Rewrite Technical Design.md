@@ -280,6 +280,7 @@ BongoCat/
     bongocat-app/             入口、装配和 shutdown
     bongocat-runtime/         状态、输入语义、动画和命令
     bongocat-config/          schema、环境隔离和原子存储
+    bongocat-storage/         用户私有存储原语：权限、私有目录、原子替换
     bongocat-model/           模型包、目录/压缩包导入和资源索引
     bongocat-live2d/          Cubism Core 边界与模型求值
     bongocat-audio/           motion 音效队列、解码与设备 owner

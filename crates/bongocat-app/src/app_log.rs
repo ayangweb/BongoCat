@@ -3,6 +3,7 @@
 use bongocat_log::{
     MAX_TOTAL_LOG_BYTES as SHARED_MAX_TOTAL_LOG_BYTES, enforce_directory_retention,
 };
+use bongocat_storage::{set_private_directory, set_private_file, set_private_path};
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -568,41 +569,6 @@ fn reopen_active(state: &mut ApplicationLogState) -> bool {
     state.bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
     state.file = Some(file);
     true
-}
-
-// Logs and run markers can contain operational state, so keep them private to
-// the current user on Unix. Windows relies on the profile directory ACL.
-fn set_private_directory(path: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
-}
-
-fn set_private_file(file: &File) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(not(unix))]
-    let _ = file;
-    Ok(())
-}
-
-fn set_private_path(path: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
 }
 
 fn prune_logs(state: &mut ApplicationLogState, current_day: u64) {

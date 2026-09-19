@@ -4,7 +4,6 @@ use crate::{
     ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
     ApplicationShortcutSignals, BUILD_ENVIRONMENT, CoreLogDiagnostics, PRODUCT_VERSION,
 };
-use atomic_write_file::AtomicWriteFile;
 use bongocat_config::{
     BuildEnvironment, ConfigError, ConfigWriteFailureReason, NativeConfig, OverlayWindowPlacement,
     ShortcutCommand, StateError, WindowPlacement,
@@ -24,6 +23,7 @@ use bongocat_runtime::{
     InputSnapshot, ModelSettings, OverlaySettings, PlatformInputDiagnostics,
     PlatformInputServiceStatus, RuntimeRenderErrorCode, RuntimeState,
 };
+use bongocat_storage::{create_private_dir_all, write_private_atomic};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
@@ -44,7 +44,6 @@ use bongocat_ui::{
 };
 use bongocat_update::UpdateDiagnostics;
 use serde::Serialize;
-use std::fs;
 use std::{
     collections::BTreeMap,
     fmt,
@@ -1942,28 +1941,9 @@ fn export_diagnostics_file(
     let bytes = serde_json::to_vec_pretty(&document)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    fs::create_dir_all(parent)
+    create_private_dir_all(parent)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
-    set_private_directory(parent)
-        .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
-    #[cfg(unix)]
-    let options = {
-        use atomic_write_file::unix::OpenOptionsExt;
-        use std::os::unix::fs::OpenOptionsExt as _;
-        let mut options = AtomicWriteFile::options();
-        options.preserve_mode(false).mode(0o600);
-        options
-    };
-    #[cfg(not(unix))]
-    let options = AtomicWriteFile::options();
-    let mut file = options
-        .open(path)
-        .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
-    std::io::Write::write_all(&mut file, &bytes)
-        .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
-    file.commit()
-        .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
-    set_private_path(path)
+    write_private_atomic(path, &bytes)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
     let preview_bundle = write_preview_bundle(parent, &bytes)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DiagnosticsExportFailed))?;
@@ -1975,28 +1955,6 @@ fn export_diagnostics_file(
         preview_bundle_entry_count: preview_bundle.entry_count,
         preview_bundle_skipped_source_files: preview_bundle.skipped_source_files,
     })
-}
-
-fn set_private_directory(path: &std::path::Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
-}
-
-fn set_private_path(path: &std::path::Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
 }
 
 fn diagnostics_document(
@@ -2429,7 +2387,7 @@ mod tests {
     };
     use bongocat_ui::{SettingsModelImportRequest, SettingsStartupItemError};
     use std::{
-        io,
+        fs, io,
         sync::{
             Mutex,
             atomic::{AtomicBool, AtomicUsize, Ordering},

@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use atomic_write_file::AtomicWriteFile;
+use bongocat_storage::{create_private_dir_all, set_private_file};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt, fs,
@@ -92,8 +92,7 @@ impl StorageLayout {
     }
 
     fn create_directories(&self) -> io::Result<()> {
-        fs::create_dir_all(&self.root)?;
-        set_private_directory(&self.root)?;
+        create_private_dir_all(&self.root)?;
         for directory in [
             &self.models,
             &self.backups,
@@ -101,8 +100,7 @@ impl StorageLayout {
             &self.updates,
             &self.locks,
         ] {
-            fs::create_dir_all(directory)?;
-            set_private_directory(directory)?;
+            create_private_dir_all(directory)?;
         }
         Ok(())
     }
@@ -2166,61 +2164,7 @@ fn restore_config_bytes(path: &Path, previous: Option<&[u8]>) -> Result<(), Conf
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
-    write_atomic_io(path, bytes).map_err(ConfigError::from)
-}
-
-fn write_atomic_io(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    #[cfg(unix)]
-    let mut options = AtomicWriteFile::options();
-    #[cfg(not(unix))]
-    let options = AtomicWriteFile::options();
-    #[cfg(unix)]
-    {
-        use atomic_write_file::unix::OpenOptionsExt;
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.preserve_mode(false).mode(0o600);
-    }
-    let mut file = options.open(path)?;
-    file.write_all(bytes)?;
-    file.commit()?;
-    set_private_path(path)?;
-    Ok(())
-}
-
-// Native configuration is user-private data. Unix permissions are applied
-// after every directory/file creation and atomic replacement; Windows uses
-// the profile directory ACL, which is the platform's user-private boundary.
-fn set_private_directory(path: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
-}
-
-fn set_private_file(file: &File) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(not(unix))]
-    let _ = file;
-    Ok(())
-}
-
-fn set_private_path(path: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
+    bongocat_storage::write_private_atomic(path, bytes).map_err(ConfigError::from)
 }
 
 fn parse_config(bytes: &[u8]) -> Result<(NativeConfig, ConfigRevision), ConfigError> {

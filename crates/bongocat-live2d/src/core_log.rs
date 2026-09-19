@@ -2,6 +2,7 @@
 
 use crate::sys;
 use bongocat_log::enforce_directory_retention;
+use bongocat_storage::{set_private_directory, set_private_file};
 use serde::Serialize;
 use std::{
     fs::{self, File, OpenOptions},
@@ -424,28 +425,6 @@ fn reopen_active_log(state: &mut CoreLogState) -> bool {
     state.stats.retained_files = retained_log_files(&state.path);
     state.stats.retained_bytes = retained_log_bytes(&state.path);
     true
-}
-
-fn set_private_directory(path: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
-}
-
-fn set_private_file(file: &File) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(not(unix))]
-    let _ = file;
-    Ok(())
 }
 
 fn rotated_log_path(path: &Path, generation: u32) -> PathBuf {

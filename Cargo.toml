@@ -13,6 +13,7 @@ members = [
     "crates/bongocat-platform",
     "crates/bongocat-render",
     "crates/bongocat-runtime",
+    "crates/bongocat-storage",
     "crates/bongocat-ui",
     "crates/bongocat-update",
 ]
@@ -84,6 +85,7 @@ bongocat-overlay = { path = "crates/bongocat-overlay" }
 bongocat-platform = { path = "crates/bongocat-platform" }
 bongocat-render = { path = "crates/bongocat-render" }
 bongocat-runtime = { path = "crates/bongocat-runtime" }
+bongocat-storage = { path = "crates/bongocat-storage" }
 bongocat-ui = { path = "crates/bongocat-ui" }
 bongocat-update = { path = "crates/bongocat-update" }
 

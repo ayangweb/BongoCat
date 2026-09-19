@@ -1,6 +1,7 @@
 #[cfg(test)]
 use super::BuildEnvironment;
-use super::{StorageLayout, WriterLock, write_atomic_io};
+use super::{StorageLayout, WriterLock};
+use bongocat_storage::{create_private_dir_all, set_private_file, write_private_atomic};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt, fs,
@@ -264,10 +265,8 @@ impl StateStore {
 
     pub fn commit(&self, state: &ApplicationState) -> Result<(), StateError> {
         state.validate()?;
-        fs::create_dir_all(&self.layout.root)?;
-        super::set_private_directory(&self.layout.root)?;
-        fs::create_dir_all(&self.layout.locks)?;
-        super::set_private_directory(&self.layout.locks)?;
+        create_private_dir_all(&self.layout.root)?;
+        create_private_dir_all(&self.layout.locks)?;
         let _lock = self.acquire_writer_lock()?;
         if let Ok(current) = fs::read(&self.layout.state)
             && let Err(StateError::UnsupportedSchema(version)) = parse_state(&current)
@@ -280,7 +279,7 @@ impl StateStore {
             Err(error) if error.kind() == ErrorKind::NotFound => None,
             Err(error) => return Err(error.into()),
         };
-        write_atomic_io(&self.layout.state, &bytes)?;
+        write_private_atomic(&self.layout.state, &bytes)?;
         #[cfg(test)]
         if self.injected_write_failure == Some(InjectedStateWriteFailure::VerificationCorruption) {
             fs::write(&self.layout.state, b"corrupt-after-state-replace")?;
@@ -302,7 +301,7 @@ impl StateStore {
             .create(true)
             .truncate(false)
             .open(self.layout.locks.join("state.writer.lock"))?;
-        super::set_private_file(&file)?;
+        set_private_file(&file)?;
         match file.try_lock() {
             Ok(()) => Ok(WriterLock { _file: file }),
             Err(TryLockError::WouldBlock) => Err(StateError::LockUnavailable),
@@ -332,7 +331,7 @@ fn parse_state(bytes: &[u8]) -> Result<ApplicationState, StateError> {
 
 fn restore_state_bytes(path: &std::path::Path, previous: Option<&[u8]>) -> Result<(), StateError> {
     match previous {
-        Some(bytes) => write_atomic_io(path, bytes).map_err(StateError::from),
+        Some(bytes) => write_private_atomic(path, bytes).map_err(StateError::from),
         None => match fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),

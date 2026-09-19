@@ -198,7 +198,7 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   `Option<String>` 与稳定无文本错误码，不进入 config/runtime/UI 公共协议。替换边界是该
   adapter；底层文本读取会先物化系统内容，之后才执行项目的 1 MiB 校验，这是当前 API 的
   已知替换成本；
-- `atomic-write-file 0.3.1`（BSD-3-Clause）只在正式配置 crate 的 `ConfigStore` 提供同目录跨平台原子替换；它只暴露项目自有的配置类型，不泄漏库类型。替换边界是私有 commit helper；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
+- `atomic-write-file 0.3.1`（BSD-3-Clause）只在 `bongocat-storage` 提供同目录跨平台原子替换；配置、模型、日志与诊断导出都经该 crate 落盘，它只暴露 `&[u8]` 与 `io::Result`，不泄漏库类型。替换边界是私有 commit helper；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
 - `rodio 0.22.2`（MIT OR Apache-2.0）只在 `bongocat-audio` 私有 backend 打开系统输出并
   解码现有 FLAC；固定容量的项目 command/diagnostics API 隔离第三方类型，Linux contract
   build 不链接 ALSA。真实预置 FLAC header/首样本、资源/解码失败、抢占、overflow 恢复和

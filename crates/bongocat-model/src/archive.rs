@@ -22,9 +22,10 @@ use crate::{
     store::{
         COPY_BUFFER_BYTES, CopyStatistics, ImportObservation, ModelImportProgress,
         ModelImportStage, ModelStoreDiagnostic, ModelStoreError, file_count_for_progress,
-        is_platform_metadata_name, set_private_directory, set_private_file,
+        is_platform_metadata_name,
     },
 };
+use bongocat_storage::{set_private_directory, set_private_file};
 use std::{
     collections::BTreeSet,
     fs::{self, File, OpenOptions},

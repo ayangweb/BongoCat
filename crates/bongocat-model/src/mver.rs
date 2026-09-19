@@ -44,9 +44,10 @@ use crate::{
     normalize_reference, path_from_reference,
     store::{
         CopyStatistics, ImportObservation, ModelImportProgress, ModelImportStage,
-        ModelStoreDiagnostic, ModelStoreError, file_count_for_progress, set_private_file,
+        ModelStoreDiagnostic, ModelStoreError, file_count_for_progress,
     },
 };
+use bongocat_storage::set_private_file;
 use image::{ImageEncoder, RgbaImage};
 use serde::Deserialize;
 use std::{

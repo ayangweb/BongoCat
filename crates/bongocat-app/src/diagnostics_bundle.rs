@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use atomic_write_file::AtomicWriteFile;
+use bongocat_storage::set_private_path;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use std::cell::Cell;
@@ -376,12 +377,9 @@ fn write_private_atomic(path: &Path, bytes: &[u8]) -> Result<(), PreviewBundleEr
         #[cfg(test)]
         inject_write_failure(WriteFailurePoint::ReplaceTargetWithDirectory, path)?;
         file.commit().map_err(|_| PreviewBundleError)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-                .map_err(|_| PreviewBundleError)?;
-        }
+        // The commit can preserve the mode of the file it replaced, so the
+        // owner-only mode is applied again once the replacement is in place.
+        set_private_path(path).map_err(|_| PreviewBundleError)?;
         Ok(())
     })();
     if result.is_err() {
