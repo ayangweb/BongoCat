@@ -4653,6 +4653,55 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 未运行：Windows 侧同路径（本机无法执行 `cfg(windows)` 测试）；双平台实机确认自动分配的组合键
       确实能在系统层面触发动作。分配契约本身由 `bongocat-config` 的单元测试覆盖，与平台无关。
 
+92. [x] `P5-BEHAVIOR-SHORTCUT-TRIGGER-ONCE`：修正快捷键触发动作后持续执行。
+    - 依赖：第 91 项 `P5-BEHAVIOR-SHORTCUT-AUTO-ASSIGN`、ADR-0044、`shared/behavior/animation-semantics.md`。
+    - 背景（2026-09-19，维护者反馈）：打开行为快捷键后按下一个自动分配的组合键，模型动作会**一直**
+      播放下去。第 91 项已记录"双平台实机确认组合键能在系统层面触发动作"属于未运行项，这次实机操作
+      正是它的第一次真实使用，暴露的是 runtime 侧从未被产品路径使用过的分支。
+    - 根因（两处，互相独立）：① `RuntimeCommand::StartMotion` 一直以 `looping = true` 启动播放，而
+      三个预置模型的 motion3 都声明 `Meta.Loop = true`（`live2d_motion1.motion3.json` 1.633s、
+      `live2d_motion2.motion3.json` 2.333s），于是动作永远不满足自然完成条件，`active_motion`
+      永不清理，猫回不到 idle 参数。`PreviewMotion` 在 `4c66ff4` 已经修过同一类问题（设置页预览
+      改成只播一次），行为快捷键这条路径漏了。② `GlobalShortcutService` 的 owner 线程只在
+      `HotKeyState::Pressed` 上分发，而两个平台都会在组合键被按住期间继续投递 pressed：Windows 是
+      `WM_HOTKEY` 随键盘重复继续上报（`global-hotkey` 的 Windows 实现为每个 `WM_HOTKEY` 起一个线程
+      轮询 `GetAsyncKeyState` 等待释放，本身就是重复存在的证据），macOS 是 Carbon
+      `kEventHotKeyPressed` 的自动重复。即使动作改成只播一次，按住不放仍会在每个循环结束后重新
+      触发。
+    - 实现：① runtime 的动作启动路径改为单循环（`StartMotion` 与 `PreviewMotion` 都是 one-shot），
+      并把原来只对 looping 生效的重复请求抑制改成对产品触发的显式幂等规则——同一 motion、同一
+      priority、且未在停止过程中时，重复 `StartMotion` 被接受但忽略（对齐 R5 motion queue 的
+      equal-priority 规则），既保证"一次按下只播一次"，也不会因连按重启 clip 或重放 motion 音效；
+      `PreviewMotion` 保持每次请求都重新开始。② `bongocat-platform` 的快捷键 owner 新增
+      `PressEdges`：只有进入 held 状态的那次 `Pressed` 是按下边沿，匹配的 `Released` 重新武装；
+      快捷键表变更时按新的注册集合清理 held 记录（离开表的绑定不会再收到释放事件，残留会吞掉它
+      重新绑定后的第一次按下）。分发入口抽成 `resolve_trigger`，使"重复 pressed 必须被丢弃"可断言。
+      ③ 顺带修正 `docs/BongoCat Native Rewrite Technical Design.md` 的快捷键段落：它仍写着
+      "平台 input owner 驱动短生命周期 matcher"，而 ADR-0044 已删除 `ShortcutMatcher` 并把注册交给
+      操作系统，属于 ADR 之后的文档漂移。
+    - 退出条件：行为快捷键触发一次动作并自然结束；按住不放只触发一次；播放结束后的下一次按下重新
+      播放；`PreviewMotion` 语义不变；双平台实机确认。
+    - 验收证据（2026-09-19，本机 macOS / aarch64）：`cargo test -p bongocat-runtime --lib` 的新用例
+      `shortcut_motion_stops_after_one_cycle_even_though_the_clip_loops`（真实 standard 预置 + 注入
+      单调时钟：触发后前进到 2s，`active_motion` 必须为空；在飞行中的重复触发保持首次 command
+      sequence；结束后的再次触发拿到新 sequence）与 `bongocat-platform` 的
+      `repeated_pressed_events_for_a_held_chord_dispatch_their_target_once` /
+      `one_hold_dispatches_a_single_press_edge_however_many_repeats_arrive` /
+      `a_table_change_re_arms_bindings_it_unregistered` / `releases_and_idle_bindings_do_not_interfere`。
+      变异验证：把 `StartMotion` 的 `looping` 改回 `true`，新 runtime 用例以等待完成帧超时变红；
+      把 `resolve_trigger` 的边沿判定改成"始终分发"，平台用例以
+      `left: Some(Application(ToggleOverlay)) / right: None` 变红；两处均按原文还原后复绿。
+      共享 fixture `model-motion-expression-audio` 的检查点全部落在 70ms 内（clip 1.633s），
+      因此 `activeMotion` 期望值不受单循环改动影响。
+    - 未运行：双平台实机按住组合键确认操作系统重复事件确实被丢弃（本机测试只覆盖
+      `resolve_trigger` 的判定，未注入真实热键事件）；Windows 侧的 `cfg(windows)` 测试与 Windows
+      消息泵路径在本机不编译执行。另：`global-hotkey` 的 Windows 释放事件来自 50ms 轮询，极快的
+      连按（两次按下间隔 < 50ms）理论上会出现释放事件晚于下一次按下，从而吞掉那一次触发。
+    - 记录一处仍需维护者确认的取舍：同 identity、同 priority 的重复请求现在是幂等的（"播放中再次
+      按同一快捷键不重启"），这与第 5.3 节记录的"同级最新请求"并列为两条规则——前者只覆盖同一
+      motion identity，后者覆盖不同 motion 之间的接管。R5 的 equal-priority 规则支持幂等这一侧；
+      若维护者希望"播放中再次按下就从头重播"，改动点在 runtime 那一条 `duplicate` 判定。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

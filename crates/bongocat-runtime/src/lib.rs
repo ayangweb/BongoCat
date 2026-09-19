@@ -343,6 +343,9 @@ pub enum MotionPriority {
 /// A shortcut action resolved by the configuration/platform boundary.
 /// Runtime receives the already-typed model identity and never parses a
 /// behavior string or platform key code on its real-time thread.
+///
+/// [`ShortcutAction::StartMotion`] plays one cycle and is idempotent while that
+/// cycle is in flight; see [`RuntimeCommand::StartMotion`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ShortcutAction {
     StartMotion {
@@ -441,10 +444,18 @@ pub enum RuntimeCommand {
         model: Arc<CommittedModel>,
         input_bindings: Arc<InputBindings>,
     },
+    /// Starts a product motion. The runtime plays the clip exactly once: a
+    /// shortcut press is one visible run, after which the model returns to its
+    /// idle parameters, so the clip's declared `Meta.Loop` never keeps it
+    /// running. While that run is still in flight, a repeat request for the
+    /// same motion at the same priority is a no-op.
     StartMotion {
         motion: MotionId,
         priority: MotionPriority,
     },
+    /// Plays one clip once for a UI preview at [`MotionPriority::Force`].
+    /// Unlike [`RuntimeCommand::StartMotion`], every request restarts the
+    /// preview.
     PreviewMotion(MotionId),
     StopMotion(MotionId),
     SetExpression(ExpressionId),
@@ -1909,24 +1920,41 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         command @ (RuntimeCommand::StartMotion { .. }
                         | RuntimeCommand::PreviewMotion(_)),
                     ) => {
+                        // Both trigger sources play a single cycle. A shortcut
+                        // press must produce one visible run and hand the
+                        // model back to its idle parameters; the clip's own
+                        // `Meta.Loop` describes how the asset was authored, not
+                        // how the product drives it, so honoring it here would
+                        // keep the cat animating with no way back.
+                        let repeat_is_idempotent =
+                            matches!(command, RuntimeCommand::StartMotion { .. });
                         let (motion, priority, looping) = match command {
                             RuntimeCommand::StartMotion { motion, priority } => {
-                                (motion, priority, true)
+                                (motion, priority, false)
                             }
                             RuntimeCommand::PreviewMotion(motion) => {
                                 (motion, MotionPriority::Force, false)
                             }
                             _ => unreachable!("matched only motion start commands"),
                         };
-                        let duplicate = active_motion.as_ref().is_some_and(|active| {
-                            active.motion == motion
-                                && active.priority == priority
-                                && active.stop_command_sequence.is_none()
-                        });
+                        // A repeat of the run that is already in flight is a
+                        // no-op for a product trigger: the equal-priority rule
+                        // of the R5 motion queue ignores the request while the
+                        // current motion is unfinished, so key repeat or a
+                        // press burst neither restarts the clip nor replays its
+                        // audio. One-shot playback bounds the guard to exactly
+                        // one cycle. A preview stays a direct UI action and
+                        // restarts on every request.
+                        let duplicate = repeat_is_idempotent
+                            && active_motion.as_ref().is_some_and(|active| {
+                                active.motion == motion
+                                    && active.priority == priority
+                                    && active.stop_command_sequence.is_none()
+                            });
                         let current_priority = active_motion.as_ref().map(|active| active.priority);
                         let can_replace =
                             current_priority.is_none_or(|current| priority >= current);
-                        if (looping && duplicate) || !can_replace {
+                        if duplicate || !can_replace {
                             publish(&snapshot, |current| {
                                 current.last_command_failure = None;
                                 current.last_command_sequence = Some(sequence);
@@ -4202,6 +4230,105 @@ mod tests {
             .wait_for_command(stop_sequence, TIMEOUT)
             .expect("shortcut stop result");
         assert!(stopped.active_motion.is_none());
+        owner.shutdown(TIMEOUT).expect("runtime shutdown");
+    }
+
+    /// A behaviour shortcut is one visible run of the clip. The preset motions
+    /// declare `Meta.Loop: true` and last 1.633s, so a runtime that honored the
+    /// clip flag would keep the model animating for as long as the app runs.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn shortcut_motion_stops_after_one_cycle_even_though_the_clip_loops() {
+        let clock = Arc::new(ManualClock::default());
+        let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+            true,
+            8,
+            Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+        );
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let activation_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "standard",
+            ))))
+            .expect("activation command");
+        let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+        report_model_prepared(&client, &consumer, &candidate);
+
+        let motion = MotionId::new("CAT_motion", 0).expect("motion id");
+        let first_sequence = client
+            .trigger_shortcut(ShortcutAction::StartMotion {
+                motion: motion.clone(),
+                priority: MotionPriority::Normal,
+            })
+            .expect("shortcut start");
+        let started = client
+            .wait_for_command(first_sequence, TIMEOUT)
+            .expect("shortcut motion result");
+        assert_eq!(
+            started.active_motion.as_ref().map(|active| &active.motion),
+            Some(&motion)
+        );
+
+        // A repeat press while the run is in flight is idempotent: the active
+        // identity keeps the first command sequence, so the clip is neither
+        // restarted nor its audio replayed.
+        let repeat_sequence = client
+            .trigger_shortcut(ShortcutAction::StartMotion {
+                motion: motion.clone(),
+                priority: MotionPriority::Normal,
+            })
+            .expect("repeat shortcut start");
+        let repeated = client
+            .wait_for_command(repeat_sequence, TIMEOUT)
+            .expect("repeat shortcut result");
+        assert_eq!(
+            repeated.active_motion.as_ref().map(|active| &active.motion),
+            Some(&motion)
+        );
+        assert_eq!(
+            repeated
+                .active_motion
+                .as_ref()
+                .map(|active| active.command_sequence),
+            Some(first_sequence)
+        );
+
+        clock.set(Duration::from_secs(2));
+        let tick_sequence = client.send(RuntimeCommand::Tick).expect("one-shot tick");
+        let ticked = client
+            .wait_for_command(tick_sequence, TIMEOUT)
+            .expect("one-shot tick accepted");
+        let completed = if ticked.active_motion.is_none() {
+            ticked
+        } else {
+            client
+                .wait_for_revision(ticked.revision.saturating_add(1), TIMEOUT)
+                .expect("one-shot completion")
+        };
+        assert!(
+            completed.active_motion.is_none(),
+            "a triggered motion must stop after one cycle instead of looping"
+        );
+
+        // The next press, after the run completed, plays the clip again.
+        let second_sequence = client
+            .trigger_shortcut(ShortcutAction::StartMotion {
+                motion,
+                priority: MotionPriority::Normal,
+            })
+            .expect("second shortcut start");
+        let restarted = client
+            .wait_for_command(second_sequence, TIMEOUT)
+            .expect("second shortcut result");
+        assert_eq!(
+            restarted
+                .active_motion
+                .as_ref()
+                .map(|active| active.command_sequence),
+            Some(second_sequence)
+        );
+
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 

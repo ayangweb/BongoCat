@@ -6,7 +6,9 @@
 ## Commands represented by fixtures
 
 - `model_switch` changes the selected model and clears the active motion and expression only after the switch command is accepted.
-- `motion_start` carries an explicit `idle`, `normal`, or `force` priority. A lower-priority request cannot replace an active higher-priority motion; equal priority uses the latest request.
+- `motion_start` carries an explicit `idle`, `normal`, or `force` priority. A lower-priority request cannot replace an active higher-priority motion; a request for a different motion at equal priority uses the latest request. A repeat request for the motion that is already running at the same priority is ignored while that run is unfinished, following the R5 motion queue, so key repeat and press bursts neither restart the clip nor replay its motion audio.
+- A triggered motion plays exactly one cycle: it completes at the clip's declared duration and clears the active motion even when the clip declares `Meta.Loop = true`. The loop flag describes how the asset was authored, not how the product drives it, and a looping trigger would never hand the model back to its idle parameters. A UI preview plays one cycle too, but restarts on every request instead of ignoring a repeat.
+- A model behaviour shortcut triggers its motion once per physical key press. Operating systems repeat the pressed event while a chord stays held, and every repeat is dropped rather than dispatched, so holding a shortcut never retriggers its action.
 - `motion_stop` only stops the named active motion. Stopping an old motion must not cancel a newer
   motion. A non-zero model3 `FadeOutTime` keeps the motion active while a sine-eased outer weight
   reaches zero; runtime snapshots retain the first stop command sequence until completion. Repeated

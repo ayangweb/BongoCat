@@ -152,12 +152,16 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   adapter，不关闭项目辅助功能。迁移到 GPUI 原生 element 语义时必须一次性删除项目桥接、
   相关直接 AccessKit 依赖和该构造兼容措施，并重跑 macOS AX/Windows UIA 门禁。
 - GPUI 不加载 Cubism、不持有模型 GPU 资源、不驱动模型帧循环。
-- 全局快捷键使用配置边界编译出的 `CompiledShortcuts`。平台 input owner 在回调外以 HID
-  identity 驱动短生命周期 matcher；只有匹配当前 active model 的 motion/expression target
-  才能转成 typed runtime command。应用级 target 必须经 coordinator 的配置 revision-aware
+- 全局快捷键使用配置边界编译出的 `CompiledShortcuts`，由操作系统注册（Windows
+  `RegisterHotKey`、macOS `RegisterEventHotKey`，见 ADR-0044），单一 owner 线程持有平台
+  manager 并把共享 `ShortcutTable` 增量映射为真实注册；只有匹配当前 active model 的
+  motion/expression target 才能转成 typed runtime command。只有物理按下边沿才分发：
+  两个平台都会在组合键被按住期间按系统重复节奏继续投递 pressed 事件，重复事件必须被丢弃
+  而不是再次触发目标，因此一次按住永远只产生一次动作。应用级 target 必须经 coordinator 的
+  配置 revision-aware
   command 执行，平台层不得直接改 overlay 或设置状态。配置提交后通过共享 `ShortcutTable`
-  原子替换 compiled bindings，运行中的 input owner 在下一条边沿读取新表；替换不会清除
-  已按下集合，Reset/reconcile 仍负责 transient state 的最终一致性。应用级 target 通过有界
+  原子替换 compiled bindings，owner 线程在下一轮轮询读取新表；快捷键注册与输入服务生命周期
+  解耦，替换不涉及输入管线的 pressed set。应用级 target 通过有界
   typed handoff 进入 settings service；显隐、镜像、穿透和置顶由唯一 Application owner
   按当前配置 revision 持久化，`open_settings` 交给 GPUI coordinator，避免平台线程直接触碰
   UI 生命周期。`open_settings` 通过线程安全的一次性请求位交给 GPUI frame source，后者在
@@ -339,6 +343,11 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   不可变 `RenderSnapshot`，不读取 config 或 GPUI 状态。overlay 隐藏时，runtime 周期等待和产品
   frame source 统一降至 `100 ms`；可靠 command 仍会立即唤醒 runtime，产品重新显示的轮询延迟
   上限为 `100 ms`。
+- `motion_start` 触发的动作只播放一个循环：到达 clip 声明时长后自然完成并清除 active motion，
+  clip 的 `Meta.Loop` 不改变这一点（它描述资源如何制作，不描述产品如何触发），否则猫会永远
+  停在动作里、回不到 idle 参数。同一动作在同一 priority 上仍在播放时，重复请求被忽略（R5
+  motion queue 的 equal-priority 规则），因此按键重复和连按既不会重启 clip 也不会重放 motion
+  音效；播放结束后的下一次触发重新播放。预览播放同样只播放一个循环，但每次请求都重新开始。
 - `motion_stop` 只作用于匹配的当前动作。非零 `FadeOutTime` 在 runtime snapshot 中保留
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
   清理；重复 stop 不重启计时，零时长立即清理，旧动作的 stop 不影响后启动动作。

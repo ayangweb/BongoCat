@@ -42,6 +42,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - Models now look the same on Windows and macOS. On Windows the model window was drawn with its midtones too dark, because its rendering path never converted the final colors back for display. Pure black and white were unaffected, and semi-transparent edges were also weighted wrongly.
 - BongoCatMver sources can now convert the function keys F13 to F24, each to its own image. A converted backslash key also installs `BackSlash.png` — the image the app actually looks up; the converter used to write `Backslash.png`, which no key could reach, so pressing that key did nothing at all.
 - The Apps key — the Menu key next to right Ctrl — now works on both platforms, so a model that ships `Apps.png` draws it. It had a name and a binding from the start, but neither platform reported the key: Windows Raw Input had no scan code for it and macOS had no keycode for `kVK_ContextualMenu`, so the image could never be reached. Apple keyboards have no such key, but a third-party one sends the macOS keycode.
+- A model's motion shortcut now plays its motion once instead of looping forever. The built-in motions declare themselves as looping, so a triggered action kept playing until the app was restarted and the model never returned to its idle pose. Pressing and holding a shortcut also no longer triggers the action again on every key repeat, and pressing it again after the action has finished plays it again.
 
 ### 🎨 UI and Experience
 

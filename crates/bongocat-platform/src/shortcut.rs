@@ -390,6 +390,7 @@ mod global {
 
         let mut registered: HashMap<u32, HotKey> = HashMap::new();
         let mut targets: HashMap<u32, ShortcutTarget> = HashMap::new();
+        let mut pressed = PressEdges::default();
         let mut snapshot: Option<CompiledShortcuts> = None;
 
         while !stop.load(Ordering::Acquire) {
@@ -405,6 +406,10 @@ mod global {
                 }
                 let desired_ids: BTreeSet<u32> =
                     desired.iter().map(|entry| entry.hotkey.id).collect();
+                // Bindings that just left the table never report a release, so
+                // a retained held id would swallow the first press after the
+                // same chord is bound again.
+                pressed.retain(&desired_ids);
                 for (id, hotkey) in registered.iter() {
                     if !desired_ids.contains(id)
                         && let Err(error) = manager.unregister(*hotkey)
@@ -439,10 +444,7 @@ mod global {
             }
 
             while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
-                if event.state() != HotKeyState::Pressed {
-                    continue;
-                }
-                let Some(target) = targets.get(&event.id()) else {
+                let Some(target) = resolve_trigger(&mut pressed, event, &targets) else {
                     continue;
                 };
                 match dispatcher.execute(target) {
@@ -473,6 +475,57 @@ mod global {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(failure.into());
+    }
+
+    /// Consumes one hotkey event and returns the target it must dispatch.
+    ///
+    /// Only the press edge produces a target: the operating system repeats
+    /// `Pressed` for as long as a chord stays held, and those repeats must be
+    /// dropped instead of triggering the binding again. An event for a chord
+    /// that is no longer bound is dropped without touching the held state,
+    /// because such a binding never reports its release.
+    fn resolve_trigger<'a>(
+        pressed: &mut PressEdges,
+        event: GlobalHotKeyEvent,
+        targets: &'a HashMap<u32, ShortcutTarget>,
+    ) -> Option<&'a ShortcutTarget> {
+        let target = targets.get(&event.id)?;
+        pressed.observe(event.state, event.id).then_some(target)
+    }
+
+    /// Tracks which registered hotkeys are physically held.
+    ///
+    /// Both backends report one `Pressed` event per operating-system key
+    /// repeat while a chord stays down: Windows forwards every `WM_HOTKEY`
+    /// from the message pump, and the Carbon handler forwards every
+    /// auto-repeat. Dispatching on `Pressed` alone therefore turns a single
+    /// key press into a burst of triggers. Only the transition into the held
+    /// state is a press edge, and the matching `Released` re-arms the binding,
+    /// so each physical press dispatches its target once.
+    #[derive(Default)]
+    struct PressEdges {
+        held: BTreeSet<u32>,
+    }
+
+    impl PressEdges {
+        /// Records one hotkey event and reports whether it is a press edge that
+        /// must be dispatched.
+        fn observe(&mut self, state: HotKeyState, id: u32) -> bool {
+            match state {
+                HotKeyState::Pressed => self.held.insert(id),
+                HotKeyState::Released => {
+                    self.held.remove(&id);
+                    false
+                }
+            }
+        }
+
+        /// Drops held ids a table change unregistered. Such a binding never
+        /// reports its release, and keeping the stale id would swallow the
+        /// first press after the same chord is bound again.
+        fn retain(&mut self, registered: &BTreeSet<u32>) {
+            self.held.retain(|id| registered.contains(id));
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -589,6 +642,89 @@ mod global {
         fn hotkey(chord: &str) -> HotKey {
             shortcut_hotkey(&ShortcutChord::parse(chord).expect("valid chord"))
                 .expect("mapped hotkey")
+        }
+
+        #[test]
+        fn repeated_pressed_events_for_a_held_chord_dispatch_their_target_once() {
+            let target = ShortcutTarget::Application(ShortcutCommand::ToggleOverlay);
+            let targets = HashMap::from([(7u32, target.clone())]);
+            let mut pressed = PressEdges::default();
+            let event = |state| GlobalHotKeyEvent { id: 7, state };
+            assert_eq!(
+                resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &targets),
+                Some(&target)
+            );
+            for _ in 0..5 {
+                assert_eq!(
+                    resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &targets),
+                    None,
+                    "an OS key repeat must not dispatch the target again"
+                );
+            }
+            assert_eq!(
+                resolve_trigger(&mut pressed, event(HotKeyState::Released), &targets),
+                None
+            );
+            assert_eq!(
+                resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &targets),
+                Some(&target)
+            );
+            // A chord that is no longer bound reports no release, so its events
+            // must not leave held state behind either.
+            assert_eq!(
+                resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &HashMap::new()),
+                None
+            );
+            assert_eq!(
+                resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &targets),
+                None,
+                "the still-held chord stays silent after an unbound event"
+            );
+        }
+
+        #[test]
+        fn one_hold_dispatches_a_single_press_edge_however_many_repeats_arrive() {
+            let mut pressed = PressEdges::default();
+            assert!(pressed.observe(HotKeyState::Pressed, 7));
+            for _ in 0..5 {
+                assert!(
+                    !pressed.observe(HotKeyState::Pressed, 7),
+                    "an OS key repeat must not dispatch a second trigger"
+                );
+            }
+            assert!(!pressed.observe(HotKeyState::Released, 7));
+            assert!(
+                pressed.observe(HotKeyState::Pressed, 7),
+                "the next physical press dispatches again"
+            );
+        }
+
+        #[test]
+        fn releases_and_idle_bindings_do_not_interfere() {
+            let mut pressed = PressEdges::default();
+            assert!(!pressed.observe(HotKeyState::Released, 7));
+            assert!(pressed.observe(HotKeyState::Pressed, 7));
+            assert!(pressed.observe(HotKeyState::Pressed, 9));
+            assert!(!pressed.observe(HotKeyState::Pressed, 9));
+            assert!(!pressed.observe(HotKeyState::Pressed, 7));
+            assert!(!pressed.observe(HotKeyState::Released, 9));
+            assert!(pressed.observe(HotKeyState::Pressed, 9));
+        }
+
+        #[test]
+        fn a_table_change_re_arms_bindings_it_unregistered() {
+            let mut pressed = PressEdges::default();
+            assert!(pressed.observe(HotKeyState::Pressed, 7));
+            // The chord leaves the table while it is still held, so no release
+            // ever arrives for it.
+            pressed.retain(&BTreeSet::from([9]));
+            assert!(
+                pressed.observe(HotKeyState::Pressed, 7),
+                "a chord that left the table is armed again"
+            );
+            // A change that keeps the id retains the held state.
+            pressed.retain(&BTreeSet::from([7]));
+            assert!(!pressed.observe(HotKeyState::Pressed, 7));
         }
 
         #[test]
