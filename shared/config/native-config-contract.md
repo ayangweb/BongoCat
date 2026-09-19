@@ -59,6 +59,12 @@ shortcuts
 首次启动创建当前 v1 配置时，`overlay.click_through` 默认为 `false`。用户后续通过
 typed settings command 修改该值后，仍按配置 revision 原子提交并在重启时从当前环境恢复。
 
+`overlay.visible` 是会话内状态，不跨重启保留。每次启动确认配置可用（`Ready`）后，若当前 v1
+值为 `false`，应用先在内存里把它规整回 `true`，再尽力按原子提交写回 `config.json`；写入失败不
+阻塞启动，本次会话窗口仍然可见。恢复模式（`RecoveryRequired`）不创建 overlay，也不执行该规整。
+这与旧版行为一致：旧版 `cat` store 的 init 每次启动都把 `window.visible` 置回 `true`，隐藏主猫
+只是在当前会话生效，重启后必定重新显示。
+
 `overlay.hide_on_pointer_hover` 默认 `false`，`overlay.hide_on_pointer_hover_delay_seconds` 默认
 `0`（立即隐藏）。两者只在窗口呈现层生效：开启后指针进入 overlay 窗口矩形并停留满延迟时间，
 窗口渲染 alpha 在 300ms 内降到 `0`，同时指针事件立即穿透；指针离开后 alpha 在 300ms 内恢复，

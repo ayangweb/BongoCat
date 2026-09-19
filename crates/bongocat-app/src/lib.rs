@@ -367,27 +367,43 @@ impl Application {
         let (run_marker, previous_run) = application_log.begin_run()?;
         let state_store = StateStore::new(layout);
         let state = state_store.load_or_default().state;
-        let (config, config_revision, config_recovery, interrupted_config_recovery, config_status) =
-            match config_store.load_or_default() {
-                Ok(loaded) => (
-                    loaded.config,
-                    Some(loaded.revision),
-                    loaded.recovery,
-                    loaded.interrupted_recovery,
-                    ApplicationConfigStatus::Ready,
-                ),
-                Err(ConfigError::NoValidRecoveryBackup { candidates }) => (
-                    NativeConfig::default(),
-                    None,
-                    None,
-                    None,
-                    ApplicationConfigStatus::RecoveryRequired {
-                        checked_backups: candidates,
-                    },
-                ),
-                Err(error) => return Err(error.into()),
-            };
+        let (
+            mut config,
+            mut config_revision,
+            config_recovery,
+            interrupted_config_recovery,
+            config_status,
+        ) = match config_store.load_or_default() {
+            Ok(loaded) => (
+                loaded.config,
+                Some(loaded.revision),
+                loaded.recovery,
+                loaded.interrupted_recovery,
+                ApplicationConfigStatus::Ready,
+            ),
+            Err(ConfigError::NoValidRecoveryBackup { candidates }) => (
+                NativeConfig::default(),
+                None,
+                None,
+                None,
+                ApplicationConfigStatus::RecoveryRequired {
+                    checked_backups: candidates,
+                },
+            ),
+            Err(error) => return Err(error.into()),
+        };
         let operational = config_status == ApplicationConfigStatus::Ready;
+        if operational && !config.overlay.visible {
+            // The model window always starts visible: hiding it is a
+            // per-session choice, so a persisted hidden overlay is normalized
+            // back to visible instead of surviving a restart. The commit is
+            // best effort like other startup corrections — a storage failure
+            // still leaves this session visible.
+            config.overlay.visible = true;
+            if let Ok(revision) = config_store.commit(&config) {
+                config_revision = Some(revision);
+            }
+        }
         let shortcut_table = ShortcutTable::new(active_shortcuts(&config)?);
         let (motion_audio, motion_audio_client) =
             match MotionAudioService::start(AUDIO_COMMAND_CAPACITY) {
@@ -3452,6 +3468,31 @@ mod tests {
         );
         assert_eq!(restarted.runtime_client().snapshot().maximum_fps, 120);
         assert_eq!(restarted.config().appearance.theme, ConfigTheme::Dark);
+        assert!(restarted.config().overlay.visible);
+        restarted.shutdown().expect("clean restart shutdown");
+    }
+
+    /// Hiding the model window is a per-session choice: the overlay always
+    /// starts visible and a persisted hidden overlay never survives a restart.
+    #[test]
+    fn startup_forces_the_overlay_visible_like_the_legacy_window_state() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let store = ConfigStore::new(layout.clone()).expect("config store");
+        let mut config = store.load_or_default().expect("default config").config;
+        config.overlay.visible = false;
+        store.commit(&config).expect("hidden config commit");
+
+        let application =
+            Application::start_with_layout(layout.clone()).expect("start application");
+        assert!(application.config().overlay.visible);
+        assert!(application.runtime_client().snapshot().overlay_visible);
+        let persisted = std::fs::read_to_string(&layout.config).expect("persisted config");
+        assert!(persisted.contains("\"visible\": true"));
+        application.shutdown().expect("clean shutdown");
+
+        let restarted = Application::start_with_layout(layout).expect("restart application");
+        assert!(restarted.config().overlay.visible);
         restarted.shutdown().expect("clean restart shutdown");
     }
 
@@ -3586,15 +3627,15 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let store = ConfigStore::new(layout.clone()).expect("config store");
         let mut config = store.load_or_default().expect("default config").config;
-        config.overlay.visible = false;
-        store.commit(&config).expect("hidden config commit");
-        config.overlay.visible = true;
-        store.commit(&config).expect("visible config commit");
+        config.overlay.opacity_percent = 87;
+        store.commit(&config).expect("older config commit");
+        config.overlay.opacity_percent = 93;
+        store.commit(&config).expect("newer config commit");
         std::fs::write(&layout.config, b"corrupt-current").expect("corrupt current config");
 
         let application = Application::start_with_layout(layout.clone()).expect("recover startup");
-        assert!(!application.config().overlay.visible);
-        assert!(!application.runtime_client().snapshot().overlay_visible);
+        assert_eq!(application.config().overlay.opacity_percent, 87);
+        assert!(application.runtime_client().snapshot().overlay_visible);
         let recovery = application.config_recovery().expect("recovery diagnostic");
         assert_eq!(
             recovery.source_schema_version(),
@@ -3677,14 +3718,14 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let store = ConfigStore::new(layout.clone()).expect("config store");
         let mut current = store.load_or_default().expect("default config").config;
-        let interrupted_bytes = std::fs::read(&layout.config).expect("visible config bytes");
-        current.overlay.visible = false;
-        store.commit(&current).expect("hidden current config");
+        let interrupted_bytes = std::fs::read(&layout.config).expect("committed config bytes");
+        current.overlay.opacity_percent = 87;
+        store.commit(&current).expect("current config commit");
         std::fs::write(layout.config.with_extension("json.tmp"), interrupted_bytes)
             .expect("interrupted config temp");
 
         let application = Application::start_with_layout(layout).expect("recover startup");
-        assert!(!application.config().overlay.visible);
+        assert_eq!(application.config().overlay.opacity_percent, 87);
         assert_eq!(
             application.interrupted_config_recovery(),
             Some(InterruptedConfigRecovery::ArchivedStaleTemp)
