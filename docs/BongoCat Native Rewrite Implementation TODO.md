@@ -4592,6 +4592,67 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：在带菜单键的键盘上，macOS 与 Windows 各确认一次 `Apps.png` 能被画出。
     - 依赖：ADR-0041。
 
+91. [x] `P5-BEHAVIOR-SHORTCUT-AUTO-ASSIGN`：移植旧版"模型加载后自动分配行为快捷键"。
+    - 依赖：ADR-0041/0042、第 62 项 `P5-BEHAVIOR-SHORTCUT-TOGGLE`、当前 v1
+      `shortcuts.model_behaviors` 与 `model.enable_behavior_shortcuts`、
+      `pre-refactor:src/composables/useModel.ts` 的 `getBehaviorShortcut`。
+    - 背景（2026-09-19，维护者反馈）：第 62 项让开关生效后，快捷键页面在用户录制之前整页为空。旧版
+      会在模型加载完成后无条件为每个 motion 和 expression 自动分配组合键，所以页面从打开起就有值；
+      Native 缺这一步，属于产品能力静默消失（`docs/phase-0/behavior-inventory.md` 该项因此由
+      `P1 首发后` 上调为 `P0 首发`）。
+    - 退出条件：模型激活时按旧版分层自动分配；已有绑定永不重写，每一项仍可单独修改；已占用的组合键
+      （含应用级 command）跳过而非重用；超出容量的行为保持未绑定；"恢复默认"为当前已激活模型重新
+      分配而不是清空；分配与选中模型同一次 commit 落盘；开关默认值仍为 `false`；定向测试、变异验证、
+      完整 Native workspace 门禁与手动 `tools/` 校验通过。
+    - 实现：`bongocat-config` 新增 `default_behavior_shortcut()` / `assign_default_behavior_shortcuts()`
+      / `BEHAVIOR_SHORTCUT_CAPACITY`（`4 × (10 + 26) = 144`）与 `ModelBehaviorAction::behavior_id()`
+      （归一化与分配共用，杜绝两处命名漂移）；`bongocat-app` 在 `prepare_model`、`select_model`、
+      `restore_default_shortcuts` 三处接线，并新增 `active_model_id`——"已激活模型"不再从
+      `config.model.selected_model_id` 推断，因为全新配置没有选中项而 `restore_startup_model` 仍会
+      激活 standard 预置。
+    - 顺带消除一处同类漂移风险：`bongocat-ui` 的 `window::presentation::model_behavior_id()` 原本
+      自己拼一遍 `motion:{group}:{index}` / `expression:{name}`，而快捷键页的行正是拿这个字符串去和
+      绑定做**字符串相等**匹配的——第三份拼写一旦漂移，每一行都会渲染成空的（正是本次要修的症状），
+      而现有测试都用同一个 helper 造期望值，挡不住。已改为调用
+      `bongocat-config::ModelBehaviorAction::behavior_id()`，拼写回到单一 owner（`bongocat-ui`
+      本来就依赖 `bongocat-config`，不新增依赖）。该匹配本身已有覆盖：
+      `shortcut_capture_targets_have_independent_tab_stops` 用硬编码的 `"motion:tap:0"` 断言
+      `rows[5].2 == shortcut_display("Control+M")`，走 accessibility 投影，与视觉行共用
+      `shortcut_rows` 内核。
+    - 记录一处用户可见的不对称（已核实并钉住）：快捷键页的"清除全部快捷键"送出
+      `SettingsShortcuts::default()`，对 `shortcuts.commands` 持久、对
+      `shortcuts.model_behaviors` **不**持久——下次模型激活（重启 / 切模型 / 再激活同一模型）会把
+      未绑定的行为重新补上默认组合键。这是旧版行为的直接结果（旧版每次模型加载都无条件重分配且
+      没有开关），也是为什么"让这些组合键不生效"应该用 `model.enable_behavior_shortcuts` 开关而
+      不是靠清空。新增 `clearing_all_shortcuts_does_not_survive_the_next_activation` 把这个不对称
+      钉住，改动任一侧都必须是显式决定。**如果维护者希望"清除全部"对模型行为也持久，这是一个需要
+      单独决策的行为变更，不是本项的实现缺陷。**
+    - 未决观察（2026-09-19，未实现，需维护者判断）：开关默认 `false` + 页面现在有值，组合出一个新的
+      用户状态——快捷键页的"模型"页签会显示 `Cmd+1 … Cmd+7`，但按下去没有任何反应，而**该页签本身
+      不提示开关状态**（`behavior_shortcuts_enabled` 只被通用页的开关与 accessibility 读取，
+      `shortcuts_page.rs` 完全没有引用它）。通用页的开关说明"允许使用全局快捷键触发模型动作和表情"
+      是准确的，所以这是可发现性的取舍而不是断链。若维护者认为需要在快捷键页加一行提示，那会涉及
+      两个 locale 的新 key、render 与 accessibility 节点，属于独立的 UI 变更，本项不擅自加入。
+    - 文档顺带修正：`docs/phase-0/behavior-inventory.md` 的范围统计表此前与矩阵实际行数不符
+      （表 `P0 34 / P1 4`，矩阵实为 `37 / 2`），且**早于本次改动就存在**。`不迁移` 一列始终正确，
+      说明该表是逐行计数。已对齐为 `P0 38 / P1 1 / 不迁移 9`（合计 48）并记录修订。
+    - 验收证据（2026-09-19，本机 macOS / aarch64）：`cargo test -p bongocat-config` 54 passed
+      （1 ignored）、`cargo test -p bongocat-app` 135 + 22 passed；新增
+      `activating_a_model_fills_in_the_legacy_default_behavior_shortcuts`、
+      `selecting_a_model_keeps_the_behavior_bindings_the_user_recorded`、
+      `restoring_default_shortcuts_reassigns_the_active_model_defaults`，以及 settings 侧的
+      `snapshot_carries_the_auto_assigned_behavior_shortcuts`——最后一项从 settings snapshot 断言
+      快捷键页真正读到的数据（7 条绑定 + catalog 里 7 条 behavior），因为配置里有绑定而页面读不到
+      等于没修。变异验证：把"跳过已绑定行为"的守卫改成恒假后，app 侧断言以 `left: 8 / right: 7`
+      变红，config 侧 `default_behavior_assignment_skips_taken_chords_and_keeps_existing_bindings`
+      同时变红，按内容哈希校验还原后复绿。`restoring_…` 在接线完成前以 `left: 0 / right: 7` 变红，
+      正是它暴露了 `active_model_id` 缺口。
+    - 有意差异（旧版 vs Native）：① 已占用组合键跳过而非按位置重用——旧版会让后续行为拿到已被占用
+      的组合键，而 Native 的 `shortcuts.conflict` 校验会因此判定整份配置无效；② 应用级 command 绑定
+      计入占用——旧版两个 store 分开注册但都是全局；③ 新增开关且默认关闭，旧版没有开关。
+    - 未运行：Windows 侧同路径（本机无法执行 `cfg(windows)` 测试）；双平台实机确认自动分配的组合键
+      确实能在系统层面触发动作。分配契约本身由 `bongocat-config` 的单元测试覆盖，与平台无关。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

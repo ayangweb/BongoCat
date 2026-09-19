@@ -313,6 +313,16 @@ pub struct ModelConfig {
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     pub play_motion_audio: bool,
+    /// Whether motion/expression bindings reach the platform shortcut table.
+    ///
+    /// Defaults to `false`. The legacy implementation auto-assigned a whole
+    /// tier of `primary + [Shift/Alt] + digit/letter` chords to every motion and
+    /// expression as soon as a model finished loading, with no opt-in: a user
+    /// who never opened the behaviour list still ended up with dozens of global
+    /// shortcuts. The Native rewrite keeps this switch as the explicit opt-in
+    /// gate, so a fresh v1 configuration starts with no model behaviour
+    /// shortcut at all and every binding is one the user recorded on the
+    /// Shortcuts page.
     pub enable_behavior_shortcuts: bool,
     pub maximum_fps: u16,
     pub ignore_pointer: bool,
@@ -370,15 +380,10 @@ impl ShortcutConfig {
             .model_behaviors
             .iter()
             .map(|binding| {
-                let behavior_id = match binding
+                let behavior_id = binding
                     .parse_action()
                     .map_err(|_| ConfigError::InvalidValue("shortcuts.behavior"))?
-                {
-                    ModelBehaviorAction::Motion { group, index } => {
-                        format!("motion:{group}:{index}")
-                    }
-                    ModelBehaviorAction::Expression { name } => format!("expression:{name}"),
-                };
+                    .behavior_id();
                 let shortcut = ShortcutChord::parse(&binding.shortcut)
                     .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?
                     .canonical();
@@ -402,6 +407,129 @@ impl ShortcutConfig {
     pub fn compile(&self) -> Result<CompiledShortcuts, ConfigError> {
         CompiledShortcuts::compile(self)
     }
+}
+
+/// The digits, in the order the legacy auto-assignment walked them.
+const BEHAVIOR_SHORTCUT_DIGITS: &str = "1234567890";
+/// The letters, in the same order the legacy auto-assignment walked them. It is
+/// a keyboard layout order rather than alphabetical, and it is kept as-is so a
+/// model's Nth behavior lands on the same chord it did before.
+const BEHAVIOR_SHORTCUT_LETTERS: &str = "QWERTYUIOPASDFGHJKLZXCVBNM";
+/// The four modifier tiers layered over each alphabet, all on top of the
+/// platform's command modifier.
+const BEHAVIOR_SHORTCUT_MODIFIER_TIERS: [u8; 4] = [
+    0,
+    ShortcutModifiers::SHIFT,
+    ShortcutModifiers::ALT,
+    ShortcutModifiers::SHIFT | ShortcutModifiers::ALT,
+];
+
+/// How many chords the legacy auto-assignment can hand out: four modifier tiers
+/// over the ten digits, then the same four over the twenty-six letters.
+pub const BEHAVIOR_SHORTCUT_CAPACITY: usize = BEHAVIOR_SHORTCUT_MODIFIER_TIERS.len()
+    * (BEHAVIOR_SHORTCUT_DIGITS.len() + BEHAVIOR_SHORTCUT_LETTERS.len());
+
+/// The chord the legacy implementation handed out at `position`, counting from
+/// zero over the digit tiers first and the letter tiers second.
+///
+/// `primary` is the platform's command modifier — [`ShortcutModifiers::META`]
+/// on macOS, [`ShortcutModifiers::CONTROL`] everywhere else. It is a parameter
+/// rather than a platform check so this crate stays platform-free. Returns
+/// `None` past the last slot; the legacy implementation returned an empty
+/// string there and left the remaining behaviors unbound.
+pub fn default_behavior_shortcut(position: usize, primary: u8) -> Option<ShortcutChord> {
+    if position >= BEHAVIOR_SHORTCUT_CAPACITY {
+        return None;
+    }
+    let digit_capacity = BEHAVIOR_SHORTCUT_MODIFIER_TIERS.len() * BEHAVIOR_SHORTCUT_DIGITS.len();
+    let (alphabet, offset) = if position < digit_capacity {
+        (BEHAVIOR_SHORTCUT_DIGITS, position)
+    } else {
+        (BEHAVIOR_SHORTCUT_LETTERS, position - digit_capacity)
+    };
+    let tier = offset / alphabet.len();
+    let key = alphabet.as_bytes()[offset % alphabet.len()] as char;
+    let modifiers = ShortcutModifiers::from_bits(primary | BEHAVIOR_SHORTCUT_MODIFIER_TIERS[tier])?;
+    Some(ShortcutChord {
+        modifiers,
+        key: ShortcutKey::parse(&key.to_string()).ok()?,
+    })
+}
+
+fn canonical_chord(value: &str) -> Option<String> {
+    ShortcutChord::parse(value)
+        .map(|chord| chord.canonical())
+        .ok()
+}
+
+/// Fill in the legacy default chord for every behavior of one model that has no
+/// binding yet, and return how many bindings were added.
+///
+/// The legacy implementation ran this on every model load: it walked the
+/// model's motions in declaration order, then its expressions, and bound each
+/// unbound one to the next chord of the tiering above. Two deliberate
+/// differences from that implementation:
+///
+/// - A chord any binding already uses is skipped instead of reused. The legacy
+///   implementation indexed by position, so once a user edited one binding the
+///   next behavior could be handed a chord that was already taken; the Native
+///   configuration rejects duplicate chords outright, which would make the
+///   whole configuration invalid rather than merely ambiguous.
+/// - Application command bindings count as taken too. The legacy
+///   implementation kept window and behavior shortcuts in separate stores even
+///   though both were registered globally, so the two could collide.
+///
+/// An existing binding is never rewritten, which is what makes this safe to
+/// repeat on every activation: only behaviors the user has not touched are
+/// filled in.
+pub fn assign_default_behavior_shortcuts(
+    shortcuts: &mut ShortcutConfig,
+    model_id: &str,
+    behavior_ids: &[String],
+    primary: u8,
+) -> usize {
+    let mut taken: std::collections::BTreeSet<String> = shortcuts
+        .commands
+        .iter()
+        .filter_map(|binding| canonical_chord(&binding.shortcut))
+        .chain(
+            shortcuts
+                .model_behaviors
+                .iter()
+                .filter_map(|binding| canonical_chord(&binding.shortcut)),
+        )
+        .collect();
+
+    let mut position = 0_usize;
+    let mut added = 0_usize;
+    for behavior_id in behavior_ids {
+        if shortcuts
+            .model_behaviors
+            .iter()
+            .any(|binding| binding.model_id == model_id && binding.behavior_id == *behavior_id)
+        {
+            continue;
+        }
+        let mut assigned = None;
+        while let Some(chord) = default_behavior_shortcut(position, primary) {
+            position += 1;
+            let candidate = chord.canonical();
+            if taken.insert(candidate.clone()) {
+                assigned = Some(candidate);
+                break;
+            }
+        }
+        let Some(shortcut) = assigned else {
+            break;
+        };
+        shortcuts.model_behaviors.push(ModelBehaviorBinding {
+            model_id: model_id.to_owned(),
+            behavior_id: behavior_id.clone(),
+            shortcut,
+        });
+        added += 1;
+    }
+    added
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -868,6 +996,19 @@ pub enum ModelBehaviorAction {
     Expression { name: String },
 }
 
+impl ModelBehaviorAction {
+    /// The canonical `behavior_id` spelling this action persists as. Both the
+    /// canonicalizing path and the default-assignment path go through here, so
+    /// a generated binding and a user-recorded one can never disagree on how
+    /// the same motion or expression is named.
+    pub fn behavior_id(&self) -> String {
+        match self {
+            Self::Motion { group, index } => format!("motion:{group}:{index}"),
+            Self::Expression { name } => format!("expression:{name}"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ModelBehaviorParseError {
     Empty,
@@ -963,7 +1104,7 @@ impl Default for NativeConfig {
                 mirror: false,
                 mirror_pointer_tracking: false,
                 play_motion_audio: true,
-                enable_behavior_shortcuts: true,
+                enable_behavior_shortcuts: false,
                 maximum_fps: 60,
                 ignore_pointer: false,
                 release_fallback_timeout_ms: 500,
@@ -2921,6 +3062,141 @@ mod tests {
             config.validate(),
             Err(ConfigError::InvalidValue("shortcuts.binding"))
         ));
+    }
+
+    #[test]
+    fn default_behavior_shortcuts_follow_the_legacy_tiering() {
+        let control = ShortcutModifiers::CONTROL;
+        assert_eq!(BEHAVIOR_SHORTCUT_CAPACITY, 144);
+        for (position, canonical) in [
+            (0_usize, "Control+1"),
+            (9, "Control+0"),
+            (10, "Control+Shift+1"),
+            (19, "Control+Shift+0"),
+            (20, "Control+Alt+1"),
+            (29, "Control+Alt+0"),
+            (30, "Control+Alt+Shift+1"),
+            (39, "Control+Alt+Shift+0"),
+            (40, "Control+Q"),
+            (65, "Control+M"),
+            (66, "Control+Shift+Q"),
+            (92, "Control+Alt+Q"),
+            (118, "Control+Alt+Shift+Q"),
+            (143, "Control+Alt+Shift+M"),
+        ] {
+            assert_eq!(
+                default_behavior_shortcut(position, control)
+                    .expect("legacy slot")
+                    .canonical(),
+                canonical,
+                "position {position}"
+            );
+        }
+        assert!(default_behavior_shortcut(BEHAVIOR_SHORTCUT_CAPACITY, control).is_none());
+
+        // macOS uses Command as the primary modifier instead of Control.
+        let meta = ShortcutModifiers::META;
+        for (position, canonical) in [
+            (0_usize, "Meta+1"),
+            (10, "Shift+Meta+1"),
+            (20, "Alt+Meta+1"),
+            (30, "Alt+Shift+Meta+1"),
+            (40, "Meta+Q"),
+        ] {
+            assert_eq!(
+                default_behavior_shortcut(position, meta)
+                    .expect("legacy slot")
+                    .canonical(),
+                canonical,
+                "position {position}"
+            );
+        }
+    }
+
+    #[test]
+    fn default_behavior_assignment_skips_taken_chords_and_keeps_existing_bindings() {
+        let control = ShortcutModifiers::CONTROL;
+        let existing = ModelBehaviorBinding {
+            model_id: "standard".to_owned(),
+            behavior_id: "motion:CAT_motion:1".to_owned(),
+            shortcut: "Control+3".to_owned(),
+        };
+        let mut shortcuts = ShortcutConfig {
+            commands: vec![ShortcutBinding {
+                command: "toggle_overlay".to_owned(),
+                shortcut: "ctrl+1".to_owned(),
+            }],
+            model_behaviors: vec![existing.clone()],
+        };
+        let behaviors = [
+            "motion:CAT_motion:0".to_owned(),
+            "motion:CAT_motion:1".to_owned(),
+            "motion:CAT_motion_lock:0".to_owned(),
+        ];
+        let added =
+            assign_default_behavior_shortcuts(&mut shortcuts, "standard", &behaviors, control);
+        assert_eq!(added, 2);
+        assert_eq!(
+            shortcuts.model_behaviors,
+            vec![
+                existing,
+                ModelBehaviorBinding {
+                    model_id: "standard".to_owned(),
+                    behavior_id: "motion:CAT_motion:0".to_owned(),
+                    shortcut: "Control+2".to_owned(),
+                },
+                ModelBehaviorBinding {
+                    model_id: "standard".to_owned(),
+                    behavior_id: "motion:CAT_motion_lock:0".to_owned(),
+                    shortcut: "Control+4".to_owned(),
+                },
+            ]
+        );
+        shortcuts
+            .compile()
+            .expect("auto-assigned chords do not conflict");
+
+        // Running it again fills nothing in and rewrites nothing.
+        let unchanged = shortcuts.clone();
+        assert_eq!(
+            assign_default_behavior_shortcuts(&mut shortcuts, "standard", &behaviors, control),
+            0
+        );
+        assert_eq!(shortcuts, unchanged);
+
+        // A different model starts from its own empty set of bindings, but still
+        // avoids every chord the first model already owns.
+        let other = ["expression:happy".to_owned()];
+        assert_eq!(
+            assign_default_behavior_shortcuts(&mut shortcuts, "keyboard", &other, control),
+            1
+        );
+        assert_eq!(
+            shortcuts
+                .model_behaviors
+                .last()
+                .expect("assigned binding")
+                .shortcut,
+            "Control+5"
+        );
+        shortcuts
+            .compile()
+            .expect("cross-model chords do not conflict");
+    }
+
+    #[test]
+    fn default_behavior_assignment_stops_at_the_legacy_capacity() {
+        let control = ShortcutModifiers::CONTROL;
+        let mut shortcuts = ShortcutConfig::default();
+        let behaviors = (0..BEHAVIOR_SHORTCUT_CAPACITY + 5)
+            .map(|index| format!("motion:group:{index}"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            assign_default_behavior_shortcuts(&mut shortcuts, "standard", &behaviors, control),
+            BEHAVIOR_SHORTCUT_CAPACITY
+        );
+        assert_eq!(shortcuts.model_behaviors.len(), BEHAVIOR_SHORTCUT_CAPACITY);
+        shortcuts.compile().expect("no conflicts at capacity");
     }
 
     #[test]

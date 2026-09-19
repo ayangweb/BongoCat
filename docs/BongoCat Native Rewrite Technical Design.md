@@ -163,10 +163,20 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   UI 生命周期。`open_settings` 通过线程安全的一次性请求位交给 GPUI frame source，后者在
   owner 线程切换设置窗口可见性：窗口已显示时隐藏，Windows 复用隐藏的现有窗口，macOS
   关闭当前窗口并在下次触发时创建新的窗口；窗口不存在时创建并显示。forwarder 必须支持有界停止与 join。
-- `model.enable_behavior_shortcuts` 只控制 motion/expression 模型行为绑定是否进入活动的
-  `CompiledShortcuts`，不得清空或改写配置中的绑定，也不得禁用 `open_settings`、overlay 显隐、
-  镜像、穿透或置顶等应用级快捷键。开关变更必须经 revision-checked settings command 原子
+- `model.enable_behavior_shortcuts` 默认 `false`，只控制 motion/expression 模型行为绑定是否进入
+  活动的 `CompiledShortcuts`，不得清空或改写配置中的绑定，也不得禁用 `open_settings`、overlay
+  显隐、镜像、穿透或置顶等应用级快捷键。开关变更必须经 revision-checked settings command 原子
   持久化并替换共享 shortcut table；重新启用时从当前 v1 配置恢复全部已校验的模型行为绑定。
+  默认关闭是对旧版行为的刻意收窄：旧版在模型加载完成后无条件为每个 motion 和 expression 自动
+  分配一整层 `primary + [Shift/Alt] + 数字/字母` 组合键，用户没有拒绝的机会。Native 按维护者
+  决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
+- 模型行为快捷键的自动分配与旧版同构：模型激活时（`prepare_model` / `select_model`）按声明顺序
+  遍历该模型的 motion 与 expression，依次填入 `[primary]`、`[primary, Shift]`、`[primary, Alt]`、
+  `[primary, Shift, Alt]` 四层、每层先数字后字母的组合键，共 144 个名额；`primary` 在 macOS 是
+  Command、其它平台是 Control。已有绑定的行为永不重写，因此重复激活是幂等的，只有用户尚未录制
+  的行为会被补上；已被占用的组合键（含应用级 command 绑定）跳过而非重用，否则
+  `shortcuts.conflict` 会让整份配置失效。分配结果随选中模型同一次 commit 落盘，且不依赖
+  `model.enable_behavior_shortcuts`——绑定在快捷键页面可见可改，只是开关打开前不进入平台匹配表。
 - `application.show_status_icon` 通过独立的 revision-checked settings command 修改。settings worker
   以有界 request/reply bridge 请求平台主线程隐藏或显示状态图标，平台成功后才由 Application owner
   原子提交配置；配置提交失败时必须把图标恢复为旧状态。macOS/Windows 共用 `tray-icon 0.25.0` 托盘

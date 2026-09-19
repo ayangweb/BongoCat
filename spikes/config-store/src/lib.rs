@@ -287,7 +287,7 @@ impl Default for NativeConfig {
                 mirror: false,
                 mirror_pointer_tracking: false,
                 play_motion_audio: true,
-                enable_behavior_shortcuts: true,
+                enable_behavior_shortcuts: false,
                 maximum_fps: 60,
                 ignore_pointer: false,
                 release_fallback_timeout_ms: 500,

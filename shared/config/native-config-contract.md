@@ -81,6 +81,49 @@ typed settings command 修改该值后，仍按配置 revision 原子提交并�
 登录启动不属于配置字段。它是可被系统设置或其它进程改变的平台能力，settings service 只读取
 typed platform snapshot，并仅在显式用户 command 时调用平台 adapter；不得持久化第二份布尔值。
 
+`model.enable_behavior_shortcuts` 默认 `false`，只决定配置中的 `shortcuts.model_behaviors` 是否
+进入活动的 `CompiledShortcuts`：关闭时不改写、不删除这些绑定，只把它们排除在平台匹配表之外，
+`shortcuts.commands` 里的应用级快捷键不受影响；重新打开时无需重录即可恢复全部已校验绑定。
+
+默认关闭是对旧版行为的刻意收窄。旧版在模型加载完成后无条件为每个 motion 和 expression 自动分配
+一整层 `primary + [Shift/Alt] + 数字/字母` 组合键（`pre-refactor:src/composables/useModel.ts` 的
+`getBehaviorShortcut`），用户即使从未打开行为列表也已经背上一批全局快捷键。Native 版本按维护者
+决定移植这套自动分配（`docs/phase-0/behavior-inventory.md` 中该项已上调为 `P0 首发`），但把"是否
+让这些组合键真正生效"交给用户：分配照常写入 v1 配置、在快捷键页面可见且可逐项修改，只有开关打开
+后才进入平台匹配表。这与旧版不同——旧版没有这个开关。
+
+自动分配的契约与旧版一致：`primary` 在 macOS 是 `Command`、其它平台是 `Control`；分层顺序为
+`[primary]`、`[primary, Shift]`、`[primary, Alt]`、`[primary, Shift, Alt]`；每层先走数字
+`1234567890` 再走字母 `QWERTYUIOPASDFGHJKLZXCVBNM`，共 `4 × (10 + 26) = 144` 个名额
+（`bongocat_config::BEHAVIOR_SHORTCUT_CAPACITY`）。模型的行为顺序是声明顺序：先按 motion group
+的声明顺序遍历组内 motion，再遍历 expression；行为 id 沿用 `motion:{group}:{index}` 与
+`expression:{name}`。超过 144 个的行为保持未绑定，与旧版返回空字符串一致。
+
+两处有意的行为差异，都是为了让分配结果一定是合法配置：
+
+- **已被占用的组合键跳过，不复用。** 旧版按位置索引取组合键，用户改动过某一项之后，后续行为可能
+  被分到一个已被占用的组合键；Native 的 `shortcuts.conflict` 校验会因此判定整份配置无效，而不是
+  仅仅产生歧义。
+- **应用级 command 绑定同样计入占用。** 旧版把窗口快捷键与行为快捷键放在两个 store 里，尽管两者
+  都是全局注册，因此可以互相撞车。
+
+分配是幂等的：已有绑定的行为永不重写，所以模型每次激活都可以安全地重复执行，只会补上用户尚未
+录制的那部分。因此快捷键页面的每一项都同时具备"有默认值"和"可单独修改"两种性质——修改过的项在
+后续激活与"恢复默认"之间保持用户的值，未被修改的项则回到默认分层。
+
+⚠️ 由此产生一个用户可见的不对称，需要明确记录：快捷键页面的"清除全部快捷键"送出的是
+`SettingsShortcuts::default()`，它对 `shortcuts.commands` 是**持久**的，对
+`shortcuts.model_behaviors` **不是**——下一次模型激活（重启、切换模型，或再次激活同一个模型）会把
+该模型未绑定的行为重新补上默认组合键。这是旧版行为的直接结果（旧版每次模型加载都无条件重分配、
+没有开关），所以"让这些组合键不生效"的正确手段是 `model.enable_behavior_shortcuts` 开关，而不是
+靠清空。`bongocat-app` 的
+`clearing_all_shortcuts_does_not_survive_the_next_activation` 把这个不对称钉住：改动任一侧都必须
+是显式决定，而不是顺手改掉。
+
+"恢复默认"（`restore_default_shortcuts`）清空应用级 command 绑定后，会为**当前已激活的模型**重新
+执行一次分配，而不是把行为列表清空。注意"已激活"不等于配置里的 `selected_model_id`：全新配置没有
+选中任何模型，启动时仍会激活 standard 预置，此时按 `selected_model_id` 判断会得到空列表。
+
 窗口圆角（`overlay.corner_radius_percent`）与指针悬停隐藏（`overlay.hide_on_pointer_hover`、
 `overlay.hide_on_pointer_hover_delay_seconds`）原本属于 `P1 首发后` 范围，现按维护者决定上调为
 `P0 首发`，作为当前 v1 字段进入 `next` 初始版本。这不引入迁移或兼容逻辑：`next` 仍是全新首版，

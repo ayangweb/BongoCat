@@ -7,15 +7,16 @@ use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRecovery,
     ConfigRevision, ConfigStore, InstalledModelMetadata, InterruptedConfigRecovery, Language,
-    ModelBehaviorBinding, NativeConfig, OverlayWindowPlacement, PlatformStorageError,
-    SelectedModelOrigin, ShortcutBinding, ShortcutConfig, ShortcutTable, StateError, StateStore,
-    StorageLayout, Theme as ConfigTheme, WindowPlacement, platform_layout,
+    ModelBehaviorAction, ModelBehaviorBinding, NativeConfig, OverlayWindowPlacement,
+    PlatformStorageError, SelectedModelOrigin, ShortcutBinding, ShortcutConfig, ShortcutModifiers,
+    ShortcutTable, StateError, StateStore, StorageLayout, Theme as ConfigTheme, WindowPlacement,
+    platform_layout,
 };
 use bongocat_live2d::KeyImageInventory;
 use bongocat_model::{
-    CommittedModel, InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelImportProgress,
-    ModelImportStage, ModelOrigin, ModelPackageLimits, ModelSourceContent, ModelStore,
-    ModelStoreError, MverInputMode, PresetModelCatalog,
+    CommittedModel, InstalledModel, ModelBehaviorSnapshot, ModelCatalogEntry, ModelError, ModelId,
+    ModelImportProgress, ModelImportStage, ModelOrigin, ModelPackageLimits, ModelSourceContent,
+    ModelStore, ModelStoreError, MverInputMode, PresetModelCatalog,
 };
 use bongocat_render::{FUNCTION_KEY_USAGES, KeySide, ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
@@ -304,6 +305,10 @@ pub struct Application {
     preset_models: PresetModelCatalog,
     model_store: ModelStore,
     active_model_origin: Option<ModelOrigin>,
+    /// The model the runtime was actually handed, which is not always the
+    /// configured selection: a fresh configuration has no selection at all and
+    /// startup still activates the standard preset.
+    active_model_id: Option<ModelId>,
     runtime: RuntimeOwner,
     motion_audio: Option<MotionAudioService>,
     render_consumer: Option<RenderConsumer>,
@@ -462,6 +467,11 @@ impl Application {
             .model
             .selected_model_origin
             .map(model_origin_from_config);
+        let active_model_id = config
+            .model
+            .selected_model_id
+            .as_deref()
+            .and_then(|id| ModelId::parse(id).ok());
         let mut application = Self {
             config_store,
             state_store,
@@ -475,6 +485,7 @@ impl Application {
             preset_models,
             model_store,
             active_model_origin,
+            active_model_id,
             runtime,
             motion_audio,
             render_consumer,
@@ -1008,9 +1019,18 @@ impl Application {
         Ok(snapshot)
     }
 
+    /// Reset the shortcut configuration to its defaults: no application
+    /// command binding, and the active model's motions and expressions back on
+    /// the chords the legacy implementation would have auto-assigned.
+    ///
+    /// Without an active model there is nothing to auto-assign, so this leaves
+    /// the model behaviour list empty rather than inventing a model.
     pub fn restore_default_shortcuts(&mut self) -> Result<RuntimeSnapshot, ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.shortcuts = ShortcutConfig::default();
+        if let Some(model) = self.active_model() {
+            assign_default_behavior_shortcuts(&mut next_config, &model);
+        }
         next_config.validate()?;
         let compiled = active_shortcuts(&next_config)?;
         let next_revision = self
@@ -1175,6 +1195,7 @@ impl Application {
         }
         let id = ModelId::parse(id)?;
         let committed = self.load_model(origin, &id)?;
+        self.persist_default_behavior_shortcuts(&committed);
         let input_bindings = input_bindings_for_committed_model(&committed);
         let client = self.runtime.client();
         let sequence = client
@@ -1198,6 +1219,7 @@ impl Application {
             .map(|pending| pending.token)
             .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
         self.active_model_origin = Some(origin);
+        self.active_model_id = Some(id);
         Ok(token)
     }
 
@@ -1211,6 +1233,11 @@ impl Application {
         let mut next_config = self.config.clone();
         next_config.model.selected_model_id = Some(id.as_str().to_owned());
         next_config.model.selected_model_origin = Some(config_origin_from_model(origin));
+        // Switching models is also when the new model's motions and expressions
+        // receive the legacy default chords, so the Shortcuts page offers a
+        // default for every behavior the user has not recorded yet. The
+        // assignment rides on the same commit as the selection itself.
+        assign_default_behavior_shortcuts(&mut next_config, &committed);
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1225,6 +1252,7 @@ impl Application {
                 self.config = next_config;
                 self.config_revision = Some(next_revision);
                 self.active_model_origin = Some(origin);
+                self.active_model_id = Some(id);
                 Ok(snapshot)
             }
             Err(error) => {
@@ -1529,6 +1557,50 @@ impl Application {
         self.config_revision = Some(next_revision);
     }
 
+    /// Persist the legacy default chords for a model that is becoming active.
+    ///
+    /// Best effort by design: a configuration that is not operational, or a
+    /// commit that loses a revision race, leaves the previous bindings in place
+    /// and lets activation continue. Nothing is written when the model already
+    /// has a binding for every behavior, which keeps the ordinary startup path
+    /// read-only.
+    fn persist_default_behavior_shortcuts(&mut self, model: &CommittedModel) {
+        let mut next_config = self.config.clone();
+        if assign_default_behavior_shortcuts(&mut next_config, model) == 0 {
+            return;
+        }
+        if next_config.validate().is_err() {
+            return;
+        }
+        let Ok(expected_revision) = self.ready_config_revision() else {
+            return;
+        };
+        let Ok(next_revision) = self
+            .config_store
+            .commit_if_revision(&next_config, expected_revision)
+        else {
+            return;
+        };
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        if let Ok(compiled) = active_shortcuts(&self.config) {
+            self.shortcut_table.replace(compiled);
+        }
+    }
+
+    /// The model the runtime is currently holding, when it still loads.
+    ///
+    /// This is the activated model rather than the configured selection: a
+    /// fresh configuration selects nothing, and startup still activates the
+    /// standard preset, so keying this off `selected_model_id` alone would
+    /// leave the model active but invisible to callers that need its motions
+    /// and expressions.
+    fn active_model(&self) -> Option<CommittedModel> {
+        let origin = self.active_model_origin?;
+        let id = self.active_model_id.clone()?;
+        self.load_model(origin, &id).ok()
+    }
+
     pub fn shutdown(self) -> Result<RuntimeSnapshot, ApplicationError> {
         self.application_log
             .record(ApplicationLogEvent::shutdown_started());
@@ -1771,6 +1843,53 @@ fn active_shortcuts(config: &NativeConfig) -> Result<CompiledShortcuts, ConfigEr
         shortcuts.model_behaviors.clear();
     }
     shortcuts.compile()
+}
+
+/// The platform's command modifier, which the legacy auto-assignment used as the
+/// base of every model behaviour chord: Command on macOS, Control everywhere
+/// else. `bongocat-config` takes it as a parameter so that crate stays
+/// platform-free.
+const fn behavior_shortcut_primary() -> u8 {
+    if cfg!(target_os = "macos") {
+        ShortcutModifiers::META
+    } else {
+        ShortcutModifiers::CONTROL
+    }
+}
+
+/// The behavior ids of one committed model, in the order the model declares
+/// them: every motion group in declaration order, then every expression. The
+/// legacy auto-assignment walked them in this order, and so does the Shortcuts
+/// page.
+fn behavior_ids(model: &CommittedModel) -> Vec<String> {
+    model
+        .snapshot()
+        .behaviors
+        .into_iter()
+        .map(|behavior| {
+            let action = match behavior {
+                ModelBehaviorSnapshot::Motion { group, index } => {
+                    ModelBehaviorAction::Motion { group, index }
+                }
+                ModelBehaviorSnapshot::Expression { name } => {
+                    ModelBehaviorAction::Expression { name }
+                }
+            };
+            action.behavior_id()
+        })
+        .collect()
+}
+
+/// Fill in the legacy default chords for one model's motions and expressions,
+/// leaving every binding the user already has untouched. Returns how many
+/// bindings were added.
+fn assign_default_behavior_shortcuts(config: &mut NativeConfig, model: &CommittedModel) -> usize {
+    bongocat_config::assign_default_behavior_shortcuts(
+        &mut config.shortcuts,
+        model.id().as_str(),
+        &behavior_ids(model),
+        behavior_shortcut_primary(),
+    )
 }
 
 fn shortcut_config_from_settings(shortcuts: bongocat_ui::SettingsShortcuts) -> ShortcutConfig {
@@ -2807,12 +2926,332 @@ mod tests {
         ));
     }
 
+    /// The platform's command modifier, spelled the way the canonical chord
+    /// strings spell it.
+    fn behavior_shortcut_primary_name() -> &'static str {
+        if cfg!(target_os = "macos") {
+            "Meta"
+        } else {
+            "Control"
+        }
+    }
+
+    fn behavior_shortcut_primary_modifiers() -> bongocat_config::ShortcutModifiers {
+        let bits = if cfg!(target_os = "macos") {
+            bongocat_config::ShortcutModifiers::META
+        } else {
+            bongocat_config::ShortcutModifiers::CONTROL
+        };
+        bongocat_config::ShortcutModifiers::from_bits(bits).expect("valid modifiers")
+    }
+
+    /// The legacy implementation auto-assigned a chord to every motion and
+    /// expression the moment a model loaded, which is what makes its shortcuts
+    /// page show a default in every row instead of an empty field. The Native
+    /// rewrite does the same on activation, and the assignment rides on the
+    /// same commit that selects the model.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn activating_a_model_fills_in_the_legacy_default_behavior_shortcuts() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout_internal(
+            layout,
+            repository_preset_root().as_path(),
+            true,
+            Language::EnglishUnitedStates,
+        )
+        .expect("start rendering application");
+        assert!(
+            application.config().shortcuts.model_behaviors.is_empty(),
+            "a fresh configuration binds no model behaviour"
+        );
+
+        let token = application
+            .prepare_model(ModelOrigin::Preset, "standard")
+            .expect("prepare standard model");
+        let consumer = application
+            .take_render_consumer()
+            .expect("take render consumer");
+        let frame = wait_for_model_commit_frame(&consumer, token);
+        consumer
+            .report_model_commit(ModelCommitFeedback {
+                token: frame.model_commit.expect("commit token"),
+                outcome: ModelCommitOutcome::Prepared,
+            })
+            .expect("commit standard model");
+        application
+            .runtime_client()
+            .wait_for_command(token.command_sequence, RUNTIME_TIMEOUT)
+            .expect("standard model activation");
+
+        // `standard` declares four motions in two groups and three
+        // expressions. The legacy ordering walks motions before expressions,
+        // so the seven behaviours land on the first seven digit slots.
+        let bindings = application.config().shortcuts.model_behaviors.clone();
+        assert_eq!(bindings.len(), 7);
+        assert!(
+            bindings
+                .iter()
+                .all(|binding| binding.model_id == "standard")
+        );
+        let primary = behavior_shortcut_primary_name();
+        for (behavior_id, slot) in [
+            ("motion:CAT_motion:0", 1),
+            ("motion:CAT_motion:1", 2),
+            ("motion:CAT_motion_lock:0", 3),
+            ("motion:CAT_motion_lock:1", 4),
+            ("expression:live2d_expression0.exp3.json", 5),
+            ("expression:live2d_expression1.exp3.json", 6),
+            ("expression:live2d_expression2.exp3.json", 7),
+        ] {
+            let binding = bindings
+                .iter()
+                .find(|binding| binding.behavior_id == behavior_id)
+                .unwrap_or_else(|| panic!("{behavior_id} has no default binding"));
+            assert_eq!(
+                binding.shortcut,
+                format!("{primary}+{slot}"),
+                "{behavior_id}"
+            );
+        }
+
+        // The chords are persisted, but the switch still gates whether the
+        // platform adapters see them: a fresh v1 configuration leaves model
+        // behaviour shortcuts off until the user opts in.
+        assert!(!application.config().model.enable_behavior_shortcuts);
+        let modifiers = behavior_shortcut_primary_modifiers();
+        assert!(
+            application
+                .shortcut_table()
+                .load()
+                .resolve(modifiers, "1")
+                .is_none()
+        );
+        application
+            .set_behavior_shortcuts_enabled(true)
+            .expect("enable behaviour shortcuts");
+        assert!(
+            application
+                .shortcut_table()
+                .load()
+                .resolve(modifiers, "1")
+                .is_some()
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    /// A default is only a starting point: the assignment never rewrites a
+    /// binding the user recorded, and the behaviours they have not touched are
+    /// still filled in around it.
+    #[test]
+    fn selecting_a_model_keeps_the_behavior_bindings_the_user_recorded() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        // Both chords sit outside the primary tier, so the expectation below
+        // reads the same on macOS and Windows.
+        application
+            .set_shortcuts(bongocat_ui::SettingsShortcuts {
+                commands: vec![bongocat_ui::SettingsShortcutBinding {
+                    command: "toggle_overlay".to_owned(),
+                    shortcut: "Control+Alt+0".to_owned(),
+                }],
+                model_behaviors: vec![bongocat_ui::SettingsModelBehaviorBinding {
+                    model_id: "standard".to_owned(),
+                    behavior_id: "motion:CAT_motion:0".to_owned(),
+                    shortcut: "Control+Alt+9".to_owned(),
+                }],
+            })
+            .expect("persist user shortcuts");
+        let revision_before = application.config_revision();
+
+        application
+            .select_model(ModelOrigin::Preset, "standard")
+            .expect("select standard model");
+
+        let bindings = application.config().shortcuts.model_behaviors.clone();
+        assert_eq!(bindings.len(), 7);
+        let chord = |behavior_id: &str| {
+            bindings
+                .iter()
+                .find(|binding| binding.behavior_id == behavior_id)
+                .map(|binding| binding.shortcut.clone())
+        };
+        assert_eq!(
+            chord("motion:CAT_motion:0"),
+            Some("Control+Alt+9".to_owned()),
+            "the recorded binding must survive the auto-assignment"
+        );
+        let primary = behavior_shortcut_primary_name();
+        assert_eq!(
+            chord("motion:CAT_motion:1"),
+            Some(format!("{primary}+1")),
+            "the first free slot is the primary tier's first digit"
+        );
+        assert_eq!(
+            chord("motion:CAT_motion_lock:0"),
+            Some(format!("{primary}+2"))
+        );
+        assert_eq!(
+            chord("expression:live2d_expression2.exp3.json"),
+            Some(format!("{primary}+6"))
+        );
+        assert_eq!(
+            application.config().shortcuts.commands.len(),
+            1,
+            "application commands are never rewritten"
+        );
+        assert!(
+            application.config_revision() > revision_before,
+            "the assignment commits with the selection"
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    /// "Clear all shortcuts" empties the configuration, but only the
+    /// application command half is durable: the model behaviour half comes back
+    /// on the next activation, because the auto-assignment fills every
+    /// behaviour that has no binding and runs on every activation.
+    ///
+    /// This is the legacy behaviour — it re-assigned on every model load with
+    /// no way to opt out — and it is why the model behaviour switch, not
+    /// clearing, is how a user stops those chords from firing. The test exists
+    /// so a future change to either half is a deliberate decision rather than a
+    /// surprise.
+    #[test]
+    fn clearing_all_shortcuts_does_not_survive_the_next_activation() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        application
+            .select_model(ModelOrigin::Preset, "standard")
+            .expect("select standard model");
+        assert_eq!(application.config().shortcuts.model_behaviors.len(), 7);
+
+        // What the page's "Clear all shortcuts" button sends.
+        application
+            .set_shortcuts(bongocat_ui::SettingsShortcuts::default())
+            .expect("clear all shortcuts");
+        assert!(application.config().shortcuts.commands.is_empty());
+        assert!(application.config().shortcuts.model_behaviors.is_empty());
+
+        // Re-activating the model is what startup does on the next launch.
+        application
+            .select_model(ModelOrigin::Preset, "standard")
+            .expect("re-activate standard model");
+        assert!(application.config().shortcuts.commands.is_empty());
+        assert_eq!(
+            application.config().shortcuts.model_behaviors.len(),
+            7,
+            "the model behaviour defaults are re-assigned by activation"
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    /// "Restore defaults" has to leave the page usable. The legacy reset
+    /// re-ran the auto-assignment, so the Native reset rebuilds the active
+    /// model's defaults rather than emptying the list.
+    ///
+    /// This drives the real startup path on purpose: a fresh configuration
+    /// selects no model at all, and `restore_startup_model` still activates the
+    /// standard preset. Reading the active model off `selected_model_id` would
+    /// leave the reset with nothing to re-assign here.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn restoring_default_shortcuts_reassigns_the_active_model_defaults() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout_internal(
+            layout,
+            repository_preset_root().as_path(),
+            true,
+            Language::EnglishUnitedStates,
+        )
+        .expect("start rendering application");
+        assert_eq!(application.active_model_origin(), None);
+        application
+            .restore_startup_model()
+            .expect("restore startup model");
+        assert_eq!(
+            application.active_model_origin(),
+            Some(ModelOrigin::Preset),
+            "a fresh configuration falls back to the standard preset"
+        );
+        assert_eq!(
+            application.config().model.selected_model_id,
+            None,
+            "the activated model is not necessarily the configured selection"
+        );
+        let consumer = application
+            .take_render_consumer()
+            .expect("take render consumer");
+        let frame = wait_for_any_model_commit_frame(&consumer);
+        consumer
+            .report_model_commit(ModelCommitFeedback {
+                token: frame.model_commit.expect("commit token"),
+                outcome: ModelCommitOutcome::Prepared,
+            })
+            .expect("commit standard model");
+
+        let primary = behavior_shortcut_primary_name();
+        assert_eq!(
+            application.config().shortcuts.model_behaviors.len(),
+            7,
+            "startup already assigns the defaults"
+        );
+
+        // Replace both halves of the configuration, then reset.
+        application
+            .set_shortcuts(bongocat_ui::SettingsShortcuts {
+                commands: vec![bongocat_ui::SettingsShortcutBinding {
+                    command: "open_settings".to_owned(),
+                    shortcut: "Control+Alt+8".to_owned(),
+                }],
+                model_behaviors: Vec::new(),
+            })
+            .expect("persist custom shortcuts");
+        assert!(application.config().shortcuts.model_behaviors.is_empty());
+
+        application
+            .restore_default_shortcuts()
+            .expect("restore default shortcuts");
+
+        assert!(
+            application.config().shortcuts.commands.is_empty(),
+            "the reset drops application command bindings"
+        );
+        let bindings = application.config().shortcuts.model_behaviors.clone();
+        assert_eq!(bindings.len(), 7);
+        for (behavior_id, slot) in [
+            ("motion:CAT_motion:0", 1),
+            ("motion:CAT_motion_lock:1", 4),
+            ("expression:live2d_expression2.exp3.json", 7),
+        ] {
+            let binding = bindings
+                .iter()
+                .find(|binding| binding.behavior_id == behavior_id)
+                .unwrap_or_else(|| panic!("{behavior_id} has no default binding"));
+            assert_eq!(
+                binding.shortcut,
+                format!("{primary}+{slot}"),
+                "{behavior_id}"
+            );
+        }
+        application.shutdown().expect("clean shutdown");
+    }
+
     #[test]
     fn application_compiles_committed_shortcuts_for_platform_adapters() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let mut application =
             Application::start_with_layout(layout.clone()).expect("start application");
+        // A fresh v1 configuration leaves model behaviour shortcuts off, so the
+        // enabled half of this test has to opt in before recording the binding.
+        application
+            .set_behavior_shortcuts_enabled(true)
+            .expect("enable behavior shortcuts");
         let shortcuts = bongocat_ui::SettingsShortcuts {
             commands: vec![bongocat_ui::SettingsShortcutBinding {
                 command: "toggle_overlay".to_owned(),

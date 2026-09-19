@@ -4009,25 +4009,25 @@ mod tests {
         let service = ApplicationSettingsService::start(application).expect("service start");
         let client = service.client();
         let initial = client.read_snapshot_blocking().expect("initial snapshot");
-        assert!(initial.behavior_shortcuts_enabled);
+        assert!(!initial.behavior_shortcuts_enabled);
         let initial_revision = initial.config_revision.expect("config revision");
 
-        let disabled = client
-            .set_behavior_shortcuts_enabled_blocking(initial_revision, false)
-            .expect("disable behavior shortcuts");
-        assert!(!disabled.behavior_shortcuts_enabled);
+        let enabled = client
+            .set_behavior_shortcuts_enabled_blocking(initial_revision, true)
+            .expect("enable behavior shortcuts");
+        assert!(enabled.behavior_shortcuts_enabled);
         assert!(
             std::fs::read_to_string(&layout.config)
                 .expect("persisted config")
-                .contains("\"enable_behavior_shortcuts\": false")
+                .contains("\"enable_behavior_shortcuts\": true")
         );
 
         let error = client
-            .set_behavior_shortcuts_enabled_blocking(initial_revision, true)
+            .set_behavior_shortcuts_enabled_blocking(initial_revision, false)
             .expect_err("stale behavior shortcut update");
         assert_eq!(error.code(), SettingsErrorCode::SnapshotOutdated);
         assert!(
-            !client
+            client
                 .read_snapshot_blocking()
                 .expect("unchanged snapshot")
                 .behavior_shortcuts_enabled
@@ -4040,7 +4040,7 @@ mod tests {
             ApplicationSettingsService::start(restarted).expect("restarted service");
         let restarted_client = restarted_service.client();
         assert!(
-            !restarted_client
+            restarted_client
                 .read_snapshot_blocking()
                 .expect("restarted snapshot")
                 .behavior_shortcuts_enabled
@@ -4175,6 +4175,78 @@ mod tests {
         assert_eq!(stale.code(), SettingsErrorCode::SnapshotOutdated);
         let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
         assert_eq!(unchanged, restored);
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    /// The Shortcuts page renders from this snapshot: the model catalog
+    /// supplies the rows and the shortcut list supplies the chord shown in each
+    /// one. Auto-assignment only counts if it reaches here — before it landed
+    /// the list stayed empty and every row rendered blank.
+    #[test]
+    fn snapshot_carries_the_auto_assigned_behavior_shortcuts() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("application start");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        assert!(initial.shortcuts.model_behaviors.is_empty());
+        assert!(!initial.behavior_shortcuts_enabled);
+
+        let selected = client
+            .select_model_blocking(
+                initial.config_revision.expect("config revision"),
+                SettingsModelKey {
+                    id: "standard".to_owned(),
+                    origin: SettingsModelOrigin::Preset,
+                },
+            )
+            .expect("select standard model");
+
+        // Seven behaviours, one chord each, in the legacy order.
+        assert_eq!(selected.shortcuts.model_behaviors.len(), 7);
+        let primary = if cfg!(target_os = "macos") {
+            "Meta"
+        } else {
+            "Control"
+        };
+        for (behavior_id, slot) in [
+            ("motion:CAT_motion:0", 1),
+            ("motion:CAT_motion_lock:1", 4),
+            ("expression:live2d_expression2.exp3.json", 7),
+        ] {
+            let binding = selected
+                .shortcuts
+                .model_behaviors
+                .iter()
+                .find(|binding| binding.behavior_id == behavior_id)
+                .unwrap_or_else(|| panic!("{behavior_id} has no default binding"));
+            assert_eq!(binding.model_id, "standard");
+            assert_eq!(
+                binding.shortcut,
+                format!("{primary}+{slot}"),
+                "{behavior_id}"
+            );
+        }
+
+        // The rows themselves come from the catalog entry's behaviour list, so
+        // a snapshot with bindings but no behaviours would still render empty.
+        let entry = selected
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == "standard")
+            .expect("standard model entry");
+        match &entry.availability {
+            SettingsModelAvailability::Ready { behaviors, .. } => {
+                assert_eq!(behaviors.len(), 7);
+            }
+            SettingsModelAvailability::Invalid { .. } => {
+                panic!("the bundled standard model must stay valid")
+            }
+        }
+        assert!(selected.revision > initial.revision);
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
     }
