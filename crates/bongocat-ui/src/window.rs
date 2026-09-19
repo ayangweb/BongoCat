@@ -150,10 +150,6 @@ const ACCESSIBILITY_OPEN_BACKUPS: AccessibilityNodeId = AccessibilityNodeId::new
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RESTORE_DEFAULTS: AccessibilityNodeId = AccessibilityNodeId::new(29);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_REFRESH: AccessibilityNodeId = AccessibilityNodeId::new(30);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_QUIT: AccessibilityNodeId = AccessibilityNodeId::new(31);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_EXPORT_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(32);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RESTORE_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(33);
@@ -579,8 +575,6 @@ pub struct SettingsView {
     restore_shortcuts_focus: FocusHandle,
     clear_shortcuts_focus: FocusHandle,
     export_diagnostics_focus: FocusHandle,
-    refresh_focus: FocusHandle,
-    quit_focus: FocusHandle,
     /// The only settings text field the window actually renders.
     ///
     /// The overlay and gamepad numbers are drawn by the component library's

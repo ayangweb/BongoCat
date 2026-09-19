@@ -237,8 +237,6 @@
   "actions": {
     "cancel": "Cancel",
     "confirm": "Confirm",
-    "refresh": "Refresh",
-    "quit": "Quit",
     "close": "Close"
   },
   "diagnostics": {

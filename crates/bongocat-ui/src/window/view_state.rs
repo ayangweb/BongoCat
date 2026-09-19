@@ -236,8 +236,6 @@ impl SettingsView {
             restore_shortcuts_focus: cx.focus_handle().tab_index(33).tab_stop(true),
             clear_shortcuts_focus: cx.focus_handle().tab_index(34).tab_stop(true),
             export_diagnostics_focus: cx.focus_handle().tab_index(32).tab_stop(true),
-            refresh_focus: cx.focus_handle().tab_index(30).tab_stop(true),
-            quit_focus: cx.focus_handle().tab_index(31).tab_stop(true),
             model_id_input,
             syncing_component_inputs: false,
             #[cfg(any(target_os = "macos", target_os = "windows"))]

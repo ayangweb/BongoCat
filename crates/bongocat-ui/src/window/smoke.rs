@@ -152,30 +152,17 @@ impl SettingsView {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             let tree = self.accessibility_tree();
-            for (id, label) in [
-                (
-                    ACCESSIBILITY_MODELS,
-                    bongocat_i18n::text(language.catalog_locale(), "navigation.models.title"),
-                ),
-                (
-                    ACCESSIBILITY_REFRESH,
-                    bongocat_i18n::text(language.catalog_locale(), "actions.refresh"),
-                ),
-                (
-                    ACCESSIBILITY_QUIT,
-                    bongocat_i18n::text(language.catalog_locale(), "actions.quit"),
-                ),
-            ] {
-                let node = tree
-                    .nodes
-                    .iter()
-                    .find(|node| node.id == id)
-                    .ok_or_else(|| "models page omitted a shell accessibility node".to_owned())?;
-                if node.label != label {
-                    return Err(
-                        "models page and shell accessibility labels were not localized".to_owned(),
-                    );
-                }
+            let node = tree
+                .nodes
+                .iter()
+                .find(|node| node.id == ACCESSIBILITY_MODELS)
+                .ok_or_else(|| "models page omitted a shell accessibility node".to_owned())?;
+            if node.label
+                != bongocat_i18n::text(language.catalog_locale(), "navigation.models.title")
+            {
+                return Err(
+                    "models page and shell accessibility labels were not localized".to_owned(),
+                );
             }
         }
         Ok(())

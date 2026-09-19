@@ -68,3 +68,4 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - The per-model expression button is gone. A model's expressions and motions are listed on the Shortcuts page, next to the shortcut they are bound to, so the same list is not shown in two places.
 - Removed Traditional Chinese, Portuguese, and Vietnamese language options. Available choices are System, Simplified Chinese, and English.
 - The Windows key auto-release delay is now configured in milliseconds as a release fallback timeout instead of seconds.
+- Removed the toolbar at the bottom of the settings window. Its refresh and quit buttons are gone: the window keeps showing the current settings on its own, and BongoCat can still be quit from the system menu.

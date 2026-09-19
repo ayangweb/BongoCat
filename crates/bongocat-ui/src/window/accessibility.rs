@@ -650,15 +650,6 @@ impl SettingsView {
         if !disabled {
             taskbar_icon_node = taskbar_icon_node.clickable().focusable();
         }
-        let mut refresh_node = AccessibilityNode::new(
-            ACCESSIBILITY_REFRESH,
-            AccessibilityRole::Button,
-            bongocat_i18n::text(language.catalog_locale(), "actions.refresh"),
-        )
-        .disabled(self.refresh_is_disabled());
-        if !self.refresh_is_disabled() {
-            refresh_node = refresh_node.clickable().focusable();
-        }
         let restore_available = snapshot.is_some_and(|snapshot| {
             matches!(
                 snapshot.configuration_status,
@@ -895,7 +886,6 @@ impl SettingsView {
         }
         root_children.extend(shortcut_node_ids);
         root_children.extend(shortcut_clear_node_ids);
-        root_children.extend([ACCESSIBILITY_REFRESH, ACCESSIBILITY_QUIT]);
         let mut nodes = vec![
             AccessibilityNode::new(
                 ACCESSIBILITY_ROOT,
@@ -984,14 +974,6 @@ impl SettingsView {
             choose_archive_node,
             import_node,
             import_status_node,
-            refresh_node,
-            AccessibilityNode::new(
-                ACCESSIBILITY_QUIT,
-                AccessibilityRole::Button,
-                bongocat_i18n::text(language.catalog_locale(), "actions.quit"),
-            )
-            .clickable()
-            .focusable(),
         ];
         nodes.extend(shortcut_nodes);
         nodes.extend(shortcut_clear_nodes);
@@ -1220,8 +1202,6 @@ impl SettingsView {
                     self.start_model_import(cx);
                 }
             }
-            ACCESSIBILITY_REFRESH => self.refresh(cx),
-            ACCESSIBILITY_QUIT => self.request_quit_after_flush(cx),
             _ => {
                 if let Some(target) = shortcut_clear_target {
                     self.clear_shortcut(target, cx);
@@ -1353,8 +1333,6 @@ impl SettingsView {
                 ACCESSIBILITY_EXPORT_DIAGNOSTICS,
                 &self.export_diagnostics_focus,
             ),
-            (ACCESSIBILITY_REFRESH, &self.refresh_focus),
-            (ACCESSIBILITY_QUIT, &self.quit_focus),
             (ACCESSIBILITY_MODEL_CHOOSE_FOLDER, &self.choose_model_focus),
             (
                 ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE,

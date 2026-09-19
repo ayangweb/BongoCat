@@ -74,8 +74,6 @@ impl Render for SettingsView {
                     ACCESSIBILITY_RESTORE_SHORTCUTS => Some(&self.restore_shortcuts_focus),
                     ACCESSIBILITY_CLEAR_SHORTCUTS => Some(&self.clear_shortcuts_focus),
                     ACCESSIBILITY_EXPORT_DIAGNOSTICS => Some(&self.export_diagnostics_focus),
-                    ACCESSIBILITY_REFRESH => Some(&self.refresh_focus),
-                    ACCESSIBILITY_QUIT => Some(&self.quit_focus),
                     _ => None,
                 };
                 let shortcut_focus = self.snapshot.as_ref().and_then(|snapshot| {
@@ -111,7 +109,6 @@ impl Render for SettingsView {
         if let Some(snapshot) = snapshot.as_ref() {
             self.sync_component_theme(snapshot.appearance_theme, window, cx);
         }
-        let tokens = Tokens::from_theme(cx);
         if let Some(snapshot) = snapshot.as_ref() {
             self.sync_component_inputs(snapshot, window, cx);
         }
@@ -1207,49 +1204,6 @@ impl Render for SettingsView {
                 diagnostics_page,
                 about_page,
             ]);
-        let footer = div()
-            .flex()
-            .items_center()
-            .justify_end()
-            .gap_2()
-            .p_4()
-            .border_t_1()
-            .border_color(tokens.border)
-            .child(
-                icon_command_button(
-                    "refresh-settings-control",
-                    bongocat_i18n::text(language.catalog_locale(), "actions.refresh"),
-                    IconName::RotateCw,
-                    &self.refresh_focus,
-                    30,
-                    self.refresh_is_disabled(),
-                )
-                .id("refresh-settings")
-                .on_click(cx.listener(|view, _, window, cx| {
-                    if view.pending.is_none()
-                        && !view.model_import.is_running()
-                        && !view.model_import.is_picker_open()
-                    {
-                        window.focus(&view.refresh_focus, cx);
-                        view.refresh(cx);
-                    }
-                })),
-            )
-            .child(
-                icon_command_button(
-                    "quit-application-control",
-                    bongocat_i18n::text(language.catalog_locale(), "actions.quit"),
-                    IconName::Close,
-                    &self.quit_focus,
-                    31,
-                    false,
-                )
-                .id("quit-application")
-                .on_click(cx.listener(|view, _, window, cx| {
-                    window.focus(&view.quit_focus, cx);
-                    view.request_quit_after_flush(cx);
-                })),
-            );
 
         div()
             .id("bongocat-settings-root")
@@ -1271,7 +1225,6 @@ impl Render for SettingsView {
             .flex()
             .flex_col()
             .child(div().min_h_0().w_full().flex_1().child(settings))
-            .child(footer)
             .children(Root::render_notification_layer(window, cx))
             .into_any_element()
     }

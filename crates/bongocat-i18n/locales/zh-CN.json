@@ -237,8 +237,6 @@
   "actions": {
     "cancel": "取消",
     "confirm": "确认",
-    "refresh": "刷新",
-    "quit": "退出",
     "close": "关闭"
   },
   "diagnostics": {
