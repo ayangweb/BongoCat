@@ -29,15 +29,6 @@ pub(super) fn content(
             "navigation.shortcuts.title",
         )))
         .child(
-            div()
-                .text_sm()
-                .text_color(tokens.muted)
-                .child(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "navigation.shortcuts.description",
-                )),
-        )
-        .child(
             TabBar::new("shortcut-settings-tabs")
                 .segmented()
                 .selected_index(match tab {

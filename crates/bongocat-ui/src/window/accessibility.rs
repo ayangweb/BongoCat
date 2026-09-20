@@ -886,56 +886,16 @@ impl SettingsView {
         }
         root_children.extend(shortcut_node_ids);
         root_children.extend(shortcut_clear_node_ids);
-        let mut nodes = vec![
+        let mut nodes = std::iter::once(
             AccessibilityNode::new(
                 ACCESSIBILITY_ROOT,
                 AccessibilityRole::Window,
                 bongocat_i18n::text(language.catalog_locale(), "navigation.settings.title"),
             )
             .with_children(root_children),
-            AccessibilityNode::new(
-                ACCESSIBILITY_GENERAL,
-                AccessibilityRole::Button,
-                bongocat_i18n::text(language.catalog_locale(), "navigation.general.title"),
-            )
-            .clickable()
-            .focusable(),
-            AccessibilityNode::new(
-                ACCESSIBILITY_MODELS,
-                AccessibilityRole::Button,
-                bongocat_i18n::text(language.catalog_locale(), "navigation.models.title"),
-            )
-            .clickable()
-            .focusable(),
-            AccessibilityNode::new(
-                ACCESSIBILITY_SHORTCUTS,
-                AccessibilityRole::Button,
-                bongocat_i18n::text(language.catalog_locale(), "navigation.shortcuts.title"),
-            )
-            .with_value(bongocat_i18n::text(
-                language.catalog_locale(),
-                "navigation.shortcuts.description",
-            ))
-            .clickable()
-            .focusable(),
-            AccessibilityNode::new(
-                ACCESSIBILITY_DIAGNOSTICS,
-                AccessibilityRole::Button,
-                bongocat_i18n::text(language.catalog_locale(), "navigation.diagnostics.title"),
-            )
-            .clickable()
-            .focusable(),
-            AccessibilityNode::new(
-                ACCESSIBILITY_ABOUT,
-                AccessibilityRole::Button,
-                bongocat_i18n::text(language.catalog_locale(), "navigation.about.title"),
-            )
-            .with_value(bongocat_i18n::text(
-                language.catalog_locale(),
-                "navigation.about.description",
-            ))
-            .clickable()
-            .focusable(),
+        )
+        .chain(navigation_accessibility_nodes(language))
+        .chain([
             theme_node,
             language_node,
             overlay_node,
@@ -974,7 +934,8 @@ impl SettingsView {
             choose_archive_node,
             import_node,
             import_status_node,
-        ];
+        ])
+        .collect::<Vec<_>>();
         nodes.extend(shortcut_nodes);
         nodes.extend(shortcut_clear_nodes);
         if let Some(catalog_status_node) = catalog_status_node {

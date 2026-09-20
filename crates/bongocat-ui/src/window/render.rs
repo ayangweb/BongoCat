@@ -184,10 +184,6 @@ impl Render for SettingsView {
         ))
         .icon(IconName::Settings)
         .default_open(true)
-        .description(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.general.description",
-        ))
         .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -1015,10 +1011,6 @@ impl Render for SettingsView {
             "navigation.models.title",
         ))
         .icon(IconName::Cat)
-        .description(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.models.description",
-        ))
         .group(SettingGroup::new().item(SettingItem::render({
             let view = view_entity.clone();
             move |_: &RenderOptions, window: &mut Window, app: &mut App| {
@@ -1037,10 +1029,6 @@ impl Render for SettingsView {
             "navigation.shortcuts.title",
         ))
         .icon(IconName::Keyboard)
-        .description(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.shortcuts.description",
-        ))
         .group(
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -1073,11 +1061,7 @@ impl Render for SettingsView {
                             }
                         }),
                     )
-                    .layout(Axis::Vertical)
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "navigation.shortcuts.description",
-                    )),
+                    .layout(Axis::Vertical),
                 ),
         );
 
@@ -1086,10 +1070,6 @@ impl Render for SettingsView {
             "navigation.diagnostics.title",
         ))
         .icon(IconName::Activity)
-        .description(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.diagnostics.description",
-        ))
         .group(
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -1119,11 +1099,7 @@ impl Render for SettingsView {
                             }
                         }),
                     )
-                    .layout(Axis::Vertical)
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "diagnostics.runtime.description",
-                    )),
+                    .layout(Axis::Vertical),
                 ),
         );
 
@@ -1132,10 +1108,6 @@ impl Render for SettingsView {
             "navigation.about.title",
         ))
         .icon(IconName::Info)
-        .description(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.about.description",
-        ))
         .group({
             let mut about_group = SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -1160,11 +1132,7 @@ impl Render for SettingsView {
                             }
                         }),
                     )
-                    .layout(Axis::Vertical)
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "about.product_information.description",
-                    )),
+                    .layout(Axis::Vertical),
                 );
             // The update entry only exists where an update owner was wired in; the
             // recovery and smoke windows have none, and a button that cannot do

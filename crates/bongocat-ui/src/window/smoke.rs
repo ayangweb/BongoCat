@@ -754,10 +754,10 @@ impl SettingsView {
         if language == SettingsLanguage::ChineseSimplified
             && (bongocat_i18n::text(
                 language.catalog_locale(),
-                "navigation.diagnostics.description",
+                "diagnostics.input.reliability_counters",
             ) == bongocat_i18n::text(
                 SettingsLanguage::EnglishUnitedStates.catalog_locale(),
-                "navigation.diagnostics.description",
+                "diagnostics.input.reliability_counters",
             ) || metrics[0].0
                 == input_diagnostic_metrics(
                     SettingsLanguage::EnglishUnitedStates,
@@ -974,11 +974,7 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "navigation.shortcuts.title",
                     )
-                || node.value.as_deref()
-                    != Some(bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "navigation.shortcuts.description",
-                    ))
+                || node.value.is_some()
                 || !node.supports_click
                 || !node.supports_focus
             {
@@ -1028,11 +1024,7 @@ impl SettingsView {
             if node.role != AccessibilityRole::Button
                 || node.label
                     != bongocat_i18n::text(language.catalog_locale(), "navigation.about.title")
-                || node.value.as_deref()
-                    != Some(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "navigation.about.description",
-                    ))
+                || node.value.is_some()
                 || !node.supports_click
                 || !node.supports_focus
             {

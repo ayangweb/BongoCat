@@ -5,24 +5,19 @@
       "title": "BongoCat 设置"
     },
     "general": {
-      "title": "通用",
-      "description": "配置模型窗口、模型交互、输入和启动行为。"
+      "title": "通用"
     },
     "models": {
-      "title": "模型",
-      "description": "安装、验证并启用模型包。"
+      "title": "模型"
     },
     "about": {
-      "title": "关于",
-      "description": "查看产品、许可证、第三方声明和隐私信息。"
+      "title": "关于"
     },
     "diagnostics": {
-      "title": "诊断",
-      "description": "查看运行状态、输入可靠性和快捷键绑定。"
+      "title": "诊断"
     },
     "shortcuts": {
-      "title": "快捷键",
-      "description": "设置窗口控制和当前模型动作、表情的快捷键。"
+      "title": "快捷键"
     }
   },
   "system_menu": {
@@ -54,8 +49,7 @@
   "about": {
     "page_title": "关于 BongoCat",
     "product_information": {
-      "title": "产品信息",
-      "description": "查看当前版本和运行环境。"
+      "title": "产品信息"
     },
     "legal": {
       "application_license": {
@@ -245,7 +239,6 @@
     },
     "runtime": {
       "title": "运行时诊断",
-      "description": "查看渲染状态、输入计数和键盘快捷键。可搜索：渲染、输入、快捷键。",
       "no_command_failures": "没有命令失败",
       "shutdown_failures": "退出失败：%{count}",
       "command_failure": "%{error} · 命令 #%{sequence}"

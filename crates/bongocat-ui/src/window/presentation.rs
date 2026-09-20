@@ -481,6 +481,38 @@ pub(super) fn conflicting_shortcut(shortcuts: &SettingsShortcuts) -> Option<Stri
     None
 }
 
+/// The five settings navigation buttons, projected for assistive technologies.
+///
+/// A navigation button reports no state, so every node here leaves `value`
+/// empty: `value` is the state slot elsewhere in the tree (the current theme
+/// or language name, a switch's On/Off), and the page descriptions that used
+/// to ride in it are gone from the UI too. `label` alone is what a screen
+/// reader should say for these.
+///
+/// Free of `&self` so a unit test can pin the shape without a GPUI entity —
+/// the rest of the tree is built inside `accessibility_tree_with_focus`, which
+/// only runs under the settings-window smoke on macOS and Windows.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(super) fn navigation_accessibility_nodes(language: SettingsLanguage) -> Vec<AccessibilityNode> {
+    [
+        (ACCESSIBILITY_GENERAL, "navigation.general.title"),
+        (ACCESSIBILITY_MODELS, "navigation.models.title"),
+        (ACCESSIBILITY_SHORTCUTS, "navigation.shortcuts.title"),
+        (ACCESSIBILITY_DIAGNOSTICS, "navigation.diagnostics.title"),
+        (ACCESSIBILITY_ABOUT, "navigation.about.title"),
+    ]
+    .map(|(id, key)| {
+        AccessibilityNode::new(
+            id,
+            AccessibilityRole::Button,
+            bongocat_i18n::text(language.catalog_locale(), key),
+        )
+        .clickable()
+        .focusable()
+    })
+    .to_vec()
+}
+
 pub(super) struct InputServicePresentation {
     pub(super) title: &'static str,
     pub(super) detail: String,

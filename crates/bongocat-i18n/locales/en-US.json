@@ -5,24 +5,19 @@
       "title": "BongoCat Settings"
     },
     "general": {
-      "title": "General",
-      "description": "Configure the overlay, model interaction, input and startup behavior."
+      "title": "General"
     },
     "models": {
-      "title": "Models",
-      "description": "Install, validate and activate model packages."
+      "title": "Models"
     },
     "about": {
-      "title": "About",
-      "description": "View product, license, third-party notice and privacy information."
+      "title": "About"
     },
     "diagnostics": {
-      "title": "Diagnostics",
-      "description": "Inspect runtime health, input reliability and shortcut bindings."
+      "title": "Diagnostics"
     },
     "shortcuts": {
-      "title": "Shortcuts",
-      "description": "Configure global window controls and shortcuts for the active model."
+      "title": "Shortcuts"
     }
   },
   "system_menu": {
@@ -54,8 +49,7 @@
   "about": {
     "page_title": "About BongoCat",
     "product_information": {
-      "title": "Product Information",
-      "description": "Review the current version and environment."
+      "title": "Product Information"
     },
     "legal": {
       "application_license": {
@@ -245,7 +239,6 @@
     },
     "runtime": {
       "title": "Runtime Diagnostics",
-      "description": "Review renderer status, input counters and keyboard shortcuts. Search: renderer, input, shortcut.",
       "no_command_failures": "No command failures",
       "shutdown_failures": "Shutdown failures: %{count}",
       "command_failure": "%{error} · command #%{sequence}"

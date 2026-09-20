@@ -1415,3 +1415,52 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
         "应用将在登录系统时启动"
     );
 }
+
+/// The five navigation buttons carry a label and nothing else.
+///
+/// These nodes used to put the page description in `value`, which duplicated
+/// the header text that has since been removed from every page. The
+/// accessibility tree is only built under the settings-window smoke, which
+/// cannot fail the process on macOS (TODO 87), so this test is the only place
+/// the shape is actually pinned.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[test]
+fn navigation_accessibility_nodes_carry_no_descriptive_value() {
+    for language in [
+        SettingsLanguage::EnglishUnitedStates,
+        SettingsLanguage::ChineseSimplified,
+    ] {
+        let nodes = navigation_accessibility_nodes(language);
+        let ids: Vec<AccessibilityNodeId> = nodes.iter().map(|node| node.id).collect();
+        assert_eq!(
+            ids,
+            vec![
+                ACCESSIBILITY_GENERAL,
+                ACCESSIBILITY_MODELS,
+                ACCESSIBILITY_SHORTCUTS,
+                ACCESSIBILITY_DIAGNOSTICS,
+                ACCESSIBILITY_ABOUT,
+            ]
+        );
+        for node in &nodes {
+            assert_eq!(node.role, AccessibilityRole::Button);
+            assert!(
+                node.value.is_none(),
+                "navigation node {} must not carry a value",
+                node.id.get()
+            );
+            assert!(node.supports_click);
+            assert!(node.supports_focus);
+        }
+        // The label is the localized page title, never empty and never the
+        // same as the English one once a non-default language is selected.
+        assert_eq!(
+            nodes[0].label,
+            bongocat_i18n::text(language.catalog_locale(), "navigation.general.title")
+        );
+        assert!(!nodes[0].label.is_empty());
+    }
+    let english = navigation_accessibility_nodes(SettingsLanguage::EnglishUnitedStates);
+    let chinese = navigation_accessibility_nodes(SettingsLanguage::ChineseSimplified);
+    assert_ne!(english[0].label, chinese[0].label);
+}
