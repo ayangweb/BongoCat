@@ -28,6 +28,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 - Improved model display to reduce unnecessary CPU/GPU usage and provide smoother scaling and continuous rendering.
 - Added a configurable frame-rate limit from 15 to 240 FPS. Hidden models refresh less often to reduce background resource usage.
+- The app no longer rebuilds the whole settings snapshot in the background. The system menu asks for a cheap change marker instead of rebuilding a full snapshot twenty times a second, and a settings window you have closed stops refreshing until it is on screen again. On macOS this also keeps a repeated system permission query out of the settings loop, so an idle app uses noticeably less CPU.
 
 ### 🐛 Bug Fixes
 
