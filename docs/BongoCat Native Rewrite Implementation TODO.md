@@ -4725,9 +4725,34 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       消息泵路径在本机不编译执行。另：`global-hotkey` 的 Windows 释放事件来自 50ms 轮询，极快的
       连按（两次按下间隔 < 50ms）理论上会出现释放事件晚于下一次按下，从而吞掉那一次触发。
     - 记录一处仍需维护者确认的取舍：同 identity、同 priority 的重复请求现在是幂等的（"播放中再次
-      按同一快捷键不重启"），这与第 5.3 节记录的"同级最新请求"并列为两条规则——前者只覆盖同一
-      motion identity，后者覆盖不同 motion 之间的接管。R5 的 equal-priority 规则支持幂等这一侧；
-      若维护者希望"播放中再次按下就从头重播"，改动点在 runtime 那一条 `duplicate` 判定。
+      按同一快捷键不重启"），这与第 5.3 节记录的"同级最新请求"并列为两条规则——前者只覆盖同一       motion identity，后者覆盖不同 motion 之间的接管。R5 的 equal-priority 规则支持幂等这一侧；
+       若维护者希望"播放中再次按下就从头重播"，改动点在 runtime 那一条 `duplicate` 判定。
+93. [x] `P1-SETTINGS-DIAGNOSTICS-PAGE-REMOVAL`：设置窗口只保留用户可操作的设置页面。
+    - 背景：原 Diagnostics 页面把输入可靠性计数、runtime/renderer 状态、build 标识、配置恢复细节和
+      `ExportDiagnostics`/`OpenConfigBackupLocation` 两个排障动作直接放在普通用户界面上；这些数字只在
+      被显示时才有意义，对普通用户只造成困惑。
+    - 退出条件：设置窗口只剩 General、Models、Shortcuts、About；配置恢复提示与
+      `RestoreDefaultConfiguration` 动作移到 General 页面且不依赖诊断页；被删页面的
+      tab stop、Accessibility node 与 smoke 断言同步删除，没有死代码残留；隔离 smoke 与 CI 期望同步更新；
+      `ExportDiagnostics`/`OpenConfigBackupLocation` 仍是 settings service 的强类型 command（不删服务端能力）。
+    - 验收证据（2026-09-20，macOS 26.5.2 arm64）：删除 `crates/bongocat-ui/src/window/diagnostics.rs`
+      与 `SettingsPage::Diagnostics`/`ACCESSIBILITY_DIAGNOSTICS`/`ACCESSIBILITY_OPEN_BACKUPS`/
+      `ACCESSIBILITY_EXPORT_DIAGNOSTICS` 及其 focus handle、`PendingOperation`/`SettingValue` 变体、
+      `dynamic_group`/`input_diagnostic_metrics`/`diagnostics_export_status`/`input_service_presentation`/
+      `runtime_diagnostics_presentation` 与对应单测；General 页面新增 `config_recovery_groups`；
+      新增 `verify_configuration_recovery_for_smoke`（General 页面无法在 `RecoveryRequired` 下跑整套断言，
+      因为该状态下 startup 控件被有意禁用）。`cargo test --locked --workspace` 34 个目标全部通过；
+      `cargo fmt --check`、workspace Clippy `-D warnings`、app 的 `storage-test-injection` Clippy 均通过；
+      release `--settings-window-smoke --models-page-smoke` 输出
+      `settings window hid and reopened from one pre-rendered entity`；
+      `--configuration-recovery-smoke` 输出 `recovery notice verified`；
+      `--settings-window-state-smoke` 输出 Chinese General/Shortcuts/Models localization verified 与
+      `settings window state restored after restart`；CI 期望字符串已同步（recovery notice verified，
+      删除 Chinese Diagnostics localization）。
+    - 未完成：`crates/bongocat-i18n/locales/*.json` 中只为该页面存在的键（`navigation.diagnostics.title`、
+      `diagnostics.runtime*`、`diagnostics.input*`、`diagnostics.export*`、`diagnostics.runtime_and_input.title`）
+      仍未删除；它们已无代码引用，需要连同 `bongocat-i18n` 里引用
+      `diagnostics.runtime.shutdown_failures` 的单测一起清理。Windows 侧仍待 CI 原生复验。
 
 ## 13. 待决策清单
 

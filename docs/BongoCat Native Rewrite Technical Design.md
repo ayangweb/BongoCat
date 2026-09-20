@@ -427,7 +427,13 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - `PlatformInputDiagnostics` 以稳定 `service_status` 和单调 `service_start_attempts` 公开输入服务
   的 not-started/running/permission-denied/backend-unavailable/failed/stopped 状态，不携带平台错误文本。
   平台 owner 每次产品启动只尝试一次；权限拒绝或 backend 启动失败不阻止 overlay/runtime，settings
-  health 进入 degraded 并在 Diagnostics 显示匿名状态，不在后台循环请求权限或重启服务。
+  health 进入 degraded 并以匿名状态进入 revisioned snapshot，不在后台循环请求权限或重启服务。
+- 设置窗口只展示用户可操作的设置：General、Models、Shortcuts、About 四页。原 Diagnostics 页面已移除，
+  输入可靠性计数、runtime/renderer 状态、build 标识与配置恢复的原始细节只留在 app-owned 日志和匿名
+  diagnostics export 里：周期性刷新只服务于界面上仍在显示的数字，不再有为了“记录状态”而存在的页面。
+  页面移除后 `OpenConfigBackupLocation` 与 `ExportDiagnostics` 仍是 settings service 的强类型 command，
+  仅供隔离 smoke 与排障入口使用，不从 UI 触发；配置不可用时 `RecoveryRequired` 的匿名候选计数与
+  `RestoreDefaultConfiguration` 动作渲染在 General 页面，恢复入口不随诊断页消失。
 - 产品启动时以只读 `CGPreflightListenEventAccess` 检查 Input Monitoring，缺失时用 `rfd` 的原生
   系统弹框引导用户前往「系统设置 → 隐私与安全性 → 输入监控」。检查非阻塞：主线程完成窗口、
   菜单栏等正常初始化后，由专用 worker 线程执行检查与提示，提示未应答或被关闭不影响任何产品
@@ -776,13 +782,13 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 当前配置属于 v1 但 parse/validate 失败时，只在同一 writer lock 内从新到旧检查
   自有备份，并同时验证 envelope 格式、源 schema、源 revision 和完整 typed config。恢复前将损坏原文写入独立的
   `config-corrupt-*.bin` 自有 quarantine，最多 4 份且总计不超过 8 MiB；恢复后重新读取验证，
-  app 只公开源 schema 与跳过候选数等匿名诊断；settings service 将该诊断投影到 Diagnostics，
-  不公开备份/配置路径、原始 JSON、时间戳或底层 I/O 文本。没有有效候选、quarantine 失败或恢复验证失败时
+  app 只公开源 schema 与跳过候选数等匿名诊断；settings service 将该诊断投影到 snapshot 的配置恢复
+  投影（渲染在 General 页面），不公开备份/配置路径、原始 JSON、时间戳或底层 I/O 文本。没有有效候选、quarantine 失败或恢复验证失败时
   不回落默认值，也不读取另一环境；当前损坏原文继续保留在 `config.json` 或 quarantine 中。
   非 v1 schema 直接报告不支持并保持原文件，禁止覆盖未知格式。
 - 若 current 损坏且没有任何完整有效的 Native backup，Application 不得静默覆盖或继续使用默认值；
   它以 `RecoveryRequired` 受限状态启动，仅创建无 overlay/GPU 的 recovery-only settings 窗口。
-  Diagnostics 显示匿名候选计数，并提供强类型 `RestoreDefaultConfiguration` command；该 command
+  General 页面显示匿名候选计数，并提供强类型 `RestoreDefaultConfiguration` command；该 command
   在 writer lock 内再次确认 current 仍不可恢复，将原字节放入 quarantine 后写入并验证当前 schema 默认配置，
   返回 `DefaultsRestoredRestartRequired`。恢复前所有业务写入、模型、启动项和 overlay 操作都被拒绝，
   恢复后必须重启才重新进入正常 runtime；非 v1 schema 或 I/O/归档错误仍直接报告，不进入该安全模式。
@@ -790,7 +796,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   settings 只显示可操作的项目文案，不泄漏路径或操作系统原始错误。写入只清理由当前调用成功创建的
   temp；若固定 temp 已被文件、目录、符号链接或并发创建占用，则保留该条目和 current 并明确失败。
   权限与磁盘满在 temp 创建前后都必须可受控注入，验证失败不改变当前 snapshot/revision。
-- Diagnostics 通过强类型 `OpenConfigBackupLocation` command 打开当前构建环境的 `backups/`；
+- `OpenConfigBackupLocation` 是强类型 command，打开当前构建环境的 `backups/`；自 Diagnostics 页面
+  移除后它没有 UI 入口，只由 settings service、隔离 smoke 与排障路径使用；
   路径只由 Application 从正式 `StorageLayout` 派生并传给 platform adapter，不进入 command、
   snapshot、错误或 GPUI Entity。platform adapter 先验证绝对目录并 canonicalize，再通过 `opener`
   crate 交给系统默认程序；成功只返回当前 snapshot 且不推进 revision，失败只返回
@@ -1012,7 +1019,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   per-platform 资产匹配、公钥轮换窗）与待验证项；ADR-0035 记录了 worker、窗口、发布说明与
   "安装后协调 shutdown 而非安装前"这一处需要维护者复核的取舍。
 - 日志不记录真实按键序列、剪贴板内容或用户文件内容。
-- Diagnostics 导出由 settings service 的强类型 command 触发，在当前环境 logs 目录以同目录
+- 匿名 diagnostics export 由 settings service 的强类型 command 触发（自 Diagnostics 页面移除后无 UI
+  入口，只由隔离 smoke 与排障路径使用），在当前环境 logs 目录以同目录
   原子替换写出固定格式的 JSON。导出只包含稳定错误码、匿名聚合计数、模型来源计数和 revision；
   不包含模型 ID、用户路径、按键值、原始配置/事件内容、时间戳或动态平台错误文本。
 - 应用日志由 app-owned writer 以固定组件、级别和 code 写入 `application-<utc_day>.jsonl`，
@@ -1026,7 +1034,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   code，不读取 payload、源码位置、backtrace 或用户路径；Development-only 隔离 smoke 必须以同一
   release 可执行文件产生真实 `panic=abort`，验证日志脱敏、配置字节不变、重启分类和标记清理；
   默认产品 CLI/API 不暴露该测试入口。
-- Diagnostics 导出的摘要只读取 app-owned writer 和 Cubism Core 的匿名
+- 匿名 diagnostics export 的摘要只读取 app-owned writer 和 Cubism Core 的匿名
   written/dropped/rotated/pruned/active-bytes/retained-files/retained-bytes 统计，并另输出二者
   retained-bytes/files 的饱和聚合，不读取或复制 Core message。可预览的
   application lifecycle 历史仅能按 ADR-0027 严格重新解析为固定 code record，再与该摘要组成当前
