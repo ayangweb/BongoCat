@@ -198,7 +198,6 @@ impl SettingsView {
             general_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             models_focus: cx.focus_handle().tab_index(2).tab_stop(true),
             shortcuts_focus: cx.focus_handle().tab_index(3).tab_stop(true),
-            diagnostics_focus: cx.focus_handle().tab_index(4).tab_stop(true),
             about_focus: cx.focus_handle().tab_index(5).tab_stop(true),
             status_icon_focus: cx.focus_handle().tab_index(9).tab_stop(true),
             #[cfg(target_os = "windows")]
@@ -231,11 +230,9 @@ impl SettingsView {
             choose_model_focus: cx.focus_handle().tab_index(21).tab_stop(true),
             choose_archive_focus: cx.focus_handle().tab_index(22).tab_stop(true),
             import_model_focus: cx.focus_handle().tab_index(23).tab_stop(true),
-            open_backups_focus: cx.focus_handle().tab_index(28).tab_stop(true),
             restore_defaults_focus: cx.focus_handle().tab_index(29).tab_stop(true),
             restore_shortcuts_focus: cx.focus_handle().tab_index(33).tab_stop(true),
             clear_shortcuts_focus: cx.focus_handle().tab_index(34).tab_stop(true),
-            export_diagnostics_focus: cx.focus_handle().tab_index(32).tab_stop(true),
             model_id_input,
             syncing_component_inputs: false,
             #[cfg(any(target_os = "macos", target_os = "windows"))]

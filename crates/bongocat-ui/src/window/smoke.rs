@@ -192,9 +192,6 @@ impl SettingsView {
         if let Err(error) = self.show_shortcuts_page_for_smoke(cx) {
             failures.push(error);
         }
-        if let Err(error) = self.show_diagnostics_page_for_smoke(cx) {
-            failures.push(error);
-        }
         if let Err(error) = self.show_about_page_for_smoke(cx) {
             failures.push(error);
         }
@@ -765,204 +762,64 @@ impl SettingsView {
         Ok(())
     }
 
-    pub fn show_diagnostics_page_for_smoke(
+    /// Verify the configuration-recovery notice the General page renders.
+    ///
+    /// This cannot ride on `show_general_page_for_smoke`: that smoke asserts the whole page
+    /// against a configuration it treats as usable, and the window this runs in deliberately
+    /// has no usable configuration. The notice is what that page shows instead of the
+    /// settings, so it is asserted on its own.
+    pub fn verify_configuration_recovery_for_smoke(
         &mut self,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        self.page = SettingsPage::Diagnostics;
+        self.page = SettingsPage::General;
         cx.notify();
         let snapshot = self
             .snapshot
             .as_ref()
-            .ok_or_else(|| "diagnostics page has not received a settings snapshot".to_owned())?;
-        let language = snapshot.resolved_language;
-        let metrics = input_diagnostic_metrics(language, snapshot.input_diagnostics);
-        if metrics.len() != 26 {
-            return Err("diagnostics page did not project every input counter".to_owned());
-        }
+            .ok_or_else(|| "recovery notice has not received a settings snapshot".to_owned())?;
         let recovery = config_recovery_presentation(
             snapshot.configuration_status,
             snapshot.config_recovery,
-            language,
+            snapshot.resolved_language,
         );
         if recovery.title.is_empty() || recovery.detail.is_empty() {
-            return Err("diagnostics page did not project configuration recovery".to_owned());
+            return Err("general page did not project configuration recovery".to_owned());
         }
-        if language == SettingsLanguage::ChineseSimplified
-            && (bongocat_i18n::text(
-                language.catalog_locale(),
-                "diagnostics.input.reliability_counters",
-            ) == bongocat_i18n::text(
-                SettingsLanguage::EnglishUnitedStates.catalog_locale(),
-                "diagnostics.input.reliability_counters",
-            ) || metrics[0].0
-                == input_diagnostic_metrics(
-                    SettingsLanguage::EnglishUnitedStates,
-                    snapshot.input_diagnostics,
-                )[0]
-                .0)
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
-            return Err("diagnostics visible text was not localized".to_owned());
-        }
-        let open_backups = self
-            .accessibility_tree()
-            .nodes
-            .into_iter()
-            .find(|node| node.id == ACCESSIBILITY_OPEN_BACKUPS)
-            .ok_or_else(|| "diagnostics omitted the accessible backup location".to_owned())?;
-        if open_backups.role != AccessibilityRole::Button
-            || open_backups.label
-                != bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "diagnostics.configuration.open_backups_folder",
-                )
-            || open_backups.value.as_deref()
-                != Some(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "diagnostics.configuration.open_backups_folder_description",
-                ))
-            || open_backups.disabled
-            || !open_backups.supports_click
-            || !open_backups.supports_focus
-        {
-            return Err("backup location accessibility semantics are invalid".to_owned());
-        }
-        let export = self
-            .accessibility_tree()
-            .nodes
-            .into_iter()
-            .find(|node| node.id == ACCESSIBILITY_EXPORT_DIAGNOSTICS)
-            .ok_or_else(|| "diagnostics omitted the accessible export action".to_owned())?;
-        if export.role != AccessibilityRole::Button
-            || export.label
-                != bongocat_i18n::text(language.catalog_locale(), "diagnostics.export.action")
-            || export.value.as_deref()
-                != Some(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "diagnostics.export.description",
-                ))
-            || export.disabled
-            || !export.supports_click
-            || !export.supports_focus
-        {
-            return Err("diagnostics export accessibility semantics are invalid".to_owned());
-        }
-        let clear_shortcuts = self
-            .accessibility_tree()
-            .nodes
-            .into_iter()
-            .find(|node| node.id == ACCESSIBILITY_CLEAR_SHORTCUTS)
-            .ok_or_else(|| "diagnostics omitted the accessible shortcut clear action".to_owned())?;
-        let shortcuts_present = !snapshot.shortcuts.commands.is_empty()
-            || !snapshot.shortcuts.model_behaviors.is_empty();
-        if clear_shortcuts.role != AccessibilityRole::Button
-            || clear_shortcuts.label
-                != bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.clear_all")
-            || clear_shortcuts.value.as_deref()
-                != Some(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "shortcuts.actions.clear_all_description",
-                ))
-            || clear_shortcuts.disabled != !shortcuts_present
-            || clear_shortcuts.supports_click != shortcuts_present
-            || clear_shortcuts.supports_focus != shortcuts_present
-        {
-            return Err("shortcut clear accessibility semantics are invalid".to_owned());
-        }
-        let capture_nodes = self
-            .accessibility_tree()
-            .nodes
-            .into_iter()
-            .filter(|node| {
-                node.id.get() >= ACCESSIBILITY_SHORTCUT_CAPTURE_BASE
-                    && node.id.get() < ACCESSIBILITY_SHORTCUT_CLEAR_BASE
-            })
-            .collect::<Vec<_>>();
-        let expected_capture_rows = shortcut_accessibility_rows(
-            &snapshot.shortcuts,
-            snapshot.active_model.as_ref(),
-            &snapshot.model_catalog.entries,
-            language,
-        );
-        let shortcut_count = expected_capture_rows.len();
-        let editing_disabled = snapshot.configuration_status != SettingsConfigurationStatus::Ready;
-        if capture_nodes.len() != shortcut_count
-            || capture_nodes
-                .iter()
-                .zip(expected_capture_rows)
-                .any(|(node, (_, label, value))| {
-                    node.role != AccessibilityRole::Button
-                        || node.label != label
-                        || node.value.as_deref() != Some(value.as_str())
-                        || node.disabled != editing_disabled
-                        || node.supports_click != !editing_disabled
-                        || node.supports_focus != !editing_disabled
-                })
-        {
-            return Err("shortcut capture accessibility semantics are invalid".to_owned());
-        }
-        let expected_clear_rows = shortcut_clear_accessibility_rows(
-            &snapshot.shortcuts,
-            snapshot.active_model.as_ref(),
-            &snapshot.model_catalog.entries,
-            language,
-        );
-        let clear_nodes = self
-            .accessibility_tree()
-            .nodes
-            .into_iter()
-            .filter(|node| {
-                // Generated node ids are allocated in 1_000-wide blocks, so a
-                // shortcut block ends where the next base would begin.
-                node.id.get() >= ACCESSIBILITY_SHORTCUT_CLEAR_BASE
-                    && node.id.get() < ACCESSIBILITY_SHORTCUT_CLEAR_BASE + 1_000
-            })
-            .collect::<Vec<_>>();
-        if clear_nodes.len() != expected_clear_rows.len()
-            || clear_nodes
-                .iter()
-                .zip(expected_clear_rows)
-                .any(|(node, (_, label))| {
-                    node.role != AccessibilityRole::Button
-                        || node.label != label
-                        || node.disabled != editing_disabled
-                        || node.supports_click != !editing_disabled
-                        || node.supports_focus != !editing_disabled
-                })
-        {
-            return Err("shortcut binding clear accessibility semantics are invalid".to_owned());
-        }
-        if matches!(
-            snapshot.configuration_status,
-            SettingsConfigurationStatus::RecoveryRequired { .. }
-        ) {
-            if !recovery.attention || !recovery.can_restore {
-                return Err("recovery diagnostics omitted the restore action".to_owned());
-            }
-            let restore = self
-                .accessibility_tree()
-                .nodes
-                .into_iter()
-                .find(|node| node.id == ACCESSIBILITY_RESTORE_DEFAULTS)
-                .ok_or_else(|| {
-                    "recovery diagnostics omitted the accessible restore action".to_owned()
-                })?;
-            if restore.role != AccessibilityRole::Button
-                || restore.label
-                    != bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "diagnostics.configuration.restore_defaults",
-                    )
-                || restore.value.as_deref()
-                    != Some(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "diagnostics.configuration.restore_defaults_description",
-                    ))
-                || restore.disabled
-                || !restore.supports_click
-                || !restore.supports_focus
-            {
-                return Err("recovery restore accessibility semantics are invalid".to_owned());
+            if matches!(
+                snapshot.configuration_status,
+                SettingsConfigurationStatus::RecoveryRequired { .. }
+            ) {
+                if !recovery.attention || !recovery.can_restore {
+                    return Err("recovery notice omitted the restore action".to_owned());
+                }
+                let restore = self
+                    .accessibility_tree()
+                    .nodes
+                    .into_iter()
+                    .find(|node| node.id == ACCESSIBILITY_RESTORE_DEFAULTS)
+                    .ok_or_else(|| {
+                        "recovery notice omitted the accessible restore action".to_owned()
+                    })?;
+                if restore.role != AccessibilityRole::Button
+                    || restore.label
+                        != bongocat_i18n::text(
+                            snapshot.resolved_language.catalog_locale(),
+                            "diagnostics.configuration.restore_defaults",
+                        )
+                    || restore.value.as_deref()
+                        != Some(bongocat_i18n::text(
+                            snapshot.resolved_language.catalog_locale(),
+                            "diagnostics.configuration.restore_defaults_description",
+                        ))
+                    || restore.disabled
+                    || !restore.supports_click
+                    || !restore.supports_focus
+                {
+                    return Err("recovery restore accessibility semantics are invalid".to_owned());
+                }
             }
         }
         Ok(())
@@ -1018,6 +875,93 @@ impl SettingsView {
                 return Err(
                     "shortcuts page navigation accessibility semantics are invalid".to_owned(),
                 );
+            }
+            // The clear-all control and the generated capture rows used to be asserted from the
+            // diagnostics page smoke, which was the only smoke that walked the accessibility
+            // tree this far. They describe this page's controls, so they assert here instead.
+            let clear_shortcuts = tree
+                .nodes
+                .iter()
+                .find(|node| node.id == ACCESSIBILITY_CLEAR_SHORTCUTS)
+                .ok_or_else(|| "shortcuts page omitted the clear-all action".to_owned())?;
+            let shortcuts_present = !snapshot.shortcuts.commands.is_empty()
+                || !snapshot.shortcuts.model_behaviors.is_empty();
+            if clear_shortcuts.role != AccessibilityRole::Button
+                || clear_shortcuts.label
+                    != bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "shortcuts.actions.clear_all",
+                    )
+                || clear_shortcuts.value.as_deref()
+                    != Some(bongocat_i18n::text(
+                        snapshot.resolved_language.catalog_locale(),
+                        "shortcuts.actions.clear_all_description",
+                    ))
+                || clear_shortcuts.disabled != !shortcuts_present
+                || clear_shortcuts.supports_click != shortcuts_present
+                || clear_shortcuts.supports_focus != shortcuts_present
+            {
+                return Err("shortcut clear accessibility semantics are invalid".to_owned());
+            }
+            let editing_disabled =
+                snapshot.configuration_status != SettingsConfigurationStatus::Ready;
+            let capture_nodes = tree
+                .nodes
+                .iter()
+                .filter(|node| {
+                    node.id.get() >= ACCESSIBILITY_SHORTCUT_CAPTURE_BASE
+                        && node.id.get() < ACCESSIBILITY_SHORTCUT_CLEAR_BASE
+                })
+                .collect::<Vec<_>>();
+            let expected_capture_rows = shortcut_accessibility_rows(
+                &snapshot.shortcuts,
+                snapshot.active_model.as_ref(),
+                &snapshot.model_catalog.entries,
+                snapshot.resolved_language,
+            );
+            if capture_nodes.len() != expected_capture_rows.len()
+                || capture_nodes.iter().zip(expected_capture_rows).any(
+                    |(node, (_, label, value))| {
+                        node.role != AccessibilityRole::Button
+                            || node.label != *label
+                            || node.value.as_deref() != Some(value.as_str())
+                            || node.disabled != editing_disabled
+                            || node.supports_click != !editing_disabled
+                            || node.supports_focus != !editing_disabled
+                    },
+                )
+            {
+                return Err("shortcut capture accessibility semantics are invalid".to_owned());
+            }
+            let expected_clear_rows = shortcut_clear_accessibility_rows(
+                &snapshot.shortcuts,
+                snapshot.active_model.as_ref(),
+                &snapshot.model_catalog.entries,
+                snapshot.resolved_language,
+            );
+            let clear_nodes = tree
+                .nodes
+                .iter()
+                .filter(|node| {
+                    // Generated node ids are allocated in 1_000-wide blocks, so a shortcut block
+                    // ends where the next base would begin.
+                    node.id.get() >= ACCESSIBILITY_SHORTCUT_CLEAR_BASE
+                        && node.id.get() < ACCESSIBILITY_SHORTCUT_CLEAR_BASE + 1_000
+                })
+                .collect::<Vec<_>>();
+            if clear_nodes.len() != expected_clear_rows.len()
+                || clear_nodes
+                    .iter()
+                    .zip(expected_clear_rows)
+                    .any(|(node, (_, label))| {
+                        node.role != AccessibilityRole::Button
+                            || node.label != *label
+                            || node.disabled != editing_disabled
+                            || node.supports_click != !editing_disabled
+                            || node.supports_focus != !editing_disabled
+                    })
+            {
+                return Err("shortcut binding clear accessibility semantics are invalid".to_owned());
             }
         }
         Ok(())

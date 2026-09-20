@@ -22,7 +22,6 @@ impl Render for SettingsView {
                     ACCESSIBILITY_GENERAL => Some(&self.general_focus),
                     ACCESSIBILITY_MODELS => Some(&self.models_focus),
                     ACCESSIBILITY_SHORTCUTS => Some(&self.shortcuts_focus),
-                    ACCESSIBILITY_DIAGNOSTICS => Some(&self.diagnostics_focus),
                     ACCESSIBILITY_ABOUT => Some(&self.about_focus),
                     ACCESSIBILITY_OVERLAY => Some(&self.overlay_focus),
                     ACCESSIBILITY_OVERLAY_TOPMOST => Some(&self.overlay_topmost_focus),
@@ -70,11 +69,9 @@ impl Render for SettingsView {
                     ACCESSIBILITY_STICK_DEAD_ZONE => Some(&self.stick_dead_zone_focus),
                     ACCESSIBILITY_TRIGGER_DEAD_ZONE => Some(&self.trigger_dead_zone_focus),
                     ACCESSIBILITY_STARTUP => Some(&self.startup_item_focus),
-                    ACCESSIBILITY_OPEN_BACKUPS => Some(&self.open_backups_focus),
                     ACCESSIBILITY_RESTORE_DEFAULTS => Some(&self.restore_defaults_focus),
                     ACCESSIBILITY_RESTORE_SHORTCUTS => Some(&self.restore_shortcuts_focus),
                     ACCESSIBILITY_CLEAR_SHORTCUTS => Some(&self.clear_shortcuts_focus),
-                    ACCESSIBILITY_EXPORT_DIAGNOSTICS => Some(&self.export_diagnostics_focus),
                     _ => None,
                 };
                 let shortcut_focus = self.snapshot.as_ref().and_then(|snapshot| {
@@ -178,12 +175,26 @@ impl Render for SettingsView {
             language,
         );
 
+        // A configuration that cannot be used is not diagnostic detail: it is the state of the
+        // user's settings, and restoring defaults is the only way out of it. This notice is
+        // what stays in the window after the diagnostics page was retired; the counters, build
+        // identifiers, renderer and input detail and the diagnostics export it used to show
+        // live in the background logs and in the diagnostics bundle instead.
+        let recovery_groups = config_recovery_groups(
+            language,
+            snapshot.as_ref(),
+            disabled,
+            view_entity.clone(),
+            Tokens::from_theme(cx),
+        );
+
         let general_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.general.title",
         ))
         .icon(IconName::Settings)
         .default_open(true)
+        .groups(recovery_groups)
         .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -1065,44 +1076,6 @@ impl Render for SettingsView {
                 ),
         );
 
-        let diagnostics_page = SettingPage::new(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.diagnostics.title",
-        ))
-        .icon(IconName::Activity)
-        .group(
-            SettingGroup::new()
-                .title(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "diagnostics.runtime_and_input.title",
-                ))
-                .item(
-                    SettingItem::new(
-                        bongocat_i18n::text(language.catalog_locale(), "diagnostics.runtime.title"),
-                        SettingField::element({
-                            let view = view_entity.clone();
-                            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
-                                let snapshot = view.read(app).snapshot.clone();
-                                let tokens = Tokens::from_theme(app);
-                                view.update(app, move |view, cx| {
-                                    view.page = SettingsPage::Diagnostics;
-                                    diagnostics::content(
-                                        view,
-                                        window,
-                                        cx,
-                                        snapshot.as_ref(),
-                                        disabled,
-                                        tokens,
-                                    )
-                                })
-                                .into_any_element()
-                            }
-                        }),
-                    )
-                    .layout(Axis::Vertical),
-                ),
-        );
-
         let about_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.about.title",
@@ -1171,13 +1144,7 @@ impl Render for SettingsView {
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))
             .with_group_variant(GroupBoxVariant::Outline)
-            .pages(vec![
-                general_page,
-                models_page,
-                shortcuts_page,
-                diagnostics_page,
-                about_page,
-            ]);
+            .pages(vec![general_page, models_page, shortcuts_page, about_page]);
 
         div()
             .id("bongocat-settings-root")
@@ -1202,4 +1169,88 @@ impl Render for SettingsView {
             .children(Root::render_notification_layer(window, cx))
             .into_any_element()
     }
+}
+
+/// The configuration recovery notice, or nothing when the configuration is usable.
+///
+/// This is the one part of the retired diagnostics page that stays: the user cannot reach
+/// the product's settings while the configuration is missing or was just reset, and
+/// restoring defaults is what gets them out of it.
+fn config_recovery_groups(
+    language: SettingsLanguage,
+    snapshot: Option<&SettingsSnapshot>,
+    disabled: bool,
+    view: Entity<SettingsView>,
+    tokens: Tokens,
+) -> Vec<SettingGroup> {
+    let Some(snapshot) = snapshot else {
+        return Vec::new();
+    };
+    if snapshot.configuration_status == SettingsConfigurationStatus::Ready {
+        return Vec::new();
+    }
+    let recovery = config_recovery_presentation(
+        snapshot.configuration_status,
+        snapshot.config_recovery,
+        language,
+    );
+    let can_restore = recovery.can_restore;
+    let detail = recovery.detail;
+    vec![
+        SettingGroup::new()
+            .title(bongocat_i18n::text(
+                language.catalog_locale(),
+                "diagnostics.configuration.title",
+            ))
+            .item(
+                SettingItem::new(
+                    recovery.title,
+                    SettingField::element({
+                        let view = view.clone();
+                        move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                            if !can_restore {
+                                return div().into_any_element();
+                            }
+                            let blocked = disabled || view.read(app).pending.is_some();
+                            let restore_focus = view.read(app).restore_defaults_focus.clone();
+                            let click_view = view.clone();
+                            let click_focus = restore_focus.clone();
+                            let key_view = view.clone();
+                            let key_focus = restore_focus.clone();
+                            command_button(
+                                bongocat_i18n::text(
+                                    language.catalog_locale(),
+                                    "shortcuts.actions.restore_defaults",
+                                ),
+                                &restore_focus,
+                                29,
+                                window,
+                                tokens,
+                                blocked,
+                            )
+                            .id("restore-default-configuration")
+                            .on_click(move |_, window, cx| {
+                                if click_view.read(cx).pending.is_none() {
+                                    window.focus(&click_focus, cx);
+                                    click_view.update(cx, |view, cx| {
+                                        view.restore_default_configuration(cx)
+                                    });
+                                }
+                            })
+                            .on_key_down(move |event, window, cx| {
+                                if key_view.read(cx).pending.is_none() && is_activation_key(event) {
+                                    cx.stop_propagation();
+                                    window.focus(&key_focus, cx);
+                                    key_view.update(cx, |view, cx| {
+                                        view.restore_default_configuration(cx)
+                                    });
+                                }
+                            })
+                            .into_any_element()
+                        }
+                    }),
+                )
+                .description(detail),
+            ),
+    ]
 }

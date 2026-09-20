@@ -1504,33 +1504,36 @@ fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> 
         };
         let _ = write_smoke_status("recovery window opened");
         cx.spawn(async move |cx| {
-            let mut diagnostics_verified = false;
-            let mut last_diagnostics_error = None;
+            // The recovery notice renders on the General page, so this verifies the page the
+            // user actually sees rather than the retired diagnostics page.
+            let mut recovery_verified = false;
+            let mut last_recovery_error = None;
             for _ in 0..200 {
-                let diagnostics =
-                    window.update(cx, |view, _, cx| view.show_diagnostics_page_for_smoke(cx));
-                match diagnostics {
+                let recovery = window.update(cx, |view, _, cx| {
+                    view.verify_configuration_recovery_for_smoke(cx)
+                });
+                match recovery {
                     Ok(Ok(())) => {
-                        diagnostics_verified = true;
+                        recovery_verified = true;
                         break;
                     }
-                    Ok(Err(error)) => last_diagnostics_error = Some(error),
-                    Err(error) => last_diagnostics_error = Some(error.to_string()),
+                    Ok(Err(error)) => last_recovery_error = Some(error),
+                    Err(error) => last_recovery_error = Some(error.to_string()),
                 }
                 Timer::after(Duration::from_millis(10)).await;
             }
-            if !diagnostics_verified {
-                let detail = last_diagnostics_error
+            if !recovery_verified {
+                let detail = last_recovery_error
                     .unwrap_or_else(|| "settings view was unavailable".to_owned());
                 let _ = writeln!(
                     io::stderr().lock(),
-                    "bongocat-app: recovery diagnostics failed: {detail}"
+                    "bongocat-app: recovery notice failed: {detail}"
                 );
-                let _ = write_smoke_status(&format!("recovery diagnostics failed: {detail}"));
+                let _ = write_smoke_status(&format!("recovery notice failed: {detail}"));
                 Timer::after(Duration::from_millis(1000)).await;
                 std::process::exit(1);
             }
-            let _ = write_smoke_status("recovery diagnostics verified");
+            let _ = write_smoke_status("recovery notice verified");
             Timer::after(Duration::from_millis(1000)).await;
             let shutdown = client.shutdown().await;
             let joined = service.join();
@@ -1691,31 +1694,6 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                     .into());
                 }
                 write_smoke_status("Chinese Models localization verified")?;
-                let mut diagnostics_verified = false;
-                let mut last_diagnostics_error = None;
-                for _ in 0..200 {
-                    let diagnostics = window.update(cx, |view, _, cx| {
-                        view.show_diagnostics_page_for_smoke(cx)
-                    });
-                    match diagnostics {
-                        Ok(Ok(())) => {
-                            diagnostics_verified = true;
-                            break;
-                        }
-                        Ok(Err(error)) => last_diagnostics_error = Some(error),
-                        Err(error) => last_diagnostics_error = Some(error.to_string()),
-                    }
-                    Timer::after(Duration::from_millis(10)).await;
-                }
-                if !diagnostics_verified {
-                    let detail = last_diagnostics_error
-                        .unwrap_or_else(|| "settings view was unavailable".to_owned());
-                    return Err(io::Error::other(format!(
-                        "settings window did not apply Diagnostics localization: {detail}"
-                    ))
-                    .into());
-                }
-                write_smoke_status("Chinese Diagnostics localization verified")?;
                 let mut initial = None;
                 let mut last_initial = window_state.placement();
                 for _ in 0..200 {

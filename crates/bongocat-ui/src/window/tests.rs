@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    SettingsDiagnosticsExportStatus, SettingsModelBehaviorBinding, SettingsModelCatalog,
-    SettingsModelCatalogError, SettingsShortcutBinding,
+    SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
+    SettingsShortcutBinding,
 };
 use gpui_kit::{Keystroke, Modifiers};
 
@@ -404,61 +404,6 @@ fn command_shortcut_clear_removes_only_the_selected_binding() {
 }
 
 #[test]
-fn diagnostics_page_projects_only_named_aggregate_counters() {
-    let diagnostics = SettingsInputDiagnostics {
-        input_monitoring_permission: crate::SettingsInputMonitoringPermission::Granted,
-        service_status: SettingsInputServiceStatus::Running,
-        service_error_code: None,
-        service_start_attempts: 1,
-        pressed_key_count: 1,
-        pressed_mouse_button_count: 2,
-        pressed_gamepad_button_count: 3,
-        connected_gamepad_count: 4,
-        captured_down: 5,
-        captured_up: 6,
-        reconciled_release: 7,
-        fallback_release: 8,
-        released_by_reset: 9,
-        duplicate_down: 10,
-        unmatched_release: 11,
-        invalid_source: 12,
-        reset_count: 13,
-        sequence_gap_count: 14,
-        missing_sequence_count: 15,
-        duplicate_sequence_count: 16,
-        out_of_order_sequence_count: 17,
-        non_monotonic_time_count: 18,
-        gamepad_connections: 19,
-        gamepad_disconnections: 20,
-        stale_gamepad_events: 21,
-        released_by_disconnect: 22,
-        transport_enqueued: 23,
-        transport_queue_full: 24,
-        transport_recovered_after_overflow: 25,
-        transport_runtime_stopped: 26,
-    };
-    let metrics = input_diagnostic_metrics(SettingsLanguage::EnglishUnitedStates, diagnostics);
-    assert_eq!(metrics.len(), 26);
-    assert_eq!(metrics.first(), Some(&("Pressed keys", 1)));
-    assert_eq!(metrics.last(), Some(&("Rejected after shutdown", 26)));
-    assert_eq!(
-        metrics.iter().map(|(_, value)| *value).collect::<Vec<_>>(),
-        (1..=26).collect::<Vec<_>>()
-    );
-    assert!(metrics.iter().all(|(label, _)| {
-        !label.contains("HID") && !label.contains("path") && !label.contains("timestamp value")
-    }));
-    let service = input_service_presentation(diagnostics, SettingsLanguage::EnglishUnitedStates);
-    assert_eq!(service.title, "Running");
-    assert_eq!(
-        service.detail,
-        "Input Monitoring: Granted\nStart attempts: 1"
-    );
-    assert!(service.running);
-    assert!(!service.attention);
-}
-
-#[test]
 fn build_information_is_localized_and_contains_only_compiled_identity() {
     let product_version = env!("CARGO_PKG_VERSION");
     let build_info = crate::SettingsBuildInfo {
@@ -475,55 +420,7 @@ fn build_information_is_localized_and_contains_only_compiled_identity() {
 }
 
 #[test]
-fn runtime_diagnostics_presentation_keeps_codes_anonymous_and_actionable() {
-    let presentation = runtime_diagnostics_presentation(
-        SettingsRuntimeDiagnostics {
-            render_error: Some(SettingsRuntimeErrorCode::GpuPreparationFailed),
-            last_command_failure: Some(crate::SettingsRuntimeCommandFailure {
-                sequence: 17,
-                code: SettingsRuntimeErrorCode::GpuPreparationFailed,
-            }),
-            command_transport: Default::default(),
-            ..SettingsRuntimeDiagnostics::default()
-        },
-        SettingsLanguage::EnglishUnitedStates,
-    );
-    assert_eq!(presentation.title, "GPU preparation failed");
-    assert!(presentation.attention);
-    assert_eq!(presentation.detail, "GPU preparation failed · command #17");
-    assert!(!presentation.detail.contains('/'));
-}
-
-#[test]
-fn diagnostics_presentations_follow_the_resolved_language() {
-    let diagnostics = SettingsInputDiagnostics {
-        pressed_key_count: 2,
-        service_status: SettingsInputServiceStatus::PermissionDenied,
-        service_start_attempts: 3,
-        ..SettingsInputDiagnostics::default()
-    };
-    let metrics = input_diagnostic_metrics(SettingsLanguage::ChineseSimplified, diagnostics);
-    assert_eq!(metrics.first(), Some(&("按下的按键", 2)));
-
-    let service = input_service_presentation(diagnostics, SettingsLanguage::ChineseSimplified);
-    assert_eq!(service.title, "需要权限");
-    assert_eq!(service.detail, "输入监控：不支持\n启动尝试：3");
-
-    let runtime = runtime_diagnostics_presentation(
-        SettingsRuntimeDiagnostics {
-            render_error: Some(SettingsRuntimeErrorCode::ModelLoadFailed),
-            last_command_failure: Some(crate::SettingsRuntimeCommandFailure {
-                sequence: 4,
-                code: SettingsRuntimeErrorCode::TransportClosed,
-            }),
-            command_transport: Default::default(),
-            ..SettingsRuntimeDiagnostics::default()
-        },
-        SettingsLanguage::ChineseSimplified,
-    );
-    assert_eq!(runtime.title, "模型加载失败");
-    assert_eq!(runtime.detail, "运行时传输已关闭 · 命令 #4");
-
+fn recovery_and_shortcut_presentations_follow_the_resolved_language() {
     let recovery = config_recovery_presentation(
         SettingsConfigurationStatus::RecoveryRequired { checked_backups: 2 },
         None,
@@ -532,34 +429,6 @@ fn diagnostics_presentations_follow_the_resolved_language() {
     assert_eq!(recovery.title, "配置不可用");
     assert_eq!(recovery.detail, "已检查 2 个备份候选");
 
-    assert_eq!(
-        diagnostics_export_status(
-            SettingsLanguage::ChineseSimplified,
-            Some(SettingsDiagnosticsExportStatus {
-                format_version: 1,
-                bytes_written: 128,
-                preview_bundle_format_version: 1,
-                preview_bundle_bytes_written: 256,
-                preview_bundle_entry_count: 3,
-                preview_bundle_skipped_source_files: 2,
-            }),
-        ),
-        "报告 v1：128 字节 · 预览包 v1：3 个条目，256 字节 · 跳过 2 个来源日志"
-    );
-    assert_eq!(
-        diagnostics_export_status(
-            SettingsLanguage::EnglishUnitedStates,
-            Some(SettingsDiagnosticsExportStatus {
-                format_version: 1,
-                bytes_written: 128,
-                preview_bundle_format_version: 1,
-                preview_bundle_bytes_written: 256,
-                preview_bundle_entry_count: 3,
-                preview_bundle_skipped_source_files: 2,
-            }),
-        ),
-        "Report v1: 128 bytes · Preview bundle v1: 3 entries, 256 bytes · Skipped 2 source logs"
-    );
     let command = ShortcutCaptureTarget::Command("toggle_overlay".to_owned());
     assert_eq!(
         shortcut_target_name(SettingsLanguage::ChineseSimplified, &command),
@@ -572,41 +441,6 @@ fn diagnostics_presentations_follow_the_resolved_language() {
 }
 
 #[test]
-fn runtime_shutdown_failures_are_localized_and_actionable() {
-    let presentation = runtime_diagnostics_presentation(
-        SettingsRuntimeDiagnostics {
-            shutdown_timed_out: 2,
-            shutdown_worker_panicked: 1,
-            ..SettingsRuntimeDiagnostics::default()
-        },
-        SettingsLanguage::ChineseSimplified,
-    );
-    assert!(presentation.attention);
-    assert_eq!(presentation.title, "没有渲染器错误");
-    assert_eq!(presentation.detail, "没有命令失败 · 退出失败：3");
-}
-
-#[test]
-fn input_service_status_keeps_permission_failure_actionable_and_anonymous() {
-    let service = input_service_presentation(
-        SettingsInputDiagnostics {
-            input_monitoring_permission: crate::SettingsInputMonitoringPermission::Denied,
-            service_status: SettingsInputServiceStatus::PermissionDenied,
-            service_start_attempts: 1,
-            ..SettingsInputDiagnostics::default()
-        },
-        SettingsLanguage::EnglishUnitedStates,
-    );
-    assert_eq!(service.title, "Permission required");
-    assert_eq!(
-        service.detail,
-        "Input Monitoring: Permission required\nStart attempts: 1"
-    );
-    assert!(service.attention);
-    assert!(!service.detail.contains("path"));
-}
-
-#[test]
 fn configuration_recovery_presentation_is_anonymous_and_complete() {
     let normal = config_recovery_presentation(
         SettingsConfigurationStatus::Ready,
@@ -615,7 +449,6 @@ fn configuration_recovery_presentation_is_anonymous_and_complete() {
     );
     assert_eq!(normal.title, "Loaded normally");
     assert_eq!(normal.detail, "No recovery");
-    assert!(!normal.recovered);
     assert!(!normal.can_restore);
 
     let recovered = config_recovery_presentation(
@@ -628,7 +461,6 @@ fn configuration_recovery_presentation_is_anonymous_and_complete() {
     );
     assert_eq!(recovered.title, "Recovered from backup");
     assert_eq!(recovered.detail, "Schema v1 · 3 newer backups skipped");
-    assert!(recovered.recovered);
     assert!(!recovered.detail.contains('/') && !recovered.detail.contains('\\'));
 
     let one_skipped = config_recovery_presentation(
@@ -1438,7 +1270,6 @@ fn navigation_accessibility_nodes_carry_no_descriptive_value() {
                 ACCESSIBILITY_GENERAL,
                 ACCESSIBILITY_MODELS,
                 ACCESSIBILITY_SHORTCUTS,
-                ACCESSIBILITY_DIAGNOSTICS,
                 ACCESSIBILITY_ABOUT,
             ]
         );

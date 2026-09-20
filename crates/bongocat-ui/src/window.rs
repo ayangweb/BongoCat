@@ -1,15 +1,14 @@
 use crate::{
     RuntimeHealth, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
     SettingsConfigRecovery, SettingsConfigurationStatus, SettingsError, SettingsErrorCode,
-    SettingsGamepadAxisSettings, SettingsInputDiagnostics, SettingsInputServiceStatus,
-    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
-    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
-    SettingsOperationId, SettingsOverlay, SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsGamepadAxisSettings, SettingsLanguage, SettingsModelAvailability,
+    SettingsModelBehavior, SettingsModelBehaviorBinding, SettingsModelDiagnostic,
+    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
+    SettingsModelImportRequest, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
+    SettingsModelSettings, SettingsOperationId, SettingsOverlay, SettingsShortcutBinding,
+    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -58,7 +57,6 @@ use presentation::*;
 mod about;
 use about::ABOUT_SECTIONS;
 mod accessibility;
-mod diagnostics;
 mod lifecycle;
 mod localization;
 mod model_actions;
@@ -71,11 +69,10 @@ mod smoke;
 mod view_state;
 pub use lifecycle::open_settings_window;
 use localization::{
-    backup_candidates_checked, build_info_detail, diagnostics_export_status,
-    input_diagnostic_metrics, input_service_attempts, model_availability_summary,
+    backup_candidates_checked, build_info_detail, model_availability_summary,
     model_delete_confirmation, model_import_progress, model_invalid_summary,
-    recovered_backup_detail, runtime_command_failure, runtime_shutdown_failures, runtime_status,
-    settings_error, shortcut_accessibility_label, shortcut_conflict_message, shortcut_target_name,
+    recovered_backup_detail, runtime_status, settings_error, shortcut_accessibility_label,
+    shortcut_conflict_message, shortcut_target_name,
 };
 #[cfg(test)]
 mod tests;
@@ -117,8 +114,6 @@ const ACCESSIBILITY_MODELS: AccessibilityNodeId = AccessibilityNodeId::new(3);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(4);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(5);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_ABOUT: AccessibilityNodeId = AccessibilityNodeId::new(6);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OVERLAY: AccessibilityNodeId = AccessibilityNodeId::new(10);
@@ -146,11 +141,7 @@ const ACCESSIBILITY_MAXIMUM_FPS_DECREASE: AccessibilityNodeId = AccessibilityNod
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_MAXIMUM_FPS_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(25);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OPEN_BACKUPS: AccessibilityNodeId = AccessibilityNodeId::new(28);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RESTORE_DEFAULTS: AccessibilityNodeId = AccessibilityNodeId::new(29);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_EXPORT_DIAGNOSTICS: AccessibilityNodeId = AccessibilityNodeId::new(32);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RESTORE_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(33);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -222,7 +213,6 @@ pub(crate) struct Tokens {
     pub(crate) text: Hsla,
     pub(crate) muted: Hsla,
     pub(crate) accent: Hsla,
-    pub(crate) danger: Hsla,
 }
 
 impl Tokens {
@@ -234,7 +224,6 @@ impl Tokens {
             text: theme.foreground,
             muted: theme.muted_foreground,
             accent: theme.primary,
-            danger: theme.danger,
         }
     }
 }
@@ -265,14 +254,12 @@ enum PendingOperation {
     ModelDeletion,
     ModelMetadata,
     ModelLocation,
-    OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
     RestoreDefaultShortcuts,
     ClearShortcuts,
     SetShortcuts,
     BeginShortcutCapture,
     CancelShortcutCapture,
-    ExportDiagnostics,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -312,7 +299,6 @@ enum SettingsPage {
     General,
     Models,
     Shortcuts,
-    Diagnostics,
     About,
 }
 
@@ -537,7 +523,6 @@ pub struct SettingsView {
     general_focus: FocusHandle,
     models_focus: FocusHandle,
     shortcuts_focus: FocusHandle,
-    diagnostics_focus: FocusHandle,
     about_focus: FocusHandle,
     status_icon_focus: FocusHandle,
     #[cfg(target_os = "windows")]
@@ -570,11 +555,9 @@ pub struct SettingsView {
     choose_model_focus: FocusHandle,
     choose_archive_focus: FocusHandle,
     import_model_focus: FocusHandle,
-    open_backups_focus: FocusHandle,
     restore_defaults_focus: FocusHandle,
     restore_shortcuts_focus: FocusHandle,
     clear_shortcuts_focus: FocusHandle,
-    export_diagnostics_focus: FocusHandle,
     /// The only settings text field the window actually renders.
     ///
     /// The overlay and gamepad numbers are drawn by the component library's
@@ -1223,9 +1206,6 @@ impl SettingsView {
                 Some(SettingValue::StartupItemEnabled(enabled)) => {
                     client.set_startup_item_enabled(enabled).await
                 }
-                Some(SettingValue::OpenConfigBackupLocation) => {
-                    client.open_config_backup_location().await
-                }
                 Some(SettingValue::RestoreDefaultConfiguration) => {
                     client.restore_default_configuration().await
                 }
@@ -1244,7 +1224,6 @@ impl SettingsView {
                         .set_shortcuts(expected_config_revision, shortcuts)
                         .await
                 }
-                Some(SettingValue::ExportDiagnostics) => client.export_diagnostics().await,
             };
             let refreshed = if result
                 .as_ref()
@@ -1363,10 +1342,12 @@ impl SettingsView {
                             snapshot.revision,
                         ) =>
                     {
+                        // A configuration that is not usable puts its recovery notice on the
+                        // General page, so that is where the user has to be looking at it.
                         if snapshot.configuration_status != SettingsConfigurationStatus::Ready
-                            && view.page != SettingsPage::Diagnostics
+                            && view.page != SettingsPage::General
                         {
-                            view.page = SettingsPage::Diagnostics;
+                            view.page = SettingsPage::General;
                             snapshot_changed = true;
                         }
                         if view.snapshot.as_ref() != Some(snapshot) {
@@ -1485,7 +1466,6 @@ enum SettingValue {
         settings: SettingsGamepadAxisSettings,
     },
     StartupItemEnabled(bool),
-    OpenConfigBackupLocation,
     RestoreDefaultConfiguration,
     RestoreDefaultShortcuts {
         expected_config_revision: u64,
@@ -1494,7 +1474,6 @@ enum SettingValue {
         expected_config_revision: u64,
         shortcuts: SettingsShortcuts,
     },
-    ExportDiagnostics,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1608,36 +1587,6 @@ fn startup_item_presentation(
         presentation.action = StartupItemAction::None;
     }
     presentation
-}
-
-fn diagnostic_group(
-    title: &'static str,
-    metrics: &[(&'static str, u64)],
-    tokens: Tokens,
-) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .pb_3()
-        .mb_3()
-        .child(div().pb_2().text_sm().text_color(tokens.muted).child(title))
-        .children(metrics.iter().map(|(label, value)| {
-            div()
-                .h(px(30.0))
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap_3()
-                .text_sm()
-                .child(div().min_w_0().flex_1().child(*label))
-                .child(
-                    div()
-                        .flex_none()
-                        .text_color(tokens.muted)
-                        .child(value.to_string()),
-                )
-        }))
-        .child(div().border_b_1().border_color(tokens.border))
 }
 
 /// The import suggestion shown to the user is the chosen source's own name. A

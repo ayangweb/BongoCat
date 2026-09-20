@@ -1,5 +1,4 @@
 use super::*;
-use crate::SettingsInputMonitoringPermission;
 use bongocat_config::ModelBehaviorAction;
 
 pub(super) fn is_activation_key(event: &KeyDownEvent) -> bool {
@@ -498,7 +497,6 @@ pub(super) fn navigation_accessibility_nodes(language: SettingsLanguage) -> Vec<
         (ACCESSIBILITY_GENERAL, "navigation.general.title"),
         (ACCESSIBILITY_MODELS, "navigation.models.title"),
         (ACCESSIBILITY_SHORTCUTS, "navigation.shortcuts.title"),
-        (ACCESSIBILITY_DIAGNOSTICS, "navigation.diagnostics.title"),
         (ACCESSIBILITY_ABOUT, "navigation.about.title"),
     ]
     .map(|(id, key)| {
@@ -513,126 +511,9 @@ pub(super) fn navigation_accessibility_nodes(language: SettingsLanguage) -> Vec<
     .to_vec()
 }
 
-pub(super) struct InputServicePresentation {
-    pub(super) title: &'static str,
-    pub(super) detail: String,
-    pub(super) running: bool,
-    pub(super) attention: bool,
-}
-
-pub(super) fn input_service_presentation(
-    diagnostics: SettingsInputDiagnostics,
-    language: SettingsLanguage,
-) -> InputServicePresentation {
-    let (key, running, attention) = match diagnostics.service_status {
-        SettingsInputServiceStatus::NotStarted => ("status.not_started", false, false),
-        SettingsInputServiceStatus::Running => ("status.running", true, false),
-        SettingsInputServiceStatus::PermissionDenied => ("status.permission_required", false, true),
-        SettingsInputServiceStatus::BackendUnavailable => {
-            ("status.backend_unavailable", false, true)
-        }
-        SettingsInputServiceStatus::Failed => ("errors.runtime.startup_failed", false, true),
-        SettingsInputServiceStatus::Stopped => ("status.stopped", false, false),
-    };
-    let permission = match diagnostics.input_monitoring_permission {
-        SettingsInputMonitoringPermission::Unsupported => "status.unsupported",
-        SettingsInputMonitoringPermission::Denied => "status.permission_required",
-        SettingsInputMonitoringPermission::Granted => "status.granted",
-    };
-    let separator = match language {
-        SettingsLanguage::ChineseSimplified => "：",
-        SettingsLanguage::System | SettingsLanguage::EnglishUnitedStates => ": ",
-    };
-    InputServicePresentation {
-        title: bongocat_i18n::text(language.catalog_locale(), key),
-        detail: format!(
-            "{}{}{}\n{}",
-            bongocat_i18n::text(language.catalog_locale(), "diagnostics.input.monitoring"),
-            separator,
-            bongocat_i18n::text(language.catalog_locale(), permission),
-            input_service_attempts(language, diagnostics.service_start_attempts),
-        ),
-        running,
-        attention,
-    }
-}
-
-pub(super) struct RuntimeDiagnosticsPresentation {
-    pub(super) title: String,
-    pub(super) detail: String,
-    pub(super) attention: bool,
-}
-
-fn runtime_error_title(
-    language: SettingsLanguage,
-    error: SettingsRuntimeErrorCode,
-) -> &'static str {
-    let key = match error {
-        SettingsRuntimeErrorCode::GpuPreparationFailed => "errors.runtime.gpu_preparation_failed",
-        SettingsRuntimeErrorCode::ModelLoadFailed => "errors.models.load_failed",
-        SettingsRuntimeErrorCode::ModelEvaluationFailed => "errors.models.evaluation_failed",
-        SettingsRuntimeErrorCode::MotionLoadFailed => "errors.models.motion_load_failed",
-        SettingsRuntimeErrorCode::ExpressionLoadFailed => "errors.models.expression_load_failed",
-        SettingsRuntimeErrorCode::PlatformUnsupported => "errors.runtime.platform_unsupported",
-        SettingsRuntimeErrorCode::TransportClosed => "errors.runtime.transport_closed",
-        SettingsRuntimeErrorCode::OverlaySettingsInvalid => "errors.settings.overlay_invalid",
-        SettingsRuntimeErrorCode::MaximumFpsInvalid => "errors.settings.maximum_fps_invalid",
-        SettingsRuntimeErrorCode::ReleaseFallbackTimeoutInvalid => {
-            "errors.settings.release_fallback_timeout_invalid"
-        }
-    };
-    bongocat_i18n::text(language.catalog_locale(), key)
-}
-
-pub(super) fn runtime_diagnostics_presentation(
-    diagnostics: SettingsRuntimeDiagnostics,
-    language: SettingsLanguage,
-) -> RuntimeDiagnosticsPresentation {
-    let (title, attention) = match diagnostics.render_error {
-        Some(error) => (runtime_error_title(language, error), true),
-        None => (
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "errors.runtime.no_renderer_error",
-            ),
-            false,
-        ),
-    };
-    let detail = match diagnostics.last_command_failure {
-        Some(failure) => runtime_command_failure(
-            language,
-            runtime_error_title(language, failure.code),
-            failure.sequence,
-        ),
-        None => bongocat_i18n::text(
-            language.catalog_locale(),
-            "diagnostics.runtime.no_command_failures",
-        )
-        .to_owned(),
-    };
-    let shutdown_failures = diagnostics
-        .shutdown_timed_out
-        .saturating_add(diagnostics.shutdown_worker_panicked);
-    let detail = if shutdown_failures > 0 {
-        format!(
-            "{} · {}",
-            detail,
-            runtime_shutdown_failures(language, shutdown_failures)
-        )
-    } else {
-        detail
-    };
-    RuntimeDiagnosticsPresentation {
-        title: title.to_owned(),
-        detail,
-        attention: attention || shutdown_failures > 0,
-    }
-}
-
 pub(super) struct ConfigRecoveryPresentation {
     pub(super) title: &'static str,
     pub(super) detail: String,
-    pub(super) recovered: bool,
     pub(super) attention: bool,
     pub(super) can_restore: bool,
 }
@@ -650,7 +531,6 @@ pub(super) fn config_recovery_presentation(
                     "errors.settings.configuration_unavailable",
                 ),
                 detail: backup_candidates_checked(language, checked_backups),
-                recovered: false,
                 attention: true,
                 can_restore: true,
             }
@@ -666,7 +546,6 @@ pub(super) fn config_recovery_presentation(
                     "diagnostics.configuration.restart_to_continue",
                 )
                 .to_owned(),
-                recovered: true,
                 attention: false,
                 can_restore: false,
             }
@@ -683,7 +562,6 @@ pub(super) fn config_recovery_presentation(
                     recovery.source_schema_version,
                     recovery.skipped_newer_backups,
                 ),
-                recovered: true,
                 attention: false,
                 can_restore: false,
             }
@@ -698,7 +576,6 @@ pub(super) fn config_recovery_presentation(
                 "diagnostics.configuration.no_recovery",
             )
             .to_owned(),
-            recovered: false,
             attention: false,
             can_restore: false,
         },

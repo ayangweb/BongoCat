@@ -99,7 +99,6 @@ impl SettingsView {
             SettingsPage::General => ACCESSIBILITY_GENERAL,
             SettingsPage::Models => ACCESSIBILITY_MODELS,
             SettingsPage::Shortcuts => ACCESSIBILITY_SHORTCUTS,
-            SettingsPage::Diagnostics => ACCESSIBILITY_DIAGNOSTICS,
             SettingsPage::About => ACCESSIBILITY_ABOUT,
         };
         self.accessibility_tree_with_focus(focus)
@@ -672,37 +671,6 @@ impl SettingsView {
         if restore_available {
             restore_node = restore_node.clickable().focusable();
         }
-        let open_backups_available = snapshot.is_some() && self.pending.is_none();
-        let mut open_backups_node = AccessibilityNode::new(
-            ACCESSIBILITY_OPEN_BACKUPS,
-            AccessibilityRole::Button,
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "diagnostics.configuration.open_backups_folder",
-            ),
-        )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "diagnostics.configuration.open_backups_folder_description",
-        ))
-        .disabled(!open_backups_available);
-        if open_backups_available {
-            open_backups_node = open_backups_node.clickable().focusable();
-        }
-        let export_available = snapshot.is_some() && self.pending.is_none();
-        let mut diagnostics_export_node = AccessibilityNode::new(
-            ACCESSIBILITY_EXPORT_DIAGNOSTICS,
-            AccessibilityRole::Button,
-            bongocat_i18n::text(language.catalog_locale(), "diagnostics.export.action"),
-        )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "diagnostics.export.description",
-        ))
-        .disabled(!export_available);
-        if export_available {
-            diagnostics_export_node = diagnostics_export_node.clickable().focusable();
-        }
         let mut restore_shortcuts_node = AccessibilityNode::new(
             ACCESSIBILITY_RESTORE_SHORTCUTS,
             AccessibilityRole::Button,
@@ -840,7 +808,6 @@ impl SettingsView {
             ACCESSIBILITY_GENERAL,
             ACCESSIBILITY_MODELS,
             ACCESSIBILITY_SHORTCUTS,
-            ACCESSIBILITY_DIAGNOSTICS,
             ACCESSIBILITY_ABOUT,
             ACCESSIBILITY_THEME,
             ACCESSIBILITY_LANGUAGE,
@@ -871,9 +838,7 @@ impl SettingsView {
             ACCESSIBILITY_TASKBAR_ICON,
             ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK,
             ACCESSIBILITY_STARTUP,
-            ACCESSIBILITY_OPEN_BACKUPS,
             ACCESSIBILITY_RESTORE_DEFAULTS,
-            ACCESSIBILITY_EXPORT_DIAGNOSTICS,
             ACCESSIBILITY_RESTORE_SHORTCUTS,
             ACCESSIBILITY_CLEAR_SHORTCUTS,
             ACCESSIBILITY_MODEL_CHOOSE_FOLDER,
@@ -925,9 +890,7 @@ impl SettingsView {
             taskbar_icon_node,
             automatic_update_check_node,
             startup_node,
-            open_backups_node,
             restore_node,
-            diagnostics_export_node,
             restore_shortcuts_node,
             clear_shortcuts_node,
             choose_folder_node,
@@ -988,7 +951,6 @@ impl SettingsView {
             ACCESSIBILITY_GENERAL => self.page = SettingsPage::General,
             ACCESSIBILITY_MODELS => self.page = SettingsPage::Models,
             ACCESSIBILITY_SHORTCUTS => self.page = SettingsPage::Shortcuts,
-            ACCESSIBILITY_DIAGNOSTICS => self.page = SettingsPage::Diagnostics,
             ACCESSIBILITY_ABOUT => self.page = SettingsPage::About,
             ACCESSIBILITY_THEME => {
                 if let Some(current) = self
@@ -1126,7 +1088,6 @@ impl SettingsView {
                 StartupItemAction::Retry => self.refresh(cx),
                 StartupItemAction::None => {}
             },
-            ACCESSIBILITY_OPEN_BACKUPS => self.open_config_backup_location(cx),
             ACCESSIBILITY_RESTORE_DEFAULTS => {
                 if self.snapshot.as_ref().is_some_and(|snapshot| {
                     matches!(
@@ -1137,7 +1098,6 @@ impl SettingsView {
                     self.restore_default_configuration(cx);
                 }
             }
-            ACCESSIBILITY_EXPORT_DIAGNOSTICS => self.export_diagnostics(cx),
             ACCESSIBILITY_RESTORE_SHORTCUTS => self.restore_default_shortcuts(cx),
             ACCESSIBILITY_CLEAR_SHORTCUTS => self.clear_shortcuts(cx),
             ACCESSIBILITY_MODEL_CHOOSE_FOLDER => {
@@ -1206,7 +1166,6 @@ impl SettingsView {
             (ACCESSIBILITY_GENERAL, &self.general_focus),
             (ACCESSIBILITY_MODELS, &self.models_focus),
             (ACCESSIBILITY_SHORTCUTS, &self.shortcuts_focus),
-            (ACCESSIBILITY_DIAGNOSTICS, &self.diagnostics_focus),
             (ACCESSIBILITY_ABOUT, &self.about_focus),
             (ACCESSIBILITY_OVERLAY, &self.overlay_focus),
             (ACCESSIBILITY_OVERLAY_TOPMOST, &self.overlay_topmost_focus),
@@ -1283,17 +1242,12 @@ impl SettingsView {
                 &self.trigger_dead_zone_focus,
             ),
             (ACCESSIBILITY_STARTUP, &self.startup_item_focus),
-            (ACCESSIBILITY_OPEN_BACKUPS, &self.open_backups_focus),
             (ACCESSIBILITY_RESTORE_DEFAULTS, &self.restore_defaults_focus),
             (
                 ACCESSIBILITY_RESTORE_SHORTCUTS,
                 &self.restore_shortcuts_focus,
             ),
             (ACCESSIBILITY_CLEAR_SHORTCUTS, &self.clear_shortcuts_focus),
-            (
-                ACCESSIBILITY_EXPORT_DIAGNOSTICS,
-                &self.export_diagnostics_focus,
-            ),
             (ACCESSIBILITY_MODEL_CHOOSE_FOLDER, &self.choose_model_focus),
             (
                 ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE,
@@ -1343,7 +1297,6 @@ impl SettingsView {
             SettingsPage::General => ACCESSIBILITY_GENERAL,
             SettingsPage::Models => ACCESSIBILITY_MODELS,
             SettingsPage::Shortcuts => ACCESSIBILITY_SHORTCUTS,
-            SettingsPage::Diagnostics => ACCESSIBILITY_DIAGNOSTICS,
             SettingsPage::About => ACCESSIBILITY_ABOUT,
         });
         let tree = self.accessibility_tree_with_focus(focus);

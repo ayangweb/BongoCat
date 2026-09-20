@@ -1,8 +1,7 @@
 use super::{
     SettingsBuildEnvironment, SettingsBuildInfo, SettingsError, SettingsErrorCode,
-    SettingsInputDiagnostics, SettingsLanguage, SettingsModelOrigin, ShortcutCaptureTarget,
+    SettingsLanguage, SettingsModelOrigin, ShortcutCaptureTarget,
 };
-use crate::SettingsDiagnosticsExportStatus;
 
 pub(super) fn model_availability_summary(
     language: SettingsLanguage,
@@ -41,40 +40,6 @@ pub(super) fn model_availability_summary(
     )
 }
 
-pub(super) fn diagnostics_export_status(
-    language: SettingsLanguage,
-    status: Option<SettingsDiagnosticsExportStatus>,
-) -> String {
-    let Some(status) = status else {
-        return bongocat_i18n::text(language.catalog_locale(), "diagnostics.export.none")
-            .to_owned();
-    };
-    bongocat_i18n::format_text(
-        language.catalog_locale(),
-        "diagnostics.export.summary",
-        &[
-            ("format_version", status.format_version.to_string()),
-            ("bytes_written", status.bytes_written.to_string()),
-            (
-                "preview_bundle_format_version",
-                status.preview_bundle_format_version.to_string(),
-            ),
-            (
-                "preview_bundle_entry_count",
-                status.preview_bundle_entry_count.to_string(),
-            ),
-            (
-                "preview_bundle_bytes_written",
-                status.preview_bundle_bytes_written.to_string(),
-            ),
-            (
-                "skipped_source_files",
-                status.preview_bundle_skipped_source_files.to_string(),
-            ),
-        ],
-    )
-}
-
 pub(super) fn build_info_detail(
     language: SettingsLanguage,
     build_info: &SettingsBuildInfo,
@@ -88,37 +53,6 @@ pub(super) fn build_info_detail(
         bongocat_i18n::text(language.catalog_locale(), "diagnostics.build.version"),
         build_info.product_version,
         bongocat_i18n::text(language.catalog_locale(), environment)
-    )
-}
-
-pub(super) fn input_service_attempts(language: SettingsLanguage, attempts: u64) -> String {
-    bongocat_i18n::format_text(
-        language.catalog_locale(),
-        "diagnostics.input.start_attempts",
-        &[("attempts", attempts.to_string())],
-    )
-}
-
-pub(super) fn runtime_command_failure(
-    language: SettingsLanguage,
-    error: &str,
-    sequence: u64,
-) -> String {
-    bongocat_i18n::format_text(
-        language.catalog_locale(),
-        "diagnostics.runtime.command_failure",
-        &[
-            ("error", error.to_owned()),
-            ("sequence", sequence.to_string()),
-        ],
-    )
-}
-
-pub(super) fn runtime_shutdown_failures(language: SettingsLanguage, count: u64) -> String {
-    bongocat_i18n::count_text(
-        language.catalog_locale(),
-        "diagnostics.runtime.shutdown_failures",
-        count,
     )
 }
 
@@ -202,77 +136,6 @@ pub(super) fn shortcut_target_name(
             behavior_id,
         } => format!("{model_id} ({behavior_id})"),
     }
-}
-
-pub(super) fn input_diagnostic_metrics(
-    language: SettingsLanguage,
-    diagnostics: SettingsInputDiagnostics,
-) -> [(&'static str, u64); 26] {
-    let labels = [
-        "pressed_keys",
-        "pressed_mouse_buttons",
-        "pressed_gamepad_buttons",
-        "connected_gamepads",
-        "captured_presses",
-        "captured_releases",
-        "reconciled_releases",
-        "fallback_releases",
-        "released_by_reset",
-        "duplicate_presses",
-        "unmatched_releases",
-        "invalid_sources",
-        "resets",
-        "sequence_gaps",
-        "missing_events",
-        "duplicate_events",
-        "out_of_order_events",
-        "non_monotonic_timestamps",
-        "gamepad_connections",
-        "gamepad_disconnections",
-        "stale_gamepad_events",
-        "released_on_disconnect",
-        "events_enqueued",
-        "queue_overflows",
-        "overflow_recoveries",
-        "rejected_after_shutdown",
-    ];
-    let values = [
-        diagnostics.pressed_key_count as u64,
-        diagnostics.pressed_mouse_button_count as u64,
-        diagnostics.pressed_gamepad_button_count as u64,
-        diagnostics.connected_gamepad_count as u64,
-        diagnostics.captured_down,
-        diagnostics.captured_up,
-        diagnostics.reconciled_release,
-        diagnostics.fallback_release,
-        diagnostics.released_by_reset,
-        diagnostics.duplicate_down,
-        diagnostics.unmatched_release,
-        diagnostics.invalid_source,
-        diagnostics.reset_count,
-        diagnostics.sequence_gap_count,
-        diagnostics.missing_sequence_count,
-        diagnostics.duplicate_sequence_count,
-        diagnostics.out_of_order_sequence_count,
-        diagnostics.non_monotonic_time_count,
-        diagnostics.gamepad_connections,
-        diagnostics.gamepad_disconnections,
-        diagnostics.stale_gamepad_events,
-        diagnostics.released_by_disconnect,
-        diagnostics.transport_enqueued,
-        diagnostics.transport_queue_full,
-        diagnostics.transport_recovered_after_overflow,
-        diagnostics.transport_runtime_stopped,
-    ];
-    std::array::from_fn(|index| {
-        (
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                &format!("diagnostics.input.metrics.{}", labels[index]),
-            ),
-            values[index],
-        )
-    })
 }
 
 pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -> &'static str {

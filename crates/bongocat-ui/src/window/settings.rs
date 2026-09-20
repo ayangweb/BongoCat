@@ -694,22 +694,6 @@ impl SettingsView {
         );
     }
 
-    pub(super) fn open_config_backup_location(&mut self, cx: &mut Context<Self>) {
-        self.start_request(
-            PendingOperation::OpenConfigBackupLocation,
-            Some(SettingValue::OpenConfigBackupLocation),
-            cx,
-        );
-    }
-
-    pub(super) fn export_diagnostics(&mut self, cx: &mut Context<Self>) {
-        self.start_request(
-            PendingOperation::ExportDiagnostics,
-            Some(SettingValue::ExportDiagnostics),
-            cx,
-        );
-    }
-
     pub(super) fn shortcut_commands_available(&self) -> bool {
         self.pending.is_none()
             && !self.model_import.is_running()
