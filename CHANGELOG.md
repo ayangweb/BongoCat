@@ -44,6 +44,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - The Apps key — the Menu key next to right Ctrl — now works on both platforms, so a model that ships `Apps.png` draws it. It had a name and a binding from the start, but neither platform reported the key: Windows Raw Input had no scan code for it and macOS had no keycode for `kVK_ContextualMenu`, so the image could never be reached. Apple keyboards have no such key, but a third-party one sends the macOS keycode.
 - A model's motion shortcut now plays its motion once instead of looping forever. The built-in motions declare themselves as looping, so a triggered action kept playing until the app was restarted and the model never returned to its idle pose. Pressing and holding a shortcut also no longer triggers the action again on every key repeat, and pressing it again after the action has finished plays it again.
 - The model window now shows again every time BongoCat starts. Hiding it only applies to the current session, so a window hidden before quitting is no longer still hidden after a restart — the way the previous version behaved.
+- The settings window now behaves the same on Windows and macOS: closing it only hides the window, and opening it again shows that same window instead of building a new one. It reappears where you left it — same page, same scroll position — with no rebuild pause, which macOS used to pay on every close and reopen.
 
 ### 🎨 UI and Experience
 
