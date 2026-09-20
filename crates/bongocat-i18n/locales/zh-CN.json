@@ -13,9 +13,6 @@
     "about": {
       "title": "关于"
     },
-    "diagnostics": {
-      "title": "诊断"
-    },
     "shortcuts": {
       "title": "快捷键"
     }
@@ -234,56 +231,6 @@
     "close": "关闭"
   },
   "diagnostics": {
-    "runtime_and_input": {
-      "title": "运行时与输入"
-    },
-    "runtime": {
-      "title": "运行时诊断",
-      "no_command_failures": "没有命令失败",
-      "shutdown_failures": "退出失败：%{count}",
-      "command_failure": "%{error} · 命令 #%{sequence}"
-    },
-    "loading": "正在加载诊断信息...",
-    "input": {
-      "reliability_counters": "输入可靠性计数",
-      "service": "输入服务",
-      "monitoring": "输入监控",
-      "processing": "输入处理",
-      "sequence_recovery": "序列恢复",
-      "transport": "传输",
-      "start_attempts": "启动尝试：%{attempts}",
-      "metrics": {
-        "pressed_keys": "按下的按键",
-        "pressed_mouse_buttons": "按下的鼠标按键",
-        "pressed_gamepad_buttons": "按下的手柄按键",
-        "connected_gamepads": "已连接的手柄",
-        "captured_presses": "捕获的按下事件",
-        "captured_releases": "捕获的释放事件",
-        "reconciled_releases": "校正释放",
-        "fallback_releases": "兜底释放",
-        "released_by_reset": "重置时释放",
-        "duplicate_presses": "重复按下",
-        "unmatched_releases": "未匹配的释放",
-        "invalid_sources": "无效来源",
-        "resets": "重置次数",
-        "sequence_gaps": "序列缺口",
-        "missing_events": "缺失事件",
-        "duplicate_events": "重复事件",
-        "out_of_order_events": "乱序事件",
-        "non_monotonic_timestamps": "非单调时间戳",
-        "gamepad_connections": "手柄连接",
-        "gamepad_disconnections": "手柄断开",
-        "stale_gamepad_events": "过期手柄事件",
-        "released_on_disconnect": "断开时释放",
-        "events_enqueued": "入队事件",
-        "queue_overflows": "队列溢出",
-        "overflow_recoveries": "溢出恢复",
-        "rejected_after_shutdown": "关闭后拒绝"
-      }
-    },
-    "renderer": {
-      "title": "运行时渲染"
-    },
     "build": {
       "title": "构建信息",
       "version": "版本",
@@ -292,21 +239,9 @@
         "production": "生产环境"
       }
     },
-    "export": {
-      "title": "诊断导出",
-      "none": "尚未导出报告",
-      "action": "导出诊断信息",
-      "description": "将匿名诊断报告写入当前环境的日志目录。",
-      "summary": "报告 v%{format_version}：%{bytes_written} 字节 · 预览包 v%{preview_bundle_format_version}：%{preview_bundle_entry_count} 个条目，%{preview_bundle_bytes_written} 字节 · 跳过 %{skipped_source_files} 个来源日志"
-    },
     "configuration": {
       "title": "配置",
-      "backups": "备份",
-      "current_state": "当前状态",
       "restore_defaults": "恢复默认配置",
-      "restore_defaults_description": "归档无效配置并创建默认配置。",
-      "open_backups_folder": "打开配置备份文件夹",
-      "open_backups_folder_description": "打开当前环境的配置备份文件夹。",
       "defaults_restored": "已恢复默认值",
       "restart_to_continue": "请重启应用后继续",
       "recovered_from_backup": "已从备份恢复",

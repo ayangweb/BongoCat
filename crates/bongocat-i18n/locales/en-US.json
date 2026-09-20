@@ -13,9 +13,6 @@
     "about": {
       "title": "About"
     },
-    "diagnostics": {
-      "title": "Diagnostics"
-    },
     "shortcuts": {
       "title": "Shortcuts"
     }
@@ -234,56 +231,6 @@
     "close": "Close"
   },
   "diagnostics": {
-    "runtime_and_input": {
-      "title": "Runtime and Input"
-    },
-    "runtime": {
-      "title": "Runtime Diagnostics",
-      "no_command_failures": "No command failures",
-      "shutdown_failures": "Shutdown failures: %{count}",
-      "command_failure": "%{error} · command #%{sequence}"
-    },
-    "loading": "Loading diagnostics...",
-    "input": {
-      "reliability_counters": "Input Reliability Counters",
-      "service": "Input service",
-      "monitoring": "Input Monitoring",
-      "processing": "Input processing",
-      "sequence_recovery": "Sequence recovery",
-      "transport": "Transport",
-      "start_attempts": "Start attempts: %{attempts}",
-      "metrics": {
-        "pressed_keys": "Pressed keys",
-        "pressed_mouse_buttons": "Pressed mouse buttons",
-        "pressed_gamepad_buttons": "Pressed gamepad buttons",
-        "connected_gamepads": "Connected gamepads",
-        "captured_presses": "Captured presses",
-        "captured_releases": "Captured releases",
-        "reconciled_releases": "Reconciled releases",
-        "fallback_releases": "Fallback releases",
-        "released_by_reset": "Released by reset",
-        "duplicate_presses": "Duplicate presses",
-        "unmatched_releases": "Unmatched releases",
-        "invalid_sources": "Invalid sources",
-        "resets": "Resets",
-        "sequence_gaps": "Sequence gaps",
-        "missing_events": "Missing events",
-        "duplicate_events": "Duplicate events",
-        "out_of_order_events": "Out-of-order events",
-        "non_monotonic_timestamps": "Non-monotonic timestamps",
-        "gamepad_connections": "Gamepad connections",
-        "gamepad_disconnections": "Gamepad disconnections",
-        "stale_gamepad_events": "Stale gamepad events",
-        "released_on_disconnect": "Released on disconnect",
-        "events_enqueued": "Events enqueued",
-        "queue_overflows": "Queue overflows",
-        "overflow_recoveries": "Overflow recoveries",
-        "rejected_after_shutdown": "Rejected after shutdown"
-      }
-    },
-    "renderer": {
-      "title": "Runtime Renderer"
-    },
     "build": {
       "title": "Build Information",
       "version": "Version",
@@ -292,21 +239,9 @@
         "production": "Production"
       }
     },
-    "export": {
-      "title": "Diagnostics export",
-      "none": "No report exported",
-      "action": "Export diagnostics",
-      "description": "Write an anonymous diagnostics report to the current environment's log folder.",
-      "summary": "Report v%{format_version}: %{bytes_written} bytes · Preview bundle v%{preview_bundle_format_version}: %{preview_bundle_entry_count} entries, %{preview_bundle_bytes_written} bytes · Skipped %{skipped_source_files} source logs"
-    },
     "configuration": {
       "title": "Configuration",
-      "backups": "Backups",
-      "current_state": "Current state",
       "restore_defaults": "Restore default configuration",
-      "restore_defaults_description": "Archive the invalid configuration and create defaults.",
-      "open_backups_folder": "Open configuration backups folder",
-      "open_backups_folder_description": "Open the current environment's backup folder.",
       "defaults_restored": "Defaults restored",
       "restart_to_continue": "Restart the application to continue",
       "recovered_from_backup": "Recovered from backup",

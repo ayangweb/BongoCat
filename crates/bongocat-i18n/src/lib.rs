@@ -52,11 +52,6 @@ pub fn text(locale: &str, key: &str) -> &'static str {
     value
 }
 
-/// Translate a message containing a `count` interpolation.
-pub fn count_text(locale: &str, key: &str, count: impl std::fmt::Display) -> String {
-    t!(key, locale = locale_code(locale), count = count).to_string()
-}
-
 /// Interpolate named `%{name}` values in a translated message.
 ///
 /// Keeping this tiny formatter in the i18n crate lets UI code remain free of
@@ -119,7 +114,7 @@ pub fn platform_text(locale: &str, base_key: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{count_text, current_platform_id, platform_text, text};
+    use super::{current_platform_id, format_text, platform_text, text};
     use std::collections::{BTreeMap, BTreeSet};
 
     fn messages(locale: &str) -> BTreeMap<String, String> {
@@ -224,10 +219,28 @@ mod tests {
     }
 
     #[test]
-    fn count_interpolation_is_available() {
+    fn format_text_interpolation_is_available() {
         assert_eq!(
-            count_text("en-US", "diagnostics.runtime.shutdown_failures", 3),
-            "Shutdown failures: 3"
+            format_text(
+                "en-US",
+                "diagnostics.configuration.backup_candidates",
+                &[
+                    ("count", "3".to_string()),
+                    ("plural_suffix", "s".to_string()),
+                ],
+            ),
+            "3 backup candidates checked"
+        );
+        assert_eq!(
+            format_text(
+                "zh-CN",
+                "diagnostics.configuration.backup_candidates",
+                &[
+                    ("count", "5".to_string()),
+                    ("plural_suffix", "".to_string())
+                ],
+            ),
+            "已检查 5 个备份候选"
         );
     }
 
