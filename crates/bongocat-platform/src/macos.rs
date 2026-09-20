@@ -1,6 +1,6 @@
 use crate::{
-    DisplayBounds, InputPermission, PlatformInputDiagnostics, PlatformInputError,
-    PlatformInputServiceStatus,
+    DisplayBounds, InputPermission, NativeWindowError, PlatformInputDiagnostics,
+    PlatformInputError, PlatformInputServiceStatus,
 };
 use block2::RcBlock;
 use bongocat_config::Language;
@@ -15,7 +15,7 @@ use objc2::{
     MainThreadMarker,
     rc::{Retained, autoreleasepool},
 };
-use objc2_app_kit::{NSWindow, NSWindowStyleMask};
+use objc2_app_kit::{NSView, NSWindow, NSWindowStyleMask};
 use objc2_core_foundation::{
     CFMachPort, CFRetained, CFRunLoop, CFRunLoopSource, CGPoint, CGRect, CGSize,
     kCFRunLoopDefaultMode,
@@ -27,6 +27,7 @@ use objc2_core_graphics::{
     CGGetDisplaysWithPoint, CGMouseButton,
 };
 use objc2_game_controller::{GCController, GCControllerElement, GCExtendedGamepad};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::c_void,
@@ -199,6 +200,43 @@ pub fn window_content_top_inset() -> f32 {
     } else {
         0.0
     }
+}
+
+/// Hides the window without closing or destroying it.
+///
+/// The settings and update windows are pre-rendered and reused, so AppKit is asked to
+/// remove the window from the screen (`orderOut:`) while it stays in the application's
+/// window list. GPUI therefore keeps the same view, its subscriptions and its
+/// in-flight drafts, exactly like the Windows `ShowWindow(SW_HIDE)` path.
+pub fn hide_native_window(window: &impl HasWindowHandle) -> Result<(), NativeWindowError> {
+    native_window(window)?.orderOut(None);
+    Ok(())
+}
+
+/// Shows a window that [`hide_native_window`] ordered out.
+///
+/// Ordering the window front *and* keying it is what makes the re-shown settings window
+/// the one the user types into; `orderFront:` alone would leave the key with whichever
+/// window already had it.
+pub fn show_native_window(window: &impl HasWindowHandle) -> Result<(), NativeWindowError> {
+    native_window(window)?.makeKeyAndOrderFront(None);
+    Ok(())
+}
+
+fn native_window(window: &impl HasWindowHandle) -> Result<Retained<NSWindow>, NativeWindowError> {
+    // AppKit windows are main-thread objects. The callers are GPUI window callbacks, which
+    // run on the window owner thread; refuse the call instead of making it off that thread.
+    MainThreadMarker::new().ok_or(NativeWindowError::WrongThread)?;
+    let handle = window
+        .window_handle()
+        .map_err(|_| NativeWindowError::HandleUnavailable)?;
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        return Err(NativeWindowError::UnsupportedHandle);
+    };
+    // SAFETY: raw-window-handle guarantees `ns_view` points to the NSView GPUI owns for the
+    // complete Window lifetime, and the returned borrow does not outlive `window`.
+    let view: &NSView = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+    view.window().ok_or(NativeWindowError::HandleUnavailable)
 }
 
 const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;

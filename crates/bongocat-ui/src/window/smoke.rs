@@ -1071,8 +1071,12 @@ impl SettingsView {
         Ok(())
     }
 
+    /// Show the pre-rendered window again.
+    ///
+    /// Both platforms keep one window for the whole product lifetime, so opening
+    /// settings after a close re-shows this same view and its current runtime
+    /// snapshot rather than building a second one.
     pub fn reopen(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
-        #[cfg(target_os = "windows")]
         bongocat_platform::show_native_window(window).map_err(|error| error.to_string())?;
         self.window_hidden = false;
         self.refresh(cx);
@@ -1080,20 +1084,18 @@ impl SettingsView {
         Ok(())
     }
 
+    /// Hide the window while keeping it alive.
+    ///
+    /// Closing settings is not a product event: the runtime, the input pipeline and the
+    /// overlay keep running, and the view keeps whatever the user had in flight. Only the
+    /// native window leaves the screen, which is the same `SW_HIDE`/`orderOut:` pair on
+    /// Windows and macOS.
     pub fn hide(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
         self.cancel_shortcut_capture(cx);
         self.flush_pending_settings(cx);
-
-        #[cfg(target_os = "windows")]
-        {
-            bongocat_platform::hide_native_window(window).map_err(|error| error.to_string())?;
-            self.window_hidden = true;
-            cx.notify();
-        }
-
-        #[cfg(target_os = "macos")]
-        window.remove_window();
-
+        bongocat_platform::hide_native_window(window).map_err(|error| error.to_string())?;
+        self.window_hidden = true;
+        cx.notify();
         Ok(())
     }
 }

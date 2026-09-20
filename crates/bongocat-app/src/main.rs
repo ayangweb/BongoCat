@@ -25,7 +25,7 @@ use bongocat_platform::{
 use bongocat_platform::{SystemMenu, SystemMenuAction, SystemMenuPresentation};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_runtime::hover_hide_delay_ms;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsView;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::{
@@ -38,7 +38,7 @@ use gpui_kit::{
     App, Application as GpuiApplication, Global, QuitMode, assets::AllAssets,
     platform::current_platform,
 };
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use gpui_kit::{AsyncApp, Context, Window};
 #[cfg(all(
     feature = "storage-test-injection",
@@ -690,8 +690,14 @@ const fn native_theme_for_startup(
     }
 }
 
-#[cfg(target_os = "windows")]
-async fn update_windows_settings<R>(
+/// Run one update against the settings view, retrying while GPUI cannot hand the
+/// window over.
+///
+/// The window is pre-rendered and kept for the product lifetime on both platforms, so a
+/// close no longer releases the view; what can still fail is `AsyncApp::update` returning
+/// `Err` while the platform is inside a window callback of its own.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+async fn update_settings_window<R>(
     cx: &mut AsyncApp,
     window_handle: &SettingsWindowHandle,
     mut update: impl FnMut(
@@ -1239,13 +1245,13 @@ fn toggle_settings_window(cx: &mut App) -> Result<(), String> {
         return Ok(());
     };
 
-    let _hidden = match window_handle.update(cx, |view, window, cx| {
+    // Closing settings only hides the pre-rendered window; the coordinator keeps the
+    // handle on both platforms so the next open shows the same view.
+    match window_handle.update(cx, |view, window, cx| {
         if view.window_hidden() {
-            view.reopen(window, cx)?;
-            Ok::<bool, String>(false)
+            view.reopen(window, cx)
         } else {
-            view.hide(window, cx)?;
-            Ok::<bool, String>(true)
+            view.hide(window, cx)
         }
     }) {
         Ok(result) => result?,
@@ -1253,11 +1259,6 @@ fn toggle_settings_window(cx: &mut App) -> Result<(), String> {
             ensure_settings_window(cx)?;
             return Ok(());
         }
-    };
-
-    #[cfg(target_os = "macos")]
-    if _hidden {
-        cx.global_mut::<ProductCoordinator>().settings_window = None;
     }
 
     Ok(())
@@ -3232,17 +3233,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Every page runs even when an earlier one fails: chaining them with
                 // `?` meant one failure hid the other three, and a single reported
                 // failure looked like the whole smoke had been exercised.
-                #[cfg(target_os = "macos")]
-                let settings_pages = cx.update(|cx| -> Result<(), String> {
-                    smoke_window
-                        .update(cx, |view, _, cx| view.run_page_smoke(cx))
-                        .map_err(|error| error.to_string())?
-                });
-                #[cfg(target_os = "windows")]
-                let settings_pages = update_windows_settings(cx, &smoke_window, |view, _, cx| {
-                    view.run_page_smoke(cx)
-                })
-                .await;
+                let settings_pages =
+                    update_settings_window(cx, &smoke_window, |view, _, cx| {
+                        view.run_page_smoke(cx)
+                    })
+                    .await;
                 match settings_pages {
                     Ok(()) => {}
                     Err(error) => {
@@ -3255,17 +3250,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 if run_options.models_page_smoke {
-                    #[cfg(target_os = "macos")]
-                    let models_page = cx.update(|cx| -> Result<(), String> {
-                        smoke_window
-                            .update(cx, |view, _, cx| view.show_models_page_for_smoke(cx))
-                            .map_err(|error| error.to_string())?
-                    });
-                    #[cfg(target_os = "windows")]
-                    let models_page = update_windows_settings(cx, &smoke_window, |view, _, cx| {
-                        view.show_models_page_for_smoke(cx)
-                    })
-                    .await;
+                    let models_page =
+                        update_settings_window(cx, &smoke_window, |view, _, cx| {
+                            view.show_models_page_for_smoke(cx)
+                        })
+                        .await;
                     match models_page {
                         Ok(()) => {
                             Timer::after(Duration::from_millis(250)).await;
@@ -3309,23 +3298,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                let mut window_unavailable = false;
+                let mut hidden = false;
                 for _ in 0..60 {
                     Timer::after(Duration::from_millis(50)).await;
-                    #[cfg(target_os = "macos")]
-                    let hidden =
-                        cx.update(|cx| -> Result<bool, String> { Ok(cx.windows().is_empty()) });
-                    #[cfg(target_os = "windows")]
-                    let hidden = update_windows_settings(cx, &original_window, |view, _, _| {
-                        Ok::<_, String>(view.window_hidden())
+                    let observed = update_settings_window(cx, &original_window, |view, _, cx| {
+                        Ok::<_, String>((view.window_hidden(), cx.windows().len()))
                     })
                     .await;
-                    match hidden {
-                        Ok(true) => {
-                            window_unavailable = true;
+                    match observed {
+                        Ok((true, 1)) => {
+                            hidden = true;
                             break;
                         }
-                        Ok(false) => {}
+                        Ok((true, windows)) => {
+                            record_failure(
+                                &smoke_failures,
+                                format!(
+                                    "settings close left {windows} windows instead of the one \
+                                     pre-rendered window"
+                                ),
+                            );
+                            #[cfg(target_os = "macos")]
+                            cx.update(request_product_quit);
+                            #[cfg(target_os = "windows")]
+                            request_windows_product_quit(&smoke_shutdown_requested);
+                            return;
+                        }
+                        Ok((false, _)) => {}
                         Err(error) => {
                             record_failure(&smoke_failures, error);
                             #[cfg(target_os = "macos")]
@@ -3336,8 +3335,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                if !window_unavailable {
-                    record_failure(&smoke_failures, "settings window did not close or hide");
+                if !hidden {
+                    record_failure(&smoke_failures, "settings window did not hide");
                     #[cfg(target_os = "macos")]
                     cx.update(request_product_quit);
                     #[cfg(target_os = "windows")]
@@ -3364,13 +3363,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if cx.windows().len() != 1 {
                         return Err("settings reopen created more than one window".to_owned());
                     }
-                    #[cfg(target_os = "macos")]
-                    if reopened == original_window {
-                        return Err("settings reopen retained the closed macOS entity".to_owned());
-                    }
-                    #[cfg(target_os = "windows")]
                     if reopened != original_window {
-                        return Err("settings reopen replaced the hidden Windows entity".to_owned());
+                        return Err(
+                            "settings reopen replaced the pre-rendered window entity".to_owned()
+                        );
                     }
                     Ok(reopened)
                 });
@@ -3392,20 +3388,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         cx.global::<ProductCoordinator>()
                             .settings_window
                             .clone()
-                            .ok_or_else(|| "settings window was not recreated".to_owned())?;
+                            .ok_or_else(|| "settings window was not retained".to_owned())?;
                     let revision = window_handle
                         .update(cx, |view, _, _| view.snapshot_revision())
                         .map_err(|error| error.to_string())?;
                     if revision.is_none() {
                         return Err(
-                            "recreated settings window did not restore a runtime snapshot"
-                                .to_owned(),
+                            "reopened settings window did not keep a runtime snapshot".to_owned(),
                         );
                     }
                     Ok(())
                 });
                 match restored {
-                    Ok(()) => {}
+                    Ok(()) => {
+                        if let Err(error) = write_smoke_status(
+                            "settings window hid and reopened from one pre-rendered entity",
+                        ) {
+                            record_failure(&smoke_failures, error.to_string());
+                        }
+                    }
                     Err(error) => {
                         record_failure(&smoke_failures, error);
                         #[cfg(target_os = "macos")]
@@ -3748,8 +3749,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let frame_ticks = coordinator.frame_ticks;
                     let application_reopens = coordinator.application_reopens;
                     original_window
-                        .update(cx, |_, window, _| window.remove_window())
-                        .map_err(|error| error.to_string())?;
+                        .update(cx, |view, window, cx| view.hide(window, cx))
+                        .map_err(|error| error.to_string())??;
                     Ok((original_window, frame_ticks, application_reopens))
                 });
                 let (original_window, baseline_ticks, baseline_reopens) = match baseline {
@@ -3761,22 +3762,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                let mut closed = false;
+                // Hiding is the state the dock-icon reopen has to recover from: the window
+                // stays pre-rendered while it is off screen, so this smoke proves the
+                // reopen shows that same view instead of building a second one.
+                let mut hidden = false;
                 for _ in 0..60 {
                     Timer::after(Duration::from_millis(50)).await;
-                    if cx.update(|cx| {
-                        cx.windows().is_empty()
-                            && cx.global::<ProductCoordinator>().settings_window.is_none()
-                    }) {
-                        closed = true;
-                        break;
+                    match update_settings_window(cx, &original_window, |view, _, _| {
+                        Ok::<_, String>(view.window_hidden())
+                    })
+                    .await
+                    {
+                        Ok(true) => {
+                            hidden = true;
+                            break;
+                        }
+                        Ok(false) => {}
+                        Err(error) => {
+                            record_failure(&smoke_failures, error);
+                            cx.update(request_product_quit);
+                            return;
+                        }
                     }
                 }
-                if !closed {
-                    let _ = write_smoke_status("application-reopen close failed");
+                if !hidden {
+                    let _ = write_smoke_status("application-reopen hide failed");
                     record_failure(
                         &smoke_failures,
-                        "application-reopen smoke could not destroy the settings window",
+                        "application-reopen smoke could not hide the settings window",
                     );
                     cx.update(request_product_quit);
                     return;
@@ -3800,14 +3813,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let reopened = coordinator.settings_window.clone().ok_or_else(|| {
                             "application reopen did not retain a settings window".to_owned()
                         })?;
-                        if reopened == original_window {
+                        if reopened != original_window {
                             return Err(
-                                "application reopen retained the destroyed macOS Entity".to_owned()
+                                "application reopen replaced the pre-rendered settings window"
+                                    .to_owned(),
                             );
                         }
                         if cx.windows().len() != 1 {
                             return Err("application reopen created more than one settings window"
                                 .to_owned());
+                        }
+                        if reopened
+                            .update(cx, |view, _, _| view.window_hidden())
+                            .map_err(|error| error.to_string())?
+                        {
+                            return Ok(false);
                         }
                         let revision = reopened
                             .update(cx, |view, _, _| view.snapshot_revision())
@@ -3860,7 +3880,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .expect("single-instance smoke requested its explicit settings window");
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(500)).await;
-                let baseline = update_windows_settings(
+                let baseline = update_settings_window(
                     cx,
                     &settings_window,
                     |_, window, cx| -> Result<u64, String> {
@@ -3883,7 +3903,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut hidden = false;
                 for _ in 0..60 {
                     Timer::after(Duration::from_millis(50)).await;
-                    match update_windows_settings(cx, &settings_window, |view, _, _| {
+                    match update_settings_window(cx, &settings_window, |view, _, _| {
                         Ok(view.window_hidden())
                     })
                     .await
@@ -3923,7 +3943,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 for _ in 0..100 {
                     Timer::after(Duration::from_millis(50)).await;
-                    let restored = update_windows_settings(
+                    let restored = update_settings_window(
                         cx,
                         &settings_window,
                         |view, _, cx| -> Result<bool, String> {

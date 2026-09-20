@@ -111,43 +111,35 @@ pub fn open_settings_window(
                     }
                 }
                 #[cfg(target_os = "windows")]
+                if let Err(error) =
+                    bongocat_platform::set_taskbar_icon_visible(window, _taskbar_icon_visible)
                 {
-                    if let Err(error) =
-                        bongocat_platform::set_taskbar_icon_visible(window, _taskbar_icon_visible)
-                    {
-                        *open_taskbar_error.borrow_mut() = Some(error.to_string());
-                    }
-                    let weak_view = view.downgrade();
-                    window.on_window_should_close(cx, move |window, cx| {
-                        let _ = weak_view.update(cx, |view, cx| {
-                            view.cancel_shortcut_capture(cx);
-                            view.flush_pending_settings(cx);
-                        });
-                        let result = bongocat_platform::hide_native_window(window);
-                        let _ = weak_view.update(cx, |view, cx| match result {
-                            Ok(()) => {
-                                view.window_hidden = true;
-                                cx.notify();
-                            }
-                            Err(_) => view.report_service_error(
-                                SettingsError::new(crate::SettingsErrorCode::WindowHideFailed),
-                                cx,
-                            ),
-                        });
-                        false
-                    });
+                    *open_taskbar_error.borrow_mut() = Some(error.to_string());
                 }
-                #[cfg(target_os = "macos")]
-                {
-                    let weak_view = view.downgrade();
-                    window.on_window_should_close(cx, move |_, cx| {
-                        let _ = weak_view.update(cx, |view, cx| {
-                            view.cancel_shortcut_capture(cx);
-                            view.flush_pending_settings(cx);
-                        });
-                        true
+                // Closing settings hides the window on both platforms and never destroys it:
+                // the next open shows this pre-rendered view with its current runtime
+                // snapshot. GPUI 0.2.2's Windows `WM_CLOSE` destroy callback re-enters
+                // `AsyncApp` synchronously, and a destroyed macOS window would rebuild the
+                // whole view, so the native close is intercepted and answered with a hide.
+                let weak_view = view.downgrade();
+                window.on_window_should_close(cx, move |window, cx| {
+                    let _ = weak_view.update(cx, |view, cx| {
+                        view.cancel_shortcut_capture(cx);
+                        view.flush_pending_settings(cx);
                     });
-                }
+                    let result = bongocat_platform::hide_native_window(window);
+                    let _ = weak_view.update(cx, |view, cx| match result {
+                        Ok(()) => {
+                            view.window_hidden = true;
+                            cx.notify();
+                        }
+                        Err(_) => view.report_service_error(
+                            SettingsError::new(crate::SettingsErrorCode::WindowHideFailed),
+                            cx,
+                        ),
+                    });
+                    false
+                });
                 let overlay_focus = view.read(cx).overlay_focus.clone();
                 window.focus(&overlay_focus, cx);
                 if normalize_initial_content_size && window.viewport_size() != initial_content_size

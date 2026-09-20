@@ -82,7 +82,7 @@ typed settings command 修改该值后，仍按配置 revision 原子提交并�
 `application.show_taskbar_icon` 只控制 Windows 设置窗口的任务栏按钮，不隐藏或销毁窗口，也不
 影响 overlay；macOS 不把该字段解释为 Dock 图标。修改时先在 GPUI owner 线程切换并回读 HWND
 扩展样式，成功后才按 expected revision 原子提交配置；平台失败不提交，配置失败恢复旧样式。
-启动和设置窗口重建都在窗口显示前应用当前 v1 值。
+启动和设置窗口创建都在窗口显示前应用当前 v1 值；窗口之后只隐藏/重显，不重建。
 
 登录启动不属于配置字段。它是可被系统设置或其它进程改变的平台能力，settings service 只读取
 typed platform snapshot，并仅在显式用户 command 时调用平台 adapter；不得持久化第二份布尔值。
@@ -210,7 +210,7 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
   state，验证失败恢复替换前 bytes。它不创建 config backup/quarantine，也不读取另一环境。
 - GPUI bounds observer 只更新共享 typed 内存 tracker，不执行文件 I/O，并在连续变化停止 150 ms
   后通知 settings service worker。overlay frame source 只在完整 bounds 变化时通知同一 worker；
-  worker 及时原子提交，正常 shutdown 前仍强制 flush。macOS Entity 重建、Windows 隐藏/重显、
+  worker 及时原子提交，正常 shutdown 前仍强制 flush。双平台设置窗口隐藏/重显、
   配置更新和模型切换都读取最新状态；失败形成稳定匿名错误但仍继续停止 runtime/audio 等 owner。
 
 ## Initial Version Boundary

@@ -165,8 +165,8 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   typed handoff 进入 settings service；显隐、镜像、穿透和置顶由唯一 Application owner
   按当前配置 revision 持久化，`open_settings` 交给 GPUI coordinator，避免平台线程直接触碰
   UI 生命周期。`open_settings` 通过线程安全的一次性请求位交给 GPUI frame source，后者在
-  owner 线程切换设置窗口可见性：窗口已显示时隐藏，Windows 复用隐藏的现有窗口，macOS
-  关闭当前窗口并在下次触发时创建新的窗口；窗口不存在时创建并显示。forwarder 必须支持有界停止与 join。
+  owner 线程切换设置窗口可见性：窗口已显示时隐藏，两个平台都复用同一个预渲染窗口，窗口不存在
+  时才创建并显示。forwarder 必须支持有界停止与 join。
 - `model.enable_behavior_shortcuts` 默认 `false`，只控制 motion/expression 模型行为绑定是否进入
   活动的 `CompiledShortcuts`，不得清空或改写配置中的绑定，也不得禁用 `open_settings`、overlay
   显隐、镜像、穿透或置顶等应用级快捷键。开关变更必须经 revision-checked settings command 原子
@@ -193,13 +193,14 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - `application.show_taskbar_icon` 只控制 Windows GPUI 设置窗口的任务栏按钮，不改变窗口可见性，
   也不映射为 macOS Dock 图标。settings worker 通过独立的有界 request/reply bridge 请求 GPUI 主线程
   切换 HWND 的 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW` 并回读结果，平台成功后才由 Application
-  owner 按 expected revision 原子提交；配置提交失败时恢复旧样式。启动和窗口重建必须先应用当前
+  owner 按 expected revision 原子提交；配置提交失败时恢复旧样式。启动和窗口创建必须先应用当前
   v1 值再显示窗口，平台失败只返回稳定匿名 settings error。
 - 关闭设置窗口不影响 runtime、输入、音频、frame source 和 overlay，它们继续由 app
-  coordinator 持有。macOS 销毁对应 GPUI `Entity`，reopen 创建一个新窗口；GPUI 0.2.2
-  的 Windows `WM_CLOSE` 销毁回调存在同步重入缺陷，因此 Windows platform adapter 拦截 close、
-  使用 `ShowWindow(SW_HIDE)` 保留唯一 Entity，并在 reopen 时重显。两条路径都主动读取最新
-  revisioned snapshot。Windows 显式退出先请求 frame source 停止并停止输入生产者，确认 frame
+  coordinator 持有。两个平台共用一条生命周期：窗口在第一次打开时创建，此后由 coordinator 持有，
+  close 一律被 platform adapter 拦截并只隐藏原生窗口（Windows `ShowWindow(SW_HIDE)`、macOS
+  `NSWindow.orderOut:`），reopen 重显同一 `Entity` 并主动读取最新 revisioned snapshot；窗口从不
+  销毁或重建，因此平台之间没有第二套路径。Windows 侧拦截 close 同时避开 GPUI 0.2.2 的 Windows
+  `WM_CLOSE` 销毁回调同步重入缺陷。Windows 显式退出先请求 frame source 停止并停止输入生产者，确认 frame
   source 已退出后再 shutdown/join
   runtime、配置和音频 owner，最后释放 renderer/GPU 与 overlay；由于 GPUI 0.2.2 及当前上游
   `main` 都会在最终 `WM_DESTROY` 同步重入 `AsyncApp` 并触发进程 fast-fail，平台 adapter 只在

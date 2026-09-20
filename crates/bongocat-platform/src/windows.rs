@@ -1,5 +1,6 @@
 use crate::{
-    DisplayBounds, PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus,
+    DisplayBounds, NativeWindowError, PlatformInputDiagnostics, PlatformInputError,
+    PlatformInputServiceStatus,
 };
 use bongocat_config::Language;
 use bongocat_runtime::{
@@ -252,29 +253,6 @@ impl Drop for XInputApi {
         unsafe { FreeLibrary(self.module) }.ok();
     }
 }
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NativeWindowError {
-    HandleUnavailable,
-    UnsupportedHandle,
-    CloseRequestFailed,
-    TaskbarVisibilityUpdateFailed,
-}
-
-impl std::fmt::Display for NativeWindowError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::HandleUnavailable => "the native window handle is unavailable",
-            Self::UnsupportedHandle => "the native window handle is not a Win32 HWND",
-            Self::CloseRequestFailed => "the native window rejected the close request",
-            Self::TaskbarVisibilityUpdateFailed => {
-                "the native window taskbar visibility did not update"
-            }
-        })
-    }
-}
-
-impl std::error::Error for NativeWindowError {}
 
 pub fn hide_native_window(window: &impl HasWindowHandle) -> Result<(), NativeWindowError> {
     let hwnd = native_hwnd(window)?;

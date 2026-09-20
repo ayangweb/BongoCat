@@ -75,13 +75,19 @@ pub use startup_permission::{
     check_startup_permission, startup_permission_available,
 };
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod native_window;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub use native_window::NativeWindowError;
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::{
     MacInputService, current_display_bounds, display_bounds_for_window, global_window_origin,
-    input_monitoring_permission, local_window_origin, request_input_monitoring_permission,
-    system_language, window_content_top_inset,
+    hide_native_window, input_monitoring_permission, local_window_origin,
+    request_input_monitoring_permission, show_native_window, system_language,
+    window_content_top_inset,
 };
 #[cfg(target_os = "windows")]
 mod windows;
@@ -89,9 +95,9 @@ mod windows;
 pub use windows::WindowsInputService;
 #[cfg(target_os = "windows")]
 pub use windows::{
-    NativeWindowError, current_display_bounds, display_bounds_for_window, global_window_origin,
-    hide_native_window, local_window_origin, request_native_window_close, set_taskbar_icon_visible,
-    show_native_window, system_language, taskbar_icon_is_visible, terminate_after_product_shutdown,
+    current_display_bounds, display_bounds_for_window, global_window_origin, local_window_origin,
+    request_native_window_close, set_taskbar_icon_visible, system_language,
+    taskbar_icon_is_visible, terminate_after_product_shutdown,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
