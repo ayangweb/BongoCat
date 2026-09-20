@@ -175,6 +175,14 @@ const AUTOMATIC_UPDATE_CHECK_SETTLE_ATTEMPTS: u32 = 120;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const AUTOMATIC_UPDATE_CHECK_SETTLE_INTERVAL: Duration = Duration::from_millis(500);
 
+/// How many 50ms ticks the settings-window smoke waits for its first frame.
+///
+/// The page assertions read state that only a render assigns, so the smoke has
+/// to wait for a frame rather than for a fixed delay: on a loaded machine the
+/// old 500ms start-up delay was not always enough.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const SMOKE_FIRST_FRAME_WAIT_TICKS: u32 = 120;
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Default)]
 struct OverlayPlacementDebouncer {
@@ -3198,23 +3206,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let smoke_shutdown_requested = Arc::clone(&shutdown_requested);
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(500)).await;
+                // Wait for the first frame instead of assuming the delay covered it.
+                // The general page asserts on `applied_theme`, which is only assigned
+                // during a render; on a loaded machine 500ms was not always enough, so
+                // the assertion failed and — because the page calls were chained with
+                // `?` — the remaining three pages were never exercised at all.
+                let mut rendered = false;
+                for _ in 0..SMOKE_FIRST_FRAME_WAIT_TICKS {
+                    rendered = cx.update(|cx| {
+                        smoke_window
+                            .update(cx, |view, _, _| view.appearance_applied_for_smoke())
+                            .unwrap_or(false)
+                    });
+                    if rendered {
+                        break;
+                    }
+                    Timer::after(Duration::from_millis(50)).await;
+                }
+                if !rendered {
+                    record_failure(
+                        &smoke_failures,
+                        "settings window did not render before the page smoke began".to_owned(),
+                    );
+                }
+                // Every page runs even when an earlier one fails: chaining them with
+                // `?` meant one failure hid the other three, and a single reported
+                // failure looked like the whole smoke had been exercised.
                 #[cfg(target_os = "macos")]
                 let settings_pages = cx.update(|cx| -> Result<(), String> {
                     smoke_window
-                        .update(cx, |view, _, cx| {
-                            view.show_general_page_for_smoke(cx)?;
-                            view.show_shortcuts_page_for_smoke(cx)?;
-                            view.show_diagnostics_page_for_smoke(cx)?;
-                            view.show_about_page_for_smoke(cx)
-                        })
+                        .update(cx, |view, _, cx| view.run_page_smoke(cx))
                         .map_err(|error| error.to_string())?
                 });
                 #[cfg(target_os = "windows")]
                 let settings_pages = update_windows_settings(cx, &smoke_window, |view, _, cx| {
-                    view.show_general_page_for_smoke(cx)?;
-                    view.show_shortcuts_page_for_smoke(cx)?;
-                    view.show_diagnostics_page_for_smoke(cx)?;
-                    view.show_about_page_for_smoke(cx)
+                    view.run_page_smoke(cx)
                 })
                 .await;
                 match settings_pages {

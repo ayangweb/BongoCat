@@ -168,6 +168,43 @@ impl SettingsView {
         Ok(())
     }
 
+    /// Whether a frame has applied the appearance preference yet.
+    ///
+    /// `applied_theme` is only assigned by `sync_component_theme` from inside
+    /// `render`, so asserting on it before the first frame is drawn fails. On a
+    /// loaded machine the smoke's fixed start-up delay did not always cover
+    /// that frame; callers wait on this instead of guessing how long to sleep.
+    pub fn appearance_applied_for_smoke(&self) -> bool {
+        self.applied_theme.is_some()
+    }
+
+    /// Runs every page assertion and reports all of them together.
+    ///
+    /// The caller used to chain these with `?`, so the first failure hid the
+    /// other three and one reported failure looked like the whole smoke had
+    /// been exercised. A page that fails still leaves the view usable: each
+    /// helper only sets `page` and asserts on what the product projected.
+    pub fn run_page_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+        let mut failures = Vec::new();
+        if let Err(error) = self.show_general_page_for_smoke(cx) {
+            failures.push(error);
+        }
+        if let Err(error) = self.show_shortcuts_page_for_smoke(cx) {
+            failures.push(error);
+        }
+        if let Err(error) = self.show_diagnostics_page_for_smoke(cx) {
+            failures.push(error);
+        }
+        if let Err(error) = self.show_about_page_for_smoke(cx) {
+            failures.push(error);
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("; "))
+        }
+    }
+
     pub fn show_general_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
         self.page = SettingsPage::General;
         cx.notify();
