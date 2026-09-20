@@ -14,3 +14,6 @@ target
 # WorkBuddy AI 本地项目数据（工作记忆、项目级 skill），不属于构建产物
 .workbuddy-ai/
 .workbuddy/
+
+# Freebuff 本地项目数据（项目级会话状态），不属于构建产物
+.freebuff/
