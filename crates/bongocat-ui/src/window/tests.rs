@@ -1296,6 +1296,20 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
         assert_eq!(presentation.enabled, enabled);
         assert_eq!(presentation.action, action);
         assert!(!presentation.description.is_empty());
+        let build_unavailable = matches!(
+            status,
+            SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(
+                SettingsStartupItemUnsupportedReason::BuildEnvironment
+            ))
+        );
+        assert_eq!(
+            presentation.unavailable_hint,
+            build_unavailable.then(|| bongocat_i18n::text(
+                SettingsLanguage::EnglishUnitedStates.catalog_locale(),
+                "settings.application.startup.unsupported_build",
+            )),
+            "{status:?} must carry a hover hint exactly when the build cannot offer login startup"
+        );
         assert_eq!(
             startup_item_presentation(Some(status), true, SettingsLanguage::EnglishUnitedStates,)
                 .action,
@@ -1317,6 +1331,114 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
         .description,
         "应用将在登录系统时启动"
     );
+}
+
+/// The switch is greyed out exactly where the build cannot offer login startup.
+///
+/// Transient states do not disable it: `action` already reports whether the
+/// control can act right now, and that question belongs to the accessibility
+/// node. A released build therefore keeps the switch normally available while
+/// the snapshot is still loading.
+#[test]
+fn the_startup_switch_is_disabled_exactly_where_the_build_cannot_offer_it() {
+    let statuses = [
+        None,
+        Some(SettingsStartupItemStatus::ReadError(
+            crate::SettingsStartupItemError::StateReadFailed,
+        )),
+        Some(SettingsStartupItemStatus::State(
+            SettingsStartupItemState::Disabled,
+        )),
+        Some(SettingsStartupItemStatus::State(
+            SettingsStartupItemState::Enabled,
+        )),
+        Some(SettingsStartupItemStatus::State(
+            SettingsStartupItemState::Stale,
+        )),
+        Some(SettingsStartupItemStatus::State(
+            SettingsStartupItemState::RequiresApproval,
+        )),
+        Some(SettingsStartupItemStatus::State(
+            SettingsStartupItemState::NotFound,
+        )),
+        Some(SettingsStartupItemStatus::State(
+            SettingsStartupItemState::Unsupported(
+                SettingsStartupItemUnsupportedReason::BuildEnvironment,
+            ),
+        )),
+        Some(SettingsStartupItemStatus::State(
+            SettingsStartupItemState::Unsupported(SettingsStartupItemUnsupportedReason::Platform),
+        )),
+    ];
+
+    for status in statuses {
+        for blocked in [false, true] {
+            let presentation =
+                startup_item_presentation(status, blocked, SettingsLanguage::EnglishUnitedStates);
+            let build_cannot_offer_it = matches!(
+                status,
+                Some(SettingsStartupItemStatus::State(
+                    SettingsStartupItemState::Unsupported(
+                        SettingsStartupItemUnsupportedReason::BuildEnvironment
+                    )
+                ))
+            );
+            assert_eq!(
+                presentation.switch_disabled(),
+                build_cannot_offer_it,
+                "{status:?} blocked={blocked} disabled the switch for the wrong reason"
+            );
+        }
+    }
+}
+
+/// A development build's switch is disabled and explains why on hover.
+///
+/// The row already carries the same sentence, and the tooltip is the only place
+/// a user learns why the control does not respond: the reason is a property of
+/// the build, so no action in the window can resolve it. Both copies come from
+/// one catalog entry, which is what keeps them from drifting apart.
+#[test]
+fn a_development_build_disables_the_startup_switch_with_a_hover_hint() {
+    let status = SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(
+        SettingsStartupItemUnsupportedReason::BuildEnvironment,
+    ));
+
+    let presentation =
+        startup_item_presentation(Some(status), false, SettingsLanguage::ChineseSimplified);
+    assert!(presentation.switch_disabled());
+    assert_eq!(
+        presentation.unavailable_hint,
+        Some("开发构建不支持登录时启动")
+    );
+    assert_eq!(
+        presentation.unavailable_hint,
+        Some(presentation.description)
+    );
+    assert_eq!(presentation.action, StartupItemAction::None);
+}
+
+/// Every state a released build can produce keeps the switch operable.
+///
+/// The presentation knows nothing about the build environment, so this is the
+/// released direction expressed where it can be checked without a released
+/// build: no actionable state is greyed out and none carries a hover hint.
+#[test]
+fn the_startup_switch_stays_operable_in_every_actionable_state() {
+    for (status, expected) in [
+        (SettingsStartupItemState::Disabled, true),
+        (SettingsStartupItemState::Enabled, false),
+        (SettingsStartupItemState::RequiresApproval, false),
+    ] {
+        let presentation = startup_item_presentation(
+            Some(SettingsStartupItemStatus::State(status)),
+            false,
+            SettingsLanguage::EnglishUnitedStates,
+        );
+        assert!(!presentation.switch_disabled());
+        assert_eq!(presentation.unavailable_hint, None);
+        assert_eq!(presentation.action, StartupItemAction::SetEnabled(expected));
+    }
 }
 
 /// The navigation buttons carry a label and nothing else.

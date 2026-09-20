@@ -32,6 +32,7 @@ use gpui_kit::component::{
         NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
         Settings,
     },
+    switch::Switch,
     tag::Tag,
 };
 use gpui_kit::{
@@ -103,6 +104,14 @@ struct ModelCatalogErrorNotification;
 fn accepts_snapshot_revision(current: Option<u64>, incoming: u64) -> bool {
     current.is_none_or(|current| incoming >= current)
 }
+
+/// Element id of the login-startup switch.
+///
+/// The switch is built by hand rather than through `SettingField::switch`, which
+/// names every packaged switch `check`, so this is the only settings switch with
+/// an id of its own. That keeps its focus handle and its thumb spring distinct
+/// from the other rows' switches.
+const STARTUP_ITEM_SWITCH_ID: &str = "open-at-login-switch";
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_ROOT: AccessibilityNodeId = AccessibilityNodeId::new(1);
@@ -1485,6 +1494,26 @@ struct StartupItemPresentation {
     description: &'static str,
     enabled: bool,
     action: StartupItemAction,
+    /// Present only when this build cannot offer login startup at all.
+    ///
+    /// The now-disabled switch explains itself with this text on hover, because
+    /// the reason is a property of the build and not something the user can
+    /// resolve from the settings window.
+    unavailable_hint: Option<&'static str>,
+}
+
+impl StartupItemPresentation {
+    /// Whether this build cannot offer login startup at all.
+    ///
+    /// This is a fact about the build, not about the current moment, so it is the
+    /// one thing that greys the switch out. Whether the control can act *right
+    /// now* is a separate question answered by `action`, and it stays with the
+    /// accessibility node, which reports it as the control's operability. Keeping
+    /// the two apart is what lets a released build keep the switch normally
+    /// available while the snapshot is still loading.
+    fn switch_disabled(self) -> bool {
+        self.unavailable_hint.is_some()
+    }
 }
 
 fn startup_item_presentation(
@@ -1500,6 +1529,7 @@ fn startup_item_presentation(
             ),
             enabled: false,
             action: StartupItemAction::None,
+            unavailable_hint: None,
         },
         Some(SettingsStartupItemStatus::ReadError(_)) => StartupItemPresentation {
             description: bongocat_i18n::text(
@@ -1508,6 +1538,7 @@ fn startup_item_presentation(
             ),
             enabled: false,
             action: StartupItemAction::Retry,
+            unavailable_hint: None,
         },
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled)) => {
             StartupItemPresentation {
@@ -1517,6 +1548,7 @@ fn startup_item_presentation(
                 ),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
+                unavailable_hint: None,
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled)) => {
@@ -1527,6 +1559,7 @@ fn startup_item_presentation(
                 ),
                 enabled: true,
                 action: StartupItemAction::SetEnabled(false),
+                unavailable_hint: None,
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Stale)) => {
@@ -1537,6 +1570,7 @@ fn startup_item_presentation(
                 ),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
+                unavailable_hint: None,
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::RequiresApproval)) => {
@@ -1547,6 +1581,7 @@ fn startup_item_presentation(
                 ),
                 enabled: true,
                 action: StartupItemAction::SetEnabled(false),
+                unavailable_hint: None,
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::NotFound)) => {
@@ -1557,26 +1592,42 @@ fn startup_item_presentation(
                 ),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
+                unavailable_hint: None,
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(reason))) => {
-            StartupItemPresentation {
-                description: match reason {
-                    SettingsStartupItemUnsupportedReason::Platform => bongocat_i18n::text(
+            let (description, unavailable_hint) = match reason {
+                SettingsStartupItemUnsupportedReason::Platform => (
+                    bongocat_i18n::text(
                         language.catalog_locale(),
                         "settings.application.startup.unsupported_platform",
                     ),
-                    SettingsStartupItemUnsupportedReason::OperatingSystem => bongocat_i18n::text(
+                    None,
+                ),
+                SettingsStartupItemUnsupportedReason::OperatingSystem => (
+                    bongocat_i18n::text(
                         language.catalog_locale(),
                         "settings.application.startup.unsupported_os",
                     ),
-                    SettingsStartupItemUnsupportedReason::BuildEnvironment => bongocat_i18n::text(
+                    None,
+                ),
+                // The one unsupported reason that is a property of this build
+                // rather than of the machine, so the control has to say so
+                // itself: the same text explains the row and the disabled
+                // switch, and neither copy can drift from the other.
+                SettingsStartupItemUnsupportedReason::BuildEnvironment => {
+                    let text = bongocat_i18n::text(
                         language.catalog_locale(),
                         "settings.application.startup.unsupported_build",
-                    ),
-                },
+                    );
+                    (text, Some(text))
+                }
+            };
+            StartupItemPresentation {
+                description,
                 enabled: false,
                 action: StartupItemAction::None,
+                unavailable_hint,
             }
         }
     };

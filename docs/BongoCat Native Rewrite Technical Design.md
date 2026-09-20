@@ -484,9 +484,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   托盘隐藏窗口。
 - 启动项：统一由 `auto-launch 0.6.0` 提供双平台后端。Windows 写当前用户 HKCU Run 并同步
   `StartupApproved\Run` 启用标记；macOS 写 `~/Library/LaunchAgents/{app_name}.plist`
-  （`RunAtLoad`）。Development/Production 使用不同 `app_name`（value name / plist Label），
-  命令固定为当前 executable 加 `--run-seconds 0`，默认不要求管理员权限或 TCC 授权
-  （ADR-0043）。
+  （`RunAtLoad`）。Production 使用该后端；命令固定为当前 executable 加 `--run-seconds 0`，
+  默认不要求管理员权限或 TCC 授权（ADR-0043）。该能力只属于已发布的产品：开发构建的可执行文件是
+  构建产物而非已安装应用，所以 `bongocat-app` 按构建环境判定，开发构建直接汇报
+  `Unsupported(BuildEnvironment)`、不触碰平台，设置里的开关禁用并在悬停时说明原因（ADR-0051）。
 - 启动权限：产品启动时以自身进程令牌的 `TokenElevation` 判断是否已提权，未提权时用 `rfd` 的
   原生系统弹框说明「属性 → 兼容性 → 勾选以管理员身份运行此程序」路径，并提供定位当前
   executable 的操作。检查非阻塞：主线程完成窗口、菜单栏等正常初始化后，由专用 worker 线程
@@ -1172,6 +1173,14 @@ Windows 当前用户 Run value 按 Development/Production 分名；macOS 13+ 只
 双平台启动项后端统一为 `auto-launch 0.6.0`：macOS 12+ 全版本 LaunchAgent plist、Windows
 HKCU Run（CurrentUser），环境隔离通过不同 `app_name` 保持；后端只产生 Enabled/Disabled，
 `Stale`/`RequiresApproval`/`NotFound` 保留为契约变体。Windows stale 检测退役。
+
+### ADR-051：开发构建不提供登录时启动
+
+登录时启动只属于已发布的产品：开发构建的可执行文件是 Cargo 构建产物，注册项会在 `cargo build`
+或清理 `target/` 后指向已过期或不存在的二进制。`bongocat-app` 因此按构建环境判定，开发构建直接汇报
+`Unsupported(BuildEnvironment)` 且不触碰平台（读取与写入两个方向都答同一状态，写入是 no-op 而非
+错误），设置里的开关只在该构建不提供该能力时禁用，并在悬停时用 `unsupported_build` 文案说明原因。
+取代 ADR-0043 中"Development 构建从此支持启动项"这一条决策，平台后端与环境隔离本身不变。
 
 ### ADR-021：签名更新 Manifest 信任边界（已被 ADR-0029 取代）
 

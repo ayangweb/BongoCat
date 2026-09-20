@@ -1056,30 +1056,34 @@ impl Render for SettingsView {
                                 language.catalog_locale(),
                                 "settings.application.open_at_login.label",
                             ),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app).snapshot.as_ref().is_some_and(|s| {
-                                            matches!(
-                                            s.startup_item,
-                                            SettingsStartupItemStatus::State(
-                                                SettingsStartupItemState::Enabled
-                                                    | SettingsStartupItemState::RequiresApproval
-                                            )
-                                        )
+                            // Built by hand instead of `SettingField::switch` so the
+                            // switch can carry a tooltip: the row is the only place
+                            // the unavailable-in-this-build reason can be shown, and
+                            // the packaged switch field cannot take one (ADR-0051).
+                            SettingField::element({
+                                let view = view_entity.clone();
+                                move |_: &RenderOptions, _: &mut Window, _: &mut App| {
+                                    Switch::new(STARTUP_ITEM_SWITCH_ID)
+                                        .checked(startup_item.enabled)
+                                        .disabled(startup_item.switch_disabled())
+                                        .accessibility_label(bongocat_i18n::text(
+                                            language.catalog_locale(),
+                                            "settings.application.open_at_login.label",
+                                        ))
+                                        .when_some(startup_item.unavailable_hint, |switch, hint| {
+                                            switch.tooltip(hint)
                                         })
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_startup_item_enabled(value, cx)
-                                        });
-                                    }
-                                },
-                            ),
+                                        .on_change({
+                                            let view = view.clone();
+                                            move |enabled: &bool, _: &mut Window, cx: &mut App| {
+                                                view.update(cx, |view, cx| {
+                                                    view.set_startup_item_enabled(*enabled, cx)
+                                                });
+                                            }
+                                        })
+                                        .into_any_element()
+                                }
+                            }),
                         )
                         .description(startup_item.description),
                     ];

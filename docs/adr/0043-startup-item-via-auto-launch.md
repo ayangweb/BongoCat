@@ -3,6 +3,9 @@
 状态：Accepted
 日期：2026-09-17
 取代：ADR-0013
+修订：ADR-0051 取代了"Development 构建从此支持启动项"这一条决策——开发构建现在按构建环境汇报
+`Unsupported(BuildEnvironment)`，不再注册登录项。本文档的其余部分（`auto-launch` 后端、
+LaunchAgent plist、HKCU Run、`--run-seconds 0`、契约变体保留、环境隔离命名）继续有效。
 
 ## Context
 

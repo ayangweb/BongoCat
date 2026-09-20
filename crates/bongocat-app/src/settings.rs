@@ -1655,8 +1655,37 @@ const fn input_service_is_degraded(status: SettingsInputServiceStatus) -> bool {
     )
 }
 
+/// Whether this build can offer login startup at all.
+///
+/// Login startup registers the running executable with the operating system, so
+/// the registration outlives the process that made it and points at whatever
+/// executable was current when it was written. A development build's executable
+/// is a build output rather than an installed application, so the capability
+/// belongs to a released product: a Development build reports the build
+/// environment as the reason and never asks the platform (ADR-0051).
+///
+/// The test is written as "is this Production" rather than "is this
+/// Development" so an added environment defaults to unavailable instead of
+/// silently gaining a registration.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const fn startup_item_available() -> bool {
+    matches!(BUILD_ENVIRONMENT, BuildEnvironment::Production)
+}
+
+/// The state and the mutation answer a Development build reports.
+///
+/// Both directions report the same value so a client that reads and then writes
+/// never observes the capability changing underneath it.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const fn startup_item_build_environment_state() -> SettingsStartupItemState {
+    SettingsStartupItemState::Unsupported(SettingsStartupItemUnsupportedReason::BuildEnvironment)
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn system_startup_item_state() -> SettingsStartupItemStatus {
+    if !startup_item_available() {
+        return SettingsStartupItemStatus::State(startup_item_build_environment_state());
+    }
     startup_item_state(startup_item_environment())
         .map(settings_startup_item_state)
         .map(SettingsStartupItemStatus::State)
@@ -1676,6 +1705,13 @@ const fn system_startup_item_state() -> SettingsStartupItemStatus {
 fn system_set_startup_item_enabled(
     enabled: bool,
 ) -> Result<SettingsStartupItemState, SettingsError> {
+    if !startup_item_available() {
+        // A no-op that reports the capability instead of an error: the switch
+        // that would send this command renders disabled, and a command that
+        // still arrives (a stale window, a scripted client) must not raise a
+        // failure the user has no way to act on.
+        return Ok(startup_item_build_environment_state());
+    }
     set_startup_item_enabled(startup_item_environment(), enabled)
         .map(settings_startup_item_state)
         .map_err(|_| SettingsError::new(SettingsErrorCode::StartupItemUpdateFailed))
@@ -4852,6 +4888,51 @@ mod tests {
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.startup_item, unchanged.startup_item);
         service.join().expect("service join");
+    }
+
+    /// Login startup is gated on the build environment, not on the platform.
+    ///
+    /// Written as an equality so the same test covers both feature sets: the
+    /// Development build the workspace tests run as, and the `production` build
+    /// the release pipeline compiles.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn login_startup_is_gated_on_the_build_environment() {
+        assert_eq!(
+            startup_item_available(),
+            BUILD_ENVIRONMENT == BuildEnvironment::Production,
+            "the gate must open for released builds and stay shut for development ones"
+        );
+    }
+
+    /// A development build reports login startup as unavailable and refuses to change it.
+    ///
+    /// Only the Development direction is observable here: the released direction
+    /// would have to register a real login item on the machine running the test.
+    #[cfg(all(
+        not(feature = "production"),
+        any(target_os = "macos", target_os = "windows")
+    ))]
+    #[test]
+    fn a_development_build_reports_login_startup_as_unavailable() {
+        let unavailable = SettingsStartupItemState::Unsupported(
+            SettingsStartupItemUnsupportedReason::BuildEnvironment,
+        );
+
+        assert_eq!(
+            system_startup_item_state(),
+            SettingsStartupItemStatus::State(unavailable)
+        );
+        // Both requested directions answer with the capability rather than with a
+        // failure: the switch that would send this command renders disabled, and a
+        // command that still arrives must not raise an error the user cannot act on.
+        for enabled in [true, false] {
+            assert_eq!(
+                system_set_startup_item_enabled(enabled),
+                Ok(unavailable),
+                "a development build must not report a failed login-startup write"
+            );
+        }
     }
 
     #[test]
