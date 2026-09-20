@@ -1,6 +1,13 @@
 use super::*;
 
 impl SettingsView {
+    /// Keep the rendered snapshot current while the window is on screen.
+    ///
+    /// The window is pre-rendered and only hidden when the user closes it, so the poll
+    /// stops while it is off screen: nothing it renders can be seen, the runtime keeps
+    /// running, and [`Self::reopen`] refreshes before the window shows again. Without
+    /// this the hidden window asked the service for a full snapshot — model catalog scan
+    /// included — once a second for the rest of the product's lifetime.
     pub(super) fn start_snapshot_polling(&self, cx: &mut Context<Self>) {
         let executor = cx.background_executor().clone();
         cx.spawn(async move |this, cx| {
@@ -8,7 +15,7 @@ impl SettingsView {
                 executor.timer(Duration::from_secs(1)).await;
                 if this
                     .update(cx, |view, cx| {
-                        if view.pending.is_none() && !view.model_import.is_running() {
+                        if !view.window_hidden() {
                             view.refresh(cx);
                         }
                     })

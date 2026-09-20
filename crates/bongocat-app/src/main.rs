@@ -2641,9 +2641,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
                     break;
                 }
-                if let Ok(snapshot) = system_menu_client.read_snapshot().await
-                    && last_menu_revision != Some(snapshot.revision)
-                {
+                // Ask for the revision first. This loop runs at 20 Hz for the whole
+                // product lifetime, and a full snapshot also scans the model catalog —
+                // work the menu cannot act on. The revision is a cheap comparison
+                // against state the service already holds, and a menu update only needs
+                // the snapshot once the revision has actually moved.
+                let Ok(revision) = system_menu_client.read_snapshot_revision().await else {
+                    continue;
+                };
+                if last_menu_revision == Some(revision) {
+                    continue;
+                }
+                if let Ok(snapshot) = system_menu_client.read_snapshot().await {
                     let presentation = system_menu_presentation(&snapshot);
                     let language = snapshot.resolved_language;
                     let appearance_theme = snapshot.appearance_theme;

@@ -1151,6 +1151,14 @@ pub enum SettingsCommand {
     ReadSnapshot {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// The snapshot revision alone, for pollers that only need to know whether anything
+    /// changed.
+    ///
+    /// A full [`Self::ReadSnapshot`] also scans the model catalog, which is filesystem
+    /// work a poller cannot act on. Poll this until it moves, then read the snapshot.
+    ReadSnapshotRevision {
+        reply: SettingsReply<u64>,
+    },
     SetOverlayVisible {
         expected_config_revision: u64,
         visible: bool,
@@ -1359,6 +1367,25 @@ impl SettingsClient {
     pub async fn read_snapshot(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::ReadSnapshot { reply })
             .await
+    }
+
+    /// The snapshot revision, without building the snapshot.
+    ///
+    /// The answer costs the service one comparison against state it already holds, so a
+    /// change detector can poll it at a display cadence instead of rebuilding and
+    /// comparing whole snapshots.
+    pub async fn read_snapshot_revision(&self) -> Result<u64, SettingsError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send(SettingsCommand::ReadSnapshotRevision {
+                reply: SettingsReply(reply),
+            })
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        receiver
+            .recv()
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))
     }
 
     pub async fn set_overlay_visible(
@@ -1686,6 +1713,19 @@ impl SettingsClient {
 
     pub fn read_snapshot_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::ReadSnapshot { reply })
+    }
+
+    /// The snapshot revision, without building the snapshot.
+    pub fn read_snapshot_revision_blocking(&self) -> Result<u64, SettingsError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send_blocking(SettingsCommand::ReadSnapshotRevision {
+                reply: SettingsReply(reply),
+            })
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        receiver
+            .recv_blocking()
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))
     }
 
     pub fn set_overlay_visible_blocking(

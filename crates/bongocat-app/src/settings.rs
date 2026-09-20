@@ -21,7 +21,7 @@ use bongocat_platform::{
 };
 use bongocat_runtime::{
     InputSnapshot, ModelSettings, OverlaySettings, PlatformInputDiagnostics,
-    PlatformInputServiceStatus, RuntimeRenderErrorCode, RuntimeState,
+    PlatformInputServiceStatus, RuntimeRenderErrorCode, RuntimeSnapshot, RuntimeState,
 };
 use bongocat_storage::{create_private_dir_all, write_private_atomic};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -54,7 +54,7 @@ use std::{
         mpsc::{Receiver as ShortcutReceiver, RecvTimeoutError},
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const SETTINGS_COMMAND_CAPACITY: usize = 16;
@@ -547,6 +547,15 @@ fn run_service(
                     false,
                     startup_item.state(),
                 )));
+            }
+            // The application polls this from its system menu loop. It answers "did anything
+            // change?" and stops there on purpose: building the snapshot also scans the model
+            // catalog, so polling the whole thing twenty times a second spends milliseconds of
+            // filesystem work per tick on a value the poller only compares for equality.
+            SettingsCommand::ReadSnapshotRevision { reply } => {
+                let _ =
+                    observe_snapshot_state(&application, &mut clock, startup_item.state(), false);
+                let _ = reply.respond(clock.revision);
             }
             SettingsCommand::SetOverlayVisible {
                 expected_config_revision,
@@ -1093,8 +1102,11 @@ fn run_service(
                         };
                         stopped_snapshot.runtime_diagnostics =
                             settings_runtime_diagnostics(&stopped);
-                        stopped_snapshot.input_diagnostics =
-                            settings_input_diagnostics(&stopped.input, stopped.platform_input);
+                        stopped_snapshot.input_diagnostics = settings_input_diagnostics(
+                            &stopped.input,
+                            stopped.platform_input,
+                            clock.input_monitoring_permission(),
+                        );
                         Ok(stopped_snapshot)
                     }
                     (Err(_), Ok(_)) => {
@@ -1186,12 +1198,49 @@ const fn settings_import_progress(progress: ModelImportProgress) -> SettingsMode
     }
 }
 
+/// How long an input-monitoring permission answer stays usable.
+///
+/// The system answers this query through a TCC round trip on its own dispatch queue,
+/// which costs milliseconds and dominated the settings snapshot profile: every snapshot
+/// used to pay it, once per settings command, once per settings refresh and once per
+/// system-menu poll. The value only decides what the diagnostics page displays, and the
+/// input service re-checks the permission itself before it creates or restarts an event
+/// tap, so a bounded staleness here changes nothing that matters.
+const INPUT_MONITORING_PERMISSION_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+
+/// The system input-monitoring permission, re-read at most once per
+/// [`INPUT_MONITORING_PERMISSION_REFRESH_INTERVAL`].
+#[derive(Default)]
+struct InputMonitoringPermissionCache {
+    checked_at: Option<Instant>,
+    value: SettingsInputMonitoringPermission,
+}
+
+impl InputMonitoringPermissionCache {
+    fn resolve(
+        &mut self,
+        now: Instant,
+        probe: impl FnOnce() -> SettingsInputMonitoringPermission,
+    ) -> SettingsInputMonitoringPermission {
+        let expired = self.checked_at.is_none_or(|checked_at| {
+            now.saturating_duration_since(checked_at)
+                >= INPUT_MONITORING_PERMISSION_REFRESH_INTERVAL
+        });
+        if expired {
+            self.value = probe();
+            self.checked_at = Some(now);
+        }
+        self.value
+    }
+}
+
 struct SettingsSnapshotClock {
     revision: u64,
     observed_config_revision: Option<u64>,
     observed_input_diagnostics: Option<SettingsInputDiagnostics>,
     observed_startup_item: Option<SettingsStartupItemStatus>,
     diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
+    input_monitoring_permission: InputMonitoringPermissionCache,
 }
 
 impl SettingsSnapshotClock {
@@ -1202,7 +1251,16 @@ impl SettingsSnapshotClock {
             observed_input_diagnostics: None,
             observed_startup_item: None,
             diagnostics_export: None,
+            input_monitoring_permission: InputMonitoringPermissionCache {
+                checked_at: None,
+                value: SettingsInputMonitoringPermission::Unsupported,
+            },
         }
+    }
+
+    fn input_monitoring_permission(&mut self) -> SettingsInputMonitoringPermission {
+        self.input_monitoring_permission
+            .resolve(Instant::now(), system_input_monitoring_permission)
     }
 
     fn observe_config(&mut self, config_revision: Option<u64>) {
@@ -1258,16 +1316,8 @@ fn snapshot(
     catalog_changed: bool,
     startup_item: SettingsStartupItemStatus,
 ) -> SettingsSnapshot {
-    let revision_before = clock.revision;
-    let runtime = application.runtime_client().snapshot();
-    let input_diagnostics = settings_input_diagnostics(&runtime.input, runtime.platform_input);
-    clock.observe_config(application.config_revision());
-    clock.observe_input_diagnostics(input_diagnostics);
-    clock.observe_startup_item(startup_item);
-    if catalog_changed {
-        clock.mark_catalog_changed();
-    }
-    clock.coalesce_changes_since(revision_before);
+    let (runtime, input_diagnostics) =
+        observe_snapshot_state(application, clock, startup_item, catalog_changed);
     SettingsSnapshot {
         revision: clock.revision,
         config_revision: application.config_revision(),
@@ -1364,6 +1414,36 @@ fn snapshot(
             .or_else(|| configured_model_key(application)),
         model_catalog: settings_model_catalog(application),
     }
+}
+
+/// Bring the snapshot clock up to date and report what it observed.
+///
+/// Split out of [`snapshot`] so the revision can be polled without building the snapshot:
+/// everything here is derived from state the application already holds in memory, while
+/// the snapshot's own construction — the model catalog scan above all — is only worth
+/// paying for when a caller renders it. Everything that moves the revision happens here,
+/// which is what keeps a probed revision equal to the one the next snapshot reports.
+fn observe_snapshot_state(
+    application: &Application,
+    clock: &mut SettingsSnapshotClock,
+    startup_item: SettingsStartupItemStatus,
+    catalog_changed: bool,
+) -> (RuntimeSnapshot, SettingsInputDiagnostics) {
+    let revision_before = clock.revision;
+    let runtime = application.runtime_client().snapshot();
+    let input_diagnostics = settings_input_diagnostics(
+        &runtime.input,
+        runtime.platform_input,
+        clock.input_monitoring_permission(),
+    );
+    clock.observe_config(application.config_revision());
+    clock.observe_input_diagnostics(input_diagnostics);
+    clock.observe_startup_item(startup_item);
+    if catalog_changed {
+        clock.mark_catalog_changed();
+    }
+    clock.coalesce_changes_since(revision_before);
+    (runtime, input_diagnostics)
 }
 
 const fn settings_theme(theme: bongocat_config::Theme) -> SettingsTheme {
@@ -1523,9 +1603,10 @@ fn settings_runtime_diagnostics(
 fn settings_input_diagnostics(
     input: &InputSnapshot,
     platform: PlatformInputDiagnostics,
+    input_monitoring_permission: SettingsInputMonitoringPermission,
 ) -> SettingsInputDiagnostics {
     SettingsInputDiagnostics {
-        input_monitoring_permission: system_input_monitoring_permission(),
+        input_monitoring_permission,
         service_status: match platform.service_status {
             PlatformInputServiceStatus::NotStarted => SettingsInputServiceStatus::NotStarted,
             PlatformInputServiceStatus::Running => SettingsInputServiceStatus::Running,
@@ -2985,6 +3066,13 @@ mod tests {
                 service_start_attempts: 1,
                 ..PlatformInputDiagnostics::default()
             },
+            SettingsInputMonitoringPermission::Granted,
+        );
+        // The permission is handed in rather than queried here, so what the projection
+        // reports is exactly what the caller resolved.
+        assert_eq!(
+            projected.input_monitoring_permission,
+            SettingsInputMonitoringPermission::Granted
         );
         assert_eq!(
             projected.service_status,
@@ -3122,6 +3210,7 @@ mod tests {
                 service_error_code: Some("platform_input_tap_create_failed"),
                 ..PlatformInputDiagnostics::default()
             },
+            SettingsInputMonitoringPermission::Unsupported,
         );
         assert_eq!(
             diagnostics.service_status,
@@ -3142,6 +3231,7 @@ mod tests {
                 service_error_code: Some("platform_input_private_detail"),
                 ..PlatformInputDiagnostics::default()
             },
+            SettingsInputMonitoringPermission::Unsupported,
         );
         assert_eq!(
             diagnostics.service_status,
@@ -3178,6 +3268,95 @@ mod tests {
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.config_recovery, expected);
         service.join().expect("service join");
+    }
+
+    /// The probe reports what a full snapshot would, without building one.
+    ///
+    /// The application polls the revision at 20 Hz for the system menu, so the cheap
+    /// answer has to be exact: same value as the snapshot a client would read next, and
+    /// moving whenever the configuration does.
+    #[test]
+    fn the_revision_probe_matches_the_snapshot_it_stands_in_for() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("application");
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+
+        let revision = client
+            .read_snapshot_revision_blocking()
+            .expect("initial revision");
+        let snapshot = client.read_snapshot_blocking().expect("initial snapshot");
+        assert_eq!(revision, snapshot.revision);
+        assert_eq!(
+            client
+                .read_snapshot_revision_blocking()
+                .expect("stable revision"),
+            revision,
+            "a probe between two unchanged snapshots must not invent a revision"
+        );
+
+        let changed = client
+            .set_overlay_visible_blocking(
+                snapshot.config_revision.expect("configuration revision"),
+                false,
+            )
+            .expect("overlay visibility");
+        assert!(changed.revision > revision);
+        assert_eq!(
+            client
+                .read_snapshot_revision_blocking()
+                .expect("changed revision"),
+            changed.revision,
+            "the probe must report the change the command already published"
+        );
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    /// The input-monitoring permission is a system query, not a per-snapshot one.
+    ///
+    /// Snapshot builds happen for every settings command, for the window's refresh and
+    /// for the system-menu poll, and the macOS answer costs milliseconds, so the cache
+    /// has to hold it for a while and still pick up a permission the user grants while
+    /// the product runs.
+    #[test]
+    fn the_input_monitoring_permission_is_cached_until_it_goes_stale() {
+        let started = Instant::now();
+        let answer = std::cell::Cell::new(SettingsInputMonitoringPermission::Denied);
+        let probes = std::cell::Cell::new(0_u32);
+        let probe = || {
+            probes.set(probes.get() + 1);
+            answer.get()
+        };
+        let mut cache = InputMonitoringPermissionCache::default();
+
+        assert_eq!(
+            cache.resolve(started, probe),
+            SettingsInputMonitoringPermission::Denied
+        );
+        assert_eq!(probes.get(), 1, "the first read queries the system");
+
+        answer.set(SettingsInputMonitoringPermission::Granted);
+        assert_eq!(
+            cache.resolve(
+                started + INPUT_MONITORING_PERMISSION_REFRESH_INTERVAL / 2,
+                probe
+            ),
+            SettingsInputMonitoringPermission::Denied,
+            "a fresh answer is reused instead of re-queried"
+        );
+        assert_eq!(probes.get(), 1);
+        assert_eq!(
+            cache.resolve(
+                started + INPUT_MONITORING_PERMISSION_REFRESH_INTERVAL,
+                probe
+            ),
+            SettingsInputMonitoringPermission::Granted,
+            "a stale answer is re-queried"
+        );
+        assert_eq!(probes.get(), 2);
     }
 
     #[test]
