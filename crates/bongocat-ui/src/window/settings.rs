@@ -702,5 +702,4 @@ impl SettingsView {
                     && snapshot.config_revision.is_some()
             })
     }
-
 }

@@ -1140,40 +1140,30 @@ impl Render for SettingsView {
             }
         })));
 
+        // The page's two scopes are two titled groups rather than tabs: a
+        // `SettingPage` cannot host child pages, but the settings component
+        // renders every titled group of a page with more than one group as a
+        // second-level sidebar entry, so both scopes stay directly reachable
+        // from the sidebar and the body renders them one after the other.
         let shortcuts_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.shortcuts.title",
         ))
         .icon(IconName::Keyboard)
-        .group(
-            // No group title: the page, the group and the row all describe the same thing, and
-            // the header already carries the page name. A heading here repeated it a third time.
-            SettingGroup::new().item(
-                SettingItem::new(
-                    bongocat_i18n::text(language.catalog_locale(), "navigation.shortcuts.title"),
-                    SettingField::element({
-                        let view = view_entity.clone();
-                        move |_: &RenderOptions, window: &mut Window, app: &mut App| {
-                            let snapshot = view.read(app).snapshot.clone();
-                            let tokens = Tokens::from_theme(app);
-                            view.update(app, move |view, cx| {
-                                view.page = SettingsPage::Shortcuts;
-                                shortcuts_page::content(
-                                    view,
-                                    window,
-                                    cx,
-                                    snapshot.as_ref(),
-                                    disabled,
-                                    tokens,
-                                )
-                            })
-                            .into_any_element()
-                        }
-                    }),
-                )
-                .layout(Axis::Vertical),
+        .groups(vec![
+            shortcuts_page::group(
+                shortcuts_page::ShortcutScope::Window,
+                language,
+                view_entity.clone(),
+                disabled,
             ),
-        );
+            shortcuts_page::group(
+                shortcuts_page::ShortcutScope::Model,
+                language,
+                view_entity.clone(),
+                disabled,
+            ),
+        ]);
 
         let about_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),

@@ -1,3 +1,4 @@
+use super::shortcuts_page::ShortcutScope;
 use super::*;
 use crate::{
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
@@ -1082,6 +1083,76 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
     assert!(shortcut_behavior_rows(&SettingsShortcuts::default(), None, &entries).is_empty());
 }
 
+/// The page's two scopes are groups, so each one's rows have to be a half of the
+/// one combined list the accessibility nodes and the keyboard tab order are
+/// numbered from.
+#[test]
+fn shortcut_scopes_split_the_combined_row_order_into_two_halves() {
+    let active = SettingsModelKey {
+        id: "standard".to_owned(),
+        origin: SettingsModelOrigin::Preset,
+    };
+    let entries = vec![model_entry(
+        "standard",
+        SettingsModelOrigin::Preset,
+        SettingsModelAvailability::Ready {
+            texture_count: 1,
+            expression_count: 0,
+            motion_count: 1,
+            behaviors: vec![SettingsModelBehavior::Motion {
+                group: "CAT_motion".to_owned(),
+                index: 0,
+            }],
+        },
+    )];
+    let shortcuts = SettingsShortcuts::default();
+
+    let window_rows = ShortcutScope::Window.rows(&shortcuts, Some(&active), &entries);
+    let model_rows = ShortcutScope::Model.rows(&shortcuts, Some(&active), &entries);
+    let combined = shortcut_rows(&shortcuts, Some(&active), &entries);
+
+    assert_eq!(ShortcutScope::Window.row_index_offset(&shortcuts), 0);
+    assert_eq!(
+        ShortcutScope::Model.row_index_offset(&shortcuts),
+        window_rows.len()
+    );
+    assert_eq!(combined.len(), window_rows.len() + model_rows.len());
+    assert!(
+        window_rows
+            .iter()
+            .all(|row| matches!(row.target, ShortcutCaptureTarget::Command(_)))
+    );
+    assert!(
+        model_rows
+            .iter()
+            .all(|row| matches!(row.target, ShortcutCaptureTarget::ModelBehavior { .. }))
+    );
+    for (rendered, combined) in window_rows
+        .iter()
+        .chain(model_rows.iter())
+        .zip(combined.iter())
+    {
+        assert_eq!(rendered.target, combined.target);
+        assert_eq!(rendered.shortcut, combined.shortcut);
+    }
+}
+
+/// Two scopes sharing a title would collapse into one sidebar entry and hide the
+/// other scope, and a scope whose empty state has no message would render a
+/// blank body.
+#[test]
+fn shortcut_scope_titles_are_distinct_and_only_the_model_scope_has_an_empty_state() {
+    for language in SettingsLanguage::ALL {
+        let window_title = ShortcutScope::Window.title(language);
+        let model_title = ShortcutScope::Model.title(language);
+        assert!(!window_title.is_empty());
+        assert!(!model_title.is_empty());
+        assert_ne!(window_title, model_title);
+        assert!(ShortcutScope::Window.empty_message(language).is_none());
+        assert!(ShortcutScope::Model.empty_message(language).is_some());
+    }
+}
+
 #[test]
 fn invalid_model_status_is_stable_and_path_free() {
     let entry = model_entry(
@@ -1300,4 +1371,3 @@ fn navigation_accessibility_nodes_carry_no_descriptive_value() {
     let chinese = navigation_accessibility_nodes(SettingsLanguage::ChineseSimplified);
     assert_ne!(english[0].label, chinese[0].label);
 }
-

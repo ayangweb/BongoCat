@@ -32,7 +32,6 @@ use gpui_kit::component::{
         NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
         Settings,
     },
-    tab::{Tab, TabBar},
     tag::Tag,
 };
 use gpui_kit::{
@@ -324,13 +323,6 @@ enum SettingsPage {
     About,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-enum ShortcutSettingsTab {
-    #[default]
-    Window,
-    Model,
-}
-
 /// Which native picker the page is waiting on.
 ///
 /// The two sources get two buttons because the native dialogs are separate: no
@@ -501,7 +493,6 @@ pub struct SettingsView {
     pending: Option<PendingOperation>,
     pending_notification: Option<SettingsError>,
     page: SettingsPage,
-    shortcut_tab: ShortcutSettingsTab,
     model_import: ModelImportDraft,
     overlay_scale_debouncer: crate::SettingsPatchDebouncer<u16>,
     overlay_scale_timer_generation: u64,

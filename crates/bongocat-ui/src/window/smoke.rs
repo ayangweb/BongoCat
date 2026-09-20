@@ -912,21 +912,40 @@ impl SettingsView {
 
     pub fn show_shortcuts_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
         self.page = SettingsPage::Shortcuts;
-        self.shortcut_tab = ShortcutSettingsTab::Window;
         cx.notify();
         let snapshot = self
             .snapshot
             .as_ref()
             .ok_or_else(|| "shortcuts page has not received a settings snapshot".to_owned())?;
-        let window_rows = window_shortcut_rows(&snapshot.shortcuts);
+        // The page's two scopes are groups, not tabs. A group only becomes a
+        // second-level sidebar entry when it carries a title, so the titles have
+        // to exist and have to be distinct: two scopes sharing one name would
+        // read as one entry and hide the other scope.
+        let scope_titles = [
+            shortcuts_page::ShortcutScope::Window.title(snapshot.resolved_language),
+            shortcuts_page::ShortcutScope::Model.title(snapshot.resolved_language),
+        ];
+        if scope_titles.iter().any(|title| title.is_empty()) || scope_titles[0] == scope_titles[1] {
+            return Err("shortcuts page scopes lost their localized titles".to_owned());
+        }
+        let window_rows = shortcuts_page::ShortcutScope::Window.rows(
+            &snapshot.shortcuts,
+            snapshot.active_model.as_ref(),
+            &snapshot.model_catalog.entries,
+        );
         if window_rows.len() != 5
             || window_rows[0].target != ShortcutCaptureTarget::Command("toggle_overlay".to_owned())
             || window_rows[1].target != ShortcutCaptureTarget::Command("open_settings".to_owned())
         {
             return Err("shortcuts page omitted fixed window shortcut targets".to_owned());
         }
-        self.shortcut_tab = ShortcutSettingsTab::Model;
-        let model_rows = shortcut_behavior_rows(
+        if window_rows
+            .iter()
+            .any(|row| !matches!(row.target, ShortcutCaptureTarget::Command(_)))
+        {
+            return Err("shortcuts page mixed model targets into window shortcuts".to_owned());
+        }
+        let model_rows = shortcuts_page::ShortcutScope::Model.rows(
             &snapshot.shortcuts,
             snapshot.active_model.as_ref(),
             &snapshot.model_catalog.entries,
@@ -936,6 +955,28 @@ impl SettingsView {
             .any(|row| !matches!(row.target, ShortcutCaptureTarget::ModelBehavior { .. }))
         {
             return Err("shortcuts page mixed window targets into model shortcuts".to_owned());
+        }
+        // The scopes are two halves of one page: the accessibility nodes and the
+        // keyboard tab order are numbered from the combined row list, so the
+        // rendered order has to stay window rows first and model rows at the
+        // offset the model scope reports.
+        let combined = shortcut_rows(
+            &snapshot.shortcuts,
+            snapshot.active_model.as_ref(),
+            &snapshot.model_catalog.entries,
+        );
+        let scopes_partition_combined = combined.len() == window_rows.len() + model_rows.len()
+            && combined
+                .iter()
+                .zip(window_rows.iter().chain(model_rows.iter()))
+                .all(|(combined, row)| {
+                    combined.target == row.target && combined.shortcut == row.shortcut
+                });
+        if !scopes_partition_combined
+            || shortcuts_page::ShortcutScope::Model.row_index_offset(&snapshot.shortcuts)
+                != window_rows.len()
+        {
+            return Err("shortcuts page scopes do not share one row order".to_owned());
         }
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {

@@ -163,7 +163,6 @@ impl SettingsView {
             pending: None,
             pending_notification: None,
             page: SettingsPage::General,
-            shortcut_tab: ShortcutSettingsTab::Window,
             model_import: ModelImportDraft::default(),
             overlay_scale_debouncer: crate::SettingsPatchDebouncer::default(),
             overlay_scale_timer_generation: 0,

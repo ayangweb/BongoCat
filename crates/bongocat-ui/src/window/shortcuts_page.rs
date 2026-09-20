@@ -1,88 +1,139 @@
 use super::*;
 
+/// Which set of shortcut bindings one group of the page renders.
+///
+/// The two sets used to be tabs. They are titled groups now: `SettingPage`
+/// cannot host child pages, but the settings component renders every titled
+/// group of a page that has more than one group as a second-level sidebar
+/// entry, so the sidebar lists both scopes under "Shortcuts" while the body
+/// renders them one after the other.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ShortcutScope {
+    Window,
+    Model,
+}
+
+impl ShortcutScope {
+    /// The name of this scope, used as its group heading and its sidebar entry.
+    pub(super) fn title(self, language: SettingsLanguage) -> &'static str {
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            match self {
+                Self::Window => "shortcuts.scopes.window",
+                Self::Model => "shortcuts.scopes.model",
+            },
+        )
+    }
+
+    /// The rows this scope binds.
+    ///
+    /// The window scope always lists every application command, so only the
+    /// model scope can come back empty — when the active model declares no
+    /// behavior.
+    pub(super) fn rows(
+        self,
+        shortcuts: &SettingsShortcuts,
+        active_model: Option<&SettingsModelKey>,
+        entries: &[SettingsModelEntry],
+    ) -> Vec<ShortcutRow> {
+        match self {
+            Self::Window => window_shortcut_rows(shortcuts),
+            Self::Model => shortcut_behavior_rows(shortcuts, active_model, entries),
+        }
+    }
+
+    /// Where this scope's rows start in the page-wide row order.
+    ///
+    /// Both scopes are one page, so their capture and clear controls share one
+    /// keyboard tab order and the accessibility nodes are numbered from the
+    /// same combined list of rows.
+    pub(super) fn row_index_offset(self, shortcuts: &SettingsShortcuts) -> usize {
+        match self {
+            Self::Window => 0,
+            Self::Model => window_shortcut_rows(shortcuts).len(),
+        }
+    }
+
+    /// The message to show while this scope has no rows at all.
+    pub(super) fn empty_message(self, language: SettingsLanguage) -> Option<&'static str> {
+        match self {
+            Self::Window => None,
+            Self::Model => Some(bongocat_i18n::text(
+                language.catalog_locale(),
+                "models.behaviors.empty",
+            )),
+        }
+    }
+}
+
+/// One scope of the shortcut page as a titled group.
+pub(super) fn group(
+    scope: ShortcutScope,
+    language: SettingsLanguage,
+    view: Entity<SettingsView>,
+    disabled: bool,
+) -> SettingGroup {
+    // The group heading names the scope in the body and in the sidebar, so the
+    // custom item below carries no label of its own: a `SettingItem` with a
+    // title would print the scope name a second time, directly under the
+    // heading. Search matches an item by its title or keywords, and a custom
+    // element has no title, so the page and scope names are passed as keywords
+    // to keep the page reachable through the sidebar's search box.
+    let keywords = [
+        bongocat_i18n::text(language.catalog_locale(), "navigation.shortcuts.title").to_owned(),
+        scope.title(language).to_owned(),
+    ];
+    SettingGroup::new().title(scope.title(language)).item(
+        SettingItem::render({
+            let view = view.clone();
+            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                let snapshot = view.read(app).snapshot.clone();
+                let tokens = Tokens::from_theme(app);
+                view.update(app, move |view, cx| {
+                    view.page = SettingsPage::Shortcuts;
+                    content(view, window, cx, snapshot.as_ref(), scope, disabled, tokens)
+                })
+                .into_any_element()
+            }
+        })
+        .keywords(keywords),
+    )
+}
+
 pub(super) fn content(
-    view: &mut SettingsView,
-    window: &mut Window,
+    view: &SettingsView,
+    window: &Window,
     cx: &mut Context<SettingsView>,
     snapshot: Option<&SettingsSnapshot>,
+    scope: ShortcutScope,
     disabled: bool,
     tokens: Tokens,
 ) -> Stateful<Div> {
     let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
         snapshot.resolved_language
     });
-    let tab = view.shortcut_tab;
-    let view_entity = cx.entity();
     div()
         .min_w_0()
-        .flex_1()
-        .h_full()
+        .w_full()
         .flex()
         .flex_col()
         .gap_3()
-        .p_5()
-        .bg(tokens.canvas)
         .text_color(tokens.text)
-        .id("shortcuts-content")
-        .child(div().text_2xl().child(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.shortcuts.title",
-        )))
-        .child(
-            TabBar::new("shortcut-settings-tabs")
-                .segmented()
-                .selected_index(match tab {
-                    ShortcutSettingsTab::Window => 0,
-                    ShortcutSettingsTab::Model => 1,
-                })
-                .child(Tab::new().label(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "shortcuts.scopes.window",
-                )))
-                .child(Tab::new().label(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "shortcuts.scopes.model",
-                )))
-                .on_click(move |index, _, app| {
-                    let tab = if *index == 0 {
-                        ShortcutSettingsTab::Window
-                    } else {
-                        ShortcutSettingsTab::Model
-                    };
-                    view_entity.update(app, |view, cx| {
-                        view.cancel_shortcut_capture(cx);
-                        view.shortcut_tab = tab;
-                        cx.notify();
-                    });
-                }),
-        )
+        .id(match scope {
+            ShortcutScope::Window => "window-shortcuts-content",
+            ShortcutScope::Model => "model-shortcuts-content",
+        })
         .when_some(snapshot, |content, snapshot| {
-            let rows = match tab {
-                ShortcutSettingsTab::Window => window_shortcut_rows(&snapshot.shortcuts),
-                ShortcutSettingsTab::Model => shortcut_behavior_rows(
-                    &snapshot.shortcuts,
-                    snapshot.active_model.as_ref(),
-                    &snapshot.model_catalog.entries,
-                ),
-            };
-            let row_offset = match tab {
-                ShortcutSettingsTab::Window => 0,
-                ShortcutSettingsTab::Model => window_shortcut_rows(&snapshot.shortcuts).len(),
-            };
-            content.child(div().text_sm().text_color(tokens.muted).child(match tab {
-                ShortcutSettingsTab::Window => bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "shortcuts.scopes.window",
-                ),
-                ShortcutSettingsTab::Model => bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "shortcuts.scopes.model",
-                ),
-            }))
-                .when(rows.is_empty(), |content| {
-                    content.child(div().text_sm().text_color(tokens.muted).child(
-                        bongocat_i18n::text(language.catalog_locale(), "models.behaviors.empty"),
-                    ))
+            let rows = scope.rows(
+                &snapshot.shortcuts,
+                snapshot.active_model.as_ref(),
+                &snapshot.model_catalog.entries,
+            );
+            let row_index_offset = scope.row_index_offset(&snapshot.shortcuts);
+            let empty_message = scope.empty_message(language).filter(|_| rows.is_empty());
+            content
+                .when_some(empty_message, |content, message| {
+                    content.child(div().text_sm().text_color(tokens.muted).child(message))
                 })
                 .children(rows.into_iter().enumerate().map(|(index, row)| {
                     shortcut_row(
@@ -92,10 +143,9 @@ pub(super) fn content(
                         language,
                         disabled,
                         tokens,
+                        scope,
                         row,
-                        row_offset + index,
-                        tab,
-                        index,
+                        row_index_offset + index,
                     )
                 }))
         })
@@ -109,10 +159,9 @@ fn shortcut_row(
     language: SettingsLanguage,
     disabled: bool,
     tokens: Tokens,
+    scope: ShortcutScope,
     row: ShortcutRow,
     row_index: usize,
-    tab: ShortcutSettingsTab,
-    tab_index: usize,
 ) -> Div {
     let target = row.target;
     let target_name = shortcut_target_name(language, &target);
@@ -135,13 +184,18 @@ fn shortcut_row(
     let keyboard_target = target.clone();
     let clear_target = target.clone();
     let clear_key_target = target.clone();
-    let capture_id = match tab {
-        ShortcutSettingsTab::Window => ("capture-window-shortcut", tab_index),
-        ShortcutSettingsTab::Model => ("capture-model-shortcut", tab_index),
-    };
-    let clear_id = match tab {
-        ShortcutSettingsTab::Window => ("clear-window-shortcut", tab_index),
-        ShortcutSettingsTab::Model => ("clear-model-shortcut", tab_index),
+    // The two scopes are one page and their element ids live in one namespace,
+    // so the scope prefix keeps the ids apart without folding the row index
+    // (which is already unique across the page) into the name.
+    let (capture_id, clear_id) = match scope {
+        ShortcutScope::Window => (
+            ("capture-window-shortcut", row_index),
+            ("clear-window-shortcut", row_index),
+        ),
+        ShortcutScope::Model => (
+            ("capture-model-shortcut", row_index),
+            ("clear-model-shortcut", row_index),
+        ),
     };
     div()
         .flex()

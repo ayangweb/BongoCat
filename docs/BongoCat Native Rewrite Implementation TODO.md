@@ -4874,6 +4874,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       "页标题 / 组标题 / 项标签同键"的情况。Shortcuts 页只有一个分组，删标题不产生二级菜单项
       （`groups.len() > 1` 仍为假），也不影响 `--settings-window-state-smoke` 的
       `Chinese Shortcuts localization verified`（那条断言的是快捷键行，不是分组标题）。
+      **（这段状态已被第 95 项改变**：Maintainer 随后要求把该页的两个作用域提升为子级页面，
+      Shortcuts 页现在有两个带标题的 group，侧边栏因此出现两个二级项——上面"只有一个分组"只描述
+      当时的状态，不是当前实现。）
     - 配置恢复提示改为窗口级（2026-09-20，维护者决定"让它跟着用户走"）：`config_recovery_groups`
       （返回 `Vec<SettingGroup>`、挂在 `general_page`）改为 `config_recovery_notice`（返回 `Option<Div>`，
       渲染在 `Settings` 组件**之上**、作为根 `div` 的第一个 child）。原因是侧边栏选中态由组件拥有，
@@ -5011,6 +5014,66 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `build_info_detail` 读 `.version` / `.environment.*`）与 `about.rs`（读 `.title`）使用。
       据此做了一次全量孤儿键审计，真正的遗留见第 93 项的新增记录。教训：**"看起来像遗留"不等于
       遗留，删键前必须查构造路径**。
+
+95. [x] `P1-SHORTCUT-SCOPE-SUBPAGES`：快捷键页的两个作用域改为两个子级页面，移除 Tab 组件。
+    - 背景（2026-09-20，维护者反馈）：快捷键页用 `TabBar` 在"窗口快捷键 / 模型快捷键"之间切换。第 94 项
+      建立"一级页面 + 带标题 group 充当二级"的导航结构之后，同一个页面里再放一层 Tab 就成了两套并列的
+      二级导航：作用域与侧边栏二级入口是同一层级，用户要在 Tab 和侧边栏之间来回切。更实际的问题是
+      可达性——设置窗口的 AccessKit adapter 由 `SettingsAccessibilityBridge` 独占（`main.rs` 以
+      `new_inaccessible` 构造 GPUI），无障碍树完全由 `accessibility.rs` 手写，Tab 状态不进树，读屏用户
+      听不到"这一页其实分两半"。
+    - 机制依据（复用第 94 项已核实的组件事实，未重新猜 API）：`gpui-component` 的 `SettingPage` 不支持
+      嵌套子页面，二级菜单只能由"页内带标题的 group"产生——`src/setting/settings.rs` 在
+      `groups.len() > 1` 时把每个带 `title` 的 group 渲染成第二个 `SidebarMenuItem`，点击设置
+      `selected_index.group_ix` 并滚动到该分组；同一标题同时由 `GroupBox` 渲染在页面正文里
+      （`src/setting/group.rs`）。因此"两个子级页面"的落地形态就是同一一级页面内的两个带标题 group，
+      与第 94 项其余页面一致。Technical Design 第 434-437 行对两级导航的表述不变，无需同步修改。
+    - 实现（`crates/bongocat-ui/src/window/shortcuts_page.rs`）：新增 `ShortcutScope::{Window, Model}`，
+      把属于作用域的知识全部收进它的方法——`title`（组标题兼侧边栏条目）、`rows`（取哪些行，参数与
+      `presentation.rs` 的 `window_shortcut_rows` / `shortcut_behavior_rows` 同构）、
+      `row_index_offset`（该作用域在页内行序里的起点）、`empty_message`（空态文案；窗口作用域恒非空，
+      返回 `None`）；新增 `group(scope, language, view, disabled) -> SettingGroup` 生成带标题的 group，
+      `render.rs` 用 `groups(vec![..])` 一次装配两个。`ShortcutSettingsTab` 枚举、
+      `SettingsView::shortcut_tab` 字段、`TabBar`/`Tab` 与其 `on_click`、以及
+      `gpui_kit::component::tab::{Tab, TabBar}` 导入全部删除（`window.rs`、`view_state.rs`）。
+    - 删除 Tab 状态后必须显式保住的两条既有语义：
+      ① **一条行序**：捕获/清除控件的键盘 tab order（`shortcut_capture_tab_index`）与无障碍节点编号
+        （`ACCESSIBILITY_SHORTCUT_CAPTURE_BASE + index`）都来自 `presentation.rs::shortcut_rows` 这条
+        "窗口行在前、模型行在后"的合并序列。分组渲染后由 `row_index_offset + index` 拼回同一条序列
+        （窗口 0..5、模型 5..5+m），与改动前逐项一致。
+      ② **元素 id 命名空间**：两个 group 在同一页渲染，捕获/清除按钮仍按
+        `("capture|clear-<window|model>-shortcut", row_index)` 命名；行索引本身已全局唯一，不需要把
+        作用域折进索引。
+      另有一处必须换 API 的地方：原来用 `SettingItem::new(页面标题, ..)`，group 标题已经是作用域名，
+      再加 item 标签就是同一名字第三次出现（第 94 项清过的同一问题），故改用 `SettingItem::render`；
+      但 `Element` 变体没有标题，会让该页从侧边栏搜索里消失，所以补 `.keywords([页面标题, 作用域标题])`
+      维持"搜 shortcut / 快捷键能找到这一页"。
+    - 验证（2026-09-20，本机 macOS）：`cargo fmt --all -- --check` 通过（顺手清掉 HEAD 遗留的一处
+      rustfmt 违规：`settings.rs` 实现块末尾的空行，该违规由 488266f 引入，与本项无关但属于门禁要求）；
+      `just check` 的三段 clippy（workspace 去掉 `bongocat-app` 的 all-features、`bongocat-app` 的
+      `storage-test-injection` 与 `production`）全部 `-D warnings` 通过；
+      `cargo check --locked --workspace --release` 通过；新增两项定向单测
+      （`window/tests.rs::shortcut_scopes_split_the_combined_row_order_into_two_halves` 断言两个作用域的
+      行正好是 `shortcut_rows` 的两半、无缺行重行、行序与偏移一致，
+      `..::shortcut_scope_titles_are_distinct_and_only_the_model_scope_has_an_empty_state` 断言三个
+      locale 下标题互不相同且只有模型作用域有空态）；
+      `--settings-window-state-smoke` 的 `show_shortcuts_page_for_smoke` 从"设置 tab 状态"改为断言：
+      两个作用域标题非空且互不相同、窗口作用域只含 `Command` target、模型作用域只含 `ModelBehavior`
+      target、两个作用域的拼接等于 `shortcut_rows`、模型作用域的 `row_index_offset` 等于窗口行数。
+    - 覆盖情况（如实说明）：
+      ① **没有任何断言验证"侧边栏真的渲染出两个二级项"或"正文里两个分组的前后顺序"**——本仓库的
+        smoke 不做布局断言（与第 94 项同一限制），这两点靠组件既有机制（带标题 group +
+        `groups.len() > 1`）与人工查看；
+      ② 未做视觉/截图确认，也未在 Windows 实机打开设置窗口，因此 125/150/200% DPI 下的分组间距与长
+        列表滚动只有既有证据；
+      ③ `bongocat-app` 的 `service_executes_application_shortcuts_from_the_platform_handoff` 在
+        全量 `-p bongocat-app --lib` 下间歇失败（1 秒 deadline 超时，`assert!(!updated.overlay_visible)`）。
+        交错对照数据点证明它是既有的负载/时序敏感用例，与本项代码无关：单独跑在 HEAD 与本改动下都通过；
+        完整跑时 HEAD 4 次 2 通过 2 失败（其中一次失败发生在机器完全空闲、无并发 cargo 的情况下），
+        本改动 3 次全部失败——该用例在 HEAD 同样会失败，结果不跟随工作区代码。且 `bongocat-app` 的
+        该测试路径不消费 `bongocat-ui` 的窗口模块（只取 `SettingsShortcuts` 等值类型），本项也全部落在
+        bongocat-ui 渲染层。风险已如实记录，修复该用例的 1 秒 deadline 属另一项。
+    - 未完成：Windows 侧原生复验（本机无法执行 `cfg(windows)` 路径；本项未改平台代码，风险低）。
 
 ## 13. 待决策清单
 
