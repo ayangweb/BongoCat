@@ -703,44 +703,4 @@ impl SettingsView {
             })
     }
 
-    pub(super) fn restore_default_shortcuts(&mut self, cx: &mut Context<Self>) {
-        if !self.shortcut_commands_available() {
-            return;
-        }
-        let Some(expected_config_revision) = self
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.config_revision)
-        else {
-            return;
-        };
-        self.start_request(
-            PendingOperation::RestoreDefaultShortcuts,
-            Some(SettingValue::RestoreDefaultShortcuts {
-                expected_config_revision,
-            }),
-            cx,
-        );
-    }
-
-    pub(super) fn clear_shortcuts(&mut self, cx: &mut Context<Self>) {
-        if !self.shortcut_commands_available() {
-            return;
-        }
-        let Some(expected_config_revision) = self
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.config_revision)
-        else {
-            return;
-        };
-        self.start_request(
-            PendingOperation::ClearShortcuts,
-            Some(SettingValue::Shortcuts {
-                expected_config_revision,
-                shortcuts: SettingsShortcuts::default(),
-            }),
-            cx,
-        );
-    }
 }

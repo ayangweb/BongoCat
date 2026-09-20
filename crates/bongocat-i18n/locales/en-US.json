@@ -269,11 +269,7 @@
       "model": "Model"
     },
     "actions": {
-      "restore_defaults": "Restore default shortcuts",
-      "clear_all": "Clear all shortcuts",
       "clear": "Clear",
-      "restore_defaults_description": "Replace custom shortcut bindings with the defaults.",
-      "clear_all_description": "Remove all custom shortcut bindings",
       "decrease_overlay_scale": "Decrease window scale",
       "increase_overlay_scale": "Increase window scale",
       "decrease_overlay_opacity": "Decrease window opacity",

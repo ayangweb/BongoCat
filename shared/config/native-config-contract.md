@@ -117,18 +117,14 @@ typed platform snapshot，并仅在显式用户 command 时调用平台 adapter�
 录制的那部分。因此快捷键页面的每一项都同时具备"有默认值"和"可单独修改"两种性质——修改过的项在
 后续激活与"恢复默认"之间保持用户的值，未被修改的项则回到默认分层。
 
-⚠️ 由此产生一个用户可见的不对称，需要明确记录：快捷键页面的"清除全部快捷键"送出的是
-`SettingsShortcuts::default()`，它对 `shortcuts.commands` 是**持久**的，对
+⚠️ 由此产生一个用户可见的不对称，需要明确记录：快捷键页面清除快捷键绑定（逐项"清除"或
+提交空集合）对 `shortcuts.commands` 是**持久**的，对
 `shortcuts.model_behaviors` **不是**——下一次模型激活（重启、切换模型，或再次激活同一个模型）会把
 该模型未绑定的行为重新补上默认组合键。这是旧版行为的直接结果（旧版每次模型加载都无条件重分配、
 没有开关），所以"让这些组合键不生效"的正确手段是 `model.enable_behavior_shortcuts` 开关，而不是
 靠清空。`bongocat-app` 的
 `clearing_all_shortcuts_does_not_survive_the_next_activation` 把这个不对称钉住：改动任一侧都必须
 是显式决定，而不是顺手改掉。
-
-"恢复默认"（`restore_default_shortcuts`）清空应用级 command 绑定后，会为**当前已激活的模型**重新
-执行一次分配，而不是把行为列表清空。注意"已激活"不等于配置里的 `selected_model_id`：全新配置没有
-选中任何模型，启动时仍会激活 standard 预置，此时按 `selected_model_id` 判断会得到空列表。
 
 窗口圆角（`overlay.corner_radius_percent`）与指针悬停隐藏（`overlay.hide_on_pointer_hover`、
 `overlay.hide_on_pointer_hover_delay_seconds`）原本属于 `P1 首发后` 范围，现按维护者决定上调为
@@ -169,11 +165,10 @@ key 必须属于稳定的物理键闭合集合：`A`-`Z`、`0`-`9`、`F1`-`F12`�
 绑定单独提供，runtime 在动作进入队列前接收解析后的强类型 motion/expression identity。
 行为 ID 不接受旧版的复合模型路径或任意未定义 kind。
 
-Settings service 提供 `SetShortcuts` 与 `RestoreDefaultShortcuts` 两个 typed command。
-两者都携带 `expected_config_revision`，在当前环境 writer lock 内执行原子提交；revision
-过期或绑定校验失败时保留当前 config、runtime 和 snapshot。恢复默认使用当前
-`ShortcutConfig::default()`（目前为空绑定集合），不读取旧配置，也不触发平台注册、按键
-捕获或 runtime 动作；清除绑定可通过提交空的 `commands`/`model_behaviors` 集合完成。
+Settings service 提供 `SetShortcuts` typed command。它携带 `expected_config_revision`，在当前
+环境 writer lock 内执行原子提交；revision
+过期或绑定校验失败时保留当前 config、runtime 和 snapshot；清除绑定可通过提交空的
+`commands`/`model_behaviors` 集合完成。
 提交前会把已接受的 application command、model behavior 和 chord 写成 canonical spelling，
 因此别名、输入顺序和多余空白不会在重启后改变 snapshot 表示。
 

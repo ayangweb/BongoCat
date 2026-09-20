@@ -161,10 +161,6 @@ const ACCESSIBILITY_RESTORE_DEFAULTS: AccessibilityNodeId = AccessibilityNodeId:
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_CONFIG_RECOVERY: AccessibilityNodeId = AccessibilityNodeId::new(26);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_RESTORE_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(33);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_CLEAR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(34);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_SHORTCUT_CAPTURE_BASE: u64 = 1_000;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_SHORTCUT_CLEAR_BASE: u64 = 2_000;
@@ -273,8 +269,6 @@ enum PendingOperation {
     ModelMetadata,
     ModelLocation,
     RestoreDefaultConfiguration,
-    RestoreDefaultShortcuts,
-    ClearShortcuts,
     SetShortcuts,
     BeginShortcutCapture,
     CancelShortcutCapture,
@@ -588,8 +582,6 @@ pub struct SettingsView {
     choose_archive_focus: FocusHandle,
     import_model_focus: FocusHandle,
     restore_defaults_focus: FocusHandle,
-    restore_shortcuts_focus: FocusHandle,
-    clear_shortcuts_focus: FocusHandle,
     /// The only settings text field the window actually renders.
     ///
     /// The overlay and gamepad numbers are drawn by the component library's
@@ -1241,13 +1233,6 @@ impl SettingsView {
                 Some(SettingValue::RestoreDefaultConfiguration) => {
                     client.restore_default_configuration().await
                 }
-                Some(SettingValue::RestoreDefaultShortcuts {
-                    expected_config_revision,
-                }) => {
-                    client
-                        .restore_default_shortcuts(expected_config_revision)
-                        .await
-                }
                 Some(SettingValue::Shortcuts {
                     expected_config_revision,
                     shortcuts,
@@ -1491,9 +1476,6 @@ enum SettingValue {
     },
     StartupItemEnabled(bool),
     RestoreDefaultConfiguration,
-    RestoreDefaultShortcuts {
-        expected_config_revision: u64,
-    },
     Shortcuts {
         expected_config_revision: u64,
         shortcuts: SettingsShortcuts,

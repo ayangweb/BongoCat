@@ -269,11 +269,7 @@
       "model": "模型快捷键"
     },
     "actions": {
-      "restore_defaults": "恢复默认快捷键",
-      "clear_all": "清除全部快捷键",
       "clear": "清除",
-      "restore_defaults_description": "使用默认值替换自定义快捷键绑定。",
-      "clear_all_description": "移除所有自定义快捷键绑定。",
       "decrease_overlay_scale": "缩小模型窗口",
       "increase_overlay_scale": "放大模型窗口",
       "decrease_overlay_opacity": "降低窗口不透明度",

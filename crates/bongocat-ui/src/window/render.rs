@@ -74,8 +74,6 @@ impl Render for SettingsView {
                     ACCESSIBILITY_TRIGGER_DEAD_ZONE => Some(&self.trigger_dead_zone_focus),
                     ACCESSIBILITY_STARTUP => Some(&self.startup_item_focus),
                     ACCESSIBILITY_RESTORE_DEFAULTS => Some(&self.restore_defaults_focus),
-                    ACCESSIBILITY_RESTORE_SHORTCUTS => Some(&self.restore_shortcuts_focus),
-                    ACCESSIBILITY_CLEAR_SHORTCUTS => Some(&self.clear_shortcuts_focus),
                     _ => None,
                 };
                 let shortcut_focus = self.snapshot.as_ref().and_then(|snapshot| {

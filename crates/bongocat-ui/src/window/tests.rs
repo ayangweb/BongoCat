@@ -1301,21 +1301,3 @@ fn navigation_accessibility_nodes_carry_no_descriptive_value() {
     assert_ne!(english[0].label, chinese[0].label);
 }
 
-#[test]
-fn the_recovery_restore_label_is_not_the_shortcut_restore_label() {
-    // Restoring the configuration and restoring the shortcut bindings are different actions.
-    // The recovery notice's button used to carry the shortcut page's wording, which is how its
-    // visible label came to disagree with the accessible name its node exposed. The label now
-    // has one owner, `config_recovery_restore_label`, so the remaining way back into that
-    // confusion is to point that owner at the shortcut key.
-    for language in SettingsLanguage::ALL {
-        assert_ne!(
-            config_recovery_restore_label(language),
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "shortcuts.actions.restore_defaults"
-            ),
-            "the recovery restore label must not reuse the shortcut restore label",
-        );
-    }
-}

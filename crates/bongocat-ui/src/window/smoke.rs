@@ -961,33 +961,9 @@ impl SettingsView {
                     "shortcuts page navigation accessibility semantics are invalid".to_owned(),
                 );
             }
-            // The clear-all control and the generated capture rows used to be asserted from the
-            // diagnostics page smoke, which was the only smoke that walked the accessibility
-            // tree this far. They describe this page's controls, so they assert here instead.
-            let clear_shortcuts = tree
-                .nodes
-                .iter()
-                .find(|node| node.id == ACCESSIBILITY_CLEAR_SHORTCUTS)
-                .ok_or_else(|| "shortcuts page omitted the clear-all action".to_owned())?;
-            let shortcuts_present = !snapshot.shortcuts.commands.is_empty()
-                || !snapshot.shortcuts.model_behaviors.is_empty();
-            if clear_shortcuts.role != AccessibilityRole::Button
-                || clear_shortcuts.label
-                    != bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "shortcuts.actions.clear_all",
-                    )
-                || clear_shortcuts.value.as_deref()
-                    != Some(bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "shortcuts.actions.clear_all_description",
-                    ))
-                || clear_shortcuts.disabled != !shortcuts_present
-                || clear_shortcuts.supports_click != shortcuts_present
-                || clear_shortcuts.supports_focus != shortcuts_present
-            {
-                return Err("shortcut clear accessibility semantics are invalid".to_owned());
-            }
+            // The generated capture rows used to be asserted from the diagnostics page smoke,
+            // which was the only smoke that walked the accessibility tree this far. They
+            // describe this page's controls, so they assert here instead.
             let editing_disabled =
                 snapshot.configuration_status != SettingsConfigurationStatus::Ready;
             let capture_nodes = tree

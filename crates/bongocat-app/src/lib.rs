@@ -1035,30 +1035,6 @@ impl Application {
         Ok(snapshot)
     }
 
-    /// Reset the shortcut configuration to its defaults: no application
-    /// command binding, and the active model's motions and expressions back on
-    /// the chords the legacy implementation would have auto-assigned.
-    ///
-    /// Without an active model there is nothing to auto-assign, so this leaves
-    /// the model behaviour list empty rather than inventing a model.
-    pub fn restore_default_shortcuts(&mut self) -> Result<RuntimeSnapshot, ApplicationError> {
-        let mut next_config = self.config.clone();
-        next_config.shortcuts = ShortcutConfig::default();
-        if let Some(model) = self.active_model() {
-            assign_default_behavior_shortcuts(&mut next_config, &model);
-        }
-        next_config.validate()?;
-        let compiled = active_shortcuts(&next_config)?;
-        let next_revision = self
-            .config_store
-            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
-        let snapshot = self.runtime.client().snapshot();
-        self.config = next_config;
-        self.shortcut_table.replace(compiled);
-        self.config_revision = Some(next_revision);
-        Ok(snapshot)
-    }
-
     pub fn model_catalog(&self) -> Result<Vec<ModelCatalogEntry>, ApplicationError> {
         // Unrecognized store entries are filtered inside the store scan; the
         // merged catalog only exposes real models.
@@ -1602,19 +1578,6 @@ impl Application {
         if let Ok(compiled) = active_shortcuts(&self.config) {
             self.shortcut_table.replace(compiled);
         }
-    }
-
-    /// The model the runtime is currently holding, when it still loads.
-    ///
-    /// This is the activated model rather than the configured selection: a
-    /// fresh configuration selects nothing, and startup still activates the
-    /// standard preset, so keying this off `selected_model_id` alone would
-    /// leave the model active but invisible to callers that need its motions
-    /// and expressions.
-    fn active_model(&self) -> Option<CommittedModel> {
-        let origin = self.active_model_origin?;
-        let id = self.active_model_id.clone()?;
-        self.load_model(origin, &id).ok()
     }
 
     pub fn shutdown(self) -> Result<RuntimeSnapshot, ApplicationError> {
@@ -3162,98 +3125,6 @@ mod tests {
             7,
             "the model behaviour defaults are re-assigned by activation"
         );
-        application.shutdown().expect("clean shutdown");
-    }
-
-    /// "Restore defaults" has to leave the page usable. The legacy reset
-    /// re-ran the auto-assignment, so the Native reset rebuilds the active
-    /// model's defaults rather than emptying the list.
-    ///
-    /// This drives the real startup path on purpose: a fresh configuration
-    /// selects no model at all, and `restore_startup_model` still activates the
-    /// standard preset. Reading the active model off `selected_model_id` would
-    /// leave the reset with nothing to re-assign here.
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    #[test]
-    fn restoring_default_shortcuts_reassigns_the_active_model_defaults() {
-        let base = tempdir().expect("temp directory");
-        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
-        let mut application = Application::start_with_layout_internal(
-            layout,
-            repository_preset_root().as_path(),
-            true,
-            Language::EnglishUnitedStates,
-        )
-        .expect("start rendering application");
-        assert_eq!(application.active_model_origin(), None);
-        application
-            .restore_startup_model()
-            .expect("restore startup model");
-        assert_eq!(
-            application.active_model_origin(),
-            Some(ModelOrigin::Preset),
-            "a fresh configuration falls back to the standard preset"
-        );
-        assert_eq!(
-            application.config().model.selected_model_id,
-            None,
-            "the activated model is not necessarily the configured selection"
-        );
-        let consumer = application
-            .take_render_consumer()
-            .expect("take render consumer");
-        let frame = wait_for_any_model_commit_frame(&consumer);
-        consumer
-            .report_model_commit(ModelCommitFeedback {
-                token: frame.model_commit.expect("commit token"),
-                outcome: ModelCommitOutcome::Prepared,
-            })
-            .expect("commit standard model");
-
-        let primary = behavior_shortcut_primary_name();
-        assert_eq!(
-            application.config().shortcuts.model_behaviors.len(),
-            7,
-            "startup already assigns the defaults"
-        );
-
-        // Replace both halves of the configuration, then reset.
-        application
-            .set_shortcuts(bongocat_ui::SettingsShortcuts {
-                commands: vec![bongocat_ui::SettingsShortcutBinding {
-                    command: "open_settings".to_owned(),
-                    shortcut: "Control+Alt+8".to_owned(),
-                }],
-                model_behaviors: Vec::new(),
-            })
-            .expect("persist custom shortcuts");
-        assert!(application.config().shortcuts.model_behaviors.is_empty());
-
-        application
-            .restore_default_shortcuts()
-            .expect("restore default shortcuts");
-
-        assert!(
-            application.config().shortcuts.commands.is_empty(),
-            "the reset drops application command bindings"
-        );
-        let bindings = application.config().shortcuts.model_behaviors.clone();
-        assert_eq!(bindings.len(), 7);
-        for (behavior_id, slot) in [
-            ("motion:CAT_motion:0", 1),
-            ("motion:CAT_motion_lock:1", 4),
-            ("expression:live2d_expression2.exp3.json", 7),
-        ] {
-            let binding = bindings
-                .iter()
-                .find(|binding| binding.behavior_id == behavior_id)
-                .unwrap_or_else(|| panic!("{behavior_id} has no default binding"));
-            assert_eq!(
-                binding.shortcut,
-                format!("{primary}+{slot}"),
-                "{behavior_id}"
-            );
-        }
         application.shutdown().expect("clean shutdown");
     }
 

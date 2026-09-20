@@ -69,81 +69,16 @@ pub(super) fn content(
                 ShortcutSettingsTab::Window => 0,
                 ShortcutSettingsTab::Model => window_shortcut_rows(&snapshot.shortcuts).len(),
             };
-            content
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .gap_3()
-                        .child(div().text_sm().text_color(tokens.muted).child(match tab {
-                            ShortcutSettingsTab::Window => bongocat_i18n::text(
-                                language.catalog_locale(),
-                                "shortcuts.scopes.window",
-                            ),
-                            ShortcutSettingsTab::Model => bongocat_i18n::text(
-                                language.catalog_locale(),
-                                "shortcuts.scopes.model",
-                            ),
-                        }))
-                        .child(
-                            div()
-                                .flex()
-                                .gap_2()
-                                .child(
-                                    command_button(
-                                        bongocat_i18n::text(
-                                            language.catalog_locale(),
-                                            "shortcuts.actions.restore_defaults",
-                                        ),
-                                        &view.restore_shortcuts_focus,
-                                        33,
-                                        window,
-                                        tokens,
-                                        disabled,
-                                    )
-                                    .id("restore-default-shortcuts")
-                                    .on_click(cx.listener(|view, _, window, cx| {
-                                        window.focus(&view.restore_shortcuts_focus, cx);
-                                        view.restore_default_shortcuts(cx);
-                                    }))
-                                    .on_key_down(cx.listener(|view, event, window, cx| {
-                                        if is_activation_key(event) {
-                                            cx.stop_propagation();
-                                            window.focus(&view.restore_shortcuts_focus, cx);
-                                            view.restore_default_shortcuts(cx);
-                                        }
-                                    })),
-                                )
-                                .child(
-                                    command_button(
-                                        bongocat_i18n::text(
-                                            language.catalog_locale(),
-                                            "shortcuts.actions.clear_all",
-                                        ),
-                                        &view.clear_shortcuts_focus,
-                                        34,
-                                        window,
-                                        tokens,
-                                        disabled
-                                            || snapshot.shortcuts.commands.is_empty()
-                                                && snapshot.shortcuts.model_behaviors.is_empty(),
-                                    )
-                                    .id("clear-shortcuts")
-                                    .on_click(cx.listener(|view, _, window, cx| {
-                                        window.focus(&view.clear_shortcuts_focus, cx);
-                                        view.clear_shortcuts(cx);
-                                    }))
-                                    .on_key_down(cx.listener(|view, event, window, cx| {
-                                        if is_activation_key(event) {
-                                            cx.stop_propagation();
-                                            window.focus(&view.clear_shortcuts_focus, cx);
-                                            view.clear_shortcuts(cx);
-                                        }
-                                    })),
-                                ),
-                        ),
-                )
+            content.child(div().text_sm().text_color(tokens.muted).child(match tab {
+                ShortcutSettingsTab::Window => bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "shortcuts.scopes.window",
+                ),
+                ShortcutSettingsTab::Model => bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "shortcuts.scopes.model",
+                ),
+            }))
                 .when(rows.is_empty(), |content| {
                     content.child(div().text_sm().text_color(tokens.muted).child(
                         bongocat_i18n::text(language.catalog_locale(), "models.behaviors.empty"),

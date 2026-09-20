@@ -690,46 +690,6 @@ impl SettingsView {
         if restore_available {
             restore_node = restore_node.clickable().focusable();
         }
-        let mut restore_shortcuts_node = AccessibilityNode::new(
-            ACCESSIBILITY_RESTORE_SHORTCUTS,
-            AccessibilityRole::Button,
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "shortcuts.actions.restore_defaults",
-            ),
-        )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "shortcuts.actions.restore_defaults_description",
-        ))
-        .disabled(disabled);
-        if !disabled {
-            restore_shortcuts_node = restore_shortcuts_node.clickable().focusable();
-        }
-        let mut clear_shortcuts_node = AccessibilityNode::new(
-            ACCESSIBILITY_CLEAR_SHORTCUTS,
-            AccessibilityRole::Button,
-            bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.clear_all"),
-        )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "shortcuts.actions.clear_all_description",
-        ))
-        .disabled(
-            disabled
-                || snapshot.is_none_or(|snapshot| {
-                    snapshot.shortcuts.commands.is_empty()
-                        && snapshot.shortcuts.model_behaviors.is_empty()
-                }),
-        );
-        if !disabled
-            && snapshot.is_some_and(|snapshot| {
-                !snapshot.shortcuts.commands.is_empty()
-                    || !snapshot.shortcuts.model_behaviors.is_empty()
-            })
-        {
-            clear_shortcuts_node = clear_shortcuts_node.clickable().focusable();
-        }
         let model_configuration_ready = snapshot.is_some_and(|snapshot| {
             snapshot.configuration_status == SettingsConfigurationStatus::Ready
         });
@@ -862,8 +822,6 @@ impl SettingsView {
             ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK,
             ACCESSIBILITY_STARTUP,
             ACCESSIBILITY_RESTORE_DEFAULTS,
-            ACCESSIBILITY_RESTORE_SHORTCUTS,
-            ACCESSIBILITY_CLEAR_SHORTCUTS,
             ACCESSIBILITY_MODEL_CHOOSE_FOLDER,
             ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE,
             ACCESSIBILITY_MODEL_IMPORT,
@@ -917,8 +875,6 @@ impl SettingsView {
             automatic_update_check_node,
             startup_node,
             restore_node,
-            restore_shortcuts_node,
-            clear_shortcuts_node,
             choose_folder_node,
             choose_archive_node,
             import_node,
@@ -1131,8 +1087,6 @@ impl SettingsView {
                     self.restore_default_configuration(cx);
                 }
             }
-            ACCESSIBILITY_RESTORE_SHORTCUTS => self.restore_default_shortcuts(cx),
-            ACCESSIBILITY_CLEAR_SHORTCUTS => self.clear_shortcuts(cx),
             ACCESSIBILITY_MODEL_CHOOSE_FOLDER => {
                 if self.pending.is_none()
                     && !self.model_import.is_running()
@@ -1276,11 +1230,6 @@ impl SettingsView {
             ),
             (ACCESSIBILITY_STARTUP, &self.startup_item_focus),
             (ACCESSIBILITY_RESTORE_DEFAULTS, &self.restore_defaults_focus),
-            (
-                ACCESSIBILITY_RESTORE_SHORTCUTS,
-                &self.restore_shortcuts_focus,
-            ),
-            (ACCESSIBILITY_CLEAR_SHORTCUTS, &self.clear_shortcuts_focus),
             (ACCESSIBILITY_MODEL_CHOOSE_FOLDER, &self.choose_model_focus),
             (
                 ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE,
