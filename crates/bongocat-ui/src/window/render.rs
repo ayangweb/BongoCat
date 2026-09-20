@@ -1054,37 +1054,6 @@ impl Render for SettingsView {
                         SettingItem::new(
                             bongocat_i18n::text(
                                 language.catalog_locale(),
-                                "settings.application.auto_update.label",
-                            ),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .is_some_and(|s| s.check_for_updates_automatically)
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_check_for_updates_automatically(value, cx)
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.application.auto_update.description",
-                        )),
-                    ];
-                    items.push(
-                        SettingItem::new(
-                            bongocat_i18n::text(
-                                language.catalog_locale(),
                                 "settings.application.open_at_login.label",
                             ),
                             SettingField::switch(
@@ -1113,6 +1082,37 @@ impl Render for SettingsView {
                             ),
                         )
                         .description(startup_item.description),
+                    ];
+                    items.push(
+                        SettingItem::new(
+                            bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.application.auto_update.label",
+                            ),
+                            SettingField::switch(
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .is_some_and(|s| s.check_for_updates_automatically)
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_check_for_updates_automatically(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.application.auto_update.description",
+                        )),
                     );
                     items
                 }),

@@ -819,8 +819,8 @@ impl SettingsView {
             ACCESSIBILITY_STATUS_ICON,
             #[cfg(target_os = "windows")]
             ACCESSIBILITY_TASKBAR_ICON,
-            ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK,
             ACCESSIBILITY_STARTUP,
+            ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK,
             ACCESSIBILITY_RESTORE_DEFAULTS,
             ACCESSIBILITY_MODEL_CHOOSE_FOLDER,
             ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE,
@@ -872,8 +872,8 @@ impl SettingsView {
             status_icon_node,
             #[cfg(target_os = "windows")]
             taskbar_icon_node,
-            automatic_update_check_node,
             startup_node,
+            automatic_update_check_node,
             restore_node,
             choose_folder_node,
             choose_archive_node,
