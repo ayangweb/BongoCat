@@ -340,12 +340,12 @@ impl SettingsView {
                 .ok_or_else(|| "accessibility tree omitted the status icon setting".to_owned())?;
             if status_icon.role != AccessibilityRole::Switch
                 || status_icon.label
-                    != bongocat_i18n::text(
+                    != bongocat_i18n::platform_text(
                         snapshot.resolved_language.catalog_locale(),
                         "settings.application.status_icon.label",
                     )
                 || status_icon.value.as_deref()
-                    != Some(bongocat_i18n::text(
+                    != Some(bongocat_i18n::platform_text(
                         snapshot.resolved_language.catalog_locale(),
                         "settings.application.status_icon.description",
                     ))

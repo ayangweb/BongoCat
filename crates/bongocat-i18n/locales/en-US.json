@@ -551,8 +551,14 @@
     "application": {
       "title": "Application",
       "status_icon": {
-        "label": "Show status icon",
-        "description": "Show the status icon in the system tray or menu bar."
+        "label": {
+          "macos": "Show menu bar icon",
+          "windows": "Show system tray icon"
+        },
+        "description": {
+          "macos": "Show the status icon in the menu bar.",
+          "windows": "Show the status icon in the system tray."
+        }
       },
       "taskbar_icon": {
         "label": "Show taskbar icon",

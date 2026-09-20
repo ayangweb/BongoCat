@@ -582,12 +582,12 @@ impl SettingsView {
         let mut status_icon_node = AccessibilityNode::new(
             ACCESSIBILITY_STATUS_ICON,
             AccessibilityRole::Switch,
-            bongocat_i18n::text(
+            bongocat_i18n::platform_text(
                 language.catalog_locale(),
                 "settings.application.status_icon.label",
             ),
         )
-        .with_value(bongocat_i18n::text(
+        .with_value(bongocat_i18n::platform_text(
             language.catalog_locale(),
             "settings.application.status_icon.description",
         ))

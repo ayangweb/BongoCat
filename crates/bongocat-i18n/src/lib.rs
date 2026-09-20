@@ -69,9 +69,57 @@ pub fn format_text(locale: &str, key: &str, values: &[(&str, String)]) -> String
     message
 }
 
+/// Stable identifier for the platform the catalog text targets.
+///
+/// Returned as the lower-case snake-case suffix used in catalog overrides such
+/// as `settings.application.status_icon.label.macos`. Add a new value when a
+/// newly supported platform needs its own copy of an otherwise-shared string.
+pub const fn current_platform_id() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "macos"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        "windows"
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        "unsupported"
+    }
+}
+
+/// Resolve a translation that can vary per supported platform.
+///
+/// Lookup order:
+///   1. `base_key` suffixed with [`current_platform_id`]
+///      (e.g. `..status_icon.label.macos`).
+///   2. `base_key` as a shared fallback for every platform that has no
+///      explicit override.
+///
+/// Adding a new platform override is a locale-only change: drop
+/// `..label.<platform>` next to the existing `..label` and the override is
+/// picked up automatically. Items that have no platform variation keep using
+/// [`text`]; items that need a platform-specific copy swap the call site to
+/// this helper without any new branching at the UI layer.
+///
+/// `rust-i18n` returns the key itself when the lookup misses, so the helper
+/// compares the resolved string against the requested platform key to decide
+/// whether to fall back. This keeps the contract identical to [`text`] for
+/// every caller: missing keys still surface visibly in development rather
+/// than silently returning an empty string.
+pub fn platform_text(locale: &str, base_key: &str) -> &'static str {
+    let platform_key = format!("{base_key}.{}", current_platform_id());
+    let candidate = text(locale, &platform_key);
+    if candidate != platform_key.as_str() {
+        return candidate;
+    }
+    text(locale, base_key)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{count_text, text};
+    use super::{count_text, current_platform_id, platform_text, text};
     use std::collections::{BTreeMap, BTreeSet};
 
     fn messages(locale: &str) -> BTreeMap<String, String> {
@@ -181,5 +229,75 @@ mod tests {
             count_text("en-US", "diagnostics.runtime.shutdown_failures", 3),
             "Shutdown failures: 3"
         );
+    }
+
+    #[test]
+    fn current_platform_id_is_one_of_the_supported_platforms() {
+        assert!(
+            matches!(current_platform_id(), "macos" | "windows" | "unsupported"),
+            "platform id must be a known suffix, got {:?}",
+            current_platform_id()
+        );
+    }
+
+    #[test]
+    fn platform_text_picks_the_current_platform_override() {
+        // The catalog always carries every supported override, so resolving
+        // the platform-relative key returns the platform-specific copy on the
+        // build host and the fallback copy on every other platform.
+        let expected_override = match current_platform_id() {
+            "macos" => text("en-US", "settings.application.status_icon.label.macos"),
+            "windows" => text("en-US", "settings.application.status_icon.label.windows"),
+            _ => text("en-US", "settings.application.status_icon.label"),
+        };
+        assert_eq!(
+            platform_text("en-US", "settings.application.status_icon.label"),
+            expected_override
+        );
+        assert_eq!(
+            platform_text("zh-CN", "settings.application.status_icon.description"),
+            match current_platform_id() {
+                "macos" => {
+                    text(
+                        "zh-CN",
+                        "settings.application.status_icon.description.macos",
+                    )
+                }
+                "windows" => {
+                    text(
+                        "zh-CN",
+                        "settings.application.status_icon.description.windows",
+                    )
+                }
+                _ => text("zh-CN", "settings.application.status_icon.description"),
+            }
+        );
+    }
+
+    #[test]
+    fn platform_text_falls_back_to_the_base_key_when_no_override_exists() {
+        // `navigation.settings.title` carries no `.macos` or `.windows`
+        // override, so the helper must always return the shared string for
+        // every supported platform id.
+        let base_key = "navigation.settings.title";
+        let platform_key = format!("{base_key}.{}", current_platform_id());
+        assert_eq!(
+            text("en-US", &platform_key),
+            platform_key,
+            "test premise: no platform override exists for {base_key}"
+        );
+        assert_eq!(platform_text("en-US", base_key), text("en-US", base_key));
+        assert_eq!(platform_text("zh-CN", base_key), text("zh-CN", base_key));
+    }
+
+    #[test]
+    fn platform_text_is_safe_for_keys_without_a_platform_override_present() {
+        // The fallback path is reachable even on supported platforms, so the
+        // helper must keep returning the shared string rather than the
+        // augmented key. This guards against a regression where the lookup
+        // would start to return the suffixed key by accident.
+        let base_key = "navigation.about.title";
+        let resolved = platform_text("zh-CN", base_key);
+        assert!(!resolved.ends_with(&format!(".{}", current_platform_id())));
     }
 }

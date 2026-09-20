@@ -873,7 +873,7 @@ impl Render for SettingsView {
                 .items({
                     let mut items = vec![
                         SettingItem::new(
-                            bongocat_i18n::text(
+                            bongocat_i18n::platform_text(
                                 language.catalog_locale(),
                                 "settings.application.status_icon.label",
                             ),
@@ -897,7 +897,7 @@ impl Render for SettingsView {
                                 },
                             ),
                         )
-                        .description(bongocat_i18n::text(
+                        .description(bongocat_i18n::platform_text(
                             language.catalog_locale(),
                             "settings.application.status_icon.description",
                         )),

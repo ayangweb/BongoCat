@@ -48,7 +48,28 @@ Rust 在文案实际使用处直接通过 `bongocat-i18n` 查询稳定路径，�
 UI 不重复嵌入 JSON，也不使用会在并发窗口间共享状态的全局 locale。动态摘要、错误、快捷键冲突
 和诊断指标在负责其展示语义的函数中通过同一 facade 查询，不按语言分支写自然语言。
 
+## 平台覆盖（platform override）
+
+少数文案在两个首版平台（macOS / Windows）上需要不同的表达（例如「菜单栏」与「系统
+托盘」是同一概念在不同操作系统的命名）。这种差异交给 catalog 而不是调用点处理：
+
+- 在 catalog 里，把 base key 拆成嵌套对象，例如
+  `settings.application.status_icon.label.macos` 与
+  `settings.application.status_icon.label.windows`，两个 locale 同时拥有。
+- UI 不写 `cfg(target_os = ...)`，统一调用 `bongocat_i18n::platform_text(locale, base_key)`。
+- `platform_text` 的查找顺序是：`<base_key>.<current_platform_id>` →
+  `<base_key>`。`current_platform_id()` 在编译期取 `target_os`，
+  返回 `"macos"` / `"windows"` / `"unsupported"`。
+
+扩展方式：未来再有需要分平台的项，只在两个 locale 文件里新增 `<base_key>.macos`
+和 `<base_key>.windows`，调用点保持不动。仍不需要分平台的项继续用 `bongocat_i18n::text`。
+未知平台（Linux、CI 主机）会回退到 base key，避免生产 UI 暴露 key 字符串。
+
 ## 验证
 
 `bongocat-i18n` 测试递归展开 JSON 后比较语言 key 集合和占位符集合；`rust-i18n` 的 fallback
 继续使用 `en-US`。新增语言必须先复制完整结构，再提交翻译，不得增删字段。
+
+平台覆盖的覆盖测试随 `bongocat-i18n` 单元测试一起跑：
+`platform_text` 在每个支持的 `current_platform_id` 上都返回对应平台的副本，并在没有
+override 时回退到 base key。

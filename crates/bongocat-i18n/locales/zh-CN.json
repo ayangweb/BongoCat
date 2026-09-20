@@ -551,8 +551,14 @@
     "application": {
       "title": "应用",
       "status_icon": {
-        "label": "显示状态图标",
-        "description": "在系统托盘或菜单栏显示状态图标。"
+        "label": {
+          "macos": "显示菜单栏图标",
+          "windows": "显示系统托盘图标"
+        },
+        "description": {
+          "macos": "在菜单栏显示状态图标。",
+          "windows": "在系统托盘显示状态图标。"
+        }
       },
       "taskbar_icon": {
         "label": "显示任务栏图标",
