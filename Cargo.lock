@@ -831,7 +831,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-app"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "async-io",
  "atomic-write-file",
@@ -858,14 +858,14 @@ dependencies = [
 
 [[package]]
 name = "bongocat-audio"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "rodio",
 ]
 
 [[package]]
 name = "bongocat-config"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "bongocat-storage",
  "dirs 6.0.0",
@@ -876,7 +876,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-i18n"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "rust-i18n",
  "serde_json",
@@ -884,7 +884,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-live2d"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "bongocat-log",
  "bongocat-model",
@@ -898,14 +898,14 @@ dependencies = [
 
 [[package]]
 name = "bongocat-log"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "bongocat-model"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "bongocat-storage",
  "flate2",
@@ -921,7 +921,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-overlay"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "block2 0.6.2",
  "bongocat-live2d",
@@ -942,7 +942,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-packaging"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "cargo-packager",
  "cargo-packager-updater",
@@ -954,7 +954,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-platform"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "accesskit 0.25.0",
  "accesskit_macos 0.27.0",
@@ -988,11 +988,11 @@ dependencies = [
 
 [[package]]
 name = "bongocat-render"
-version = "1.1.0"
+version = "2.0.0"
 
 [[package]]
 name = "bongocat-runtime"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "bongocat-audio",
  "bongocat-live2d",
@@ -1004,7 +1004,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-storage"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "atomic-write-file",
  "tempfile",
@@ -1012,7 +1012,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-ui"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "async-channel",
  "bongocat-config",
@@ -1025,7 +1025,7 @@ dependencies = [
 
 [[package]]
 name = "bongocat-update"
-version = "1.1.0"
+version = "2.0.0"
 dependencies = [
  "bongocat-config",
  "cargo-packager",
