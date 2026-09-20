@@ -98,7 +98,11 @@ impl SettingsView {
         let focus = match self.page {
             SettingsPage::General => ACCESSIBILITY_GENERAL,
             SettingsPage::Models => ACCESSIBILITY_MODELS,
+            SettingsPage::Overlay => ACCESSIBILITY_OVERLAY_PAGE,
+            SettingsPage::Interaction => ACCESSIBILITY_INTERACTION,
+            SettingsPage::Input => ACCESSIBILITY_INPUT,
             SettingsPage::Shortcuts => ACCESSIBILITY_SHORTCUTS,
+            SettingsPage::Application => ACCESSIBILITY_APPLICATION,
             SettingsPage::About => ACCESSIBILITY_ABOUT,
         };
         self.accessibility_tree_with_focus(focus)
@@ -185,12 +189,12 @@ impl SettingsView {
             AccessibilityRole::Switch,
             bongocat_i18n::text(
                 language.catalog_locale(),
-                "settings.overlay.motion_audio.label",
+                "settings.model_interaction.motion_audio.label",
             ),
         )
         .with_value(bongocat_i18n::text(
             language.catalog_locale(),
-            "settings.overlay.motion_audio.description",
+            "settings.model_interaction.motion_audio.description",
         ))
         .with_toggle(if snapshot.is_some_and(|s| s.motion_audio_enabled) {
             AccessibilityToggle::On
@@ -532,7 +536,7 @@ impl SettingsView {
         )
         .with_description(bongocat_i18n::text(
             language.catalog_locale(),
-            "settings.overlay.release_fallback_timeout.description",
+            "settings.input.release_fallback_timeout.description",
         ))
         .with_value(release_fallback_timeout_ms.to_string())
         .disabled(disabled || release_fallback_timeout_ms == 0);
@@ -546,7 +550,7 @@ impl SettingsView {
         )
         .with_description(bongocat_i18n::text(
             language.catalog_locale(),
-            "settings.overlay.release_fallback_timeout.description",
+            "settings.input.release_fallback_timeout.description",
         ))
         .with_value(release_fallback_timeout_ms.to_string())
         .disabled(disabled || release_fallback_timeout_ms >= 60_000);
@@ -658,16 +662,31 @@ impl SettingsView {
         let mut restore_node = AccessibilityNode::new(
             ACCESSIBILITY_RESTORE_DEFAULTS,
             AccessibilityRole::Button,
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "diagnostics.configuration.restore_defaults",
-            ),
+            config_recovery_restore_label(language),
         )
         .with_value(bongocat_i18n::text(
             language.catalog_locale(),
             "diagnostics.configuration.restore_defaults_description",
         ))
         .disabled(!restore_available);
+        // The notice's own text, so a screen reader hears what the restore action was about and
+        // what it did. Present only while the configuration is unusable: "loaded normally" is
+        // not a status worth announcing on every window.
+        let recovery_status_node = snapshot
+            .filter(|snapshot| snapshot.configuration_status != SettingsConfigurationStatus::Ready)
+            .map(|snapshot| {
+                let recovery = config_recovery_presentation(
+                    snapshot.configuration_status,
+                    snapshot.config_recovery,
+                    language,
+                );
+                AccessibilityNode::new(
+                    ACCESSIBILITY_CONFIG_RECOVERY,
+                    AccessibilityRole::Status,
+                    recovery.title,
+                )
+                .with_value(recovery.detail)
+            });
         if restore_available {
             restore_node = restore_node.clickable().focusable();
         }
@@ -807,7 +826,11 @@ impl SettingsView {
         let mut root_children = vec![
             ACCESSIBILITY_GENERAL,
             ACCESSIBILITY_MODELS,
+            ACCESSIBILITY_OVERLAY_PAGE,
+            ACCESSIBILITY_INTERACTION,
+            ACCESSIBILITY_INPUT,
             ACCESSIBILITY_SHORTCUTS,
+            ACCESSIBILITY_APPLICATION,
             ACCESSIBILITY_ABOUT,
             ACCESSIBILITY_THEME,
             ACCESSIBILITY_LANGUAGE,
@@ -848,6 +871,9 @@ impl SettingsView {
         ];
         if catalog_status_node.is_some() {
             root_children.push(ACCESSIBILITY_MODEL_CATALOG_STATUS);
+        }
+        if recovery_status_node.is_some() {
+            root_children.push(ACCESSIBILITY_CONFIG_RECOVERY);
         }
         root_children.extend(shortcut_node_ids);
         root_children.extend(shortcut_clear_node_ids);
@@ -904,6 +930,9 @@ impl SettingsView {
         if let Some(catalog_status_node) = catalog_status_node {
             nodes.push(catalog_status_node);
         }
+        if let Some(recovery_status_node) = recovery_status_node {
+            nodes.push(recovery_status_node);
+        }
         if !nodes.iter().any(|node| node.id == focus) {
             nodes.push(AccessibilityNode::new(focus, AccessibilityRole::Status, ""));
         }
@@ -950,7 +979,11 @@ impl SettingsView {
         match request.target {
             ACCESSIBILITY_GENERAL => self.page = SettingsPage::General,
             ACCESSIBILITY_MODELS => self.page = SettingsPage::Models,
+            ACCESSIBILITY_OVERLAY_PAGE => self.page = SettingsPage::Overlay,
+            ACCESSIBILITY_INTERACTION => self.page = SettingsPage::Interaction,
+            ACCESSIBILITY_INPUT => self.page = SettingsPage::Input,
             ACCESSIBILITY_SHORTCUTS => self.page = SettingsPage::Shortcuts,
+            ACCESSIBILITY_APPLICATION => self.page = SettingsPage::Application,
             ACCESSIBILITY_ABOUT => self.page = SettingsPage::About,
             ACCESSIBILITY_THEME => {
                 if let Some(current) = self
@@ -1296,7 +1329,11 @@ impl SettingsView {
         .unwrap_or(match self.page {
             SettingsPage::General => ACCESSIBILITY_GENERAL,
             SettingsPage::Models => ACCESSIBILITY_MODELS,
+            SettingsPage::Overlay => ACCESSIBILITY_OVERLAY_PAGE,
+            SettingsPage::Interaction => ACCESSIBILITY_INTERACTION,
+            SettingsPage::Input => ACCESSIBILITY_INPUT,
             SettingsPage::Shortcuts => ACCESSIBILITY_SHORTCUTS,
+            SettingsPage::Application => ACCESSIBILITY_APPLICATION,
             SettingsPage::About => ACCESSIBILITY_ABOUT,
         });
         let tree = self.accessibility_tree_with_focus(focus);

@@ -3198,7 +3198,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // The general page asserts on `applied_theme`, which is only assigned
                 // during a render; on a loaded machine 500ms was not always enough, so
                 // the assertion failed and — because the page calls were chained with
-                // `?` — the remaining three pages were never exercised at all.
+                // `?` — the remaining pages were never exercised at all.
                 let mut rendered = false;
                 for _ in 0..SMOKE_FIRST_FRAME_WAIT_TICKS {
                     rendered = cx.update(|cx| {
@@ -3218,8 +3218,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
                 // Every page runs even when an earlier one fails: chaining them with
-                // `?` meant one failure hid the other three, and a single reported
-                // failure looked like the whole smoke had been exercised.
+                // `?` meant one failure hid the rest, and a single reported failure
+                // looked like the whole smoke had been exercised.
                 let settings_pages =
                     update_settings_window(cx, &smoke_window, |view, _, cx| {
                         view.run_page_smoke(cx)

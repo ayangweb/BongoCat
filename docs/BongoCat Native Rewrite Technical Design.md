@@ -145,7 +145,10 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - 设置控件的辅助功能语义由 UI crate 维护项目自有 AccessKit tree；平台 adapter 只通过
   GPUI 公开的 raw window handle 安装，辅助技术 action 经有界强类型通道回到 GPUI 主线程。
 - 辅助功能实现不得使用 GPUI 私有 renderer、隐藏原生控件或独立业务状态副本；可见控件、
-  语义节点、焦点、loading/error 和 value 必须由同一份 UI snapshot 更新。
+  语义节点、焦点、loading/error 和 value 必须由同一份 UI snapshot 更新。**凡是渲染给用户的文案都必须
+  有对应的语义节点**：项目桥接是该窗口唯一的语义来源（GPUI 内置 adapter 已关闭），没进树的文字
+  辅助技术读不到——只读状态行（如配置恢复提示的标题与说明）同样要建 `Status` 节点，
+  不能只建它旁边的按钮。
 - 当前固定的 GPUI 开发版已内置 element-level AccessKit adapter，但正式设置窗口仍由上述
   项目桥接提供既有双平台语义与 action contract；应用必须以 `Application::new_inaccessible`
   关闭 GPUI 的重复 adapter，再由项目桥接独占同一个 native view。这里仅关闭 GPUI 内置
@@ -428,12 +431,17 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   的 not-started/running/permission-denied/backend-unavailable/failed/stopped 状态，不携带平台错误文本。
   平台 owner 每次产品启动只尝试一次；权限拒绝或 backend 启动失败不阻止 overlay/runtime，settings
   health 进入 degraded 并以匿名状态进入 revisioned snapshot，不在后台循环请求权限或重启服务。
-- 设置窗口只展示用户可操作的设置：General、Models、Shortcuts、About 四页。原 Diagnostics 页面已移除，
+- 设置窗口只展示用户可操作的设置，导航分两级。一级页面按领域划分，固定为 General、Models、Overlay、
+  Interaction、Input、Shortcuts、Application、About 八页，每页对应一个用户能直接说出的领域；一级页面内
+  用带标题的 group 组织内容，同一页面下存在多于一个带标题的 group 时 sidebar 把它们渲染为二级菜单项，
+  点击滚动到该分组。General 因此只保留外观（主题、语言），不再承载其它领域的分组。
+  配置恢复提示不放在任何页面里，而是渲染在设置组件之上的窗口级横幅，因此当前打开哪一页都可见。
+  原 Diagnostics 页面已移除，
   输入可靠性计数、runtime/renderer 状态、build 标识与配置恢复的原始细节只留在 app-owned 日志和匿名
   diagnostics export 里：周期性刷新只服务于界面上仍在显示的数字，不再有为了“记录状态”而存在的页面。
   页面移除后 `OpenConfigBackupLocation` 与 `ExportDiagnostics` 仍是 settings service 的强类型 command，
   仅供隔离 smoke 与排障入口使用，不从 UI 触发；配置不可用时 `RecoveryRequired` 的匿名候选计数与
-  `RestoreDefaultConfiguration` 动作渲染在 General 页面，恢复入口不随诊断页消失。
+  `RestoreDefaultConfiguration` 动作渲染在窗口级恢复提示里（见上），恢复入口不随诊断页消失。
 - 产品启动时以只读 `CGPreflightListenEventAccess` 检查 Input Monitoring，缺失时用 `rfd` 的原生
   系统弹框引导用户前往「系统设置 → 隐私与安全性 → 输入监控」。检查非阻塞：主线程完成窗口、
   菜单栏等正常初始化后，由专用 worker 线程执行检查与提示，提示未应答或被关闭不影响任何产品
@@ -783,12 +791,12 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   自有备份，并同时验证 envelope 格式、源 schema、源 revision 和完整 typed config。恢复前将损坏原文写入独立的
   `config-corrupt-*.bin` 自有 quarantine，最多 4 份且总计不超过 8 MiB；恢复后重新读取验证，
   app 只公开源 schema 与跳过候选数等匿名诊断；settings service 将该诊断投影到 snapshot 的配置恢复
-  投影（渲染在 General 页面），不公开备份/配置路径、原始 JSON、时间戳或底层 I/O 文本。没有有效候选、quarantine 失败或恢复验证失败时
+  投影（渲染在窗口级恢复提示里），不公开备份/配置路径、原始 JSON、时间戳或底层 I/O 文本。没有有效候选、quarantine 失败或恢复验证失败时
   不回落默认值，也不读取另一环境；当前损坏原文继续保留在 `config.json` 或 quarantine 中。
   非 v1 schema 直接报告不支持并保持原文件，禁止覆盖未知格式。
 - 若 current 损坏且没有任何完整有效的 Native backup，Application 不得静默覆盖或继续使用默认值；
   它以 `RecoveryRequired` 受限状态启动，仅创建无 overlay/GPU 的 recovery-only settings 窗口。
-  General 页面显示匿名候选计数，并提供强类型 `RestoreDefaultConfiguration` command；该 command
+  窗口级恢复提示显示匿名候选计数，并提供强类型 `RestoreDefaultConfiguration` command；该 command
   在 writer lock 内再次确认 current 仍不可恢复，将原字节放入 quarantine 后写入并验证当前 schema 默认配置，
   返回 `DefaultsRestoredRestartRequired`。恢复前所有业务写入、模型、启动项和 overlay 操作都被拒绝，
   恢复后必须重启才重新进入正常 runtime；非 v1 schema 或 I/O/归档错误仍直接报告，不进入该安全模式。

@@ -181,12 +181,15 @@ impl SettingsView {
     /// Runs every page assertion and reports all of them together.
     ///
     /// The caller used to chain these with `?`, so the first failure hid the
-    /// other three and one reported failure looked like the whole smoke had
-    /// been exercised. A page that fails still leaves the view usable: each
-    /// helper only sets `page` and asserts on what the product projected.
+    /// rest and one reported failure looked like the whole smoke had been
+    /// exercised. A page that fails still leaves the view usable: each helper
+    /// only sets `page` and asserts on what the product projected.
     pub fn run_page_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
         let mut failures = Vec::new();
         if let Err(error) = self.show_general_page_for_smoke(cx) {
+            failures.push(error);
+        }
+        if let Err(error) = self.show_split_pages_for_smoke(cx) {
             failures.push(error);
         }
         if let Err(error) = self.show_shortcuts_page_for_smoke(cx) {
@@ -200,6 +203,75 @@ impl SettingsView {
         } else {
             Err(failures.join("; "))
         }
+    }
+
+    /// Walk the pages that were split out of the general page.
+    ///
+    /// These four carry no controls the general page smoke does not already
+    /// assert, so what this proves is the split itself: each one is a
+    /// navigation target of its own, the accessibility tree focuses it while it
+    /// is the current page, and its label is the localized page title. Without
+    /// this, a page that failed to render would only show up as a sidebar entry
+    /// nobody could open.
+    pub fn show_split_pages_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+        let language = self
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| "split pages have not received a settings snapshot".to_owned())?
+            .resolved_language;
+        for (page, node_id, title_key) in [
+            (
+                SettingsPage::Overlay,
+                ACCESSIBILITY_OVERLAY_PAGE,
+                "navigation.overlay.title",
+            ),
+            (
+                SettingsPage::Interaction,
+                ACCESSIBILITY_INTERACTION,
+                "navigation.interaction.title",
+            ),
+            (
+                SettingsPage::Input,
+                ACCESSIBILITY_INPUT,
+                "navigation.input.title",
+            ),
+            (
+                SettingsPage::Application,
+                ACCESSIBILITY_APPLICATION,
+                "navigation.application.title",
+            ),
+        ] {
+            self.page = page;
+            cx.notify();
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            {
+                let tree = self.accessibility_tree();
+                tree.validate().map_err(|error| error.to_string())?;
+                if tree.focus != node_id {
+                    return Err(format!(
+                        "page {title_key} did not expose the active accessibility focus"
+                    ));
+                }
+                let node = tree
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == node_id)
+                    .ok_or_else(|| {
+                        format!("page {title_key} omitted its navigation accessibility node")
+                    })?;
+                if node.role != AccessibilityRole::Button
+                    || node.label != bongocat_i18n::text(language.catalog_locale(), title_key)
+                    || node.value.is_some()
+                    || !node.supports_click
+                    || !node.supports_focus
+                {
+                    return Err(format!(
+                        "page {title_key} navigation accessibility semantics are invalid"
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn show_general_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
@@ -466,7 +538,7 @@ impl SettingsView {
                     || node.description.as_deref()
                         != Some(bongocat_i18n::text(
                             snapshot.resolved_language.catalog_locale(),
-                            "settings.overlay.release_fallback_timeout.description",
+                            "settings.input.release_fallback_timeout.description",
                         ))
                     || node.value.as_deref()
                         != Some(snapshot.release_fallback_timeout_ms.to_string().as_str())
@@ -804,11 +876,7 @@ impl SettingsView {
                         "recovery notice omitted the accessible restore action".to_owned()
                     })?;
                 if restore.role != AccessibilityRole::Button
-                    || restore.label
-                        != bongocat_i18n::text(
-                            snapshot.resolved_language.catalog_locale(),
-                            "diagnostics.configuration.restore_defaults",
-                        )
+                    || restore.label != config_recovery_restore_label(snapshot.resolved_language)
                     || restore.value.as_deref()
                         != Some(bongocat_i18n::text(
                             snapshot.resolved_language.catalog_locale(),
@@ -819,6 +887,23 @@ impl SettingsView {
                     || !restore.supports_focus
                 {
                     return Err("recovery restore accessibility semantics are invalid".to_owned());
+                }
+                // The notice is visible on every page and the restore action is reachable from
+                // every page, so the notice's own text has to be readable too. Without this node
+                // a screen reader met the button and never learned what it was about.
+                let notice = self
+                    .accessibility_tree()
+                    .nodes
+                    .into_iter()
+                    .find(|node| node.id == ACCESSIBILITY_CONFIG_RECOVERY)
+                    .ok_or_else(|| "recovery notice did not expose its own text".to_owned())?;
+                if notice.role != AccessibilityRole::Status
+                    || notice.label != recovery.title
+                    || notice.value.as_deref() != Some(recovery.detail.as_str())
+                    || notice.supports_click
+                    || notice.supports_focus
+                {
+                    return Err("recovery notice accessibility text is invalid".to_owned());
                 }
             }
         }

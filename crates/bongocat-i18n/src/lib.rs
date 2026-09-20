@@ -116,6 +116,7 @@ pub fn platform_text(locale: &str, base_key: &str) -> &'static str {
 mod tests {
     use super::{current_platform_id, format_text, platform_text, text};
     use std::collections::{BTreeMap, BTreeSet};
+    use std::path::{Path, PathBuf};
 
     fn messages(locale: &str) -> BTreeMap<String, String> {
         let value: serde_json::Value = serde_json::from_str(match locale {
@@ -157,6 +158,163 @@ mod tests {
             .skip(1)
             .filter_map(|part| part.split('}').next())
             .collect()
+    }
+
+    /// Platform override suffixes the catalog is expected to carry (ADR-0028).
+    const PLATFORM_OVERRIDES: [&str; 2] = ["macos", "windows"];
+
+    /// A catalog reduced to the two questions a source scan asks of it.
+    struct Catalog {
+        /// Leaf keys: what a lookup can resolve to.
+        leaves: BTreeSet<String>,
+        /// Every object and leaf path: what makes a dotted literal look like a key.
+        paths: BTreeSet<String>,
+    }
+
+    impl Catalog {
+        fn load(locale: &str) -> Self {
+            let leaves = messages(locale).into_keys().collect::<BTreeSet<_>>();
+            let mut paths = BTreeSet::new();
+            for leaf in &leaves {
+                let mut prefix = String::new();
+                for segment in leaf.split('.') {
+                    if !prefix.is_empty() {
+                        prefix.push('.');
+                    }
+                    prefix.push_str(segment);
+                    paths.insert(prefix.clone());
+                }
+            }
+            Self { leaves, paths }
+        }
+
+        /// Whether a lookup resolves, mirroring the order `text` and `platform_text` use.
+        ///
+        /// A platform-relative lookup tries the suffixed key first and the base key second, so
+        /// the base key only has to exist for a platform that carries no override of its own.
+        fn resolves(&self, key: &str, platform_relative: bool) -> bool {
+            if self.leaves.contains(key) {
+                return true;
+            }
+            platform_relative
+                && PLATFORM_OVERRIDES
+                    .iter()
+                    .all(|platform| self.leaves.contains(&format!("{key}.{platform}")))
+        }
+
+        /// Whether a dotted literal means to be a key: it is one, or its first two segments
+        /// are. The second test is what keeps an unrelated dotted string whose first segment
+        /// happens to match a namespace out of the scan.
+        fn intends_a_key(&self, literal: &str) -> bool {
+            if self.paths.contains(literal) {
+                return true;
+            }
+            let mut segments = literal.split('.');
+            match (segments.next(), segments.next()) {
+                (Some(head), Some(second)) => self.paths.contains(&format!("{head}.{second}")),
+                _ => false,
+            }
+        }
+    }
+
+    /// Every `.rs` file under `directory`, skipping build output.
+    fn rust_sources(directory: &Path, out: &mut Vec<PathBuf>) {
+        let entries = std::fs::read_dir(directory)
+            .unwrap_or_else(|error| panic!("read {}: {error}", directory.display()));
+        for entry in entries {
+            let entry = entry.expect("readable directory entry");
+            let path = entry.path();
+            if path.is_dir() {
+                if entry.file_name() != "target" {
+                    rust_sources(&path, out);
+                }
+            } else if path.extension().is_some_and(|extension| extension == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    /// The literal that is the second argument of the call whose `(` is at `open`.
+    ///
+    /// `None` when that argument is not a literal, which is how every key assembled at runtime
+    /// is skipped. Parens are tracked so a first argument such as `language.catalog_locale()`
+    /// does not end the search early.
+    fn literal_argument(source: &str, open: usize) -> Option<(usize, &str)> {
+        let bytes = source.as_bytes();
+        let mut depth = 1_usize;
+        let mut index = open + 1;
+        while index < bytes.len() {
+            match bytes[index] {
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return None;
+                    }
+                }
+                b',' if depth == 1 => break,
+                _ => {}
+            }
+            index += 1;
+        }
+        let mut start = index + 1;
+        while bytes.get(start).is_some_and(u8::is_ascii_whitespace) {
+            start += 1;
+        }
+        if bytes.get(start) != Some(&b'"') {
+            return None;
+        }
+        let rest = &source[start + 1..];
+        let length = rest.find('"')?;
+        Some((start + 1, &rest[..length]))
+    }
+
+    /// `settings.overlay.behavior.title`: lower-case snake-case segments, at least two of them.
+    fn is_catalog_key_shape(literal: &str) -> bool {
+        let mut segments = literal.split('.');
+        let Some(first) = segments.next() else {
+            return false;
+        };
+        if !is_snake_segment(first) {
+            return false;
+        }
+        let mut count = 1_usize;
+        for segment in segments {
+            if !is_snake_segment(segment) {
+                return false;
+            }
+            count += 1;
+        }
+        count >= 2
+    }
+
+    fn is_snake_segment(segment: &str) -> bool {
+        !segment.is_empty()
+            && segment
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit())
+    }
+
+    /// Every dotted literal in `source` as `(offset of its first character, literal)`.
+    fn dotted_literals(source: &str) -> Vec<(usize, String)> {
+        let mut found = Vec::new();
+        let mut index = 0;
+        while let Some(open) = source[index..].find('"') {
+            let start = index + open + 1;
+            let Some(length) = source[start..].find('"') else {
+                break;
+            };
+            let literal = &source[start..start + length];
+            if is_catalog_key_shape(literal) {
+                found.push((start, literal.to_owned()));
+            }
+            index = start + length + 1;
+        }
+        found
+    }
+
+    fn line_of(source: &str, offset: usize) -> usize {
+        source[..offset].matches('\n').count() + 1
     }
 
     #[test]
@@ -312,5 +470,154 @@ mod tests {
         let base_key = "navigation.about.title";
         let resolved = platform_text("zh-CN", base_key);
         assert!(!resolved.ends_with(&format!(".{}", current_platform_id())));
+    }
+
+    /// Every catalog key the source asks for must exist in the catalog.
+    ///
+    /// `rust_i18n` answers an unknown key with the key itself, so a key that was renamed or
+    /// dropped never fails a build, a unit test or a smoke run: the window quietly renders the
+    /// raw key and a screen reader reads that string out. The assertions that do cover catalog
+    /// copy compare two lookups of the *same* key, so they stay equal even when the key is
+    /// gone. 2026-09-20: dropping `diagnostics.configuration.restore_defaults_description`
+    /// left every gate green while the recovery smoke still reported success.
+    ///
+    /// Two scans run over every `.rs` file under `crates/`:
+    ///
+    /// 1. A literal handed straight to a catalog lookup must resolve. The lookup paths are
+    ///    spelled with `concat!` so the scan cannot match this test's own source.
+    /// 2. A dotted literal that already sits under a catalog path must resolve to a leaf, which
+    ///    is what covers keys held in a `const` table, read through a local closure, or picked
+    ///    by a `match` arm such as the settings error table.
+    ///
+    /// The one composition that survives is `platform_text`, which builds the platform-relative
+    /// key from a literal base key; scan 1 covers it through the platform rule. Everything else
+    /// is spelled out, which is why `bongocat-ui` names every settings error key in full rather
+    /// than prefixing a suffix. A key whose *namespace* is misspelled stays uncovered, because
+    /// scan 2 only recognises a literal once its first two segments are a real catalog path.
+    #[test]
+    fn source_referenced_keys_exist_in_the_catalog() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("the crate lives at <workspace>/crates/bongocat-i18n")
+            .join("crates");
+        let mut sources = Vec::new();
+        rust_sources(&root, &mut sources);
+        assert!(
+            sources
+                .iter()
+                .any(|path| path.ends_with("bongocat-ui/src/window/render.rs")),
+            "expected the workspace source tree under {}, found {} files",
+            root.display(),
+            sources.len()
+        );
+
+        let mut catalogs = Vec::new();
+        for locale in ["en-US", "zh-CN"] {
+            catalogs.push((locale, Catalog::load(locale)));
+        }
+        let lookups = [
+            (concat!("bongocat_i18n::", "text("), false),
+            (concat!("bongocat_i18n::", "format_text("), false),
+            (concat!("bongocat_i18n::", "platform_text("), true),
+        ];
+        let mut missing = BTreeSet::new();
+        for source_path in &sources {
+            let source = std::fs::read_to_string(source_path)
+                .unwrap_or_else(|error| panic!("read {}: {error}", source_path.display()));
+            let mut looked_up = BTreeSet::new();
+            for (lookup, platform_relative) in lookups {
+                for (open, _) in source.match_indices(lookup) {
+                    let Some((offset, key)) = literal_argument(&source, open + lookup.len()) else {
+                        continue;
+                    };
+                    looked_up.insert(offset);
+                    for (locale, catalog) in &catalogs {
+                        if !catalog.resolves(key, platform_relative) {
+                            missing.insert(format!(
+                                "{}:{}: `{key}` is looked up but is missing from {locale}",
+                                source_path.display(),
+                                line_of(&source, offset)
+                            ));
+                        }
+                    }
+                }
+            }
+            for (offset, literal) in dotted_literals(&source) {
+                if looked_up.contains(&offset) {
+                    continue;
+                }
+                for (locale, catalog) in &catalogs {
+                    // A literal with no visible lookup may still be a platform-relative base
+                    // key, so both lookup shapes have to fail before it is reported.
+                    if catalog.intends_a_key(&literal) && !catalog.resolves(&literal, true) {
+                        missing.insert(format!(
+                            "{}:{}: `{literal}` looks like a key but is missing from {locale}",
+                            source_path.display(),
+                            line_of(&source, offset)
+                        ));
+                    }
+                }
+            }
+        }
+
+        assert!(
+            missing.is_empty(),
+            "catalog keys referenced by the source do not exist:\n{}\n\
+             Add the key to both locale files, or drop the reference.",
+            missing.into_iter().collect::<Vec<_>>().join("\n")
+        );
+    }
+
+    /// Every catalog key must be reachable from the source.
+    ///
+    /// The mirror of `source_referenced_keys_exist_in_the_catalog`. A key that no call site asks
+    /// for is copy that ships without ever being shown: the settings window collected 22 of them
+    /// before they were removed on 2026-09-20, and a cleanup commit then deleted a key that *was*
+    /// still used. Both directions are checked so neither can come back.
+    ///
+    /// A leaf is reachable when its text appears as a literal anywhere under `crates/`, or when
+    /// it is `<base>.<platform>` and `<base>` does. That second rule is how `platform_text`
+    /// composes the key it looks up, and it is the only composition left in the workspace.
+    #[test]
+    fn catalog_keys_are_referenced_by_source() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("the crate lives at <workspace>/crates/bongocat-i18n")
+            .join("crates");
+        let mut sources = Vec::new();
+        rust_sources(&root, &mut sources);
+
+        let mut literals = BTreeSet::new();
+        for source_path in &sources {
+            let source = std::fs::read_to_string(source_path)
+                .unwrap_or_else(|error| panic!("read {}: {error}", source_path.display()));
+            for (_, literal) in dotted_literals(&source) {
+                literals.insert(literal);
+            }
+        }
+
+        let mut unreferenced = BTreeSet::new();
+        for locale in ["en-US", "zh-CN"] {
+            for key in Catalog::load(locale).leaves {
+                if literals.contains(&key) {
+                    continue;
+                }
+                let platform_relative = key.rsplit_once('.').is_some_and(|(base, platform)| {
+                    PLATFORM_OVERRIDES.contains(&platform) && literals.contains(base)
+                });
+                if !platform_relative {
+                    unreferenced.insert(format!("{locale}: `{key}` is never looked up"));
+                }
+            }
+        }
+
+        assert!(
+            unreferenced.is_empty(),
+            "catalog keys that no source file asks for:\n{}\n\
+             Remove the key from both locale files, or add the call site that uses it.",
+            unreferenced.into_iter().collect::<Vec<_>>().join("\n")
+        );
     }
 }

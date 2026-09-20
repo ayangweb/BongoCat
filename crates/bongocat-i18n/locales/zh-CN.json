@@ -8,13 +8,25 @@
       "title": "通用"
     },
     "models": {
-      "title": "模型"
+      "title": "模型管理"
     },
-    "about": {
-      "title": "关于"
+    "overlay": {
+      "title": "模型窗口"
+    },
+    "interaction": {
+      "title": "交互"
+    },
+    "input": {
+      "title": "输入"
     },
     "shortcuts": {
       "title": "快捷键"
+    },
+    "application": {
+      "title": "应用"
+    },
+    "about": {
+      "title": "关于"
     }
   },
   "system_menu": {
@@ -240,8 +252,8 @@
       }
     },
     "configuration": {
-      "title": "配置",
       "restore_defaults": "恢复默认配置",
+      "restore_defaults_description": "归档无效配置并创建默认配置。",
       "defaults_restored": "已恢复默认值",
       "restart_to_continue": "请重启应用后继续",
       "recovered_from_backup": "已从备份恢复",
@@ -259,7 +271,6 @@
     "actions": {
       "restore_defaults": "恢复默认快捷键",
       "clear_all": "清除全部快捷键",
-      "capture": "录入",
       "clear": "清除",
       "restore_defaults_description": "使用默认值替换自定义快捷键绑定。",
       "clear_all_description": "移除所有自定义快捷键绑定。",
@@ -275,11 +286,8 @@
       "increase_hide_on_pointer_hover_delay": "延长悬停隐藏延迟"
     },
     "capture": {
-      "command_prompt": "请为此命令按下组合键",
-      "behavior_prompt": "请为此行为按下组合键",
       "press_to_record": "按下录制快捷键",
       "click_to_record": "点击录制快捷键",
-      "press_key": "请按键",
       "waiting": "正在等待组合键",
       "accessibility": "为%{name}录入快捷键"
     },
@@ -298,12 +306,6 @@
     }
   },
   "status": {
-    "not_started": "尚未启动",
-    "running": "运行中",
-    "permission_required": "需要权限",
-    "granted": "已授权",
-    "unsupported": "不支持",
-    "backend_unavailable": "后端不可用",
     "refreshing": "正在刷新运行状态...",
     "saving": "正在保存更改...",
     "connecting": "正在连接运行时...",
@@ -313,23 +315,7 @@
     "stopped": "已停止"
   },
   "errors": {
-    "runtime": {
-      "startup_failed": "启动失败",
-      "gpu_preparation_failed": "GPU 准备失败",
-      "platform_unsupported": "平台不受支持",
-      "transport_closed": "运行时传输已关闭",
-      "no_renderer_error": "没有渲染器错误"
-    },
-    "models": {
-      "load_failed": "模型加载失败",
-      "evaluation_failed": "模型计算失败",
-      "motion_load_failed": "动作加载失败",
-      "expression_load_failed": "表情加载失败"
-    },
     "settings": {
-      "overlay_invalid": "模型窗口设置无效",
-      "maximum_fps_invalid": "最大帧率无效",
-      "release_fallback_timeout_invalid": "释放兜底超时无效",
       "configuration_unavailable": "配置不可用",
       "service_unavailable": "设置服务不可用",
       "snapshot_outdated": "设置已在后台更改；请检查最新值后重试",
@@ -398,7 +384,15 @@
       }
     },
     "overlay": {
-      "title": "模型窗口",
+      "behavior": {
+        "title": "窗口行为"
+      },
+      "appearance": {
+        "title": "窗口外观"
+      },
+      "performance": {
+        "title": "性能"
+      },
       "visibility": {
         "label": "显示模型窗口",
         "description": "显示或隐藏模型窗口。"
@@ -423,10 +417,6 @@
         "label": "悬停隐藏延迟（秒）",
         "description": "指针停留在模型窗口上多久后隐藏，范围 0 至 60 秒；0 表示立即隐藏。"
       },
-      "motion_audio": {
-        "label": "动作音效",
-        "description": "播放模型动作关联的音效。"
-      },
       "scale": {
         "label": "窗口缩放",
         "description": "将模型窗口缩放调整为 25% 至 400%。"
@@ -442,10 +432,6 @@
       "maximum_fps": {
         "label": "最大帧率",
         "description": "将动画和模型窗口的更新限制为 15 至 240 帧。"
-      },
-      "release_fallback_timeout": {
-        "label": "按键释放兜底（毫秒）",
-        "description": "仅在常规释放和状态校正均失败时才释放按键，0 表示禁用。"
       }
     },
     "runtime": {
@@ -454,7 +440,12 @@
       "status_detail": "运行状态：%{health} - 修订 %{revision}"
     },
     "model_interaction": {
-      "title": "模型交互",
+      "model": {
+        "title": "模型"
+      },
+      "pointer": {
+        "title": "指针"
+      },
       "behavior_shortcuts": {
         "label": "模型行为快捷键",
         "description": "允许使用全局快捷键触发模型动作和表情。"
@@ -462,6 +453,10 @@
       "mirror_model": {
         "label": "水平镜像模型",
         "description": "以水平镜像方式渲染模型。"
+      },
+      "motion_audio": {
+        "label": "动作音效",
+        "description": "播放模型动作关联的音效。"
       },
       "mirror_pointer_tracking": {
         "label": "镜像指针跟随",
@@ -473,7 +468,16 @@
       }
     },
     "input": {
-      "title": "输入",
+      "keyboard": {
+        "title": "键盘"
+      },
+      "release_fallback_timeout": {
+        "label": "按键释放兜底（毫秒）",
+        "description": "仅在常规释放和状态校正均失败时才释放按键，0 表示禁用。"
+      },
+      "gamepad": {
+        "title": "手柄"
+      },
       "gamepad_stick_dead_zone": {
         "label": "手柄摇杆死区",
         "description": "忽略轻微的摇杆移动。"
@@ -484,7 +488,12 @@
       }
     },
     "application": {
-      "title": "应用",
+      "system": {
+        "title": "系统集成"
+      },
+      "updates": {
+        "title": "启动与更新"
+      },
       "status_icon": {
         "label": {
           "macos": "显示菜单栏图标",

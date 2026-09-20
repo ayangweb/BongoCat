@@ -10,11 +10,23 @@
     "models": {
       "title": "Models"
     },
-    "about": {
-      "title": "About"
+    "overlay": {
+      "title": "Overlay"
+    },
+    "interaction": {
+      "title": "Interaction"
+    },
+    "input": {
+      "title": "Input"
     },
     "shortcuts": {
       "title": "Shortcuts"
+    },
+    "application": {
+      "title": "Application"
+    },
+    "about": {
+      "title": "About"
     }
   },
   "system_menu": {
@@ -240,8 +252,8 @@
       }
     },
     "configuration": {
-      "title": "Configuration",
       "restore_defaults": "Restore default configuration",
+      "restore_defaults_description": "Archive the invalid configuration and create defaults.",
       "defaults_restored": "Defaults restored",
       "restart_to_continue": "Restart the application to continue",
       "recovered_from_backup": "Recovered from backup",
@@ -259,7 +271,6 @@
     "actions": {
       "restore_defaults": "Restore default shortcuts",
       "clear_all": "Clear all shortcuts",
-      "capture": "Capture",
       "clear": "Clear",
       "restore_defaults_description": "Replace custom shortcut bindings with the defaults.",
       "clear_all_description": "Remove all custom shortcut bindings",
@@ -275,11 +286,8 @@
       "increase_hide_on_pointer_hover_delay": "Lengthen hover hide delay"
     },
     "capture": {
-      "command_prompt": "Press a key combination for this command",
-      "behavior_prompt": "Press a key combination for this behavior",
       "press_to_record": "Press to record shortcut",
       "click_to_record": "Click to record shortcut",
-      "press_key": "Press key",
       "waiting": "Waiting for a key combination",
       "accessibility": "Capture shortcut for %{name}"
     },
@@ -298,12 +306,6 @@
     }
   },
   "status": {
-    "not_started": "Not started",
-    "running": "Running",
-    "permission_required": "Permission required",
-    "granted": "Granted",
-    "unsupported": "Unsupported",
-    "backend_unavailable": "Backend unavailable",
     "refreshing": "Refreshing runtime snapshot...",
     "saving": "Saving changes...",
     "connecting": "Connecting to runtime...",
@@ -313,23 +315,7 @@
     "stopped": "Stopped"
   },
   "errors": {
-    "runtime": {
-      "startup_failed": "Startup failed",
-      "gpu_preparation_failed": "GPU preparation failed",
-      "platform_unsupported": "Platform unsupported",
-      "transport_closed": "Runtime transport closed",
-      "no_renderer_error": "No renderer error"
-    },
-    "models": {
-      "load_failed": "Model load failed",
-      "evaluation_failed": "Model evaluation failed",
-      "motion_load_failed": "Motion load failed",
-      "expression_load_failed": "Expression load failed"
-    },
     "settings": {
-      "overlay_invalid": "Overlay settings invalid",
-      "maximum_fps_invalid": "Maximum FPS invalid",
-      "release_fallback_timeout_invalid": "Release fallback timeout invalid",
       "configuration_unavailable": "Configuration unavailable",
       "service_unavailable": "settings service is unavailable",
       "snapshot_outdated": "settings changed in the background; review the latest values and retry",
@@ -398,7 +384,15 @@
       }
     },
     "overlay": {
-      "title": "Overlay",
+      "behavior": {
+        "title": "Window behavior"
+      },
+      "appearance": {
+        "title": "Window appearance"
+      },
+      "performance": {
+        "title": "Performance"
+      },
       "visibility": {
         "label": "Show model window",
         "description": "Show or hide the model window."
@@ -423,10 +417,6 @@
         "label": "Hover hide delay (s)",
         "description": "Delay before the model window hides while the pointer rests on it, from 0 to 60 seconds; 0 hides it on entry."
       },
-      "motion_audio": {
-        "label": "Motion audio",
-        "description": "Play audio attached to model motions."
-      },
       "scale": {
         "label": "Window scale",
         "description": "Resize the model window from 25% to 400%."
@@ -442,10 +432,6 @@
       "maximum_fps": {
         "label": "Maximum FPS",
         "description": "Limit animation and overlay updates from 15 to 240 FPS."
-      },
-      "release_fallback_timeout": {
-        "label": "Key release fallback (ms)",
-        "description": "Release a captured key only when normal release and state reconciliation both fail; 0 disables it."
       }
     },
     "runtime": {
@@ -454,7 +440,12 @@
       "status_detail": "Runtime %{health} - revision %{revision}"
     },
     "model_interaction": {
-      "title": "Model interaction",
+      "model": {
+        "title": "Model"
+      },
+      "pointer": {
+        "title": "Pointer"
+      },
       "behavior_shortcuts": {
         "label": "Model behavior shortcuts",
         "description": "Allow global shortcuts to trigger motions and expressions."
@@ -462,6 +453,10 @@
       "mirror_model": {
         "label": "Mirror model",
         "description": "Render the model mirrored horizontally."
+      },
+      "motion_audio": {
+        "label": "Motion audio",
+        "description": "Play audio attached to model motions."
       },
       "mirror_pointer_tracking": {
         "label": "Mirror pointer tracking",
@@ -473,7 +468,16 @@
       }
     },
     "input": {
-      "title": "Input",
+      "keyboard": {
+        "title": "Keyboard"
+      },
+      "release_fallback_timeout": {
+        "label": "Key release fallback (ms)",
+        "description": "Release a captured key only when normal release and state reconciliation both fail; 0 disables it."
+      },
+      "gamepad": {
+        "title": "Gamepad"
+      },
       "gamepad_stick_dead_zone": {
         "label": "Gamepad stick dead zone",
         "description": "Ignore small analog stick movement."
@@ -484,7 +488,12 @@
       }
     },
     "application": {
-      "title": "Application",
+      "system": {
+        "title": "System integration"
+      },
+      "updates": {
+        "title": "Startup and updates"
+      },
       "status_icon": {
         "label": {
           "macos": "Show menu bar icon",

@@ -1248,13 +1248,14 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
     );
 }
 
-/// The five navigation buttons carry a label and nothing else.
+/// The navigation buttons carry a label and nothing else.
 ///
 /// These nodes used to put the page description in `value`, which duplicated
 /// the header text that has since been removed from every page. The
 /// accessibility tree is only built under the settings-window smoke, which
 /// cannot fail the process on macOS (TODO 87), so this test is the only place
-/// the shape is actually pinned.
+/// the shape is actually pinned — including the order, which has to stay in
+/// step with the sidebar `Settings` builds.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[test]
 fn navigation_accessibility_nodes_carry_no_descriptive_value() {
@@ -1269,7 +1270,11 @@ fn navigation_accessibility_nodes_carry_no_descriptive_value() {
             vec![
                 ACCESSIBILITY_GENERAL,
                 ACCESSIBILITY_MODELS,
+                ACCESSIBILITY_OVERLAY_PAGE,
+                ACCESSIBILITY_INTERACTION,
+                ACCESSIBILITY_INPUT,
                 ACCESSIBILITY_SHORTCUTS,
+                ACCESSIBILITY_APPLICATION,
                 ACCESSIBILITY_ABOUT,
             ]
         );
@@ -1294,4 +1299,23 @@ fn navigation_accessibility_nodes_carry_no_descriptive_value() {
     let english = navigation_accessibility_nodes(SettingsLanguage::EnglishUnitedStates);
     let chinese = navigation_accessibility_nodes(SettingsLanguage::ChineseSimplified);
     assert_ne!(english[0].label, chinese[0].label);
+}
+
+#[test]
+fn the_recovery_restore_label_is_not_the_shortcut_restore_label() {
+    // Restoring the configuration and restoring the shortcut bindings are different actions.
+    // The recovery notice's button used to carry the shortcut page's wording, which is how its
+    // visible label came to disagree with the accessible name its node exposed. The label now
+    // has one owner, `config_recovery_restore_label`, so the remaining way back into that
+    // confusion is to point that owner at the shortcut key.
+    for language in SettingsLanguage::ALL {
+        assert_ne!(
+            config_recovery_restore_label(language),
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.actions.restore_defaults"
+            ),
+            "the recovery restore label must not reuse the shortcut restore label",
+        );
+    }
 }

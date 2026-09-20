@@ -197,7 +197,11 @@ impl SettingsView {
             request_update,
             general_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             models_focus: cx.focus_handle().tab_index(2).tab_stop(true),
+            overlay_page_focus: cx.focus_handle().tab_index(49).tab_stop(true),
+            interaction_focus: cx.focus_handle().tab_index(50).tab_stop(true),
+            input_focus: cx.focus_handle().tab_index(51).tab_stop(true),
             shortcuts_focus: cx.focus_handle().tab_index(3).tab_stop(true),
+            application_focus: cx.focus_handle().tab_index(52).tab_stop(true),
             about_focus: cx.focus_handle().tab_index(5).tab_stop(true),
             status_icon_focus: cx.focus_handle().tab_index(9).tab_stop(true),
             #[cfg(target_os = "windows")]

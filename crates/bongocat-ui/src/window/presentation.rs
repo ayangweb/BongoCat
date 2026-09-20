@@ -480,7 +480,7 @@ pub(super) fn conflicting_shortcut(shortcuts: &SettingsShortcuts) -> Option<Stri
     None
 }
 
-/// The five settings navigation buttons, projected for assistive technologies.
+/// The settings navigation buttons, projected for assistive technologies.
 ///
 /// A navigation button reports no state, so every node here leaves `value`
 /// empty: `value` is the state slot elsewhere in the tree (the current theme
@@ -488,6 +488,7 @@ pub(super) fn conflicting_shortcut(shortcuts: &SettingsShortcuts) -> Option<Stri
 /// to ride in it are gone from the UI too. `label` alone is what a screen
 /// reader should say for these.
 ///
+/// The order is the sidebar order and must stay in step with `SettingsPage`.
 /// Free of `&self` so a unit test can pin the shape without a GPUI entity —
 /// the rest of the tree is built inside `accessibility_tree_with_focus`, which
 /// only runs under the settings-window smoke on macOS and Windows.
@@ -496,7 +497,11 @@ pub(super) fn navigation_accessibility_nodes(language: SettingsLanguage) -> Vec<
     [
         (ACCESSIBILITY_GENERAL, "navigation.general.title"),
         (ACCESSIBILITY_MODELS, "navigation.models.title"),
+        (ACCESSIBILITY_OVERLAY_PAGE, "navigation.overlay.title"),
+        (ACCESSIBILITY_INTERACTION, "navigation.interaction.title"),
+        (ACCESSIBILITY_INPUT, "navigation.input.title"),
         (ACCESSIBILITY_SHORTCUTS, "navigation.shortcuts.title"),
+        (ACCESSIBILITY_APPLICATION, "navigation.application.title"),
         (ACCESSIBILITY_ABOUT, "navigation.about.title"),
     ]
     .map(|(id, key)| {
@@ -516,6 +521,19 @@ pub(super) struct ConfigRecoveryPresentation {
     pub(super) detail: String,
     pub(super) attention: bool,
     pub(super) can_restore: bool,
+}
+
+/// The label of the recovery notice's restore action.
+///
+/// One owner for the button's visible text and for the accessible name the restore node
+/// exposes. The two have to agree — WCAG 2.5.3 asks that the accessible name contain the
+/// visible label — and they did not while the visible button copied the shortcut page's
+/// wording, which also described a different action than the one the button performs.
+pub(super) fn config_recovery_restore_label(language: SettingsLanguage) -> &'static str {
+    bongocat_i18n::text(
+        language.catalog_locale(),
+        "diagnostics.configuration.restore_defaults",
+    )
 }
 
 pub(super) fn config_recovery_presentation(

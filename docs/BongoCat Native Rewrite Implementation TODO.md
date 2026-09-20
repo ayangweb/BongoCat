@@ -4732,7 +4732,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `ExportDiagnostics`/`OpenConfigBackupLocation` 两个排障动作直接放在普通用户界面上；这些数字只在
       被显示时才有意义，对普通用户只造成困惑。
     - 退出条件：设置窗口只剩 General、Models、Shortcuts、About；配置恢复提示与
-      `RestoreDefaultConfiguration` 动作移到 General 页面且不依赖诊断页；被删页面的
+      `RestoreDefaultConfiguration` 动作移到 General 页面且不依赖诊断页（该位置随后由第 94 项改为
+      窗口级提示，不再挂在任何页面上）；被删页面的
       tab stop、Accessibility node 与 smoke 断言同步删除，没有死代码残留；隔离 smoke 与 CI 期望同步更新；
       `ExportDiagnostics`/`OpenConfigBackupLocation` 仍是 settings service 的强类型 command（不删服务端能力）。
     - 验收证据（2026-09-20，macOS 26.5.2 arm64）：删除 `crates/bongocat-ui/src/window/diagnostics.rs`
@@ -4749,10 +4750,267 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `--settings-window-state-smoke` 输出 Chinese General/Shortcuts/Models localization verified 与
       `settings window state restored after restart`；CI 期望字符串已同步（recovery notice verified，
       删除 Chinese Diagnostics localization）。
-    - 未完成：`crates/bongocat-i18n/locales/*.json` 中只为该页面存在的键（`navigation.diagnostics.title`、
-      `diagnostics.runtime*`、`diagnostics.input*`、`diagnostics.export*`、`diagnostics.runtime_and_input.title`）
-      仍未删除；它们已无代码引用，需要连同 `bongocat-i18n` 里引用
-      `diagnostics.runtime.shutdown_failures` 的单测一起清理。Windows 侧仍待 CI 原生复验。
+    - 未完成：Windows 侧仍待 CI 原生复验。
+    - 遗留清理完成（2026-09-20，由第 94 项带出）：上面列的键（`navigation.diagnostics.title`、
+      `diagnostics.runtime*`、`diagnostics.input*`、`diagnostics.export*`、
+      `diagnostics.runtime_and_input.title`）经核实**在本项完成时就已不存在**，但本项漏报了真正的遗留。
+      做全量孤儿键审计后确认，本项实际留下了 **16 个无构造路径的键**：`errors.runtime.*`（5：
+      `startup_failed` / `gpu_preparation_failed` / `platform_unsupported` / `transport_closed` /
+      `no_renderer_error`）与 `errors.models.*`（4：`load_failed` / `evaluation_failed` /
+      `motion_load_failed` / `expression_load_failed`）——`git log -S` 显示它们的最后一处引用正是
+      本项的 commit `f52fa85`；另外 `errors.settings.{overlay_invalid,maximum_fps_invalid,
+      release_fallback_timeout_invalid}` 三个键所对应的 `SettingsErrorCode` 变体已不存在
+      （`localization.rs::settings_error()` 的 match 里没有它们，实际走的是 `invalid_maximum_fps` /
+      `invalid_release_fallback_timeout`）。同批清掉的还有 `status.*` 六个
+      （`not_started` / `running` / `permission_required` / `granted` / `unsupported` /
+      `backend_unavailable`——它们曾是输入服务状态的文案，`startup_permission.rs` 用的是自己的
+      `startup_permission.*` 命名空间）与 `shortcuts.actions.capture` +
+      `shortcuts.capture.{command_prompt,behavior_prompt,press_key}` 四个。
+      合计删除 **22 个键 × 2 locale**，键数 329 → **307**；`errors` 命名空间现在只剩 `settings`。
+      审计方法与证据见第 94 项。
+    - 过度删除修正（2026-09-20）：同一批清理的姊妹提交 `c456ff0`（"drop the locale keys left over from
+      the diagnostics page"）在删诊断页遗留键时**多删了一个仍被代码引用的键**——
+      `diagnostics.configuration.restore_defaults_description`，它被 `accessibility.rs:672`（给
+      `ACCESSIBILITY_RESTORE_DEFAULTS` 节点做 `.with_value(..)`）与 `smoke.rs:887`（断言该节点的
+      `value`）引用。`bongocat_i18n::text` 对缺失键回退为键字符串本身，因此屏幕阅读器会念出
+      `"diagnostics.configuration.restore_defaults_description"` 而不是说明文字。已按原值补回两个 locale
+      （zh「归档无效配置并创建默认配置。」/ en「Archive the invalid configuration and create defaults.」），
+      键数 307 → **308**，`diagnostics.configuration` 一组九键恢复完整；`just check`（34 目标 / 783
+      passed）、`validate-locales.py`（308/308）、`--configuration-recovery-smoke`、
+      `--settings-window-state-smoke`、`--settings-window-smoke` 均通过。
+    - 变异证据（说明**为什么没有任何测试挡住它**）：把该键从两个 locale 再删一次，重跑
+      `--configuration-recovery-smoke` 仍然 exit 0 并打印 `recovery notice verified`——因为断言的两边
+      都是对同一个键调用 `bongocat_i18n::text`，缺键时两边一起退化成同一个键字符串，比较恒真。
+      结论：**当时没有任何测试守"代码引用的键必须存在于 locale"这个不变量**；该不变量与第 94 项列出的
+      "`SettingsErrorCode` 变体 ↔ locale 键"守门测试同源，本项顺手把它补上了（见下一条）。
+    - 守门测试（2026-09-20，维护者选择"加全量扫描测试"）：`bongocat-i18n` 新增
+      `tests::source_referenced_keys_exist_in_the_catalog`，扫描 `crates/` 下全部 91 个 `.rs` 文件，
+      两种判据：
+      （1）直接传给 `bongocat_i18n::text` / `format_text` / `platform_text` 的字面量必须能解析——
+      解析器从调用左括号起按括号深度找第二个实参，跳过 `language.catalog_locale()` 这类第一实参，
+      变量实参直接略过（动态键就在这些位置）；`platform_text` 按 ADR-0028 的查找顺序判定，即
+      `<key>.<platform>` 覆盖齐全或 `<key>` 自身存在；
+      （2）任何"前两段已经是 catalog 路径"的点号字面量都必须落在叶子上——这一条覆盖 `const` 键表
+      （`startup_permission.rs` 的 `mod keys`）和本地闭包这类看不到查找调用的写法；"前两段"这个门槛
+      把 `diagnostics.json`、`models.writer.lock` 之类无关点号串挡在外面（实测当前树 0 误报）。
+      查找函数名用 `concat!` 拼写，避免测试匹配到自己。
+      **三个变异都证明能变红**：（A）删掉 `diagnostics.configuration.restore_defaults_description`
+      → 判据（1）报出 `accessibility.rs:672` 与 `smoke.rs:887` 两处 × 两个 locale，exit 101；
+      （B）把 `startup_permission.rs:19` 的 `keys::TITLE` 拼错成 `.titel` → 由判据（2）抓到，证明
+      "const 键表这类没有可见查找调用的引用"确实被覆盖；（C）把 `accessibility.rs:667` 的键写成
+      `diagnostcs.configuration.restore_defaults`（首段拼错，判据（2）看不到）→ 由判据（1）抓到。
+      未覆盖（**同日补齐**）：原先"运行时用 `format!` 拼出来的 `errors.settings.*` 没有字面量可扫"这一条
+      已消除——`localization.rs::settings_error()` 的 42 个 match 分支由"后缀 + `format!`"改成**完整键
+      字面量**（`"errors.settings.service_unavailable"` 等），`format!("errors.settings.{suffix}")` 那行删掉。
+      这样判据（2）能逐个校验这 42 个键（第 94 项记的 "`SettingsErrorCode` 变体 ↔ locale 键"因此不需要
+      单独的测试设计）。**更正一处措辞**：不能说"全仓库不再有任何动态拼键"——`platform_text`
+      （`bongocat-i18n/src/lib.rs:107`）仍按 `format!("{base_key}.{}", current_platform_id())` 组合，
+      但它的 base key 是字面量实参，由判据（1）的平台规则覆盖；准确说法是"不再有**以字面量前缀**
+      拼出来的键"。
+      变异 D 证明有效：把 catalog 里 `errors.settings.shutdown_failed` 改名 → 测试报
+      `localization.rs:186` × 两个 locale。
+      残余盲区：判据（2）要先认出"前两段是真实 catalog 路径"才检查，所以把 `errors` 写成 `errros`
+      这种**命名空间本身拼错**的字面量仍然扫不到。
+    - 反向守门测试（2026-09-20，同日补）：`bongocat-i18n` 新增
+      `tests::catalog_keys_are_referenced_by_source`，是上面那条的镜像——**catalog 里每个叶子键都必须
+      在 `crates/` 下被某个字面量引用**。这条以前做不了（42 个 `errors.settings.*` 是运行时拼的，
+      会被误判成死键），把拼键去掉之后才成立。判据：键的字面量出现在任一源文件里，或它是
+      `<base>.<platform>` 而 `<base>` 是字面量（后者正是 `platform_text` 的组合方式）。
+      实测当前树 **0 误报**（308 个键全部可达；其中 `settings.application.status_icon.{label,
+      description}.{macos,windows}` 四个只由 `platform_text` 的 base key 覆盖）。
+      变异 F（两个 locale 各加一个没人引用的 `diagnostics.configuration.never_looked_up`）→ 报
+      `en-US/zh-CN: ... is never looked up`；变异 G（删掉 `settings.application.status_icon.label.macos`）
+      → 判据（1）的平台规则报出 base key 不可解析，证明该规则不是空转。
+      这一对测试把"死键"和"缺键"两个方向都钉住了——本项最初要清的就是 22 个死键。
+    - 可见文案与可访问名对齐（2026-09-20，维护者决定）：`config_recovery_groups` 里恢复按钮的**可见**
+      文案原来照抄快捷键页的 `shortcuts.actions.restore_defaults`（"恢复默认快捷键"），而该按钮执行的是
+      `restore_default_configuration`（整份配置），同一个按钮的无障碍 label 又是
+      `diagnostics.configuration.restore_defaults`（"恢复默认配置"）——可见名与可访问名不一致
+      （WCAG 2.5.3 Label in Name），且文案说的不是这个动作。已把可见文案改用
+      `diagnostics.configuration.restore_defaults`，两者现在共用同一个键。
+      `git log -S` 显示该可见文案自 `f52fa85` 引入 `config_recovery_groups` 起、乃至旧诊断页
+      `diagnostics.rs:708` 就一直是快捷键的键，属存量问题而非本次引入。
+      `shortcuts.actions.restore_defaults` 仍被快捷键页（`shortcuts_page.rs:97`）与其无障碍节点
+      （`accessibility.rs:683`）使用，没有变成孤儿键。
+      后续补齐（同日）：上面那条"相等关系没有断言守着"改为**结构性消除**而不是加断言——新增
+      `presentation.rs::config_recovery_restore_label(language)` 作为这个标签的**唯一 owner**，
+      `render.rs` 的可见按钮、`accessibility.rs` 的节点 label、`smoke.rs` 的断言三处都改用它，
+      于是可见名与可访问名不可能再各说各话（比断言更强：断言只能发现漂移，单 owner 让漂移无法发生）。
+      现在全仓库只有 `presentation.rs` 一处持有 `diagnostics.configuration.restore_defaults` 字面量。
+      另加 `window/tests.rs::the_recovery_restore_label_is_not_the_shortcut_restore_label` 守住
+      "别把 owner 指回快捷键那个键"这条退路——变异 E（把 owner 指回
+      `shortcuts.actions.restore_defaults`）报 `assertion left != right failed`，两侧都是
+      `"Restore default shortcuts"`。
+
+94. [x] `P1-SETTINGS-NAVIGATION-SPLIT`：设置侧边栏按领域拆分为八个一级页面。
+    - 背景（2026-09-20，维护者反馈）：第 93 项删掉诊断页后，"通用"仍是唯一承载应用级设置的页面，
+      里面压着五个分组、二十五个设置项（外观 2、模型窗口 12、模型交互 4、输入 3、应用 4——用脚本
+      从 HEAD 的 `render.rs` 逐项数出，不是估的）。一个页面塞进四个不相干的领域，用户必须先滚动才能
+      发现自己要找的开关在哪；侧边栏也只有四个入口，粒度明显粗于实际内容。
+    - 机制依据（读源码确认，不是猜 API）：`gpui-component` 的 `SettingPage` **不支持嵌套子页面**
+      （`src/setting/page.rs`），二级菜单只能由"页内带标题的 group"产生——`src/setting/settings.rs`
+      在 `groups.len() > 1` 时把带 `title` 的 group 渲染成第二个 `SidebarMenuItem`，点击设置
+      `selected_index.group_ix` 并滚动到该分组。因此本次拆分的形态是"增加一级页面 + 用分组充当
+      二级"，而不是给页面加子页面。
+    - 实现：`SettingsPage` 由 4 个变体扩到 8 个（General、Models、Overlay、Interaction、Input、
+      Shortcuts、Application、About，声明顺序即侧边栏顺序）；新增 `overlay_page`（`AppWindow`）、
+      `interaction_page`（`MousePointer2`）、`input_page`（`Gamepad2`）、`application_page`（`Cog`）；
+      `general_page` 只保留外观（主题、语言）一个分组——配置恢复提示随后移出了该页，见下一条。
+      逐项归属（2026-09-20 用脚本从两版 `render.rs` 重新数出，不是估的）：
+      General 外观 2；Overlay = 行为 6（可见性、置顶、点击穿透、保持在屏幕内、悬停隐藏、悬停隐藏延迟）
+      + 外观 3（缩放、不透明度、圆角）+ 性能 1（最大帧率）= 10；Interaction = 模型 3（行为快捷键、
+      镜像模型、动作音效）+ 指针 2（镜像指针跟随、忽略指针输入）= 5；Input = 键盘 1（按键释放兜底）
+      + 手柄 2（摇杆死区、扳机死区）= 3；Application = 运行状态 1 + 系统集成 2（状态图标、任务栏图标）
+      + 启动与更新 2（自动检查更新、开机自启）= 5。合计 **25**，与拆分前"通用"页的
+      外观 2 + 模型窗口 12 + 模型交互 4 + 输入 3 + 应用 4 = 25 对账一致。
+      两处归属变化：`settings.runtime.title` 从"模型窗口"组移入 Application 页（在那里**不再单独设
+      分组标题**——它只有一个设置项，标题会和项标签重复）；`settings.overlay.motion_audio.label`
+      从"模型窗口"组移入 Interaction 页的"模型"分组。`settings.overlay.release_fallback_timeout.label`
+      的**分组没动**（本来就在输入组里），只把键命名空间改成 `settings.input.*`。
+      另外**两处"同一个键被用两遍以上"的清理**（2026-09-20，维护者决定"去掉分组标题"）：
+      ① Application 页第一个分组——组标题与它唯一那个设置项的标签都是 `settings.runtime.title`；
+      ② Shortcuts 页——页面标题、分组标题、设置项标签**三处**都是 `navigation.shortcuts.title`。
+      两处都删掉分组标题（不动任何文案）。扫描全部 8 个页面后确认：除了这两处，没有第三处
+      "页标题 / 组标题 / 项标签同键"的情况。Shortcuts 页只有一个分组，删标题不产生二级菜单项
+      （`groups.len() > 1` 仍为假），也不影响 `--settings-window-state-smoke` 的
+      `Chinese Shortcuts localization verified`（那条断言的是快捷键行，不是分组标题）。
+    - 配置恢复提示改为窗口级（2026-09-20，维护者决定"让它跟着用户走"）：`config_recovery_groups`
+      （返回 `Vec<SettingGroup>`、挂在 `general_page`）改为 `config_recovery_notice`（返回 `Option<Div>`，
+      渲染在 `Settings` 组件**之上**、作为根 `div` 的第一个 child）。原因是侧边栏选中态由组件拥有，
+      挂在某一页的提示对"导航到别页"的用户不可见；而恢复动作的无障碍节点是**无条件**进树的
+      （`accessibility.rs:898`），所以它的结果必须在任何页面都可见。视觉形态从"设置分组 + 按钮"
+      改为"标题 Tag（`attention` 为真时 `danger`，否则 `secondary`）+ muted 说明 + 恢复按钮"的横幅。
+      连带两处清理：① `diagnostics.configuration.title`（原分组标题）成为孤儿键，被新的反向守门测试
+      当场抓到并删除，键数 308 → **307**；② `window.rs` 里 `configuration_status != Ready` 时
+      把 `view.page` 赋成 `General` 的那段**删除**——它本来就切不了页，现在连"把用户按在提示所在页"
+      这个意图也不成立了，留着只会让人以为页切换有效。
+      **覆盖情况要说清**：`--configuration-recovery-smoke` 断言的是无障碍恢复节点与
+      `config_recovery_presentation` 的字段（都还在），**没有任何断言验证"横幅渲染在组件之上"**——
+      本仓库的 smoke 不做布局/截图断言，这一点与既有限制一致，靠人工与后续 harness 补。
+    - 无障碍侧缺口（**同日补齐**，2026-09-20）：先查清了根因——`crates/bongocat-app/src/main.rs:276`
+      的注释与 `GpuiApplication::new_inaccessible(...)` 表明 GPUI 是**以不可访问模式**构造的、
+      由 `SettingsAccessibilityBridge` 独占该窗口的 AccessKit adapter，所以设置窗口的无障碍树
+      **完全**由手写的 `accessibility_tree` 决定，GPUI 不会为组件元素自动补节点。原先该树只为恢复
+      动作建了 `ACCESSIBILITY_RESTORE_DEFAULTS` 一个节点，**提示的标题与说明文字从来不在树里**，
+      读屏用户触发恢复后听不到"已恢复默认值 / 请重启应用后继续"。
+      已新增 `ACCESSIBILITY_CONFIG_RECOVERY`(26，当时最低空闲 id；空闲集合为 26/27/28/30/31/32/36/37)
+      节点：`AccessibilityRole::Status`（先例：`ACCESSIBILITY_MODEL_IMPORT_STATUS`），
+      label = `config_recovery_presentation(...).title`，value = `.detail`，不可点击、不可聚焦；
+      **只在配置不可用时进树**（"正常加载"不值得每次开窗都播报），并同步加进 `root_children`。
+      smoke 断言加在 `verify_configuration_recovery_for_smoke`：节点必须存在、role 必须是 `Status`、
+      label/value 必须与 `config_recovery_presentation` 一致、且不可点击不可聚焦。
+      两个变异都证明能变红：变异 H（不把节点 push 进树）→ `recovery notice did not expose its own
+      text`，exit 1；变异 I（角色改成 `Label`）→ `recovery notice accessibility text is invalid`，exit 1。
+      通用教训（已写进技能）：**"显示给用户但没进 `accessibility_tree`"的文字，读屏用户听不到**——
+      新增可见文案时要问"它在树里有节点吗"。
+    - 无障碍侧同步：新增 `ACCESSIBILITY_OVERLAY_PAGE`(5) / `ACCESSIBILITY_INTERACTION`(7) /
+      `ACCESSIBILITY_INPUT`(8) / `ACCESSIBILITY_APPLICATION`(9) 四个节点与四个 `FocusHandle`
+      （tab index 49–52，避开已占用的 1–48）；`navigation_accessibility_nodes()` 由 4 项扩到 8 项；
+      `accessibility.rs` 的三处 `match self.page`（`accessibility_tree`、`update_accessibility` 的
+      兜底、`handle_accessibility_action`）与 `root_children` 全部补齐。Overlay 页的节点**不能**复用
+      `ACCESSIBILITY_OVERLAY`(10)——那是"显示模型窗口"开关，故取 `_PAGE` 后缀区分。
+    - 无障碍焦点跟随当前页：侧边栏的选中态由组件的 `SettingsState` 拥有，导航节点点击不再写
+      `self.page`，因此改由页面渲染时反向汇报——新增 `page_reporter(view, page)`，挂在
+      `SettingPage::title_suffix`（组件暴露的唯一 per-page 渲染回调，`src/setting/page.rs:56`）上，
+      渲染到该页时把 `view.page` 写回。回调元素本身为空，页眉仍然只显示标题。Models / Shortcuts /
+      About 三页本来就在构建自定义内容时写 `self.page`，未改动。
+    - 退出条件：八个一级页面各自可导航；含多个分组的页面在侧边栏出现第二级；页面标题、侧边栏文字
+      与无障碍导航按钮共用同一份 `navigation.*.title`；无障碍焦点随当前页变化；两个 locale 键集一致
+      且无因本次改动产生的失效键；`just check` 与隔离 smoke 通过；新断言有反向变异证据。
+    - 验收证据（2026-09-20，macOS 26.5.2 arm64）：`just check` 六道门全绿（`cargo fmt --check`、
+      workspace Clippy `-D warnings`、app 的 `storage-test-injection` Clippy、app 的 `production`
+      Clippy、`cargo test --locked --workspace`、release `cargo check --locked --workspace`），
+      键名迁移后复核重跑 2m16s 退出码 0；`cargo test --locked --workspace` 34 个目标
+      783 passed / 0 failed；
+      `python3 tools/validate-locales.py` 输出 `validated 2 locale(s), 329 key(s) each`；
+      release `--run-seconds 6 --settings-window-smoke --models-page-smoke` 退出码 0，输出
+      `settings window hid and reopened from one pre-rendered entity`；
+      `python3 -m unittest discover -s tools/tests -t tools/tests` 63 项通过（本项改了两个
+      CHANGELOG，所以 `test_release_changelog_contract.py` 的双语条目契约必须一起过）。
+      新增 `show_split_pages_for_smoke()`（`crates/bongocat-ui/src/window/smoke.rs`）遍历四个新页面，
+      逐页断言 `tree.validate()`、`tree.focus == node_id`，以及节点 role / label / value / click /
+      focus——否则"渲染失败的页面"只会表现为一个点不开的侧边栏条目。
+      变异验证：把该函数里的 `self.page = page;` 改成 `self.page = SettingsPage::General;` 后重建，
+      smoke **退出码 1** 并输出
+      `product run failed: page navigation.overlay.title did not expose the active accessibility focus`；
+      按原文还原 + `touch` + 重建后复绿（退出码 0，同一条 `settings window hid and reopened` 输出）。
+      `tests.rs` 的 `navigation_accessibility_nodes_carry_no_descriptive_value` 期望 id 列表同步扩到
+      8 项。
+    - i18n：新增 `navigation.{overlay,interaction,input,application}.title`（模型窗口 / 交互 / 输入 /
+      应用），`navigation` 子键按侧边栏顺序重排；删除随页面标题一起失效的
+      `settings.{overlay,model_interaction,input,application}.title`；新增九个二级分组标题——
+      `settings.overlay.{behavior,appearance,performance}`、
+      `settings.model_interaction.{model,pointer}`、`settings.input.{keyboard,gamepad}`、
+      `settings.application.{system,updates}`。
+    - 顺带把两个**被移走的控件**的键迁到它们现在所属的命名空间，否则 catalog 会指向错误的页面：
+      `settings.overlay.motion_audio.*` → `settings.model_interaction.motion_audio.*`（该控件渲染在
+      Interaction 页的"模型"分组）、`settings.overlay.release_fallback_timeout.*` →
+      `settings.input.release_fallback_timeout.*`（渲染在 Input 页的"键盘"分组）。共 9 处调用点
+      （`render.rs` 4、`accessibility.rs` 4、`smoke.rs` 1）与两个 locale 各 2 个键；迁移后全仓库
+      零残留（`grep` 已验证）。键名是内部标识、不进配置，所以不涉及 v1 schema。
+    - ⚠️ 页面数与项数这类断言**必须用脚本重新数**：本项最初把"通用"页写成"二十四个设置项"，而
+      分组明细 2+12+4+3+4 已经是 25；重数 HEAD 的 `render.rs` 后确认是 **25**。拆分后的分布是
+      General 2 / Overlay 10 / Interaction 5 / Input 3 / Application 5，合计仍是 25，可对账。
+    - 顺带修正两处过时措辞：`crates/bongocat-app/src/main.rs` 与 `window/smoke.rs` 里写死的
+      "the other three"（页面数不再是固定 4）。另给 Windows-only 的 `items.push` 加了
+      `#[cfg_attr(not(target_os = "windows"), allow(unused_mut))]`，因为该 `Vec` 在 macOS 上不再被
+      修改；直接删 `mut` 会让 Windows 编译失败。
+    - 顺带修正 CHANGELOG 里的过时列表：`### 🎨 UI and Experience` 那条图标说明仍写着
+      "General、Models、Shortcuts、Diagnostics、About"，而第 93 项已经删掉诊断页；本次同步为新页面
+      列表，两个 locale 一起改。
+    - 未纳入本项的观察（存量问题，未修）：`just release-notes <file>` 当前**失败**，报
+      `CHANGELOG.md has no release notes for 1.1.0; it documents 2.0.0`——`Cargo.toml` 的
+      `[workspace.package].version` 是 `1.1.0`，而 changelog 顶部标题是 `## 2.0.0 - 2026-09-16`。
+      两个文件的 `##` 标题在 HEAD 与本工作树上完全相同（`git show HEAD:CHANGELOG.md`），说明与本项
+      改动无关；`tools/tests/test_product_version_contract.py` 只把 `Cargo.toml`、`Info.plist`、
+      `.rc` 与包内常量绑在一起，没有绑定 changelog 标题，所以现有门禁抓不到这个不一致。需要维护者
+      决定以哪一侧为准，本项不擅自改版本号。
+    - 后续修正（2026-09-20，维护者提出）：中文侧把第二个一级页面的标签从"模型"改为"**模型管理**"。
+      理由不是口味，是对齐仓库里已有的术语——`docs/adr/0047-model-metadata-editing-boundary.md` 的
+      标题就是"模型管理页只做选择与元数据编辑"，第 84 项写"模型管理页按旧版交互重做"，`CHANGELOG.zh-CN.md`
+      与 `AGENTS.md` §5.1 也都用"模型管理"；改之前**只有 sidebar 标签还在叫"模型"**。同时消除了侧边栏
+      里"模型 / 模型窗口"两条相邻项都以前两个字开头的歧义。
+      只改 `zh-CN.json` 的 `navigation.models.title` 值（键名不变，因此页面标题、sidebar 文字、无障碍
+      导航按钮 label 三处同时生效）；英文侧保持 `Models`——八个英文标签都是单个词，加一个
+      "Model management" 会破坏这个节奏，且英文的 `Models` / `Overlay` 本来就不歧义。若维护者要求
+      两个 locale 严格对应，改 `en-US.json` 同一个键即可（一行）。
+      已确认无硬编码断言：全仓库 grep `"模型"` 只剩导航标题与 Interaction 页的"模型"分组标题两处
+      （后者语义正确，保留），smoke 的页面标签断言一律走
+      `bongocat_i18n::text(locale, "navigation.models.title")`，所以改值不会漏断言、也不会假绿。
+    - 全量孤儿键审计（2026-09-20，本项顺带做，结论供第 93 项的清理使用）：脚本 flatten 两个 locale
+      的全部键，对每个键在 `crates/ docs/ tools/ shared/ AGENTS.md README.md CHANGELOG*.md justfile`
+      （排除 `target/` 与 locale 自身）里查字面出现；零命中者再判是否有**动态构造路径**。判据是
+      `grep -rn 'format!\(\s*"?(errors|status|shortcuts|diagnostics)\.' crates/` ——全仓库只有
+      **一处**会拼 i18n 键，即 `localization.rs::settings_error()` 的
+      `format!("errors.settings.{suffix}")`，其 42 个后缀都是同一函数 match 里的字面量。
+      因此：不在 `errors.settings.*` 下、又无字面量的键，**不存在任何构造路径**。初筛 64 个零引用键，
+      按此判据收敛为 **22 个真死键**（详见第 93 项），其余 42 个是 `errors.settings.*` 的动态键。
+      另做了一次反方向核对：`settings_error()` 能产出的 42 个后缀**全部**在两个 locale 里有对应键
+      （缺一个就会把原始 key 字符串显示给用户）——当前没有缺键。这条不变量在 2026-09-20 由第 93 项
+      补了守门测试（`source_referenced_keys_exist_in_the_catalog`）：`settings_error()` 同时改成在
+      42 个分支里写**完整键字面量**、删掉 `format!("errors.settings.{suffix}")`，于是判据（2）能逐个
+      校验它们，"`SettingsErrorCode` 变体 ↔ locale 键"不再需要单独的测试设计。
+      删除后：`validate-locales.py` → `validated 2 locale(s), 307 key(s) each`（原 329）。
+    - 跨页跳转：机制已核实，**该结论已随本次搬动而失效**（2026-09-20）。核实到的组件事实仍然有效，
+      记录在此供后续使用：`gpui-component` 的 `SettingsState` 由
+      `window.use_keyed_state(self.id.clone(), ..)` 创建（`src/setting/settings.rs:384`），且
+      **只在首次创建时**从 `default_selected_index` 初始化（`settings.rs:391-395`）；`selected_index`
+      是 `pub(super)`，外部改不了。`SettingsView::page` 只是无障碍树的 focus 来源，从不喂给组件，
+      而且会被活跃页的 `page_reporter` 每次渲染改写回真实页——所以**从 `SettingsView` 里切不了组件的
+      选中页**，只有换 keyed state id 才能让 `default_selected_index` 重新生效。
+      失效的部分：原先"提示挂在 General、用户导航到别页就看不到"这条风险，随提示改为窗口级而消失；
+      `window.rs` 里把 `view.page` 赋成 `General` 的代码已删除。顺带消掉一条隐患——当时的正确性依赖
+      "组件默认选第 0 页 = General"，**重排侧边栏顺序就会静默失效**；现在提示在组件之外，
+      页面顺序不再承载这个职责。
+      教训（保留）：**判断可达性要把所有入口都数一遍，不能只看可见控件。** 初稿断言"恢复按钮只在
+      General，所以用户必然在 General"，漏掉了 `ACCESSIBILITY_RESTORE_DEFAULTS` 是**无条件**进树的
+      （`accessibility.rs:898`）这条旁路；同时"这个赋值会改行为"这类结论必须先读消费端再下。
+    - 未完成：Windows 侧原生复验（本机无法执行 `cfg(windows)` 路径；本项未改平台代码，风险低）。
+    - **修正一条我先写错的断言（2026-09-20）**：本项初稿在这里写"第 93 项遗留的 `diagnostics.build.*`
+      孤儿 i18n 键仍未清理"。这是错的——`diagnostics.build.*` 仍被 `localization.rs`（
+      `build_info_detail` 读 `.version` / `.environment.*`）与 `about.rs`（读 `.title`）使用。
+      据此做了一次全量孤儿键审计，真正的遗留见第 93 项的新增记录。教训：**"看起来像遗留"不等于
+      遗留，删键前必须查构造路径**。
 
 ## 13. 待决策清单
 

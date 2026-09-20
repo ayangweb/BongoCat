@@ -115,6 +115,17 @@ const ACCESSIBILITY_MODELS: AccessibilityNodeId = AccessibilityNodeId::new(3);
 const ACCESSIBILITY_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(4);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_ABOUT: AccessibilityNodeId = AccessibilityNodeId::new(6);
+// The page nodes for the navigation entries that were split out of General.
+// `ACCESSIBILITY_OVERLAY` (10) is already the "show model window" switch, so
+// the Overlay page's node carries the `_PAGE` suffix to keep the two apart.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_OVERLAY_PAGE: AccessibilityNodeId = AccessibilityNodeId::new(5);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_INTERACTION: AccessibilityNodeId = AccessibilityNodeId::new(7);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_INPUT: AccessibilityNodeId = AccessibilityNodeId::new(8);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_APPLICATION: AccessibilityNodeId = AccessibilityNodeId::new(9);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_OVERLAY: AccessibilityNodeId = AccessibilityNodeId::new(10);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -142,6 +153,13 @@ const ACCESSIBILITY_MAXIMUM_FPS_DECREASE: AccessibilityNodeId = AccessibilityNod
 const ACCESSIBILITY_MAXIMUM_FPS_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(25);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RESTORE_DEFAULTS: AccessibilityNodeId = AccessibilityNodeId::new(29);
+/// The recovery notice's own text.
+///
+/// The notice is visible on every page, and the restore action can be reached from every page,
+/// so what it says has to be readable from every page too. Without this node a screen reader
+/// only ever met the restore button and never the notice's title or detail.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_CONFIG_RECOVERY: AccessibilityNodeId = AccessibilityNodeId::new(26);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RESTORE_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(33);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -293,12 +311,22 @@ impl ShortcutCapture {
     }
 }
 
+/// The settings window's navigation pages, in sidebar order.
+///
+/// `General` used to carry every app-level preference in one page with five
+/// groups. The groups became pages of their own so each one is reachable in a
+/// single click, and the pages that still hold more than one concern keep
+/// titled groups, which the sidebar renders as a second level.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum SettingsPage {
     #[default]
     General,
     Models,
+    Overlay,
+    Interaction,
+    Input,
     Shortcuts,
+    Application,
     About,
 }
 
@@ -522,7 +550,11 @@ pub struct SettingsView {
     request_update: SettingsWindowRequest,
     general_focus: FocusHandle,
     models_focus: FocusHandle,
+    overlay_page_focus: FocusHandle,
+    interaction_focus: FocusHandle,
+    input_focus: FocusHandle,
     shortcuts_focus: FocusHandle,
+    application_focus: FocusHandle,
     about_focus: FocusHandle,
     status_icon_focus: FocusHandle,
     #[cfg(target_os = "windows")]
@@ -1342,14 +1374,6 @@ impl SettingsView {
                             snapshot.revision,
                         ) =>
                     {
-                        // A configuration that is not usable puts its recovery notice on the
-                        // General page, so that is where the user has to be looking at it.
-                        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
-                            && view.page != SettingsPage::General
-                        {
-                            view.page = SettingsPage::General;
-                            snapshot_changed = true;
-                        }
                         if view.snapshot.as_ref() != Some(snapshot) {
                             view.snapshot = Some(snapshot.clone());
                             snapshot_changed = true;

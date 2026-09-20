@@ -21,7 +21,11 @@ impl Render for SettingsView {
                 let static_focus = match target {
                     ACCESSIBILITY_GENERAL => Some(&self.general_focus),
                     ACCESSIBILITY_MODELS => Some(&self.models_focus),
+                    ACCESSIBILITY_OVERLAY_PAGE => Some(&self.overlay_page_focus),
+                    ACCESSIBILITY_INTERACTION => Some(&self.interaction_focus),
+                    ACCESSIBILITY_INPUT => Some(&self.input_focus),
                     ACCESSIBILITY_SHORTCUTS => Some(&self.shortcuts_focus),
+                    ACCESSIBILITY_APPLICATION => Some(&self.application_focus),
                     ACCESSIBILITY_ABOUT => Some(&self.about_focus),
                     ACCESSIBILITY_OVERLAY => Some(&self.overlay_focus),
                     ACCESSIBILITY_OVERLAY_TOPMOST => Some(&self.overlay_topmost_focus),
@@ -180,21 +184,27 @@ impl Render for SettingsView {
         // what stays in the window after the diagnostics page was retired; the counters, build
         // identifiers, renderer and input detail and the diagnostics export it used to show
         // live in the background logs and in the diagnostics bundle instead.
-        let recovery_groups = config_recovery_groups(
+        let recovery_notice = config_recovery_notice(
             language,
             snapshot.as_ref(),
-            disabled,
             view_entity.clone(),
+            self.restore_defaults_focus.clone(),
+            disabled,
+            window,
             Tokens::from_theme(cx),
         );
 
+        // The landing page keeps the two preferences every user reaches for
+        // first. The other four concerns that used to share this page — the
+        // model window, how the model reacts, the input devices and the
+        // app-level integrations — each have a page now.
         let general_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.general.title",
         ))
         .icon(IconName::Settings)
         .default_open(true)
-        .groups(recovery_groups)
+        .title_suffix(page_reporter(view_entity.clone(), SettingsPage::General))
         .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -249,29 +259,24 @@ impl Render for SettingsView {
                         "settings.appearance.language.description",
                     )),
                 ]),
+        ]);
+
+        // The model window itself: how it behaves on the desktop, how it looks,
+        // and how often it draws. The runtime status moved to Application and
+        // the motion audio to Interaction, where they describe those pages.
+        let overlay_page = SettingPage::new(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.overlay.title",
+        ))
+        .icon(IconName::AppWindow)
+        .title_suffix(page_reporter(view_entity.clone(), SettingsPage::Overlay))
+        .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.overlay.title",
+                    "settings.overlay.behavior.title",
                 ))
                 .items(vec![
-                    SettingItem::new(
-                        bongocat_i18n::text(language.catalog_locale(), "settings.runtime.title"),
-                        SettingField::element({
-                            let status = status.clone();
-                            move |_: &RenderOptions, _: &mut Window, _: &mut App| {
-                                if status_is_error {
-                                    Tag::danger().child(status.clone()).into_any_element()
-                                } else {
-                                    Tag::secondary().child(status.clone()).into_any_element()
-                                }
-                            }
-                        }),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.runtime.description",
-                    )),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -468,35 +473,13 @@ impl Render for SettingsView {
                         language.catalog_locale(),
                         "settings.overlay.hide_on_pointer_hover_delay.description",
                     )),
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.overlay.motion_audio.label",
-                        ),
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.motion_audio_enabled)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_motion_audio_enabled(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.overlay.motion_audio.description",
-                    )),
+                ]),
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.overlay.appearance.title",
+                ))
+                .items(vec![
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -599,6 +582,13 @@ impl Render for SettingsView {
                         language.catalog_locale(),
                         "settings.overlay.corner_radius.description",
                     )),
+                ]),
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.overlay.performance.title",
+                ))
+                .items(vec![
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -634,10 +624,25 @@ impl Render for SettingsView {
                         "settings.overlay.maximum_fps.description",
                     )),
                 ]),
+        ]);
+
+        // How the model reacts to what the user does: the two mirror switches
+        // and the motion audio sit with the model they belong to, and the
+        // pointer pair stays apart because it is about following the cursor.
+        let interaction_page = SettingPage::new(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.interaction.title",
+        ))
+        .icon(IconName::MousePointer2)
+        .title_suffix(page_reporter(
+            view_entity.clone(),
+            SettingsPage::Interaction,
+        ))
+        .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.model_interaction.title",
+                    "settings.model_interaction.model.title",
                 ))
                 .items(vec![
                     SettingItem::new(
@@ -705,6 +710,42 @@ impl Render for SettingsView {
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
+                            "settings.model_interaction.motion_audio.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.motion_audio_enabled)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_motion_audio_enabled(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.model_interaction.motion_audio.description",
+                    )),
+                ]),
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.model_interaction.pointer.title",
+                ))
+                .items(vec![
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
                             "settings.model_interaction.mirror_pointer_tracking.label",
                         ),
                         SettingField::switch(
@@ -769,16 +810,27 @@ impl Render for SettingsView {
                         "settings.model_interaction.ignore_pointer_input.description",
                     )),
                 ]),
+        ]);
+
+        // The two input devices are configured separately: the keyboard's
+        // release recovery has nothing in common with the gamepad dead zones.
+        let input_page = SettingPage::new(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.input.title",
+        ))
+        .icon(IconName::Gamepad2)
+        .title_suffix(page_reporter(view_entity.clone(), SettingsPage::Input))
+        .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.input.title",
+                    "settings.input.keyboard.title",
                 ))
                 .items(vec![
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.overlay.release_fallback_timeout.label",
+                            "settings.input.release_fallback_timeout.label",
                         ),
                         SettingField::number_input(
                             NumberFieldOptions {
@@ -807,8 +859,15 @@ impl Render for SettingsView {
                     )
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.overlay.release_fallback_timeout.description",
+                        "settings.input.release_fallback_timeout.description",
                     )),
+                ]),
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.input.gamepad.title",
+                ))
+                .items(vec![
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -876,12 +935,52 @@ impl Render for SettingsView {
                         "settings.input.gamepad_trigger_dead_zone.description",
                     )),
                 ]),
+        ]);
+
+        // The application's own surface: how it is running, how it integrates
+        // with the desktop, and how it starts and updates itself. The runtime
+        // status came here from the model window group it never belonged to —
+        // it reports the app's health, not the window's.
+        let application_page = SettingPage::new(bongocat_i18n::text(
+            language.catalog_locale(),
+            "navigation.application.title",
+        ))
+        .icon(IconName::Cog)
+        .title_suffix(page_reporter(
+            view_entity.clone(),
+            SettingsPage::Application,
+        ))
+        .groups(vec![
+            // No group title: the runtime status is the first thing on the page and the only
+            // row the group holds, so a heading here would just repeat the row's own label.
+            SettingGroup::new().items(vec![
+                SettingItem::new(
+                    bongocat_i18n::text(language.catalog_locale(), "settings.runtime.title"),
+                    SettingField::element({
+                        let status = status.clone();
+                        move |_: &RenderOptions, _: &mut Window, _: &mut App| {
+                            if status_is_error {
+                                Tag::danger().child(status.clone()).into_any_element()
+                            } else {
+                                Tag::secondary().child(status.clone()).into_any_element()
+                            }
+                        }
+                    }),
+                )
+                .description(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.runtime.description",
+                )),
+            ]),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.application.title",
+                    "settings.application.system.title",
                 ))
                 .items({
+                    // Only Windows adds the taskbar icon below, so the binding is
+                    // `mut` on one platform and not the other.
+                    #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
                     let mut items = vec![
                         SettingItem::new(
                             bongocat_i18n::platform_text(
@@ -945,7 +1044,15 @@ impl Render for SettingsView {
                             "settings.application.taskbar_icon.description",
                         )),
                     );
-                    items.push(
+                    items
+                }),
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.updates.title",
+                ))
+                .items({
+                    let mut items = vec![
                         SettingItem::new(
                             bongocat_i18n::text(
                                 language.catalog_locale(),
@@ -975,7 +1082,7 @@ impl Render for SettingsView {
                             language.catalog_locale(),
                             "settings.application.auto_update.description",
                         )),
-                    );
+                    ];
                     items.push(
                         SettingItem::new(
                             bongocat_i18n::text(
@@ -1041,39 +1148,33 @@ impl Render for SettingsView {
         ))
         .icon(IconName::Keyboard)
         .group(
-            SettingGroup::new()
-                .title(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "navigation.shortcuts.title",
-                ))
-                .item(
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "navigation.shortcuts.title",
-                        ),
-                        SettingField::element({
-                            let view = view_entity.clone();
-                            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
-                                let snapshot = view.read(app).snapshot.clone();
-                                let tokens = Tokens::from_theme(app);
-                                view.update(app, move |view, cx| {
-                                    view.page = SettingsPage::Shortcuts;
-                                    shortcuts_page::content(
-                                        view,
-                                        window,
-                                        cx,
-                                        snapshot.as_ref(),
-                                        disabled,
-                                        tokens,
-                                    )
-                                })
-                                .into_any_element()
-                            }
-                        }),
-                    )
-                    .layout(Axis::Vertical),
-                ),
+            // No group title: the page, the group and the row all describe the same thing, and
+            // the header already carries the page name. A heading here repeated it a third time.
+            SettingGroup::new().item(
+                SettingItem::new(
+                    bongocat_i18n::text(language.catalog_locale(), "navigation.shortcuts.title"),
+                    SettingField::element({
+                        let view = view_entity.clone();
+                        move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                            let snapshot = view.read(app).snapshot.clone();
+                            let tokens = Tokens::from_theme(app);
+                            view.update(app, move |view, cx| {
+                                view.page = SettingsPage::Shortcuts;
+                                shortcuts_page::content(
+                                    view,
+                                    window,
+                                    cx,
+                                    snapshot.as_ref(),
+                                    disabled,
+                                    tokens,
+                                )
+                            })
+                            .into_any_element()
+                        }
+                    }),
+                )
+                .layout(Axis::Vertical),
+            ),
         );
 
         let about_page = SettingPage::new(bongocat_i18n::text(
@@ -1144,7 +1245,16 @@ impl Render for SettingsView {
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))
             .with_group_variant(GroupBoxVariant::Outline)
-            .pages(vec![general_page, models_page, shortcuts_page, about_page]);
+            .pages(vec![
+                general_page,
+                models_page,
+                overlay_page,
+                interaction_page,
+                input_page,
+                shortcuts_page,
+                application_page,
+                about_page,
+            ]);
 
         div()
             .id("bongocat-settings-root")
@@ -1165,29 +1275,50 @@ impl Render for SettingsView {
             .size_full()
             .flex()
             .flex_col()
+            .children(recovery_notice)
             .child(div().min_h_0().w_full().flex_1().child(settings))
             .children(Root::render_notification_layer(window, cx))
             .into_any_element()
     }
 }
 
+/// Reports the page a rendered header belongs to.
+///
+/// `SettingsView::page` decides which navigation node the accessibility tree
+/// focuses, and the settings component owns the sidebar selection, so the only
+/// signal that a page is on screen is that page rendering itself. The pages
+/// that build custom content already report themselves while building it; the
+/// ones made of plain setting items get this hook in their header, which is the
+/// only per-page render callback the component exposes. The element is empty —
+/// the header still shows the title and nothing else.
+fn page_reporter(
+    view: Entity<SettingsView>,
+    page: SettingsPage,
+) -> impl Fn(&mut Window, &mut App) -> Div {
+    move |_window, cx| {
+        view.update(cx, |view, _| view.page = page);
+        div()
+    }
+}
+
 /// The configuration recovery notice, or nothing when the configuration is usable.
 ///
-/// This is the one part of the retired diagnostics page that stays: the user cannot reach
-/// the product's settings while the configuration is missing or was just reset, and
-/// restoring defaults is what gets them out of it.
-fn config_recovery_groups(
+/// Rendered above the settings component rather than inside a page. The component owns the
+/// sidebar selection, so a notice that lives on one page is invisible to anyone who navigated
+/// elsewhere — and the restore action is not page-local: its accessibility node is in the tree
+/// on every page, so what happens after pressing it has to be visible on every page too.
+fn config_recovery_notice(
     language: SettingsLanguage,
     snapshot: Option<&SettingsSnapshot>,
-    disabled: bool,
     view: Entity<SettingsView>,
+    restore_focus: FocusHandle,
+    disabled: bool,
+    window: &Window,
     tokens: Tokens,
-) -> Vec<SettingGroup> {
-    let Some(snapshot) = snapshot else {
-        return Vec::new();
-    };
+) -> Option<Div> {
+    let snapshot = snapshot?;
     if snapshot.configuration_status == SettingsConfigurationStatus::Ready {
-        return Vec::new();
+        return None;
     }
     let recovery = config_recovery_presentation(
         snapshot.configuration_status,
@@ -1195,62 +1326,66 @@ fn config_recovery_groups(
         language,
     );
     let can_restore = recovery.can_restore;
-    let detail = recovery.detail;
-    vec![
-        SettingGroup::new()
-            .title(bongocat_i18n::text(
-                language.catalog_locale(),
-                "diagnostics.configuration.title",
-            ))
-            .item(
-                SettingItem::new(
-                    recovery.title,
-                    SettingField::element({
-                        let view = view.clone();
-                        move |_: &RenderOptions, window: &mut Window, app: &mut App| {
-                            if !can_restore {
-                                return div().into_any_element();
-                            }
-                            let blocked = disabled || view.read(app).pending.is_some();
-                            let restore_focus = view.read(app).restore_defaults_focus.clone();
-                            let click_view = view.clone();
-                            let click_focus = restore_focus.clone();
-                            let key_view = view.clone();
-                            let key_focus = restore_focus.clone();
-                            command_button(
-                                bongocat_i18n::text(
-                                    language.catalog_locale(),
-                                    "shortcuts.actions.restore_defaults",
-                                ),
-                                &restore_focus,
-                                29,
-                                window,
-                                tokens,
-                                blocked,
-                            )
-                            .id("restore-default-configuration")
-                            .on_click(move |_, window, cx| {
-                                if click_view.read(cx).pending.is_none() {
-                                    window.focus(&click_focus, cx);
-                                    click_view.update(cx, |view, cx| {
-                                        view.restore_default_configuration(cx)
-                                    });
-                                }
-                            })
-                            .on_key_down(move |event, window, cx| {
-                                if key_view.read(cx).pending.is_none() && is_activation_key(event) {
-                                    cx.stop_propagation();
-                                    window.focus(&key_focus, cx);
-                                    key_view.update(cx, |view, cx| {
-                                        view.restore_default_configuration(cx)
-                                    });
-                                }
-                            })
-                            .into_any_element()
-                        }
-                    }),
-                )
-                .description(detail),
-            ),
-    ]
+    let button = can_restore.then(|| {
+        let click_view = view.clone();
+        let click_focus = restore_focus.clone();
+        let key_view = view;
+        let key_focus = restore_focus.clone();
+        command_button(
+            // The visible text and the accessible name come from the same place, so they
+            // cannot describe different actions.
+            config_recovery_restore_label(language),
+            &restore_focus,
+            29,
+            window,
+            tokens,
+            disabled,
+        )
+        .id("restore-default-configuration")
+        .on_click(move |_, window, cx| {
+            if click_view.read(cx).pending.is_none() {
+                window.focus(&click_focus, cx);
+                click_view.update(cx, |view, cx| view.restore_default_configuration(cx));
+            }
+        })
+        .on_key_down(move |event, window, cx| {
+            if key_view.read(cx).pending.is_none() && is_activation_key(event) {
+                cx.stop_propagation();
+                window.focus(&key_focus, cx);
+                key_view.update(cx, |view, cx| view.restore_default_configuration(cx));
+            }
+        })
+    });
+    Some(
+        div()
+            .w_full()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .gap_3()
+            .px_3()
+            .py_2()
+            .border_1()
+            .border_color(tokens.border)
+            .bg(tokens.canvas)
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(if recovery.attention {
+                        Tag::danger().child(recovery.title).into_any_element()
+                    } else {
+                        Tag::secondary().child(recovery.title).into_any_element()
+                    })
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(tokens.muted)
+                            .child(recovery.detail),
+                    ),
+            )
+            .children(button),
+    )
 }
