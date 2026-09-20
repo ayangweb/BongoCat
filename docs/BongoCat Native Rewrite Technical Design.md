@@ -199,7 +199,12 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   coordinator 持有。两个平台共用一条生命周期：窗口在第一次打开时创建，此后由 coordinator 持有，
   close 一律被 platform adapter 拦截并只隐藏原生窗口（Windows `ShowWindow(SW_HIDE)`、macOS
   `NSWindow.orderOut:`），reopen 重显同一 `Entity` 并主动读取最新 revisioned snapshot；窗口从不
-  销毁或重建，因此平台之间没有第二套路径。Windows 侧拦截 close 同时避开 GPUI 0.2.2 的 Windows
+  销毁或重建，因此平台之间没有第二套路径。隐藏期间的周期性快照刷新必须停止：预渲染窗口在屏幕外
+  渲染的内容无人可见，reopen 本身已经先读一次快照，因此只有可见窗口按 `1 s` 重读，隐藏窗口不再
+  长期空转。系统菜单的 presentation 轮询同样不得每秒重建完整快照：它先读取只返回 revision 的命令
+  （`ReadSnapshotRevision`，只比较 service 已持有的状态），仅在 revision 变化时才读取完整快照，
+  完整快照中的模型目录扫描因此不再随 `20 Hz` 轮询反复执行；`CGPreflightListenEventAccess` 这类
+  TCC 查询由 snapshot clock 按上限 `1 s` 缓存，只有显示用途的值不再要求每次快照都访问系统。Windows 侧拦截 close 同时避开 GPUI 0.2.2 的 Windows
   `WM_CLOSE` 销毁回调同步重入缺陷。Windows 显式退出先请求 frame source 停止并停止输入生产者，确认 frame
   source 已退出后再 shutdown/join
   runtime、配置和音频 owner，最后释放 renderer/GPU 与 overlay；由于 GPUI 0.2.2 及当前上游

@@ -2622,9 +2622,19 @@ workflow、legacy config inspector 及其本地 fixture 已从当前工作树删
         - 状态（2026-09-20）：实现统一为"预渲染窗口 + 隐藏/重开"：macOS platform adapter 新增
         `NSWindow.orderOut:`/`makeKeyAndOrderFront:`，与 Windows `SW_HIDE`/`SW_SHOW` 走同一条
         `hide_native_window`/`show_native_window` 路径；`on_window_should_close` 在双平台都只隐藏
-        并返回 `false`，`SettingsView::hide` 不再 `remove_window()`，coordinator 也不再清空 macOS
+        并返回 `false`，        `SettingsView::hide` 不再 `remove_window()`，coordinator 也不再清空 macOS
         句柄，因此不再存在"关闭后重建"的第二套逻辑。本机 macOS release smoke 断言同一 Entity
-        重显且保留 snapshot，Windows 行为不变。- 状态（2026-08-31）：macOS release smoke 和 Windows platform target check 本机通过；
+        重显且保留 snapshot，Windows 行为不变。
+        - 状态（2026-09-20）：隐藏期间的周期性刷新停止，后台不再重建快照。预渲染窗口原来在屏幕外
+        仍按 `1 s` 重建完整快照（含模型目录扫描与 macOS TCC 查询），现只在可见时刷新，reopen 仍先
+        主动读一次；系统菜单轮询改为先读只返回 revision 的 `ReadSnapshotRevision`，仅在 revision
+        变化时读完整快照；`CGPreflightListenEventAccess` 由 snapshot clock 按上限 `1 s` 缓存。本机
+        测量（macOS release，`--settings-window-open-smoke`）：同一 8 s 采样窗口内 TCC preflight
+        队列由 `381` 降到 `43`，设置服务线程的 `stat`/`readdir` 扫描采样约降一个数量级，可见窗口
+        运行的整体 CPU 由 `11.1–13.1%` 降到 `9.5–10.1%`（单核占比），隐藏窗口场景由 `7.5%` 降到
+        `3.8–6.0%`；`cargo test --locked --workspace`、Clippy 与 release settings-window/models-page
+        smoke 均通过。- 注：系统菜单 smoke 在本机持续报 `Open Settings did not restore a runtime
+        snapshot`，未改动的 `next` 代码同样复现，属既有环境失败，与本次改动无关。- 状态（2026-08-31）：macOS release smoke 和 Windows platform target check 本机通过；
         Windows run `33328391234`、job `99302481796` 已证明普通 close 隐藏有效，但随后允许真实
         `WM_DESTROY` 的两阶段退出仍以 `0xC0000409` fast-fail。上游 commit
         `399258feeaf90ad8a3a208c99221ee87b6452f38` 保留同一同步重入回调，因此当前实现改为先
