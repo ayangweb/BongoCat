@@ -76,21 +76,11 @@ pub(super) fn content(
                     .unwrap_or(isize::MAX / 5)
                     .saturating_mul(5),
             );
-            let action_tabs = model_row_action_tab_indices(tab_index, confirming_delete);
-            let status = if confirming_delete {
-                // Deleting needs the diagnostic context when the package is
-                // broken; a ready package just asks for the confirmation.
-                Some(match model_availability_status(&entry, language) {
-                    Some(status) => model_delete_confirmation(language, &status).into(),
-                    None => bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "models.actions.confirm_deletion",
-                    )
-                    .into(),
-                })
-            } else {
-                model_availability_status(&entry, language)
-            };
+            let action_tabs = model_row_action_tab_indices(tab_index);
+            // The status line belongs to the card, and the confirmation is a
+            // surface anchored to the delete control, so the diagnostic a broken
+            // package carries stays visible while the question is on screen.
+            let status = model_availability_status(&entry, language);
             let activate_label = if actions.active {
                 bongocat_i18n::text(language.catalog_locale(), "models.identity.status.active")
             } else if matches!(
@@ -241,9 +231,10 @@ fn model_card_summary(
 /// The action row of a card.
 ///
 /// Activating is the only labelled control: it is the page's core action, and
-/// the icon actions are the ones that leave the page. Confirming a deletion
-/// replaces the leaving actions rather than adding to them, so the card never
-/// offers a destructive and a non-destructive path side by side.
+/// the icon actions are the ones that leave the page. Deleting is the one that
+/// cannot be undone, so its control owns a confirmation surface rather than
+/// acting on the first press — the row keeps all four controls either way, and
+/// the question appears next to the control that asked it.
 #[allow(clippy::too_many_arguments)]
 fn model_card_actions(
     window: &Window,
@@ -286,73 +277,6 @@ fn model_card_actions(
             }
         })),
     );
-    if confirming_delete {
-        let confirm_model = model.clone();
-        let confirm_key_model = model.clone();
-        let cancel_model = model.clone();
-        let cancel_key_model = model.clone();
-        return row
-            .child(
-                command_button(
-                    bongocat_i18n::text(language.catalog_locale(), "actions.confirm"),
-                    &focus.delete,
-                    action_tabs.delete,
-                    window,
-                    tokens,
-                    !actions.can_delete,
-                )
-                .id(("confirm-delete-model", index))
-                .on_click(cx.listener(move |view, _, window, cx| {
-                    view.run_model_row_action(
-                        ModelRowAction::Delete,
-                        confirm_model.clone(),
-                        window,
-                        cx,
-                    );
-                }))
-                .on_key_down(cx.listener(move |view, event, window, cx| {
-                    if is_activation_key(event) {
-                        cx.stop_propagation();
-                        view.run_model_row_action(
-                            ModelRowAction::Delete,
-                            confirm_key_model.clone(),
-                            window,
-                            cx,
-                        );
-                    }
-                })),
-            )
-            .child(
-                command_button(
-                    bongocat_i18n::text(language.catalog_locale(), "actions.cancel"),
-                    &focus.cancel_delete,
-                    action_tabs.cancel_delete,
-                    window,
-                    tokens,
-                    false,
-                )
-                .id(("cancel-delete-model", index))
-                .on_click(cx.listener(move |view, _, window, cx| {
-                    view.run_model_row_action(
-                        ModelRowAction::CancelDelete,
-                        cancel_model.clone(),
-                        window,
-                        cx,
-                    );
-                }))
-                .on_key_down(cx.listener(move |view, event, window, cx| {
-                    if is_activation_key(event) {
-                        cx.stop_propagation();
-                        view.run_model_row_action(
-                            ModelRowAction::CancelDelete,
-                            cancel_key_model.clone(),
-                            window,
-                            cx,
-                        );
-                    }
-                })),
-            );
-    }
     let location_model = model.clone();
     let location_key_model = model.clone();
     row = row.child(
@@ -415,32 +339,65 @@ fn model_card_actions(
         );
     }
     if actions.can_delete {
-        let delete_model = model.clone();
-        let delete_key_model = model.clone();
+        let confirm_model = model.clone();
+        let open_model = model.clone();
+        let close_model = model.clone();
+        let delete_label = bongocat_i18n::text(language.catalog_locale(), "models.actions.delete");
         row = row.child(
-            icon_command_button(
-                "delete-model-control",
-                bongocat_i18n::text(language.catalog_locale(), "models.actions.delete"),
-                gpui_kit::assets::IconName::Trash,
-                &focus.delete,
-                action_tabs.delete,
-                !actions.can_delete,
+            PopConfirm::new(
+                ("delete-model-confirmation", index),
+                bongocat_i18n::text(language.catalog_locale(), "models.delete_confirmation"),
             )
-            .id(("delete-model", index))
-            .on_click(cx.listener(move |view, _, window, cx| {
-                view.run_model_row_action(ModelRowAction::Delete, delete_model.clone(), window, cx);
-            }))
-            .on_key_down(cx.listener(move |view, event, window, cx| {
-                if is_activation_key(event) {
-                    cx.stop_propagation();
-                    view.run_model_row_action(
-                        ModelRowAction::Delete,
-                        delete_key_model.clone(),
-                        window,
-                        cx,
-                    );
+            // The control sits at the trailing edge of the card, so the surface
+            // grows back over the card instead of past the window edge.
+            .anchor(Anchor::TopRight)
+            .icon(gpui_kit::assets::IconName::TriangleAlert, tokens.danger)
+            .confirm_label(bongocat_i18n::text(
+                language.catalog_locale(),
+                "actions.confirm",
+            ))
+            .cancel_label(bongocat_i18n::text(
+                language.catalog_locale(),
+                "actions.cancel",
+            ))
+            .trigger(
+                icon_command_button(
+                    "delete-model-control",
+                    delete_label,
+                    gpui_kit::assets::IconName::Trash,
+                    &focus.delete,
+                    action_tabs.delete,
+                    false,
+                )
+                // The wrapper owns the queryable id; the inner control gets a
+                // derived one so the two registrations cannot be ambiguous.
+                .id(("delete-model", index)),
+            )
+            .open(confirming_delete)
+            // The surface reports every transition — the control's press or
+            // Enter, Escape, a press outside — and this is where the page decides
+            // which of them are its business. The page's own `open` value is not
+            // echoed back, so writing the state here cannot loop.
+            .on_open_change(cx.listener(move |view, open: &bool, _, cx| {
+                if *open {
+                    view.request_model_delete(open_model.clone(), cx);
+                } else {
+                    view.cancel_model_delete(&close_model, cx);
                 }
-            })),
+            }))
+            .on_confirm({
+                let view = cx.entity().downgrade();
+                move |window, cx| {
+                    let _ = view.update(cx, |view, cx| {
+                        view.run_model_row_action(
+                            ModelRowAction::Delete,
+                            confirm_model.clone(),
+                            window,
+                            cx,
+                        );
+                    });
+                }
+            }),
         );
     }
     row

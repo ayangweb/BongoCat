@@ -226,21 +226,6 @@ pub(super) fn model_invalid_summary(
     )
 }
 
-pub(super) fn model_delete_confirmation(language: SettingsLanguage, status: &str) -> String {
-    bongocat_i18n::format_text(
-        language.catalog_locale(),
-        "models.delete_confirmation",
-        &[
-            ("status", status.to_owned()),
-            (
-                "confirm_deletion",
-                bongocat_i18n::text(language.catalog_locale(), "models.actions.confirm_deletion")
-                    .to_owned(),
-            ),
-        ],
-    )
-}
-
 pub(super) fn model_import_progress(
     language: SettingsLanguage,
     stage: &str,

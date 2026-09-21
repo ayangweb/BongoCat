@@ -1561,9 +1561,11 @@ git source 及 `gpui`、platform、component、assets 的直接 manifest 依赖�
 按钮、模型 ID、overlay scale/opacity 与 gamepad dead-zone 已迁移到 `Tag`、
 `Switch`、`Button`、`Input` 和 `NumberInput`。输入实体通过 `InputEvent` 与
 `NumberInputEvent` 接入现有 typed command/draft，并从 snapshot 同步。`0.6.4` 没有普通 Card
-primitive，设置内容容器使用官方 `GroupBox::outline()`，导航继续保留无状态薄封装；快捷键捕获、确认删除和平台辅助功能焦点
-继续保留领域适配层。语言设置使用官方 `Select`；当前没有标签页或浮层需求，后续出现对应交互时
-直接使用 `TabBar`、`Dialog`/`Menu`，不预建无业务用途的组件。双平台辅助功能与缩放实机证据
+primitive，设置内容容器使用官方 `GroupBox::outline()`，导航继续保留无状态薄封装；快捷键捕获和平台辅助功能焦点
+继续保留领域适配层。语言设置使用官方 `Select`；模型卡的删除确认出现浮层需求后，用官方
+`Popover` 封装了项目内 `PopConfirm`（`crates/bongocat-ui/src/pop_confirm.rs`）——`0.6.4` 没有
+`PopConfirm` primitive，也没有 `Popover::arrow`，箭头待依赖升级后补；标签页仍无需求，出现时
+直接使用 `TabBar`，不预建无业务用途的组件。双平台辅助功能与缩放实机证据
 仍待补齐，详见 ADR-0020。偏好设置整体使用 `gpui_kit::component::setting`
 官方 `Settings`、`SettingPage`、`SettingGroup`、`SettingItem` 和 `SettingField` 结构；General
 按 Overlay、Model interaction、Input、Startup 分组，Models 与 Diagnostics 使用独立页面和
@@ -4424,6 +4426,31 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - **未运行**：双平台实机点击（选中/编辑/换封面/打开文件夹）、`--settings-window-smoke`、
       模型页 opt-in smoke、Windows 实机 `open_directory`、真实社区模型回归。
     - 决策记录：ADR-0047。Technical Design §10 模型元数据段落已同步。
+    - 交互调整（2026-09-21）：删除确认从「删除控件就地替换成 确定/取消 两个内联按钮」改为
+      `PopConfirm` 确认浮层（`crates/bongocat-ui/src/pop_confirm.rs`，基于官方
+      `gpui_kit::component::popover::Popover` 封装，零新增依赖；`0.6.4` 没有 `PopConfirm`
+      primitive，也没有 `Popover::arrow`，箭头待依赖升级后补）。浮层由卡片上的删除控件原地打开
+      （`Anchor::TopRight`，标题前 `TriangleAlert` + 新增 `Tokens::danger`），确定/取消用
+      `Size::Small`、确定用 `ButtonVariant::Primary`（危险语义由标题前的图标承载，按钮不走
+      danger 色）。页面的 `model_delete_confirmation` 仍是
+      唯一事实来源，只有「确定」路径才到 `delete_model`；`ModelRowAction` 的 `CancelDelete`
+      与卡片的确认态 tab stop 随之删除，卡片操作行恒为四个控件（选中 / 打开模型位置 / 编辑 /
+      删除）。文案 `models.delete_confirmation` 改为「你确定要删除这个模型吗？」，删
+      `models.actions.confirm_deletion`。
+    - 顺带修正（2026-09-21）：`model_delete_confirmation_is_valid` 原先只看「installed、非激活、
+      仍在目录」，漏了 `commands_blocked`——确认开着时若有导入在飞，`can_delete` 变 false 会让
+      浮层卸载，命令结束后又自己弹回来。改为直接委托 `model_row_actions(...).can_delete`。
+    - 验收证据（2026-09-21）：`just check` 六道门全过（34 测试目标、0 failed）；新增组件 6 测试
+      （含键盘路径 `the_keyboard_can_open_and_answer_the_surface`）、端到端
+      `deleting_a_model_asks_the_service_only_after_the_confirmation` 与不变量
+      `an_open_delete_question_lives_only_while_its_control_would`；三条断言均以变异验证可红
+      （去掉 wrapper 的 `Confirm` 处理、让决策不上报、忽略 `commands_blocked`）。
+      `tools/validate-locales.py`（287 键 × 2）。
+    - **未运行**（2026-09-21）：双平台实机点击删除确认。`--settings-window-smoke` /
+      `--models-page-smoke` 本机因存量失败（`shortcut capture accessibility semantics are
+      invalid`，HEAD `b5027af4` 同样复现）无法整条跑完，临时绕过快捷键页后模型页 smoke 通过。
+    - CHANGELOG 判定（2026-09-21）：跳过。`2.0.0` 尚未发布（最新 tag `v1.1.0`），删除入口本身已由
+      现有条目覆盖，确认形式的变化对用户不构成新能力。
 
 85. [x] `P1-PRESET-SCAN-STRAY-FILES`：预置模型目录扫描对陌生条目的容忍。
     - 背景（2026-09-18）：`just check` 的 app 测试在主树失败、在干净 worktree 通过，二分定位到
@@ -5481,6 +5508,25 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 同步文档：新增 ADR-0053；ADR-0052「明确不做」对应条目标注被取代；Technical Design 快捷键
       门禁段补统一禁用规则、自动分配段"可见可改"改为"门禁关闭时置灰不可改"；两份 CHANGELOG 的
       "✨ 新功能"。
+    - 后续修正（2026-09-21）：本项 ⑤ 让无障碍节点按作用域门禁逐行报 disabled，但
+      `--settings-window-smoke` 的期望值没跟上——`window/smoke.rs` 里捕获/清除两组断言仍只比
+      `editing_disabled`（= `configuration_status != Ready`），于是默认关闭的模型作用域每一行都被
+      判错，smoke 报 `shortcut capture accessibility semantics are invalid`。又因为
+      `run_page_smoke` 收集到失败就提前返回，同一 job 里的 `--models-page-smoke` 根本没跑到。
+      本项当时的验收证据只跑了 `cargo test`，没跑设置窗口 smoke，这条漂移因此没被抓住。
+      修正：`smoke.rs` 新增 `row_disabled(target) = editing_disabled ||
+      !ShortcutScope::for_target(target).is_enabled(snapshot)`，两组断言改为逐行比对——期望值比
+      原来更严，不是放宽。
+    - 修正证据（2026-09-21，本机 macOS / aarch64）：`cargo run --locked -p bongocat-app --release
+      -- --run-seconds 8 --settings-window-smoke --models-page-smoke` **EXIT=0**（修正前在 HEAD
+      `b5027af4` 与本机均失败）；**变异验证**：把 `accessibility.rs` 捕获节点的 `row_disabled`
+      退回 `disabled` → smoke 立刻以原句失败，还原后 EXIT=0；`just check` 六道门全过（34 目标 /
+      0 failed）。
+    - CI 定位（2026-09-21）：`Test Native workspace (macos-latest)` 在 `d4f0155f`（08:37）全绿、
+      在 `f64b995b`（09:16）转为本条失败，故回归由本项引入。settings-window smoke 是该 job 的第一
+      个 smoke 步骤（workflow L478），不存在"被前面的 smoke 挡住"。同 job 的 `--system-menu-smoke`
+      是**间歇性**失败（`86213e69`、`d4f0155f` 两轮通过，其余多轮失败于 "Open Settings did not
+      restore a runtime snapshot"），与本次回归无关。
 
 ## 13. 待决策清单
 

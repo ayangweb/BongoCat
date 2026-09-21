@@ -112,8 +112,7 @@
       "edit": "编辑",
       "open_location": "打开模型位置",
       "save": "保存",
-      "delete": "删除",
-      "confirm_deletion": "确认删除"
+      "delete": "删除"
     },
     "validation": {
       "package_layout_invalid": "模型包结构无效",
@@ -168,7 +167,7 @@
       "empty": "没有声明的行为"
     },
     "invalid_summary": "%{origin} · %{diagnostic}",
-    "delete_confirmation": "%{status} · %{confirm_deletion}"
+    "delete_confirmation": "你确定要删除这个模型吗？"
   },
   "update": {
     "window": {

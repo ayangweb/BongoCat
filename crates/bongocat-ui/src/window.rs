@@ -69,12 +69,12 @@ mod shortcuts;
 mod shortcuts_page;
 mod smoke;
 mod view_state;
+use crate::pop_confirm::PopConfirm;
 pub use lifecycle::open_settings_window;
 use localization::{
-    backup_candidates_checked, build_info_detail, model_delete_confirmation, model_import_progress,
-    model_invalid_summary, recovered_backup_detail, runtime_status, settings_error,
-    shortcut_accessibility_label, shortcut_behavior_name, shortcut_command_name,
-    shortcut_conflict_message,
+    backup_candidates_checked, build_info_detail, model_import_progress, model_invalid_summary,
+    recovered_backup_detail, runtime_status, settings_error, shortcut_accessibility_label,
+    shortcut_behavior_name, shortcut_command_name, shortcut_conflict_message,
 };
 #[cfg(test)]
 mod tests;
@@ -239,6 +239,10 @@ pub(crate) struct Tokens {
     pub(crate) text: Hsla,
     pub(crate) muted: Hsla,
     pub(crate) accent: Hsla,
+    /// The colour of an action that destroys something. Nothing in the page
+    /// chrome uses it; it is here for the confirmation surfaces, which are the
+    /// only place the page says "this cannot be undone".
+    pub(crate) danger: Hsla,
 }
 
 impl Tokens {
@@ -250,6 +254,7 @@ impl Tokens {
             text: theme.foreground,
             muted: theme.muted_foreground,
             accent: theme.primary,
+            danger: theme.danger,
         }
     }
 }
@@ -402,7 +407,6 @@ struct ModelRowFocus {
     open_location: FocusHandle,
     edit: FocusHandle,
     delete: FocusHandle,
-    cancel_delete: FocusHandle,
 }
 
 /// The one model card that is open for editing.
@@ -440,8 +444,9 @@ enum ModelRowAction {
     Activate,
     OpenLocation,
     Edit,
+    /// Delete the model. Only reachable from the confirmation surface, so
+    /// reaching this variant *is* the confirmation.
     Delete,
-    CancelDelete,
 }
 
 impl Default for ModelImportDraft {
@@ -1692,50 +1697,42 @@ struct ModelRowActionTabIndices {
     open_location: isize,
     edit: isize,
     delete: isize,
-    cancel_delete: isize,
 }
 
-fn model_row_action_tab_indices(
-    first_tab_index: isize,
-    confirming_delete: bool,
-) -> ModelRowActionTabIndices {
-    let activate = first_tab_index;
-    let open_location = first_tab_index.saturating_add(1);
-    let edit = first_tab_index.saturating_add(2);
-    let delete = first_tab_index.saturating_add(3);
-    let cancel_delete = first_tab_index.saturating_add(4);
-    if confirming_delete {
-        // Confirming deletion replaces the other card actions, which are not
-        // rendered and therefore not tab stops, so the two remaining controls
-        // take the first positions instead of leaving a gap in the tab order.
-        ModelRowActionTabIndices {
-            activate,
-            open_location,
-            edit,
-            delete: open_location,
-            cancel_delete: edit,
-        }
-    } else {
-        ModelRowActionTabIndices {
-            activate,
-            open_location,
-            edit,
-            delete,
-            cancel_delete,
-        }
+/// The tab position of each action on a card.
+///
+/// Every card action is rendered at all times — the delete confirmation is a
+/// surface anchored to the delete control, not a replacement for the row — so
+/// the positions do not move when a confirmation opens.
+fn model_row_action_tab_indices(first_tab_index: isize) -> ModelRowActionTabIndices {
+    ModelRowActionTabIndices {
+        activate: first_tab_index,
+        open_location: first_tab_index.saturating_add(1),
+        edit: first_tab_index.saturating_add(2),
+        delete: first_tab_index.saturating_add(3),
     }
 }
 
+/// Whether an open delete question should survive a re-projection of the catalog.
+///
+/// The question is drawn by the card's delete control, and the card only draws
+/// that control while deleting is possible, so the question is only meaningful
+/// under exactly the conditions the control needs: an installed model, still in
+/// the catalog, still not the active one, and no other model command in flight.
+/// The last one is why this is stated as "the control would still act" rather
+/// than as a list of its own: the card drops the control while a command is
+/// pending, and a question that outlived it would come back unasked once the
+/// command settled. Asking [`model_row_actions`] keeps the two from drifting.
 fn model_delete_confirmation_is_valid(
     entries: &[SettingsModelEntry],
     active_model: Option<&SettingsModelKey>,
+    commands_blocked: bool,
     model: &SettingsModelKey,
 ) -> bool {
-    model.origin == SettingsModelOrigin::Installed
-        && active_model != Some(model)
-        && entries
-            .iter()
-            .any(|entry| entry.origin == model.origin && entry.id == model.id)
+    entries
+        .iter()
+        .find(|entry| entry.origin == model.origin && entry.id == model.id)
+        .is_some_and(|entry| model_row_actions(entry, active_model, commands_blocked).can_delete)
 }
 
 fn model_availability_status(

@@ -12,6 +12,8 @@ use std::{
 };
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+mod pop_confirm;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod window;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use window::{SettingsView, SettingsWindowHandle, open_settings_window};
@@ -2997,7 +2999,10 @@ mod tests {
         );
     }
 
-    fn snapshot(
+    /// A snapshot with the fields a settings test does not care about left at
+    /// their defaults. `pub(crate)` so the settings-window tests can seed a view
+    /// with one catalog instead of restating all twenty-eight fields.
+    pub(crate) fn snapshot(
         revision: u64,
         overlay_visible: bool,
         motion_audio_enabled: bool,

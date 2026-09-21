@@ -112,8 +112,7 @@
       "edit": "Edit",
       "open_location": "Open model folder",
       "save": "Save",
-      "delete": "Delete",
-      "confirm_deletion": "Confirm deletion"
+      "delete": "Delete"
     },
     "validation": {
       "package_layout_invalid": "Package layout is invalid",
@@ -168,7 +167,7 @@
       "empty": "No declared behaviors"
     },
     "invalid_summary": "%{origin} · %{diagnostic}",
-    "delete_confirmation": "%{status} · %{confirm_deletion}"
+    "delete_confirmation": "Are you sure you want to delete this model?"
   },
   "update": {
     "window": {

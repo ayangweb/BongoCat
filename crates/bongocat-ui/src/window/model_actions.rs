@@ -192,11 +192,13 @@ impl SettingsView {
         }
     }
 
-    /// Keep the per-card focus handles and the open edit matching the catalog.
+    /// Keep the per-card focus handles, the open edit and the open delete
+    /// question matching the catalog.
     ///
     /// The catalog is re-projected on every snapshot, so this is also where a
-    /// deleted model's handles are dropped and an edit of a model that no longer
-    /// exists — or no longer exists as an *installed* one — is abandoned.
+    /// deleted model's handles are dropped, an edit of a model that no longer
+    /// exists — or no longer exists as an *installed* one — is abandoned, and a
+    /// delete question whose control the card would no longer draw is dropped.
     pub(super) fn sync_model_row_focus(
         &mut self,
         entries: &[SettingsModelEntry],
@@ -207,7 +209,9 @@ impl SettingsView {
         if self
             .model_delete_confirmation
             .as_ref()
-            .is_some_and(|model| !model_delete_confirmation_is_valid(entries, active_model, model))
+            .is_some_and(|model| {
+                !model_delete_confirmation_is_valid(entries, active_model, commands_blocked, model)
+            })
         {
             self.model_delete_confirmation = None;
         }
@@ -227,17 +231,12 @@ impl SettingsView {
         self.model_row_focus.retain(|key, _| keys.contains(key));
         for (index, entry) in entries.iter().enumerate() {
             let key = ModelRowKey::new(entry.origin, &entry.id);
-            let model = SettingsModelKey {
-                id: entry.id.clone(),
-                origin: entry.origin,
-            };
             let actions = model_row_actions(entry, active_model, commands_blocked);
-            let confirming_delete = self.model_delete_confirmation.as_ref() == Some(&model);
             let offset = isize::try_from(index)
                 .unwrap_or(isize::MAX / 5)
                 .saturating_mul(5);
             let tab_index = 40_isize.saturating_add(offset);
-            let action_tabs = model_row_action_tab_indices(tab_index, confirming_delete);
+            let action_tabs = model_row_action_tab_indices(tab_index);
             let focus = self
                 .model_row_focus
                 .entry(key)
@@ -246,7 +245,6 @@ impl SettingsView {
                     open_location: cx.focus_handle(),
                     edit: cx.focus_handle(),
                     delete: cx.focus_handle(),
-                    cancel_delete: cx.focus_handle(),
                 });
             focus.activate = focus
                 .activate
@@ -257,22 +255,17 @@ impl SettingsView {
                 .open_location
                 .clone()
                 .tab_index(action_tabs.open_location)
-                .tab_stop(actions.can_open_location && !confirming_delete);
+                .tab_stop(actions.can_open_location);
             focus.edit = focus
                 .edit
                 .clone()
                 .tab_index(action_tabs.edit)
-                .tab_stop(actions.can_edit && !confirming_delete);
+                .tab_stop(actions.can_edit);
             focus.delete = focus
                 .delete
                 .clone()
                 .tab_index(action_tabs.delete)
                 .tab_stop(actions.can_delete);
-            focus.cancel_delete = focus
-                .cancel_delete
-                .clone()
-                .tab_index(action_tabs.cancel_delete)
-                .tab_stop(actions.can_delete && confirming_delete);
         }
     }
 
@@ -589,18 +582,25 @@ impl SettingsView {
         }
     }
 
+    /// Open the delete confirmation for `model`.
+    ///
+    /// The confirmation is a surface the card's delete control owns, so this
+    /// records which model it belongs to and the card draws itself open. It does
+    /// not delete anything: that is [`SettingsView::delete_model`], which only
+    /// the confirmation's accept button reaches.
     pub(super) fn request_model_delete(&mut self, model: SettingsModelKey, cx: &mut Context<Self>) {
         if self.pending.is_some() || self.model_import.is_running() {
             return;
         }
-        if self.model_delete_confirmation.as_ref() == Some(&model) {
-            self.delete_model(model, cx);
-        } else {
-            self.model_delete_confirmation = Some(model);
-            cx.notify();
-        }
+        self.model_delete_confirmation = Some(model);
+        cx.notify();
     }
 
+    /// Close the delete confirmation for `model`.
+    ///
+    /// Guarded on the model so a surface that reports its own close after the
+    /// confirmation already moved on — a click outside during a delete, say —
+    /// cannot cancel somebody else's.
     pub(super) fn cancel_model_delete(&mut self, model: &SettingsModelKey, cx: &mut Context<Self>) {
         if self.model_delete_confirmation.as_ref() == Some(model) {
             self.model_delete_confirmation = None;
@@ -679,14 +679,7 @@ impl SettingsView {
                 self.begin_model_edit(model, window, cx);
             }
             ModelRowAction::Delete if actions.can_delete => {
-                window.focus(&focus.delete, cx);
-                self.request_model_delete(model, cx);
-            }
-            ModelRowAction::CancelDelete
-                if self.model_delete_confirmation.as_ref() == Some(&model) =>
-            {
-                window.focus(&focus.cancel_delete, cx);
-                self.cancel_model_delete(&model, cx);
+                self.delete_model(model, cx);
             }
             _ => {}
         }

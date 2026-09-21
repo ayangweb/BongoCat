@@ -118,6 +118,30 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::{Path, PathBuf};
 
+    /// Flatten a nested catalog object into dotted leaf keys.
+    fn flatten(value: &serde_json::Value, prefix: &str, out: &mut BTreeMap<String, String>) {
+        let Some(object) = value.as_object() else {
+            if !prefix.is_empty() {
+                out.insert(
+                    prefix.to_owned(),
+                    value.as_str().expect("string translation").to_owned(),
+                );
+            }
+            return;
+        };
+        for (key, child) in object {
+            if key == "_version" {
+                continue;
+            }
+            let path = if prefix.is_empty() {
+                key.clone()
+            } else {
+                format!("{prefix}.{key}")
+            };
+            flatten(child, &path, out);
+        }
+    }
+
     fn messages(locale: &str) -> BTreeMap<String, String> {
         let value: serde_json::Value = serde_json::from_str(match locale {
             "en-US" => include_str!("../locales/en-US.json"),
@@ -125,28 +149,20 @@ mod tests {
             _ => panic!("unsupported test locale"),
         })
         .expect("valid locale JSON");
-        fn flatten(value: &serde_json::Value, prefix: &str, out: &mut BTreeMap<String, String>) {
-            let Some(object) = value.as_object() else {
-                if !prefix.is_empty() {
-                    out.insert(
-                        prefix.to_owned(),
-                        value.as_str().expect("string translation").to_owned(),
-                    );
-                }
-                return;
-            };
-            for (key, child) in object {
-                if key == "_version" {
-                    continue;
-                }
-                let path = if prefix.is_empty() {
-                    key.clone()
-                } else {
-                    format!("{prefix}.{key}")
-                };
-                flatten(child, &path, out);
-            }
-        }
+        let mut messages = BTreeMap::new();
+        flatten(&value, "", &mut messages);
+        messages
+    }
+
+    /// The same flattening, read from the file a rebuild would read.
+    ///
+    /// Deliberately not `include_str!`: a copy embedded in this test binary would go stale
+    /// together with the catalog it exists to check.
+    fn messages_on_disk(locale: &str) -> BTreeMap<String, String> {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("locales/{locale}.json"));
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+        let value: serde_json::Value = serde_json::from_str(&source).expect("valid locale JSON");
         let mut messages = BTreeMap::new();
         flatten(&value, "", &mut messages);
         messages
@@ -331,6 +347,32 @@ mod tests {
                 placeholders(&chinese[key]),
                 "placeholder mismatch for {key}"
             );
+        }
+    }
+
+    /// The catalog that ships must agree with the file it was built from.
+    ///
+    /// `rust_i18n::i18n!` resolves through a proc macro that reads the locale files while it
+    /// expands, so the compiler records no dependency on them: `dep-lib-bongocat_i18n` lists
+    /// `src/lib.rs` and nothing else. Freshness therefore rests entirely on `build.rs`'s
+    /// `rerun-if-changed` plus the revision it injects. Miss that path — a build that only
+    /// relinks the UI, a stale fingerprint, an editor that leaves the mtime behind — and the
+    /// crate keeps serving the previous copy while every other check stays green, because
+    /// `validate-locales.py` and both key scans above read the JSON rather than the catalog that
+    /// actually ships. The window then renders retired copy: on 2026-09-21 the model delete
+    /// confirmation displayed the pre-rename template `%{status} · %{confirm_deletion}` with
+    /// every gate passing.
+    #[test]
+    fn compiled_catalog_matches_the_files_on_disk() {
+        for locale in ["en-US", "zh-CN"] {
+            for (key, expected) in messages_on_disk(locale) {
+                assert_eq!(
+                    text(locale, &key),
+                    expected,
+                    "{locale}: `{key}` differs from locales/{locale}.json — this build is serving \
+                     a stale catalog; rebuild with `cargo build -p bongocat-i18n`"
+                );
+            }
         }
     }
 

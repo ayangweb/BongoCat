@@ -958,6 +958,16 @@ impl SettingsView {
             // describe this page's controls, so they assert here instead.
             let editing_disabled =
                 snapshot.configuration_status != SettingsConfigurationStatus::Ready;
+            // A row's availability is not the global editing state alone. Under
+            // ADR-0053's unified gate rule a row whose scope's switch is off
+            // reports itself disabled and drops its click and focus support, so
+            // an expectation that only knew about `editing_disabled` would call
+            // every row of a switched-off scope wrong — and the model scope
+            // starts switched off.
+            let row_disabled = |target: &ShortcutCaptureTarget| {
+                editing_disabled
+                    || !shortcuts_page::ShortcutScope::for_target(target).is_enabled(snapshot)
+            };
             // Both gates are the first row of their scope's group. They must
             // read the same label as the visible switch and report the same
             // configuration field, and they must be listed directly above the
@@ -1047,13 +1057,14 @@ impl SettingsView {
             );
             if capture_nodes.len() != expected_capture_rows.len()
                 || capture_nodes.iter().zip(expected_capture_rows).any(
-                    |(node, (_, label, value))| {
+                    |(node, (target, label, value))| {
+                        let disabled = row_disabled(&target);
                         node.role != AccessibilityRole::Button
                             || node.label != *label
                             || node.value.as_deref() != Some(value.as_str())
-                            || node.disabled != editing_disabled
-                            || node.supports_click != !editing_disabled
-                            || node.supports_focus != !editing_disabled
+                            || node.disabled != disabled
+                            || node.supports_click != !disabled
+                            || node.supports_focus != !disabled
                     },
                 )
             {
@@ -1079,12 +1090,13 @@ impl SettingsView {
                 || clear_nodes
                     .iter()
                     .zip(expected_clear_rows)
-                    .any(|(node, (_, label))| {
+                    .any(|(node, (target, label))| {
+                        let disabled = row_disabled(&target);
                         node.role != AccessibilityRole::Button
                             || node.label != *label
-                            || node.disabled != editing_disabled
-                            || node.supports_click != !editing_disabled
-                            || node.supports_focus != !editing_disabled
+                            || node.disabled != disabled
+                            || node.supports_click != !disabled
+                            || node.supports_focus != !disabled
                     })
             {
                 return Err("shortcut binding clear accessibility semantics are invalid".to_owned());

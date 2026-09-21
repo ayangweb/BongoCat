@@ -4,7 +4,7 @@ use crate::{
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsShortcutBinding,
 };
-use gpui_kit::{Keystroke, Modifiers};
+use gpui_kit::{Keystroke, Modifiers, TestAppContext};
 
 /// A catalog entry for tests that do not care where the model lives.
 ///
@@ -1138,18 +1138,67 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
             can_open_location: false,
         }
     );
+}
+
+/// An open delete question is dropped as soon as its control would not be drawn.
+///
+/// The card renders the delete control — and with it the confirmation surface —
+/// only while `can_delete` holds, so the page has to drop the question under the
+/// same conditions. A question that outlived its control would come back unasked
+/// the moment the card could draw that control again.
+#[test]
+fn an_open_delete_question_lives_only_while_its_control_would() {
+    let ready = SettingsModelAvailability::Ready {
+        behaviors: Vec::new(),
+    };
+    let preset = model_entry("duplicate", SettingsModelOrigin::Preset, ready.clone());
+    let installed = model_entry("duplicate", SettingsModelOrigin::Installed, ready);
+    let active_preset = SettingsModelKey {
+        id: "duplicate".to_owned(),
+        origin: SettingsModelOrigin::Preset,
+    };
+    let target = SettingsModelKey {
+        id: "duplicate".to_owned(),
+        origin: SettingsModelOrigin::Installed,
+    };
+    let catalog = [preset, installed.clone()];
+
     assert!(model_delete_confirmation_is_valid(
-        &[preset.clone(), installed.clone()],
+        &catalog,
         Some(&active_preset),
-        &SettingsModelKey {
-            id: "duplicate".to_owned(),
-            origin: SettingsModelOrigin::Installed,
-        },
+        false,
+        &target
     ));
-    assert!(!model_delete_confirmation_is_valid(
-        &[preset, installed],
+
+    // The target can stop being deletable in three ways, and each one takes the
+    // control off the card: it becomes the active model, it leaves the catalog, or
+    // another command takes the page.
+    assert!(
+        !model_delete_confirmation_is_valid(&catalog, Some(&target), false, &target),
+        "a model that became active is not one the card offers to delete"
+    );
+    assert!(
+        !model_delete_confirmation_is_valid(&catalog[..1], Some(&active_preset), false, &target),
+        "a model that left the catalog has no card left to ask on"
+    );
+    assert!(
+        !model_delete_confirmation_is_valid(&catalog, Some(&active_preset), true, &target),
+        "a command in flight takes the delete control off the card"
+    );
+
+    // Availability is not part of it: a package that failed to load is exactly the
+    // one a user wants to remove.
+    let broken = SettingsModelEntry {
+        availability: SettingsModelAvailability::Invalid {
+            diagnostic: SettingsModelDiagnostic::ModelJsonInvalid,
+        },
+        ..installed
+    };
+    assert!(model_delete_confirmation_is_valid(
+        &[broken],
         Some(&active_preset),
-        &active_preset,
+        false,
+        &target
     ));
 }
 
@@ -1386,10 +1435,6 @@ fn model_presentations_follow_the_resolved_language() {
     let invalid_status = model_availability_status(&invalid, SettingsLanguage::ChineseSimplified)
         .expect("invalid models keep a diagnostic status");
     assert_eq!(invalid_status, "已安装 · 纹理无效");
-    assert_eq!(
-        model_delete_confirmation(SettingsLanguage::ChineseSimplified, &invalid_status),
-        "已安装 · 纹理无效 · 确认删除"
-    );
 
     let import_status = model_import_status(
         &ModelImportDraft::default(),
@@ -1414,27 +1459,29 @@ fn model_presentations_follow_the_resolved_language() {
 }
 
 #[test]
-fn model_delete_confirmation_tab_order_matches_visual_order() {
+fn model_row_action_tab_order_matches_visual_order() {
+    // The delete confirmation is a surface anchored to the delete control, not
+    // a replacement for the row, so the four positions never move: a card that
+    // opened a confirmation would otherwise renumber the controls the user is
+    // tabbing past.
     assert_eq!(
-        model_row_action_tab_indices(40, false),
+        model_row_action_tab_indices(40),
         ModelRowActionTabIndices {
             activate: 40,
             open_location: 41,
             edit: 42,
             delete: 43,
-            cancel_delete: 44,
         }
     );
-    // Confirming hides the leaving actions, so the two remaining controls close
-    // the gap rather than keeping indices for buttons that are not rendered.
+    // Each card owns a stride of five, so the next card's actions start clear of
+    // this one's even though only four are used.
     assert_eq!(
-        model_row_action_tab_indices(40, true),
+        model_row_action_tab_indices(45),
         ModelRowActionTabIndices {
-            activate: 40,
-            open_location: 41,
-            edit: 42,
-            delete: 41,
-            cancel_delete: 42,
+            activate: 45,
+            open_location: 46,
+            edit: 47,
+            delete: 48,
         }
     );
 }
@@ -1705,4 +1752,104 @@ fn navigation_accessibility_nodes_carry_no_descriptive_value() {
     let english = navigation_accessibility_nodes(SettingsLanguage::EnglishUnitedStates);
     let chinese = navigation_accessibility_nodes(SettingsLanguage::ChineseSimplified);
     assert_ne!(english[0].label, chinese[0].label);
+}
+
+/// Deleting a model is two steps, and the first one asks nothing of the service.
+///
+/// The card's delete control opens a confirmation surface and the accept button
+/// runs `ModelRowAction::Delete`; this pins both halves of that split — opening
+/// and closing only move the confirmation, and only `Delete` reaches the
+/// service. The surface itself is covered by `pop_confirm`'s own tests; what is
+/// checked here is that the page hands it the right two callbacks.
+#[gpui_kit::test]
+fn deleting_a_model_asks_the_service_only_after_the_confirmation(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, endpoint) = crate::SettingsClient::bounded(4);
+    let installed = model_entry(
+        "duplicate",
+        SettingsModelOrigin::Installed,
+        SettingsModelAvailability::Ready {
+            behaviors: Vec::new(),
+        },
+    );
+    let model = SettingsModelKey {
+        id: installed.id.clone(),
+        origin: installed.origin,
+    };
+    let mut seeded = crate::tests::snapshot(1, false, true);
+    seeded.model_catalog.entries = vec![installed];
+    let entries = seeded.model_catalog.entries.clone();
+    let active = seeded.active_model.clone();
+
+    // `gpui-component` resolves its overlays through a `Root` at the top of the
+    // window, so the page is built as a child of one and the handle is carried out
+    // of the builder rather than taken from the root.
+    let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
+    let capture = Rc::clone(&built);
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| SettingsView::new(client, Rc::new(|_| {}), None, window, cx));
+        capture.borrow_mut().replace(view.clone());
+        Root::new(view, window, cx)
+    });
+    let view = built
+        .borrow_mut()
+        .take()
+        .expect("the window builder must hand the page out");
+    view.update(visual, |view, cx| {
+        view.snapshot = Some(seeded);
+        view.sync_model_row_focus(&entries, active.as_ref(), false, cx);
+    });
+
+    // Opening the confirmation is a state change on this page and nothing else:
+    // a model that is asked about is not a model that has been deleted.
+    //
+    // Both negative checks below settle the executor before looking at the
+    // channel. A command is sent from a spawned task, so an unsettled executor
+    // would report an empty channel no matter what the page did, and the check
+    // would hold even if opening the question really did delete the model.
+    view.update(visual, |view, cx| {
+        view.request_model_delete(model.clone(), cx);
+    });
+    assert_eq!(
+        view.read_with(visual, |view, _| view.model_delete_confirmation.clone()),
+        Some(model.clone()),
+        "asking about a model must record which model the question is about"
+    );
+    visual.run_until_parked();
+    assert!(
+        endpoint.try_recv().is_err(),
+        "opening the confirmation must not reach the service"
+    );
+
+    view.update(visual, |view, cx| {
+        view.cancel_model_delete(&model, cx);
+    });
+    assert_eq!(
+        view.read_with(visual, |view, _| view.model_delete_confirmation.clone()),
+        None,
+        "declining must drop the question"
+    );
+    visual.run_until_parked();
+    assert!(
+        endpoint.try_recv().is_err(),
+        "declining must not reach the service"
+    );
+
+    // The accept button runs the row action, and that is what deletes.
+    view.update(visual, |view, cx| {
+        view.request_model_delete(model.clone(), cx);
+    });
+    visual.update(|window, cx| {
+        view.update(cx, |view, cx| {
+            view.run_model_row_action(ModelRowAction::Delete, model.clone(), window, cx);
+        });
+    });
+    visual.run_until_parked();
+    assert!(
+        matches!(
+            endpoint.try_recv(),
+            Ok(crate::SettingsCommand::DeleteModel { .. })
+        ),
+        "accepting must ask the service to delete the model it named"
+    );
 }
