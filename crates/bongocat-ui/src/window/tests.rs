@@ -480,12 +480,121 @@ fn recovery_and_shortcut_presentations_follow_the_resolved_language() {
 
     let command = ShortcutCaptureTarget::Command("toggle_overlay".to_owned());
     assert_eq!(
-        shortcut_target_name(SettingsLanguage::ChineseSimplified, &command),
+        shortcut_command_name(SettingsLanguage::ChineseSimplified, "toggle_overlay"),
         "显示或隐藏模型窗口"
     );
     assert_eq!(
-        shortcut_accessibility_label(SettingsLanguage::ChineseSimplified, &command),
+        shortcut_accessibility_label(
+            SettingsLanguage::ChineseSimplified,
+            "显示或隐藏模型窗口".to_owned()
+        ),
         "为显示或隐藏模型窗口录入快捷键"
+    );
+    assert_eq!(
+        ShortcutRow {
+            target: command,
+            behavior: None,
+            shortcut: None,
+        }
+        .name(SettingsLanguage::EnglishUnitedStates),
+        "Show or hide model window"
+    );
+}
+
+/// A model's behaviors are labelled by flattened position, not by the resource
+/// identity the package declares.
+///
+/// The numbering runs across motion groups before the expressions start, so a
+/// model with two motions in `CAT_motion` and two in `CAT_motion_lock` reads
+/// "Motion 1..4" rather than restarting at the group boundary, and the same
+/// number never appears twice inside one kind.
+#[test]
+fn model_behavior_rows_are_named_by_flattened_position() {
+    let active = SettingsModelKey {
+        id: "standard".to_owned(),
+        origin: SettingsModelOrigin::Preset,
+    };
+    let behaviors = [
+        SettingsModelBehavior::Motion {
+            group: "CAT_motion".to_owned(),
+            index: 0,
+        },
+        SettingsModelBehavior::Motion {
+            group: "CAT_motion".to_owned(),
+            index: 1,
+        },
+        SettingsModelBehavior::Motion {
+            group: "CAT_motion_lock".to_owned(),
+            index: 0,
+        },
+        SettingsModelBehavior::Motion {
+            group: "CAT_motion_lock".to_owned(),
+            index: 1,
+        },
+        SettingsModelBehavior::Expression {
+            name: "live2d_expression0.exp3.json".to_owned(),
+        },
+        SettingsModelBehavior::Expression {
+            name: "live2d_expression1.exp3.json".to_owned(),
+        },
+        SettingsModelBehavior::Expression {
+            name: "live2d_expression2.exp3.json".to_owned(),
+        },
+    ];
+    let entries = vec![model_entry(
+        "standard",
+        SettingsModelOrigin::Preset,
+        SettingsModelAvailability::Ready {
+            texture_count: 1,
+            expression_count: 3,
+            motion_count: 4,
+            behaviors: behaviors.to_vec(),
+        },
+    )];
+    let rows = shortcut_behavior_rows(&SettingsShortcuts::default(), Some(&active), &entries);
+    assert_eq!(rows.len(), behaviors.len());
+
+    let english = rows
+        .iter()
+        .map(|row| row.name(SettingsLanguage::EnglishUnitedStates))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        english,
+        [
+            "Motion 1",
+            "Motion 2",
+            "Motion 3",
+            "Motion 4",
+            "Expression 1",
+            "Expression 2",
+            "Expression 3",
+        ]
+    );
+
+    let chinese = rows
+        .iter()
+        .map(|row| row.name(SettingsLanguage::ChineseSimplified))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        chinese,
+        [
+            "动作 1", "动作 2", "动作 3", "动作 4", "表情 1", "表情 2", "表情 3",
+        ]
+    );
+
+    // The label is a display concern only: the row still binds the package's own
+    // identity, which is what the configuration stores.
+    assert!(rows.iter().all(|row| matches!(
+        &row.target,
+        ShortcutCaptureTarget::ModelBehavior { model_id, behavior_id }
+            if model_id == "standard" && !behavior_id.is_empty()
+    )));
+    assert_eq!(
+        rows.len(),
+        rows.iter()
+            .map(|row| row.target.clone())
+            .collect::<BTreeSet<_>>()
+            .len()
     );
 }
 

@@ -129,9 +129,47 @@ fn is_capture_modifier(key: &str) -> bool {
     )
 }
 
+/// Which counter a model behavior row draws its displayed number from.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum BehaviorKind {
+    Motion,
+    Expression,
+}
+
+/// A behavior's flattened position inside the active model's behavior list.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct BehaviorOrdinal {
+    pub(super) kind: BehaviorKind,
+    pub(super) number: usize,
+}
+
 pub(super) struct ShortcutRow {
     pub(super) target: ShortcutCaptureTarget,
+    /// Where this row sits in the active model's behavior list, for the rows
+    /// that are model behaviors. `None` on an application command, which is
+    /// named by the command itself.
+    pub(super) behavior: Option<BehaviorOrdinal>,
     pub(super) shortcut: Option<String>,
+}
+
+impl ShortcutRow {
+    /// The label this row renders.
+    pub(super) fn name(&self, language: SettingsLanguage) -> String {
+        match &self.target {
+            ShortcutCaptureTarget::Command(command) => {
+                shortcut_command_name(language, command.as_str())
+            }
+            // Every model behavior row is built from the active model's ordered
+            // behavior list, so it carries a position and this arm is the one
+            // users see. The fallback keeps the row self-describing if one is
+            // ever built outside that list; it prints the raw identity the way
+            // the page used to, rather than panicking in a render path.
+            ShortcutCaptureTarget::ModelBehavior { behavior_id, .. } => self.behavior.map_or_else(
+                || behavior_id.clone(),
+                |ordinal| shortcut_behavior_name(language, ordinal),
+            ),
+        }
+    }
 }
 
 const WINDOW_SHORTCUT_COMMANDS: [&str; 5] = [
@@ -147,6 +185,7 @@ pub(super) fn window_shortcut_rows(shortcuts: &SettingsShortcuts) -> Vec<Shortcu
         .iter()
         .map(|command| ShortcutRow {
             target: ShortcutCaptureTarget::Command((*command).to_owned()),
+            behavior: None,
             shortcut: shortcuts
                 .commands
                 .iter()
@@ -173,13 +212,33 @@ pub(super) fn shortcut_rows(
     }) else {
         return rows;
     };
+    // Motions are numbered across every group before the expressions start,
+    // which is the order the rows are listed in: a model's behaviors are "every
+    // motion group in declaration order, then every expression" (see
+    // `bongocat-app`'s `behavior_ids`). The two counters are what make the labels
+    // continuous and unique per kind, so `motion:CAT_motion:1` and
+    // `motion:CAT_motion_lock:0` read as "Motion 2" and "Motion 3" instead of
+    // restarting at the group boundary.
+    let mut motions = 0usize;
+    let mut expressions = 0usize;
     rows.extend(behaviors.iter().map(|behavior| {
+        let (kind, number) = match behavior {
+            SettingsModelBehavior::Motion { .. } => {
+                motions += 1;
+                (BehaviorKind::Motion, motions)
+            }
+            SettingsModelBehavior::Expression { .. } => {
+                expressions += 1;
+                (BehaviorKind::Expression, expressions)
+            }
+        };
         let behavior_id = model_behavior_id(behavior);
         ShortcutRow {
             target: ShortcutCaptureTarget::ModelBehavior {
                 model_id: model.id.clone(),
                 behavior_id: behavior_id.clone(),
             },
+            behavior: Some(BehaviorOrdinal { kind, number }),
             shortcut: shortcuts
                 .model_behaviors
                 .iter()
@@ -243,7 +302,7 @@ pub(super) fn shortcut_accessibility_rows(
     shortcut_rows(shortcuts, active_model, entries)
         .into_iter()
         .map(|row| {
-            let label = shortcut_accessibility_label(language, &row.target);
+            let label = shortcut_accessibility_label(language, row.name(language));
             let value = row
                 .shortcut
                 .map(|shortcut| shortcut_display(&shortcut))
@@ -274,11 +333,12 @@ pub(super) fn shortcut_clear_accessibility_rows(
     shortcut_rows(shortcuts, active_model, entries)
         .into_iter()
         .filter_map(|row| {
+            let name = row.name(language);
             row.shortcut.map(|_| {
                 let label = format!(
                     "{}: {}",
                     bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.clear"),
-                    shortcut_accessibility_label(language, &row.target)
+                    shortcut_accessibility_label(language, name)
                 );
                 (row.target, label)
             })

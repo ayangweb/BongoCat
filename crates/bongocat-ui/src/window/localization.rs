@@ -1,6 +1,6 @@
 use super::{
-    SettingsBuildEnvironment, SettingsBuildInfo, SettingsError, SettingsErrorCode,
-    SettingsLanguage, SettingsModelOrigin, ShortcutCaptureTarget,
+    BehaviorKind, BehaviorOrdinal, SettingsBuildEnvironment, SettingsBuildInfo, SettingsError,
+    SettingsErrorCode, SettingsLanguage, SettingsModelOrigin,
 };
 
 pub(super) fn model_availability_summary(
@@ -103,11 +103,7 @@ pub(super) fn recovered_backup_detail(
     )
 }
 
-pub(super) fn shortcut_accessibility_label(
-    language: SettingsLanguage,
-    target: &ShortcutCaptureTarget,
-) -> String {
-    let name = shortcut_target_name(language, target);
+pub(super) fn shortcut_accessibility_label(language: SettingsLanguage, name: String) -> String {
     bongocat_i18n::format_text(
         language.catalog_locale(),
         "shortcuts.capture.accessibility",
@@ -115,26 +111,47 @@ pub(super) fn shortcut_accessibility_label(
     )
 }
 
-pub(super) fn shortcut_target_name(
+pub(super) fn shortcut_command_name(language: SettingsLanguage, command: &str) -> String {
+    let key = match command {
+        "toggle_overlay" => "shortcuts.command_names.toggle_overlay",
+        "open_settings" => "shortcuts.command_names.open_settings",
+        "toggle_mirror" => "shortcuts.command_names.toggle_mirror",
+        "toggle_click_through" => "shortcuts.command_names.toggle_click_through",
+        "toggle_always_on_top" => "shortcuts.command_names.toggle_always_on_top",
+        _ => return command.to_owned(),
+    };
+    bongocat_i18n::text(language.catalog_locale(), key).to_owned()
+}
+
+/// The label of one model behavior.
+///
+/// A behavior is named by its position, not by its resource identity. The
+/// package declares it as `motion:CAT_motion:0` or
+/// `expression:live2d_expression0.exp3.json`, which is an internal spelling and
+/// reads as noise in a settings list; a user picking a chord for "the second
+/// motion" needs a name they can count, not the motion group the clip happens
+/// to live in.
+///
+/// `ordinal` is the behavior's flattened one-based position, so the numbering
+/// stays continuous across groups and can never repeat inside one kind. Both
+/// locale keys are spelled out rather than selected from a table: the source
+/// scan in `bongocat-i18n` only sees literals.
+pub(super) fn shortcut_behavior_name(
     language: SettingsLanguage,
-    target: &ShortcutCaptureTarget,
+    ordinal: BehaviorOrdinal,
 ) -> String {
-    match target {
-        ShortcutCaptureTarget::Command(command) => {
-            let key = match command.as_str() {
-                "toggle_overlay" => "shortcuts.command_names.toggle_overlay",
-                "open_settings" => "shortcuts.command_names.open_settings",
-                "toggle_mirror" => "shortcuts.command_names.toggle_mirror",
-                "toggle_click_through" => "shortcuts.command_names.toggle_click_through",
-                "toggle_always_on_top" => "shortcuts.command_names.toggle_always_on_top",
-                _ => return command.clone(),
-            };
-            bongocat_i18n::text(language.catalog_locale(), key).to_owned()
-        }
-        ShortcutCaptureTarget::ModelBehavior {
-            model_id,
-            behavior_id,
-        } => format!("{model_id} ({behavior_id})"),
+    let number = ordinal.number.to_string();
+    match ordinal.kind {
+        BehaviorKind::Motion => bongocat_i18n::format_text(
+            language.catalog_locale(),
+            "shortcuts.behavior_names.motion",
+            &[("index", number)],
+        ),
+        BehaviorKind::Expression => bongocat_i18n::format_text(
+            language.catalog_locale(),
+            "shortcuts.behavior_names.expression",
+            &[("index", number)],
+        ),
     }
 }
 

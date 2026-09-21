@@ -297,6 +297,10 @@
       "toggle_click_through": "Toggle click-through",
       "toggle_always_on_top": "Toggle always on top"
     },
+    "behavior_names": {
+      "motion": "Motion %{index}",
+      "expression": "Expression %{index}"
+    },
     "errors": {
       "conflict": "%{shortcut} is already assigned to another shortcut"
     }

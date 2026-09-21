@@ -72,7 +72,7 @@ use localization::{
     backup_candidates_checked, build_info_detail, model_availability_summary,
     model_delete_confirmation, model_import_progress, model_invalid_summary,
     recovered_backup_detail, runtime_status, settings_error, shortcut_accessibility_label,
-    shortcut_conflict_message, shortcut_target_name,
+    shortcut_behavior_name, shortcut_command_name, shortcut_conflict_message,
 };
 #[cfg(test)]
 mod tests;

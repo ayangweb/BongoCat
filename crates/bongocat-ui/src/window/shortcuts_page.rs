@@ -163,8 +163,8 @@ fn shortcut_row(
     row: ShortcutRow,
     row_index: usize,
 ) -> Div {
+    let target_name = row.name(language);
     let target = row.target;
-    let target_name = shortcut_target_name(language, &target);
     let capture = view
         .shortcut_capture
         .as_ref()

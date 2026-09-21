@@ -297,6 +297,10 @@
       "toggle_click_through": "切换鼠标穿透",
       "toggle_always_on_top": "切换始终置顶"
     },
+    "behavior_names": {
+      "motion": "动作 %{index}",
+      "expression": "表情 %{index}"
+    },
     "errors": {
       "conflict": "%{shortcut} 已被其他快捷键占用"
     }
