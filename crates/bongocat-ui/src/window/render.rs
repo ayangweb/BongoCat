@@ -119,6 +119,14 @@ impl Render for SettingsView {
             || snapshot.is_none()
             || self.model_import.is_running()
             || !configuration_ready;
+        // The shortcuts page must not track the transient in-flight flag above:
+        // `pending` flips on and off around every save round-trip, and with the
+        // flag threaded into every gate switch and capture row the whole page
+        // visibly dims and re-enables, which reads as the page refreshing. The
+        // rows render from the stable states where editing is structurally
+        // impossible instead; the header status is the saving indicator.
+        let shortcuts_editing_blocked =
+            snapshot.is_none() || self.model_import.is_running() || !configuration_ready;
         // The hover hide delay is inert while the switch above it is off, so its row
         // renders disabled rather than accepting a value nothing reads.
         let hover_hide_delay_available = snapshot
@@ -149,7 +157,13 @@ impl Render for SettingsView {
                 cx,
             );
         }
-        self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, disabled, cx);
+        self.sync_shortcut_row_focus(
+            &shortcuts,
+            active_model,
+            model_entries,
+            shortcuts_editing_blocked,
+            cx,
+        );
         let status: SharedString = match (self.pending, &snapshot) {
             (Some(PendingOperation::Refresh), _) => {
                 bongocat_i18n::text(language.catalog_locale(), "status.refreshing").into()
@@ -1088,13 +1102,13 @@ impl Render for SettingsView {
                 shortcuts_page::ShortcutScope::Window,
                 language,
                 view_entity.clone(),
-                disabled,
+                shortcuts_editing_blocked,
             ),
             shortcuts_page::group(
                 shortcuts_page::ShortcutScope::Model,
                 language,
                 view_entity.clone(),
-                disabled,
+                shortcuts_editing_blocked,
             ),
         ]);
 

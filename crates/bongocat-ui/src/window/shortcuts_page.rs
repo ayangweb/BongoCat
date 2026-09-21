@@ -58,7 +58,7 @@ impl ShortcutScope {
         self,
         language: SettingsLanguage,
         view: Entity<SettingsView>,
-        disabled: bool,
+        editing_blocked: bool,
     ) -> SettingItem {
         SettingItem::new(
             self.gate_label(language),
@@ -83,7 +83,7 @@ impl ShortcutScope {
                 },
             ),
         )
-        .disabled(disabled)
+        .disabled(editing_blocked)
     }
 
     /// The name of this scope, used as its group heading and its sidebar entry.
@@ -139,11 +139,21 @@ impl ShortcutScope {
 }
 
 /// One scope of the shortcut page as a titled group.
+///
+/// `editing_blocked` is the stable side of the global disabled flag: it is true
+/// only where editing is structurally impossible (no snapshot yet, the
+/// configuration is unusable, or a model import is running). It deliberately
+/// excludes the transient in-flight `pending` flag — that one flips on and off
+/// around every save, and threading it into every row dimmed and re-enabled
+/// the whole page on each control change, which read as the page visibly
+/// refreshing. Requests that land while another is in flight already no-op
+/// through `start_request` and `shortcut_commands_available`, and the header
+/// status is the saving indicator.
 pub(super) fn group(
     scope: ShortcutScope,
     language: SettingsLanguage,
     view: Entity<SettingsView>,
-    disabled: bool,
+    editing_blocked: bool,
 ) -> SettingGroup {
     // The group heading names the scope in the body and in the sidebar, so the
     // custom item below carries no label of its own: a `SettingItem` with a
@@ -157,7 +167,7 @@ pub(super) fn group(
     ];
     SettingGroup::new()
         .title(scope.title(language))
-        .item(scope.gate_item(language, view.clone(), disabled))
+        .item(scope.gate_item(language, view.clone(), editing_blocked))
         .item(
             SettingItem::render({
                 let view = view.clone();
@@ -166,7 +176,15 @@ pub(super) fn group(
                     let tokens = Tokens::from_theme(app);
                     view.update(app, move |view, cx| {
                         view.page = SettingsPage::Shortcuts;
-                        content(view, window, cx, snapshot.as_ref(), scope, disabled, tokens)
+                        content(
+                            view,
+                            window,
+                            cx,
+                            snapshot.as_ref(),
+                            scope,
+                            editing_blocked,
+                            tokens,
+                        )
                     })
                     .into_any_element()
                 }
@@ -181,7 +199,7 @@ pub(super) fn content(
     cx: &mut Context<SettingsView>,
     snapshot: Option<&SettingsSnapshot>,
     scope: ShortcutScope,
-    disabled: bool,
+    editing_blocked: bool,
     tokens: Tokens,
 ) -> Stateful<Div> {
     let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
@@ -216,7 +234,7 @@ pub(super) fn content(
                         window,
                         cx,
                         language,
-                        disabled,
+                        editing_blocked,
                         tokens,
                         scope,
                         row,
@@ -232,7 +250,7 @@ fn shortcut_row(
     window: &Window,
     cx: &mut Context<SettingsView>,
     language: SettingsLanguage,
-    disabled: bool,
+    editing_blocked: bool,
     tokens: Tokens,
     scope: ShortcutScope,
     row: ShortcutRow,
@@ -305,7 +323,7 @@ fn shortcut_row(
                 } else {
                     tokens.muted
                 })
-                .when(disabled, |this| this.opacity(0.5).cursor_default())
+                .when(editing_blocked, |this| this.opacity(0.5).cursor_default())
                 .child(if let Some(capture) = capture {
                     shortcut_capture_preview(&capture.modifiers, &capture.keys)
                         .map(|shortcut| shortcut_display(&shortcut))
@@ -349,7 +367,7 @@ fn shortcut_row(
                     shortcut_clear_tab_index(row_index),
                     window,
                     tokens,
-                    disabled,
+                    editing_blocked,
                 )
                 .id(clear_id)
                 .on_click(cx.listener(move |view, _, window, cx| {
