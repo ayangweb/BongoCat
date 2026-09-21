@@ -417,7 +417,7 @@ impl Render for SettingsView {
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.overlay.hide_on_pointer_hover.label",
+                            "settings.overlay.hide_on_mouse_hover.label",
                         ),
                         SettingField::switch(
                             {
@@ -445,12 +445,12 @@ impl Render for SettingsView {
                     )
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.overlay.hide_on_pointer_hover.description",
+                        "settings.overlay.hide_on_mouse_hover.description",
                     )),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.overlay.hide_on_pointer_hover_delay.label",
+                            "settings.overlay.hide_on_mouse_hover_delay.label",
                         ),
                         SettingField::number_input(
                             NumberFieldOptions {
@@ -480,7 +480,7 @@ impl Render for SettingsView {
                     )
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.overlay.hide_on_pointer_hover_delay.description",
+                        "settings.overlay.hide_on_mouse_hover_delay.description",
                     ))
                     .disabled(hover_hide_delay_gate.disables_controls()),
                 ]),
@@ -716,13 +716,13 @@ impl Render for SettingsView {
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.model_interaction.pointer.title",
+                    "settings.model_interaction.mouse.title",
                 ))
                 .items(vec![
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.model_interaction.mirror_pointer_tracking.label",
+                            "settings.model_interaction.mirror_mouse_tracking.label",
                         ),
                         SettingField::switch(
                             {
@@ -751,7 +751,7 @@ impl Render for SettingsView {
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.model_interaction.ignore_pointer_input.label",
+                            "settings.model_interaction.ignore_mouse_input.label",
                         ),
                         SettingField::switch(
                             {

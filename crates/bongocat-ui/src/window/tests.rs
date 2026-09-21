@@ -454,12 +454,15 @@ fn build_information_is_localized_and_contains_only_compiled_identity() {
         environment: crate::SettingsBuildEnvironment::Development,
     };
     let detail = build_info_detail(SettingsLanguage::EnglishUnitedStates, &build_info);
-    assert_eq!(detail, format!("Version {product_version} · Development"));
+    assert_eq!(
+        detail,
+        format!("Version {product_version} · Development build")
+    );
     assert!(!detail.contains('/'));
     assert!(!detail.contains("path"));
 
     let chinese = build_info_detail(SettingsLanguage::ChineseSimplified, &build_info);
-    assert_eq!(chinese, format!("版本 {product_version} · 开发环境"));
+    assert_eq!(chinese, format!("版本 {product_version} · 开发版"));
 }
 
 #[test]
@@ -470,7 +473,7 @@ fn recovery_and_shortcut_presentations_follow_the_resolved_language() {
         SettingsLanguage::ChineseSimplified,
     );
     assert_eq!(recovery.title, "配置不可用");
-    assert_eq!(recovery.detail, "已检查 2 个备份候选");
+    assert_eq!(recovery.detail, "已检查 2 个备份");
 
     let command = ShortcutCaptureTarget::Command("toggle_overlay".to_owned());
     assert_eq!(
@@ -609,7 +612,10 @@ fn configuration_recovery_presentation_is_anonymous_and_complete() {
         SettingsLanguage::EnglishUnitedStates,
     );
     assert_eq!(recovered.title, "Recovered from backup");
-    assert_eq!(recovered.detail, "Schema v1 · 3 newer backups skipped");
+    assert_eq!(
+        recovered.detail,
+        "Configuration format v1 · 3 newer backups skipped"
+    );
     assert!(!recovered.detail.contains('/') && !recovered.detail.contains('\\'));
 
     let one_skipped = config_recovery_presentation(
@@ -620,7 +626,10 @@ fn configuration_recovery_presentation_is_anonymous_and_complete() {
         }),
         SettingsLanguage::EnglishUnitedStates,
     );
-    assert_eq!(one_skipped.detail, "Schema v1 · 1 newer backup skipped");
+    assert_eq!(
+        one_skipped.detail,
+        "Configuration format v1 · 1 newer backup skipped"
+    );
 
     let required = config_recovery_presentation(
         SettingsConfigurationStatus::RecoveryRequired { checked_backups: 2 },
@@ -628,7 +637,7 @@ fn configuration_recovery_presentation_is_anonymous_and_complete() {
         SettingsLanguage::EnglishUnitedStates,
     );
     assert_eq!(required.title, "Configuration unavailable");
-    assert_eq!(required.detail, "2 backup candidates checked");
+    assert_eq!(required.detail, "2 backups checked");
     assert!(required.attention);
     assert!(required.can_restore);
 
@@ -1611,7 +1620,7 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
             SettingsLanguage::ChineseSimplified,
         )
         .description,
-        Some("应用位置已变化；启用以修复")
+        Some("应用位置已变化；重新开关一次即可修复")
     );
 }
 
@@ -1691,7 +1700,7 @@ fn a_development_build_disables_the_startup_switch_with_a_hover_hint() {
     assert!(presentation.switch_disabled());
     assert_eq!(
         presentation.unavailable_hint,
-        Some("开发构建不支持登录时启动")
+        Some("开发版本不支持登录时启动")
     );
     assert_eq!(presentation.unavailable_hint, presentation.description);
     assert_eq!(presentation.action, StartupItemAction::None);

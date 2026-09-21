@@ -536,7 +536,7 @@ impl SettingsView {
                     ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE,
                     bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
-                        "shortcuts.actions.decrease_hide_on_pointer_hover_delay",
+                        "shortcuts.actions.decrease_hide_on_mouse_hover_delay",
                     ),
                     snapshot.overlay.hide_on_pointer_hover_delay_seconds == 0,
                 ),
@@ -544,7 +544,7 @@ impl SettingsView {
                     ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE,
                     bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
-                        "shortcuts.actions.increase_hide_on_pointer_hover_delay",
+                        "shortcuts.actions.increase_hide_on_mouse_hover_delay",
                     ),
                     snapshot.overlay.hide_on_pointer_hover_delay_seconds
                         >= bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS,
@@ -568,7 +568,7 @@ impl SettingsView {
                     || node.description.as_deref()
                         != Some(bongocat_i18n::text(
                             snapshot.resolved_language.catalog_locale(),
-                            "settings.overlay.hide_on_pointer_hover_delay.description",
+                            "settings.overlay.hide_on_mouse_hover_delay.description",
                         ))
                     || node.value.as_deref()
                         != Some(
@@ -620,11 +620,11 @@ impl SettingsView {
                     ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER,
                     bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
-                        "settings.overlay.hide_on_pointer_hover.label",
+                        "settings.overlay.hide_on_mouse_hover.label",
                     ),
                     Some(bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
-                        "settings.overlay.hide_on_pointer_hover.description",
+                        "settings.overlay.hide_on_mouse_hover.description",
                     )),
                     snapshot.overlay.hide_on_pointer_hover,
                 ),
@@ -669,7 +669,7 @@ impl SettingsView {
                     ACCESSIBILITY_MIRROR_POINTER,
                     bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
-                        "settings.model_interaction.mirror_pointer_tracking.label",
+                        "settings.model_interaction.mirror_mouse_tracking.label",
                     ),
                     None,
                     snapshot.model_settings.mirror_pointer_tracking,
@@ -678,7 +678,7 @@ impl SettingsView {
                     ACCESSIBILITY_IGNORE_POINTER,
                     bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
-                        "settings.model_interaction.ignore_pointer_input.label",
+                        "settings.model_interaction.ignore_mouse_input.label",
                     ),
                     None,
                     snapshot.model_settings.ignore_pointer,

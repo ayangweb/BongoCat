@@ -5534,6 +5534,80 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       是**间歇性**失败（`86213e69`、`d4f0155f` 两轮通过，其余多轮失败于 "Open Settings did not
       restore a runtime snapshot"），与本次回归无关。
 
+103. [x] `P1-SETTINGS-COPY-PLAIN-LANGUAGE`：设置窗口文案去掉内部术语，改用用户能直接看懂的说法。
+    - 背景（2026-09-21，维护者反馈）：国际化里的文案不符合用户直觉，例如「指针」应写成「鼠标」。
+      要求全量排查，把不直觉的文案换成用户容易理解的表达；并允许在 value 改变时同步调整不符合
+      的 key。
+    - 决策：只改**面向用户**的文案，配置 schema 字段名与 Rust 标识符一律不动。`overlay.
+      hide_on_pointer_hover`、`model_settings.mirror_pointer_tracking` / `ignore_pointer`、
+      `release_fallback_timeout_ms` 是冻结的 v1 契约，与 i18n 键是两条命名轴；i18n 键按 ADR-0028
+      「key 反映文案语义」随文案改名，因此改名后 key 与配置字段不再同名（如
+      `settings.overlay.hide_on_mouse_hover` ↔ 配置 `hide_on_pointer_hover`），这是有意为之。
+    - 改动规模：两个 locale 键数不变（各 286）。zh-CN 9 个叶子改名 + 40 个叶子改值；en-US 9 个
+      叶子改名 + 38 个叶子改值（`models.actions.open_location` 与
+      `settings.application.startup.unsupported_build` 英文原本已自足，只动中文）。
+    - 键名跟着文案改的 9 个叶子（3 个键组）：
+      ① `settings.model_interaction.pointer.title` → `.mouse.title`（指针 → 鼠标）；
+      ② `.mirror_pointer_tracking.label` → `.mirror_mouse_tracking.label`、
+        `.ignore_pointer_input.label` → `.ignore_mouse_input.label`；
+      ③ `settings.overlay.hide_on_pointer_hover{.label,.description}` →
+        `.hide_on_mouse_hover{...}`、`settings.overlay.hide_on_pointer_hover_delay{.label,
+        .description}` → `.hide_on_mouse_hover_delay{...}`，以及快捷键动作
+        `shortcuts.actions.{de,in}crease_hide_on_pointer_hover_delay` → `..._mouse_hover_delay`。
+    - 只改值的两类（举例，不逐条列举）：
+      ① 内部术语 → 日常词：「正在连接运行时」→「正在连接后台服务」、「运行时未应用此设置」→
+        「设置未能生效」、「按键释放兜底」→「按键释放超时」（描述改写为「长时间收不到按键松开事件
+        时自动松开，避免按键一直卡住」）、「此构建…」→「当前版本…」、「适用于本机的构建」→
+        「适用于这台电脑的安装包」、「Schema v…」→「配置格式 v…」、「修订 %{revision}」→
+        「第 %{revision} 次刷新」、「状态图标可见性」→「状态图标的显示」、「激活控件以重试」→
+        「点击开关重试」、「启用以修复」→「重新开关一次即可修复」、「开发构建 / 开发环境 /
+        生产环境」→「开发版 / 正式版」、「构建信息」→「版本信息」；
+      ② 绕口或含糊 → 直说：「打开模型位置」→「打开所在文件夹」、「没有声明的行为」→
+        「没有可用的动作」、「模型定义不受支持」→「模型格式不受支持」、「正在提交」→「正在完成」、
+        「该模型 ID 已安装」→「该模型已安装」、「模型来源包含不支持的项目」→「模型来源中包含
+        不支持的文件」、「备份候选」→「备份」、「归档无效配置」→「备份无效配置」、
+        「将动画和模型窗口的更新限制为 15 至 240 帧」→「…刷新率限制为每秒 15 至 240 帧」。
+    - 同步面（键改名必须一处不漏）：`render.rs` / `accessibility.rs` / `smoke.rs` 共 22 处键字面
+      量；`bongocat-ui` 的 `SettingsError` Display（10 条英文，与 catalog 英文是同一句话，有测试
+      守着）与 `window/tests.rs` 6 处断言；`bongocat-app/src/settings.rs` 1 处；
+      `bongocat-i18n/src/lib.rs` 2 处；`tools/tests/test_product_version_contract.py` 2 处源码契约
+      （它逐字断言 About 页版本行的 `format!` 文本）。无障碍树无需改动：只改值、没有新增可见文案，
+      节点数与 id 不变。
+    - 验证（2026-09-21，本机 macOS / aarch64）：
+      ① `just check` 六道门全过（34 目标 / 0 failed，815 passed）；
+      ② `tools/validate-locales.py`：`validated 2 locale(s), 286 key(s) each`；
+      ③ `python3 -m unittest discover -s tools/tests -t tools/tests`：63 用例全过（含 CHANGELOG
+        契约）；
+      ④ `cargo test -p bongocat-i18n`：11 用例全过，含两条键守门
+        （`source_referenced_keys_exist_in_the_catalog` / `catalog_keys_are_referenced_by_source`）
+        与 `compiled_catalog_matches_the_files_on_disk`；
+      ⑤ `cargo run --locked -p bongocat-app --release -- --run-seconds 8 --settings-window-smoke
+        --models-page-smoke` **exit=0**，无 `product run failed`；
+      ⑥ storage-injection 构建下 `--configuration-recovery-smoke` 与
+        `--settings-window-state-smoke` 均 **exit=0**（后者输出三行中文页面校验）。
+    - 变异验证（证明键守门与更新后的断言真的能变红）：
+      ① 把 `render.rs` 里一个键字面量改回旧名 → `cargo test -p bongocat-i18n` exit 101，
+        `source_referenced_keys_exist_in_the_catalog` 失败；
+      ② 把 zh 的 `diagnostics.configuration.backup_candidates` 值改回旧值 →
+        `cargo test -p bongocat-ui --lib` exit 101，
+        `recovery_and_shortcut_presentations_follow_the_resolved_language` 报
+        left「已检查 2 个备份候选」/ right「已检查 2 个备份」。
+      两处均以 `/tmp` 备份 + sha256 校验还原，还原后复跑 exit=0。
+    - 未运行 / 未覆盖：
+      ① Windows 侧全部路径（本机无法执行 `cfg(windows)` 测试与 Windows smoke）；
+        `--single-instance-smoke` 与打包类 smoke 属 CI 专用 harness，未跑；
+      ② 文案在实际排版下的截断未截图核对，尤其英文变长的几行（
+        `settings.overlay.maximum_fps.description`、更新页几条错误）；
+      ③ 读屏软件对改名后分组标题的实际播报未实测。
+    - 已知遗留（有意保留，交维护者决定）：
+      ① 配置 schema 字段名与 Rust 标识符仍用 `pointer` / `fallback`
+        （`PointerHoverHide`、`ReleaseFallbackTimeoutInvalid` 等），与 UI 文案不再同名；改它们属于
+        schema 与 API 变更，不在本次范围内；
+      ② 文档里仍逐字引用旧文案：`docs/adr/0036-model-archive-import-boundary.md` 括号内的错误文案、
+        `docs/adr/0047-model-metadata-editing-boundary.md` 多处把按钮称作「打开模型位置」，以及
+        第 97 项等历史状态条目。它们是决策记录与历史记录，本次未改写，仅在此登记；
+      ③ 英文 `errors.settings.*` 首字母大小写不统一（部分大写、部分小写），本次未动。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

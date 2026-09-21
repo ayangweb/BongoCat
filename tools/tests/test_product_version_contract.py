@@ -118,9 +118,12 @@ class ProductVersionContractTests(unittest.TestCase):
             read(UI_LIBRARY),
         )
         self.assertIn('let product_version = env!("CARGO_PKG_VERSION");', read(UI_WINDOW_TESTS))
-        self.assertIn('format!("Version {product_version} · Development")', read(UI_WINDOW_TESTS))
         self.assertIn(
-            'format!("版本 {product_version} · 开发环境")',
+            'format!("Version {product_version} · Development build")',
+            read(UI_WINDOW_TESTS),
+        )
+        self.assertIn(
+            'format!("版本 {product_version} · 开发版")',
             read(UI_WINDOW_TESTS),
         )
 

@@ -110,14 +110,14 @@
     "actions": {
       "activate": "启用",
       "edit": "编辑",
-      "open_location": "打开模型位置",
+      "open_location": "打开所在文件夹",
       "save": "保存",
       "delete": "删除"
     },
     "validation": {
       "package_layout_invalid": "模型包结构无效",
       "package_safety_limits_exceeded": "模型包超出安全限制",
-      "model_definition_unsupported": "模型定义不受支持",
+      "model_definition_unsupported": "模型格式不受支持",
       "texture_invalid": "纹理无效",
       "files_unavailable": "模型文件不可用",
       "resource_invalid": "模型资源无效"
@@ -143,7 +143,7 @@
         "preparing": "正在准备",
         "copying": "正在复制",
         "validating": "正在验证",
-        "committing": "正在提交",
+        "committing": "正在完成",
         "complete": "导入完成",
         "cancelled": "已取消导入",
         "detail": "%{stage} · %{files_copied} 个文件 · %{bytes_copied} 字节"
@@ -164,7 +164,7 @@
       }
     },
     "behaviors": {
-      "empty": "没有声明的行为"
+      "empty": "没有可用的动作"
     },
     "invalid_summary": "%{origin} · %{diagnostic}",
     "delete_confirmation": "你确定要删除这个模型吗？"
@@ -207,12 +207,12 @@
         "verify": "无法校验已下载的 BongoCat %{version}。",
         "install": "无法安装 BongoCat %{version}。"
       },
-      "not_configured": "此构建未配置更新能力。",
-      "environment_disabled": "此构建不允许安装正式发布版本。",
-      "signature_key_missing": "此构建无法验证更新包，因此未安装任何更新。",
+      "not_configured": "当前版本未开启更新功能。",
+      "environment_disabled": "当前版本不允许安装正式版更新。",
+      "signature_key_missing": "当前版本无法验证更新包，因此没有安装更新。",
       "release_fetch_failed": "找不到发布信息，请稍后重试。",
       "release_manifest_invalid": "发布信息无法识别，它可能来自另一个版本的 BongoCat。",
-      "no_matching_asset": "该发布版本未包含适用于本机的构建。",
+      "no_matching_asset": "该版本没有提供适用于这台电脑的安装包。",
       "download_transport_failed": "下载未完成，请检查网络后重试。",
       "checksum_mismatch": "下载的更新包与预期内容不一致。",
       "signature_invalid": "无法验证该更新包，已放弃安装。",
@@ -223,13 +223,13 @@
       "internal": "更新因未预期原因失败。"
     },
     "unavailable": {
-      "development_build": "开发构建不会安装正式发布版本。",
-      "signing_key_missing": "此构建未内置发布签名公钥，因此更新保持关闭。",
-      "unsupported_host": "本机所在平台未发布更新。"
+      "development_build": "开发版本不会安装正式版更新。",
+      "signing_key_missing": "当前版本没有内置更新验证信息，因此更新功能保持关闭。",
+      "unsupported_host": "当前系统没有可用的更新。"
     },
     "about": {
       "label": "检查更新",
-      "description": "将当前构建与最新发布版本对比并安装。"
+      "description": "与官方最新版本对比并安装更新。"
     }
   },
   "actions": {
@@ -239,23 +239,23 @@
   },
   "diagnostics": {
     "build": {
-      "title": "构建信息",
+      "title": "版本信息",
       "version": "版本",
       "environment": {
-        "development": "开发环境",
-        "production": "生产环境"
+        "development": "开发版",
+        "production": "正式版"
       }
     },
     "configuration": {
       "restore_defaults": "恢复默认配置",
-      "restore_defaults_description": "归档无效配置并创建默认配置。",
+      "restore_defaults_description": "备份无效配置并创建默认配置。",
       "defaults_restored": "已恢复默认值",
       "restart_to_continue": "请重启应用后继续",
       "recovered_from_backup": "已从备份恢复",
       "loaded_normally": "正常加载",
       "no_recovery": "未执行恢复",
-      "backup_candidates": "已检查 %{count} 个备份候选%{plural_suffix}",
-      "recovered_backup_detail": "Schema v%{schema_version} · 已跳过 %{count} 个较新的备份%{plural_suffix}"
+      "backup_candidates": "已检查 %{count} 个备份%{plural_suffix}",
+      "recovered_backup_detail": "配置格式 v%{schema_version} · 已跳过 %{count} 个较新的备份%{plural_suffix}"
     }
   },
   "shortcuts": {
@@ -279,10 +279,10 @@
       "increase_overlay_opacity": "提高窗口不透明度",
       "decrease_maximum_fps": "降低最大帧率",
       "increase_maximum_fps": "提高最大帧率",
-      "decrease_release_fallback_timeout": "缩短按键释放兜底超时",
-      "increase_release_fallback_timeout": "延长按键释放兜底超时",
-      "decrease_hide_on_pointer_hover_delay": "缩短悬停隐藏延迟",
-      "increase_hide_on_pointer_hover_delay": "延长悬停隐藏延迟"
+      "decrease_release_fallback_timeout": "缩短按键释放超时",
+      "increase_release_fallback_timeout": "延长按键释放超时",
+      "decrease_hide_on_mouse_hover_delay": "缩短悬停隐藏延迟",
+      "increase_hide_on_mouse_hover_delay": "延长悬停隐藏延迟"
     },
     "capture": {
       "press_to_record": "按下录制快捷键",
@@ -311,7 +311,7 @@
   "status": {
     "refreshing": "正在刷新运行状态...",
     "saving": "正在保存更改...",
-    "connecting": "正在连接运行时...",
+    "connecting": "正在连接后台服务...",
     "starting": "正在启动",
     "ready": "就绪",
     "degraded": "部分功能不可用",
@@ -321,16 +321,16 @@
     "settings": {
       "configuration_unavailable": "配置不可用",
       "service_unavailable": "设置服务不可用",
-      "snapshot_outdated": "设置已在后台更改；请检查最新值后重试",
-      "runtime_unavailable": "运行时未应用此设置",
+      "snapshot_outdated": "设置已在后台更改；请确认最新设置后重试",
+      "runtime_unavailable": "设置未能生效",
       "invalid_maximum_fps": "最大帧率必须在 15 到 240 之间",
-      "invalid_release_fallback_timeout": "按键释放兜底超时必须在 0 到 60000 毫秒之间",
+      "invalid_release_fallback_timeout": "按键释放超时必须在 0 到 60000 毫秒之间",
       "invalid_gamepad_axis_settings": "手柄死区设置超出范围",
       "invalid_shortcut_bindings": "快捷键绑定无效或存在冲突",
       "config_persist_failed": "无法保存设置",
-      "config_permission_denied": "配置存储不可写；请检查权限后重试",
+      "config_permission_denied": "无法写入配置文件；请检查权限后重试",
       "config_storage_full": "配置存储空间已满；请释放空间后重试",
-      "config_target_occupied": "配置存储位置被占用；请移除占用项后重试",
+      "config_target_occupied": "配置位置被占用；请关闭占用它的程序后重试",
       "backup_location_open_failed": "无法打开配置备份文件夹",
       "configuration_recovery_required": "执行此操作前必须恢复配置",
       "configuration_recovery_failed": "无法恢复默认配置",
@@ -341,13 +341,13 @@
       "model_cover_invalid": "封面图必须是 PNG 文件",
       "model_cover_update_failed": "模型封面更新失败",
       "model_source_picker_unavailable": "无法打开文件选择窗口",
-      "model_location_open_failed": "无法打开模型所在位置",
+      "model_location_open_failed": "无法打开模型所在文件夹",
       "invalid_model_id": "模型 ID 无效",
-      "model_already_installed": "该模型 ID 已安装",
+      "model_already_installed": "该模型已安装",
       "model_import_invalid_package": "模型包无效",
       "model_import_source_invalid": "无法导入模型来源",
       "model_import_source_changed": "模型来源在导入期间发生变化",
-      "model_import_source_unsupported": "模型来源包含不支持的项目",
+      "model_import_source_unsupported": "模型来源中包含不支持的文件",
       "model_import_cancelled": "模型导入已取消",
       "model_store_busy": "模型存储正忙",
       "model_import_failed": "无法导入模型",
@@ -356,8 +356,8 @@
       "model_delete_failed": "无法删除已安装模型",
       "diagnostics_export_failed": "无法导出诊断信息",
       "startup_item_update_failed": "无法更新登录启动设置",
-      "status_icon_update_failed": "无法更新状态图标可见性",
-      "taskbar_icon_update_failed": "无法更新任务栏图标可见性",
+      "status_icon_update_failed": "无法更新状态图标的显示",
+      "taskbar_icon_update_failed": "无法更新任务栏图标的显示",
       "window_hide_failed": "无法隐藏设置窗口",
       "state_persist_failed": "无法保存窗口布局",
       "shutdown_failed": "应用未能完成关闭"
@@ -406,13 +406,13 @@
         "label": "保持在屏幕内",
         "description": "让模型窗口始终完整显示在屏幕上，可覆盖任务栏、程序坞等系统区域。"
       },
-      "hide_on_pointer_hover": {
+      "hide_on_mouse_hover": {
         "label": "鼠标悬停时隐藏",
-        "description": "指针停在模型窗口上时淡出，移开后恢复。"
+        "description": "鼠标停在模型窗口上时淡出，移开后恢复。"
       },
-      "hide_on_pointer_hover_delay": {
+      "hide_on_mouse_hover_delay": {
         "label": "悬停隐藏延迟（秒）",
-        "description": "指针停留在模型窗口上多久后隐藏，范围 0 至 60 秒；0 表示立即隐藏。"
+        "description": "鼠标停留在模型窗口上多久后隐藏，范围 0 至 60 秒；0 表示立即隐藏。"
       },
       "scale": {
         "label": "窗口缩放",
@@ -428,19 +428,19 @@
       },
       "maximum_fps": {
         "label": "最大帧率",
-        "description": "将动画和模型窗口的更新限制为 15 至 240 帧。"
+        "description": "将动画和模型窗口的刷新率限制为每秒 15 至 240 帧。"
       }
     },
     "runtime": {
       "title": "运行状态",
-      "status_detail": "%{health} · 修订 %{revision}"
+      "status_detail": "%{health} · 第 %{revision} 次刷新"
     },
     "model_interaction": {
       "model": {
         "title": "模型"
       },
-      "pointer": {
-        "title": "指针"
+      "mouse": {
+        "title": "鼠标"
       },
       "mirror_model": {
         "label": "水平镜像模型"
@@ -448,11 +448,11 @@
       "motion_audio": {
         "label": "动作音效"
       },
-      "mirror_pointer_tracking": {
-        "label": "镜像指针跟随"
+      "mirror_mouse_tracking": {
+        "label": "镜像鼠标跟随"
       },
-      "ignore_pointer_input": {
-        "label": "忽略指针输入"
+      "ignore_mouse_input": {
+        "label": "忽略鼠标输入"
       }
     },
     "input": {
@@ -460,8 +460,8 @@
         "title": "键盘"
       },
       "release_fallback_timeout": {
-        "label": "按键释放兜底（毫秒）",
-        "description": "仅在常规释放和状态校正均失败时才释放按键，0 表示禁用。"
+        "label": "按键释放超时（毫秒）",
+        "description": "长时间收不到按键松开事件时自动松开，避免按键一直卡住；0 表示不自动松开。"
       },
       "gamepad": {
         "title": "手柄"
@@ -500,13 +500,13 @@
       },
       "startup": {
         "checking": "正在检查登录启动状态...",
-        "unavailable": "状态不可用；激活控件以重试",
-        "stale": "应用位置已变化；启用以修复",
+        "unavailable": "暂时无法获取状态；点击开关重试",
+        "stale": "应用位置已变化；重新开关一次即可修复",
         "requires_approval": "需要在系统设置中批准",
-        "not_found": "登录项缺失；启用以修复",
-        "unsupported_platform": "此平台不支持登录时启动",
+        "not_found": "登录项缺失；重新开关一次即可修复",
+        "unsupported_platform": "当前系统不支持登录时启动",
         "unsupported_os": "登录时启动需要 macOS 13 或更高版本",
-        "unsupported_build": "开发构建不支持登录时启动"
+        "unsupported_build": "开发版本不支持登录时启动"
       }
     }
   }

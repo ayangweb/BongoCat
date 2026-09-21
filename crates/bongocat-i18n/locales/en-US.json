@@ -117,7 +117,7 @@
     "validation": {
       "package_layout_invalid": "Package layout is invalid",
       "package_safety_limits_exceeded": "Package exceeds safety limits",
-      "model_definition_unsupported": "Model definition is unsupported",
+      "model_definition_unsupported": "The model format is unsupported",
       "texture_invalid": "Texture is invalid",
       "files_unavailable": "Model files are unavailable",
       "resource_invalid": "Model resource is invalid"
@@ -143,7 +143,7 @@
         "preparing": "Preparing",
         "copying": "Copying",
         "validating": "Validating",
-        "committing": "Committing",
+        "committing": "Finishing",
         "complete": "Import complete",
         "cancelled": "Import cancelled",
         "detail": "%{stage} · %{files_copied} files · %{bytes_copied} bytes"
@@ -164,7 +164,7 @@
       }
     },
     "behaviors": {
-      "empty": "No declared behaviors"
+      "empty": "No motions available"
     },
     "invalid_summary": "%{origin} · %{diagnostic}",
     "delete_confirmation": "Are you sure you want to delete this model?"
@@ -207,12 +207,12 @@
         "verify": "Could not verify the downloaded BongoCat %{version}.",
         "install": "Could not install BongoCat %{version}."
       },
-      "not_configured": "This build is not configured to receive updates.",
-      "environment_disabled": "This build is not allowed to install release updates.",
-      "signature_key_missing": "This build cannot authenticate updates, so none were installed.",
+      "not_configured": "Updates are not enabled in this version.",
+      "environment_disabled": "This version cannot install release updates.",
+      "signature_key_missing": "This version cannot verify updates, so none were installed.",
       "release_fetch_failed": "No release information was found. Try again later.",
       "release_manifest_invalid": "The release information could not be read. It may have been published by a different version of BongoCat.",
-      "no_matching_asset": "This release does not include a build for this system.",
+      "no_matching_asset": "This release has no installer for this computer.",
       "download_transport_failed": "The download did not finish. Check the connection and try again.",
       "checksum_mismatch": "The downloaded update did not match its expected contents.",
       "signature_invalid": "The update could not be verified and was not installed.",
@@ -223,13 +223,13 @@
       "internal": "The update failed for an unexpected reason."
     },
     "unavailable": {
-      "development_build": "Development builds do not install release updates.",
-      "signing_key_missing": "This build carries no release signing key, so updates stay disabled.",
-      "unsupported_host": "Updates are not published for this system."
+      "development_build": "Development builds cannot install release updates.",
+      "signing_key_missing": "This version carries no update verification data, so updates stay disabled.",
+      "unsupported_host": "No updates are available for this system."
     },
     "about": {
       "label": "Check for Updates",
-      "description": "Compare this build with the newest release and install it."
+      "description": "Compare with the newest official release and install it."
     }
   },
   "actions": {
@@ -239,23 +239,23 @@
   },
   "diagnostics": {
     "build": {
-      "title": "Build Information",
+      "title": "Version Information",
       "version": "Version",
       "environment": {
-        "development": "Development",
-        "production": "Production"
+        "development": "Development build",
+        "production": "Release build"
       }
     },
     "configuration": {
       "restore_defaults": "Restore default configuration",
-      "restore_defaults_description": "Archive the invalid configuration and create defaults.",
+      "restore_defaults_description": "Back up the invalid configuration and create defaults.",
       "defaults_restored": "Defaults restored",
       "restart_to_continue": "Restart the application to continue",
       "recovered_from_backup": "Recovered from backup",
       "loaded_normally": "Loaded normally",
       "no_recovery": "No recovery",
-      "backup_candidates": "%{count} backup candidate%{plural_suffix} checked",
-      "recovered_backup_detail": "Schema v%{schema_version} · %{count} newer backup%{plural_suffix} skipped"
+      "backup_candidates": "%{count} backup%{plural_suffix} checked",
+      "recovered_backup_detail": "Configuration format v%{schema_version} · %{count} newer backup%{plural_suffix} skipped"
     }
   },
   "shortcuts": {
@@ -279,10 +279,10 @@
       "increase_overlay_opacity": "Increase window opacity",
       "decrease_maximum_fps": "Decrease maximum FPS",
       "increase_maximum_fps": "Increase maximum FPS",
-      "decrease_release_fallback_timeout": "Decrease key release fallback timeout",
-      "increase_release_fallback_timeout": "Increase key release fallback timeout",
-      "decrease_hide_on_pointer_hover_delay": "Shorten hover hide delay",
-      "increase_hide_on_pointer_hover_delay": "Lengthen hover hide delay"
+      "decrease_release_fallback_timeout": "Decrease key release timeout",
+      "increase_release_fallback_timeout": "Increase key release timeout",
+      "decrease_hide_on_mouse_hover_delay": "Shorten hover hide delay",
+      "increase_hide_on_mouse_hover_delay": "Lengthen hover hide delay"
     },
     "capture": {
       "press_to_record": "Press to record shortcut",
@@ -311,7 +311,7 @@
   "status": {
     "refreshing": "Refreshing runtime snapshot...",
     "saving": "Saving changes...",
-    "connecting": "Connecting to runtime...",
+    "connecting": "Connecting to the background service...",
     "starting": "Starting",
     "ready": "Ready",
     "degraded": "Degraded",
@@ -321,16 +321,16 @@
     "settings": {
       "configuration_unavailable": "Configuration unavailable",
       "service_unavailable": "settings service is unavailable",
-      "snapshot_outdated": "settings changed in the background; review the latest values and retry",
-      "runtime_unavailable": "runtime did not apply the setting",
+      "snapshot_outdated": "settings changed in the background; review the latest settings and retry",
+      "runtime_unavailable": "the setting did not take effect",
       "invalid_maximum_fps": "maximum FPS must be between 15 and 240",
-      "invalid_release_fallback_timeout": "key release fallback timeout must be between 0 and 60000 milliseconds",
+      "invalid_release_fallback_timeout": "key release timeout must be between 0 and 60000 milliseconds",
       "invalid_gamepad_axis_settings": "gamepad dead-zone settings are out of range",
       "invalid_shortcut_bindings": "shortcut bindings are invalid or conflict",
       "config_persist_failed": "setting could not be saved",
-      "config_permission_denied": "configuration storage is not writable; check permissions and retry",
+      "config_permission_denied": "the configuration file cannot be written; check permissions and retry",
       "config_storage_full": "configuration storage is full; free space and retry",
-      "config_target_occupied": "configuration storage is blocked; remove the blocking item and retry",
+      "config_target_occupied": "the configuration location is in use; close the program using it and retry",
       "backup_location_open_failed": "configuration backup folder could not be opened",
       "configuration_recovery_required": "configuration must be recovered before this action",
       "configuration_recovery_failed": "default configuration could not be restored",
@@ -341,13 +341,13 @@
       "model_cover_invalid": "cover image must be a PNG file",
       "model_cover_update_failed": "model cover could not be updated",
       "model_source_picker_unavailable": "the file dialog could not be opened",
-      "model_location_open_failed": "model folder could not be opened",
+      "model_location_open_failed": "the model folder could not be opened",
       "invalid_model_id": "model id is invalid",
-      "model_already_installed": "model id is already installed",
+      "model_already_installed": "this model is already installed",
       "model_import_invalid_package": "model package is invalid",
       "model_import_source_invalid": "model source cannot be imported",
       "model_import_source_changed": "model source changed during import",
-      "model_import_source_unsupported": "model source contains an unsupported entry",
+      "model_import_source_unsupported": "the model source contains an unsupported file",
       "model_import_cancelled": "model import was cancelled",
       "model_store_busy": "model storage is busy",
       "model_import_failed": "model could not be imported",
@@ -356,8 +356,8 @@
       "model_delete_failed": "installed model could not be deleted",
       "diagnostics_export_failed": "diagnostics could not be exported",
       "startup_item_update_failed": "startup setting could not be updated",
-      "status_icon_update_failed": "status icon visibility could not be updated",
-      "taskbar_icon_update_failed": "taskbar icon visibility could not be updated",
+      "status_icon_update_failed": "the status icon display could not be updated",
+      "taskbar_icon_update_failed": "the taskbar icon display could not be updated",
       "window_hide_failed": "settings window could not be hidden",
       "state_persist_failed": "window layout could not be saved",
       "shutdown_failed": "application shutdown did not complete"
@@ -406,13 +406,13 @@
         "label": "Keep on screen",
         "description": "Keep the model window fully on screen, even where it covers the taskbar, Dock or menu bar."
       },
-      "hide_on_pointer_hover": {
-        "label": "Hide on pointer hover",
-        "description": "Fade the model window out while the pointer rests on it, and restore it when the pointer leaves."
+      "hide_on_mouse_hover": {
+        "label": "Hide on mouse hover",
+        "description": "Fade the model window out while the mouse rests on it, and restore it when the mouse leaves."
       },
-      "hide_on_pointer_hover_delay": {
+      "hide_on_mouse_hover_delay": {
         "label": "Hover hide delay (seconds)",
-        "description": "Delay before the model window hides while the pointer rests on it, from 0 to 60 seconds; 0 hides it on entry."
+        "description": "Delay before the model window hides while the mouse rests on it, from 0 to 60 seconds; 0 hides it on entry."
       },
       "scale": {
         "label": "Window scale",
@@ -428,19 +428,19 @@
       },
       "maximum_fps": {
         "label": "Maximum FPS",
-        "description": "Limit animation and overlay updates from 15 to 240 FPS."
+        "description": "Limit animation and model window updates to 15 to 240 frames per second."
       }
     },
     "runtime": {
       "title": "Runtime status",
-      "status_detail": "%{health} · revision %{revision}"
+      "status_detail": "%{health} · refresh %{revision}"
     },
     "model_interaction": {
       "model": {
         "title": "Model"
       },
-      "pointer": {
-        "title": "Pointer"
+      "mouse": {
+        "title": "Mouse"
       },
       "mirror_model": {
         "label": "Mirror model horizontally"
@@ -448,11 +448,11 @@
       "motion_audio": {
         "label": "Motion audio"
       },
-      "mirror_pointer_tracking": {
-        "label": "Mirror pointer tracking"
+      "mirror_mouse_tracking": {
+        "label": "Mirror mouse tracking"
       },
-      "ignore_pointer_input": {
-        "label": "Ignore pointer input"
+      "ignore_mouse_input": {
+        "label": "Ignore mouse input"
       }
     },
     "input": {
@@ -460,8 +460,8 @@
         "title": "Keyboard"
       },
       "release_fallback_timeout": {
-        "label": "Key release fallback (milliseconds)",
-        "description": "Release a captured key only when normal release and state reconciliation both fail; 0 disables it."
+        "label": "Key release timeout (milliseconds)",
+        "description": "Release the key automatically when no key-up event arrives within this time, so it never stays stuck; 0 disables it."
       },
       "gamepad": {
         "title": "Gamepad"
@@ -500,11 +500,11 @@
       },
       "startup": {
         "checking": "Checking login startup...",
-        "unavailable": "Status unavailable; activate to retry",
-        "stale": "Saved app location changed; enable to repair",
+        "unavailable": "Status unavailable; click the switch to retry",
+        "stale": "The saved app location changed; turn the switch off and on to repair",
         "requires_approval": "Approval required in System Settings",
-        "not_found": "App login item is missing; enable to repair",
-        "unsupported_platform": "Login startup is unavailable on this platform",
+        "not_found": "The login item is missing; turn the switch off and on to repair",
+        "unsupported_platform": "Login startup is unavailable on this system",
         "unsupported_os": "Login startup requires macOS 13 or later",
         "unsupported_build": "Login startup is unavailable in development builds"
       }

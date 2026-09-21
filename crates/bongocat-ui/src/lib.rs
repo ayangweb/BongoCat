@@ -1052,12 +1052,12 @@ impl fmt::Display for SettingsError {
         formatter.write_str(match self.code {
             SettingsErrorCode::ServiceUnavailable => "settings service is unavailable",
             SettingsErrorCode::SnapshotOutdated => {
-                "settings changed in the background; review the latest values and retry"
+                "settings changed in the background; review the latest settings and retry"
             }
-            SettingsErrorCode::RuntimeUnavailable => "runtime did not apply the setting",
+            SettingsErrorCode::RuntimeUnavailable => "the setting did not take effect",
             SettingsErrorCode::InvalidMaximumFps => "maximum FPS must be between 15 and 240",
             SettingsErrorCode::InvalidReleaseFallbackTimeout => {
-                "key release fallback timeout must be between 0 and 60000 milliseconds"
+                "key release timeout must be between 0 and 60000 milliseconds"
             }
             SettingsErrorCode::InvalidGamepadAxisSettings => {
                 "gamepad dead-zone settings are out of range"
@@ -1067,13 +1067,13 @@ impl fmt::Display for SettingsError {
             }
             SettingsErrorCode::ConfigPersistFailed => "setting could not be saved",
             SettingsErrorCode::ConfigPermissionDenied => {
-                "configuration storage is not writable; check permissions and retry"
+                "the configuration file cannot be written; check permissions and retry"
             }
             SettingsErrorCode::ConfigStorageFull => {
                 "configuration storage is full; free space and retry"
             }
             SettingsErrorCode::ConfigTargetOccupied => {
-                "configuration storage is blocked; remove the blocking item and retry"
+                "the configuration location is in use; close the program using it and retry"
             }
             SettingsErrorCode::BackupLocationOpenFailed => {
                 "configuration backup folder could not be opened"
@@ -1095,14 +1095,14 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ModelSourcePickerUnavailable => {
                 "the file dialog could not be opened"
             }
-            SettingsErrorCode::ModelLocationOpenFailed => "model folder could not be opened",
+            SettingsErrorCode::ModelLocationOpenFailed => "the model folder could not be opened",
             SettingsErrorCode::InvalidModelId => "model id is invalid",
-            SettingsErrorCode::ModelAlreadyInstalled => "model id is already installed",
+            SettingsErrorCode::ModelAlreadyInstalled => "this model is already installed",
             SettingsErrorCode::ModelImportInvalidPackage => "model package is invalid",
             SettingsErrorCode::ModelImportSourceInvalid => "model source cannot be imported",
             SettingsErrorCode::ModelImportSourceChanged => "model source changed during import",
             SettingsErrorCode::ModelImportSourceUnsupported => {
-                "model source contains an unsupported entry"
+                "the model source contains an unsupported file"
             }
             SettingsErrorCode::ModelImportCancelled => "model import was cancelled",
             SettingsErrorCode::ModelStoreBusy => "model storage is busy",
@@ -1113,10 +1113,10 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::DiagnosticsExportFailed => "diagnostics could not be exported",
             SettingsErrorCode::StartupItemUpdateFailed => "startup setting could not be updated",
             SettingsErrorCode::StatusIconUpdateFailed => {
-                "status icon visibility could not be updated"
+                "the status icon display could not be updated"
             }
             SettingsErrorCode::TaskbarIconUpdateFailed => {
-                "taskbar icon visibility could not be updated"
+                "the taskbar icon display could not be updated"
             }
             SettingsErrorCode::WindowHideFailed => "settings window could not be hidden",
             SettingsErrorCode::StatePersistFailed => "window layout could not be saved",
@@ -2615,11 +2615,11 @@ mod tests {
         for (code, expected) in [
             (
                 SettingsErrorCode::SnapshotOutdated,
-                "settings changed in the background; review the latest values and retry",
+                "settings changed in the background; review the latest settings and retry",
             ),
             (
                 SettingsErrorCode::ConfigPermissionDenied,
-                "configuration storage is not writable; check permissions and retry",
+                "the configuration file cannot be written; check permissions and retry",
             ),
             (
                 SettingsErrorCode::ConfigStorageFull,
@@ -2627,7 +2627,7 @@ mod tests {
             ),
             (
                 SettingsErrorCode::ConfigTargetOccupied,
-                "configuration storage is blocked; remove the blocking item and retry",
+                "the configuration location is in use; close the program using it and retry",
             ),
         ] {
             let message = SettingsError::new(code).to_string();

@@ -429,7 +429,7 @@ mod tests {
                     ("plural_suffix", "s".to_string()),
                 ],
             ),
-            "3 backup candidates checked"
+            "3 backups checked"
         );
         assert_eq!(
             format_text(
@@ -440,7 +440,7 @@ mod tests {
                     ("plural_suffix", "".to_string())
                 ],
             ),
-            "已检查 5 个备份候选"
+            "已检查 5 个备份"
         );
     }
 

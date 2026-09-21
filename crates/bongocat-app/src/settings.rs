@@ -4597,7 +4597,7 @@ mod tests {
         assert_eq!(error.code(), SettingsErrorCode::SnapshotOutdated);
         assert_eq!(
             error.to_string(),
-            "settings changed in the background; review the latest values and retry"
+            "settings changed in the background; review the latest settings and retry"
         );
         assert!(!error.to_string().contains('/') && !error.to_string().contains('\\'));
 

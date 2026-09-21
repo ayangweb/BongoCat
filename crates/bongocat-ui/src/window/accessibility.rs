@@ -242,7 +242,7 @@ impl SettingsView {
             AccessibilityRole::Switch,
             bongocat_i18n::text(
                 language.catalog_locale(),
-                "settings.model_interaction.mirror_pointer_tracking.label",
+                "settings.model_interaction.mirror_mouse_tracking.label",
             ),
         )
         .with_toggle(if model_settings.mirror_pointer_tracking {
@@ -256,7 +256,7 @@ impl SettingsView {
             AccessibilityRole::Switch,
             bongocat_i18n::text(
                 language.catalog_locale(),
-                "settings.model_interaction.ignore_pointer_input.label",
+                "settings.model_interaction.ignore_mouse_input.label",
             ),
         )
         .with_toggle(if model_settings.ignore_pointer {
@@ -351,12 +351,12 @@ impl SettingsView {
             AccessibilityRole::Switch,
             bongocat_i18n::text(
                 language.catalog_locale(),
-                "settings.overlay.hide_on_pointer_hover.label",
+                "settings.overlay.hide_on_mouse_hover.label",
             ),
         )
         .with_value(bongocat_i18n::text(
             language.catalog_locale(),
-            "settings.overlay.hide_on_pointer_hover.description",
+            "settings.overlay.hide_on_mouse_hover.description",
         ))
         .with_toggle(if overlay_settings.hide_on_pointer_hover {
             AccessibilityToggle::On
@@ -376,12 +376,12 @@ impl SettingsView {
             AccessibilityRole::Button,
             bongocat_i18n::text(
                 language.catalog_locale(),
-                "shortcuts.actions.decrease_hide_on_pointer_hover_delay",
+                "shortcuts.actions.decrease_hide_on_mouse_hover_delay",
             ),
         )
         .with_description(bongocat_i18n::text(
             language.catalog_locale(),
-            "settings.overlay.hide_on_pointer_hover_delay.description",
+            "settings.overlay.hide_on_mouse_hover_delay.description",
         ))
         .with_value(format!("{hover_hide_delay_seconds}s"))
         .disabled(hover_hide_delay_gate.disables_controls() || hover_hide_delay_seconds == 0);
@@ -390,12 +390,12 @@ impl SettingsView {
             AccessibilityRole::Button,
             bongocat_i18n::text(
                 language.catalog_locale(),
-                "shortcuts.actions.increase_hide_on_pointer_hover_delay",
+                "shortcuts.actions.increase_hide_on_mouse_hover_delay",
             ),
         )
         .with_description(bongocat_i18n::text(
             language.catalog_locale(),
-            "settings.overlay.hide_on_pointer_hover_delay.description",
+            "settings.overlay.hide_on_mouse_hover_delay.description",
         ))
         .with_value(format!("{hover_hide_delay_seconds}s"))
         .disabled(
