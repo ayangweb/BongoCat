@@ -81,7 +81,7 @@
   },
   "models": {
     "catalog": {
-      "loading": "Loading models...",
+      "loading": "Loading models…",
       "unavailable": "Model catalog is unavailable",
       "empty": "No models available",
       "load_failed": "Model catalog could not be loaded",
@@ -126,20 +126,20 @@
       "folder": {
         "none_selected": "No folder selected",
         "selected": "Folder selected",
-        "choosing": "Choosing folder..."
+        "choosing": "Choosing folder…"
       },
       "archive": {
         "none_selected": "No archive selected",
         "selected": "Archive selected",
-        "choosing": "Choosing archive..."
+        "choosing": "Choosing archive…"
       },
       "picker": {
         "cancelled": "Selection cancelled",
         "cancelled_previous_retained": "Selection cancelled; previous selection retained"
       },
       "progress": {
-        "cancelling": "Cancelling import...",
-        "starting": "Starting import...",
+        "cancelling": "Cancelling import…",
+        "starting": "Starting import…",
         "preparing": "Preparing",
         "copying": "Copying",
         "validating": "Validating",
@@ -151,7 +151,7 @@
       "actions": {
         "choose_folder": "Choose folder",
         "choose_archive": "Choose archive",
-        "choosing": "Choosing...",
+        "choosing": "Choosing…",
         "import": "Import"
       },
       "title": "Import model"
@@ -309,9 +309,9 @@
     }
   },
   "status": {
-    "refreshing": "Refreshing runtime snapshot...",
-    "saving": "Saving changes...",
-    "connecting": "Connecting to the background service...",
+    "refreshing": "Refreshing status…",
+    "saving": "Saving changes…",
+    "connecting": "Connecting to the background service…",
     "starting": "Starting",
     "ready": "Ready",
     "degraded": "Degraded",
@@ -499,7 +499,7 @@
         "label": "Open at login"
       },
       "startup": {
-        "checking": "Checking login startup...",
+        "checking": "Checking login startup…",
         "unavailable": "Status unavailable; click the switch to retry",
         "stale": "The saved app location changed; turn the switch off and on to repair",
         "requires_approval": "Approval required in System Settings",

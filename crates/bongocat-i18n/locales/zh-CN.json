@@ -81,7 +81,7 @@
   },
   "models": {
     "catalog": {
-      "loading": "正在加载模型...",
+      "loading": "正在加载模型…",
       "unavailable": "模型列表不可用",
       "empty": "没有可用模型",
       "load_failed": "无法加载模型列表",
@@ -126,20 +126,20 @@
       "folder": {
         "none_selected": "尚未选择文件夹",
         "selected": "已选择文件夹",
-        "choosing": "正在选择文件夹..."
+        "choosing": "正在选择文件夹…"
       },
       "archive": {
         "none_selected": "尚未选择压缩包",
         "selected": "已选择压缩包",
-        "choosing": "正在选择压缩包..."
+        "choosing": "正在选择压缩包…"
       },
       "picker": {
         "cancelled": "已取消选择",
         "cancelled_previous_retained": "已取消选择；保留之前的选择"
       },
       "progress": {
-        "cancelling": "正在取消导入...",
-        "starting": "正在开始导入...",
+        "cancelling": "正在取消导入…",
+        "starting": "正在开始导入…",
         "preparing": "正在准备",
         "copying": "正在复制",
         "validating": "正在验证",
@@ -151,7 +151,7 @@
       "actions": {
         "choose_folder": "选择文件夹",
         "choose_archive": "选择压缩包",
-        "choosing": "选择中...",
+        "choosing": "选择中…",
         "import": "导入"
       },
       "title": "导入模型"
@@ -309,9 +309,9 @@
     }
   },
   "status": {
-    "refreshing": "正在刷新运行状态...",
-    "saving": "正在保存更改...",
-    "connecting": "正在连接后台服务...",
+    "refreshing": "正在刷新运行状态…",
+    "saving": "正在保存更改…",
+    "connecting": "正在连接后台服务…",
     "starting": "正在启动",
     "ready": "就绪",
     "degraded": "部分功能不可用",
@@ -499,7 +499,7 @@
         "label": "登录时启动"
       },
       "startup": {
-        "checking": "正在检查登录启动状态...",
+        "checking": "正在检查登录启动状态…",
         "unavailable": "暂时无法获取状态；点击开关重试",
         "stale": "应用位置已变化；重新开关一次即可修复",
         "requires_approval": "需要在系统设置中批准",

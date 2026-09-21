@@ -5624,6 +5624,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         按键释放兜底 / 系统集成」。Technical Design 与 config contract 里的「指针」（指针采样、
         指针参数）、`状态校正`、`修订` 等**语义术语**一律未动——它们描述的是机制，不是界面文案；
         遗留②③所列的历史记录与特性名也未改写。
+      ④ 收尾一致性：两个 locale 各 10 条进度/状态文案的省略号由 `...` 统一为 `…`——update 组
+        与中文排版规范一直用 `…`，models/status 组却用三个半角句点，6 处断言随动；en 的
+        `status.refreshing` 由「Refreshing runtime snapshot...」改为「Refreshing status…」，
+        这是第一轮漏掉的内部术语（同组的 connecting 当时已改）。复查 en 全部 286 条：
+        已无句首小写的句子（排除占位符开头、专有名词与语言名）。
       验证（2026-09-22，本机 macOS / aarch64）：`cargo test -p bongocat-i18n`（11 用例，含两条
       键守门）、`cargo test -p bongocat-ui --lib`（136 通过）、`cargo test -p bongocat-app --lib`
       全绿；`tools/validate-locales.py` 286/286；`python3 -m unittest discover -s tools/tests`

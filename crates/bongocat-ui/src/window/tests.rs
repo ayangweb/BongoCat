@@ -866,14 +866,14 @@ fn cancellation_requested_while_starting_reaches_the_created_operation() {
     draft.apply_starting_cancellation(&operation);
     assert!(operation.is_cancelled());
     let status = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
-    assert_eq!(status, "Cancelling import...");
+    assert_eq!(status, "Cancelling import…");
 }
 
 #[test]
 fn model_catalog_and_import_statuses_cover_loading_empty_error_and_cancellation() {
     assert_eq!(
         super::models::empty_model_catalog_status(None, SettingsLanguage::EnglishUnitedStates),
-        "Loading models..."
+        "Loading models…"
     );
 
     let empty = SettingsModelCatalog::default();
@@ -952,7 +952,7 @@ fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states(
     assert_eq!(import.label, "Cancel");
     assert!(!import.disabled);
     assert!(import.supports_click);
-    assert_eq!(status.value.as_deref(), Some("Cancelling import..."));
+    assert_eq!(status.value.as_deref(), Some("Cancelling import…"));
 
     let loading = super::accessibility::model_catalog_accessibility_status_node(
         None,
@@ -960,7 +960,7 @@ fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states(
     )
     .expect("loading catalog must be announced");
     assert_eq!(loading.role, AccessibilityRole::Status);
-    assert_eq!(loading.value.as_deref(), Some("Loading models..."));
+    assert_eq!(loading.value.as_deref(), Some("Loading models…"));
 
     let unavailable = SettingsModelCatalog {
         error: Some(SettingsModelCatalogError::Unavailable),
@@ -1046,14 +1046,14 @@ fn picker_open_state_blocks_conflicting_import_actions() {
     assert!(draft.is_picker_open());
     assert!(!draft.can_import());
     let status = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
-    assert_eq!(status, "Choosing folder...");
+    assert_eq!(status, "Choosing folder…");
 
     let archive = ModelImportDraft {
         source_kind: ModelSourceKind::Archive,
         ..draft
     };
     let status = model_import_status(&archive, SettingsLanguage::EnglishUnitedStates);
-    assert_eq!(status, "Choosing archive...");
+    assert_eq!(status, "Choosing archive…");
 }
 
 #[test]
