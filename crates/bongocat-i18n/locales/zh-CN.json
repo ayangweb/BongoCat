@@ -366,12 +366,10 @@
           "system": "跟随系统",
           "light": "浅色",
           "dark": "深色"
-        },
-        "description": "选择应用的显示主题。"
+        }
       },
       "language": {
         "label": "语言",
-        "description": "选择应用的显示语言。",
         "options": {
           "system": "跟随系统",
           "chinese_simplified": "简体中文",
@@ -390,16 +388,13 @@
         "title": "性能"
       },
       "visibility": {
-        "label": "显示模型窗口",
-        "description": "显示或隐藏模型窗口。"
+        "label": "显示模型窗口"
       },
       "always_on_top": {
-        "label": "始终置顶",
-        "description": "让模型窗口始终显示在其他窗口上方。"
+        "label": "始终置顶"
       },
       "click_through": {
-        "label": "鼠标穿透",
-        "description": "让指针事件穿过模型窗口。"
+        "label": "鼠标穿透"
       },
       "keep_inside_screen": {
         "label": "保持在屏幕内",
@@ -432,8 +427,7 @@
     },
     "runtime": {
       "title": "运行状态",
-      "description": "查看当前运行时连接状态和配置修订版本。",
-      "status_detail": "运行状态：%{health} - 修订 %{revision}"
+      "status_detail": "%{health} · 修订 %{revision}"
     },
     "model_interaction": {
       "model": {
@@ -447,20 +441,16 @@
         "description": "允许使用全局快捷键触发模型动作和表情。"
       },
       "mirror_model": {
-        "label": "水平镜像模型",
-        "description": "以水平镜像方式渲染模型。"
+        "label": "水平镜像模型"
       },
       "motion_audio": {
-        "label": "动作音效",
-        "description": "播放模型动作关联的音效。"
+        "label": "动作音效"
       },
       "mirror_pointer_tracking": {
-        "label": "镜像指针跟随",
-        "description": "让模型随指针进行水平方向镜像移动。"
+        "label": "镜像指针跟随"
       },
       "ignore_pointer_input": {
-        "label": "忽略指针输入",
-        "description": "不将指针移动应用到模型。"
+        "label": "忽略指针输入"
       }
     },
     "input": {
@@ -494,15 +484,10 @@
         "label": {
           "macos": "显示菜单栏图标",
           "windows": "显示系统托盘图标"
-        },
-        "description": {
-          "macos": "在菜单栏显示状态图标。",
-          "windows": "在系统托盘显示状态图标。"
         }
       },
       "taskbar_icon": {
-        "label": "显示任务栏图标",
-        "description": "在 Windows 任务栏显示设置窗口。"
+        "label": "显示任务栏图标"
       },
       "auto_update": {
         "label": "自动检查更新",
@@ -514,8 +499,6 @@
       "startup": {
         "checking": "正在检查登录启动状态...",
         "unavailable": "状态不可用；激活控件以重试",
-        "disabled": "登录系统时启动应用",
-        "enabled": "应用将在登录系统时启动",
         "stale": "应用位置已变化；启用以修复",
         "requires_approval": "需要在系统设置中批准",
         "not_found": "登录项缺失；启用以修复",

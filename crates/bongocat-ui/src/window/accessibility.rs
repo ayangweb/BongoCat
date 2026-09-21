@@ -133,10 +133,6 @@ impl SettingsView {
             AccessibilityRole::ComboBox,
             bongocat_i18n::text(language.catalog_locale(), "settings.appearance.theme.label"),
         )
-        .with_description(bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.appearance.theme.description",
-        ))
         .with_value(theme_display_name(selected_theme, language))
         .disabled(disabled);
         if !disabled {
@@ -150,10 +146,6 @@ impl SettingsView {
                 "settings.appearance.language.label",
             ),
         )
-        .with_description(bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.appearance.language.description",
-        ))
         .with_value(
             snapshot
                 .map_or(SettingsLanguage::System, |snapshot| snapshot.language)
@@ -171,10 +163,6 @@ impl SettingsView {
                 "settings.overlay.visibility.label",
             ),
         )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.overlay.visibility.description",
-        ))
         .with_toggle(if snapshot.is_some_and(|s| s.overlay_visible) {
             AccessibilityToggle::On
         } else {
@@ -192,10 +180,6 @@ impl SettingsView {
                 "settings.model_interaction.motion_audio.label",
             ),
         )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.model_interaction.motion_audio.description",
-        ))
         .with_toggle(if snapshot.is_some_and(|s| s.motion_audio_enabled) {
             AccessibilityToggle::On
         } else {
@@ -237,10 +221,6 @@ impl SettingsView {
                 "settings.model_interaction.mirror_model.label",
             ),
         )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.model_interaction.mirror_model.description",
-        ))
         .with_toggle(if model_settings.mirror {
             AccessibilityToggle::On
         } else {
@@ -255,10 +235,6 @@ impl SettingsView {
                 "settings.model_interaction.mirror_pointer_tracking.label",
             ),
         )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.model_interaction.mirror_pointer_tracking.description",
-        ))
         .with_toggle(if model_settings.mirror_pointer_tracking {
             AccessibilityToggle::On
         } else {
@@ -273,10 +249,6 @@ impl SettingsView {
                 "settings.model_interaction.ignore_pointer_input.label",
             ),
         )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.model_interaction.ignore_pointer_input.description",
-        ))
         .with_toggle(if model_settings.ignore_pointer {
             AccessibilityToggle::On
         } else {
@@ -326,10 +298,6 @@ impl SettingsView {
                 "settings.overlay.always_on_top.label",
             ),
         )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.overlay.always_on_top.description",
-        ))
         .with_toggle(if overlay_settings.always_on_top {
             AccessibilityToggle::On
         } else {
@@ -344,10 +312,6 @@ impl SettingsView {
                 "settings.overlay.click_through.label",
             ),
         )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.overlay.click_through.description",
-        ))
         .with_toggle(if overlay_settings.click_through {
             AccessibilityToggle::On
         } else {
@@ -572,13 +536,17 @@ impl SettingsView {
                 "settings.application.open_at_login.label",
             ),
         )
-        .with_value(startup.description)
         .with_toggle(if startup.enabled {
             AccessibilityToggle::On
         } else {
             AccessibilityToggle::Off
         })
         .disabled(startup.action == StartupItemAction::None);
+        // The switch's own state is what a screen reader needs from the value; the
+        // row copy joins it only for the states that still need explaining.
+        if let Some(description) = startup.description {
+            startup_node = startup_node.with_value(description);
+        }
         if startup.action != StartupItemAction::None {
             startup_node = startup_node.clickable().focusable();
         }
@@ -590,10 +558,6 @@ impl SettingsView {
                 "settings.application.status_icon.label",
             ),
         )
-        .with_value(bongocat_i18n::platform_text(
-            language.catalog_locale(),
-            "settings.application.status_icon.description",
-        ))
         .with_toggle(
             if snapshot.is_some_and(|snapshot| snapshot.status_icon_visible) {
                 AccessibilityToggle::On
@@ -637,10 +601,6 @@ impl SettingsView {
                 "settings.application.taskbar_icon.label",
             ),
         )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.application.taskbar_icon.description",
-        ))
         .with_toggle(
             if snapshot.is_some_and(|snapshot| snapshot.taskbar_icon_visible) {
                 AccessibilityToggle::On

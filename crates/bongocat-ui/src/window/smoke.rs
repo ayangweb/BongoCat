@@ -332,11 +332,7 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.appearance.theme.label",
                     )
-                || theme.description.as_deref()
-                    != Some(bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "settings.appearance.theme.description",
-                    ))
+                || theme.description.is_some()
                 || theme.value.as_deref()
                     != Some(theme_display_name(
                         snapshot.appearance_theme,
@@ -361,11 +357,7 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.appearance.language.label",
                     )
-                || language.description.as_deref()
-                    != Some(bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "settings.appearance.language.description",
-                    ))
+                || language.description.is_some()
                 || language.value.as_deref()
                     != Some(snapshot.language.display_name(snapshot.resolved_language))
                 || language.disabled != controls_disabled
@@ -387,7 +379,7 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.application.open_at_login.label",
                     )
-                || startup.value.as_deref() != Some(presentation.description)
+                || startup.value.as_deref() != presentation.description
                 || startup.toggled
                     != Some(if presentation.enabled {
                         AccessibilityToggle::On
@@ -413,11 +405,7 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.application.status_icon.label",
                     )
-                || status_icon.value.as_deref()
-                    != Some(bongocat_i18n::platform_text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "settings.application.status_icon.description",
-                    ))
+                || status_icon.value.is_some()
                 || status_icon.toggled
                     != Some(if snapshot.status_icon_visible {
                         AccessibilityToggle::On
@@ -481,11 +469,7 @@ impl SettingsView {
                             snapshot.resolved_language.catalog_locale(),
                             "settings.application.taskbar_icon.label",
                         )
-                    || taskbar_icon.value.as_deref()
-                        != Some(bongocat_i18n::text(
-                            snapshot.resolved_language.catalog_locale(),
-                            "settings.application.taskbar_icon.description",
-                        ))
+                    || taskbar_icon.value.is_some()
                     || taskbar_icon.toggled
                         != Some(if snapshot.taskbar_icon_visible {
                             AccessibilityToggle::On
@@ -611,10 +595,7 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.overlay.always_on_top.label",
                     ),
-                    bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "settings.overlay.always_on_top.description",
-                    ),
+                    None,
                     snapshot.overlay.always_on_top,
                 ),
                 (
@@ -623,10 +604,7 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.overlay.click_through.label",
                     ),
-                    bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "settings.overlay.click_through.description",
-                    ),
+                    None,
                     snapshot.overlay.click_through,
                 ),
                 (
@@ -635,10 +613,10 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.overlay.keep_inside_screen.label",
                     ),
-                    bongocat_i18n::text(
+                    Some(bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
                         "settings.overlay.keep_inside_screen.description",
-                    ),
+                    )),
                     snapshot.overlay.keep_inside_screen,
                 ),
                 (
@@ -647,10 +625,10 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.overlay.hide_on_pointer_hover.label",
                     ),
-                    bongocat_i18n::text(
+                    Some(bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
                         "settings.overlay.hide_on_pointer_hover.description",
-                    ),
+                    )),
                     snapshot.overlay.hide_on_pointer_hover,
                 ),
             ] {
@@ -663,7 +641,7 @@ impl SettingsView {
                     })?;
                 if node.role != AccessibilityRole::Switch
                     || node.label != label
-                    || node.value.as_deref() != Some(value)
+                    || node.value.as_deref() != value
                     || node.disabled != controls_disabled
                     || node.supports_click != !controls_disabled
                     || node.supports_focus != !controls_disabled
@@ -687,10 +665,10 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.model_interaction.behavior_shortcuts.label",
                     ),
-                    bongocat_i18n::text(
+                    Some(bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
                         "settings.model_interaction.behavior_shortcuts.description",
-                    ),
+                    )),
                     snapshot.behavior_shortcuts_enabled,
                 ),
                 (
@@ -699,10 +677,7 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.model_interaction.mirror_model.label",
                     ),
-                    bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "settings.model_interaction.mirror_model.description",
-                    ),
+                    None,
                     snapshot.model_settings.mirror,
                 ),
                 (
@@ -711,10 +686,7 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.model_interaction.mirror_pointer_tracking.label",
                     ),
-                    bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "settings.model_interaction.mirror_pointer_tracking.description",
-                    ),
+                    None,
                     snapshot.model_settings.mirror_pointer_tracking,
                 ),
                 (
@@ -723,10 +695,7 @@ impl SettingsView {
                         snapshot.resolved_language.catalog_locale(),
                         "settings.model_interaction.ignore_pointer_input.label",
                     ),
-                    bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "settings.model_interaction.ignore_pointer_input.description",
-                    ),
+                    None,
                     snapshot.model_settings.ignore_pointer,
                 ),
             ] {
@@ -739,7 +708,7 @@ impl SettingsView {
                     })?;
                 if node.role != AccessibilityRole::Switch
                     || node.label != label
-                    || node.value.as_deref() != Some(value)
+                    || node.value.as_deref() != value
                     || node.disabled != controls_disabled
                     || node.supports_click != !controls_disabled
                     || node.supports_focus != !controls_disabled

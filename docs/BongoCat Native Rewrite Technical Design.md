@@ -431,8 +431,8 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   的 not-started/running/permission-denied/backend-unavailable/failed/stopped 状态，不携带平台错误文本。
   平台 owner 每次产品启动只尝试一次；权限拒绝或 backend 启动失败不阻止 overlay/runtime，settings
   health 进入 degraded 并以匿名状态进入 revisioned snapshot，不在后台循环请求权限或重启服务。
-- 设置窗口只展示用户可操作的设置，导航分两级。一级页面按领域划分，固定为 General、Models、Overlay、
-  Interaction、Input、Shortcuts、Application、About 八页，每页对应一个用户能直接说出的领域；一级页面内
+- 设置窗口只展示用户可操作的设置，导航分两级。一级页面按领域划分，固定为 General、Models、
+  Model window、Interaction、Input、Shortcuts、Application、About 八页，每页对应一个用户能直接说出的领域；一级页面内
   用带标题的 group 组织内容，同一页面下存在多于一个带标题的 group 时 sidebar 把它们渲染为二级菜单项，
   点击滚动到该分组。General 因此只保留外观（主题、语言），不再承载其它领域的分组。
   配置恢复提示不放在任何页面里，而是渲染在设置组件之上的窗口级横幅，因此当前打开哪一页都可见。

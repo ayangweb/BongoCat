@@ -228,11 +228,7 @@ impl Render for SettingsView {
                                     .into_any_element()
                             }
                         }),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.appearance.theme.description",
-                    )),
+                    ),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -251,11 +247,7 @@ impl Render for SettingsView {
                                     .into_any_element()
                             }
                         }),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.appearance.language.description",
-                    )),
+                    ),
                 ]),
         ]);
 
@@ -299,11 +291,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.overlay.visibility.description",
-                    )),
+                    ),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -332,11 +320,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.overlay.always_on_top.description",
-                    )),
+                    ),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -365,11 +349,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.overlay.click_through.description",
-                    )),
+                    ),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -700,11 +680,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.model_interaction.mirror_model.description",
-                    )),
+                    ),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -729,11 +705,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.model_interaction.motion_audio.description",
-                    )),
+                    ),
                 ]),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -769,11 +741,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.model_interaction.mirror_pointer_tracking.description",
-                    )),
+                    ),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -802,11 +770,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.model_interaction.ignore_pointer_input.description",
-                    )),
+                    ),
                 ]),
         ]);
 
@@ -951,25 +915,19 @@ impl Render for SettingsView {
         .groups(vec![
             // No group title: the runtime status is the first thing on the page and the only
             // row the group holds, so a heading here would just repeat the row's own label.
-            SettingGroup::new().items(vec![
-                SettingItem::new(
-                    bongocat_i18n::text(language.catalog_locale(), "settings.runtime.title"),
-                    SettingField::element({
-                        let status = status.clone();
-                        move |_: &RenderOptions, _: &mut Window, _: &mut App| {
-                            if status_is_error {
-                                Tag::danger().child(status.clone()).into_any_element()
-                            } else {
-                                Tag::secondary().child(status.clone()).into_any_element()
-                            }
+            SettingGroup::new().items(vec![SettingItem::new(
+                bongocat_i18n::text(language.catalog_locale(), "settings.runtime.title"),
+                SettingField::element({
+                    let status = status.clone();
+                    move |_: &RenderOptions, _: &mut Window, _: &mut App| {
+                        if status_is_error {
+                            Tag::danger().child(status.clone()).into_any_element()
+                        } else {
+                            Tag::secondary().child(status.clone()).into_any_element()
                         }
-                    }),
-                )
-                .description(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "settings.runtime.description",
-                )),
-            ]),
+                    }
+                }),
+            )]),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
@@ -979,69 +937,57 @@ impl Render for SettingsView {
                     // Only Windows adds the taskbar icon below, so the binding is
                     // `mut` on one platform and not the other.
                     #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
-                    let mut items = vec![
-                        SettingItem::new(
-                            bongocat_i18n::platform_text(
-                                language.catalog_locale(),
-                                "settings.application.status_icon.label",
-                            ),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .is_some_and(|s| s.status_icon_visible)
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_status_icon_visible(value, cx)
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(bongocat_i18n::platform_text(
+                    let mut items = vec![SettingItem::new(
+                        bongocat_i18n::platform_text(
                             language.catalog_locale(),
-                            "settings.application.status_icon.description",
-                        )),
-                    ];
+                            "settings.application.status_icon.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.status_icon_visible)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_status_icon_visible(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )];
                     #[cfg(target_os = "windows")]
-                    items.push(
-                        SettingItem::new(
-                            bongocat_i18n::text(
-                                language.catalog_locale(),
-                                "settings.application.taskbar_icon.label",
-                            ),
-                            SettingField::switch(
-                                {
-                                    let view = view_entity.clone();
-                                    move |app| {
-                                        view.read(app)
-                                            .snapshot
-                                            .as_ref()
-                                            .is_some_and(|s| s.taskbar_icon_visible)
-                                    }
-                                },
-                                {
-                                    let view = view_entity.clone();
-                                    move |value, app| {
-                                        view.update(app, |view, cx| {
-                                            view.set_taskbar_icon_visible(value, cx)
-                                        });
-                                    }
-                                },
-                            ),
-                        )
-                        .description(bongocat_i18n::text(
+                    items.push(SettingItem::new(
+                        bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.application.taskbar_icon.description",
-                        )),
-                    );
+                            "settings.application.taskbar_icon.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.taskbar_icon_visible)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_taskbar_icon_visible(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    ));
                     items
                 }),
             SettingGroup::new()
@@ -1050,43 +996,46 @@ impl Render for SettingsView {
                     "settings.application.updates.title",
                 ))
                 .items({
-                    let mut items = vec![
-                        SettingItem::new(
-                            bongocat_i18n::text(
-                                language.catalog_locale(),
-                                "settings.application.open_at_login.label",
-                            ),
-                            // Built by hand instead of `SettingField::switch` so the
-                            // switch can carry a tooltip: the row is the only place
-                            // the unavailable-in-this-build reason can be shown, and
-                            // the packaged switch field cannot take one (ADR-0051).
-                            SettingField::element({
-                                let view = view_entity.clone();
-                                move |_: &RenderOptions, _: &mut Window, _: &mut App| {
-                                    Switch::new(STARTUP_ITEM_SWITCH_ID)
-                                        .checked(startup_item.enabled)
-                                        .disabled(startup_item.switch_disabled())
-                                        .accessibility_label(bongocat_i18n::text(
-                                            language.catalog_locale(),
-                                            "settings.application.open_at_login.label",
-                                        ))
-                                        .when_some(startup_item.unavailable_hint, |switch, hint| {
-                                            switch.tooltip(hint)
-                                        })
-                                        .on_change({
-                                            let view = view.clone();
-                                            move |enabled: &bool, _: &mut Window, cx: &mut App| {
-                                                view.update(cx, |view, cx| {
-                                                    view.set_startup_item_enabled(*enabled, cx)
-                                                });
-                                            }
-                                        })
-                                        .into_any_element()
-                                }
-                            }),
-                        )
-                        .description(startup_item.description),
-                    ];
+                    // Built by hand instead of `SettingField::switch` so the
+                    // switch can carry a tooltip: the row is the only place the
+                    // unavailable-in-this-build reason can be shown, and the
+                    // packaged switch field cannot take one (ADR-0051). The switch
+                    // position already answers its two steady states, so only the
+                    // states that still need explaining carry a row description.
+                    let mut open_at_login = SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.application.open_at_login.label",
+                        ),
+                        SettingField::element({
+                            let view = view_entity.clone();
+                            move |_: &RenderOptions, _: &mut Window, _: &mut App| {
+                                Switch::new(STARTUP_ITEM_SWITCH_ID)
+                                    .checked(startup_item.enabled)
+                                    .disabled(startup_item.switch_disabled())
+                                    .accessibility_label(bongocat_i18n::text(
+                                        language.catalog_locale(),
+                                        "settings.application.open_at_login.label",
+                                    ))
+                                    .when_some(startup_item.unavailable_hint, |switch, hint| {
+                                        switch.tooltip(hint)
+                                    })
+                                    .on_change({
+                                        let view = view.clone();
+                                        move |enabled: &bool, _: &mut Window, cx: &mut App| {
+                                            view.update(cx, |view, cx| {
+                                                view.set_startup_item_enabled(*enabled, cx)
+                                            });
+                                        }
+                                    })
+                                    .into_any_element()
+                            }
+                        }),
+                    );
+                    if let Some(description) = startup_item.description {
+                        open_at_login = open_at_login.description(description);
+                    }
+                    let mut items = vec![open_at_login];
                     items.push(
                         SettingItem::new(
                             bongocat_i18n::text(

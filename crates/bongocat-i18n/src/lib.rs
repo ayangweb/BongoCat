@@ -426,21 +426,11 @@ mod tests {
             expected_override
         );
         assert_eq!(
-            platform_text("zh-CN", "settings.application.status_icon.description"),
+            platform_text("zh-CN", "settings.application.status_icon.label"),
             match current_platform_id() {
-                "macos" => {
-                    text(
-                        "zh-CN",
-                        "settings.application.status_icon.description.macos",
-                    )
-                }
-                "windows" => {
-                    text(
-                        "zh-CN",
-                        "settings.application.status_icon.description.windows",
-                    )
-                }
-                _ => text("zh-CN", "settings.application.status_icon.description"),
+                "macos" => text("zh-CN", "settings.application.status_icon.label.macos"),
+                "windows" => text("zh-CN", "settings.application.status_icon.label.windows"),
+                _ => text("zh-CN", "settings.application.status_icon.label"),
             }
         );
     }

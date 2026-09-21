@@ -1491,7 +1491,13 @@ enum StartupItemAction {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct StartupItemPresentation {
-    description: &'static str,
+    /// Row copy for the states the switch position cannot explain on its own: a
+    /// read that is still in flight, a login item that needs repair, or a
+    /// platform that cannot offer login startup at all.
+    ///
+    /// `Disabled` and `Enabled` carry none: the switch already shows that state,
+    /// so a second line repeating it would only add height to the common case.
+    description: Option<&'static str>,
     enabled: bool,
     action: StartupItemAction,
     /// Present only when this build cannot offer login startup at all.
@@ -1523,29 +1529,26 @@ fn startup_item_presentation(
 ) -> StartupItemPresentation {
     let mut presentation = match status {
         None => StartupItemPresentation {
-            description: bongocat_i18n::text(
+            description: Some(bongocat_i18n::text(
                 language.catalog_locale(),
                 "settings.application.startup.checking",
-            ),
+            )),
             enabled: false,
             action: StartupItemAction::None,
             unavailable_hint: None,
         },
         Some(SettingsStartupItemStatus::ReadError(_)) => StartupItemPresentation {
-            description: bongocat_i18n::text(
+            description: Some(bongocat_i18n::text(
                 language.catalog_locale(),
                 "settings.application.startup.unavailable",
-            ),
+            )),
             enabled: false,
             action: StartupItemAction::Retry,
             unavailable_hint: None,
         },
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled)) => {
             StartupItemPresentation {
-                description: bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "settings.application.startup.disabled",
-                ),
+                description: None,
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
                 unavailable_hint: None,
@@ -1553,10 +1556,7 @@ fn startup_item_presentation(
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled)) => {
             StartupItemPresentation {
-                description: bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "settings.application.startup.enabled",
-                ),
+                description: None,
                 enabled: true,
                 action: StartupItemAction::SetEnabled(false),
                 unavailable_hint: None,
@@ -1564,10 +1564,10 @@ fn startup_item_presentation(
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Stale)) => {
             StartupItemPresentation {
-                description: bongocat_i18n::text(
+                description: Some(bongocat_i18n::text(
                     language.catalog_locale(),
                     "settings.application.startup.stale",
-                ),
+                )),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
                 unavailable_hint: None,
@@ -1575,10 +1575,10 @@ fn startup_item_presentation(
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::RequiresApproval)) => {
             StartupItemPresentation {
-                description: bongocat_i18n::text(
+                description: Some(bongocat_i18n::text(
                     language.catalog_locale(),
                     "settings.application.startup.requires_approval",
-                ),
+                )),
                 enabled: true,
                 action: StartupItemAction::SetEnabled(false),
                 unavailable_hint: None,
@@ -1586,10 +1586,10 @@ fn startup_item_presentation(
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::NotFound)) => {
             StartupItemPresentation {
-                description: bongocat_i18n::text(
+                description: Some(bongocat_i18n::text(
                     language.catalog_locale(),
                     "settings.application.startup.not_found",
-                ),
+                )),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
                 unavailable_hint: None,
@@ -1598,17 +1598,17 @@ fn startup_item_presentation(
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(reason))) => {
             let (description, unavailable_hint) = match reason {
                 SettingsStartupItemUnsupportedReason::Platform => (
-                    bongocat_i18n::text(
+                    Some(bongocat_i18n::text(
                         language.catalog_locale(),
                         "settings.application.startup.unsupported_platform",
-                    ),
+                    )),
                     None,
                 ),
                 SettingsStartupItemUnsupportedReason::OperatingSystem => (
-                    bongocat_i18n::text(
+                    Some(bongocat_i18n::text(
                         language.catalog_locale(),
                         "settings.application.startup.unsupported_os",
-                    ),
+                    )),
                     None,
                 ),
                 // The one unsupported reason that is a property of this build
@@ -1620,7 +1620,7 @@ fn startup_item_presentation(
                         language.catalog_locale(),
                         "settings.application.startup.unsupported_build",
                     );
-                    (text, Some(text))
+                    (Some(text), Some(text))
                 }
             };
             StartupItemPresentation {

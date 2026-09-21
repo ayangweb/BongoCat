@@ -11,7 +11,7 @@
       "title": "Models"
     },
     "overlay": {
-      "title": "Overlay"
+      "title": "Model window"
     },
     "interaction": {
       "title": "Interaction"
@@ -366,12 +366,10 @@
           "system": "System",
           "light": "Light",
           "dark": "Dark"
-        },
-        "description": "Follow the system appearance or use a fixed light or dark theme."
+        }
       },
       "language": {
         "label": "Language",
-        "description": "Choose the language used by the application.",
         "options": {
           "system": "System",
           "chinese_simplified": "简体中文",
@@ -390,27 +388,24 @@
         "title": "Performance"
       },
       "visibility": {
-        "label": "Show model window",
-        "description": "Show or hide the model window."
+        "label": "Show model window"
       },
       "always_on_top": {
-        "label": "Always on top",
-        "description": "Keep the model window above other windows."
+        "label": "Always on top"
       },
       "click_through": {
-        "label": "Click-through overlay",
-        "description": "Let pointer input pass through the model window."
+        "label": "Mouse click-through"
       },
       "keep_inside_screen": {
-        "label": "Keep inside the screen",
-        "description": "Keep the model window fully on a screen, where it may cover the taskbar, Dock or menu bar."
+        "label": "Keep on screen",
+        "description": "Keep the model window fully on screen, even where it covers the taskbar, Dock or menu bar."
       },
       "hide_on_pointer_hover": {
         "label": "Hide on pointer hover",
         "description": "Fade the model window out while the pointer rests on it, and restore it when the pointer leaves."
       },
       "hide_on_pointer_hover_delay": {
-        "label": "Hover hide delay (s)",
+        "label": "Hover hide delay (seconds)",
         "description": "Delay before the model window hides while the pointer rests on it, from 0 to 60 seconds; 0 hides it on entry."
       },
       "scale": {
@@ -432,8 +427,7 @@
     },
     "runtime": {
       "title": "Runtime status",
-      "description": "Current runtime connection and configuration revision.",
-      "status_detail": "Runtime %{health} - revision %{revision}"
+      "status_detail": "%{health} · revision %{revision}"
     },
     "model_interaction": {
       "model": {
@@ -447,20 +441,16 @@
         "description": "Allow global shortcuts to trigger motions and expressions."
       },
       "mirror_model": {
-        "label": "Mirror model",
-        "description": "Render the model mirrored horizontally."
+        "label": "Mirror model horizontally"
       },
       "motion_audio": {
-        "label": "Motion audio",
-        "description": "Play audio attached to model motions."
+        "label": "Motion audio"
       },
       "mirror_pointer_tracking": {
-        "label": "Mirror pointer tracking",
-        "description": "Mirror horizontal pointer movement with the model."
+        "label": "Mirror pointer tracking"
       },
       "ignore_pointer_input": {
-        "label": "Ignore pointer input",
-        "description": "Do not apply pointer movement to the model."
+        "label": "Ignore pointer input"
       }
     },
     "input": {
@@ -468,7 +458,7 @@
         "title": "Keyboard"
       },
       "release_fallback_timeout": {
-        "label": "Key release fallback (ms)",
+        "label": "Key release fallback (milliseconds)",
         "description": "Release a captured key only when normal release and state reconciliation both fail; 0 disables it."
       },
       "gamepad": {
@@ -494,15 +484,10 @@
         "label": {
           "macos": "Show menu bar icon",
           "windows": "Show system tray icon"
-        },
-        "description": {
-          "macos": "Show the status icon in the menu bar.",
-          "windows": "Show the status icon in the system tray."
         }
       },
       "taskbar_icon": {
-        "label": "Show taskbar icon",
-        "description": "Show the settings window in the Windows taskbar."
+        "label": "Show taskbar icon"
       },
       "auto_update": {
         "label": "Check for updates automatically",
@@ -514,8 +499,6 @@
       "startup": {
         "checking": "Checking login startup...",
         "unavailable": "Status unavailable; activate to retry",
-        "disabled": "Open the application when you sign in",
-        "enabled": "The application opens when you sign in",
         "stale": "Saved app location changed; enable to repair",
         "requires_approval": "Approval required in System Settings",
         "not_found": "App login item is missing; enable to repair",

@@ -1295,7 +1295,19 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
             startup_item_presentation(Some(status), false, SettingsLanguage::EnglishUnitedStates);
         assert_eq!(presentation.enabled, enabled);
         assert_eq!(presentation.action, action);
-        assert!(!presentation.description.is_empty());
+        // The switch position answers the two steady states, so they are the only
+        // ones without row copy; every state that needs explaining still has it.
+        let steady_state = matches!(
+            status,
+            SettingsStartupItemStatus::State(
+                SettingsStartupItemState::Disabled | SettingsStartupItemState::Enabled
+            )
+        );
+        assert_eq!(
+            presentation.description.is_some(),
+            !steady_state,
+            "{status:?} must carry row copy exactly when the switch cannot explain itself"
+        );
         let build_unavailable = matches!(
             status,
             SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(
@@ -1329,7 +1341,20 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
             SettingsLanguage::ChineseSimplified,
         )
         .description,
-        "应用将在登录系统时启动"
+        None
+    );
+    // A state the switch cannot explain still carries the localized copy, so the
+    // steady states are the only rows that lost their second line.
+    assert_eq!(
+        startup_item_presentation(
+            Some(SettingsStartupItemStatus::State(
+                SettingsStartupItemState::Stale
+            )),
+            false,
+            SettingsLanguage::ChineseSimplified,
+        )
+        .description,
+        Some("应用位置已变化；启用以修复")
     );
 }
 
@@ -1411,10 +1436,7 @@ fn a_development_build_disables_the_startup_switch_with_a_hover_hint() {
         presentation.unavailable_hint,
         Some("开发构建不支持登录时启动")
     );
-    assert_eq!(
-        presentation.unavailable_hint,
-        Some(presentation.description)
-    );
+    assert_eq!(presentation.unavailable_hint, presentation.description);
     assert_eq!(presentation.action, StartupItemAction::None);
 }
 

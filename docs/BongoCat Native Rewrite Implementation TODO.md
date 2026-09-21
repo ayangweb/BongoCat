@@ -5146,6 +5146,84 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 未完成：实机悬停确认 Tooltip 弹层；Windows 实机。
     - 决策记录：ADR-0051（ADR-0043 头部加修订注记；Technical Design 启动项段落与 ADR 摘要同步）。
 
+97. [x] `P1-SETTINGS-ROW-DESCRIPTION-TRIM`：标题已能表达清楚的设置项不再重复写一遍描述，标题本身
+    也在必要时润色。
+    - 背景（2026-09-21，维护者反馈）：设置窗口里部分选项的描述只是把标题改写成一句话，例如
+      「登录时启动」的说明就是「登录系统时启动应用」。标题能表达清楚的就不要再写一遍，只保留
+      真正补充信息的描述；标题不是固定的，写得别扭或用了内部术语时可以一并润色，让每一行靠
+      「标题 + 控件自身状态」就能读懂。
+    - 判定标准（本次采用，可被复查）：删除一条描述后，用户从「标题 + 控件自身状态」得不到的
+      信息是否丢失。丢失则该信息必须留下——要么保留描述，要么写进标题。据此保留的描述都承载
+      标题无法表达的内容：数值项的取值区间、悬停隐藏延迟及其中 0 的含义、「保持在屏幕内」可覆盖
+      任务栏/程序坞等系统区域、悬停时淡出并移开后恢复、行为快捷键是全局快捷键且触发动作与表情、
+      按键释放兜底的失败语义与其 0 值、自动检查更新的 24 小时节奏、摇杆/扳机死区的定义，以及
+      登录项的失效与缺失修复提示。
+    - 删除 15 个键（两个 locale 同步删除，各 303 → 288 键）：
+      ① `settings.appearance.theme.description`、`settings.appearance.language.description`；
+      ② `settings.overlay.visibility` /`.always_on_top`/`.click_through` 三条 `.description`；
+      ③ `settings.model_interaction.mirror_model`/`.motion_audio`/`.mirror_pointer_tracking`/
+        `.ignore_pointer_input` 四条 `.description`；
+      ④ `settings.application.status_icon.description`（`macos`/`windows` 两个子键；平台覆写的
+        `label` 组保留）与 `.taskbar_icon.description`；
+      ⑤ `settings.application.startup.disabled`、`.enabled`；
+      ⑥ `settings.runtime.description`：该行的值本身已经写着 health 与 revision，描述只是把值
+        再说一遍。
+    - 标题/值润色 7 处（只改值、不改键）：
+      ① `navigation.overlay.title`：EN `Overlay` → `Model window`，与 ZH「模型窗口」及设置窗口其余
+        英文文案统一，不再对用户使用内部 overlay 术语；
+      ② `settings.overlay.click_through.label`：EN `Click-through overlay` → `Mouse click-through`，
+        与系统菜单 `Mouse Click-Through` 一致；
+      ③ `settings.overlay.keep_inside_screen.label`：EN `Keep inside the screen` → `Keep on screen`，
+        描述改为 `Keep the model window fully on screen, even where it covers the taskbar, Dock or
+        menu bar.`；
+      ④ `settings.overlay.hide_on_pointer_hover_delay.label`：EN `(s)` → `(seconds)`，
+        `settings.input.release_fallback_timeout.label`：EN `(ms)` → `(milliseconds)`——ZH 的
+        （秒）/（毫秒）本来就是全称，EN 缩写是唯一的少数派；
+      ⑤ `settings.model_interaction.mirror_model.label`：EN `Mirror model` →
+        `Mirror model horizontally`，把删除描述时丢掉的「水平」写回标题（ZH「水平镜像模型」自带）；
+      ⑥ `settings.runtime.status_detail`：EN `Runtime %{health} - revision %{revision}` →
+        `%{health} · revision %{revision}`，ZH 同法去掉「运行状态：」前缀，该前缀与行标题重复。
+    - 「登录时启动」是唯一带条件的行：`StartupItemPresentation.description` 由 `&'static str`
+      改为 `Option<&'static str>`，只有 Disabled/Enabled 两个「开关位置本身已经回答了」的状态为
+      `None`（渲染层先建 `SettingItem`，再用 `if let Some(description)` 决定是否挂 `.description`），
+      其余 7 种状态（checking / unavailable / stale / requires_approval / not_found / 三种
+      unsupported）继续保留描述，它们补充的是标题无法表达的加载中、需修复与不可用原因。ADR-0051
+      的「同一句话既解释该行也作为悬停提示」不变：`BuildEnvironment` 仍然 `Some(text)` 同时喂给两处。
+    - 无障碍同步：本项目**开关节点的 `value` 承载的正是描述文本**，因此删除描述的行同时删掉
+      `.with_value(…)`，保留描述的行不动；`startup` 节点改为仅在描述存在时
+      `.with_value(description)`（`value` 为空，`toggled` 继续表达开关状态），与 commit
+      `d515c3a` 对导航节点「`value` 是状态槽位」的处置同一口径；theme/language 两个 ComboBox
+      删除 `.with_description(…)`。smoke 断言同步收紧：theme/language 断言 `description` 为空，
+      overlay/model 两张期望值表把第三列改成 `Option<&str>`（删除描述的行填 `None`），
+      `status_icon`/`taskbar_icon` 断言 `value` 为空，`startup` 直接与 `presentation.description`
+      （现为 `Option`）比较；`bongocat-ui` 的启动项测试改为断言「只有 Disabled/Enabled 没有行文案，
+      其余状态仍有本地化文案」，并保留一条中文断言。
+    - 连带修正：`bongocat-i18n::platform_text_picks_the_current_platform_override` 原先以
+      `status_icon.description` 作为「带平台覆写」的样例键，该键组删除后改用 `status_icon.label`
+      （目录里仅存的带 `macos`/`windows` 覆写的键组），并保持两种语言都被断言。Technical Design
+      的一级页面清单同步改为 `General、Models、Model window、Interaction、Input、Shortcuts、
+      Application、About`。
+    - 验证（2026-09-21，本机 macOS / aarch64）：`cargo fmt --all -- --check` 通过；三段 clippy
+      （workspace 排除 `bongocat-app` 的 all-features、`bongocat-app` 的 `storage-test-injection`
+      与 `production`）全部 `-D warnings` 通过；`cargo test --locked --workspace` 全绿
+      （`bongocat-app` 138 + 22、`bongocat-ui` 118、`bongocat-i18n` 10，0 failed）；
+      `cargo check --locked --workspace --release` 通过；`tools/validate-locales.py` 报
+      `288 key(s) each`，`validate-fixtures.py` 与 `validate-json-schema.py` 通过，
+      `python3 -m unittest discover -s tools/tests`（63 用例）通过；
+      `cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke`
+      退出码 0，无 `product run failed`（见"覆盖情况"③④）。
+    - 覆盖情况（如实说明）：
+      ① 仓库不做布局与视觉断言，因此「描述行不再占高度」只有源码层证据，未做截图确认；
+      ② Windows 实机未运行（本项未改平台代码），`taskbar_icon` 一行只在 `cfg(windows)` 下渲染，
+        其 smoke 断言改动只在 Windows 侧生效；
+      ③ `bongocat-i18n::source_referenced_keys_exist_in_the_catalog`（按源码正查）与
+        `catalog_keys_are_referenced_by_source`（反查目录键）在删除后仍绿：既没有残留的悬空引用，
+        也没有留下无人引用的键；
+      ④ 标题润色只动英文（中文原本已自足）。`--settings-window-smoke` 按 snapshot 解析出的语言
+        渲染并校验无障碍树，中文文案由 `bongocat-ui` 的单元测试按下标断言；新英文标题在
+        Windows 125/150/200% 缩放下的截断风险未实机核对。
+    - 未完成：Windows 实机设置窗口；润色后的标题与删除描述后的实际排版仍由人工查看背书。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |
