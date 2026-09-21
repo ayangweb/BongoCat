@@ -5355,6 +5355,86 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 同步文档：Technical Design 的全局快捷键增量映射段补 chord 身份与 retarget/遗忘契约，两份
       CHANGELOG 的"问题修复"。
 
+101. [x] `P1-SHORTCUT-GATES-PER-GROUP`：两个快捷键门禁各自跟随所属分组，并新增窗口快捷键开关。
+    - 背景（2026-09-21，维护者反馈）：模型行为快捷键的开关在「交互」页面，它控制的绑定列表在「快捷键」
+      页面，两处隔着一整页，"这些组合键为什么按下去没反应"因此没有可见的解释；维护者要求"两个模块
+      分别单独自己去管理"，把快捷键相关的开关收敛到「快捷键」页面各自的分组内。这也是第 91 项
+      "未决观察"里留下的那次决策——当时写明"若维护者认为需要在快捷键页加一行提示，那会涉及两个
+      locale 的新 key、render 与 accessibility 节点，属于独立的 UI 变更，本项不擅自加入"。本项即该变更。
+    - 决策：ADR-0052（含"不合并成一个总开关""不改变默认值""关闭不清空绑定"三条明确不做）。
+    - 实现：
+      ① `bongocat-config`：`ShortcutConfig` 新增 `commands_enabled`（与 `commands` 同段，命名对齐；
+        默认 `true`，因此改为手写 `Default`——派生 `Default` 会把全新配置判成"窗口快捷键已关闭"），
+        `canonicalized()` 原样透传，`active_bindings` 按它过滤 `commands`。门禁只投影、不改写绑定，
+        且这是"此刻生效的绑定"的唯一投影点（模型侧的活动模型过滤也在这里），应用层与平台层不再判第二次。
+      ② `bongocat-app`：`Application::set_command_shortcuts_enabled`、settings worker 的新命令分支、
+        snapshot 新增 `command_shortcuts_enabled`。`shortcut_config_from_settings` 多接一个
+        `commands_enabled` 参数，由调用方（`set_shortcuts`、`suspend_shortcut_capture`）从当前配置传入：
+        绑定表由 UI 重建，若在那里写死默认值，录制或清空快捷键会把窗口快捷键在用户背后重新打开。
+      ③ `bongocat-ui`：`SetCommandShortcutsEnabled`、`SettingValue::CommandShortcutsEnabled`、
+        `PendingOperation::CommandShortcuts`、`SettingsView::set_command_shortcuts_enabled`（异步与阻塞
+        两个入口）。`ShortcutScope` 新增 `gate_label`（该作用域的开关标题）、`is_enabled`（配置真值，
+        不做取反）、`gate_item`（分组第一行），`group()` 用后者装配；「交互」页的模型开关与它的无障碍
+        节点一并删除。开关是正向字段的直出：可见开关、无障碍节点的 `toggled`、开关发出的命令读同一个
+        布尔值，全链路没有取反。两个开关**只带标题、不带描述**（第 97 项的规则：标题已能表达清楚的
+        设置项不再重复写一遍）。
+      ④ 无障碍：新增节点 id `54`（`ACCESSIBILITY_COMMAND_SHORTCUTS`）与对应焦点句柄（tab index
+        `98`/`99`，行列表从 `100` 起）。两个门禁节点从「交互」页的节点块搬到「快捷键」页，并按页面
+        顺序插在各自作用域的行之前：窗口门禁、窗口行、模型门禁、模型行；行的切分点用
+        `window_shortcut_rows(..).len()`，与 `row_index_offset`、tab 序号、节点编号同一条行序。
+        可见开关与无障碍节点读同一份 `gate_label`，不出现第二份措辞；节点不带 value，因为行没有描述。
+      ⑤ 文案：新增 `shortcuts.switches.enable_window_shortcuts.label` 与
+        `shortcuts.switches.enable_model_shortcuts.label`（中英同步，只有 label），删除
+        `settings.model_interaction.behavior_shortcuts.{label,description}`；两个 locale 均为 290 键。
+      ⑥ 配置契约：`config.schema.json` 的 `$defs.shortcuts` 增加必填 `commands_enabled`，14 个配置
+        fixture 同步补字段（`spikes/config-store` 的配置副本也同步，否则它与共享 fixture 对拍的用例
+        会失败——该 spike 是独立 workspace，不在 `just check` 范围内，本次单独跑过）。
+    - 验收证据（2026-09-21，本机 macOS / aarch64）：
+      ① `cargo test --locked --workspace` 全绿（20 个 test 目标、0 failed；7 ignored 为既有的平台
+        实机用例）。新增 4 个用例：`bongocat-config` 的
+        `the_command_gate_empties_the_live_table_without_touching_the_bindings`（门禁清空投影、绑定与
+        行为半边不动、默认值为 `true`）、`bongocat-app` 的
+        `the_command_gate_keeps_the_recorded_bindings_and_only_leaves_the_table`（关闭后平台表不再
+        resolve 该 chord、配置里绑定仍在、重新打开即恢复、模型侧开关不受影响）、`bongocat-ui` 的
+        `command_shortcuts_command_preserves_typed_state`（命令通道与类型化回复）与
+        `shortcut_scope_gates_have_their_own_localized_label`（作用域各自有非空且互不相同的标题）。
+      ② `cargo fmt -p bongocat-ui -p bongocat-config -p bongocat-app -p bongocat-platform -p bongocat-i18n
+        -- --check` 全部通过；三段 clippy（workspace 去掉 `bongocat-app`、`bongocat-app` 的
+        `storage-test-injection` 与 `production`）`-D warnings` 全部通过；
+        `cargo check --locked --workspace --release` 通过。
+      ③ Python 校验器：`validate-locales.py`（290 键/双语言一致）、`validate-json-schema.py`（含 14 个
+        配置 fixture）、`validate-fixtures.py` 与 `tools/tests`（63 项）全部通过。
+      ④ 设置窗口 smoke：`cargo run --locked -p bongocat-app --release --features storage-test-injection
+        --target-dir target/storage-test-injection -- --settings-window-state-smoke` 退出码 `0`，输出
+        `Chinese General/Shortcuts/Models localization verified` 与
+        `settings window state restored after restart`。本项在 `show_shortcuts_page_for_smoke` 新增了
+        门禁断言：两个门禁节点的 role/label/toggled 必须与可见开关同源（`toggled` 就是配置真值，
+        节点也没有 value——行没有描述），节点顺序必须是"窗口门禁 → 窗口行 → 模型门禁 → 模型行"。
+      ⑤ 变异验证（两次，均按内容哈希校验还原后复绿）：
+        A. 让 `active_bindings` 忽略门禁（`commands: self.commands.clone()`）：config 用例以
+          `assertion failed: gated.commands.is_empty()` 变红，app 用例同时变红——失败点是
+          `crates/bongocat-app/src/lib.rs:3158` 的 `"the gate must empty the platform table"`，即门禁
+          没有清空平台表；还原后哈希回到 `76709792…`。
+        B. 把门禁节点的 `toggled` 改成与配置相反（`!scope.is_enabled(..)`）：state smoke 以退出码 `1`
+          失败并打印 `settings window did not apply Shortcuts localization: shortcut gate
+          accessibility semantics diverged from the visible switch`，还原后哈希回到 `b4855b0f…`
+          且 smoke 复绿。
+    - 维护者复审后的方向修正：初版按"禁用×××"实现（取反收在 `is_disabled` 一处），维护者要求改成
+      "启用×××"并去掉描述行——正向直出更符合直觉，也确实更短。改动只落在 UI 与文案：配置字段、
+      门禁实现点、命令通道全部不变，`is_disabled` 换成 `is_enabled`（不再取反）、`gate_copy` 收成
+      `gate_label`。
+    - 有意保留的用户可见不对称：两个开关的默认状态不同（`启用窗口快捷键` 默认打开、
+      `启用模型快捷键` 默认关闭）。模型侧保持默认关闭是第 91 项记下的刻意收窄，本项不改；窗口侧默认
+      生效是因为关掉它等于产品失去唯一的快捷入口。改成"启用"方向后这一点读起来更自然：一个默认关闭
+      的"启用"开关就是模型快捷键的现状。若要反转模型侧默认值，那是独立的产品决策，只需改
+      `ModelConfig` 的默认值，UI 与门禁无需改动。
+    - 未运行：Windows 侧全部路径（本机无法执行 `cfg(windows)` 测试与 smoke）；开关在分组标题下方的
+      间距、`Enable window shortcuts` 在窄窗口下的换行、125/150/200% DPI 均无截图证据；"门禁关闭期间
+      录制新组合键"这条组合路径没有专门用例（现有用例覆盖关闭→表空→打开→恢复）。
+    - 同步文档：ADR-0052、Technical Design 的快捷键门禁两条、`shared/config/native-config-contract.md`
+      的字段表与门禁段、`docs/phase-0/behavior-inventory.md` 修订记录，以及两份 CHANGELOG 的
+      "✨ 新功能"与"🎨 界面与体验"。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

@@ -230,11 +230,25 @@ pub enum SelectedModelOrigin {
     Installed,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ShortcutConfig {
+    pub commands_enabled: bool,
     pub commands: Vec<ShortcutBinding>,
     pub model_behaviors: Vec<ModelBehaviorBinding>,
+}
+
+/// The spike mirrors the Native Rewrite contract, including its `Default`:
+/// a derived one would leave `commands_enabled` at `false` and disagree with
+/// `shared/config/fixtures/default.json`.
+impl Default for ShortcutConfig {
+    fn default() -> Self {
+        Self {
+            commands_enabled: true,
+            commands: Vec::new(),
+            model_behaviors: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

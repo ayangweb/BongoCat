@@ -2307,6 +2307,7 @@ mod tests {
         assert_eq!(map_key_code(u16::MAX), None);
 
         let shortcuts = bongocat_config::ShortcutConfig {
+            commands_enabled: true,
             commands: vec![bongocat_config::ShortcutBinding {
                 command: "toggle_overlay".to_owned(),
                 shortcut: "Meta+A".to_owned(),

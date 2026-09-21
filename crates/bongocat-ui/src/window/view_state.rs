@@ -222,7 +222,11 @@ impl SettingsView {
             release_fallback_decrease_focus: cx.focus_handle().tab_index(39).tab_stop(true),
             release_fallback_increase_focus: cx.focus_handle().tab_index(40).tab_stop(true),
             audio_focus: cx.focus_handle().tab_index(11).tab_stop(true),
-            behavior_shortcuts_focus: cx.focus_handle().tab_index(19).tab_stop(true),
+            // Both shortcut gates live on the Shortcuts page, right above the
+            // rows they gate: the capture rows start at 100, so these two sit
+            // immediately before them in the tab order.
+            command_shortcuts_focus: cx.focus_handle().tab_index(98).tab_stop(true),
+            behavior_shortcuts_focus: cx.focus_handle().tab_index(99).tab_stop(true),
             mirror_focus: cx.focus_handle().tab_index(6).tab_stop(true),
             mirror_pointer_focus: cx.focus_handle().tab_index(7).tab_stop(true),
             ignore_pointer_focus: cx.focus_handle().tab_index(8).tab_stop(true),

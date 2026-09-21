@@ -174,13 +174,20 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   UI 生命周期。`open_settings` 通过线程安全的一次性请求位交给 GPUI frame source，后者在
   owner 线程切换设置窗口可见性：窗口已显示时隐藏，两个平台都复用同一个预渲染窗口，窗口不存在
   时才创建并显示。forwarder 必须支持有界停止与 join。
-- `model.enable_behavior_shortcuts` 默认 `false`，只控制 motion/expression 模型行为绑定是否进入
-  活动的 `CompiledShortcuts`，不得清空或改写配置中的绑定，也不得禁用 `open_settings`、overlay
-  显隐、镜像、穿透或置顶等应用级快捷键。开关变更必须经 revision-checked settings command 原子
-  持久化并替换共享 shortcut table；重新启用时从当前 v1 配置恢复全部已校验的模型行为绑定。
-  默认关闭是对旧版行为的刻意收窄：旧版在模型加载完成后无条件为每个 motion 和 expression 自动
-  分配一整层 `primary + [Shift/Alt] + 数字/字母` 组合键，用户没有拒绝的机会。Native 按维护者
-  决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
+- 快捷键页面由两个带标题的 group 组成，每个 group 的第一行是它自己的门禁开关：`启用窗口快捷键`
+  （`shortcuts.commands_enabled`，默认 `true`）与 `启用模型快捷键`
+  （`model.enable_behavior_shortcuts`，默认 `false`）。两个门禁彼此独立，各自只决定对应的一半是否
+  进入活动的 `CompiledShortcuts`：都不清空、不改写配置中的绑定，因此重新打开时无需重录即可恢复
+  全部已校验绑定。门禁的唯一实现点是 `ShortcutConfig::active_bindings`——"此刻生效的绑定"的唯一
+  投影，模型侧的活动模型过滤也在同一处，应用层与平台层不得再判一次。门禁变更必须经
+  revision-checked settings command 原子持久化并替换共享 shortcut table。
+  两个开关都是正向字段的直出：UI、辅助功能节点、settings command 读同一个布尔值，全链路不存在取反；
+  开关只带标题、不带描述（标题已经表达了它的作用），因此两个分组第一行都是纯标题行。
+- `model.enable_behavior_shortcuts` 默认关闭是对旧版行为的刻意收窄：旧版在模型加载完成后无条件为
+  每个 motion 和 expression 自动分配一整层 `primary + [Shift/Alt] + 数字/字母` 组合键，用户没有
+  拒绝的机会。Native 按维护者决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
+  该开关只作用于 motion/expression 绑定，不得清空或改写配置中的绑定，也不得连带禁用
+  `open_settings`、overlay 显隐、镜像、穿透或置顶等应用级快捷键——应用级快捷键有它自己的开关。
 - 模型行为快捷键的自动分配与旧版同构：模型激活时（`prepare_model` / `select_model`）按声明顺序
   遍历该模型的 motion 与 expression，依次填入 `[primary]`、`[primary, Shift]`、`[primary, Alt]`、
   `[primary, Shift, Alt]` 四层、每层先数字后字母的组合键，共 144 个名额；`primary` 在 macOS 是
@@ -188,7 +195,8 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   + 该模型自身的绑定"，其它模型已占用的组合键不计入，因为同一时刻只有当前模型的绑定生效。已有绑定
   的行为永不重写，因此重复激活是幂等的，只有用户尚未录制的行为会被补上；同一作用域内已被占用的组合键
   跳过而非重用，否则 `shortcuts.conflict` 会让整份配置失效。分配结果随选中模型同一次 commit 落盘，
-  且不依赖 `model.enable_behavior_shortcuts`——绑定在快捷键页面可见可改，只是开关打开前不进入平台匹配表。
+  且不依赖 `model.enable_behavior_shortcuts`——绑定在快捷键页面可见可改，是否进入平台匹配表则由
+  同一分组第一行的 `启用模型快捷键` 开关决定。
 - 只有当前模型的绑定进入平台编译表。配置按模型保存绑定且跨模型允许复用同一组合键，所以
   `shortcuts.conflict` 是作用域内的判定（命令内唯一、同一模型内唯一、模型绑定不得与命令冲突），
   整份配置本身不是一张无歧义的表：`active_shortcuts` 先按当前模型投影再编译。`prepare_model` 与

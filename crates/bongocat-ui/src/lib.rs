@@ -456,6 +456,10 @@ pub struct SettingsSnapshot {
     pub overlay_visible: bool,
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
+    /// Whether the application command bindings are allowed to reach the
+    /// platform shortcut table. The shortcuts page renders it as the "disable
+    /// window shortcuts" switch above the command rows.
+    pub command_shortcuts_enabled: bool,
     pub behavior_shortcuts_enabled: bool,
     pub maximum_fps: u16,
     pub release_fallback_timeout_ms: u32,
@@ -1204,6 +1208,11 @@ pub enum SettingsCommand {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetCommandShortcutsEnabled {
+        expected_config_revision: u64,
+        enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetMaximumFps {
         expected_config_revision: u64,
         maximum_fps: u16,
@@ -1481,6 +1490,24 @@ impl SettingsClient {
         enabled: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::SetBehaviorShortcutsEnabled {
+            expected_config_revision,
+            enabled,
+            reply,
+        })
+        .await
+    }
+
+    /// Whether the application command bindings reach the platform table.
+    ///
+    /// The recorded bindings stay in the configuration and the model behaviour
+    /// gate is untouched: this switch only decides whether the command half of
+    /// the live table is populated.
+    pub async fn set_command_shortcuts_enabled(
+        &self,
+        expected_config_revision: u64,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetCommandShortcutsEnabled {
             expected_config_revision,
             enabled,
             reply,
@@ -1803,6 +1830,18 @@ impl SettingsClient {
         enabled: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetBehaviorShortcutsEnabled {
+            expected_config_revision,
+            enabled,
+            reply,
+        })
+    }
+
+    pub fn set_command_shortcuts_enabled_blocking(
+        &self,
+        expected_config_revision: u64,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetCommandShortcutsEnabled {
             expected_config_revision,
             enabled,
             reply,
@@ -2892,6 +2931,32 @@ mod tests {
     }
 
     #[test]
+    fn command_shortcuts_command_preserves_typed_state() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetCommandShortcutsEnabled {
+                expected_config_revision,
+                enabled,
+                reply,
+            } = endpoint.recv_blocking().expect("command shortcuts command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 9);
+            assert!(!enabled);
+            let mut result = snapshot(10, true, true);
+            result.command_shortcuts_enabled = false;
+            reply.respond(Ok(result)).expect("command shortcuts reply");
+        });
+
+        let result = client
+            .set_command_shortcuts_enabled_blocking(9, false)
+            .expect("command shortcuts snapshot");
+        assert!(!result.command_shortcuts_enabled);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
     fn settings_window_state_is_validated_and_shared_across_clones() {
         assert!(SettingsWindowPlacement::new(0, 0, 639, 600, false).is_none());
         assert!(SettingsWindowPlacement::new(1_000_001, 0, 800, 600, false).is_none());
@@ -2958,6 +3023,7 @@ mod tests {
             overlay_visible,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled,
+            command_shortcuts_enabled: true,
             behavior_shortcuts_enabled: true,
             maximum_fps: 60,
             release_fallback_timeout_ms: 500,

@@ -613,6 +613,9 @@ impl Render for SettingsView {
         // How the model reacts to what the user does: the two mirror switches
         // and the motion audio sit with the model they belong to, and the
         // pointer pair stays apart because it is about following the cursor.
+        // The model behaviour shortcut gate is not here: both shortcut gates
+        // live on the Shortcuts page, directly above the rows they gate, so
+        // nobody has to find the one that silences a list shown elsewhere.
         let interaction_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.interaction.title",
@@ -629,35 +632,6 @@ impl Render for SettingsView {
                     "settings.model_interaction.model.title",
                 ))
                 .items(vec![
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.model_interaction.behavior_shortcuts.label",
-                        ),
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.behavior_shortcuts_enabled)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_behavior_shortcuts_enabled(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.model_interaction.behavior_shortcuts.description",
-                    )),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),

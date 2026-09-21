@@ -14,6 +14,78 @@ pub(super) enum ShortcutScope {
 }
 
 impl ShortcutScope {
+    /// Whether this scope's bindings may reach the platform table.
+    ///
+    /// Both gates are configured positively and rendered as "enable …"
+    /// switches, so the switch, the accessibility node and the command it sends
+    /// all read the same configuration field — there is no inversion to keep in
+    /// step anywhere.
+    pub(super) fn is_enabled(self, snapshot: &SettingsSnapshot) -> bool {
+        match self {
+            Self::Window => snapshot.command_shortcuts_enabled,
+            Self::Model => snapshot.behavior_shortcuts_enabled,
+        }
+    }
+
+    /// The label of this scope's gate.
+    ///
+    /// The visible row and the accessibility node read the same string, so they
+    /// cannot drift apart, and the catalog scans find the literal because it is
+    /// written out in full rather than assembled from a suffix. The row carries
+    /// no description: "enable …" already says what the switch does, and a
+    /// second line would only be the label in other words.
+    pub(super) fn gate_label(self, language: SettingsLanguage) -> &'static str {
+        match self {
+            Self::Window => bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.switches.enable_window_shortcuts.label",
+            ),
+            Self::Model => bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.switches.enable_model_shortcuts.label",
+            ),
+        }
+    }
+
+    /// The switch that turns this scope's bindings off and on again.
+    ///
+    /// It is the first row of the scope's group, above the bindings it gates,
+    /// because the gate used to live on the Interaction page and a list of
+    /// chords that silently does nothing is the state that page produced.
+    /// Switching it back on never needs the chords to be recorded again: no
+    /// gate rewrites the bindings, they only stay out of the platform table.
+    fn gate_item(
+        self,
+        language: SettingsLanguage,
+        view: Entity<SettingsView>,
+        disabled: bool,
+    ) -> SettingItem {
+        SettingItem::new(
+            self.gate_label(language),
+            SettingField::switch(
+                {
+                    let view = view.clone();
+                    move |app| {
+                        view.read(app)
+                            .snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| self.is_enabled(snapshot))
+                    }
+                },
+                {
+                    let view = view.clone();
+                    move |enabled, app| {
+                        view.update(app, |view, cx| match self {
+                            Self::Window => view.set_command_shortcuts_enabled(enabled, cx),
+                            Self::Model => view.set_behavior_shortcuts_enabled(enabled, cx),
+                        });
+                    }
+                },
+            ),
+        )
+        .disabled(disabled)
+    }
+
     /// The name of this scope, used as its group heading and its sidebar entry.
     pub(super) fn title(self, language: SettingsLanguage) -> &'static str {
         bongocat_i18n::text(
@@ -83,21 +155,24 @@ pub(super) fn group(
         bongocat_i18n::text(language.catalog_locale(), "navigation.shortcuts.title").to_owned(),
         scope.title(language).to_owned(),
     ];
-    SettingGroup::new().title(scope.title(language)).item(
-        SettingItem::render({
-            let view = view.clone();
-            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
-                let snapshot = view.read(app).snapshot.clone();
-                let tokens = Tokens::from_theme(app);
-                view.update(app, move |view, cx| {
-                    view.page = SettingsPage::Shortcuts;
-                    content(view, window, cx, snapshot.as_ref(), scope, disabled, tokens)
-                })
-                .into_any_element()
-            }
-        })
-        .keywords(keywords),
-    )
+    SettingGroup::new()
+        .title(scope.title(language))
+        .item(scope.gate_item(language, view.clone(), disabled))
+        .item(
+            SettingItem::render({
+                let view = view.clone();
+                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                    let snapshot = view.read(app).snapshot.clone();
+                    let tokens = Tokens::from_theme(app);
+                    view.update(app, move |view, cx| {
+                        view.page = SettingsPage::Shortcuts;
+                        content(view, window, cx, snapshot.as_ref(), scope, disabled, tokens)
+                    })
+                    .into_any_element()
+                }
+            })
+            .keywords(keywords),
+        )
 }
 
 pub(super) fn content(

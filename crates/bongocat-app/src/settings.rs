@@ -762,6 +762,26 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetCommandShortcutsEnabled {
+                expected_config_revision,
+                enabled,
+                reply,
+            } => {
+                let result = require_operational(&application)
+                    .map_err(map_application_error)
+                    .and_then(|()| {
+                        if application.config_revision() != Some(expected_config_revision) {
+                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+                        } else {
+                            application
+                                .set_command_shortcuts_enabled(enabled)
+                                .map(|_| ())
+                                .map_err(map_application_error)
+                        }
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetMaximumFps {
                 expected_config_revision,
                 maximum_fps,
@@ -1345,6 +1365,7 @@ fn snapshot(
             keep_inside_screen: runtime.overlay_settings.keep_inside_screen,
         },
         motion_audio_enabled: runtime.motion_audio_enabled,
+        command_shortcuts_enabled: application.config().shortcuts.commands_enabled,
         behavior_shortcuts_enabled: application.config().model.enable_behavior_shortcuts,
         maximum_fps: runtime.maximum_fps,
         release_fallback_timeout_ms: runtime.release_fallback_timeout_ms,
@@ -2794,6 +2815,7 @@ mod tests {
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled: true,
+            command_shortcuts_enabled: true,
             behavior_shortcuts_enabled: true,
             maximum_fps: 60,
             release_fallback_timeout_ms: 500,

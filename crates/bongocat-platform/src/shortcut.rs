@@ -103,6 +103,7 @@ mod dispatcher_tests {
 
     fn compiled(shortcut: &str, command: &str) -> CompiledShortcuts {
         ShortcutConfig {
+            commands_enabled: true,
             commands: vec![ShortcutBinding {
                 command: command.to_owned(),
                 shortcut: shortcut.to_owned(),
@@ -999,6 +1000,7 @@ mod global {
         #[test]
         fn desired_registrations_preserve_targets_and_unique_ids() {
             let compiled = ShortcutConfig {
+                commands_enabled: true,
                 commands: vec![ShortcutBinding {
                     command: "toggle_overlay".to_owned(),
                     shortcut: "Control+Shift+B".to_owned(),
@@ -1041,6 +1043,7 @@ mod global {
                 .wait_for_revision(1, std::time::Duration::from_secs(1))
                 .expect("runtime ready");
             let compiled = ShortcutConfig {
+                commands_enabled: true,
                 commands: vec![ShortcutBinding {
                     command: "toggle_overlay".to_owned(),
                     shortcut: "Control+Alt+0".to_owned(),

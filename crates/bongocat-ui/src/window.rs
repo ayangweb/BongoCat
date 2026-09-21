@@ -193,6 +193,8 @@ const ACCESSIBILITY_LANGUAGE: AccessibilityNodeId = AccessibilityNodeId::new(40)
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_BEHAVIOR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(41);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+const ACCESSIBILITY_COMMAND_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(54);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RELEASE_FALLBACK_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(42);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ACCESSIBILITY_RELEASE_FALLBACK_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(43);
@@ -266,6 +268,7 @@ enum PendingOperation {
     OverlayCornerRadius,
     OverlayHoverHideDelay,
     MotionAudio,
+    CommandShortcuts,
     BehaviorShortcuts,
     MaximumFps,
     ReleaseFallbackTimeout,
@@ -570,6 +573,7 @@ pub struct SettingsView {
     release_fallback_decrease_focus: FocusHandle,
     release_fallback_increase_focus: FocusHandle,
     audio_focus: FocusHandle,
+    command_shortcuts_focus: FocusHandle,
     behavior_shortcuts_focus: FocusHandle,
     mirror_focus: FocusHandle,
     mirror_pointer_focus: FocusHandle,
@@ -1187,6 +1191,14 @@ impl SettingsView {
                         .set_motion_audio_enabled(expected_config_revision, enabled)
                         .await
                 }
+                Some(SettingValue::CommandShortcutsEnabled {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_command_shortcuts_enabled(expected_config_revision, enabled)
+                        .await
+                }
                 Some(SettingValue::BehaviorShortcutsEnabled {
                     expected_config_revision,
                     enabled,
@@ -1451,6 +1463,10 @@ enum SettingValue {
         settings: SettingsOverlay,
     },
     MotionAudioEnabled {
+        expected_config_revision: u64,
+        enabled: bool,
+    },
+    CommandShortcutsEnabled {
         expected_config_revision: u64,
         enabled: bool,
     },

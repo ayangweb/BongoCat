@@ -53,6 +53,7 @@ shortcuts
 | `model`       | `maximum_fps`                         | overlay 最大帧率                       |
 | `model`       | `ignore_pointer`                      | 模型求值忽略指针位置                   |
 | `model`       | `release_fallback_timeout_ms`         | 输入校正失败后的最后保险，不是主语义   |
+| `shortcuts`   | `commands_enabled`                    | 应用快捷键是否进入平台匹配表，默认 `true` |
 | `shortcuts`   | `commands`                            | 应用 command 到快捷键绑定              |
 | `shortcuts`   | `model_behaviors`                     | 模型动作/表情绑定                      |
 
@@ -90,6 +91,15 @@ typed platform snapshot，并仅在显式用户 command 时调用平台 adapter�
 `model.enable_behavior_shortcuts` 默认 `false`，只决定配置中的 `shortcuts.model_behaviors` 是否
 进入活动的 `CompiledShortcuts`：关闭时不改写、不删除这些绑定，只把它们排除在平台匹配表之外，
 `shortcuts.commands` 里的应用级快捷键不受影响；重新打开时无需重录即可恢复全部已校验绑定。
+
+`shortcuts.commands_enabled` 默认 `true`，是应用级快捷键的同类门禁：关闭时 `shortcuts.commands`
+不进入活动的 `CompiledShortcuts`，绑定同样不被改写或删除，`shortcuts.model_behaviors` 也不受
+影响；重新打开时无需重录。两个门禁彼此独立，各自由快捷键页面自己分组内第一行的开关控制。
+
+门禁的唯一实现点是 `ShortcutConfig::active_bindings`（"此刻生效的绑定"的唯一投影，模型侧的活动
+模型过滤也在同一处），应用层与平台层不再判第二次。设置页面的两个开关是"启用"方向，也就是正向字段
+的直出：可见开关、辅助功能节点、settings command 读同一个布尔值，全链路没有取反；两行都只带标题、
+不带描述（标题已经表达了它的作用）。
 
 默认关闭是对旧版行为的刻意收窄。旧版在模型加载完成后无条件为每个 motion 和 expression 自动分配
 一整层 `primary + [Shift/Alt] + 数字/字母` 组合键（`pre-refactor:src/composables/useModel.ts` 的

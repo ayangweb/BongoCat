@@ -34,6 +34,7 @@
     "release_fallback_timeout_ms": 500
   },
   "shortcuts": {
+    "commands_enabled": true,
     "commands": [{ "command": "  ", "shortcut": "Control+Alt+B" }],
     "model_behaviors": []
   }

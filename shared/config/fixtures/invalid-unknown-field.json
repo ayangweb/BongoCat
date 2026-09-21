@@ -34,5 +34,5 @@
     "ignore_pointer": false,
     "release_fallback_timeout_ms": 500
   },
-  "shortcuts": { "commands": [], "model_behaviors": [] }
+  "shortcuts": { "commands_enabled": true, "commands": [], "model_behaviors": [] }
 }

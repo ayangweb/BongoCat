@@ -662,18 +662,6 @@ impl SettingsView {
             }
             for (id, label, value, toggled) in [
                 (
-                    ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
-                    bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "settings.model_interaction.behavior_shortcuts.label",
-                    ),
-                    Some(bongocat_i18n::text(
-                        snapshot.resolved_language.catalog_locale(),
-                        "settings.model_interaction.behavior_shortcuts.description",
-                    )),
-                    snapshot.behavior_shortcuts_enabled,
-                ),
-                (
                     ACCESSIBILITY_MIRROR,
                     bongocat_i18n::text(
                         snapshot.resolved_language.catalog_locale(),
@@ -978,6 +966,79 @@ impl SettingsView {
             // describe this page's controls, so they assert here instead.
             let editing_disabled =
                 snapshot.configuration_status != SettingsConfigurationStatus::Ready;
+            // Both gates are the first row of their scope's group. They must
+            // read the same label as the visible switch and report the same
+            // configuration field, and they must be listed directly above the
+            // rows they gate — the gate used to sit on the Interaction page,
+            // where the chords it governs were a page away from it.
+            for (scope, id) in [
+                (
+                    shortcuts_page::ShortcutScope::Window,
+                    ACCESSIBILITY_COMMAND_SHORTCUTS,
+                ),
+                (
+                    shortcuts_page::ShortcutScope::Model,
+                    ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
+                ),
+            ] {
+                let node = tree
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .ok_or_else(|| "shortcuts page omitted one of its scope gates".to_owned())?;
+                if node.role != AccessibilityRole::Switch
+                    || node.label != scope.gate_label(snapshot.resolved_language)
+                    || node.value.is_some()
+                    || node.disabled != editing_disabled
+                    || node.supports_click != !editing_disabled
+                    || node.supports_focus != !editing_disabled
+                    || node.toggled
+                        != Some(if scope.is_enabled(snapshot) {
+                            AccessibilityToggle::On
+                        } else {
+                            AccessibilityToggle::Off
+                        })
+                {
+                    return Err(
+                        "shortcut gate accessibility semantics diverged from the visible switch"
+                            .to_owned(),
+                    );
+                }
+            }
+            let root = tree
+                .nodes
+                .iter()
+                .find(|node| node.id == tree.root)
+                .ok_or_else(|| "accessibility tree omitted its root node".to_owned())?;
+            let window_gate_index = root
+                .children
+                .iter()
+                .position(|id| *id == ACCESSIBILITY_COMMAND_SHORTCUTS)
+                .ok_or_else(|| "shortcuts page omitted the window shortcut gate".to_owned())?;
+            let model_gate_index = root
+                .children
+                .iter()
+                .position(|id| *id == ACCESSIBILITY_BEHAVIOR_SHORTCUTS)
+                .ok_or_else(|| "shortcuts page omitted the model shortcut gate".to_owned())?;
+            let first_window_row = root
+                .children
+                .iter()
+                .position(|id| *id == shortcut_accessibility_node_id(0))
+                .ok_or_else(|| "shortcuts page omitted its command shortcut rows".to_owned())?;
+            let model_gate_precedes_its_rows = model_rows.is_empty()
+                || root
+                    .children
+                    .iter()
+                    .position(|id| *id == shortcut_accessibility_node_id(window_rows.len()))
+                    .is_some_and(|first_model_row| model_gate_index < first_model_row);
+            if !(window_gate_index < first_window_row
+                && first_window_row < model_gate_index
+                && model_gate_precedes_its_rows)
+            {
+                return Err(
+                    "shortcut gates are not listed directly above the rows they gate".to_owned(),
+                );
+            }
             let capture_nodes = tree
                 .nodes
                 .iter()

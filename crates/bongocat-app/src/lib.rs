@@ -1008,7 +1008,8 @@ impl Application {
         shortcuts: bongocat_ui::SettingsShortcuts,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let mut next_config = self.config.clone();
-        next_config.shortcuts = shortcut_config_from_settings(shortcuts);
+        let commands_enabled = next_config.shortcuts.commands_enabled;
+        next_config.shortcuts = shortcut_config_from_settings(shortcuts, commands_enabled);
         next_config.shortcuts = next_config.shortcuts.canonicalized()?;
         next_config.validate()?;
         let compiled = active_shortcuts(&next_config, self.live_model_id())?;
@@ -1030,7 +1031,9 @@ impl Application {
         shortcuts_without_capture_target: bongocat_ui::SettingsShortcuts,
     ) -> Result<(), ApplicationError> {
         let mut temporary = self.config.clone();
-        temporary.shortcuts = shortcut_config_from_settings(shortcuts_without_capture_target);
+        let commands_enabled = temporary.shortcuts.commands_enabled;
+        temporary.shortcuts =
+            shortcut_config_from_settings(shortcuts_without_capture_target, commands_enabled);
         temporary.shortcuts = temporary.shortcuts.canonicalized()?;
         temporary.validate()?;
         let compiled = active_shortcuts(&temporary, self.live_model_id())?;
@@ -1056,6 +1059,30 @@ impl Application {
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.model.enable_behavior_shortcuts = enabled;
+        next_config.validate()?;
+        let compiled = active_shortcuts(&next_config, self.live_model_id())?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        let snapshot = self.runtime.client().snapshot();
+        self.config = next_config;
+        self.shortcut_table.replace(compiled);
+        self.config_revision = Some(next_revision);
+        Ok(snapshot)
+    }
+
+    /// Switches the application command shortcuts on or off.
+    ///
+    /// The recorded bindings stay in the configuration: the gate only decides
+    /// whether [`ShortcutConfig::commands`] reaches the platform table, so
+    /// turning it back on restores them without re-recording, exactly like the
+    /// model behaviour gate next to it. The two gates are independent.
+    pub fn set_command_shortcuts_enabled(
+        &mut self,
+        enabled: bool,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.shortcuts.commands_enabled = enabled;
         next_config.validate()?;
         let compiled = active_shortcuts(&next_config, self.live_model_id())?;
         let next_revision = self
@@ -1932,8 +1959,17 @@ fn assign_default_behavior_shortcuts(config: &mut NativeConfig, model: &Committe
     )
 }
 
-fn shortcut_config_from_settings(shortcuts: bongocat_ui::SettingsShortcuts) -> ShortcutConfig {
+/// Rebuild the shortcut section from what the settings window sent.
+///
+/// The payload carries bindings only, so the command gate is passed in
+/// separately: recording or clearing a chord must never switch the window
+/// shortcuts back on behind the user's back.
+fn shortcut_config_from_settings(
+    shortcuts: bongocat_ui::SettingsShortcuts,
+    commands_enabled: bool,
+) -> ShortcutConfig {
     ShortcutConfig {
+        commands_enabled,
         commands: shortcuts
             .commands
             .into_iter()
@@ -3077,6 +3113,71 @@ mod tests {
                 .load()
                 .resolve(modifiers, "1")
                 .is_some()
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    /// The command gate is a projection too: switching it off stops the
+    /// recorded command chords from reaching the platform table without
+    /// rewriting the configuration, so switching it back on restores them.
+    /// The model behaviour gate next to it stays untouched.
+    #[test]
+    fn the_command_gate_keeps_the_recorded_bindings_and_only_leaves_the_table() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application =
+            Application::start_with_layout(layout.clone()).expect("start application");
+        // Control+Alt+0 sits outside the primary tier, so the expectation below
+        // reads the same on macOS and Windows.
+        application
+            .set_shortcuts(bongocat_ui::SettingsShortcuts {
+                commands: vec![bongocat_ui::SettingsShortcutBinding {
+                    command: "toggle_overlay".to_owned(),
+                    shortcut: "Control+Alt+0".to_owned(),
+                }],
+                ..bongocat_ui::SettingsShortcuts::default()
+            })
+            .expect("persist user shortcuts");
+        let modifiers = bongocat_config::ShortcutModifiers::from_bits(
+            bongocat_config::ShortcutModifiers::CONTROL | bongocat_config::ShortcutModifiers::ALT,
+        )
+        .expect("valid modifiers");
+        let resolves = |application: &Application| {
+            application
+                .shortcut_table()
+                .load()
+                .resolve(modifiers, "0")
+                .is_some()
+        };
+        assert!(resolves(&application), "a recorded command is registered");
+        let behavior_gate = application.config().model.enable_behavior_shortcuts;
+
+        application
+            .set_command_shortcuts_enabled(false)
+            .expect("disable command shortcuts");
+        assert!(
+            !resolves(&application),
+            "the gate must empty the platform table"
+        );
+        assert_eq!(application.config().shortcuts.commands.len(), 1);
+        assert!(!application.config().shortcuts.commands_enabled);
+        assert_eq!(
+            application.config().model.enable_behavior_shortcuts,
+            behavior_gate,
+            "the model behaviour gate is a separate switch"
+        );
+        assert!(
+            std::fs::read_to_string(&layout.config)
+                .expect("persisted config")
+                .contains("\"commands_enabled\": false")
+        );
+
+        application
+            .set_command_shortcuts_enabled(true)
+            .expect("enable command shortcuts");
+        assert!(
+            resolves(&application),
+            "re-enabling must not need the chord recorded again"
         );
         application.shutdown().expect("clean shutdown");
     }

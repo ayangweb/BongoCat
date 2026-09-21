@@ -93,6 +93,37 @@ pub(super) fn model_catalog_accessibility_status_node(
     )
 }
 
+/// The accessibility node of one scope's shortcut gate.
+///
+/// Both gates are configured positively and rendered as "enable …" switches, so
+/// the switch reports exactly the configuration field — the same thing the
+/// visible row shows and the same thing the command writes. The label comes from
+/// the same source the row uses ([`shortcuts_page::ShortcutScope::gate_label`]),
+/// and the node carries no value because the row carries no description.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn shortcut_gate_accessibility_node(
+    scope: shortcuts_page::ShortcutScope,
+    id: AccessibilityNodeId,
+    snapshot: Option<&SettingsSnapshot>,
+    language: SettingsLanguage,
+    disabled: bool,
+) -> AccessibilityNode {
+    let mut node =
+        AccessibilityNode::new(id, AccessibilityRole::Switch, scope.gate_label(language))
+            .with_toggle(
+                if snapshot.is_some_and(|snapshot| scope.is_enabled(snapshot)) {
+                    AccessibilityToggle::On
+                } else {
+                    AccessibilityToggle::Off
+                },
+            )
+            .disabled(disabled);
+    if !disabled {
+        node = node.clickable().focusable();
+    }
+    node
+}
+
 impl SettingsView {
     pub(super) fn accessibility_tree(&self) -> AccessibilityTree {
         let focus = match self.page {
@@ -188,27 +219,6 @@ impl SettingsView {
         .disabled(disabled);
         if !disabled {
             audio_node = audio_node.clickable().focusable();
-        }
-        let mut behavior_shortcuts_node = AccessibilityNode::new(
-            ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
-            AccessibilityRole::Switch,
-            bongocat_i18n::text(
-                language.catalog_locale(),
-                "settings.model_interaction.behavior_shortcuts.label",
-            ),
-        )
-        .with_value(bongocat_i18n::text(
-            language.catalog_locale(),
-            "settings.model_interaction.behavior_shortcuts.description",
-        ))
-        .with_toggle(if snapshot.is_some_and(|s| s.behavior_shortcuts_enabled) {
-            AccessibilityToggle::On
-        } else {
-            AccessibilityToggle::Off
-        })
-        .disabled(disabled);
-        if !disabled {
-            behavior_shortcuts_node = behavior_shortcuts_node.clickable().focusable();
         }
         let model_settings = snapshot
             .map(|snapshot| snapshot.model_settings)
@@ -748,6 +758,34 @@ impl SettingsView {
                 node
             })
             .collect::<Vec<_>>();
+        // Both gates are the first row of their scope's group, directly above
+        // the rows they gate, so the tree lists them in the same order: window
+        // gate, window rows, model gate, model rows. The combined row list is
+        // split at the window scope's row count — the same offset the page
+        // numbers its tab order and accessibility node ids from.
+        let window_row_count = snapshot
+            .map(|snapshot| window_shortcut_rows(&snapshot.shortcuts).len())
+            .unwrap_or_default();
+        let command_shortcuts_node = shortcut_gate_accessibility_node(
+            shortcuts_page::ShortcutScope::Window,
+            ACCESSIBILITY_COMMAND_SHORTCUTS,
+            snapshot,
+            language,
+            disabled,
+        );
+        let behavior_shortcuts_node = shortcut_gate_accessibility_node(
+            shortcuts_page::ShortcutScope::Model,
+            ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
+            snapshot,
+            language,
+            disabled,
+        );
+        let mut window_shortcut_nodes = shortcut_nodes;
+        let model_shortcut_nodes =
+            window_shortcut_nodes.split_off(window_row_count.min(window_shortcut_nodes.len()));
+        let mut window_shortcut_node_ids = shortcut_node_ids;
+        let model_shortcut_node_ids = window_shortcut_node_ids
+            .split_off(window_row_count.min(window_shortcut_node_ids.len()));
         let mut root_children = vec![
             ACCESSIBILITY_GENERAL,
             ACCESSIBILITY_MODELS,
@@ -775,7 +813,6 @@ impl SettingsView {
             ACCESSIBILITY_RELEASE_FALLBACK_DECREASE,
             ACCESSIBILITY_RELEASE_FALLBACK_INCREASE,
             ACCESSIBILITY_AUDIO,
-            ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
             ACCESSIBILITY_MIRROR,
             ACCESSIBILITY_MIRROR_POINTER,
             ACCESSIBILITY_IGNORE_POINTER,
@@ -798,7 +835,10 @@ impl SettingsView {
         if recovery_status_node.is_some() {
             root_children.push(ACCESSIBILITY_CONFIG_RECOVERY);
         }
-        root_children.extend(shortcut_node_ids);
+        root_children.push(ACCESSIBILITY_COMMAND_SHORTCUTS);
+        root_children.extend(window_shortcut_node_ids);
+        root_children.push(ACCESSIBILITY_BEHAVIOR_SHORTCUTS);
+        root_children.extend(model_shortcut_node_ids);
         root_children.extend(shortcut_clear_node_ids);
         let mut nodes = std::iter::once(
             AccessibilityNode::new(
@@ -828,7 +868,6 @@ impl SettingsView {
             release_fallback_decrease_node,
             release_fallback_increase_node,
             audio_node,
-            behavior_shortcuts_node,
             mirror_node,
             mirror_pointer_node,
             ignore_pointer_node,
@@ -846,7 +885,10 @@ impl SettingsView {
             import_status_node,
         ])
         .collect::<Vec<_>>();
-        nodes.extend(shortcut_nodes);
+        nodes.push(command_shortcuts_node);
+        nodes.extend(window_shortcut_nodes);
+        nodes.push(behavior_shortcuts_node);
+        nodes.extend(model_shortcut_nodes);
         nodes.extend(shortcut_clear_nodes);
         if let Some(catalog_status_node) = catalog_status_node {
             nodes.push(catalog_status_node);
@@ -1000,6 +1042,11 @@ impl SettingsView {
             ACCESSIBILITY_AUDIO => {
                 if let Some(snapshot) = self.snapshot.as_ref() {
                     self.set_motion_audio_enabled(!snapshot.motion_audio_enabled, cx);
+                }
+            }
+            ACCESSIBILITY_COMMAND_SHORTCUTS => {
+                if let Some(snapshot) = self.snapshot.as_ref() {
+                    self.set_command_shortcuts_enabled(!snapshot.command_shortcuts_enabled, cx);
                 }
             }
             ACCESSIBILITY_BEHAVIOR_SHORTCUTS => {
@@ -1174,6 +1221,10 @@ impl SettingsView {
                 &self.release_fallback_increase_focus,
             ),
             (ACCESSIBILITY_AUDIO, &self.audio_focus),
+            (
+                ACCESSIBILITY_COMMAND_SHORTCUTS,
+                &self.command_shortcuts_focus,
+            ),
             (
                 ACCESSIBILITY_BEHAVIOR_SHORTCUTS,
                 &self.behavior_shortcuts_focus,

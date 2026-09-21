@@ -268,6 +268,14 @@
       "window": "窗口快捷键",
       "model": "模型快捷键"
     },
+    "switches": {
+      "enable_window_shortcuts": {
+        "label": "启用窗口快捷键"
+      },
+      "enable_model_shortcuts": {
+        "label": "启用模型快捷键"
+      }
+    },
     "actions": {
       "clear": "清除",
       "decrease_overlay_scale": "缩小模型窗口",
@@ -439,10 +447,6 @@
       },
       "pointer": {
         "title": "指针"
-      },
-      "behavior_shortcuts": {
-        "label": "模型行为快捷键",
-        "description": "允许使用全局快捷键触发模型动作和表情。"
       },
       "mirror_model": {
         "label": "水平镜像模型"

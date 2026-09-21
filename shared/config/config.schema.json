@@ -98,8 +98,9 @@
     "shortcuts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["commands", "model_behaviors"],
+      "required": ["commands_enabled", "commands", "model_behaviors"],
       "properties": {
+        "commands_enabled": { "type": "boolean" },
         "commands": { "type": "array", "items": { "$ref": "#/$defs/shortcut_binding" } },
         "model_behaviors": { "type": "array", "items": { "$ref": "#/$defs/model_behavior_binding" } }
       }

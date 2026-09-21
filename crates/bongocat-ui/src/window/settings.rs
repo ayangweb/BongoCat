@@ -463,6 +463,36 @@ impl SettingsView {
         );
     }
 
+    /// Whether the application command bindings reach the platform table.
+    ///
+    /// The Shortcuts page renders this gate as "disable window shortcuts", so
+    /// the row calls this with the configuration truth: `enabled` is what the
+    /// config stores, not what the switch shows.
+    pub(super) fn set_command_shortcuts_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        if self
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.command_shortcuts_enabled == enabled)
+        {
+            return;
+        }
+        self.start_request(
+            PendingOperation::CommandShortcuts,
+            Some(SettingValue::CommandShortcutsEnabled {
+                expected_config_revision,
+                enabled,
+            }),
+            cx,
+        );
+    }
+
     pub(super) fn set_behavior_shortcuts_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         let Some(expected_config_revision) = self
             .snapshot

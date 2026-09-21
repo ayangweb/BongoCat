@@ -348,11 +348,34 @@ pub enum SelectedModelOrigin {
     Installed,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ShortcutConfig {
+    /// Whether the application command bindings may reach the platform table.
+    ///
+    /// Defaults to `true`: the shortcuts page renders this gate as "disable
+    /// window shortcuts", so a fresh v1 configuration keeps every command
+    /// shortcut live. Turning it off excludes [`Self::commands`] from
+    /// [`Self::active_bindings`] and never rewrites or clears the recorded
+    /// bindings, so turning it back on restores them without re-recording.
+    /// Model behaviours have their own, independent gate
+    /// (`ModelConfig::enable_behavior_shortcuts`).
+    pub commands_enabled: bool,
     pub commands: Vec<ShortcutBinding>,
     pub model_behaviors: Vec<ModelBehaviorBinding>,
+}
+
+impl Default for ShortcutConfig {
+    /// A derived `Default` would leave `commands_enabled` at `false` and a
+    /// fresh configuration without any live command shortcut, which is the
+    /// opposite of what the gate means.
+    fn default() -> Self {
+        Self {
+            commands_enabled: true,
+            commands: Vec::new(),
+            model_behaviors: Vec::new(),
+        }
+    }
 }
 
 impl ShortcutConfig {
@@ -393,15 +416,19 @@ impl ShortcutConfig {
             })
             .collect::<Result<Vec<_>, ConfigError>>()?;
         Ok(Self {
+            commands_enabled: self.commands_enabled,
             commands,
             model_behaviors,
         })
     }
 
     /// The bindings that are live at the same moment: every application
-    /// command, plus the behaviors of at most one model.
+    /// command [`Self::commands_enabled`] admits, plus the behaviors of at most
+    /// one model.
     ///
-    /// Model behavior chords are only unique *inside* their own model. The
+    /// Command bindings are gated here rather than dropped from the
+    /// configuration, so switching them off and back on is lossless. Model
+    /// behaviour chords are only unique *inside* their own model. The
     /// configuration keeps a binding for every model the user has activated,
     /// and exactly one of them is active at a time — the shortcuts page shows
     /// that model's behaviors, and the dispatcher drops a target whose
@@ -416,7 +443,12 @@ impl ShortcutConfig {
     /// fire from.
     pub fn active_bindings(&self, active_model_id: Option<&str>) -> Self {
         Self {
-            commands: self.commands.clone(),
+            commands_enabled: self.commands_enabled,
+            commands: if self.commands_enabled {
+                self.commands.clone()
+            } else {
+                Vec::new()
+            },
             model_behaviors: self
                 .model_behaviors
                 .iter()
@@ -3012,6 +3044,7 @@ mod tests {
     #[test]
     fn shortcut_config_canonicalized_stabilizes_commands_behaviors_and_chords() {
         let config = ShortcutConfig {
+            commands_enabled: true,
             commands: vec![ShortcutBinding {
                 command: " toggle_overlay ".to_owned(),
                 shortcut: " shift + ctrl + b ".to_owned(),
@@ -3025,6 +3058,7 @@ mod tests {
         assert_eq!(
             config.canonicalized().expect("canonical shortcuts"),
             ShortcutConfig {
+                commands_enabled: true,
                 commands: vec![ShortcutBinding {
                     command: "toggle_overlay".to_owned(),
                     shortcut: "Control+Shift+B".to_owned(),
@@ -3120,6 +3154,7 @@ mod tests {
             shortcut: "Control+3".to_owned(),
         };
         let mut shortcuts = ShortcutConfig {
+            commands_enabled: true,
             commands: vec![ShortcutBinding {
                 command: "toggle_overlay".to_owned(),
                 shortcut: "ctrl+1".to_owned(),
@@ -3344,9 +3379,45 @@ mod tests {
         }
     }
 
+    /// The command gate is a projection, not a rewrite.
+    ///
+    /// Switched off it only keeps the commands out of the live table; the
+    /// recorded bindings stay in the configuration, so switching it back on
+    /// restores them without re-recording. The behaviour half of the same table
+    /// is untouched, because the two gates are independent.
+    #[test]
+    fn the_command_gate_empties_the_live_table_without_touching_the_bindings() {
+        let mut config = ShortcutConfig::default();
+        assert!(
+            config.commands_enabled,
+            "a fresh configuration keeps its command shortcuts live"
+        );
+        config.commands.push(ShortcutBinding {
+            command: "toggle_overlay".to_owned(),
+            shortcut: "Control+Shift+B".to_owned(),
+        });
+        config.model_behaviors.push(ModelBehaviorBinding {
+            model_id: "standard".to_owned(),
+            behavior_id: "expression:happy".to_owned(),
+            shortcut: "Alt+M".to_owned(),
+        });
+        assert_eq!(config.active_bindings(Some("standard")).commands.len(), 1);
+
+        config.commands_enabled = false;
+        let gated = config.active_bindings(Some("standard"));
+        assert!(gated.commands.is_empty());
+        assert_eq!(gated.model_behaviors, config.model_behaviors);
+        assert_eq!(config.commands.len(), 1);
+        assert!(gated.compile().is_ok());
+
+        config.commands_enabled = true;
+        assert_eq!(config.active_bindings(Some("standard")).commands.len(), 1);
+    }
+
     #[test]
     fn compiled_shortcuts_match_mapped_tokens_and_preserve_typed_targets() {
         let config = ShortcutConfig {
+            commands_enabled: true,
             commands: vec![ShortcutBinding {
                 command: "toggle_overlay".to_owned(),
                 shortcut: "ctrl+shift+b".to_owned(),
@@ -3394,6 +3465,7 @@ mod tests {
     #[test]
     fn compiled_shortcuts_reject_invalid_and_conflicting_bindings() {
         let invalid = ShortcutConfig {
+            commands_enabled: true,
             commands: vec![ShortcutBinding {
                 command: "unknown".to_owned(),
                 shortcut: "Control+A".to_owned(),
@@ -3406,6 +3478,7 @@ mod tests {
         ));
 
         let conflict = ShortcutConfig {
+            commands_enabled: true,
             commands: vec![ShortcutBinding {
                 command: "open_settings".to_owned(),
                 shortcut: "Control+A".to_owned(),

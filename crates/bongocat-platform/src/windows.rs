@@ -1849,6 +1849,7 @@ mod tests {
         assert_eq!(map_scan_code(0x7f, 0), None);
 
         let shortcuts = bongocat_config::ShortcutConfig {
+            commands_enabled: true,
             commands: vec![bongocat_config::ShortcutBinding {
                 command: "toggle_overlay".to_owned(),
                 shortcut: "Control+A".to_owned(),

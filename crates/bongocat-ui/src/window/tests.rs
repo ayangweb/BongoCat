@@ -1338,6 +1338,20 @@ fn shortcut_scope_titles_are_distinct_and_only_the_model_scope_has_an_empty_stat
     }
 }
 
+/// Every scope names its own gate. A missing label would draw a nameless switch
+/// above the rows, and a shared label would read as the same setting twice — on
+/// a page whose whole point is that each scope owns its own switch.
+#[test]
+fn shortcut_scope_gates_have_their_own_localized_label() {
+    for language in SettingsLanguage::ALL {
+        let window_label = ShortcutScope::Window.gate_label(language);
+        let model_label = ShortcutScope::Model.gate_label(language);
+        assert!(!window_label.is_empty());
+        assert!(!model_label.is_empty());
+        assert_ne!(window_label, model_label);
+    }
+}
+
 #[test]
 fn invalid_model_status_is_stable_and_path_free() {
     let entry = model_entry(
