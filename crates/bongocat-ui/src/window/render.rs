@@ -119,6 +119,11 @@ impl Render for SettingsView {
             || snapshot.is_none()
             || self.model_import.is_running()
             || !configuration_ready;
+        // The hover hide delay is inert while the switch above it is off, so its row
+        // renders disabled rather than accepting a value nothing reads.
+        let hover_hide_delay_available = snapshot
+            .as_ref()
+            .is_some_and(|snapshot| hover_hide_delay_applies(snapshot.overlay));
         let shortcuts = snapshot
             .as_ref()
             .map(|snapshot| snapshot.shortcuts.clone())
@@ -450,7 +455,8 @@ impl Render for SettingsView {
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
                         "settings.overlay.hide_on_pointer_hover_delay.description",
-                    )),
+                    ))
+                    .disabled(!hover_hide_delay_available),
                 ]),
             SettingGroup::new()
                 .title(bongocat_i18n::text(

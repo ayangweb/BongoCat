@@ -5224,6 +5224,44 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         Windows 125/150/200% 缩放下的截断风险未实机核对。
     - 未完成：Windows 实机设置窗口；润色后的标题与删除描述后的实际排版仍由人工查看背书。
 
+98. [x] `P1-HOVER-HIDE-DELAY-DEPENDENCY`：「鼠标悬停时隐藏」关闭时，悬停隐藏延迟不再可编辑。
+    - 背景（2026-09-21，维护者反馈）：设置窗口里「悬停隐藏延迟」一直可编辑，即使它所属的
+      「鼠标悬停时隐藏」开关是关的。
+    - 依据（来自既有事实，不是新增约定）：两个 overlay 后端都用
+      `enabled: options.hide_on_pointer_hover && input_running` 装配该行为
+      （`bongocat-overlay/src/{macos,windows}.rs`），因此开关关闭时这个延迟不会被任何代码读取；
+      用户仍应看到并保留已记录的秒数。据此把「该行现在是否适用」定为一条共享判定
+      `hover_hide_delay_applies(overlay)`（`bongocat-ui/src/window.rs`，紧邻 `stepped_overlay_*`），
+      三处都从它出发。
+    - 实现：
+      ① `render.rs`：该行按判定结果挂 `.disabled(…)`。gpui-component 的 `SettingItem::disabled` 把行
+        降到 50% 不透明度并把 `RenderOptions::disabled` 透给字段，`NumberField` 因此渲染成禁用
+        输入框（`NumberInput::disabled(options.is_disabled())`）；其余数值行的行为不变；
+      ② `accessibility.rs`：该行对应的两个步进节点（`…_HOVER_DELAY_DECREASE/INCREASE`）把同一判定
+        并入 `disabled` 与 `clickable()`/`focusable()` 门控，读屏软件听到的是「不可用」而非可点；
+      ③ `settings.rs`：`adjust_overlay_hover_hide_delay` 前置同一判定——步进节点已禁用，但无障碍
+        客户端仍可能基于开关切换前渲染的树发起点击，而延迟此刻不生效，所以该请求不改变任何值；
+      ④ `smoke.rs`：悬停延迟的期望状态加入 `!snapshot.overlay.hide_on_pointer_hover`，与树上的
+        `disabled`/`supports_click`/`supports_focus` 对齐。
+    - 刻意不改的部分：关闭开关不重置已记录的延迟（重新打开即恢复用户选择的值）；`hide_on_pointer_hover`
+      自身的语义不变；延迟没有全局快捷键，因此不需要额外的快捷键门禁。
+    - 新增断言：`bongocat-ui::the_hover_hide_delay_only_applies_while_the_switch_is_on`（开关关闭时
+      无论延迟是 0 还是 30 都不适用，打开时都适用——也就是判定键是开关而不是延迟值本身）。
+    - 验证（2026-09-21，本机 macOS / aarch64）：`cargo fmt --all -- --check` 通过；三段 clippy
+      `-D warnings` 通过；`cargo test --locked --workspace` 全绿（`bongocat-ui` 118 → 119、
+      `bongocat-i18n` 10，0 failed）；`cargo check --locked --workspace --release` 通过；
+      `tools/validate-locales.py`（288 key(s)）与 `tools/tests`（63 用例）通过；
+      `cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke`
+      退出码 0。该 smoke 用默认配置（`hide_on_pointer_hover: false`、延迟 0）运行，所以本次新门禁在
+      真机上被实际走过：改前 `ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE` 是可点状态，改后必须
+      是禁用，树与断言一致才会绿。
+    - 覆盖情况（如实说明）：
+      ① 开关**打开**的一侧没有自动化覆盖：smoke 用默认（关闭）配置跑，判定为真时的行状态只有上述
+        单元断言与代码本身背书；
+      ② 输入框禁用后的实际观感（50% 不透明度）未截图核对，仓库不做布局与视觉断言；
+      ③ Windows 实机未运行（本项未改平台代码）。
+    - 变更记录：CHANGELOG 的“鼠标悬停时隐藏”条目补充了「开关关闭时延迟不可编辑、已记录值保留」。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

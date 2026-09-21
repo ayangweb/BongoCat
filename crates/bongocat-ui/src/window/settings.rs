@@ -430,6 +430,12 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
+        // The steppers are disabled while the hide-on-hover switch is off, but an
+        // accessibility client can still act on a tree rendered before the switch
+        // changed: the delay is inert then, so the request changes nothing.
+        if !hover_hide_delay_applies(snapshot.overlay) {
+            return;
+        }
         let value = (i64::from(snapshot.overlay.hide_on_pointer_hover_delay_seconds)
             + i64::from(delta_seconds))
         .clamp(

@@ -664,6 +664,34 @@ fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
     assert!(!changed.keep_inside_screen);
 }
 
+/// The hover hide delay belongs to the switch above it.
+///
+/// Both overlay backends arm the behaviour with
+/// `options.hide_on_pointer_hover && input_running`, so the delay is only read while
+/// that switch is on. This pins the key the row reads for its own enabled state: the
+/// switch, not the delay's value — which is also why turning the switch off leaves the
+/// delay the user recorded untouched instead of resetting it.
+#[test]
+fn the_hover_hide_delay_only_applies_while_the_switch_is_on() {
+    for (hide_on_pointer_hover, delay_seconds, expected) in [
+        (false, 0, false),
+        (false, 30, false),
+        (true, 0, true),
+        (true, 30, true),
+    ] {
+        let overlay = SettingsOverlay {
+            hide_on_pointer_hover,
+            hide_on_pointer_hover_delay_seconds: delay_seconds,
+            ..SettingsOverlay::default()
+        };
+        assert_eq!(
+            hover_hide_delay_applies(overlay),
+            expected,
+            "{overlay:?} must follow the switch rather than the delay"
+        );
+    }
+}
+
 #[test]
 fn cancellation_requested_while_starting_reaches_the_created_operation() {
     let (client, _endpoint) = SettingsClient::bounded(1);

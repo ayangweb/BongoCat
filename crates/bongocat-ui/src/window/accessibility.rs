@@ -355,6 +355,9 @@ impl SettingsView {
         })
         .disabled(disabled);
         let hover_hide_delay_seconds = overlay_settings.hide_on_pointer_hover_delay_seconds;
+        // The same availability the row renders from: the delay is inert while the
+        // hide-on-hover switch is off, so both steppers report themselves unusable.
+        let hover_hide_delay_available = hover_hide_delay_applies(overlay_settings);
         let mut hover_hide_delay_decrease_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE,
             AccessibilityRole::Button,
@@ -368,7 +371,7 @@ impl SettingsView {
             "settings.overlay.hide_on_pointer_hover_delay.description",
         ))
         .with_value(format!("{hover_hide_delay_seconds}s"))
-        .disabled(disabled || hover_hide_delay_seconds == 0);
+        .disabled(disabled || !hover_hide_delay_available || hover_hide_delay_seconds == 0);
         let mut hover_hide_delay_increase_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE,
             AccessibilityRole::Button,
@@ -384,6 +387,7 @@ impl SettingsView {
         .with_value(format!("{hover_hide_delay_seconds}s"))
         .disabled(
             disabled
+                || !hover_hide_delay_available
                 || hover_hide_delay_seconds
                     >= bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS,
         );
@@ -392,12 +396,13 @@ impl SettingsView {
             click_through_node = click_through_node.clickable().focusable();
             keep_inside_screen_node = keep_inside_screen_node.clickable().focusable();
             hide_on_pointer_hover_node = hide_on_pointer_hover_node.clickable().focusable();
-            if hover_hide_delay_seconds > 0 {
+            if hover_hide_delay_available && hover_hide_delay_seconds > 0 {
                 hover_hide_delay_decrease_node =
                     hover_hide_delay_decrease_node.clickable().focusable();
             }
-            if hover_hide_delay_seconds
-                < bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS
+            if hover_hide_delay_available
+                && hover_hide_delay_seconds
+                    < bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS
             {
                 hover_hide_delay_increase_node =
                     hover_hide_delay_increase_node.clickable().focusable();

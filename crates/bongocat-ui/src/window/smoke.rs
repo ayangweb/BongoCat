@@ -562,10 +562,12 @@ impl SettingsView {
                     .ok_or_else(|| {
                         "accessibility tree omitted the hover hide delay setting".to_owned()
                     })?;
-                // The delay buttons disable themselves at the ends of the range,
-                // so the expected state is the shared control state or the
-                // per-button bound rather than the shared state alone.
-                let node_disabled = controls_disabled || bound_disabled;
+                // The delay buttons disable themselves at the ends of the range and
+                // while the hide-on-hover switch above the row is off, so the expected
+                // state is the shared control state, the switch, or the per-button
+                // bound rather than the shared state alone.
+                let node_disabled =
+                    controls_disabled || !snapshot.overlay.hide_on_pointer_hover || bound_disabled;
                 if node.role != AccessibilityRole::Button
                     || node.label != label
                     || node.description.as_deref()

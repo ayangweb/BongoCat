@@ -2063,6 +2063,18 @@ fn stepped_overlay_opacity(mut settings: SettingsOverlay, delta: i16) -> Setting
     settings
 }
 
+/// Whether the hover hide delay applies to the model window right now.
+///
+/// The overlay only reads the delay while "hide on pointer hover" is on — both
+/// platform backends arm the behaviour with
+/// `options.hide_on_pointer_hover && input_running` — so the delay row and its two
+/// steppers are inert the rest of the time. The recorded value is deliberately left
+/// alone: turning the switch back on restores the delay the user chose instead of a
+/// default, which is why nothing here resets it.
+fn hover_hide_delay_applies(overlay: SettingsOverlay) -> bool {
+    overlay.hide_on_pointer_hover
+}
+
 fn command_button(
     label: &'static str,
     focus: &FocusHandle,
