@@ -3020,6 +3020,13 @@ mod tests {
         }
     }
 
+    /// The same modifier as a config bit set, for the one test that drives the
+    /// runtime instead of reading a chord string back.
+    ///
+    /// Starting a rendering application is a macOS/Windows capability, so that
+    /// test is gated and this helper has no caller on Linux. Gate it the same
+    /// way rather than leaving a function the Linux lint sees as dead.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn behavior_shortcut_primary_modifiers() -> bongocat_config::ShortcutModifiers {
         let bits = if cfg!(target_os = "macos") {
             bongocat_config::ShortcutModifiers::META
