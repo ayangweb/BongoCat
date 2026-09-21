@@ -404,7 +404,10 @@ impl Application {
                 config_revision = Some(revision);
             }
         }
-        let shortcut_table = ShortcutTable::new(active_shortcuts(&config)?);
+        let shortcut_table = ShortcutTable::new(active_shortcuts(
+            &config,
+            config.model.selected_model_id.as_deref(),
+        )?);
         let (motion_audio, motion_audio_client) =
             match MotionAudioService::start(AUDIO_COMMAND_CAPACITY) {
                 Ok(service) => {
@@ -567,7 +570,35 @@ impl Application {
     /// Compile the currently committed shortcut bindings for a platform
     /// adapter. This is read-only and never performs registration or capture.
     pub fn compiled_shortcuts(&self) -> Result<CompiledShortcuts, ApplicationError> {
-        active_shortcuts(&self.config).map_err(ApplicationError::Config)
+        active_shortcuts(&self.config, self.live_model_id()).map_err(ApplicationError::Config)
+    }
+
+    /// The model whose behavior bindings are live: the one the runtime is
+    /// showing.
+    ///
+    /// This is tracked on the application instead of being read from
+    /// `config.model.selected_model_id`, because a fresh configuration has no
+    /// recorded selection while `restore_startup_model` still activates the
+    /// standard preset — and a selection whose resources were deleted by hand
+    /// stays recorded until the fallback commit lands.
+    fn live_model_id(&self) -> Option<&str> {
+        self.active_model_id.as_ref().map(ModelId::as_str)
+    }
+
+    /// Rebuild the platform-facing shortcut table from the committed
+    /// configuration, scoped to the model that is actually live.
+    ///
+    /// Best effort, like the assignments that feed it: a configuration that no
+    /// longer compiles leaves the previous table in place and the platform
+    /// keeps what it already registered.
+    fn refresh_shortcut_table(&mut self) {
+        let compiled = {
+            let active_model = self.active_model_id.as_ref().map(ModelId::as_str);
+            active_shortcuts(&self.config, active_model)
+        };
+        if let Ok(compiled) = compiled {
+            self.shortcut_table.replace(compiled);
+        }
     }
 
     pub fn shortcut_table(&self) -> ShortcutTable {
@@ -980,7 +1011,7 @@ impl Application {
         next_config.shortcuts = shortcut_config_from_settings(shortcuts);
         next_config.shortcuts = next_config.shortcuts.canonicalized()?;
         next_config.validate()?;
-        let compiled = active_shortcuts(&next_config)?;
+        let compiled = active_shortcuts(&next_config, self.live_model_id())?;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1002,7 +1033,8 @@ impl Application {
         temporary.shortcuts = shortcut_config_from_settings(shortcuts_without_capture_target);
         temporary.shortcuts = temporary.shortcuts.canonicalized()?;
         temporary.validate()?;
-        self.shortcut_table.replace(active_shortcuts(&temporary)?);
+        let compiled = active_shortcuts(&temporary, self.live_model_id())?;
+        self.shortcut_table.replace(compiled);
         self.shortcut_capture_suspended = true;
         Ok(())
     }
@@ -1011,7 +1043,8 @@ impl Application {
     /// after shortcut recording is abandoned.
     pub fn resume_shortcut_capture(&mut self) -> Result<(), ApplicationError> {
         if self.shortcut_capture_suspended {
-            self.shortcut_table.replace(active_shortcuts(&self.config)?);
+            let compiled = active_shortcuts(&self.config, self.live_model_id())?;
+            self.shortcut_table.replace(compiled);
             self.shortcut_capture_suspended = false;
         }
         Ok(())
@@ -1024,7 +1057,7 @@ impl Application {
         let mut next_config = self.config.clone();
         next_config.model.enable_behavior_shortcuts = enabled;
         next_config.validate()?;
-        let compiled = active_shortcuts(&next_config)?;
+        let compiled = active_shortcuts(&next_config, self.live_model_id())?;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1212,6 +1245,11 @@ impl Application {
             .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
         self.active_model_origin = Some(origin);
         self.active_model_id = Some(id);
+        // The model that just became live owns the behavior half of the
+        // platform table. Rebuilding here is what both swaps the previous
+        // model's chords out — they must stop working the moment the model
+        // stops being shown — and registers the incoming model's own chords.
+        self.refresh_shortcut_table();
         Ok(token)
     }
 
@@ -1245,6 +1283,12 @@ impl Application {
                 self.config_revision = Some(next_revision);
                 self.active_model_origin = Some(origin);
                 self.active_model_id = Some(id);
+                // Switching models swaps the behavior half of the platform
+                // table: the model being left must stop answering its shortcuts
+                // and the incoming one must answer its own immediately, without
+                // waiting for a restart or for the behavior switch to be
+                // toggled.
+                self.refresh_shortcut_table();
                 Ok(snapshot)
             }
             Err(error) => {
@@ -1556,6 +1600,10 @@ impl Application {
     /// and lets activation continue. Nothing is written when the model already
     /// has a binding for every behavior, which keeps the ordinary startup path
     /// read-only.
+    ///
+    /// The shortcut table is not touched here — the caller refreshes it once the
+    /// activation is known to have succeeded, so a failed activation cannot
+    /// leave the previous model's chords unregistered.
     fn persist_default_behavior_shortcuts(&mut self, model: &CommittedModel) {
         let mut next_config = self.config.clone();
         if assign_default_behavior_shortcuts(&mut next_config, model) == 0 {
@@ -1575,9 +1623,6 @@ impl Application {
         };
         self.config = next_config;
         self.config_revision = Some(next_revision);
-        if let Ok(compiled) = active_shortcuts(&self.config) {
-            self.shortcut_table.replace(compiled);
-        }
     }
 
     pub fn shutdown(self) -> Result<RuntimeSnapshot, ApplicationError> {
@@ -1816,12 +1861,28 @@ const fn model_settings_from_config(config: &NativeConfig) -> ModelSettings {
     }
 }
 
-fn active_shortcuts(config: &NativeConfig) -> Result<CompiledShortcuts, ConfigError> {
-    let mut shortcuts = config.shortcuts.clone();
-    if !config.model.enable_behavior_shortcuts {
-        shortcuts.model_behaviors.clear();
-    }
-    shortcuts.compile()
+/// The shortcut bindings the platform should have registered right now: every
+/// application command, plus the behaviors of the live model when the model
+/// behavior switch is on.
+///
+/// Model behaviors are scoped to exactly one model on purpose. The
+/// configuration keeps a binding for every model the user has activated, and
+/// each model counts its defaults from the first digit of the primary modifier
+/// — so two models can legitimately hold the same chord. Only the live model's
+/// half may reach the platform: registering every model's half would occupy
+/// chords that can never fire (the dispatcher drops a target whose model is not
+/// active) and would leave the platform's per-chord target map pointing at
+/// whichever model registered first.
+fn active_shortcuts(
+    config: &NativeConfig,
+    active_model: Option<&str>,
+) -> Result<CompiledShortcuts, ConfigError> {
+    let active_model = if config.model.enable_behavior_shortcuts {
+        active_model
+    } else {
+        None
+    };
+    config.shortcuts.active_bindings(active_model).compile()
 }
 
 /// The platform's command modifier, which the legacy auto-assignment used as the
@@ -3134,6 +3195,12 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let mut application =
             Application::start_with_layout(layout.clone()).expect("start application");
+        // A model behavior binding belongs to a model, and only the model that
+        // is live reaches the platform table, so this test has to activate one
+        // before its half of the table means anything.
+        application
+            .select_model(ModelOrigin::Preset, "standard")
+            .expect("select standard model");
         // A fresh v1 configuration leaves model behaviour shortcuts off, so the
         // enabled half of this test has to opt in before recording the binding.
         application
@@ -3183,12 +3250,99 @@ mod tests {
                 .is_none()
         );
         restarted
+            .select_model(ModelOrigin::Preset, "standard")
+            .expect("re-select standard model");
+        restarted
             .set_behavior_shortcuts_enabled(true)
             .expect("re-enable behavior shortcuts");
         let reenabled = restarted.shortcut_table().load();
         assert!(reenabled.resolve(modifiers, "B").is_some());
         assert!(reenabled.resolve(alt, "M").is_some());
         restarted.shutdown().expect("clean restarted shutdown");
+    }
+
+    /// The behavior half of the platform table belongs to one model at a time:
+    /// the model being switched to answers its own shortcuts immediately, and
+    /// the model being left stops answering its chords. Every model also counts
+    /// its own defaults from the first digit, so the two models legitimately
+    /// hold the same chords — which is only sound while the other half is not
+    /// registered.
+    #[test]
+    fn switching_models_swaps_the_behavior_half_of_the_shortcut_table() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        application
+            .set_behavior_shortcuts_enabled(true)
+            .expect("enable behavior shortcuts");
+        // Recorded before any model is active, so `standard` owns a chord no
+        // other model will be handed: outside the primary tier, so the
+        // expectation below reads the same on macOS and Windows.
+        application
+            .set_shortcuts(bongocat_ui::SettingsShortcuts {
+                commands: Vec::new(),
+                model_behaviors: vec![bongocat_ui::SettingsModelBehaviorBinding {
+                    model_id: "standard".to_owned(),
+                    behavior_id: "motion:CAT_motion:0".to_owned(),
+                    shortcut: "Control+Alt+9".to_owned(),
+                }],
+            })
+            .expect("persist a recorded shortcut");
+
+        application
+            .select_model(ModelOrigin::Preset, "standard")
+            .expect("select standard model");
+        application
+            .select_model(ModelOrigin::Preset, "keyboard")
+            .expect("select keyboard model");
+
+        let primary = behavior_shortcut_primary_name();
+        for model_id in ["standard", "keyboard"] {
+            let chords = application
+                .config()
+                .shortcuts
+                .model_behaviors
+                .iter()
+                .filter(|binding| binding.model_id == model_id)
+                .map(|binding| binding.shortcut.as_str())
+                .collect::<Vec<_>>();
+            assert!(
+                chords.contains(&format!("{primary}+1").as_str()),
+                "{model_id} counts its defaults from the first digit: {chords:?}"
+            );
+        }
+
+        let compiled = application.shortcut_table().load();
+        let behavior_targets = compiled
+            .iter()
+            .filter_map(|shortcut| match shortcut.target() {
+                bongocat_config::ShortcutTarget::ModelBehavior { model_id, .. } => {
+                    Some(model_id.as_str())
+                }
+                bongocat_config::ShortcutTarget::Application(_) => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            !behavior_targets.is_empty(),
+            "the live model's behaviors are registered"
+        );
+        assert!(
+            behavior_targets
+                .iter()
+                .all(|model_id| *model_id == "keyboard"),
+            "only the live model is registered, not the one being left: {behavior_targets:?}"
+        );
+
+        // The chord the model being left owned no longer reaches anything.
+        let recorded = bongocat_config::ShortcutModifiers::from_bits(
+            bongocat_config::ShortcutModifiers::CONTROL | bongocat_config::ShortcutModifiers::ALT,
+        )
+        .expect("valid modifiers");
+        assert!(
+            compiled.resolve(recorded, "9").is_none(),
+            "the previous model's chords must stop working on the switch"
+        );
+        application.shutdown().expect("clean shutdown");
     }
 
     #[test]

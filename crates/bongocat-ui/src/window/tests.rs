@@ -190,6 +190,54 @@ fn shortcut_capture_conflict_preview_is_order_independent() {
     );
 }
 
+/// Conflict is a property of bindings that are live at the same moment, not of
+/// the persisted configuration as a whole. Every model counts its own behavior
+/// defaults from the first digit of the primary modifier, so the same chord
+/// routinely appears under two models; only the model the user is on can
+/// conflict with itself, a command, or nothing else.
+#[test]
+fn shortcut_capture_conflicts_are_scoped_to_one_model() {
+    let binding =
+        |model_id: &str, behavior_id: &str, shortcut: &str| SettingsModelBehaviorBinding {
+            model_id: model_id.to_owned(),
+            behavior_id: behavior_id.to_owned(),
+            shortcut: shortcut.to_owned(),
+        };
+
+    let cross_model = SettingsShortcuts {
+        commands: Vec::new(),
+        model_behaviors: vec![
+            binding("standard", "motion:CAT_motion:0", "Control+1"),
+            binding("keyboard", "motion:CAT_motion:0", "ctrl+1"),
+        ],
+    };
+    assert_eq!(conflicting_shortcut(&cross_model), None);
+
+    let same_model = SettingsShortcuts {
+        commands: Vec::new(),
+        model_behaviors: vec![
+            binding("standard", "motion:CAT_motion:0", "Control+1"),
+            binding("standard", "motion:CAT_motion:1", "Control+1"),
+        ],
+    };
+    assert_eq!(
+        conflicting_shortcut(&same_model).as_deref(),
+        Some("Control+1")
+    );
+
+    let shadows_a_command = SettingsShortcuts {
+        commands: vec![SettingsShortcutBinding {
+            command: "toggle_overlay".to_owned(),
+            shortcut: "Control+1".to_owned(),
+        }],
+        model_behaviors: vec![binding("keyboard", "motion:CAT_motion:0", "Control+1")],
+    };
+    assert_eq!(
+        conflicting_shortcut(&shadows_a_command).as_deref(),
+        Some("Control+1")
+    );
+}
+
 #[test]
 fn shortcut_capture_targets_have_independent_tab_stops() {
     let active_model = SettingsModelKey {

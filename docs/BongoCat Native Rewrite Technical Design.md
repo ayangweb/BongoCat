@@ -180,10 +180,16 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - 模型行为快捷键的自动分配与旧版同构：模型激活时（`prepare_model` / `select_model`）按声明顺序
   遍历该模型的 motion 与 expression，依次填入 `[primary]`、`[primary, Shift]`、`[primary, Alt]`、
   `[primary, Shift, Alt]` 四层、每层先数字后字母的组合键，共 144 个名额；`primary` 在 macOS 是
-  Command、其它平台是 Control。已有绑定的行为永不重写，因此重复激活是幂等的，只有用户尚未录制
-  的行为会被补上；已被占用的组合键（含应用级 command 绑定）跳过而非重用，否则
-  `shortcuts.conflict` 会让整份配置失效。分配结果随选中模型同一次 commit 落盘，且不依赖
-  `model.enable_behavior_shortcuts`——绑定在快捷键页面可见可改，只是开关打开前不进入平台匹配表。
+  Command、其它平台是 Control。编号对每个模型独立从第一个名额开始——占用范围是"应用级 command 绑定
+  + 该模型自身的绑定"，其它模型已占用的组合键不计入，因为同一时刻只有当前模型的绑定生效。已有绑定
+  的行为永不重写，因此重复激活是幂等的，只有用户尚未录制的行为会被补上；同一作用域内已被占用的组合键
+  跳过而非重用，否则 `shortcuts.conflict` 会让整份配置失效。分配结果随选中模型同一次 commit 落盘，
+  且不依赖 `model.enable_behavior_shortcuts`——绑定在快捷键页面可见可改，只是开关打开前不进入平台匹配表。
+- 只有当前模型的绑定进入平台编译表。配置按模型保存绑定且跨模型允许复用同一组合键，所以
+  `shortcuts.conflict` 是作用域内的判定（命令内唯一、同一模型内唯一、模型绑定不得与命令冲突），
+  整份配置本身不是一张无歧义的表：`active_shortcuts` 先按当前模型投影再编译。`prepare_model` 与
+  `select_model` 都在激活成功后重建该表，因此被离开的模型立即停止触发它独占的组合键，被切到的模型
+  无需重启即可用自己的组合键，非活动模型的绑定也不再占用全局热键。
 - `application.show_status_icon` 通过独立的 revision-checked settings command 修改。settings worker
   以有界 request/reply bridge 请求平台主线程隐藏或显示状态图标，平台成功后才由 Application owner
   原子提交配置；配置提交失败时必须把图标恢复为旧状态。macOS/Windows 共用 `tray-icon 0.25.0` 托盘

@@ -458,22 +458,39 @@ pub(super) fn canonical_capture_key(key: &str) -> Option<String> {
     )
 }
 
+/// The first chord two *simultaneously live* bindings would fight over, if any.
+///
+/// The scopes mirror `NativeConfig::validate`: the application command list is
+/// one scope, each model's own behavior list is another, and a model behavior
+/// may not shadow a command either. Two models may hold the same chord — only
+/// one model's behaviors are live at a time, and every model counts its
+/// defaults from the first digit of the primary modifier — so a chord recorded
+/// for the model the user is not on is not a conflict.
 pub(super) fn conflicting_shortcut(shortcuts: &SettingsShortcuts) -> Option<String> {
-    let mut seen = BTreeSet::new();
+    let mut command_chords = BTreeSet::new();
     for chord in shortcuts
         .commands
         .iter()
         .map(|binding| binding.shortcut.as_str())
-        .chain(
-            shortcuts
-                .model_behaviors
-                .iter()
-                .map(|binding| binding.shortcut.as_str()),
-        )
         .filter_map(|value| ShortcutChord::parse(value).ok())
     {
         let canonical = chord.canonical();
-        if !seen.insert(canonical.clone()) {
+        if !command_chords.insert(canonical.clone()) {
+            return Some(canonical);
+        }
+    }
+    let mut model_chords: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    for binding in &shortcuts.model_behaviors {
+        let Some(chord) = ShortcutChord::parse(&binding.shortcut).ok() else {
+            continue;
+        };
+        let canonical = chord.canonical();
+        if command_chords.contains(&canonical)
+            || !model_chords
+                .entry(binding.model_id.as_str())
+                .or_default()
+                .insert(canonical.clone())
+        {
             return Some(canonical);
         }
     }

@@ -398,10 +398,42 @@ impl ShortcutConfig {
         })
     }
 
+    /// The bindings that are live at the same moment: every application
+    /// command, plus the behaviors of at most one model.
+    ///
+    /// Model behavior chords are only unique *inside* their own model. The
+    /// configuration keeps a binding for every model the user has activated,
+    /// and exactly one of them is active at a time — the shortcuts page shows
+    /// that model's behaviors, and the dispatcher drops a target whose
+    /// `model_id` is not the active one. Two models may therefore carry the
+    /// same chord, which is what lets each model count its own defaults from
+    /// the primary modifier's first digit.
+    ///
+    /// That also means compiling the whole configuration is ambiguous. This
+    /// projection is the input [`Self::compile`] expects; it is likewise what
+    /// keeps the chords of every other model out of the platform's global
+    /// hotkey registrations, where they would occupy chords they can never
+    /// fire from.
+    pub fn active_bindings(&self, active_model_id: Option<&str>) -> Self {
+        Self {
+            commands: self.commands.clone(),
+            model_behaviors: self
+                .model_behaviors
+                .iter()
+                .filter(|binding| Some(binding.model_id.as_str()) == active_model_id)
+                .cloned()
+                .collect(),
+        }
+    }
+
     /// Compile persisted bindings once at the configuration/platform
     /// boundary. The resulting table contains only closed, typed targets;
     /// platform adapters can match a mapped key token without reparsing
     /// user-controlled strings on an input callback.
+    ///
+    /// A compiled table must be unambiguous, so a configuration that carries
+    /// several models is projected onto the live one with [`Self::active_bindings`]
+    /// before it gets here.
     pub fn compile(&self) -> Result<CompiledShortcuts, ConfigError> {
         CompiledShortcuts::compile(self)
     }
@@ -465,21 +497,28 @@ fn canonical_chord(value: &str) -> Option<String> {
 ///
 /// The legacy implementation ran this on every model load: it walked the
 /// model's motions in declaration order, then its expressions, and bound each
-/// unbound one to the next chord of the tiering above. Two deliberate
-/// differences from that implementation:
+/// unbound one to the next chord of the tiering above. Deliberate differences
+/// from that implementation:
 ///
-/// - A chord any binding already uses is skipped instead of reused. The legacy
-///   implementation indexed by position, so once a user edited one binding the
-///   next behavior could be handed a chord that was already taken; the Native
-///   configuration rejects duplicate chords outright, which would make the
-///   whole configuration invalid rather than merely ambiguous.
-/// - Application command bindings count as taken too. The legacy
-///   implementation kept window and behavior shortcuts in separate stores even
-///   though both were registered globally, so the two could collide.
+/// - A chord any binding already uses **in the same scope** is skipped instead
+///   of reused. The legacy implementation indexed by position, so once a user
+///   edited one binding the next behavior could be handed a chord that was
+///   already taken; the Native configuration rejects duplicate chords within a
+///   scope outright, which would make the whole configuration invalid rather
+///   than merely ambiguous. The scope is the model being assigned plus the
+///   application command bindings: another model's chords do not count,
+///   because only one model's behaviors are live at a time and every model is
+///   meant to count its own defaults from the primary modifier's first digit.
+/// - Application command bindings count as taken. The legacy implementation
+///   kept window and behavior shortcuts in separate stores even though both
+///   were registered globally, so the two could collide. Commands are live
+///   regardless of which model is active, so they stay in scope here.
 ///
 /// An existing binding is never rewritten, which is what makes this safe to
 /// repeat on every activation: only behaviors the user has not touched are
-/// filled in.
+/// filled in. `position` counts from zero for every call, so activating a
+/// second model restarts at the first chord rather than continuing where the
+/// previous model stopped.
 pub fn assign_default_behavior_shortcuts(
     shortcuts: &mut ShortcutConfig,
     model_id: &str,
@@ -494,6 +533,7 @@ pub fn assign_default_behavior_shortcuts(
             shortcuts
                 .model_behaviors
                 .iter()
+                .filter(|binding| binding.model_id == model_id)
                 .filter_map(|binding| canonical_chord(&binding.shortcut)),
         )
         .collect();
@@ -1203,22 +1243,36 @@ impl NativeConfig {
                 .parse_action()
                 .map_err(|_| ConfigError::InvalidValue("shortcuts.behavior"))?;
         }
-        let mut canonical_shortcuts = std::collections::BTreeSet::new();
+        // A chord may be reused across models — only one model's behaviors are
+        // live at a time — but never twice inside one scope. The scopes are the
+        // application command list and each model's own behavior list. A model
+        // behavior may not shadow a command either, because commands are
+        // registered whatever the active model is.
+        let mut command_chords = std::collections::BTreeSet::new();
         for shortcut in self
             .shortcuts
             .commands
             .iter()
             .map(|binding| binding.shortcut.as_str())
-            .chain(
-                self.shortcuts
-                    .model_behaviors
-                    .iter()
-                    .map(|binding| binding.shortcut.as_str()),
-            )
         {
             let chord = ShortcutChord::parse(shortcut)
                 .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?;
-            if !canonical_shortcuts.insert(chord.canonical()) {
+            if !command_chords.insert(chord.canonical()) {
+                return Err(ConfigError::InvalidValue("shortcuts.conflict"));
+            }
+        }
+        let mut model_chords: std::collections::BTreeMap<&str, std::collections::BTreeSet<String>> =
+            std::collections::BTreeMap::new();
+        for binding in &self.shortcuts.model_behaviors {
+            let chord = ShortcutChord::parse(&binding.shortcut)
+                .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?;
+            let canonical = chord.canonical();
+            if command_chords.contains(&canonical)
+                || !model_chords
+                    .entry(binding.model_id.as_str())
+                    .or_default()
+                    .insert(canonical)
+            {
                 return Err(ConfigError::InvalidValue("shortcuts.conflict"));
             }
         }
@@ -3108,8 +3162,10 @@ mod tests {
         );
         assert_eq!(shortcuts, unchanged);
 
-        // A different model starts from its own empty set of bindings, but still
-        // avoids every chord the first model already owns.
+        // A different model counts from the first slot of its own scope. The
+        // first model's chords do not push it forward — only one model's
+        // behaviors are live at a time — but the application command binding
+        // still counts, because commands are live whatever the active model is.
         let other = ["expression:happy".to_owned()];
         assert_eq!(
             assign_default_behavior_shortcuts(&mut shortcuts, "keyboard", &other, control),
@@ -3121,11 +3177,104 @@ mod tests {
                 .last()
                 .expect("assigned binding")
                 .shortcut,
-            "Control+5"
+            "Control+2"
         );
+
+        // Both models now hold `Control+2`, so the whole configuration is no
+        // longer an unambiguous table: only the projection onto one live model
+        // is compilable.
+        assert!(matches!(
+            shortcuts.compile(),
+            Err(ConfigError::InvalidValue("shortcuts.conflict"))
+        ));
+        for model_id in ["standard", "keyboard"] {
+            shortcuts
+                .active_bindings(Some(model_id))
+                .compile()
+                .unwrap_or_else(|error| panic!("{model_id} compiles on its own: {error:?}"));
+        }
         shortcuts
+            .active_bindings(None)
             .compile()
-            .expect("cross-model chords do not conflict");
+            .expect("commands compile on their own");
+    }
+
+    #[test]
+    fn default_behavior_assignment_numbers_each_model_from_the_first_slot() {
+        let control = ShortcutModifiers::CONTROL;
+        let mut shortcuts = ShortcutConfig::default();
+        let first = (0..7)
+            .map(|index| format!("motion:first:{index}"))
+            .collect::<Vec<_>>();
+        let second = (0..7)
+            .map(|index| format!("motion:second:{index}"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            assign_default_behavior_shortcuts(&mut shortcuts, "standard", &first, control),
+            7
+        );
+        assert_eq!(
+            assign_default_behavior_shortcuts(&mut shortcuts, "keyboard", &second, control),
+            7
+        );
+
+        for model_id in ["standard", "keyboard"] {
+            let chords = shortcuts
+                .model_behaviors
+                .iter()
+                .filter(|binding| binding.model_id == model_id)
+                .map(|binding| binding.shortcut.as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                chords,
+                (1..=7)
+                    .map(|slot| format!("Control+{slot}"))
+                    .collect::<Vec<_>>(),
+                "{model_id} numbers its own defaults from the first digit"
+            );
+        }
+    }
+
+    #[test]
+    fn config_allows_cross_model_chords_and_rejects_scope_conflicts() {
+        let binding = |model_id: &str, behavior_id: &str, shortcut: &str| ModelBehaviorBinding {
+            model_id: model_id.to_owned(),
+            behavior_id: behavior_id.to_owned(),
+            shortcut: shortcut.to_owned(),
+        };
+
+        // The same chord in two models is what per-model numbering produces.
+        let mut config = NativeConfig::default();
+        config.shortcuts.model_behaviors = vec![
+            binding("standard", "motion:a:0", "Control+1"),
+            binding("keyboard", "motion:b:0", "Control+1"),
+        ];
+        config
+            .validate()
+            .expect("two models may share a chord, only one is live");
+
+        // Twice inside one model is still a conflict.
+        config.shortcuts.model_behaviors = vec![
+            binding("standard", "motion:a:0", "Control+1"),
+            binding("standard", "motion:a:1", "Control+1"),
+        ];
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue("shortcuts.conflict"))
+        ));
+
+        // A command is live whatever the active model is, so a model behavior
+        // may not shadow one.
+        config.shortcuts.commands = vec![ShortcutBinding {
+            command: "toggle_overlay".to_owned(),
+            shortcut: "Control+1".to_owned(),
+        }];
+        config.shortcuts.model_behaviors = vec![binding("standard", "motion:a:0", "Control+1")];
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue("shortcuts.conflict"))
+        ));
     }
 
     #[test]

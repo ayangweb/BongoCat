@@ -5262,6 +5262,60 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       ③ Windows 实机未运行（本项未改平台代码）。
     - 变更记录：CHANGELOG 的“鼠标悬停时隐藏”条目补充了「开关关闭时延迟不可编辑、已记录值保留」。
 
+99. [x] `P5-BEHAVIOR-SHORTCUT-PER-MODEL-SCOPE`：行为快捷键按模型作用域生效，每个模型从 `primary + 1`
+    独立编号。
+    - 背景（2026-09-21，维护者反馈）：切换模型后，上一个模型的行为快捷键仍应全部失效；并且每个模型
+      都应从 `Cmd+1`（macOS）/ `Ctrl+1` 重新编号，而不是多个模型接着一个序列往后排。
+    - 复现（读代码即可确认，已被既有测试钉住）：`assign_default_behavior_shortcuts` 的 `taken`
+      集合装了**配置里所有模型**的组合键。三个预置模型各有 7 个行为（2 组 motion 共 4 个 + 3 个
+      expression），于是 `standard` 拿到 `primary+1..7`，切到 `keyboard` 落到 `primary+8..14`，
+      再切 `gamepad` 落到 `primary+15..21`。旧测试
+      `default_behavior_assignment_skips_taken_chords_and_keeps_existing_bindings` 把"第二个模型
+      从 `Control+5` 开始"写成了预期。
+    - 同一根因的两个相邻缺陷：① `active_shortcuts` 只按 `enable_behavior_shortcuts` 过滤、不按当前
+      模型过滤，`desired_registrations` 把整张表逐个 `register`，于是 21 个全局热键里只有 7 个可能
+      触发，另外 14 个既抢占其它应用的组合键又永远只返回 `IgnoredInactiveModel`；②
+      `Application::select_model` 只提交配置、不重建 shortcut table（全仓库 `shortcut_table.replace`
+      原本只有 5 处，都不在 `select_model`），因此切换模型后新模型的快捷键要等重启或拨动开关才生效。
+    - 决策（维护者选定"允许跨模型复用同一组合键"）：`shortcuts.conflict` 从"全局唯一"收窄为
+      **作用域内**判定——命令内唯一、同一 `model_id` 内唯一、模型绑定不得与命令冲突。命令必须留在这个
+      作用域里，因为命令与当前模型无关，始终处于注册状态。
+    - 实现：
+      ① `bongocat-config`：`assign_default_behavior_shortcuts` 的 `taken` 只并入"命令绑定 + 该模型
+        自身绑定"；新增 `ShortcutConfig::active_bindings(active_model_id)` 做投影；`NativeConfig::validate`
+        按作用域判定冲突。`CompiledShortcuts::compile` 保持严格（拒绝任何重复 chord），因为一张已编译
+        的表必须无歧义——投影是它的前置条件，这一点写进了它的文档。
+      ② `bongocat-app`：`active_shortcuts(config, active_model)` 先投影再编译；新增
+        `refresh_shortcut_table()`（best effort）与 `live_model_id()`；`prepare_model`、`select_model`
+        在激活成功后重建表，`persist_default_behavior_shortcuts` 不再自己改表（否则激活失败会把
+        上一个模型的组合键提前撤下）。`active_model_id` 由死状态变为承载语义——不读
+        `config.model.selected_model_id`，因为全新配置没有选中项而 `restore_startup_model` 仍会激活
+        standard 预置。
+      ③ `bongocat-ui`：`conflicting_shortcut` 与配置校验同规则，录制时不再因为别的模型占了同一组合键
+        而报冲突。
+    - 验收证据（2026-09-21，本机 macOS / aarch64）：
+      ① `cargo test -p bongocat-config` 56 passed（1 ignored，原 54）；
+        `cargo test -p bongocat-app` 139 + 22 passed（lib 原 137）；
+        `cargo test -p bongocat-ui` 120 passed（原 119）；`cargo test --locked --workspace` 全绿；
+        `cargo fmt --all -- --check`、三段 clippy `-D warnings`、`cargo check --locked --workspace
+        --release` 通过；`tools/validate-{fixtures,json-schema,locales}.py` 与 `tools/tests`（63 用例）通过。
+      ② 变异验证 A：把 `assign_default_behavior_shortcuts` 里的 `.filter(|b| b.model_id == model_id)`
+        改成恒真后，`default_behavior_assignment_numbers_each_model_from_the_first_slot` 以
+        `keyboard = ["Control+8","Control+9","Control+0","Control+Shift+1",…]`（期望 `["Control+1"…"Control+7"]`）
+        变红，旧测试同时以 `left: "Control+5" / right: "Control+2"` 变红——正是维护者报告的现象。
+      ③ 变异验证 B：把 `active_shortcuts` 的投影换回 `config.shortcuts.clone().compile()` 后，
+        `switching_models_swaps_the_behavior_half_of_the_shortcut_table` 以
+        `only the live model is registered, not the one being left: ["standard" ×7]` 变红。
+      ④ `application_compiles_committed_shortcuts_for_platform_adapters` 补上了"必须先激活一个模型"
+        的前置：行为绑定属于某个模型，没有活动模型时它不该进入平台表，而这正是该测试原先在
+        非渲染 harness 下掩盖掉的部分。
+    - 未运行：Windows 侧同路径（本机无法执行 `cfg(windows)` 测试）；双平台实机确认"切走即失效、
+      切到即生效"的系统级注册/注销时序。分配与投影契约与平台无关，由上述单元测试覆盖；平台注册本身
+      仍只有 macOS 的 `--ignored` 实机用例。
+    - 同步文档：Technical Design「模型行为快捷键」两条、`shared/config/native-config-contract.md`
+      的自动分配差异与 chord 命名空间段、`docs/phase-0/behavior-inventory.md` 修订记录，以及两份
+      CHANGELOG 的"问题修复"。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |
