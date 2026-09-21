@@ -79,6 +79,8 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 - The settings window no longer talks about the app's internals. "Pointer" became "Mouse" wherever the setting is about your mouse: the Interaction page's group, the mirror and ignore rows, and the hover-hide row and its delay. "Key release fallback" became "Key release timeout", and it now says what it is for — the key is released on its own when no key-up event arrives within the time you set, so it never stays stuck. The status line no longer says it is connecting to a "runtime", and a setting that fails to apply says so directly. The update messages talk about "this version" instead of "this build", a release without a matching download now says there is no installer for this computer, and the configuration details say "configuration format" instead of "Schema". The text a screen reader reads uses the same wording.
 
+- Polished the settings copy further: importing the folder that contains the model library now says so and asks for a specific model folder instead of reporting that "the model source cannot be imported"; "Texture is invalid" becomes "Model texture is invalid" to match its siblings; the "System integration" group on the Application page is now "System icons", which is what the group holds; and the disk-full and model-busy errors say what actually happened. English error text is also consistently capitalised.
+
 - Model cards show only their cover image and the model's name. The texture, expression, and motion counts the card used to list are gone, and a card now shows extra text only when its package is invalid or a deletion is being confirmed.
 
 ### 💻 Platform Changes

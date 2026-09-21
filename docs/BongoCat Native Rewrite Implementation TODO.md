@@ -1612,11 +1612,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] 窗口：显示器、位置、缩放、透明度、置顶、穿透和显隐。
 - [ ] 模型：预置/用户模型、导入、删除、切换和兼容诊断。
   - 状态（2026-09-18）：页面按 ADR-0047 重做为「网格首位导入卡片 + 封面卡片」：每张卡片显示包内
-    `resources/cover.png`（无封面时占位）、标题与可用性，操作行提供选中、打开模型位置、编辑
+    `resources/cover.png`（无封面时占位）、标题与可用性，操作行提供选中、打开所在文件夹、编辑
     （改名/换封面）和删除（仅导入模型，两段确认）。新增
     `SetModelTitle`/`SetModelCover`/`OpenModelLocation` 三个 typed command、
     `SettingsModelEntry.directory`/`cover` 投影、`ModelStore::replace_cover` 与共享的包布局常量；
-    打开模型位置经 `ModelLocationCapability` 注入，与配置备份目录同一 seam。双平台实机点击与
+    打开所在文件夹经 `ModelLocationCapability` 注入，与配置备份目录同一 seam。双平台实机点击与
     `--settings-window-smoke` 仍未运行，因此总项保持未勾选。
   - 状态（2026-09-21）：删除不再要求用户先切走。`ModelRowActions::can_delete` 去掉 `!active`，
     installed 模型的删除按钮在任何时候都在；`Application::delete_model` 遇到当前 runtime active
@@ -4404,7 +4404,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 依赖：ADR-0047、ADR-0036（导入边界）、ADR-0037（Mver 转换写入的 `cover.png`）、
       当前 v1 `model.installed_models[].title`、`bongocat-model` 包布局、`bongocat-platform` 的
       `open_directory` 与 `opener`、GPUI 的 `img(PathBuf)` 本地文件加载。
-    - 退出条件：模型页展示每个模型的 `cover.png` 与标题并提供「打开模型位置」；表情入口移除；
+    - 退出条件：模型页展示每个模型的 `cover.png` 与标题并提供「打开所在文件夹」；表情入口移除；
       页面只支持切换/选择模型与编辑标题/封面；错误提示统一走通用 Notification 组件。
     - 实现说明（2026-09-18）：`bongocat-model` 新增 `PACKAGE_RESOURCES_DIRECTORY`、
       `PACKAGE_COVER_FILE`、`package_cover_path`（Mver 转换改用同一组常量，删除私有
@@ -4440,7 +4440,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `Size::Small`、确定用 `ButtonVariant::Primary`（危险语义由标题前的图标承载，按钮不走
       danger 色）。页面的 `model_delete_confirmation` 仍是
       唯一事实来源，只有「确定」路径才到 `delete_model`；`ModelRowAction` 的 `CancelDelete`
-      与卡片的确认态 tab stop 随之删除，卡片操作行恒为四个控件（选中 / 打开模型位置 / 编辑 /
+      与卡片的确认态 tab stop 随之删除，卡片操作行恒为四个控件（选中 / 打开所在文件夹 / 编辑 /
       删除）。文案 `models.delete_confirmation` 改为「你确定要删除这个模型吗？」，删
       `models.actions.confirm_deletion`。
     - 顺带修正（2026-09-21）：`model_delete_confirmation_is_valid` 原先只看「installed、非激活、
@@ -4892,8 +4892,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       逐项归属（2026-09-20 用脚本从两版 `render.rs` 重新数出，不是估的）：
       General 外观 2；Overlay = 行为 6（可见性、置顶、点击穿透、保持在屏幕内、悬停隐藏、悬停隐藏延迟）
       + 外观 3（缩放、不透明度、圆角）+ 性能 1（最大帧率）= 10；Interaction = 模型 3（行为快捷键、
-      镜像模型、动作音效）+ 指针 2（镜像指针跟随、忽略指针输入）= 5；Input = 键盘 1（按键释放兜底）
-      + 手柄 2（摇杆死区、扳机死区）= 3；Application = 运行状态 1 + 系统集成 2（状态图标、任务栏图标）
+      镜像模型、动作音效）+ 鼠标 2（镜像鼠标跟随、忽略鼠标输入）= 5；Input = 键盘 1（按键释放超时）
+      + 手柄 2（摇杆死区、扳机死区）= 3；Application = 运行状态 1 + 系统图标 2（状态图标、任务栏图标）
       + 启动与更新 2（自动检查更新、开机自启）= 5。合计 **25**，与拆分前"通用"页的
       外观 2 + 模型窗口 12 + 模型交互 4 + 输入 3 + 应用 4 = 25 对账一致。
       两处归属变化：`settings.runtime.title` 从"模型窗口"组移入 Application 页（在那里**不再单独设
@@ -5189,7 +5189,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       信息是否丢失。丢失则该信息必须留下——要么保留描述，要么写进标题。据此保留的描述都承载
       标题无法表达的内容：数值项的取值区间、悬停隐藏延迟及其中 0 的含义、「保持在屏幕内」可覆盖
       任务栏/程序坞等系统区域、悬停时淡出并移开后恢复、行为快捷键是全局快捷键且触发动作与表情、
-      按键释放兜底的失败语义与其 0 值、自动检查更新的 24 小时节奏、摇杆/扳机死区的定义，以及
+      按键释放超时的失败语义与其 0 值、自动检查更新的 24 小时节奏、摇杆/扳机死区的定义，以及
       登录项的失效与缺失修复提示。
     - 删除 15 个键（两个 locale 同步删除，各 303 → 288 键）：
       ① `settings.appearance.theme.description`、`settings.appearance.language.description`；
@@ -5603,10 +5603,31 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       ① 配置 schema 字段名与 Rust 标识符仍用 `pointer` / `fallback`
         （`PointerHoverHide`、`ReleaseFallbackTimeoutInvalid` 等），与 UI 文案不再同名；改它们属于
         schema 与 API 变更，不在本次范围内；
-      ② 文档里仍逐字引用旧文案：`docs/adr/0036-model-archive-import-boundary.md` 括号内的错误文案、
-        `docs/adr/0047-model-metadata-editing-boundary.md` 多处把按钮称作「打开模型位置」，以及
-        第 97 项等历史状态条目。它们是决策记录与历史记录，本次未改写，仅在此登记；
-      ③ 英文 `errors.settings.*` 首字母大小写不统一（部分大写、部分小写），本次未动。
+      ② 历史状态条目里逐字引用的"当时的值"保留不改（实例：上文的「归档无效配置并创建默认配置。」
+        与英文原文）——它们记录的是当时补回的确切文本，改写会使记录失真；
+      ③ `P2-KEY-RELEASE-FALLBACK` 条目名与其说的 runtime 特性、配置字段
+        `release_fallback_timeout_ms` 一致，保留"兜底"作为特性名，不随 UI 标签改名。
+    - 后续补充（2026-09-22，维护者选定"二轮打磨 + 英文大小写统一 + 文档同步"三项）：
+      ① 二轮打磨 5 条：`errors.settings.model_import_source_invalid`（原文「无法导入模型来源」
+        既拗口也不准确——该码只在所选文件夹包含模型库本身时产生，改为「所选文件夹包含模型库本身；
+        请改选具体的模型文件夹」）；`models.validation.texture_invalid`（「纹理无效」→
+        「模型纹理无效」，与同组其余校验消息的「模型 + 诊断」句式对齐）；
+        `settings.application.system.title`（「系统集成」→「系统图标」，该分组只含状态图标与
+        任务栏图标两行，原名表达的是实现视角）；`errors.settings.config_storage_full`
+        （「配置存储空间已满」→「存放配置的磁盘已满」）；`errors.settings.model_store_busy`
+        （「模型存储正忙」→「模型正在处理其他操作；请稍后重试」）。
+      ② 英文 `errors.settings.*` 38 条句首统一为大写：其余命名空间（status、models、update）
+        均句首大写，唯独这一组以小写开头，而这些文案是独立的通知正文。`SettingsError` 的
+        Display（与 catalog 英文逐字相同）与 5 处断言随动。
+      ③ 文档同步：ADR-0036 的错误文案引述、ADR-0047 的 5 处「打开模型位置」、本文件前部 4 处
+        「打开模型位置」，以及设置页逐项归属清单里的「指针 / 镜像指针跟随 / 忽略指针输入 /
+        按键释放兜底 / 系统集成」。Technical Design 与 config contract 里的「指针」（指针采样、
+        指针参数）、`状态校正`、`修订` 等**语义术语**一律未动——它们描述的是机制，不是界面文案；
+        遗留②③所列的历史记录与特性名也未改写。
+      验证（2026-09-22，本机 macOS / aarch64）：`cargo test -p bongocat-i18n`（11 用例，含两条
+      键守门）、`cargo test -p bongocat-ui --lib`（136 通过）、`cargo test -p bongocat-app --lib`
+      全绿；`tools/validate-locales.py` 286/286；`python3 -m unittest discover -s tools/tests`
+      63 用例全过；`just check` 六道门全过（34 目标 / 0 failed）。
 
 ## 13. 待决策清单
 

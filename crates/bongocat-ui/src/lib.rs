@@ -1050,77 +1050,77 @@ impl SettingsError {
 impl fmt::Display for SettingsError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self.code {
-            SettingsErrorCode::ServiceUnavailable => "settings service is unavailable",
+            SettingsErrorCode::ServiceUnavailable => "Settings service is unavailable",
             SettingsErrorCode::SnapshotOutdated => {
-                "settings changed in the background; review the latest settings and retry"
+                "Settings changed in the background; review the latest settings and retry"
             }
-            SettingsErrorCode::RuntimeUnavailable => "the setting did not take effect",
-            SettingsErrorCode::InvalidMaximumFps => "maximum FPS must be between 15 and 240",
+            SettingsErrorCode::RuntimeUnavailable => "The setting did not take effect",
+            SettingsErrorCode::InvalidMaximumFps => "Maximum FPS must be between 15 and 240",
             SettingsErrorCode::InvalidReleaseFallbackTimeout => {
-                "key release timeout must be between 0 and 60000 milliseconds"
+                "Key release timeout must be between 0 and 60000 milliseconds"
             }
             SettingsErrorCode::InvalidGamepadAxisSettings => {
-                "gamepad dead-zone settings are out of range"
+                "Gamepad dead-zone settings are out of range"
             }
             SettingsErrorCode::InvalidShortcutBindings => {
-                "shortcut bindings are invalid or conflict"
+                "Shortcut bindings are invalid or conflict"
             }
-            SettingsErrorCode::ConfigPersistFailed => "setting could not be saved",
+            SettingsErrorCode::ConfigPersistFailed => "Setting could not be saved",
             SettingsErrorCode::ConfigPermissionDenied => {
-                "the configuration file cannot be written; check permissions and retry"
+                "The configuration file cannot be written; check permissions and retry"
             }
             SettingsErrorCode::ConfigStorageFull => {
-                "configuration storage is full; free space and retry"
+                "The disk holding the configuration is full; free space and retry"
             }
             SettingsErrorCode::ConfigTargetOccupied => {
-                "the configuration location is in use; close the program using it and retry"
+                "The configuration location is in use; close the program using it and retry"
             }
             SettingsErrorCode::BackupLocationOpenFailed => {
-                "configuration backup folder could not be opened"
+                "Configuration backup folder could not be opened"
             }
             SettingsErrorCode::ConfigurationRecoveryRequired => {
-                "configuration must be recovered before this action"
+                "Configuration must be recovered before this action"
             }
             SettingsErrorCode::ConfigurationRecoveryFailed => {
-                "default configuration could not be restored"
+                "Default configuration could not be restored"
             }
-            SettingsErrorCode::ModelUnavailable => "selected model is unavailable",
-            SettingsErrorCode::ModelSwitchFailed => "selected model could not be activated",
-            SettingsErrorCode::ModelTitleInvalid => "model name is not usable",
+            SettingsErrorCode::ModelUnavailable => "Selected model is unavailable",
+            SettingsErrorCode::ModelSwitchFailed => "Selected model could not be activated",
+            SettingsErrorCode::ModelTitleInvalid => "Model name is not usable",
             SettingsErrorCode::PresetModelMetadataImmutable => {
-                "built-in model names and covers cannot be edited"
+                "Built-in model names and covers cannot be edited"
             }
-            SettingsErrorCode::ModelCoverInvalid => "cover image must be a PNG file",
-            SettingsErrorCode::ModelCoverUpdateFailed => "model cover could not be updated",
+            SettingsErrorCode::ModelCoverInvalid => "Cover image must be a PNG file",
+            SettingsErrorCode::ModelCoverUpdateFailed => "Model cover could not be updated",
             SettingsErrorCode::ModelSourcePickerUnavailable => {
-                "the file dialog could not be opened"
+                "The file dialog could not be opened"
             }
-            SettingsErrorCode::ModelLocationOpenFailed => "the model folder could not be opened",
-            SettingsErrorCode::InvalidModelId => "model id is invalid",
-            SettingsErrorCode::ModelAlreadyInstalled => "this model is already installed",
-            SettingsErrorCode::ModelImportInvalidPackage => "model package is invalid",
-            SettingsErrorCode::ModelImportSourceInvalid => "model source cannot be imported",
-            SettingsErrorCode::ModelImportSourceChanged => "model source changed during import",
+            SettingsErrorCode::ModelLocationOpenFailed => "The model folder could not be opened",
+            SettingsErrorCode::InvalidModelId => "Model id is invalid",
+            SettingsErrorCode::ModelAlreadyInstalled => "This model is already installed",
+            SettingsErrorCode::ModelImportInvalidPackage => "Model package is invalid",
+            SettingsErrorCode::ModelImportSourceInvalid => "The selected folder contains the model library itself; choose a specific model folder instead.",
+            SettingsErrorCode::ModelImportSourceChanged => "Model source changed during import",
             SettingsErrorCode::ModelImportSourceUnsupported => {
-                "the model source contains an unsupported file"
+                "The model source contains an unsupported file"
             }
-            SettingsErrorCode::ModelImportCancelled => "model import was cancelled",
-            SettingsErrorCode::ModelStoreBusy => "model storage is busy",
-            SettingsErrorCode::ModelImportFailed => "model could not be imported",
-            SettingsErrorCode::PresetModelCannotBeDeleted => "preset model cannot be deleted",
-            SettingsErrorCode::ModelNotInstalled => "installed model was not found",
-            SettingsErrorCode::ModelDeleteFailed => "installed model could not be deleted",
-            SettingsErrorCode::DiagnosticsExportFailed => "diagnostics could not be exported",
-            SettingsErrorCode::StartupItemUpdateFailed => "startup setting could not be updated",
+            SettingsErrorCode::ModelImportCancelled => "Model import was cancelled",
+            SettingsErrorCode::ModelStoreBusy => "Models are busy with another operation; try again in a moment",
+            SettingsErrorCode::ModelImportFailed => "Model could not be imported",
+            SettingsErrorCode::PresetModelCannotBeDeleted => "Preset model cannot be deleted",
+            SettingsErrorCode::ModelNotInstalled => "Installed model was not found",
+            SettingsErrorCode::ModelDeleteFailed => "Installed model could not be deleted",
+            SettingsErrorCode::DiagnosticsExportFailed => "Diagnostics could not be exported",
+            SettingsErrorCode::StartupItemUpdateFailed => "Startup setting could not be updated",
             SettingsErrorCode::StatusIconUpdateFailed => {
-                "the status icon display could not be updated"
+                "The status icon display could not be updated"
             }
             SettingsErrorCode::TaskbarIconUpdateFailed => {
-                "the taskbar icon display could not be updated"
+                "The taskbar icon display could not be updated"
             }
-            SettingsErrorCode::WindowHideFailed => "settings window could not be hidden",
-            SettingsErrorCode::StatePersistFailed => "window layout could not be saved",
-            SettingsErrorCode::ShutdownFailed => "application shutdown did not complete",
+            SettingsErrorCode::WindowHideFailed => "Settings window could not be hidden",
+            SettingsErrorCode::StatePersistFailed => "Window layout could not be saved",
+            SettingsErrorCode::ShutdownFailed => "Application shutdown did not complete",
         })
     }
 }
@@ -2615,19 +2615,19 @@ mod tests {
         for (code, expected) in [
             (
                 SettingsErrorCode::SnapshotOutdated,
-                "settings changed in the background; review the latest settings and retry",
+                "Settings changed in the background; review the latest settings and retry",
             ),
             (
                 SettingsErrorCode::ConfigPermissionDenied,
-                "the configuration file cannot be written; check permissions and retry",
+                "The configuration file cannot be written; check permissions and retry",
             ),
             (
                 SettingsErrorCode::ConfigStorageFull,
-                "configuration storage is full; free space and retry",
+                "The disk holding the configuration is full; free space and retry",
             ),
             (
                 SettingsErrorCode::ConfigTargetOccupied,
-                "the configuration location is in use; close the program using it and retry",
+                "The configuration location is in use; close the program using it and retry",
             ),
         ] {
             let message = SettingsError::new(code).to_string();

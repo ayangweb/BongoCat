@@ -118,7 +118,7 @@
       "package_layout_invalid": "模型包结构无效",
       "package_safety_limits_exceeded": "模型包超出安全限制",
       "model_definition_unsupported": "模型格式不受支持",
-      "texture_invalid": "纹理无效",
+      "texture_invalid": "模型纹理无效",
       "files_unavailable": "模型文件不可用",
       "resource_invalid": "模型资源无效"
     },
@@ -329,7 +329,7 @@
       "invalid_shortcut_bindings": "快捷键绑定无效或存在冲突",
       "config_persist_failed": "无法保存设置",
       "config_permission_denied": "无法写入配置文件；请检查权限后重试",
-      "config_storage_full": "配置存储空间已满；请释放空间后重试",
+      "config_storage_full": "存放配置的磁盘已满；请清理空间后重试",
       "config_target_occupied": "配置位置被占用；请关闭占用它的程序后重试",
       "backup_location_open_failed": "无法打开配置备份文件夹",
       "configuration_recovery_required": "执行此操作前必须恢复配置",
@@ -345,11 +345,11 @@
       "invalid_model_id": "模型 ID 无效",
       "model_already_installed": "该模型已安装",
       "model_import_invalid_package": "模型包无效",
-      "model_import_source_invalid": "无法导入模型来源",
+      "model_import_source_invalid": "所选文件夹包含模型库本身；请改选具体的模型文件夹。",
       "model_import_source_changed": "模型来源在导入期间发生变化",
       "model_import_source_unsupported": "模型来源中包含不支持的文件",
       "model_import_cancelled": "模型导入已取消",
-      "model_store_busy": "模型存储正忙",
+      "model_store_busy": "模型正在处理其他操作；请稍后重试",
       "model_import_failed": "无法导入模型",
       "preset_model_cannot_be_deleted": "无法删除预置模型",
       "model_not_installed": "找不到已安装模型",
@@ -477,7 +477,7 @@
     },
     "application": {
       "system": {
-        "title": "系统集成"
+        "title": "系统图标"
       },
       "updates": {
         "title": "启动与更新"

@@ -123,7 +123,7 @@
 一组稳定码"的收敛性，而不是为同一结果造第二套词汇。
 
 settings 层把新码映射到既有 `SettingsErrorCode::ModelImportSourceUnsupported`
-（"模型来源包含不支持的项目"），因此没有新增用户可见错误码。
+（"模型来源中包含不支持的文件"），因此没有新增用户可见错误码。
 
 ### 9. 依赖：`zip` 的 `deflate-flate2`，并显式依赖 `flate2`
 

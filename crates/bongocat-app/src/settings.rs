@@ -3482,7 +3482,7 @@ mod tests {
         assert_eq!(error.code(), SettingsErrorCode::BackupLocationOpenFailed);
         assert_eq!(
             error.to_string(),
-            "configuration backup folder could not be opened"
+            "Configuration backup folder could not be opened"
         );
         assert!(
             !error
@@ -4597,7 +4597,7 @@ mod tests {
         assert_eq!(error.code(), SettingsErrorCode::SnapshotOutdated);
         assert_eq!(
             error.to_string(),
-            "settings changed in the background; review the latest settings and retry"
+            "Settings changed in the background; review the latest settings and retry"
         );
         assert!(!error.to_string().contains('/') && !error.to_string().contains('\\'));
 

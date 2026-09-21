@@ -1462,7 +1462,7 @@ fn model_presentations_follow_the_resolved_language() {
     );
     let invalid_status = model_availability_status(&invalid, SettingsLanguage::ChineseSimplified)
         .expect("invalid models keep a diagnostic status");
-    assert_eq!(invalid_status, "已安装 · 纹理无效");
+    assert_eq!(invalid_status, "已安装 · 模型纹理无效");
 
     let import_status = model_import_status(
         &ModelImportDraft::default(),
