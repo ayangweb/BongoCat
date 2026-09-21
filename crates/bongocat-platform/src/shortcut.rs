@@ -264,10 +264,128 @@ mod global {
         pub runtime_stopped_events: AtomicU64,
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug, PartialEq)]
     struct Registration {
         hotkey: HotKey,
         target: ShortcutTarget,
+    }
+
+    /// The OS registration surface the mirror drives. Production uses the real
+    /// manager; tests drive it with a fake so that reconciling a changed table
+    /// can be exercised without taking global hotkeys away from the machine
+    /// running the tests.
+    trait HotkeyRegistrar {
+        fn register(&self, hotkey: HotKey) -> Result<(), String>;
+        fn unregister(&self, hotkey: HotKey) -> Result<(), String>;
+    }
+
+    impl HotkeyRegistrar for GlobalHotKeyManager {
+        fn register(&self, hotkey: HotKey) -> Result<(), String> {
+            GlobalHotKeyManager::register(self, hotkey).map_err(|error| error.to_string())
+        }
+
+        fn unregister(&self, hotkey: HotKey) -> Result<(), String> {
+            GlobalHotKeyManager::unregister(self, hotkey).map_err(|error| error.to_string())
+        }
+    }
+
+    /// What a table change requires of the live OS registrations.
+    #[derive(Debug, Default)]
+    struct RegistrationPlan {
+        /// Chords the table dropped: unregister them and forget them.
+        removed: Vec<Registration>,
+        /// Chords the table added: register them and remember them.
+        added: Vec<Registration>,
+        /// Chords the table still binds, behind a different target.
+        retargeted: Vec<(u32, ShortcutTarget)>,
+    }
+
+    /// Compares the live registrations with the desired ones.
+    ///
+    /// A registration's identity is its hotkey id — the chord — and not the
+    /// whole binding, because two models may legitimately bind the same chord:
+    /// each model counts its own default behavior chords from the primary
+    /// modifier's first digit, and only one model is live at a time. A model
+    /// switch therefore leaves most chords registered while the target behind
+    /// every one of them moves to the incoming model. A mirror that answered
+    /// "already registered" for such a chord would keep the platform pointing at
+    /// the outgoing model, and the dispatcher drops those targets as an inactive
+    /// model — the incoming model's shortcuts would silently do nothing.
+    fn plan_registrations(
+        registered: &HashMap<u32, Registration>,
+        desired: &[Registration],
+    ) -> RegistrationPlan {
+        let desired_ids: BTreeSet<u32> = desired.iter().map(|entry| entry.hotkey.id).collect();
+        let mut plan = RegistrationPlan::default();
+        for (id, entry) in registered {
+            if !desired_ids.contains(id) {
+                plan.removed.push(entry.clone());
+            }
+        }
+        for entry in desired {
+            match registered.get(&entry.hotkey.id) {
+                None => plan.added.push(entry.clone()),
+                Some(registered) if registered.target != entry.target => {
+                    plan.retargeted
+                        .push((entry.hotkey.id, entry.target.clone()));
+                }
+                Some(_) => {}
+            }
+        }
+        plan
+    }
+
+    /// Applies the plan to the OS registrations, keeping `registered` as the
+    /// single record of what the platform currently holds.
+    fn mirror_registrations<M: HotkeyRegistrar>(
+        manager: &M,
+        desired: &[Registration],
+        registered: &mut HashMap<u32, Registration>,
+        pressed: &mut PressEdges,
+        registration_failures: &Mutex<Vec<String>>,
+        counters: &GlobalShortcutCounters,
+    ) {
+        let plan = plan_registrations(registered, desired);
+        // Bindings that just left the table never report a release, so a
+        // retained held id would swallow the first press after the same chord
+        // is bound again.
+        let bound: BTreeSet<u32> = desired.iter().map(|entry| entry.hotkey.id).collect();
+        pressed.retain(&bound);
+
+        for entry in plan.removed {
+            if let Err(error) = manager.unregister(entry.hotkey) {
+                counters
+                    .registration_failures
+                    .fetch_add(1, Ordering::Relaxed);
+                record_failure(registration_failures, error);
+            }
+            // Forgetting a chord the platform no longer holds is what lets it
+            // be registered again once it re-enters the table.
+            registered.remove(&entry.hotkey.id);
+        }
+
+        // A chord that stayed registered is already held by the OS; only the
+        // target behind it can change. Re-registering it would be refused (or
+        // duplicate the registration) instead of retargeting it.
+        for (id, target) in plan.retargeted {
+            if let Some(registered) = registered.get_mut(&id) {
+                registered.target = target;
+            }
+        }
+
+        for entry in plan.added {
+            match manager.register(entry.hotkey) {
+                Ok(()) => {
+                    registered.insert(entry.hotkey.id, entry);
+                }
+                Err(error) => {
+                    counters
+                        .registration_failures
+                        .fetch_add(1, Ordering::Relaxed);
+                    record_failure(registration_failures, format!("{}: {error}", entry.hotkey));
+                }
+            }
+        }
     }
 
     /// A long-lived owner of the platform global hotkey manager. Dropping or
@@ -388,8 +506,7 @@ mod global {
         })?;
         let _ = startup.send(Ok(()));
 
-        let mut registered: HashMap<u32, HotKey> = HashMap::new();
-        let mut targets: HashMap<u32, ShortcutTarget> = HashMap::new();
+        let mut registered: HashMap<u32, Registration> = HashMap::new();
         let mut pressed = PressEdges::default();
         let mut snapshot: Option<CompiledShortcuts> = None;
 
@@ -404,50 +521,22 @@ mod global {
                     failures.clear();
                     failures.extend(unsupported);
                 }
-                let desired_ids: BTreeSet<u32> =
-                    desired.iter().map(|entry| entry.hotkey.id).collect();
-                // Bindings that just left the table never report a release, so
-                // a retained held id would swallow the first press after the
-                // same chord is bound again.
-                pressed.retain(&desired_ids);
-                for (id, hotkey) in registered.iter() {
-                    if !desired_ids.contains(id)
-                        && let Err(error) = manager.unregister(*hotkey)
-                    {
-                        counters
-                            .registration_failures
-                            .fetch_add(1, Ordering::Relaxed);
-                        record_failure(&registration_failures, error.to_string());
-                    }
-                }
-                for entry in &desired {
-                    if registered.contains_key(&entry.hotkey.id) {
-                        continue;
-                    }
-                    match manager.register(entry.hotkey) {
-                        Ok(()) => {
-                            registered.insert(entry.hotkey.id, entry.hotkey);
-                            targets.insert(entry.hotkey.id, entry.target.clone());
-                        }
-                        Err(error) => {
-                            counters
-                                .registration_failures
-                                .fetch_add(1, Ordering::Relaxed);
-                            record_failure(
-                                &registration_failures,
-                                format!("{}: {error}", entry.hotkey),
-                            );
-                        }
-                    }
-                }
+                mirror_registrations(
+                    &manager,
+                    &desired,
+                    &mut registered,
+                    &mut pressed,
+                    &registration_failures,
+                    &counters,
+                );
                 snapshot = Some(latest);
             }
 
             while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
-                let Some(target) = resolve_trigger(&mut pressed, event, &targets) else {
+                let Some(registration) = resolve_trigger(&mut pressed, event, &registered) else {
                     continue;
                 };
-                match dispatcher.execute(target) {
+                match dispatcher.execute(&registration.target) {
                     Ok(_) => {}
                     Err(ShortcutDispatchError::ApplicationQueueFull)
                     | Err(ShortcutDispatchError::Runtime(SendError::QueueFull(_))) => {
@@ -464,8 +553,8 @@ mod global {
             wait_and_pump(TABLE_POLL_INTERVAL);
         }
 
-        for hotkey in registered.into_values() {
-            let _ = manager.unregister(hotkey);
+        for registration in registered.into_values() {
+            let _ = manager.unregister(registration.hotkey);
         }
         Ok(())
     }
@@ -477,20 +566,22 @@ mod global {
             .push(failure.into());
     }
 
-    /// Consumes one hotkey event and returns the target it must dispatch.
+    /// Consumes one hotkey event and returns the registration it must dispatch.
     ///
-    /// Only the press edge produces a target: the operating system repeats
-    /// `Pressed` for as long as a chord stays held, and those repeats must be
-    /// dropped instead of triggering the binding again. An event for a chord
-    /// that is no longer bound is dropped without touching the held state,
+    /// Only the press edge produces a registration: the operating system
+    /// repeats `Pressed` for as long as a chord stays held, and those repeats
+    /// must be dropped instead of triggering the binding again. An event for a
+    /// chord that is no longer bound is dropped without touching the held state,
     /// because such a binding never reports its release.
     fn resolve_trigger<'a>(
         pressed: &mut PressEdges,
         event: GlobalHotKeyEvent,
-        targets: &'a HashMap<u32, ShortcutTarget>,
-    ) -> Option<&'a ShortcutTarget> {
-        let target = targets.get(&event.id)?;
-        pressed.observe(event.state, event.id).then_some(target)
+        registered: &'a HashMap<u32, Registration>,
+    ) -> Option<&'a Registration> {
+        let registration = registered.get(&event.id)?;
+        pressed
+            .observe(event.state, event.id)
+            .then_some(registration)
     }
 
     /// Tracks which registered hotkeys are physically held.
@@ -636,7 +727,8 @@ mod global {
     mod tests {
         use super::*;
         use bongocat_config::{
-            ModelBehaviorBinding, ShortcutBinding, ShortcutCommand, ShortcutConfig,
+            ModelBehaviorAction, ModelBehaviorBinding, ShortcutBinding, ShortcutCommand,
+            ShortcutConfig,
         };
 
         fn hotkey(chord: &str) -> HotKey {
@@ -644,30 +736,80 @@ mod global {
                 .expect("mapped hotkey")
         }
 
+        /// A model behavior binding of one model, with the expression name
+        /// shared by every model so that only the model id distinguishes them.
+        fn behavior(chord: &str, model_id: &str) -> Registration {
+            Registration {
+                hotkey: hotkey(chord),
+                target: ShortcutTarget::ModelBehavior {
+                    model_id: model_id.to_owned(),
+                    action: ModelBehaviorAction::Expression {
+                        name: "happy".to_owned(),
+                    },
+                },
+            }
+        }
+
+        fn command(chord: &str, command: ShortcutCommand) -> Registration {
+            Registration {
+                hotkey: hotkey(chord),
+                target: ShortcutTarget::Application(command),
+            }
+        }
+
+        /// Records the chords the mirror holds registered, so a test can assert
+        /// both the calls and the state the mirror leaves behind. It rejects a
+        /// re-registration of a chord it already holds, like the real manager.
+        #[derive(Default)]
+        struct FakeRegistrar {
+            bound: std::cell::RefCell<BTreeSet<u32>>,
+        }
+
+        impl HotkeyRegistrar for FakeRegistrar {
+            fn register(&self, hotkey: HotKey) -> Result<(), String> {
+                assert!(
+                    self.bound.borrow_mut().insert(hotkey.id),
+                    "the OS refuses a chord it already holds"
+                );
+                Ok(())
+            }
+
+            fn unregister(&self, hotkey: HotKey) -> Result<(), String> {
+                assert!(
+                    self.bound.borrow_mut().remove(&hotkey.id),
+                    "the OS cannot release a chord it does not hold"
+                );
+                Ok(())
+            }
+        }
+
         #[test]
         fn repeated_pressed_events_for_a_held_chord_dispatch_their_target_once() {
-            let target = ShortcutTarget::Application(ShortcutCommand::ToggleOverlay);
-            let targets = HashMap::from([(7u32, target.clone())]);
+            let registration = command("Control+B", ShortcutCommand::ToggleOverlay);
+            let registered = HashMap::from([(registration.hotkey.id, registration.clone())]);
             let mut pressed = PressEdges::default();
-            let event = |state| GlobalHotKeyEvent { id: 7, state };
+            let event = |state| GlobalHotKeyEvent {
+                id: registration.hotkey.id,
+                state,
+            };
             assert_eq!(
-                resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &targets),
-                Some(&target)
+                resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &registered).cloned(),
+                Some(registration.clone())
             );
             for _ in 0..5 {
                 assert_eq!(
-                    resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &targets),
+                    resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &registered),
                     None,
                     "an OS key repeat must not dispatch the target again"
                 );
             }
             assert_eq!(
-                resolve_trigger(&mut pressed, event(HotKeyState::Released), &targets),
+                resolve_trigger(&mut pressed, event(HotKeyState::Released), &registered),
                 None
             );
             assert_eq!(
-                resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &targets),
-                Some(&target)
+                resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &registered).cloned(),
+                Some(registration.clone())
             );
             // A chord that is no longer bound reports no release, so its events
             // must not leave held state behind either.
@@ -676,7 +818,7 @@ mod global {
                 None
             );
             assert_eq!(
-                resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &targets),
+                resolve_trigger(&mut pressed, event(HotKeyState::Pressed), &registered),
                 None,
                 "the still-held chord stays silent after an unbound event"
             );
@@ -725,6 +867,97 @@ mod global {
             // A change that keeps the id retains the held state.
             pressed.retain(&BTreeSet::from([7]));
             assert!(!pressed.observe(HotKeyState::Pressed, 7));
+        }
+
+        fn mirror(
+            registrar: &FakeRegistrar,
+            registered: &mut HashMap<u32, Registration>,
+            desired: &[Registration],
+        ) {
+            mirror_registrations(
+                registrar,
+                desired,
+                registered,
+                &mut PressEdges::default(),
+                &Mutex::new(Vec::new()),
+                &GlobalShortcutCounters::default(),
+            );
+        }
+
+        #[test]
+        fn a_model_switch_hands_the_shared_chords_to_the_incoming_model() {
+            // Both models count their behavior chords from the primary
+            // modifier's first digit, so the live model binds the same chords
+            // before and after a switch and only the model behind them changes.
+            let open_settings = command("Meta+O", ShortcutCommand::OpenSettings);
+            let outgoing = behavior("Control+1", "standard");
+            let incoming = behavior("Control+1", "keyboard");
+            assert_eq!(outgoing.hotkey.id, incoming.hotkey.id);
+            let registrar = FakeRegistrar::default();
+            let mut registered = HashMap::new();
+            mirror(
+                &registrar,
+                &mut registered,
+                &[open_settings.clone(), outgoing],
+            );
+
+            mirror(
+                &registrar,
+                &mut registered,
+                &[open_settings.clone(), incoming.clone()],
+            );
+
+            assert_eq!(
+                registered
+                    .get(&incoming.hotkey.id)
+                    .map(|entry| &entry.target),
+                Some(&incoming.target),
+                "the incoming model must answer the chord it shares with the outgoing one"
+            );
+            assert_eq!(
+                registrar.bound.borrow().len(),
+                2,
+                "the shared chord stayed registered instead of being registered twice"
+            );
+        }
+
+        #[test]
+        fn a_chord_that_left_the_table_is_registered_again_when_it_returns() {
+            let standard = behavior("Control+1", "standard");
+            let keyboard = behavior("Control+2", "keyboard");
+            let registrar = FakeRegistrar::default();
+            let mut registered = HashMap::new();
+            mirror(&registrar, &mut registered, std::slice::from_ref(&standard));
+            // The switch to the other model drops the chord entirely.
+            mirror(&registrar, &mut registered, std::slice::from_ref(&keyboard));
+            assert!(!registered.contains_key(&standard.hotkey.id));
+
+            // Switching back binds the same chord again.
+            mirror(&registrar, &mut registered, std::slice::from_ref(&standard));
+
+            assert_eq!(
+                registered
+                    .get(&standard.hotkey.id)
+                    .map(|entry| &entry.target),
+                Some(&standard.target),
+                "a chord that re-enters the table must be registered again"
+            );
+            assert!(registrar.bound.borrow().contains(&standard.hotkey.id));
+        }
+
+        #[test]
+        fn an_unchanged_table_leaves_the_registrations_alone() {
+            let desired = vec![
+                command("Meta+O", ShortcutCommand::OpenSettings),
+                behavior("Control+1", "standard"),
+            ];
+            let registrar = FakeRegistrar::default();
+            let mut registered = HashMap::new();
+            mirror(&registrar, &mut registered, &desired);
+            mirror(&registrar, &mut registered, &desired);
+
+            assert_eq!(registered.len(), desired.len());
+            assert_eq!(registrar.bound.borrow().len(), desired.len());
         }
 
         #[test]

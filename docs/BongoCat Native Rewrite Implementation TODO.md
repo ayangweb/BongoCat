@@ -5316,6 +5316,45 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       的自动分配差异与 chord 命名空间段、`docs/phase-0/behavior-inventory.md` 修订记录，以及两份
       CHANGELOG 的"问题修复"。
 
+100. [x] `P5-GLOBAL-SHORTCUT-RETARGET`：表变更后，平台已注册的共享组合键必须改指新表的目标。
+    - 背景（2026-09-21，维护者反馈）：从一个模型切换到另一个模型后，快捷键整体失效。现象出现在 99
+      落地之后，是"每个模型从 `primary + 1` 独立编号 + 跨模型允许复用同一组合键"这条几何的直接后果。
+    - 根因（读代码即可确认）：`run_shortcut_owner` 的增量镜像以 hotkey id（即 chord）为身份，
+      `registered.contains_key(&entry.hotkey.id)` 命中就 `continue`，既不 `register` 也不更新
+      `targets`。跨模型复用意味着切换后新模型的 chord 集合与旧模型几乎完全重合，于是新模型的绑定
+      一个都不会带着自己的 target 注册，`targets` 仍指向旧模型；`ShortcutDispatcher::execute` 在
+      `active.id != model_id` 时返回 `IgnoredInactiveModel`，行为快捷键因此全部静默失效。同一个
+      `continue` 还让 `registered` 在 `unregister` 之后从不移除，于是 A→B→A 之后 A 的组合键永久失效
+      （再也不会被重新注册）。既有测试只覆盖 `PressEdges` 与 chord→hotkey 映射，镜像的 diff 从未被断言。
+    - 实现（`crates/bongocat-platform/src/shortcut.rs`）：
+      ① 新增 `HotkeyRegistrar` trait 与 `GlobalHotKeyManager` 实现，把注册/注销从镜像逻辑里抽出，
+        使镜像可被测试替身驱动而不占用真实系统级热键；
+      ② 新增纯函数 `plan_registrations`，按 chord id 求 `removed` / `added` / `retargeted`，
+        `retargeted` 即"仍在表内但 target 已变"；
+      ③ 新增 `mirror_registrations` 应用该计划：`removed` 注销并遗忘 id、`retargeted` 原地改 target
+        （**不重新注册**——macOS 的 `RegisterEventHotKey` scancode 路径不查重，会重复注册并覆盖记录；
+        Windows 的 `RegisterHotKey` 直接返回 `ERROR_HOTKEY_ALREADY_REGISTERED`）、`added` 注册并记录；
+        `registered`（`HashMap<u32, HotKey>`）与独立的 `targets` 表收敛为单一
+        `HashMap<u32, Registration>`，消除"两份表要手动保持同步"这一缺陷来源；
+      ④ `resolve_trigger` 一并返回 `Registration`，owner 循环直接分发 `registration.target`。
+    - 验收证据（2026-09-21，本机 macOS / aarch64）：
+      ① `cargo test --locked --workspace` 全绿，`bongocat-platform` 67 → 70 passed（2 ignored）；
+        其余 crate 计数不变（本次未触及）；`cargo fmt -p bongocat-platform -- --check` 与
+        `cargo clippy -p bongocat-platform --all-targets -- -D warnings` 通过。
+      ② 新增 3 个测试：`a_model_switch_hands_the_shared_chords_to_the_incoming_model`（共享 chord
+        保留原注册、且必须答新模型）、`a_chord_that_left_the_table_is_registered_again_when_it_returns`
+        （A→B→A 后原 chord 重新注册）、`an_unchanged_table_leaves_the_registrations_alone`；
+        `FakeRegistrar` 对"重复注册"和"释放未持有的 chord"直接断言失败，等于把镜像的两条硬约束钉住。
+      ③ 变异验证：把 `plan_registrations` 的 retarget 分支改成恒不命中（即回到旧行为）后，
+        `a_model_switch_hands_the_shared_chords_to_the_incoming_model` 以
+        `left: Some(ModelBehavior { model_id: "standard", … }) / right: Some(ModelBehavior { model_id: "keyboard", … })`
+        变红——正是维护者报告的现象。
+    - 未运行：Windows 侧同路径（本机无法执行 `cfg(windows)` 测试）；双平台实机确认切换后的系统级改指
+      时序。trait 边界以上的镜像逻辑由上述单元测试覆盖，平台调用本身未变，注册/事件语义仍只有 macOS
+      的 `--ignored` 实机用例。
+    - 同步文档：Technical Design 的全局快捷键增量映射段补 chord 身份与 retarget/遗忘契约，两份
+      CHANGELOG 的"问题修复"。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

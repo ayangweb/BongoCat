@@ -164,7 +164,11 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   配置 revision-aware
   command 执行，平台层不得直接改 overlay 或设置状态。配置提交后通过共享 `ShortcutTable`
   原子替换 compiled bindings，owner 线程在下一轮轮询读取新表；快捷键注册与输入服务生命周期
-  解耦，替换不涉及输入管线的 pressed set。应用级 target 通过有界
+  解耦，替换不涉及输入管线的 pressed set。增量映射以 chord 为身份：仍留在表内的 chord 复用既有
+  注册（平台会拒绝重复注册，或产生重复的注册），只把其 target 更新为新表的目标；离开表的 chord
+  必须注销并从 owner 的记录中移除，否则同一组合键再次进入表时不会被重新注册。跨模型复用同一
+  组合键是合法配置，模型切换正是靠这一步把共享 chord 从旧模型改指新模型，否则它们会被下游的
+  active-model 判定当作非活动模型丢弃。应用级 target 通过有界
   typed handoff 进入 settings service；显隐、镜像、穿透和置顶由唯一 Application owner
   按当前配置 revision 持久化，`open_settings` 交给 GPUI coordinator，避免平台线程直接触碰
   UI 生命周期。`open_settings` 通过线程安全的一次性请求位交给 GPUI frame source，后者在
