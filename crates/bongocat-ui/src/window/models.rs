@@ -8,13 +8,6 @@ const MODEL_CARD_WIDTH: f32 = 240.0;
 /// resized around it, so one unusual image cannot resize the whole page.
 const MODEL_CARD_COVER_HEIGHT: f32 = 140.0;
 
-/// The edit action's pencil icon, inlined verbatim from the Lucide
-/// `square-pen` icon (ISC license) because the default component icon bundle
-/// does not export a pencil under `IconName`. Same 24×24 stroke style as the
-/// bundled icons, and `currentColor` picks up the button's text color the same
-/// way.
-const MODEL_EDIT_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" /></svg>"#;
-
 pub(super) fn content(
     view: &mut SettingsView,
     window: &mut Window,
@@ -399,7 +392,7 @@ fn model_card_actions(
             icon_command_button(
                 "edit-model-control",
                 bongocat_i18n::text(language.catalog_locale(), "models.actions.edit"),
-                Icon::default().data(MODEL_EDIT_ICON_SVG),
+                gpui_kit::assets::IconName::SquarePen,
                 &focus.edit,
                 action_tabs.edit,
                 !actions.can_edit,
@@ -428,7 +421,7 @@ fn model_card_actions(
             icon_command_button(
                 "delete-model-control",
                 bongocat_i18n::text(language.catalog_locale(), "models.actions.delete"),
-                IconName::Delete,
+                gpui_kit::assets::IconName::Trash,
                 &focus.delete,
                 action_tabs.delete,
                 !actions.can_delete,
