@@ -85,13 +85,18 @@ pub(super) fn content(
             );
             let action_tabs = model_row_action_tab_indices(tab_index, confirming_delete);
             let status = if confirming_delete {
-                model_delete_confirmation(
-                    language,
-                    &model_availability_status(&entry, actions.active, language),
-                )
-                .into()
+                // Deleting needs the diagnostic context when the package is
+                // broken; a ready package just asks for the confirmation.
+                Some(match model_availability_status(&entry, language) {
+                    Some(status) => model_delete_confirmation(language, &status).into(),
+                    None => bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "models.actions.confirm_deletion",
+                    )
+                    .into(),
+                })
             } else {
-                model_availability_status(&entry, actions.active, language)
+                model_availability_status(&entry, language)
             };
             let activate_label = if actions.active {
                 bongocat_i18n::text(language.catalog_locale(), "models.identity.status.active")
@@ -221,22 +226,23 @@ fn model_card_cover(cover: Option<PathBuf>, language: SettingsLanguage, tokens: 
 fn model_card_summary(
     entry: &SettingsModelEntry,
     active: bool,
-    status: SharedString,
+    status: Option<SharedString>,
     tokens: Tokens,
 ) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap_1()
-        .child(
-            div()
-                .min_w_0()
-                .w_full()
-                .truncate()
-                .text_color(if active { tokens.accent } else { tokens.text })
-                .child(entry.title.clone()),
-        )
-        .child(div().text_sm().text_color(tokens.muted).child(status))
+    let mut summary = div().flex().flex_col().gap_1().child(
+        div()
+            .min_w_0()
+            .w_full()
+            .truncate()
+            .text_color(if active { tokens.accent } else { tokens.text })
+            .child(entry.title.clone()),
+    );
+    // The status line only exists to carry a diagnostic or a delete
+    // confirmation; a healthy card shows nothing but its title.
+    if let Some(status) = status {
+        summary = summary.child(div().text_sm().text_color(tokens.muted).child(status));
+    }
+    summary
 }
 
 /// The action row of a card.

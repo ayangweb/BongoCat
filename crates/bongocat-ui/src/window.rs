@@ -69,10 +69,10 @@ mod smoke;
 mod view_state;
 pub use lifecycle::open_settings_window;
 use localization::{
-    backup_candidates_checked, build_info_detail, model_availability_summary,
-    model_delete_confirmation, model_import_progress, model_invalid_summary,
-    recovered_backup_detail, runtime_status, settings_error, shortcut_accessibility_label,
-    shortcut_behavior_name, shortcut_command_name, shortcut_conflict_message,
+    backup_candidates_checked, build_info_detail, model_delete_confirmation, model_import_progress,
+    model_invalid_summary, recovered_backup_detail, runtime_status, settings_error,
+    shortcut_accessibility_label, shortcut_behavior_name, shortcut_command_name,
+    shortcut_conflict_message,
 };
 #[cfg(test)]
 mod tests;
@@ -1738,24 +1738,12 @@ fn model_delete_confirmation_is_valid(
 
 fn model_availability_status(
     entry: &SettingsModelEntry,
-    active: bool,
     language: SettingsLanguage,
-) -> SharedString {
+) -> Option<SharedString> {
+    // A ready model has nothing to say that the card does not already show, so
+    // only a diagnostic earns a status line.
     match &entry.availability {
-        SettingsModelAvailability::Ready {
-            texture_count,
-            expression_count,
-            motion_count,
-            ..
-        } => model_availability_summary(
-            language,
-            entry.origin,
-            active,
-            *texture_count,
-            *expression_count,
-            *motion_count,
-        )
-        .into(),
+        SettingsModelAvailability::Ready { .. } => None,
         SettingsModelAvailability::Invalid { diagnostic } => {
             let diagnostic = match diagnostic {
                 SettingsModelDiagnostic::InvalidModelId
@@ -1791,16 +1779,17 @@ fn model_availability_status(
                     "models.validation.resource_invalid"
                 }
             };
-            model_invalid_summary(
-                language,
-                entry.origin,
-                bongocat_i18n::text(language.catalog_locale(), diagnostic),
+            Some(
+                model_invalid_summary(
+                    language,
+                    entry.origin,
+                    bongocat_i18n::text(language.catalog_locale(), diagnostic),
+                )
+                .into(),
             )
-            .into()
         }
     }
 }
-
 /// The inline status of the import draft.
 ///
 /// Only progress and selection states are reported here. Every failure on the

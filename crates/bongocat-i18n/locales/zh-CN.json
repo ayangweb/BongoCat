@@ -167,10 +167,6 @@
     "behaviors": {
       "empty": "没有声明的行为"
     },
-    "summary": {
-      "active": "%{origin} · %{active} · %{texture_count} 个纹理 · %{expression_count} 个表情 · %{motion_count} 个动作",
-      "inactive": "%{origin} · %{texture_count} 个纹理 · %{expression_count} 个表情 · %{motion_count} 个动作"
-    },
     "invalid_summary": "%{origin} · %{diagnostic}",
     "delete_confirmation": "%{status} · %{confirm_deletion}"
   },

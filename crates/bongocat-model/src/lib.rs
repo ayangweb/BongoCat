@@ -499,14 +499,6 @@ impl PreparedModel {
         ModelSnapshot {
             id: self.id.clone(),
             entry: self.index.entry.clone(),
-            texture_count: self.index.textures.len(),
-            expression_count: self.index.expressions.len(),
-            motion_count: self
-                .index
-                .motion_groups
-                .iter()
-                .map(|group| group.motions.len())
-                .sum(),
             behaviors: self
                 .index
                 .motion_groups
@@ -539,9 +531,6 @@ pub enum ModelBehaviorSnapshot {
 pub struct ModelSnapshot {
     pub id: ModelId,
     pub entry: String,
-    pub texture_count: usize,
-    pub expression_count: usize,
-    pub motion_count: usize,
     pub behaviors: Vec<ModelBehaviorSnapshot>,
 }
 
@@ -3124,8 +3113,6 @@ mod tests {
             .expect("committed preset")
             .snapshot();
 
-        assert_eq!(snapshot.motion_count, 4);
-        assert_eq!(snapshot.expression_count, 3);
         assert_eq!(snapshot.behaviors.len(), 7);
         assert!(snapshot.behaviors.contains(&ModelBehaviorSnapshot::Motion {
             group: "CAT_motion".to_owned(),

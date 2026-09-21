@@ -273,9 +273,6 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
             "standard",
             SettingsModelOrigin::Preset,
             SettingsModelAvailability::Ready {
-                texture_count: 1,
-                expression_count: 1,
-                motion_count: 1,
                 behaviors: vec![
                     SettingsModelBehavior::Motion {
                         group: "tap".to_owned(),
@@ -291,9 +288,6 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
             "keyboard",
             SettingsModelOrigin::Preset,
             SettingsModelAvailability::Ready {
-                texture_count: 1,
-                expression_count: 1,
-                motion_count: 0,
                 behaviors: vec![SettingsModelBehavior::Expression {
                     name: "ignored".to_owned(),
                 }],
@@ -545,9 +539,6 @@ fn model_behavior_rows_are_named_by_flattened_position() {
         "standard",
         SettingsModelOrigin::Preset,
         SettingsModelAvailability::Ready {
-            texture_count: 1,
-            expression_count: 3,
-            motion_count: 4,
             behaviors: behaviors.to_vec(),
         },
     )];
@@ -978,9 +969,6 @@ fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states(
             "preset",
             SettingsModelOrigin::Preset,
             SettingsModelAvailability::Ready {
-                texture_count: 1,
-                expression_count: 0,
-                motion_count: 0,
                 behaviors: Vec::new(),
             },
         )],
@@ -1075,9 +1063,6 @@ fn suggested_titles_agree_for_a_folder_and_the_archive_made_from_it() {
 #[test]
 fn model_row_actions_preserve_origin_availability_and_active_identity() {
     let ready = SettingsModelAvailability::Ready {
-        texture_count: 1,
-        expression_count: 0,
-        motion_count: 0,
         behaviors: Vec::new(),
     };
     let preset = model_entry("duplicate", SettingsModelOrigin::Preset, ready.clone());
@@ -1182,9 +1167,6 @@ fn behavior_targets_stay_scoped_to_model_and_behavior_identity() {
             "standard",
             SettingsModelOrigin::Preset,
             SettingsModelAvailability::Ready {
-                texture_count: 1,
-                expression_count: 1,
-                motion_count: 1,
                 behaviors: vec![motion.clone(), expression],
             },
         ),
@@ -1192,9 +1174,6 @@ fn behavior_targets_stay_scoped_to_model_and_behavior_identity() {
             "keyboard",
             SettingsModelOrigin::Preset,
             SettingsModelAvailability::Ready {
-                texture_count: 1,
-                expression_count: 0,
-                motion_count: 1,
                 behaviors: vec![motion],
             },
         ),
@@ -1239,9 +1218,6 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
             "standard",
             SettingsModelOrigin::Preset,
             SettingsModelAvailability::Ready {
-                texture_count: 1,
-                expression_count: 0,
-                motion_count: 1,
                 behaviors: vec![behavior.clone()],
             },
         ),
@@ -1249,9 +1225,6 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
             "keyboard",
             SettingsModelOrigin::Preset,
             SettingsModelAvailability::Ready {
-                texture_count: 1,
-                expression_count: 1,
-                motion_count: 0,
                 behaviors: vec![SettingsModelBehavior::Expression {
                     name: "inactive".to_owned(),
                 }],
@@ -1281,9 +1254,6 @@ fn shortcut_scopes_split_the_combined_row_order_into_two_halves() {
         "standard",
         SettingsModelOrigin::Preset,
         SettingsModelAvailability::Ready {
-            texture_count: 1,
-            expression_count: 0,
-            motion_count: 1,
             behaviors: vec![SettingsModelBehavior::Motion {
                 group: "CAT_motion".to_owned(),
                 index: 0,
@@ -1361,8 +1331,12 @@ fn invalid_model_status_is_stable_and_path_free() {
             diagnostic: SettingsModelDiagnostic::ModelReferenceSymlinkEscape,
         },
     );
-    let status = model_availability_status(&entry, false, SettingsLanguage::EnglishUnitedStates);
-    assert_eq!(status, "Installed · Package layout is invalid");
+    let status = model_availability_status(&entry, SettingsLanguage::EnglishUnitedStates);
+    assert_eq!(
+        status.as_ref().map(|status| status.as_ref()),
+        Some("Installed · Package layout is invalid")
+    );
+    let status = status.as_ref().map(|status| status.as_ref()).unwrap_or("");
     assert!(!status.contains("private-model"));
     assert!(!status.contains('/'));
 }
@@ -1373,16 +1347,12 @@ fn model_presentations_follow_the_resolved_language() {
         "preset-model",
         SettingsModelOrigin::Preset,
         SettingsModelAvailability::Ready {
-            texture_count: 2,
-            expression_count: 3,
-            motion_count: 4,
             behaviors: Vec::new(),
         },
     );
-    assert_eq!(
-        model_availability_status(&ready, true, SettingsLanguage::ChineseSimplified),
-        "预置 · 当前使用 · 2 个纹理 · 3 个表情 · 4 个动作"
-    );
+    // A ready model card shows no status line at all: the counts summary was
+    // removed, so there is nothing left to localize for it.
+    assert!(model_availability_status(&ready, SettingsLanguage::ChineseSimplified).is_none());
 
     let invalid = model_entry(
         "installed-model",
@@ -1391,8 +1361,8 @@ fn model_presentations_follow_the_resolved_language() {
             diagnostic: SettingsModelDiagnostic::ModelTextureMissing,
         },
     );
-    let invalid_status =
-        model_availability_status(&invalid, false, SettingsLanguage::ChineseSimplified);
+    let invalid_status = model_availability_status(&invalid, SettingsLanguage::ChineseSimplified)
+        .expect("invalid models keep a diagnostic status");
     assert_eq!(invalid_status, "已安装 · 纹理无效");
     assert_eq!(
         model_delete_confirmation(SettingsLanguage::ChineseSimplified, &invalid_status),

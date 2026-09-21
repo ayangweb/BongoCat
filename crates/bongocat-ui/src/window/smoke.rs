@@ -49,7 +49,7 @@ impl SettingsView {
         if !active_actions.active || active_actions.can_activate || active_actions.can_delete {
             return Err("models page did not protect the active model row".to_owned());
         }
-        self.verify_models_localization_for_smoke(snapshot, active_entry, true)?;
+        self.verify_models_localization_for_smoke(snapshot, active_entry)?;
 
         let mut has_activation_target = false;
         let mut has_location_target = false;
@@ -109,36 +109,28 @@ impl SettingsView {
             .entries
             .first()
             .ok_or_else(|| "models page catalog is empty".to_owned())?;
-        let active = snapshot
-            .active_model
-            .as_ref()
-            .is_some_and(|active| active.origin == entry.origin && active.id == entry.id);
-        self.verify_models_localization_for_smoke(snapshot, entry, active)
+        self.verify_models_localization_for_smoke(snapshot, entry)
     }
 
     fn verify_models_localization_for_smoke(
         &self,
         snapshot: &SettingsSnapshot,
         entry: &SettingsModelEntry,
-        active: bool,
     ) -> Result<(), String> {
         let language = snapshot.resolved_language;
-        let status = model_availability_status(entry, active, language);
-        let expected_origin = bongocat_i18n::text(
-            language.catalog_locale(),
-            match entry.origin {
-                SettingsModelOrigin::Preset => "models.identity.source.preset",
-                SettingsModelOrigin::Installed => "models.identity.source.installed",
-            },
-        );
-        if !status.contains(expected_origin)
-            || (active
-                && !status.contains(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "models.identity.status.active",
-                )))
-        {
-            return Err("models page did not localize the model status".to_owned());
+        // Only a diagnostic earns a status line; a ready model card shows no
+        // status at all, so there is nothing to localize for it.
+        if let Some(status) = model_availability_status(entry, language) {
+            let expected_origin = bongocat_i18n::text(
+                language.catalog_locale(),
+                match entry.origin {
+                    SettingsModelOrigin::Preset => "models.identity.source.preset",
+                    SettingsModelOrigin::Installed => "models.identity.source.installed",
+                },
+            );
+            if !status.contains(expected_origin) {
+                return Err("models page did not localize the model status".to_owned());
+            }
         }
         let import_status = model_import_status(&self.model_import, language);
         if import_status

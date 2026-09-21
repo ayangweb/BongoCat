@@ -1861,9 +1861,6 @@ fn settings_model_entry(
         .unwrap_or_else(|| id.clone());
     let availability = match entry {
         ModelCatalogEntry::Ready { snapshot, .. } => SettingsModelAvailability::Ready {
-            texture_count: snapshot.texture_count,
-            expression_count: snapshot.expression_count,
-            motion_count: snapshot.motion_count,
             behaviors: snapshot
                 .behaviors
                 .into_iter()
@@ -2849,9 +2846,6 @@ mod tests {
                         title: "我的猫".to_owned(),
                         origin: SettingsModelOrigin::Installed,
                         availability: SettingsModelAvailability::Ready {
-                            texture_count: 1,
-                            expression_count: 0,
-                            motion_count: 0,
                             behaviors: Vec::new(),
                         },
                         // The exported document is counts and codes only, so

@@ -3,43 +3,6 @@ use super::{
     SettingsErrorCode, SettingsLanguage, SettingsModelOrigin,
 };
 
-pub(super) fn model_availability_summary(
-    language: SettingsLanguage,
-    origin: SettingsModelOrigin,
-    active: bool,
-    texture_count: usize,
-    expression_count: usize,
-    motion_count: usize,
-) -> String {
-    let origin = bongocat_i18n::text(
-        language.catalog_locale(),
-        match origin {
-            SettingsModelOrigin::Preset => "models.identity.source.preset",
-            SettingsModelOrigin::Installed => "models.identity.source.installed",
-        },
-    );
-    let key = if active {
-        "models.summary.active"
-    } else {
-        "models.summary.inactive"
-    };
-    bongocat_i18n::format_text(
-        language.catalog_locale(),
-        key,
-        &[
-            ("origin", origin.to_owned()),
-            ("texture_count", texture_count.to_string()),
-            ("expression_count", expression_count.to_string()),
-            ("motion_count", motion_count.to_string()),
-            (
-                "active",
-                bongocat_i18n::text(language.catalog_locale(), "models.identity.status.active")
-                    .to_owned(),
-            ),
-        ],
-    )
-}
-
 pub(super) fn build_info_detail(
     language: SettingsLanguage,
     build_info: &SettingsBuildInfo,

@@ -818,9 +818,6 @@ pub enum SettingsModelOrigin {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SettingsModelAvailability {
     Ready {
-        texture_count: usize,
-        expression_count: usize,
-        motion_count: usize,
         behaviors: Vec<SettingsModelBehavior>,
     },
     Invalid {
