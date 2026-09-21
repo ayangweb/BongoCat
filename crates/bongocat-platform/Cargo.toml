@@ -11,6 +11,11 @@ publish.workspace = true
 async-channel.workspace = true
 bongocat-config.workspace = true
 bongocat-runtime.workspace = true
+# `HasWindowHandle` is the parameter type of the public `apply_theme` on every platform,
+# including the one where the theme itself is a no-op, so the trait has to resolve
+# everywhere. `raw-window-handle` is a cross-platform handle abstraction (Wayland, X11,
+# Win32 and AppKit all implement it), not a platform-specific binding.
+raw-window-handle.workspace = true
 url.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
@@ -21,7 +26,6 @@ tray-icon.workspace = true
 
 accesskit.workspace = true
 arboard.workspace = true
-raw-window-handle.workspace = true
 rfd.workspace = true
 opener.workspace = true
 sys-locale = "=0.3.2"
