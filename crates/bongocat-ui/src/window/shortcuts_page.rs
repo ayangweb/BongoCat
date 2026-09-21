@@ -47,6 +47,18 @@ impl ShortcutScope {
         }
     }
 
+    /// The scope a shortcut target belongs to.
+    ///
+    /// The one mapping from a target to the switch that gates its row: the
+    /// render layer, the accessibility tree and the mutating methods all read
+    /// it through [`Self::is_enabled`] instead of re-matching the target type.
+    pub(super) fn for_target(target: &ShortcutCaptureTarget) -> Self {
+        match target {
+            ShortcutCaptureTarget::Command(_) => Self::Window,
+            ShortcutCaptureTarget::ModelBehavior { .. } => Self::Model,
+        }
+    }
+
     /// The switch that turns this scope's bindings off and on again.
     ///
     /// It is the first row of the scope's group, above the bindings it gates,
@@ -58,7 +70,7 @@ impl ShortcutScope {
         self,
         language: SettingsLanguage,
         view: Entity<SettingsView>,
-        editing_blocked: bool,
+        gate: SettingGate,
     ) -> SettingItem {
         SettingItem::new(
             self.gate_label(language),
@@ -83,7 +95,10 @@ impl ShortcutScope {
                 },
             ),
         )
-        .disabled(editing_blocked)
+        // The switch is disabled by the unified gate rule's switch arm: only
+        // structurally blocked editing dims it, never its own state — a gate
+        // that dimmed itself while off could never be turned back on.
+        .disabled(gate.disables_switch())
     }
 
     /// The name of this scope, used as its group heading and its sidebar entry.
@@ -140,20 +155,19 @@ impl ShortcutScope {
 
 /// One scope of the shortcut page as a titled group.
 ///
-/// `editing_blocked` is the stable side of the global disabled flag: it is true
-/// only where editing is structurally impossible (no snapshot yet, the
-/// configuration is unusable, or a model import is running). It deliberately
-/// excludes the transient in-flight `pending` flag — that one flips on and off
-/// around every save, and threading it into every row dimmed and re-enabled
-/// the whole page on each control change, which read as the page visibly
-/// refreshing. Requests that land while another is in flight already no-op
-/// through `start_request` and `shortcut_commands_available`, and the header
-/// status is the saving indicator.
+/// `gate` is the scope's [`SettingGate`] (see `setting_gate`): the stable
+/// structural editing state combined with this scope's switch. It
+/// deliberately excludes the transient in-flight `pending` flag — that one
+/// flips on and off around every save, and threading it into every row dimmed
+/// and re-enabled the whole page on each control change, which read as the
+/// page visibly refreshing. Requests that land while another is in flight
+/// already no-op through `start_request` and `shortcut_commands_available`,
+/// and the header status is the saving indicator.
 pub(super) fn group(
     scope: ShortcutScope,
     language: SettingsLanguage,
     view: Entity<SettingsView>,
-    editing_blocked: bool,
+    gate: SettingGate,
 ) -> SettingGroup {
     // The group heading names the scope in the body and in the sidebar, so the
     // custom item below carries no label of its own: a `SettingItem` with a
@@ -167,7 +181,7 @@ pub(super) fn group(
     ];
     SettingGroup::new()
         .title(scope.title(language))
-        .item(scope.gate_item(language, view.clone(), editing_blocked))
+        .item(scope.gate_item(language, view.clone(), gate))
         .item(
             SettingItem::render({
                 let view = view.clone();
@@ -176,15 +190,7 @@ pub(super) fn group(
                     let tokens = Tokens::from_theme(app);
                     view.update(app, move |view, cx| {
                         view.page = SettingsPage::Shortcuts;
-                        content(
-                            view,
-                            window,
-                            cx,
-                            snapshot.as_ref(),
-                            scope,
-                            editing_blocked,
-                            tokens,
-                        )
+                        content(view, window, cx, snapshot.as_ref(), scope, gate, tokens)
                     })
                     .into_any_element()
                 }
@@ -199,7 +205,7 @@ pub(super) fn content(
     cx: &mut Context<SettingsView>,
     snapshot: Option<&SettingsSnapshot>,
     scope: ShortcutScope,
-    editing_blocked: bool,
+    gate: SettingGate,
     tokens: Tokens,
 ) -> Stateful<Div> {
     let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
@@ -234,7 +240,7 @@ pub(super) fn content(
                         window,
                         cx,
                         language,
-                        editing_blocked,
+                        gate,
                         tokens,
                         scope,
                         row,
@@ -250,7 +256,7 @@ fn shortcut_row(
     window: &Window,
     cx: &mut Context<SettingsView>,
     language: SettingsLanguage,
-    editing_blocked: bool,
+    gate: SettingGate,
     tokens: Tokens,
     scope: ShortcutScope,
     row: ShortcutRow,
@@ -263,6 +269,11 @@ fn shortcut_row(
         .as_ref()
         .filter(|capture| capture.target == target);
     let capturing = capture.is_some();
+    // The unified gate rule's control arm: the row dims and drops its
+    // interaction handlers while editing is structurally blocked or this
+    // scope's switch is off. A disabled row is inert, not merely painted
+    // lighter — the mutators guard on the same predicate.
+    let row_disabled = gate.disables_controls();
     let focus = view
         .shortcut_row_focus
         .get(&target)
@@ -296,6 +307,11 @@ fn shortcut_row(
         .justify_between()
         .gap_3()
         .text_sm()
+        // The unified gate rule dims the whole row — label included — the
+        // same way `SettingItem::disabled` dims a packaged field's title and
+        // description, so a gated setting reads as one unavailable entry
+        // rather than a live label sitting next to a dead control.
+        .when(row_disabled, |this| this.opacity(0.5))
         .child(div().min_w_0().flex_1().child(target_name))
         .child(
             div()
@@ -323,7 +339,7 @@ fn shortcut_row(
                 } else {
                     tokens.muted
                 })
-                .when(editing_blocked, |this| this.opacity(0.5).cursor_default())
+                .when(row_disabled, |this| this.cursor_default())
                 .child(if let Some(capture) = capture {
                     shortcut_capture_preview(&capture.modifiers, &capture.keys)
                         .map(|shortcut| shortcut_display(&shortcut))
@@ -343,21 +359,25 @@ fn shortcut_row(
                     )
                     .to_owned()
                 })
-                .on_click(cx.listener(move |view, _, window, cx| {
-                    view.begin_shortcut_capture(target.clone(), window, cx);
-                }))
-                .when(capturing, |this| {
-                    this.on_mouse_down_out(cx.listener(|view, _, window, cx| {
-                        view.cancel_shortcut_capture(cx);
-                        window.blur(cx);
+                .when(!row_disabled, |this| {
+                    this.on_click(cx.listener(move |view, _, window, cx| {
+                        view.begin_shortcut_capture(target.clone(), window, cx);
                     }))
-                })
-                .on_key_down(cx.listener(move |view, event, window, cx| {
-                    if view.shortcut_capture.is_none() && is_activation_key(event) {
-                        cx.stop_propagation();
-                        view.begin_shortcut_capture(keyboard_target.clone(), window, cx);
-                    }
-                })),
+                    .when(capturing, |this| {
+                        this.on_mouse_down_out(cx.listener(|view, _, window, cx| {
+                            view.cancel_shortcut_capture(cx);
+                            window.blur(cx);
+                        }))
+                    })
+                    .on_key_down(cx.listener(
+                        move |view, event, window, cx| {
+                            if view.shortcut_capture.is_none() && is_activation_key(event) {
+                                cx.stop_propagation();
+                                view.begin_shortcut_capture(keyboard_target.clone(), window, cx);
+                            }
+                        },
+                    ))
+                }),
         )
         .when(row.shortcut.is_some(), |actions| {
             actions.child(
@@ -367,20 +387,23 @@ fn shortcut_row(
                     shortcut_clear_tab_index(row_index),
                     window,
                     tokens,
-                    editing_blocked,
+                    row_disabled,
                 )
                 .id(clear_id)
-                .on_click(cx.listener(move |view, _, window, cx| {
-                    window.focus(&clear_focus, cx);
-                    view.clear_shortcut(clear_target.clone(), cx);
-                }))
-                .on_key_down(cx.listener(move |view, event, window, cx| {
-                    if is_activation_key(event) {
-                        cx.stop_propagation();
-                        window.focus(&clear_key_focus, cx);
-                        view.clear_shortcut(clear_key_target.clone(), cx);
-                    }
-                })),
+                .when(!row_disabled, |button| {
+                    button
+                        .on_click(cx.listener(move |view, _, window, cx| {
+                            window.focus(&clear_focus, cx);
+                            view.clear_shortcut(clear_target.clone(), cx);
+                        }))
+                        .on_key_down(cx.listener(move |view, event, window, cx| {
+                            if is_activation_key(event) {
+                                cx.stop_propagation();
+                                window.focus(&clear_key_focus, cx);
+                                view.clear_shortcut(clear_key_target.clone(), cx);
+                            }
+                        }))
+                }),
             )
         })
 }

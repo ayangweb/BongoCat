@@ -119,19 +119,37 @@ impl Render for SettingsView {
             || snapshot.is_none()
             || self.model_import.is_running()
             || !configuration_ready;
-        // The shortcuts page must not track the transient in-flight flag above:
-        // `pending` flips on and off around every save round-trip, and with the
-        // flag threaded into every gate switch and capture row the whole page
-        // visibly dims and re-enables, which reads as the page refreshing. The
-        // rows render from the stable states where editing is structurally
-        // impossible instead; the header status is the saving indicator.
-        let shortcuts_editing_blocked =
+        // Every page renders its rows from the stable states where editing is
+        // structurally impossible — no snapshot, unusable configuration, a
+        // model import running. The transient in-flight `pending` flag must
+        // not feed any gate or row: it flips on and off around every save and
+        // visibly dims and re-enables the page on each control change, which
+        // reads as the page refreshing. The header status is the saving
+        // indicator instead (see `setting_gate` for the unified rule).
+        let editing_blocked =
             snapshot.is_none() || self.model_import.is_running() || !configuration_ready;
-        // The hover hide delay is inert while the switch above it is off, so its row
-        // renders disabled rather than accepting a value nothing reads.
         let hover_hide_delay_available = snapshot
             .as_ref()
             .is_some_and(|snapshot| hover_hide_delay_applies(snapshot.overlay));
+        // The hover hide delay is inert while the switch above it is off, so
+        // its row renders disabled rather than accepting a value nothing
+        // reads — the unified gate rule's control arm.
+        let hover_hide_delay_gate = SettingGate::new(editing_blocked, hover_hide_delay_available);
+        // One gate per shortcut scope: the switch that owns the group plus the
+        // shared structural editing state. Each scope's rows read their own
+        // gate; the gate switches themselves stay operable while off.
+        let command_shortcuts_gate = SettingGate::new(
+            editing_blocked,
+            snapshot
+                .as_ref()
+                .is_some_and(|snapshot| shortcuts_page::ShortcutScope::Window.is_enabled(snapshot)),
+        );
+        let behavior_shortcuts_gate = SettingGate::new(
+            editing_blocked,
+            snapshot
+                .as_ref()
+                .is_some_and(|snapshot| shortcuts_page::ShortcutScope::Model.is_enabled(snapshot)),
+        );
         let shortcuts = snapshot
             .as_ref()
             .map(|snapshot| snapshot.shortcuts.clone())
@@ -157,13 +175,7 @@ impl Render for SettingsView {
                 cx,
             );
         }
-        self.sync_shortcut_row_focus(
-            &shortcuts,
-            active_model,
-            model_entries,
-            shortcuts_editing_blocked,
-            cx,
-        );
+        self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, editing_blocked, cx);
         let status: SharedString = match (self.pending, &snapshot) {
             (Some(PendingOperation::Refresh), _) => {
                 bongocat_i18n::text(language.catalog_locale(), "status.refreshing").into()
@@ -470,7 +482,7 @@ impl Render for SettingsView {
                         language.catalog_locale(),
                         "settings.overlay.hide_on_pointer_hover_delay.description",
                     ))
-                    .disabled(!hover_hide_delay_available),
+                    .disabled(hover_hide_delay_gate.disables_controls()),
                 ]),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -1102,13 +1114,13 @@ impl Render for SettingsView {
                 shortcuts_page::ShortcutScope::Window,
                 language,
                 view_entity.clone(),
-                shortcuts_editing_blocked,
+                command_shortcuts_gate,
             ),
             shortcuts_page::group(
                 shortcuts_page::ShortcutScope::Model,
                 language,
                 view_entity.clone(),
-                shortcuts_editing_blocked,
+                behavior_shortcuts_gate,
             ),
         ]);
 

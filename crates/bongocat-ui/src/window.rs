@@ -62,6 +62,8 @@ mod localization;
 mod model_actions;
 mod models;
 mod render;
+mod setting_gate;
+use setting_gate::SettingGate;
 mod settings;
 mod shortcuts;
 mod shortcuts_page;

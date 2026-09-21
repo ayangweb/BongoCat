@@ -365,9 +365,12 @@ impl SettingsView {
         })
         .disabled(disabled);
         let hover_hide_delay_seconds = overlay_settings.hide_on_pointer_hover_delay_seconds;
-        // The same availability the row renders from: the delay is inert while the
-        // hide-on-hover switch is off, so both steppers report themselves unusable.
-        let hover_hide_delay_available = hover_hide_delay_applies(overlay_settings);
+        // The same availability the row renders from, through the unified gate
+        // rule: the delay is inert while the hide-on-hover switch is off, so
+        // both steppers report themselves unusable.
+        let hover_hide_delay_gate =
+            SettingGate::new(disabled, hover_hide_delay_applies(overlay_settings));
+        let hover_hide_delay_available = !hover_hide_delay_gate.disables_controls();
         let mut hover_hide_delay_decrease_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE,
             AccessibilityRole::Button,
@@ -381,7 +384,7 @@ impl SettingsView {
             "settings.overlay.hide_on_pointer_hover_delay.description",
         ))
         .with_value(format!("{hover_hide_delay_seconds}s"))
-        .disabled(disabled || !hover_hide_delay_available || hover_hide_delay_seconds == 0);
+        .disabled(hover_hide_delay_gate.disables_controls() || hover_hide_delay_seconds == 0);
         let mut hover_hide_delay_increase_node = AccessibilityNode::new(
             ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE,
             AccessibilityRole::Button,
@@ -396,8 +399,7 @@ impl SettingsView {
         ))
         .with_value(format!("{hover_hide_delay_seconds}s"))
         .disabled(
-            disabled
-                || !hover_hide_delay_available
+            hover_hide_delay_gate.disables_controls()
                 || hover_hide_delay_seconds
                     >= bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS,
         );
@@ -704,6 +706,13 @@ impl SettingsView {
                     .shortcut_capture
                     .as_ref()
                     .filter(|capture| capture.target == target);
+                // The unified gate rule's accessibility arm: a row whose
+                // scope's switch is off reports itself disabled even though
+                // the global editing state is fine.
+                let row_disabled = disabled
+                    || snapshot.is_none_or(|snapshot| {
+                        !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot)
+                    });
                 let mut node = AccessibilityNode::new(
                     shortcut_accessibility_node_id(index),
                     AccessibilityRole::Button,
@@ -722,8 +731,8 @@ impl SettingsView {
                 } else {
                     value
                 })
-                .disabled(disabled);
-                if !disabled {
+                .disabled(row_disabled);
+                if !row_disabled {
                     node = node.clickable().focusable();
                 }
                 node
@@ -745,14 +754,18 @@ impl SettingsView {
         let shortcut_clear_nodes = shortcut_clear_rows
             .into_iter()
             .enumerate()
-            .map(|(index, (_, label))| {
+            .map(|(index, (target, label))| {
+                let row_disabled = disabled
+                    || snapshot.is_none_or(|snapshot| {
+                        !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot)
+                    });
                 let mut node = AccessibilityNode::new(
                     shortcut_clear_accessibility_node_id(index),
                     AccessibilityRole::Button,
                     label,
                 )
-                .disabled(disabled);
-                if !disabled {
+                .disabled(row_disabled);
+                if !row_disabled {
                     node = node.clickable().focusable();
                 }
                 node

@@ -1322,6 +1322,28 @@ fn shortcut_scope_gates_have_their_own_localized_label() {
     }
 }
 
+/// A shortcut target maps to exactly the scope whose switch gates its row:
+/// application commands to the window gate, model behaviors to the model
+/// gate. The render layer, the accessibility tree and the mutating methods
+/// all route through this mapping, so a drift here would make a disabled row
+/// accept edits through one of the other layers.
+#[test]
+fn shortcut_targets_map_to_the_scope_that_gates_them() {
+    let command = ShortcutCaptureTarget::Command("toggle_overlay".to_owned());
+    let behavior = ShortcutCaptureTarget::ModelBehavior {
+        model_id: "model".to_owned(),
+        behavior_id: "motion:group:index".to_owned(),
+    };
+    assert!(matches!(
+        ShortcutScope::for_target(&command),
+        ShortcutScope::Window
+    ));
+    assert!(matches!(
+        ShortcutScope::for_target(&behavior),
+        ShortcutScope::Model
+    ));
+}
+
 #[test]
 fn invalid_model_status_is_stable_and_path_free() {
     let entry = model_entry(

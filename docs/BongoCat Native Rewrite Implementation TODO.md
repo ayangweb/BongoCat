@@ -5435,6 +5435,53 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       的字段表与门禁段、`docs/phase-0/behavior-inventory.md` 修订记录，以及两份 CHANGELOG 的
       "✨ 新功能"与"🎨 界面与体验"。
 
+102. [x] `P1-SETTING-GATE-DISABLE-RULE`：「开关门禁」与被控设置项的统一禁用绑定规则；门禁关闭时
+     快捷键行置灰且不可交互。
+    - 背景（2026-09-21，维护者反馈）：快捷键页两个门禁开关关闭时应自动禁用各自作用域的设置项
+      （置灰且不可交互），参照"鼠标悬停隐藏延迟"开关关闭时禁用延迟行的实现；并要求把这类
+      "开关控制下属设置项"的场景收敛为一套统一标准，此后新增场景不再单独编写禁用逻辑。该要求
+      推翻了第 101 项/ADR-0052「明确不做」里"不给行列表加禁用态样式"的条目（决策变更，ADR-0052
+      已就地标注取代关系）。
+    - 决策：ADR-0053。核心是三条：①开关自身只随结构性编辑阻塞禁用、永不被自身状态禁用；②被控
+      控件的禁用条件 = 结构性编辑阻塞 ∨ 开关关闭，`pending` 不进门禁；③可见行、无障碍树、变更
+      守卫三层读同一个 `SettingGate` 值，门禁只投影可用性、从不改写被门禁的值。
+    - 实现（全部在 `bongocat-ui`）：
+      ① 新增 `window/setting_gate.rs`：`SettingGate::new(editing_blocked, enabled)` +
+        `disables_switch()` / `disables_controls()`，模块文档即规则说明书；含两个内联单测
+        （开关臂、控制臂真值表）。
+      ② `shortcuts_page.rs`：`ShortcutScope::for_target` 成为"目标 → 门禁作用域"的唯一映射；
+        `group()` / `gate_item()` / `content()` / `shortcut_row()` 改收 `SettingGate`，开关行走
+        `disables_switch()`，行**整行置灰（标签与控件一起，维护者 2026-09-21 截图对比后拍板：
+        与 `SettingItem::disabled` 的整行置灰一致，不出现"标签全黑、控件灰"的第二种模式）**，
+        捕获与清除按钮**停止注册 `on_click` / `on_key_down`**（自定义行的置灰不吞事件，
+        这是"不可交互"的必要一半）。
+      ③ `render.rs`：`shortcuts_editing_blocked` 更名 `editing_blocked` 并供所有门禁共用；每作用域
+        构造一个 `SettingGate`（`enabled` 取 `ShortcutScope::is_enabled(snapshot)`，正向不取反）；
+        悬停隐藏延迟行改读 `SettingGate::new(editing_blocked, hover_hide_delay_applies(..))
+        .disables_controls()`（行为差异：结构性编辑阻塞期间该行现在也置灰，与其 mutator 守卫
+        `set_overlay_hover_hide_delay_value` 的既有早退对齐）。
+      ④ `shortcuts.rs`：`begin_shortcut_capture`、`begin_shortcut_capture_from_accessibility`、
+        `clear_shortcut` 增加门禁守卫（`shortcut_commands_available` 的结构性检查之外再判目标
+        作用域真值）；`finish_shortcut_capture_if_valid` 在门禁中途关闭时取消捕获而不是写入界面上
+        不可见的绑定；`sync_shortcut_row_focus` 按同一谓词决定 tab stop，并取消仍挂在已关闭作用域
+        目标上的捕获（与"目标离开行序即取消"同一机制）。
+      ⑤ `accessibility.rs`：快捷键捕获/清除节点逐行判定 `disabled || 该行作用域门禁关闭`，禁用时
+        不加 `clickable().focusable()`；悬停延迟两个 stepper 改读 `SettingGate`（真值不变）。
+      ⑥ 测试：`setting_gate` 内联两例 + `shortcut_targets_map_to_the_scope_that_gates_them`
+        （目标→作用域映射漂移会让禁用行从其他层漏改）。
+    - 明确不做：不改 runtime 投影语义（`ShortcutConfig::active_bindings` 仍是唯一实现点）；不在
+      门禁关闭时清空绑定；不把 `pending` 计入门禁；不为打包字段重写禁用样式（复用
+      `SettingItem::disabled`）；不加提示行。
+    - 验收证据（2026-09-21，本机 macOS / aarch64）：`cargo check -p bongocat-ui --all-targets`、
+      `cargo clippy -p bongocat-ui --all-targets`（仅既有的 block v0.1.6 future-incompat 警告）、
+      `cargo fmt -p bongocat-ui -- --check`、`cargo test -p bongocat-ui`（126 通过，含新增 3 例）
+      全部通过；`cargo test --locked --workspace` 全绿。
+    - 未运行：Windows 侧全部路径（本机无法执行 `cfg(windows)` 测试与 smoke）；置灰视觉效果、
+      125/150/200% DPI 无截图证据；读屏器对 disabled 行的实际播报未实测。
+    - 同步文档：新增 ADR-0053；ADR-0052「明确不做」对应条目标注被取代；Technical Design 快捷键
+      门禁段补统一禁用规则、自动分配段"可见可改"改为"门禁关闭时置灰不可改"；两份 CHANGELOG 的
+      "✨ 新功能"。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

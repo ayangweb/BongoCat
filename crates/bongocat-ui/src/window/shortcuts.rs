@@ -1,6 +1,23 @@
 use super::*;
 
 impl SettingsView {
+    /// Whether a shortcut target's row accepts edits under the unified gate
+    /// rule: its scope's switch is on in the current snapshot.
+    ///
+    /// This is the guard arm of the binding between a gate switch and the
+    /// rows it controls (`setting_gate`): the visible rows stop offering
+    /// interaction, the accessibility nodes report themselves disabled, and
+    /// the mutating methods refuse to act on a target whose gate is off — so
+    /// a client acting on a tree rendered before the switch flipped still
+    /// changes nothing. Structural blocking (no snapshot, unusable
+    /// configuration, an import running) is covered by the existing
+    /// availability checks at each call site.
+    fn shortcut_target_editable(&self, target: &ShortcutCaptureTarget) -> bool {
+        self.snapshot.as_ref().is_some_and(|snapshot| {
+            shortcuts_page::ShortcutScope::for_target(target).is_enabled(snapshot)
+        })
+    }
+
     pub(super) fn sync_shortcut_row_focus(
         &mut self,
         shortcuts: &SettingsShortcuts,
@@ -19,15 +36,24 @@ impl SettingsView {
             .retain(|target, _| target_set.contains(target));
         self.shortcut_clear_focus
             .retain(|target, _| target_set.contains(target));
-        if self
+        // A capture started before its scope's switch turned off must not
+        // keep recording into a row that renders disabled: cancel it the same
+        // way a capture whose target left the table is cancelled.
+        let capture_orphaned = self
             .shortcut_capture
             .as_ref()
-            .is_some_and(|capture| !target_set.contains(&capture.target))
+            .is_some_and(|capture| !self.shortcut_target_editable(&capture.target));
+        if capture_orphaned
+            || self
+                .shortcut_capture
+                .as_ref()
+                .is_some_and(|capture| !target_set.contains(&capture.target))
         {
             self.cancel_shortcut_capture(cx);
         }
         for (index, row) in rows.into_iter().enumerate() {
             let target = row.target;
+            let editable = self.shortcut_target_editable(&target);
             let tab_index = shortcut_capture_tab_index(index);
             let focus = self
                 .shortcut_row_focus
@@ -36,7 +62,7 @@ impl SettingsView {
             *focus = focus
                 .clone()
                 .tab_index(tab_index)
-                .tab_stop(!commands_blocked);
+                .tab_stop(!commands_blocked && editable);
             let clear_focus = self
                 .shortcut_clear_focus
                 .entry(target)
@@ -44,7 +70,7 @@ impl SettingsView {
             *clear_focus = clear_focus
                 .clone()
                 .tab_index(shortcut_clear_tab_index(index))
-                .tab_stop(!commands_blocked && row.shortcut.is_some());
+                .tab_stop(!commands_blocked && editable && row.shortcut.is_some());
         }
     }
 
@@ -67,6 +93,12 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
+        // The unified gate rule's guard arm: the row is disabled while its
+        // scope's switch is off, so a request nothing displays changes
+        // nothing either.
+        if !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot) {
+            return;
+        }
         let mut shortcuts_without_capture_target = snapshot.shortcuts.clone();
         clear_shortcut(&mut shortcuts_without_capture_target, &target);
         self.pending = Some(PendingOperation::BeginShortcutCapture);
@@ -143,6 +175,12 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
+        // The unified gate rule's guard arm: the row is disabled while its
+        // scope's switch is off, so a request nothing displays changes
+        // nothing either.
+        if !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot) {
+            return;
+        }
         let mut shortcuts_without_capture_target = snapshot.shortcuts.clone();
         clear_shortcut(&mut shortcuts_without_capture_target, &target);
         self.pending = Some(PendingOperation::BeginShortcutCapture);
@@ -250,6 +288,14 @@ impl SettingsView {
             cx.notify();
             return;
         };
+        // The switch that gates this target's row turned off mid-capture: the
+        // row is disabled now, so the capture ends instead of writing a
+        // binding nothing displays. `sync_shortcut_row_focus` cancels the
+        // same capture on the next render; this keeps the two paths honest.
+        if !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot) {
+            self.cancel_shortcut_capture(cx);
+            return;
+        }
         let mut shortcuts = snapshot.shortcuts.clone();
         if !replace_shortcut(&mut shortcuts, &target, shortcut.clone()) {
             cx.notify();
@@ -295,6 +341,11 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
+        // The unified gate rule's guard arm: a disabled row cannot clear its
+        // binding either.
+        if !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot) {
+            return;
+        }
         let mut shortcuts = snapshot.shortcuts.clone();
         if !clear_shortcut(&mut shortcuts, &target) {
             return;
