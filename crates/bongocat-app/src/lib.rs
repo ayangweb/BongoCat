@@ -116,7 +116,6 @@ pub enum ApplicationError {
     MotionId(MotionIdError),
     ExpressionId(ExpressionIdError),
     PresetModelDeletion(ModelId),
-    SelectedModelDeletion(ModelId),
     PresetModelMetadata(ModelId),
     ModelNotInstalled(ModelId),
     ModelTitleInvalid,
@@ -146,13 +145,6 @@ impl fmt::Display for ApplicationError {
             Self::ExpressionId(error) => write!(formatter, "expression id failed: {error}"),
             Self::PresetModelDeletion(id) => {
                 write!(formatter, "preset model cannot be deleted: {}", id.as_str())
-            }
-            Self::SelectedModelDeletion(id) => {
-                write!(
-                    formatter,
-                    "selected model cannot be deleted: {}",
-                    id.as_str()
-                )
             }
             Self::PresetModelMetadata(id) => {
                 write!(
@@ -1373,19 +1365,12 @@ impl Application {
         if origin == ModelOrigin::Preset {
             return Err(ApplicationError::PresetModelDeletion(id));
         }
-        let active_installed = self.active_model_origin == Some(ModelOrigin::Installed)
-            && self
-                .runtime
-                .client()
-                .snapshot()
-                .active_model
-                .as_ref()
-                .is_some_and(|active| active.id == id);
-        let configured_installed = self.config.model.selected_model_origin
-            == Some(SelectedModelOrigin::Installed)
-            && self.config.model.selected_model_id.as_deref() == Some(id.as_str());
-        if active_installed || configured_installed {
-            return Err(ApplicationError::SelectedModelDeletion(id));
+        // Deleting the model the overlay is showing is allowed: the standard
+        // preset takes over first, so the package being removed is never the one
+        // the runtime is holding. A switch that fails aborts the delete rather
+        // than pulling the files out from under the live model.
+        if self.is_selected_installed_model(&id) {
+            self.select_model(ModelOrigin::Preset, STANDARD_PRESET_MODEL_ID)?;
         }
         self.model_store
             .delete(&id)
@@ -1397,6 +1382,29 @@ impl Application {
             self.commit_installed_models(installed_models)?;
         }
         Ok(())
+    }
+
+    /// Whether `id` is the installed model the application is showing or has
+    /// selected.
+    ///
+    /// The overlay's identity and the recorded selection are two separate
+    /// facts: a fresh configuration records no selection while the startup
+    /// model is already live. Either one pointing at `id` means deleting it
+    /// would remove the model the user is currently looking at, which is the
+    /// case [`Application::delete_model`] has to switch away from first.
+    fn is_selected_installed_model(&self, id: &ModelId) -> bool {
+        let shown = self.active_model_origin == Some(ModelOrigin::Installed)
+            && self
+                .runtime
+                .client()
+                .snapshot()
+                .active_model
+                .as_ref()
+                .is_some_and(|active| active.id.as_str() == id.as_str());
+        let configured = self.config.model.selected_model_origin
+            == Some(SelectedModelOrigin::Installed)
+            && self.config.model.selected_model_id.as_deref() == Some(id.as_str());
+        shown || configured
     }
 
     /// Import every model a source describes.
@@ -4281,7 +4289,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_installed_model_must_be_replaced_before_deletion() {
+    fn deleting_the_live_installed_model_falls_back_to_the_standard_preset() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let mut application = Application::start_with_layout(layout).expect("start application");
@@ -4294,11 +4302,19 @@ mod tests {
             .select_model(ModelOrigin::Installed, active_id.as_str())
             .expect("activate model");
 
-        let error = application
+        application
             .delete_model(ModelOrigin::Installed, active_id.as_str())
-            .expect_err("selected model deletion must fail");
-        assert!(matches!(error, ApplicationError::SelectedModelDeletion(_)));
-        assert_eq!(installed_catalog_ids(&application), vec![active_id]);
+            .expect("selected model deletion switches away first");
+        assert!(installed_catalog_ids(&application).is_empty());
+        assert_eq!(
+            application.config().model.selected_model_id,
+            Some("standard".to_owned())
+        );
+        assert_eq!(
+            application.config().model.selected_model_origin,
+            Some(SelectedModelOrigin::Preset)
+        );
+        assert_eq!(application.active_model_origin(), Some(ModelOrigin::Preset));
         application.shutdown().expect("clean shutdown");
     }
 
@@ -4328,7 +4344,7 @@ mod tests {
     }
 
     #[test]
-    fn configured_installed_model_cannot_be_deleted_before_restart_activation() {
+    fn configured_installed_model_deletion_falls_back_before_restart_activation() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
@@ -4345,11 +4361,20 @@ mod tests {
 
         let mut restarted = Application::start_with_layout(layout).expect("restart application");
         assert!(restarted.runtime_client().snapshot().active_model.is_none());
-        let error = restarted
+        // Nothing is live yet, so the recorded selection is the only fact that
+        // names this model — and it is enough on its own to switch away first.
+        restarted
             .delete_model(ModelOrigin::Installed, selected_id.as_str())
-            .expect_err("configured model deletion must fail");
-        assert!(matches!(error, ApplicationError::SelectedModelDeletion(_)));
-        assert_eq!(installed_catalog_ids(&restarted), vec![selected_id]);
+            .expect("configured model deletion switches away first");
+        assert!(installed_catalog_ids(&restarted).is_empty());
+        assert_eq!(
+            restarted.config().model.selected_model_id,
+            Some("standard".to_owned())
+        );
+        assert_eq!(
+            restarted.config().model.selected_model_origin,
+            Some(SelectedModelOrigin::Preset)
+        );
         restarted.shutdown().expect("clean restart shutdown");
     }
 

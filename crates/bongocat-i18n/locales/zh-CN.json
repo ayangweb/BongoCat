@@ -352,7 +352,6 @@
       "model_store_busy": "模型存储正忙",
       "model_import_failed": "无法导入模型",
       "preset_model_cannot_be_deleted": "无法删除预置模型",
-      "selected_model_cannot_be_deleted": "删除当前模型前必须先切换到其他模型",
       "model_not_installed": "找不到已安装模型",
       "model_delete_failed": "无法删除已安装模型",
       "diagnostics_export_failed": "无法导出诊断信息",

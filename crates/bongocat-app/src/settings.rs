@@ -2466,9 +2466,6 @@ fn map_model_delete_error(error: ApplicationError) -> SettingsError {
             SettingsErrorCode::InvalidModelId
         }
         ApplicationError::PresetModelDeletion(_) => SettingsErrorCode::PresetModelCannotBeDeleted,
-        ApplicationError::SelectedModelDeletion(_) => {
-            SettingsErrorCode::SelectedModelCannotBeDeleted
-        }
         ApplicationError::ModelStore(error) => map_model_store_delete_diagnostic(error.code),
         error => return map_application_error(error),
     };
@@ -5485,7 +5482,7 @@ mod tests {
     }
 
     #[test]
-    fn service_rejects_deleting_the_selected_installed_model() {
+    fn service_deletes_the_selected_installed_model_and_switches_to_the_preset() {
         let base = tempdir().expect("temporary storage");
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
         let application = Application::start_with_layout(layout).expect("application start");
@@ -5515,21 +5512,22 @@ mod tests {
             )
             .expect("select installed model");
 
-        let error = client
+        let deleted = client
             .delete_model_blocking(SettingsModelKey {
                 id: installed_id.clone(),
                 origin: SettingsModelOrigin::Installed,
             })
-            .expect_err("selected deletion");
-        assert_eq!(
-            error.code(),
-            SettingsErrorCode::SelectedModelCannotBeDeleted
-        );
-        let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
-        assert_eq!(unchanged.revision, selected.revision);
-        assert!(unchanged.model_catalog.entries.iter().any(|entry| {
+            .expect("selected model deletion switches away first");
+        // One snapshot carries both halves: the package is gone from the
+        // catalog, and the model that replaced it is the standard preset.
+        assert!(deleted.revision >= selected.revision);
+        assert!(!deleted.model_catalog.entries.iter().any(|entry| {
             entry.id == installed_id && entry.origin == SettingsModelOrigin::Installed
         }));
+        assert_eq!(
+            deleted.active_model.as_ref().map(|model| model.origin),
+            Some(SettingsModelOrigin::Preset)
+        );
 
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");

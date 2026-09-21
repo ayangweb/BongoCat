@@ -432,6 +432,9 @@ struct ModelEditDraft {
 struct ModelRowActions {
     active: bool,
     can_activate: bool,
+    /// An imported model is deletable even while it is the one on screen: the
+    /// runtime switches to the standard preset before the package goes away, so
+    /// no card the user imported ever loses its delete control.
     can_delete: bool,
     /// Only installed models own editable metadata: preset names and covers are
     /// app-bundled content, so the row offers no edit affordance at all.
@@ -1685,7 +1688,7 @@ fn model_row_actions(
     ModelRowActions {
         active,
         can_activate: ready && !active && !commands_blocked,
-        can_delete: installed && !active && !commands_blocked,
+        can_delete: installed && !commands_blocked,
         can_edit: installed && !commands_blocked,
         can_open_location: entry.directory.is_some() && !commands_blocked,
     }
@@ -1718,7 +1721,7 @@ fn model_row_action_tab_indices(first_tab_index: isize) -> ModelRowActionTabIndi
 /// The question is drawn by the card's delete control, and the card only draws
 /// that control while deleting is possible, so the question is only meaningful
 /// under exactly the conditions the control needs: an installed model, still in
-/// the catalog, still not the active one, and no other model command in flight.
+/// the catalog, and no other model command in flight.
 /// The last one is why this is stated as "the control would still act" rather
 /// than as a list of its own: the card drops the control while a command is
 /// pending, and a question that outlived it would come back unasked once the

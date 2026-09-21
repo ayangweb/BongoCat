@@ -46,7 +46,10 @@ impl SettingsView {
             .find(|entry| entry.origin == active_model.origin && entry.id == active_model.id)
             .ok_or_else(|| "models page active model is absent from the catalog".to_owned())?;
         let active_actions = model_row_actions(active_entry, Some(active_model), false);
-        if !active_actions.active || active_actions.can_activate || active_actions.can_delete {
+        // The active card must not offer to activate itself again. Deleting it is
+        // offered for an imported one — the runtime switches to the standard
+        // preset first — and the preset loop below covers the bundled models.
+        if !active_actions.active || active_actions.can_activate {
             return Err("models page did not protect the active model row".to_owned());
         }
         self.verify_models_localization_for_smoke(snapshot, active_entry)?;

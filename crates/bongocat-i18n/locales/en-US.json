@@ -352,7 +352,6 @@
       "model_store_busy": "model storage is busy",
       "model_import_failed": "model could not be imported",
       "preset_model_cannot_be_deleted": "preset model cannot be deleted",
-      "selected_model_cannot_be_deleted": "selected model must be replaced before deletion",
       "model_not_installed": "installed model was not found",
       "model_delete_failed": "installed model could not be deleted",
       "diagnostics_export_failed": "diagnostics could not be exported",

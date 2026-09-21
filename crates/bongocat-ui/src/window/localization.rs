@@ -178,9 +178,6 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::PresetModelCannotBeDeleted => {
             "errors.settings.preset_model_cannot_be_deleted"
         }
-        SettingsErrorCode::SelectedModelCannotBeDeleted => {
-            "errors.settings.selected_model_cannot_be_deleted"
-        }
         SettingsErrorCode::ModelNotInstalled => "errors.settings.model_not_installed",
         SettingsErrorCode::ModelDeleteFailed => "errors.settings.model_delete_failed",
         SettingsErrorCode::DiagnosticsExportFailed => "errors.settings.diagnostics_export_failed",

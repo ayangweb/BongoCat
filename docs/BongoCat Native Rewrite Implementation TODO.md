@@ -1618,6 +1618,12 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     `SettingsModelEntry.directory`/`cover` 投影、`ModelStore::replace_cover` 与共享的包布局常量；
     打开模型位置经 `ModelLocationCapability` 注入，与配置备份目录同一 seam。双平台实机点击与
     `--settings-window-smoke` 仍未运行，因此总项保持未勾选。
+  - 状态（2026-09-21）：删除不再要求用户先切走。`ModelRowActions::can_delete` 去掉 `!active`，
+    installed 模型的删除按钮在任何时候都在；`Application::delete_model` 遇到当前 runtime active
+    或配置所选的 installed 模型时先经 `select_model` 切回 `standard` 预置，切换失败即中止删除，
+    不会在 runtime 仍持有该包时移除文件。随之删掉不再可达的 `ApplicationError::SelectedModelDeletion`
+    与 `SettingsErrorCode::SelectedModelCannotBeDeleted`（`SettingsErrorCode::ALL` 由 42 项减为 41 项），
+    以及 `errors.settings.selected_model_cannot_be_deleted` 两个 locale 键。
 - [ ] 输入：键鼠、手柄、忽略鼠标、单键模式和校正状态。
 - [ ] 快捷键：捕获、冲突、清除和恢复默认。
   - 状态（2026-09-01）：正式 `bongocat-config` 已加入平台无关的 typed chord 校验和 canonicalization；修饰键别名、顺序和多余空白会稳定化，重复修饰键、多 key、空片段和非法 key 会被拒绝，`commands` 与 `model_behaviors` 共享冲突命名空间。settings service 现以 typed command 完成 revision-checked 原子持久化、snapshot 投影、重启恢复和 `RestoreDefaultShortcuts` 恢复默认；空集合可清除全部绑定。平台输入 owner 已将匹配 target 投递到 runtime 或 settings handoff；UI 编辑入口、平台注册/捕获和实机证据仍待完成。

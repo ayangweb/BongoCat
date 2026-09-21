@@ -967,9 +967,10 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   只是表单草稿，最终仍由正式 `ModelId` contract 校验。页面提交 typed import 后以 100 ms UI
   timer 读取无路径 progress，cancel 直接设置共享原子令牌，失败可使用同一草稿 retry；GPUI
   executor 不遍历、解析或复制模型文件，成功只刷新 catalog，不隐式切换 active model。
-- 模型删除 command 同样携带 `(origin, model_id)`；preset 永不可删。installed 模型只有在既
-  不是当前 runtime active、也不是配置所选来源时才能以 rename 后删除事务退休；同 ID preset
-  不得阻止删除 installed 副本。成功只刷新 catalog，不隐式切模或改写配置。
+- 模型删除 command 同样携带 `(origin, model_id)`；preset 永不可删。installed 模型始终可删，
+  包括当前 runtime active 或配置所选的那个：删除前先按同一 typed selection 路径切回标准预置，
+  切换失败即中止删除，绝不在 runtime 仍持有该包时移除文件。删除本身仍以 rename 后删除事务退休；
+  同 ID preset 不得阻止删除 installed 副本。成功刷新 catalog，并把回退后的选择一并反映到快照。
 - 更新的 manifest 获取、版本比较、下载、验签、安装与重启由 `cargo-packager-updater 0.2.3` 承担；
   `bongocat-update` 只保留 BongoCat 侧策略与诊断契约，不自行实现传输或替换层。信任模型为
   **detached minisign 签名**：发行载荷必须由发布私钥签名，客户端以编译进构建的公钥校验，

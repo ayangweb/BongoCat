@@ -929,7 +929,6 @@ pub enum SettingsErrorCode {
     ModelStoreBusy,
     ModelImportFailed,
     PresetModelCannotBeDeleted,
-    SelectedModelCannotBeDeleted,
     ModelNotInstalled,
     ModelDeleteFailed,
     DiagnosticsExportFailed,
@@ -942,7 +941,7 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 42] = [
+    pub const ALL: [Self; 41] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -975,7 +974,6 @@ impl SettingsErrorCode {
         Self::ModelStoreBusy,
         Self::ModelImportFailed,
         Self::PresetModelCannotBeDeleted,
-        Self::SelectedModelCannotBeDeleted,
         Self::ModelNotInstalled,
         Self::ModelDeleteFailed,
         Self::DiagnosticsExportFailed,
@@ -1021,7 +1019,6 @@ impl SettingsErrorCode {
             Self::ModelStoreBusy => "model_store_busy",
             Self::ModelImportFailed => "model_import_failed",
             Self::PresetModelCannotBeDeleted => "preset_model_cannot_be_deleted",
-            Self::SelectedModelCannotBeDeleted => "selected_model_cannot_be_deleted",
             Self::ModelNotInstalled => "model_not_installed",
             Self::ModelDeleteFailed => "model_delete_failed",
             Self::DiagnosticsExportFailed => "diagnostics_export_failed",
@@ -1111,9 +1108,6 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ModelStoreBusy => "model storage is busy",
             SettingsErrorCode::ModelImportFailed => "model could not be imported",
             SettingsErrorCode::PresetModelCannotBeDeleted => "preset model cannot be deleted",
-            SettingsErrorCode::SelectedModelCannotBeDeleted => {
-                "selected model must be replaced before deletion"
-            }
             SettingsErrorCode::ModelNotInstalled => "installed model was not found",
             SettingsErrorCode::ModelDeleteFailed => "installed model could not be deleted",
             SettingsErrorCode::DiagnosticsExportFailed => "diagnostics could not be exported",

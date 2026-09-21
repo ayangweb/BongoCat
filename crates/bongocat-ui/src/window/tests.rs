@@ -1095,6 +1095,24 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
         }
     );
 
+    // An imported model keeps its delete control while it is the one on screen:
+    // deleting it switches the runtime to the standard preset first, so the
+    // control cannot disappear from a card the user imported.
+    let active_installed = SettingsModelKey {
+        id: "duplicate".to_owned(),
+        origin: SettingsModelOrigin::Installed,
+    };
+    assert_eq!(
+        model_row_actions(&installed, Some(&active_installed), false),
+        ModelRowActions {
+            active: true,
+            can_activate: false,
+            can_delete: true,
+            can_edit: true,
+            can_open_location: false,
+        }
+    );
+
     // "Open location" needs a directory that actually resolved, so an entry
     // whose files are gone offers no button instead of a dead one.
     let located = SettingsModelEntry {
@@ -1170,12 +1188,13 @@ fn an_open_delete_question_lives_only_while_its_control_would() {
         &target
     ));
 
-    // The target can stop being deletable in three ways, and each one takes the
-    // control off the card: it becomes the active model, it leaves the catalog, or
-    // another command takes the page.
+    // The target can stop being deletable in two ways, and each one takes the
+    // control off the card: it leaves the catalog, or another command takes the
+    // page. Becoming the active model is not one of them — an imported model
+    // keeps its delete control while it is the one on screen.
     assert!(
-        !model_delete_confirmation_is_valid(&catalog, Some(&target), false, &target),
-        "a model that became active is not one the card offers to delete"
+        model_delete_confirmation_is_valid(&catalog, Some(&target), false, &target),
+        "an imported model that became active still offers deletion"
     );
     assert!(
         !model_delete_confirmation_is_valid(&catalog[..1], Some(&active_preset), false, &target),
