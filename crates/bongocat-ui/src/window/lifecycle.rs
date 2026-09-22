@@ -144,10 +144,18 @@ pub fn open_settings_window(
         .borrow_mut()
         .take()
         .ok_or_else(|| "settings view was not created".to_owned())?;
-    Ok(SettingsWindowHandle {
+    let window_handle = SettingsWindowHandle {
         window: handle,
         view: view.downgrade(),
-    })
+    };
+    match window_handle.update(cx, |view, window, cx| view.reopen(window, cx)) {
+        Ok(Ok(())) => Ok(window_handle),
+        Ok(Err(error)) => {
+            let _ = window_handle.update(cx, |_, window, _| window.remove_window());
+            Err(error)
+        }
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 fn initial_window_bounds(

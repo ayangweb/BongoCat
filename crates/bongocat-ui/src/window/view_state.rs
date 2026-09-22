@@ -188,7 +188,7 @@ impl SettingsView {
             shortcut_capture_blur_subscription: None,
             shortcut_row_focus: BTreeMap::new(),
             shortcut_clear_focus: BTreeMap::new(),
-            window_hidden: false,
+            window_hidden: true,
             applied_theme: None,
             language_select,
             theme_select,

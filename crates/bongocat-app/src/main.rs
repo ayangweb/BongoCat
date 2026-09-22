@@ -3377,26 +3377,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
 
-                Timer::after(Duration::from_millis(250)).await;
-                let open_verified = cx.update(|cx| -> Result<(), String> {
-                    if cx.windows().len() != 1 {
-                        return Err("Open Settings created a duplicate GPUI window".to_owned());
+                let mut open_verified =
+                    Err("Open Settings did not restore a runtime snapshot".to_owned());
+                for _ in 0..SMOKE_FIRST_FRAME_WAIT_TICKS {
+                    Timer::after(Duration::from_millis(50)).await;
+                    let verified = cx.update(|cx| -> Result<bool, String> {
+                        if cx.windows().len() != 1 {
+                            return Err("Open Settings created a duplicate GPUI window".to_owned());
+                        }
+                        let window = cx
+                            .global::<ProductCoordinator>()
+                            .settings_window
+                            .clone()
+                            .ok_or_else(|| {
+                                "Open Settings did not retain a settings window".to_owned()
+                            })?;
+                        let (revision, hidden) = window
+                            .update(cx, |view, _, _| {
+                                (view.snapshot_revision(), view.window_hidden())
+                            })
+                            .map_err(|error| error.to_string())?;
+                        if hidden {
+                            return Err("Open Settings left the settings window hidden".to_owned());
+                        }
+                        Ok(revision.is_some())
+                    });
+                    match verified {
+                        Ok(true) => {
+                            open_verified = Ok(());
+                            break;
+                        }
+                        Ok(false) => {}
+                        Err(error) => {
+                            open_verified = Err(error);
+                            break;
+                        }
                     }
-                    let window = cx
-                        .global::<ProductCoordinator>()
-                        .settings_window
-                        .clone()
-                        .ok_or_else(|| {
-                            "Open Settings did not retain a settings window".to_owned()
-                        })?;
-                    let revision = window
-                        .update(cx, |view, _, _| view.snapshot_revision())
-                        .map_err(|error| error.to_string())?;
-                    if revision.is_none() {
-                        return Err("Open Settings did not restore a runtime snapshot".to_owned());
-                    }
-                    Ok(())
-                });
+                }
                 if let Err(error) = open_verified {
                     record_failure(&smoke_failures, error.to_string());
                     cx.update(request_product_quit);
