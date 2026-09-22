@@ -16,16 +16,17 @@ impl Render for SettingsView {
         if let Some(snapshot) = snapshot.as_ref() {
             self.sync_component_inputs(snapshot, window, cx);
         }
-        let disabled =
-            self.pending.is_some() || snapshot.is_none() || self.model_import.is_running();
         // Every page renders its rows from the stable states where editing is
         // structurally impossible — no snapshot, unusable configuration, a
         // model import running. The transient in-flight `pending` flag must
         // not feed any gate or row: it flips on and off around every save and
         // visibly dims and re-enables the page on each control change, which
         // reads as the page refreshing. The header status is the saving
-        // indicator instead (see `setting_gate` for the unified rule).
-        let editing_blocked = snapshot.is_none() || self.model_import.is_running();
+        // indicator instead. `editing_blocked` is that one predicate, shared
+        // by every page's gate — the General page's selects and the startup
+        // switch below read it exactly like the gated rows do (see
+        // `setting_gate` for the unified rule).
+        let editing_blocked = self.editing_blocked(snapshot.as_ref());
         let hover_hide_delay_available = snapshot
             .as_ref()
             .is_some_and(|snapshot| hover_hide_delay_applies(snapshot.overlay));
@@ -98,7 +99,7 @@ impl Render for SettingsView {
         let view_entity = cx.entity();
         let startup_item = startup_item_presentation(
             snapshot.as_ref().map(|snapshot| snapshot.startup_item),
-            disabled,
+            editing_blocked,
             language,
         );
 
@@ -128,7 +129,9 @@ impl Render for SettingsView {
                             let view = view_entity.clone();
                             move |_: &RenderOptions, _: &mut Window, app: &mut App| {
                                 let state = view.read(app).theme_select.clone();
-                                Select::new(&state).disabled(disabled).into_any_element()
+                                Select::new(&state)
+                                    .disabled(editing_blocked)
+                                    .into_any_element()
                             }
                         }),
                     ),
@@ -141,7 +144,9 @@ impl Render for SettingsView {
                             let view = view_entity.clone();
                             move |_: &RenderOptions, _: &mut Window, app: &mut App| {
                                 let state = view.read(app).language_select.clone();
-                                Select::new(&state).disabled(disabled).into_any_element()
+                                Select::new(&state)
+                                    .disabled(editing_blocked)
+                                    .into_any_element()
                             }
                         }),
                     ),

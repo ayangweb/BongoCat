@@ -963,9 +963,11 @@ fn an_open_delete_question_lives_only_while_its_control_would() {
     ));
 
     // The target can stop being deletable in two ways, and each one takes the
-    // control off the card: it leaves the catalog, or another command takes the
-    // page. Becoming the active model is not one of them — an imported model
-    // keeps its delete control while it is the one on screen.
+    // control off the card: it leaves the catalog, or editing is structurally
+    // blocked (an import running, a picker open). Becoming the active model is
+    // not one of them — an imported model keeps its delete control while it is
+    // the one on screen — and neither is an in-flight command, which never
+    // feeds the visual gate (ADR-0053).
     assert!(
         model_delete_confirmation_is_valid(&catalog, Some(&target), false, &target),
         "an imported model that became active still offers deletion"
@@ -1719,6 +1721,103 @@ fn the_import_card_is_as_tall_as_the_model_cards_beside_it(cx: &mut TestAppConte
     assert!(
         import.size.height > px(super::models::MODEL_CARD_MIN_HEIGHT),
         "a row is as tall as its tallest cell, so the card must be taller than its own floor"
+    );
+}
+
+/// The in-flight command flag never feeds the shared visual-gate predicate
+/// (ADR-0053).
+///
+/// `select_model`, `open_model_location` and `delete_model` hold `pending` for
+/// the round trip. Gating a page on it disabled and re-enabled every control
+/// around each command — every click read as the page refreshing. Every page
+/// now reads one predicate, `SettingsView::editing_blocked`, so this pins the
+/// predicate itself (it must stay false while a command merely waits), and the
+/// models page as a consumer of it: an open delete question survives a
+/// re-projection rendered under `pending`, and a press on a card's control
+/// during the wait still reaches nothing.
+#[gpui_kit::test]
+fn an_in_flight_command_never_flickers_the_models_page_gate(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, endpoint) = crate::SettingsClient::bounded(4);
+    let installed = model_entry(
+        "duplicate",
+        SettingsModelOrigin::Installed,
+        SettingsModelAvailability::Ready {
+            behaviors: Vec::new(),
+        },
+    );
+    let model = SettingsModelKey {
+        id: installed.id.clone(),
+        origin: installed.origin,
+    };
+    let mut seeded = crate::tests::snapshot(1, false, true);
+    seeded.model_catalog.entries = vec![installed];
+    let page_snapshot = seeded.clone();
+
+    let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
+    let capture = Rc::clone(&built);
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::EnglishUnitedStates,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        capture.borrow_mut().replace(view.clone());
+        let page = cx.new(|_| ModelsPageHarness {
+            view,
+            snapshot: Some(page_snapshot),
+        });
+        // The cards own `PopConfirm` surfaces, which resolve through a `Root`.
+        Root::new(page, window, cx)
+    });
+    let view = built
+        .borrow_mut()
+        .take()
+        .expect("the window builder must hand the page out");
+    view.update(visual, |view, _| {
+        view.snapshot = Some(seeded);
+        view.pending = Some(PendingOperation::ModelSelection);
+        // `request_model_delete` refuses while a command is in flight, so the
+        // question is planted the way the confirm button leaves it: open, on a
+        // card whose delete control the gate still draws.
+        view.model_delete_confirmation = Some(model.clone());
+    });
+    visual.update(|window, cx| window.render_frame(cx));
+
+    // The predicate itself: with a snapshot on hand, an idle import and no
+    // picker, a merely waiting command must not block any page.
+    assert!(
+        !view.read_with(visual, |view, _| view
+            .editing_blocked(view.snapshot.as_ref())),
+        "the shared gate must not read the in-flight flag"
+    );
+
+    assert_eq!(
+        view.read_with(visual, |view, _| view.model_delete_confirmation.clone()),
+        Some(model.clone()),
+        "the page's gate must not read the in-flight flag: the question's \
+         control stays drawn while a command waits"
+    );
+
+    // Keeping the controls drawn must not reopen the door for a second
+    // command: the press is refused by the command methods, not by the paint.
+    visual.update(|window, cx| {
+        view.update(cx, |view, cx| {
+            view.run_model_row_action(ModelRowAction::Activate, model.clone(), window, cx);
+        });
+    });
+    visual.run_until_parked();
+    assert!(
+        endpoint.try_recv().is_err(),
+        "a press while a command is in flight must not reach the service"
     );
 }
 

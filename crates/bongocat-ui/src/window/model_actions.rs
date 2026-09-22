@@ -16,7 +16,13 @@ impl SettingsView {
     /// revalidated by the platform layer, and a valid one starts the import
     /// directly — choosing the folder *is* the decision.
     pub(super) fn choose_model_source(&mut self, cx: &mut Context<Self>) {
-        if self.model_import.is_running() || self.model_import.is_picker_open() {
+        // The card stays drawn as interactive while a command is in flight —
+        // `pending` never feeds a visual gate (ADR-0053) — so the refusal of a
+        // second command lives here rather than in the paint.
+        if self.pending.is_some()
+            || self.model_import.is_running()
+            || self.model_import.is_picker_open()
+        {
             return;
         }
         self.model_import.state = ModelImportState::Picking;

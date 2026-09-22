@@ -49,9 +49,14 @@ pub(super) fn content(
     let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
         snapshot.resolved_language
     });
-    let import_running = view.model_import.is_running();
-    let picker_open = view.model_import.is_picker_open();
-    let model_commands_blocked = import_running || picker_open || view.pending.is_some();
+    // One gate predicate for every page (`SettingsView::editing_blocked`,
+    // ADR-0053): structural blocking only, never the transient in-flight
+    // `pending` flag — gating on it disabled and re-enabled every button on
+    // the page, and each activate, reveal or delete read as the page
+    // refreshing. Re-entrancy is guarded by the command methods in
+    // `model_actions.rs` instead; the page just no longer flickers while a
+    // command waits.
+    let model_commands_blocked = view.editing_blocked(snapshot);
     // A model the running import just installed is withheld until its cover
     // capture reports back, so the grid only ever shows the finished card: the
     // alternative is a card that appears with the source package's placeholder
@@ -583,11 +588,11 @@ fn model_import_card(
     language: SettingsLanguage,
 ) -> ModelImportCard {
     let locale = language.catalog_locale();
-    // A native dialog or another page command in flight leaves the card visible
-    // but inert; during the run itself it shows progress instead of the prompt.
-    let ready_for_input = !view.model_import.is_running()
-        && !view.model_import.is_picker_open()
-        && view.pending.is_none();
+    // A native dialog or the import run itself leaves the card visible but
+    // inert; during the run it shows progress instead of the prompt. An
+    // in-flight page command does not touch the card: `pending` never feeds a
+    // visual gate (ADR-0053), and `choose_model_source` refuses the press.
+    let ready_for_input = !view.model_import.is_running() && !view.model_import.is_picker_open();
     let mut card = ModelImportCard::new(
         "model-import-card",
         bongocat_i18n::text(locale, "models.import.title"),

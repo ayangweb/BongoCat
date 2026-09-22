@@ -4489,6 +4489,16 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       invalid`，HEAD `b5027af4` 同样复现）无法整条跑完，临时绕过快捷键页后模型页 smoke 通过。
     - CHANGELOG 判定（2026-09-21）：跳过。`2.0.0` 尚未发布（最新 tag `v1.1.0`），删除入口本身已由
       现有条目覆盖，确认形式的变化对用户不构成新能力。
+    - 门禁修正（2026-09-22）：`models.rs` 的 `model_commands_blocked` 仍含 `view.pending.is_some()`，
+      违反 ADR-0053 决策 5——点击启用/打开所在位置/删除时整页按钮禁用再恢复，读作页面刷新
+      （`d4f0155f` 修快捷键页时漏了模型页）。改为只含结构性阻塞（导入运行、picker 打开）；
+      导入卡片的 `ready_for_input` 同步去掉 `pending` 项，`choose_model_source` 补上 in-flight
+      守卫（卡片在命令往返期间保持可交互，拒绝第二次命令的职责移到命令方法）；点击时行为守卫
+      不变（`run_model_row_action` 仍以含 `pending` 的 `model_row_actions` 再判一次）。新增回归
+      `an_in_flight_command_never_flickers_the_models_page_gate`（删除确认在 in-flight 期间存活 +
+      in-flight 期间按键不到达 service），变异验证：把 `pending` 加回门禁即红。`just check` 全绿。
+      General 页残留（主题/语言 `Select` 与启动项开关读含 `pending` 的 `disabled`）随后与模型页
+      一并收口，见第 102 项的统一谓词条目。
 
 85. [x] `P1-PRESET-SCAN-STRAY-FILES`：预置模型目录扫描对陌生条目的容忍。
     - 背景（2026-09-18）：`just check` 的 app 测试在主树失败、在干净 worktree 通过，二分定位到
@@ -5564,6 +5574,20 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       个 smoke 步骤（workflow L478），不存在"被前面的 smoke 挡住"。同 job 的 `--system-menu-smoke`
       是**间歇性**失败（`86213e69`、`d4f0155f` 两轮通过，其余多轮失败于 "Open Settings did not
       restore a runtime snapshot"），与本次回归无关。
+    - 统一收口（2026-09-22，维护者要求"统一使用一种修复方式，不留遗漏"）：模型页
+      `model_commands_blocked` 与 General 页共用 `disabled` 变量仍各自掺 `pending`（第 84 项
+      记录过模型页侧），违反本项决策②。收敛为 `SettingsView::editing_blocked(snapshot)`
+      **唯一谓词方法**（无快照 ∨ 导入运行 ∨ 导入 picker 打开；picker 打开时原生对话框盖住窗口，
+      其他页的置灰实际不可见），`render.rs` 删除含 `pending` 的 `disabled` 变量，General 页
+      主题/语言 `Select` 与启动项开关（经 `startup_item_presentation`）改读同一谓词，模型页
+      `models.rs` 同步改读；`pending` 此后只允许出现在命令守卫（`start_request`、模型命令方法、
+      防抖器 filter）与头部状态文案里，全 crate grep 复核无渲染门禁残留。回归测试
+      `an_in_flight_command_never_flickers_the_models_page_gate` 增加对谓词本身的直接断言，
+      **变异验证**：往谓词加回 `pending` 即在断言处变红，还原后哈希一致。`just check` 全绿；
+      `--settings-window-smoke --models-page-smoke` **EXIT=0**（本机，门禁改动历史上曾漂移过
+      smoke 期望值，故补跑）。
+      General 页的开关/下拉无 queryable 的 disabled 快照可查（`Switch`/`Select` 不满足
+      `test_support` 注册条件），消费侧组合未单独加测试，由共享谓词测试覆盖。
 
 103. [x] `P1-SETTINGS-COPY-PLAIN-LANGUAGE`：设置窗口文案去掉内部术语，改用用户能直接看懂的说法。
     - 背景（2026-09-21，维护者反馈）：国际化里的文案不符合用户直觉，例如「指针」应写成「鼠标」。

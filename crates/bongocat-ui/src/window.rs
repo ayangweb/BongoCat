@@ -906,6 +906,20 @@ impl SettingsView {
         self.flush_pending_setting_patches(cx);
     }
 
+    /// The one visual-gate predicate every settings page reads (ADR-0053).
+    ///
+    /// True only where editing is structurally impossible: no snapshot yet, a
+    /// model import running, or the import's folder dialog covering the
+    /// window. The transient in-flight `pending` flag deliberately never
+    /// feeds it — it flips on and off around every command, so gating on it
+    /// dims and re-enables a whole page on each control change, which reads
+    /// as the page refreshing. Re-entrancy is refused by the command guards
+    /// instead (`start_request`, the model command methods), and the header
+    /// status is the saving indicator.
+    fn editing_blocked(&self, snapshot: Option<&SettingsSnapshot>) -> bool {
+        snapshot.is_none() || self.model_import.is_running() || self.model_import.is_picker_open()
+    }
+
     fn start_request(
         &mut self,
         operation: PendingOperation,
@@ -1578,11 +1592,12 @@ fn model_row_action_tab_indices(first_tab_index: isize) -> ModelRowActionTabIndi
 /// The question is drawn by the card's delete control, and the card only draws
 /// that control while deleting is possible, so the question is only meaningful
 /// under exactly the conditions the control needs: an installed model, still in
-/// the catalog, and no other model command in flight.
-/// The last one is why this is stated as "the control would still act" rather
-/// than as a list of its own: the card drops the control while a command is
-/// pending, and a question that outlived it would come back unasked once the
-/// command settled. Asking [`model_row_actions`] keeps the two from drifting.
+/// the catalog, and no structural command block (an import running or a picker
+/// open). An in-flight command is deliberately not one of those conditions —
+/// `pending` never feeds a visual gate (ADR-0053), so the control stays drawn
+/// and the question stays valid while it waits, and the command methods refuse
+/// a second command instead. Asking [`model_row_actions`] keeps the question
+/// and the control from drifting.
 fn model_delete_confirmation_is_valid(
     entries: &[SettingsModelEntry],
     active_model: Option<&SettingsModelKey>,
