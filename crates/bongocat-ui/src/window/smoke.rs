@@ -57,20 +57,18 @@ impl SettingsView {
         }
     }
 
-    pub fn show_split_pages_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+    pub fn show_split_pages_for_smoke(&mut self, _cx: &mut Context<Self>) -> Result<(), String> {
         let language = self
             .snapshot
             .as_ref()
             .ok_or_else(|| "split pages have not received a settings snapshot".to_owned())?
             .resolved_language;
-        for (page, title_key) in [
-            (SettingsPage::Overlay, "navigation.overlay.title"),
-            (SettingsPage::Interaction, "navigation.interaction.title"),
-            (SettingsPage::Input, "navigation.input.title"),
-            (SettingsPage::Application, "navigation.application.title"),
+        for title_key in [
+            "navigation.overlay.title",
+            "navigation.interaction.title",
+            "navigation.input.title",
+            "navigation.application.title",
         ] {
-            self.page = page;
-            cx.notify();
             if bongocat_i18n::text(language.catalog_locale(), title_key).is_empty() {
                 return Err(format!("page {title_key} has no localized title"));
             }
@@ -78,9 +76,7 @@ impl SettingsView {
         Ok(())
     }
 
-    pub fn show_general_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
-        self.page = SettingsPage::General;
-        cx.notify();
+    pub fn show_general_page_for_smoke(&mut self, _cx: &mut Context<Self>) -> Result<(), String> {
         let snapshot = self
             .snapshot
             .as_ref()
@@ -97,9 +93,7 @@ impl SettingsView {
         Ok(())
     }
 
-    pub fn show_shortcuts_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
-        self.page = SettingsPage::Shortcuts;
-        cx.notify();
+    pub fn show_shortcuts_page_for_smoke(&mut self, _cx: &mut Context<Self>) -> Result<(), String> {
         let snapshot = self
             .snapshot
             .as_ref()
@@ -117,9 +111,7 @@ impl SettingsView {
         Ok(())
     }
 
-    pub fn show_models_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
-        self.page = SettingsPage::Models;
-        cx.notify();
+    pub fn show_models_page_for_smoke(&mut self, _cx: &mut Context<Self>) -> Result<(), String> {
         let snapshot = self
             .snapshot
             .as_ref()
@@ -180,10 +172,8 @@ impl SettingsView {
 
     pub fn show_models_localization_for_smoke(
         &mut self,
-        cx: &mut Context<Self>,
+        _cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        self.page = SettingsPage::Models;
-        cx.notify();
         let snapshot = self
             .snapshot
             .as_ref()
@@ -209,9 +199,7 @@ impl SettingsView {
         Ok(())
     }
 
-    pub fn show_about_page_for_smoke(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
-        self.page = SettingsPage::About;
-        cx.notify();
+    pub fn show_about_page_for_smoke(&mut self, _cx: &mut Context<Self>) -> Result<(), String> {
         let snapshot = self
             .snapshot
             .as_ref()

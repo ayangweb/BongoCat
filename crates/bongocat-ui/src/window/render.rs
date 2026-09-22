@@ -112,7 +112,6 @@ impl Render for SettingsView {
         ))
         .icon(IconName::Settings)
         .default_open(true)
-        .title_suffix(page_reporter(view_entity.clone(), SettingsPage::General))
         .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -157,7 +156,6 @@ impl Render for SettingsView {
             "navigation.overlay.title",
         ))
         .icon(IconName::AppWindow)
-        .title_suffix(page_reporter(view_entity.clone(), SettingsPage::Overlay))
         .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -514,10 +512,6 @@ impl Render for SettingsView {
             "navigation.interaction.title",
         ))
         .icon(IconName::MousePointer2)
-        .title_suffix(page_reporter(
-            view_entity.clone(),
-            SettingsPage::Interaction,
-        ))
         .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -654,7 +648,6 @@ impl Render for SettingsView {
             "navigation.input.title",
         ))
         .icon(IconName::Gamepad2)
-        .title_suffix(page_reporter(view_entity.clone(), SettingsPage::Input))
         .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -781,10 +774,6 @@ impl Render for SettingsView {
             "navigation.application.title",
         ))
         .icon(IconName::Cog)
-        .title_suffix(page_reporter(
-            view_entity.clone(),
-            SettingsPage::Application,
-        ))
         .groups(vec![
             // No group title: the runtime status is the first thing on the page and the only
             // row the group holds, so a heading here would just repeat the row's own label.
@@ -955,7 +944,6 @@ impl Render for SettingsView {
                 let snapshot = view.read(app).snapshot.clone();
                 let tokens = Tokens::from_theme(app);
                 view.update(app, move |view, cx| {
-                    view.page = SettingsPage::Models;
                     models::content(view, window, cx, snapshot.as_ref(), tokens)
                 })
                 .into_any_element()
@@ -1008,8 +996,7 @@ impl Render for SettingsView {
                             let view = view_entity.clone();
                             move |_: &RenderOptions, _window: &mut Window, app: &mut App| {
                                 let snapshot = view.read(app).snapshot.clone();
-                                view.update(app, move |view, _cx| {
-                                    view.page = SettingsPage::About;
+                                view.update(app, move |_view, _cx| {
                                     about::content(snapshot.as_ref())
                                 })
                                 .into_any_element()
@@ -1082,20 +1069,5 @@ impl Render for SettingsView {
             .child(div().min_h_0().w_full().flex_1().child(settings))
             .children(Root::render_notification_layer(window, cx))
             .into_any_element()
-    }
-}
-
-/// Reports the page a rendered header belongs to.
-///
-/// `SettingsView::page` tracks the visible page. The pages that build custom
-/// content already report themselves while building it; pages made of plain
-/// setting items get this empty hook in their header.
-fn page_reporter(
-    view: Entity<SettingsView>,
-    page: SettingsPage,
-) -> impl Fn(&mut Window, &mut App) -> Div {
-    move |_window, cx| {
-        view.update(cx, |view, _| view.page = page);
-        div()
     }
 }

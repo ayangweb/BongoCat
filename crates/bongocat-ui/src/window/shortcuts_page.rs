@@ -188,7 +188,6 @@ pub(super) fn group(
                     let snapshot = view.read(app).snapshot.clone();
                     let tokens = Tokens::from_theme(app);
                     view.update(app, move |view, cx| {
-                        view.page = SettingsPage::Shortcuts;
                         content(view, window, cx, snapshot.as_ref(), scope, gate, tokens)
                     })
                     .into_any_element()

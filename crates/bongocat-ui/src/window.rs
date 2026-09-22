@@ -206,25 +206,6 @@ impl ShortcutCapture {
     }
 }
 
-/// The settings window's navigation pages, in sidebar order.
-///
-/// `General` used to carry every app-level preference in one page with five
-/// groups. The groups became pages of their own so each one is reachable in a
-/// single click, and the pages that still hold more than one concern keep
-/// titled groups, which the sidebar renders as a second level.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-enum SettingsPage {
-    #[default]
-    General,
-    Models,
-    Overlay,
-    Interaction,
-    Input,
-    Shortcuts,
-    Application,
-    About,
-}
-
 /// What the single import card is doing.
 ///
 /// Every failure is reported through a notification and then returns the card to
@@ -434,7 +415,6 @@ pub struct SettingsView {
     snapshot: Option<SettingsSnapshot>,
     pending: Option<PendingOperation>,
     pending_notification: Option<SettingsError>,
-    page: SettingsPage,
     model_import: ModelImportDraft,
     overlay_scale_debouncer: crate::SettingsPatchDebouncer<u16>,
     overlay_scale_timer_generation: u64,
