@@ -5684,6 +5684,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
          `ModelImportCardStep { label, done }` 与 `CircleCheck` 已完成行已删除。版式按 Ant Design 的
          `Spin`：指示器在上、步骤文案在下、两者作为一块水平居中并整体在卡片内居中，间距 8px
          （`STEP_GAP`，即 antd tip 的偏移量），文案用 `text_sm` + `tokens.muted`（次要色）。
+         运行中可取消时，取消按钮加入同一居中块、放在步骤文案下方水平居中（列 `items_center`），
+         与文案间距 = `STEP_GAP` 8px + `CANCEL_GAP` 8px = 16px；不再钉在卡片底部右对齐。
          **不给步骤行加 `aria_label`**：ADR-0054 决策 4 禁止项目自有 UI 代码新增隐藏标签，且应用是
          `GpuiApplication::new_inaccessible`，那在产品里是死代码。「一次只有一个步骤」由类型保证
          （卡片只收一个 `step`，不是列表），文案由 `import_card_step` 的用例钉住，组件测试只断言
@@ -5726,14 +5728,16 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       恢复该功能前先与维护者确认（压缩包上传需要一组本次未做的新功能）；
       `bongocat_ui::model_source_display_name` 的「去掉归档扩展名」规则保留，因为 settings service
       的兜底标题仍与它共用，删掉会让恢复时失去单一实现。
-    - 验收证据（2026-09-22，本机 macOS / aarch64）：`cargo test -p bongocat-ui --lib` 138 通过（含
-      `model_import_card` 4 项 UI 测试：按下卡片只打开一次选择器且键盘等价、进度面替换提示且下一步
-      仍只有那一条步骤行、卡片与同行模型卡片等高、命令进行中不打开选择器；以及 `window::tests` 的
+    - 验收证据（2026-09-22，本机 macOS / aarch64）：`cargo test -p bongocat-ui --lib` 139 通过（含
+      `model_import_card` 5 项 UI 测试：按下卡片只打开一次选择器且键盘等价、进度面替换提示且下一步
+      仍只有那一条步骤行、卡片与同行模型卡片等高、命令进行中不打开选择器、取消按钮居中于步骤文案
+      下方且点击中心点命中按钮；以及 `window::tests` 的
       `the_import_card_is_as_tall_as_the_model_cards_beside_it`——它渲染页面**真实的**网格，用一个带
       状态行的不可用模型当邻居，所以断言的是"上传卡片与页面里的模型卡片等高"而不只是网格行为）。
-      三条新断言都用变异验证过能变红（`items_stretch` + `content_start` 退回 `items_start` → 合成网格
-      232px vs 272px、真实页面 232px vs 281px；卡片不渲染进度面 → 步骤行断言失败）。`cargo test -p
-      bongocat-platform` 64 通过（`a_selected_folder_is_revalidated_and_canonicalized` 现在断言常规
+      四条新断言都用变异验证过能变红（`items_stretch` + `content_start` 退回 `items_start` → 合成网格
+      232px vs 272px、真实页面 232px vs 281px；卡片不渲染进度面 → 步骤行断言失败；取消按钮退回
+      底部右对齐 → 纯几何断言不变红（全宽 wrapper 的中心与卡片中心重合），点击中心点的断言变红）。
+      `cargo test -p bongocat-platform` 64 通过（`a_selected_folder_is_revalidated_and_canonicalized` 现在断言常规
       文件被拒）；`tools/validate-locales.py` 2 locale × 240 键通过，新增的省略号检查对 `……` 与
       ASCII `...` 两种写法分别验证过会变红；`cargo fmt --all -- --check`；`cargo clippy --locked
       -p bongocat-ui -p bongocat-platform --all-targets --all-features` 与 `-p bongocat-app`

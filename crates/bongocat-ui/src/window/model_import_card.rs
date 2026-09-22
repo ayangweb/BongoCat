@@ -39,6 +39,13 @@ const CARD_WIDTH: Pixels = px(MODEL_CARD_WIDTH);
 /// whole reason the two read as one block rather than as two centred lines.
 const STEP_GAP: Pixels = px(8.0);
 
+/// The extra space between the step line and the cancel button under it.
+///
+/// A control needs more air from the sentence it belongs to than the sentence
+/// needs from its indicator, so the button takes [`STEP_GAP`] from the column's
+/// own gap plus this again — 16px in total, twice the tip offset above it.
+const CANCEL_GAP: Pixels = px(8.0);
+
 type ActionCallback = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// The import entry.
@@ -213,6 +220,11 @@ impl RenderOnce for ModelImportCard {
 /// 32px indicator Ant calls "large", and [`STEP_GAP`] is the tip offset it puts
 /// under the indicator; the line itself is the secondary text a tip uses, so it
 /// never competes with the spinner for attention.
+///
+/// The cancel button joins that same block instead of being pinned to a corner:
+/// centred under the step line it belongs to, with [`CANCEL_GAP`] of extra air,
+/// so the whole wait reads as one group the user can read top to bottom — an
+/// off-to-the-side control would read as belonging to the card, not the wait.
 fn progress_card(
     id: ElementId,
     step: SharedString,
@@ -221,8 +233,47 @@ fn progress_card(
     on_cancel: Option<ActionCallback>,
     tokens: Tokens,
 ) -> impl IntoElement {
-    let mut card = div()
-        .id(id.clone())
+    // The wait block is built first so the cancel control can join it as a
+    // third centred child, then handed to the card that centres it.
+    let root_id = id.clone();
+    let mut wait = div()
+        .flex_1()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap(STEP_GAP)
+        .child(Spinner::new().with_size(Size::Medium).color(tokens.accent))
+        .child(
+            div()
+                .id((id.clone(), "step"))
+                .w_full()
+                .text_center()
+                .text_sm()
+                .text_color(tokens.muted)
+                .test_support()
+                .child(step),
+        );
+    if let (Some(label), Some(on_cancel)) = (cancel_label, on_cancel) {
+        wait = wait.child(
+            // The column's `items_center` is what centres the button; the
+            // wrapper exists for observability, since a bare [`Button`] does
+            // not register in the test snapshot on its own.
+            div()
+                .id((id, "cancel"))
+                .mt(CANCEL_GAP)
+                .test_support()
+                .child(
+                    Button::new("cancel-import")
+                        .label(label)
+                        .with_size(Size::Small)
+                        .disabled(cancel_disabled)
+                        .on_click(move |_, window, cx| on_cancel(window, cx)),
+                ),
+        );
+    }
+    div()
+        .id(root_id)
         .w(CARD_WIDTH)
         .min_h(px(MODEL_CARD_MIN_HEIGHT))
         .flex_none()
@@ -234,46 +285,10 @@ fn progress_card(
         .border_color(tokens.border)
         .bg(tokens.canvas)
         .test_support()
-        .child(
-            // `flex_1` hands the block whatever height the cell was stretched to
-            // by the grid, so the indicator is centred in the card instead of
-            // hanging under its top edge when the card is as tall as a model card.
-            div()
-                .flex_1()
-                .flex()
-                .flex_col()
-                .items_center()
-                .justify_center()
-                .gap(STEP_GAP)
-                .child(Spinner::new().with_size(Size::Medium).color(tokens.accent))
-                .child(
-                    div()
-                        .id((id.clone(), "step"))
-                        .w_full()
-                        .text_center()
-                        .text_sm()
-                        .text_color(tokens.muted)
-                        .test_support()
-                        .child(step),
-                ),
-        );
-    if let (Some(label), Some(on_cancel)) = (cancel_label, on_cancel) {
-        card = card.child(
-            div()
-                .id((id, "cancel"))
-                .flex()
-                .justify_end()
-                .test_support()
-                .child(
-                    Button::new("cancel-import")
-                        .label(label)
-                        .with_size(Size::Small)
-                        .disabled(cancel_disabled)
-                        .on_click(move |_, window, cx| on_cancel(window, cx)),
-                ),
-        );
-    }
-    card
+        // `flex_1` hands the block whatever height the cell was stretched to
+        // by the grid, so the wait is centred in the card instead of hanging
+        // under its top edge when the card is as tall as a model card.
+        .child(wait)
 }
 
 #[cfg(test)]
@@ -405,6 +420,52 @@ mod tests {
             view.read_with(visual, |view, _| *view.opened.borrow()),
             0,
             "a press must not open the picker while another command is in flight"
+        );
+    }
+
+    /// A harness whose run in flight offers the cancel control.
+    struct CancelHarness {
+        cancelled: Rc<RefCell<usize>>,
+    }
+
+    impl Render for CancelHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let cancelled = self.cancelled.clone();
+            div().p_4().child(
+                ModelImportCard::new(CARD, "Import model")
+                    .step(Some("Importing model…".into()))
+                    .cancel("Cancel", false, move |_, _| *cancelled.borrow_mut() += 1),
+            )
+        }
+    }
+
+    /// The cancel control is part of the wait, not a corner of the card: it
+    /// sits centred under the step line it can stop, with the line and the
+    /// indicator it groups with.
+    #[gpui_kit::test]
+    fn the_cancel_button_is_centred_under_the_step_line(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        let window = cx.open_window(size(px(800.0), px(600.0)), |_, _| CancelHarness {
+            cancelled: Rc::new(RefCell::new(0)),
+        });
+        let mut visual = VisualTestContext::from_window(*window, cx);
+        visual.update(|window, cx| window.render_frame(cx));
+
+        let (card, step, cancel) = visual.update(|window, _| {
+            (
+                window.find(CARD).bounds(),
+                window.find(part("step")).bounds(),
+                window.find(part("cancel")).bounds(),
+            )
+        });
+        assert_eq!(
+            f32::from(cancel.center().x),
+            f32::from(card.center().x),
+            "the cancel button must be centred on the card, not pushed to a corner"
+        );
+        assert!(
+            cancel.center().y > step.center().y,
+            "the cancel button must sit below the step line it belongs to"
         );
     }
 
