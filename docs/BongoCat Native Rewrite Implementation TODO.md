@@ -1553,24 +1553,29 @@ overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可�
 
 ### 6.3 Design System
 
-状态（2026-09-19）：最初于 2026-09-09 对照 `v0.6.0...v0.6.1` 源码与
-docs.rs/crates.io metadata 完成 gpui-kit 0.6.1 迁移评估；2026-09-19 升级到最新稳定版
+状态（2026-09-22）：最初于 2026-09-09 对照 `v0.6.0...v0.6.1` 源码与
+docs.rs/crates.io metadata 完成 gpui-kit 0.6.1 迁移评估；2026-09-19 升级到
 `gpui-kit = "=0.6.4"`（v0.6.2 功能版与 v0.6.4 补丁：新增 Carousel/Empty/InputGroup、
-文本流式淡入与 motion Sequence 等，无 breaking API 变化）。`gpui-kit 0.6.4` 使用
+文本流式淡入与 motion Sequence 等，无 breaking API 变化）；2026-09-22 升级到最新稳定版
+`gpui-kit = "=0.6.6"`（v0.6.5/v0.6.6 补丁：masked label 跳过高亮，`gpui-pre` 改为精确
+pin，无 breaking API 变化）。`gpui-kit 0.6.6` 使用
 Apache-2.0 许可证并默认提供
-component/assets；Native workspace 以精确固定的 crates.io `gpui-kit = "=0.6.4"` 作为唯一
+component/assets；Native workspace 以精确固定的 crates.io `gpui-kit = "=0.6.6"` 作为唯一
 直接 GPUI 依赖，已删除 Zed 与旧组件
 git source 及 `gpui`、platform、component、assets 的直接 manifest 依赖。完整 `cargo update`
-解析到 `gpui-pre 0.3.5`，gpui-base/gpui-component/gpui-kit-assets 同步到 `0.6.4`；该同步包
+解析到 `gpui-pre 0.3.6`（Zed 快照 `bcf6582ce3500df93a8a39366640173e6786cea6`，
+`zed-version` 仍为 `0.2.2`），gpui-base/gpui-component/gpui-kit-assets 为 `0.6.6`——
+这四者在本次升级前已由此前一次完整 `cargo update` 解析到位，本次 lockfile 唯一 diff 是
+`gpui-kit 0.6.4 -> 0.6.6`（v0.6.6 的 `gpui-pre =0.3.6` 精确约束与既有解析一致）；该同步包
 元数据对应 Zed `gpui 0.2.2` revision
-`5b055fa789a8b8d38ac951a6e0cde272f66b4495`。设置窗口调用 `gpui_kit::init`，使用
+`bcf6582ce3500df93a8a39366640173e6786cea6`。设置窗口调用 `gpui_kit::init`，使用
 `gpui_kit::component::Root` 并随系统外观同步 `Theme`；状态标签、开关、
 按钮、模型 ID、overlay scale/opacity 与 gamepad dead-zone 已迁移到 `Tag`、
 `Switch`、`Button`、`Input` 和 `NumberInput`。输入实体通过 `InputEvent` 与
-`NumberInputEvent` 接入现有 typed command/draft，并从 snapshot 同步。`0.6.4` 没有普通 Card
+`NumberInputEvent` 接入现有 typed command/draft，并从 snapshot 同步。`0.6.6` 没有普通 Card
 primitive，设置内容容器使用官方 `GroupBox::outline()`，导航继续保留无状态薄封装；快捷键捕获和平台辅助功能焦点
 继续保留领域适配层。语言设置使用官方 `Select`；模型卡的删除确认出现浮层需求后，用官方
-`Popover` 封装了项目内 `PopConfirm`（`crates/bongocat-ui/src/pop_confirm.rs`）——`0.6.4` 没有
+`Popover` 封装了项目内 `PopConfirm`（`crates/bongocat-ui/src/pop_confirm.rs`）——`0.6.6` 没有
 `PopConfirm` primitive，也没有 `Popover::arrow`，箭头待依赖升级后补；标签页仍无需求，出现时
 直接使用 `TabBar`，不预建无业务用途的组件。双平台辅助功能与缩放实机证据
 仍待补齐，详见 ADR-0020。偏好设置整体使用 `gpui_kit::component::setting`
@@ -4441,7 +4446,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 决策记录：ADR-0047。Technical Design §10 模型元数据段落已同步。
     - 交互调整（2026-09-21）：删除确认从「删除控件就地替换成 确定/取消 两个内联按钮」改为
       `PopConfirm` 确认浮层（`crates/bongocat-ui/src/pop_confirm.rs`，基于官方
-      `gpui_kit::component::popover::Popover` 封装，零新增依赖；`0.6.4` 没有 `PopConfirm`
+      `gpui_kit::component::popover::Popover` 封装，零新增依赖；`0.6.6` 没有 `PopConfirm`
       primitive，也没有 `Popover::arrow`，箭头待依赖升级后补）。浮层由卡片上的删除控件原地打开
       （`Anchor::TopRight`，标题前 `TriangleAlert` + 新增 `Tokens::danger`），确定/取消用
       `Size::Small`、确定用 `ButtonVariant::Primary`（危险语义由标题前的图标承载，按钮不走

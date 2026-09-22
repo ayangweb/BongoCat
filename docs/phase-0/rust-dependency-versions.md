@@ -1,7 +1,7 @@
 # Native Rewrite Rust Dependency Version Audit
 
 状态：所有直接依赖已使用 crates.io 最新稳定版；lockfile 已更新到上游约束允许的最新解析结果
-日期：2026-09-13
+日期：2026-09-22（`gpui-kit` 复核至 `0.6.6`；上次全量审计 2026-09-13）
 Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
@@ -37,7 +37,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级                                          |
 | `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级                                          |
 | `embed-resource`                      |       `3.0.11` | Windows 产品图标新增时最新                               |
-| `gpui-kit`                            |        `0.6.4` | 从 `0.6.1` 升级；2026-09-19 release notes/API 审查后最新 |
+| `gpui-kit`                            |        `0.6.6` | 从 `0.6.4` 升级；2026-09-22 release notes/API 审查后最新 |
 | `futures-lite`                        |        `2.6.1` | 已是最新                                                 |
 | `gpui`                                |        `0.2.2` | 已是最新                                                 |
 | `libc`                                |      `0.2.189` | 新增时即为最新稳定版                                     |

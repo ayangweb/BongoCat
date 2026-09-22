@@ -19,7 +19,7 @@
 
 | Dependency family                | Locked version                 | License                   | Role                                     |
 | -------------------------------- | ------------------------------ | ------------------------- | ---------------------------------------- |
-| GPUI Kit                         | `0.6.4`                        | Apache-2.0                | Formal settings UI facade and components |
+| GPUI Kit                         | `0.6.6`                        | Apache-2.0                | Formal settings UI facade and components |
 | AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | Formal settings AX/UIA semantic adapter  |
 | arboard                          | `3.6.1`                        | MIT OR Apache-2.0         | Dual-platform private text clipboard     |
 | raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI/Win32 native window boundary        |

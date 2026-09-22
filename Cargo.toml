@@ -41,7 +41,7 @@ flate2 = "=1.1.10"
 # surface is used; chord parsing and target dispatch stay in bongocat-config
 # and bongocat-platform.
 global-hotkey = "=0.8.0"
-gpui-kit = "=0.6.4"
+gpui-kit = "=0.6.6"
 rust-i18n = "=4.2.2"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 muda = { version = "=0.20.0", default-features = false }
