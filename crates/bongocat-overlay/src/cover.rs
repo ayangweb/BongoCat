@@ -1,7 +1,7 @@
 //! Turning one captured overlay frame into a model cover.
 //!
-//! The per-platform renderers produce the pixels (see `macos::capture_model_cover`
-//! and `windows::capture_model_cover`); everything that does not depend on a GPU
+//! The per-platform renderers produce the pixels (see the `CoverCaptureSession`
+//! in `macos.rs` and `windows.rs`); everything that does not depend on a GPU
 //! backend lives here, so it is covered by ordinary unit tests on any supported
 //! platform instead of only by the platform smoke.
 //!

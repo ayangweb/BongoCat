@@ -35,7 +35,8 @@ settings 协议里的身份（`SettingsModelKey`，origin 恒为 installed）入
 
 新的 GPUI 任务每 `COVER_CAPTURE_POLL_INTERVAL_MS = 50` 毫秒取空队列，对每个请求：
 
-1. 调用 `bongocat_overlay::capture_model_cover`（隐藏窗口 + GPU 读回，见决策 3）；
+1. 用 `bongocat_overlay::ModelCoverCaptureSession` 逐帧截取（隐藏窗口 + GPU 读回，见决策 3 与
+   2026-09-22 修订：每步只画一帧，帧间让出主线程，不整段阻塞）；
 2. 用 `SettingsCommand::ReplaceModelCover`（bytes 载荷）把结果交回 settings worker 落盘；
 3. 让设置窗口 `finish_model_cover_capture` 丢掉该模型的图像缓存，并解除该次导入的显示门禁。
 
@@ -79,6 +80,24 @@ settings 协议。
 `bongocat-overlay capture-cover <standard|keyboard|gamepad> <out.png>` 让整条链路（隐藏窗口、GPU 读回、
 裁切、编码）脱离导入流程单独执行，因此平台 backend 可以在没有 UI 的情况下被检查与回归。
 
+## 修订（2026-09-22，当日）
+
+**截取改为逐帧可让步会话，不再整段占用 GPUI 线程**（消除残余风险 1）。用户实测：导入卡片在
+「正在截取封面中…」一步时 Spinner 停转，偏好设置窗口与 overlay 同时卡住。
+
+- 原因与决策 2、3 相同：截取窗口只能建在拥有产品窗口的线程上（macOS 主线程 / Windows 的
+  overlay 所在线程），而整段同步的截取让该线程在约 30 帧内无法回到自己的事件循环。
+- 新增 `bongocat_overlay::ModelCoverCaptureSession`（`macos.rs` / `windows.rs` 各有
+  `CoverCaptureSession` 后端）：`start` 完成私有 runtime、隐藏窗口与首帧 smoke 校验，`step` 每次
+  只泵一次事件、同步最新帧并画一帧，`finish` 关闭 runtime 并编码 PNG。帧数（`COVER_CAPTURE_FRAMES`）、
+  超时（`COVER_CAPTURE_TIMEOUT`）、首帧校验、读回/裁切/编码与「失败不改任何东西」的语义全部不变。
+- app 侧的 GPUI 任务在两次 `step` 之间 `Timer::after(frame_interval()).await`，让出点落在
+  foreground executor 上：主循环照常泵事件与重绘，设置窗口的 Spinner 与 overlay 帧循环在截取期间
+  正常运行。
+- `capture_model_cover` 保留为阻塞形式（内部改为按会话逐步执行后 `thread::sleep`），仅供
+  `capture-cover` 子命令等独占线程的调用方使用；其输出与修订前逐字节一致（keyboard：
+  186,091 bytes / 640×352）。
+
 ## 明确不做
 
 - **不加偏好开关**：用户要的是「导入后就是模型自己的样子」，而不是多一个开关。此前考虑过的「偏好设置
@@ -93,9 +112,9 @@ settings 协议。
 
 ## 残余风险与待验证项（不得当作已确认）
 
-1. **截取在 GPUI 线程上同步进行**：约 30 帧，实测量级为数百毫秒，期间 overlay 帧循环与设置窗口都会
-   停顿。它发生在用户刚点完导入之后，但确实是可见的卡顿；要消除它需要把截取改造成跨 tick 的可让步
-   会话（每 tick 画一帧），本次没有做。
+1. **~~截取在 GPUI 线程上同步进行~~ 已消除（2026-09-22 修订）**：最初的实现把约 30 帧的截取整段
+   同步跑在 GPUI 线程上，期间 overlay 帧循环与设置窗口都会停顿。同日即改为决策 2 所述的可让步
+   会话，见下方修订。
 2. **失败是静默的**：报出「封面截取失败」需要新增 `ApplicationLogCode`、双语 i18n 文案（`tools/validate-locales.py`
    会校验键集合）或复用 `models.cover` 的失败通知。本次没有引入任何一条，用户只会看到封面没变。
 3. **Windows 后端未编译、未实机验证**：本机 macOS 无法交叉编译 `windows-msvc`（`libdeflate-sys` 的 C 构建
@@ -125,5 +144,10 @@ settings 协议。
   `storage-test-injection`、app `production`）；`cargo test --locked --workspace` 全绿（816 项）；
   `cargo check --locked --workspace --release`。
 
+修订验证（2026-09-22，本机 macOS arm64）：`cargo fmt --all`；三组严格 Clippy 全过；
+`cargo test --locked --workspace` 全绿（34 目标 / 0 failed）；`cargo check --locked --workspace --release`
+通过；`capture-cover keyboard` 经新会话路径产出 186,091 bytes / 640×352，与修订前逐字节相同。
+
 **未运行**：双平台实机导入（导入后观察卡片封面变化）、`--settings-window-smoke`、模型页 opt-in smoke、
-Windows 编译与实机截取、真实社区 MVer 模型的批量回归。
+Windows 编译与实机截取、真实社区 MVer 模型的批量回归；** Spinner 在截取期间持续旋转属目视行为，
+未自动化验证，需人工观察导入过程确认。**

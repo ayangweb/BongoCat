@@ -863,17 +863,82 @@ impl std::error::Error for OverlayError {}
 /// The result is the PNG a model package stores as `resources/cover.png`.
 /// Encoding lives behind this call so the caller never handles raw GPU pixels.
 ///
+/// This is the blocking form of the capture, kept for the `capture-cover`
+/// subcommand and any other caller that owns its thread for the duration. The
+/// product captures through [`ModelCoverCaptureSession`] instead, so its thread
+/// stays free between frames.
+///
 /// The capture must run where a native window can be created: the main thread on
 /// macOS, and the thread that owns the window on Windows.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn capture_model_cover(
     model: Arc<bongocat_model::CommittedModel>,
 ) -> Result<ModelCoverCapture, OverlayError> {
+    let mut session = ModelCoverCaptureSession::start(model)?;
+    while session.step()? {
+        std::thread::sleep(session.frame_interval());
+    }
+    session.finish()
+}
+
+/// One model cover capture, drawn a frame at a time.
+///
+/// The capture is otherwise identical to [`capture_model_cover`] — private
+/// runtime, never-shown native window, verified first frame, then
+/// `COVER_CAPTURE_FRAMES` frames read back without presenting — but the work is
+/// split so the calling thread does not stay busy for the whole capture:
+///
+/// 1. [`Self::start`] sets the capture up and draws the first, verified frame;
+/// 2. [`Self::step`] draws one more frame and returns `Ok(false)` once every
+///    frame is drawn or [`cover::COVER_CAPTURE_TIMEOUT`] has passed;
+/// 3. [`Self::finish`] stops the runtime and encodes the most recent frame into
+///    the PNG.
+///
+/// The caller sleeps [`Self::frame_interval`] between steps instead of the
+/// session sleeping internally: on the main-thread owner that wait is an await,
+/// which lets the thread's regular loop keep running — the settings window keeps
+/// redrawing (the import card's spinner included) and the overlay frame loop
+/// keeps ticking while the capture's model settles (ADR-0055).
+///
+/// The session must live where a native window can be created: the main thread
+/// on macOS, and the thread that owns the window on Windows.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub struct ModelCoverCaptureSession {
     #[cfg(target_os = "macos")]
-    let frame = macos::capture_model_cover(model)?;
+    inner: macos::CoverCaptureSession,
     #[cfg(target_os = "windows")]
-    let frame = windows::capture_model_cover(model)?;
-    cover::encode_cover(frame)
+    inner: windows::CoverCaptureSession,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+impl ModelCoverCaptureSession {
+    pub fn start(model: Arc<bongocat_model::CommittedModel>) -> Result<Self, OverlayError> {
+        Ok(Self {
+            #[cfg(target_os = "macos")]
+            inner: macos::CoverCaptureSession::start(model)?,
+            #[cfg(target_os = "windows")]
+            inner: windows::CoverCaptureSession::start(model)?,
+        })
+    }
+
+    /// The wait the caller should observe between two [`Self::step`] calls so
+    /// the capture's model animates at the pace the overlay renders at.
+    pub fn frame_interval(&self) -> Duration {
+        self.inner.frame_interval()
+    }
+
+    /// Draw one more capture frame. `Ok(false)` means every frame is drawn or
+    /// the capture has hit its deadline, and [`Self::finish`] is the next call.
+    pub fn step(&mut self) -> Result<bool, OverlayError> {
+        self.inner.step()
+    }
+
+    /// Stop the capture runtime and encode the most recent frame into the PNG a
+    /// model package stores as its cover.
+    pub fn finish(self) -> Result<ModelCoverCapture, OverlayError> {
+        let frame = self.inner.finish()?;
+        cover::encode_cover(frame)
+    }
 }
 
 pub fn run_model_preview(

@@ -166,6 +166,25 @@ const OVERLAY_PLACEMENT_DEBOUNCE: Duration = Duration::from_millis(150);
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const COVER_CAPTURE_POLL_INTERVAL_MS: u64 = 50;
 
+/// Capture a model cover without owning the main thread for the whole capture.
+///
+/// The capture needs a native window, so its steps run here, on the thread that
+/// owns the product's windows — but each `step` draws only one frame. Between
+/// steps the task sleeps the session's frame interval, and that sleep is an await
+/// on the foreground executor: the main loop keeps pumping, so the settings
+/// window keeps redrawing (the import card's spinner keeps turning) and the
+/// overlay frame loop keeps ticking while the capture's model settles (ADR-0055).
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+async fn capture_model_cover_without_blocking(
+    model: Arc<bongocat_model::CommittedModel>,
+) -> Result<bongocat_overlay::ModelCoverCapture, bongocat_overlay::OverlayError> {
+    let mut session = bongocat_overlay::ModelCoverCaptureSession::start(model)?;
+    while session.step()? {
+        Timer::after(session.frame_interval()).await;
+    }
+    session.finish()
+}
+
 /// How long the product is given to finish starting before the first automatic check.
 ///
 /// The check is opt-in and must never compete with startup for the network or the
@@ -2380,10 +2399,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // settings service, and drops the card's cached image so the next frame
         // reloads the file.
         //
-        // The capture draws a few dozen frames while the model settles, on the same
-        // thread as the overlay frame loop below. That briefly delays the overlay,
-        // which is the price of capturing a real window rather than an offscreen
-        // surface; it happens right after an import the user is still watching.
+        // The capture draws a few dozen frames while the model settles, but it does
+        // not own this thread for that whole time: each frame is one step of a
+        // `ModelCoverCaptureSession` and the task sleeps the session's frame
+        // interval in between. Every sleep is an await on the foreground executor,
+        // so the main loop keeps pumping while the capture settles — the settings
+        // window keeps redrawing (the import card's spinner included) and the
+        // overlay frame loop below keeps ticking (ADR-0055).
         //
         // A capture that fails changes nothing: the model keeps the cover its source
         // shipped, exactly as it would without this feature. It is display artwork,
@@ -2399,14 +2421,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 for request in cover_capture_signals.take_model_cover_captures() {
                     let key = request.key().clone();
-                    let captured =
-                        match bongocat_overlay::capture_model_cover(Arc::clone(request.model())) {
-                            Ok(captured) => cover_capture_client
-                                .replace_model_cover(key.clone(), captured.png().to_vec())
-                                .await
-                                .is_ok(),
-                            Err(_) => false,
-                        };
+                    let captured = match
+                        capture_model_cover_without_blocking(Arc::clone(request.model())).await
+                    {
+                        Ok(captured) => cover_capture_client
+                            .replace_model_cover(key.clone(), captured.png().to_vec())
+                            .await
+                            .is_ok(),
+                        Err(_) => false,
+                    };
                     // The settings window keeps every model this import installed
                     // out of the grid until its capture reports back, so the
                     // report has to arrive either way: a failed capture publishes
