@@ -158,6 +158,14 @@ fn restart_product() -> Result<(), String> {
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const OVERLAY_PLACEMENT_DEBOUNCE: Duration = Duration::from_millis(150);
 
+/// How often the GPUI thread looks for a cover capture the settings worker queued.
+///
+/// The capture itself is a render of a few dozen frames; this only bounds how long a
+/// newly imported model shows the cover its source shipped before the captured one
+/// replaces it.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const COVER_CAPTURE_POLL_INTERVAL_MS: u64 = 50;
+
 /// How long the product is given to finish starting before the first automatic check.
 ///
 /// The check is opt-in and must never compete with startup for the network or the
@@ -598,7 +606,10 @@ struct ProductCoordinator {
     single_instance_wakes: u64,
     frame_source_running: bool,
     frame_source_shutdown: FrameSourceShutdown,
-    shortcut_signals: bongocat_app::ApplicationShortcutSignals,
+    /// Work the settings worker has handed to this thread: the settings window a
+    /// global shortcut asked for, and the cover captures of models it just
+    /// imported.
+    main_thread_signals: bongocat_app::ApplicationMainThreadSignals,
     shortcut_service: Option<bongocat_platform::GlobalShortcutService>,
     frame_ticks: u64,
     expect_visible_frame: bool,
@@ -1271,7 +1282,7 @@ fn toggle_settings_window(cx: &mut App) -> Result<(), String> {
 fn handle_shortcut_toggle_settings(cx: &mut App) {
     let requested = cx
         .try_global::<ProductCoordinator>()
-        .is_some_and(|coordinator| coordinator.shortcut_signals.take_open_settings_request());
+        .is_some_and(|coordinator| coordinator.main_thread_signals.take_open_settings_request());
     if !requested {
         return;
     }
@@ -2152,7 +2163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     #[cfg(target_os = "windows")]
     let initial_taskbar_icon_visible = application.config().application.show_taskbar_icon;
-    let shortcut_signals = bongocat_app::ApplicationShortcutSignals::default();
+    let main_thread_signals = bongocat_app::ApplicationMainThreadSignals::default();
     let input_producer = application.input_producer();
     let cursor_producer = application.cursor_producer();
     let gamepad_axis_producer = application.gamepad_axis_producer();
@@ -2234,7 +2245,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match bongocat_app::ApplicationSettingsService::start_with_product_capabilities(
                 application,
                 shortcut_receiver,
-                shortcut_signals.clone(),
+                main_thread_signals.clone(),
                 status_icon,
                 #[cfg(target_os = "windows")]
                 taskbar_icon,
@@ -2351,7 +2362,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             single_instance_wakes: 0,
             frame_source_running: true,
             frame_source_shutdown: frame_source_shutdown.clone(),
-            shortcut_signals,
+            main_thread_signals: main_thread_signals.clone(),
             shortcut_service,
             frame_ticks: 0,
             expect_visible_frame,
@@ -2361,6 +2372,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             shutdown_flush_complete: Arc::new(AtomicBool::new(false)),
         });
+
+        // Every model the settings worker installs is rendered into its own cover
+        // here. The worker cannot do it — a capture creates a native window, and the
+        // GPU thread that owns the product's windows is this one — so it queues the
+        // model and this loop drains the queue, writes the result back through the
+        // settings service, and drops the card's cached image so the next frame
+        // reloads the file.
+        //
+        // The capture draws a few dozen frames while the model settles, on the same
+        // thread as the overlay frame loop below. That briefly delays the overlay,
+        // which is the price of capturing a real window rather than an offscreen
+        // surface; it happens right after an import the user is still watching.
+        //
+        // A capture that fails changes nothing: the model keeps the cover its source
+        // shipped, exactly as it would without this feature. It is display artwork,
+        // not model data (ADR-0047), so a wrong picture there is not worth failing an
+        // import over, nor reporting to a user who cannot act on it.
+        let cover_capture_client = settings_client.clone();
+        let cover_capture_signals = main_thread_signals.clone();
+        cx.spawn(async move |cx| {
+            loop {
+                Timer::after(Duration::from_millis(COVER_CAPTURE_POLL_INTERVAL_MS)).await;
+                if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
+                    break;
+                }
+                for request in cover_capture_signals.take_model_cover_captures() {
+                    let Ok(captured) =
+                        bongocat_overlay::capture_model_cover(Arc::clone(request.model()))
+                    else {
+                        continue;
+                    };
+                    let key = request.key().clone();
+                    let written = cover_capture_client
+                        .replace_model_cover(key.clone(), captured.png().to_vec())
+                        .await
+                        .is_ok();
+                    if !written {
+                        continue;
+                    }
+                    cx.update(|cx| {
+                        let Some(window) = cx
+                            .try_global::<ProductCoordinator>()
+                            .and_then(|coordinator| coordinator.settings_window.clone())
+                        else {
+                            return;
+                        };
+                        let _ = window.update(cx, |view, _, cx| view.refresh_model_cover(&key, cx));
+                    });
+                }
+            }
+        })
+        .detach();
 
         // Startup permission check on its own worker (ADR-0032, amended 2026-09-15). The
         // overlay, settings service, system menu and update worker above are already
@@ -3159,7 +3222,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )
                     };
                     cx.global::<ProductCoordinator>()
-                        .shortcut_signals
+                        .main_thread_signals
                         .request_open_settings();
                     handle_shortcut_toggle_settings(cx);
                     Ok((frame_ticks, window_handle))
@@ -3230,7 +3293,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
                     cx.global::<ProductCoordinator>()
-                        .shortcut_signals
+                        .main_thread_signals
                         .request_open_settings();
                     handle_shortcut_toggle_settings(cx);
                     let reopened = cx

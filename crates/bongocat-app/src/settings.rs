@@ -2,14 +2,14 @@ use crate::diagnostics_bundle::write_preview_bundle;
 use crate::{
     Application, ApplicationError, ApplicationLogCode, ApplicationLogComponent,
     ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
-    ApplicationShortcutSignals, BUILD_ENVIRONMENT, CoreLogDiagnostics, PRODUCT_VERSION,
+    ApplicationMainThreadSignals, BUILD_ENVIRONMENT, CoreLogDiagnostics, PRODUCT_VERSION,
 };
 use bongocat_config::{
     BuildEnvironment, ConfigError, ConfigWriteFailureReason, NativeConfig, OverlayWindowPlacement,
     ShortcutCommand, StateError, WindowPlacement,
 };
 use bongocat_model::{
-    ModelBehaviorSnapshot, ModelCatalogEntry, ModelDiagnostic, ModelImportProgress,
+    CommittedModel, ModelBehaviorSnapshot, ModelCatalogEntry, ModelDiagnostic, ModelImportProgress,
     ModelImportStage, ModelOrigin, ModelStoreDiagnostic,
 };
 #[cfg(target_os = "macos")]
@@ -95,7 +95,7 @@ impl ApplicationSettingsService {
     pub fn start_with_shortcut_receiver_and_signals(
         application: Application,
         receiver: ShortcutReceiver<bongocat_config::ShortcutCommand>,
-        signals: ApplicationShortcutSignals,
+        signals: ApplicationMainThreadSignals,
     ) -> Result<Self, SettingsServiceJoinError> {
         Self::start_with_startup_item_and_shortcuts(
             application,
@@ -110,7 +110,7 @@ impl ApplicationSettingsService {
     pub fn start_with_product_capabilities(
         application: Application,
         receiver: ShortcutReceiver<bongocat_config::ShortcutCommand>,
-        signals: ApplicationShortcutSignals,
+        signals: ApplicationMainThreadSignals,
         status_icon: Arc<dyn StatusIconCapability>,
         #[cfg(target_os = "windows")] taskbar_icon: Arc<dyn TaskbarIconCapability>,
     ) -> Result<Self, SettingsServiceJoinError> {
@@ -177,7 +177,7 @@ impl ApplicationSettingsService {
         status_icon: Arc<dyn StatusIconCapability>,
         taskbar_icon: Arc<dyn TaskbarIconCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
-        shortcut_signals: Option<ApplicationShortcutSignals>,
+        signals: Option<ApplicationMainThreadSignals>,
     ) -> Result<Self, SettingsServiceJoinError> {
         let backup_location = Arc::new(SystemBackupLocation {
             path: application.config_backup_directory().to_owned(),
@@ -196,7 +196,7 @@ impl ApplicationSettingsService {
             diagnostics_export,
             Arc::new(SystemModelLocation),
             shortcut_receiver,
-            shortcut_signals,
+            signals,
         )
     }
 
@@ -258,7 +258,7 @@ impl ApplicationSettingsService {
         diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
         model_location: Arc<dyn ModelLocationCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
-        shortcut_signals: Option<ApplicationShortcutSignals>,
+        signals: Option<ApplicationMainThreadSignals>,
     ) -> Result<Self, SettingsServiceJoinError> {
         let (client, endpoint) = SettingsClient::bounded(SETTINGS_COMMAND_CAPACITY);
         let window_state = client.track_window_state(
@@ -267,6 +267,7 @@ impl ApplicationSettingsService {
                 .and_then(settings_window_placement),
         );
         let worker_window_state = window_state.clone();
+        let worker_signals = signals.clone();
         let worker = thread::Builder::new()
             .name("bongocat-settings-service".to_owned())
             .spawn(move || {
@@ -279,13 +280,14 @@ impl ApplicationSettingsService {
                     diagnostics_export,
                     model_location,
                     worker_window_state,
+                    worker_signals,
                 )
             })
             .map_err(SettingsServiceJoinError::Spawn)?;
         let shortcut_forwarder_stop = Arc::new(AtomicBool::new(false));
         let shortcut_forwarder = shortcut_receiver.map(|receiver| {
             let client = client.clone();
-            let signals = shortcut_signals;
+            let signals = signals.clone();
             let worker_stop = Arc::clone(&shortcut_forwarder_stop);
             thread::Builder::new()
                 .name("bongocat-shortcut-forwarder".to_owned())
@@ -507,6 +509,7 @@ fn run_service(
     diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
     model_location: Arc<dyn ModelLocationCapability>,
     window_state: SettingsWindowState,
+    signals: Option<ApplicationMainThreadSignals>,
 ) {
     let mut clock = SettingsSnapshotClock::new(application.config_revision());
     loop {
@@ -897,6 +900,18 @@ fn run_service(
                     .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::ReplaceModelCover { model, png, reply } => {
+                // The capture that produced these bytes already knows the model is
+                // installed, so a rejection here means the model disappeared between
+                // the import that queued the capture and the write, or that the
+                // encoder produced something the package contract refuses.
+                let result = application
+                    .set_model_cover_bytes(model_origin(model.origin), model.id, &png)
+                    .map(|_| ())
+                    .map_err(map_model_cover_error)
+                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::OpenModelLocation { model, reply } => {
                 let result =
                     match application.model_directory(model_origin(model.origin), &model.id) {
@@ -924,8 +939,25 @@ fn run_service(
                         },
                         move || cancellation.is_cancelled(),
                     )
-                    .map(|_| ())
-                    .map(|_| snapshot(&application, &mut clock, true, startup_item.state()))
+                    .map(|installed| {
+                        // A freshly imported model gets a cover rendered from the
+                        // model itself rather than the one its source shipped,
+                        // which for a converted BongoCatMver model is the same
+                        // placeholder in every mode. The worker only queues the
+                        // work: rendering it needs a native window, and this thread
+                        // does not own one.
+                        if let Some(signals) = signals.as_ref() {
+                            for model in installed {
+                                let key = SettingsModelKey {
+                                    id: model.id().as_str().to_owned(),
+                                    origin: settings_model_origin(ModelOrigin::Installed),
+                                };
+                                signals
+                                    .request_model_cover_capture(key, CommittedModel::from(model));
+                            }
+                        }
+                    })
+                    .map(|()| snapshot(&application, &mut clock, true, startup_item.state()))
                     .map_err(map_model_import_error);
                 let _ = reply.respond(result);
             }
@@ -3786,13 +3818,86 @@ mod tests {
         service.join().expect("join service");
     }
 
+    /// An import queues one cover capture per installed model for the GPUI thread,
+    /// and the bytes that projection of the model produced land on the package
+    /// cover the settings catalog reports.
+    #[test]
+    fn service_queues_a_cover_capture_per_imported_model_and_installs_the_result() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let models_root = layout.models.clone();
+        let application = Application::start_with_layout(layout).expect("start application");
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let signals = ApplicationMainThreadSignals::default();
+        let service = ApplicationSettingsService::start_with_shortcut_receiver_and_signals(
+            application,
+            receiver,
+            signals.clone(),
+        )
+        .expect("start settings service");
+        let client = service.client();
+        client
+            .import_model_blocking(SettingsModelImportRequest {
+                title: "我的猫".to_owned(),
+                source_root: model_fixture(),
+            })
+            .expect("import model");
+
+        // The worker installs the model and hands it over; it never renders it.
+        let queued = signals.take_model_cover_captures();
+        assert_eq!(queued.len(), 1);
+        let key = queued[0].key().clone();
+        assert_eq!(key.origin, SettingsModelOrigin::Installed);
+        assert_eq!(queued[0].model().id().as_str(), key.id);
+        // Draining is what the GPUI loop does: a second poll has nothing left.
+        assert!(signals.take_model_cover_captures().is_empty());
+
+        let canonical_models_root = models_root.canonicalize().expect("canonical models root");
+        let expected_cover = canonical_models_root
+            .join(&key.id)
+            .join("resources/cover.png");
+        let captured = b"\x89PNG\r\n\x1a\ncaptured cat";
+        let covered = client
+            .replace_model_cover_blocking(key.clone(), captured.to_vec())
+            .expect("install captured cover");
+        let entry = covered
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == key.id && entry.origin == key.origin)
+            .expect("covered entry");
+        assert_eq!(entry.cover, Some(expected_cover.clone()));
+        assert_eq!(
+            std::fs::read(&expected_cover).expect("installed cover"),
+            captured
+        );
+
+        // A capture that produced something other than a PNG is refused under the
+        // same contract a user-chosen cover passes, and the installed one stays.
+        assert_eq!(
+            client
+                .replace_model_cover_blocking(key.clone(), b"not an image".to_vec())
+                .expect_err("a non-PNG capture is refused")
+                .code(),
+            SettingsErrorCode::ModelCoverInvalid
+        );
+        assert_eq!(
+            std::fs::read(&expected_cover).expect("unchanged cover"),
+            captured
+        );
+
+        drop(sender);
+        client.shutdown_blocking().expect("shutdown service");
+        service.join().expect("join service");
+    }
+
     #[test]
     fn service_routes_open_settings_to_the_gpui_signal_without_touching_ui() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
         let application = Application::start_with_layout(layout).expect("start application");
         let (sender, receiver) = std::sync::mpsc::sync_channel(2);
-        let signals = ApplicationShortcutSignals::default();
+        let signals = ApplicationMainThreadSignals::default();
         let service = ApplicationSettingsService::start_with_shortcut_receiver_and_signals(
             application,
             receiver,

@@ -1219,6 +1219,17 @@ pub enum SettingsCommand {
         source: PathBuf,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Install cover bytes the product captured from the model itself.
+    ///
+    /// A user-chosen cover travels as a path ([`Self::SetModelCover`]) because the
+    /// file already exists. A captured cover does not: it is produced in memory by
+    /// the renderer, which writes the window it captured from and nothing else. Both
+    /// end at the same store replacement, under the same PNG contract.
+    ReplaceModelCover {
+        model: SettingsModelKey,
+        png: Vec<u8>,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     OpenModelLocation {
         model: SettingsModelKey,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
@@ -1607,6 +1618,19 @@ impl SettingsClient {
         .await
     }
 
+    /// Install a cover the product captured itself.
+    ///
+    /// Called from the thread that owns the overlay windows, right after it rendered
+    /// the model into that cover.
+    pub async fn replace_model_cover(
+        &self,
+        model: SettingsModelKey,
+        png: Vec<u8>,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::ReplaceModelCover { model, png, reply })
+            .await
+    }
+
     pub async fn open_model_location(
         &self,
         model: SettingsModelKey,
@@ -1930,6 +1954,14 @@ impl SettingsClient {
             source,
             reply,
         })
+    }
+
+    pub fn replace_model_cover_blocking(
+        &self,
+        model: SettingsModelKey,
+        png: Vec<u8>,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::ReplaceModelCover { model, png, reply })
     }
 
     pub fn open_model_location_blocking(

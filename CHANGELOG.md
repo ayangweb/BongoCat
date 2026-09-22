@@ -6,6 +6,10 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 ## Unreleased
 
+### ✨ Features
+
+- An imported model's cover is now captured from a real render of the model itself. Every BongoCatMver input mode used to reuse the same placeholder picture from the source, so importing standard, keyboard, and gamepad gave three identical cards; right after the import the app renders the model in a hidden window and saves that frame as the card's cover. If the capture cannot run, the model keeps the cover its source shipped.
+
 ### 🐛 Bug Fixes
 
 - A damaged configuration now recovers automatically from the newest valid backup. If no valid backup exists, the app writes defaults and starts normally. The recovery prompt and reset button are gone from the settings window.

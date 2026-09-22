@@ -3,13 +3,17 @@ use crate::{
     MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
     OverlayInteractionSinks, OverlayPresentationState, OverlayScreenBounds, OverlaySessionOptions,
     OverlayTickOutcome, OverlayWindowBounds, PreviewReport, ProductOverlayReport, blend_factors,
-    corner_radius_uniform, default_overlay_window_dimensions,
+    corner_radius_uniform,
+    cover::{
+        COVER_CAPTURE_FRAMES, COVER_CAPTURE_SCALE_PERCENT, COVER_CAPTURE_TIMEOUT, CapturedFrame,
+    },
+    default_overlay_window_dimensions,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
     validate_frame_smoke, validate_model_generation_advance,
 };
 use block2::RcBlock;
-use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
+use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
     MacInputService, PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus,
 };
@@ -1388,6 +1392,91 @@ pub(crate) fn run_model_preview(
     })
 }
 
+/// Render one model on its own and read the frame back as cover pixels.
+///
+/// This is the model preview's own setup — a private runtime, the model activated
+/// into it, and a native window sized from the model's canvas — with two
+/// differences that make it a capture rather than a preview: the window is never
+/// ordered front, so nothing the user did not ask for appears on screen, and the
+/// frame is read out of the drawable instead of only sampled.
+///
+/// It must run on the main thread, like every other AppKit window owner.
+pub(crate) fn capture_model_cover(
+    model: Arc<CommittedModel>,
+) -> Result<CapturedFrame, OverlayError> {
+    let (runtime, render_consumer) = RuntimeOwner::start_with_rendering(true, 64);
+    let runtime_client = runtime.client();
+    runtime_client
+        .wait_for_revision(1, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("cover capture runtime did not become ready"))?;
+    let activation = runtime_client
+        .send(RuntimeCommand::ActivateModel(model))
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+    let prepared = runtime_client
+        .wait_for_model_preparation(activation, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("cover capture model activation was not prepared"))?;
+    if let Some(failure) = prepared
+        .last_command_failure
+        .filter(|failure| failure.sequence == activation)
+    {
+        return Err(OverlayError::new(format!(
+            "cover capture model activation failed: {:?}",
+            failure.code
+        )));
+    }
+    let initial_frame = render_consumer
+        .take_latest()
+        .ok_or_else(|| OverlayError::new("cover capture runtime published no render frame"))?;
+    let initial_token = initial_frame
+        .model_commit
+        .filter(|token| token.command_sequence == activation)
+        .ok_or_else(|| OverlayError::new("cover capture frame has the wrong model commit token"))?;
+    let mtm = MainThreadMarker::new()
+        .ok_or_else(|| OverlayError::new("cover capture must run on the main thread"))?;
+    let application = NSApplication::sharedApplication(mtm);
+    application.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+    application.finishLaunching();
+    let options = OverlaySessionOptions {
+        scale_percent: COVER_CAPTURE_SCALE_PERCENT,
+        keep_inside_screen: false,
+        ..OverlaySessionOptions::default()
+    };
+    let mut overlay = match NativeOverlay::create(mtm, &initial_frame, options, None) {
+        Ok(overlay) => overlay,
+        Err(error) => {
+            reject_model_commit(&runtime_client, &render_consumer, initial_token)?;
+            return Err(error);
+        }
+    };
+    report_model_commit(
+        &runtime_client,
+        &render_consumer,
+        initial_token,
+        ModelCommitOutcome::Prepared,
+    )?;
+
+    // The first frame is verified like a committed model is: a capture that
+    // renders nothing must fail before it replaces a cover with a blank image.
+    let mut captured = Some(overlay.draw_capturing(true)?);
+    let deadline = Instant::now() + COVER_CAPTURE_TIMEOUT;
+    for _ in 1..COVER_CAPTURE_FRAMES {
+        pump_application_events(&application);
+        if Instant::now() >= deadline {
+            break;
+        }
+        if let Some(frame) = render_consumer.take_latest() {
+            overlay.sync_frame(&frame)?;
+        }
+        captured = Some(overlay.draw_capturing(false)?);
+        thread::sleep(FRAME_INTERVAL);
+    }
+    runtime
+        .shutdown(RUNTIME_TIMEOUT)
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+    let captured = captured.ok_or_else(|| OverlayError::new("cover capture drew no frame"))?;
+    Ok(captured)
+}
+
 impl NativeOverlay {
     fn create(
         mtm: MainThreadMarker,
@@ -1573,9 +1662,20 @@ impl NativeOverlay {
     }
 
     fn draw(&mut self, verify_frame: bool) -> Result<(), OverlayError> {
-        autoreleasepool(|_| self.draw_in_autorelease_pool(verify_frame))?;
+        autoreleasepool(|_| self.draw_in_autorelease_pool(verify_frame, false))?;
         self.presentation.record_presented_frame();
         Ok(())
+    }
+
+    /// Draw one frame and read it back as cover pixels.
+    ///
+    /// The window is never ordered front for this: the frame is drawn into the
+    /// layer's drawable and read from it before anything reaches the screen, so
+    /// the capture cannot flash a window the user did not ask for.
+    fn draw_capturing(&mut self, verify_frame: bool) -> Result<CapturedFrame, OverlayError> {
+        let captured = autoreleasepool(|_| self.draw_in_autorelease_pool(verify_frame, true))?;
+        self.presentation.record_presented_frame();
+        captured.ok_or_else(|| OverlayError::new("captured frame was not read back"))
     }
 
     fn set_visible(&self, visible: bool) -> Result<(), OverlayError> {
@@ -1604,7 +1704,11 @@ impl NativeOverlay {
         self.panel.setIgnoresMouseEvents(click_through);
     }
 
-    fn draw_in_autorelease_pool(&self, verify_frame: bool) -> Result<(), OverlayError> {
+    fn draw_in_autorelease_pool(
+        &self,
+        verify_frame: bool,
+        capture_frame: bool,
+    ) -> Result<Option<CapturedFrame>, OverlayError> {
         let drawable = self.layer.next_drawable().ok_or_else(|| {
             OverlayError::temporary_presentation_unavailable("CAMetalLayer returned no drawable")
         })?;
@@ -1827,7 +1931,10 @@ impl NativeOverlay {
         if verify_frame {
             verify_frame_smoke(drawable.texture())?;
         }
-        Ok(())
+        if capture_frame {
+            return read_drawable_frame(drawable.texture()).map(Some);
+        }
+        Ok(None)
     }
 
     fn current_allocated_size(&self) -> u64 {
@@ -2448,6 +2555,35 @@ fn model_transform(
         offset_x = -offset_x;
     }
     [scale_x, scale_y, offset_x, -center_y * scale_y]
+}
+
+/// Read one frame's pixels out of a drawable texture.
+///
+/// This is the full-frame form of [`verify_frame_smoke`]: same readback, every
+/// pixel of it. The drawable is BGRA, and the layer's sRGB pixel format means the
+/// bytes are the values the compositor received rather than a linear-space copy,
+/// so the cover is encoded from exactly what the overlay shows.
+fn read_drawable_frame(texture: &metal::TextureRef) -> Result<CapturedFrame, OverlayError> {
+    let width = u32::try_from(texture.width())
+        .map_err(|_| OverlayError::new("Metal drawable width is out of range"))?;
+    let height = u32::try_from(texture.height())
+        .map_err(|_| OverlayError::new("Metal drawable height is out of range"))?;
+    let row_bytes = width as usize * 4;
+    let mut bytes = vec![0_u8; row_bytes * height as usize];
+    texture.get_bytes(
+        bytes.as_mut_ptr().cast(),
+        row_bytes as u64,
+        MTLRegion {
+            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+            size: MTLSize {
+                width: texture.width(),
+                height: texture.height(),
+                depth: 1,
+            },
+        },
+        0,
+    );
+    CapturedFrame::from_premultiplied_bgra(&bytes, row_bytes, width, height)
 }
 
 fn verify_frame_smoke(texture: &metal::TextureRef) -> Result<(), OverlayError> {

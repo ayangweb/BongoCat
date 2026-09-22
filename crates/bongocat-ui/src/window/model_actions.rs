@@ -563,6 +563,16 @@ impl SettingsView {
         .detach();
     }
 
+    /// Drop the cached cover of a model whose cover image was replaced elsewhere.
+    ///
+    /// A captured cover is written by the product rather than by this window: the
+    /// file keeps its package path, so the image cache would keep serving the bytes
+    /// it loaded before the capture. The capture calls this so the next frame
+    /// reloads the file.
+    pub fn refresh_model_cover(&self, model: &SettingsModelKey, cx: &mut App) {
+        self.invalidate_model_cover(model, cx);
+    }
+
     /// Drop the cached cover image of a model whose cover just changed.
     ///
     /// The replacement keeps the package's own file name, so the image cache is

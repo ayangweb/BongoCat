@@ -914,7 +914,10 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 模型元数据编辑只属于用户导入的模型（见 ADR-0047）。`installed_models[].title` 是可编辑显示名，
   也是**唯一一条存放在模型目录之外**的模型事实；封面是包内文件，位于 `resources/cover.png`，
   由 `bongocat-model` 的 `package_cover_path` 与 BongoCatMver 转换共用同一组常量，替换走
-  `ModelStore::replace_cover` 的同目录原子替换。预置模型是 product files，既没有元数据记录，
+  `ModelStore::replace_cover` 的同目录原子替换。导入成功后，每个新安装模型的封面会被换成
+  **该模型自己渲染的一帧**（见 ADR-0055）：settings worker 只把模型与它在协议里的身份排队，
+  GPUI 线程在永不显示的原生窗口里渲染、读回、裁切并编码，再经 `ReplaceModelCover` 写回同一位置，
+  因此转换输出的占位封面只在捕获失败时保留。预置模型是 product files，既没有元数据记录，
   也不提供改名、换封面或删除：显示名沿用稳定 id，`Application::set_model_title`/
   `set_model_cover` 对 preset origin 一律拒绝。
 - settings 快照把页面需要、但不属于配置的模型事实一并投影：每个模型条目携带自己的包目录与包内

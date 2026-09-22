@@ -19,6 +19,14 @@ mod hover;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod placement;
 
+/// The backend-independent half of the model cover capture. Gated with the native
+/// sessions: only they can produce the pixels, and only they carry the image
+/// dependency the PNG encoding needs.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod cover;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub use cover::ModelCoverCapture;
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::PlatformInputServiceStatus;
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
@@ -37,6 +45,8 @@ use bongocat_runtime::{
 use raw_window_handle::{HandleError, HasWindowHandle, WindowHandle};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::collections::BTreeSet;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use std::sync::Arc;
 use std::{fmt, path::Path, sync::mpsc::SyncSender, time::Duration};
 
 pub const DEFAULT_OVERLAY_WINDOW_WIDTH: u32 = 350;
@@ -840,6 +850,31 @@ impl fmt::Display for OverlayError {
 }
 
 impl std::error::Error for OverlayError {}
+
+/// Render one model into a window that is never shown and turn that frame into a
+/// cover image.
+///
+/// A model the user has just imported is not the model the overlay is showing, so
+/// it cannot be captured from the live window: the capture runs the model in its
+/// own runtime and its own native window. The window is created but never ordered
+/// on screen, so the capture is invisible, and it is torn down with the runtime it
+/// was created for.
+///
+/// The result is the PNG a model package stores as `resources/cover.png`.
+/// Encoding lives behind this call so the caller never handles raw GPU pixels.
+///
+/// The capture must run where a native window can be created: the main thread on
+/// macOS, and the thread that owns the window on Windows.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub fn capture_model_cover(
+    model: Arc<bongocat_model::CommittedModel>,
+) -> Result<ModelCoverCapture, OverlayError> {
+    #[cfg(target_os = "macos")]
+    let frame = macos::capture_model_cover(model)?;
+    #[cfg(target_os = "windows")]
+    let frame = windows::capture_model_cover(model)?;
+    cover::encode_cover(frame)
+}
 
 pub fn run_model_preview(
     model_id: &str,

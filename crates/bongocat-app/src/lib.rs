@@ -27,11 +27,11 @@ use bongocat_runtime::{
 };
 use bongocat_update::{UpdateDiagnostics, UpdateDiagnosticsTracker};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     fmt, fs,
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
@@ -59,18 +59,75 @@ pub use settings::{
 pub use startup_permission::ensure_startup_permission;
 pub use update::{ApplicationUpdateService, UpdateServiceError, restart_required_after_install};
 
+/// Work the settings worker hands to the thread that owns the product's windows.
+///
+/// Two things the application has to do can only happen on that thread: showing the
+/// settings window a global shortcut asked for, and rendering a just-imported model
+/// into its own cover. The worker cannot do either — the shortcut service is a
+/// platform thread of its own, and a cover capture creates a native window — so it
+/// raises a signal and the GPUI thread drains it. Both fields are shared handles, so
+/// every clone observes the same work.
 #[derive(Clone, Default)]
-pub struct ApplicationShortcutSignals {
+pub struct ApplicationMainThreadSignals {
     open_settings: Arc<AtomicBool>,
+    cover_captures: Arc<Mutex<VecDeque<CoverCaptureRequest>>>,
 }
 
-impl ApplicationShortcutSignals {
+impl ApplicationMainThreadSignals {
     pub fn request_open_settings(&self) {
         self.open_settings.store(true, Ordering::Release);
     }
 
     pub fn take_open_settings_request(&self) -> bool {
         self.open_settings.swap(false, Ordering::AcqRel)
+    }
+
+    /// Queue `model` to be rendered into its own cover by the GPUI thread.
+    ///
+    /// Nothing is written here: the caller has only just installed the model, and
+    /// the cover it ships is left in place until a capture replaces it.
+    pub fn request_model_cover_capture(
+        &self,
+        key: bongocat_ui::SettingsModelKey,
+        model: CommittedModel,
+    ) {
+        self.cover_captures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push_back(CoverCaptureRequest {
+                key,
+                model: Arc::new(model),
+            });
+    }
+
+    /// Take the captures queued since the last call, oldest first.
+    pub fn take_model_cover_captures(&self) -> Vec<CoverCaptureRequest> {
+        self.cover_captures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .drain(..)
+            .collect()
+    }
+}
+
+/// One installed model whose cover has to be rendered from the model itself.
+///
+/// The model travels with the request because loading it is the settings worker's
+/// work: the GPUI thread gets something it can render, not an id it would have to
+/// re-open the store for.
+pub struct CoverCaptureRequest {
+    key: bongocat_ui::SettingsModelKey,
+    model: Arc<CommittedModel>,
+}
+
+impl CoverCaptureRequest {
+    /// The model as the settings protocol names it, for writing the cover back.
+    pub fn key(&self) -> &bongocat_ui::SettingsModelKey {
+        &self.key
+    }
+
+    pub fn model(&self) -> &Arc<CommittedModel> {
+        &self.model
     }
 }
 
@@ -1106,11 +1163,44 @@ impl Application {
             return Err(ApplicationError::ModelCoverInvalid);
         }
         let bytes = fs::read(source).map_err(|_| ApplicationError::ModelCoverInvalid)?;
-        if !bytes.starts_with(&PNG_SIGNATURE) {
+        self.install_model_cover(origin, &id, &bytes)
+    }
+
+    /// Replace an installed model's cover image with PNG bytes the product made.
+    ///
+    /// A captured cover never exists as a file until it is installed, so the cover
+    /// the renderer just produced arrives here directly. It passes the same contract
+    /// as a user-chosen one: a real PNG, within the package's per-file limit.
+    pub fn set_model_cover_bytes(
+        &mut self,
+        origin: ModelOrigin,
+        id: impl Into<String>,
+        bytes: &[u8],
+    ) -> Result<PathBuf, ApplicationError> {
+        let id = ModelId::parse(id)?;
+        if origin == ModelOrigin::Preset {
+            return Err(ApplicationError::PresetModelMetadata(id));
+        }
+        self.install_model_cover(origin, &id, bytes)
+    }
+
+    /// The contract every cover source shares, once its bytes are in hand.
+    fn install_model_cover(
+        &self,
+        origin: ModelOrigin,
+        id: &ModelId,
+        bytes: &[u8],
+    ) -> Result<PathBuf, ApplicationError> {
+        if origin == ModelOrigin::Preset {
+            return Err(ApplicationError::PresetModelMetadata(id.clone()));
+        }
+        if bytes.len() as u64 > ModelPackageLimits::default().maximum_file_bytes
+            || !bytes.starts_with(&PNG_SIGNATURE)
+        {
             return Err(ApplicationError::ModelCoverInvalid);
         }
         self.model_store
-            .replace_cover(&id, &bytes)
+            .replace_cover(id, bytes)
             .map_err(ApplicationError::ModelStore)
     }
 

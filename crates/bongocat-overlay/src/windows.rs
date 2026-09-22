@@ -3,6 +3,9 @@ use crate::{
     OverlayContextMenuRequest, OverlayError, OverlayInteractionSinks, OverlayPresentationState,
     OverlayScreenBounds, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds,
     PreviewReport, ProductOverlayReport, blend_factors, corner_radius_uniform,
+    cover::{
+        COVER_CAPTURE_FRAMES, COVER_CAPTURE_SCALE_PERCENT, COVER_CAPTURE_TIMEOUT, CapturedFrame,
+    },
     default_overlay_window_dimensions,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
@@ -857,16 +860,40 @@ impl Renderer {
         self.assert_owner_thread();
         // SAFETY: every interface belongs to this renderer and current thread;
         // all bound buffers/textures outlive the synchronous immediate context.
-        unsafe { self.draw_inner(verify) }.map_err(|error| {
-            if error.code() == DXGI_STATUS_OCCLUDED {
-                OverlayError::temporary_presentation_unavailable("DXGI swap chain is occluded")
-            } else {
-                windows_error("draw D3D11 model")(error)
-            }
-        })
+        unsafe { self.draw_inner(verify, false) }
+            .map(|_| ())
+            .map_err(|error| {
+                if error.code() == DXGI_STATUS_OCCLUDED {
+                    OverlayError::temporary_presentation_unavailable("DXGI swap chain is occluded")
+                } else {
+                    windows_error("draw D3D11 model")(error)
+                }
+            })
     }
 
-    unsafe fn draw_inner(&self, verify: bool) -> WindowsResult<()> {
+    /// Draw one frame and read it back as cover pixels, without presenting it.
+    ///
+    /// The cover capture owns a window the user never sees, so there is nothing to
+    /// present to: the frame is copied into the staging texture and read from there
+    /// and the swap chain keeps the buffer it already had. Skipping the present is
+    /// also what keeps the capture off the drivers' occlusion rules — a hidden
+    /// composition swap chain can report DXGI_STATUS_OCCLUDED on Present, which is a
+    /// property of the capture window rather than of the model being captured.
+    fn draw_capturing(&self, verify: bool) -> Result<CapturedFrame, OverlayError> {
+        self.assert_owner_thread();
+        // SAFETY: every interface belongs to this renderer and current thread, and
+        // the readback maps the staging texture copied from this renderer's own back
+        // buffer.
+        unsafe { self.draw_inner(verify, true) }
+            .map_err(windows_error("capture D3D11 model frame"))?
+            .ok_or_else(|| OverlayError::new("captured D3D11 frame was not read back"))
+    }
+
+    unsafe fn draw_inner(
+        &self,
+        verify: bool,
+        capture: bool,
+    ) -> WindowsResult<Option<CapturedFrame>> {
         let viewport = D3D11_VIEWPORT {
             TopLeftX: 0.0,
             TopLeftY: 0.0,
@@ -1070,17 +1097,31 @@ impl Renderer {
                 self.context.DrawIndexed(6, 0, 0);
             }
         }
-        if verify {
+        if verify || capture {
             unsafe {
                 self.context
                     .CopyResource(&self.staging_texture, &self.back_buffer);
-                verify_frame_smoke(
+                if verify {
+                    verify_frame_smoke(
+                        &self.context,
+                        &self.staging_texture,
+                        self.width,
+                        self.height,
+                    )?;
+                }
+            }
+        }
+        if capture {
+            // Deliberately no present here: see `draw_capturing`.
+            let captured = unsafe {
+                read_staging_frame(
                     &self.context,
                     &self.staging_texture,
                     self.width,
                     self.height,
-                )?;
-            }
+                )
+            }?;
+            return Ok(Some(captured));
         }
         unsafe {
             let present = self.swap_chain.Present(1, DXGI_PRESENT(0));
@@ -1093,7 +1134,7 @@ impl Renderer {
             present.ok()?;
             self.device.GetDeviceRemovedReason()?;
         }
-        Ok(())
+        Ok(None)
     }
 
     unsafe fn bind_mesh(
@@ -1229,6 +1270,17 @@ impl NativeOverlay {
         self.renderer.draw(verify)?;
         self.presentation.record_presented_frame();
         Ok(())
+    }
+
+    /// Draw one frame and read it back as cover pixels.
+    ///
+    /// The window is created without `WS_VISIBLE` and a capture never calls
+    /// `set_visible`, so a frame drawn here reaches the staging readback and nothing
+    /// the user did not ask for reaches the screen.
+    fn draw_capturing(&mut self, verify: bool) -> Result<CapturedFrame, OverlayError> {
+        let captured = self.renderer.draw_capturing(verify)?;
+        self.presentation.record_presented_frame();
+        Ok(captured)
     }
 }
 
@@ -1668,6 +1720,95 @@ impl ProductOverlaySession {
             texture_count: self.overlay.renderer.model.textures.len(),
         })
     }
+}
+
+/// Render one model on its own and read the frame back as cover pixels.
+///
+/// This is the preview's own setup — a private runtime, the model activated into
+/// it, and a native window sized from the model's canvas — with two differences
+/// that make it a capture rather than a preview: the window is created without
+/// `WS_VISIBLE` and never shown, so nothing the user did not ask for appears on
+/// screen, and every frame of it is read out of the staging texture instead of
+/// being presented.
+///
+/// It must run on the thread that owns the window it creates, because the frame
+/// loop pumps that window's messages.
+pub(crate) fn capture_model_cover(
+    model: Arc<CommittedModel>,
+) -> Result<CapturedFrame, OverlayError> {
+    let (runtime, render_consumer) = RuntimeOwner::start_with_rendering(true, 64);
+    let runtime_client = runtime.client();
+    runtime_client
+        .wait_for_revision(1, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("cover capture runtime did not become ready"))?;
+    let activation = runtime_client
+        .send(RuntimeCommand::ActivateModel(model))
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+    let prepared = runtime_client
+        .wait_for_model_preparation(activation, RUNTIME_TIMEOUT)
+        .ok_or_else(|| OverlayError::new("cover capture model activation was not prepared"))?;
+    if let Some(failure) = prepared
+        .last_command_failure
+        .filter(|failure| failure.sequence == activation)
+    {
+        return Err(OverlayError::new(format!(
+            "cover capture model activation failed: {:?}",
+            failure.code
+        )));
+    }
+    let initial_frame = render_consumer
+        .take_latest()
+        .ok_or_else(|| OverlayError::new("cover capture runtime published no render frame"))?;
+    let initial_token = initial_frame
+        .model_commit
+        .filter(|token| token.command_sequence == activation)
+        .ok_or_else(|| OverlayError::new("cover capture frame has the wrong model commit token"))?;
+    let com_apartment = ComApartment::initialize()?;
+    let options = OverlaySessionOptions {
+        scale_percent: COVER_CAPTURE_SCALE_PERCENT,
+        keep_inside_screen: false,
+        ..OverlaySessionOptions::default()
+    };
+    let frame_interval = frame_interval_for_maximum_fps(options.maximum_fps)
+        .expect("cover capture options carry a validated maximum FPS");
+    let mut overlay = match NativeOverlay::create(&initial_frame, options, None, None) {
+        Ok(overlay) => overlay,
+        Err(error) => {
+            reject_model_commit(&runtime_client, &render_consumer, initial_token)?;
+            return Err(error);
+        }
+    };
+    report_model_commit(
+        &runtime_client,
+        &render_consumer,
+        initial_token,
+        ModelCommitOutcome::Prepared,
+    )?;
+
+    // The first frame is verified like a committed model is: a capture that
+    // renders nothing must fail before it replaces a cover with a blank image.
+    // The frames after it are not, because a settled animation is allowed to be
+    // mostly transparent while the model moves.
+    let mut captured = Some(overlay.draw_capturing(true)?);
+    let deadline = Instant::now() + COVER_CAPTURE_TIMEOUT;
+    for _ in 1..COVER_CAPTURE_FRAMES {
+        pump_window_messages();
+        if Instant::now() >= deadline {
+            break;
+        }
+        if let Some(frame) = render_consumer.take_latest() {
+            overlay.renderer.sync_frame(&frame)?;
+        }
+        captured = Some(overlay.draw_capturing(false)?);
+        thread::sleep(frame_interval);
+    }
+    // The apartment guard lives until the end of the call, after the window above
+    // has released every COM interface it created.
+    let _com_apartment = com_apartment;
+    runtime
+        .shutdown(RUNTIME_TIMEOUT)
+        .map_err(|error| OverlayError::new(error.to_string()))?;
+    captured.ok_or_else(|| OverlayError::new("cover capture drew no frame"))
 }
 
 pub(crate) fn run_model_switch_preview(
@@ -2740,6 +2881,46 @@ unsafe fn create_staging_texture(
     let mut staging = None;
     unsafe { device.CreateTexture2D(&descriptor, None, Some(&mut staging))? };
     required(staging, "staging texture")
+}
+
+/// Read one frame's pixels out of a staging texture.
+///
+/// This is the full-frame form of [`verify_frame_smoke`]: same mapping, every row
+/// of it. The staging texture keeps the back buffer's BGRA layout and its own row
+/// pitch, so each row is copied into a tightly packed buffer that
+/// [`CapturedFrame::from_premultiplied_bgra`] can take. The render target view is
+/// the sRGB member of the format family, so the bytes are what the compositor would
+/// have received rather than a linear-space copy, and the cover is encoded from
+/// exactly what the overlay shows.
+unsafe fn read_staging_frame(
+    context: &ID3D11DeviceContext,
+    texture: &ID3D11Texture2D,
+    width: u32,
+    height: u32,
+) -> WindowsResult<CapturedFrame> {
+    let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+    unsafe { context.Map(texture, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
+    let result = if mapped.pData.is_null() || mapped.RowPitch < width.saturating_mul(4) {
+        Err(invariant_error("D3D11 readback mapping is invalid"))
+    } else {
+        let row_bytes = width as usize * 4;
+        let mut bytes = vec![0_u8; row_bytes * height as usize];
+        for (row, destination) in bytes.chunks_exact_mut(row_bytes).enumerate() {
+            // SAFETY: the mapping was checked to hold a four-byte BGRA pixel for
+            // every column, so this row starts inside it and one row fits.
+            let source = unsafe {
+                mapped
+                    .pData
+                    .cast::<u8>()
+                    .add(row * mapped.RowPitch as usize)
+            };
+            unsafe { std::ptr::copy_nonoverlapping(source, destination.as_mut_ptr(), row_bytes) };
+        }
+        CapturedFrame::from_premultiplied_bgra(&bytes, row_bytes, width, height)
+            .map_err(|error| invariant_error(&error.to_string()))
+    };
+    unsafe { context.Unmap(texture, 0) };
+    result
 }
 
 unsafe fn verify_frame_smoke(
