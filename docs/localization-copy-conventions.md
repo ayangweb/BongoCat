@@ -36,8 +36,8 @@
     "import": {
       "step": {
         "choosing": "正在打开文件选择器…",
-        "importing": "正在导入模型中…",
-        "capturing": "正在截取封面中…"
+        "importing": "正在导入模型…",
+        "capturing": "正在截取封面…"
       }
     }
   }

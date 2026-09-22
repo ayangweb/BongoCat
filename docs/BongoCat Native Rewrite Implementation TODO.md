@@ -5704,7 +5704,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
          选中文件夹时由 `suggested_model_title` 从文件夹名派生，之后可在卡片编辑里改，
          `SettingsModelImportRequest.title` 与 service 端 UUID 存储键契约不变。
       ② 进度面只显示**一个**步骤：`models::import_card_step` 返回 `Option<SharedString>`，`Capturing`
-         时返回「正在截取封面中…」，而不是把「正在导入模型中…」留成已完成行——旧实现的
+         时返回「正在截取封面…」，而不是把「正在导入模型…」留成已完成行——旧实现的
          `ModelImportCardStep { label, done }` 与 `CircleCheck` 已完成行已删除。版式按 Ant Design 的
          `Spin`：指示器在上、步骤文案在下、两者作为一块水平居中并整体在卡片内居中，间距 8px
          （`STEP_GAP`，即 antd tip 的偏移量），文案用 `text_sm` + `tokens.muted`（次要色）。

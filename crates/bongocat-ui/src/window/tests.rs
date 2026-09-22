@@ -1244,15 +1244,27 @@ fn model_presentations_follow_the_resolved_language() {
         "an idle draft renders the prompt, not a step"
     );
 
-    // The capture is a real second phase, and it replaces the import line rather
-    // than being appended under it: the card reports one step at a time.
+    // Both running phases come back on their own, and the capture replaces the
+    // import line rather than being appended under it: the card reports one step
+    // at a time.
+    let importing = ModelImportDraft {
+        state: ModelImportState::Starting {
+            cancel_requested: false,
+        },
+        ..ModelImportDraft::default()
+    };
+    assert_eq!(
+        super::models::import_card_step(&importing, SettingsLanguage::ChineseSimplified).as_deref(),
+        Some("正在导入模型…")
+    );
+
     let capturing = ModelImportDraft {
         state: ModelImportState::Capturing,
         ..ModelImportDraft::default()
     };
     assert_eq!(
         super::models::import_card_step(&capturing, SettingsLanguage::ChineseSimplified).as_deref(),
-        Some("正在截取封面中…")
+        Some("正在截取封面…")
     );
 }
 
