@@ -301,54 +301,6 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
     assert_eq!(shortcut_capture_tab_index(2), 104);
     assert_eq!(shortcut_clear_tab_index(2), 105);
     assert_eq!(targets.into_iter().collect::<BTreeSet<_>>().len(), 7);
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        let rows = shortcut_accessibility_rows(
-            &shortcuts,
-            Some(&active_model),
-            &entries,
-            SettingsLanguage::EnglishUnitedStates,
-        );
-        assert_eq!(rows.len(), 7);
-        assert_eq!(rows[0].1, "Capture shortcut for Show or hide model window");
-        assert_eq!(
-            rows[1].1,
-            "Capture shortcut for Show or hide settings window"
-        );
-        assert_eq!(rows[5].2, shortcut_display("Control+M"));
-        assert_eq!(rows[6].2, "Not set");
-        assert_eq!(
-            shortcut_target_for_accessibility_node(
-                &shortcuts,
-                Some(&active_model),
-                &entries,
-                shortcut_accessibility_node_id(5),
-            ),
-            Some(ShortcutCaptureTarget::ModelBehavior {
-                model_id: "standard".to_owned(),
-                behavior_id: "motion:tap:0".to_owned(),
-            })
-        );
-        let clear_rows = shortcut_clear_accessibility_rows(
-            &shortcuts,
-            Some(&active_model),
-            &entries,
-            SettingsLanguage::EnglishUnitedStates,
-        );
-        assert_eq!(clear_rows.len(), 3);
-        assert_eq!(
-            shortcut_clear_target_for_accessibility_node(
-                &shortcuts,
-                Some(&active_model),
-                &entries,
-                shortcut_clear_accessibility_node_id(2),
-            ),
-            Some(ShortcutCaptureTarget::ModelBehavior {
-                model_id: "standard".to_owned(),
-                behavior_id: "motion:tap:0".to_owned(),
-            })
-        );
-    }
 }
 
 #[test]
@@ -466,26 +418,11 @@ fn build_information_is_localized_and_contains_only_compiled_identity() {
 }
 
 #[test]
-fn recovery_and_shortcut_presentations_follow_the_resolved_language() {
-    let recovery = config_recovery_presentation(
-        SettingsConfigurationStatus::RecoveryRequired { checked_backups: 2 },
-        None,
-        SettingsLanguage::ChineseSimplified,
-    );
-    assert_eq!(recovery.title, "配置不可用");
-    assert_eq!(recovery.detail, "已检查 2 个备份");
-
+fn shortcut_presentations_follow_the_resolved_language() {
     let command = ShortcutCaptureTarget::Command("toggle_overlay".to_owned());
     assert_eq!(
         shortcut_command_name(SettingsLanguage::ChineseSimplified, "toggle_overlay"),
         "显示或隐藏模型窗口"
-    );
-    assert_eq!(
-        shortcut_accessibility_label(
-            SettingsLanguage::ChineseSimplified,
-            "显示或隐藏模型窗口".to_owned()
-        ),
-        "为显示或隐藏模型窗口录入快捷键"
     );
     assert_eq!(
         ShortcutRow {
@@ -590,65 +527,6 @@ fn model_behavior_rows_are_named_by_flattened_position() {
             .collect::<BTreeSet<_>>()
             .len()
     );
-}
-
-#[test]
-fn configuration_recovery_presentation_is_anonymous_and_complete() {
-    let normal = config_recovery_presentation(
-        SettingsConfigurationStatus::Ready,
-        None,
-        SettingsLanguage::EnglishUnitedStates,
-    );
-    assert_eq!(normal.title, "Loaded normally");
-    assert_eq!(normal.detail, "No recovery");
-    assert!(!normal.can_restore);
-
-    let recovered = config_recovery_presentation(
-        SettingsConfigurationStatus::Ready,
-        Some(SettingsConfigRecovery {
-            source_schema_version: 1,
-            skipped_newer_backups: 3,
-        }),
-        SettingsLanguage::EnglishUnitedStates,
-    );
-    assert_eq!(recovered.title, "Recovered from backup");
-    assert_eq!(
-        recovered.detail,
-        "Configuration format v1 · 3 newer backups skipped"
-    );
-    assert!(!recovered.detail.contains('/') && !recovered.detail.contains('\\'));
-
-    let one_skipped = config_recovery_presentation(
-        SettingsConfigurationStatus::Ready,
-        Some(SettingsConfigRecovery {
-            source_schema_version: 1,
-            skipped_newer_backups: 1,
-        }),
-        SettingsLanguage::EnglishUnitedStates,
-    );
-    assert_eq!(
-        one_skipped.detail,
-        "Configuration format v1 · 1 newer backup skipped"
-    );
-
-    let required = config_recovery_presentation(
-        SettingsConfigurationStatus::RecoveryRequired { checked_backups: 2 },
-        None,
-        SettingsLanguage::EnglishUnitedStates,
-    );
-    assert_eq!(required.title, "Configuration unavailable");
-    assert_eq!(required.detail, "2 backups checked");
-    assert!(required.attention);
-    assert!(required.can_restore);
-
-    let restored = config_recovery_presentation(
-        SettingsConfigurationStatus::DefaultsRestoredRestartRequired,
-        None,
-        SettingsLanguage::EnglishUnitedStates,
-    );
-    assert_eq!(restored.title, "Defaults restored");
-    assert_eq!(restored.detail, "Restart the application to continue");
-    assert!(!restored.can_restore);
 }
 
 #[test]
@@ -903,93 +781,6 @@ fn model_catalog_and_import_statuses_cover_loading_empty_error_and_cancellation(
     };
     let status = model_import_status(&cancelled, SettingsLanguage::ChineseSimplified);
     assert_eq!(status, "已取消导入");
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-#[test]
-fn model_import_accessibility_nodes_project_actions_progress_and_catalog_states() {
-    let ready = ModelImportDraft {
-        title: "custom-model".to_owned(),
-        source_root: Some(PathBuf::from("/private/source")),
-        state: ModelImportState::Ready,
-        ..ModelImportDraft::default()
-    };
-    let [choose_folder, choose_archive, import, status] =
-        super::accessibility::model_import_accessibility_nodes(
-            &ready,
-            false,
-            true,
-            SettingsLanguage::EnglishUnitedStates,
-        );
-    assert_eq!(choose_folder.role, AccessibilityRole::Button);
-    assert_eq!(choose_folder.label, "Choose folder");
-    assert!(choose_folder.supports_click);
-    assert_eq!(choose_archive.role, AccessibilityRole::Button);
-    assert_eq!(choose_archive.label, "Choose archive");
-    assert!(choose_archive.supports_click);
-    assert_eq!(import.label, "Import");
-    assert!(!import.disabled);
-    assert!(import.supports_click);
-    assert_eq!(import.value.as_deref(), Some("Folder selected"));
-    assert_eq!(status.role, AccessibilityRole::Status);
-    assert_eq!(status.value.as_deref(), Some("Folder selected"));
-
-    let cancelling = ModelImportDraft {
-        state: ModelImportState::Starting {
-            cancel_requested: true,
-        },
-        ..ready
-    };
-    let [choose_folder, choose_archive, import, status] =
-        super::accessibility::model_import_accessibility_nodes(
-            &cancelling,
-            false,
-            true,
-            SettingsLanguage::EnglishUnitedStates,
-        );
-    assert!(choose_folder.disabled);
-    assert!(choose_archive.disabled);
-    assert_eq!(import.label, "Cancel");
-    assert!(!import.disabled);
-    assert!(import.supports_click);
-    assert_eq!(status.value.as_deref(), Some("Cancelling import…"));
-
-    let loading = super::accessibility::model_catalog_accessibility_status_node(
-        None,
-        SettingsLanguage::EnglishUnitedStates,
-    )
-    .expect("loading catalog must be announced");
-    assert_eq!(loading.role, AccessibilityRole::Status);
-    assert_eq!(loading.value.as_deref(), Some("Loading models…"));
-
-    let unavailable = SettingsModelCatalog {
-        error: Some(SettingsModelCatalogError::Unavailable),
-        ..SettingsModelCatalog::default()
-    };
-    let unavailable = super::accessibility::model_catalog_accessibility_status_node(
-        Some(&unavailable),
-        SettingsLanguage::ChineseSimplified,
-    )
-    .expect("catalog error must be announced");
-    assert_eq!(unavailable.value.as_deref(), Some("模型列表不可用"));
-
-    let available = SettingsModelCatalog {
-        entries: vec![model_entry(
-            "preset",
-            SettingsModelOrigin::Preset,
-            SettingsModelAvailability::Ready {
-                behaviors: Vec::new(),
-            },
-        )],
-        ..SettingsModelCatalog::default()
-    };
-    assert!(
-        super::accessibility::model_catalog_accessibility_status_node(
-            Some(&available),
-            SettingsLanguage::EnglishUnitedStates,
-        )
-        .is_none()
-    );
 }
 
 #[test]
@@ -1319,7 +1110,7 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
 }
 
 /// The page's two scopes are groups, so each one's rows have to be a half of the
-/// one combined list the accessibility nodes and the keyboard tab order are
+/// one combined list the keyboard tab order is
 /// numbered from.
 #[test]
 fn shortcut_scopes_split_the_combined_row_order_into_two_halves() {
@@ -1401,7 +1192,7 @@ fn shortcut_scope_gates_have_their_own_localized_label() {
 
 /// A shortcut target maps to exactly the scope whose switch gates its row:
 /// application commands to the window gate, model behaviors to the model
-/// gate. The render layer, the accessibility tree and the mutating methods
+/// gate. The render layer and the mutating methods
 /// all route through this mapping, so a drift here would make a disabled row
 /// accept edits through one of the other layers.
 #[test]
@@ -1627,7 +1418,7 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
 /// The switch is greyed out exactly where the build cannot offer login startup.
 ///
 /// Transient states do not disable it: `action` already reports whether the
-/// control can act right now, and that question belongs to the accessibility
+/// control can act right now.
 /// node. A released build therefore keeps the switch normally available while
 /// the snapshot is still loading.
 #[test]
@@ -1729,59 +1520,6 @@ fn the_startup_switch_stays_operable_in_every_actionable_state() {
     }
 }
 
-/// The navigation buttons carry a label and nothing else.
-///
-/// These nodes used to put the page description in `value`, which duplicated
-/// the header text that has since been removed from every page. The
-/// accessibility tree is only built under the settings-window smoke, which
-/// cannot fail the process on macOS (TODO 87), so this test is the only place
-/// the shape is actually pinned — including the order, which has to stay in
-/// step with the sidebar `Settings` builds.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-#[test]
-fn navigation_accessibility_nodes_carry_no_descriptive_value() {
-    for language in [
-        SettingsLanguage::EnglishUnitedStates,
-        SettingsLanguage::ChineseSimplified,
-    ] {
-        let nodes = navigation_accessibility_nodes(language);
-        let ids: Vec<AccessibilityNodeId> = nodes.iter().map(|node| node.id).collect();
-        assert_eq!(
-            ids,
-            vec![
-                ACCESSIBILITY_GENERAL,
-                ACCESSIBILITY_MODELS,
-                ACCESSIBILITY_OVERLAY_PAGE,
-                ACCESSIBILITY_INTERACTION,
-                ACCESSIBILITY_INPUT,
-                ACCESSIBILITY_SHORTCUTS,
-                ACCESSIBILITY_APPLICATION,
-                ACCESSIBILITY_ABOUT,
-            ]
-        );
-        for node in &nodes {
-            assert_eq!(node.role, AccessibilityRole::Button);
-            assert!(
-                node.value.is_none(),
-                "navigation node {} must not carry a value",
-                node.id.get()
-            );
-            assert!(node.supports_click);
-            assert!(node.supports_focus);
-        }
-        // The label is the localized page title, never empty and never the
-        // same as the English one once a non-default language is selected.
-        assert_eq!(
-            nodes[0].label,
-            bongocat_i18n::text(language.catalog_locale(), "navigation.general.title")
-        );
-        assert!(!nodes[0].label.is_empty());
-    }
-    let english = navigation_accessibility_nodes(SettingsLanguage::EnglishUnitedStates);
-    let chinese = navigation_accessibility_nodes(SettingsLanguage::ChineseSimplified);
-    assert_ne!(english[0].label, chinese[0].label);
-}
-
 /// Deleting a model is two steps, and the first one asks nothing of the service.
 ///
 /// The card's delete control opens a confirmation surface and the accept button
@@ -1815,7 +1553,8 @@ fn deleting_a_model_asks_the_service_only_after_the_confirmation(cx: &mut TestAp
     let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
     let capture = Rc::clone(&built);
     let (_, visual) = cx.add_window_view(move |window, cx| {
-        let view = cx.new(|cx| SettingsView::new(client, Rc::new(|_| {}), None, window, cx));
+        let view =
+            cx.new(|cx| SettingsView::new(client, Rc::new(|_| {}), Rc::new(|_| {}), window, cx));
         capture.borrow_mut().replace(view.clone());
         Root::new(view, window, cx)
     });

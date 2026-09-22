@@ -84,8 +84,7 @@
       "loading": "正在加载模型…",
       "unavailable": "模型列表不可用",
       "empty": "没有可用模型",
-      "load_failed": "无法加载模型列表",
-      "available": "可用模型"
+      "load_failed": "无法加载模型列表"
     },
     "identity": {
       "title": "模型名称",
@@ -245,17 +244,6 @@
         "development": "开发版",
         "production": "正式版"
       }
-    },
-    "configuration": {
-      "restore_defaults": "恢复默认配置",
-      "restore_defaults_description": "备份无效配置并创建默认配置。",
-      "defaults_restored": "已恢复默认值",
-      "restart_to_continue": "请重启应用后继续",
-      "recovered_from_backup": "已从备份恢复",
-      "loaded_normally": "正常加载",
-      "no_recovery": "未执行恢复",
-      "backup_candidates": "已检查 %{count} 个备份%{plural_suffix}",
-      "recovered_backup_detail": "配置格式 v%{schema_version} · 已跳过 %{count} 个较新的备份%{plural_suffix}"
     }
   },
   "shortcuts": {
@@ -272,26 +260,11 @@
       }
     },
     "actions": {
-      "clear": "清除",
-      "decrease_overlay_scale": "缩小模型窗口",
-      "increase_overlay_scale": "放大模型窗口",
-      "decrease_overlay_opacity": "降低窗口不透明度",
-      "increase_overlay_opacity": "提高窗口不透明度",
-      "decrease_maximum_fps": "降低最大帧率",
-      "increase_maximum_fps": "提高最大帧率",
-      "decrease_release_fallback_timeout": "缩短按键释放超时",
-      "increase_release_fallback_timeout": "延长按键释放超时",
-      "decrease_hide_on_mouse_hover_delay": "缩短悬停隐藏延迟",
-      "increase_hide_on_mouse_hover_delay": "延长悬停隐藏延迟"
+      "clear": "清除"
     },
     "capture": {
       "press_to_record": "按下录制快捷键",
-      "click_to_record": "点击录制快捷键",
-      "waiting": "正在等待组合键",
-      "accessibility": "为%{name}录入快捷键"
-    },
-    "state": {
-      "not_set": "未设置"
+      "click_to_record": "点击录制快捷键"
     },
     "command_names": {
       "toggle_overlay": "显示或隐藏模型窗口",
@@ -319,7 +292,6 @@
   },
   "errors": {
     "settings": {
-      "configuration_unavailable": "配置不可用",
       "service_unavailable": "设置服务不可用",
       "snapshot_outdated": "设置已在后台更改；请确认最新设置后重试",
       "runtime_unavailable": "设置未能生效",
@@ -332,8 +304,6 @@
       "config_storage_full": "存放配置的磁盘已满；请清理空间后重试",
       "config_target_occupied": "配置位置被占用；请关闭占用它的程序后重试",
       "backup_location_open_failed": "无法打开配置备份文件夹",
-      "configuration_recovery_required": "执行此操作前必须恢复配置",
-      "configuration_recovery_failed": "无法恢复默认配置",
       "model_unavailable": "所选模型不可用",
       "model_switch_failed": "无法启用所选模型",
       "model_title_invalid": "模型名称不可用",

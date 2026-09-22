@@ -8,6 +8,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 ### 🐛 Bug Fixes
 
+- A damaged configuration now recovers automatically from the newest valid backup. If no valid backup exists, the app writes defaults and starts normally. The recovery prompt and reset button are gone from the settings window.
 - An imported model can now be deleted while it is the one in use. The delete control used to disappear from the model you were using, so removing it meant switching to another model first. Deleting the model in use now switches to the built-in standard model before the package is removed; if that switch fails, the model and your selection are left exactly as they were.
 
 ## 2.0.0 - 2026-09-16

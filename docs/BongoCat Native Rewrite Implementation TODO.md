@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Implementation TODO
 
 状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-14
+最后更新：2026-09-22
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
@@ -9,6 +9,13 @@
 > 执行基线：应用代码使用 Rust 2024 edition；GPUI 负责设置 UI；模型窗口由 Rust 平台模块直接创建，不嵌入 GPUI renderer；Windows 使用 Raw Input + D3D11，macOS 使用 CGEventTap + Metal；官方 Cubism Core 是唯一厂商二进制/FFI 例外。生产产物不包含 Tauri、WebView、Vue、React 或 JavaScript runtime。
 
 > 应用与存储基线：Bundle ID 固定为 `com.ayangweb.bongo-cat`；Development/Production 使用相同 schema 和不同数据根；新配置使用 `snake_case` 自有命名，不读取或导入旧 Tauri/Pinia 配置。
+
+> 当前 UI/配置契约（ADR-0054）：`config.json` 损坏时按“最新有效备份 → 默认配置”
+> fallback；没有 recovery-only window、恢复提示/按钮/command 或需重启门禁。设置 UI 为
+> visual-first，不维护项目自有 AccessKit tree、辅助桥、隐藏 label/action/only-for-assistive
+> 文案。Production、Development 和 smoke 的 Settings window 保持同一套可见组成。
+> 本文后续已勾选的历史状态若提到旧恢复 UI 或项目 AccessKit bridge，只作为当时的实现证据；
+> 后续代码以 ADR-0054 为准，不得据此重新引入。
 
 > 初始版本基线：`next` 只开发全新的首版，当前完整配置、state 和内部持久格式统一从 v1 开始。
 > 首次正式发布前不实现版本迁移、schema 兼容、旧数据转换或历史版本判断；新增字段直接修改当前

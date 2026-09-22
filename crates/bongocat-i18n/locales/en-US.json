@@ -84,8 +84,7 @@
       "loading": "Loading models…",
       "unavailable": "Model catalog is unavailable",
       "empty": "No models available",
-      "load_failed": "Model catalog could not be loaded",
-      "available": "Available models"
+      "load_failed": "Model catalog could not be loaded"
     },
     "identity": {
       "title": "Model name",
@@ -245,17 +244,6 @@
         "development": "Development build",
         "production": "Release build"
       }
-    },
-    "configuration": {
-      "restore_defaults": "Restore default configuration",
-      "restore_defaults_description": "Back up the invalid configuration and create defaults.",
-      "defaults_restored": "Defaults restored",
-      "restart_to_continue": "Restart the application to continue",
-      "recovered_from_backup": "Recovered from backup",
-      "loaded_normally": "Loaded normally",
-      "no_recovery": "No recovery",
-      "backup_candidates": "%{count} backup%{plural_suffix} checked",
-      "recovered_backup_detail": "Configuration format v%{schema_version} · %{count} newer backup%{plural_suffix} skipped"
     }
   },
   "shortcuts": {
@@ -272,26 +260,11 @@
       }
     },
     "actions": {
-      "clear": "Clear",
-      "decrease_overlay_scale": "Decrease window scale",
-      "increase_overlay_scale": "Increase window scale",
-      "decrease_overlay_opacity": "Decrease window opacity",
-      "increase_overlay_opacity": "Increase window opacity",
-      "decrease_maximum_fps": "Decrease maximum FPS",
-      "increase_maximum_fps": "Increase maximum FPS",
-      "decrease_release_fallback_timeout": "Decrease key release timeout",
-      "increase_release_fallback_timeout": "Increase key release timeout",
-      "decrease_hide_on_mouse_hover_delay": "Shorten hover hide delay",
-      "increase_hide_on_mouse_hover_delay": "Lengthen hover hide delay"
+      "clear": "Clear"
     },
     "capture": {
       "press_to_record": "Press to record shortcut",
-      "click_to_record": "Click to record shortcut",
-      "waiting": "Waiting for a key combination",
-      "accessibility": "Capture shortcut for %{name}"
-    },
-    "state": {
-      "not_set": "Not set"
+      "click_to_record": "Click to record shortcut"
     },
     "command_names": {
       "toggle_overlay": "Show or hide model window",
@@ -319,7 +292,6 @@
   },
   "errors": {
     "settings": {
-      "configuration_unavailable": "Configuration unavailable",
       "service_unavailable": "Settings service is unavailable",
       "snapshot_outdated": "Settings changed in the background; review the latest settings and retry",
       "runtime_unavailable": "The setting did not take effect",
@@ -332,8 +304,6 @@
       "config_storage_full": "The disk holding the configuration is full; free space and retry",
       "config_target_occupied": "The configuration location is in use; close the program using it and retry",
       "backup_location_open_failed": "Configuration backup folder could not be opened",
-      "configuration_recovery_required": "Configuration must be recovered before this action",
-      "configuration_recovery_failed": "Default configuration could not be restored",
       "model_unavailable": "Selected model is unavailable",
       "model_switch_failed": "Selected model could not be activated",
       "model_title_invalid": "Model name is not usable",

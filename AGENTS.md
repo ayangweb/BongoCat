@@ -107,8 +107,8 @@ Phase 0 退出条件未满足前：
 - 不为了目录美观提前创建大量空 crate。
 
 Phase 0 未完成不再阻止正式 workspace、runtime、config、model contract 或最小
-产品窗口的实现。Cubism 书面授权、SDK 分发、实机输入、
-辅助功能、GPU、签名、Windows 实机安装/升级/卸载和 soak 证据是 stable 发布门禁；
+产品窗口的实现。Cubism 书面授权、SDK 分发、实机输入、UI/主题、GPU、签名、
+Windows 实机安装/升级/卸载和 soak 证据是 stable 发布门禁；
 缺失时不得生成或公开分发包含受限 artifact 的安装包。
 
 ### 4.1 `next` 初始版本原则
@@ -240,6 +240,9 @@ Issue #47 的“收到按下但未收到释放”必须从架构上处理，不�
 - 构建产物携带不可变的 Development/Production 环境；运行时输入不得切换环境。
 - 配置、状态、模型、备份、日志、锁、单实例命名和更新 channel 全部按环境隔离。
 - 写入使用同目录临时文件、flush 和原子替换；失败保留原文件和备份。
+- `config.json` 损坏时按“最新有效备份 → 默认配置”处理；无 backup 时直接写入并使用默认
+  配置。不要再增加恢复窗口、恢复提示、restore command、operational gate 或“需重启”流程
+  （ADR-0054）；非 v1 文件仍按当前严格版本入口处理。
 - 模型导入防止路径穿越、符号链接逃逸、绝对路径注入、压缩炸弹和静默覆盖。
 - 文件选择结果必须在 Rust 侧再次验证。
 - 更新只允许 HTTPS，校验版本、target、arch 和签名，并提供失败回滚。**独立 hash 校验当前无实现**：
@@ -283,9 +286,13 @@ git source 覆写 GPUI。GPUI Kit 当前通过 crates.io 的 `gpui-pre` 同步�
 
 - 设置界面应安静、紧凑、适合重复操作，不使用营销页式布局。
 - 建立项目自己的 design tokens 和基础控件，不直接依赖产品私有组件。
-- 使用熟悉的图标表达工具操作，并为不熟悉图标提供 tooltip/accessibility label。
+- 使用熟悉的图标表达工具操作，并为不熟悉图标提供可见 tooltip。
 - 控件必须包含 hover、active、focus、disabled、loading 和 error 状态。
-- 表单必须支持键盘导航、可见焦点和合理的辅助功能语义。
+- 表单支持键盘导航和可见焦点。设置 UI 采用 visual-first 契约：项目不维护
+  screen-reader/AccessKit tree、辅助桥、隐藏 label/action 或只为辅助技术存在的文案；除
+  `gpui-kit` 传递实现外，不新增直接 AccessKit 依赖（ADR-0054）。
+- Development、Production 和 smoke 的设置窗口必须使用同一套可见组成；smoke 只能改变
+  驱动方式，不能增删用户可见控件。
 - 支持浅色、深色、系统主题和现有本地化语言。
 - 在 800x600、Windows 125/150/200% 和 macOS Retina 下不得出现文本重叠、裁剪或布局跳动。
 - 页面必须包含真实 loading、empty、error、cancel 和 retry 状态，不用静态占位冒充功能完成。

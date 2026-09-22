@@ -10,15 +10,6 @@ pub use bongocat_runtime::{PlatformInputDiagnostics, PlatformInputServiceStatus}
 mod installation;
 pub use installation::InstallationLayout;
 
-mod accessibility;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-pub use accessibility::SettingsAccessibilityBridge;
-pub use accessibility::{
-    AccessibilityAction, AccessibilityActionRequest, AccessibilityBounds, AccessibilityDiagnostics,
-    AccessibilityError, AccessibilityNode, AccessibilityNodeId, AccessibilityRole,
-    AccessibilityToggle, AccessibilityTree,
-};
-
 mod model_source_picker;
 pub use model_source_picker::{ModelSourcePickerError, ModelSourcePickerOutcome};
 

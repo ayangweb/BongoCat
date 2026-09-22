@@ -423,24 +423,18 @@ mod tests {
         assert_eq!(
             format_text(
                 "en-US",
-                "diagnostics.configuration.backup_candidates",
-                &[
-                    ("count", "3".to_string()),
-                    ("plural_suffix", "s".to_string()),
-                ],
+                "update.current_version",
+                &[("version", "1.2.3".to_string())],
             ),
-            "3 backups checked"
+            "Current version 1.2.3"
         );
         assert_eq!(
             format_text(
                 "zh-CN",
-                "diagnostics.configuration.backup_candidates",
-                &[
-                    ("count", "5".to_string()),
-                    ("plural_suffix", "".to_string())
-                ],
+                "update.current_version",
+                &[("version", "1.2.3".to_string())],
             ),
-            "已检查 5 个备份"
+            "当前版本 1.2.3"
         );
     }
 
@@ -508,10 +502,8 @@ mod tests {
     ///
     /// `rust_i18n` answers an unknown key with the key itself, so a key that was renamed or
     /// dropped never fails a build, a unit test or a smoke run: the window quietly renders the
-    /// raw key and a screen reader reads that string out. The assertions that do cover catalog
-    /// copy compare two lookups of the *same* key, so they stay equal even when the key is
-    /// gone. 2026-09-20: dropping `diagnostics.configuration.restore_defaults_description`
-    /// left every gate green while the recovery smoke still reported success.
+    /// raw key. The assertions that do cover catalog copy compare two lookups of the *same*
+    /// key, so they stay equal even when the key is gone.
     ///
     /// Two scans run over every `.rs` file under `crates/`:
     ///

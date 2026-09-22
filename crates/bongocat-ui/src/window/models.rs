@@ -725,6 +725,7 @@ fn model_import_card(
         )
 }
 
+#[cfg(test)]
 pub(super) fn empty_model_catalog_status(
     catalog: Option<&crate::SettingsModelCatalog>,
     language: SettingsLanguage,

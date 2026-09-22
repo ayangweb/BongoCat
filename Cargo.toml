@@ -27,9 +27,6 @@ repository = "https://github.com/ayangweb/BongoCat"
 publish = false
 
 [workspace.dependencies]
-accesskit = "=0.25.0"
-accesskit_macos = "=0.27.0"
-accesskit_windows = "=0.35.0"
 arboard = { version = "=3.6.1", default-features = false }
 async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"

@@ -273,9 +273,6 @@ const DEFAULT_RUN_SECONDS: u64 = 0;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn gpui_application() -> GpuiApplication {
-    // SettingsAccessibilityBridge owns the window's AccessKit adapter. Current GPUI also
-    // installs one by default, but two adapters cannot subclass the same native view.
-    //
     // Quitting is owned by the product shutdown paths (tray menu, smoke recipes,
     // update restart), not by window bookkeeping: the product stays alive behind
     // the overlay and the status icon even when every product window is closed,
@@ -298,8 +295,6 @@ struct RunOptions {
     settings_window_open_smoke: bool,
     models_page_smoke: bool,
     hidden_model_switch_smoke: bool,
-    #[cfg(feature = "storage-test-injection")]
-    configuration_recovery_smoke: bool,
     #[cfg(feature = "storage-test-injection")]
     settings_window_state_smoke: bool,
     #[cfg(feature = "storage-test-injection")]
@@ -334,8 +329,6 @@ impl RunOptions {
         let mut settings_window_open_smoke = false;
         let mut models_page_smoke = false;
         let mut hidden_model_switch_smoke = false;
-        #[cfg(feature = "storage-test-injection")]
-        let mut configuration_recovery_smoke = false;
         #[cfg(feature = "storage-test-injection")]
         let mut settings_window_state_smoke = false;
         #[cfg(feature = "storage-test-injection")]
@@ -381,8 +374,6 @@ impl RunOptions {
                     settings_window_smoke = true;
                 }
                 "--hidden-model-switch-smoke" => hidden_model_switch_smoke = true,
-                #[cfg(feature = "storage-test-injection")]
-                "--configuration-recovery-smoke" => configuration_recovery_smoke = true,
                 #[cfg(feature = "storage-test-injection")]
                 "--settings-window-state-smoke" => settings_window_state_smoke = true,
                 #[cfg(feature = "storage-test-injection")]
@@ -448,8 +439,6 @@ impl RunOptions {
             settings_window_open_smoke,
             models_page_smoke,
             hidden_model_switch_smoke,
-            #[cfg(feature = "storage-test-injection")]
-            configuration_recovery_smoke,
             #[cfg(feature = "storage-test-injection")]
             settings_window_state_smoke,
             #[cfg(feature = "storage-test-injection")]
@@ -531,13 +520,13 @@ impl std::error::Error for RunOptionsError {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke] [--single-instance-ready-file <path>] [--single-instance-result-file <path>]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke] [--single-instance-ready-file <path>] [--single-instance-result-file <path>]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
     return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke] [--single-instance-ready-file <path>] [--single-instance-result-file <path>]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--configuration-recovery-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
+    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
 
     #[cfg(all(target_os = "macos", not(feature = "storage-test-injection")))]
     "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
@@ -957,7 +946,7 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
         window_state,
         taskbar_icon_visible,
         finish_product_quit,
-        Some(open_update_window_and_check),
+        open_update_window_and_check,
         cx,
     )?;
     cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle.clone());
@@ -1391,46 +1380,17 @@ fn run_startup_item_smoke() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-fn run_configuration_recovery_mode(
-    application: bongocat_app::Application,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let settings_service = bongocat_app::ApplicationSettingsService::start(application)?;
-    let settings_client = settings_service.client();
-    let window_state = settings_service.window_state();
-    let gpui_application = gpui_application().with_assets(AllAssets);
-    gpui_application.run(move |cx| {
-        if let Err(error) = open_settings_window(
-            settings_client.clone(),
-            window_state.clone(),
-            true,
-            |cx| cx.quit(),
-            None::<fn(&mut App)>,
-            cx,
-        ) {
-            let mut stderr = io::stderr().lock();
-            let _ = writeln!(stderr, "configuration recovery window failed: {error}");
-            let _ = stderr.flush();
-            cx.quit();
-        }
-    });
-    let client = settings_service.client();
-    let _ = client.shutdown_blocking();
-    settings_service.join()?;
-    Ok(())
-}
+#[cfg(all(
+    feature = "storage-test-injection",
+    any(target_os = "macos", target_os = "windows")
+))]
+struct SmokeRoot(PathBuf);
 
 #[cfg(all(
     feature = "storage-test-injection",
     any(target_os = "macos", target_os = "windows")
 ))]
-struct RecoverySmokeRoot(PathBuf);
-
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
-impl RecoverySmokeRoot {
+impl SmokeRoot {
     fn cleanup(mut self) -> io::Result<()> {
         let result = std::fs::remove_dir_all(&self.0);
         self.0 = PathBuf::new();
@@ -1442,110 +1402,12 @@ impl RecoverySmokeRoot {
     feature = "storage-test-injection",
     any(target_os = "macos", target_os = "windows")
 ))]
-impl Drop for RecoverySmokeRoot {
+impl Drop for SmokeRoot {
     fn drop(&mut self) {
         if !self.0.as_os_str().is_empty() {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
-}
-
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
-fn run_configuration_recovery_smoke() -> Result<(), Box<dyn std::error::Error>> {
-    use bongocat_config::{BuildEnvironment, ConfigStore, StorageLayout};
-
-    let root = env::temp_dir().join(format!(
-        "bongocat-recovery-window-smoke-{}",
-        std::process::id()
-    ));
-    if root.exists() {
-        std::fs::remove_dir_all(&root)?;
-    }
-    let root = RecoverySmokeRoot(root);
-    let layout = StorageLayout::under(&root.0, BuildEnvironment::Development);
-    let _store = ConfigStore::new(layout.clone())?;
-    std::fs::write(&layout.config, b"corrupt-current-without-backups")?;
-    let application =
-        bongocat_app::Application::start_with_layout_for_smoke(layout, preset_root())?;
-    if application.is_operational() {
-        return Err("recovery smoke unexpectedly started an operational application".into());
-    }
-    write_smoke_status("configuration recovery required")?;
-    let service = bongocat_app::ApplicationSettingsService::start(application)?;
-    let client = service.client();
-    let window_state = service.window_state();
-    let snapshot = client.read_snapshot_blocking()?;
-    if !matches!(
-        snapshot.configuration_status,
-        bongocat_ui::SettingsConfigurationStatus::RecoveryRequired { checked_backups: 0 }
-    ) {
-        return Err("recovery smoke did not project the expected recovery snapshot".into());
-    }
-    let gpui_application = gpui_application().with_assets(AllAssets);
-    let smoke_client = client.clone();
-    gpui_application.run(move |cx| {
-        let window = match open_settings_window(
-            smoke_client,
-            window_state,
-            true,
-            |cx| cx.quit(),
-            None::<fn(&mut App)>,
-            cx,
-        ) {
-            Ok(window) => window,
-            Err(error) => {
-                let _ = write_smoke_status(&format!("recovery window failed: {error}"));
-                cx.quit();
-                return;
-            }
-        };
-        let _ = write_smoke_status("recovery window opened");
-        cx.spawn(async move |cx| {
-            // The recovery notice renders on the General page, so this verifies the page the
-            // user actually sees rather than the retired diagnostics page.
-            let mut recovery_verified = false;
-            let mut last_recovery_error = None;
-            for _ in 0..200 {
-                let recovery = window.update(cx, |view, _, cx| {
-                    view.verify_configuration_recovery_for_smoke(cx)
-                });
-                match recovery {
-                    Ok(Ok(())) => {
-                        recovery_verified = true;
-                        break;
-                    }
-                    Ok(Err(error)) => last_recovery_error = Some(error),
-                    Err(error) => last_recovery_error = Some(error.to_string()),
-                }
-                Timer::after(Duration::from_millis(10)).await;
-            }
-            if !recovery_verified {
-                let detail = last_recovery_error
-                    .unwrap_or_else(|| "settings view was unavailable".to_owned());
-                let _ = writeln!(
-                    io::stderr().lock(),
-                    "bongocat-app: recovery notice failed: {detail}"
-                );
-                let _ = write_smoke_status(&format!("recovery notice failed: {detail}"));
-                Timer::after(Duration::from_millis(1000)).await;
-                std::process::exit(1);
-            }
-            let _ = write_smoke_status("recovery notice verified");
-            Timer::after(Duration::from_millis(1000)).await;
-            let shutdown = client.shutdown().await;
-            let joined = service.join();
-            let cleanup = root.cleanup();
-            if shutdown.is_ok() && joined.is_ok() && cleanup.is_ok() {
-                let _ = write_smoke_status("recovery service stopped");
-            }
-            cx.update(|cx| cx.quit());
-        })
-        .detach();
-    });
-    Ok(())
 }
 
 #[cfg(all(
@@ -1569,7 +1431,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     if root.exists() {
         std::fs::remove_dir_all(&root)?;
     }
-    let root = RecoverySmokeRoot(root);
+    let root = SmokeRoot(root);
     let layout = StorageLayout::under(&root.0, BuildEnvironment::Development);
     let config_store = ConfigStore::new(layout.clone())?;
     let mut config = config_store.load_or_default()?.config;
@@ -1593,7 +1455,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                 window_state.clone(),
                 true,
                 |cx| cx.quit(),
-                None::<fn(&mut App)>,
+                |_: &mut App| {},
                 cx,
             ) {
                 Ok(window) => window,
@@ -1878,7 +1740,7 @@ fn run_diagnostics_export_smoke() -> Result<(), Box<dyn std::error::Error>> {
     if root.exists() {
         std::fs::remove_dir_all(&root)?;
     }
-    let root = RecoverySmokeRoot(root);
+    let root = SmokeRoot(root);
     let layout = StorageLayout::under(&root.0, BuildEnvironment::Development);
     let application =
         bongocat_app::Application::start_with_layout_for_smoke(layout.clone(), preset_root())?;
@@ -1947,7 +1809,7 @@ fn run_diagnostics_export_failure_smoke() -> Result<(), Box<dyn std::error::Erro
     if root.exists() {
         std::fs::remove_dir_all(&root)?;
     }
-    let root = RecoverySmokeRoot(root);
+    let root = SmokeRoot(root);
     let layout = StorageLayout::under(&root.0, BuildEnvironment::Development);
     let application =
         bongocat_app::Application::start_with_layout_for_smoke(layout.clone(), preset_root())?;
@@ -2048,7 +1910,7 @@ fn run_panic_diagnostics_smoke() -> Result<(), Box<dyn std::error::Error>> {
     if root.exists() {
         std::fs::remove_dir_all(&root)?;
     }
-    let root = RecoverySmokeRoot(root);
+    let root = SmokeRoot(root);
     let layout = StorageLayout::under(&root.0, BuildEnvironment::Development);
     let mut child = std::process::Command::new(env::current_exe()?)
         .arg("--panic-diagnostics-smoke-child")
@@ -2144,10 +2006,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // worse (ADR-0048).
     let _ = bongocat_platform::init_native_theme();
     #[cfg(feature = "storage-test-injection")]
-    if run_options.configuration_recovery_smoke {
-        return run_configuration_recovery_smoke();
-    }
-    #[cfg(feature = "storage-test-injection")]
     if run_options.settings_window_state_smoke {
         return run_settings_window_state_smoke();
     }
@@ -2202,10 +2060,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             retained_bytes: stats.retained_bytes,
         }
     });
-    if !application.is_operational() {
-        return run_configuration_recovery_mode(application);
-    }
-
     // The update worker publishes anonymous check/download/install counters and the
     // last stable error code through the same export boundary as every other
     // subsystem. The tracker is created here because handing the application to the
@@ -4204,8 +4058,6 @@ mod tests {
                 models_page_smoke: false,
                 hidden_model_switch_smoke: false,
                 #[cfg(feature = "storage-test-injection")]
-                configuration_recovery_smoke: false,
-                #[cfg(feature = "storage-test-injection")]
                 settings_window_state_smoke: false,
                 #[cfg(feature = "storage-test-injection")]
                 panic_diagnostics_smoke: false,
@@ -4314,22 +4166,10 @@ mod tests {
 
     #[cfg(feature = "storage-test-injection")]
     #[test]
-    fn configuration_recovery_smoke_is_opt_in() {
-        let options = RunOptions::parse(["--configuration-recovery-smoke".to_owned()])
-            .expect("configuration recovery smoke options");
-        assert!(options.configuration_recovery_smoke);
-        assert!(!options.settings_window_state_smoke);
-        assert!(!options.settings_window_smoke);
-        assert!(!options.models_page_smoke);
-    }
-
-    #[cfg(feature = "storage-test-injection")]
-    #[test]
     fn settings_window_state_smoke_is_opt_in() {
         let options = RunOptions::parse(["--settings-window-state-smoke".to_owned()])
             .expect("settings window state smoke options");
         assert!(options.settings_window_state_smoke);
-        assert!(!options.configuration_recovery_smoke);
         assert!(!options.settings_window_smoke);
     }
 
@@ -4411,10 +4251,6 @@ mod tests {
     #[cfg(not(feature = "storage-test-injection"))]
     #[test]
     fn product_options_reject_storage_test_injection() {
-        let error = RunOptions::parse(["--configuration-recovery-smoke".to_owned()])
-            .expect_err("default product options must reject storage injection");
-        assert!(error.message.contains("unknown argument"));
-        assert!(!usage().contains("configuration-recovery-smoke"));
         let state_error = RunOptions::parse(["--settings-window-state-smoke".to_owned()])
             .expect_err("default product options must reject state storage injection");
         assert!(state_error.message.contains("unknown argument"));

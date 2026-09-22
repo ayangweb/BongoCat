@@ -14,11 +14,8 @@
 //!   Packaged fields take `SettingItem::disabled(...)`; custom-rendered rows
 //!   dim themselves and stop registering their interaction handlers, so a
 //!   disabled row is inert rather than merely painted lighter.
-//! - **Every layer reads the same gate value.** The visible rows, the
-//!   accessibility nodes (disabled, not clickable, not focusable) and the
-//!   view's mutating methods (which guard on the same predicate) stay in
-//!   step, so a client acting on a tree rendered before the switch flipped
-//!   still changes nothing.
+//! - **Every layer reads the same gate value.** The visible rows and the
+//!   view's mutating methods guard on the same predicate.
 //!
 //! Two properties the rule deliberately fixes for every gate:
 //!
@@ -44,10 +41,8 @@ pub(super) struct SettingGate {
 
 impl SettingGate {
     /// `editing_blocked` is true only where editing is structurally
-    /// impossible (no snapshot yet, unusable configuration, model import
-    /// running); `enabled` is the gate switch's configuration truth without
-    /// inversion — the switch, the accessibility node and the command it
-    /// sends read the same configuration field.
+    /// impossible (no snapshot yet, model import running); `enabled` is the
+    /// gate switch's configuration truth without inversion.
     pub(super) fn new(editing_blocked: bool, enabled: bool) -> Self {
         Self {
             editing_blocked,

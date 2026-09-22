@@ -1,7 +1,7 @@
 use crate::diagnostics_bundle::write_preview_bundle;
 use crate::{
-    Application, ApplicationConfigStatus, ApplicationError, ApplicationLogCode,
-    ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
+    Application, ApplicationError, ApplicationLogCode, ApplicationLogComponent,
+    ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
     ApplicationShortcutSignals, BUILD_ENVIRONMENT, CoreLogDiagnostics, PRODUCT_VERSION,
 };
 use bongocat_config::{
@@ -29,18 +29,17 @@ use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
     DIAGNOSTICS_EXPORT_FORMAT_VERSION, RuntimeHealth, SettingsApplicationShortcut,
     SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsCommand,
-    SettingsConfigRecovery, SettingsConfigurationStatus, SettingsDiagnosticsExportStatus,
-    SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings, SettingsInputDiagnostics,
-    SettingsInputMonitoringPermission, SettingsInputServiceStatus, SettingsLanguage,
-    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
-    SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
-    SettingsModelSettings, SettingsOverlay, SettingsRuntimeCommandFailure,
-    SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
-    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
-    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
-    SettingsWindowState,
+    SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings,
+    SettingsInputDiagnostics, SettingsInputMonitoringPermission, SettingsInputServiceStatus,
+    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
+    SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
+    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_update::UpdateDiagnostics;
 use serde::Serialize;
@@ -562,17 +561,12 @@ fn run_service(
                 visible,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else {
-                            application
-                                .set_overlay_visible(visible)
-                                .map(|_| ())
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .set_overlay_visible(visible)
+                            .map(|_| ())
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -582,16 +576,11 @@ fn run_service(
                 theme,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else {
-                            application
-                                .set_appearance_theme(config_theme(theme))
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .set_appearance_theme(config_theme(theme))
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -601,12 +590,8 @@ fn run_service(
                 language,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            return Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated));
-                        }
                         application
                             .set_language(config_language(language))
                             .map_err(map_application_error)
@@ -619,12 +604,8 @@ fn run_service(
                 visible,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            return Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated));
-                        }
                         let previous = application.config().application.show_status_icon;
                         if previous == visible {
                             return Ok(());
@@ -648,12 +629,8 @@ fn run_service(
                 visible,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            return Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated));
-                        }
                         let previous = application.config().application.show_taskbar_icon;
                         if previous == visible {
                             return Ok(());
@@ -677,16 +654,11 @@ fn run_service(
                 enabled,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else {
-                            application
-                                .set_check_for_updates_automatically(enabled)
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .set_check_for_updates_automatically(enabled)
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -707,17 +679,12 @@ fn run_service(
                         .hide_on_pointer_hover_delay_seconds,
                     keep_inside_screen: settings.keep_inside_screen,
                 };
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else {
-                            application
-                                .set_overlay_settings(runtime_settings)
-                                .map(|_| ())
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .set_overlay_settings(runtime_settings)
+                            .map(|_| ())
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -727,17 +694,12 @@ fn run_service(
                 enabled,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else {
-                            application
-                                .set_motion_audio_enabled(enabled)
-                                .map(|_| ())
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .set_motion_audio_enabled(enabled)
+                            .map(|_| ())
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -747,17 +709,12 @@ fn run_service(
                 enabled,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else {
-                            application
-                                .set_behavior_shortcuts_enabled(enabled)
-                                .map(|_| ())
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .set_behavior_shortcuts_enabled(enabled)
+                            .map(|_| ())
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -767,17 +724,12 @@ fn run_service(
                 enabled,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else {
-                            application
-                                .set_command_shortcuts_enabled(enabled)
-                                .map(|_| ())
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .set_command_shortcuts_enabled(enabled)
+                            .map(|_| ())
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -787,12 +739,9 @@ fn run_service(
                 maximum_fps,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else if !bongocat_runtime::maximum_fps_is_valid(maximum_fps) {
+                        if !bongocat_runtime::maximum_fps_is_valid(maximum_fps) {
                             Err(SettingsError::new(SettingsErrorCode::InvalidMaximumFps))
                         } else {
                             application
@@ -809,12 +758,9 @@ fn run_service(
                 timeout_ms,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else if !bongocat_runtime::release_fallback_timeout_is_valid(timeout_ms) {
+                        if !bongocat_runtime::release_fallback_timeout_is_valid(timeout_ms) {
                             Err(SettingsError::new(
                                 SettingsErrorCode::InvalidReleaseFallbackTimeout,
                             ))
@@ -838,17 +784,12 @@ fn run_service(
                     mirror_pointer_tracking: settings.mirror_pointer_tracking,
                     ignore_pointer: settings.ignore_pointer,
                 };
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else {
-                            application
-                                .set_model_settings(runtime_settings)
-                                .map(|_| ())
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .set_model_settings(runtime_settings)
+                            .map(|_| ())
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -860,12 +801,9 @@ fn run_service(
             } => {
                 let valid = settings.stick_dead_zone_percent < 100
                     && settings.trigger_dead_zone_percent < 100;
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else if !valid {
+                        if !valid {
                             Err(SettingsError::new(
                                 SettingsErrorCode::InvalidGamepadAxisSettings,
                             ))
@@ -891,17 +829,12 @@ fn run_service(
                 shortcuts,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
-                    .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else {
-                            application
-                                .set_shortcuts(shortcuts)
-                                .map(|_| ())
-                                .map_err(map_application_error)
-                        }
+                let result =
+                    check_revision(&application, expected_config_revision).and_then(|()| {
+                        application
+                            .set_shortcuts(shortcuts)
+                            .map(|_| ())
+                            .map_err(map_application_error)
                     });
                 if result.is_err() {
                     let _ = application.resume_shortcut_capture();
@@ -915,16 +848,11 @@ fn run_service(
                 shortcuts_without_capture_target,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else {
-                            application
-                                .suspend_shortcut_capture(shortcuts_without_capture_target)
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .suspend_shortcut_capture(shortcuts_without_capture_target)
+                            .map_err(map_application_error)
                     })
                     .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -937,17 +865,14 @@ fn run_service(
                 let _ = reply.respond(result);
             }
             SettingsCommand::SetStartupItemEnabled { enabled, reply } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
-                    .and_then(|()| startup_item.set_enabled(enabled))
-                    .map(|state| {
-                        snapshot(
-                            &application,
-                            &mut clock,
-                            false,
-                            SettingsStartupItemStatus::State(state),
-                        )
-                    });
+                let result = startup_item.set_enabled(enabled).map(|state| {
+                    snapshot(
+                        &application,
+                        &mut clock,
+                        false,
+                        SettingsStartupItemStatus::State(state),
+                    )
+                });
                 let _ = reply.respond(result);
             }
             SettingsCommand::SelectModel {
@@ -955,17 +880,12 @@ fn run_service(
                 model,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
-                        } else {
-                            application
-                                .select_model(model_origin(model.origin), model.id)
-                                .map(|_| ())
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .select_model(model_origin(model.origin), model.id)
+                            .map(|_| ())
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -976,12 +896,8 @@ fn run_service(
                 title,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
+                let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if application.config_revision() != Some(expected_config_revision) {
-                            return Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated));
-                        }
                         application
                             .set_model_title(model_origin(model.origin), model.id, title)
                             .map_err(map_model_metadata_error)
@@ -994,28 +910,21 @@ fn run_service(
                 source,
                 reply,
             } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
-                    .and_then(|()| {
-                        application
-                            .set_model_cover(model_origin(model.origin), model.id, source)
-                            .map(|_| ())
-                            .map_err(map_model_cover_error)
-                    })
+                let result = application
+                    .set_model_cover(model_origin(model.origin), model.id, source)
+                    .map(|_| ())
+                    .map_err(map_model_cover_error)
                     .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
             SettingsCommand::OpenModelLocation { model, reply } => {
-                let result = require_operational(&application)
-                    .map_err(map_application_error)
-                    .and_then(|()| {
-                        let directory = application
-                            .model_directory(model_origin(model.origin), &model.id)
-                            .ok_or_else(|| {
-                                SettingsError::new(SettingsErrorCode::ModelLocationOpenFailed)
-                            })?;
-                        model_location.open(&directory)
-                    })
+                let result =
+                    match application.model_directory(model_origin(model.origin), &model.id) {
+                        Some(directory) => model_location.open(&directory),
+                        None => Err(SettingsError::new(
+                            SettingsErrorCode::ModelLocationOpenFailed,
+                        )),
+                    }
                     .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
@@ -1026,36 +935,25 @@ fn run_service(
             } => {
                 let progress = operation.clone();
                 let cancellation = operation.clone();
-                let result = require_operational(&application)
-                    .and_then(|()| {
-                        application
-                            .import_models_with_observer(
-                                request.title,
-                                request.source_root,
-                                move |update| {
-                                    let _ =
-                                        progress.report_progress(settings_import_progress(update));
-                                },
-                                move || cancellation.is_cancelled(),
-                            )
-                            .map(|_| ())
-                    })
+                let result = application
+                    .import_models_with_observer(
+                        request.title,
+                        request.source_root,
+                        move |update| {
+                            let _ = progress.report_progress(settings_import_progress(update));
+                        },
+                        move || cancellation.is_cancelled(),
+                    )
+                    .map(|_| ())
                     .map(|_| snapshot(&application, &mut clock, true, startup_item.state()))
                     .map_err(map_model_import_error);
                 let _ = reply.respond(result);
             }
             SettingsCommand::DeleteModel { model, reply } => {
-                let result = require_operational(&application)
-                    .and_then(|()| application.delete_model(model_origin(model.origin), model.id))
+                let result = application
+                    .delete_model(model_origin(model.origin), model.id)
                     .map(|_| snapshot(&application, &mut clock, true, startup_item.state()))
                     .map_err(map_model_delete_error);
-                let _ = reply.respond(result);
-            }
-            SettingsCommand::RestoreDefaultConfiguration { reply } => {
-                let result = application
-                    .restore_default_configuration()
-                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()))
-                    .map_err(map_configuration_recovery_error);
                 let _ = reply.respond(result);
             }
             SettingsCommand::OpenConfigBackupLocation { reply } => {
@@ -1177,13 +1075,6 @@ fn system_open_model_location(_path: &std::path::Path) -> Result<(), SettingsErr
     Err(SettingsError::new(
         SettingsErrorCode::ModelLocationOpenFailed,
     ))
-}
-
-fn require_operational(application: &Application) -> Result<(), ApplicationError> {
-    application
-        .is_operational()
-        .then_some(())
-        .ok_or(ApplicationError::ConfigurationRecoveryRequired)
 }
 
 const fn settings_import_progress(progress: ModelImportProgress) -> SettingsModelImportProgress {
@@ -1331,15 +1222,13 @@ fn snapshot(
         },
         runtime_health: if input_service_is_degraded(input_diagnostics.service_status) {
             RuntimeHealth::Degraded
-        } else if application.is_operational() {
+        } else {
             match runtime.state {
                 RuntimeState::Starting => RuntimeHealth::Starting,
                 RuntimeState::Ready => RuntimeHealth::Ready,
                 RuntimeState::Degraded | RuntimeState::Stopping => RuntimeHealth::Degraded,
                 RuntimeState::Stopped => RuntimeHealth::Stopped,
             }
-        } else {
-            RuntimeHealth::Degraded
         },
         runtime_diagnostics: settings_runtime_diagnostics(&runtime),
         appearance_theme: settings_theme(application.config().appearance.theme),
@@ -1384,23 +1273,6 @@ fn snapshot(
         },
         shortcuts: settings_shortcuts(application.config()),
         startup_item,
-        configuration_status: match application.config_status() {
-            ApplicationConfigStatus::Ready => SettingsConfigurationStatus::Ready,
-            ApplicationConfigStatus::RecoveryRequired { checked_backups } => {
-                SettingsConfigurationStatus::RecoveryRequired {
-                    checked_backups: u32::try_from(checked_backups).unwrap_or(u32::MAX),
-                }
-            }
-            ApplicationConfigStatus::DefaultsRestoredRestartRequired => {
-                SettingsConfigurationStatus::DefaultsRestoredRestartRequired
-            }
-        },
-        config_recovery: application
-            .config_recovery()
-            .map(|recovery| SettingsConfigRecovery {
-                source_schema_version: recovery.source_schema_version(),
-                skipped_newer_backups: recovery.skipped_newer_backups(),
-            }),
         diagnostics_export: clock.diagnostics_export,
         input_diagnostics,
         active_model: runtime
@@ -1968,10 +1840,6 @@ struct DiagnosticsInput {
 #[derive(Serialize)]
 struct DiagnosticsConfiguration {
     status: &'static str,
-    recovery_error_code: Option<&'static str>,
-    checked_backups: Option<u32>,
-    recovery_source_schema_version: Option<u32>,
-    recovery_skipped_newer_backups: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -2270,28 +2138,8 @@ const fn diagnostics_input(input: SettingsInputDiagnostics) -> DiagnosticsInput 
 }
 
 fn diagnostics_configuration(snapshot: &SettingsSnapshot) -> DiagnosticsConfiguration {
-    let (status, recovery_error_code, checked_backups) = match snapshot.configuration_status {
-        SettingsConfigurationStatus::Ready => ("ready", None, None),
-        SettingsConfigurationStatus::RecoveryRequired { checked_backups } => (
-            "recovery_required",
-            Some(SettingsErrorCode::ConfigurationRecoveryRequired.as_str()),
-            Some(checked_backups),
-        ),
-        SettingsConfigurationStatus::DefaultsRestoredRestartRequired => {
-            ("defaults_restored_restart_required", None, None)
-        }
-    };
-    DiagnosticsConfiguration {
-        status,
-        recovery_error_code,
-        checked_backups,
-        recovery_source_schema_version: snapshot
-            .config_recovery
-            .map(|recovery| recovery.source_schema_version),
-        recovery_skipped_newer_backups: snapshot
-            .config_recovery
-            .map(|recovery| recovery.skipped_newer_backups),
-    }
+    let _ = snapshot;
+    DiagnosticsConfiguration { status: "ready" }
 }
 
 const fn settings_model_diagnostic(diagnostic: ModelDiagnostic) -> SettingsModelDiagnostic {
@@ -2335,6 +2183,14 @@ const fn settings_model_diagnostic(diagnostic: ModelDiagnostic) -> SettingsModel
     }
 }
 
+fn check_revision(application: &Application, expected: u64) -> Result<(), SettingsError> {
+    if application.config_revision() == Some(expected) {
+        Ok(())
+    } else {
+        Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+    }
+}
+
 fn map_application_error(error: ApplicationError) -> SettingsError {
     let code = match error {
         ApplicationError::PlatformStorage(_) => SettingsErrorCode::ConfigPersistFailed,
@@ -2342,9 +2198,6 @@ fn map_application_error(error: ApplicationError) -> SettingsError {
             settings_config_error_code(&error).unwrap_or(SettingsErrorCode::ConfigPersistFailed)
         }
         ApplicationError::State(_) => SettingsErrorCode::StatePersistFailed,
-        ApplicationError::ConfigurationRecoveryRequired => {
-            SettingsErrorCode::ConfigurationRecoveryRequired
-        }
         ApplicationError::Model(_) | ApplicationError::ModelStore(_) => {
             SettingsErrorCode::ModelUnavailable
         }
@@ -2392,15 +2245,6 @@ fn map_model_cover_error(error: ApplicationError) -> SettingsError {
         }
         ApplicationError::ModelStore(_) => SettingsErrorCode::ModelCoverUpdateFailed,
         error => return map_application_error(error),
-    };
-    SettingsError::new(code)
-}
-
-fn map_configuration_recovery_error(error: ApplicationError) -> SettingsError {
-    let code = match error {
-        ApplicationError::Config(error) => settings_config_error_code(&error)
-            .unwrap_or(SettingsErrorCode::ConfigurationRecoveryFailed),
-        _ => SettingsErrorCode::ConfigurationRecoveryFailed,
     };
     SettingsError::new(code)
 }
@@ -2772,7 +2616,7 @@ mod tests {
 
         let directory = tempdir().expect("diagnostics directory");
         let path = directory.path().join("logs").join("diagnostics.json");
-        let mut snapshot = SettingsSnapshot {
+        let snapshot = SettingsSnapshot {
             revision: 42,
             config_revision: Some(7),
             build_info: SettingsBuildInfo {
@@ -2817,8 +2661,6 @@ mod tests {
             gamepad_axis_settings: bongocat_ui::SettingsGamepadAxisSettings::default(),
             shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
-            configuration_status: SettingsConfigurationStatus::Ready,
-            config_recovery: None,
             diagnostics_export: None,
             input_diagnostics: SettingsInputDiagnostics {
                 service_status: SettingsInputServiceStatus::PermissionDenied,
@@ -2932,7 +2774,6 @@ mod tests {
         assert_eq!(document["format_version"], 1);
         assert_eq!(document["settings_revision"], 42);
         assert_eq!(document["configuration"]["status"], "ready");
-        assert!(document["configuration"]["recovery_error_code"].is_null());
         assert_eq!(
             document["runtime"]["render_error_code"],
             "gpu_preparation_failed"
@@ -3001,25 +2842,6 @@ mod tests {
         .expect("valid filtered JSON");
         assert!(filtered["update"]["last_error_code"].is_null());
         assert_eq!(filtered["update"]["checks_started"], 4);
-
-        snapshot.configuration_status =
-            SettingsConfigurationStatus::RecoveryRequired { checked_backups: 2 };
-        let recovery = diagnostics_configuration(&snapshot);
-        assert_eq!(recovery.status, "recovery_required");
-        assert_eq!(
-            recovery.recovery_error_code,
-            Some("configuration_recovery_required")
-        );
-        assert_eq!(recovery.checked_backups, Some(2));
-
-        snapshot.configuration_status =
-            SettingsConfigurationStatus::DefaultsRestoredRestartRequired;
-        let defaults_restored = diagnostics_configuration(&snapshot);
-        assert_eq!(
-            defaults_restored.status,
-            "defaults_restored_restart_required"
-        );
-        assert_eq!(defaults_restored.recovery_error_code, None);
     }
 
     #[test]
@@ -3044,13 +2866,6 @@ mod tests {
                 expected
             );
         }
-        assert_eq!(
-            map_configuration_recovery_error(ApplicationError::Config(ConfigError::Io(
-                io::Error::from(io::ErrorKind::StorageFull)
-            )))
-            .code(),
-            SettingsErrorCode::ConfigStorageFull
-        );
     }
 
     #[test]
@@ -3270,36 +3085,6 @@ mod tests {
         assert_eq!(diagnostics.service_error_code, None);
     }
 
-    #[test]
-    fn service_projects_anonymous_configuration_recovery_across_refresh_and_shutdown() {
-        let base = tempdir().expect("temporary storage");
-        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
-        let store = ConfigStore::new(layout.clone()).expect("config store");
-        let mut config = store.load_or_default().expect("default config").config;
-        config.overlay.visible = false;
-        store.commit(&config).expect("hidden config commit");
-        config.overlay.visible = true;
-        store.commit(&config).expect("visible config commit");
-        std::fs::write(&layout.config, b"corrupt-current").expect("corrupt current config");
-
-        let application = Application::start_with_layout(layout).expect("recovered application");
-        let service = ApplicationSettingsService::start(application).expect("service start");
-        let client = service.client();
-        let expected = Some(SettingsConfigRecovery {
-            source_schema_version: bongocat_config::SCHEMA_VERSION,
-            skipped_newer_backups: 0,
-        });
-
-        let initial = client.read_snapshot_blocking().expect("initial snapshot");
-        assert_eq!(initial.config_recovery, expected);
-        let refreshed = client.read_snapshot_blocking().expect("refreshed snapshot");
-        assert_eq!(refreshed.config_recovery, expected);
-        assert_eq!(refreshed.revision, initial.revision);
-        let stopped = client.shutdown_blocking().expect("service shutdown");
-        assert_eq!(stopped.config_recovery, expected);
-        service.join().expect("service join");
-    }
-
     /// The probe reports what a full snapshot would, without building one.
     ///
     /// The application polls the revision at 20 Hz for the system menu, so the cheap
@@ -3390,54 +3175,31 @@ mod tests {
     }
 
     #[test]
-    fn service_restricts_commands_until_invalid_configuration_is_explicitly_replaced() {
+    fn service_uses_defaults_when_current_and_backups_are_invalid() {
         let base = tempdir().expect("temporary storage");
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
         let store = ConfigStore::new(layout.clone()).expect("config store");
-        let invalid = b"invalid-current-without-backup";
-        std::fs::write(&layout.config, invalid).expect("invalid current config");
+        std::fs::write(&layout.config, b"invalid-current").expect("invalid current config");
 
-        let application = Application::start_with_layout(layout.clone()).expect("safe mode start");
+        let application = Application::start_with_layout(layout.clone()).expect("default startup");
         let service = ApplicationSettingsService::start(application).expect("service start");
         let client = service.client();
-        let initial = client.read_snapshot_blocking().expect("safe mode snapshot");
-        assert_eq!(
-            initial.configuration_status,
-            SettingsConfigurationStatus::RecoveryRequired { checked_backups: 0 }
-        );
-        assert_eq!(initial.runtime_health, RuntimeHealth::Degraded);
-        assert_eq!(
-            client
-                .set_overlay_visible_blocking(0, true)
-                .expect_err("business command rejected")
-                .code(),
-            SettingsErrorCode::ConfigurationRecoveryRequired
-        );
-        assert_eq!(
-            std::fs::read(&layout.config).expect("preserved invalid"),
-            invalid
-        );
-
-        let recovered = client
-            .restore_default_configuration_blocking()
-            .expect("restore defaults command");
-        assert_eq!(
-            recovered.configuration_status,
-            SettingsConfigurationStatus::DefaultsRestoredRestartRequired
-        );
-        assert_eq!(recovered.runtime_health, RuntimeHealth::Degraded);
-        assert_eq!(
-            client
-                .restore_default_configuration_blocking()
-                .expect_err("second restore rejected")
-                .code(),
-            SettingsErrorCode::ConfigurationRecoveryFailed
-        );
+        let snapshot = client.read_snapshot_blocking().expect("snapshot");
+        assert_eq!(snapshot.runtime_health, RuntimeHealth::Ready);
+        let updated = client
+            .set_overlay_visible_blocking(
+                snapshot.config_revision.expect("configuration revision"),
+                false,
+            )
+            .expect("business command remains available");
+        assert_ne!(updated.config_revision, snapshot.config_revision);
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
 
-        let restarted = store.load_or_default().expect("restart config");
-        assert_eq!(restarted.config, bongocat_config::NativeConfig::default());
+        let reloaded = store.load_or_default().expect("reloaded defaults").config;
+        let mut expected = bongocat_config::NativeConfig::default();
+        expected.overlay.visible = false;
+        assert_eq!(reloaded, expected);
         assert!(
             std::fs::read_dir(&layout.backups)
                 .expect("backup directory")
@@ -3861,42 +3623,6 @@ mod tests {
         );
         let refreshed = client.read_snapshot_blocking().expect("refreshed snapshot");
         assert_eq!(refreshed, exported);
-
-        client.shutdown_blocking().expect("service shutdown");
-        service.join().expect("service join");
-    }
-
-    #[test]
-    fn service_can_open_backup_location_while_configuration_recovery_is_required() {
-        let base = tempdir().expect("temporary storage");
-        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
-        ConfigStore::new(layout.clone()).expect("config store");
-        std::fs::write(&layout.config, b"invalid-current-without-backup")
-            .expect("invalid current config");
-        let application = Application::start_with_layout(layout).expect("safe mode start");
-        let startup_item = Arc::new(TestStartupItem::new(SettingsStartupItemStatus::State(
-            SettingsStartupItemState::Disabled,
-        )));
-        let backup_location = Arc::new(TestBackupLocation::new());
-        let service = ApplicationSettingsService::start_with_capabilities(
-            application,
-            startup_item,
-            backup_location.clone(),
-            Arc::new(TestDiagnosticsExport),
-        )
-        .expect("service start");
-        let client = service.client();
-
-        let initial = client.read_snapshot_blocking().expect("safe mode snapshot");
-        assert!(matches!(
-            initial.configuration_status,
-            SettingsConfigurationStatus::RecoveryRequired { .. }
-        ));
-        let opened = client
-            .open_config_backup_location_blocking()
-            .expect("open backup location in safe mode");
-        assert_eq!(opened, initial);
-        assert_eq!(backup_location.invocations.load(Ordering::Acquire), 1);
 
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
@@ -5700,7 +5426,6 @@ mod tests {
 
         let application = Application::start_with_layout(layout.clone())
             .expect("corrupt state must not block application startup");
-        assert!(application.is_operational());
         assert_eq!(application.settings_window_placement(), None);
         assert_eq!(application.config(), &loaded.config);
         assert_eq!(

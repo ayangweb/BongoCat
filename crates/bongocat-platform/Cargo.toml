@@ -24,7 +24,6 @@ image.workspace = true
 muda.workspace = true
 tray-icon.workspace = true
 
-accesskit.workspace = true
 arboard.workspace = true
 rfd.workspace = true
 opener.workspace = true
@@ -32,7 +31,6 @@ sys-locale = "=0.3.2"
 auto-launch = "=0.6.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-accesskit_macos.workspace = true
 async-io.workspace = true
 block2 = "=0.6.2"
 # `run_on_main` hands the startup permission prompt to the main thread, where AppKit
@@ -47,7 +45,6 @@ objc2-foundation = { version = "=0.3.2", default-features = false, features = ["
 objc2-game-controller = { version = "=0.3.2", default-features = false, features = ["GCController", "GCControllerAxisInput", "GCControllerButtonInput", "GCControllerDirectionPad", "GCControllerElement", "GCExtendedGamepad", "GCPhysicalInputProfile", "block2"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-accesskit_windows.workspace = true
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",
     "Win32_Globalization",

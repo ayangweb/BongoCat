@@ -213,22 +213,6 @@ impl SettingsView {
         );
     }
 
-    pub(super) fn adjust_overlay_scale(&mut self, delta: i16, cx: &mut Context<Self>) {
-        if self.pending.is_some() || self.model_import.is_running() {
-            return;
-        }
-        let Some(snapshot) = self.snapshot.as_ref() else {
-            return;
-        };
-        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
-            return;
-        }
-        let settings = stepped_overlay_scale(snapshot.overlay, delta);
-        if settings.scale_percent != snapshot.overlay.scale_percent {
-            self.set_overlay_settings(settings, cx);
-        }
-    }
-
     pub(super) fn set_overlay_scale_value(&mut self, raw: f64, cx: &mut Context<Self>) {
         if self.model_import.is_running() {
             return;
@@ -237,9 +221,7 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
-            || snapshot.overlay.scale_percent == value
-        {
+        if snapshot.overlay.scale_percent == value {
             return;
         }
         let expected_config_revision = snapshot.config_revision;
@@ -269,22 +251,6 @@ impl SettingsView {
         }
     }
 
-    pub(super) fn adjust_overlay_opacity(&mut self, delta: i16, cx: &mut Context<Self>) {
-        if self.pending.is_some() || self.model_import.is_running() {
-            return;
-        }
-        let Some(snapshot) = self.snapshot.as_ref() else {
-            return;
-        };
-        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
-            return;
-        }
-        let settings = stepped_overlay_opacity(snapshot.overlay, delta);
-        if settings.opacity_percent != snapshot.overlay.opacity_percent {
-            self.set_overlay_settings(settings, cx);
-        }
-    }
-
     pub(super) fn set_overlay_opacity_value(&mut self, raw: f64, cx: &mut Context<Self>) {
         if self.model_import.is_running() {
             return;
@@ -293,9 +259,7 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
-            || snapshot.overlay.opacity_percent == value
-        {
+        if snapshot.overlay.opacity_percent == value {
             return;
         }
         let expected_config_revision = snapshot.config_revision;
@@ -338,9 +302,7 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
-            || snapshot.overlay.corner_radius_percent == value
-        {
+        if snapshot.overlay.corner_radius_percent == value {
             return;
         }
         let expected_config_revision = snapshot.config_revision;
@@ -389,9 +351,7 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
-            || snapshot.overlay.hide_on_pointer_hover_delay_seconds == value
-        {
+        if snapshot.overlay.hide_on_pointer_hover_delay_seconds == value {
             return;
         }
         let expected_config_revision = snapshot.config_revision;
@@ -420,29 +380,6 @@ impl SettingsView {
         if !should_send {
             self.schedule_overlay_hover_hide_delay_flush(cx);
         }
-    }
-
-    pub(super) fn adjust_overlay_hover_hide_delay(
-        &mut self,
-        delta_seconds: i32,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(snapshot) = self.snapshot.as_ref() else {
-            return;
-        };
-        // The steppers are disabled while the hide-on-hover switch is off, but an
-        // accessibility client can still act on a tree rendered before the switch
-        // changed: the delay is inert then, so the request changes nothing.
-        if !hover_hide_delay_applies(snapshot.overlay) {
-            return;
-        }
-        let value = (i64::from(snapshot.overlay.hide_on_pointer_hover_delay_seconds)
-            + i64::from(delta_seconds))
-        .clamp(
-            0,
-            i64::from(bongocat_config::MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS),
-        ) as u32;
-        self.set_overlay_hover_hide_delay_value(f64::from(value), cx);
     }
 
     pub(super) fn set_motion_audio_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -526,9 +463,7 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
-            || snapshot.maximum_fps == value
-        {
+        if snapshot.maximum_fps == value {
             return;
         }
         let expected_config_revision = snapshot.config_revision;
@@ -554,16 +489,6 @@ impl SettingsView {
         }
     }
 
-    pub(super) fn adjust_maximum_fps(&mut self, delta: i16, cx: &mut Context<Self>) {
-        let Some(snapshot) = self.snapshot.as_ref() else {
-            return;
-        };
-        self.set_maximum_fps_value(
-            f64::from((i32::from(snapshot.maximum_fps) + i32::from(delta)).clamp(15, 240)),
-            cx,
-        );
-    }
-
     pub(super) fn set_release_fallback_timeout_value(&mut self, raw: f64, cx: &mut Context<Self>) {
         if self.model_import.is_running() {
             return;
@@ -572,9 +497,7 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        if snapshot.configuration_status != SettingsConfigurationStatus::Ready
-            || snapshot.release_fallback_timeout_ms == value
-        {
+        if snapshot.release_fallback_timeout_ms == value {
             return;
         }
         let expected_config_revision = snapshot.config_revision;
@@ -600,19 +523,6 @@ impl SettingsView {
         }
     }
 
-    pub(super) fn adjust_release_fallback_timeout(
-        &mut self,
-        delta_ms: i32,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(snapshot) = self.snapshot.as_ref() else {
-            return;
-        };
-        let value = (i64::from(snapshot.release_fallback_timeout_ms) + i64::from(delta_ms))
-            .clamp(0, 60_000) as u32;
-        self.set_release_fallback_timeout_value(f64::from(value), cx);
-    }
-
     pub(super) fn set_model_settings(
         &mut self,
         settings: SettingsModelSettings,
@@ -635,36 +545,6 @@ impl SettingsView {
         );
     }
 
-    pub(super) fn adjust_gamepad_dead_zone(
-        &mut self,
-        stick: bool,
-        delta: i16,
-        cx: &mut Context<Self>,
-    ) {
-        if self.model_import.is_running() {
-            return;
-        }
-        let Some(snapshot) = self.snapshot.as_ref() else {
-            return;
-        };
-        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
-            return;
-        }
-        let mut settings = snapshot.gamepad_axis_settings;
-        let value = if stick {
-            &mut settings.stick_dead_zone_percent
-        } else {
-            &mut settings.trigger_dead_zone_percent
-        };
-        *value = (i16::from(*value) + delta).clamp(0, 99) as u8;
-        let value = if stick {
-            settings.stick_dead_zone_percent
-        } else {
-            settings.trigger_dead_zone_percent
-        };
-        self.set_gamepad_dead_zone_value(stick, f64::from(value), cx);
-    }
-
     pub(super) fn set_gamepad_dead_zone_value(
         &mut self,
         stick: bool,
@@ -678,9 +558,6 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        if snapshot.configuration_status != SettingsConfigurationStatus::Ready {
-            return;
-        }
         let mut settings = snapshot.gamepad_axis_settings;
         let current = if stick {
             &mut settings.stick_dead_zone_percent
@@ -722,20 +599,12 @@ impl SettingsView {
         );
     }
 
-    pub(super) fn restore_default_configuration(&mut self, cx: &mut Context<Self>) {
-        self.start_request(
-            PendingOperation::RestoreDefaultConfiguration,
-            Some(SettingValue::RestoreDefaultConfiguration),
-            cx,
-        );
-    }
-
     pub(super) fn shortcut_commands_available(&self) -> bool {
         self.pending.is_none()
             && !self.model_import.is_running()
-            && self.snapshot.as_ref().is_some_and(|snapshot| {
-                snapshot.configuration_status == SettingsConfigurationStatus::Ready
-                    && snapshot.config_revision.is_some()
-            })
+            && self
+                .snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.config_revision.is_some())
     }
 }

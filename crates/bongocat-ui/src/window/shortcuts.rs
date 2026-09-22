@@ -6,12 +6,10 @@ impl SettingsView {
     ///
     /// This is the guard arm of the binding between a gate switch and the
     /// rows it controls (`setting_gate`): the visible rows stop offering
-    /// interaction, the accessibility nodes report themselves disabled, and
+    /// interaction and
     /// the mutating methods refuse to act on a target whose gate is off — so
-    /// a client acting on a tree rendered before the switch flipped still
-    /// changes nothing. Structural blocking (no snapshot, unusable
-    /// configuration, an import running) is covered by the existing
-    /// availability checks at each call site.
+    /// changes nothing. Structural blocking (no snapshot, an import running) is
+    /// covered by the existing availability checks at each call site.
     fn shortcut_target_editable(&self, target: &ShortcutCaptureTarget) -> bool {
         self.snapshot.as_ref().is_some_and(|snapshot| {
             shortcuts_page::ShortcutScope::for_target(target).is_enabled(snapshot)
@@ -148,72 +146,6 @@ impl SettingsView {
                                 }
                             }));
                         window.focus(&focus, cx);
-                    }
-                    Err(error) => view.pending_notification = Some(error),
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    pub(super) fn begin_shortcut_capture_from_accessibility(
-        &mut self,
-        target: ShortcutCaptureTarget,
-        cx: &mut Context<Self>,
-    ) {
-        if self.shortcut_capture.is_some() || !self.shortcut_commands_available() {
-            return;
-        }
-        let Some(expected_config_revision) = self
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.config_revision)
-        else {
-            return;
-        };
-        let Some(snapshot) = self.snapshot.as_ref() else {
-            return;
-        };
-        // The unified gate rule's guard arm: the row is disabled while its
-        // scope's switch is off, so a request nothing displays changes
-        // nothing either.
-        if !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot) {
-            return;
-        }
-        let mut shortcuts_without_capture_target = snapshot.shortcuts.clone();
-        clear_shortcut(&mut shortcuts_without_capture_target, &target);
-        self.pending = Some(PendingOperation::BeginShortcutCapture);
-        cx.notify();
-        let client = self.client.clone();
-        let resume_client = client.clone();
-        cx.spawn(async move |this, cx| {
-            let result = client
-                .suspend_shortcut_capture(
-                    expected_config_revision,
-                    shortcuts_without_capture_target,
-                )
-                .await;
-            let Some(view) = this.upgrade() else {
-                if result.is_ok() {
-                    let _ = resume_client.resume_shortcut_capture().await;
-                }
-                return;
-            };
-            view.update(cx, |view, cx| {
-                if view.pending != Some(PendingOperation::BeginShortcutCapture) {
-                    return;
-                }
-                view.pending = None;
-                match result {
-                    Ok(snapshot) => {
-                        if accepts_snapshot_revision(
-                            view.snapshot.as_ref().map(|current| current.revision),
-                            snapshot.revision,
-                        ) {
-                            view.snapshot = Some(snapshot);
-                        }
-                        view.shortcut_capture = Some(ShortcutCapture::new(target));
                     }
                     Err(error) => view.pending_notification = Some(error),
                 }

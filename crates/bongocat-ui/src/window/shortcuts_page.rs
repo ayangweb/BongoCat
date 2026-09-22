@@ -17,7 +17,7 @@ impl ShortcutScope {
     /// Whether this scope's bindings may reach the platform table.
     ///
     /// Both gates are configured positively and rendered as "enable …"
-    /// switches, so the switch, the accessibility node and the command it sends
+    /// switches, so the switch and the command it sends
     /// all read the same configuration field — there is no inversion to keep in
     /// step anywhere.
     pub(super) fn is_enabled(self, snapshot: &SettingsSnapshot) -> bool {
@@ -29,9 +29,9 @@ impl ShortcutScope {
 
     /// The label of this scope's gate.
     ///
-    /// The visible row and the accessibility node read the same string, so they
-    /// cannot drift apart, and the catalog scans find the literal because it is
-    /// written out in full rather than assembled from a suffix. The row carries
+    /// The visible row reads one string, so it cannot drift apart from the
+    /// catalog. The literal is written out in full rather than assembled from a
+    /// suffix. The row carries
     /// no description: "enable …" already says what the switch does, and a
     /// second line would only be the label in other words.
     pub(super) fn gate_label(self, language: SettingsLanguage) -> &'static str {
@@ -50,8 +50,8 @@ impl ShortcutScope {
     /// The scope a shortcut target belongs to.
     ///
     /// The one mapping from a target to the switch that gates its row: the
-    /// render layer, the accessibility tree and the mutating methods all read
-    /// it through [`Self::is_enabled`] instead of re-matching the target type.
+    /// render layer and the mutating methods read it through
+    /// [`Self::is_enabled`] instead of re-matching the target type.
     pub(super) fn for_target(target: &ShortcutCaptureTarget) -> Self {
         match target {
             ShortcutCaptureTarget::Command(_) => Self::Window,
@@ -132,8 +132,7 @@ impl ShortcutScope {
     /// Where this scope's rows start in the page-wide row order.
     ///
     /// Both scopes are one page, so their capture and clear controls share one
-    /// keyboard tab order and the accessibility nodes are numbered from the
-    /// same combined list of rows.
+    /// keyboard tab order is based on the combined list of rows.
     pub(super) fn row_index_offset(self, shortcuts: &SettingsShortcuts) -> usize {
         match self {
             Self::Window => 0,

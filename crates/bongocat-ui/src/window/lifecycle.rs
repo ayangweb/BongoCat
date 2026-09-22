@@ -5,14 +5,12 @@ pub fn open_settings_window(
     window_state: SettingsWindowState,
     _taskbar_icon_visible: bool,
     request_quit: impl Fn(&mut App) + 'static,
-    request_update: Option<impl Fn(&mut App) + 'static>,
+    request_update: impl Fn(&mut App) + 'static,
     cx: &mut App,
 ) -> Result<SettingsWindowHandle, String> {
     let (window_bounds, display_id) = initial_window_bounds(&window_state, cx);
     let initial_content_size = window_bounds.get_bounds().size;
     let normalize_initial_content_size = matches!(window_bounds, WindowBounds::Windowed(_));
-    let accessibility_error = Rc::new(RefCell::new(None));
-    let open_accessibility_error = Rc::clone(&accessibility_error);
     #[cfg(target_os = "windows")]
     let taskbar_error = Rc::new(RefCell::new(None));
     #[cfg(target_os = "windows")]
@@ -40,8 +38,7 @@ pub fn open_settings_window(
                 Theme::global_mut(cx).notification.placement = Anchor::BottomRight;
                 sync_system_component_theme(window, cx);
                 let request_quit = Rc::new(request_quit);
-                let request_update: SettingsWindowRequest = request_update
-                    .map(|request_update| Rc::new(request_update) as Rc<dyn Fn(&mut App)>);
+                let request_update: SettingsWindowRequest = Rc::new(request_update);
                 let view = cx.new(|cx| {
                     let observed_window_state = window_state.clone();
                     cx.observe_window_bounds(window, move |_, window, cx| {
@@ -89,27 +86,6 @@ pub fn open_settings_window(
                         }
                     })
                     .detach();
-                #[cfg(any(target_os = "macos", target_os = "windows"))]
-                {
-                    let result = HasWindowHandle::window_handle(window)
-                        .map_err(|error| error.to_string())
-                        .and_then(|handle| {
-                            SettingsAccessibilityBridge::attach(
-                                handle.as_raw(),
-                                view.read(cx).accessibility_tree(),
-                            )
-                            .map_err(|error| error.to_string())
-                        });
-                    match result {
-                        Ok((bridge, receiver)) => {
-                            view.update(cx, |view, cx| {
-                                view.accessibility = Some(bridge);
-                                view.start_accessibility_actions(receiver, cx);
-                            });
-                        }
-                        Err(error) => *open_accessibility_error.borrow_mut() = Some(error),
-                    }
-                }
                 #[cfg(target_os = "windows")]
                 if let Err(error) =
                     bongocat_platform::set_taskbar_icon_visible(window, _taskbar_icon_visible)
@@ -150,20 +126,14 @@ pub fn open_settings_window(
                 {
                     let _ = window_state.request_persist_if_current(revision);
                 }
-                let can_activate = open_accessibility_error.borrow().is_none();
                 #[cfg(target_os = "windows")]
-                let can_activate = can_activate && open_taskbar_error.borrow().is_none();
-                if can_activate {
+                if open_taskbar_error.borrow().is_none() {
                     window.activate_window();
                 }
                 cx.new(|cx| Root::new(view, window, cx))
             },
         )
         .map_err(|error| error.to_string())?;
-    if let Some(error) = accessibility_error.borrow_mut().take() {
-        let _ = handle.update(cx, |_, window, _| window.remove_window());
-        return Err(format!("attach settings accessibility bridge: {error}"));
-    }
     #[cfg(target_os = "windows")]
     if let Some(error) = taskbar_error.borrow_mut().take() {
         let _ = handle.update(cx, |_, window, _| window.remove_window());

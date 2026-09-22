@@ -19,61 +19,6 @@ pub(super) fn build_info_detail(
     )
 }
 
-pub(super) fn backup_candidates_checked(
-    language: SettingsLanguage,
-    checked_backups: u32,
-) -> String {
-    bongocat_i18n::format_text(
-        language.catalog_locale(),
-        "diagnostics.configuration.backup_candidates",
-        &[
-            ("count", checked_backups.to_string()),
-            (
-                "plural_suffix",
-                if !matches!(language, SettingsLanguage::ChineseSimplified) && checked_backups != 1
-                {
-                    "s".to_owned()
-                } else {
-                    String::new()
-                },
-            ),
-        ],
-    )
-}
-
-pub(super) fn recovered_backup_detail(
-    language: SettingsLanguage,
-    schema_version: u32,
-    skipped_newer_backups: u32,
-) -> String {
-    bongocat_i18n::format_text(
-        language.catalog_locale(),
-        "diagnostics.configuration.recovered_backup_detail",
-        &[
-            ("schema_version", schema_version.to_string()),
-            ("count", skipped_newer_backups.to_string()),
-            (
-                "plural_suffix",
-                if !matches!(language, SettingsLanguage::ChineseSimplified)
-                    && skipped_newer_backups != 1
-                {
-                    "s".to_owned()
-                } else {
-                    String::new()
-                },
-            ),
-        ],
-    )
-}
-
-pub(super) fn shortcut_accessibility_label(language: SettingsLanguage, name: String) -> String {
-    bongocat_i18n::format_text(
-        language.catalog_locale(),
-        "shortcuts.capture.accessibility",
-        &[("name", name)],
-    )
-}
-
 pub(super) fn shortcut_command_name(language: SettingsLanguage, command: &str) -> String {
     let key = match command {
         "toggle_overlay" => "shortcuts.command_names.toggle_overlay",
@@ -139,12 +84,6 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::ConfigTargetOccupied => "errors.settings.config_target_occupied",
         SettingsErrorCode::BackupLocationOpenFailed => {
             "errors.settings.backup_location_open_failed"
-        }
-        SettingsErrorCode::ConfigurationRecoveryRequired => {
-            "errors.settings.configuration_recovery_required"
-        }
-        SettingsErrorCode::ConfigurationRecoveryFailed => {
-            "errors.settings.configuration_recovery_failed"
         }
         SettingsErrorCode::ModelUnavailable => "errors.settings.model_unavailable",
         SettingsErrorCode::ModelSwitchFailed => "errors.settings.model_switch_failed",
@@ -223,6 +162,7 @@ pub(super) fn model_invalid_summary(
     )
 }
 
+#[cfg(test)]
 pub(super) fn model_import_progress(
     language: SettingsLanguage,
     stage: &str,

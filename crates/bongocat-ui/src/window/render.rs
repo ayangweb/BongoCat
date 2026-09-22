@@ -7,104 +7,6 @@ impl Render for SettingsView {
         if viewport.width <= px(0.) || viewport.height <= px(0.) {
             return div().size_full().into_any_element();
         }
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            if let Some(target) = self.accessibility_focus.take() {
-                if target == ACCESSIBILITY_LANGUAGE || target == ACCESSIBILITY_THEME {
-                    let focus = if target == ACCESSIBILITY_LANGUAGE {
-                        self.language_select.read(cx).focus_handle(cx)
-                    } else {
-                        self.theme_select.read(cx).focus_handle(cx)
-                    };
-                    focus.focus(window, cx);
-                }
-                let static_focus = match target {
-                    ACCESSIBILITY_GENERAL => Some(&self.general_focus),
-                    ACCESSIBILITY_MODELS => Some(&self.models_focus),
-                    ACCESSIBILITY_OVERLAY_PAGE => Some(&self.overlay_page_focus),
-                    ACCESSIBILITY_INTERACTION => Some(&self.interaction_focus),
-                    ACCESSIBILITY_INPUT => Some(&self.input_focus),
-                    ACCESSIBILITY_SHORTCUTS => Some(&self.shortcuts_focus),
-                    ACCESSIBILITY_APPLICATION => Some(&self.application_focus),
-                    ACCESSIBILITY_ABOUT => Some(&self.about_focus),
-                    ACCESSIBILITY_OVERLAY => Some(&self.overlay_focus),
-                    ACCESSIBILITY_OVERLAY_TOPMOST => Some(&self.overlay_topmost_focus),
-                    ACCESSIBILITY_OVERLAY_CLICK_THROUGH => Some(&self.overlay_click_through_focus),
-                    ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA => {
-                        Some(&self.overlay_keep_inside_screen_focus)
-                    }
-                    ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER => {
-                        Some(&self.overlay_hide_on_pointer_hover_focus)
-                    }
-                    ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE => {
-                        Some(&self.overlay_hover_hide_delay_decrease_focus)
-                    }
-                    ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE => {
-                        Some(&self.overlay_hover_hide_delay_increase_focus)
-                    }
-                    ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK => {
-                        Some(&self.automatic_update_check_focus)
-                    }
-                    ACCESSIBILITY_OVERLAY_SCALE_DECREASE => {
-                        Some(&self.overlay_scale_decrease_focus)
-                    }
-                    ACCESSIBILITY_OVERLAY_SCALE_INCREASE => {
-                        Some(&self.overlay_scale_increase_focus)
-                    }
-                    ACCESSIBILITY_OVERLAY_OPACITY_DECREASE => {
-                        Some(&self.overlay_opacity_decrease_focus)
-                    }
-                    ACCESSIBILITY_OVERLAY_OPACITY_INCREASE => {
-                        Some(&self.overlay_opacity_increase_focus)
-                    }
-                    ACCESSIBILITY_MAXIMUM_FPS_DECREASE => Some(&self.maximum_fps_decrease_focus),
-                    ACCESSIBILITY_MAXIMUM_FPS_INCREASE => Some(&self.maximum_fps_increase_focus),
-                    ACCESSIBILITY_RELEASE_FALLBACK_DECREASE => {
-                        Some(&self.release_fallback_decrease_focus)
-                    }
-                    ACCESSIBILITY_RELEASE_FALLBACK_INCREASE => {
-                        Some(&self.release_fallback_increase_focus)
-                    }
-                    ACCESSIBILITY_AUDIO => Some(&self.audio_focus),
-                    ACCESSIBILITY_BEHAVIOR_SHORTCUTS => Some(&self.behavior_shortcuts_focus),
-                    ACCESSIBILITY_MIRROR => Some(&self.mirror_focus),
-                    ACCESSIBILITY_MIRROR_POINTER => Some(&self.mirror_pointer_focus),
-                    ACCESSIBILITY_IGNORE_POINTER => Some(&self.ignore_pointer_focus),
-                    ACCESSIBILITY_STICK_DEAD_ZONE => Some(&self.stick_dead_zone_focus),
-                    ACCESSIBILITY_TRIGGER_DEAD_ZONE => Some(&self.trigger_dead_zone_focus),
-                    ACCESSIBILITY_STARTUP => Some(&self.startup_item_focus),
-                    ACCESSIBILITY_RESTORE_DEFAULTS => Some(&self.restore_defaults_focus),
-                    _ => None,
-                };
-                let shortcut_focus = self.snapshot.as_ref().and_then(|snapshot| {
-                    shortcut_target_for_accessibility_node(
-                        &snapshot.shortcuts,
-                        snapshot.active_model.as_ref(),
-                        &snapshot.model_catalog.entries,
-                        target,
-                    )
-                    .and_then(|target| self.shortcut_row_focus.get(&target))
-                    .or_else(|| {
-                        shortcut_clear_target_for_accessibility_node(
-                            &snapshot.shortcuts,
-                            snapshot.active_model.as_ref(),
-                            &snapshot.model_catalog.entries,
-                            target,
-                        )
-                        .and_then(|target| self.shortcut_clear_focus.get(&target))
-                    })
-                });
-                if target != ACCESSIBILITY_LANGUAGE && target != ACCESSIBILITY_THEME {
-                    window.focus(
-                        static_focus
-                            .or(shortcut_focus)
-                            .unwrap_or(&self.general_focus),
-                        cx,
-                    );
-                }
-            }
-            self.update_accessibility(window, cx);
-        }
         let snapshot = self.snapshot.clone();
         if let Some(snapshot) = snapshot.as_ref() {
             self.sync_component_theme(snapshot.appearance_theme, window, cx);
@@ -112,13 +14,8 @@ impl Render for SettingsView {
         if let Some(snapshot) = snapshot.as_ref() {
             self.sync_component_inputs(snapshot, window, cx);
         }
-        let configuration_ready = snapshot.as_ref().is_some_and(|snapshot| {
-            snapshot.configuration_status == SettingsConfigurationStatus::Ready
-        });
-        let disabled = self.pending.is_some()
-            || snapshot.is_none()
-            || self.model_import.is_running()
-            || !configuration_ready;
+        let disabled =
+            self.pending.is_some() || snapshot.is_none() || self.model_import.is_running();
         // Every page renders its rows from the stable states where editing is
         // structurally impossible — no snapshot, unusable configuration, a
         // model import running. The transient in-flight `pending` flag must
@@ -126,8 +23,7 @@ impl Render for SettingsView {
         // visibly dims and re-enables the page on each control change, which
         // reads as the page refreshing. The header status is the saving
         // indicator instead (see `setting_gate` for the unified rule).
-        let editing_blocked =
-            snapshot.is_none() || self.model_import.is_running() || !configuration_ready;
+        let editing_blocked = snapshot.is_none() || self.model_import.is_running();
         let hover_hide_delay_available = snapshot
             .as_ref()
             .is_some_and(|snapshot| hover_hide_delay_applies(snapshot.overlay));
@@ -208,21 +104,6 @@ impl Render for SettingsView {
             language,
         );
 
-        // A configuration that cannot be used is not diagnostic detail: it is the state of the
-        // user's settings, and restoring defaults is the only way out of it. This notice is
-        // what stays in the window after the diagnostics page was retired; the counters, build
-        // identifiers, renderer and input detail and the diagnostics export it used to show
-        // live in the background logs and in the diagnostics bundle instead.
-        let recovery_notice = config_recovery_notice(
-            language,
-            snapshot.as_ref(),
-            view_entity.clone(),
-            self.restore_defaults_focus.clone(),
-            disabled,
-            window,
-            Tokens::from_theme(cx),
-        );
-
         // The landing page keeps the two preferences every user reaches for
         // first. The other four concerns that used to share this page — the
         // model window, how the model reacts, the input devices and the
@@ -250,13 +131,7 @@ impl Render for SettingsView {
                             let view = view_entity.clone();
                             move |_: &RenderOptions, _: &mut Window, app: &mut App| {
                                 let state = view.read(app).theme_select.clone();
-                                Select::new(&state)
-                                    .accessibility_label(bongocat_i18n::text(
-                                        language.catalog_locale(),
-                                        "settings.appearance.theme.label",
-                                    ))
-                                    .disabled(disabled)
-                                    .into_any_element()
+                                Select::new(&state).disabled(disabled).into_any_element()
                             }
                         }),
                     ),
@@ -269,13 +144,7 @@ impl Render for SettingsView {
                             let view = view_entity.clone();
                             move |_: &RenderOptions, _: &mut Window, app: &mut App| {
                                 let state = view.read(app).language_select.clone();
-                                Select::new(&state)
-                                    .accessibility_label(bongocat_i18n::text(
-                                        language.catalog_locale(),
-                                        "settings.appearance.language.label",
-                                    ))
-                                    .disabled(disabled)
-                                    .into_any_element()
+                                Select::new(&state).disabled(disabled).into_any_element()
                             }
                         }),
                     ),
@@ -1019,10 +888,6 @@ impl Render for SettingsView {
                                 Switch::new(STARTUP_ITEM_SWITCH_ID)
                                     .checked(startup_item.enabled)
                                     .disabled(startup_item.switch_disabled())
-                                    .accessibility_label(bongocat_i18n::text(
-                                        language.catalog_locale(),
-                                        "settings.application.open_at_login.label",
-                                    ))
                                     .when_some(startup_item.unavailable_hint, |switch, hint| {
                                         switch.tooltip(hint)
                                     })
@@ -1155,11 +1020,8 @@ impl Render for SettingsView {
                     )
                     .layout(Axis::Vertical),
                 );
-            // The update entry only exists where an update owner was wired in; the
-            // recovery and smoke windows have none, and a button that cannot do
-            // anything is worse than an absent one.
-            if self.request_update.is_some() {
-                about_group = about_group.item(
+            about_group =
+                about_group.item(
                     SettingItem::new(
                         bongocat_i18n::text(language.catalog_locale(), "update.about.label"),
                         SettingField::element({
@@ -1169,9 +1031,7 @@ impl Render for SettingsView {
                                 let request_update = view.read(app).request_update.clone();
                                 div()
                                     .id("about-check-for-updates")
-                                    .when_some(request_update, |this, request_update| {
-                                        this.on_click(move |_, _, app| (request_update)(app))
-                                    })
+                                    .on_click(move |_, _, app| (request_update)(app))
                                     .child(Button::new("about-check-for-updates-button").label(
                                         bongocat_i18n::text(label_locale, "update.about.label"),
                                     ))
@@ -1185,7 +1045,6 @@ impl Render for SettingsView {
                         "update.about.description",
                     )),
                 );
-            }
             about_group
         });
 
@@ -1222,7 +1081,6 @@ impl Render for SettingsView {
             .size_full()
             .flex()
             .flex_col()
-            .children(recovery_notice)
             .child(div().min_h_0().w_full().flex_1().child(settings))
             .children(Root::render_notification_layer(window, cx))
             .into_any_element()
@@ -1231,13 +1089,9 @@ impl Render for SettingsView {
 
 /// Reports the page a rendered header belongs to.
 ///
-/// `SettingsView::page` decides which navigation node the accessibility tree
-/// focuses, and the settings component owns the sidebar selection, so the only
-/// signal that a page is on screen is that page rendering itself. The pages
-/// that build custom content already report themselves while building it; the
-/// ones made of plain setting items get this hook in their header, which is the
-/// only per-page render callback the component exposes. The element is empty —
-/// the header still shows the title and nothing else.
+/// `SettingsView::page` tracks the visible page. The pages that build custom
+/// content already report themselves while building it; pages made of plain
+/// setting items get this empty hook in their header.
 fn page_reporter(
     view: Entity<SettingsView>,
     page: SettingsPage,
@@ -1246,93 +1100,4 @@ fn page_reporter(
         view.update(cx, |view, _| view.page = page);
         div()
     }
-}
-
-/// The configuration recovery notice, or nothing when the configuration is usable.
-///
-/// Rendered above the settings component rather than inside a page. The component owns the
-/// sidebar selection, so a notice that lives on one page is invisible to anyone who navigated
-/// elsewhere — and the restore action is not page-local: its accessibility node is in the tree
-/// on every page, so what happens after pressing it has to be visible on every page too.
-fn config_recovery_notice(
-    language: SettingsLanguage,
-    snapshot: Option<&SettingsSnapshot>,
-    view: Entity<SettingsView>,
-    restore_focus: FocusHandle,
-    disabled: bool,
-    window: &Window,
-    tokens: Tokens,
-) -> Option<Div> {
-    let snapshot = snapshot?;
-    if snapshot.configuration_status == SettingsConfigurationStatus::Ready {
-        return None;
-    }
-    let recovery = config_recovery_presentation(
-        snapshot.configuration_status,
-        snapshot.config_recovery,
-        language,
-    );
-    let can_restore = recovery.can_restore;
-    let button = can_restore.then(|| {
-        let click_view = view.clone();
-        let click_focus = restore_focus.clone();
-        let key_view = view;
-        let key_focus = restore_focus.clone();
-        command_button(
-            // The visible text and the accessible name come from the same place, so they
-            // cannot describe different actions.
-            config_recovery_restore_label(language),
-            &restore_focus,
-            29,
-            window,
-            tokens,
-            disabled,
-        )
-        .id("restore-default-configuration")
-        .on_click(move |_, window, cx| {
-            if click_view.read(cx).pending.is_none() {
-                window.focus(&click_focus, cx);
-                click_view.update(cx, |view, cx| view.restore_default_configuration(cx));
-            }
-        })
-        .on_key_down(move |event, window, cx| {
-            if key_view.read(cx).pending.is_none() && is_activation_key(event) {
-                cx.stop_propagation();
-                window.focus(&key_focus, cx);
-                key_view.update(cx, |view, cx| view.restore_default_configuration(cx));
-            }
-        })
-    });
-    Some(
-        div()
-            .w_full()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .gap_3()
-            .px_3()
-            .py_2()
-            .border_1()
-            .border_color(tokens.border)
-            .bg(tokens.canvas)
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(if recovery.attention {
-                        Tag::danger().child(recovery.title).into_any_element()
-                    } else {
-                        Tag::secondary().child(recovery.title).into_any_element()
-                    })
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(tokens.muted)
-                            .child(recovery.detail),
-                    ),
-            )
-            .children(button),
-    )
 }

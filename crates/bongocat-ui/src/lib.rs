@@ -329,12 +329,6 @@ pub enum SettingsInputServiceStatus {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SettingsConfigRecovery {
-    pub source_schema_version: u32,
-    pub skipped_newer_backups: u32,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SettingsDiagnosticsExportStatus {
     pub format_version: u32,
     pub bytes_written: u64,
@@ -367,13 +361,6 @@ pub struct SettingsBuildInfo {
 
 /// Version of the anonymous diagnostics export JSON contract.
 pub const DIAGNOSTICS_EXPORT_FORMAT_VERSION: u32 = 1;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SettingsConfigurationStatus {
-    Ready,
-    RecoveryRequired { checked_backups: u32 },
-    DefaultsRestoredRestartRequired,
-}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum SettingsTheme {
@@ -469,8 +456,6 @@ pub struct SettingsSnapshot {
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,
     pub shortcuts: SettingsShortcuts,
     pub startup_item: SettingsStartupItemStatus,
-    pub configuration_status: SettingsConfigurationStatus,
-    pub config_recovery: Option<SettingsConfigRecovery>,
     pub diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
@@ -909,8 +894,6 @@ pub enum SettingsErrorCode {
     ConfigStorageFull,
     ConfigTargetOccupied,
     BackupLocationOpenFailed,
-    ConfigurationRecoveryRequired,
-    ConfigurationRecoveryFailed,
     ModelUnavailable,
     ModelSwitchFailed,
     ModelTitleInvalid,
@@ -941,7 +924,7 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 41] = [
+    pub const ALL: [Self; 39] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -954,8 +937,6 @@ impl SettingsErrorCode {
         Self::ConfigStorageFull,
         Self::ConfigTargetOccupied,
         Self::BackupLocationOpenFailed,
-        Self::ConfigurationRecoveryRequired,
-        Self::ConfigurationRecoveryFailed,
         Self::ModelUnavailable,
         Self::ModelSwitchFailed,
         Self::ModelTitleInvalid,
@@ -999,8 +980,6 @@ impl SettingsErrorCode {
             Self::ConfigStorageFull => "config_storage_full",
             Self::ConfigTargetOccupied => "config_target_occupied",
             Self::BackupLocationOpenFailed => "backup_location_open_failed",
-            Self::ConfigurationRecoveryRequired => "configuration_recovery_required",
-            Self::ConfigurationRecoveryFailed => "configuration_recovery_failed",
             Self::ModelUnavailable => "model_unavailable",
             Self::ModelSwitchFailed => "model_switch_failed",
             Self::ModelTitleInvalid => "model_title_invalid",
@@ -1077,12 +1056,6 @@ impl fmt::Display for SettingsError {
             }
             SettingsErrorCode::BackupLocationOpenFailed => {
                 "Configuration backup folder could not be opened"
-            }
-            SettingsErrorCode::ConfigurationRecoveryRequired => {
-                "Configuration must be recovered before this action"
-            }
-            SettingsErrorCode::ConfigurationRecoveryFailed => {
-                "Default configuration could not be restored"
             }
             SettingsErrorCode::ModelUnavailable => "Selected model is unavailable",
             SettingsErrorCode::ModelSwitchFailed => "Selected model could not be activated",
@@ -1273,9 +1246,6 @@ pub enum SettingsCommand {
     },
     DeleteModel {
         model: SettingsModelKey,
-        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
-    },
-    RestoreDefaultConfiguration {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     OpenConfigBackupLocation {
@@ -1696,11 +1666,6 @@ impl SettingsClient {
             .await
     }
 
-    pub async fn restore_default_configuration(&self) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::RestoreDefaultConfiguration { reply })
-            .await
-    }
-
     pub async fn open_config_backup_location(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::OpenConfigBackupLocation { reply })
             .await
@@ -2019,12 +1984,6 @@ impl SettingsClient {
         model: SettingsModelKey,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::DeleteModel { model, reply })
-    }
-
-    pub fn restore_default_configuration_blocking(
-        &self,
-    ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request_blocking(|reply| SettingsCommand::RestoreDefaultConfiguration { reply })
     }
 
     pub fn open_config_backup_location_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
@@ -2809,31 +2768,6 @@ mod tests {
     }
 
     #[test]
-    fn default_configuration_recovery_is_a_typed_command() {
-        let (client, endpoint) = SettingsClient::bounded(1);
-        let worker = thread::spawn(move || {
-            let SettingsCommand::RestoreDefaultConfiguration { reply } =
-                endpoint.recv_blocking().expect("recovery command")
-            else {
-                panic!("unexpected command");
-            };
-            let mut recovered = snapshot(2, false, false);
-            recovered.configuration_status =
-                SettingsConfigurationStatus::DefaultsRestoredRestartRequired;
-            reply.respond(Ok(recovered)).expect("recovery reply");
-        });
-
-        let recovered = client
-            .restore_default_configuration_blocking()
-            .expect("recovery snapshot");
-        assert_eq!(
-            recovered.configuration_status,
-            SettingsConfigurationStatus::DefaultsRestoredRestartRequired
-        );
-        worker.join().expect("worker join");
-    }
-
-    #[test]
     fn configuration_backup_location_is_a_typed_command() {
         let (client, endpoint) = SettingsClient::bounded(1);
         let worker = thread::spawn(move || {
@@ -3027,8 +2961,6 @@ mod tests {
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
             shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
-            configuration_status: SettingsConfigurationStatus::Ready,
-            config_recovery: None,
             diagnostics_export: None,
             input_diagnostics: SettingsInputDiagnostics::default(),
             active_model: Some(SettingsModelKey {

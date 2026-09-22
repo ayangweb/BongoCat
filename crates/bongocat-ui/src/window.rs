@@ -1,21 +1,15 @@
 use crate::{
-    RuntimeHealth, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
-    SettingsConfigRecovery, SettingsConfigurationStatus, SettingsError, SettingsErrorCode,
-    SettingsGamepadAxisSettings, SettingsLanguage, SettingsModelAvailability,
+    RuntimeHealth, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsError,
+    SettingsErrorCode, SettingsGamepadAxisSettings, SettingsLanguage, SettingsModelAvailability,
     SettingsModelBehavior, SettingsModelBehaviorBinding, SettingsModelDiagnostic,
     SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
-    SettingsModelImportRequest, SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin,
-    SettingsModelSettings, SettingsOperationId, SettingsOverlay, SettingsShortcutBinding,
-    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsModelImportRequest, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
+    SettingsOperationId, SettingsOverlay, SettingsShortcutBinding, SettingsShortcuts,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
     SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
     SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use bongocat_platform::{
-    AccessibilityAction, AccessibilityActionRequest, AccessibilityNode, AccessibilityNodeId,
-    AccessibilityRole, AccessibilityToggle, AccessibilityTree, SettingsAccessibilityBridge,
-};
 use bongocat_platform::{
     ModelSourcePickerError, ModelSourcePickerOutcome, pick_model_archive, pick_model_cover,
     pick_model_directory,
@@ -41,8 +35,6 @@ use gpui_kit::{
     SharedString, Stateful, TitlebarOptions, VisualContext, WeakEntity, Window, WindowAppearance,
     WindowBounds, WindowHandle, WindowOptions, div, img, point, prelude::*, px, size,
 };
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use raw_window_handle::HasWindowHandle;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
@@ -56,7 +48,6 @@ mod presentation;
 use presentation::*;
 mod about;
 use about::ABOUT_SECTIONS;
-mod accessibility;
 mod lifecycle;
 mod localization;
 mod model_actions;
@@ -69,11 +60,14 @@ mod shortcuts;
 mod shortcuts_page;
 mod smoke;
 mod view_state;
+#[cfg(test)]
+use crate::SettingsModelImportStage;
 use crate::pop_confirm::PopConfirm;
 pub use lifecycle::open_settings_window;
+#[cfg(test)]
+use localization::model_import_progress;
 use localization::{
-    backup_candidates_checked, build_info_detail, model_import_progress, model_invalid_summary,
-    recovered_backup_detail, runtime_status, settings_error, shortcut_accessibility_label,
+    build_info_detail, model_invalid_summary, runtime_status, settings_error,
     shortcut_behavior_name, shortcut_command_name, shortcut_conflict_message,
 };
 #[cfg(test)]
@@ -115,119 +109,12 @@ fn accepts_snapshot_revision(current: Option<u64>, incoming: u64) -> bool {
 /// from the other rows' switches.
 const STARTUP_ITEM_SWITCH_ID: &str = "open-at-login-switch";
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_ROOT: AccessibilityNodeId = AccessibilityNodeId::new(1);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_GENERAL: AccessibilityNodeId = AccessibilityNodeId::new(2);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_MODELS: AccessibilityNodeId = AccessibilityNodeId::new(3);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(4);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_ABOUT: AccessibilityNodeId = AccessibilityNodeId::new(6);
-// The page nodes for the navigation entries that were split out of General.
-// `ACCESSIBILITY_OVERLAY` (10) is already the "show model window" switch, so
-// the Overlay page's node carries the `_PAGE` suffix to keep the two apart.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY_PAGE: AccessibilityNodeId = AccessibilityNodeId::new(5);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_INTERACTION: AccessibilityNodeId = AccessibilityNodeId::new(7);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_INPUT: AccessibilityNodeId = AccessibilityNodeId::new(8);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_APPLICATION: AccessibilityNodeId = AccessibilityNodeId::new(9);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY: AccessibilityNodeId = AccessibilityNodeId::new(10);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_AUDIO: AccessibilityNodeId = AccessibilityNodeId::new(11);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_STARTUP: AccessibilityNodeId = AccessibilityNodeId::new(12);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY_TOPMOST: AccessibilityNodeId = AccessibilityNodeId::new(13);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY_CLICK_THROUGH: AccessibilityNodeId = AccessibilityNodeId::new(14);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY_KEEP_INSIDE_WORK_AREA: AccessibilityNodeId =
-    AccessibilityNodeId::new(44);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY_SCALE_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(15);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY_SCALE_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(16);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY_OPACITY_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(17);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY_OPACITY_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(18);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_MAXIMUM_FPS_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(24);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_MAXIMUM_FPS_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(25);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_RESTORE_DEFAULTS: AccessibilityNodeId = AccessibilityNodeId::new(29);
-/// The recovery notice's own text.
-///
-/// The notice is visible on every page, and the restore action can be reached from every page,
-/// so what it says has to be readable from every page too. Without this node a screen reader
-/// only ever met the restore button and never the notice's title or detail.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_CONFIG_RECOVERY: AccessibilityNodeId = AccessibilityNodeId::new(26);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_SHORTCUT_CAPTURE_BASE: u64 = 1_000;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_SHORTCUT_CLEAR_BASE: u64 = 2_000;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_MIRROR: AccessibilityNodeId = AccessibilityNodeId::new(19);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_MIRROR_POINTER: AccessibilityNodeId = AccessibilityNodeId::new(20);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_IGNORE_POINTER: AccessibilityNodeId = AccessibilityNodeId::new(21);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_STICK_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId::new(22);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_TRIGGER_DEAD_ZONE: AccessibilityNodeId = AccessibilityNodeId::new(23);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_THEME: AccessibilityNodeId = AccessibilityNodeId::new(35);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_STATUS_ICON: AccessibilityNodeId = AccessibilityNodeId::new(38);
-#[cfg(target_os = "windows")]
-const ACCESSIBILITY_TASKBAR_ICON: AccessibilityNodeId = AccessibilityNodeId::new(39);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_LANGUAGE: AccessibilityNodeId = AccessibilityNodeId::new(40);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_BEHAVIOR_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(41);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_COMMAND_SHORTCUTS: AccessibilityNodeId = AccessibilityNodeId::new(54);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_RELEASE_FALLBACK_DECREASE: AccessibilityNodeId = AccessibilityNodeId::new(42);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_RELEASE_FALLBACK_INCREASE: AccessibilityNodeId = AccessibilityNodeId::new(43);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_AUTOMATIC_UPDATE_CHECK: AccessibilityNodeId = AccessibilityNodeId::new(45);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_MODEL_CHOOSE_FOLDER: AccessibilityNodeId = AccessibilityNodeId::new(46);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_MODEL_IMPORT: AccessibilityNodeId = AccessibilityNodeId::new(47);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_MODEL_IMPORT_STATUS: AccessibilityNodeId = AccessibilityNodeId::new(48);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_MODEL_CATALOG_STATUS: AccessibilityNodeId = AccessibilityNodeId::new(49);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE: AccessibilityNodeId = AccessibilityNodeId::new(50);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY_HIDE_ON_POINTER_HOVER: AccessibilityNodeId =
-    AccessibilityNodeId::new(51);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY_HOVER_DELAY_DECREASE: AccessibilityNodeId =
-    AccessibilityNodeId::new(52);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-const ACCESSIBILITY_OVERLAY_HOVER_DELAY_INCREASE: AccessibilityNodeId =
-    AccessibilityNodeId::new(53);
-
 /// A request the settings window forwards to the application rather than acting
 /// on itself.
 ///
 /// `None` means the window has no owner for that request, so the matching control
 /// is not offered at all.
-pub(crate) type SettingsWindowRequest = Option<Rc<dyn Fn(&mut App)>>;
+pub(crate) type SettingsWindowRequest = Rc<dyn Fn(&mut App)>;
 
 type LanguageSelectState = SelectState<SearchableVec<&'static str>>;
 type ThemeSelectState = SelectState<SearchableVec<&'static str>>;
@@ -286,7 +173,6 @@ enum PendingOperation {
     ModelDeletion,
     ModelMetadata,
     ModelLocation,
-    RestoreDefaultConfiguration,
     SetShortcuts,
     BeginShortcutCapture,
     CancelShortcutCapture,
@@ -548,54 +434,12 @@ pub struct SettingsView {
     theme_select: Entity<ThemeSelectState>,
     request_quit: Rc<dyn Fn(&mut App)>,
     /// Opens the update window and starts a check.
-    ///
-    /// The settings window does not own the update worker, so it asks the
-    /// application to open the window rather than driving the update protocol
-    /// itself. `None` hides the entry: a window with no update owner must not offer
-    /// a control that cannot do anything, which is why the recovery and smoke
-    /// windows leave it out instead of showing a dead button.
     request_update: SettingsWindowRequest,
-    general_focus: FocusHandle,
-    models_focus: FocusHandle,
-    overlay_page_focus: FocusHandle,
-    interaction_focus: FocusHandle,
-    input_focus: FocusHandle,
-    shortcuts_focus: FocusHandle,
-    application_focus: FocusHandle,
-    about_focus: FocusHandle,
-    status_icon_focus: FocusHandle,
-    #[cfg(target_os = "windows")]
-    taskbar_icon_focus: FocusHandle,
-    automatic_update_check_focus: FocusHandle,
     overlay_focus: FocusHandle,
-    overlay_topmost_focus: FocusHandle,
-    overlay_click_through_focus: FocusHandle,
-    overlay_keep_inside_screen_focus: FocusHandle,
-    overlay_hide_on_pointer_hover_focus: FocusHandle,
-    overlay_hover_hide_delay_decrease_focus: FocusHandle,
-    overlay_hover_hide_delay_increase_focus: FocusHandle,
-    overlay_scale_decrease_focus: FocusHandle,
-    overlay_scale_increase_focus: FocusHandle,
-    overlay_opacity_decrease_focus: FocusHandle,
-    overlay_opacity_increase_focus: FocusHandle,
-    maximum_fps_decrease_focus: FocusHandle,
-    maximum_fps_increase_focus: FocusHandle,
-    release_fallback_decrease_focus: FocusHandle,
-    release_fallback_increase_focus: FocusHandle,
-    audio_focus: FocusHandle,
-    command_shortcuts_focus: FocusHandle,
-    behavior_shortcuts_focus: FocusHandle,
-    mirror_focus: FocusHandle,
-    mirror_pointer_focus: FocusHandle,
-    ignore_pointer_focus: FocusHandle,
-    stick_dead_zone_focus: FocusHandle,
-    trigger_dead_zone_focus: FocusHandle,
-    startup_item_focus: FocusHandle,
     model_id_focus: FocusHandle,
     choose_model_focus: FocusHandle,
     choose_archive_focus: FocusHandle,
     import_model_focus: FocusHandle,
-    restore_defaults_focus: FocusHandle,
     /// The only settings text field the window actually renders.
     ///
     /// The overlay and gamepad numbers are drawn by the component library's
@@ -605,10 +449,6 @@ pub struct SettingsView {
     /// would never fire because nothing renders it.
     model_id_input: Entity<InputState>,
     syncing_component_inputs: bool,
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    accessibility: Option<SettingsAccessibilityBridge>,
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    accessibility_focus: Option<AccessibilityNodeId>,
 }
 #[derive(Clone)]
 pub struct SettingsWindowHandle {
@@ -1252,9 +1092,6 @@ impl SettingsView {
                 Some(SettingValue::StartupItemEnabled(enabled)) => {
                     client.set_startup_item_enabled(enabled).await
                 }
-                Some(SettingValue::RestoreDefaultConfiguration) => {
-                    client.restore_default_configuration().await
-                }
                 Some(SettingValue::Shortcuts {
                     expected_config_revision,
                     shortcuts,
@@ -1501,7 +1338,6 @@ enum SettingValue {
         settings: SettingsGamepadAxisSettings,
     },
     StartupItemEnabled(bool),
-    RestoreDefaultConfiguration,
     Shortcuts {
         expected_config_revision: u64,
         shortcuts: SettingsShortcuts,
@@ -1540,7 +1376,7 @@ impl StartupItemPresentation {
     /// This is a fact about the build, not about the current moment, so it is the
     /// one thing that greys the switch out. Whether the control can act *right
     /// now* is a separate question answered by `action`, and it stays with the
-    /// accessibility node, which reports it as the control's operability. Keeping
+    /// Keeping
     /// the two apart is what lets a released build keep the switch normally
     /// available while the snapshot is still loading.
     fn switch_disabled(self) -> bool {
@@ -1798,6 +1634,7 @@ fn model_availability_status(
 /// model page — a source dialog, an import run, a cover dialog, a catalog that
 /// cannot be read — is delivered through the shared notification component, so
 /// there is exactly one place an error is shown and exactly one style it has.
+#[cfg(test)]
 fn model_import_status(draft: &ModelImportDraft, language: SettingsLanguage) -> SharedString {
     // The status names whichever source the user actually chose, so an archive
     // import never reports that a folder was selected.
@@ -2058,12 +1895,14 @@ const fn theme_from_index(index: usize) -> Option<SettingsTheme> {
     }
 }
 
+#[cfg(test)]
 fn stepped_overlay_scale(mut settings: SettingsOverlay, delta: i16) -> SettingsOverlay {
     let next = i32::from(settings.scale_percent) + i32::from(delta);
     settings.scale_percent = next.clamp(25, 400) as u16;
     settings
 }
 
+#[cfg(test)]
 fn stepped_overlay_opacity(mut settings: SettingsOverlay, delta: i16) -> SettingsOverlay {
     let next = i16::from(settings.opacity_percent) + delta;
     settings.opacity_percent = next.clamp(1, 100) as u8;
@@ -2109,11 +1948,5 @@ fn icon_command_button(
         .key_context("SettingsControl")
         .track_focus(focus)
         .tab_index(tab_index)
-        .child(
-            Button::new(id)
-                .icon(icon)
-                .tooltip(label)
-                .accessibility_label(label)
-                .disabled(disabled),
-        )
+        .child(Button::new(id).icon(icon).tooltip(label).disabled(disabled))
 }

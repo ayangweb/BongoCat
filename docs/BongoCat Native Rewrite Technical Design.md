@@ -134,7 +134,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - `appearance.language` 只接受 `system`、`zh-CN` 和 `en-US` 三个当前 v1 值，默认 `system`。
   平台 adapter 在启动时读取系统首选 locale；仅简体中文解析为 `zh-CN`，英语及其它 locale 都
   回退 `en-US`，不把解析结果写回配置。UI 通过独立 `SettingsLanguage`、revision-checked typed
-  command 和 GPUI Kit `Select` 修改并立即刷新窗口标题、导航、当前已迁移文案和辅助功能语义。
+  command 和 GPUI Kit `Select` 修改并立即刷新窗口标题、导航和当前可见文案。
   未知持久化值直接拒绝，不增加 alias、开发中间版本兼容或旧配置导入。
 - 启动项等系统能力通过 UI 自有的 typed platform snapshot 显示，由 settings service worker
   读取和显式变更；外部状态变化递增 settings revision。读取失败只形成可重试状态，写入失败
@@ -142,18 +142,11 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - 输入诊断通过 UI 自有的计数型 snapshot 投影 captured/reconciled/fallback/reset、sequence 和可靠队列
   transport 指标；不得包含具体按键、原始事件或时间戳。即使 queue full 等 transport-only 变化
   未推进 runtime revision，settings service 也必须观察投影变化并推进 settings revision。
-- 设置控件的辅助功能语义由 UI crate 维护项目自有 AccessKit tree；平台 adapter 只通过
-  GPUI 公开的 raw window handle 安装，辅助技术 action 经有界强类型通道回到 GPUI 主线程。
-- 辅助功能实现不得使用 GPUI 私有 renderer、隐藏原生控件或独立业务状态副本；可见控件、
-  语义节点、焦点、loading/error 和 value 必须由同一份 UI snapshot 更新。**凡是渲染给用户的文案都必须
-  有对应的语义节点**：项目桥接是该窗口唯一的语义来源（GPUI 内置 adapter 已关闭），没进树的文字
-  辅助技术读不到——只读状态行（如配置恢复提示的标题与说明）同样要建 `Status` 节点，
-  不能只建它旁边的按钮。
-- 当前固定的 GPUI 开发版已内置 element-level AccessKit adapter，但正式设置窗口仍由上述
-  项目桥接提供既有双平台语义与 action contract；应用必须以 `Application::new_inaccessible`
-  关闭 GPUI 的重复 adapter，再由项目桥接独占同一个 native view。这里仅关闭 GPUI 内置
-  adapter，不关闭项目辅助功能。迁移到 GPUI 原生 element 语义时必须一次性删除项目桥接、
-  相关直接 AccessKit 依赖和该构造兼容措施，并重跑 macOS AX/Windows UIA 门禁。
+- 设置 UI 采用 visual-first 契约（ADR-0054）：项目只定义并绘制用户可见、可操作的内容。
+  BongoCat 不维护项目自有 AccessKit tree、native bridge、辅助技术 action、隐藏 label/action
+  或只为辅助技术存在的文案；`gpui-kit` 传递提供的默认语义不作为项目 UI contract。
+- 可见控件、键盘导航、focus、loading/error 和 value 共用同一份 UI snapshot；实现和 smoke
+  只为可见行为建立断言，不复制辅助语义状态。
 - GPUI 不加载 Cubism、不持有模型 GPU 资源、不驱动模型帧循环。
 - 全局快捷键使用配置边界编译出的 `CompiledShortcuts`，由操作系统注册（Windows
   `RegisterHotKey`、macOS `RegisterEventHotKey`，见 ADR-0044），单一 owner 线程持有平台
@@ -181,11 +174,11 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   全部已校验绑定。门禁的唯一实现点是 `ShortcutConfig::active_bindings`——"此刻生效的绑定"的唯一
   投影，模型侧的活动模型过滤也在同一处，应用层与平台层不得再判一次。门禁变更必须经
   revision-checked settings command 原子持久化并替换共享 shortcut table。
-  两个开关都是正向字段的直出：UI、辅助功能节点、settings command 读同一个布尔值，全链路不存在取反；
+  两个开关都是正向字段的直出：可见 UI 和 settings command 读同一个布尔值，全链路不存在取反；
   开关只带标题、不带描述（标题已经表达了它的作用），因此两个分组第一行都是纯标题行。
-  门禁关闭时该作用域的行在 UI 上置灰且不可交互（捕获与清除都不再可用，tab 跳过，无障碍节点报
-  disabled），辅助功能的请求与捕获中的会话由同一谓词守卫；这是「开关门禁」统一禁用绑定规则
-  （ADR-0053）的落地，可见行、无障碍树与变更守卫三层读同一个门禁值。
+  门禁关闭时该作用域的行在 UI 上置灰且不可交互（捕获与清除都不再可用，tab 跳过），
+  mutator 用同一谓词守卫；这是「开关门禁」统一禁用绑定规则（ADR-0053，并经 ADR-0054
+  收窄为“可见行与 mutator 同源”）的落地。
 - `model.enable_behavior_shortcuts` 默认关闭是对旧版行为的刻意收窄：旧版在模型加载完成后无条件为
   每个 motion 和 expression 自动分配一整层 `primary + [Shift/Alt] + 数字/字母` 组合键，用户没有
   拒绝的机会。Native 按维护者决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
@@ -247,7 +240,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 
 所有新的 crates.io 直接依赖同样先选择引入时最新的非 yanked 稳定版，再精确 pin 并提交 lockfile。只有 Rust toolchain、目标平台、许可证或已验证的安全边界不兼容时才允许暂缓，且必须留下可复核的版本差异和解除条件；不能用旧版本回避正常的 API 迁移。传递依赖在上游约束允许的范围内保持最新，不 fork 上游只为修改版本号。
 
-Phase 0 必须验证输入法、文本编辑、缩放、辅助功能、窗口重开、托盘应用生命周期，以及 GPUI 设置窗口与独立 overlay 共存。ADR-0011 允许已通过自动化契约的模块进入正式 workspace；未解决的问题继续阻塞对应完整功能或 stable 发布，并必须在进入完整 UI 实现前解决并记录。
+Phase 0 必须验证输入法、文本编辑、缩放、UI/主题、窗口重开、托盘应用生命周期，以及 GPUI 设置窗口与独立 overlay 共存。ADR-0011 允许已通过自动化契约的模块进入正式 workspace；未解决的问题继续阻塞对应完整功能或 stable 发布，并必须在进入完整 UI 实现前解决并记录。
 
 ## 6. 总体架构
 
@@ -442,9 +435,9 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 ### 9.3 macOS
 
 - 使用 listen-only `CGEventTap`，不经过 GPUI 响应链。
-- 区分 Input Monitoring/Accessibility 的 unknown、denied、granted、restart-required 状态。
+- 区分 Input Monitoring 的 unknown、denied、granted、restart-required 状态。
 - 全局输入监听只请求 Input Monitoring：`CGPreflightListenEventAccess` 只读查询，权限请求只由用户
-  发起的明确设置操作触发。设置窗口通过 AccessKit 公开自身语义不需要、也不得请求 Accessibility
+  发起的明确设置操作触发。设置窗口不安装项目 AccessKit bridge，也不需要、不得请求 Accessibility
   trust；Input Monitoring 状态与输入服务运行状态分别投影，授权变化不等于 tap 已重启（ADR-0024）。
   可见 settings 窗口最多每秒一次读取只读 preflight 并通过 revisioned snapshot 刷新该状态；轮询不发起
   TCC request、不重试或重启 event tap，窗口释放后停止。
@@ -456,13 +449,12 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   Model window、Interaction、Input、Shortcuts、Application、About 八页，每页对应一个用户能直接说出的领域；一级页面内
   用带标题的 group 组织内容，同一页面下存在多于一个带标题的 group 时 sidebar 把它们渲染为二级菜单项，
   点击滚动到该分组。General 因此只保留外观（主题、语言），不再承载其它领域的分组。
-  配置恢复提示不放在任何页面里，而是渲染在设置组件之上的窗口级横幅，因此当前打开哪一页都可见。
-  原 Diagnostics 页面已移除，
-  输入可靠性计数、runtime/renderer 状态、build 标识与配置恢复的原始细节只留在 app-owned 日志和匿名
-  diagnostics export 里：周期性刷新只服务于界面上仍在显示的数字，不再有为了“记录状态”而存在的页面。
-  页面移除后 `OpenConfigBackupLocation` 与 `ExportDiagnostics` 仍是 settings service 的强类型 command，
-  仅供隔离 smoke 与排障入口使用，不从 UI 触发；配置不可用时 `RecoveryRequired` 的匿名候选计数与
-  `RestoreDefaultConfiguration` 动作渲染在窗口级恢复提示里（见上），恢复入口不随诊断页消失。
+  配置损坏在 settings window 出现前完成 fallback，不显示配置恢复横幅、按钮或重启提示。
+  原 Diagnostics 页面已移除，输入可靠性计数、runtime/renderer 状态和 build 标识只留在
+  app-owned 日志和匿名 diagnostics export 里：周期性刷新只服务于界面上仍在显示的数字。
+  `OpenConfigBackupLocation` 与 `ExportDiagnostics` 仍是 settings service 的强类型排障
+  command，不从常规 UI 触发。Development、Production 和 smoke 的设置窗口使用同一套可见
+  页面、分组和按钮组成；smoke 只改变驱动方式，不额外显示“重置偏好设置”等产品窗口没有的控件。
 - 产品启动时以只读 `CGPreflightListenEventAccess` 检查 Input Monitoring，缺失时用 `rfd` 的原生
   系统弹框引导用户前往「系统设置 → 隐私与安全性 → 输入监控」。检查非阻塞：主线程完成窗口、
   菜单栏等正常初始化后，由专用 worker 线程执行检查与提示，提示未应答或被关闭不影响任何产品
@@ -809,19 +801,13 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   schema temp 原样保留并明确报错。stale/invalid 归档共用每环境最多 4 份、总计 8 MiB 的自有
   命名空间，未知文件不参与清理。仅启动恢复以 10 ms 间隔重试 writer lock 最多 1 秒，普通提交
   仍立即报告竞争；app 只保留不含路径、原始字节或 I/O 文本的匿名恢复动作。
-- 当前配置属于 v1 但 parse/validate 失败时，只在同一 writer lock 内从新到旧检查
-  自有备份，并同时验证 envelope 格式、源 schema、源 revision 和完整 typed config。恢复前将损坏原文写入独立的
-  `config-corrupt-*.bin` 自有 quarantine，最多 4 份且总计不超过 8 MiB；恢复后重新读取验证，
-  app 只公开源 schema 与跳过候选数等匿名诊断；settings service 将该诊断投影到 snapshot 的配置恢复
-  投影（渲染在窗口级恢复提示里），不公开备份/配置路径、原始 JSON、时间戳或底层 I/O 文本。没有有效候选、quarantine 失败或恢复验证失败时
-  不回落默认值，也不读取另一环境；当前损坏原文继续保留在 `config.json` 或 quarantine 中。
-  非 v1 schema 直接报告不支持并保持原文件，禁止覆盖未知格式。
-- 若 current 损坏且没有任何完整有效的 Native backup，Application 不得静默覆盖或继续使用默认值；
-  它以 `RecoveryRequired` 受限状态启动，仅创建无 overlay/GPU 的 recovery-only settings 窗口。
-  窗口级恢复提示显示匿名候选计数，并提供强类型 `RestoreDefaultConfiguration` command；该 command
-  在 writer lock 内再次确认 current 仍不可恢复，将原字节放入 quarantine 后写入并验证当前 schema 默认配置，
-  返回 `DefaultsRestoredRestartRequired`。恢复前所有业务写入、模型、启动项和 overlay 操作都被拒绝，
-  恢复后必须重启才重新进入正常 runtime；非 v1 schema 或 I/O/归档错误仍直接报告，不进入该安全模式。
+- 当前配置属于 v1 但 parse/validate 失败时，只在同一 writer lock 内从新到旧检查自有备份，
+  同时验证 envelope 格式、源 schema、源 revision 和完整 typed config。找到第一份有效备份后，
+  将损坏原文写入 `config-corrupt-*.bin` quarantine，原子写回该配置并重新读取验证。
+  没有有效备份时，直接 quarantine 损坏原文、原子写入并验证当前 v1 默认配置。两条 fallback
+  都返回普通可用配置，没有 `RecoveryRequired`、recovery-only settings window、snapshot 恢复字段、
+  `RestoreDefaultConfiguration` command 或“恢复后必须重启”流程。非 v1 schema 仍按当前 v1
+  的严格版本入口报告 unsupported，禁止自动转换、downgrade 或覆盖未知格式。
 - 配置写入将权限/只读文件系统、存储空间/配额不足和 temp 目标占用分类为稳定的匿名失败原因；
   settings 只显示可操作的项目文案，不泄漏路径或操作系统原始错误。写入只清理由当前调用成功创建的
   temp；若固定 temp 已被文件、目录、符号链接或并发创建占用，则保留该条目和 current 并明确失败。
@@ -831,13 +817,13 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   路径只由 Application 从正式 `StorageLayout` 派生并传给 platform adapter，不进入 command、
   snapshot、错误或 GPUI Entity。platform adapter 先验证绝对目录并 canonicalize，再通过 `opener`
   crate 交给系统默认程序；成功只返回当前 snapshot 且不推进 revision，失败只返回
-  `BackupLocationOpenFailed`。该 command 在 `RecoveryRequired` 受限状态仍可使用。
+  `BackupLocationOpenFailed`。
 - `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - `state.json` 使用独立 v1 schema，保存设置窗口的逻辑坐标、尺寸与 maximized 状态，以及 overlay
   的坐标与尺寸；不读取或转换 `next` 开发期间出现过的其他结构。坐标支持多显示器负值并设有有限范围，
   设置窗口尺寸限制为 `640x480..16384x16384`，overlay 尺寸限制为
   `64x64..16384x16384`。缺失、损坏、越界、未知字段或读取失败只回退到鼠标当前所在显示器
-  居中的默认尺寸，不得阻塞 config、runtime 或 recovery-only 启动；非 v1 state 回退显示且不被覆盖。
+  居中的默认尺寸，不得阻塞 config 或 runtime 启动；非 v1 state 回退显示且不被覆盖。
 - state 通过环境内独立的 `state.writer.lock` 和原子替换提交，提交后重读 typed state，失败恢复
   替换前 bytes；它不进入 config revision、backup 或 quarantine。GPUI bounds observer 对连续变化
   合并 150 ms 后通知 settings worker，overlay frame source 仅在几何真正变化时通知同一 worker；
@@ -1133,7 +1119,7 @@ Linux 是后续能力，不是隐藏的首发任务：
 
 | 风险                         | 控制措施                         | 退出条件                          |
 | ---------------------------- | -------------------------------- | --------------------------------- |
-| GPUI pre-1.0                 | 精确 pin、UI 封装、升级隔离      | 双平台 UI/IME/辅助功能 smoke 通过 |
+| GPUI pre-1.0                 | 精确 pin、UI 封装、升级隔离      | 双平台 UI/IME/主题 smoke 通过    |
 | GPUI 与 overlay 生命周期冲突 | 最小平台原型                     | 两窗口反复开关并正常退出          |
 | Rust Live2D 工作量过大       | Core/动作/物理/renderer spike    | 三个预置模型完成输入到绘制闭环    |
 | 透明合成不稳定               | D3D11/Metal 截图和压力测试       | alpha、置顶、穿透双平台通过       |

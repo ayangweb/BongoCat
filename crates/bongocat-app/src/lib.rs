@@ -5,12 +5,11 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
-    ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRecovery,
-    ConfigRevision, ConfigStore, InstalledModelMetadata, InterruptedConfigRecovery, Language,
-    ModelBehaviorAction, ModelBehaviorBinding, NativeConfig, OverlayWindowPlacement,
-    PlatformStorageError, SelectedModelOrigin, ShortcutBinding, ShortcutConfig, ShortcutModifiers,
-    ShortcutTable, StateError, StateStore, StorageLayout, Theme as ConfigTheme, WindowPlacement,
-    platform_layout,
+    ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRevision,
+    ConfigStore, InstalledModelMetadata, Language, ModelBehaviorAction, ModelBehaviorBinding,
+    NativeConfig, OverlayWindowPlacement, PlatformStorageError, SelectedModelOrigin,
+    ShortcutBinding, ShortcutConfig, ShortcutModifiers, ShortcutTable, StateError, StateStore,
+    StorageLayout, Theme as ConfigTheme, WindowPlacement, platform_layout,
 };
 use bongocat_live2d::KeyImageInventory;
 use bongocat_model::{
@@ -131,7 +130,6 @@ pub enum ApplicationError {
     ApplicationLog(ApplicationLogError),
     ConfigRollback(ConfigError),
     State(StateError),
-    ConfigurationRecoveryRequired,
 }
 
 impl fmt::Display for ApplicationError {
@@ -185,9 +183,6 @@ impl fmt::Display for ApplicationError {
                 write!(formatter, "model selection config rollback failed: {error}")
             }
             Self::State(error) => write!(formatter, "application state failed: {error}"),
-            Self::ConfigurationRecoveryRequired => {
-                formatter.write_str("configuration recovery is required")
-            }
         }
     }
 }
@@ -277,23 +272,13 @@ impl From<ApplicationLogError> for ApplicationError {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ApplicationConfigStatus {
-    Ready,
-    RecoveryRequired { checked_backups: usize },
-    DefaultsRestoredRestartRequired,
-}
-
 pub struct Application {
     config_store: ConfigStore,
     state_store: StateStore,
     state: ApplicationState,
     config: NativeConfig,
     config_revision: Option<ConfigRevision>,
-    config_status: ApplicationConfigStatus,
     system_language: Language,
-    config_recovery: Option<ConfigRecovery>,
-    interrupted_config_recovery: Option<InterruptedConfigRecovery>,
     preset_models: PresetModelCatalog,
     model_store: ModelStore,
     active_model_origin: Option<ModelOrigin>,
@@ -359,33 +344,10 @@ impl Application {
         let (run_marker, previous_run) = application_log.begin_run()?;
         let state_store = StateStore::new(layout);
         let state = state_store.load_or_default().state;
-        let (
-            mut config,
-            mut config_revision,
-            config_recovery,
-            interrupted_config_recovery,
-            config_status,
-        ) = match config_store.load_or_default() {
-            Ok(loaded) => (
-                loaded.config,
-                Some(loaded.revision),
-                loaded.recovery,
-                loaded.interrupted_recovery,
-                ApplicationConfigStatus::Ready,
-            ),
-            Err(ConfigError::NoValidRecoveryBackup { candidates }) => (
-                NativeConfig::default(),
-                None,
-                None,
-                None,
-                ApplicationConfigStatus::RecoveryRequired {
-                    checked_backups: candidates,
-                },
-            ),
-            Err(error) => return Err(error.into()),
-        };
-        let operational = config_status == ApplicationConfigStatus::Ready;
-        if operational && !config.overlay.visible {
+        let loaded = config_store.load_or_default()?;
+        let mut config = loaded.config;
+        let mut config_revision = Some(loaded.revision);
+        if !config.overlay.visible {
             // The model window always starts visible: hiding it is a
             // per-session choice, so a persisted hidden overlay is normalized
             // back to visible instead of surviving a restart. The commit is
@@ -408,9 +370,9 @@ impl Application {
                 }
                 Err(_) => (None, bongocat_audio::MotionAudioClient::unavailable()),
             };
-        let runtime_overlay_visible = operational && config.overlay.visible;
-        let runtime_motion_audio_enabled = operational && config.model.play_motion_audio;
-        let (runtime, render_consumer) = if enable_rendering && operational {
+        let runtime_overlay_visible = config.overlay.visible;
+        let runtime_motion_audio_enabled = config.model.play_motion_audio;
+        let (runtime, render_consumer) = if enable_rendering {
             let (runtime, consumer) = RuntimeOwner::start_with_rendering_and_audio(
                 runtime_overlay_visible,
                 runtime_motion_audio_enabled,
@@ -433,47 +395,45 @@ impl Application {
             .client()
             .wait_for_revision(1, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
-        if operational {
-            let client = runtime.client();
-            let sequence = client
-                .send(RuntimeCommand::SetGamepadAxisSettings(
-                    gamepad_axis_settings_from_config(&config)?,
-                ))
-                .map_err(ApplicationError::RuntimeCommand)?;
-            client
-                .wait_for_command(sequence, RUNTIME_TIMEOUT)
-                .ok_or(ApplicationError::RuntimeDidNotPublish)?;
-            let sequence = client
-                .send(RuntimeCommand::SetMaximumFps(config.model.maximum_fps))
-                .map_err(ApplicationError::RuntimeCommand)?;
-            client
-                .wait_for_command(sequence, RUNTIME_TIMEOUT)
-                .ok_or(ApplicationError::RuntimeDidNotPublish)?;
-            let sequence = client
-                .send(RuntimeCommand::SetReleaseFallbackTimeout(
-                    config.model.release_fallback_timeout_ms,
-                ))
-                .map_err(ApplicationError::RuntimeCommand)?;
-            client
-                .wait_for_command(sequence, RUNTIME_TIMEOUT)
-                .ok_or(ApplicationError::RuntimeDidNotPublish)?;
-            let sequence = client
-                .send(RuntimeCommand::SetOverlaySettings(
-                    overlay_settings_from_config(&config),
-                ))
-                .map_err(ApplicationError::RuntimeCommand)?;
-            client
-                .wait_for_command(sequence, RUNTIME_TIMEOUT)
-                .ok_or(ApplicationError::RuntimeDidNotPublish)?;
-            let sequence = client
-                .send(RuntimeCommand::SetModelSettings(
-                    model_settings_from_config(&config),
-                ))
-                .map_err(ApplicationError::RuntimeCommand)?;
-            client
-                .wait_for_command(sequence, RUNTIME_TIMEOUT)
-                .ok_or(ApplicationError::RuntimeDidNotPublish)?;
-        }
+        let client = runtime.client();
+        let sequence = client
+            .send(RuntimeCommand::SetGamepadAxisSettings(
+                gamepad_axis_settings_from_config(&config)?,
+            ))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        let sequence = client
+            .send(RuntimeCommand::SetMaximumFps(config.model.maximum_fps))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        let sequence = client
+            .send(RuntimeCommand::SetReleaseFallbackTimeout(
+                config.model.release_fallback_timeout_ms,
+            ))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        let sequence = client
+            .send(RuntimeCommand::SetOverlaySettings(
+                overlay_settings_from_config(&config),
+            ))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        let sequence = client
+            .send(RuntimeCommand::SetModelSettings(
+                model_settings_from_config(&config),
+            ))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
         let active_model_origin = config
             .model
             .selected_model_origin
@@ -489,10 +449,7 @@ impl Application {
             state,
             config,
             config_revision,
-            config_status,
             system_language,
-            config_recovery,
-            interrupted_config_recovery,
             preset_models,
             model_store,
             active_model_origin,
@@ -516,9 +473,7 @@ impl Application {
         application
             .application_log
             .record(ApplicationLogEvent::started());
-        if application.is_operational() {
-            application.prune_missing_installed_metadata();
-        }
+        application.prune_missing_installed_metadata();
         Ok(application)
     }
 
@@ -646,18 +601,6 @@ impl Application {
         }
     }
 
-    pub const fn config_recovery(&self) -> Option<ConfigRecovery> {
-        self.config_recovery
-    }
-
-    pub const fn interrupted_config_recovery(&self) -> Option<InterruptedConfigRecovery> {
-        self.interrupted_config_recovery
-    }
-
-    pub const fn config_status(&self) -> ApplicationConfigStatus {
-        self.config_status
-    }
-
     pub const fn settings_window_placement(&self) -> Option<WindowPlacement> {
         self.state.settings_window
     }
@@ -696,32 +639,9 @@ impl Application {
         &self.config_store.layout().backups
     }
 
-    pub const fn is_operational(&self) -> bool {
-        matches!(self.config_status, ApplicationConfigStatus::Ready)
-    }
-
-    pub fn restore_default_configuration(&mut self) -> Result<(), ApplicationError> {
-        if !matches!(
-            self.config_status,
-            ApplicationConfigStatus::RecoveryRequired { .. }
-        ) {
-            return Err(ApplicationError::Config(ConfigError::RecoveryNotRequired));
-        }
-        let loaded = self.config_store.restore_default_after_failed_recovery()?;
-        self.config = loaded.config;
-        self.config_revision = Some(loaded.revision);
-        self.config_recovery = loaded.recovery;
-        self.interrupted_config_recovery = loaded.interrupted_recovery;
-        self.config_status = ApplicationConfigStatus::DefaultsRestoredRestartRequired;
-        Ok(())
-    }
-
     fn ready_config_revision(&self) -> Result<ConfigRevision, ApplicationError> {
-        if self.config_status != ApplicationConfigStatus::Ready {
-            return Err(ApplicationError::ConfigurationRecoveryRequired);
-        }
         self.config_revision
-            .ok_or(ApplicationError::ConfigurationRecoveryRequired)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)
     }
 
     pub fn set_appearance_theme(&mut self, theme: ConfigTheme) -> Result<(), ApplicationError> {
@@ -1562,9 +1482,7 @@ impl Application {
     /// model and never issues a second activation while the first may still
     /// be pending.
     pub fn restore_startup_model(&mut self) -> Result<(), ApplicationError> {
-        if self.is_operational() {
-            self.prune_missing_installed_metadata();
-        }
+        self.prune_missing_installed_metadata();
         let configured = self.config.model.selected_model_id.clone().zip(
             self.config
                 .model
@@ -3777,12 +3695,6 @@ mod tests {
         let application = Application::start_with_layout(layout.clone()).expect("recover startup");
         assert_eq!(application.config().overlay.opacity_percent, 87);
         assert!(application.runtime_client().snapshot().overlay_visible);
-        let recovery = application.config_recovery().expect("recovery diagnostic");
-        assert_eq!(
-            recovery.source_schema_version(),
-            bongocat_config::SCHEMA_VERSION
-        );
-        assert_eq!(recovery.skipped_newer_backups(), 0);
         assert!(
             std::fs::read_dir(&layout.backups)
                 .expect("backup directory")
@@ -3798,10 +3710,10 @@ mod tests {
     }
 
     #[test]
-    fn application_enters_restricted_recovery_until_defaults_are_explicitly_restored() {
+    fn application_uses_defaults_when_current_and_backups_are_invalid() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
-        let invalid = b"invalid-current-without-backups";
+        ConfigStore::new(layout.clone()).expect("config store");
         std::fs::create_dir_all(
             layout
                 .config
@@ -3809,48 +3721,11 @@ mod tests {
                 .expect("configuration parent directory"),
         )
         .expect("configuration directory");
-        std::fs::write(&layout.config, invalid).expect("invalid current config");
+        std::fs::write(&layout.config, b"invalid-current").expect("invalid current config");
 
-        let mut application = Application::start_with_layout_internal(
-            layout.clone(),
-            repository_preset_root().as_path(),
-            true,
-            Language::EnglishUnitedStates,
-        )
-        .expect("restricted recovery application");
-        assert_eq!(
-            application.config_status(),
-            ApplicationConfigStatus::RecoveryRequired { checked_backups: 0 }
-        );
-        assert!(!application.is_operational());
-        assert!(!application.runtime_client().snapshot().overlay_visible);
-        assert!(matches!(
-            application.take_render_consumer(),
-            Err(ApplicationError::RenderConsumerUnavailable)
-        ));
-        assert!(matches!(
-            application.set_overlay_visible(true),
-            Err(ApplicationError::ConfigurationRecoveryRequired)
-        ));
-        assert_eq!(
-            std::fs::read(&layout.config).expect("preserved invalid"),
-            invalid
-        );
-
-        application
-            .restore_default_configuration()
-            .expect("restore defaults");
-        assert_eq!(
-            application.config_status(),
-            ApplicationConfigStatus::DefaultsRestoredRestartRequired
-        );
-        assert!(!application.is_operational());
-        application.shutdown().expect("recovery shutdown");
-
-        let restarted = Application::start_with_layout(layout).expect("restart after recovery");
-        assert_eq!(restarted.config_status(), ApplicationConfigStatus::Ready);
-        assert!(restarted.is_operational());
-        restarted.shutdown().expect("restart shutdown");
+        let application = Application::start_with_layout(layout.clone()).expect("default startup");
+        assert_eq!(application.config(), &NativeConfig::default());
+        application.shutdown().expect("clean shutdown");
     }
 
     #[test]
@@ -3865,12 +3740,9 @@ mod tests {
         std::fs::write(layout.config.with_extension("json.tmp"), interrupted_bytes)
             .expect("interrupted config temp");
 
-        let application = Application::start_with_layout(layout).expect("recover startup");
+        let application = Application::start_with_layout(layout.clone()).expect("recover startup");
         assert_eq!(application.config().overlay.opacity_percent, 87);
-        assert_eq!(
-            application.interrupted_config_recovery(),
-            Some(InterruptedConfigRecovery::ArchivedStaleTemp)
-        );
+        assert!(!layout.config.with_extension("json.tmp").exists());
         application.shutdown().expect("clean shutdown");
     }
 
