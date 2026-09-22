@@ -5831,6 +5831,37 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       都以 `spells an ellipsis as '……'` / `'...'` 失败并返回 1，还原后复跑通过。
     - 未运行：无（纯文档与 Python 门禁，不涉及平台路径）。
 
+106. [x] `P4-MODEL-CATALOG-ORDER`：模型页列表改为「预置按模式顺序 + 导入按导入顺序」，不再倒序。
+    - 背景（2026-09-23，维护者反馈）：Models 页的模型卡片总是倒着排，与直觉相反；要求默认顺序为
+      标准模式 → 键盘模式 → 手柄模式，且新导入的模型一律排在最后、后续导入继续往后排。
+    - 根因（改动前核实）：`Application::model_catalog` 把 preset 与 installed 合成一个列表后统一
+      `sort_by(|l, r| l.id().cmp(r.id()).then_with(|| origin_order))`。三个预置目录名恰是
+      `gamepad` / `keyboard` / `standard`，字母序正是「手柄 → 键盘 → 标准」，即维护者看到的倒序；
+      installed 侧按随机 UUID 的字母序排，新导入的模型实际落在任意位置，不是「排在最后」。
+      排序只在 `model_catalog` 一处，settings snapshot 与 UI 都按返回顺序渲染，因此改这一处即可。
+    - 当前契约（2026-09-23）：`model_catalog` 返回顺序 = preset 半区 + installed 半区。
+      ① preset 顺序读 `MverInputMode::ALL`（标准 → 键盘 → 手柄，其文档已声明该顺序属于 settings
+         契约），不另起一份写死 id 的常量；非模式名的预置排在所有模式之后。
+      ② installed 顺序读 `config.model.installed_models` 的记录位置。该列表只追加（导入 push、
+         删除 retain），`validate_model_metadata` 只查唯一性不重排，所以位置就是导入顺序且跨重启
+         稳定；无记录的 store 条目排在最后并按 id 排序（避免依赖目录遍历顺序）。
+      ③ 原 `model_origin_order` 随旧排序一并删除，不留死代码。
+    - 同步文档：Technical Design 的「模型目录身份」条目原来写死「排序固定为 model_id 升序、同 ID
+      时 preset 在前」，已改写为新规则；两份 CHANGELOG 的「🎨 界面与体验」。
+    - 验收证据（2026-09-23，本机 macOS / aarch64）：`cargo fmt -p bongocat-app -- --check`、
+      `cargo clippy -p bongocat-app --all-targets`（仅既有的 block v0.1.6 future-incompat 提示）、
+      `cargo test -p bongocat-app` 140 通过（含新增 2 例）。新增
+      `model_catalog_lists_presets_in_mode_order_then_installed_models_in_import_order` 覆盖
+      预置顺序、两次导入追加、**重启后顺序不变**、删除首个导入后其余保持位置；
+      `hand_copied_model_lands_after_the_imports_in_id_order` 覆盖无元数据条目的兜底（按与 id
+      相反的顺序落盘，排除「恰好等于目录遍历顺序」）。
+      **变异验证**：① `preset_model_order` 返回常量 → 立即以
+      `left: ["gamepad", "keyboard", "standard"] / right: ["standard", "keyboard", "gamepad"]` 失败，
+      正好复现维护者报告的倒序；② `installed_model_order` 反转位置 → 预置半区仍正确而导入顺序被
+      打乱并失败，证明两半区各自被断言。还原后 140 项全绿。
+    - 未运行：Models 页面在 Windows 上的实机外观（本项未改平台代码）；设置窗口 smoke 未复跑
+      （改动不在快捷键/无障碍路径上，`--models-page-smoke` 只断言 catalog 非空与 active 在册）。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

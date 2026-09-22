@@ -898,8 +898,12 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   依次降级为该名字和模型 ID，超长标题截断到元数据上限；元数据提交失败按导入失败报告且已安装
   目录保留。删除模型在 store 删除成功后同步移除对应元数据记录。
 - 模型目录身份是 `(origin, model_id)`。同一 `model_id` 的 preset 与 installed 条目都保留，
-  排序固定为 `model_id` 升序、同 ID 时 preset 在前；后续选择 command 必须携带 origin，
-  不得以静默覆盖解决冲突。
+  后续选择 command 必须携带 origin，不得以静默覆盖解决冲突。Models 页面的顺序由
+  `Application::model_catalog` 一处决定，分两半：preset 在前，按 `MverInputMode::ALL` 的
+  模式顺序（标准 → 键盘 → 手柄，不是 id 字母序——三个 id 的字母序恰好是它的倒序）；
+  installed 在后，按 `config.model.installed_models` 的记录位置，也就是导入顺序，因此新导入的
+  模型落在页面末尾且此后不再移动。没有元数据记录、只存在于 store 根目录的包排在该半区末尾并
+  按 id 排序；`model_id` 在两半区都出现时 preset 一定在前，因为整个 preset 半区都排在前面。
 - 模型改名与换封面对两个 origin 完全一致（见 ADR-0047）。`installed_models[].title` 与
   `preset_models[].title` 是可编辑显示名，也是**唯一一条存放在模型目录之外**的模型事实；封面在
   installed origin 上是包内文件 `resources/cover.png`，在 preset origin 上是用户侧的

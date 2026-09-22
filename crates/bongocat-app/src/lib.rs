@@ -1068,17 +1068,39 @@ impl Application {
         Ok(snapshot)
     }
 
+    /// Every model the Models page can show, in the order the page shows them:
+    /// the build's presets first, then the models the user imported.
+    ///
+    /// The presets are the three input modes the build ships, and the page
+    /// lists them in mode order — Standard, Keyboard, Gamepad. Their ids are
+    /// `standard`, `keyboard` and `gamepad`, so sorting them by id would run
+    /// the page backwards. See [`preset_model_order`].
+    ///
+    /// The imported models follow, in the order they were imported: the
+    /// configuration's record list is append-only, so a newly imported model
+    /// joins the end of the page and stays where it landed. See
+    /// [`installed_model_order`].
+    ///
+    /// A model id present in both halves appears twice, once per origin, and
+    /// the preset one always comes first because the whole preset half does.
     pub fn model_catalog(&self) -> Result<Vec<ModelCatalogEntry>, ApplicationError> {
         // Unrecognized store entries are filtered inside the store scan; the
         // merged catalog only exposes real models.
-        let mut entries = self.preset_models.list()?;
-        entries.extend(self.model_store.list()?.entries);
-        entries.sort_by(|left, right| {
-            left.id().as_str().cmp(right.id().as_str()).then_with(|| {
-                model_origin_order(left.origin()).cmp(&model_origin_order(right.origin()))
-            })
+        let mut presets = self.preset_models.list()?;
+        presets.sort_by(|left, right| {
+            preset_model_order(left.id().as_str())
+                .cmp(&preset_model_order(right.id().as_str()))
+                .then_with(|| left.id().as_str().cmp(right.id().as_str()))
         });
-        Ok(entries)
+        let records = &self.config.model.installed_models;
+        let mut installed = self.model_store.list()?.entries;
+        installed.sort_by(|left, right| {
+            installed_model_order(records, left.id().as_str())
+                .cmp(&installed_model_order(records, right.id().as_str()))
+                .then_with(|| left.id().as_str().cmp(right.id().as_str()))
+        });
+        presets.extend(installed);
+        Ok(presets)
     }
 
     pub const fn active_model_origin(&self) -> Option<ModelOrigin> {
@@ -1775,11 +1797,46 @@ fn system_language() -> Language {
     }
 }
 
-fn model_origin_order(origin: ModelOrigin) -> u8 {
-    match origin {
-        ModelOrigin::Preset => 0,
-        ModelOrigin::Installed => 1,
-    }
+/// Where a preset model sits on the Models page: the position of the input mode
+/// it belongs to.
+///
+/// The build ships one preset per mode, and the modes already declare their own
+/// order — [`MverInputMode::ALL`] is Standard, Keyboard, Gamepad, and that order
+/// is part of the settings contract because it is the order a conversion
+/// reports and titles its models in. Reading it here rather than repeating the
+/// three ids keeps one list of modes instead of two that can drift.
+///
+/// The page has to read it at all because the ids are `standard`, `keyboard`
+/// and `gamepad`: ordering by id puts Gamepad first and Standard last, which is
+/// the reverse of the mode order a user expects.
+///
+/// A preset whose id is not one of the modes — a package a developer dropped
+/// into the catalog root, or one a later build adds before this list learns
+/// about it — is not part of that order, so it sorts after every mode.
+fn preset_model_order(id: &str) -> usize {
+    MverInputMode::ALL
+        .iter()
+        .position(|mode| mode.as_str() == id)
+        .unwrap_or(MverInputMode::ALL.len())
+}
+
+/// Where an installed model sits on the Models page: the order the user
+/// imported it in.
+///
+/// The configuration's record list is that order. An import appends its record
+/// and a deletion only removes one, so a record's position is the model's place
+/// on the page and a newly imported model always lands at the end.
+///
+/// An entry with no record — a package directory copied into the store root by
+/// hand, which no import ever ran for — has no place in that order, so it sorts
+/// after every model the user actually imported. Ordering those by id keeps the
+/// page stable rather than dependent on the order the scan happened to walk the
+/// directory in.
+fn installed_model_order(records: &[ModelMetadata], id: &str) -> usize {
+    records
+        .iter()
+        .position(|record| record.id == id)
+        .unwrap_or(usize::MAX)
 }
 
 const fn config_origin_from_model(origin: ModelOrigin) -> SelectedModelOrigin {
@@ -4186,16 +4243,103 @@ mod tests {
             ]
         );
         assert!(catalog.windows(2).all(|entries| {
-            let left = (
-                entries[0].id().as_str(),
-                model_origin_order(entries[0].origin()),
-            );
-            let right = (
-                entries[1].id().as_str(),
-                model_origin_order(entries[1].origin()),
-            );
-            left <= right
+            entries[0].origin() == ModelOrigin::Preset
+                || entries[1].origin() == ModelOrigin::Installed
         }));
+        application.shutdown().expect("clean shutdown");
+    }
+
+    /// The Models page lists the build's presets first, in mode order, and the
+    /// imported models after them in the order they were imported.
+    ///
+    /// Both halves used to be one list sorted by id, which put the presets in
+    /// reverse — `gamepad` < `keyboard` < `standard` alphabetically — and let a
+    /// new import land anywhere among them instead of at the end. The order is
+    /// state rather than a per-run accident, so this pins it across a restart
+    /// and across a deletion too.
+    #[test]
+    fn model_catalog_lists_presets_in_mode_order_then_installed_models_in_import_order() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application =
+            Application::start_with_layout(layout.clone()).expect("start application");
+        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
+
+        assert_eq!(
+            catalog_ids(&application),
+            vec!["standard", "keyboard", "gamepad"],
+            "the presets are the three modes, in mode order"
+        );
+
+        let first = import_one(&mut application, "第一只猫", source.clone());
+        let second = import_one(&mut application, "第二只猫", source);
+        let imported = vec![
+            "standard".to_owned(),
+            "keyboard".to_owned(),
+            "gamepad".to_owned(),
+            first.id().as_str().to_owned(),
+            second.id().as_str().to_owned(),
+        ];
+        assert_eq!(
+            catalog_ids(&application),
+            imported,
+            "each import joins the end of the page, after every preset"
+        );
+        application.shutdown().expect("clean shutdown");
+
+        let mut restarted =
+            Application::start_with_layout(layout).expect("restart the application");
+        assert_eq!(
+            catalog_ids(&restarted),
+            imported,
+            "the order is configuration, not the order one run happened to build"
+        );
+
+        restarted
+            .delete_model(ModelOrigin::Installed, first.id().as_str())
+            .expect("delete the first import");
+        assert_eq!(
+            catalog_ids(&restarted),
+            vec![
+                "standard".to_owned(),
+                "keyboard".to_owned(),
+                "gamepad".to_owned(),
+                second.id().as_str().to_owned(),
+            ],
+            "removing an import leaves the rest in place"
+        );
+        restarted.shutdown().expect("clean shutdown");
+    }
+
+    /// A package copied into the store root by hand never went through an
+    /// import, so it has no place in the import order. It still has to appear —
+    /// the store scan is what makes a user's own directory visible — and the
+    /// page must not reshuffle every time the scan walks the directory in a
+    /// different order, so those entries are ordered by id instead.
+    #[test]
+    fn hand_copied_model_lands_after_the_imports_in_id_order() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application =
+            Application::start_with_layout(layout.clone()).expect("start application");
+        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
+        let imported = import_one(&mut application, "导入的猫", source);
+
+        // Deliberately seeded in the opposite order to the ids, so passing this
+        // cannot come from the order the scan walked the directory in.
+        seed_installed_model(&layout.models, "zz-copied-by-hand");
+        seed_installed_model(&layout.models, "aa-copied-by-hand");
+        assert_eq!(
+            catalog_ids(&application),
+            vec![
+                "standard".to_owned(),
+                "keyboard".to_owned(),
+                "gamepad".to_owned(),
+                imported.id().as_str().to_owned(),
+                "aa-copied-by-hand".to_owned(),
+                "zz-copied-by-hand".to_owned(),
+            ]
+        );
         application.shutdown().expect("clean shutdown");
     }
 
@@ -4422,6 +4566,16 @@ mod tests {
             .expect("model catalog")
             .into_iter()
             .filter(|entry| entry.origin() == bongocat_model::ModelOrigin::Installed)
+            .map(|entry| entry.id().as_str().to_owned())
+            .collect()
+    }
+
+    /// Every catalog id in the order the Models page shows them.
+    fn catalog_ids(application: &Application) -> Vec<String> {
+        application
+            .model_catalog()
+            .expect("model catalog")
+            .into_iter()
             .map(|entry| entry.id().as_str().to_owned())
             .collect()
     }

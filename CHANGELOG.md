@@ -25,6 +25,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 ### 🎨 UI and Experience
 
 - Editing a model card no longer changes its size. The name turns into the field that edits it inside the same row, the button that replaces the cover is drawn on the cover picture itself, and the action row becomes Save and Cancel where it was — so the card, and the grid row it sits in, keep their height from the moment you press Edit until you save or cancel. That button now reads "Change cover" instead of "Choose cover", including on a model that has no cover yet.
+- The model page now keeps a fixed order: the built-in standard, keyboard and gamepad models first, then the models you imported, each new import joining the end. The whole list used to be sorted by model ID, which happened to run the built-in models backwards — gamepad, keyboard, standard — and dropped a newly imported model anywhere in the middle.
 
 ## 2.0.0 - 2026-09-16
 
