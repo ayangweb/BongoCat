@@ -70,13 +70,6 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::ServiceUnavailable => "errors.settings.service_unavailable",
         SettingsErrorCode::SnapshotOutdated => "errors.settings.snapshot_outdated",
         SettingsErrorCode::RuntimeUnavailable => "errors.settings.runtime_unavailable",
-        SettingsErrorCode::InvalidMaximumFps => "errors.settings.invalid_maximum_fps",
-        SettingsErrorCode::InvalidReleaseFallbackTimeout => {
-            "errors.settings.invalid_release_fallback_timeout"
-        }
-        SettingsErrorCode::InvalidGamepadAxisSettings => {
-            "errors.settings.invalid_gamepad_axis_settings"
-        }
         SettingsErrorCode::InvalidShortcutBindings => "errors.settings.invalid_shortcut_bindings",
         SettingsErrorCode::ConfigPersistFailed => "errors.settings.config_persist_failed",
         SettingsErrorCode::ConfigPermissionDenied => "errors.settings.config_permission_denied",

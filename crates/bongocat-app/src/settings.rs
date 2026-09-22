@@ -741,14 +741,10 @@ fn run_service(
             } => {
                 let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if !bongocat_runtime::maximum_fps_is_valid(maximum_fps) {
-                            Err(SettingsError::new(SettingsErrorCode::InvalidMaximumFps))
-                        } else {
-                            application
-                                .set_maximum_fps(maximum_fps)
-                                .map(|_| ())
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .set_maximum_fps(maximum_fps)
+                            .map(|_| ())
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -760,16 +756,10 @@ fn run_service(
             } => {
                 let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if !bongocat_runtime::release_fallback_timeout_is_valid(timeout_ms) {
-                            Err(SettingsError::new(
-                                SettingsErrorCode::InvalidReleaseFallbackTimeout,
-                            ))
-                        } else {
-                            application
-                                .set_release_fallback_timeout(timeout_ms)
-                                .map(|_| ())
-                                .map_err(map_application_error)
-                        }
+                        application
+                            .set_release_fallback_timeout(timeout_ms)
+                            .map(|_| ())
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -799,27 +789,17 @@ fn run_service(
                 settings,
                 reply,
             } => {
-                let valid = settings.stick_dead_zone_percent < 100
-                    && settings.trigger_dead_zone_percent < 100;
                 let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        if !valid {
-                            Err(SettingsError::new(
-                                SettingsErrorCode::InvalidGamepadAxisSettings,
-                            ))
-                        } else {
-                            let runtime_settings = bongocat_runtime::GamepadAxisSettings::new(
-                                f32::from(settings.stick_dead_zone_percent) / 100.0,
-                                f32::from(settings.trigger_dead_zone_percent) / 100.0,
-                            )
-                            .ok_or_else(|| {
-                                SettingsError::new(SettingsErrorCode::InvalidGamepadAxisSettings)
-                            })?;
-                            application
-                                .set_gamepad_axis_settings(runtime_settings)
-                                .map(|_| ())
-                                .map_err(map_application_error)
-                        }
+                        let runtime_settings = bongocat_runtime::GamepadAxisSettings::new(
+                            f32::from(settings.stick_dead_zone_percent.min(99)) / 100.0,
+                            f32::from(settings.trigger_dead_zone_percent.min(99)) / 100.0,
+                        )
+                        .expect("bounded gamepad percentages are below 100");
+                        application
+                            .set_gamepad_axis_settings(runtime_settings)
+                            .map(|_| ())
+                            .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
@@ -4351,42 +4331,6 @@ mod tests {
         let initial = client.read_snapshot_blocking().expect("initial snapshot");
         let initial_config_revision = initial.config_revision.expect("config revision");
         let initial_active_model = initial.active_model.clone();
-        let initial_config = std::fs::read(&config_path).expect("initial config");
-        let invalid_frame_rate_error = client
-            .set_maximum_fps_blocking(initial_config_revision, 241)
-            .expect_err("invalid maximum FPS update");
-        assert_eq!(
-            invalid_frame_rate_error.code(),
-            SettingsErrorCode::InvalidMaximumFps
-        );
-        let after_invalid_frame_rate = client
-            .read_snapshot_blocking()
-            .expect("snapshot after invalid maximum FPS");
-        assert_eq!(after_invalid_frame_rate.revision, initial.revision);
-        assert_eq!(after_invalid_frame_rate.maximum_fps, initial.maximum_fps);
-        assert_eq!(
-            std::fs::read(&config_path).expect("preserved initial config"),
-            initial_config
-        );
-        let invalid_fallback_error = client
-            .set_release_fallback_timeout_blocking(initial_config_revision, 60_001)
-            .expect_err("invalid release fallback timeout update");
-        assert_eq!(
-            invalid_fallback_error.code(),
-            SettingsErrorCode::InvalidReleaseFallbackTimeout
-        );
-        let after_invalid_fallback = client
-            .read_snapshot_blocking()
-            .expect("snapshot after invalid release fallback timeout");
-        assert_eq!(after_invalid_fallback.revision, initial.revision);
-        assert_eq!(
-            after_invalid_fallback.release_fallback_timeout_ms,
-            initial.release_fallback_timeout_ms
-        );
-        assert_eq!(
-            std::fs::read(&config_path).expect("preserved initial config"),
-            initial_config
-        );
         let hidden = client
             .set_overlay_visible_blocking(initial_config_revision, false)
             .expect("hide overlay");

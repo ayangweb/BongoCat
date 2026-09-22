@@ -4800,8 +4800,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `motion_load_failed` / `expression_load_failed`）——`git log -S` 显示它们的最后一处引用正是
       本项的 commit `f52fa85`；另外 `errors.settings.{overlay_invalid,maximum_fps_invalid,
       release_fallback_timeout_invalid}` 三个键所对应的 `SettingsErrorCode` 变体已不存在
-      （`localization.rs::settings_error()` 的 match 里没有它们，实际走的是 `invalid_maximum_fps` /
-      `invalid_release_fallback_timeout`）。同批清掉的还有 `status.*` 六个
+      （`localization.rs::settings_error()` 的 match 里没有它们，实际落到通用设置错误路径）。同批清掉的还有 `status.*` 六个
       （`not_started` / `running` / `permission_required` / `granted` / `unsupported` /
       `backend_unavailable`——它们曾是输入服务状态的文案，`startup_permission.rs` 用的是自己的
       `startup_permission.*` 命名空间）与 `shortcuts.actions.capture` +

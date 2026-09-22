@@ -885,9 +885,6 @@ pub enum SettingsErrorCode {
     ServiceUnavailable,
     SnapshotOutdated,
     RuntimeUnavailable,
-    InvalidMaximumFps,
-    InvalidReleaseFallbackTimeout,
-    InvalidGamepadAxisSettings,
     InvalidShortcutBindings,
     ConfigPersistFailed,
     ConfigPermissionDenied,
@@ -924,13 +921,10 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 39] = [
+    pub const ALL: [Self; 36] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
-        Self::InvalidMaximumFps,
-        Self::InvalidReleaseFallbackTimeout,
-        Self::InvalidGamepadAxisSettings,
         Self::InvalidShortcutBindings,
         Self::ConfigPersistFailed,
         Self::ConfigPermissionDenied,
@@ -971,9 +965,6 @@ impl SettingsErrorCode {
             Self::ServiceUnavailable => "service_unavailable",
             Self::SnapshotOutdated => "snapshot_outdated",
             Self::RuntimeUnavailable => "runtime_unavailable",
-            Self::InvalidMaximumFps => "invalid_maximum_fps",
-            Self::InvalidReleaseFallbackTimeout => "invalid_release_fallback_timeout",
-            Self::InvalidGamepadAxisSettings => "invalid_gamepad_axis_settings",
             Self::InvalidShortcutBindings => "invalid_shortcut_bindings",
             Self::ConfigPersistFailed => "config_persist_failed",
             Self::ConfigPermissionDenied => "config_permission_denied",
@@ -1034,13 +1025,6 @@ impl fmt::Display for SettingsError {
                 "Settings changed in the background; review the latest settings and retry"
             }
             SettingsErrorCode::RuntimeUnavailable => "The setting did not take effect",
-            SettingsErrorCode::InvalidMaximumFps => "Maximum FPS must be between 15 and 240",
-            SettingsErrorCode::InvalidReleaseFallbackTimeout => {
-                "Key release timeout must be between 0 and 60000 milliseconds"
-            }
-            SettingsErrorCode::InvalidGamepadAxisSettings => {
-                "Gamepad dead-zone settings are out of range"
-            }
             SettingsErrorCode::InvalidShortcutBindings => {
                 "Shortcut bindings are invalid or conflict"
             }
