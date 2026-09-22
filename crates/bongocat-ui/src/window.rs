@@ -291,8 +291,10 @@ struct ModelRowActions {
     /// runtime switches to the standard preset before the package goes away, so
     /// no card the user imported ever loses its delete control.
     can_delete: bool,
-    /// Only installed models own editable metadata: preset names and covers are
-    /// app-bundled content, so the row offers no edit affordance at all.
+    /// Every model in the catalog can be renamed and have its cover replaced,
+    /// whichever origin it came from: a preset's name and cover are recorded on
+    /// the user's side rather than written into the package the build owns, so
+    /// the row offers the same edit affordance either way.
     can_edit: bool,
     can_open_location: bool,
 }
@@ -1560,7 +1562,10 @@ fn model_row_actions(
         active,
         can_activate: ready && !active && !commands_blocked,
         can_delete: installed && !commands_blocked,
-        can_edit: installed && !commands_blocked,
+        // Editing keeps no origin exception: a preset is renamed and re-covered
+        // through the same user-side records an installed model uses, so only
+        // deleting is still reserved for what the user installed.
+        can_edit: !commands_blocked,
         can_open_location: entry.directory.is_some() && !commands_blocked,
     }
 }

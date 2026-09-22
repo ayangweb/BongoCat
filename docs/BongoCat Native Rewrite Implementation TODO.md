@@ -1636,6 +1636,14 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     不会在 runtime 仍持有该包时移除文件。随之删掉不再可达的 `ApplicationError::SelectedModelDeletion`
     与 `SettingsErrorCode::SelectedModelCannotBeDeleted`（`SettingsErrorCode::ALL` 由 42 项减为 41 项），
     以及 `errors.settings.selected_model_cannot_be_deleted` 两个 locale 键。
+  - 状态（2026-09-22）：卡片的编辑器改为在原地替换已有行，卡片两面几何一致（ADR-0047 文首修订）。
+    标题行固定为控件高度（`Size::Medium`），显示态是模型名、编辑态是同尺寸的 GPUI Kit `Input`
+    （保留组件自身的边框/背景/聚焦环）；「更改封面图」按钮叠加在封面右下角；操作行换成
+    「保存 / 取消」。卡片里唯一随编辑态变化的行内容是状态行，两面都保留。
+    `MODEL_CARD_MIN_HEIGHT` 由 232 改为 238（标题行从约 26px 的文本行变成 32px 的控件高度），
+    文案把 `models.edit.cover.choose`/`.replace` 合并为 `models.edit.cover.label`。新增
+    `opening_a_models_editor_does_not_change_the_card` 断言两面的卡片、标题行与输入框 bounds
+    相等。双平台实机点击仍未运行，因此总项保持未勾选。
 - [ ] 输入：键鼠、手柄、忽略鼠标、单键模式和校正状态。
 - [ ] 快捷键：捕获、冲突、清除和恢复默认。
   - 状态（2026-09-01）：正式 `bongocat-config` 已加入平台无关的 typed chord 校验和 canonicalization；修饰键别名、顺序和多余空白会稳定化，重复修饰键、多 key、空片段和非法 key 会被拒绝，`commands` 与 `model_behaviors` 共享冲突命名空间。settings service 现以 typed command 完成 revision-checked 原子持久化、snapshot 投影、重启恢复和 `RestoreDefaultShortcuts` 恢复默认；空集合可清除全部绑定。平台输入 owner 已将匹配 target 投递到 runtime 或 settings handoff；UI 编辑入口、平台注册/捕获和实机证据仍待完成。
@@ -3644,6 +3652,12 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       在启动时激活配置选择、缺失/损坏时记录匿名 `model_selection_fallback` 事件并持久化
       `(Preset, standard)`，未配置选择默认激活 standard，operational 启动还清理指向不存在目录的
       元数据记录；`SettingsModelEntry.title` 投影到 Models 页，无记录条目回退显示 ID。
+    - 当前契约（2026-09-22）：v1 配置的模型元数据变成两个同形状的列表——
+      `model.installed_models`（导入创建、删除移除、启动裁剪）与 `model.preset_models`（只由
+      改名创建，无创建/删除/裁剪路径，空列表表示全部沿用构建给的名字）。两者各自判重，同一 id
+      可以同时出现在两边。`StorageLayout` 增加 `model-overrides/` 根目录，用于预置模型的用户侧
+      替换封面。schema、14 个既有 fixture、1 个新 accept + 2 个新 reject fixture、
+      `tools/validate-json-schema.py` 的语义检查与 `native-config-contract.md` 已同步。
     - 验收证据（2026-09-15）：`bongocat-config` 48 测试（含两个新 reject fixture 的 manifest 契约）、
       `bongocat-model` 46 测试（含 4 个 `allocate_unique_id` 测试：建议直用/占用后缀/非法回退/超长
       截断）、`bongocat-app` 118 测试（新增导入分配唯一 ID 并登记标题、启动回退持久化 standard、
@@ -4499,6 +4513,24 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       in-flight 期间按键不到达 service），变异验证：把 `pending` 加回门禁即红。`just check` 全绿。
       General 页残留（主题/语言 `Select` 与启动项开关读含 `pending` 的 `disabled`）随后与模型页
       一并收口，见第 102 项的统一谓词条目。
+    - 状态（2026-09-22，预置模型同样可编辑）：ADR-0047 决策 2 由「预置只读」改为「名字与封面与
+      installed 完全一致，只有删除仍保留给用户安装的模型」。`ModelRowActions::can_edit` 去掉
+      origin 判断；`config.model.preset_models` 保存预置改名（与 `installed_models` 同记录形状、
+      各自独立判重、无导入/删除/裁剪路径）；替换封面写到用户侧 `StorageLayout::model_overrides`
+      （`<data>/model-overrides/<id>/resources/cover.png`），由新增的
+      `bongocat-model::PresetCoverStore` 提供原子写入口，快照投影优先取它、回退包内封面。
+      `ApplicationError::PresetModelMetadata` 与 `SettingsErrorCode::PresetModelMetadataImmutable`
+      删除（`ALL` 36 → 35），`ModelNotInstalled` 因服务两个 origin 而改名 `ModelNotFound`
+      （文案「找不到该模型」/ "The model was not found"）。包本身仍不被写入：服务层测试断言替换
+      预置封面后包内 `cover.png` 逐字节不变。UI 侧另有两处编译器抓不到的 origin 守卫被删除——
+      `begin_model_edit` 直接拒绝预置、`sync_model_row_focus` 在下次投影时丢弃非 installed 的
+      草稿（前者会让按钮画着却不响应，后者会让编辑器开一下自己关掉）——新增
+      `a_preset_models_card_opens_the_same_in_place_editor` 覆盖，两处均变异验证可红。
+      `just check` 六道门全过；另实机跑 `--models-page-smoke` 退出 0 且 stderr 为空。双平台实机
+      点击未运行。
+    - 顺带修掉既有假断言（2026-09-22）：`selecting_a_model_keeps_the_behavior_bindings_the_user_recorded`
+      用 `config_revision() >` 判断配置被重写，而 revision 是持久化文档的内容哈希
+      （`revision_for_bytes`），大小无意义；新增配置字段改变哈希后该断言即失败，已改为 `!=`。
 
 85. [x] `P1-PRESET-SCAN-STRAY-FILES`：预置模型目录扫描对陌生条目的容忍。
     - 背景（2026-09-18）：`just check` 的 app 测试在主树失败、在干净 worktree 通过，二分定位到

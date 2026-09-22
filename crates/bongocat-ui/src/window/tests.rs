@@ -846,15 +846,15 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
         origin: SettingsModelOrigin::Preset,
     };
 
-    // A preset is app-bundled content: it can be activated but never deleted or
-    // edited, whichever model the user is on.
+    // A preset is app-bundled content: it can be activated and edited — its
+    // name and cover are recorded on the user's side — but never deleted.
     assert_eq!(
         model_row_actions(&preset, Some(&active_preset), false),
         ModelRowActions {
             active: true,
             can_activate: false,
             can_delete: false,
-            can_edit: false,
+            can_edit: true,
             can_open_location: false,
         }
     );
@@ -1733,6 +1733,236 @@ fn the_import_card_is_as_tall_as_the_model_cards_beside_it(cx: &mut TestAppConte
     assert!(
         import.size.height > px(super::models::MODEL_CARD_MIN_HEIGHT),
         "a row is as tall as its tallest cell, so the card must be taller than its own floor"
+    );
+}
+
+/// Opening a card's editor leaves the card, and every row in it, exactly where
+/// it was.
+///
+/// A model card is one cell of a wrapping grid, so a card that grew would drag
+/// its whole grid row with it and move every card below: that is the flicker the
+/// in-place editor exists to avoid. The title row is literally the same row in
+/// both faces — only its child changes, from the name to the field that edits it
+/// — and the cover picker is drawn on the cover rather than in a row of its own,
+/// so what this pins is the card, the title row, and the picker staying inside
+/// the cover's band instead of below it.
+#[gpui_kit::test]
+fn opening_a_models_editor_does_not_change_the_card(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let mut seeded = crate::tests::snapshot(1, false, true);
+    // An installed, ready model is the only kind that can be edited, and a ready
+    // one carries no status line — so the card here is the plainest card the
+    // page ever draws, which is exactly the one an editor must not resize.
+    seeded.model_catalog.entries = vec![model_entry(
+        "editable",
+        SettingsModelOrigin::Installed,
+        SettingsModelAvailability::Ready {
+            behaviors: Vec::new(),
+        },
+    )];
+    let entries = seeded.model_catalog.entries.clone();
+    let active = seeded.active_model.clone();
+    let model = SettingsModelKey {
+        id: "editable".to_owned(),
+        origin: SettingsModelOrigin::Installed,
+    };
+    let page_snapshot = seeded.clone();
+
+    let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
+    let capture = Rc::clone(&built);
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::EnglishUnitedStates,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        capture.borrow_mut().replace(view.clone());
+        let page = cx.new(|_| ModelsPageHarness {
+            view,
+            snapshot: Some(page_snapshot),
+        });
+        // The cards own `PopConfirm` surfaces, which resolve through a `Root`.
+        Root::new(page, window, cx)
+    });
+    let view = built
+        .borrow_mut()
+        .take()
+        .expect("the window builder must hand the page out");
+    view.update(visual, |view, cx| {
+        view.snapshot = Some(seeded);
+        view.sync_model_row_focus(&entries, active.as_ref(), false, cx);
+    });
+    visual.update(|window, cx| window.render_frame(cx));
+
+    let card_id = ElementId::from(("model-card", 0usize));
+    let title_id = ElementId::from(("model-card-title", 0usize));
+    let card_before = rendered_bounds(visual, card_id.clone());
+    let title_before = rendered_bounds(visual, title_id.clone());
+
+    // The card's own edit action, so the editor opens the way the page opens it.
+    visual.update(|window, cx| {
+        view.update(cx, |view, cx| {
+            view.run_model_row_action(ModelRowAction::Edit, model.clone(), window, cx);
+        });
+    });
+    visual.update(|window, cx| window.render_frame(cx));
+    assert!(
+        view.read_with(visual, |view, _| view.model_edit.is_some()),
+        "test premise: the edit action must have opened the card's editor"
+    );
+
+    let card_after = rendered_bounds(visual, card_id);
+    let title_after = rendered_bounds(visual, title_id);
+    let field = rendered_bounds(visual, ElementId::from("model-edit-title-input"));
+    let picker = rendered_bounds(visual, ElementId::from("choose-model-cover"));
+
+    assert_eq!(
+        card_after, card_before,
+        "the card must occupy the same box with its editor open: anything else \
+         resizes its whole grid row"
+    );
+    assert_eq!(
+        card_after.size.height,
+        px(super::models::MODEL_CARD_MIN_HEIGHT),
+        "a card with no status line must really be as tall as the floor says, \
+         or the two faces above are being compared inside a stretched cell"
+    );
+    assert_eq!(
+        title_after, title_before,
+        "the field must replace the name inside the same row, at the same height"
+    );
+    assert_eq!(
+        field, title_before,
+        "the field's own box — border included — must be the title row's box, \
+         not something sitting inside it"
+    );
+    assert!(
+        picker.bottom() <= title_after.top(),
+        "the cover picker must be drawn over the cover, not in a row under it"
+    );
+}
+
+/// A preset's card opens the same in-place editor an imported model's does.
+///
+/// Editing keeps no origin exception (ADR-0047 决策 2), and the page used to
+/// carry two of them that no compile error could catch: the edit action refused
+/// a preset outright, and the next re-projection abandoned a draft whose model
+/// was not installed. Both would leave the button drawing but doing nothing, so
+/// this opens the editor on a preset and then re-projects the catalog under it.
+#[gpui_kit::test]
+fn a_preset_models_card_opens_the_same_in_place_editor(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let mut seeded = crate::tests::snapshot(1, false, true);
+    seeded.model_catalog.entries = vec![
+        model_entry(
+            "standard",
+            SettingsModelOrigin::Preset,
+            SettingsModelAvailability::Ready {
+                behaviors: Vec::new(),
+            },
+        ),
+        model_entry(
+            "imported",
+            SettingsModelOrigin::Installed,
+            SettingsModelAvailability::Ready {
+                behaviors: Vec::new(),
+            },
+        ),
+    ];
+    let entries = seeded.model_catalog.entries.clone();
+    let active = seeded.active_model.clone();
+    let model = SettingsModelKey {
+        id: "standard".to_owned(),
+        origin: SettingsModelOrigin::Preset,
+    };
+    let page_snapshot = seeded.clone();
+
+    let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
+    let capture = Rc::clone(&built);
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::EnglishUnitedStates,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        capture.borrow_mut().replace(view.clone());
+        let page = cx.new(|_| ModelsPageHarness {
+            view,
+            snapshot: Some(page_snapshot),
+        });
+        // The cards own `PopConfirm` surfaces, which resolve through a `Root`.
+        Root::new(page, window, cx)
+    });
+    let view = built
+        .borrow_mut()
+        .take()
+        .expect("the window builder must hand the page out");
+    view.update(visual, |view, cx| {
+        view.snapshot = Some(seeded);
+        view.sync_model_row_focus(&entries, active.as_ref(), false, cx);
+    });
+    visual.update(|window, cx| window.render_frame(cx));
+
+    // The row must offer the control at all: this is what the page draws, not
+    // what the service would answer.
+    assert!(
+        model_row_actions(&entries[0], active.as_ref(), false).can_edit,
+        "test premise: a preset card offers its edit control"
+    );
+
+    visual.update(|window, cx| {
+        view.update(cx, |view, cx| {
+            view.run_model_row_action(ModelRowAction::Edit, model.clone(), window, cx);
+        });
+    });
+
+    let (edited_model, title) = view.read_with(visual, |view, _| {
+        view.model_edit
+            .as_ref()
+            .map(|draft| (draft.model.clone(), draft.title.clone()))
+            .expect(
+                "a preset's editor must be open after the edit action — which \
+                 includes surviving any re-projection the action itself triggers",
+            )
+    });
+    assert_eq!(edited_model, model);
+    assert_eq!(
+        title, entries[0].title,
+        "the field starts from the name the card shows"
+    );
+
+    // Rendering re-syncs the row state from the catalog, so the draft has to
+    // survive that too: one that only lasts until the next projection is a card
+    // that opens and closes by itself.
+    visual.update(|window, cx| window.render_frame(cx));
+    assert!(
+        view.read_with(visual, |view, _| view.model_edit.is_some()),
+        "a preset's open edit must survive a re-projection"
+    );
+
+    let input = rendered_bounds(visual, ElementId::from("model-edit-title-input"));
+    let picker = rendered_bounds(visual, ElementId::from("choose-model-cover"));
+    assert!(
+        input.bottom() <= picker.top() || picker.bottom() <= input.top(),
+        "the card draws both halves of the editor: the title field and the cover picker"
     );
 }
 

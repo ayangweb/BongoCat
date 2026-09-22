@@ -102,8 +102,7 @@
     },
     "edit": {
       "cover": {
-        "choose": "选择封面图",
-        "replace": "更换封面"
+        "label": "更改封面图"
       }
     },
     "actions": {
@@ -279,7 +278,7 @@
       "model_unavailable": "所选模型不可用",
       "model_switch_failed": "无法启用所选模型",
       "model_title_invalid": "模型名称不可用",
-      "preset_model_metadata_immutable": "内置模型的名称和封面不可修改",
+      "model_not_found": "找不到该模型",
       "model_cover_invalid": "封面图必须是 PNG 文件",
       "model_cover_update_failed": "模型封面更新失败",
       "model_source_picker_unavailable": "无法打开文件选择窗口",
@@ -294,7 +293,6 @@
       "model_store_busy": "模型正在处理其他操作；请稍后重试",
       "model_import_failed": "无法导入模型",
       "preset_model_cannot_be_deleted": "无法删除预置模型",
-      "model_not_installed": "找不到已安装模型",
       "model_delete_failed": "无法删除已安装模型",
       "diagnostics_export_failed": "无法导出诊断信息",
       "startup_item_update_failed": "无法更新登录启动设置",

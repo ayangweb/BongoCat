@@ -62,6 +62,15 @@ pub struct StorageLayout {
     pub config: PathBuf,
     pub state: PathBuf,
     pub models: PathBuf,
+    /// The user side of the models the build ships.
+    ///
+    /// A preset's package lives inside the application bundle — a signed
+    /// `.app` on macOS, the installation directory on Windows — which the
+    /// product may not write to. The artwork that replaces a preset's cover is
+    /// kept here instead, in the same per-model shape a package uses
+    /// (`<id>/resources/cover.png`), so the settings page reads a cover the
+    /// same way whichever origin it came from.
+    pub model_overrides: PathBuf,
     pub backups: PathBuf,
     pub logs: PathBuf,
     pub updates: PathBuf,
@@ -79,6 +88,7 @@ impl StorageLayout {
             config: root.join("config.json"),
             state: root.join("state.json"),
             models: root.join("models"),
+            model_overrides: root.join("model-overrides"),
             backups: root.join("backups"),
             logs: root.join("logs"),
             updates: root.join("updates"),
@@ -95,6 +105,7 @@ impl StorageLayout {
         create_private_dir_all(&self.root)?;
         for directory in [
             &self.models,
+            &self.model_overrides,
             &self.backups,
             &self.logs,
             &self.updates,
@@ -307,7 +318,17 @@ pub struct InputConfig {
 pub struct ModelConfig {
     pub selected_model_id: Option<String>,
     pub selected_model_origin: Option<SelectedModelOrigin>,
-    pub installed_models: Vec<InstalledModelMetadata>,
+    pub installed_models: Vec<ModelMetadata>,
+    /// The same record for the models the build ships.
+    ///
+    /// A preset's name is the id the build gave it until the user renames it,
+    /// which is why this list is empty on a fresh configuration and why it has
+    /// no import or delete path: nothing creates a preset and nothing removes
+    /// one. The record is a customisation of a model that is always there, and
+    /// it shares [`ModelMetadata`]'s shape because the two lists say the same
+    /// thing about different origins — a model the product owns and a model the
+    /// user installed are both renamed the same way.
+    pub preset_models: Vec<ModelMetadata>,
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     pub play_motion_audio: bool,
@@ -327,13 +348,17 @@ pub struct ModelConfig {
     pub release_fallback_timeout_ms: u32,
 }
 
-/// User-facing metadata for one user-installed model. The `id` is the stable
-/// store key used as the installed directory name; `title` is an editable
-/// display name that never participates in model identity. Preset models are
-/// product files and are intentionally not listed here.
+/// User-facing metadata for one model.
+///
+/// The `id` is the model's stable key — the installed directory name, or the
+/// preset directory the build ships — and `title` is an editable display name
+/// that never participates in model identity. The record itself says nothing
+/// about where the model came from: which list holds it is what carries that,
+/// because the lists have different lifecycles (an import creates a record and
+/// a delete removes it; nothing creates or removes a preset).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct InstalledModelMetadata {
+pub struct ModelMetadata {
     pub id: String,
     pub title: String,
 }
@@ -1171,6 +1196,7 @@ impl Default for NativeConfig {
                 selected_model_id: None,
                 selected_model_origin: None,
                 installed_models: Vec::new(),
+                preset_models: Vec::new(),
                 mirror: false,
                 mirror_pointer_tracking: false,
                 play_motion_audio: true,
@@ -1234,23 +1260,16 @@ impl NativeConfig {
         if self.model.selected_model_id.is_some() != self.model.selected_model_origin.is_some() {
             return Err(ConfigError::InvalidValue("model.selected_model_selection"));
         }
-        let mut installed_ids = std::collections::BTreeSet::new();
-        for metadata in &self.model.installed_models {
-            let id = metadata.id.trim();
-            if id.is_empty()
-                || id.len() > MODEL_METADATA_MAXIMUM_ID_BYTES
-                || !installed_ids.insert(id)
-            {
-                return Err(ConfigError::InvalidValue("model.installed_models.id"));
-            }
-            let title = metadata.title.trim();
-            if title.is_empty()
-                || title.chars().count() > MODEL_METADATA_MAXIMUM_TITLE_CHARS
-                || metadata.title.chars().any(char::is_control)
-            {
-                return Err(ConfigError::InvalidValue("model.installed_models.title"));
-            }
-        }
+        validate_model_metadata(
+            "model.installed_models.id",
+            "model.installed_models.title",
+            &self.model.installed_models,
+        )?;
+        validate_model_metadata(
+            "model.preset_models.id",
+            "model.preset_models.title",
+            &self.model.preset_models,
+        )?;
         if self
             .shortcuts
             .commands
@@ -1310,6 +1329,36 @@ impl NativeConfig {
         }
         Ok(())
     }
+}
+
+/// Validate one list of user-facing model metadata.
+///
+/// The configuration holds the same records for the models the build ships and
+/// for the models the user installed, and both lists are checked the same way:
+/// a stable id that is present and unique within its list, and a display name
+/// that is present, printable and short enough. The two error paths are passed
+/// in rather than derived, so each message keeps naming the field a user would
+/// have to look at instead of collapsing into a generic one.
+fn validate_model_metadata(
+    id_error: &'static str,
+    title_error: &'static str,
+    metadata: &[ModelMetadata],
+) -> Result<(), ConfigError> {
+    let mut ids = std::collections::BTreeSet::new();
+    for record in metadata {
+        let id = record.id.trim();
+        if id.is_empty() || id.len() > MODEL_METADATA_MAXIMUM_ID_BYTES || !ids.insert(id) {
+            return Err(ConfigError::InvalidValue(id_error));
+        }
+        let title = record.title.trim();
+        if title.is_empty()
+            || title.chars().count() > MODEL_METADATA_MAXIMUM_TITLE_CHARS
+            || record.title.chars().any(char::is_control)
+        {
+            return Err(ConfigError::InvalidValue(title_error));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

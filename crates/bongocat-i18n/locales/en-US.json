@@ -102,8 +102,7 @@
     },
     "edit": {
       "cover": {
-        "choose": "Choose cover",
-        "replace": "Replace cover"
+        "label": "Change cover"
       }
     },
     "actions": {
@@ -279,7 +278,7 @@
       "model_unavailable": "Selected model is unavailable",
       "model_switch_failed": "Selected model could not be activated",
       "model_title_invalid": "Model name is not usable",
-      "preset_model_metadata_immutable": "Built-in model names and covers cannot be edited",
+      "model_not_found": "The model was not found",
       "model_cover_invalid": "Cover image must be a PNG file",
       "model_cover_update_failed": "Model cover could not be updated",
       "model_source_picker_unavailable": "The file dialog could not be opened",
@@ -294,7 +293,6 @@
       "model_store_busy": "Models are busy with another operation; try again in a moment",
       "model_import_failed": "Model could not be imported",
       "preset_model_cannot_be_deleted": "Preset model cannot be deleted",
-      "model_not_installed": "Installed model was not found",
       "model_delete_failed": "Installed model could not be deleted",
       "diagnostics_export_failed": "Diagnostics could not be exported",
       "startup_item_update_failed": "Startup setting could not be updated",

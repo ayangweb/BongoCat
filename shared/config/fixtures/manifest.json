@@ -14,6 +14,9 @@
     { "id": "unsupported-language", "file": "invalid-unsupported-language.json", "expected": "reject" },
     { "id": "blank-binding", "file": "invalid-blank-binding.json", "expected": "reject" },
     { "id": "duplicate-installed-model-id", "file": "invalid-duplicate-installed-model-id.json", "expected": "reject" },
-    { "id": "blank-installed-model-title", "file": "invalid-blank-installed-model-title.json", "expected": "reject" }
+    { "id": "blank-installed-model-title", "file": "invalid-blank-installed-model-title.json", "expected": "reject" },
+    { "id": "preset-model-metadata", "file": "accept-preset-model-metadata.json", "expected": "accept" },
+    { "id": "duplicate-preset-model-id", "file": "invalid-duplicate-preset-model-id.json", "expected": "reject" },
+    { "id": "blank-preset-model-title", "file": "invalid-blank-preset-model-title.json", "expected": "reject" }
   ]
 }

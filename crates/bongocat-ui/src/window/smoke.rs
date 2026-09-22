@@ -136,13 +136,11 @@ impl SettingsView {
 
         let mut has_activation_target = false;
         let mut has_location_target = false;
+        let mut has_edit_target = false;
         for entry in &snapshot.model_catalog.entries {
             let actions = model_row_actions(entry, Some(active_model), false);
             if entry.origin == SettingsModelOrigin::Preset && actions.can_delete {
                 return Err("models page exposed deletion for a preset model".to_owned());
-            }
-            if entry.origin == SettingsModelOrigin::Preset && actions.can_edit {
-                return Err("models page exposed editing for a preset model".to_owned());
             }
             if matches!(
                 &entry.availability,
@@ -153,12 +151,20 @@ impl SettingsView {
             }
             has_activation_target |= actions.can_activate;
             has_location_target |= actions.can_open_location;
+            has_edit_target |= entry.origin == SettingsModelOrigin::Preset && actions.can_edit;
         }
         if !has_activation_target {
             return Err("models page has no ready inactive activation target".to_owned());
         }
         if !has_location_target {
             return Err("models page has no model whose folder can be opened".to_owned());
+        }
+        // Renaming and re-covering a model is offered for both origins, so a
+        // build whose presets are all read-only would be shipping the page
+        // without half of its edit affordances — the case this section exists to
+        // catch.
+        if !has_edit_target {
+            return Err("models page exposed no editable preset model".to_owned());
         }
         if active_entry
             .cover

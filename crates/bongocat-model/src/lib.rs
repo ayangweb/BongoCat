@@ -2,6 +2,7 @@
 
 mod key_names;
 mod mver;
+mod preset_covers;
 mod store;
 
 use serde::de::DeserializeOwned;
@@ -15,6 +16,7 @@ use std::{
 };
 
 pub use mver::{ModelSourceContent, MverInputMode, legacy_keyboard_key_image_names};
+pub use preset_covers::{PresetCoverStore, preset_cover_exists};
 pub use store::{
     InstalledModelCatalog, ModelCatalogEntry, ModelImportProgress, ModelImportStage, ModelStore,
     ModelStoreDiagnostic, ModelStoreError, ModelStoreRecovery,

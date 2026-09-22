@@ -68,17 +68,21 @@ def config_semantic_errors(value: object) -> list[str]:
     model = value.get("model")
     if not isinstance(model, dict):
         return []
-    installed_models = model.get("installed_models")
-    if not isinstance(installed_models, list):
-        return []
-    ids = [
-        item.get("id")
-        for item in installed_models
-        if isinstance(item, dict) and isinstance(item.get("id"), str)
-    ]
-    if len(ids) != len(set(ids)):
-        return ["installed_models ids must be unique"]
-    return []
+    errors = []
+    # Each list is keyed by its own id space: the same id may name a preset and
+    # an installed model at once, so uniqueness is checked per list.
+    for field in ("installed_models", "preset_models"):
+        records = model.get(field)
+        if not isinstance(records, list):
+            continue
+        ids = [
+            item.get("id")
+            for item in records
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        ]
+        if len(ids) != len(set(ids)):
+            errors.append(f"{field} ids must be unique")
+    return errors
 
 
 def validate_manifest_fixtures(

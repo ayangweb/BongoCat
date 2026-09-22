@@ -1,5 +1,7 @@
 use super::*;
+use gpui_kit::Rems;
 use gpui_kit::base::TestSupportExt as _;
+use gpui_kit::component::{Sizable as _, Size, StyleSized as _};
 
 /// Model cards are a fixed width so the grid stays a grid. Covers arrive at
 /// several aspect ratios, and sizing each card around its own artwork would
@@ -10,13 +12,32 @@ pub(super) const MODEL_CARD_WIDTH: f32 = 240.0;
 /// resized around it, so one unusual image cannot resize the whole page.
 const MODEL_CARD_COVER_HEIGHT: f32 = 140.0;
 /// The height a model card occupies when its summary is one line: the card's own
-/// padding, the cover, the title and the action row.
+/// border and padding, the cover, the title row, the action row, and the gaps
+/// between them.
 ///
 /// It is not the card's height — a row is as tall as its tallest cell, and a card
 /// carrying a status line is taller than this — but it is the height the import
 /// card floors itself at, so the grid's first cell keeps the shape of the cells
-/// beside it even when it is the only cell on its row.
-pub(super) const MODEL_CARD_MIN_HEIGHT: f32 = 232.0;
+/// beside it even when it is the only cell on its row. Every row it sums is
+/// fixed, so the number is exact rather than nominal, and
+/// `opening_a_models_editor_does_not_change_the_card` holds it to that.
+pub(super) const MODEL_CARD_MIN_HEIGHT: f32 = 238.0;
+/// The component size the title row and the field that edits it are both built
+/// from.
+///
+/// The row takes its height from `input_h(size)` and the field from
+/// `Input::with_size(size)`; that pair is the whole reason the card measures the
+/// same with its editor open as without it, so the two must not be given
+/// different sizes.
+const MODEL_TITLE_SIZE: Size = Size::Medium;
+/// The line box the title reserves for its text, in the field's own terms.
+///
+/// The field sets `1.25 rem` on its text and this is the same length: a row of a
+/// fixed height centres whatever line box its text has, so the two faces only
+/// put the name at the same place if the line box is the same one.
+const MODEL_TITLE_LINE_HEIGHT: Rems = Rems(1.25);
+/// How far the cover picker sits from the cover's own corner.
+const MODEL_COVER_PICKER_INSET: Pixels = px(8.0);
 
 /// The grid every model cell lives in.
 ///
@@ -113,10 +134,16 @@ pub(super) fn content(
             };
             let actions = model_row_actions(&entry, active_model, model_commands_blocked);
             let confirming_delete = view.model_delete_confirmation.as_ref() == Some(&model);
+            // The card is the same card whether or not it is open for editing:
+            // the title row is one box and the action row is one box in both
+            // faces, and the cover picker is drawn over the cover instead of in
+            // a row of its own. A cell that grew here would drag its whole grid
+            // row with it and shift every card below, so nothing the editor adds
+            // is allowed to take up room the catalog did not already take.
             let editing = view
                 .model_edit
                 .as_ref()
-                .is_some_and(|draft| draft.model == model);
+                .filter(|draft| draft.model == model);
             let focus = view
                 .model_row_focus
                 .get(&ModelRowKey::new(entry.origin, &entry.id))
@@ -130,7 +157,9 @@ pub(super) fn content(
             let action_tabs = model_row_action_tab_indices(tab_index);
             // The status line belongs to the card, and the confirmation is a
             // surface anchored to the delete control, so the diagnostic a broken
-            // package carries stays visible while the question is on screen.
+            // package carries stays visible while the question is on screen — and
+            // while the card is being edited, where dropping it would make the
+            // editor's card shorter than the catalog's.
             let status = model_availability_status(&entry, language);
             let activate_label = if actions.active {
                 bongocat_i18n::text(language.catalog_locale(), "models.identity.status.active")
@@ -145,15 +174,11 @@ pub(super) fn content(
             } else {
                 bongocat_i18n::text(language.catalog_locale(), "models.actions.activate")
             };
-            let cover = if editing {
-                let draft = view
-                    .model_edit
-                    .as_ref()
-                    .expect("editing card has an open draft");
-                draft.cover.clone().or_else(|| entry.cover.clone())
-            } else {
-                entry.cover.clone()
-            };
+            let cover = editing
+                .and_then(|draft| draft.cover.clone())
+                .or_else(|| entry.cover.clone());
+            // The card is observed like the import card is, so a test can read the
+            // two cells' geometry: the grid's whole job is to make them match.
             let card = div()
                 .id(("model-card", index))
                 .flex_none()
@@ -170,14 +195,23 @@ pub(super) fn content(
                     tokens.border
                 })
                 .bg(tokens.canvas)
-                .child(model_card_cover(cover, language, tokens));
-            // The card is observed like the import card is, so a test can read the
-            // two cells' geometry: the grid's whole job is to make them match.
-            if editing {
-                card.child(edit_model_card(view, window, cx, language, tokens))
-                    .test_support()
-            } else {
-                card.child(model_card_summary(&entry, actions.active, status, tokens))
+                .child(model_card_cover(
+                    cover, editing, window, cx, language, tokens,
+                ))
+                .child(model_card_identity(
+                    &entry,
+                    actions.active,
+                    status,
+                    editing,
+                    index,
+                    cx,
+                    tokens,
+                ));
+            match editing {
+                Some(draft) => card
+                    .child(edit_model_card_actions(draft, window, cx, language, tokens))
+                    .test_support(),
+                None => card
                     .child(model_card_actions(
                         window,
                         cx,
@@ -191,7 +225,7 @@ pub(super) fn content(
                         language,
                         tokens,
                     ))
-                    .test_support()
+                    .test_support(),
             }
         })
         .collect::<Vec<_>>();
@@ -217,8 +251,20 @@ pub(super) fn content(
 /// The cover area of a card: the image when the package ships one, and an
 /// explicit placeholder when it does not. A package without a cover is an
 /// ordinary package, so the placeholder is neutral rather than a warning.
-fn model_card_cover(cover: Option<PathBuf>, language: SettingsLanguage, tokens: Tokens) -> Div {
+///
+/// While the card is being edited the picker joins the cover as a child of this
+/// box, laid over the corner, rather than as a row under it — see
+/// [`model_cover_picker`].
+fn model_card_cover(
+    cover: Option<PathBuf>,
+    editing: Option<&ModelEditDraft>,
+    window: &Window,
+    cx: &mut Context<SettingsView>,
+    language: SettingsLanguage,
+    tokens: Tokens,
+) -> Div {
     let frame = div()
+        .relative()
         .flex_none()
         .w_full()
         .h(px(MODEL_CARD_COVER_HEIGHT))
@@ -230,40 +276,175 @@ fn model_card_cover(cover: Option<PathBuf>, language: SettingsLanguage, tokens: 
         .border_1()
         .border_color(tokens.border)
         .bg(tokens.canvas);
-    match cover {
-        Some(cover) => frame.child(img(cover).w_full().h_full().object_fit(ObjectFit::Cover)),
-        None => frame.child(
-            div()
-                .text_sm()
-                .text_color(tokens.muted)
-                .child(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "models.card.cover_missing",
-                )),
-        ),
+    let frame = frame.child(match cover {
+        Some(cover) => img(cover)
+            .w_full()
+            .h_full()
+            .object_fit(ObjectFit::Cover)
+            .into_any_element(),
+        None => div()
+            .text_sm()
+            .text_color(tokens.muted)
+            .child(bongocat_i18n::text(
+                language.catalog_locale(),
+                "models.card.cover_missing",
+            ))
+            .into_any_element(),
+    });
+    match editing {
+        Some(draft) => frame.child(model_cover_picker(draft, window, cx, language, tokens)),
+        None => frame,
     }
 }
 
-fn model_card_summary(
+/// The control that replaces a card's cover.
+///
+/// It is drawn on the cover it acts on, in the corner, so choosing a cover is
+/// one gesture on the thing being changed and costs the card no height — the
+/// box it sits in is already there. The button keeps the component's own
+/// surface rather than a translucent wash, because the artwork under it is
+/// whatever the package shipped and the label has to stay readable on all of it.
+fn model_cover_picker(
+    draft: &ModelEditDraft,
+    window: &Window,
+    cx: &mut Context<SettingsView>,
+    language: SettingsLanguage,
+    tokens: Tokens,
+) -> impl IntoElement {
+    let cover_focus = draft.cover_focus.clone();
+    let cover_key_focus = cover_focus.clone();
+    command_button(
+        bongocat_i18n::text(language.catalog_locale(), "models.edit.cover.label"),
+        &cover_focus,
+        MODEL_EDIT_COVER_TAB_INDEX,
+        window,
+        tokens,
+        draft.picking,
+    )
+    .absolute()
+    .right(MODEL_COVER_PICKER_INSET)
+    .bottom(MODEL_COVER_PICKER_INSET)
+    .id("choose-model-cover")
+    .on_click(cx.listener(move |view, _, window, cx| {
+        if !view.model_edit.as_ref().is_some_and(|draft| draft.picking) {
+            window.focus(&cover_focus, cx);
+            view.choose_model_cover(cx);
+        }
+    }))
+    .on_key_down(cx.listener(move |view, event, window, cx| {
+        if is_activation_key(event) && !view.model_edit.as_ref().is_some_and(|draft| draft.picking)
+        {
+            cx.stop_propagation();
+            window.focus(&cover_key_focus, cx);
+            view.choose_model_cover(cx);
+        }
+    }))
+    .test_support()
+}
+
+/// The card's identity block: its title row and the status line under it.
+///
+/// The block is the same two rows in both faces of the card. The title row is
+/// built here, once, whatever the card is doing — the box, its height and the
+/// line inside it are named in one place — and only its child changes, from the
+/// name to the field that edits it. A row that came and went would make the
+/// card, and with it its whole grid row, change height the moment the editor
+/// opened.
+fn model_card_identity(
     entry: &SettingsModelEntry,
     active: bool,
     status: Option<SharedString>,
+    editing: Option<&ModelEditDraft>,
+    index: usize,
+    cx: &mut Context<SettingsView>,
     tokens: Tokens,
 ) -> Div {
-    let mut summary = div().flex().flex_col().gap_1().child(
-        div()
-            .min_w_0()
-            .w_full()
-            .truncate()
-            .text_color(if active { tokens.accent } else { tokens.text })
-            .child(entry.title.clone()),
-    );
+    let title_row = div()
+        .id(("model-card-title", index))
+        .w_full()
+        .flex()
+        .items_center()
+        .input_h(MODEL_TITLE_SIZE)
+        .line_height(MODEL_TITLE_LINE_HEIGHT);
+    let mut identity = div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .min_w_0()
+        .w_full()
+        .child(match editing {
+            Some(draft) => title_row
+                .child(model_card_title_field(draft, cx))
+                .test_support(),
+            None => title_row
+                .text_color(if active { tokens.accent } else { tokens.text })
+                .child(model_card_title(entry))
+                .test_support(),
+        });
     // The status line only exists to carry a diagnostic or a delete
     // confirmation; a healthy card shows nothing but its title.
     if let Some(status) = status {
-        summary = summary.child(div().text_sm().text_color(tokens.muted).child(status));
+        identity = identity.child(div().text_sm().text_color(tokens.muted).child(status));
     }
-    summary
+    identity
+}
+
+/// The name a card shows while it is not being edited.
+fn model_card_title(entry: &SettingsModelEntry) -> Div {
+    div()
+        .min_w_0()
+        .w_full()
+        .truncate()
+        .child(entry.title.clone())
+}
+
+/// The card's title as the field that edits it: the same row, the same height
+/// and the same name, drawn as the input box it is.
+///
+/// The field is the component library's own input, in its own appearance — the
+/// border, the surface behind it and the focus ring are what tell the user the
+/// name is editable, and what tells them where to type. Nothing about it is
+/// hand-styled except what the two faces have to agree on: its height comes from
+/// [`MODEL_TITLE_SIZE`], the same value the row around it is dimensioned from,
+/// and its line box from [`MODEL_TITLE_LINE_HEIGHT`], so the row keeps its height
+/// and only the box appears. Its text keeps the size of the name it replaces, so
+/// the row does not even change its type when the editor opens.
+///
+/// The field's own padding is what insets the name from the box it now sits in.
+/// The row it replaces has none, so the name slides right by that padding as the
+/// box appears; giving the row the padding instead would indent every card's
+/// title from the cover's left edge for the sake of a state the card is in only
+/// while it is being edited.
+///
+/// The text of an editable field is coloured by the input's own editor style
+/// rather than by a row style, so a card whose title is accented — the active
+/// model — shows its name in the ordinary text colour while the editor is open.
+fn model_card_title_field(
+    draft: &ModelEditDraft,
+    cx: &mut Context<SettingsView>,
+) -> impl IntoElement {
+    div()
+        .id("model-edit-title-input")
+        .key_context("SettingsModelEditTitle")
+        .track_focus(&draft.input_focus)
+        .tab_index(MODEL_EDIT_TITLE_TAB_INDEX)
+        .w_full()
+        .on_click(cx.listener(move |view, _, window, cx| {
+            if let Some(draft) = view.model_edit.as_ref() {
+                let focus = draft.input_focus.clone();
+                window.focus(&focus, cx);
+            }
+        }))
+        .child(
+            Input::new(&draft.input)
+                .with_size(MODEL_TITLE_SIZE)
+                .line_height(MODEL_TITLE_LINE_HEIGHT)
+                .text_base(),
+        )
+        // Observed so a test can read the box the field really occupies: the
+        // card keeping its height is only half of the claim, the other half
+        // being that the field is the title row rather than something inside it.
+        .test_support()
 }
 
 /// The action row of a card.
@@ -444,135 +625,77 @@ fn model_card_actions(
     row
 }
 
-/// The body of a card that is being edited: the cover picker, the title field
-/// and the save/cancel pair.
+/// The row a card shows while it is being edited: the save/cancel pair, in the
+/// place of the activate/edit/delete row it shows the rest of the time.
 ///
 /// Editing stays inside the card it belongs to, so the model under edit is
 /// always the model the card already shows and there is no separate edit view
-/// that could disagree with the catalog it was opened from.
-fn edit_model_card(
-    view: &SettingsView,
+/// that could disagree with the catalog it was opened from. Committing and
+/// abandoning are the only two actions, so they are the only two controls: the
+/// cover and the title each carry their own affordance now.
+fn edit_model_card_actions(
+    draft: &ModelEditDraft,
     window: &Window,
     cx: &mut Context<SettingsView>,
     language: SettingsLanguage,
     tokens: Tokens,
 ) -> Div {
-    let Some(draft) = view.model_edit.as_ref() else {
-        return div();
-    };
-    let cover_label = if draft.cover.is_some() {
-        bongocat_i18n::text(language.catalog_locale(), "models.edit.cover.replace")
-    } else {
-        bongocat_i18n::text(language.catalog_locale(), "models.edit.cover.choose")
-    };
-    let cover_focus = draft.cover_focus.clone();
-    let cover_key_focus = cover_focus.clone();
     let save_focus = draft.save_focus.clone();
     let save_key_focus = save_focus.clone();
     let cancel_focus = draft.cancel_focus.clone();
     let cancel_key_focus = cancel_focus.clone();
-    let input_focus = draft.input_focus.clone();
-    let input = draft.input.clone();
     div()
         .flex()
-        .flex_col()
-        .gap_2()
+        .items_center()
+        .gap_1()
+        // The grid stretches a card to its row's tallest cell, so the commit row
+        // is pushed to the card's bottom edge exactly as the action row it
+        // replaces is: the two faces of a stretched card line their rows up.
+        .mt_auto()
         .child(
             command_button(
-                cover_label,
-                &cover_focus,
-                MODEL_EDIT_COVER_TAB_INDEX,
+                bongocat_i18n::text(language.catalog_locale(), "models.actions.save"),
+                &save_focus,
+                MODEL_EDIT_SAVE_TAB_INDEX,
                 window,
                 tokens,
-                draft.picking,
+                false,
             )
-            .w_full()
-            .id("choose-model-cover")
+            .flex_1()
+            .id("save-model-edit")
             .on_click(cx.listener(move |view, _, window, cx| {
-                if !view.model_edit.as_ref().is_some_and(|draft| draft.picking) {
-                    window.focus(&cover_focus, cx);
-                    view.choose_model_cover(cx);
-                }
+                window.focus(&save_focus, cx);
+                view.save_model_edit(cx);
             }))
             .on_key_down(cx.listener(move |view, event, window, cx| {
-                if is_activation_key(event)
-                    && !view.model_edit.as_ref().is_some_and(|draft| draft.picking)
-                {
+                if is_activation_key(event) {
                     cx.stop_propagation();
-                    window.focus(&cover_key_focus, cx);
-                    view.choose_model_cover(cx);
+                    window.focus(&save_key_focus, cx);
+                    view.save_model_edit(cx);
                 }
             })),
         )
         .child(
-            div()
-                .id("model-edit-title-input")
-                .key_context("SettingsModelEditTitle")
-                .track_focus(&input_focus)
-                .tab_index(MODEL_EDIT_TITLE_TAB_INDEX)
-                .w_full()
-                .on_click(cx.listener(move |view, _, window, cx| {
-                    if let Some(draft) = view.model_edit.as_ref() {
-                        let focus = draft.input_focus.clone();
-                        window.focus(&focus, cx);
-                    }
-                }))
-                .child(Input::new(&input)),
-        )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_1()
-                .child(
-                    command_button(
-                        bongocat_i18n::text(language.catalog_locale(), "models.actions.save"),
-                        &save_focus,
-                        MODEL_EDIT_SAVE_TAB_INDEX,
-                        window,
-                        tokens,
-                        false,
-                    )
-                    .flex_1()
-                    .id("save-model-edit")
-                    .on_click(cx.listener(move |view, _, window, cx| {
-                        window.focus(&save_focus, cx);
-                        view.save_model_edit(cx);
-                    }))
-                    .on_key_down(cx.listener(
-                        move |view, event, window, cx| {
-                            if is_activation_key(event) {
-                                cx.stop_propagation();
-                                window.focus(&save_key_focus, cx);
-                                view.save_model_edit(cx);
-                            }
-                        },
-                    )),
-                )
-                .child(
-                    command_button(
-                        bongocat_i18n::text(language.catalog_locale(), "actions.cancel"),
-                        &cancel_focus,
-                        MODEL_EDIT_CANCEL_TAB_INDEX,
-                        window,
-                        tokens,
-                        false,
-                    )
-                    .id("cancel-model-edit")
-                    .on_click(cx.listener(move |view, _, window, cx| {
-                        window.focus(&cancel_focus, cx);
-                        view.cancel_model_edit(cx);
-                    }))
-                    .on_key_down(cx.listener(
-                        move |view, event, window, cx| {
-                            if is_activation_key(event) {
-                                cx.stop_propagation();
-                                window.focus(&cancel_key_focus, cx);
-                                view.cancel_model_edit(cx);
-                            }
-                        },
-                    )),
-                ),
+            command_button(
+                bongocat_i18n::text(language.catalog_locale(), "actions.cancel"),
+                &cancel_focus,
+                MODEL_EDIT_CANCEL_TAB_INDEX,
+                window,
+                tokens,
+                false,
+            )
+            .id("cancel-model-edit")
+            .on_click(cx.listener(move |view, _, window, cx| {
+                window.focus(&cancel_focus, cx);
+                view.cancel_model_edit(cx);
+            }))
+            .on_key_down(cx.listener(move |view, event, window, cx| {
+                if is_activation_key(event) {
+                    cx.stop_propagation();
+                    window.focus(&cancel_key_focus, cx);
+                    view.cancel_model_edit(cx);
+                }
+            })),
         )
 }
 

@@ -28,6 +28,7 @@
       { "id": "cat", "title": "第一只" },
       { "id": "cat", "title": "重复 ID" }
     ],
+    "preset_models": [],
     "mirror": false,
     "mirror_pointer_tracking": false,
     "play_motion_audio": true,

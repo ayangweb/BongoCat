@@ -10,6 +10,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 - An imported model's cover is now captured from a real render of the model itself. Every BongoCatMver input mode used to reuse the same placeholder picture from the source, so importing standard, keyboard, and gamepad gave three identical cards; right after the import the app renders the model in a hidden window and saves that frame as the card's cover. If the capture cannot run, the model keeps the cover its source shipped.
 - The model page's import entry is now a single upload card. Pressing it opens the folder picker and starts the import with the folder you chose, so the title field, the two source buttons and the separate Import button are gone. While the import runs the card shows the step it is on — importing the model, then capturing its cover — replacing one line with the next instead of stacking them, and the card is exactly as tall as the model cards beside it.
+- The built-in models can now be renamed and given a different cover, exactly like the models you import — the standard, keyboard and gamepad cards show the name and picture you chose instead of the ones they shipped with. Both are kept on your side: the app's own model files are never written to, so uninstalling, reinstalling or verifying the app cannot lose or reset them, and deleting the cover file you picked brings the built-in artwork back. Deleting stays the one thing a built-in model does not offer, since it is part of the app rather than something you installed.
 
 ### 🗑️ Removals
 
@@ -20,6 +21,10 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - A damaged configuration now recovers automatically from the newest valid backup. If no valid backup exists, the app writes defaults and starts normally. The recovery prompt and reset button are gone from the settings window.
 - An imported model can now be deleted while it is the one in use. The delete control used to disappear from the model you were using, so removing it meant switching to another model first. Deleting the model in use now switches to the built-in standard model before the package is removed; if that switch fails, the model and your selection are left exactly as they were.
 - The settings window no longer appears in the wrong language before switching to yours. Its first frame is painted while the app is still preparing the saved settings, so it used to render the built-in language and theme and then redraw: a Simplified Chinese user watched the window change from English to Chinese just after it opened, title bar included. The settings and update windows now start from the language and appearance the app has already resolved at startup.
+
+### 🎨 UI and Experience
+
+- Editing a model card no longer changes its size. The name turns into the field that edits it inside the same row, the button that replaces the cover is drawn on the cover picture itself, and the action row becomes Save and Cancel where it was — so the card, and the grid row it sits in, keep their height from the moment you press Edit until you save or cancel. That button now reads "Change cover" instead of "Choose cover", including on a model that has no cover yet.
 
 ## 2.0.0 - 2026-09-16
 

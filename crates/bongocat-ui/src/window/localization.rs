@@ -81,9 +81,6 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::ModelUnavailable => "errors.settings.model_unavailable",
         SettingsErrorCode::ModelSwitchFailed => "errors.settings.model_switch_failed",
         SettingsErrorCode::ModelTitleInvalid => "errors.settings.model_title_invalid",
-        SettingsErrorCode::PresetModelMetadataImmutable => {
-            "errors.settings.preset_model_metadata_immutable"
-        }
         SettingsErrorCode::ModelCoverInvalid => "errors.settings.model_cover_invalid",
         SettingsErrorCode::ModelCoverUpdateFailed => "errors.settings.model_cover_update_failed",
         SettingsErrorCode::ModelSourcePickerUnavailable => {
@@ -110,7 +107,7 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::PresetModelCannotBeDeleted => {
             "errors.settings.preset_model_cannot_be_deleted"
         }
-        SettingsErrorCode::ModelNotInstalled => "errors.settings.model_not_installed",
+        SettingsErrorCode::ModelNotFound => "errors.settings.model_not_found",
         SettingsErrorCode::ModelDeleteFailed => "errors.settings.model_delete_failed",
         SettingsErrorCode::DiagnosticsExportFailed => "errors.settings.diagnostics_export_failed",
         SettingsErrorCode::StartupItemUpdateFailed => "errors.settings.startup_item_update_failed",

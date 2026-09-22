@@ -903,7 +903,6 @@ pub enum SettingsErrorCode {
     ModelUnavailable,
     ModelSwitchFailed,
     ModelTitleInvalid,
-    PresetModelMetadataImmutable,
     ModelCoverInvalid,
     ModelCoverUpdateFailed,
     ModelSourcePickerUnavailable,
@@ -918,7 +917,7 @@ pub enum SettingsErrorCode {
     ModelStoreBusy,
     ModelImportFailed,
     PresetModelCannotBeDeleted,
-    ModelNotInstalled,
+    ModelNotFound,
     ModelDeleteFailed,
     DiagnosticsExportFailed,
     StartupItemUpdateFailed,
@@ -930,7 +929,7 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 36] = [
+    pub const ALL: [Self; 35] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -943,7 +942,6 @@ impl SettingsErrorCode {
         Self::ModelUnavailable,
         Self::ModelSwitchFailed,
         Self::ModelTitleInvalid,
-        Self::PresetModelMetadataImmutable,
         Self::ModelCoverInvalid,
         Self::ModelCoverUpdateFailed,
         Self::ModelSourcePickerUnavailable,
@@ -958,7 +956,7 @@ impl SettingsErrorCode {
         Self::ModelStoreBusy,
         Self::ModelImportFailed,
         Self::PresetModelCannotBeDeleted,
-        Self::ModelNotInstalled,
+        Self::ModelNotFound,
         Self::ModelDeleteFailed,
         Self::DiagnosticsExportFailed,
         Self::StartupItemUpdateFailed,
@@ -983,7 +981,6 @@ impl SettingsErrorCode {
             Self::ModelUnavailable => "model_unavailable",
             Self::ModelSwitchFailed => "model_switch_failed",
             Self::ModelTitleInvalid => "model_title_invalid",
-            Self::PresetModelMetadataImmutable => "preset_model_metadata_immutable",
             Self::ModelCoverInvalid => "model_cover_invalid",
             Self::ModelCoverUpdateFailed => "model_cover_update_failed",
             Self::ModelSourcePickerUnavailable => "model_source_picker_unavailable",
@@ -998,7 +995,7 @@ impl SettingsErrorCode {
             Self::ModelStoreBusy => "model_store_busy",
             Self::ModelImportFailed => "model_import_failed",
             Self::PresetModelCannotBeDeleted => "preset_model_cannot_be_deleted",
-            Self::ModelNotInstalled => "model_not_installed",
+            Self::ModelNotFound => "model_not_found",
             Self::ModelDeleteFailed => "model_delete_failed",
             Self::DiagnosticsExportFailed => "diagnostics_export_failed",
             Self::StartupItemUpdateFailed => "startup_item_update_failed",
@@ -1053,9 +1050,6 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ModelUnavailable => "Selected model is unavailable",
             SettingsErrorCode::ModelSwitchFailed => "Selected model could not be activated",
             SettingsErrorCode::ModelTitleInvalid => "Model name is not usable",
-            SettingsErrorCode::PresetModelMetadataImmutable => {
-                "Built-in model names and covers cannot be edited"
-            }
             SettingsErrorCode::ModelCoverInvalid => "Cover image must be a PNG file",
             SettingsErrorCode::ModelCoverUpdateFailed => "Model cover could not be updated",
             SettingsErrorCode::ModelSourcePickerUnavailable => {
@@ -1074,7 +1068,7 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ModelStoreBusy => "Models are busy with another operation; try again in a moment",
             SettingsErrorCode::ModelImportFailed => "Model could not be imported",
             SettingsErrorCode::PresetModelCannotBeDeleted => "Preset model cannot be deleted",
-            SettingsErrorCode::ModelNotInstalled => "Installed model was not found",
+            SettingsErrorCode::ModelNotFound => "The model was not found",
             SettingsErrorCode::ModelDeleteFailed => "Installed model could not be deleted",
             SettingsErrorCode::DiagnosticsExportFailed => "Diagnostics could not be exported",
             SettingsErrorCode::StartupItemUpdateFailed => "Startup setting could not be updated",

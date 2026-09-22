@@ -46,6 +46,7 @@ shortcuts
 | `model`       | `selected_model_id`                   | 当前模型稳定 ID，与 origin 成对为空    |
 | `model`       | `selected_model_origin`               | `preset` / `installed`，与 ID 成对为空 |
 | `model`       | `installed_models`                    | 用户导入模型的元数据列表（id + title） |
+| `model`       | `preset_models`                       | 内置模型被改名后的元数据列表（id + title） |
 | `model`       | `mirror`                              | 水平镜像模型                           |
 | `model`       | `mirror_pointer_tracking`             | 镜像指针跟随方向                       |
 | `model`       | `play_motion_audio`                   | 播放动作音效                           |
@@ -236,7 +237,14 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
 - `model.installed_models` 只记录用户导入模型的元数据：`id` 是稳定唯一、跨平台可移植的
   存储 key（与安装目录名一致，标题修改不影响它），`title` 是可编辑的显示名称，首次导入
   默认取来源文件夹名。列表内 `id` 不得重复；`title` 去除首尾空白后不得为空且不超过 128
-  个字符。预置模型是 product files，不出现在该列表中。
+  个字符。
+- `model.preset_models` 记录内置模型（随构建分发的 `resources/models/<id>`）被改名后的元数据，
+  记录形状与 `installed_models` 相同、校验规则相同，且**两个列表各自独立判重**：同一个 id 可以
+  同时出现在两边（内置 `standard` 与用户安装的 `standard` 是两张卡片）。列表为空表示所有内置
+  模型都还用构建给的名字。该列表的写入只来自改名，没有任何导入、删除或裁剪路径。
+- 内置模型的封面替换不走配置：内置包位于 app 包内（macOS `Contents/Resources/models`、Windows
+  安装目录），产品不得写入，替换封面存放在用户数据根的 `model-overrides/<id>/resources/cover.png`
+  （与模型包内封面同名同层级），由设置页按来源读取。
 
 ## Backup Retention
 

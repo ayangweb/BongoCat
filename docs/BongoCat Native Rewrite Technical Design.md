@@ -771,7 +771,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 | Windows | `%APPDATA%\com.ayangweb.bongo-cat\development\`                     | `%APPDATA%\com.ayangweb.bongo-cat\production\`                     |
 | macOS   | `~/Library/Application Support/com.ayangweb.bongo-cat/development/` | `~/Library/Application Support/com.ayangweb.bongo-cat/production/` |
 
-每个根目录包含 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/` 和 `locks/`。锁、单实例命名、更新 channel 和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。`updates/` 是保留给更新的环境私有命名空间：`self_update` 的暂存目录由库自行创建在可执行文件旁边，不落在该目录下，因此 `updates/` 当前无写入方，仅作为环境形状契约的一部分保留。`StorageLayout` 只描述这些用户数据路径；安装器使用平台 `InstallationLayout` 描述 product files root，不能从用户数据根推导或操作安装目录。
+每个根目录包含 `config.json`、`state.json`、`models/`、`model-overrides/`、`backups/`、`logs/`、`updates/` 和 `locks/`。`model-overrides/` 是预置模型用户侧内容的命名空间（每张替换封面一个 `<id>/resources/cover.png`），因为预置包位于 app 包内、不可写；它与 `models/` 一样只被设置页与 app 层写入。锁、单实例命名、更新 channel 和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。`updates/` 是保留给更新的环境私有命名空间：`self_update` 的暂存目录由库自行创建在可执行文件旁边，不落在该目录下，因此 `updates/` 当前无写入方，仅作为环境形状契约的一部分保留。`StorageLayout` 只描述这些用户数据路径；安装器使用平台 `InstallationLayout` 描述 product files root，不能从用户数据根推导或操作安装目录。
 
 预置模型属于 product files：macOS 从 `BongoCat.app/Contents/Resources/models` 解析，Windows 从
 `bongocat-app.exe` 同级 `resources/models` 解析。仅未打包的开发二进制可在该相对路径缺失时回退到
@@ -783,10 +783,12 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - JSON key 使用 `snake_case`，字段按当前领域语义命名，不提供旧字段 alias。
 - `next` 是全新的初始版本，当前完整配置统一使用 `schema_version: 1`。v1 直接包含成对的
   `selected_model_origin`/`selected_model_id`、用户导入模型的元数据列表
-  `model.installed_models`（每条含稳定唯一 `id` 与可编辑 `title`），以及
+  `model.installed_models` 与内置模型的同名列表 `model.preset_models`（每条含稳定唯一 `id`
+  与可编辑 `title`），以及
   `input.gamepad_stick_dead_zone` 和 `input.gamepad_trigger_dead_zone`；两个 dead-zone 都
-  必须是 `[0, 1)` 的有限数。元数据列表内 `id` 不得重复，`title` 去除首尾空白后不得为空；
-  预置模型是 product files，不出现在该列表中。
+  必须是 `[0, 1)` 的有限数。两个元数据列表各自判重：列表内 `id` 不得重复，`title` 去除首尾
+  空白后不得为空。`preset_models` 为空表示所有内置模型都还用构建给的名字，它没有任何导入、
+  删除或裁剪路径。
 - `next` 开发期间不读取或转换任何早期中间结构，不实现 schema migration、字段 alias 或版本兼容
   分支。新增字段直接更新当前 v1 的 Rust 类型、JSON Schema、默认值和 fixture。解析入口保留显式
   版本检查并拒绝非 v1 数据；首次正式发布后的后续版本再以该发布版为基线单独设计迁移链。
@@ -898,15 +900,16 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 模型目录身份是 `(origin, model_id)`。同一 `model_id` 的 preset 与 installed 条目都保留，
   排序固定为 `model_id` 升序、同 ID 时 preset 在前；后续选择 command 必须携带 origin，
   不得以静默覆盖解决冲突。
-- 模型元数据编辑只属于用户导入的模型（见 ADR-0047）。`installed_models[].title` 是可编辑显示名，
-  也是**唯一一条存放在模型目录之外**的模型事实；封面是包内文件，位于 `resources/cover.png`，
-  由 `bongocat-model` 的 `package_cover_path` 与 BongoCatMver 转换共用同一组常量，替换走
-  `ModelStore::replace_cover` 的同目录原子替换。导入成功后，每个新安装模型的封面会被换成
+- 模型改名与换封面对两个 origin 完全一致（见 ADR-0047）。`installed_models[].title` 与
+  `preset_models[].title` 是可编辑显示名，也是**唯一一条存放在模型目录之外**的模型事实；封面在
+  installed origin 上是包内文件 `resources/cover.png`，在 preset origin 上是用户侧的
+  `<data>/model-overrides/<id>/resources/cover.png`（app 包不可写，见 ADR-0047 决策 2），两边都由
+  `bongocat-model` 的 `package_cover_path` 推出布局，分别由 `ModelStore::replace_cover` 与
+  `PresetCoverStore::replace_cover` 做同目录原子替换。导入成功后，每个新安装模型的封面会被换成
   **该模型自己渲染的一帧**（见 ADR-0055）：settings worker 只把模型与它在协议里的身份排队，
   GPUI 线程在永不显示的原生窗口里渲染、读回、裁切并编码，再经 `ReplaceModelCover` 写回同一位置，
-  因此转换输出的占位封面只在捕获失败时保留。预置模型是 product files，既没有元数据记录，
-  也不提供改名、换封面或删除：显示名沿用稳定 id，`Application::set_model_title`/
-  `set_model_cover` 对 preset origin 一律拒绝。
+  因此转换输出的占位封面只在捕获失败时保留。预置模型只多一件事是禁止的：删除。它的包永远是
+  product files，改名与封面只是用户侧的记录，包本身从不被写入。
 - settings 快照把页面需要、但不属于配置的模型事实一并投影：每个模型条目携带自己的包目录与包内
   封面路径（包内没有封面时为 `None`），页面因此只显示模型自己的图并可直接打开模型文件夹，
   而不自行推导任何路径。

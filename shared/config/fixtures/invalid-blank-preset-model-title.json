@@ -5,7 +5,7 @@
     "show_status_icon": true,
     "check_for_updates_automatically": true
   },
-  "appearance": { "theme": "system", "language": "en-US" },
+  "appearance": { "theme": "system", "language": "system" },
   "overlay": {
     "visible": true,
     "click_through": false,
@@ -25,7 +25,7 @@
     "selected_model_id": null,
     "selected_model_origin": null,
     "installed_models": [],
-    "preset_models": [],
+    "preset_models": [{ "id": "standard", "title": "   " }],
     "mirror": false,
     "mirror_pointer_tracking": false,
     "play_motion_audio": true,
@@ -34,9 +34,5 @@
     "ignore_pointer": false,
     "release_fallback_timeout_ms": 500
   },
-  "shortcuts": {
-    "commands_enabled": true,
-    "commands": [{ "command": "  ", "shortcut": "Control+Alt+B" }],
-    "model_behaviors": []
-  }
+  "shortcuts": { "commands_enabled": true, "commands": [], "model_behaviors": [] }
 }

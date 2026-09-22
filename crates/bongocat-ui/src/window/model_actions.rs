@@ -220,9 +220,10 @@ impl SettingsView {
     /// question matching the catalog.
     ///
     /// The catalog is re-projected on every snapshot, so this is also where a
-    /// deleted model's handles are dropped, an edit of a model that no longer
-    /// exists — or no longer exists as an *installed* one — is abandoned, and a
-    /// delete question whose control the card would no longer draw is dropped.
+    /// deleted model's handles are dropped, an edit whose model is no longer in
+    /// the catalog is abandoned — the origin and the id together are the model's
+    /// identity, so either origin's row keeps its own edit alive — and a delete
+    /// question whose control the card would no longer draw is dropped.
     pub(super) fn sync_model_row_focus(
         &mut self,
         entries: &[SettingsModelEntry],
@@ -240,11 +241,9 @@ impl SettingsView {
             self.model_delete_confirmation = None;
         }
         if self.model_edit.as_ref().is_some_and(|draft| {
-            !entries.iter().any(|entry| {
-                entry.origin == SettingsModelOrigin::Installed
-                    && entry.origin == draft.model.origin
-                    && entry.id == draft.model.id
-            })
+            !entries
+                .iter()
+                .any(|entry| entry.origin == draft.model.origin && entry.id == draft.model.id)
         }) {
             self.model_edit = None;
         }
@@ -365,21 +364,21 @@ impl SettingsView {
         .detach();
     }
 
-    /// Start editing one installed model's title and cover.
+    /// Start editing one model's title and cover.
     ///
     /// The card owns the whole edit, so the field is created here with the
     /// current title already in it: there is no separate "edit view" that could
-    /// disagree with the catalog it was opened from.
+    /// disagree with the catalog it was opened from. Editing keeps no origin
+    /// exception — a preset is renamed and re-covered through the same records
+    /// as an installed model — so the only reason to refuse is a command already
+    /// in flight.
     pub(super) fn begin_model_edit(
         &mut self,
         model: SettingsModelKey,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.pending.is_some()
-            || self.model_import.is_running()
-            || model.origin != SettingsModelOrigin::Installed
-        {
+        if self.pending.is_some() || self.model_import.is_running() {
             return;
         }
         let Some(title) = self.snapshot.as_ref().and_then(|snapshot| {

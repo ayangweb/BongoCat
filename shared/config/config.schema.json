@@ -74,11 +74,12 @@
     "model": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["selected_model_id", "selected_model_origin", "installed_models", "mirror", "mirror_pointer_tracking", "play_motion_audio", "enable_behavior_shortcuts", "maximum_fps", "ignore_pointer", "release_fallback_timeout_ms"],
+      "required": ["selected_model_id", "selected_model_origin", "installed_models", "preset_models", "mirror", "mirror_pointer_tracking", "play_motion_audio", "enable_behavior_shortcuts", "maximum_fps", "ignore_pointer", "release_fallback_timeout_ms"],
       "properties": {
         "selected_model_id": { "type": ["string", "null"], "minLength": 1 },
         "selected_model_origin": { "type": ["string", "null"], "enum": ["preset", "installed", null] },
-        "installed_models": { "type": "array", "items": { "$ref": "#/$defs/installed_model_metadata" }, "uniqueItems": true },
+        "installed_models": { "type": "array", "items": { "$ref": "#/$defs/model_metadata" }, "uniqueItems": true },
+        "preset_models": { "type": "array", "items": { "$ref": "#/$defs/model_metadata" }, "uniqueItems": true },
         "mirror": { "type": "boolean" },
         "mirror_pointer_tracking": { "type": "boolean" },
         "play_motion_audio": { "type": "boolean" },
@@ -114,7 +115,7 @@
         "shortcut": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" }
       }
     },
-    "installed_model_metadata": {
+    "model_metadata": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "title"],

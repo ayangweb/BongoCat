@@ -6,16 +6,17 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRevision,
-    ConfigStore, InstalledModelMetadata, Language, ModelBehaviorAction, ModelBehaviorBinding,
-    NativeConfig, OverlayWindowPlacement, PlatformStorageError, SelectedModelOrigin,
-    ShortcutBinding, ShortcutConfig, ShortcutModifiers, ShortcutTable, StateError, StateStore,
-    StorageLayout, Theme as ConfigTheme, WindowPlacement, platform_layout,
+    ConfigStore, Language, ModelBehaviorAction, ModelBehaviorBinding, ModelMetadata, NativeConfig,
+    OverlayWindowPlacement, PlatformStorageError, SelectedModelOrigin, ShortcutBinding,
+    ShortcutConfig, ShortcutModifiers, ShortcutTable, StateError, StateStore, StorageLayout,
+    Theme as ConfigTheme, WindowPlacement, platform_layout,
 };
 use bongocat_live2d::KeyImageInventory;
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelBehaviorSnapshot, ModelCatalogEntry, ModelError, ModelId,
     ModelImportProgress, ModelImportStage, ModelOrigin, ModelPackageLimits, ModelSourceContent,
-    ModelStore, ModelStoreError, MverInputMode, PresetModelCatalog,
+    ModelStore, ModelStoreError, MverInputMode, PresetCoverStore, PresetModelCatalog,
+    preset_cover_exists,
 };
 use bongocat_render::{FUNCTION_KEY_USAGES, KeySide, ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
@@ -172,8 +173,12 @@ pub enum ApplicationError {
     MotionId(MotionIdError),
     ExpressionId(ExpressionIdError),
     PresetModelDeletion(ModelId),
-    PresetModelMetadata(ModelId),
-    ModelNotInstalled(ModelId),
+    /// The model a request names is not in its catalog or store.
+    ///
+    /// Both origins report this the same way: a preset a build no longer ships
+    /// and an installed package the user removed by hand are the same fact to
+    /// the request that named either one.
+    ModelNotFound(ModelId),
     ModelTitleInvalid,
     ModelCoverInvalid,
     RuntimeCommand(SendError),
@@ -201,15 +206,8 @@ impl fmt::Display for ApplicationError {
             Self::PresetModelDeletion(id) => {
                 write!(formatter, "preset model cannot be deleted: {}", id.as_str())
             }
-            Self::PresetModelMetadata(id) => {
-                write!(
-                    formatter,
-                    "preset model metadata is not editable: {}",
-                    id.as_str()
-                )
-            }
-            Self::ModelNotInstalled(id) => {
-                write!(formatter, "installed model was not found: {}", id.as_str())
+            Self::ModelNotFound(id) => {
+                write!(formatter, "model was not found: {}", id.as_str())
             }
             Self::ModelTitleInvalid => formatter.write_str("model title is not usable"),
             Self::ModelCoverInvalid => {
@@ -338,6 +336,10 @@ pub struct Application {
     system_language: Language,
     preset_models: PresetModelCatalog,
     model_store: ModelStore,
+    /// The replacement covers of the presets the user customised. A preset's
+    /// package is inside the application bundle, so this is where the one part
+    /// of a preset that is meant to be edited lives.
+    preset_covers: PresetCoverStore,
     active_model_origin: Option<ModelOrigin>,
     /// The model the runtime was actually handed, which is not always the
     /// configured selection: a fresh configuration has no selection at all and
@@ -396,6 +398,7 @@ impl Application {
             layout.locks.join("models.writer.lock"),
             ModelPackageLimits::default(),
         )?;
+        let preset_covers = PresetCoverStore::open(layout.model_overrides.clone())?;
         let config_store = ConfigStore::new(layout.clone())?;
         let application_log = ApplicationLogHandle::install(&layout.logs)?;
         let (run_marker, previous_run) = application_log.begin_run()?;
@@ -509,6 +512,7 @@ impl Application {
             system_language,
             preset_models,
             model_store,
+            preset_covers,
             active_model_origin,
             active_model_id,
             runtime,
@@ -1100,13 +1104,13 @@ impl Application {
         directory.is_dir().then_some(directory)
     }
 
-    /// Rename an installed model.
+    /// Rename a model, whichever origin it came from.
     ///
     /// A title is user-editable metadata in the configuration, so this is the
-    /// only model fact that lives outside the model directory. Preset models
-    /// carry no metadata record at all: their display name is derived from the
-    /// app-bundled id, and letting it be edited would make the configuration a
-    /// second source of truth for content the build owns.
+    /// only model fact that lives outside the model directory. Both origins are
+    /// renamed the same way, into their own list: a preset's package belongs to
+    /// the build and is never written to, so its name is a customisation the
+    /// configuration records instead of a property of the package.
     pub fn set_model_title(
         &mut self,
         origin: ModelOrigin,
@@ -1114,33 +1118,15 @@ impl Application {
         title: impl Into<String>,
     ) -> Result<(), ApplicationError> {
         let id = ModelId::parse(id)?;
-        if origin == ModelOrigin::Preset {
-            return Err(ApplicationError::PresetModelMetadata(id));
-        }
         let title =
             normalize_model_title(&title.into()).ok_or(ApplicationError::ModelTitleInvalid)?;
-        if !self.model_store.root().join(id.as_str()).is_dir() {
-            return Err(ApplicationError::ModelNotInstalled(id));
+        if self.model_directory(origin, id.as_str()).is_none() {
+            return Err(ApplicationError::ModelNotFound(id));
         }
-        let mut installed_models = self.config.model.installed_models.clone();
-        match installed_models
-            .iter_mut()
-            .find(|metadata| metadata.id == id.as_str())
-        {
-            Some(metadata) => metadata.title = title,
-            // A model directory can legitimately exist without a record — one
-            // copied into the store by hand, or an import interrupted after the
-            // directory was committed — so naming it creates the record instead
-            // of failing on a missing one.
-            None => installed_models.push(InstalledModelMetadata {
-                id: id.as_str().to_owned(),
-                title,
-            }),
-        }
-        self.commit_installed_models(installed_models)
+        self.record_model_title(origin, &id, title)
     }
 
-    /// Replace an installed model's cover image with a user-chosen PNG.
+    /// Replace a model's cover image with a user-chosen PNG.
     ///
     /// The cover is display artwork for the settings catalog, so the check here
     /// is the file contract the package layout implies — a PNG within the
@@ -1153,9 +1139,6 @@ impl Application {
         source: impl AsRef<Path>,
     ) -> Result<PathBuf, ApplicationError> {
         let id = ModelId::parse(id)?;
-        if origin == ModelOrigin::Preset {
-            return Err(ApplicationError::PresetModelMetadata(id));
-        }
         let source = source.as_ref();
         let metadata = fs::metadata(source).map_err(|_| ApplicationError::ModelCoverInvalid)?;
         if !metadata.is_file() || metadata.len() > ModelPackageLimits::default().maximum_file_bytes
@@ -1166,7 +1149,7 @@ impl Application {
         self.install_model_cover(origin, &id, &bytes)
     }
 
-    /// Replace an installed model's cover image with PNG bytes the product made.
+    /// Replace a model's cover image with PNG bytes the product made.
     ///
     /// A captured cover never exists as a file until it is installed, so the cover
     /// the renderer just produced arrives here directly. It passes the same contract
@@ -1178,30 +1161,128 @@ impl Application {
         bytes: &[u8],
     ) -> Result<PathBuf, ApplicationError> {
         let id = ModelId::parse(id)?;
-        if origin == ModelOrigin::Preset {
-            return Err(ApplicationError::PresetModelMetadata(id));
-        }
         self.install_model_cover(origin, &id, bytes)
     }
 
     /// The contract every cover source shares, once its bytes are in hand.
+    ///
+    /// Where the bytes land is the one thing the origins do not share: an
+    /// installed model's cover goes into its own package, and a preset's goes to
+    /// the user side, because the package it belongs to sits inside the
+    /// application bundle and may not be written to.
     fn install_model_cover(
         &self,
         origin: ModelOrigin,
         id: &ModelId,
         bytes: &[u8],
     ) -> Result<PathBuf, ApplicationError> {
-        if origin == ModelOrigin::Preset {
-            return Err(ApplicationError::PresetModelMetadata(id.clone()));
-        }
         if bytes.len() as u64 > ModelPackageLimits::default().maximum_file_bytes
             || !bytes.starts_with(&PNG_SIGNATURE)
         {
             return Err(ApplicationError::ModelCoverInvalid);
         }
-        self.model_store
-            .replace_cover(id, bytes)
-            .map_err(ApplicationError::ModelStore)
+        match origin {
+            ModelOrigin::Preset => {
+                // The preset cover store creates the directory it writes into,
+                // so unlike the model store it cannot report a missing model by
+                // itself. The package has to be there before it may be
+                // customised, exactly as for an installed model.
+                if self.model_directory(origin, id.as_str()).is_none() {
+                    return Err(ApplicationError::ModelNotFound(id.clone()));
+                }
+                self.preset_covers
+                    .replace_cover(id, bytes)
+                    .map_err(ApplicationError::ModelStore)
+            }
+            ModelOrigin::Installed => self
+                .model_store
+                .replace_cover(id, bytes)
+                .map_err(ApplicationError::ModelStore),
+        }
+    }
+
+    /// The display name recorded for a model, if the user ever changed it.
+    ///
+    /// `None` means the model has never been renamed, which is the ordinary
+    /// state of a preset: its name is then the id the build shipped it under.
+    pub fn recorded_model_title(&self, origin: ModelOrigin, id: &str) -> Option<&str> {
+        self.model_metadata(origin)
+            .iter()
+            .find(|record| record.id == id)
+            .map(|record| record.title.as_str())
+    }
+
+    /// The cover the settings page should draw for a model, if it has one.
+    ///
+    /// A replacement wins over the artwork a preset's package ships: the bundle
+    /// is read-only, so a replacement is the only cover that can reflect what
+    /// the user chose. An installed model needs no such preference — its cover
+    /// lives in the package either way.
+    pub fn model_cover_path(&self, origin: ModelOrigin, id: &str) -> Option<PathBuf> {
+        let directory = self.model_directory(origin, id)?;
+        if origin == ModelOrigin::Preset {
+            let replacement = self.preset_covers.cover_path(&ModelId::parse(id).ok()?);
+            if preset_cover_exists(&replacement) {
+                return Some(replacement);
+            }
+        }
+        let cover = bongocat_model::package_cover_path(&directory);
+        cover.is_file().then_some(cover)
+    }
+
+    /// Write one model's display name into the list that owns its lifecycle.
+    fn record_model_title(
+        &mut self,
+        origin: ModelOrigin,
+        id: &ModelId,
+        title: String,
+    ) -> Result<(), ApplicationError> {
+        let mut records = self.model_metadata(origin).to_vec();
+        match records.iter_mut().find(|record| record.id == id.as_str()) {
+            Some(record) => record.title = title,
+            // A model can legitimately exist without a record — a package copied
+            // into the store by hand, an import interrupted after the directory
+            // was committed, every preset — so naming it creates the record
+            // instead of failing on a missing one.
+            None => records.push(ModelMetadata {
+                id: id.as_str().to_owned(),
+                title,
+            }),
+        }
+        self.commit_model_metadata(origin, records)
+    }
+
+    /// The metadata records that belong to one origin.
+    ///
+    /// The two lists are read by origin and never merged: they are keyed by
+    /// separate id spaces, so the same id may name a preset and an installed
+    /// model at once.
+    fn model_metadata(&self, origin: ModelOrigin) -> &[ModelMetadata] {
+        match origin {
+            ModelOrigin::Preset => &self.config.model.preset_models,
+            ModelOrigin::Installed => &self.config.model.installed_models,
+        }
+    }
+
+    /// Persist one list of editable model metadata. The typed validation in
+    /// `bongocat-config` rejects duplicate ids, blank titles, and over-long
+    /// values before anything is written.
+    fn commit_model_metadata(
+        &mut self,
+        origin: ModelOrigin,
+        records: Vec<ModelMetadata>,
+    ) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        match origin {
+            ModelOrigin::Preset => next_config.model.preset_models = records,
+            ModelOrigin::Installed => next_config.model.installed_models = records,
+        }
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
     }
 
     pub fn start_motion(
@@ -1389,7 +1470,7 @@ impl Application {
         let before = installed_models.len();
         installed_models.retain(|metadata| metadata.id != id.as_str());
         if installed_models.len() != before {
-            self.commit_installed_models(installed_models)?;
+            self.commit_model_metadata(ModelOrigin::Installed, installed_models)?;
         }
         Ok(())
     }
@@ -1504,36 +1585,25 @@ impl Application {
                     legacy_mode_label(language, modes[index]),
                 ),
             };
-            installed_models.push(InstalledModelMetadata {
+            installed_models.push(ModelMetadata {
                 id: model.id().as_str().to_owned(),
                 title,
             });
-            self.commit_installed_models(installed_models.clone())?;
+            self.commit_model_metadata(ModelOrigin::Installed, installed_models.clone())?;
             installed.push(model);
         }
         Ok(installed)
     }
 
-    /// Persist the editable metadata list for user-installed models. The
-    /// typed validation in `bongocat-config` rejects duplicate ids, blank
-    /// titles, and over-long values before anything is written.
-    fn commit_installed_models(
-        &mut self,
-        installed_models: Vec<InstalledModelMetadata>,
-    ) -> Result<(), ApplicationError> {
-        let mut next_config = self.config.clone();
-        next_config.model.installed_models = installed_models;
-        let next_revision = self
-            .config_store
-            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
-        self.config = next_config;
-        self.config_revision = Some(next_revision);
-        Ok(())
-    }
-
     /// Drop metadata records whose installed model directory no longer
     /// exists. The record list stays consistent with the store even when a
     /// model was removed by hand outside the application.
+    ///
+    /// Preset records are deliberately not pruned by anything: a preset is
+    /// shipped with the build rather than found on disk, so a record whose model
+    /// this build no longer carries is not evidence of a stale customisation —
+    /// it is simply not shown, and it names the model again if a later build
+    /// ships it.
     fn prune_missing_installed_metadata(&mut self) {
         let Ok(catalog) = self.model_store.list() else {
             return;
@@ -1554,7 +1624,7 @@ impl Application {
         if kept.len() == self.config.model.installed_models.len() {
             return;
         }
-        let _ = self.commit_installed_models(kept);
+        let _ = self.commit_model_metadata(ModelOrigin::Installed, kept);
     }
 
     /// Restore the model selection at startup. The configured selection is
@@ -3227,8 +3297,10 @@ mod tests {
             1,
             "application commands are never rewritten"
         );
+        // A config revision is a hash of the persisted document, not a counter,
+        // so the only question it can answer is whether the document changed.
         assert!(
-            application.config_revision() > revision_before,
+            application.config_revision() != revision_before,
             "the assignment commits with the selection"
         );
         application.shutdown().expect("clean shutdown");
@@ -3967,11 +4039,11 @@ mod tests {
         assert_eq!(
             application.config().model.installed_models,
             vec![
-                InstalledModelMetadata {
+                ModelMetadata {
                     id: first.id().as_str().to_owned(),
                     title: "我的猫".to_owned(),
                 },
-                InstalledModelMetadata {
+                ModelMetadata {
                     id: second.id().as_str().to_owned(),
                     title: "我的猫".to_owned(),
                 },
@@ -3983,7 +4055,7 @@ mod tests {
             .expect("delete first model");
         assert_eq!(
             application.config().model.installed_models,
-            vec![InstalledModelMetadata {
+            vec![ModelMetadata {
                 id: second.id().as_str().to_owned(),
                 title: "我的猫".to_owned(),
             }]
@@ -3999,7 +4071,7 @@ mod tests {
         let mut configured = store.load_or_default().expect("default config").config;
         configured.model.selected_model_id = Some("ghost".to_owned());
         configured.model.selected_model_origin = Some(SelectedModelOrigin::Installed);
-        configured.model.installed_models = vec![InstalledModelMetadata {
+        configured.model.installed_models = vec![ModelMetadata {
             id: "ghost".to_owned(),
             title: "幽灵模型".to_owned(),
         }];
@@ -4040,11 +4112,11 @@ mod tests {
         let store = ConfigStore::new(layout.clone()).expect("config store");
         let mut configured = store.load_or_default().expect("default config").config;
         configured.model.installed_models = vec![
-            InstalledModelMetadata {
+            ModelMetadata {
                 id: "ghost".to_owned(),
                 title: "被手动删除".to_owned(),
             },
-            InstalledModelMetadata {
+            ModelMetadata {
                 id: "still-there".to_owned(),
                 title: "目录仍在".to_owned(),
             },
@@ -4056,7 +4128,7 @@ mod tests {
         let application = Application::start_with_layout(layout).expect("start application");
         assert_eq!(
             application.config().model.installed_models,
-            vec![InstalledModelMetadata {
+            vec![ModelMetadata {
                 id: "still-there".to_owned(),
                 title: "目录仍在".to_owned(),
             }]
@@ -4075,7 +4147,7 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let store = ConfigStore::new(layout.clone()).expect("config store");
         let mut configured = store.load_or_default().expect("default config").config;
-        configured.model.installed_models = vec![InstalledModelMetadata {
+        configured.model.installed_models = vec![ModelMetadata {
             id: "deleted-by-hand".to_owned(),
             title: "被手动删除".to_owned(),
         }];

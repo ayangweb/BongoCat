@@ -44,7 +44,6 @@ use bongocat_ui::{
 use bongocat_update::UpdateDiagnostics;
 use serde::Serialize;
 use std::{
-    collections::BTreeMap,
     fmt,
     path::{Path, PathBuf},
     sync::{
@@ -1678,18 +1677,11 @@ const fn settings_startup_item_error(error: StartupItemError) -> SettingsStartup
 }
 
 fn settings_model_catalog(application: &Application) -> SettingsModelCatalog {
-    let titles = application
-        .config()
-        .model
-        .installed_models
-        .iter()
-        .map(|metadata| (metadata.id.as_str(), metadata.title.as_str()))
-        .collect::<BTreeMap<_, _>>();
     match application.model_catalog() {
         Ok(entries) => SettingsModelCatalog {
             entries: entries
                 .into_iter()
-                .map(|entry| settings_model_entry(application, entry, &titles))
+                .map(|entry| settings_model_entry(application, entry))
                 .collect(),
             error: None,
         },
@@ -1726,22 +1718,19 @@ const fn model_origin(origin: SettingsModelOrigin) -> ModelOrigin {
     }
 }
 
-fn settings_model_entry(
-    application: &Application,
-    entry: ModelCatalogEntry,
-    installed_titles: &BTreeMap<&str, &str>,
-) -> SettingsModelEntry {
+fn settings_model_entry(application: &Application, entry: ModelCatalogEntry) -> SettingsModelEntry {
     let id = entry.id().as_str().to_owned();
     let model_origin = entry.origin();
     let origin = match model_origin {
         ModelOrigin::Preset => SettingsModelOrigin::Preset,
         ModelOrigin::Installed => SettingsModelOrigin::Installed,
     };
-    // The title is user-editable metadata; entries without a record (or all
-    // preset models) display the stable id instead of inventing a name.
-    let title = installed_titles
-        .get(id.as_str())
-        .map(|title| (*title).to_owned())
+    // The title is user-editable metadata; a model that was never renamed —
+    // which is every preset the user has not customised — displays the stable
+    // id instead of inventing a name.
+    let title = application
+        .recorded_model_title(model_origin, &id)
+        .map(str::to_owned)
         .unwrap_or_else(|| id.clone());
     let availability = match entry {
         ModelCatalogEntry::Ready { snapshot, .. } => SettingsModelAvailability::Ready {
@@ -1756,13 +1745,12 @@ fn settings_model_entry(
         },
     };
     // The directory and the cover are read here rather than in the page: the
-    // page only ever displays a path, and a package that ships no cover is
-    // reported as `None` instead of a path that does not resolve.
+    // page only ever displays a path, and a model with no cover at all is
+    // reported as `None` instead of a path that does not resolve. The cover a
+    // preset ships lives in the bundle, so this is also where the user's
+    // replacement gets its say.
     let directory = application.model_directory(model_origin, &id);
-    let cover = directory.as_ref().and_then(|root| {
-        let cover = bongocat_model::package_cover_path(root);
-        cover.is_file().then_some(cover)
-    });
+    let cover = application.model_cover_path(model_origin, &id);
     SettingsModelEntry {
         id,
         title,
@@ -2228,17 +2216,15 @@ fn map_application_error(error: ApplicationError) -> SettingsError {
 /// Map a rename failure to its own code.
 ///
 /// The three outcomes a user can act on differently — a name the configuration
-/// will not accept, a model whose metadata is app-bundled, and a model that is
-/// no longer on disk — each get their own code instead of collapsing into the
-/// generic settings failure.
+/// will not accept, and a model that is no longer on disk — each get their own
+/// code instead of collapsing into the generic settings failure.
 fn map_model_metadata_error(error: ApplicationError) -> SettingsError {
     let code = match error {
         ApplicationError::Model(error) if error.code == ModelDiagnostic::InvalidModelId => {
             SettingsErrorCode::InvalidModelId
         }
-        ApplicationError::PresetModelMetadata(_) => SettingsErrorCode::PresetModelMetadataImmutable,
         ApplicationError::ModelTitleInvalid => SettingsErrorCode::ModelTitleInvalid,
-        ApplicationError::ModelNotInstalled(_) => SettingsErrorCode::ModelNotInstalled,
+        ApplicationError::ModelNotFound(_) => SettingsErrorCode::ModelNotFound,
         error => return map_application_error(error),
     };
     SettingsError::new(code)
@@ -2249,11 +2235,10 @@ fn map_model_cover_error(error: ApplicationError) -> SettingsError {
         ApplicationError::Model(error) if error.code == ModelDiagnostic::InvalidModelId => {
             SettingsErrorCode::InvalidModelId
         }
-        ApplicationError::PresetModelMetadata(_) => SettingsErrorCode::PresetModelMetadataImmutable,
         ApplicationError::ModelCoverInvalid => SettingsErrorCode::ModelCoverInvalid,
-        ApplicationError::ModelNotInstalled(_) => SettingsErrorCode::ModelNotInstalled,
+        ApplicationError::ModelNotFound(_) => SettingsErrorCode::ModelNotFound,
         ApplicationError::ModelStore(error) if error.code == ModelStoreDiagnostic::NotFound => {
-            SettingsErrorCode::ModelNotInstalled
+            SettingsErrorCode::ModelNotFound
         }
         ApplicationError::ModelStore(_) => SettingsErrorCode::ModelCoverUpdateFailed,
         error => return map_application_error(error),
@@ -2328,7 +2313,7 @@ fn map_model_delete_error(error: ApplicationError) -> SettingsError {
 
 const fn map_model_store_delete_diagnostic(diagnostic: ModelStoreDiagnostic) -> SettingsErrorCode {
     match diagnostic {
-        ModelStoreDiagnostic::NotFound => SettingsErrorCode::ModelNotInstalled,
+        ModelStoreDiagnostic::NotFound => SettingsErrorCode::ModelNotFound,
         ModelStoreDiagnostic::StoreBusy => SettingsErrorCode::ModelStoreBusy,
         ModelStoreDiagnostic::AlreadyExists
         | ModelStoreDiagnostic::Cancelled
@@ -4739,16 +4724,20 @@ mod tests {
     }
 
     #[test]
-    fn service_renames_and_recovers_an_installed_models_title_and_cover() {
+    fn service_renames_and_covers_a_model_of_either_origin() {
         let base = tempdir().expect("temporary storage");
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
         let models_root = layout.models.clone();
+        let overrides_root = layout.model_overrides.clone();
         let config_path = layout.config.clone();
         let application = Application::start_with_layout(layout).expect("application start");
         // The store canonicalizes its own root, and on macOS `$TMPDIR` resolves
-        // through `/private`, so the expected paths are canonical too. The root
-        // only exists once the application has created it.
+        // through `/private`, so the expected paths are canonical too. The roots
+        // only exist once the application has created them.
         let canonical_models_root = models_root.canonicalize().expect("canonical models root");
+        let canonical_overrides_root = overrides_root
+            .canonicalize()
+            .expect("canonical model overrides root");
         let service = ApplicationSettingsService::start(application).expect("service start");
         let client = service.client();
 
@@ -4837,26 +4826,78 @@ mod tests {
             cover_bytes
         );
 
-        // Preset models are app-bundled content, so neither rename nor cover
-        // edit is offered for them.
+        // The same two edits on a model the build ships. Its package lives
+        // inside the application bundle, so the rename goes into the preset
+        // list and the cover into the user's override root: the preset is
+        // customised exactly like an installed model, without either of them
+        // being written into the bundle.
         let preset = SettingsModelKey {
             id: "standard".to_owned(),
             origin: SettingsModelOrigin::Preset,
         };
-        let revision = covered.config_revision.expect("config revision");
+        let bundled_cover = crate::repository_preset_root()
+            .join(&preset.id)
+            .join("resources/cover.png");
+        let bundled_bytes = std::fs::read(&bundled_cover).expect("bundled preset cover");
+        let bundled_entry = covered
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == preset.id && entry.origin == preset.origin)
+            .expect("preset entry");
         assert_eq!(
-            client
-                .set_model_title_blocking(revision, preset.clone(), "我的预设".to_owned())
-                .expect_err("a preset title is not editable")
-                .code(),
-            SettingsErrorCode::PresetModelMetadataImmutable
+            bundled_entry.title, "standard",
+            "a preset that was never renamed is named by the id the build gave it"
+        );
+        assert_eq!(bundled_entry.cover, Some(bundled_cover.clone()));
+
+        let revision = covered.config_revision.expect("config revision");
+        let renamed_preset = client
+            .set_model_title_blocking(revision, preset.clone(), "我的预设".to_owned())
+            .expect("rename a preset model");
+        let renamed_preset_entry = renamed_preset
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == preset.id && entry.origin == preset.origin)
+            .expect("renamed preset entry");
+        assert_eq!(renamed_preset_entry.title, "我的预设");
+        // The preset list is its own id space: the installed model renamed
+        // above kept its own record, and the same id in both lists names two
+        // different models.
+        let document: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&config_path).expect("persisted config"))
+                .expect("config json");
+        assert_eq!(
+            document["model"]["preset_models"],
+            serde_json::json!([{ "id": "standard", "title": "我的预设" }])
+        );
+
+        let covered_preset = client
+            .set_model_cover_blocking(preset.clone(), cover_source)
+            .expect("replace a preset cover");
+        let covered_preset_entry = covered_preset
+            .model_catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == preset.id && entry.origin == preset.origin)
+            .expect("covered preset entry");
+        let expected_preset_cover = canonical_overrides_root
+            .join(&preset.id)
+            .join("resources/cover.png");
+        assert_eq!(
+            covered_preset_entry.cover,
+            Some(expected_preset_cover.clone()),
+            "the replacement must be what the page draws, not the bundled artwork"
         );
         assert_eq!(
-            client
-                .set_model_cover_blocking(preset, cover_source)
-                .expect_err("a preset cover is not editable")
-                .code(),
-            SettingsErrorCode::PresetModelMetadataImmutable
+            std::fs::read(&expected_preset_cover).expect("stored preset cover"),
+            cover_bytes
+        );
+        assert_eq!(
+            std::fs::read(&bundled_cover).expect("bundled cover after the edit"),
+            bundled_bytes,
+            "a preset's package is app-bundled and must never be written to"
         );
 
         client.shutdown_blocking().expect("service shutdown");
@@ -5123,7 +5164,7 @@ mod tests {
         let cases = [
             (
                 ModelStoreDiagnostic::NotFound,
-                SettingsErrorCode::ModelNotInstalled,
+                SettingsErrorCode::ModelNotFound,
             ),
             (
                 ModelStoreDiagnostic::StoreBusy,
@@ -5239,7 +5280,7 @@ mod tests {
                 origin: SettingsModelOrigin::Installed,
             })
             .expect_err("missing installed model");
-        assert_eq!(missing_error.code(), SettingsErrorCode::ModelNotInstalled);
+        assert_eq!(missing_error.code(), SettingsErrorCode::ModelNotFound);
 
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
