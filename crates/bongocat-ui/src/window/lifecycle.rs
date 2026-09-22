@@ -3,6 +3,7 @@ use super::*;
 pub fn open_settings_window(
     client: SettingsClient,
     window_state: SettingsWindowState,
+    seed: SettingsWindowSeed,
     _taskbar_icon_visible: bool,
     request_quit: impl Fn(&mut App) + 'static,
     request_update: impl Fn(&mut App) + 'static,
@@ -24,7 +25,16 @@ pub fn open_settings_window(
                 display_id,
                 window_min_size: Some(size(px(WINDOW_MIN_WIDTH), px(WINDOW_MIN_HEIGHT))),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("BongoCat Settings".into()),
+                    // The frame the window is created with, like the view inside it, is
+                    // painted before the first snapshot, so its title comes from the
+                    // seed rather than from the catalog default.
+                    title: Some(
+                        bongocat_i18n::text(
+                            seed.language.catalog_locale(),
+                            "navigation.settings.title",
+                        )
+                        .into(),
+                    ),
                     ..Default::default()
                 }),
                 focus: false,
@@ -61,7 +71,7 @@ pub fn open_settings_window(
                     })
                     .detach();
                     let mut view =
-                        SettingsView::new(client, request_quit, request_update, window, cx);
+                        SettingsView::new(client, seed, request_quit, request_update, window, cx);
                     view.refresh(cx);
                     view
                 });
@@ -70,10 +80,11 @@ pub fn open_settings_window(
                 let appearance_view = view.downgrade();
                 window
                     .observe_window_appearance(move |window, cx| {
+                        // The appearance on screen decides, seed included: a window whose
+                        // first snapshot has not arrived yet follows the theme it was
+                        // opened with rather than being treated as system-following.
                         let follows_system = appearance_view.upgrade().is_none_or(|view| {
-                            view.read(cx).snapshot.as_ref().is_none_or(|snapshot| {
-                                snapshot.appearance_theme == SettingsTheme::System
-                            })
+                            view.read(cx).display_appearance_theme() == SettingsTheme::System
                         });
                         if follows_system {
                             sync_system_component_theme(window, cx);

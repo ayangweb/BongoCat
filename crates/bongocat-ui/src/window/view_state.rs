@@ -1,6 +1,27 @@
 use super::*;
 
 impl SettingsView {
+    /// The display language for the frame being rendered.
+    ///
+    /// The snapshot answers as soon as it exists; before that the window renders the
+    /// language it was opened with, so the first frame is already the user's. See
+    /// [`SettingsWindowSeed`].
+    pub(super) fn display_language(&self) -> SettingsLanguage {
+        self.snapshot
+            .as_ref()
+            .map_or(self.seed.language, |snapshot| snapshot.resolved_language)
+    }
+
+    /// The appearance for the frame being rendered, with the same rule as
+    /// [`Self::display_language`].
+    pub(super) fn display_appearance_theme(&self) -> SettingsTheme {
+        self.snapshot
+            .as_ref()
+            .map_or(self.seed.appearance_theme, |snapshot| {
+                snapshot.appearance_theme
+            })
+    }
+
     pub(super) fn sync_component_theme(
         &mut self,
         theme: SettingsTheme,
@@ -70,14 +91,19 @@ impl SettingsView {
 
     pub(super) fn new(
         client: SettingsClient,
+        seed: SettingsWindowSeed,
         request_quit: Rc<dyn Fn(&mut App)>,
         request_update: SettingsWindowRequest,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        // Every component built here is seeded with the window's language for the same
+        // reason as the frame itself: they are constructed before the first snapshot
+        // exists, and a component built in the default language would be replaced —
+        // visibly — by the values the first snapshot carries.
         let model_id_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder(bongocat_i18n::text(
-                SettingsLanguage::EnglishUnitedStates.catalog_locale(),
+                seed.language.catalog_locale(),
                 "models.identity.title",
             ))
         });
@@ -86,9 +112,7 @@ impl SettingsView {
                 SearchableVec::new(
                     SettingsLanguage::ALL
                         .into_iter()
-                        .map(|language| {
-                            language.display_name(SettingsLanguage::EnglishUnitedStates)
-                        })
+                        .map(|language| language.display_name(seed.language))
                         .collect::<Vec<_>>(),
                 ),
                 Some(IndexPath::new(0)),
@@ -98,7 +122,7 @@ impl SettingsView {
         });
         let theme_select = cx.new(|cx| {
             SelectState::new(
-                SearchableVec::new(theme_options(SettingsLanguage::EnglishUnitedStates)),
+                SearchableVec::new(theme_options(seed.language)),
                 Some(IndexPath::new(0)),
                 window,
                 cx,
@@ -122,12 +146,7 @@ impl SettingsView {
                 if view.syncing_component_inputs {
                     return;
                 }
-                let display_language = view
-                    .snapshot
-                    .as_ref()
-                    .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
-                        snapshot.resolved_language
-                    });
+                let display_language = view.display_language();
                 if let SelectEvent::Confirm(Some(name)) = event
                     && let Some(language) =
                         SettingsLanguage::from_display_name(name, display_language)
@@ -143,12 +162,7 @@ impl SettingsView {
                 if view.syncing_component_inputs {
                     return;
                 }
-                let display_language = view
-                    .snapshot
-                    .as_ref()
-                    .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
-                        snapshot.resolved_language
-                    });
+                let display_language = view.display_language();
                 if let SelectEvent::Confirm(Some(name)) = event
                     && let Some(theme) = theme_from_display_name(name, display_language)
                 {
@@ -159,6 +173,7 @@ impl SettingsView {
         .detach();
         Self {
             client,
+            seed,
             snapshot: None,
             pending: None,
             pending_notification: None,

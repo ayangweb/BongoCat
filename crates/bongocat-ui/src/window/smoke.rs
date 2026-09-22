@@ -18,6 +18,15 @@ impl SettingsView {
             .map(|snapshot| snapshot.resolved_language)
     }
 
+    /// The language the current frame renders with.
+    ///
+    /// Unlike [`Self::resolved_language_for_smoke`] this answers before the first
+    /// snapshot exists, which covers the frame the user sees while the service is
+    /// still building it.
+    pub fn display_language_for_smoke(&self) -> SettingsLanguage {
+        self.display_language()
+    }
+
     pub fn window_hidden(&self) -> bool {
         self.window_hidden
     }

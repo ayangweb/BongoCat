@@ -10,7 +10,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 - A damaged configuration now recovers automatically from the newest valid backup. If no valid backup exists, the app writes defaults and starts normally. The recovery prompt and reset button are gone from the settings window.
 - An imported model can now be deleted while it is the one in use. The delete control used to disappear from the model you were using, so removing it meant switching to another model first. Deleting the model in use now switches to the built-in standard model before the package is removed; if that switch fails, the model and your selection are left exactly as they were.
-- Opening Settings from the model window's context menu or the tray menu now shows the preferences window on the first attempt. The window was pre-created hidden but not shown until a later open request.
+- The settings window no longer appears in the wrong language before switching to yours. Its first frame is painted while the app is still preparing the saved settings, so it used to render the built-in language and theme and then redraw: a Simplified Chinese user watched the window change from English to Chinese just after it opened, title bar included. The settings and update windows now start from the language and appearance the app has already resolved at startup.
 
 ## 2.0.0 - 2026-09-16
 

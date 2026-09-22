@@ -16,7 +16,7 @@ mod pop_confirm;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod window;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-pub use window::{SettingsView, SettingsWindowHandle, open_settings_window};
+pub use window::{SettingsView, SettingsWindowHandle, SettingsWindowSeed, open_settings_window};
 
 mod update;
 pub use update::{

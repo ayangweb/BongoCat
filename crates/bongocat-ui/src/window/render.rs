@@ -8,9 +8,11 @@ impl Render for SettingsView {
             return div().size_full().into_any_element();
         }
         let snapshot = self.snapshot.clone();
-        if let Some(snapshot) = snapshot.as_ref() {
-            self.sync_component_theme(snapshot.appearance_theme, window, cx);
-        }
+        // The appearance is applied on every frame, seeded included: the first frame is
+        // painted before the service answers the first snapshot, and it has to be the
+        // product's theme rather than the component default.
+        let appearance_theme = self.display_appearance_theme();
+        self.sync_component_theme(appearance_theme, window, cx);
         if let Some(snapshot) = snapshot.as_ref() {
             self.sync_component_inputs(snapshot, window, cx);
         }
@@ -57,11 +59,7 @@ impl Render for SettingsView {
             .as_ref()
             .map(|snapshot| snapshot.model_catalog.entries.as_slice())
             .unwrap_or_default();
-        let language = snapshot
-            .as_ref()
-            .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
-                snapshot.resolved_language
-            });
+        let language = self.display_language();
         if let Some(error) = self.pending_notification.take() {
             window.push_notification(
                 Notification::new()

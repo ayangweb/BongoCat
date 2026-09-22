@@ -31,7 +31,7 @@ use bongocat_ui::SettingsView;
 use bongocat_ui::{
     SettingsClient, SettingsError, SettingsErrorCode, SettingsModelAvailability, SettingsModelKey,
     SettingsModelOrigin, SettingsOverlay, SettingsSnapshot, SettingsWindowHandle,
-    open_settings_window,
+    SettingsWindowSeed, open_settings_window,
 };
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use gpui_kit::{
@@ -565,19 +565,22 @@ struct ProductCoordinator {
     update_service: Option<bongocat_app::ApplicationUpdateService>,
     /// The open update window, if any.
     update_window: Option<bongocat_ui::UpdateWindowHandle>,
-    /// The display language the update window opens with.
+    /// The display language a product window opens with.
     ///
-    /// Kept here because the system menu loop already reads the settings snapshot
-    /// every 50 ms; the update window then opens without a blocking read on the GPUI
-    /// thread and keeps itself in sync afterwards.
-    update_language: bongocat_ui::SettingsLanguage,
-    /// The appearance the update window opens with.
+    /// Seeded from the startup snapshot and refreshed by the system menu loop, which
+    /// already reads the settings snapshot every 50 ms. A window is created and shown
+    /// before its own first snapshot arrives, so opening on the default would render
+    /// one frame of it: the settings window used to redraw from English into the
+    /// user's language as soon as the snapshot landed. Reading it here keeps the
+    /// windows off a blocking read on the GPUI thread.
+    product_language: bongocat_ui::SettingsLanguage,
+    /// The appearance a product window opens with.
     ///
-    /// The same reason as `update_language`: the update window has to apply the
-    /// product's theme on its first frame, and the settings snapshot only reaches it
-    /// on the next poll. Opening on the default would let it clear an override the
+    /// The same reason as `product_language`: a window has to apply the product's
+    /// theme on its first frame, and the settings snapshot only reaches it on the next
+    /// poll. Opening on the default would let the update window clear an override the
     /// settings window has already installed (ADR-0048).
-    update_appearance_theme: bongocat_ui::SettingsTheme,
+    product_appearance_theme: bongocat_ui::SettingsTheme,
     /// When a completed install that needs a restart was first observed.
     #[cfg(target_os = "macos")]
     update_installed_since: Option<Instant>,
@@ -936,14 +939,25 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
         }
     }
 
-    let (settings_client, window_state) = cx
+    let (settings_client, window_state, seed) = cx
         .try_global::<ProductCoordinator>()
-        .and_then(|coordinator| coordinator.settings_service.as_ref())
-        .map(|service| (service.client(), service.window_state()))
+        .and_then(|coordinator| {
+            coordinator.settings_service.as_ref().map(|service| {
+                (
+                    service.client(),
+                    service.window_state(),
+                    SettingsWindowSeed {
+                        language: coordinator.product_language,
+                        appearance_theme: coordinator.product_appearance_theme,
+                    },
+                )
+            })
+        })
         .ok_or_else(|| "settings service owner is unavailable".to_owned())?;
     let window_handle = open_settings_window(
         settings_client,
         window_state,
+        seed,
         taskbar_icon_visible,
         finish_product_quit,
         open_update_window_and_check,
@@ -977,8 +991,8 @@ fn ensure_update_window(cx: &mut App) -> Result<bongocat_ui::UpdateWindowHandle,
             coordinator.update_window.clone(),
             update_service.client(),
             settings_client,
-            coordinator.update_language,
-            coordinator.update_appearance_theme,
+            coordinator.product_language,
+            coordinator.product_appearance_theme,
         )
     };
     if let Some(window_handle) = existing
@@ -1419,7 +1433,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
         ApplicationState, BuildEnvironment, ConfigStore, Language, StateStore, StorageLayout,
         Theme, WindowPlacement,
     };
-    use bongocat_ui::SettingsLanguage;
+    use bongocat_ui::{SettingsLanguage, SettingsTheme};
 
     const RESIZED_WIDTH: u32 = 700;
     const RESIZED_HEIGHT: u32 = 520;
@@ -1453,6 +1467,12 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
             match open_settings_window(
                 client.clone(),
                 window_state.clone(),
+                // The seed the product derives from its startup snapshot, here matching
+                // the configuration this smoke just committed.
+                SettingsWindowSeed {
+                    language: SettingsLanguage::ChineseSimplified,
+                    appearance_theme: SettingsTheme::Dark,
+                },
                 true,
                 |cx| cx.quit(),
                 |_: &mut App| {},
@@ -1470,6 +1490,19 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
             };
         cx.spawn(async move |cx| {
             let result = async {
+                // The window is already on screen here, and the snapshot the loop below
+                // waits for may still be in flight: this is the frame the seed answers,
+                // and the one the user would otherwise watch redraw from English.
+                let seeded = window
+                    .update(cx, |view, _, _| view.display_language_for_smoke())
+                    .map_err(|error| io::Error::other(format!("read seeded language: {error}")))?;
+                if seeded != SettingsLanguage::ChineseSimplified {
+                    return Err(io::Error::other(format!(
+                        "settings window opened in {seeded:?}, expected the configured \
+                         Simplified Chinese before its first snapshot"
+                    ))
+                    .into());
+                }
                 let mut general_verified = false;
                 let mut last_general_error = None;
                 for _ in 0..200 {
@@ -2217,8 +2250,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
             };
-        let initial_menu_presentation = match settings_service.client().read_snapshot_blocking() {
-            Ok(snapshot) => system_menu_presentation(&snapshot),
+        // One blocking read serves both the first system menu and the appearance every
+        // product window opens with, so the language and theme a window is seeded with
+        // cost no extra round trip and cannot disagree with the menu.
+        let initial_settings_snapshot = match settings_service.client().read_snapshot_blocking() {
+            Ok(snapshot) => snapshot,
             Err(error) => {
                 record_failure(&run_failures, error.to_string());
                 let mut overlay = overlay;
@@ -2231,6 +2267,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
         };
+        let initial_menu_presentation = system_menu_presentation(&initial_settings_snapshot);
         let system_menu = match SystemMenu::start_with_presentation(
             initial_status_icon_visible,
             initial_menu_presentation,
@@ -2297,8 +2334,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             settings_window: None,
             update_service: Some(update_service),
             update_window: None,
-            update_language: bongocat_ui::SettingsLanguage::EnglishUnitedStates,
-            update_appearance_theme: bongocat_ui::SettingsTheme::System,
+            product_language: initial_settings_snapshot.resolved_language,
+            product_appearance_theme: initial_settings_snapshot.appearance_theme,
             #[cfg(target_os = "macos")]
             update_installed_since: None,
             #[cfg(target_os = "macos")]
@@ -2493,8 +2530,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             return Ok(());
                         }
                         let coordinator = cx.global_mut::<ProductCoordinator>();
-                        coordinator.update_language = language;
-                        coordinator.update_appearance_theme = appearance_theme;
+                        coordinator.product_language = language;
+                        coordinator.product_appearance_theme = appearance_theme;
                         coordinator
                             .system_menu
                             .as_mut()

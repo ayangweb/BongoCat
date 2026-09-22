@@ -1553,8 +1553,19 @@ fn deleting_a_model_asks_the_service_only_after_the_confirmation(cx: &mut TestAp
     let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
     let capture = Rc::clone(&built);
     let (_, visual) = cx.add_window_view(move |window, cx| {
-        let view =
-            cx.new(|cx| SettingsView::new(client, Rc::new(|_| {}), Rc::new(|_| {}), window, cx));
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::EnglishUnitedStates,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
         capture.borrow_mut().replace(view.clone());
         Root::new(view, window, cx)
     });
@@ -1619,4 +1630,68 @@ fn deleting_a_model_asks_the_service_only_after_the_confirmation(cx: &mut TestAp
         ),
         "accepting must ask the service to delete the model it named"
     );
+}
+
+/// The frames before the first snapshot render the seeded appearance.
+///
+/// The window is created and shown while its first snapshot is still in flight, so
+/// every frame in that gap has no snapshot to read. Resolving the defaults there is
+/// what made a Simplified Chinese window paint one frame of English and then
+/// re-render itself, which is the animation this pins down: the seed a window is
+/// opened with has to answer until the snapshot replaces it, and the snapshot has
+/// to win once it exists.
+#[gpui_kit::test]
+fn the_frames_before_the_first_snapshot_render_the_seeded_appearance(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
+    let capture = Rc::clone(&built);
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::ChineseSimplified,
+                    appearance_theme: SettingsTheme::Dark,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        capture.borrow_mut().replace(view.clone());
+        Root::new(view, window, cx)
+    });
+    let view = built
+        .borrow_mut()
+        .take()
+        .expect("the window builder must hand the page out");
+
+    view.update(visual, |view, cx| {
+        assert!(
+            view.snapshot.is_none(),
+            "test premise: no snapshot has arrived yet"
+        );
+        assert_eq!(view.display_language(), SettingsLanguage::ChineseSimplified);
+        assert_eq!(view.display_appearance_theme(), SettingsTheme::Dark);
+        cx.notify();
+    });
+    visual.run_until_parked();
+
+    // The snapshot is what the window renders from once it exists, seed or not.
+    view.update(visual, |view, cx| {
+        view.snapshot = Some(crate::tests::snapshot(1, true, false));
+        cx.notify();
+    });
+    visual.run_until_parked();
+    view.update(visual, |view, cx| {
+        assert_eq!(
+            view.display_language(),
+            SettingsLanguage::EnglishUnitedStates,
+            "an arrived snapshot must replace the seed"
+        );
+        cx.notify();
+    });
+    visual.run_until_parked();
 }

@@ -395,8 +395,27 @@ impl ModelImportDraft {
     }
 }
 
+/// The appearance a settings window paints its first frame with.
+///
+/// The window is created and shown before the settings service answers its first
+/// snapshot, and a frame rendered in that gap has no snapshot to read: the
+/// language and theme used to fall back to the built-in defaults, so a user whose
+/// language is Simplified Chinese watched the window redraw from English once the
+/// snapshot landed. The window is therefore opened with the values the product
+/// already knows — the effective language, which the application resolves from the
+/// configured preference and the system language at startup, and the configured
+/// theme — and renders them until the first snapshot replaces them.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsWindowSeed {
+    /// The resolved display language, not the stored preference: `system` is
+    /// already resolved against the system language by the application.
+    pub language: SettingsLanguage,
+    pub appearance_theme: SettingsTheme,
+}
+
 pub struct SettingsView {
     client: SettingsClient,
+    seed: SettingsWindowSeed,
     snapshot: Option<SettingsSnapshot>,
     pending: Option<PendingOperation>,
     pending_notification: Option<SettingsError>,
