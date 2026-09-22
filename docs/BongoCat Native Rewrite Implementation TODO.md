@@ -2273,9 +2273,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-05）：`ModelStoreDiagnostic` 现为 11 个来源无关、固定
     `model_store_*` code；枚举包含完整 `ALL` 集合与唯一性回归。settings service 继续按 import/
     delete 操作映射为既有可操作 `SettingsErrorCode`，不公开 model store 的资源名或 I/O detail。
-    2026-09-16 新增压缩包来源后为 12 个（多出 `model_store_source_archive_unsupported`，见
-    `P4-MODEL-ARCHIVE-SOURCE`）；settings 侧仍映射为既有 `SettingsErrorCode`，两个映射函数的
-    回归测试新增"枚举 cases 必须覆盖 `ALL`"的断言，避免新码静默漏映射。
+    2026-09-16 曾因压缩包来源增至 12 个（多出 `model_store_source_archive_unsupported`）；
+    **2026-09-22 压缩包来源撤回后回到 11 个**（见 `P4-MODEL-ARCHIVE-SOURCE`）。settings 侧继续
+    映射为既有 `SettingsErrorCode`，两个映射函数的回归测试带"枚举 cases 必须覆盖 `ALL`"的断言，
+    避免新码静默漏映射。
     renderer 的 `ModelCommitErrorCode` 现同样公开唯一的稳定
     `model_commit_resource_preparation_failed` code，runtime 仍将该拒绝投影为
     `gpu_preparation_failed`，不改变既有两阶段模型切换失败语义。
@@ -2806,6 +2807,10 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `ModelSourcePickerError`，稳定码前缀改为 `model_source_picker_*`（示例同步改名
       `examples/model_source_picker_smoke.rs`）。本项已通过的退出条件与实机证据不变，只换了名字
       与新增一个入口；归档选择器的实机 smoke 尚未执行。
+      **更新（2026-09-22）**：压缩包来源撤回后本项职责回到"选文件夹"，入口收敛为
+      `bongocat_platform::pick_model_folder`；`model_source_picker` 模块名与
+      `ModelSourcePickerOutcome`/`ModelSourcePickerError`/`model_source_picker_*` 稳定码**保留**
+      （它们描述的是"原生选择器"这个能力，不是压缩包），示例文件名也保留。
 26. [x] `P4-MODEL-MANAGEMENT-UI`：在 Models 页面完成来源感知的激活与删除闭环。
     - 依赖：`P4-MODEL-CATALOG`、`P4-MODEL-SELECTION`、`P4-MODEL-DELETE-COMMAND` 和正式
       GPUI settings snapshot。
@@ -3730,7 +3735,14 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `SettingsModelCatalog.skipped_entries` 与 `Application::ModelCatalog` 一并撤销。
       未运行：Windows 路径与 Windows/macOS CI 门禁。
 
-77. [x] `P4-MODEL-ARCHIVE-SOURCE`：让模型来源同时支持文件夹与 `.zip` 压缩包。
+77. [ ] `P4-MODEL-ARCHIVE-SOURCE`：让模型来源同时支持文件夹与 `.zip` 压缩包。
+    > **已撤回（2026-09-22）**：本项的实现于 2026-09-16 完成并验证，维护者随后决定**先删掉**
+    > 压缩包来源，恢复时另行确认。下面「当前契约」「验收证据」记录的是被删掉的那一版实现，
+    > 保留作为恢复时的设计输入与复用清单；`docs/adr/0036-model-archive-import-boundary.md`
+    > 已标记为**已撤回**。当前代码里**不存在** `archive.rs`、`detect_source_kind`、
+    > `plan_archive`/`extract_archive`、`ModelSourceKind`、`MverSource::Archive`、
+    > `SourceArchiveUnsupported` 与 `maximum_archive_bytes`，`bongocat-model` 也不再依赖
+    > `zip`/`flate2`。**恢复前先与维护者确认**：压缩包上传需要一组本次未做的新功能。
     - 依赖：`P4-MODEL-IMPORT-COMMAND`/`P4-MODEL-IMPORT-OPERATION`、`P7-MODEL-DIRECTORY-PICKER`
       建立的来源选择面、`ModelStore` staging 事务与 `ModelPackageLimits`。
     - 退出条件：来源类型按内容识别（目录 / zip 签名），不看扩展名、也不靠调用方标志；压缩包解压
@@ -3739,7 +3751,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       独立字节上限；包装目录被剥离；解压计入既有 copy stage；任何拒绝都不留 staging 或目标；
       文件夹与压缩包两个来源入口、状态文案与 AccessKit 节点齐备；完整 Native 门禁通过。
     - 决策记录：ADR-0036。
-    - 当前契约（2026-09-16）：`ModelStore::import_with_observer` 先 `detect_source_kind`
+    - 当时的契约（2026-09-16，代码已删除）：`ModelStore::import_with_observer` 先 `detect_source_kind`
       （目录 → 就地读取；常规文件且以 `PK\x03\x04`/`PK\x05\x06`/`PK\x07\x08` 开头 → 压缩包；其余
       存续文件 → `SourceArchiveUnsupported`），再 `plan_archive`（只读中央目录，不解压）或
       `PreparedModel::prepare`，之后才创建 staging；压缩包走 `extract_archive`（`create_new` 写入
@@ -3764,13 +3776,17 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       UI 的 Models 页面新增「选择压缩包」按钮、tab index 22 与
       `ACCESSIBILITY_MODEL_CHOOSE_ARCHIVE`（节点 50），导入按钮移到 23；归档状态文案落在
       `models.import.archive.*`，与来源无关的三条挑选文案上移到 `models.import.picker.*`。
+      **该界面形态已于 2026-09-22 被第 104 项取代，随后连实现一并撤回**：两个来源按钮与
+      `models.import.archive.*` 均不再存在；来源选择先收敛为 `pick_model_source`，同日收窄为
+      只选文件夹的 `pick_model_folder`，再随本项一起撤回——当前**压缩包既没有 UI 入口、也没有
+      store 侧实现**。本项保留的只是"当年做过什么、怎么做的"这份记录。
       建议标题规则统一在 `bongocat_ui::model_source_display_name`（归档去掉 `.zip`，目录保留原名），
-      UI 预填与 service 兜底共用它。
+      UI 预填与 service 兜底共用它——**这条规则仍然保留在代码里**，删掉它会让恢复时失去单一实现。
     - 依赖评估（2026-09-16，§9）：`zip =8.6.0`（已在 workspace 依赖中，供诊断包写归档；本次打开
       `deflate-flate2`，MIT）+ `flate2 =1.1.10`（显式后端 `rust_backend`/miniz_oxide，纯 Rust）。
       两者均为当次核对的 crates.io 最新非 yanked 稳定版；不给 `bongocat-model` 打开 AES/bzip2/
       zstd/lzma/ppmd/deflate64，未开启的压缩方法以稳定诊断拒绝。理由与替换边界见 ADR-0036 §9。
-    - 验收证据（2026-09-16）：`bongocat-model` 60 测试（新增 15：`store.rs` 10 + `archive.rs` 5），
+    - 当时的验收证据（2026-09-16，测试已随实现删除）：`bongocat-model` 60 测试（新增 15：`store.rs` 10 + `archive.rs` 5），
       新增用例覆盖"同一包以目录与压缩包两种来源导入后 `ModelPackageIndex` 逐字段相等"、按内容
       识别（无扩展名归档、`Stored` 归档、名为 `*.zip` 的目录）、嵌套包装剥离与深度上限、
       `__MACOSX`/`.DS_Store` 被丢弃且不干扰包装识别、非归档/截断/空/只有目录的归档、路径穿越
@@ -4089,7 +4105,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       尚未经过实机点击验证。
 
 81. [x] `P4-MODEL-LEGACY-SOURCE`：让模型导入直接识别 BongoCatMver 模型并触发转换，无需外部工具。
-    - 依赖：`P4-MODEL-ARCHIVE-SOURCE`（`detect_source_kind` 的来源识别与压缩包规划）、
+    - 依赖：`P4-MODEL-ARCHIVE-SOURCE`（来源识别与 staging 规划；该来源已于 2026-09-22 撤回，
+      本项现在只依赖其中的目录读取路径）、
       `P4-MODEL-ID-UUID`/`P4-MODEL-LIBRARY-METADATA`（UUID 存储键与标题元数据）、
       `P4-MODEL-IMPORT-OPERATION`（typed 导入操作与进度契约）、ADR-0030（先复用既有方案）。
     - 退出条件：Mver 源按内容识别且需要两条独立证据（根 `config.json` 可解析成 legacy section
@@ -4098,8 +4115,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       元数据、独立原子提交；转换写进 store 自己的 staging 并与目录/归档来源共用校验与 rename
       尾部；归档来源不解压；输出键位图使用产品自己的名字词汇表；合成图做无损重编码；跨模型进度
       单调；完整 Native 门禁通过。
-    - 决策记录：ADR-0037。
-    - 当前契约（2026-09-17）：`bongocat-model` 新增 `mver` 模块与公开类型 `MverInputMode`、
+    - 决策记录：ADR-0037（其决策 4「归档来源不解压」已随 ADR-0036 撤回，见 ADR-0037 文首修订）。
+      **更新（2026-09-22）**：压缩包来源撤回后，本项只保留目录来源：`MverSource` 退化为持有已
+      canonicalize 根路径的 struct，`detect_source_kind` 与 `ArchivePlan` 的按需读取路径都已删除；
+      其余契约与证据不变。`LEGACY_RESOURCE_MAXIMUM_BYTES` 仍然约束目录侧的单次读入。
+    - 当时的契约（2026-09-17）：`bongocat-model` 新增 `mver` 模块与公开类型 `MverInputMode`、
       `ModelSourceContent`。`ModelStore::inspect_source` 复用 `detect_source_kind` 后按上述两条
       证据判定；`ModelStore::import_mver_with_observer` 把选中的模式转换进自己的 staging；导入
       尾部抽成 `commit_installed_staging`，目录复制、归档解压与转换三条路径共用
@@ -5644,6 +5664,112 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       键守门）、`cargo test -p bongocat-ui --lib`（136 通过）、`cargo test -p bongocat-app --lib`
       全绿；`tools/validate-locales.py` 286/286；`python3 -m unittest discover -s tools/tests`
       63 用例全过；`just check` 六道门全过（34 目标 / 0 failed）。
+
+104. [x] `P4-MODEL-IMPORT-UPLOAD-CARD`：模型导入改为单一上传卡片，一次选择即开始导入，分步骤展示
+    导入与封面截取。
+    - 依赖：`P4-MODEL-LEGACY-SOURCE`（文件夹来源的拾取与识别）、ADR-0055（导入后的封面由渲染截取）、
+      ADR-0036（来源拾取边界；该 ADR 已于 2026-09-22 撤回）。**`P4-MODEL-ARCHIVE-SOURCE` 不再是本项
+      依赖**：压缩包上传本次不做，其 store 侧实现也已删除，见下方「范围收窄」。
+    - 退出条件：模型页不再有标题输入框、两个来源按钮和独立「导入」按钮；按下卡片只打开一个**文件夹**
+      选择器，选中即自动开始导入；导入过程中卡片用 gpui-kit 的 `Spinner` 显示当前步骤，进入截取后
+      **直接替换**为下一步而不是逐步叠加；封面截取结束前，本次导入安装的模型不出现在网格里；上传
+      卡片与模型卡片渲染高度一致。
+    - 当前契约（2026-09-22）：
+      ① 新增 `crates/bongocat-ui/src/window/model_import_card.rs`（`ModelImportCard`，`Spinner` 渲染
+         当前步骤，鼠标点击与 Enter/Space 等价）。卡片是唯一导入入口，不再渲染标题输入框：标题在
+         选中文件夹时由 `suggested_model_title` 从文件夹名派生，之后可在卡片编辑里改，
+         `SettingsModelImportRequest.title` 与 service 端 UUID 存储键契约不变。
+      ② 进度面只显示**一个**步骤：`models::import_card_step` 返回 `Option<SharedString>`，`Capturing`
+         时返回「正在截取封面中…」，而不是把「正在导入模型中…」留成已完成行——旧实现的
+         `ModelImportCardStep { label, done }` 与 `CircleCheck` 已完成行已删除。版式按 Ant Design 的
+         `Spin`：指示器在上、步骤文案在下、两者作为一块水平居中并整体在卡片内居中，间距 8px
+         （`STEP_GAP`，即 antd tip 的偏移量），文案用 `text_sm` + `tokens.muted`（次要色）。
+         **不给步骤行加 `aria_label`**：ADR-0054 决策 4 禁止项目自有 UI 代码新增隐藏标签，且应用是
+         `GpuiApplication::new_inaccessible`，那在产品里是死代码。「一次只有一个步骤」由类型保证
+         （卡片只收一个 `step`，不是列表），文案由 `import_card_step` 的用例钉住，组件测试只断言
+         结构（步骤行在、提示不在）。
+      ⑨ Technical Design 同步：§模型/Models 里四处描述该页的旧文已按当前实现改写——「来源两种」
+         补上"当前 UI 只产出目录"、导入 command 的标题不再说成导入前可编辑、picker 的「两个入口」
+         收敛为唯一的 `pick_model_folder`、页面保存的视图状态与"失败后不 retry"按实际重写。
+         ADR-0036 决策 10 的正文保留为**已标记取代**的历史记录，不逐句改写。
+      ③ 高度：模型网格 `models::model_grid()` 用 `flex_wrap + items_stretch + content_start`，同一行
+         的单元格一律拉伸到该行最高的一个（即模型卡片），上传卡片不再自带高度。`content_start` 是
+         必需的——换行 flex 容器默认把行拉伸到容器高度，只加 `items_stretch` 会让卡片高度等于窗口
+         高度。`models::MODEL_CARD_MIN_HEIGHT`（232px，模型卡片一行摘要时的高度）只作为上传卡片的
+         下限，供它独占一行时保形；模型卡片的操作行加 `mt_auto()`，同一行各卡片的按钮因此对齐。
+         尺寸常量单一来源：上传卡片的宽度也取自 `models::MODEL_CARD_WIDTH`（不再各写一遍 240），
+         模型卡片根节点补 `test_support()`，两张卡片的几何因此都能在测试里读到。
+      ④ 来源选择只给文件夹：`bongocat_platform::pick_model_folder` 取代 `pick_model_source`，macOS 与
+         Windows 都用 `rfd` 的 `pick_folder`（前者 `AsyncFileDialog`，后者 `FileDialog`）；
+         `validate_selected_folder` 取代 `validate_selected_source`，只接受真实目录，常规文件返回
+         `SelectionInvalid`。`ModelSourcePickerError` 的稳定码与 `ModelSourcePickerOutcome` 不变。
+      ⑤ `ModelImportState` 收敛为 `Idle | Picking | Starting | Running | Capturing`；失败与取消都回到
+         `Idle` 并只经 `Notification` 报告，卡片不再承载错误文案，也不再展示 worker 的
+         `Copying/Validating/...` 细化阶段。
+      ⑥ 导入成功后 UI 进入 `Capturing`，把本次新增的 installed 条目记进
+         `SettingsView::pending_model_reveal`（baseline 在 `start_model_import` 记录），网格渲染前
+         过滤这些条目。封面截取结束（成功或失败）由 app 主线程调用
+         `SettingsView::finish_model_cover_capture` 报告，清空门禁并失效封面图像缓存；截取先于导入
+         回执完成的竞态由 `completed_model_cover_captures` 兜住。截取失败仍以来源封面发布模型。
+      ⑦ `crates/bongocat-app/src/main.rs` 的截取循环对每个请求都回调一次（不再 `continue` 跳过失败），
+         `refresh_model_cover` 更名为 `finish_model_cover_capture`。
+      ⑧ locale 删除 `models.import.folder/archive/picker/progress/actions.choosing/actions.import`
+         共 17 条，新增 `models.import.step.{choosing,importing,capturing}` 与 `models.import.hint`；
+         hint 现在只说文件夹（en `Click to choose a model folder`、zh `点击选择模型文件夹`）。中文三条
+         步骤文案的省略号由 `……` 改为 `…`，规范见 `docs/localization-copy-conventions.md`。
+    - 范围收窄（2026-09-22，第二次修订）：**压缩包上传本次不做**。上传入口只接受文件夹，选择器、校验器
+      与文案都不再提及压缩包（`pick_model_source` / `validate_selected_source` / `pick_file_or_folder`
+      全部移除）。**store 侧的归档摄入也已一并删除**（第 77 项因此改为未完成并标记已撤回）：
+      `archive.rs`、`detect_source_kind`、`plan_archive`/`extract_archive`、`ModelSourceKind`、
+      `MverSource::Archive`、`SourceArchiveUnsupported`、`maximum_archive_bytes` 与
+      `bongocat-model` 的 `zip`/`flate2` 依赖都不再存在，模型来源只剩用户选中的文件夹。
+      恢复该功能前先与维护者确认（压缩包上传需要一组本次未做的新功能）；
+      `bongocat_ui::model_source_display_name` 的「去掉归档扩展名」规则保留，因为 settings service
+      的兜底标题仍与它共用，删掉会让恢复时失去单一实现。
+    - 验收证据（2026-09-22，本机 macOS / aarch64）：`cargo test -p bongocat-ui --lib` 138 通过（含
+      `model_import_card` 4 项 UI 测试：按下卡片只打开一次选择器且键盘等价、进度面替换提示且下一步
+      仍只有那一条步骤行、卡片与同行模型卡片等高、命令进行中不打开选择器；以及 `window::tests` 的
+      `the_import_card_is_as_tall_as_the_model_cards_beside_it`——它渲染页面**真实的**网格，用一个带
+      状态行的不可用模型当邻居，所以断言的是"上传卡片与页面里的模型卡片等高"而不只是网格行为）。
+      三条新断言都用变异验证过能变红（`items_stretch` + `content_start` 退回 `items_start` → 合成网格
+      232px vs 272px、真实页面 232px vs 281px；卡片不渲染进度面 → 步骤行断言失败）。`cargo test -p
+      bongocat-platform` 64 通过（`a_selected_folder_is_revalidated_and_canonicalized` 现在断言常规
+      文件被拒）；`tools/validate-locales.py` 2 locale × 240 键通过，新增的省略号检查对 `……` 与
+      ASCII `...` 两种写法分别验证过会变红；`cargo fmt --all -- --check`；`cargo clippy --locked
+      -p bongocat-ui -p bongocat-platform --all-targets --all-features` 与 `-p bongocat-app`
+      （`storage-test-injection`）`-D warnings`；`just check` 六道门全过（34 目标 / 0 failed）。
+    - 未运行：Windows 侧编译与实机（本机无法交叉编译该目标：`libdeflate-sys` 的 C 构建需要 MSVC
+      工具链，由 CI `windows-latest` 覆盖），因此 Windows 的 `pick_folder` 行为只有代码与文档证据、
+      没有实机证据；导入交互与截取后封面的**目视**观察；封面截取失败路径的实机复现；
+      `examples/model_source_picker_smoke.rs` 的实机执行（其 Windows `--auto` 现在只能覆盖
+      取消路径，接受路径需要手工选中文件夹）。
+    - 补跑（2026-09-22，本机 macOS / aarch64）：`cargo run --locked -p bongocat-app --release --
+      --run-seconds 8 --settings-window-smoke --models-page-smoke` **exit=0**，输出只有
+      「settings window hid and reopened from one pre-rendered entity」与 Cubism Core 版本，
+      无 `product run failed`、无 panic。它证明应用能启动、设置窗口能渲染与重开、模型页的目录
+      不变量成立（含真实封面渲染路径），**不**证明卡片高度的目视一致与导入交互手感——那两项仍需
+      人工观察。
+
+105. [x] `P4-I18N-ELLIPSIS-CONVENTION`：把「省略号一律三个点」从口头约定变成规范文档 + 机械门禁。
+    - 依赖：第 103 项（文案通读时已把 10 条 ASCII `...` 统一为 `…`）、ADR-0012（catalog 结构与校验
+      边界）、第 104 项（本次改动又引入了 3 条 `……`）。
+    - 退出条件：省略号写法有唯一的书面规范；写错能在门禁上变红，不依赖 review 记忆。
+    - 当前契约（2026-09-22）：
+      ① 新增 `docs/localization-copy-conventions.md`：省略号一律写单个 `…`（U+2026，视觉上是三个点），
+         禁止 `……`（六个点，中文排版习惯）与 ASCII `...`（拉丁写法）。理由是同一个 key 由所有语言
+         共用，写法必须与语言无关；`…` 只占一个码位、宽度稳定，中英文字体都能正确渲染。文档同时
+         声明适用范围（`crates/bongocat-i18n/locales/` 下的全部资源）与例外（文档、源码注释、
+         CHANGELOG、memory 属自然语言；但引用 UI 文案时照抄 catalog 写法）。
+      ② `docs/adr/0012-native-json-localization.md` 的「约束」新增一条指向该文档，并写明这条规则由
+         `tools/validate-locales.py` 强制。
+      ③ `tools/validate-locales.py` 新增 `check_ellipsis`：对每个 locale 的每个值检查 `\u2026{2,}` 与
+         `\.{2,}`，命中即报出 key 与实际写法并以退出码 1 结束。
+      ④ 修复本次改动引入的 3 条中文步骤文案（`models.import.step.{choosing,importing,capturing}`）
+         由 `……` 改为 `…`；ADR-0055 与第 104 项中引用同一批 UI 文案的地方随动。
+    - 验收证据（2026-09-22，本机 macOS / aarch64）：`tools/validate-locales.py` 报
+      `validated 2 locale(s), 240 key(s) each`；对 `……` 与 ASCII `...` 两种写法分别做过变异验证，
+      都以 `spells an ellipsis as '……'` / `'...'` 失败并返回 1，还原后复跑通过。
+    - 未运行：无（纯文档与 Python 门禁，不涉及平台路径）。
 
 ## 13. 待决策清单
 

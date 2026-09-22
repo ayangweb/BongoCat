@@ -8,7 +8,7 @@
 //! only other way to see a conversion is to drive the settings window.
 //!
 //! ```text
-//! cargo run -p bongocat-model --example model_conversion_smoke -- --source <folder|archive>
+//! cargo run -p bongocat-model --example model_conversion_smoke -- --source <folder>
 //! ```
 //!
 //! Without `--store` the models are installed into a temporary store that is
@@ -32,7 +32,7 @@ fn main() -> ExitCode {
             "--help" => {
                 let _ = writeln!(
                     io::stdout(),
-                    "usage: model_conversion_smoke --source <folder|archive> [--store <directory>]"
+                    "usage: model_conversion_smoke --source <folder> [--store <directory>]"
                 );
                 return ExitCode::SUCCESS;
             }

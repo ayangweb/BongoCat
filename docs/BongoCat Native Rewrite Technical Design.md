@@ -268,7 +268,7 @@ Platform input ---> Runtime thread ---> Model/Animation state
 - `runtime`：唯一业务状态所有者，处理输入、快捷键、动画选择和模型命令。
 - `ui`：显示 runtime snapshot，发送显式 command，不直接修改业务字段。
 - `platform`：窗口、输入、托盘、权限、显示器、启动项、文件和更新。
-- `model`：模型包解析、路径安全、资源索引和显式导入（目录、`.zip` 归档和 BongoCatMver 源三种来源），并在导入时把包内的旧键位名归一化到产品词汇表。
+- `model`：模型包解析、路径安全、资源索引和显式导入（目录与 BongoCatMver 源两种来源），并在导入时把包内的旧键位名归一化到产品词汇表。
 - `live2d`：Cubism Core 生命周期、motion/expression/physics/pose 求值。
 - `audio`：motion 音效的有序 command、FLAC 解码、唯一 voice、输出设备和 shutdown。
 - `render`：不可变 render snapshot 和 renderer contract。
@@ -304,7 +304,7 @@ BongoCat/
     bongocat-runtime/         状态、输入语义、动画和命令
     bongocat-config/          schema、环境隔离和原子存储
     bongocat-storage/         用户私有存储原语：权限、私有目录、原子替换
-    bongocat-model/           模型包、目录/压缩包导入和资源索引
+    bongocat-model/           模型包、目录导入和资源索引
     bongocat-live2d/          Cubism Core 边界与模型求值
     bongocat-audio/           motion 音效队列、解码与设备 owner
     bongocat-render/          render snapshot/contract
@@ -830,35 +830,22 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   正常 shutdown 前仍强制 flush。配置提交、模型切换和窗口重建必须保留另一窗口已保存的几何，
   窗口完全离开当前显示器时回退到鼠标当前所在显示器居中，fullscreen 不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
-- 模型来源有两种，由内容而非扩展名或调用方标志识别（ADR-0036）：目录就地读取，常规文件只有
-  真正以 zip 签名开头时才作为压缩包来源，否则返回稳定诊断。用户不需要说明自己选的是什么，
-  归档被改名也能导入，叫 `*.zip` 的目录仍按目录处理。
-- 压缩包不是第二个包解析器：解压写满 `ModelStore` 自己的 staging 目录后，仍然走同一个
-  `PreparedModel` 校验，因此不可能绕过路径规范化、符号链接拒绝、侧车校验或任何包上限。
-  归档在**解压前**按中央目录校验条目名、条目类型、压缩方法、加密标志、条目数、深度和声明
-  字节；实际写出的字节数必须等于声明值，否则按来源变化拒绝。归档内的一层或多层包装目录会被
-  剥离（"压缩这个文件夹"必然产生它，保留会让入口发现失败），`__MACOSX/**` 与
-  `._*`/`.DS_Store`/`.localized`/`Thumbs.db`/`desktop.ini` 作为文件管理器状态丢弃。
-- 压缩包容器有自己的字节上限 `maximum_archive_bytes`，在归档读取器解析中央目录之前生效；
-  它与包字节上限分开，否则以 `Stored` 保存的合法归档会让包上限永不可达。解压出的条目数、
-  深度、单文件字节和整包字节仍由既有包上限约束。
+- 模型来源只有一种：用户选中的文件夹，就地读取后复制进 store 自己的 staging。压缩包来源与
+  它的解压边界已随实现一并移除（ADR-0036 已撤回，见该 ADR 的撤回说明）；要恢复时先与维护者确认。
 - 导入在提交前把包内 `resources/left-keys` 与 `resources/right-keys` 下的旧键位名归一化到产品
   词汇表：`Alt.png` → `AltLeft.png`、`AltGr.png` → `AltRight.png`（ADR-0038）。这一步只作用在
-  `ModelStore` 自己的 staging 上，目录来源与归档来源共用，因此用户选中的源目录/归档始终是只读
-  输入；改名不改变文件数与字节数，`ModelImportProgress` 的计数仍然真实。canonical 文件已存在时
-  保留它、旧名文件原样留下，不猜作者意图。Mver 转换路径不做这一步——它的输出已经按产品词汇表
-  命名。
-- 第三种来源是 BongoCatMver 模型（ADR-0037），同样按内容识别，且需要两条独立证据：根
+  `ModelStore` 自己的 staging 上，因此用户选中的源目录始终是只读输入；改名不改变文件数与字节数，
+  `ModelImportProgress` 的计数仍然真实。canonical 文件已存在时保留它、旧名文件原样留下，不猜
+  作者意图。Mver 转换路径不做这一步——它的输出已经按产品词汇表命名。
+- 第二种来源是 BongoCatMver 模型（ADR-0037），同样按内容识别，且需要两条独立证据：根
   `config.json` 能解析成 legacy 的 section 形状，且它命名的模式里至少有一个在
   `<资源根>/<模式>/cat_model/` 下恰好带一个 `.model3.json`。缺任一条就回退到普通包导入并
   由那条路径报错，检测本身不报错。
 - 一个 Mver 源产出**多个** BongoCat 模型：每种输入模式各自转换成一个包，各自分配随机 UUID
   v4 存储键与元数据记录，因此三种模式是模型列表里三个可独立启用/改名/删除的条目。每个模式
   独立提交——某个模式的键位图损坏不影响已转换成功的模式，与"这几种模式彼此独立"的事实一致。
-- 转换只把合成后的包写进 `ModelStore` 自己的 staging，并与目录复制、归档解压共用同一个
-  `PreparedModel` 校验与单次 `rename` 提交尾部，因此不可能绕过包校验，也不存在第二个临时位置。
-  归档来源**不解压**：只按需读取被命名的条目并沿用逐条目复核，一个 Mver `.zip` 不会把整个
-  应用（exe、DLL、用不到的模式）落到磁盘上。
+- 转换只把合成后的包写进 `ModelStore` 自己的 staging，并与目录复制共用同一个 `PreparedModel`
+  校验与单次 `rename` 提交尾部，因此不可能绕过包校验，也不存在第二个临时位置。
 - 键位图合成是"最小画布上的 Porter-Duff over"：画布取两层较小的宽高、两层锚在原点，因此过大
   的一层被裁切而非缩放；模式没有 `keyboard/` 图集时按字节安装 paw 图而不合成；某个绑定缺 paw
   或配套键帽时只跳过该绑定。输出文件名沿用产品自己的词汇表——键盘键是 `bongocat-live2d` 从
@@ -880,8 +867,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - model ID 是跨 Windows/macOS 可移植的 ASCII store key：禁止前导/尾随点、路径分隔符及
   Windows 保留设备 stem（含带扩展名的 `CON`、`PRN`、`AUX`、`NUL`、`COM1..9`、
   `LPT1..9`），不得让同一 installed identity 在目标平台解析为设备或隐藏路径。
-- 任意外部目录或压缩包只能产生待导入的 `PreparedModel`；只有当前环境 `ModelStore` 完成复制
-  或解压、复验和原子提交后签发的 `InstalledModel` 才能进入 runtime 激活 command。
+- 任意外部目录只能产生待导入的 `PreparedModel`；只有当前环境 `ModelStore` 完成复制、复验和
+  原子提交后签发的 `InstalledModel` 才能进入 runtime 激活 command。
 - 应用装配时打开并持有只读 `PresetModelCatalog`；设置与模型管理只消费预置目录和当前
   环境 `ModelStore` 的合并目录，不在 UI executor 临时扫描或解析模型文件。
 - installed 目录扫描逐条目降级：`ModelStore::list` 只在 store 根目录本身不可读或 writer
@@ -900,14 +887,14 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   还会在 operational 状态下清理指向已不存在模型目录的 `installed_models` 元数据记录；
   目录存在但内容无效的记录保留，由合并目录的稳定诊断码呈现。启动期清理失败的记录留待
   下次启动重试，不影响其他模型或应用整体。
-- 模型导入 command 携带用户可编辑的标题与文件选择来源（目录或 `.zip` 归档）；标题只是显示
+- 模型导入 command 携带标题与文件选择来源（用户选中的文件夹）；标题只是显示
   名称，不参与身份——settings service worker 在导入前用随机 UUID v4（`uuid 1.26.1`，精确 pin）
-  生成当前 store 内唯一的可移植存储 ID，因此重复导入同一目录或同一归档不会覆盖已有模型，
+  生成当前 store 内唯一的可移植存储 ID，因此重复导入同一目录不会覆盖已有模型，
   显示名称可以随时编辑，用户也无需发明任何 ID。导入成功后把标题写入 `installed_models`
-  元数据：标题取导入 command 携带的用户输入，默认即来源自身的名字（归档去掉 `.zip` 扩展名，
-  因此文件夹与由它压出的归档给出同一个建议标题），空白输入依次降级为该名字和模型 ID，
-  超长标题截断到元数据上限；元数据提交失败按导入失败报告且已安装目录保留。删除模型在
-  store 删除成功后同步移除对应元数据记录。
+  元数据：标题取导入 command 携带的值，页面在选中来源时按文件夹自身的名字预填，
+  导入后可在模型卡片里改名；空白值
+  依次降级为该名字和模型 ID，超长标题截断到元数据上限；元数据提交失败按导入失败报告且已安装
+  目录保留。删除模型在 store 删除成功后同步移除对应元数据记录。
 - 模型目录身份是 `(origin, model_id)`。同一 `model_id` 的 preset 与 installed 条目都保留，
   排序固定为 `model_id` 升序、同 ID 时 preset 在前；后续选择 command 必须携带 origin，
   不得以静默覆盖解决冲突。
@@ -928,22 +915,21 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   使用刚取得的 config revision 原子恢复旧选择。配置写入失败时不得发送激活 command。
 - 合并目录通过强类型 settings snapshot 投影来源、可用状态、资源计数和稳定诊断码；无效
   模型继续可见，但用户路径、底层 I/O 文本和模型内容不得进入 UI snapshot 或日志。
-- 模型导入 command 只由 settings service worker 执行复制或解压和复验；成功后刷新合并目录，但
+- 模型导入 command 只由 settings service worker 执行复制和复验；成功后刷新合并目录，但
   不隐式激活模型或修改选择配置。失败只返回稳定、
   可操作且不含用户路径的导入错误码。settings snapshot revision 同时观察 runtime 变化并为
   catalog-only 变化递增，禁止返回内容已变但 revision 未变的快照。settings client 为每次导入
   分配跨 clone 单调递增的强类型 operation ID；operation 只公开 prepare/copy/validate/commit
   stage、已复制文件数和字节数，不携带用户路径，并通过共享原子取消令牌在 service worker
-  阻塞于分块复制时仍可取消。压缩包来源的解压计入 copy stage——它描述的正是"把来源字节物化
-  进 staging"，不为归档新增第五个阶段。cancel 在原子 rename 提交前生效并清理 staging，
+  阻塞于分块复制时仍可取消。cancel 在原子 rename 提交前生效并清理 staging，
   final result 携带同一 operation ID；后续 Models 页面只消费该契约，不自行执行文件 I/O。
-- 模型来源选择由 `bongocat-platform` 的私有 adapter 调用 `rfd 0.17.2`，两个入口分列：目录用
-  `pick_folder`，归档用 `pick_file` 并只以 `.zip` 作为便利过滤。macOS 只在
-  AppKit 主线程且已有窗口可作为 sheet parent 时创建 `AsyncFileDialog`，缺少 sheet parent 时
-  返回 `BackendUnavailable`，不回退同步 `runModal`；Windows 在专用 worker 的 STA 中调用
+- 模型来源选择由 `bongocat-platform` 的私有 adapter 调用 `rfd 0.17.2`，当前只有一个入口
+  `pick_model_folder`：两平台都用 `pick_folder`（macOS `AsyncFileDialog`，Windows `FileDialog`）。
+  macOS 只在 AppKit 主线程且已有窗口可作为 sheet parent 时创建 `AsyncFileDialog`，缺少 sheet
+  parent 时返回 `BackendUnavailable`，不回退同步 `runModal`；Windows 在专用 worker 的 STA 中调用
   `FileDialog`。两平台都只向上返回 `Selected(PathBuf)`/`Cancelled` 和稳定无路径错误码，Rust 侧
-  重新检查绝对、存在与类型（目录 / 常规文件）并 canonicalize；选择层不判定所选文件是否是可用
-  归档（那由 store 按内容判定并给出稳定码），真正的包解析/解压/复制仍只由 settings worker 执行。
+  重新检查绝对、存在与类型（必须是目录）并 canonicalize；选择层不判定所选目录里是不是可用的
+  模型包（那由 store 按内容判定并给出稳定码），真正的包解析/复制仍只由 settings worker 执行。
   `rfd` 将取消与后端失败都表示为 `None`，当前 adapter 按取消处理；对话框取消不是错误，错误
   不得携带系统文本或用户路径。
 - 剪贴板 adapter 通过私有 `arboard 3.6.1` 边界只接受最多 1 MiB、无内嵌 NUL 的纯文本；无文本
@@ -951,11 +937,13 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   在 AppKit 主线程和 autorelease pool 内，Windows 的打开、写入和关闭由 `arboard` 的 RAII
   guard 在同一线程完成。依赖类型、系统错误和剪贴板内容都不离开 adapter；底层读取在项目
   大小校验前可能已物化系统提供的完整文本，这是当前第三方文本 API 的已知边界。
-- Models 页面只在 GPUI Entity 中保存用户可编辑的 model ID、临时选择目录和 operation monitor。
-  目录只显示匿名 selected/cancelled/error 状态，不进入 snapshot、状态文案或日志；ASCII 建议 ID
-  只是表单草稿，最终仍由正式 `ModelId` contract 校验。页面提交 typed import 后以 100 ms UI
-  timer 读取无路径 progress，cancel 直接设置共享原子令牌，失败可使用同一草稿 retry；GPUI
-  executor 不遍历、解析或复制模型文件，成功只刷新 catalog，不隐式切换 active model。
+- Models 页面在 GPUI Entity 中只保存视图状态——导入草稿（来源目录、由来源名派生的标题、导入状态
+  与本次导入的 baseline，运行中的 operation monitor 就在该状态里）、删除确认、编辑草稿和每行的
+  焦点句柄——不持有任何路径文案：导入卡片只显示匿名的 choosing/importing/capturing 步骤，不进入
+  snapshot、状态文案或日志。导入进行中以 100 ms UI timer 重新渲染卡片，读的只有 operation ID 与
+  取消状态（不读文件数/字节数），cancel 直接设置共享原子令牌；失败与取消都回到上传提示并只经
+  `Notification` 报告，不提供页面内 retry。GPUI executor 不遍历、解析或复制模型文件，成功只
+  刷新 catalog，不隐式切换 active model。
 - 模型删除 command 同样携带 `(origin, model_id)`；preset 永不可删。installed 模型始终可删，
   包括当前 runtime active 或配置所选的那个：删除前先按同一 typed selection 路径切回标准预置，
   切换失败即中止删除，绝不在 runtime 仍持有该包时移除文件。删除本身仍以 rename 后删除事务退休；
@@ -1210,16 +1198,13 @@ HKCU Run（CurrentUser），环境隔离通过不同 `app_name` 保持；后端�
 ADR-0026 由本 ADR 取代。本 ADR 的库选择（`self_update 1.3.0`）与签名方案（zipsign 归档内嵌签名）
 已由 ADR-0034 取代。正文保留在 ADR-0029 中作为历史记录。
 
-### ADR-0036：模型导入的压缩包来源与解压边界
+### ADR-0036：模型导入的压缩包来源与解压边界（**已撤回**）
 
-模型来源有两种（目录、`.zip`），按**内容**识别而不是扩展名或调用方标志。压缩包不是第二个解析器：
-解压写进 `ModelStore` 自己的 staging 目录，随后仍走同一个 `PreparedModel` 校验与原子 rename 提交。
-归档在**解压前**按中央目录校验条目名/类型/压缩方法/加密/条目数/深度/声明字节，容器另有独立字节
-上限 `maximum_archive_bytes`；实际字节数必须等于声明值。归档内的一层或多层包装目录被剥离（"压缩
-这个文件夹"必然产生它），`__MACOSX/**` 与文件管理器元数据被丢弃。新增
-`SourceArchiveUnsupported` 一个稳定码，其余情形复用既有码。UI 一个来源一个按钮（原生面板没有
-"文件夹或文件"的统一形态），**由按钮决定来源种类、由字节决定它究竟是什么**。压缩包与第三方模型
-内容不进入仓库，真实归档验证由环境变量驱动。
+**该 ADR 已撤回（2026-09-22）**：压缩包来源、解压边界与 `SourceArchiveUnsupported` 稳定码连同
+实现一并移除，`bongocat-model` 不再依赖 `zip`/`flate2`，`ModelPackageLimits` 不再有
+`maximum_archive_bytes`。模型来源只有一种：用户选中的文件夹。ADR 正文保留在
+`docs/adr/0036-model-archive-import-boundary.md` 作为恢复该功能时的设计输入——**恢复前先与维护者确认**
+（压缩包上传需要一组本次不做的新功能）。压缩包与第三方模型内容不进入仓库。
 
 ### ADR-0035：更新 worker、更新窗口与发布说明
 

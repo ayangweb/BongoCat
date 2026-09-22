@@ -293,7 +293,9 @@ git source 覆写 GPUI。GPUI Kit 当前通过 crates.io 的 `gpui-pre` 同步�
   `gpui-kit` 传递实现外，不新增直接 AccessKit 依赖（ADR-0054）。
 - Development、Production 和 smoke 的设置窗口必须使用同一套可见组成；smoke 只能改变
   驱动方式，不能增删用户可见控件。
-- 支持浅色、深色、系统主题和现有本地化语言。
+- 支持浅色、深色、系统主题和现有本地化语言。UI 文案的书写约定见
+  `docs/localization-copy-conventions.md`：省略号一律写单个 `…`（U+2026，视觉上是三个点），
+  禁止 `……` 与 ASCII `...`；该规则由 `tools/validate-locales.py` 机械强制，写错即红。
 - 在 800x600、Windows 125/150/200% 和 macOS Retina 下不得出现文本重叠、裁剪或布局跳动。
 - 页面必须包含真实 loading、empty、error、cancel 和 retry 状态，不用静态占位冒充功能完成。
 

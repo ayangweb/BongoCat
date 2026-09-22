@@ -1454,12 +1454,12 @@ impl Application {
         let language = self.effective_language();
         let mut aggregate = ImportProgressAccumulator::new(observe);
 
-        // Which models the source describes is decided from its own bytes, the
-        // same way the store decides whether it was handed a directory or an
-        // archive; the caller never selects a format. The store only reports a
-        // legacy source once a mode really carries a usable model, so an empty
-        // mode list cannot occur — treating it as a package keeps the loop below
-        // total and still reports a real diagnostic from the package path.
+        // Which models the source describes is decided from its own bytes, not
+        // from anything the caller selected: the folder is inspected for a
+        // legacy key table. The store only reports a legacy source once a mode
+        // really carries a usable model, so an empty mode list cannot occur —
+        // treating it as a package keeps the loop below total and still reports
+        // a real diagnostic from the package path.
         let modes = match self
             .model_store
             .inspect_source(source_root)
@@ -1874,8 +1874,9 @@ fn normalize_model_title(value: &str) -> Option<String> {
 /// degrade to the model id.
 ///
 /// The name itself comes from `bongocat_ui::model_source_display_name` so the
-/// service's fallback and the settings page's pre-filled title agree for both a
-/// folder and a `.zip` archive source.
+/// service's fallback and the settings page's pre-filled title agree. The source
+/// is the folder a user picked; the shared rule also knows how to drop an archive
+/// extension, which is what the `名字.zip` exported from that folder carries.
 fn installed_model_title_from_source(source_root: &Path, fallback: &str) -> String {
     bongocat_ui::model_source_display_name(source_root)
         .map(|name| clamp_model_title(&name))
@@ -2194,48 +2195,8 @@ mod tests {
     };
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use std::time::Instant;
-    use std::{fs, fs::File, io::Write, path::Path};
+    use std::{fs, path::Path};
     use tempfile::tempdir;
-    use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
-
-    /// Compress a fixture package into an archive, wrapped in one directory the
-    /// way "compress this folder" does, so the archive case exercises exactly
-    /// what a model site hands out.
-    fn archive_fixture(source: &Path, archive: &Path, wrapper: &str) {
-        fn visit(
-            writer: &mut ZipWriter<File>,
-            directory: &Path,
-            prefix: &str,
-            options: SimpleFileOptions,
-        ) {
-            for entry in fs::read_dir(directory).expect("list fixture") {
-                let entry = entry.expect("fixture entry");
-                let name = entry.file_name().into_string().expect("UTF-8 fixture name");
-                let reference = format!("{prefix}/{name}");
-                if entry.file_type().expect("fixture file type").is_dir() {
-                    writer
-                        .add_directory(format!("{reference}/"), options)
-                        .expect("add fixture directory");
-                    visit(writer, &entry.path(), &reference, options);
-                } else {
-                    writer
-                        .start_file(&reference, options)
-                        .expect("start fixture file");
-                    writer
-                        .write_all(&fs::read(entry.path()).expect("read fixture file"))
-                        .expect("write fixture file");
-                }
-            }
-        }
-
-        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        let mut writer = ZipWriter::new(File::create(archive).expect("create archive"));
-        writer
-            .add_directory(format!("{wrapper}/"), options)
-            .expect("add wrapper directory");
-        visit(&mut writer, source, wrapper, options);
-        writer.finish().expect("finish archive");
-    }
 
     /// Import a single-model package and return the one model it installed.
     ///
@@ -4027,51 +3988,6 @@ mod tests {
                 title: "我的猫".to_owned(),
             }]
         );
-        application.shutdown().expect("clean shutdown");
-    }
-
-    /// A model arrives either as the folder a user picked or as the `.zip`
-    /// archive an export produced. The product must accept both, recognize which
-    /// one it was given, and install the same package either way — including
-    /// titling an archive source after the archive rather than after the wrapper
-    /// directory inside it.
-    #[test]
-    fn application_imports_folder_and_archive_sources_of_the_same_model() {
-        let base = tempdir().expect("temp directory");
-        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
-        let mut application = Application::start_with_layout(layout).expect("start application");
-        let source = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
-        let archives = tempdir().expect("archive directory");
-        let archive = archives.path().join("我的猫 · 标准模式.zip");
-        archive_fixture(&source, &archive, "我的猫 · 标准模式");
-
-        let from_folder = import_one(&mut application, "", source);
-        let from_archive = import_one(&mut application, "", &archive);
-
-        assert_ne!(from_folder.id(), from_archive.id());
-        // Auto-detection means the archive is not a second parser: the same
-        // package produces the same index whichever way it arrived.
-        assert_eq!(from_archive.index(), from_folder.index());
-        assert_eq!(
-            application.config().model.installed_models,
-            vec![
-                InstalledModelMetadata {
-                    id: from_folder.id().as_str().to_owned(),
-                    title: "非 ASCII 模型".to_owned(),
-                },
-                InstalledModelMetadata {
-                    id: from_archive.id().as_str().to_owned(),
-                    title: "我的猫 · 标准模式".to_owned(),
-                },
-            ]
-        );
-
-        let installed = installed_catalog_ids(&application);
-        assert_eq!(installed.len(), 2);
-        assert!(installed.contains(&from_folder.id().as_str().to_owned()));
-        assert!(installed.contains(&from_archive.id().as_str().to_owned()));
-        assert!(from_archive.root().join("猫.model3.json").is_file());
-
         application.shutdown().expect("clean shutdown");
     }
 

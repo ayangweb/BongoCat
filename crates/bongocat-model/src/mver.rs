@@ -39,15 +39,13 @@
 //! reports its own diagnostic rather than this module guessing.
 
 use crate::{
-    ModelPackageLimits,
-    archive::{ArchivePlan, create_package_directory},
-    normalize_reference, path_from_reference,
+    ModelPackageLimits, normalize_reference, path_from_reference,
     store::{
         CopyStatistics, ImportObservation, ModelImportProgress, ModelImportStage,
         ModelStoreDiagnostic, ModelStoreError, file_count_for_progress,
     },
 };
-use bongocat_storage::set_private_file;
+use bongocat_storage::{set_private_directory, set_private_file};
 use image::{ImageEncoder, RgbaImage};
 use serde::Deserialize;
 use std::{
@@ -303,20 +301,14 @@ impl MverPlan {
 
 /// Where a legacy source's bytes are read from.
 ///
-/// A directory is read in place; an archive is never extracted. The archive
-/// variant reads the individual entries a conversion names from the
-/// already-planned central directory, so importing a legacy `.zip` never writes
-/// a decompressed copy of the whole application — its executables, DLLs and
-/// unrelated modes included — to disk.
-pub(crate) enum MverSource<'a> {
-    Directory(PathBuf),
-    Archive {
-        path: PathBuf,
-        plan: &'a ArchivePlan,
-    },
+/// The folder a user exported is read in place: nothing is copied before the
+/// conversion decides whether the source is a legacy one, and a source that
+/// turns out to be a package is then imported by the ordinary path.
+pub(crate) struct MverSource {
+    root: PathBuf,
 }
 
-impl<'a> MverSource<'a> {
+impl MverSource {
     /// Read a directory in place.
     ///
     /// The root is resolved once, here, because every read walks it: a source
@@ -330,14 +322,7 @@ impl<'a> MverSource<'a> {
                 format!("legacy source directory cannot be opened: {error}"),
             )
         })?;
-        Ok(Self::Directory(canonical))
-    }
-
-    pub(crate) fn archive(path: impl Into<PathBuf>, plan: &'a ArchivePlan) -> Self {
-        Self::Archive {
-            path: path.into(),
-            plan,
-        }
+        Ok(Self { root: canonical })
     }
 
     /// Whether `reference` names a regular file of the source.
@@ -346,38 +331,26 @@ impl<'a> MverSource<'a> {
     /// followed or ignored: an overlay that silently disappears because the
     /// model reached outside itself is worse than a stable diagnostic.
     fn is_file(&self, reference: &str) -> Result<bool, ModelStoreError> {
-        match self {
-            Self::Directory(root) => {
-                let Ok(metadata) = fs::symlink_metadata(root.join(path_from_reference(reference)))
-                else {
-                    return Ok(false);
-                };
-                if metadata.file_type().is_symlink() {
-                    return Err(symlink_unsupported(reference));
-                }
-                Ok(metadata.is_file())
-            }
-            Self::Archive { plan, .. } => Ok(plan.contains_file(reference)),
+        let Ok(metadata) = fs::symlink_metadata(self.root.join(path_from_reference(reference)))
+        else {
+            return Ok(false);
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(symlink_unsupported(reference));
         }
+        Ok(metadata.is_file())
     }
 
     /// Whether `reference` names a directory that holds at least one entry.
     fn is_directory(&self, reference: &str) -> Result<bool, ModelStoreError> {
-        match self {
-            Self::Directory(root) => {
-                let Ok(metadata) = fs::symlink_metadata(root.join(path_from_reference(reference)))
-                else {
-                    return Ok(false);
-                };
-                if metadata.file_type().is_symlink() {
-                    return Err(symlink_unsupported(reference));
-                }
-                Ok(metadata.is_dir())
-            }
-            Self::Archive { plan, .. } => {
-                Ok(plan.file_references().any(|file| is_below(file, reference)))
-            }
+        let Ok(metadata) = fs::symlink_metadata(self.root.join(path_from_reference(reference)))
+        else {
+            return Ok(false);
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(symlink_unsupported(reference));
         }
+        Ok(metadata.is_dir())
     }
 
     /// Every regular file below `prefix`, as package-relative references.
@@ -389,56 +362,25 @@ impl<'a> MverSource<'a> {
         prefix: &str,
         limits: ModelPackageLimits,
     ) -> Result<Vec<String>, ModelStoreError> {
-        match self {
-            Self::Directory(root) => {
-                let directory = root.join(path_from_reference(prefix));
-                let Ok(metadata) = fs::symlink_metadata(&directory) else {
-                    return Ok(Vec::new());
-                };
-                if metadata.file_type().is_symlink() {
-                    return Err(symlink_unsupported(prefix));
-                }
-                if !metadata.is_dir() {
-                    return Ok(Vec::new());
-                }
-                let mut files = Vec::new();
-                collect_source_files(&directory, prefix, 0, limits, &mut files)?;
-                files.sort();
-                Ok(files)
-            }
-            Self::Archive { plan, .. } => {
-                let mut files = plan
-                    .file_references()
-                    .filter(|file| is_below(file, prefix))
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>();
-                files.sort();
-                Ok(files)
-            }
+        let directory = self.root.join(path_from_reference(prefix));
+        let Ok(metadata) = fs::symlink_metadata(&directory) else {
+            return Ok(Vec::new());
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(symlink_unsupported(prefix));
         }
+        if !metadata.is_dir() {
+            return Ok(Vec::new());
+        }
+        let mut files = Vec::new();
+        collect_source_files(&directory, prefix, 0, limits, &mut files)?;
+        files.sort();
+        Ok(files)
     }
 
     /// Read one source resource into memory.
     fn read(&self, reference: &str) -> Result<Vec<u8>, ModelStoreError> {
-        match self {
-            Self::Directory(root) => read_source_file(root, reference),
-            Self::Archive { path, plan } => {
-                // The bound is checked against the declared size before the
-                // entry is decompressed, so an oversized resource costs a
-                // header read rather than an allocation.
-                match plan.file_size(reference) {
-                    Some(bytes) if bytes > LEGACY_RESOURCE_MAXIMUM_BYTES => Err(conversion_error(
-                        Some(reference),
-                        format!("legacy resource is {bytes} bytes"),
-                    )),
-                    Some(_) => plan.read_file(path, reference),
-                    None => Err(conversion_error(
-                        Some(reference),
-                        "legacy resource is missing from the archive",
-                    )),
-                }
-            }
-        }
+        read_source_file(&self.root, reference)
     }
 
     /// Read the marker file that decides whether this source is a legacy one.
@@ -570,7 +512,7 @@ fn collect_source_files(
 /// converted BongoCat package puts its entry at the package root instead, so
 /// the two formats cannot be confused from the outside.
 pub(crate) fn inspect(
-    source: &MverSource<'_>,
+    source: &MverSource,
     limits: ModelPackageLimits,
 ) -> Result<Option<MverPlan>, ModelStoreError> {
     let Some(bytes) = source.read_legacy_config() else {
@@ -675,7 +617,7 @@ pub(crate) fn inspect(
 /// fails leaves no trace and a successful one is still committed by a single
 /// rename. Nothing is written outside that directory.
 pub(crate) fn convert_mode<Observe, IsCancelled>(
-    source: &MverSource<'_>,
+    source: &MverSource,
     plan: &MverModePlan,
     destination: &Path,
     limits: ModelPackageLimits,
@@ -867,6 +809,55 @@ fn optimize_png(encoded: Vec<u8>) -> Vec<u8> {
     }
 }
 
+/// Create one package directory below `destination`, reusing whatever an earlier
+/// file already created.
+///
+/// Parents are created lazily rather than up front, so a conversion writes only
+/// the directories the source actually names.
+fn create_package_directory(
+    destination: &Path,
+    relative: &Path,
+    created: &mut BTreeSet<PathBuf>,
+) -> Result<(), ModelStoreError> {
+    let mut current = PathBuf::new();
+    for component in relative.components() {
+        current.push(component);
+        let path = destination.join(&current);
+        if created.contains(&current) {
+            continue;
+        }
+        match fs::create_dir(&path) {
+            Ok(()) => {
+                set_private_directory(&path).map_err(|error| {
+                    ModelStoreError::new(
+                        ModelStoreDiagnostic::IoError,
+                        None,
+                        format!("staging directory permissions cannot be set: {error}"),
+                    )
+                })?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if !path.is_dir() {
+                    return Err(ModelStoreError::new(
+                        ModelStoreDiagnostic::SourceChanged,
+                        None,
+                        "staging path is not a directory",
+                    ));
+                }
+            }
+            Err(error) => {
+                return Err(ModelStoreError::new(
+                    ModelStoreDiagnostic::IoError,
+                    None,
+                    format!("staging directory cannot be created: {error}"),
+                ));
+            }
+        }
+        created.insert(current.clone());
+    }
+    Ok(())
+}
+
 fn write_staging_file<Observe, IsCancelled>(
     destination: &Path,
     reference: &str,
@@ -948,16 +939,6 @@ fn is_direct_child(reference: &str, directory: &str) -> bool {
         return false;
     };
     !rest.is_empty() && !rest.contains('/')
-}
-
-/// Whether `reference` is inside `directory`.
-fn is_below(reference: &str, directory: &str) -> bool {
-    if directory.is_empty() {
-        return !reference.is_empty();
-    }
-    reference
-        .strip_prefix(directory)
-        .is_some_and(|rest| rest.starts_with('/'))
 }
 
 fn conversion_error(resource: Option<&str>, detail: impl Into<String>) -> ModelStoreError {
@@ -1363,7 +1344,6 @@ pub(crate) mod fixture {
 mod tests {
     use super::fixture::*;
     use super::*;
-    use crate::archive;
     use std::fs::File;
     use tempfile::tempdir;
 
@@ -1879,80 +1859,6 @@ mod tests {
         )
         .expect_err("symlinked legacy source");
         assert_eq!(error.code, ModelStoreDiagnostic::SourceSymlinkUnsupported);
-    }
-
-    #[test]
-    fn an_archive_source_converts_without_being_extracted() {
-        use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
-
-        let root = tempdir().expect("root");
-        legacy_source(
-            root.path(),
-            &[(
-                MverInputMode::Standard,
-                r#"{"hand":[[65]],"keyboard":[[65]]}"#,
-            )],
-            true,
-        );
-        let archives = tempdir().expect("archives");
-        let archive_path = archives.path().join("legacy.zip");
-        let mut writer = ZipWriter::new(File::create(&archive_path).expect("create archive"));
-        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        // Model packs are exported by compressing the application folder, so
-        // every entry carries one wrapper directory.
-        writer
-            .add_directory("Bongo Cat Mver/", options)
-            .expect("wrapper directory");
-        for entry in [
-            "config.json",
-            "img/standard/cat_model/cat.model3.json",
-            "img/standard/cat_model/model.moc3",
-            "img/standard/keyboard/0.png",
-            "img/standard/hand/0.png",
-            "img/standard/mousebg.png",
-        ] {
-            writer
-                .start_file(format!("Bongo Cat Mver/{entry}"), options)
-                .expect("start entry");
-            writer
-                .write_all(&fs::read(root.path().join(entry)).expect("source entry"))
-                .expect("write entry");
-        }
-        writer.finish().expect("finish archive");
-
-        let limits = ModelPackageLimits::default();
-        let archive_plan = archive::plan_archive(&archive_path, limits).expect("archive plan");
-        let source = MverSource::archive(&archive_path, &archive_plan);
-        let plan = inspect(&source, limits)
-            .expect("inspect")
-            .expect("legacy plan");
-        let mode = plan_mode(&plan, MverInputMode::Standard);
-
-        let staging = tempdir().expect("staging");
-        let mut statistics = CopyStatistics::default();
-        let mut observe = |_progress| {};
-        let mut cancelled = || false;
-        let mut observation = ImportObservation::new(&mut observe, &mut cancelled);
-        convert_mode(
-            &source,
-            &mode,
-            staging.path(),
-            limits,
-            &mut statistics,
-            &mut observation,
-        )
-        .expect("convert");
-
-        assert!(staging.path().join("cat.model3.json").is_file());
-        assert!(
-            staging
-                .path()
-                .join("resources/left-keys/KeyA.png")
-                .is_file()
-        );
-        // The wrapper directory is archive tooling, so it never reaches the
-        // package.
-        assert!(!staging.path().join("Bongo Cat Mver").exists());
     }
 
     #[test]

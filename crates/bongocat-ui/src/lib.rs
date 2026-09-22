@@ -37,9 +37,16 @@ const MAX_SETTINGS_WINDOW_DIMENSION: u32 = 16_384;
 const MAX_SETTINGS_WINDOW_COORDINATE: i32 = 1_000_000;
 pub const SETTINGS_PATCH_DEBOUNCE: Duration = Duration::from_millis(150);
 
-/// The archive extension a model source may carry. Detection itself never uses
-/// it — the store reads the file's content — but a suggested title should not
-/// repeat it.
+/// The archive extension a suggested title should not repeat.
+///
+/// Nothing in the product reads a model archive today — the picker only returns
+/// folders and the store only ingests them (ADR-0036 已撤回) — so this rule only
+/// reaches a path that is *not* a directory: a folder may legitimately be called
+/// `something.zip` and keeps its name, while anything else drops the suffix so
+/// that `名字.zip` and the folder it was made from suggest the same title. It
+/// stays because that naming rule is shared with the settings service's fallback,
+/// and dropping it would leave the two entrances disagreeing once archive import
+/// is built again.
 const ARCHIVE_EXTENSION: &str = ".zip";
 
 /// Coalesces rapid typed setting updates while retaining values that were not
@@ -586,11 +593,13 @@ pub struct SettingsModelKey {
 
 /// The display name a chosen model source suggests.
 ///
-/// A model source is either a folder or a `.zip` archive, and both must suggest
-/// the same name for the same model: the folder a user exports becomes
-/// `名字.zip`, so dropping the archive extension is what keeps the pre-filled
-/// title and the service's own fallback in agreement. A *directory* keeps its
-/// full name, because a folder may legitimately be called `something.zip`.
+/// The page pre-fills this name and the settings service falls back to it, so one
+/// rule answers both entrances. The source is the folder a user picked, and a
+/// folder keeps its full name — because a folder may legitimately be called
+/// `something.zip`. A path that is *not* a directory drops the archive extension
+/// instead, so the folder a user exports and the `名字.zip` made from it suggest
+/// the same title; that branch has no caller in the product today (ADR-0036
+/// 已撤回) and is kept so the rule is not lost with the feature.
 ///
 /// The name is display-only: the portable store key stays a service-generated
 /// UUID and is never derived from it.

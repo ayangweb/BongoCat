@@ -1,7 +1,12 @@
 # ADR-0038: 左右 Alt 的键位图命名与旧名兼容
 
 状态：已接受（2026-09-17）
-依赖：ADR-0037（应用内导入 BongoCatMver 模型）、ADR-0036（模型导入来源识别与 staging 边界）、ADR-0004（可校正输入状态）
+依赖：ADR-0037（应用内导入 BongoCatMver 模型）、ADR-0036（模型导入来源识别与 staging 边界；
+**该 ADR 已于 2026-09-22 撤回**）、ADR-0004（可校正输入状态）
+
+修订（2026-09-22）：ADR-0036 撤回后模型来源只剩目录，本文「两种来源得到同一结果」「用户选中的
+源目录/归档始终只读」里的归档一半不再适用；调用点也从「目录复制与归档解压之后」变成「目录复制
+之后」，`commit_installed_staging` 之前的位置不变。**命名决策本身未变。**
 
 ## 背景
 
@@ -71,11 +76,10 @@ AltGr.png → AltRight.png
 ### 3. 包导入时归一化，且在 store 自己的 staging 上做
 
 `bongocat-model` 新增 `key_names` 模块：把 staging 树里 `resources/{left-,right-}keys/` 下的
-`Alt.png`、`AltGr.png` 改名为 canonical 名。调用点在目录复制与归档解压**之后**、共用的
+`Alt.png`、`AltGr.png` 改名为 canonical 名。调用点在目录复制**之后**、共用的
 `commit_installed_staging` **之前**，因此：
 
-- 两种来源（目录、`.zip`）得到同一个结果，不存在"压缩包是第二个解析器"的问题；
-- 用户选中的源目录/归档始终只读，与 ADR-0036 的边界一致；
+- 用户选中的源目录始终只读，与 ADR-0036 的边界一致（该 ADR 的归档一半已于 2026-09-22 撤回）；
 - 改名不改变文件数与字节数，`ModelImportProgress` 的计数仍然真实。
 
 冲突不猜：canonical 文件已存在时保留它，旧名文件原样留下——运行时优先 canonical，模型照常

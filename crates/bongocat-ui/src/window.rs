@@ -11,8 +11,7 @@ use crate::{
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
-    ModelSourcePickerError, ModelSourcePickerOutcome, pick_model_archive, pick_model_cover,
-    pick_model_directory,
+    ModelSourcePickerError, ModelSourcePickerOutcome, pick_model_cover, pick_model_folder,
 };
 use gpui_kit::component::{
     ActiveTheme, Disableable, Icon, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled,
@@ -51,6 +50,8 @@ use about::ABOUT_SECTIONS;
 mod lifecycle;
 mod localization;
 mod model_actions;
+mod model_import_card;
+use model_import_card::ModelImportCard;
 mod models;
 mod render;
 mod setting_gate;
@@ -60,12 +61,8 @@ mod shortcuts;
 mod shortcuts_page;
 mod smoke;
 mod view_state;
-#[cfg(test)]
-use crate::SettingsModelImportStage;
 use crate::pop_confirm::PopConfirm;
 pub use lifecycle::open_settings_window;
-#[cfg(test)]
-use localization::model_import_progress;
 use localization::{
     build_info_detail, model_invalid_summary, runtime_status, settings_error,
     shortcut_behavior_name, shortcut_command_name, shortcut_conflict_message,
@@ -228,45 +225,36 @@ enum SettingsPage {
     About,
 }
 
-/// Which native picker the page is waiting on.
+/// What the single import card is doing.
 ///
-/// The two sources get two buttons because the native dialogs are separate: no
-/// platform offers one panel that selects "a folder or a file". Recording the
-/// kind keeps the status text truthful while the dialog is open and lets the
-/// selected source be described as what the user actually chose.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ModelSourceKind {
-    Directory,
-    Archive,
-}
-
+/// Every failure is reported through a notification and then returns the card to
+/// [`ModelImportState::Idle`], so no state here holds an error: a state that kept
+/// one would be a second copy of a message the user has already read.
 enum ModelImportState {
-    Empty,
-    Ready,
+    /// Nothing is running; the card is the clickable upload prompt.
+    Idle,
+    /// A native source dialog is open.
     Picking,
-    PickerCancelled,
-    /// A source dialog failed. The draft keeps whatever it already held, and the
-    /// failure itself is reported through a notification, so this state exists
-    /// only to keep the inline status from claiming a selection was made.
-    PickerFailed,
     Starting {
         cancel_requested: bool,
     },
     Running(SettingsModelImportMonitor),
-    Succeeded,
-    /// The import run failed. The error itself was delivered as a notification
-    /// and is not held here, so the page has no second copy to display.
-    Failed,
-    Cancelled,
+    /// The model is installed and the product is rendering its own cover. The
+    /// card shows the capture step — replacing the import line rather than adding
+    /// to it — and the cards the run installed stay out of the grid until the
+    /// capture finishes.
+    Capturing,
 }
 
 struct ModelImportDraft {
+    /// The display name an import will use, derived from the chosen source.
     title: String,
     source_root: Option<PathBuf>,
-    /// Which picker produced `source_root`, so the status text names the source
-    /// the user actually chose instead of always reporting a folder.
-    source_kind: ModelSourceKind,
     state: ModelImportState,
+    /// The models that existed when the run started, so the cards the run
+    /// installed can be told apart from the ones that were already there and
+    /// held back until their cover capture finishes.
+    baseline_models: BTreeSet<ModelRowKey>,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -343,18 +331,46 @@ impl Default for ModelImportDraft {
         Self {
             title: String::new(),
             source_root: None,
-            source_kind: ModelSourceKind::Directory,
-            state: ModelImportState::Empty,
+            state: ModelImportState::Idle,
+            baseline_models: BTreeSet::new(),
         }
     }
 }
 
 impl ModelImportDraft {
+    /// Whether the card is showing progress rather than the upload prompt.
+    ///
+    /// The capture is part of the run: the model is installed, but the card has
+    /// not handed over to the catalog yet, so the page keeps treating the run as
+    /// in flight for every command gate.
     fn is_running(&self) -> bool {
+        matches!(
+            self.state,
+            ModelImportState::Starting { .. }
+                | ModelImportState::Running(_)
+                | ModelImportState::Capturing
+        )
+    }
+
+    /// Whether the card offers a cancel control for the step it is showing.
+    ///
+    /// The capture that follows a successful import cannot be cancelled: the
+    /// model is already installed, and aborting the render would only leave it
+    /// without its cover.
+    fn shows_cancel(&self) -> bool {
         matches!(
             self.state,
             ModelImportState::Starting { .. } | ModelImportState::Running(_)
         )
+    }
+
+    /// Whether a cancel request would still reach a live operation.
+    fn is_cancellable(&self) -> bool {
+        match &self.state {
+            ModelImportState::Starting { cancel_requested } => !cancel_requested,
+            ModelImportState::Running(monitor) => !monitor.is_cancelled(),
+            _ => false,
+        }
     }
 
     fn can_import(&self) -> bool {
@@ -386,12 +402,11 @@ impl ModelImportDraft {
         }
     }
 
-    fn reset_result_state(&mut self) {
-        self.state = if self.source_root.is_some() {
-            ModelImportState::Ready
-        } else {
-            ModelImportState::Empty
-        };
+    /// Return to the upload prompt, keeping nothing about the run that ended.
+    fn reset(&mut self) {
+        self.state = ModelImportState::Idle;
+        self.source_root = None;
+        self.baseline_models.clear();
     }
 }
 
@@ -455,18 +470,24 @@ pub struct SettingsView {
     /// Opens the update window and starts a check.
     request_update: SettingsWindowRequest,
     overlay_focus: FocusHandle,
-    model_id_focus: FocusHandle,
-    choose_model_focus: FocusHandle,
-    choose_archive_focus: FocusHandle,
-    import_model_focus: FocusHandle,
-    /// The only settings text field the window actually renders.
+    /// Focus handle of the import card while it is the upload prompt.
+    import_card_focus: FocusHandle,
+    /// The models the current run installed whose cover capture has not
+    /// finished yet.
     ///
-    /// The overlay and gamepad numbers are drawn by the component library's
-    /// `NumberField`, which owns its own `InputState` through
-    /// `Window::use_keyed_state` and calls the setter directly, so this view
-    /// must not keep a second copy of those entities: a subscription to one
-    /// would never fire because nothing renders it.
-    model_id_input: Entity<InputState>,
+    /// The import result lands before the product has rendered the model's own
+    /// cover, so these entries are withheld from the grid: the card would
+    /// otherwise flicker through the source package's placeholder picture and
+    /// then swap it. An entry leaves this set when its capture reports back,
+    /// whether it produced a cover or not, so a failed capture still publishes
+    /// the model.
+    pending_model_reveal: BTreeSet<ModelRowKey>,
+    /// Captures that finished before the run they belong to reported its result.
+    ///
+    /// The capture runs on a different thread from the settings worker, so it
+    /// can win the race against the import reply. Recording its completion here
+    /// is what keeps the gate from waiting on a signal that already happened.
+    completed_model_cover_captures: BTreeSet<ModelRowKey>,
     syncing_component_inputs: bool,
 }
 #[derive(Clone)]
@@ -1518,12 +1539,13 @@ fn startup_item_presentation(
     presentation
 }
 
-/// The import suggestion shown to the user is the chosen source's own name. A
-/// folder and the `.zip` archive made from it therefore suggest the same title,
-/// because `model_source_display_name` drops the archive extension. The portable
-/// store id is allocated by the settings service at import time, so the
-/// displayed name never needs ASCII folding; hand-typed edits are still
-/// sanitized by `sanitize_model_title_input`.
+/// The import suggestion shown to the user is the chosen folder's own name.
+///
+/// The rule lives in `model_source_display_name` because the settings service's
+/// fallback title has to agree with what the page pre-filled. The portable store
+/// id is allocated by the settings service at import time, so the displayed name
+/// never needs ASCII folding; hand-typed edits are still sanitized by
+/// `sanitize_model_title_input`.
 fn suggested_model_title(source_root: &Path) -> String {
     crate::model_source_display_name(source_root).unwrap_or_else(|| "custom-model".to_owned())
 }
@@ -1647,101 +1669,6 @@ fn model_availability_status(
         }
     }
 }
-/// The inline status of the import draft.
-///
-/// Only progress and selection states are reported here. Every failure on the
-/// model page — a source dialog, an import run, a cover dialog, a catalog that
-/// cannot be read — is delivered through the shared notification component, so
-/// there is exactly one place an error is shown and exactly one style it has.
-#[cfg(test)]
-fn model_import_status(draft: &ModelImportDraft, language: SettingsLanguage) -> SharedString {
-    // The status names whichever source the user actually chose, so an archive
-    // import never reports that a folder was selected.
-    let selected_key = match draft.source_kind {
-        ModelSourceKind::Directory => "models.import.folder.selected",
-        ModelSourceKind::Archive => "models.import.archive.selected",
-    };
-    let none_selected_key = match draft.source_kind {
-        ModelSourceKind::Directory => "models.import.folder.none_selected",
-        ModelSourceKind::Archive => "models.import.archive.none_selected",
-    };
-    let choosing_key = match draft.source_kind {
-        ModelSourceKind::Directory => "models.import.folder.choosing",
-        ModelSourceKind::Archive => "models.import.archive.choosing",
-    };
-    match &draft.state {
-        // A failed dialog is reported by notification, so the status falls back
-        // to describing the selection that is still in effect.
-        ModelImportState::Empty | ModelImportState::PickerFailed => {
-            if draft.source_root.is_some() {
-                bongocat_i18n::text(language.catalog_locale(), selected_key).into()
-            } else {
-                bongocat_i18n::text(language.catalog_locale(), none_selected_key).into()
-            }
-        }
-        ModelImportState::Ready => {
-            bongocat_i18n::text(language.catalog_locale(), selected_key).into()
-        }
-        ModelImportState::Picking => {
-            bongocat_i18n::text(language.catalog_locale(), choosing_key).into()
-        }
-        // Cancelling is a property of the picker itself, so it reads the same
-        // whichever source was being chosen.
-        ModelImportState::PickerCancelled if draft.source_root.is_some() => bongocat_i18n::text(
-            language.catalog_locale(),
-            "models.import.picker.cancelled_previous_retained",
-        )
-        .into(),
-        ModelImportState::PickerCancelled => {
-            bongocat_i18n::text(language.catalog_locale(), "models.import.picker.cancelled").into()
-        }
-        ModelImportState::Starting {
-            cancel_requested: true,
-        } => bongocat_i18n::text(
-            language.catalog_locale(),
-            "models.import.progress.cancelling",
-        )
-        .into(),
-        ModelImportState::Starting {
-            cancel_requested: false,
-        } => {
-            bongocat_i18n::text(language.catalog_locale(), "models.import.progress.starting").into()
-        }
-        ModelImportState::Running(monitor) if monitor.is_cancelled() => bongocat_i18n::text(
-            language.catalog_locale(),
-            "models.import.progress.cancelling",
-        )
-        .into(),
-        ModelImportState::Running(monitor) => {
-            let progress = monitor.progress();
-            let stage = match progress.stage {
-                SettingsModelImportStage::Preparing => "models.import.progress.preparing",
-                SettingsModelImportStage::Copying => "models.import.progress.copying",
-                SettingsModelImportStage::Validating => "models.import.progress.validating",
-                SettingsModelImportStage::Committing => "models.import.progress.committing",
-            };
-            model_import_progress(
-                language,
-                bongocat_i18n::text(language.catalog_locale(), stage),
-                progress.files_copied,
-                progress.bytes_copied,
-            )
-            .into()
-        }
-        ModelImportState::Succeeded => {
-            bongocat_i18n::text(language.catalog_locale(), "models.import.progress.complete").into()
-        }
-        // The failure was already pushed as a notification; leaving it out here
-        // is what keeps the two from becoming the same message twice.
-        ModelImportState::Failed => "".into(),
-        ModelImportState::Cancelled => bongocat_i18n::text(
-            language.catalog_locale(),
-            "models.import.progress.cancelled",
-        )
-        .into(),
-    }
-}
-
 pub(crate) fn sync_system_component_theme(window: &mut Window, cx: &mut App) {
     Theme::sync_system_appearance(Some(window), cx);
 }

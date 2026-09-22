@@ -37,10 +37,15 @@ settings 协议里的身份（`SettingsModelKey`，origin 恒为 installed）入
 
 1. 调用 `bongocat_overlay::capture_model_cover`（隐藏窗口 + GPU 读回，见决策 3）；
 2. 用 `SettingsCommand::ReplaceModelCover`（bytes 载荷）把结果交回 settings worker 落盘；
-3. 让设置窗口 `refresh_model_cover` 丢掉该模型的图像缓存。
+3. 让设置窗口 `finish_model_cover_capture` 丢掉该模型的图像缓存，并解除该次导入的显示门禁。
 
 第 3 步与 ADR-0047 残余风险 3 是同一条依赖：替换保持相同的包内路径，GPUI 的图像缓存按路径命中，
 不显式失效就会继续画旧字节。
+
+设置页同时把本次导入安装的条目挡在网格之外，直到这次回调到达（无论截取成功与否）：模型页的导入
+卡片把「正在导入模型中…」**替换**为「正在截取封面中…」（一次只显示当前一步，不逐步叠加），卡片下
+出现的就是封面已就绪的模型，而不是先画源包占位图再换图。这个门禁属于设置页的展示状态，不进入
+settings 协议。
 
 ### 3. 两个平台后端共用一份「帧 → 封面」逻辑
 

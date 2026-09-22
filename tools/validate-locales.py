@@ -13,6 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCALE_DIR = ROOT / "crates" / "bongocat-i18n" / "locales"
 EXPECTED_LOCALES = ("en-US", "zh-CN")
 PLACEHOLDER = re.compile(r"%\{([A-Za-z][A-Za-z0-9_]*)\}")
+# The copy convention for an ellipsis is a single `…` (U+2026), which reads as
+# three dots in both locales. The six-dot Chinese form `……` and the ASCII form
+# `...` are rejected: one catalog string is rendered by every locale, so a
+# locale-specific spelling of the same mark cannot be allowed to drift back in.
+ELLIPSIS_RUN = re.compile(r"\u2026{2,}|\.{2,}")
 
 
 def fail(path: Path, message: str) -> None:
@@ -57,6 +62,15 @@ def placeholder_names(value: str) -> tuple[str, ...]:
     return tuple(sorted(PLACEHOLDER.findall(value)))
 
 
+def check_ellipsis(locale: str, key: str, value: str) -> None:
+    match = ELLIPSIS_RUN.search(value)
+    if match is not None:
+        raise ValueError(
+            f"{locale}: {key} spells an ellipsis as {match.group()!r}; "
+            "use a single '…' (U+2026) in every locale"
+        )
+
+
 def main() -> int:
     expected_files = {f"{locale}.json" for locale in EXPECTED_LOCALES}
     actual_files = {path.name for path in LOCALE_DIR.glob("*.json")}
@@ -69,6 +83,10 @@ def main() -> int:
         locale: flatten(load_locale(LOCALE_DIR / f"{locale}.json"), "", LOCALE_DIR / f"{locale}.json")
         for locale in EXPECTED_LOCALES
     }
+    for locale, texts in flattened.items():
+        for key, value in texts.items():
+            check_ellipsis(locale, key, value)
+
     reference = flattened[EXPECTED_LOCALES[0]]
     for locale in EXPECTED_LOCALES[1:]:
         current = flattened[locale]

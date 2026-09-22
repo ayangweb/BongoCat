@@ -155,24 +155,6 @@ pub(super) fn model_invalid_summary(
     )
 }
 
-#[cfg(test)]
-pub(super) fn model_import_progress(
-    language: SettingsLanguage,
-    stage: &str,
-    files_copied: u64,
-    bytes_copied: u64,
-) -> String {
-    bongocat_i18n::format_text(
-        language.catalog_locale(),
-        "models.import.progress.detail",
-        &[
-            ("stage", stage.to_owned()),
-            ("files_copied", files_copied.to_string()),
-            ("bytes_copied", bytes_copied.to_string()),
-        ],
-    )
-}
-
 pub(super) fn runtime_status(language: SettingsLanguage, health: &str, revision: u64) -> String {
     bongocat_i18n::format_text(
         language.catalog_locale(),

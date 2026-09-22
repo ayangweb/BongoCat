@@ -2398,19 +2398,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     break;
                 }
                 for request in cover_capture_signals.take_model_cover_captures() {
-                    let Ok(captured) =
-                        bongocat_overlay::capture_model_cover(Arc::clone(request.model()))
-                    else {
-                        continue;
-                    };
                     let key = request.key().clone();
-                    let written = cover_capture_client
-                        .replace_model_cover(key.clone(), captured.png().to_vec())
-                        .await
-                        .is_ok();
-                    if !written {
-                        continue;
-                    }
+                    let captured =
+                        match bongocat_overlay::capture_model_cover(Arc::clone(request.model())) {
+                            Ok(captured) => cover_capture_client
+                                .replace_model_cover(key.clone(), captured.png().to_vec())
+                                .await
+                                .is_ok(),
+                            Err(_) => false,
+                        };
+                    // The settings window keeps every model this import installed
+                    // out of the grid until its capture reports back, so the
+                    // report has to arrive either way: a failed capture publishes
+                    // the model with the cover its source shipped rather than
+                    // leaving it hidden behind a signal that never comes.
                     cx.update(|cx| {
                         let Some(window) = cx
                             .try_global::<ProductCoordinator>()
@@ -2418,7 +2419,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         else {
                             return;
                         };
-                        let _ = window.update(cx, |view, _, cx| view.refresh_model_cover(&key, cx));
+                        let _ = window.update(cx, |view, _, cx| {
+                            view.finish_model_cover_capture(&key, captured, cx)
+                        });
                     });
                 }
             }

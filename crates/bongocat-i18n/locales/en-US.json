@@ -122,38 +122,13 @@
       "resource_invalid": "Model resource is invalid"
     },
     "import": {
-      "folder": {
-        "none_selected": "No folder selected",
-        "selected": "Folder selected",
-        "choosing": "Choosing folder…"
+      "step": {
+        "choosing": "Opening the file picker…",
+        "importing": "Importing model…",
+        "capturing": "Capturing cover…"
       },
-      "archive": {
-        "none_selected": "No archive selected",
-        "selected": "Archive selected",
-        "choosing": "Choosing archive…"
-      },
-      "picker": {
-        "cancelled": "Selection cancelled",
-        "cancelled_previous_retained": "Selection cancelled; previous selection retained"
-      },
-      "progress": {
-        "cancelling": "Cancelling import…",
-        "starting": "Starting import…",
-        "preparing": "Preparing",
-        "copying": "Copying",
-        "validating": "Validating",
-        "committing": "Finishing",
-        "complete": "Import complete",
-        "cancelled": "Import cancelled",
-        "detail": "%{stage} · %{files_copied} files · %{bytes_copied} bytes"
-      },
-      "actions": {
-        "choose_folder": "Choose folder",
-        "choose_archive": "Choose archive",
-        "choosing": "Choosing…",
-        "import": "Import"
-      },
-      "title": "Import model"
+      "title": "Import model",
+      "hint": "Click to choose a model folder"
     },
     "legacy": {
       "mode": {

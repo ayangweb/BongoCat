@@ -10,8 +10,8 @@
 //! see `bongocat-live2d::key_name_candidates`), so an imported package has to
 //! speak the same vocabulary. This module rewrites the legacy stems while the
 //! package is still the store's own staging copy, which is why an import is
-//! the only place that can do it: the user's source directory and archive are
-//! read-only inputs and are never modified.
+//! the only place that can do it: the user's source folder is a read-only input
+//! and is never modified.
 //!
 //! The runtime additionally keeps every legacy stem as a last-resort candidate,
 //! so a model that reaches the store without this rewrite (an install that

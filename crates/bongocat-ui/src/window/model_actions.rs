@@ -2,7 +2,7 @@ use super::*;
 
 /// Map any dialog failure to the one code the page reports.
 ///
-/// The model source pickers and the cover picker share their result vocabulary
+/// The model folder picker and the cover picker share their result vocabulary
 /// because their failures are properties of opening a native dialog, not of what
 /// was being chosen; the page therefore reports them the same way too.
 fn model_source_picker_error(_error: ModelSourcePickerError) -> SettingsError {
@@ -10,19 +10,15 @@ fn model_source_picker_error(_error: ModelSourcePickerError) -> SettingsError {
 }
 
 impl SettingsView {
-    /// Open the native picker for one model source kind.
+    /// Open the native picker for the folder to import.
     ///
-    /// Both kinds share the whole flow — one dialog at a time, the selection
-    /// revalidated by the platform layer, the result applied to the same draft —
-    /// and differ only in which panel is opened, so the kind is carried through
-    /// instead of duplicating the flow per source.
-    pub(super) fn choose_model_source(&mut self, kind: ModelSourceKind, cx: &mut Context<Self>) {
+    /// One dialog at a time is the whole flow: the folder the user picks is
+    /// revalidated by the platform layer, and a valid one starts the import
+    /// directly — choosing the folder *is* the decision.
+    pub(super) fn choose_model_source(&mut self, cx: &mut Context<Self>) {
         if self.model_import.is_running() || self.model_import.is_picker_open() {
             return;
         }
-        // Recording the kind as the picker opens is what keeps the status text
-        // describing the dialog the user is actually looking at.
-        self.model_import.source_kind = kind;
         self.model_import.state = ModelImportState::Picking;
         cx.notify();
 
@@ -30,12 +26,8 @@ impl SettingsView {
         let picking = move |result| {
             let _ = sender.try_send(result);
         };
-        let outcome = match kind {
-            ModelSourceKind::Directory => pick_model_directory(picking),
-            ModelSourceKind::Archive => pick_model_archive(picking),
-        };
-        if let Err(error) = outcome {
-            self.apply_model_source_result(Err(error));
+        if let Err(error) = pick_model_folder(picking) {
+            let _ = self.apply_model_source_result(Err(error));
             cx.notify();
             return;
         }
@@ -45,35 +37,48 @@ impl SettingsView {
                 .await
                 .unwrap_or(Err(ModelSourcePickerError::BackendUnavailable));
             let _ = this.update(cx, |view, cx| {
-                view.apply_model_source_result(result);
+                // Choosing is the whole decision: a selected folder starts the
+                // import immediately, so there is no second button to press.
+                if view.apply_model_source_result(result) {
+                    view.start_model_import(cx);
+                }
                 cx.notify();
             });
         })
         .detach();
     }
 
-    /// Apply a source dialog outcome to the import draft.
+    /// Apply a folder dialog outcome to the import draft.
     ///
-    /// A failed dialog keeps the draft exactly as it was — including a selection
-    /// made earlier — because the dialog not opening says nothing about the
-    /// source the user already chose. The failure is reported as a notification
-    /// rather than as inline text, so the page reports every error one way.
+    /// Returns whether the outcome left a source ready to import, which is the
+    /// signal the caller uses to start the run. Cancelling and a failed dialog
+    /// both return the card to its prompt: an error keeps nothing, because the
+    /// folder the user was choosing is the thing the error is about, and the
+    /// failure is reported as a notification rather than as inline text, so the
+    /// page reports every error one way.
+    ///
+    /// The selected folder is not classified here. What it contains is what the
+    /// store detects from the bytes, and the title the run starts with is derived
+    /// from the folder's name.
     pub(super) fn apply_model_source_result(
         &mut self,
         result: Result<ModelSourcePickerOutcome, ModelSourcePickerError>,
-    ) {
+    ) -> bool {
         match result {
             Ok(ModelSourcePickerOutcome::Selected(source_root)) => {
                 self.model_import.title = suggested_model_title(&source_root);
                 self.model_import.source_root = Some(source_root);
-                self.model_import.state = ModelImportState::Ready;
+                self.model_import.state = ModelImportState::Idle;
+                true
             }
             Ok(ModelSourcePickerOutcome::Cancelled) => {
-                self.model_import.state = ModelImportState::PickerCancelled;
+                self.model_import.reset();
+                false
             }
             Err(error) => {
-                self.model_import.state = ModelImportState::PickerFailed;
+                self.model_import.reset();
                 self.pending_notification = Some(model_source_picker_error(error));
+                false
             }
         }
     }
@@ -90,6 +95,21 @@ impl SettingsView {
                 .clone()
                 .expect("importable draft has a source directory"),
         };
+        // The catalog as it stands is what tells the newly installed cards apart
+        // from the ones that were already there, so it is recorded before the
+        // run can change it.
+        self.model_import.baseline_models = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| {
+                snapshot
+                    .model_catalog
+                    .entries
+                    .iter()
+                    .map(|entry| ModelRowKey::new(entry.origin, &entry.id))
+                    .collect()
+            })
+            .unwrap_or_default();
         self.model_import.state = ModelImportState::Starting {
             cancel_requested: false,
         };
@@ -128,25 +148,23 @@ impl SettingsView {
                     return;
                 }
                 match final_result.result {
-                    Ok(snapshot)
+                    Ok(snapshot) => {
                         if view
                             .snapshot
                             .as_ref()
-                            .is_none_or(|current| snapshot.revision >= current.revision) =>
-                    {
-                        view.snapshot = Some(snapshot);
-                        view.model_import.source_root = None;
-                        view.model_import.state = ModelImportState::Succeeded;
+                            .is_none_or(|current| snapshot.revision >= current.revision)
+                        {
+                            view.snapshot = Some(snapshot);
+                        }
+                        view.begin_model_reveal();
                     }
-                    Ok(_) => {
-                        view.model_import.source_root = None;
-                        view.model_import.state = ModelImportState::Succeeded;
-                    }
+                    // Nothing was installed: the card goes back to its prompt
+                    // and only a real failure has anything to report.
                     Err(error) if error.code() == SettingsErrorCode::ModelImportCancelled => {
-                        view.model_import.state = ModelImportState::Cancelled;
+                        view.model_import.reset();
                     }
                     Err(error) => {
-                        view.model_import.state = ModelImportState::Failed;
+                        view.model_import.reset();
                         view.pending_notification = Some(error);
                     }
                 }
@@ -563,14 +581,75 @@ impl SettingsView {
         .detach();
     }
 
-    /// Drop the cached cover of a model whose cover image was replaced elsewhere.
+    /// Publish a model whose cover capture just finished.
     ///
-    /// A captured cover is written by the product rather than by this window: the
-    /// file keeps its package path, so the image cache would keep serving the bytes
-    /// it loaded before the capture. The capture calls this so the next frame
-    /// reloads the file.
-    pub fn refresh_model_cover(&self, model: &SettingsModelKey, cx: &mut App) {
-        self.invalidate_model_cover(model, cx);
+    /// The import result lands before the product has rendered the model's own
+    /// cover, so the cards the run installed are withheld from the grid until
+    /// this call. It comes from the capture on the window thread — the settings
+    /// worker is a different one — and arrives whether the capture produced a
+    /// cover or not, so a failed capture publishes the model with the cover its
+    /// source shipped instead of leaving it hidden.
+    pub fn finish_model_cover_capture(
+        &mut self,
+        model: &SettingsModelKey,
+        captured: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let key = ModelRowKey::new(model.origin, &model.id);
+        if captured {
+            self.invalidate_model_cover(model, cx);
+        }
+        if self.pending_model_reveal.remove(&key) {
+            if self.pending_model_reveal.is_empty()
+                && matches!(self.model_import.state, ModelImportState::Capturing)
+            {
+                self.model_import.reset();
+            }
+        } else if matches!(
+            self.model_import.state,
+            ModelImportState::Starting { .. } | ModelImportState::Running(_)
+        ) {
+            // The capture won the race against the import reply. The reveal gate
+            // consults this set when it opens, so the model is not left waiting
+            // for a signal that already happened.
+            self.completed_model_cover_captures.insert(key);
+        }
+        cx.notify();
+    }
+
+    /// Hold the models the run just installed back until their covers are done.
+    ///
+    /// A successful import always queues a cover capture, so the run's own
+    /// cards become visible when that capture reports back rather than the
+    /// moment the package lands. Nothing is published when the run installed
+    /// nothing, which is also how a rejected snapshot revision is handled: the
+    /// newer snapshot republishes the catalog with the card already in it.
+    pub(super) fn begin_model_reveal(&mut self) {
+        let baseline = std::mem::take(&mut self.model_import.baseline_models);
+        let installed = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| {
+                snapshot
+                    .model_catalog
+                    .entries
+                    .iter()
+                    .filter(|entry| entry.origin == SettingsModelOrigin::Installed)
+                    .map(|entry| ModelRowKey::new(entry.origin, &entry.id))
+                    .filter(|key| !baseline.contains(key))
+                    .collect::<BTreeSet<_>>()
+            })
+            .unwrap_or_default();
+        let mut pending = installed;
+        for key in std::mem::take(&mut self.completed_model_cover_captures) {
+            pending.remove(&key);
+        }
+        if pending.is_empty() {
+            self.model_import.reset();
+        } else {
+            self.pending_model_reveal = pending;
+            self.model_import.state = ModelImportState::Capturing;
+        }
     }
 
     /// Drop the cached cover image of a model whose cover just changed.

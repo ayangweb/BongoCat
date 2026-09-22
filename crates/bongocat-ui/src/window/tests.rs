@@ -4,7 +4,8 @@ use crate::{
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsShortcutBinding,
 };
-use gpui_kit::{Keystroke, Modifiers, TestAppContext};
+use gpui_kit::test::TestWindowExt as _;
+use gpui_kit::{ElementId, Keystroke, Modifiers, TestAppContext, VisualTestContext};
 
 /// A catalog entry for tests that do not care where the model lives.
 ///
@@ -743,12 +744,13 @@ fn cancellation_requested_while_starting_reaches_the_created_operation() {
     assert!(!operation.is_cancelled());
     draft.apply_starting_cancellation(&operation);
     assert!(operation.is_cancelled());
-    let status = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
-    assert_eq!(status, "Cancelling import…");
+    // The request has landed, so the card stops offering to send another one.
+    assert!(draft.shows_cancel());
+    assert!(!draft.is_cancellable());
 }
 
 #[test]
-fn model_catalog_and_import_statuses_cover_loading_empty_error_and_cancellation() {
+fn model_catalog_statuses_cover_loading_empty_and_error() {
     assert_eq!(
         super::models::empty_model_catalog_status(None, SettingsLanguage::EnglishUnitedStates),
         "Loading models…"
@@ -772,61 +774,39 @@ fn model_catalog_and_import_statuses_cover_loading_empty_error_and_cancellation(
         ),
         "模型列表不可用"
     );
-
-    let cancelled = ModelImportDraft {
-        title: "custom-model".to_owned(),
-        source_root: None,
-        state: ModelImportState::Cancelled,
-        ..ModelImportDraft::default()
-    };
-    let status = model_import_status(&cancelled, SettingsLanguage::ChineseSimplified);
-    assert_eq!(status, "已取消导入");
 }
 
 #[test]
-fn picker_and_import_statuses_never_contain_the_selected_path() {
-    let mut draft = ModelImportDraft {
-        title: "custom-model".to_owned(),
-        source_root: Some(PathBuf::from("/private/secret/model")),
-        state: ModelImportState::PickerCancelled,
-        ..ModelImportDraft::default()
-    };
-    let status = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
-    assert_eq!(status, "Selection cancelled; previous selection retained");
-    assert!(!status.contains("private"));
-
-    // A failed dialog is reported by notification, so the inline status keeps
-    // describing the selection that is still in effect instead of restating the
-    // failure a second time.
-    draft.state = ModelImportState::PickerFailed;
-    let status = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
-    assert_eq!(status, "Folder selected");
-    assert!(!status.contains("secret"));
-
-    // An archive source reports the archive's own wording, so the page never
-    // claims a folder was chosen when the user chose a `.zip`.
-    draft.source_kind = ModelSourceKind::Archive;
-    let status = model_import_status(&draft, SettingsLanguage::ChineseSimplified);
-    assert_eq!(status, "已选择压缩包");
-
-    draft.state = ModelImportState::Ready;
-    let status = model_import_status(&draft, SettingsLanguage::ChineseSimplified);
-    assert_eq!(status, "已选择压缩包");
-
-    // With nothing selected yet the same failure falls back to the neutral
-    // "nothing chosen" wording.
-    let empty = ModelImportDraft {
-        state: ModelImportState::PickerFailed,
-        ..ModelImportDraft::default()
-    };
-    assert_eq!(
-        model_import_status(&empty, SettingsLanguage::EnglishUnitedStates),
-        "No folder selected"
-    );
+fn the_import_card_never_contains_the_selected_path() {
+    // The card reports the step it is on, never the source: a path on screen
+    // would be the one place the page leaks where a user keeps their files.
+    for state in [
+        ModelImportState::Idle,
+        ModelImportState::Picking,
+        ModelImportState::Starting {
+            cancel_requested: false,
+        },
+        ModelImportState::Capturing,
+    ] {
+        let draft = ModelImportDraft {
+            title: "custom-model".to_owned(),
+            source_root: Some(PathBuf::from("/private/secret/model")),
+            state,
+            ..ModelImportDraft::default()
+        };
+        for step in super::models::import_card_step(&draft, SettingsLanguage::EnglishUnitedStates)
+            .into_iter()
+        {
+            assert!(
+                !step.contains("private") && !step.contains("secret"),
+                "a step label must not name the source path: {step}"
+            );
+        }
+    }
 }
 
 #[test]
-fn picker_open_state_blocks_conflicting_import_actions() {
+fn an_open_picker_blocks_starting_another_import() {
     let draft = ModelImportDraft {
         title: "custom-model".to_owned(),
         source_root: Some(PathBuf::from("/private/source")),
@@ -836,27 +816,21 @@ fn picker_open_state_blocks_conflicting_import_actions() {
 
     assert!(draft.is_picker_open());
     assert!(!draft.can_import());
-    let status = model_import_status(&draft, SettingsLanguage::EnglishUnitedStates);
-    assert_eq!(status, "Choosing folder…");
-
-    let archive = ModelImportDraft {
-        source_kind: ModelSourceKind::Archive,
-        ..draft
-    };
-    let status = model_import_status(&archive, SettingsLanguage::EnglishUnitedStates);
-    assert_eq!(status, "Choosing archive…");
+    // A dialog cannot be cancelled from the card, so it offers no control.
+    assert!(!draft.shows_cancel());
+    assert_eq!(
+        super::models::import_card_step(&draft, SettingsLanguage::EnglishUnitedStates).as_deref(),
+        Some("Opening the file picker…"),
+        "an open dialog is the step the card reports"
+    );
 }
 
 #[test]
-fn suggested_titles_agree_for_a_folder_and_the_archive_made_from_it() {
+fn the_suggested_title_is_the_chosen_folders_own_name() {
     let root = PathBuf::from("/private/我的猫 · 标准模式");
     assert_eq!(suggested_model_title(&root), "我的猫 · 标准模式");
-    // An archive suggests the same title as the folder it was compressed from,
-    // rather than the exported file name with its extension attached.
-    assert_eq!(
-        suggested_model_title(&root.with_extension("zip")),
-        "我的猫 · 标准模式"
-    );
+    // A path with no name of its own has nothing to suggest, so the page falls
+    // back to the placeholder the service also uses.
     assert_eq!(suggested_model_title(&PathBuf::from("/")), "custom-model");
 }
 
@@ -1255,25 +1229,28 @@ fn model_presentations_follow_the_resolved_language() {
         .expect("invalid models keep a diagnostic status");
     assert_eq!(invalid_status, "已安装 · 模型纹理无效");
 
-    let import_status = model_import_status(
-        &ModelImportDraft::default(),
-        SettingsLanguage::ChineseSimplified,
-    );
-    assert_eq!(import_status, "尚未选择文件夹");
+    // The import card shows the step it is on rather than the ones it has
+    // finished, and the step follows the resolved language too. Idle is the
+    // upload prompt, which is rendered from the catalog copy rather than from a
+    // step.
     assert_eq!(
-        model_import_progress(SettingsLanguage::ChineseSimplified, "正在复制", 5, 1024),
-        "正在复制 · 5 个文件 · 1024 字节"
+        super::models::import_card_step(
+            &ModelImportDraft::default(),
+            SettingsLanguage::ChineseSimplified,
+        ),
+        None,
+        "an idle draft renders the prompt, not a step"
     );
 
-    // A failed import reports itself through a notification only, so the tag
-    // has nothing left to say rather than a second copy of the same error.
-    let failed_import = ModelImportDraft {
-        state: ModelImportState::Failed,
+    // The capture is a real second phase, and it replaces the import line rather
+    // than being appended under it: the card reports one step at a time.
+    let capturing = ModelImportDraft {
+        state: ModelImportState::Capturing,
         ..ModelImportDraft::default()
     };
     assert_eq!(
-        model_import_status(&failed_import, SettingsLanguage::ChineseSimplified),
-        ""
+        super::models::import_card_step(&capturing, SettingsLanguage::ChineseSimplified).as_deref(),
+        Some("正在截取封面中…")
     );
 }
 
@@ -1629,6 +1606,119 @@ fn deleting_a_model_asks_the_service_only_after_the_confirmation(cx: &mut TestAp
             Ok(crate::SettingsCommand::DeleteModel { .. })
         ),
         "accepting must ask the service to delete the model it named"
+    );
+}
+
+/// The models page's own content, with the import card and the model cards in it.
+///
+/// The page renders through `SettingItem::render`, which only runs for the page
+/// the settings component has selected, so this harness calls
+/// `models::content` the same way that closure does rather than trying to make
+/// the component select a page.
+struct ModelsPageHarness {
+    view: Entity<SettingsView>,
+    snapshot: Option<SettingsSnapshot>,
+}
+
+impl Render for ModelsPageHarness {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let snapshot = self.snapshot.clone();
+        let tokens = Tokens::from_theme(cx);
+        self.view
+            .clone()
+            .update(cx, move |view, cx| {
+                super::models::content(view, window, cx, snapshot.as_ref(), tokens)
+            })
+            .into_any_element()
+    }
+}
+
+/// The bounds an element was painted at.
+fn rendered_bounds(visual: &mut VisualTestContext, id: ElementId) -> Bounds<Pixels> {
+    visual.update(|window, _| {
+        let drawn = id.clone();
+        window
+            .try_find(id)
+            .unwrap_or_else(|| panic!("{drawn:?} must be drawn"))
+            .bounds()
+    })
+}
+
+/// The import card is exactly as tall as the model cards it is laid out beside.
+///
+/// This is the page's real grid, not a stand-in for it: the model card here
+/// carries a status line, which is what makes it taller than the import card's
+/// own floor, so a card that kept its own height would come out short. Nothing
+/// else about the page is asserted — the card's own tests cover its two faces.
+#[gpui_kit::test]
+fn the_import_card_is_as_tall_as_the_model_cards_beside_it(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let mut seeded = crate::tests::snapshot(1, false, true);
+    // An unavailable model is the case that makes the two heights differ: its
+    // status line is what pushes a model card past the import card's floor.
+    seeded.model_catalog.entries = vec![model_entry(
+        "broken",
+        SettingsModelOrigin::Installed,
+        SettingsModelAvailability::Invalid {
+            diagnostic: SettingsModelDiagnostic::ModelTextureMissing,
+        },
+    )];
+    let entries = seeded.model_catalog.entries.clone();
+    let active = seeded.active_model.clone();
+    let page_snapshot = seeded.clone();
+
+    let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
+    let capture = Rc::clone(&built);
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::EnglishUnitedStates,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        capture.borrow_mut().replace(view.clone());
+        let page = cx.new(|_| ModelsPageHarness {
+            view,
+            snapshot: Some(page_snapshot),
+        });
+        // The cards own `PopConfirm` surfaces, which resolve through a `Root`.
+        Root::new(page, window, cx)
+    });
+    let view = built
+        .borrow_mut()
+        .take()
+        .expect("the window builder must hand the page out");
+    view.update(visual, |view, cx| {
+        view.snapshot = Some(seeded);
+        view.sync_model_row_focus(&entries, active.as_ref(), false, cx);
+    });
+    visual.update(|window, cx| window.render_frame(cx));
+
+    let import = rendered_bounds(
+        visual,
+        ElementId::from((ElementId::from("model-import-card"), "trigger")),
+    );
+    let model = rendered_bounds(visual, ElementId::from(("model-card", 0usize)));
+
+    assert_eq!(
+        import.origin.y, model.origin.y,
+        "the two cells must share a row for their heights to be comparable"
+    );
+    assert_eq!(
+        import.size.height, model.size.height,
+        "the grid's first cell must be as tall as the model cards beside it"
+    );
+    assert!(
+        import.size.height > px(super::models::MODEL_CARD_MIN_HEIGHT),
+        "a row is as tall as its tallest cell, so the card must be taller than its own floor"
     );
 }
 

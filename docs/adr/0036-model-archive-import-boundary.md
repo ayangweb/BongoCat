@@ -1,7 +1,43 @@
 # ADR-0036: 模型导入的压缩包来源与解压边界
 
-状态：已接受（2026-09-16）
+状态：已接受（2026-09-16）→ **已撤回（2026-09-22）**
 依赖：ADR-0030（先复用既有方案）、ADR-0027（诊断包已使用 `zip` 写入器）、ADR-0011（渐进实现与发布门禁）
+
+## 撤回（2026-09-22）
+
+维护者决定**先删掉压缩包来源的实现**，恢复时另行确认。以下内容随之移除：
+
+- `crates/bongocat-model/src/archive.rs` 整个模块（来源识别、`plan_archive`、`extract_archive`、
+  条目名规范化、包装目录剥离、文件管理器元数据过滤）；
+- `ModelStore` 的归档分支（`import_with_observer`、`inspect_source`、`import_mver_with_observer`）、
+  `MverSource::Archive` 变体；
+- `ModelStoreDiagnostic::SourceArchiveUnsupported`（`ALL` 由 13 项回到 12 项），以及它在
+  `bongocat-app` 两个映射函数与两处穷尽性测试里的分支；
+- `ModelPackageLimits::maximum_archive_bytes`；
+- `bongocat-model` 对 `zip`（`deflate-flate2`）与 `flate2` 的依赖；`Cargo.lock` 里 `zip 8.6.0`
+  因此也不再携带 `flate2`；
+- 相关测试：`bongocat-model` 的 11 个归档用例与 `ArchiveBuilder`/`write_archive_tree`/
+  `write_package_archive` 测试辅助、`mver.rs` 的归档转换用例、`bongocat-app` 的
+  `application_imports_folder_and_archive_sources_of_the_same_model` 与 `archive_fixture` 辅助；
+- `examples/model_conversion_smoke.rs` 的 `--source <folder|archive>` 收窄为 `<folder>`。
+
+**本文的全部决策保留**，作为恢复该功能时的设计输入——尤其是决策 1（按内容而非扩展名识别）、
+决策 2（压缩包不是第二个解析器，共用 `PreparedModel` 校验）、以及解压前按中央目录校验的安全边界。
+**恢复前先与维护者确认**：压缩包上传需要一组本次未做的新功能，不是把代码加回来那么简单。
+
+`bongocat_ui::model_source_display_name` 的「去掉归档扩展名」规则**保留**：settings service 的
+兜底标题仍与它共用，且删掉它会让恢复时的那条契约失去单一实现。
+
+同日更早的两次 UI 修订也一并成为历史记录，保留如下：决策 10 的「一个来源一个按钮」先被单一上传卡片
+取代（依据是 `rfd 0.17.2` 新增的 `pick_file_or_folder`——`NSOpenPanel` 可以在同一次调用里既接受
+文件又接受目录，决策 10 当时「原生面板没有统一形态」的前提在 macOS 上不再成立；
+`pick_model_directory`/`pick_model_archive` 收敛为 `pick_model_source`，
+`validate_selected_directory`/`validate_selected_archive` 收敛为 `validate_selected_source`），
+随后入口再收窄为只接受文件夹的 `pick_model_folder` + `validate_selected_folder`。这两步的产物
+（`pick_model_source`、`validate_selected_source`）现已随本次撤回一并移除，只留下
+`pick_model_folder`。
+
+## 原始决策（已撤回，保留作设计输入）
 
 ## 背景
 
@@ -141,7 +177,7 @@ settings 层把新码映射到既有 `SettingsErrorCode::ModelImportSourceUnsupp
 两个 crate 的版本都在当次用 `cargo info` 核对了 crates.io 最新非 yanked 稳定版：`zip` 8.6.0
 （`9.0.0-pre3` 是预发布，不采用）、`flate2` 1.1.10。
 
-### 10. UI：一个来源一个按钮
+### 10. UI：一个来源一个按钮（已撤回，见文首）
 
 原生面板没有"选文件夹或文件"的统一形态（macOS 是 `pick_folder` 与 `pick_file` 两个不同面板，
 Windows 的 common item dialog 同样区分），所以 Models 页面提供两个按钮：**选择文件夹**与
@@ -207,6 +243,9 @@ Windows 的 common item dialog 同样区分），所以 Models 页面提供两�
    完整 `cargo update` 的结果，不是本功能需要，但会让 diff 变大。
 
 ## 验证
+
+> 以下证据属于**已撤回**的实现，其中的测试与辅助已随实现删除；保留它只为说明这些决策当年确实被
+> 验证过，恢复时可以直接复用同一批用例。
 
 已完成（2026-09-16，本机 macOS 26.5 / aarch64）：
 

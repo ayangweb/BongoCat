@@ -122,38 +122,13 @@
       "resource_invalid": "模型资源无效"
     },
     "import": {
-      "folder": {
-        "none_selected": "尚未选择文件夹",
-        "selected": "已选择文件夹",
-        "choosing": "正在选择文件夹…"
+      "step": {
+        "choosing": "正在打开文件选择器…",
+        "importing": "正在导入模型中…",
+        "capturing": "正在截取封面中…"
       },
-      "archive": {
-        "none_selected": "尚未选择压缩包",
-        "selected": "已选择压缩包",
-        "choosing": "正在选择压缩包…"
-      },
-      "picker": {
-        "cancelled": "已取消选择",
-        "cancelled_previous_retained": "已取消选择；保留之前的选择"
-      },
-      "progress": {
-        "cancelling": "正在取消导入…",
-        "starting": "正在开始导入…",
-        "preparing": "正在准备",
-        "copying": "正在复制",
-        "validating": "正在验证",
-        "committing": "正在完成",
-        "complete": "导入完成",
-        "cancelled": "已取消导入",
-        "detail": "%{stage} · %{files_copied} 个文件 · %{bytes_copied} 字节"
-      },
-      "actions": {
-        "choose_folder": "选择文件夹",
-        "choose_archive": "选择压缩包",
-        "choosing": "选择中…",
-        "import": "导入"
-      },
-      "title": "导入模型"
+      "title": "导入模型",
+      "hint": "点击选择模型文件夹"
     },
     "legacy": {
       "mode": {

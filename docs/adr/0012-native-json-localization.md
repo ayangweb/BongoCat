@@ -22,6 +22,10 @@ enum 到 key 的集中映射。
 - `bongocat-i18n` 是唯一调用 `rust_i18n::i18n!` 的 catalog owner。UI 使用其 `text(locale, key)`
   facade，并在使用点写出 key；不得为 UI crate 再初始化同一份 catalog 或依赖全局 locale。
 - 测试/CI 必须检查 JSON 可解析、语言 key 集合相同、值为非空字符串且占位符集合一致。
+- UI 文案的书写约定见 `docs/localization-copy-conventions.md`。当前已落地的一条：**省略号一律写
+  单个 `…`（U+2026，视觉上是三个点）**，禁止中文排版习惯的 `……`（六个点）与拉丁写法的 ASCII
+  `...`——同一个 key 由所有语言共用，写法必须与语言无关。该规则由 `tools/validate-locales.py`
+  机械强制，不依赖 review。
 
 ## 取舍
 

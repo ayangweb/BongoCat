@@ -130,33 +130,19 @@ mod display_bounds_tests {
     }
 }
 
-/// Let the user choose a model folder.
-pub fn pick_model_directory(
-    on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
-) -> Result<(), ModelSourcePickerError> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    return model_source_picker::pick_model_directory(on_complete);
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = on_complete;
-        Err(ModelSourcePickerError::UnsupportedPlatform)
-    }
-}
-
-/// Let the user choose a model archive.
+/// Let the user choose the model folder to import.
 ///
-/// The folder and archive sources get separate entry points because the native
-/// dialogs are separate: no supported platform offers one panel that selects
-/// "a folder or a file", so a single button would either hide which mode is
-/// active or need a second step to say. Which kind of source the user has is
-/// therefore decided by the button they press, and what the file actually *is*
-/// is still decided by the store when it reads the bytes.
-pub fn pick_model_archive(
+/// The folder a user exported is the only source this entry point offers, and
+/// both supported platforms answer it with their own folder panel. A model
+/// archive is not selectable here and nothing downstream reads one: the store's
+/// archive source was removed together with its reader and its diagnostics
+/// (ADR-0036 已撤回), so a dialog that returned any file would promise a source
+/// the rest of this path cannot accept.
+pub fn pick_model_folder(
     on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
 ) -> Result<(), ModelSourcePickerError> {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    return model_source_picker::pick_model_archive(on_complete);
+    return model_source_picker::pick_model_folder(on_complete);
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
@@ -167,9 +153,9 @@ pub fn pick_model_archive(
 
 /// Let the user choose the image that replaces a model's cover.
 ///
-/// The selection vocabulary is shared with the model source pickers: the
-/// failures a dialog can produce are properties of the dialog, and the settings
-/// service reports its own stable code when the chosen bytes are not a cover.
+/// The selection vocabulary is shared with the model source picker: the failures
+/// a dialog can produce are properties of the dialog, and the settings service
+/// reports its own stable code when the chosen bytes are not a cover.
 pub fn pick_model_cover(
     on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
 ) -> Result<(), ModelSourcePickerError> {

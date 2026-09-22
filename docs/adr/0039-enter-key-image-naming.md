@@ -1,7 +1,10 @@
 # ADR-0039: 主 Enter 与小键盘 Enter 的键位图命名与旧名兼容
 
 状态：已接受（2026-09-17）
-依赖：ADR-0038（左右 Alt 的键位图命名与旧名兼容）、ADR-0037（应用内导入 BongoCatMver 模型）、ADR-0036（模型导入来源识别与 staging 边界）、ADR-0004（可校正输入状态）
+依赖：ADR-0038（左右 Alt 的键位图命名与旧名兼容）、ADR-0037（应用内导入 BongoCatMver 模型）、ADR-0036（模型导入来源识别与 staging 边界；**该 ADR 已于 2026-09-22 撤回**）、ADR-0004（可校正输入状态）
+
+修订（2026-09-22）：ADR-0036 撤回后模型来源只剩目录，本文决策 4 里「目录与 `.zip` 两种来源」的
+归档一半不再适用。**命名决策本身未变。**
 
 ## 背景
 
@@ -69,7 +72,7 @@ make code `0x1c` + E0 扩展位，macOS keycode `76`），`bongocat-platform` �
 
 `key_names::LEGACY_KEY_IMAGE_NAMES` 增加第三项 `("Return", "Enter")`，沿用既有规则：只处理
 `resources/{left-,right-}keys` 一层常规文件，canonical 文件已存在时保留它、旧名原样留下，
-目录与 `.zip` 两种来源在 store staging 上得到同一结果，用户选中的源永远是只读输入。
+用户选中的源永远是只读输入。
 
 ### 5. Mver 转换：`VK_RETURN` 展开成两个名字
 

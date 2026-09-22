@@ -9,6 +9,11 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 ### ✨ Features
 
 - An imported model's cover is now captured from a real render of the model itself. Every BongoCatMver input mode used to reuse the same placeholder picture from the source, so importing standard, keyboard, and gamepad gave three identical cards; right after the import the app renders the model in a hidden window and saves that frame as the card's cover. If the capture cannot run, the model keeps the cover its source shipped.
+- The model page's import entry is now a single upload card. Pressing it opens the folder picker and starts the import with the folder you chose, so the title field, the two source buttons and the separate Import button are gone. While the import runs the card shows the step it is on — importing the model, then capturing its cover — replacing one line with the next instead of stacking them, and the card is exactly as tall as the model cards beside it.
+
+### 🗑️ Removals
+
+- Importing a model from a ZIP archive is gone for now: the upload card opens the folder picker only, no copy mentions archives, and the model library no longer reads ZIP sources at all — the archive reader, its limits and its diagnostics were removed with it. The design is kept in the ADR for when archive import is built properly, which needs work of its own; until then a model is imported from the folder it was exported as.
 
 ### 🐛 Bug Fixes
 

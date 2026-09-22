@@ -1,12 +1,43 @@
 use super::*;
+use gpui_kit::base::TestSupportExt as _;
 
 /// Model cards are a fixed width so the grid stays a grid. Covers arrive at
 /// several aspect ratios, and sizing each card around its own artwork would
-/// ragged every column.
-const MODEL_CARD_WIDTH: f32 = 240.0;
+/// ragged every column. The import card is a cell in the same grid, so it takes
+/// its width from here rather than repeating the number.
+pub(super) const MODEL_CARD_WIDTH: f32 = 240.0;
 /// Height of the cover area. A cover is cropped into this box rather than
 /// resized around it, so one unusual image cannot resize the whole page.
 const MODEL_CARD_COVER_HEIGHT: f32 = 140.0;
+/// The height a model card occupies when its summary is one line: the card's own
+/// padding, the cover, the title and the action row.
+///
+/// It is not the card's height — a row is as tall as its tallest cell, and a card
+/// carrying a status line is taller than this — but it is the height the import
+/// card floors itself at, so the grid's first cell keeps the shape of the cells
+/// beside it even when it is the only cell on its row.
+pub(super) const MODEL_CARD_MIN_HEIGHT: f32 = 232.0;
+
+/// The grid every model cell lives in.
+///
+/// Cells wrap, and every cell on a row is stretched to that row's tallest one, so
+/// the import card — the grid's first cell — is exactly as tall as the model
+/// cards beside it without either of them carrying the other's height.
+/// `content_start` is what keeps a row at its content height: a wrapped flex
+/// container stretches its lines to fill the scroll area by default, which would
+/// size the cells to the window instead of to the cards.
+pub(super) fn model_grid() -> Stateful<Div> {
+    div()
+        .id("model-catalog")
+        .min_h_0()
+        .flex_1()
+        .flex()
+        .flex_wrap()
+        .items_stretch()
+        .content_start()
+        .gap_3()
+        .overflow_y_scroll()
+}
 
 pub(super) fn content(
     view: &mut SettingsView,
@@ -20,11 +51,26 @@ pub(super) fn content(
     });
     let import_running = view.model_import.is_running();
     let picker_open = view.model_import.is_picker_open();
-    let model_id_disabled = import_running || picker_open;
     let model_commands_blocked = import_running || picker_open || view.pending.is_some();
+    // A model the running import just installed is withheld until its cover
+    // capture reports back, so the grid only ever shows the finished card: the
+    // alternative is a card that appears with the source package's placeholder
+    // picture and swaps it a moment later.
     let model_entries = snapshot
         .as_ref()
-        .map(|snapshot| snapshot.model_catalog.entries.clone())
+        .map(|snapshot| {
+            snapshot
+                .model_catalog
+                .entries
+                .iter()
+                .filter(|entry| {
+                    !view
+                        .pending_model_reveal
+                        .contains(&ModelRowKey::new(entry.origin, &entry.id))
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
     let active_model = snapshot
         .as_ref()
@@ -120,8 +166,11 @@ pub(super) fn content(
                 })
                 .bg(tokens.canvas)
                 .child(model_card_cover(cover, language, tokens));
+            // The card is observed like the import card is, so a test can read the
+            // two cells' geometry: the grid's whole job is to make them match.
             if editing {
                 card.child(edit_model_card(view, window, cx, language, tokens))
+                    .test_support()
             } else {
                 card.child(model_card_summary(&entry, actions.active, status, tokens))
                     .child(model_card_actions(
@@ -137,13 +186,14 @@ pub(super) fn content(
                         language,
                         tokens,
                     ))
+                    .test_support()
             }
         })
         .collect::<Vec<_>>();
-    // The page shell renders the title, and progress is never rendered on the
-    // page: buttons carry their own disabled/cancel state and errors go through
-    // notifications, so the content is just the list — nothing that occupies
-    // layout space announces a transient state.
+    // The page shell renders the title, and the only place progress is drawn is
+    // the import card itself — buttons carry their own disabled/cancel state and
+    // errors go through notifications — so the content is just the grid, and
+    // nothing outside it grows or shrinks as a command comes and goes.
     div()
         .min_w_0()
         .flex_1()
@@ -153,25 +203,8 @@ pub(super) fn content(
         .text_color(tokens.text)
         .id("models-content")
         .child(
-            div()
-                .id("model-catalog")
-                .min_h_0()
-                .flex_1()
-                .flex()
-                .flex_wrap()
-                .items_start()
-                .gap_3()
-                .overflow_y_scroll()
-                .child(model_import_card(
-                    view,
-                    window,
-                    cx,
-                    import_running,
-                    picker_open,
-                    model_id_disabled,
-                    language,
-                    tokens,
-                ))
+            model_grid()
+                .child(model_import_card(view, cx, language))
                 .children(model_cards),
         )
 }
@@ -251,7 +284,10 @@ fn model_card_actions(
 ) -> Div {
     let activate_model = model.clone();
     let activate_key_model = model.clone();
-    let mut row = div().flex().items_center().gap_1().child(
+    // The grid stretches a card to its row's tallest cell, so the controls are
+    // pushed to the card's bottom edge: every card on a row then lines its
+    // buttons up, whatever its own summary turned out to be worth.
+    let mut row = div().flex().items_center().gap_1().mt_auto().child(
         command_button(
             activate_label,
             &focus.activate,
@@ -537,192 +573,71 @@ fn edit_model_card(
 
 /// The import entry, as the first cell of the grid.
 ///
-/// Importing is the only way a model reaches the page, so it keeps its whole
-/// flow — name, source, commit — in one place instead of spreading it across
-/// the toolbar and the cards.
-#[allow(clippy::too_many_arguments)]
+/// Importing is the only way a model reaches the page, so one card owns the
+/// whole flow: a press opens the folder picker, the selection starts the run on
+/// the spot, and the same card reports the step until the new model is ready to
+/// be shown.
 fn model_import_card(
     view: &SettingsView,
-    window: &Window,
     cx: &mut Context<SettingsView>,
-    import_running: bool,
-    picker_open: bool,
-    model_id_disabled: bool,
     language: SettingsLanguage,
-    tokens: Tokens,
-) -> Stateful<Div> {
-    let picker_disabled = import_running || picker_open || view.pending.is_some();
-    let picker_button_label = if picker_open {
-        bongocat_i18n::text(language.catalog_locale(), "models.import.actions.choosing")
-    } else {
-        bongocat_i18n::text(
-            language.catalog_locale(),
-            "models.import.actions.choose_folder",
-        )
-    };
-    let archive_button_label = if picker_open {
-        bongocat_i18n::text(language.catalog_locale(), "models.import.actions.choosing")
-    } else {
-        bongocat_i18n::text(
-            language.catalog_locale(),
-            "models.import.actions.choose_archive",
-        )
-    };
-    let import_button_label = if import_running {
-        bongocat_i18n::text(language.catalog_locale(), "actions.cancel")
-    } else {
-        bongocat_i18n::text(language.catalog_locale(), "models.import.actions.import")
-    };
-    let import_disabled =
-        !import_running && (!view.model_import.can_import() || view.pending.is_some());
-    div()
-        .id("model-import-card")
-        .flex_none()
-        .w(px(MODEL_CARD_WIDTH))
-        .flex()
-        .flex_col()
-        .gap_2()
-        .p_3()
-        .rounded_lg()
-        .border_1()
-        .border_dashed()
-        .border_color(tokens.border)
-        .bg(tokens.canvas)
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .items_center()
-                .gap_1()
-                .py_2()
-                .child(
-                    Icon::new(IconName::ArrowUp)
-                        .w(px(24.0))
-                        .h(px(24.0))
-                        .text_color(tokens.muted),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(tokens.muted)
-                        .child(bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "models.import.title",
-                        )),
-                ),
-        )
-        .child(
-            div()
-                .id("model-title-input")
-                .key_context("SettingsModelTitle")
-                .track_focus(&view.model_id_focus)
-                .tab_index(20)
-                .w_full()
-                .on_click(cx.listener(|view, _, window, cx| {
-                    if !view.model_import.is_running() {
-                        window.focus(&view.model_id_focus, cx);
-                    }
-                }))
-                .child(Input::new(&view.model_id_input))
-                .when(model_id_disabled, |input| input.opacity(0.6)),
-        )
-        .child(
-            command_button(
-                picker_button_label,
-                &view.choose_model_focus,
-                21,
-                window,
-                tokens,
-                picker_disabled,
-            )
-            .w_full()
-            .id("choose-model-directory")
-            .on_click(cx.listener(|view, _, window, cx| {
-                if !view.model_import.is_running()
-                    && !view.model_import.is_picker_open()
-                    && view.pending.is_none()
-                {
-                    window.focus(&view.choose_model_focus, cx);
-                    view.choose_model_source(ModelSourceKind::Directory, cx);
+) -> ModelImportCard {
+    let locale = language.catalog_locale();
+    // A native dialog or another page command in flight leaves the card visible
+    // but inert; during the run itself it shows progress instead of the prompt.
+    let ready_for_input = !view.model_import.is_running()
+        && !view.model_import.is_picker_open()
+        && view.pending.is_none();
+    let mut card = ModelImportCard::new(
+        "model-import-card",
+        bongocat_i18n::text(locale, "models.import.title"),
+    )
+    .hint(bongocat_i18n::text(locale, "models.import.hint"))
+    .step(import_card_step(&view.model_import, language))
+    .interactive(ready_for_input)
+    .track_focus(Some(view.import_card_focus.clone()))
+    .tab_index(20)
+    .on_open({
+        let view = cx.entity().downgrade();
+        move |_, cx| {
+            let _ = view.update(cx, |view, cx| view.choose_model_source(cx));
+        }
+    });
+    if view.model_import.shows_cancel() {
+        card = card.cancel(
+            bongocat_i18n::text(locale, "actions.cancel"),
+            !view.model_import.is_cancellable(),
+            {
+                let view = cx.entity().downgrade();
+                move |_, cx| {
+                    let _ = view.update(cx, |view, cx| view.cancel_model_import(cx));
                 }
-            }))
-            .on_key_down(cx.listener(|view, event, window, cx| {
-                if !view.model_import.is_running()
-                    && !view.model_import.is_picker_open()
-                    && view.pending.is_none()
-                    && is_activation_key(event)
-                {
-                    cx.stop_propagation();
-                    window.focus(&view.choose_model_focus, cx);
-                    view.choose_model_source(ModelSourceKind::Directory, cx);
-                }
-            })),
-        )
-        .child(
-            command_button(
-                archive_button_label,
-                &view.choose_archive_focus,
-                22,
-                window,
-                tokens,
-                picker_disabled,
-            )
-            .w_full()
-            .id("choose-model-archive")
-            .on_click(cx.listener(|view, _, window, cx| {
-                if !view.model_import.is_running()
-                    && !view.model_import.is_picker_open()
-                    && view.pending.is_none()
-                {
-                    window.focus(&view.choose_archive_focus, cx);
-                    view.choose_model_source(ModelSourceKind::Archive, cx);
-                }
-            }))
-            .on_key_down(cx.listener(|view, event, window, cx| {
-                if !view.model_import.is_running()
-                    && !view.model_import.is_picker_open()
-                    && view.pending.is_none()
-                    && is_activation_key(event)
-                {
-                    cx.stop_propagation();
-                    window.focus(&view.choose_archive_focus, cx);
-                    view.choose_model_source(ModelSourceKind::Archive, cx);
-                }
-            })),
-        )
-        .child(
-            command_button(
-                import_button_label,
-                &view.import_model_focus,
-                23,
-                window,
-                tokens,
-                import_disabled,
-            )
-            .w_full()
-            .id("import-model")
-            .on_click(cx.listener(move |view, _, window, cx| {
-                if !import_disabled {
-                    window.focus(&view.import_model_focus, cx);
-                    if import_running {
-                        view.cancel_model_import(cx);
-                    } else {
-                        view.start_model_import(cx);
-                    }
-                }
-            }))
-            .on_key_down(cx.listener(move |view, event, window, cx| {
-                if !import_disabled && is_activation_key(event) {
-                    cx.stop_propagation();
-                    window.focus(&view.import_model_focus, cx);
-                    if import_running {
-                        view.cancel_model_import(cx);
-                    } else {
-                        view.start_model_import(cx);
-                    }
-                }
-            })),
-        )
+            },
+        );
+    }
+    card
+}
+
+/// The step the import card shows, or `None` while the card is the upload prompt.
+///
+/// The phases are named rather than counted, so a wait with two halves says which
+/// half it is in — but only the half that is running comes back. The capture
+/// replaces the import line instead of being appended under it: the card is one
+/// grid cell the size of a model card, and a growing list of finished steps would
+/// turn a two-phase wait into a log that cell cannot hold.
+pub(super) fn import_card_step(
+    draft: &ModelImportDraft,
+    language: SettingsLanguage,
+) -> Option<SharedString> {
+    let step = |key: &str| Some(bongocat_i18n::text(language.catalog_locale(), key).into());
+    match &draft.state {
+        ModelImportState::Idle => None,
+        ModelImportState::Picking => step("models.import.step.choosing"),
+        ModelImportState::Starting { .. } | ModelImportState::Running(_) => {
+            step("models.import.step.importing")
+        }
+        ModelImportState::Capturing => step("models.import.step.capturing"),
+    }
 }
 
 #[cfg(test)]

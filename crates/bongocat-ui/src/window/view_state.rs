@@ -46,17 +46,6 @@ impl SettingsView {
             "navigation.settings.title",
         ));
         self.syncing_component_inputs = true;
-        self.model_id_input.update(cx, |input, cx| {
-            input.set_placeholder(
-                bongocat_i18n::text(
-                    snapshot.resolved_language.catalog_locale(),
-                    "models.identity.title",
-                ),
-                window,
-                cx,
-            );
-            input.set_value(&self.model_import.title, window, cx)
-        });
         self.language_select.update(cx, |select, cx| {
             select.set_items(
                 SearchableVec::new(
@@ -101,12 +90,6 @@ impl SettingsView {
         // reason as the frame itself: they are constructed before the first snapshot
         // exists, and a component built in the default language would be replaced —
         // visibly — by the values the first snapshot carries.
-        let model_id_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(bongocat_i18n::text(
-                seed.language.catalog_locale(),
-                "models.identity.title",
-            ))
-        });
         let language_select = cx.new(|cx| {
             SelectState::new(
                 SearchableVec::new(
@@ -128,18 +111,6 @@ impl SettingsView {
                 cx,
             )
         });
-        cx.subscribe(&model_id_input, |view, input, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                if view.syncing_component_inputs || view.model_import.is_running() {
-                    return;
-                }
-                let value = input.read(cx).value();
-                view.model_import.title = sanitize_model_title_input(&value);
-                view.model_import.reset_result_state();
-                cx.notify();
-            }
-        })
-        .detach();
         cx.subscribe(
             &language_select,
             |view, _, event: &SelectEvent<SearchableVec<&'static str>>, cx| {
@@ -210,11 +181,9 @@ impl SettingsView {
             request_quit,
             request_update,
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),
-            model_id_focus: cx.focus_handle().tab_index(20).tab_stop(true),
-            choose_model_focus: cx.focus_handle().tab_index(21).tab_stop(true),
-            choose_archive_focus: cx.focus_handle().tab_index(22).tab_stop(true),
-            import_model_focus: cx.focus_handle().tab_index(23).tab_stop(true),
-            model_id_input,
+            import_card_focus: cx.focus_handle().tab_index(20).tab_stop(true),
+            pending_model_reveal: BTreeSet::new(),
+            completed_model_cover_captures: BTreeSet::new(),
             syncing_component_inputs: false,
         }
     }

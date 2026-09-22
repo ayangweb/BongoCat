@@ -861,7 +861,6 @@ name = "bongocat-model"
 version = "2.0.0"
 dependencies = [
  "bongocat-storage",
- "flate2",
  "image",
  "oxipng",
  "proptest",
@@ -869,7 +868,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "uuid",
- "zip 8.6.0",
 ]
 
 [[package]]
@@ -10423,7 +10421,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
 dependencies = [
  "crc32fast",
- "flate2",
  "indexmap",
  "memchr",
  "typed-path",
