@@ -4,6 +4,8 @@
 日期：2026-08-30
 原始重构基线 commit：`94af230`；后续验证源码与本记录保持同一提交
 
+> 修订（2026-09-23）：ADR-0054 后，本文中的 AccessKit/AX/UIA、VoiceOver/Narrator 和朗读项均是 ADR-0009 的历史 spike 证据，不再是项目自有 UI contract；当前 gate 以可见控件、焦点、键盘导航、真实 IME/DPI、物理 pointer 和 overlay 共存为准。
+
 ## 范围
 
 本 spike 只验证以下最小闭环：
@@ -207,4 +209,4 @@ Objective-C 对象。该版本例外的解除条件是 AccessKit macOS adapter �
 - 菜单栏常驻策略、隐藏行为和 native overlay 共存尚未验证。
 - Windows 已通过编译和真实窗口/首帧/退出 runner smoke；字体、IME、DPI 切换、辅助技术和系统集成仍未验证。
 
-因此默认 shader 工具链、`.app` bundle/lifecycle、主题、基础编辑交互、macOS WeType 拼音与双平台最小 AX/UIA tree/action 子项可以单独记录为通过；Apple 拼音、Windows IME、真实辅助技术、overlay 共存和完整 GPUI spike 仍保持未完成。GPUI go/no-go 决策必须等 ADR-0009 的全部 gate 有证据后再做。
+因此默认 shader 工具链、`.app` bundle/lifecycle、主题、基础编辑交互、macOS WeType 拼音与双平台最小 AX/UIA tree/action 子项可以单独记录为通过；ADR-0054 后 AX/UIA、VoiceOver/Narrator 与朗读只保留为历史证据。当前 GPUI go/no-go 仍需 Apple 拼音、Windows IME/字体/DPI、物理 pointer/keyboard、overlay 共存等可见平台证据，不再等待 ADR-0009 的项目自有辅助功能 gate。

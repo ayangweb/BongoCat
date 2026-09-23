@@ -1,7 +1,7 @@
 # Phase 0 Dependency License Inventory
 
-状态：Native workspace 与 spike 依赖许可证/来源策略已自动化
-日期：2026-09-04
+状态：Native workspace 与 spike 依赖许可证/来源策略已自动化；ADR-0056 的临时 git patch 使当前 `sources` check 预期失败
+日期：2026-09-23
 
 ## Scope
 
@@ -10,17 +10,16 @@
 
 - `aarch64-apple-darwin`
 - `x86_64-apple-darwin`
-- `aarch64-pc-windows-msvc`
 - `x86_64-pc-windows-msvc`
 
-扫描 package 节点数由当前 lockfile 与 target filter 动态决定，不作为需要手工维护的 golden value。2026-08-29 已先完成所有 Native Rewrite 直接依赖的最新稳定版审计和 lockfile 更新，详见 `rust-dependency-versions.md`。
+扫描 package 节点数由当前 lockfile 与 target filter 动态决定，不作为需要手工维护的 golden value。2026-08-29 已先完成所有 Native Rewrite 直接依赖的最新稳定版审计和 lockfile 更新；ADR-0056 的 `gpui-kit` transition patch 和 lockfile 来源在 `rust-dependency-versions.md` 中单独记录。
 
 ## Direct dependencies
 
 | Dependency family                | Locked version                 | License                   | Role                                     |
 | -------------------------------- | ------------------------------ | ------------------------- | ---------------------------------------- |
-| GPUI Kit                         | `0.6.6`                        | Apache-2.0                | Formal settings UI facade and components |
-| AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | Formal settings AX/UIA semantic adapter  |
+| GPUI Kit                         | `0.6.6`                        | Apache-2.0                | Formal settings UI facade and components; root uses ADR-0056 transition patch |
+| AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | Direct in `spikes/gpui-settings`; formal UI receives `gpui-kit` transitive semantics after ADR-0054 |
 | arboard                          | `3.6.1`                        | MIT OR Apache-2.0         | Dual-platform private text clipboard     |
 | raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI/Win32 native window boundary        |
 | opener                           | `0.8.5`                        | MIT OR Apache-2.0         | System default path/URL opener and reveal |
@@ -34,7 +33,7 @@
 | core-graphics2 / core-foundation | `0.6.1` / `0.10.1`             | MIT OR Apache-2.0         | macOS input boundary spike               |
 | objc2-core-graphics / foundation | `0.3.2` / `0.3.2`              | Zlib OR Apache-2.0 OR MIT | formal macOS input adapter               |
 | objc2 / block2 family            | `0.6.4` / `0.3.2`              | MIT OR Apache-2.0 / Zlib  | macOS overlay/input lifecycle            |
-| objc2 (GPUI AX compatibility)    | `0.5.2`                        | MIT                       | Inspect AccessKit macOS adapter objects  |
+| objc2 (GPUI AX compatibility)    | `0.5.2`                        | MIT                       | Historical spike input for AccessKit macOS adapter objects |
 | metal / core-graphics-types      | `0.33.0` / `0.2.0`             | MIT OR Apache-2.0         | macOS transparent present spike          |
 | windows                          | `0.62.2`                       | MIT OR Apache-2.0         | Windows Raw Input boundary spike         |
 | bindgen                          | `0.72.1`                       | BSD-3-Clause              | Offline Cubism raw binding generator     |
@@ -63,7 +62,7 @@ GPUI Kit 的 HTTP/TLS 传递图引入 `libbz2-rs-sys 0.2.5`（`bzip2-1.0.6`）�
 
 `cargo-deny list` 会为包含多选许可的 crate 展示所有标识。例如 `self_cell` 的表达式包含 `Apache-2.0 OR GPL-2.0`，`r-efi` 包含 `MIT OR Apache-2.0 OR LGPL-2.1-or-later`；策略通过允许的 Apache/MIT 分支满足表达式，没有全局允许 GPL/LGPL。
 
-依赖来源只允许 crates.io index。unknown registry 和任何 git dependency 均会使检查失败；新的 git source 必须先形成明确评审结论，不能通过宽泛 organization allowlist 绕过。
+依赖来源基线仍是 crates.io index；unknown registry 会使检查失败。ADR-0056 为 `SettingGroup::variant()` 增加根目录临时 `[patch.crates-io]`，把 `gpui-kit` suite 固定到 `ayangweb/gpui-kit` rev `720aeef7b33f95fdefcf5e7dc6257308bc51aa22`。`deny.toml` 的 `allow-git = []` 尚未随该过渡 patch 放开，所以当前 `cargo deny check sources` 会对 GPUI Kit suite 报 `source-not-allowed`；待上游 release 包含 override 后删除 patch，恢复纯 registry 来源。
 
 ## Reproduction
 
@@ -94,7 +93,7 @@ Cubism 版本、来源、hash、再分发条款和 attribution 必须在 `P0-CUB
 分别是 `crates/bongocat-packaging` 与 `bongocat-update` 的 `UpdateRuntime`。换库带来的能力损失
 见 ADR-0034 的损失表。
 
-AccessKit 由同一上游仓库维护，core 与双平台 adapter 已进入正式 `bongocat-platform`，公开边界仅接收 UI 自有语义树、action 和 GPUI 原生窗口 handle；其节点、事件和错误类型不进入 BongoCat runtime 公共 API。action 通过容量 32 的强类型 channel 回到 GPUI 主线程，队列拒绝计数进入平台诊断。若 GPUI 后续提供稳定的 element-level accessibility API，则删除该 adapter。`objc2 0.5.2` 是 `accesskit_macos 0.27.0` 的 ABI 类型世代兼容例外，仅用于 adapter 所需的 macOS 类型；AccessKit 切换到 `objc2 0.6` 或边界移除后不再保留旧版本。
+AccessKit 由同一上游仓库维护。当前 `spikes/gpui-settings` 直接依赖 core 与双平台 adapter，正式 `bongocat-platform` 不再维护项目自有语义树、native bridge 或 action channel；ADR-0054 后设置 UI 只把 `gpui-kit` 传递提供的默认语义作为内部实现，不作为 BongoCat contract。`objc2 0.5.2` 是 spike 中 `accesskit_macos 0.27.0` 的 ABI 类型世代兼容例外；正式依赖只通过 `gpui-kit` suite 传递，AccessKit 切换代或 spike 退役后不再保留旧版本。
 
 `arboard 3.6.1`（MIT OR Apache-2.0）由 1Password 维护，仅作为 `bongocat-platform` 私有文本剪贴板 adapter 的双平台实现，并关闭默认 `image-data` feature。其 `Clipboard` 与 `Error` 类型和系统错误文本不进入公共 API；项目仍只暴露自有 `Option<String>`/稳定错误码，并保留 macOS AppKit 主线程与 autorelease-pool 约束。
 

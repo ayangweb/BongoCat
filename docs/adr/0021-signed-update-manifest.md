@@ -2,6 +2,8 @@
 
 状态：已被 ADR-0029 取代（2026-09-13）
 
+> 后续修订（2026-09-23）：本文已由 ADR-0029、再由 ADR-0034 取代。当前更新目标为 Windows x64、macOS arm64 与 macOS x64；Windows 原生 ARM64 已由 ADR-0033 退役。
+
 ## 背景
 
 Native Rewrite 将自动/手动更新列为首发行为，但旧版 updater 使用 HTTP endpoint、前端固定凭据和

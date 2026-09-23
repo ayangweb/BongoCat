@@ -2,6 +2,8 @@
 
 状态：已接受（2026-09-13）；2026-09-14 补充 Windows `set_tooltip` 上游缺陷与 tooltip 创建期不变量
 
+> 后续修订（2026-09-23）：ADR-0033 已退役 Windows 原生 ARM64；本文提到的 Windows x64/ARM64 cross-check 只是历史证据，当前 Windows 发布 target 只有 x64。
+
 ## 背景
 
 Windows 的 `Shell_NotifyIcon`/`HMENU` 与 macOS 的 `NSStatusItem`/`NSMenu` 原本各自实现，约 690 行

@@ -75,7 +75,7 @@ Native Rewrite 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一�
 - 用户模型仍可通过受验证的显式导入流程加入；不会根据旧配置路径自动发现或搬运。
 - 工作区直接 Cargo 命令默认 Development；Production build/package 必须显式启用
   `bongocat-app/production`。
-- Production 构建不能携带存储根注入能力；恢复窗口等进程级测试使用独立 Development 测试产物。
+- Production 构建不能携带存储根注入能力；需要隔离临时数据根的进程级测试必须使用独立 Development 测试产物并显式启用 `storage-test-injection`。
 - `next` 开发过程中产生的旧 schema 或中间数据需要删除并重新生成，不属于产品兼容输入。
 
 ## Verification

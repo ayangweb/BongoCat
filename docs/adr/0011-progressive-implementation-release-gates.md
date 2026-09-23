@@ -3,6 +3,8 @@
 状态：Accepted
 日期：2026-08-30
 
+> 后续修订（2026-09-23）：ADR-0033 已退役 Windows 原生 ARM64，Windows on ARM 改由 x64 仿真覆盖；因此本文的 Windows ARM64 desktop Core 发布门槛只作历史记录。
+
 ## Context
 
 Phase 0 已通过独立 spike 验证 runtime、配置隔离、GPUI 设置窗口、原生 overlay

@@ -57,7 +57,7 @@ ADR-0029 把更新栈换成 `self_update 1.3.0`，信任模型为 zipsign ed2551
 采用 `cargo-packager-updater =0.2.3`（`default-features = false`，仅 `rustls-tls`）。
 `bongocat-update` 的公开面不变：`ReleaseConfiguration`、`ReleaseChannel`、
 `UpdateTargetTriple`、`UpdateRuntime::{check, install, restart}`、`UpdateError`、
-`UpdateOutcome`、13 个稳定错误码与 10 项匿名计数。（错误码目录于 2026-09-15 增至 14 个：`ReleaseFetchFailed` 原本兼任「取不到发布信息」与「取到了但读不懂」，ADR-0035 把这两件事拆成两个码。新增码向后兼容，见该 ADR 的「真实端点首次运行的结果」。）
+`UpdateOutcome`、14 个稳定错误码与 10 项匿名计数。（错误码目录于 2026-09-15 增至 14 个：`ReleaseFetchFailed` 原本兼任「取不到发布信息」与「取到了但读不懂」，ADR-0035 把这两件事拆成两个码。新增码向后兼容，见该 ADR 的「真实端点首次运行的结果」。）
 
 库的 `Error`（`#[non_exhaustive]`）、`Config`、`semver::Version` 与 `Url` 全部映射为项目
 自有类型，不出现在 `diagnostics.rs` 或 app/UI 协议中；未识别的库变体降级为

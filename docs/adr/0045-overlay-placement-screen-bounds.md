@@ -4,6 +4,8 @@
 日期：2026-09-18
 取代：无（取代 `P6-KEEP-OVERLAY-IN-WORK-AREA` 确立的工作区约束行为，该行为未单独留下 ADR）
 
+> 后续修订（2026-09-23）：ADR-0054 后项目不再维护 AccessKit 标签同步；字段改名的当前收口是中英文案、共享 schema、fixture 与可见控件。
+
 ## Context
 
 当前 v1 的 `overlay.keep_inside_work_area` 约束 overlay 窗口避开工作区之外的一切区域：

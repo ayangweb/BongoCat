@@ -39,6 +39,6 @@ installer is evidence of the old product only and does not authorize an
 The Native Rewrite keeps its own Bundle ID, schema, storage roots, signing
 keys, and artifact provenance. Legacy release signatures, updater metadata, and
 the legacy `com.ayangweb.BongoCat` bundle identity must not be reused. Native
-Windows ARM64 remains release-blocked until an authorized desktop Cubism Core
-passes the ABI and model gates; the historical ARM64 installer does not change
-that decision.
+Windows native ARM64 has been retired by ADR-0033: Windows on ARM runs
+the x64 build through Windows emulation, and the historical ARM64 installer does
+not restore a final Native Rewrite target.

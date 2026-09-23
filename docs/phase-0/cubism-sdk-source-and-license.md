@@ -49,7 +49,7 @@ R5 `Core/README.md` 和 `Core/RedistributableFiles.txt` 给出以下首发相关
 | ------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
 | `x86_64-pc-windows-msvc`  | `Core/dll/windows/x86_64/Live2DCubismCore.dll` 与 import `.lib`；另有 MSVC 141/142/143 static variants | 首发候选；先验证 DLL + import library                            |
 | `i686-pc-windows-msvc`    | `Core/dll/windows/x86/` 与 MSVC 141/142/143 static variants；DLL 调用约定为 `__stdcall`                | **产品范围外**；Native Rewrite 不构建或发布 x86                  |
-| `aarch64-pc-windows-msvc` | 无 desktop Windows ARM64 artifact；只有 experimental UWP ARM64 DLL                                     | **发布阻塞**；ARM64 是产品目标，但 UWP DLL 不能替代 desktop Core |
+| `aarch64-pc-windows-msvc` | 无 desktop Windows ARM64 artifact；只有 experimental UWP ARM64 DLL                                     | **最终 target 集外**；Windows on ARM 使用 x64 仿真，UWP DLL 不作为产品 Core |
 | `aarch64-apple-darwin`    | `Core/lib/macos/arm64/libLive2DCubismCore.a`；另有 macOS bundle/dylib                                  | 首发候选；先验证 architecture-specific static library            |
 | `x86_64-apple-darwin`     | `Core/lib/macos/x86_64/libLive2DCubismCore.a`；另有 macOS bundle/dylib                                 | 首发候选；需 Intel 实机与发布链验证                              |
 

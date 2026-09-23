@@ -3,6 +3,8 @@
 状态：typed config、Development/Production 隔离、双平台 path resolver、schema validation、原子提交、expected revision、OS writer lock 和强制进程终止恢复 contract 已通过；正式产品已提升有界备份、损坏恢复和中断提交恢复
 日期：2026-08-28
 
+> 修订（2026-09-23）：ADR-0054 后，配置损坏路径收口为“最新有效备份 → 默认配置”，不再有 `RecoveryRequired`、recovery-only window、恢复提示/按钮/command 或“恢复后必须重启”门禁。下文 2026-08-31 的恢复窗口记录只作为历史 Phase 0 证据。
+
 ## 已固定的行为
 
 `spikes/config-store/` 只实现 Native Rewrite 配置契约，不读取或转换旧 Tauri/Pinia 数据：
@@ -55,7 +57,7 @@ runner 已在 commit `e776867` 的 push run `33256593886` 验证：独立 config
 `99111304933` 通过 18 项 unit test（含 100 次全新目录首次加载）和 2 项 process integration
 test；input/config job `99111304790` 随后再次执行完整 config-store tests 也通过。
 
-## 未完成
+## 历史状态
 
 状态（2026-08-31）：正式 `bongocat-config` 已把产品提交固定为同目录
 `config.json.tmp` -> flush -> 跨平台原子替换 -> 重新读取验证，并把上述 current/temp 状态机、

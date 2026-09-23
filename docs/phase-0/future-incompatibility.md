@@ -48,5 +48,4 @@ GPUI 0.2.2 自身和 macOS 图中的 cocoa/metal/core-video 仍会引入 `block 
   项目 Rust toolchain 将其提升为错误，则该 toolchain 升级与 stable 发布保持阻塞。
 - 若上游版本未及时解除依赖，允许的下一步是形成独立 patch 评审：记录来源、diff、许可证、维护责任和退出版本；不得在本结论中预先批准 patch。
 
-这项结论不解除 ADR-0009 的 GPUI accessibility P0 gate，也不表示 GPUI 已获 stable 发布
-GO。开发期接受的是可观测、精确锁定且有退出条件的上游风险，不是永久接受 warning。
+ADR-0009 的项目自有 GPUI accessibility P0 gate 已由 ADR-0054 退役，因此这里不再以 AX/UIA/VoiceOver/Narrator 作为新增阻塞；本结论仍不表示 GPUI 已获 stable 发布 GO。开发期接受的是可观测、精确锁定且有退出条件的上游风险，不是永久接受 warning。

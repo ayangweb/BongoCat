@@ -2,6 +2,8 @@
 
 状态：已接受（2026-09-05）
 
+> 后续修订（2026-09-23）：ADR-0054 退役了项目自有 AccessKit/AppKit 设置桥；Input Monitoring 与 Accessibility TCC 的边界仍然有效。
+
 ## 背景
 
 Native Rewrite 需要在应用失焦时监听键盘和鼠标边沿，以驱动 BongoCat overlay；同时设置窗口必须向

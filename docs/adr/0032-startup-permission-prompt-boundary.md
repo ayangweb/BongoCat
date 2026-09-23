@@ -76,8 +76,7 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
   只有平台状态。
 - 检查点（2026-09-15 修正）：检查不再阻塞启动流程。产品在 GPUI run loop 内完成 overlay、设置
   服务、系统菜单和 update worker 的启动之后，由主线程 spawn 一个专用 worker 线程执行检查与提示；
-  提示未应答、被关闭或检查失败都不影响任何产品窗口的显示与使用。`--configuration-recovery-mode`
-  恢复路径仍不提示，自动化 harness 运行仍不提示。原始决策「检查点在 GPUI run loop 之前、提示
+  提示未应答、被关闭或检查失败都不影响任何产品窗口的显示与使用。ADR-0054 前由 `--configuration-recovery-mode` 进入的恢复-only 路径不提示；当前配置 fallback 直接走普通设置窗口，自动化 harness 运行仍不提示。原始决策「检查点在 GPUI run loop 之前、提示
   先于猫窗口出现」已被本修正取代，见「非阻塞执行修正」。
 - `--startup-permission-smoke` 是只读诊断开关：只输出当前能力名与
   `available`/`missing`，用于双平台可重复验收，不弹框、不写状态。

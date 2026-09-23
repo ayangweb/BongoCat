@@ -475,7 +475,7 @@ if keys.is_empty() {
 
 - **先验签，后使用**：签名校验必须发生在解压和替换**之前**（`self_update` 的顺序已经满足）。
 - **失败一律 fail-closed**：任何一步失败都不留下"半个已安装的新版本"。
-- **错误码稳定**：`crates/bongocat-update/src/diagnostics.rs` 的 13 个错误码是诊断导出契约
+- **错误码稳定**：`crates/bongocat-update/src/diagnostics.rs` 的 14 个错误码是诊断导出契约
   （ADR-0016 / ADR-0027），换实现时只能收敛到既有码，不能泄漏第三方错误文本。
 - **降级防护**：ADR-0029 记录了 zipsign 模型**没有**单调 `release_sequence`，降级攻击不再被
   检测，只按 semver 比较。这是换实现时应当一并考虑补回来的东西。

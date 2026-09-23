@@ -7,8 +7,9 @@ Core, or implement product behavior.
 The committed fixture header and expected bindings are synthetic BongoCat test
 data. They verify the symbol allowlist, three R5 desktop target configurations,
 the C ABI, deterministic output, and generated-file drift. They are not copied
-from the Cubism SDK. Windows x86 is outside the product target set; Windows
-ARM64 remains a product target but R5 has no matching desktop Core to bind.
+from the Cubism SDK. Windows x86 and native Windows ARM64 are outside the
+final product target set; Windows on ARM runs the x64 build. R5 has no matching
+desktop Windows ARM64 Core to bind.
 
 ## Fixture check
 
@@ -44,9 +45,11 @@ existing output directory, and emits only `bindings.rs` plus
 bindgen, libclang, Rust edition, and target configuration without recording
 the local SDK path.
 
-Until Live2D provides written permission, neither the real header nor generated
-bindings may be committed, cached by CI, attached to issues, or distributed.
-Review must happen in the controlled external directory and cover:
+The approved minimal R5 developer baseline under `vendor/cubism/5-r.5` and the
+real generated bindings may be committed for local development and ABI evidence.
+The official SDK ZIP, extracted SDK, and unreviewed generated output must remain
+outside the repository unless the maintainer records a later permission decision.
+Review of new generated output must happen in the controlled external directory and cover:
 
 1. header hash against the independently verified R5 SDK report;
 2. exact generated symbol inventory and target calling convention;

@@ -1,7 +1,7 @@
 # Native Rewrite Rust Dependency Version Audit
 
-状态：所有直接依赖已使用 crates.io 最新稳定版；lockfile 已更新到上游约束允许的最新解析结果
-日期：2026-09-22（`gpui-kit` 复核至 `0.6.6`；上次全量审计 2026-09-13）
+状态：所有直接依赖已使用 crates.io 最新稳定版或其已记录的 ABI/transition 例外；lockfile 已更新到上游约束允许的最新解析结果
+日期：2026-09-23（新增 ADR-0056 `gpui-kit` transition patch；`gpui-kit` 复核至 `0.6.6`；上次全量审计 2026-09-13）
 Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
@@ -18,15 +18,15 @@ cargo update --manifest-path <workspace>/Cargo.toml --dry-run --verbose
 cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 ```
 
-预发布版本、yanked 版本和未固定 git branch 不属于“最新稳定版”。直接依赖精确 pin，传递依赖由 `Cargo.lock` 固定。
+预发布版本、yanked 版本和未固定 git branch 不属于“最新稳定版”。直接依赖精确 pin，传递依赖由 `Cargo.lock` 固定。ADR-0056 另有一个固定 revision 的 `gpui-kit` 过渡 patch，用于在本仓库完成 models page override；它不改变 crate 的 `0.6.6` 版本契约。
 
 ## Direct Dependencies
 
 | Crate                                 | Pinned version | Result                                                   |
 | ------------------------------------- | -------------: | -------------------------------------------------------- |
-| `accesskit`                           |       `0.25.0` | 新增时即为最新                                           |
-| `accesskit_macos`                     |       `0.27.0` | 新增时即为最新                                           |
-| `accesskit_windows`                   |       `0.35.0` | 新增时即为最新                                           |
+| `accesskit`                           |       `0.25.0` | spike 直接依赖；正式 UI 经 `gpui-kit` 传递                    |
+| `accesskit_macos`                     |       `0.27.0` | spike 直接依赖；正式 UI 经 `gpui-kit` 传递                    |
+| `accesskit_windows`                   |       `0.35.0` | spike 直接依赖；正式 UI 经 `gpui-kit` 传递                    |
 | `arboard`                             |        `3.6.1` | 剪贴板 adapter 新增时即为最新                            |
 | `async-channel`                       |        `2.5.0` | 从 `1.9.0` 升级                                          |
 | `atomic-write-file`                   |        `0.3.1` | 配置与更新 sequence 存储新增时最新                       |
@@ -37,13 +37,13 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级                                          |
 | `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级                                          |
 | `embed-resource`                      |       `3.0.11` | Windows 产品图标新增时最新                               |
-| `gpui-kit`                            |        `0.6.6` | 从 `0.6.4` 升级；2026-09-22 release notes/API 审查后最新 |
+| `gpui-kit`                            |        `0.6.6` | release 基线已复核；根目录通过 ADR-0056 patch 使用修复 rev   |
 | `futures-lite`                        |        `2.6.1` | 已是最新                                                 |
-| `gpui`                                |        `0.2.2` | 已是最新                                                 |
+| `gpui`                                |        `0.2.2` | spike 直接依赖；正式 UI 经 `gpui-kit` suite 传递              |
 | `libc`                                |      `0.2.189` | 新增时即为最新稳定版                                     |
 | `metal`                               |       `0.33.0` | 从 `0.29.0` 升级                                         |
 | `objc2`                               |        `0.6.4` | 已是最新                                                 |
-| `objc2`（GPUI AX）                    |        `0.5.2` | 上游 ABI 类型兼容例外                                    |
+| `objc2`（GPUI AX）                    |        `0.5.2` | spike 内 ABI 类型兼容例外                                |
 | `objc2-app-kit`                       |        `0.3.2` | 已是最新                                                 |
 | `objc2-core-foundation`               |        `0.3.2` | 正式输入边界新增时最新                                   |
 | `objc2-core-graphics`                 |        `0.3.2` | 正式输入边界新增时最新                                   |
@@ -69,6 +69,8 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `windows`                             |       `0.62.2` | 从 `0.61.3` 升级                                         |
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
+
+`gpui-kit` 的 crates.io 版本仍是 `=0.6.6`；ADR-0056 在根 `Cargo.toml` 加入临时 `[patch.crates-io]`，把 `gpui-kit = 0.6.6` 固定到 `ayangweb/gpui-kit` rev `720aeef7b33f95fdefcf5e7dc6257308bc51aa22`，并让 suite 内各包从同一 commit 解析。它只回移 models page 所需的 `SettingGroup::variant()` override。上游 release 包含该能力后必须删除 patch，并恢复 `deny.toml` 的纯 registry 来源期望。
 
 ### 已记录的上游阻塞：`tray-icon 0.25.0` 的 Windows `set_tooltip`
 
@@ -97,7 +99,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `generic-array 0.14.7` | `0.14.9`  | `gpui_http_client -> sha2` |
 | `smallvec 1.15.2`      | `1.16.0`  | GPUI Kit/image/URL graphs  |
 
-这些版本不能通过手改 lockfile、`cargo update --precise` 或本地 patch 安全升级。解除方式是 GPUI 发布兼容的新版本后升级 GPUI 并重跑双平台 UI/overlay smoke；不为追求表面版本一致而 fork 上游。
+这些版本不能通过手改 lockfile 或 `cargo update --precise` 安全升级；ADR-0056 的 patch 只用于同版本 `gpui-kit` 的 `SettingGroup::variant()` 回移，不用于越过这些上游约束。解除方式是 GPUI 发布兼容的新版本后升级 GPUI 并重跑双平台 UI/overlay smoke；不为追求表面版本一致而 fork 上游。
 
 `rodio 0.22.2` 在审计日是 crates.io 最新非 yanked 稳定版（MIT OR Apache-2.0，
 Rust 1.87+），但其 playback feature 约束 `cpal 0.17.x`，因此完整 `cargo update` 合法解析
@@ -105,13 +107,13 @@ Rust 1.87+），但其 playback feature 约束 `cpal 0.17.x`，因此完整 `car
 rodio 仅在 Windows/macOS target 启用 `playback + flac`，录音及其它 codec feature 均关闭。
 替换边界完全位于 `bongocat-audio` 私有 backend，不把第三方类型暴露到 runtime contract。
 
-GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`，虽然 crates.io 最新稳定版分别为 `0.6.4` 与 `0.3.2`。这是类型兼容例外，不是为了回避 API 迁移：`accesskit_macos 0.27.0` 的 adapter 公共对象使用其 `objc2 0.5.x` 依赖构造，本机 AX 诊断和 native tooltip probe 必须使用同一代 Rust Objective-C/Foundation 类型。把这些对象借用为 `objc2 0.6.x` / `objc2-foundation 0.3.x` 类型会跨越两个互不兼容的 Rust 类型世代。该直接依赖只存在于 macOS spike 的平台诊断边界，不进入业务 API；当 AccessKit macOS 升级到 `objc2 0.6`，或诊断不再需要直接检查 adapter 对象时立即移除并重跑 AX/tooltip smoke。
+GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`，虽然 crates.io 最新稳定版分别为 `0.6.4` 与 `0.3.2`。这是类型兼容例外，不是为了回避 API 迁移：`accesskit_macos 0.27.0` 的 adapter 公共对象使用其 `objc2 0.5.x` 依赖构造，本机 spike 诊断和 native tooltip probe 必须使用同一代 Rust Objective-C/Foundation 类型。把这些对象借用为 `objc2 0.6.x` / `objc2-foundation 0.3.x` 类型会跨越两个互不兼容的 Rust 类型世代。该直接依赖只存在于 macOS spike 的平台诊断边界，不进入业务 API；当 AccessKit macOS 升级到 `objc2 0.6`，或诊断不再需要直接检查 adapter 对象时立即移除并重跑 spike/tooltip smoke。
 
 ## Verification
 
-当前 15 个 workspace 均纳入 locked format、Clippy、test 和 dependency policy；正式根 workspace 还执行三平台 release check。无依赖的 contract workspace 同样重新生成/检查 lockfile。附加平台验证包括：
+当前 dependency-policy 脚本覆盖根 workspace、12 个 `spikes/*` workspace 与 `tools/cubism-bindgen`，共 14 个 manifest；它们均以 locked license/source check 为目标。正式根 workspace 还执行三个首发 target 的 release dependency tree check。无依赖的 contract workspace 同样重新生成/检查 lockfile。附加平台验证包括：
 
-- `windows 0.62.2` 同时封装 Raw Input、XInput 与原生 overlay 边界；输入和 overlay crate 均在 `x86_64-pc-windows-msvc` 完成 Check/Clippy，输入与 overlay 也对 `aarch64-pc-windows-msvc` 完成 Check；XInput 仅增加同一 package 的 `Win32_UI_Input_XboxController` feature，真实 Windows 输入与 D3D11 生命周期 smoke 由 push CI 执行；
+- `windows 0.62.2` 同时封装 Raw Input、XInput 与原生 overlay 边界；输入和 overlay crate 均在 `x86_64-pc-windows-msvc` 完成 Check/Clippy；ADR-0033 前输入与 overlay 也曾对 `aarch64-pc-windows-msvc` 完成 Check，但该 ABI 已退役。XInput 仅增加同一 package 的 `Win32_UI_Input_XboxController` feature，真实 Windows 输入与 D3D11 生命周期 smoke 由 push CI 执行；
 - `core-graphics2 0.6.1` 在已授予 Input Monitoring 的 macOS 会话创建 listen-only tap，完成 lifecycle Reset 和正常 shutdown；
 - `objc2-core-graphics 0.3.2` 与 `objc2-core-foundation 0.3.2` 只存在于正式 macOS
   platform adapter，取代会为输入路径引入 `block 0.1.6` 的 `core-graphics2`；窄 wrapper
@@ -138,10 +140,11 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   resource compiler，把固定 `.ico` 编译进 Windows executable；它不进入运行时或公共 API，
   替换边界是未来安装器构建系统直接生成等价 `.res`。上游仓库默认分支持续维护 3.x，且该版本
   已作为 `gpui-pre` 的传递 build dependency 存在于 lockfile；本次将其精确固定为产品直接依赖。
-- `gpui 0.2.2`（Apache-2.0）只在 Windows/macOS 正式 UI/app target 编译，Linux 共享协议
-  不依赖 GPUI；替换边界位于 `bongocat-ui::window` 与 app 主循环，runtime/config/model 不导入
-  GPUI 类型。macOS 正式窗口 + Cubism overlay release smoke 已通过，Windows 由 hardware CI 验证；
-- `accesskit 0.25.0`、`accesskit_macos 0.27.0`、`accesskit_windows 0.35.0` 与 ABI generation 匹配的 `objc2-foundation 0.2.2` 已用于正式 `bongocat-platform` 的设置语义树和 action bridge，并由 `bongocat-ui` 在 GPUI render 生命周期更新；平台 adapter 只接收项目自有 tree、action 和 raw window handle，action 以容量 32 的有界通道回到 GPUI 主线程。替换边界是 GPUI 提供等价稳定 element-level accessibility 和输入测试 API，届时删除 adapter 依赖而不改变 runtime/UI command contract；
+- `gpui 0.2.2`（Apache-2.0）在 GPUI Kit suite 与 `spikes/gpui-settings` 中使用；正式 UI 只通过
+  `gpui-kit` 根导出类型，Linux 共享协议不依赖 GPUI。替换边界位于 `bongocat-ui::window` 与 app
+  主循环，runtime/config/model 不导入 GPUI 类型。macOS 正式窗口 + Cubism overlay release smoke
+  已通过，Windows 由 hardware CI 验证；
+- `accesskit 0.25.0`、`accesskit_macos 0.27.0`、`accesskit_windows 0.35.0` 与 ABI generation 匹配的 `objc2-foundation 0.2.2` 只在 `spikes/gpui-settings` 中被直接验证；ADR-0054 后正式 `bongocat-ui`/`bongocat-platform` 不再维护项目自有语义树、native bridge 或 action channel，设置 UI 只接受 `gpui-kit` 传递语义。spike 退役后删除对应直接依赖，不影响 runtime/UI command contract；
 - `raw-window-handle 0.6.2`（MIT OR Apache-2.0 OR Zlib）除 spike 外也由正式 Windows
   platform adapter 直接使用，只把 GPUI 的公开 handle 转为短期借用的 HWND 以隐藏/重显设置
   窗口；裸 handle 不离开 adapter，GPUI 修复原生 close 生命周期后可移除这段正式依赖；
@@ -204,7 +207,7 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   build 不链接 ALSA。真实预置 FLAC header/首样本、资源/解码失败、抢占、overflow 恢复和
   shutdown 均有 Rust 测试；默认设备热切换与长期资源测量留给后续平台验收；
 - `bindgen 0.72.1` 与 `sha2 0.11.0` 只存在于离线 Cubism raw binding 工具；三个当前可绑定 target 的合成 header golden、外部路径/hash/不可覆盖/provenance 测试和 release check 通过；
-- `cargo-deny 0.20.2` 对全部 15 个 workspace 的四目标 license/source policy执行检查。
+- `cargo-deny 0.20.2` 驱动 14 个 manifest 的 locked license/source policy，目标矩阵为三个首发 target。ADR-0056 的临时 git patch 与 `allow-git = []` 当前会让 source check 报 `source-not-allowed`；license check 与 source 命令本身仍可复现。
 
 GPUI 图继续报告已单独建档的 `block 0.1.6` 和 `proc-macro-error2 2.0.1`
 future-incompatibility。两者本身已是各自当前最新版，升级直接依赖没有解除上游约束；

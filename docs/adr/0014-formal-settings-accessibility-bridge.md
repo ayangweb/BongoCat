@@ -2,6 +2,8 @@
 
 状态：Accepted（2026-08-31）
 
+> 后续修订（2026-09-23）：ADR-0054 已退役项目自有设置语义桥。本文保留作为当时的 AccessKit/action 实现证据；当前设置 UI 只验收可见控件、焦点和键盘导航。
+
 ## Context
 
 The settings window needs project-owned accessibility semantics before the startup-item UI can

@@ -2,6 +2,8 @@
 
 状态：已接受（2026-09-04）
 
+> 后续修订（2026-09-23）：ADR-0054 退役项目自有设置语义桥。ADR-0056 又在根 workspace 加入临时 `[patch.crates-io]`，以固定 revision 回移 `SettingGroup::variant()`；该 patch 是本文“不使用 git source”规则的明确过渡例外，上游 release 含该能力后删除。
+
 ## 背景
 
 ADR-0019 直接组合 Zed git source 的 `gpui`、`gpui_platform` 与 GPUI Component 开发版及
@@ -34,9 +36,7 @@ assets。应用必须手工保证四个 source 的类型一致，manifest、impo
 - GPUI Kit 默认 component/assets feature 正好覆盖当前设置窗口。tree-sitter、decimal、
   inspector 和 test-support 等可选 feature 不启用。其 native facade 还会引入配套 HTTP client
   与 TLS 传递依赖；这些依赖不得进入 BongoCat 的业务 API。
-- 现有项目 AccessKit bridge、typed command/snapshot 和独立 overlay 边界保持不变。
-  `Application::new_inaccessible` 继续通过 `gpui_kit::platform` 构造，直到项目桥接由验证过的
-  GPUI 原生 element 语义整体替代。
+- 当时保留项目 AccessKit bridge、typed command/snapshot 和独立 overlay 边界；`Application::new_inaccessible` 通过 `gpui_kit::platform` 构造。ADR-0054 后项目桥接已退役，`new_inaccessible` 只作为禁用 GPUI adapter 的兼容选择保留，不再形成 BongoCat 的辅助功能 contract。
 - 替换边界限定在 `bongocat-ui` 与 `bongocat-app` 的窗口入口。上游停止维护、许可证变化或
   GPUI 版本不兼容时，只替换这一 UI 边界，不向 runtime、config、model 或 renderer 扩散
   GPUI Kit 类型。
@@ -46,4 +46,4 @@ assets。应用必须手工保证四个 source 的类型一致，manifest、impo
 manifest 和 Rust import 只有一个版本入口，避免应用与组件解析到两套 GPUI 类型。crates.io
 发布物与 checksum 进入 lockfile，移除了未固定 revision 的 Zed git 依赖。代价是 GPUI Kit
 统一管理整套传递版本，升级必须作为单独变更重跑双平台构建、设置窗口、IME、辅助功能、缩放、
-窗口重建和 shutdown smoke；本 ADR 不把仍缺少实机证据的 UI TODO 标记完成。
+窗口重建和 shutdown smoke；ADR-0054 后“辅助功能 smoke”不再是项目自有 UI 完成条件。本 ADR 不把仍缺少实机证据的 UI TODO 标记完成。

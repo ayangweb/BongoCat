@@ -1,7 +1,9 @@
 # ADR-0009: GPUI Accessibility Gate
 
-状态：Proposed, release/UI-completion blocker
+状态：Proposed；历史 release/UI-completion gate，项目自有 AccessKit 部分由 ADR-0054 取代
 日期：2026-08-28
+
+> 后续修订（2026-09-23）：ADR-0054 将设置 UI 收口为 visual-first。项目自有 AccessKit tree/native bridge/action 不再是 UI 完成或发布门槛；`gpui-kit` 传递语义可保留，但不是 BongoCat 语义契约。
 
 ## Context
 
@@ -24,7 +26,7 @@ GPUI 继续作为当前首选设置 UI，但在辅助功能 gate 通过前保持
 
 ## Gate
 
-只有满足以下条件才能将本 ADR 标记 Accepted 并解除完整 UI/stable 发布阻塞：
+以下条件是 ADR-0054 前的历史验收定义。满足后才能将本 ADR 标记 Accepted；“项目自有 AccessKit tree”的当前完成与发布门槛已由 ADR-0054 退役。当时要求：
 
 1. 选定版本的公开 API 能为设置表单提供稳定 role、label、value、错误和进度节点；
 2. macOS AX tree 能读取主题选择、模型名称输入框、Refresh、错误和 loading 状态；
@@ -32,7 +34,7 @@ GPUI 继续作为当前首选设置 UI，但在辅助功能 gate 通过前保持
 4. 键盘导航、真实 IME、剪贴板、缩放和窗口重建回归仍通过；
 5. 方案不依赖私有 crate、未审阅 patch 或平台特定的业务状态副本。
 
-若以上条件在完整设置 UI 实现前仍不满足，形成明确的 `NO-GO` 或 `GO WITH CONDITIONS` 决策，并为 Iced 或其他后续方案指定独立 owner、截止阶段和回退条件。ADR-0011 允许其他正式产品模块继续开发。
+若以上历史条件在完整设置 UI 实现前仍不满足，形成明确的 `NO-GO` 或 `GO WITH CONDITIONS` 决策，并为 Iced 或其他后续方案指定独立 owner、截止阶段和回退条件。ADR-0011 允许其他正式产品模块继续开发。ADR-0054 后，项目自有 AX tree 的部分不再阻塞当前 visual-first UI。
 
 ## Evidence
 

@@ -72,7 +72,7 @@ count 与已记录的历史 Web Core 观察一致。旧预置 Moc
 - 在 Windows x64 使用对应 DLL/import library 重复 generation、compile/link、三个模型
   与 lifecycle/leak/handle smoke；
 - 在 macOS x64 原生 Intel 主机重复 ABI 与模型验证，不能用 arm64 结果推断；
-- Windows ARM64 等待官方 desktop Core，不使用 UWP artifact；
+- Windows ARM64 已由 ADR-0033 退役，不再等待 desktop Core；Windows on ARM 使用 Windows x64 构建，UWP artifact 仍只作 SDK inventory；
 - 取得带 r.5 offscreen/enhanced rendering 的合法 fixture 并验证非零数组；
 - 实现并评审产品 `bongocat-live2d` safe owner，随后接入 D3D11/Metal renderer；
 - 完成 Framework 行为、发布授权、notice、签名和分发清单。

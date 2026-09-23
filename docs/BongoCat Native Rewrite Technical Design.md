@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-15
+最后更新：2026-09-23
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -22,7 +22,7 @@ Rust 2024 edition application
 主要决策：
 
 - BongoCat 自有应用代码统一使用 Rust。
-- Windows 只发布 x64 与 ARM64，不构建或发布 x86；ARM64 在官方 desktop Cubism Core 可用并通过 ABI/模型验证前保持发布阻塞。
+- Windows 只发布 `x86_64-pc-windows-msvc`，不构建或发布 x86 与原生 ARM64；Windows on ARM 通过系统 x64 仿真运行该构建。
 - GPUI 只负责常规设置 UI，不承担模型渲染。
 - 模型窗口由 Rust 平台模块直接创建和管理，与 GPUI 设置窗口共享同一应用生命周期。
 - Windows 使用 D3D11，macOS 使用 Metal；首发不为了未来 Linux 强行统一 GPU backend。
@@ -100,7 +100,11 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 
 - 正式 Native workspace 精确固定 crates.io `gpui-kit = "=0.6.6"` 并提交 `Cargo.lock`；
   GPUI Kit 是唯一直接 GPUI 依赖，通过其 crates.io 同步包提供元数据对应 Zed `gpui 0.2.2`
-  的整套 GPUI crate，禁止另行声明或使用 git source 覆写 `gpui`、platform、component 和 assets。
+  的整套 GPUI crate，禁止另行声明或替换 `gpui`、platform、component 和 assets。
+- ADR-0056 的过渡期在根 `Cargo.toml` 使用临时 `[patch.crates-io]`，把 `gpui-kit` 固定到
+  上游修复 rev `720aeef7b33f95fdefcf5e7dc6257308bc51aa22`；lockfile 中 GPUI Kit suite
+  因此解析到同一 git commit。该 patch 只用于 `SettingGroup::variant()`，待 crates.io release
+  包含等价能力后删除并恢复纯 registry 来源。
 - 不自动跟随 Zed main，不直接依赖 Zed 应用内部 UI crate。
 - 以 `gpui_kit::component` 提供的主题和基础组件为 design system 基础；窗口使用其官方
   `Root`，图标使用 `gpui_kit::assets`，项目只保留领域适配、产品 token 覆盖和组件库未覆盖
@@ -771,7 +775,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 | Windows | `%APPDATA%\com.ayangweb.bongo-cat\development\`                     | `%APPDATA%\com.ayangweb.bongo-cat\production\`                     |
 | macOS   | `~/Library/Application Support/com.ayangweb.bongo-cat/development/` | `~/Library/Application Support/com.ayangweb.bongo-cat/production/` |
 
-每个根目录包含 `config.json`、`state.json`、`models/`、`model-overrides/`、`backups/`、`logs/`、`updates/` 和 `locks/`。`model-overrides/` 是预置模型用户侧内容的命名空间（每张替换封面一个 `<id>/resources/cover.png`），因为预置包位于 app 包内、不可写；它与 `models/` 一样只被设置页与 app 层写入。锁、单实例命名、更新 channel 和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。`updates/` 是保留给更新的环境私有命名空间：`self_update` 的暂存目录由库自行创建在可执行文件旁边，不落在该目录下，因此 `updates/` 当前无写入方，仅作为环境形状契约的一部分保留。`StorageLayout` 只描述这些用户数据路径；安装器使用平台 `InstallationLayout` 描述 product files root，不能从用户数据根推导或操作安装目录。
+每个根目录包含 `config.json`、`state.json`、`models/`、`model-overrides/`、`backups/`、`logs/`、`updates/` 和 `locks/`。`model-overrides/` 是预置模型用户侧内容的命名空间（每张替换封面一个 `<id>/resources/cover.png`），因为预置包位于 app 包内、不可写；它与 `models/` 一样只被设置页与 app 层写入。锁、单实例命名、更新 channel 和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。`updates/` 是保留给更新的环境私有命名空间：当前 `cargo-packager-updater` 使用进程临时文件/目录下载和暂存载荷，不落在该目录下，因此 `updates/` 当前无写入方，仅作为环境形状契约的一部分保留。`StorageLayout` 只描述这些用户数据路径；安装器使用平台 `InstallationLayout` 描述 product files root，不能从用户数据根推导或操作安装目录。
 
 预置模型属于 product files：macOS 从 `BongoCat.app/Contents/Resources/models` 解析，Windows 从
 `bongocat-app.exe` 同级 `resources/models` 解析。仅未打包的开发二进制可在该相对路径缺失时回退到

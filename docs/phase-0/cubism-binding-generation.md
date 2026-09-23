@@ -49,11 +49,12 @@ the provenance as config revision `cubism-core-r5-v1`.
 | `aarch64-apple-darwin`   | `arm64-apple-darwin`     | C calling convention |
 | `x86_64-apple-darwin`    | `x86_64-apple-darwin`    | C calling convention |
 
-`i686-pc-windows-msvc` is deliberately rejected because ADR-0010 excludes Windows
-x86 from the Native Rewrite. `aarch64-pc-windows-msvc` remains a product target but
-is also rejected by this R5 generator because R5 has no desktop Windows ARM64 Core
-artifact. Generating declarations would create a false impression that ARM64 can be
-linked and released.
+`i686-pc-windows-msvc` is deliberately rejected because ADR-0033 excludes Windows
+x86 from the Native Rewrite. `aarch64-pc-windows-msvc` is also outside the final
+released target set: Windows on ARM runs the x64 build, and R5 has no desktop
+Windows ARM64 Core artifact. The generator therefore rejects that ABI until a future
+ADR reintroduces it; generating declarations alone would create a false impression
+that native ARM64 can be linked and released.
 
 libclang is a parser input that bindgen discovers at runtime. Its full version is
 recorded in `provenance.json`; a real binding is accepted only after a second run with

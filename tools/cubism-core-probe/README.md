@@ -26,10 +26,14 @@ DYLD_LIBRARY_PATH=/external/core \
 ```
 
 On Windows, link the matching x64 import library and place the official DLL next to the
-probe executable or on its controlled DLL search path. Windows ARM64 remains unsupported
-until Live2D supplies a desktop ARM64 Core; this probe must not use the UWP artifact.
+probe executable or on its controlled DLL search path. Native Windows ARM64 is outside
+the final target set after ADR-0033, so Windows on ARM runs the x64 probe/build; this
+probe must not use the UWP artifact.
 
-Never commit the official header, Core binary, real generated bindings, extracted SDK,
-or probe target directory. Probe output proves Core ABI and model-array access only; it
+The approved minimal developer baseline may commit the official header and reviewed
+real generated bindings under `vendor/cubism/5-r.5` and `bongocat-live2d`. The SDK
+ZIP, extracted SDK, additional Core binaries, and probe target directory remain
+outside the repository unless a later permission decision says otherwise. Probe output
+proves Core ABI and model-array access only; it
 does not prove Framework behavior, GPU rendering, publication rights, or another target's
 ABI.
