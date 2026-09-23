@@ -2311,16 +2311,32 @@ impl GpuModel {
         let background_indices = [0_u16, 1, 2, 0, 2, 3];
         let mut meshes = Vec::with_capacity(snapshot.drawables.len());
         for drawable in &snapshot.drawables {
-            let vertex_buffer = unsafe {
-                create_buffer(
-                    device,
-                    &drawable.vertices,
-                    D3D11_BIND_VERTEX_BUFFER.0 as u32,
-                )?
+            // D3D11 rejects a zero-byte buffer, and a drawable the Core reports
+            // without triangles has nothing to upload. Both arrays therefore
+            // fall back to a single placeholder element, while `vertex_bytes`
+            // and `index_bytes` keep the lengths of the snapshot's own arrays so
+            // the update path still notices a changed vertex count. Drawing zero
+            // indices is a no-op, which is what leaves the mask target such a
+            // mesh fills at the value it was cleared to.
+            let placeholder_vertex = [bongocat_render::Vertex {
+                position: [0.0, 0.0],
+                uv: [0.0, 0.0],
+            }];
+            let placeholder_index = [0_u16];
+            let vertices: &[bongocat_render::Vertex] = if drawable.vertices.is_empty() {
+                &placeholder_vertex
+            } else {
+                &drawable.vertices
             };
-            let index_buffer = unsafe {
-                create_buffer(device, &drawable.indices, D3D11_BIND_INDEX_BUFFER.0 as u32)?
+            let indices: &[u16] = if drawable.indices.is_empty() {
+                &placeholder_index
+            } else {
+                &drawable.indices
             };
+            let vertex_buffer =
+                unsafe { create_buffer(device, vertices, D3D11_BIND_VERTEX_BUFFER.0 as u32)? };
+            let index_buffer =
+                unsafe { create_buffer(device, indices, D3D11_BIND_INDEX_BUFFER.0 as u32)? };
             meshes.push(Mesh {
                 id: drawable.id,
                 render_order: drawable.render_order,
@@ -2408,7 +2424,7 @@ impl GpuModel {
             if mesh.mask_target.is_some() != !drawable.masks.is_empty() {
                 return Err(invariant_error("drawable clipping topology changed"));
             }
-            if drawable.dynamic_flags.vertex_positions_changed {
+            if drawable.dynamic_flags.vertex_positions_changed && !drawable.vertices.is_empty() {
                 // SAFETY: the vertex buffer is validated to match the immutable
                 // snapshot geometry, and Core marked its positions as changed.
                 unsafe {

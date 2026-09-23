@@ -184,6 +184,10 @@ struct Mesh {
     id: DrawableId,
     render_order: i32,
     vertex_buffer: Buffer,
+    /// Byte length of the snapshot's own vertex array. It is what the buffer
+    /// holds unless the drawable carries no vertices at all, in which case the
+    /// buffer is a placeholder and this stays zero.
+    vertex_bytes: usize,
     index_buffer: Buffer,
     indices: Vec<u16>,
     index_count: u64,
@@ -2124,20 +2128,44 @@ impl GpuModel {
             .drawables
             .iter()
             .map(|drawable| {
+                // Metal rejects a zero-length buffer, and a drawable the Core
+                // reports without triangles has nothing to upload. Both arrays
+                // therefore fall back to a single placeholder element, while
+                // `vertex_bytes` keeps the length of the snapshot's own array so
+                // `sync_snapshot` still notices a changed vertex count. Drawing
+                // zero triangles is then a no-op, which is what leaves the mask
+                // buffer such a mesh fills at the value it was cleared to.
+                let vertex_bytes = std::mem::size_of_val(drawable.vertices.as_slice());
+                let placeholder_vertex = [bongocat_render::Vertex {
+                    position: [0.0, 0.0],
+                    uv: [0.0, 0.0],
+                }];
+                let placeholder_index = [0_u16];
+                let vertices: &[bongocat_render::Vertex] = if drawable.vertices.is_empty() {
+                    &placeholder_vertex
+                } else {
+                    &drawable.vertices
+                };
+                let indices: &[u16] = if drawable.indices.is_empty() {
+                    &placeholder_index
+                } else {
+                    &drawable.indices
+                };
                 let vertex_buffer = device.new_buffer_with_data(
-                    drawable.vertices.as_ptr().cast(),
-                    std::mem::size_of_val(drawable.vertices.as_slice()) as u64,
+                    vertices.as_ptr().cast(),
+                    std::mem::size_of_val(vertices) as u64,
                     MTLResourceOptions::StorageModeShared,
                 );
                 let index_buffer = device.new_buffer_with_data(
-                    drawable.indices.as_ptr().cast(),
-                    std::mem::size_of_val(drawable.indices.as_slice()) as u64,
+                    indices.as_ptr().cast(),
+                    std::mem::size_of_val(indices) as u64,
                     MTLResourceOptions::StorageModeShared,
                 );
                 Mesh {
                     id: drawable.id,
                     render_order: drawable.render_order,
                     vertex_buffer,
+                    vertex_bytes,
                     index_buffer,
                     indices: drawable.indices.clone(),
                     index_count: drawable.indices.len() as u64,
@@ -2214,15 +2242,13 @@ impl GpuModel {
                     drawable.id
                 )));
             }
-            if mesh.vertex_buffer.length()
-                != std::mem::size_of_val(drawable.vertices.as_slice()) as u64
-            {
+            if mesh.vertex_bytes != std::mem::size_of_val(drawable.vertices.as_slice()) {
                 return Err(OverlayError::new(format!(
                     "drawable {} changed vertex buffer size",
                     drawable.id
                 )));
             }
-            if drawable.dynamic_flags.vertex_positions_changed {
+            if drawable.dynamic_flags.vertex_positions_changed && !drawable.vertices.is_empty() {
                 upload_slice(&mesh.vertex_buffer, &drawable.vertices, "vertices")?;
             }
             mesh.render_order = drawable.render_order;
@@ -2702,5 +2728,115 @@ mod tests {
         assert_eq!(MODEL_TEXTURE_FORMAT, MTLPixelFormat::RGBA8Unorm_sRGB);
         assert_eq!(COLOR_ATTACHMENT_FORMAT, MTLPixelFormat::BGRA8Unorm_sRGB);
         assert_eq!(MASK_TEXTURE_FORMAT, MTLPixelFormat::BGRA8Unorm);
+    }
+
+    /// A drawable the Core reports with vertices but no triangles must not stop
+    /// the GPU model from being prepared.
+    ///
+    /// Cubism allows such a drawable — an authoring tool that deletes every
+    /// triangle of a part without deleting the part leaves one behind — and a
+    /// real community model ships one, so treating it as a fatal error made an
+    /// otherwise drawable model fail both its cover capture and its activation.
+    ///
+    /// The mesh is still built, because another drawable may name it as a mask
+    /// source and the mask buffer it fills has to keep the value it was cleared
+    /// to; it simply draws zero triangles. Metal rejects a zero-length buffer,
+    /// so both arrays are carried by a single placeholder element while the mesh
+    /// keeps the snapshot's own vertex count for the cross-frame check.
+    #[test]
+    fn a_drawable_without_triangles_still_prepares_the_gpu_model() {
+        use bongocat_render::{DrawableDynamicFlags, DrawableSnapshot};
+
+        let Some(device) = Device::system_default() else {
+            // No Metal device on this machine; the contract under test is a GPU
+            // one, and the platform-neutral half is covered in `bongocat-render`.
+            return;
+        };
+        let directory =
+            std::env::temp_dir().join(format!("bongocat-empty-drawable-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).expect("temporary directory");
+        let texture_path = directory.join("texture.png");
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 255, 255, 255]))
+            .save(&texture_path)
+            .expect("write texture");
+
+        let canvas = CanvasInfo {
+            width: 2.0,
+            height: 2.0,
+            origin_x: 1.0,
+            origin_y: 1.0,
+            pixels_per_unit: 1.0,
+        };
+        let resources = RenderResources {
+            textures: vec![TextureAsset {
+                id: TextureId::new(0),
+                path: texture_path.clone(),
+                width: 2,
+                height: 2,
+            }],
+            key_assets: Vec::new(),
+            background: None,
+        };
+        let drawable = |id: usize, indices: Vec<u16>| DrawableSnapshot {
+            id: DrawableId::new(id),
+            dynamic_flags: DrawableDynamicFlags::default(),
+            render_order: id as i32,
+            visible: true,
+            texture_id: TextureId::new(0),
+            opacity: 1.0,
+            blend_mode: BlendMode::Normal,
+            double_sided: false,
+            inverted_mask: false,
+            multiply_color: [1.0; 4],
+            screen_color: [0.0; 4],
+            masks: Vec::new(),
+            vertices: vec![
+                bongocat_render::Vertex {
+                    position: [-0.5, -0.5],
+                    uv: [0.0, 0.0],
+                },
+                bongocat_render::Vertex {
+                    position: [0.5, -0.5],
+                    uv: [1.0, 0.0],
+                },
+                bongocat_render::Vertex {
+                    position: [0.0, 0.5],
+                    uv: [0.5, 1.0],
+                },
+            ],
+            indices,
+        };
+        let snapshot = RenderSnapshot {
+            canvas,
+            bounds: ModelBounds::from_canvas(canvas),
+            active_keys: Vec::new(),
+            model_opacity: 1.0,
+            mirror_horizontal: false,
+            drawables: vec![drawable(0, vec![0, 1, 2]), drawable(1, Vec::new())],
+        };
+
+        let model = GpuModel::prepare(&device, &resources, &snapshot, 2, 2)
+            .expect("a model with an empty drawable must still prepare");
+        let empty = model
+            .meshes
+            .iter()
+            .find(|mesh| mesh.id == DrawableId::new(1))
+            .expect("the empty drawable keeps its mesh so a mask can still name it");
+        assert_eq!(
+            empty.index_count, 0,
+            "an empty drawable must draw no triangles, which is what leaves the mask buffer it \
+             fills at its cleared value"
+        );
+        assert_eq!(
+            empty.vertex_bytes,
+            std::mem::size_of::<bongocat_render::Vertex>() * 3,
+            "the mesh must keep the snapshot's own vertex count for the cross-frame check"
+        );
+        assert!(
+            empty.vertex_buffer.length() > 0 && empty.index_buffer.length() > 0,
+            "Metal cannot allocate a zero-length buffer, so both arrays need a placeholder"
+        );
+
+        let _ = std::fs::remove_file(&texture_path);
     }
 }

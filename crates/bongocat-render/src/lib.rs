@@ -390,7 +390,16 @@ pub fn validate_render_snapshot(
         {
             return Err(RenderSnapshotValidationError::MissingMaskSource);
         }
-        if drawable.vertices.is_empty() || drawable.indices.is_empty() {
+        // A drawable the Core reports with no triangles is a normal, if
+        // uncommon, shape: it draws nothing, but other drawables may still name
+        // it as a mask source, and the mask buffer it contributes to is then
+        // simply left at its cleared value. Third-party models do ship such
+        // drawables — an authoring tool that deletes every triangle of a part
+        // without deleting the part leaves one behind — so rejecting the whole
+        // model over it would fail a model every renderer can draw. Only a
+        // triangle list that addresses no vertices at all is malformed, because
+        // no backend can bind it.
+        if drawable.vertices.is_empty() && !drawable.indices.is_empty() {
             return Err(RenderSnapshotValidationError::EmptyDrawableGeometry);
         }
         if drawable
@@ -871,6 +880,27 @@ mod tests {
         assert_eq!(
             validate_render_snapshot(&validated_resources(), &validated_snapshot()),
             Ok(())
+        );
+    }
+
+    /// A drawable the Core reports with vertices but no triangles draws
+    /// nothing, and a model that ships one is still drawable. The mask buffer
+    /// it is named by simply keeps the value the backend cleared it to, which
+    /// is exactly what rendering zero triangles would have left there.
+    #[test]
+    fn render_snapshot_validation_accepts_a_drawable_without_triangles() {
+        let resources = validated_resources();
+        let mut snapshot = validated_snapshot();
+        snapshot.drawables[0].indices.clear();
+        assert_eq!(validate_render_snapshot(&resources, &snapshot), Ok(()));
+
+        // The malformed neighbour of that shape is the other way round: a
+        // triangle list whose vertices are gone, which no backend can bind.
+        snapshot.drawables[0].vertices.clear();
+        snapshot.drawables[0].indices = vec![0, 1, 2];
+        assert_eq!(
+            validate_render_snapshot(&resources, &snapshot),
+            Err(RenderSnapshotValidationError::EmptyDrawableGeometry)
         );
     }
 
