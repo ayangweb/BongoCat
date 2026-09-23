@@ -3336,6 +3336,25 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       当前 snapshot 动态计算间隔；单元/服务测试覆盖边界、typed rejection、配置持久化、重启恢复
       和 stale revision；完整 macOS workspace 门禁、release 产品 lifecycle smoke 与 Windows x64
       overlay target check 通过。
+      注：上述证据只验证了**间隔的传递**，没有验证**实际节拍**，因此漏掉了下一条状态里的缺陷。
+    - 状态（2026-09-23）：`maximum_fps` 现在真正达到设置值。原实现把间隔当作「上一帧完成后的
+      延时」，实际节拍是 `interval + work`，且设置越高偏差越大：同一测量（debug、标准预置模型、
+      1.5 s 窗口）下 60/120/240 只得到 `48.6/95.1/178.7` FPS。已归档的 release 基准
+      `docs/benchmark/macos-overlay-frame-timing-90e0aa7.md` 同样印证：60 目标下 30 秒内 runtime
+      只产出 1337 个渲染帧（44.6 FPS），而 overlay 呈现了 1798 帧（59.9 FPS）——该 preview 的
+      `run_for` 本来就是截止时间网格，差异正来自 runtime worker 的延时式等待。runtime worker 与
+      GPUI 产品 frame source 现共用 `bongocat_runtime::FramePacer` 的截止时间网格（工作耗时由等待
+      吸收、超时槽位跳帧不补发、间隔变更当场重锚），复测 60/120/240 得到 `60.5/119.3/224.6` FPS，
+      15 目标实测 15.0 FPS。命令驱动的求值仍可提前于截止时间出帧以压低输入延迟且不消耗周期槽位，
+      因此输入边沿期间 runtime 的产帧数可以高于设置值（实测 15 目标 + 40 边沿/秒 ≈ 47 FPS）；被
+      呈现的帧率由 frame source 自己的节拍决定。回归由
+      `frame_pacer_keeps_the_cadence_on_the_configured_rate`（确定性）与
+      `runtime_worker_frame_pacing_reaches_the_configured_maximum_fps`（≥90% 目标）覆盖。
+    - 参考对照（2026-09-23）：`docs/phase-0/mver-frame-rate-semantics.md` 冻结旧版
+      `Bongo-Cat-Mver` 的帧率语义（SFML `setFramerateLimit` 的差额睡眠、`LAppPal` +
+      `QueryPerformanceCounter` 的动画时间源、`0 = 不限制`），并记录三项明确不采纳的做法——
+      其中「给动画时间设单帧步长上限」因与淡入淡出「同一时间点同一 alpha」的帧率无关契约冲突而
+      不采纳，触发条件与重估方式写在同一文档第 5.2 节。
 49. [x] `P2-HIDDEN-FRAME-THROTTLE`：overlay 不可见时降低无效 runtime/frame-source 唤醒。
     - 依赖：runtime-owned overlay visibility、动态帧率间隔和 app-owned product frame source。
     - 退出条件：隐藏状态不再按用户目标 FPS 周期唤醒；runtime command queue 仍可立即响应；重新

@@ -22,6 +22,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 ### 🐛 Bug Fixes
 
+- The model window now animates at the frame rate you set. Waiting for the next frame only started once the current one had been drawn, so every frame was late by however long it had taken to draw, and the window always ran below the setting — the higher the setting, the further below it fell. Frames are now paced against the next frame's deadline on both the animation and the window's own presenting loop, so a setting anywhere from 15 to 240 FPS is the rate you get.
 - A model whose Live2D data contains a drawable with no triangles can now be imported and activated. Cubism allows such a drawable — an authoring tool that deletes every triangle of a part without deleting the part leaves one behind — and third-party models do ship one, but both renderers treated it as a fatal error, so the model failed its cover capture and then reported that the selected model could not be activated. It now draws nothing, exactly as the official renderer does, and the rest of the model loads normally.
 - Mouse click-through now works on Windows. The overlay's hit test returned `HTTRANSPARENT`, but real clicks still landed on it until the window was also made layered; enabling click-through now applies and refreshes both styles so clicks reach the window underneath.
 - A damaged configuration now recovers automatically from the newest valid backup. If no valid backup exists, the app writes defaults and starts normally. The recovery prompt and reset button are gone from the settings window.

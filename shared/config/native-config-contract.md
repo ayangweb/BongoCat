@@ -51,7 +51,7 @@ shortcuts
 | `model`       | `mirror_pointer_tracking`             | 镜像指针跟随方向                       |
 | `model`       | `play_motion_audio`                   | 播放动作音效，默认 `false`             |
 | `model`       | `enable_behavior_shortcuts`           | 启用模型动作/表情绑定                  |
-| `model`       | `maximum_fps`                         | overlay 最大帧率                       |
+| `model`       | `maximum_fps`                         | overlay 最大帧率，`[15, 240]`          |
 | `model`       | `ignore_pointer`                      | 模型求值忽略指针位置                   |
 | `model`       | `release_fallback_timeout_ms`         | 输入校正失败后的最后保险，不是主语义   |
 | `shortcuts`   | `commands_enabled`                    | 应用快捷键是否进入平台匹配表，默认 `true` |
@@ -98,6 +98,14 @@ typed platform snapshot，并仅在显式用户 command 时调用平台 adapter�
 `model.enable_behavior_shortcuts` 默认 `false`，只决定配置中的 `shortcuts.model_behaviors` 是否
 进入活动的 `CompiledShortcuts`：关闭时不改写、不删除这些绑定，只把它们排除在平台匹配表之外，
 `shortcuts.commands` 里的应用级快捷键不受影响；重新打开时无需重录即可恢复全部已校验绑定。
+
+`model.maximum_fps` 是 `15..=240` 的 overlay 目标帧率。它决定 runtime 周期求值、GPUI 产品 frame
+source 与独立 overlay run loop 的下一帧间隔，间隔按**帧截止时间**计算（单帧工作耗时由等待吸收），
+因此只要单帧工作能在间隔内完成，实际帧率就等于设置值；overlay 隐藏时三者统一降到 `100 ms`。
+它不是硬上限：输入边沿可以提前触发一次求值以压低输入延迟，这类帧不消耗周期槽位，被呈现的帧率仍由
+frame source 的节拍决定，与用户设置的差集只体现为多余的、会被 overlay 合并掉的渲染帧。越界值在
+typed command 与配置校验两处都被拒绝并保留旧值。语义来源与参考实现的对照见
+`docs/phase-0/mver-frame-rate-semantics.md`。
 
 `shortcuts.commands_enabled` 默认 `true`，是应用级快捷键的同类门禁：关闭时 `shortcuts.commands`
 不进入活动的 `CompiledShortcuts`，绑定同样不被改写或删除，`shortcuts.model_behaviors` 也不受

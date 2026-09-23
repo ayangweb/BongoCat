@@ -99,6 +99,68 @@ fn runtime_frame_interval(maximum_fps: u16, overlay_visible: bool) -> Duration {
         .expect("runtime frame scheduling state is validated before it is stored")
 }
 
+/// Deadline-anchored pacing for a frame source.
+///
+/// Waiting one frame interval *after* a frame is finished makes the achieved
+/// cadence `interval + work`, so the overshoot grows with the frame cost: the
+/// configured `maximum_fps` is then never reached and the shortfall is worst at
+/// the high end of the range. The pacer keeps a fixed grid of deadlines
+/// instead, so the wait absorbs the work already spent in the current
+/// iteration. A frame that overruns its slot skips the slots it missed rather
+/// than producing a catch-up burst, and a schedule change re-anchors the grid
+/// so the new interval holds from the next frame.
+#[derive(Clone, Copy, Debug)]
+pub struct FramePacer {
+    interval: Duration,
+    deadline: Instant,
+}
+
+impl FramePacer {
+    /// Starts a grid whose first frame is due one `interval` after `now`.
+    pub fn new(now: Instant, interval: Duration) -> Self {
+        Self {
+            interval,
+            deadline: now + interval,
+        }
+    }
+
+    /// How long the caller may wait before the next frame is due; never
+    /// negative, because an already-due frame may not wait at all.
+    ///
+    /// `interval` is the schedule that currently applies. A value different
+    /// from the one the grid was built on — a `maximum_fps` change or the
+    /// hidden-overlay throttle — re-anchors the grid before the wait is
+    /// measured, so the new cadence takes effect without a restart.
+    pub fn wait(&mut self, now: Instant, interval: Duration) -> Duration {
+        if interval != self.interval {
+            self.interval = interval;
+            self.deadline = now + interval;
+        }
+        self.deadline.saturating_duration_since(now)
+    }
+
+    /// Records a frame produced at `now` and advances the grid.
+    ///
+    /// A frame that a command produced ahead of its slot leaves the slot
+    /// pending, so the wait measured for the next frame is unchanged. Once the
+    /// slot has elapsed the grid advances by exactly one interval, which is
+    /// what keeps the achieved cadence on the configured rate instead of
+    /// `interval + work`; a slot that was overrun entirely re-anchors instead
+    /// of producing a catch-up burst.
+    pub fn frame_produced(&mut self, now: Instant, interval: Duration) {
+        if interval != self.interval {
+            self.interval = interval;
+            self.deadline = now + interval;
+            return;
+        }
+        if now < self.deadline {
+            return;
+        }
+        let next = self.deadline + interval;
+        self.deadline = if next > now { next } else { now + interval };
+    }
+}
+
 pub trait MonotonicClock: Send + Sync + 'static {
     fn now(&self) -> Duration;
 }
@@ -1588,6 +1650,10 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     let mut deferred_commands = VecDeque::new();
     let mut next_motion_event_sequence = 0u64;
     let mut command_sequences = CommandSequenceTracker::default();
+    let mut frame_pacer = FramePacer::new(
+        Instant::now(),
+        runtime_frame_interval(maximum_fps, overlay_visible),
+    );
     publish(&snapshot, |current| current.state = RuntimeState::Ready);
     loop {
         process_model_commit_feedback(
@@ -1605,6 +1671,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
             &snapshot,
             clock.now(),
         );
+        let frame_interval = runtime_frame_interval(maximum_fps, overlay_visible);
         let received = if let Some(sequence) = shutdown.sequence() {
             if pending_model.is_some() {
                 // A model commit may be waiting for an overlay acknowledgement. Do not
@@ -1628,12 +1695,15 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                 }
             }
         } else if pending_model.is_none() {
+            // The wait is measured against the frame deadline rather than started
+            // once the previous frame finished, so evaluation keeps the configured
+            // `maximum_fps` instead of drifting one frame cost lower every frame.
             deferred_commands.pop_front().map_or_else(
-                || receiver.recv_timeout(runtime_frame_interval(maximum_fps, overlay_visible)),
+                || receiver.recv_timeout(frame_pacer.wait(Instant::now(), frame_interval)),
                 Ok,
             )
         } else {
-            receiver.recv_timeout(runtime_frame_interval(maximum_fps, overlay_visible))
+            receiver.recv_timeout(frame_pacer.wait(Instant::now(), frame_interval))
         };
         // Wall-clock measurement is diagnostics only; product state continues to use
         // the injected monotonic clock above and inside the command handlers.
@@ -2136,6 +2206,10 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         &mut active_motion,
                         &mut next_motion_event_sequence,
                     );
+                    // A command may produce a frame before its slot is due, which
+                    // keeps input latency below one interval. Such a frame leaves
+                    // the slot pending, so the periodic cadence is unaffected.
+                    frame_pacer.frame_produced(Instant::now(), frame_interval);
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
@@ -2192,6 +2266,10 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         &mut next_motion_event_sequence,
                     );
                 }
+                // The slot elapsed even when a hidden overlay produced no frame,
+                // so the grid advances here unconditionally: leaving the deadline
+                // in the past would turn the throttle into a busy loop.
+                frame_pacer.frame_produced(Instant::now(), frame_interval);
             }
             Err(RecvTimeoutError::Disconnected) => break,
         }
@@ -4978,6 +5056,84 @@ mod tests {
             }
         );
         assert_eq!(client.snapshot().input.transport, producer.diagnostics());
+    }
+
+    #[test]
+    fn frame_pacer_keeps_the_cadence_on_the_configured_rate() {
+        let start = Instant::now();
+        let interval = Duration::from_millis(10);
+        let mut pacer = FramePacer::new(start, interval);
+        assert_eq!(pacer.wait(start, interval), interval);
+
+        // The first frame lands on its deadline. Whatever work it cost is
+        // already spent, so the wait for the next frame is the remainder of the
+        // interval rather than a fresh interval on top of that work — the
+        // property that keeps the achieved cadence equal to `maximum_fps`.
+        let first = start + interval;
+        pacer.frame_produced(first, interval);
+        assert_eq!(
+            pacer.wait(first + Duration::from_millis(3), interval),
+            Duration::from_millis(7)
+        );
+
+        // A command-driven frame ahead of its slot leaves the slot pending, so
+        // it neither skips nor re-anchors the periodic frame.
+        let early = first + Duration::from_millis(1);
+        pacer.frame_produced(early, interval);
+        assert_eq!(pacer.wait(early, interval), Duration::from_millis(9));
+
+        // A frame that overran its slot skips the slots it missed instead of
+        // producing a catch-up burst.
+        let late = first + Duration::from_millis(35);
+        pacer.frame_produced(late, interval);
+        assert_eq!(pacer.wait(late, interval), interval);
+
+        // A schedule change re-anchors the grid, which is how a `maximum_fps`
+        // change and the hidden-overlay throttle take effect without a restart.
+        let faster = Duration::from_millis(4);
+        assert_eq!(pacer.wait(late, faster), faster);
+        pacer.frame_produced(late + faster, faster);
+        assert_eq!(pacer.wait(late + faster, faster), faster);
+    }
+
+    #[test]
+    fn runtime_worker_frame_pacing_reaches_the_configured_maximum_fps() {
+        // A frame source that waits a whole interval after each frame only ever
+        // reaches `interval + work`; at the 60 FPS default that measured 48.6
+        // frames per second before `FramePacer`. The tolerance keeps the guard
+        // off the scheduler's wake-up jitter while still rejecting that drift.
+        const TARGET_FPS: u16 = 60;
+        const WARM_UP: Duration = Duration::from_millis(300);
+        const WINDOW: Duration = Duration::from_secs(2);
+        const MINIMUM_RATIO: f64 = 0.9;
+
+        let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let fps = client
+            .send(RuntimeCommand::SetMaximumFps(TARGET_FPS))
+            .expect("fps command");
+        client.wait_for_command(fps, TIMEOUT).expect("fps applied");
+        let activation_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "standard",
+            ))))
+            .expect("activation command");
+        let initial = wait_for_prepared_model(&client, &consumer, activation_sequence);
+        report_model_prepared(&client, &consumer, &initial);
+
+        std::thread::sleep(WARM_UP);
+        let before = consumer.diagnostics().published;
+        let started = Instant::now();
+        std::thread::sleep(WINDOW);
+        let elapsed = started.elapsed();
+        let published = consumer.diagnostics().published - before;
+        let achieved = published as f64 / elapsed.as_secs_f64();
+        assert!(
+            achieved >= f64::from(TARGET_FPS) * MINIMUM_RATIO,
+            "{published} frames in {elapsed:?} is {achieved:.1} FPS, below 90% of {TARGET_FPS}"
+        );
+        owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 
     #[test]

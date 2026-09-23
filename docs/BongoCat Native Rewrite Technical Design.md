@@ -367,7 +367,11 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   UI 和平台 adapter 不直接调用 renderer。
 - `maximum_fps` 是 `15..=240` 的 runtime-owned 强类型设置，通过 revision-checked settings
   command 持久化并进入 `RuntimeSnapshot`。它同时决定 runtime 周期评估、GPUI owner 调度的产品
-  overlay frame source 和独立 overlay run loop 的下一帧间隔；变更无需重启。renderer 仍只消费
+  overlay frame source 和独立 overlay run loop 的下一帧间隔；变更无需重启。间隔是相对**帧截止
+  时间**的等待，不是帧完成后的延时：一帧的开销由等待吸收，因此只要单帧工作在间隔内完成，实际
+  节拍就等于设置值——按「完成后起算」会让实际节拍变成 `interval + work`，设置越高偏差越大。
+  命令驱动的求值可以提前于截止时间出帧以压低输入延迟，这种帧不消耗周期槽位，因此周期节拍不变，
+  被呈现的帧率仍由 frame source 自己的节拍决定。renderer 仍只消费
   不可变 `RenderSnapshot`，不读取 config 或 GPUI 状态。overlay 隐藏时，runtime 周期等待和产品
   frame source 统一降至 `100 ms`；可靠 command 仍会立即唤醒 runtime，产品重新显示的轮询延迟
   上限为 `100 ms`。

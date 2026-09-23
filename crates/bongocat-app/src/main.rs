@@ -2766,6 +2766,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut last_overlay_bounds = None;
             let mut overlay_placement_debouncer = OverlayPlacementDebouncer::default();
             let mut retry_delay = None;
+            let mut frame_pacer: Option<bongocat_runtime::FramePacer> = None;
             loop {
                 let runtime_snapshot = frame_runtime_client.snapshot();
                 let frame_interval = bongocat_runtime::frame_interval_for_runtime(
@@ -2773,7 +2774,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     runtime_snapshot.overlay_visible,
                 )
                 .expect("runtime stores validated frame scheduling state");
-                Timer::after(retry_delay.take().unwrap_or(frame_interval)).await;
+                // The wait is measured against the next frame deadline instead of
+                // started once the previous frame was presented, so the window
+                // keeps the configured `maximum_fps` rather than `interval + work`.
+                // A retry backoff replaces the cadence for one iteration and the
+                // grid re-anchors on the frame that follows it.
+                let wait = if let Some(delay) = retry_delay.take() {
+                    frame_pacer = None;
+                    delay
+                } else {
+                    frame_pacer
+                        .get_or_insert_with(|| {
+                            bongocat_runtime::FramePacer::new(Instant::now(), frame_interval)
+                        })
+                        .wait(Instant::now(), frame_interval)
+                };
+                Timer::after(wait).await;
                 if frame_source_shutdown.stop_requested() {
                     break;
                 }
@@ -3002,6 +3018,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // the stored configuration to the same number.
                 if let Some(outcome) = resize_outcome {
                     publish_overlay_scale(&frame_settings_client, outcome.scale_percent).await;
+                }
+                if let Some(pacer) = frame_pacer.as_mut() {
+                    pacer.frame_produced(Instant::now(), frame_interval);
                 }
                 if !keep_running {
                     break;

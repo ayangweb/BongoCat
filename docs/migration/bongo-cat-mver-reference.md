@@ -21,10 +21,15 @@
 | 模型布局与绘制        | `BongoCatMver/src/myUserModel.cpp`                 | `SetupFromLayout`、MVP、texture binding、premultiplied alpha、`DrawModel` |
 | standard 模式         | `BongoCatMver/src/mode/mode98_live2d_standard.cpp` | Core update/draw 与背景、设备、手部、按键和音效资源的组合顺序             |
 | 应用与窗口循环        | `BongoCatMver/src/main.cpp`                        | 窗口创建、消息/绘制循环、模式切换和 shutdown                              |
+| 帧率与动画时间        | `BongoCatMver/include/catmain.h`、`src/main.cpp`   | 窗口帧预算、呈现节拍与动画时间源                                          |
 | 输入采集              | `BongoCatMver/src/input*.cpp`、mode 文件           | down/up 来源、设备状态查询、模式映射和丢失 release 场景                   |
 | 模型资源约定          | `BongoCatMver/model`、`BongoCatMver/img`           | 预置模型、背景、键帽、鼠标/手柄资源和目录关系                             |
 
 文件名随上游版本变化时用 `rg` 搜索相关 API 或产品字段，不凭记忆推断行为。
+
+帧率限制的完整语义——窗口帧预算与呈现节拍、动画时间源与帧率的解耦、以及明确不采纳的做法——见
+`docs/phase-0/mver-frame-rate-semantics.md`；该文档只是本基线在帧率一项上的展开，commit 与使用规则
+仍以本文件为准。
 
 ## 3. 已确认的渲染结论
 
