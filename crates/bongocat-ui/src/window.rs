@@ -101,6 +101,13 @@ struct ModelCatalogErrorNotification;
 
 struct ModelImportSuccessNotification;
 
+/// Marks the notification pushed when a model could not be prepared for
+/// display. It is a failure of the import itself, not of a later command: the
+/// capture renders the model through the same GPU path the overlay uses, so a
+/// model that cannot be captured is a model that cannot be activated, and the
+/// run is abandoned instead of publishing a card for it.
+struct ModelImportFailedNotification;
+
 fn accepts_snapshot_revision(current: Option<u64>, incoming: u64) -> bool {
     current.is_none_or(|current| incoming >= current)
 }
@@ -568,6 +575,11 @@ pub struct SettingsView {
     pending: Option<PendingOperation>,
     pending_notification: Option<SettingsError>,
     model_import_success_pending: bool,
+    /// Set when the run's cover capture reported that the model could not be
+    /// prepared. The model is removed instead of published, and the user is
+    /// told the import failed rather than being handed a card that cannot be
+    /// activated.
+    model_import_failed_pending: bool,
     model_import: ModelImportDraft,
     overlay_scale_debouncer: crate::SettingsPatchDebouncer<u16>,
     overlay_scale_timer_generation: u64,

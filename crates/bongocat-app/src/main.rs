@@ -2337,10 +2337,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // window keeps redrawing (the import card's spinner included) and the
         // overlay frame loop below keeps ticking (ADR-0055).
         //
-        // A capture that fails changes nothing: the model keeps the cover its source
-        // shipped, exactly as it would without this feature. It is display artwork,
-        // not model data (ADR-0047), so a wrong picture there is not worth failing an
-        // import over, nor reporting to a user who cannot act on it.
+        // A capture that fails abandons the import. The capture renders the model
+        // through the same GPU path the overlay uses, so a model the product cannot
+        // prepare for a cover is a model it cannot activate either: publishing it
+        // would hand the user a card whose only outcome is "the selected model could
+        // not be activated". The model is therefore removed from the store here, and
+        // the settings window reports the import as failed instead of revealing it.
+        // The model stays hidden from the grid throughout, because the import that
+        // installed it is still withholding its cards until this capture reports.
         let cover_capture_client = settings_client.clone();
         let cover_capture_signals = main_thread_signals.clone();
         cx.spawn(async move |cx| {
@@ -2360,11 +2364,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .is_ok(),
                         Err(_) => false,
                     };
+                    if !captured {
+                        // Undo the import before reporting it, so the model is
+                        // never revealed: the settings window reads the catalog
+                        // this removal republishes, and the card for a model that
+                        // is no longer installed cannot appear at all.
+                        let _ = cover_capture_client.delete_model(key.clone()).await;
+                    }
                     // The settings window keeps every model this import installed
                     // out of the grid until its capture reports back, so the
-                    // report has to arrive either way: a failed capture publishes
-                    // the model with the cover its source shipped rather than
-                    // leaving it hidden behind a signal that never comes.
+                    // report has to arrive either way: a failed capture removes
+                    // the model rather than leaving it hidden behind a signal
+                    // that never comes.
                     cx.update(|cx| {
                         let Some(window) = cx
                             .try_global::<ProductCoordinator>()

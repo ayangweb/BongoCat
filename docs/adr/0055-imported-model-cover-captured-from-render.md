@@ -44,11 +44,12 @@ settings 协议里的身份（`SettingsModelKey`，origin 恒为 installed）入
 第 3 步与 ADR-0047 残余风险 3 是同一条依赖：替换保持相同的包内路径，GPUI 的图像缓存按路径命中，
 不显式失效就会继续画旧字节。
 
-设置页同时把本次导入安装的条目挡在网格之外，直到这次回调到达（无论截取成功与否）：模型页的导入
+设置页同时把本次导入安装的条目挡在网格之外，直到这次回调到达：模型页的导入
 卡片把「正在导入模型…」**替换**为「正在截取封面…」（一次只显示当前一步，不逐步叠加），卡片下
 出现的就是封面已就绪的模型，而不是先画源包占位图再换图。这个门禁属于设置页的展示状态，不进入
 settings 协议。导入成功通知在本次导入最后一次封面回调到达、卡片揭示到网格时一起发出，而不是在包
-安装结果首次到达时发出；截取失败同样完成该门禁并允许成功，保持既有静默失败行为。
+安装结果首次到达时发出。~~截取失败同样完成该门禁并允许成功，保持既有静默失败行为。~~
+（2026-09-23：失败仍完成该门禁，但不再允许成功——模型在这一步就被删除，见文末修订。）
 
 ### 3. 两个平台后端共用一份「帧 → 封面」逻辑
 
@@ -66,10 +67,13 @@ settings 协议。导入成功通知在本次导入最后一次封面回调到�
 捕获的是窗口显示的东西（背景图 + drawable + 键位层），也就是模型自己的样子。模式之间的差异来自模型的
 背景图，因此不主动按下按键、不出现按键高亮。
 
-### 4. 截取失败不改变任何东西
+### 4. 截取失败不改变任何东西（~~2026-09-23 起改为终止导入~~，见修订）
 
 失败时保留源封面、不重试、不阻塞导入、不经 UI 报错。封面是显示用美术而非模型数据（ADR-0047 决策 4），
 错误的图不是坏掉的模型。可观测性为零这件事是本节的一部分，见残余风险 2。
+
+**本节已被 2026-09-23 的修订取代**：截取失败现在会撤销这次导入并报「模型导入失败」。原文保留为当时
+的决策记录；取代它的理由（截取与激活共用同一条 GPU 准备路径）见文末修订。
 
 ### 5. 封面写入仍走同一条 store 通道
 
@@ -100,6 +104,29 @@ settings 协议。导入成功通知在本次导入最后一次封面回调到�
   `capture-cover` 子命令等独占线程的调用方使用；其输出与修订前逐字节一致（keyboard：
   186,091 bytes / 640×352）。
 
+## 修订（2026-09-23，截取失败改为终止导入）
+
+**决策 4 由「截取失败不改变任何东西」改为「截取失败即放弃这次导入」**，决策 2 末句与残余风险 2 随之作废。
+
+- 触发：用户实测两个社区 MVer 模型（`芙宁娜(按键气泡）`、`芙宁娜(无气泡)`）导入后启用报
+  「无法启用所选模型」。根因不在截取本身，而在两个后端共用的渲染快照 preflight 把「有顶点、没有
+  三角形」的 drawable 当成致命错误——`芙宁娜(无气泡)` 的 drawable `#115` 是 3 顶点 / 0 索引 /
+  `visible = false`。Cubism 允许这种 drawable，官方渲染器只是不画它，而本项目的 preflight 让整个
+  模型在 GPU prepare 阶段失败，于是同一个模型既截不出封面、也激活不了。修正见 TODO 中
+  「D3D11/Metal 对相同 snapshot 行为一致」一项的 2026-09-23 状态。
+- 这条 bug 同时证明了一个原决策 4 没考虑的事实：**截取与 overlay 激活走的是同一条 GPU 准备路径**
+  （`GpuModel::prepare` 及其渲染快照 preflight）。截不出封面的模型，激活一定也失败。把「封面截不出来」
+  当成纯粹的显示问题，就会给用户留下一张点了只报错的卡片。
+- 因此新语义：截取失败时，app 主线程先 `SettingsCommand::DeleteModel` 撤销这次导入，再回调
+  `finish_model_cover_capture(.., captured = false)`。模型自始至终没有进入网格（导入期间它一直在
+  `SettingsView::pending_model_reveal` 里），用户看到的是一条「模型导入失败」通知，而不是一个坏卡片。
+- 失败通知走新增的 `ModelImportFailedNotification` 与 `models.import.failed`（zh「模型导入失败」/
+  en「Model import failed」），与既有的 `models.import.success` 对称。它在成功通知**之前**推送：
+  一次导入装了多个模型而其中一个失败时，读起来是「这个失败了」在前、「其余已就绪」在后。
+- 一次导入里只有部分模型的截取失败时，只有失败的那些被删除，成功的不受影响，两条通知都会出现。
+- `capture-cover` 子命令、`ModelCoverCaptureSession` 与「帧 → 封面」的接口都不变；变的是 app 主线程
+  对失败结果的处理，以及设置窗口的发布逻辑。
+
 ## 明确不做
 
 - **不加偏好开关**：用户要的是「导入后就是模型自己的样子」，而不是多一个开关。此前考虑过的「偏好设置
@@ -117,15 +144,18 @@ settings 协议。导入成功通知在本次导入最后一次封面回调到�
 1. **~~截取在 GPUI 线程上同步进行~~ 已消除（2026-09-22 修订）**：最初的实现把约 30 帧的截取整段
    同步跑在 GPUI 线程上，期间 overlay 帧循环与设置窗口都会停顿。同日即改为决策 2 所述的可让步
    会话，见下方修订。
-2. **失败是静默的**：报出「封面截取失败」需要新增 `ApplicationLogCode`、双语 i18n 文案（`tools/validate-locales.py`
-   会校验键集合）或复用 `models.cover` 的失败通知。本次没有引入任何一条，用户只会看到封面没变。
+2. ~~**失败是静默的**~~ **已消除（2026-09-23）**：截取失败现在撤销这次导入并报「模型导入失败」
+   （`models.import.failed`，双语，`tools/validate-locales.py` 校验键集合）。当时记的是「报出失败需要
+   新增 `ApplicationLogCode`、双语 i18n 文案或复用 `models.cover` 的失败通知，本次一条都没引入」——
+   修订选了新增 i18n 文案这条路，并且不止于报告：失败的模型会被删除，见文末修订。
 3. **Windows 后端未编译、未实机验证**：本机 macOS 无法交叉编译 `windows-msvc`（`libdeflate-sys` 的 C 构建
    需要 Windows SDK），仓库的 Windows 验证在 `windows-latest` runner 上执行。Windows 侧的风险集中在
    `Renderer::draw_inner` 新增的 `capture` 分支与 `read_staging_frame` 的行拷贝。
 4. **截的是 idle 一帧**：若模型第一秒的物理尚未收敛，截出来的姿态可能与用户随后看到的略有差异；
    30 帧与 5s 上限是为此设的收敛窗口，不是精度保证。
 5. **隐藏窗口仍需合成器环境**：D3D11 + DComp 或一个可用的 Metal drawable。没有 GPU、没有窗口服务器的
-   环境会失败并保留源封面。
+   环境会失败；2026-09-23 起该模型不会被导入（原行为是保留源封面），因此在无 GPU 环境里导入会整体
+   不可用。这条风险的代价变大了，但它同时也是「模型激活不了」的正确信号。
 6. **图像缓存失效依赖捕获方显式调用**：设置窗口未打开（句柄为 `None`）时跳过，依赖窗口之后重新加载
    同一路径时读到新字节。
 7. **每次导入多一个隐藏窗口 + 一个独立 runtime**：MVer 三模式会串行处理三次，模型越大耗时越长。
@@ -150,6 +180,25 @@ settings 协议。导入成功通知在本次导入最后一次封面回调到�
 `cargo test --locked --workspace` 全绿（34 目标 / 0 failed）；`cargo check --locked --workspace --release`
 通过；`capture-cover keyboard` 经新会话路径产出 186,091 bytes / 640×352，与修订前逐字节相同。
 
+修订验证（2026-09-23，本机 macOS arm64）：`cargo test -p bongocat-ui --lib` 158 通过——
+`model_import_success_waits_for_every_queued_cover_capture` 改用成功截取表达原意，新增
+`a_failed_cover_capture_abandons_the_import`（变异验证：去掉 `model_import_failed_pending` 赋值即报
+「the failed capture must be reported to the user」）；`cargo check --workspace --all-targets` 通过；
+`tools/validate-locales.py` 2 locale × 243 键通过；`just check` 六道门全过。真实模型证据（本机 Metal）：
+把两个源各用 `bongocat-model --example model_conversion_smoke` 转成包后跑 `capture_model_cover`，修复
+渲染快照 preflight 前报 `drawable geometry is empty`；修复后两个模型都截出封面——`芙宁娜(无气泡)`
+384423 B / 625×640（2.10 s）、`芙宁娜(按键气泡）` 384116 B / 625×640（1.94 s）。`GpuModel::prepare`
+（含 2 张 2048² 模型纹理与 76 张 1200×1040 键位图上传）实测 395 ms，远在 runtime 的 2 s 激活超时
+之内——这也排除了「截取失败其实是超时」这一替代解释。
+**这条真实模型证据来自一次性探针，探针没有留在仓库里**；留在仓库里的是上面两项自动化测试。
+
+Windows 侧（2026-09-23）：`bongocat-overlay` 整体无法交叉编译到 `x86_64-pc-windows-msvc`
+（`bongocat-model` 拉进 `libdeflate-sys`，其 C 构建需要 Windows SDK），因此按
+`rust-ci-failure-triage` §5.1 的手法搭隔离 crate，把 `GpuModel::prepare` 的缓冲创建与
+`sync_snapshot` 的顶点上传守卫逐字抄入后 `cargo check --target x86_64-pc-windows-msvc` 通过，
+并用 `compile_error!` 探针与一次 `E0308` 变异确认该检查真的在编译、也真的能抓住类型错误。
+**这只是类型证据，Windows 实机截取与启用仍未验证。**
+
 **未运行**：双平台实机导入（导入后观察卡片封面变化）、`--settings-window-smoke`、模型页 opt-in smoke、
-Windows 编译与实机截取、真实社区 MVer 模型的批量回归；** Spinner 在截取期间持续旋转属目视行为，
+Windows 实机截取与启用、真实社区 MVer 模型的批量回归；** Spinner 在截取期间持续旋转属目视行为，
 未自动化验证，需人工观察导入过程确认。**

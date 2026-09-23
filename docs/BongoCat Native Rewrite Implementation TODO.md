@@ -1425,12 +1425,49 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 - [ ] D3D11/Metal 对相同 snapshot 行为一致。
   - 状态（2026-09-06）：`bongocat-render::validate_render_snapshot` 现作为两个 GPU prepare 路径在
     任何纹理解码或 GPU 分配前的唯一平台无关 preflight。它以相同稳定错误拒绝无效 model opacity、
-    重复 texture/drawable ID、缺失 texture/mask source、空 geometry、越界 index、非有限 vertex/
-    blend color 与非法 drawable opacity；Metal 不再遗漏 D3D11 已拒绝的空 geometry。两项纯 Rust
-    contract test 覆盖 accept 与全部 reject boundary，`cargo check -p bongocat-overlay --locked` 和
+    重复 texture/drawable ID、缺失 texture/mask source、~~空 geometry~~（2026-09-23 起不再是错误，
+    见下一条状态）、越界 index、非有限 vertex/blend color 与非法 drawable opacity；Metal 不再遗漏
+    D3D11 已拒绝的 ~~空 geometry~~（同上）。两项纯 Rust contract test 覆盖 accept 与全部 reject
+    boundary，`cargo check -p bongocat-overlay --locked` 和
     `cargo clippy -p bongocat-render -p bongocat-overlay --all-targets --all-features --locked -- -D warnings`
     本机通过。Windows hardware readback、mask/blend golden 和跨 backend pixel tolerance 仍是本项
     的剩余退出证据。
+  - 状态（2026-09-23，空 geometry 语义修正）：原实现把「顶点或索引为空」一律当致命错误，两个后端
+    一致拒绝。真实社区 MVer 模型证明这条过严：Cubism 允许一个 drawable 保留顶点却没有三角形
+    （`芙宁娜(无气泡)` 的 `#115` 是 3 顶点 / 0 索引 / `visible = false`），官方渲染器只是不画它，而
+    本项目因此让整个模型在 GPU prepare 阶段失败——封面截取失败，导入后点启用报「无法启用所选模型」。
+    现在只有「索引非空但顶点为空」仍是 `EmptyDrawableGeometry`（没有后端能绑定这种列表）；没有三角形
+    的 drawable 由两端一致地**接受**：用单元素占位缓冲承载（Metal 拒绝零长度 buffer，D3D11 的
+    `CreateBuffer` 拒绝零 ByteWidth），`index_count = 0` 的绘制是 no-op，因此它作为 mask source 时
+    遮罩缓冲保持 clear 值，与「渲染零个三角形」逐像素等价。macOS 的 `Mesh` 另记 `vertex_bytes`
+    （快照自身的字节长度），跨帧一致性检查强度不变；Windows 本来就有同名字段。两端在
+    `vertex_positions_changed` 且顶点为空时都不再调用上传路径。
+  - 验证（2026-09-23，本机 macOS / aarch64）：`cargo test -p bongocat-render -p bongocat-overlay`
+    69 通过（render 16、overlay 53）；`just check` 六道门全过；`python3 -m unittest discover -s
+    tools/tests` 66 用例通过。新增两项测试：① `render_snapshot_validation_accepts_a_drawable_without_triangles`
+    （render 侧）；② `a_drawable_without_triangles_still_prepares_the_gpu_model`（overlay 侧，用真实
+    Metal device 与一张临时 2×2 纹理跑 `GpuModel::prepare`，断言空 drawable 的 `index_count` 为 0、
+    `vertex_bytes` 保留快照自身长度、两个缓冲区长度都非零）。两处都做过变异验证：把
+    `validate_render_snapshot` 的条件退回 `vertices.is_empty() || indices.is_empty()` 时，render 用例
+    报 `Err(EmptyDrawableGeometry)`、overlay 用例报
+    `OverlayError { kind: Fatal, detail: "drawable geometry is empty" }`（正是用户看到的失败）；去掉
+    占位缓冲、直接绑定空切片时，Metal 对零长度 buffer 直接 abort（SIGABRT）。
+    `render_snapshot_validation_rejects_each_shared_gpu_preflight_violation` 的 `empty_geometry` 用例
+    改成「顶点为空、索引非空」，继续覆盖真错误那一侧。真实模型证据：把**两个**源各用
+    `bongocat-model --example model_conversion_smoke` 转成包后，修复前 `capture_model_cover` 在 601 ms
+    内报 `drawable geometry is empty`；修复后两个模型都截出封面——`芙宁娜(无气泡)` 384423 B / 625×640
+    （2.10 s）、`芙宁娜(按键气泡）` 384116 B / 625×640（1.94 s）。`GpuModel::prepare`（含 2 张 2048²
+    模型纹理与 76 张 1200×1040 键位图上传）实测 395 ms，远在     runtime 的 2 s 激活超时之内。
+  - Windows 侧（2026-09-23，本机 macOS / aarch64）：`bongocat-overlay` 整体无法交叉编译到
+    `x86_64-pc-windows-msvc`——`bongocat-model` 拉进 `libdeflate-sys`，它的 C 构建需要 Windows SDK。
+    因此按 `rust-ci-failure-triage` §5.1 的手法搭了隔离 crate（`bongocat-render` 零依赖 +
+    `windows = "=0.62.2"` 绑定），把 `GpuModel::prepare` 的每 drawable 缓冲创建（含占位分支）与
+    `sync_snapshot` 的顶点上传守卫逐字抄入，`cargo check --target x86_64-pc-windows-msvc` 通过。
+    按同一节的纪律又做了两道确认：`compile_error!` 探针确实报错（证明文件真的被编译，不是指纹缓存
+    命中）、把占位数组按值而非引用传入时该检查报 `E0308`（证明它能抓住类型错误）。
+    **这只证明类型正确，不证明运行时正确**：Windows 实机截取与启用仍未验证，由 CI `windows-latest`
+    与实机覆盖。
+  - **未运行**：`--settings-window-smoke`。
 - [ ] 建立非空帧、alpha、mask 和 blend 截图 smoke test。
   - 状态（2026-09-06）：`bongocat-overlay` 现以共享的 `17 x 17` completed-drawable readback
     contract 替代两端仅检查单个非透明像素的实现。它拒绝没有透明 overlay 背景、没有可见模型、
@@ -5818,6 +5855,28 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       无 `product run failed`、无 panic。它证明应用能启动、设置窗口能渲染与重开、模型页的目录
       不变量成立（含真实封面渲染路径），**不**证明卡片高度的目视一致与导入交互手感——那两项仍需
       人工观察。
+    - 修订（2026-09-23，截取失败改为终止导入）：上面 ⑥ 与 ⑦ 记的「截取失败仍以来源封面发布模型」与
+      「截取失败同样完成门禁并允许成功，保持既有静默失败行为」**不再成立**，取代它的是撤销导入 +
+      「模型导入失败」通知，理由与完整决策见 ADR-0055 的 2026-09-23 修订。实现：
+      ① app 主线程在截取失败时先 `SettingsCommand::DeleteModel` 撤销这次导入，再回调
+      `finish_model_cover_capture(.., captured = false)`；② `SettingsView` 新增
+      `model_import_failed_pending`，render 时推送 `ModelImportFailedNotification`（文案
+      `models.import.failed`，zh「模型导入失败」/ en「Model import failed」），失败时不再置
+      `model_import_success_pending`；③ 失败通知排在成功通知之前，一次导入里部分模型失败时读作
+      「这个失败了」在前、「其余已就绪」在后。模型自始至终留在 `pending_model_reveal` 里，从未
+      进入网格，因此不需要「先显示再删除」的额外处理。
+    - 触发这次修订的真实缺陷：两个社区 MVer 模型（`芙宁娜(按键气泡）`、`芙宁娜(无气泡)`）导入后
+      启用报「无法启用所选模型」，根因是渲染快照 preflight 拒绝空几何 drawable，见下面
+      「D3D11/Metal 对相同 snapshot 行为一致」一项的 2026-09-23 状态。它也证明了截取与激活共用
+      同一条 GPU 准备路径，所以「截不出封面」是「激活不了」的可靠预兆。
+    - 验证（2026-09-23，本机 macOS / aarch64）：`cargo test -p bongocat-ui --lib` 158 通过——
+      `model_import_success_waits_for_every_queued_cover_capture` 改用成功截取表达原意，新增
+      `a_failed_cover_capture_abandons_the_import`（变异验证：去掉 `model_import_failed_pending`
+      赋值即失败，报「the failed capture must be reported to the user」）；`cargo check --workspace
+      --all-targets` 通过；`tools/validate-locales.py` 2 locale × 243 键通过。
+    - 未运行：截取失败路径的**实机**复现（本机只有单元测试与真实模型的手工截取证据）；
+      Windows 侧同路径的类型检查已由隔离 crate 覆盖（见「D3D11/Metal 对相同 snapshot 行为一致」
+      一项的 Windows 侧记录），实机仍未验证。
 
 105. [x] `P4-I18N-ELLIPSIS-CONVENTION`：把「省略号一律三个点」从口头约定变成规范文档 + 机械门禁。
     - 依赖：第 103 项（文案通读时已把 10 条 ASCII `...` 统一为 `…`）、ADR-0012（catalog 结构与校验

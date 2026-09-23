@@ -746,14 +746,20 @@ impl SettingsView {
         .detach();
     }
 
-    /// Publish a model whose cover capture just finished.
+    /// Report the outcome of a model's cover capture.
     ///
     /// The import result lands before the product has rendered the model's own
     /// cover, so the cards the run installed are withheld from the grid until
     /// this call. It comes from the capture on the window thread — the settings
-    /// worker is a different one — and arrives whether the capture produced a
-    /// cover or not, so a failed capture publishes the model with the cover its
-    /// source shipped instead of leaving it hidden.
+    /// worker is a different one.
+    ///
+    /// A capture that produced a cover publishes the model. One that did not
+    /// abandons it: the capture renders the model through the same GPU path the
+    /// overlay uses, so a model that cannot be captured cannot be activated
+    /// either, and a card the user can only fail to select is worse than no
+    /// card. The caller removes the model from the store before calling this;
+    /// the key is still recorded here so the reveal gate stops waiting for a
+    /// signal that has already arrived.
     pub fn finish_model_cover_capture(
         &mut self,
         model: &SettingsModelKey,
@@ -763,13 +769,17 @@ impl SettingsView {
         let key = ModelRowKey::new(model.origin, &model.id);
         if captured {
             self.invalidate_model_cover(model, cx);
+        } else {
+            self.model_import_failed_pending = true;
         }
         if self.pending_model_reveal.remove(&key) {
             if self.pending_model_reveal.is_empty()
                 && matches!(self.model_import.state, ModelImportState::Capturing)
             {
                 self.model_import.reset();
-                self.model_import_success_pending = true;
+                if captured {
+                    self.model_import_success_pending = true;
+                }
             }
         } else if matches!(
             self.model_import.state,

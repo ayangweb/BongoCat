@@ -2654,7 +2654,7 @@ fn model_import_success_waits_for_every_queued_cover_capture(cx: &mut TestAppCon
         view.model_import.state = ModelImportState::Capturing;
         view.model_import_success_pending = false;
 
-        view.finish_model_cover_capture(&first, false, cx);
+        view.finish_model_cover_capture(&first, true, cx);
         assert!(!view.model_import_success_pending);
         assert!(matches!(
             &view.model_import.state,
@@ -2662,10 +2662,59 @@ fn model_import_success_waits_for_every_queued_cover_capture(cx: &mut TestAppCon
         ));
         assert_eq!(view.pending_model_reveal, BTreeSet::from([second_row]));
 
-        view.finish_model_cover_capture(&second, false, cx);
+        view.finish_model_cover_capture(&second, true, cx);
         assert!(view.pending_model_reveal.is_empty());
         assert!(matches!(&view.model_import.state, ModelImportState::Idle));
         assert!(view.model_import_success_pending);
+        assert!(!view.model_import_failed_pending);
+    });
+}
+
+/// A capture that could not prepare the model abandons the import instead of
+/// publishing it: the model is never revealed, the run is not reported as a
+/// success, and the failure is reported in its place. The capture renders
+/// through the same GPU path the overlay uses, so a model it cannot prepare is
+/// a model the user could only fail to activate.
+#[gpui_kit::test]
+fn a_failed_cover_capture_abandons_the_import(cx: &mut TestAppContext) {
+    let (view, visual) = settings_view(cx);
+    let installed = SettingsModelKey {
+        id: "unpreparable".to_owned(),
+        origin: SettingsModelOrigin::Installed,
+    };
+    let mut seeded = crate::tests::snapshot(1, false, true);
+    seeded.model_catalog.entries = vec![model_entry(
+        &installed.id,
+        installed.origin,
+        SettingsModelAvailability::Ready {
+            behaviors: Vec::new(),
+        },
+    )];
+    let row = ModelRowKey::new(installed.origin, &installed.id);
+
+    view.update(visual, |view, cx| {
+        view.snapshot = Some(seeded);
+        view.model_import.baseline_models = BTreeSet::new();
+        view.pending_model_reveal = BTreeSet::from([row]);
+        view.model_import.state = ModelImportState::Capturing;
+        view.model_import_success_pending = false;
+        view.model_import_failed_pending = false;
+
+        view.finish_model_cover_capture(&installed, false, cx);
+
+        assert!(
+            view.pending_model_reveal.is_empty(),
+            "the model must stop being withheld so the card is never revealed"
+        );
+        assert!(matches!(&view.model_import.state, ModelImportState::Idle));
+        assert!(
+            view.model_import_failed_pending,
+            "the failed capture must be reported to the user"
+        );
+        assert!(
+            !view.model_import_success_pending,
+            "an abandoned import is not a successful one"
+        );
     });
 }
 

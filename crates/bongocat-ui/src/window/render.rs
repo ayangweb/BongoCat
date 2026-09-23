@@ -71,6 +71,22 @@ impl Render for SettingsView {
                 cx,
             );
         }
+        // Reported before the success below, so a run that installed several
+        // models and could not prepare one of them reads as "this one failed"
+        // first and "the rest are in" second.
+        if self.model_import_failed_pending {
+            self.model_import_failed_pending = false;
+            window.push_notification(
+                Notification::new()
+                    .id::<ModelImportFailedNotification>()
+                    .message(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "models.import.failed",
+                    ))
+                    .with_type(NotificationType::Error),
+                cx,
+            );
+        }
         if self.model_import_success_pending {
             self.model_import_success_pending = false;
             window.push_notification(
