@@ -631,12 +631,44 @@ fn strip_archive_extension(name: &str) -> &str {
     }
 }
 
+/// One selectable conversion mode of a BongoCat Mver source.
+///
+/// Mirrors the model crate's mode set at the UI boundary so the settings page
+/// can offer choices without depending on the model crate. A source that
+/// supports conversion in any of these carries a matching converted model; the
+/// order here is the order a request reports modes in.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum SettingsMverMode {
+    Standard,
+    Keyboard,
+    Gamepad,
+}
+
+/// What inspecting a user-picked source turned out to be.
+///
+/// `Package` is a single BongoCat model package: nothing converts and any
+/// selection is ignored. `Mver` is a BongoCat Mver source, and `modes` is
+/// exactly the conversions it actually carries, in report order — it is the
+/// set the UI shows checkboxes for and the set a request can ask for.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SettingsModelSourceContent {
+    Package,
+    Mver { modes: Vec<SettingsMverMode> },
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsModelImportRequest {
     /// User-chosen display name for the imported model; the store key is a
     /// service-generated UUID and never derived from this value.
     pub title: String,
     pub source_root: PathBuf,
+    /// The legacy modes to convert when the source turns out to be a BongoCat
+    /// Mver source, in the caller's own selection order.
+    ///
+    /// Ignored for package sources. The request only ever names modes the
+    /// inspection reported; the store still refuses a mode the source does not
+    /// actually carry.
+    pub selected_mver_modes: Vec<SettingsMverMode>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -1237,6 +1269,15 @@ pub enum SettingsCommand {
         model: SettingsModelKey,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Describe a user-picked folder without installing it.
+    ///
+    /// The settings page calls this before showing a BongoCat Mver conversion
+    /// dialog, because only the service can ask the model crate what a source
+    /// actually carries.
+    InspectModelSource {
+        source_root: PathBuf,
+        reply: SettingsReply<Result<SettingsModelSourceContent, SettingsError>>,
+    },
     ImportModel {
         request: SettingsModelImportRequest,
         operation: SettingsModelImportControl,
@@ -1642,6 +1683,24 @@ impl SettingsClient {
             .await
     }
 
+    pub async fn inspect_model_source(
+        &self,
+        source_root: PathBuf,
+    ) -> Result<SettingsModelSourceContent, SettingsError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send(SettingsCommand::InspectModelSource {
+                source_root,
+                reply: SettingsReply(reply),
+            })
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        receiver
+            .recv()
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
+    }
+
     pub async fn import_model(
         &self,
         request: SettingsModelImportRequest,
@@ -1972,6 +2031,22 @@ impl SettingsClient {
         model: SettingsModelKey,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::OpenModelLocation { model, reply })
+    }
+
+    pub fn inspect_model_source_blocking(
+        &self,
+        source_root: PathBuf,
+    ) -> Result<SettingsModelSourceContent, SettingsError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send_blocking(SettingsCommand::InspectModelSource {
+                source_root,
+                reply: SettingsReply(reply),
+            })
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        receiver
+            .recv_blocking()
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
     }
 
     pub fn import_model_blocking(
@@ -2664,6 +2739,7 @@ mod tests {
         let expected = SettingsModelImportRequest {
             title: "custom-model".to_owned(),
             source_root: PathBuf::from("selected/model"),
+            selected_mver_modes: vec![SettingsMverMode::Keyboard],
         };
         let worker = thread::spawn({
             let expected = expected.clone();
@@ -2688,6 +2764,35 @@ mod tests {
             .import_model_blocking(expected)
             .expect("import snapshot");
         assert_eq!(imported.revision, 2);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn inspect_model_source_command_returns_the_typed_content() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::InspectModelSource { source_root, reply } =
+                endpoint.recv_blocking().expect("inspect command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(source_root, PathBuf::from("selected/model"));
+            reply
+                .respond(Ok(SettingsModelSourceContent::Mver {
+                    modes: vec![SettingsMverMode::Standard, SettingsMverMode::Gamepad],
+                }))
+                .expect("inspect reply");
+        });
+
+        let content = client
+            .inspect_model_source_blocking(PathBuf::from("selected/model"))
+            .expect("inspect content");
+        assert_eq!(
+            content,
+            SettingsModelSourceContent::Mver {
+                modes: vec![SettingsMverMode::Standard, SettingsMverMode::Gamepad,],
+            }
+        );
         worker.join().expect("worker join");
     }
 
@@ -2748,6 +2853,7 @@ mod tests {
             .start_model_import_blocking(SettingsModelImportRequest {
                 title: "custom-model".to_owned(),
                 source_root: PathBuf::from("selected/model"),
+                selected_mver_modes: Vec::new(),
             })
             .expect("start import");
         let operation_id = operation.operation_id();

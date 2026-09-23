@@ -121,6 +121,12 @@
       "resource_invalid": "模型资源无效"
     },
     "import": {
+      "mver_dialog": {
+        "title": "选择要转换的模式",
+        "description": "请选择需要导入的 BongoCat Mver 模式。",
+        "confirm": "确定",
+        "cancel": "取消"
+      },
       "step": {
         "choosing": "正在打开文件选择器…",
         "importing": "正在导入模型…",

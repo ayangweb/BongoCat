@@ -777,6 +777,241 @@ fn model_catalog_statuses_cover_loading_empty_and_error() {
 }
 
 #[test]
+fn the_conversion_dialog_defaults_to_the_priority_mode_only() {
+    // Standard is the first preference, keyboard the next, gamepad last. The
+    // default is exactly one mode, whichever of the three the source carries.
+    let all = [
+        SettingsMverMode::Standard,
+        SettingsMverMode::Keyboard,
+        SettingsMverMode::Gamepad,
+    ];
+    let standard = MverModeDialog::from_available(all.to_vec());
+    assert_eq!(
+        standard.checked_in_order(),
+        vec![SettingsMverMode::Standard]
+    );
+    assert_eq!(standard.checked.len(), 1, "one mode is checked by default");
+
+    let keyboard_only =
+        MverModeDialog::from_available(vec![SettingsMverMode::Gamepad, SettingsMverMode::Keyboard]);
+    assert_eq!(
+        keyboard_only.checked_in_order(),
+        vec![SettingsMverMode::Keyboard]
+    );
+    assert_eq!(keyboard_only.checked.len(), 1);
+
+    let gamepad_only = MverModeDialog::from_available(vec![SettingsMverMode::Gamepad]);
+    assert_eq!(
+        gamepad_only.checked_in_order(),
+        vec![SettingsMverMode::Gamepad]
+    );
+    assert_eq!(gamepad_only.checked.len(), 1);
+}
+
+#[test]
+fn the_selected_modes_keep_the_reported_order_not_the_enum_order() {
+    // The request's modes must read in the order the dialog showed them, so a
+    // source that reports gamepad first asks the store for gamepad first even
+    // though `SettingsMverMode` lists standard first.
+    let mut dialog = MverModeDialog::from_available(vec![
+        SettingsMverMode::Gamepad,
+        SettingsMverMode::Standard,
+        SettingsMverMode::Keyboard,
+    ]);
+    // The default picked standard; add the rest so the whole set is selected
+    // and the order it exports is the one the dialog showed.
+    dialog.toggle(SettingsMverMode::Standard, true);
+    dialog.toggle(SettingsMverMode::Keyboard, true);
+    dialog.toggle(SettingsMverMode::Gamepad, true);
+    assert_eq!(
+        dialog.checked_in_order(),
+        vec![
+            SettingsMverMode::Gamepad,
+            SettingsMverMode::Standard,
+            SettingsMverMode::Keyboard,
+        ]
+    );
+
+    // A mode the source never reported is not offered and so cannot be chosen.
+    let mut narrowed = MverModeDialog::from_available(vec![SettingsMverMode::Keyboard]);
+    narrowed.toggle(SettingsMverMode::Standard, true);
+    narrowed.toggle(SettingsMverMode::Gamepad, true);
+    assert!(
+        narrowed
+            .checked_in_order()
+            .contains(&SettingsMverMode::Keyboard)
+    );
+    assert!(
+        !narrowed
+            .checked_in_order()
+            .contains(&SettingsMverMode::Standard)
+    );
+    assert!(
+        !narrowed
+            .checked_in_order()
+            .contains(&SettingsMverMode::Gamepad)
+    );
+}
+
+#[test]
+fn the_conversion_dialog_needs_one_checked_mode_to_confirm() {
+    let mut dialog = MverModeDialog::from_available(vec![SettingsMverMode::Standard]);
+    assert!(dialog.can_confirm());
+    dialog.toggle(SettingsMverMode::Standard, false);
+    assert!(dialog.checked.is_empty());
+    assert!(
+        !dialog.can_confirm(),
+        "an empty selection cannot start a run"
+    );
+    dialog.toggle(SettingsMverMode::Standard, true);
+    assert!(dialog.can_confirm());
+}
+
+#[test]
+fn the_conversion_mode_labels_come_from_the_shared_legacy_keys() {
+    for locale in [
+        SettingsLanguage::EnglishUnitedStates,
+        SettingsLanguage::ChineseSimplified,
+    ] {
+        for mode in [
+            SettingsMverMode::Standard,
+            SettingsMverMode::Keyboard,
+            SettingsMverMode::Gamepad,
+        ] {
+            let label = bongocat_i18n::text(locale.catalog_locale(), mver_mode_label_key(mode));
+            assert!(!label.is_empty(), "missing label for {mode:?}");
+        }
+    }
+}
+
+#[test]
+fn the_dialog_snapshot_keeps_the_same_priority_default() {
+    let all = [
+        SettingsMverMode::Standard,
+        SettingsMverMode::Keyboard,
+        SettingsMverMode::Gamepad,
+    ];
+    for (available, expected) in [
+        (all.to_vec(), SettingsMverMode::Standard),
+        (
+            vec![SettingsMverMode::Keyboard, SettingsMverMode::Gamepad],
+            SettingsMverMode::Keyboard,
+        ),
+        (vec![SettingsMverMode::Gamepad], SettingsMverMode::Gamepad),
+    ] {
+        let snapshot = MverDialogSnapshot::from_dialog(&MverModeDialog::from_available(available));
+        assert_eq!(snapshot.checked_in_order(), vec![expected]);
+        assert!(snapshot.can_confirm());
+        assert_eq!(
+            snapshot
+                .available()
+                .iter()
+                .copied()
+                .filter(|mode| snapshot.is_checked(*mode))
+                .count(),
+            1,
+            "exactly one mode is checked by default"
+        );
+    }
+}
+
+#[test]
+fn the_dialog_snapshot_exports_checks_in_display_order() {
+    let mut snapshot = MverDialogSnapshot::from_dialog(&MverModeDialog::from_available(vec![
+        SettingsMverMode::Gamepad,
+        SettingsMverMode::Keyboard,
+        SettingsMverMode::Standard,
+    ]));
+    assert_eq!(
+        snapshot.checked_in_order(),
+        vec![SettingsMverMode::Standard]
+    );
+    snapshot.set(SettingsMverMode::Keyboard, true);
+    snapshot.set(SettingsMverMode::Gamepad, true);
+    assert_eq!(
+        snapshot.checked_in_order(),
+        vec![
+            SettingsMverMode::Gamepad,
+            SettingsMverMode::Keyboard,
+            SettingsMverMode::Standard,
+        ]
+    );
+}
+
+#[test]
+fn the_dialog_snapshot_tracks_checks_and_gates_confirmation() {
+    let mut snapshot = MverDialogSnapshot::from_dialog(&MverModeDialog::from_available(vec![
+        SettingsMverMode::Keyboard,
+    ]));
+    assert!(snapshot.is_checked(SettingsMverMode::Keyboard));
+
+    snapshot.set(SettingsMverMode::Standard, true);
+    assert!(
+        !snapshot.is_checked(SettingsMverMode::Standard),
+        "an unavailable mode is refused"
+    );
+
+    snapshot.set(SettingsMverMode::Keyboard, false);
+    assert!(!snapshot.is_checked(SettingsMverMode::Keyboard));
+    assert!(
+        !snapshot.can_confirm(),
+        "confirmation needs at least one check"
+    );
+
+    snapshot.set(SettingsMverMode::Keyboard, true);
+    assert!(snapshot.is_checked(SettingsMverMode::Keyboard));
+    assert!(snapshot.can_confirm());
+}
+
+#[gpui_kit::test]
+fn the_mver_dialog_can_open_during_the_settings_render(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
+    let capture = Rc::clone(&built);
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::EnglishUnitedStates,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        capture.borrow_mut().replace(view.clone());
+        Root::new(view, window, cx)
+    });
+    let view = built
+        .borrow_mut()
+        .take()
+        .expect("the window builder must hand the page out");
+
+    view.update(visual, |view, cx| {
+        view.model_import.title = "mver-model".to_owned();
+        view.model_import.source_root = Some(PathBuf::from("/tmp/mver-model"));
+        view.model_import.mver_mode_dialog = Some(MverModeDialog::from_available(vec![
+            SettingsMverMode::Standard,
+            SettingsMverMode::Keyboard,
+            SettingsMverMode::Gamepad,
+        ]));
+        cx.notify();
+    });
+
+    visual.run_until_parked();
+    visual.update(|window, cx| {
+        assert!(
+            window.has_active_dialog(cx),
+            "the Mver dialog must open without re-borrowing SettingsView"
+        );
+    });
+}
+
+#[test]
 fn the_import_card_never_contains_the_selected_path() {
     // The card reports the step it is on, never the source: a path on screen
     // would be the one place the page leaks where a user keeps their files.

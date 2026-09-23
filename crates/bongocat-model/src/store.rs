@@ -107,6 +107,10 @@ impl ModelStoreError {
         }
     }
 
+    pub fn source_conversion_failed(detail: impl Into<String>) -> Self {
+        Self::new(ModelStoreDiagnostic::SourceConversionFailed, None, detail)
+    }
+
     fn package(error: ModelError) -> Self {
         Self {
             code: ModelStoreDiagnostic::InvalidPackage,

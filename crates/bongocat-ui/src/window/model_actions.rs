@@ -13,15 +13,15 @@ impl SettingsView {
     /// Open the native picker for the folder to import.
     ///
     /// One dialog at a time is the whole flow: the folder the user picks is
-    /// revalidated by the platform layer, and a valid one starts the import
-    /// directly — choosing the folder *is* the decision.
+    /// inspected before anything starts, and what it contains decides whether the
+    /// run begins on the spot or waits behind the conversion-mode dialog.
     pub(super) fn choose_model_source(&mut self, cx: &mut Context<Self>) {
         // The card stays drawn as interactive while a command is in flight —
         // `pending` never feeds a visual gate (ADR-0053) — so the refusal of a
         // second command lives here rather than in the paint.
         if self.pending.is_some()
             || self.model_import.is_running()
-            || self.model_import.is_picker_open()
+            || self.model_import.is_source_surface_open()
         {
             return;
         }
@@ -43,10 +43,11 @@ impl SettingsView {
                 .await
                 .unwrap_or(Err(ModelSourcePickerError::BackendUnavailable));
             let _ = this.update(cx, |view, cx| {
-                // Choosing is the whole decision: a selected folder starts the
-                // import immediately, so there is no second button to press.
-                if view.apply_model_source_result(result) {
-                    view.start_model_import(cx);
+                if let Some(source_root) = view.apply_model_source_result(result) {
+                    // Classification comes before conversion: a package starts
+                    // its import now, while a Mver source has to wait for the
+                    // user to pick which modes this run converts.
+                    view.inspect_model_source(source_root, cx);
                 }
                 cx.notify();
             });
@@ -56,43 +57,198 @@ impl SettingsView {
 
     /// Apply a folder dialog outcome to the import draft.
     ///
-    /// Returns whether the outcome left a source ready to import, which is the
-    /// signal the caller uses to start the run. Cancelling and a failed dialog
-    /// both return the card to its prompt: an error keeps nothing, because the
-    /// folder the user was choosing is the thing the error is about, and the
-    /// failure is reported as a notification rather than as inline text, so the
-    /// page reports every error one way.
-    ///
-    /// The selected folder is not classified here. What it contains is what the
-    /// store detects from the bytes, and the title the run starts with is derived
-    /// from the folder's name.
+    /// The selected folder is not classified here; [`Self::inspect_model_source`]
+    /// asks the store what it contains. A cancelled or failed dialog both return
+    /// the card to its prompt, because the folder the user was choosing is the
+    /// thing the error is about, and the failure is reported as a notification
+    /// rather than as inline text, so the page reports every error one way. A
+    /// chosen folder returns its path without touching the card: the state is not
+    /// decided until the store answers.
     pub(super) fn apply_model_source_result(
         &mut self,
         result: Result<ModelSourcePickerOutcome, ModelSourcePickerError>,
-    ) -> bool {
+    ) -> Option<PathBuf> {
         match result {
             Ok(ModelSourcePickerOutcome::Selected(source_root)) => {
-                self.model_import.title = suggested_model_title(&source_root);
-                self.model_import.source_root = Some(source_root);
-                self.model_import.state = ModelImportState::Idle;
-                true
+                self.model_import.source_root = Some(source_root.clone());
+                Some(source_root)
             }
             Ok(ModelSourcePickerOutcome::Cancelled) => {
                 self.model_import.reset();
-                false
+                None
             }
             Err(error) => {
                 self.model_import.reset();
                 self.pending_notification = Some(model_source_picker_error(error));
-                false
+                None
             }
         }
     }
 
+    /// Classify the chosen folder, then start a package's import at once or hold
+    /// a Mver source for its conversion-mode choices.
+    ///
+    /// The store decides what the folder is from its bytes, so this is the one
+    /// place the page learns whether there is a choice to put to the user.
+    /// Reaching the source's title here rather than at pick time keeps a folder
+    /// the user picked but never got to import through its own failure path: an
+    /// inspection error resets the card and reports like any import error, sharing
+    /// the notification vocabulary rather than inventing a second one.
+    pub(super) fn inspect_model_source(&mut self, source_root: PathBuf, cx: &mut Context<Self>) {
+        self.model_import.title = suggested_model_title(&source_root);
+        self.model_import.state = ModelImportState::Inspecting;
+        self.model_import.mver_mode_dialog = None;
+        cx.notify();
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = client.inspect_model_source(source_root).await;
+            let _ = this.update(cx, |view, cx| {
+                match result {
+                    Ok(SettingsModelSourceContent::Package) => {
+                        view.model_import.mver_mode_dialog = None;
+                        view.model_import.state = ModelImportState::Idle;
+                        view.start_model_import(cx);
+                    }
+                    Ok(SettingsModelSourceContent::Mver { modes }) => {
+                        view.model_import.mver_mode_dialog =
+                            Some(MverModeDialog::from_available(modes));
+                        view.model_import.state = ModelImportState::Idle;
+                    }
+                    Err(error) => {
+                        view.model_import.reset();
+                        view.pending_notification = Some(error);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Keep the window's dialog surface and the draft's selection in step.
+    ///
+    /// The checkboxes are drawn from a render-time snapshot of the draft while
+    /// toggles write the draft back, so the frame after a toggle is the frame
+    /// with the new value. Opening and closing mirror the same split: the draft
+    /// says what should be on screen, and this is the one place that reads it
+    /// onto the window. A dialog dismissed by the overlay or Escape never reaches
+    /// a button callback, so its close is noticed the next frame and the draft
+    /// is dropped then, leaving the card at its prompt.
+    pub(super) fn sync_mver_mode_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let has_dialog = window.has_active_dialog(cx);
+        let status = self
+            .model_import
+            .mver_mode_dialog
+            .as_ref()
+            .map(|dialog| (dialog.open, has_dialog));
+        match status {
+            // The draft asked for a surface that was dismissed without a button:
+            // the overlay, Escape, or the window's own close. Dropping the
+            // draft is the same reset cancel performs, so the card returns to
+            // its prompt with nothing half-chosen.
+            Some((true, false)) => self.model_import.mver_mode_dialog = None,
+            Some((false, _)) => self.open_mver_mode_dialog(window, cx),
+            _ => {}
+        }
+    }
+
+    /// Put the conversion-mode choices to the user.
+    ///
+    /// The dialog is `gpui-kit`'s, and each option is one of its checkboxes:
+    /// no hand-built surface stands in for the component. The values the
+    /// dialog *renders* come from an [`MverDialogSnapshot`] taken here rather
+    /// than a later read of the draft: `Root::render_dialog_layer` builds the
+    /// dialog inside `SettingsView::render`, so a `read_with` there would
+    /// re-borrow the entity `render` already holds. The snapshot is the
+    /// frame's controlled state; toggles write back to it and to the draft,
+    /// the confirm callback reads the draft, and a cancel simply drops it.
+    pub(super) fn open_mver_mode_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self
+            .model_import
+            .mver_mode_dialog
+            .as_ref()
+            .is_none_or(|dialog| dialog.open)
+        {
+            return;
+        }
+        // The view's own language and draft are the only per-frame inputs the
+        // dialog needs, and both are read here rather than inside the builder:
+        // the builder runs during this render, when the view cannot be read.
+        let locale = self.display_language().catalog_locale();
+        let dialog = self
+            .model_import
+            .mver_mode_dialog
+            .as_mut()
+            .expect("the dialog draft was just checked");
+        dialog.open = true;
+        let snapshot = Rc::new(RefCell::new(MverDialogSnapshot::from_dialog(dialog)));
+        let view = cx.entity().downgrade();
+        window.open_dialog(cx, move |dialog, window, cx| {
+            // The builder runs again on every frame the dialog is on screen.
+            // `snapshot` is the frame's rendered state (never a read back of
+            // `SettingsView`); toggles update it in place, and the notify in
+            // the same callback redraws from the new values.
+            build_mver_mode_dialog(snapshot.clone(), locale, view.clone(), dialog, window, cx)
+        });
+    }
+
+    /// Apply a checked value the dialog's checkbox reported.
+    ///
+    /// A value outside the inspected set is refused rather than trusted: the
+    /// dialog may only ever offer what the source actually carries.
+    pub(super) fn set_mver_mode_checked(
+        &mut self,
+        mode: SettingsMverMode,
+        checked: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(dialog) = self.model_import.mver_mode_dialog.as_mut() else {
+            return;
+        };
+        dialog.toggle(mode, checked);
+        cx.notify();
+    }
+
+    /// Confirm the dialog's selection by starting the run for its checked modes.
+    ///
+    /// The callback returns whether the dialog should close; confirm is
+    /// disabled for an empty selection, so it can never close into a run with
+    /// nothing to convert.
+    pub(super) fn confirm_mver_mode_import(
+        &mut self,
+        modes: Vec<SettingsMverMode>,
+        cx: &mut Context<Self>,
+    ) {
+        self.model_import.mver_mode_dialog = None;
+        self.start_model_import_with_modes(modes, cx);
+    }
+
+    /// Drop the dialog's selection and return the card to its prompt.
+    pub(super) fn cancel_mver_mode_dialog(&mut self, cx: &mut Context<Self>) {
+        self.model_import.reset();
+        cx.notify();
+    }
+
+    /// Start a package import, which converts nothing and so names no modes.
     pub(super) fn start_model_import(&mut self, cx: &mut Context<Self>) {
+        self.start_model_import_with_modes(Vec::new(), cx);
+    }
+
+    /// Start the run for the chosen folder and the conversions it should carry.
+    ///
+    /// A package names no modes; a Mver source names exactly the checked ones,
+    /// in the order the dialog showed them. The draft's dialog state is
+    /// cleared here so a later snapshot or failure cannot re-apply a stale
+    /// selection to a second run.
+    pub(super) fn start_model_import_with_modes(
+        &mut self,
+        selected_mver_modes: Vec<SettingsMverMode>,
+        cx: &mut Context<Self>,
+    ) {
         if !self.model_import.can_import() || self.pending.is_some() {
             return;
         }
+        self.model_import.mver_mode_dialog = None;
         let request = SettingsModelImportRequest {
             title: self.model_import.title.clone(),
             source_root: self
@@ -100,6 +256,7 @@ impl SettingsView {
                 .source_root
                 .clone()
                 .expect("importable draft has a source directory"),
+            selected_mver_modes,
         };
         // The catalog as it stands is what tells the newly installed cards apart
         // from the ones that were already there, so it is recorded before the
@@ -129,6 +286,7 @@ impl SettingsView {
                     view.observe_model_import(operation, cx);
                 }
                 Err(error) => {
+                    view.model_import.mver_mode_dialog = None;
                     view.pending_notification = Some(error);
                     cx.notify();
                 }

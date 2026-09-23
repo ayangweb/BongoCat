@@ -715,7 +715,8 @@ fn model_import_card(
     // inert; during the run it shows progress instead of the prompt. An
     // in-flight page command does not touch the card: `pending` never feeds a
     // visual gate (ADR-0053), and `choose_model_source` refuses the press.
-    let ready_for_input = !view.model_import.is_running() && !view.model_import.is_picker_open();
+    let ready_for_input =
+        !view.model_import.is_running() && !view.model_import.is_source_surface_open();
     let mut card = ModelImportCard::new(
         "model-import-card",
         bongocat_i18n::text(locale, "models.import.title"),
@@ -761,6 +762,9 @@ pub(super) fn import_card_step(
     match &draft.state {
         ModelImportState::Idle => None,
         ModelImportState::Picking => step("models.import.step.choosing"),
+        // Inspection is on the way to one of the two surfaces, and reads as
+        // the choosing step until the folder picker's answer lands.
+        ModelImportState::Inspecting => step("models.import.step.choosing"),
         ModelImportState::Starting { .. } | ModelImportState::Running(_) => {
             step("models.import.step.importing")
         }

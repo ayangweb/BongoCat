@@ -10,7 +10,7 @@ use bongocat_config::{
 };
 use bongocat_model::{
     CommittedModel, ModelBehaviorSnapshot, ModelCatalogEntry, ModelDiagnostic, ModelImportProgress,
-    ModelImportStage, ModelOrigin, ModelStoreDiagnostic,
+    ModelImportStage, ModelOrigin, ModelStoreDiagnostic, MverInputMode,
 };
 #[cfg(target_os = "macos")]
 use bongocat_platform::{InputPermission, input_monitoring_permission};
@@ -922,6 +922,12 @@ fn run_service(
                     .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::InspectModelSource { source_root, reply } => {
+                let result = application
+                    .inspect_model_source(source_root)
+                    .map_err(map_model_import_error);
+                let _ = reply.respond(result);
+            }
             SettingsCommand::ImportModel {
                 request,
                 operation,
@@ -930,9 +936,14 @@ fn run_service(
                 let progress = operation.clone();
                 let cancellation = operation.clone();
                 let result = application
-                    .import_models_with_observer(
+                    .import_models_with_selected_modes_with_observer(
                         request.title,
                         request.source_root,
+                        request
+                            .selected_mver_modes
+                            .into_iter()
+                            .map(model_mver_input_mode)
+                            .collect(),
                         move |update| {
                             let _ = progress.report_progress(settings_import_progress(update));
                         },
@@ -1708,6 +1719,14 @@ const fn settings_model_origin(origin: ModelOrigin) -> SettingsModelOrigin {
     match origin {
         ModelOrigin::Preset => SettingsModelOrigin::Preset,
         ModelOrigin::Installed => SettingsModelOrigin::Installed,
+    }
+}
+
+fn model_mver_input_mode(mode: bongocat_ui::SettingsMverMode) -> MverInputMode {
+    match mode {
+        bongocat_ui::SettingsMverMode::Standard => MverInputMode::Standard,
+        bongocat_ui::SettingsMverMode::Keyboard => MverInputMode::Keyboard,
+        bongocat_ui::SettingsMverMode::Gamepad => MverInputMode::Gamepad,
     }
 }
 
@@ -3822,6 +3841,7 @@ mod tests {
             .import_model_blocking(SettingsModelImportRequest {
                 title: "我的猫".to_owned(),
                 source_root: model_fixture(),
+                selected_mver_modes: Vec::new(),
             })
             .expect("import model");
 
@@ -4745,6 +4765,7 @@ mod tests {
             .import_model_blocking(SettingsModelImportRequest {
                 title: "原始名称".to_owned(),
                 source_root: model_fixture(),
+                selected_mver_modes: Vec::new(),
             })
             .expect("import model");
         let revision = imported.config_revision.expect("config revision");
@@ -4923,6 +4944,7 @@ mod tests {
             .import_model_blocking(SettingsModelImportRequest {
                 title: "我的猫".to_owned(),
                 source_root: model_fixture(),
+                selected_mver_modes: Vec::new(),
             })
             .expect("import model");
         let snapshot = client.read_snapshot_blocking().expect("snapshot");
@@ -4988,6 +5010,7 @@ mod tests {
             .import_model_blocking(SettingsModelImportRequest {
                 title: "送葬人 · 标准模式".to_owned(),
                 source_root: model_fixture(),
+                selected_mver_modes: Vec::new(),
             })
             .expect("import model");
         assert!(imported.revision > initial.revision);
@@ -5018,6 +5041,7 @@ mod tests {
             .import_model_blocking(SettingsModelImportRequest {
                 title: "经典小键盘 · 标准模式".to_owned(),
                 source_root: model_fixture(),
+                selected_mver_modes: Vec::new(),
             })
             .expect("second import of the same source");
         assert!(second.revision > imported.revision);
@@ -5075,6 +5099,7 @@ mod tests {
             .start_model_import_blocking(SettingsModelImportRequest {
                 title: "cancelled-model".to_owned(),
                 source_root: source.path().to_owned(),
+                selected_mver_modes: Vec::new(),
             })
             .expect("start import");
         let operation_id = operation.operation_id();
@@ -5297,6 +5322,7 @@ mod tests {
             .import_model_blocking(SettingsModelImportRequest {
                 title: "selected".to_owned(),
                 source_root: model_fixture(),
+                selected_mver_modes: Vec::new(),
             })
             .expect("import model");
         let installed_id = imported
@@ -5353,6 +5379,7 @@ mod tests {
             .import_model_blocking(SettingsModelImportRequest {
                 title: "../escape".to_owned(),
                 source_root: model_fixture(),
+                selected_mver_modes: Vec::new(),
             })
             .expect("import with a path-like title");
         let imported_entry = imported
@@ -5382,6 +5409,7 @@ mod tests {
             .import_model_blocking(SettingsModelImportRequest {
                 title: "invalid-package".to_owned(),
                 source_root: invalid_package_source.path().to_owned(),
+                selected_mver_modes: Vec::new(),
             })
             .expect_err("invalid package");
         assert_eq!(

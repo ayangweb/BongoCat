@@ -4,10 +4,10 @@ use crate::{
     SettingsModelBehavior, SettingsModelBehaviorBinding, SettingsModelDiagnostic,
     SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
     SettingsModelImportRequest, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
-    SettingsOperationId, SettingsOverlay, SettingsShortcutBinding, SettingsShortcuts,
-    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
-    SettingsWindowState,
+    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -16,7 +16,9 @@ use bongocat_platform::{
 use gpui_kit::component::{
     ActiveTheme, Disableable, Icon, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled,
     WindowExt,
-    button::Button,
+    button::{Button, ButtonVariants},
+    checkbox::Checkbox,
+    dialog::{Dialog, DialogButtonProps},
     group_box::GroupBoxVariant,
     input::{Input, InputEvent, InputState},
     notification::{Notification, NotificationType},
@@ -28,11 +30,13 @@ use gpui_kit::component::{
     switch::Switch,
     tag::Tag,
 };
+
 use gpui_kit::{
     Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Focusable,
     Hsla, ImageSource, KeyDownEvent, KeyUpEvent, Modifiers, ObjectFit, Pixels, Render,
     SharedString, Stateful, TitlebarOptions, VisualContext, WeakEntity, Window, WindowAppearance,
-    WindowBounds, WindowHandle, WindowOptions, div, img, point, prelude::*, px, size,
+    WindowBounds, WindowHandle, WindowOptions, base::StyledExt, div, img, point, prelude::*, px,
+    size,
 };
 use std::{
     cell::RefCell,
@@ -51,7 +55,9 @@ mod lifecycle;
 mod localization;
 mod model_actions;
 mod model_import_card;
+mod model_mver_dialog;
 use model_import_card::ModelImportCard;
+use model_mver_dialog::build_mver_mode_dialog;
 mod models;
 mod render;
 mod setting_gate;
@@ -216,6 +222,8 @@ enum ModelImportState {
     Idle,
     /// A native source dialog is open.
     Picking,
+    /// The chosen folder is being classified as a package or a Mver source.
+    Inspecting,
     Starting {
         cancel_requested: bool,
     },
@@ -227,11 +235,140 @@ enum ModelImportState {
     Capturing,
 }
 
+/// The BongoCat Mver conversion-mode dialog's own state.
+///
+/// The dialog only exists after inspection reported the modes a source actually
+/// carries, so `available` is exactly what the checkboxes show. `checked` is
+/// the user's selection and reaches a request in `available` order; the set has
+/// no default of the whole list, only the single priority mode
+/// [`default_checked_mver_mode`] names.
+struct MverModeDialog {
+    /// The conversions inspection reported, in the store's report order.
+    available: Vec<SettingsMverMode>,
+    /// The conversions the user has checked; always a subset of `available`.
+    checked: BTreeSet<SettingsMverMode>,
+    /// Set when the dialog is built during render; the window's dialog system
+    /// owns the surface itself, and this records what the view put into it.
+    open: bool,
+}
+
+impl MverModeDialog {
+    fn from_available(available: Vec<SettingsMverMode>) -> Self {
+        let checked = default_checked_mver_mode(&available).into_iter().collect();
+        Self {
+            available,
+            checked,
+            open: false,
+        }
+    }
+
+    /// The checked modes in the order inspection reported them.
+    ///
+    /// The request is built from this rather than `checked` itself so the
+    /// selection reads top to bottom and the checkbox order decides, not
+    /// [`SettingsMverMode`]'s declaration order.
+    #[cfg(test)]
+    fn checked_in_order(&self) -> Vec<SettingsMverMode> {
+        self.available
+            .iter()
+            .copied()
+            .filter(|mode| self.checked.contains(mode))
+            .collect()
+    }
+
+    #[cfg(test)]
+    fn can_confirm(&self) -> bool {
+        !self.checked.is_empty()
+    }
+
+    fn toggle(&mut self, mode: SettingsMverMode, checked: bool) {
+        if !self.available.contains(&mode) {
+            return;
+        }
+        if checked {
+            self.checked.insert(mode);
+        } else {
+            self.checked.remove(&mode);
+        }
+    }
+}
+
+/// A render-safe copy of one Mver conversion dialog.
+///
+/// A dialog builder runs while `SettingsView` is borrowed for rendering, so it
+/// must not read the entity back through `App`. This snapshot carries exactly the
+/// state the pane needs: the options to draw, the current checks, and whether
+/// confirmation is available.
+#[derive(Clone)]
+pub(super) struct MverDialogSnapshot {
+    available: Vec<SettingsMverMode>,
+    checked: BTreeSet<SettingsMverMode>,
+}
+
+impl MverDialogSnapshot {
+    fn from_dialog(dialog: &MverModeDialog) -> Self {
+        Self {
+            available: dialog.available.clone(),
+            checked: dialog.checked.clone(),
+        }
+    }
+
+    pub(super) fn available(&self) -> &[SettingsMverMode] {
+        &self.available
+    }
+
+    pub(super) fn is_checked(&self, mode: SettingsMverMode) -> bool {
+        self.checked.contains(&mode)
+    }
+
+    pub(super) fn set(&mut self, mode: SettingsMverMode, checked: bool) {
+        if !self.available.contains(&mode) {
+            return;
+        }
+        if checked {
+            self.checked.insert(mode);
+        } else {
+            self.checked.remove(&mode);
+        }
+    }
+
+    pub(super) fn checked_in_order(&self) -> Vec<SettingsMverMode> {
+        self.available
+            .iter()
+            .copied()
+            .filter(|mode| self.checked.contains(mode))
+            .collect()
+    }
+
+    pub(super) fn can_confirm(&self) -> bool {
+        !self.checked.is_empty()
+    }
+}
+
+/// The one mode checked when the conversion dialog first opens.
+///
+/// The order here is the user's priority, not the enum's: standard first, then
+/// keyboard, then gamepad, and `None` only when the source has no convertible
+/// mode at all (which inspection never reports, but the page does not assume it).
+fn default_checked_mver_mode(available: &[SettingsMverMode]) -> Option<SettingsMverMode> {
+    [
+        SettingsMverMode::Standard,
+        SettingsMverMode::Keyboard,
+        SettingsMverMode::Gamepad,
+    ]
+    .into_iter()
+    .find(|mode| available.contains(mode))
+}
+
 struct ModelImportDraft {
     /// The display name an import will use, derived from the chosen source.
     title: String,
     source_root: Option<PathBuf>,
     state: ModelImportState,
+    /// The conversion choices for a Mver source. `Some` only while the dialog
+    /// for this source is still open — the draft keeps no selection once the run
+    /// starts, because the request has already carried it.
+    mver_mode_dialog: Option<MverModeDialog>,
     /// The models that existed when the run started, so the cards the run
     /// installed can be told apart from the ones that were already there and
     /// held back until their cover capture finishes.
@@ -315,6 +452,7 @@ impl Default for ModelImportDraft {
             title: String::new(),
             source_root: None,
             state: ModelImportState::Idle,
+            mver_mode_dialog: None,
             baseline_models: BTreeSet::new(),
         }
     }
@@ -360,11 +498,29 @@ impl ModelImportDraft {
         self.source_root.is_some()
             && !self.title.is_empty()
             && !self.is_running()
-            && !self.is_picker_open()
+            && !self.is_source_surface_open()
     }
 
     fn is_picker_open(&self) -> bool {
         matches!(self.state, ModelImportState::Picking)
+    }
+
+    /// Whether a window-owned source or conversion surface is still up.
+    ///
+    /// The folder picker and the conversion-mode dialog both stop the card from
+    /// starting a second run, so command gates use this rather than picking one.
+    fn is_source_surface_open(&self) -> bool {
+        self.is_picker_open() || self.is_inspecting() || self.has_open_mver_mode_dialog()
+    }
+
+    /// Whether the conversion-mode dialog owns the source the user chose.
+    fn has_open_mver_mode_dialog(&self) -> bool {
+        self.mver_mode_dialog.is_some()
+    }
+
+    /// Whether the conversion-mode dialog for the chosen Mver source is open.
+    fn is_inspecting(&self) -> bool {
+        matches!(self.state, ModelImportState::Inspecting)
     }
 
     fn running_operation_id(&self) -> Option<SettingsOperationId> {
@@ -389,6 +545,7 @@ impl ModelImportDraft {
     fn reset(&mut self) {
         self.state = ModelImportState::Idle;
         self.source_root = None;
+        self.mver_mode_dialog = None;
         self.baseline_models.clear();
     }
 }
@@ -1544,6 +1701,18 @@ fn startup_item_presentation(
 /// `sanitize_model_title_input`.
 fn suggested_model_title(source_root: &Path) -> String {
     crate::model_source_display_name(source_root).unwrap_or_else(|| "custom-model".to_owned())
+}
+
+/// The catalog key naming one BongoCat Mver conversion mode.
+///
+/// The mode keys are shared with the legacy model list, so the dialog says
+/// "Keyboard mode" in the same words the card for a converted model will.
+fn mver_mode_label_key(mode: SettingsMverMode) -> &'static str {
+    match mode {
+        SettingsMverMode::Standard => "models.legacy.mode.standard",
+        SettingsMverMode::Keyboard => "models.legacy.mode.keyboard",
+        SettingsMverMode::Gamepad => "models.legacy.mode.gamepad",
+    }
 }
 
 fn model_row_actions(

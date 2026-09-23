@@ -12,6 +12,8 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - The model page's import entry is now a single upload card. Pressing it opens the folder picker and starts the import with the folder you chose, so the title field, the two source buttons and the separate Import button are gone. While the import runs the card shows the step it is on — importing the model, then capturing its cover — replacing one line with the next instead of stacking them, and the card is exactly as tall as the model cards beside it.
 - The built-in models can now be renamed and given a different cover, exactly like the models you import — the standard, keyboard and gamepad cards show the name and picture you chose instead of the ones they shipped with. Both are kept on your side: the app's own model files are never written to, so uninstalling, reinstalling or verifying the app cannot lose or reset them, and deleting the cover file you picked brings the built-in artwork back. Deleting stays the one thing a built-in model does not offer, since it is part of the app rather than something you installed.
 
+- Importing a BongoCatMver source now lets you choose which available conversion modes to import. Exactly one applicable mode is selected by default, and only the selected modes are converted.
+
 ### 🗑️ Removals
 
 - Importing a model from a ZIP archive is gone for now: the upload card opens the folder picker only, no copy mentions archives, and the model library no longer reads ZIP sources at all — the archive reader, its limits and its diagnostics were removed with it. The design is kept in the ADR for when archive import is built properly, which needs work of its own; until then a model is imported from the folder it was exported as.
@@ -22,8 +24,11 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - An imported model can now be deleted while it is the one in use. The delete control used to disappear from the model you were using, so removing it meant switching to another model first. Deleting the model in use now switches to the built-in standard model before the package is removed; if that switch fails, the model and your selection are left exactly as they were.
 - The settings window no longer appears in the wrong language before switching to yours. Its first frame is painted while the app is still preparing the saved settings, so it used to render the built-in language and theme and then redraw: a Simplified Chinese user watched the window change from English to Chinese just after it opened, title bar included. The settings and update windows now start from the language and appearance the app has already resolved at startup.
 
+- The BongoCatMver conversion dialog now opens reliably instead of the app crashing before the dialog becomes visible.
+
 ### 🎨 UI and Experience
 
+- The BongoCatMver conversion dialog is centered, and its confirm button now reads "OK" in English and "确定" in Chinese.
 - Editing a model card no longer changes its size. The name turns into the field that edits it inside the same row, the button that replaces the cover is drawn on the cover picture itself, and the action row becomes Save and Cancel where it was — so the card, and the grid row it sits in, keep their height from the moment you press Edit until you save or cancel. That button now reads "Change cover" instead of "Choose cover", including on a model that has no cover yet.
 - The model page now keeps a fixed order: the built-in standard, keyboard and gamepad models first, then the models you imported, each new import joining the end. The whole list used to be sorted by model ID, which happened to run the built-in models backwards — gamepad, keyboard, standard — and dropped a newly imported model anywhere in the middle.
 

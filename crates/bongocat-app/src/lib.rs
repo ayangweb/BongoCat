@@ -1541,10 +1541,65 @@ impl Application {
         self.import_models_with_observer(title_hint, source_root, |_| {}, || false)
     }
 
+    /// Inspect what a user-picked source is without installing anything.
+    ///
+    /// The settings page calls this to decide whether to ask the user about a
+    /// BongoCat Mver conversion, and which modes to offer.
+    pub fn inspect_model_source(
+        &self,
+        source_root: impl AsRef<Path>,
+    ) -> Result<bongocat_ui::SettingsModelSourceContent, ApplicationError> {
+        self.model_store
+            .inspect_source(source_root)
+            .map(settings_model_source_content)
+            .map_err(ApplicationError::ModelStore)
+    }
+
+    /// Import every model a source carries, converting `selected_modes`.
+    ///
+    /// A BongoCat package installs one model and the selection is ignored. A
+    /// BongoCat Mver source converts the intersection of `selected_modes` and
+    /// the modes the source actually carries, taken in [`MverInputMode::ALL`]
+    /// order; an empty intersection after an Mver source is a named
+    /// `ModelImportSourceUnsupported` rather than a silent no-op.
+    ///
+    /// Kept for every caller that wants the whole source. The observer
+    /// variant is the one the settings page uses.
     pub fn import_models_with_observer<Observe, IsCancelled>(
         &mut self,
         title_hint: impl Into<String>,
         source_root: impl AsRef<Path>,
+        observe: Observe,
+        is_cancelled: IsCancelled,
+    ) -> Result<Vec<InstalledModel>, ApplicationError>
+    where
+        Observe: FnMut(ModelImportProgress),
+        IsCancelled: FnMut() -> bool,
+    {
+        // No preference means "convert everything the source carries": reuse the
+        // selection filter with all modes requested.
+        self.import_models_with_selected_modes_with_observer(
+            title_hint,
+            source_root,
+            MverInputMode::ALL.to_vec(),
+            observe,
+            is_cancelled,
+        )
+    }
+
+    /// Import every model a source carries, converting only `selected_modes`.
+    ///
+    /// `selected_modes` names the BongoCat Mver modes to convert. A package
+    /// source ignores them; an Mver source filters to the selected modes it
+    /// actually carries, in [`MverInputMode::ALL`] order, so a request never
+    /// duplicates a mode and the report order stays the one the settings
+    /// contract declares. An Mver source whose selection matches no carried
+    /// mode is reported as `ModelImportSourceUnsupported`.
+    pub fn import_models_with_selected_modes_with_observer<Observe, IsCancelled>(
+        &mut self,
+        title_hint: impl Into<String>,
+        source_root: impl AsRef<Path>,
+        selected_modes: Vec<MverInputMode>,
         observe: Observe,
         mut is_cancelled: IsCancelled,
     ) -> Result<Vec<InstalledModel>, ApplicationError>
@@ -1563,13 +1618,33 @@ impl Application {
         // really carries a usable model, so an empty mode list cannot occur —
         // treating it as a package keeps the loop below total and still reports
         // a real diagnostic from the package path.
-        let modes = match self
+        let content = self
             .model_store
             .inspect_source(source_root)
-            .map_err(ApplicationError::ModelStore)?
-        {
-            ModelSourceContent::Mver { modes } if modes.is_empty() => None,
-            ModelSourceContent::Mver { modes } => Some(modes),
+            .map_err(ApplicationError::ModelStore)?;
+        let modes = match content {
+            // A legacy source keeps the selected modes it really carries, in
+            // the declared mode order.
+            ModelSourceContent::Mver { modes } if !modes.is_empty() => {
+                let selected = MverInputMode::ALL
+                    .into_iter()
+                    .filter(|mode| modes.contains(mode) && selected_modes.contains(mode))
+                    .collect::<Vec<_>>();
+                if selected.is_empty() {
+                    return Err(ApplicationError::ModelStore(
+                        ModelStoreError::source_conversion_failed(
+                            "none of the selected BongoCatMver modes are present",
+                        ),
+                    ));
+                }
+                Some(selected)
+            }
+            // An Mver source with no convertible mode falls back to the
+            // package path, exactly as before.
+            ModelSourceContent::Mver { modes } => {
+                debug_assert!(modes.is_empty());
+                None
+            }
             ModelSourceContent::Package => None,
         };
 
@@ -1958,6 +2033,30 @@ fn legacy_mode_label(language: Language, mode: MverInputMode) -> &'static str {
         MverInputMode::Gamepad => "models.legacy.mode.gamepad",
     };
     bongocat_i18n::text(locale_code(language), key)
+}
+
+/// Project one model-crate source description onto the settings boundary enum.
+///
+/// The model crate is the one that read the bytes; the UI enum is the only
+/// shape the settings page knows. Keeping the mapping here means the settings
+/// page never names a model-crate type, and a later mode added upstream is a
+/// compile error here rather than a silent gap in the dialog.
+fn settings_model_source_content(
+    content: ModelSourceContent,
+) -> bongocat_ui::SettingsModelSourceContent {
+    match content {
+        ModelSourceContent::Package => bongocat_ui::SettingsModelSourceContent::Package,
+        ModelSourceContent::Mver { modes } => bongocat_ui::SettingsModelSourceContent::Mver {
+            modes: modes
+                .into_iter()
+                .map(|mode| match mode {
+                    MverInputMode::Standard => bongocat_ui::SettingsMverMode::Standard,
+                    MverInputMode::Keyboard => bongocat_ui::SettingsMverMode::Keyboard,
+                    MverInputMode::Gamepad => bongocat_ui::SettingsMverMode::Gamepad,
+                })
+                .collect(),
+        },
+    }
 }
 
 /// The locale the embedded catalog knows for a resolved application language.
@@ -2529,6 +2628,65 @@ mod tests {
                 .filter(|entry| entry.origin() == ModelOrigin::Installed)
                 .count(),
             3
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn importing_a_legacy_source_installs_only_the_selected_modes() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout).expect("start application");
+        application
+            .set_language(Language::ChineseSimplified)
+            .expect("set language");
+        let source = base.path().join("Bongo Cat Mver");
+        fs::create_dir(&source).expect("legacy source");
+        legacy_source_fixture(&source);
+
+        let installed = application
+            .import_models_with_selected_modes_with_observer(
+                "仅选模式",
+                &source,
+                vec![MverInputMode::Gamepad, MverInputMode::Keyboard],
+                |_| {},
+                || false,
+            )
+            .expect("import selected legacy modes");
+
+        // The application reports and stores the selection in the store's mode
+        // order, and the unselected Standard mode never reaches the catalog.
+        assert_eq!(installed.len(), 2);
+        assert_eq!(
+            application
+                .config()
+                .model
+                .installed_models
+                .iter()
+                .map(|metadata| metadata.title.as_str())
+                .collect::<Vec<_>>(),
+            vec!["仅选模式 · 键盘模式", "仅选模式 · 手柄模式"]
+        );
+        assert!(
+            installed[0]
+                .root()
+                .join("resources/right-keys/LeftArrow.png")
+                .is_file()
+        );
+        assert!(
+            installed[1]
+                .root()
+                .join("resources/left-keys/DPadLeft.png")
+                .is_file()
+        );
+        assert_eq!(
+            application
+                .model_catalog()
+                .expect("model catalog")
+                .iter()
+                .filter(|entry| entry.origin() == ModelOrigin::Installed)
+                .count(),
+            2
         );
         application.shutdown().expect("clean shutdown");
     }

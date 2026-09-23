@@ -61,6 +61,7 @@ impl Render for SettingsView {
             .map(|snapshot| snapshot.model_catalog.entries.as_slice())
             .unwrap_or_default();
         let language = self.display_language();
+        self.sync_mver_mode_dialog(window, cx);
         if let Some(error) = self.pending_notification.take() {
             window.push_notification(
                 Notification::new()
@@ -1073,6 +1074,7 @@ impl Render for SettingsView {
             .flex_col()
             .child(div().min_h_0().w_full().flex_1().child(settings))
             .children(Root::render_notification_layer(window, cx))
+            .children(Root::render_dialog_layer(window, cx))
             .into_any_element()
     }
 }
