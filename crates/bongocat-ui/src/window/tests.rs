@@ -60,6 +60,35 @@ fn captured_shortcut(key: &str, modifiers: Modifiers) -> Option<String> {
     shortcut_from_capture(&modifiers, &keys)
 }
 
+fn settings_view(cx: &mut TestAppContext) -> (Entity<SettingsView>, &mut VisualTestContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let built = Rc::new(RefCell::new(None));
+    let capture = Rc::clone(&built);
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::EnglishUnitedStates,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        capture.borrow_mut().replace(view.clone());
+        Root::new(view, window, cx)
+    });
+    let view = built
+        .borrow_mut()
+        .take()
+        .expect("the window builder must hand the page out");
+    (view, visual)
+}
+
 #[test]
 fn shortcut_capture_canonicalizes_modifiers_and_named_keys() {
     let mut modifiers = Modifiers {
@@ -2606,4 +2635,111 @@ fn the_frames_before_the_first_snapshot_render_the_seeded_appearance(cx: &mut Te
         cx.notify();
     });
     visual.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn model_import_success_waits_for_every_queued_cover_capture(cx: &mut TestAppContext) {
+    let (view, visual) = settings_view(cx);
+    let ready = SettingsModelAvailability::Ready {
+        behaviors: Vec::new(),
+    };
+    let first = SettingsModelKey {
+        id: "first-installed".to_owned(),
+        origin: SettingsModelOrigin::Installed,
+    };
+    let second = SettingsModelKey {
+        id: "second-installed".to_owned(),
+        origin: SettingsModelOrigin::Installed,
+    };
+    let mut seeded = crate::tests::snapshot(1, false, true);
+    seeded.model_catalog.entries = vec![
+        model_entry(&first.id, first.origin, ready.clone()),
+        model_entry(&second.id, second.origin, ready),
+    ];
+    let first_row = ModelRowKey::new(first.origin, &first.id);
+    let second_row = ModelRowKey::new(second.origin, &second.id);
+
+    view.update(visual, |view, cx| {
+        view.snapshot = Some(seeded);
+        view.model_import.baseline_models = BTreeSet::new();
+        view.pending_model_reveal = BTreeSet::from([first_row.clone(), second_row.clone()]);
+        view.model_import.state = ModelImportState::Capturing;
+        view.model_import_success_pending = false;
+
+        view.finish_model_cover_capture(&first, false, cx);
+        assert!(!view.model_import_success_pending);
+        assert!(matches!(
+            &view.model_import.state,
+            ModelImportState::Capturing
+        ));
+        assert_eq!(view.pending_model_reveal, BTreeSet::from([second_row]));
+
+        view.finish_model_cover_capture(&second, false, cx);
+        assert!(view.pending_model_reveal.is_empty());
+        assert!(matches!(&view.model_import.state, ModelImportState::Idle));
+        assert!(view.model_import_success_pending);
+    });
+}
+
+#[gpui_kit::test]
+fn cover_capture_completed_before_import_reply_skips_capturing(cx: &mut TestAppContext) {
+    let (view, visual) = settings_view(cx);
+    let installed = SettingsModelKey {
+        id: "installed".to_owned(),
+        origin: SettingsModelOrigin::Installed,
+    };
+    let mut seeded = crate::tests::snapshot(1, false, true);
+    seeded.model_catalog.entries = vec![model_entry(
+        &installed.id,
+        installed.origin,
+        SettingsModelAvailability::Ready {
+            behaviors: Vec::new(),
+        },
+    )];
+    let installed_row = ModelRowKey::new(installed.origin, &installed.id);
+
+    view.update(visual, |view, _cx| {
+        view.snapshot = Some(seeded);
+        view.completed_model_cover_captures = BTreeSet::from([installed_row]);
+        view.model_import.baseline_models = BTreeSet::new();
+        view.model_import.state = ModelImportState::Starting {
+            cancel_requested: false,
+        };
+        view.model_import_success_pending = false;
+
+        let reveal_complete = view.begin_model_reveal();
+        if reveal_complete {
+            view.model_import_success_pending = true;
+        }
+
+        assert!(reveal_complete);
+        assert!(matches!(&view.model_import.state, ModelImportState::Idle));
+        assert!(view.pending_model_reveal.is_empty());
+        assert!(view.model_import_success_pending);
+        assert!(view.completed_model_cover_captures.is_empty());
+    });
+}
+
+#[gpui_kit::test]
+fn empty_successful_import_resets_and_notifies_immediately(cx: &mut TestAppContext) {
+    let (view, visual) = settings_view(cx);
+
+    view.update(visual, |view, _cx| {
+        view.snapshot = Some(crate::tests::snapshot(1, false, true));
+        view.model_import.baseline_models = BTreeSet::new();
+        view.model_import.state = ModelImportState::Starting {
+            cancel_requested: false,
+        };
+        view.model_import_success_pending = false;
+
+        let reveal_complete = view.begin_model_reveal();
+        if reveal_complete {
+            view.model_import_success_pending = true;
+        }
+
+        assert!(reveal_complete);
+        assert!(matches!(&view.model_import.state, ModelImportState::Idle));
+        assert!(view.pending_model_reveal.is_empty());
+        assert!(view.model_import_success_pending);
+    });
 }

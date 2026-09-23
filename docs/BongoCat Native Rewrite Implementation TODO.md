@@ -5769,6 +5769,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
          过滤这些条目。封面截取结束（成功或失败）由 app 主线程调用
          `SettingsView::finish_model_cover_capture` 报告，清空门禁并失效封面图像缓存；截取先于导入
          回执完成的竞态由 `completed_model_cover_captures` 兜住。截取失败仍以来源封面发布模型。
+         导入成功通知在本次导入最后一次封面回调到达、卡片揭示到网格时一起发出，而不是在包安装结果
+         首次到达时发出；截取失败同样完成门禁并允许成功，保持既有静默失败行为。
       ⑦ `crates/bongocat-app/src/main.rs` 的截取循环对每个请求都回调一次（不再 `continue` 跳过失败），
          `refresh_model_cover` 更名为 `finish_model_cover_capture`。
       ⑧ locale 删除 `models.import.folder/archive/picker/progress/actions.choosing/actions.import`

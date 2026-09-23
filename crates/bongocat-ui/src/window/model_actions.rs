@@ -320,8 +320,9 @@ impl SettingsView {
                         {
                             view.snapshot = Some(snapshot);
                         }
-                        view.begin_model_reveal();
-                        view.model_import_success_pending = true;
+                        if view.begin_model_reveal() {
+                            view.model_import_success_pending = true;
+                        }
                     }
                     // Nothing was installed: the card goes back to its prompt
                     // and only a real failure has anything to report.
@@ -768,6 +769,7 @@ impl SettingsView {
                 && matches!(self.model_import.state, ModelImportState::Capturing)
             {
                 self.model_import.reset();
+                self.model_import_success_pending = true;
             }
         } else if matches!(
             self.model_import.state,
@@ -784,11 +786,13 @@ impl SettingsView {
     /// Hold the models the run just installed back until their covers are done.
     ///
     /// A successful import always queues a cover capture, so the run's own
-    /// cards become visible when that capture reports back rather than the
-    /// moment the package lands. Nothing is published when the run installed
-    /// nothing, which is also how a rejected snapshot revision is handled: the
-    /// newer snapshot republishes the catalog with the card already in it.
-    pub(super) fn begin_model_reveal(&mut self) {
+    /// cards become visible and its success notification is enabled when that
+    /// capture reports back rather than the moment the package lands. Nothing
+    /// is published when the run installed nothing, which is also how a
+    /// rejected snapshot revision is handled: the newer snapshot republishes
+    /// the catalog with the card already in it, so the notification can be
+    /// enabled immediately.
+    pub(super) fn begin_model_reveal(&mut self) -> bool {
         let baseline = std::mem::take(&mut self.model_import.baseline_models);
         let installed = self
             .snapshot
@@ -808,12 +812,14 @@ impl SettingsView {
         for key in std::mem::take(&mut self.completed_model_cover_captures) {
             pending.remove(&key);
         }
-        if pending.is_empty() {
+        let complete = pending.is_empty();
+        if complete {
             self.model_import.reset();
         } else {
             self.pending_model_reveal = pending;
             self.model_import.state = ModelImportState::Capturing;
         }
+        complete
     }
 
     /// Drop the cached cover image of a model whose cover just changed.
