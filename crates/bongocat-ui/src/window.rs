@@ -100,6 +100,8 @@ struct ShortcutConflictNotification;
 /// and only the transition back to a readable catalog re-arms it.
 struct ModelCatalogErrorNotification;
 
+struct ModelImportSuccessNotification;
+
 fn accepts_snapshot_revision(current: Option<u64>, incoming: u64) -> bool {
     current.is_none_or(|current| incoming >= current)
 }
@@ -574,6 +576,7 @@ pub struct SettingsView {
     snapshot: Option<SettingsSnapshot>,
     pending: Option<PendingOperation>,
     pending_notification: Option<SettingsError>,
+    model_import_success_pending: bool,
     model_import: ModelImportDraft,
     overlay_scale_debouncer: crate::SettingsPatchDebouncer<u16>,
     overlay_scale_timer_generation: u64,

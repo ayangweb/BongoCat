@@ -121,6 +121,7 @@
       "resource_invalid": "Model resource is invalid"
     },
     "import": {
+      "success": "Model imported successfully",
       "mver_dialog": {
         "title": "Choose modes to convert",
         "description": "Select the BongoCat Mver modes to import.",

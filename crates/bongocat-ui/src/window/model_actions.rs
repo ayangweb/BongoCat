@@ -321,6 +321,7 @@ impl SettingsView {
                             view.snapshot = Some(snapshot);
                         }
                         view.begin_model_reveal();
+                        view.model_import_success_pending = true;
                     }
                     // Nothing was installed: the card goes back to its prompt
                     // and only a real failure has anything to report.

@@ -71,6 +71,19 @@ impl Render for SettingsView {
                 cx,
             );
         }
+        if self.model_import_success_pending {
+            self.model_import_success_pending = false;
+            window.push_notification(
+                Notification::new()
+                    .id::<ModelImportSuccessNotification>()
+                    .message(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "models.import.success",
+                    ))
+                    .with_type(NotificationType::Success),
+                cx,
+            );
+        }
         self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, editing_blocked, cx);
         let status: SharedString = match (self.pending, &snapshot) {
             (Some(PendingOperation::Refresh), _) => {
