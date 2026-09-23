@@ -531,40 +531,36 @@ fn model_card_actions(
             }
         })),
     );
-    if actions.can_edit {
-        let edit_model = model.clone();
-        let edit_key_model = model.clone();
-        row = row.child(
-            icon_command_button(
-                "edit-model-control",
-                bongocat_i18n::text(language.catalog_locale(), "models.actions.edit"),
-                gpui_kit::assets::IconName::SquarePen,
-                &focus.edit,
-                action_tabs.edit,
-                !actions.can_edit,
-            )
-            .id(("edit-model", index))
-            .on_click(cx.listener(move |view, _, window, cx| {
-                view.run_model_row_action(ModelRowAction::Edit, edit_model.clone(), window, cx);
-            }))
-            .on_key_down(cx.listener(move |view, event, window, cx| {
-                if is_activation_key(event) {
-                    cx.stop_propagation();
-                    view.run_model_row_action(
-                        ModelRowAction::Edit,
-                        edit_key_model.clone(),
-                        window,
-                        cx,
-                    );
-                }
-            })),
-        );
-    }
-    if actions.can_delete {
-        let confirm_model = model.clone();
-        let open_model = model.clone();
-        let close_model = model.clone();
-        let delete_label = bongocat_i18n::text(language.catalog_locale(), "models.actions.delete");
+    let edit_model = model.clone();
+    let edit_key_model = model.clone();
+    row = row.child(
+        icon_command_button(
+            "edit-model-control",
+            bongocat_i18n::text(language.catalog_locale(), "models.actions.edit"),
+            gpui_kit::assets::IconName::SquarePen,
+            &focus.edit,
+            action_tabs.edit,
+            !actions.can_edit,
+        )
+        .id(("edit-model", index))
+        .test_support()
+        .on_click(cx.listener(move |view, _, window, cx| {
+            view.run_model_row_action(ModelRowAction::Edit, edit_model.clone(), window, cx);
+        }))
+        .on_key_down(cx.listener(move |view, event, window, cx| {
+            if is_activation_key(event) {
+                cx.stop_propagation();
+                view.run_model_row_action(ModelRowAction::Edit, edit_key_model.clone(), window, cx);
+            }
+        })),
+    );
+    let confirm_model = model.clone();
+    let open_model = model.clone();
+    let close_model = model.clone();
+    let delete_label = bongocat_i18n::text(language.catalog_locale(), "models.actions.delete");
+    // Presets have no delete affordance; only user-installed models render the
+    // confirmation trigger (and only those can still be disabled during import).
+    if model.origin == SettingsModelOrigin::Installed {
         row = row.child(
             PopConfirm::new(
                 ("delete-model-confirmation", index),
@@ -589,11 +585,12 @@ fn model_card_actions(
                     gpui_kit::assets::IconName::Trash,
                     &focus.delete,
                     action_tabs.delete,
-                    false,
+                    !actions.can_delete,
                 )
                 // The wrapper owns the queryable id; the inner control gets a
                 // derived one so the two registrations cannot be ambiguous.
-                .id(("delete-model", index)),
+                .id(("delete-model", index))
+                .test_support(),
             )
             .open(confirming_delete)
             // The surface reports every transition — the control's press or

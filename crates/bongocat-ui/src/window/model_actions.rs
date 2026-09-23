@@ -908,7 +908,9 @@ impl SettingsView {
             self.snapshot
                 .as_ref()
                 .and_then(|snapshot| snapshot.active_model.as_ref()),
-            self.pending.is_some() || self.model_import.is_running(),
+            self.pending.is_some()
+                || self.model_import.is_running()
+                || self.model_import.is_source_surface_open(),
         );
         let Some(focus) = self
             .model_row_focus

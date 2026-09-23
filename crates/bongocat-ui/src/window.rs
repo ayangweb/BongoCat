@@ -1068,15 +1068,17 @@ impl SettingsView {
     /// The one visual-gate predicate every settings page reads (ADR-0053).
     ///
     /// True only where editing is structurally impossible: no snapshot yet, a
-    /// model import running, or the import's folder dialog covering the
-    /// window. The transient in-flight `pending` flag deliberately never
+    /// model import running, or any source or conversion surface
+    /// covering the window. The transient in-flight `pending` flag deliberately never
     /// feeds it — it flips on and off around every command, so gating on it
     /// dims and re-enables a whole page on each control change, which reads
     /// as the page refreshing. Re-entrancy is refused by the command guards
     /// instead (`start_request`, the model command methods), and the header
     /// status is the saving indicator.
     fn editing_blocked(&self, snapshot: Option<&SettingsSnapshot>) -> bool {
-        snapshot.is_none() || self.model_import.is_running() || self.model_import.is_picker_open()
+        snapshot.is_none()
+            || self.model_import.is_running()
+            || self.model_import.is_source_surface_open()
     }
 
     fn start_request(

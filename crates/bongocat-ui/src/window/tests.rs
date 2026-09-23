@@ -1167,12 +1167,12 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
     );
 }
 
-/// An open delete question is dropped as soon as its control would not be drawn.
+/// An open delete question is dropped as soon as deletion becomes unavailable.
 ///
-/// The card renders the delete control — and with it the confirmation surface —
-/// only while `can_delete` holds, so the page has to drop the question under the
-/// same conditions. A question that outlived its control would come back unasked
-/// the moment the card could draw that control again.
+/// The page drops the delete question when deletion would no longer be possible:
+/// the card remains in place with a disabled control, but an open question must
+/// not outlive the state that made it valid. A question that did would appear
+/// already open the moment deletion became possible again.
 #[test]
 fn an_open_delete_question_lives_only_while_its_control_would() {
     let ready = SettingsModelAvailability::Ready {
@@ -1197,12 +1197,12 @@ fn an_open_delete_question_lives_only_while_its_control_would() {
         &target
     ));
 
-    // The target can stop being deletable in two ways, and each one takes the
-    // control off the card: it leaves the catalog, or editing is structurally
-    // blocked (an import running, a picker open). Becoming the active model is
-    // not one of them — an imported model keeps its delete control while it is
-    // the one on screen — and neither is an in-flight command, which never
-    // feeds the visual gate (ADR-0053).
+    // The target can stop being deletable in two ways, and each one drops the
+    // question: it leaves the catalog, or editing is structurally blocked (an
+    // import running, a picker open). Becoming the active model is not one of
+    // them — an imported model keeps deletion available while it is the one on
+    // screen — and neither is an in-flight command, which never feeds the visual
+    // gate (ADR-0053).
     assert!(
         model_delete_confirmation_is_valid(&catalog, Some(&target), false, &target),
         "an imported model that became active still offers deletion"
@@ -1213,7 +1213,7 @@ fn an_open_delete_question_lives_only_while_its_control_would() {
     );
     assert!(
         !model_delete_confirmation_is_valid(&catalog, Some(&active_preset), true, &target),
-        "a command in flight takes the delete control off the card"
+        "structural blocking closes the delete confirmation"
     );
 
     // Availability is not part of it: a package that failed to load is exactly the
@@ -1968,6 +1968,180 @@ fn the_import_card_is_as_tall_as_the_model_cards_beside_it(cx: &mut TestAppConte
     assert!(
         import.size.height > px(super::models::MODEL_CARD_MIN_HEIGHT),
         "a row is as tall as its tallest cell, so the card must be taller than its own floor"
+    );
+}
+
+/// A model import gates the other cards for the whole flow without hiding them.
+///
+/// The controls must stay in the card so the grid does not change shape while
+/// the picker, inspection or dialog is open, and a press while the gate is on
+/// must still do nothing. Preset cards have no delete affordance at all; only
+/// installed cards keep a visible delete control, disabled for the run.
+#[gpui_kit::test]
+fn a_model_import_disables_the_other_cards_actions_until_it_finishes(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let ready = SettingsModelAvailability::Ready {
+        behaviors: Vec::new(),
+    };
+    let preset = model_entry("standard", SettingsModelOrigin::Preset, ready.clone());
+    let installed = model_entry("editable", SettingsModelOrigin::Installed, ready);
+    let mut seeded = crate::tests::snapshot(1, false, true);
+    seeded.model_catalog.entries = vec![preset, installed];
+    let entries = seeded.model_catalog.entries.clone();
+    let active = seeded.active_model.clone();
+    let page_snapshot = seeded.clone();
+
+    let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
+    let capture = Rc::clone(&built);
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::EnglishUnitedStates,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        capture.borrow_mut().replace(view.clone());
+        let page = cx.new(|_| ModelsPageHarness {
+            view,
+            snapshot: Some(page_snapshot),
+        });
+        Root::new(page, window, cx)
+    });
+    let view = built
+        .borrow_mut()
+        .take()
+        .expect("the window builder must hand the page out");
+    view.update(visual, |view, cx| {
+        view.snapshot = Some(seeded);
+        view.sync_model_row_focus(&entries, active.as_ref(), false, cx);
+    });
+    visual.update(|window, cx| window.render_frame(cx));
+
+    assert!(
+        model_row_actions(&entries[0], active.as_ref(), false).can_edit,
+        "test premise: a preset card offers its edit control"
+    );
+    assert!(
+        model_row_actions(&entries[1], active.as_ref(), false).can_edit,
+        "test premise: the installed card offers its edit control"
+    );
+    assert!(
+        model_row_actions(&entries[1], active.as_ref(), false).can_delete,
+        "test premise: the installed card offers its delete control"
+    );
+    assert!(
+        visual.update(|window, _| {
+            window
+                .try_find(ElementId::from(("delete-model", 0usize)))
+                .is_none()
+        }),
+        "a preset card must not render a delete control at all"
+    );
+
+    let installed_edit = ElementId::from(("edit-model", 1usize));
+    let installed_delete = ElementId::from(("delete-model", 1usize));
+    let edit = rendered_bounds(visual, installed_edit.clone());
+    let delete = rendered_bounds(visual, installed_delete.clone());
+
+    // The installed edit control is live before the run: the first press opens
+    // the card's in-place editor. Close it again so the seeded page starts from
+    // the non-editing face for the gated phases.
+    visual.update(|window, cx| window.click(installed_edit.clone(), cx));
+    assert!(
+        view.read_with(visual, |view, _| view.model_edit.is_some()),
+        "editing an installed model must be possible while the page is idle"
+    );
+    view.update(visual, |view, cx| {
+        view.cancel_model_edit(cx);
+        cx.notify();
+    });
+    visual.update(|window, cx| window.render_frame(cx));
+
+    let cases = [
+        (ModelImportState::Picking, None, "the native folder picker"),
+        (ModelImportState::Inspecting, None, "source inspection"),
+        (
+            ModelImportState::Inspecting,
+            Some(MverModeDialog::from_available(vec![
+                SettingsMverMode::Standard,
+            ])),
+            "the open Mver conversion dialog",
+        ),
+        (
+            ModelImportState::Starting {
+                cancel_requested: false,
+            },
+            None,
+            "the running import and capture",
+        ),
+    ];
+
+    for (state, dialog, phase) in cases {
+        // The dialog preview is built during `SettingsView::render`; rendering
+        // before clicking proves the card gate covers both the block and the
+        // rendered dwell/surface states of that path.
+        view.update(visual, |view, cx| {
+            view.model_edit = None;
+            view.model_import.state = state;
+            view.model_import.mver_mode_dialog = dialog;
+            cx.notify();
+        });
+        visual.update(|window, cx| window.render_frame(cx));
+
+        if phase == "the open Mver conversion dialog" {
+            assert!(
+                view.read_with(visual, |view, _| {
+                    view.model_import.has_open_mver_mode_dialog()
+                }),
+                "the Mver conversion dialog draft must remain open during {phase}"
+            );
+        }
+
+        assert!(
+            visual.update(|window, _| {
+                window
+                    .try_find(ElementId::from(("delete-model", 0usize)))
+                    .is_none()
+            }),
+            "a preset card must not regain a delete control during {phase}"
+        );
+        assert_eq!(
+            rendered_bounds(visual, installed_edit.clone()),
+            edit,
+            "the installed edit control must keep its slot during {phase}"
+        );
+        assert_eq!(
+            rendered_bounds(visual, installed_delete.clone()),
+            delete,
+            "the installed delete control must keep its slot during {phase}"
+        );
+
+        visual.update(|window, cx| window.click(installed_edit.clone(), cx));
+        assert!(
+            view.read_with(visual, |view, _| view.model_edit.is_none()),
+            "editing must stay blocked during {phase}"
+        );
+    }
+
+    view.update(visual, |view, cx| {
+        view.model_import.state = ModelImportState::Idle;
+        view.model_import.mver_mode_dialog = None;
+        cx.notify();
+    });
+    visual.update(|window, cx| window.render_frame(cx));
+
+    visual.update(|window, cx| window.click(installed_edit.clone(), cx));
+    assert!(
+        view.read_with(visual, |view, _| view.model_edit.is_some()),
+        "finishing the import must re-enable the installed edit control"
     );
 }
 
