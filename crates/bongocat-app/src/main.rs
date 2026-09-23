@@ -3994,7 +3994,7 @@ fn bundled_preset_root(executable: &Path) -> Option<PathBuf> {
     executable_relative_preset_root(executable)
 }
 
-#[cfg(any(target_os = "windows", all(test, target_os = "macos")))]
+#[cfg(any(target_os = "windows", test))]
 fn executable_relative_preset_root(executable: &Path) -> Option<PathBuf> {
     Some(executable.parent()?.join("resources/models"))
 }

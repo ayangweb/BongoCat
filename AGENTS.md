@@ -100,6 +100,7 @@
 - 共享业务 crate 不导入 Win32、Objective-C、GPUI 或 GPU handle。
 - Windows/macOS API 封装在 `bongocat-platform` 或明确的平台子模块，返回稳定的项目类型和 error code，不泄漏裸指针或平台消息结构。
 - 主线程限定、COM apartment、run loop 和 callback 生命周期写入 wrapper 的安全不变量。
+- Linux 仅作首发后评估，不得通过 cfg fallback 维持编译；禁止 `#[cfg(any(target_os = "macos", target_os = "windows"))]` 及其反向用法，共享桌面代码应使用直接 cfg、`test` 或单一平台条件，由 `tools/tests/test_supported_platform_cfg.py` 强制。
 
 ## 5. 输入可靠性
 
