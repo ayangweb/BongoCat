@@ -1627,12 +1627,8 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
             ))
         );
         assert_eq!(
-            presentation.unavailable_hint,
-            build_unavailable.then(|| bongocat_i18n::text(
-                SettingsLanguage::EnglishUnitedStates.catalog_locale(),
-                "settings.application.startup.unsupported_build",
-            )),
-            "{status:?} must carry a hover hint exactly when the build cannot offer login startup"
+            presentation.disabled, build_unavailable,
+            "{status:?} must grey the whole row exactly when the build cannot offer login startup"
         );
         assert_eq!(
             startup_item_presentation(Some(status), true, SettingsLanguage::EnglishUnitedStates,)
@@ -1670,14 +1666,13 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
     );
 }
 
-/// The switch is greyed out exactly where the build cannot offer login startup.
+/// The whole row is greyed out exactly where the build cannot offer login startup.
 ///
 /// Transient states do not disable it: `action` already reports whether the
-/// control can act right now.
-/// node. A released build therefore keeps the switch normally available while
-/// the snapshot is still loading.
+/// control can act right now. A released build therefore keeps the row normally
+/// available while the snapshot is still loading.
 #[test]
-fn the_startup_switch_is_disabled_exactly_where_the_build_cannot_offer_it() {
+fn the_startup_row_is_disabled_exactly_where_the_build_cannot_offer_it() {
     let statuses = [
         None,
         Some(SettingsStartupItemStatus::ReadError(
@@ -1721,44 +1716,37 @@ fn the_startup_switch_is_disabled_exactly_where_the_build_cannot_offer_it() {
                 ))
             );
             assert_eq!(
-                presentation.switch_disabled(),
-                build_cannot_offer_it,
-                "{status:?} blocked={blocked} disabled the switch for the wrong reason"
+                presentation.disabled, build_cannot_offer_it,
+                "{status:?} blocked={blocked} disabled the row for the wrong reason"
             );
         }
     }
 }
 
-/// A development build's switch is disabled and explains why on hover.
+/// A development build's row is greyed out and explains why in the visible copy.
 ///
-/// The row already carries the same sentence, and the tooltip is the only place
-/// a user learns why the control does not respond: the reason is a property of
-/// the build, so no action in the window can resolve it. Both copies come from
-/// one catalog entry, which is what keeps them from drifting apart.
+/// The copy comes from one catalog entry, so the reason shown next to a disabled
+/// row cannot drift from the unavailable state.
 #[test]
-fn a_development_build_disables_the_startup_switch_with_a_hover_hint() {
+fn a_development_build_disables_the_startup_row_with_visible_copy() {
     let status = SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(
         SettingsStartupItemUnsupportedReason::BuildEnvironment,
     ));
 
     let presentation =
         startup_item_presentation(Some(status), false, SettingsLanguage::ChineseSimplified);
-    assert!(presentation.switch_disabled());
-    assert_eq!(
-        presentation.unavailable_hint,
-        Some("开发版本不支持登录时启动")
-    );
-    assert_eq!(presentation.unavailable_hint, presentation.description);
+    assert!(presentation.disabled);
+    assert_eq!(presentation.description, Some("开发版本不支持登录时启动"));
     assert_eq!(presentation.action, StartupItemAction::None);
 }
 
-/// Every state a released build can produce keeps the switch operable.
+/// Every state a released build can produce keeps the row operable.
 ///
 /// The presentation knows nothing about the build environment, so this is the
 /// released direction expressed where it can be checked without a released
-/// build: no actionable state is greyed out and none carries a hover hint.
+/// build: no actionable state is greyed out.
 #[test]
-fn the_startup_switch_stays_operable_in_every_actionable_state() {
+fn the_startup_row_stays_operable_in_every_actionable_state() {
     for (status, expected) in [
         (SettingsStartupItemState::Disabled, true),
         (SettingsStartupItemState::Enabled, false),
@@ -1769,8 +1757,7 @@ fn the_startup_switch_stays_operable_in_every_actionable_state() {
             false,
             SettingsLanguage::EnglishUnitedStates,
         );
-        assert!(!presentation.switch_disabled());
-        assert_eq!(presentation.unavailable_hint, None);
+        assert!(!presentation.disabled);
         assert_eq!(presentation.action, StartupItemAction::SetEnabled(expected));
     }
 }

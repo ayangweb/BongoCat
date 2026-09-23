@@ -1,7 +1,7 @@
 # ADR-0051: 开发构建不提供登录时启动
 
 状态：已接受（2026-09-20）
-修订：ADR-0043（仅取代其"Development 构建从此支持启动项"这一条决策）
+修订：ADR-0043（仅取代其"Development 构建从此支持启动项"这一条决策）；2026-09-23（设置项改为整行禁用呈现）
 依赖：ADR-0008（应用身份与存储环境）、ADR-0043（启动项后端统一 auto-launch）
 
 ## 背景
@@ -48,21 +48,18 @@ ADR-0043 把双平台启动项后端统一到 `auto-launch` 时，把 Developmen
 `bongocat-platform` 及其 `auto-launch` 后端、`StartupItemEnvironment`、两套 `app_name` 与 opt-in
 lifecycle smoke 全部不变，Production 路径继续使用它们。
 
-### 2. UI：开关按"没有动作可做"禁用，并用 Tooltip 说明构建原因
+### 2. UI：整行按统一禁用样式置灰，并保留可见原因
 
-- `StartupItemPresentation` 增加 `unavailable_hint`，只有
-  `Unsupported(BuildEnvironment)` 有值；其余状态（初始化中、可重试、已启用、已禁用、需批准、
-  登录项缺失、平台/系统不支持）都是 `None`。
-- 可见开关只在"这个构建根本不提供该能力"时禁用，由
-  `StartupItemPresentation::switch_disabled()`（即 `unavailable_hint.is_some()`）单点定义。
+- `StartupItemPresentation` 增加 `disabled: bool`，只有
+  `Unsupported(BuildEnvironment)` 为 `true`；其余状态（初始化中、可重试、已启用、已禁用、需批准、
+  登录项缺失、平台/系统不支持）都是 `false`。
+- 可见设置项只在"这个构建根本不提供该能力"时以
+  `SettingItem::disabled(startup_item.disabled)` 整行禁用，与"鼠标悬停延迟"等项目的禁用呈现一致。
   这与"此刻能否操作"是两个问题：后者由 `action` 回答，仍然只由辅助功能节点声明为 disabled /
-  不可点击。保持这两者分离，是为了让已发布构建在快照尚未就绪时仍把开关呈现为正常可用——
+  不可点击。保持这两者分离，是为了让已发布构建在快照尚未就绪时仍把该行呈现为正常可用——
   这正是本次要求的边界。
-- 开关改为手写 `gpui_kit` 的 `Switch` 元素（`SettingField::element`）而不是打包的
-  `SettingField::switch`：打包字段内部固定构造 `Switch::new("check")`，无法挂 Tooltip，
-  而这一行是唯一能解释"构建不支持"的地方。
-- 文案复用目录里已有的 `settings.application.startup.unsupported_build`：同一句话既解释该行，
-  也作为禁用开关的悬停提示，两份不会分叉。
+- 行文案继续复用目录里已有的 `settings.application.startup.unsupported_build`；开发构建的
+  `description` 保留为可见说明，不再挂 Tooltip，也不再手写 `Switch`。
 
 ## 明确不做
 
@@ -83,18 +80,14 @@ lifecycle smoke 全部不变，Production 路径继续使用它们。
 - `StartupItemEnvironment::Development` 在平台契约中仍然存在，但生产路径不会再构造它——应用层只会把
   `Production` 传下去。这条差异由 `bongocat-app` 的测试固定。
 - macOS 12 用户与 Windows 用户不受影响：门禁只看构建环境，与平台和 OS 版本无关。
-- 已发布构建里可见开关的行为不变：它只在"构建不提供该能力"时禁用，开发构建之外没有状态会让它变灰。
-  初始化中与有待处理操作时，辅助功能节点仍报 disabled / 不可点击，而可见开关保持可用——这与改动前
-  完全一致，本次只对齐了可见开关那一种情形（开发构建）。
+- 已发布构建里该行的行为不变：它只在"构建不提供该能力"时禁用，开发构建之外没有状态会让它变灰。
+  初始化中与有待处理操作时，辅助功能节点仍报 disabled / 不可点击，而可见控件保持可用——这与改动前
+  完全一致，本次只对齐了开发构建的整行呈现。
 
 ## 残余风险与待验证项（不得当作已确认）
 
-1. **禁用的 `Switch` 上悬停时弹层是否真的出现，没有自动化断言。** 弹层由 gpui-kit 的 managed
-   tooltip 系统拥有（`Root` 的 `TooltipOverlay` 是 `pub(crate)`，内容字段私有，弹层元素未注册
-   test-support），本仓库的测试层无法观察它。已核实的是触发路径可达：gpui-base 的
-   `Switch`/`SwitchTrack` 在 disabled 下只停止 mouse-down 传播并丢弃点击回调，命中测试不受影响
-   （`state_style.rs` 的 disabled 只投影 `opacity`），因此轨道上的 `on_hover` 仍会触发。
-   实机悬停确认留给 `just dev` / `just dev-smoke`。
+1. **整行禁用样式依赖 gpui-kit 的 `SettingItem::disabled`，没有像素级截图断言。**
+   当前测试覆盖 presentation 的 `disabled` 谓词和命令/无障碍语义；视觉一致性沿用 gpui-kit 既有设置项。
 2. **未在 Windows 实机确认**：本机无法执行 `cfg(windows)` 路径。本项改动落在应用层与 UI 层，
    没有改平台代码。
 3. **历史上已注册的开发登录项需要用户手动移除**，产品不提供入口，也不会提示。
@@ -106,7 +99,7 @@ lifecycle smoke 全部不变，Production 路径继续使用它们。
 
 ## 验证
 
-已完成（2026-09-20，本机 macOS / aarch64）：
+已完成（2026-09-23，本机 macOS / aarch64）：
 
 - `bongocat-app`：`login_startup_is_gated_on_the_build_environment` 断言
   `startup_item_available()` 等于 `BUILD_ENVIRONMENT == Production`（同一用例在开发与
@@ -114,13 +107,15 @@ lifecycle smoke 全部不变，Production 路径继续使用它们。
   `a_development_build_reports_login_startup_as_unavailable` 断言开发构建的读取返回
   `State(Unsupported(BuildEnvironment))`，且 `true`/`false` 两个写入方向都返回
   `Ok(Unsupported(BuildEnvironment))` 而不是错误。
-- `bongocat-ui`：`the_startup_switch_is_disabled_exactly_where_the_build_cannot_offer_it` 对全部平台
-  状态 ×`blocked` 断言 `switch_disabled()` 恰好等于"构建环境不支持"；
-  `a_development_build_disables_the_startup_switch_with_a_hover_hint` 固定开发构建的悬停文案
-  （中文目录原文，且与 `description` 同源）；
-  `the_startup_switch_stays_operable_in_every_actionable_state` 断言已发布构建能产生的三个可操作
-  状态都不禁用、都不带悬停提示。
+- `bongocat-ui`：`the_startup_row_is_disabled_exactly_where_the_build_cannot_offer_it` 对全部平台
+  状态 ×`blocked` 断言 `disabled` 恰好等于"构建环境不支持"；
+  `a_development_build_disables_the_startup_row_with_visible_copy` 固定开发构建的可见文案
+  （中文目录原文）；
+  `the_startup_row_stays_operable_in_every_actionable_state` 断言已发布构建能产生的三个可操作
+  状态都不禁用。
 - 设置窗口 smoke 的启动项断言不变（辅助功能节点按 `action == None` 报 disabled/clickable/focusable），
-  与可见开关各自的规则都由上面两个用例覆盖。
+  与可见行级禁用规则由上面的 presentation 用例覆盖。
 
-**未运行**：实机悬停确认 Tooltip 弹层（见残余风险 1）、Windows 实机。
+**验证命令**：`just check`（format、分段 Clippy、workspace tests、release check）通过。
+
+**未运行**：视觉截图确认整行置灰、Windows 实机。

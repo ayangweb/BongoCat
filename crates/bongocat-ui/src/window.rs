@@ -27,7 +27,6 @@ use gpui_kit::component::{
         NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
         Settings,
     },
-    switch::Switch,
     tag::Tag,
 };
 
@@ -105,14 +104,6 @@ struct ModelImportSuccessNotification;
 fn accepts_snapshot_revision(current: Option<u64>, incoming: u64) -> bool {
     current.is_none_or(|current| incoming >= current)
 }
-
-/// Element id of the login-startup switch.
-///
-/// The switch is built by hand rather than through `SettingField::switch`, which
-/// names every packaged switch `check`, so this is the only settings switch with
-/// an id of its own. That keeps its focus handle and its thumb spring distinct
-/// from the other rows' switches.
-const STARTUP_ITEM_SWITCH_ID: &str = "open-at-login-switch";
 
 /// A request the settings window forwards to the application rather than acting
 /// on itself.
@@ -1560,26 +1551,13 @@ struct StartupItemPresentation {
     description: Option<&'static str>,
     enabled: bool,
     action: StartupItemAction,
-    /// Present only when this build cannot offer login startup at all.
+    /// Whether the whole row is greyed out and unavailable.
     ///
-    /// The now-disabled switch explains itself with this text on hover, because
-    /// the reason is a property of the build and not something the user can
-    /// resolve from the settings window.
-    unavailable_hint: Option<&'static str>,
-}
-
-impl StartupItemPresentation {
-    /// Whether this build cannot offer login startup at all.
-    ///
-    /// This is a fact about the build, not about the current moment, so it is the
-    /// one thing that greys the switch out. Whether the control can act *right
-    /// now* is a separate question answered by `action`, and it stays with the
-    /// Keeping
-    /// the two apart is what lets a released build keep the switch normally
-    /// available while the snapshot is still loading.
-    fn switch_disabled(self) -> bool {
-        self.unavailable_hint.is_some()
-    }
+    /// This is a fact about the build, not about the current moment. Whether the
+    /// control can act *right now* is a separate question answered by `action`:
+    /// keeping the two apart lets a released build keep the row normally available
+    /// while the snapshot is still loading.
+    disabled: bool,
 }
 
 fn startup_item_presentation(
@@ -1595,7 +1573,7 @@ fn startup_item_presentation(
             )),
             enabled: false,
             action: StartupItemAction::None,
-            unavailable_hint: None,
+            disabled: false,
         },
         Some(SettingsStartupItemStatus::ReadError(_)) => StartupItemPresentation {
             description: Some(bongocat_i18n::text(
@@ -1604,14 +1582,14 @@ fn startup_item_presentation(
             )),
             enabled: false,
             action: StartupItemAction::Retry,
-            unavailable_hint: None,
+            disabled: false,
         },
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled)) => {
             StartupItemPresentation {
                 description: None,
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
-                unavailable_hint: None,
+                disabled: false,
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled)) => {
@@ -1619,7 +1597,7 @@ fn startup_item_presentation(
                 description: None,
                 enabled: true,
                 action: StartupItemAction::SetEnabled(false),
-                unavailable_hint: None,
+                disabled: false,
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Stale)) => {
@@ -1630,7 +1608,7 @@ fn startup_item_presentation(
                 )),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
-                unavailable_hint: None,
+                disabled: false,
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::RequiresApproval)) => {
@@ -1641,7 +1619,7 @@ fn startup_item_presentation(
                 )),
                 enabled: true,
                 action: StartupItemAction::SetEnabled(false),
-                unavailable_hint: None,
+                disabled: false,
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::NotFound)) => {
@@ -1652,42 +1630,38 @@ fn startup_item_presentation(
                 )),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
-                unavailable_hint: None,
+                disabled: false,
             }
         }
         Some(SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(reason))) => {
-            let (description, unavailable_hint) = match reason {
+            let (description, disabled) = match reason {
                 SettingsStartupItemUnsupportedReason::Platform => (
                     Some(bongocat_i18n::text(
                         language.catalog_locale(),
                         "settings.application.startup.unsupported_platform",
                     )),
-                    None,
+                    false,
                 ),
                 SettingsStartupItemUnsupportedReason::OperatingSystem => (
                     Some(bongocat_i18n::text(
                         language.catalog_locale(),
                         "settings.application.startup.unsupported_os",
                     )),
-                    None,
+                    false,
                 ),
-                // The one unsupported reason that is a property of this build
-                // rather than of the machine, so the control has to say so
-                // itself: the same text explains the row and the disabled
-                // switch, and neither copy can drift from the other.
-                SettingsStartupItemUnsupportedReason::BuildEnvironment => {
-                    let text = bongocat_i18n::text(
+                SettingsStartupItemUnsupportedReason::BuildEnvironment => (
+                    Some(bongocat_i18n::text(
                         language.catalog_locale(),
                         "settings.application.startup.unsupported_build",
-                    );
-                    (Some(text), Some(text))
-                }
+                    )),
+                    true,
+                ),
             };
             StartupItemPresentation {
                 description,
                 enabled: false,
                 action: StartupItemAction::None,
-                unavailable_hint,
+                disabled,
             }
         }
     };

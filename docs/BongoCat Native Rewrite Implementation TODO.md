@@ -5181,9 +5181,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         bongocat-ui 渲染层。风险已如实记录，修复该用例的 1 秒 deadline 属另一项。
     - 未完成：Windows 侧原生复验（本机无法执行 `cfg(windows)` 路径；本项未改平台代码，风险低）。
 
-96. [x] `P1-LOGIN-STARTUP-DEVELOPMENT-GATE`：开发构建不提供登录时启动，开关禁用并在悬停时说明原因。
-    - 背景（2026-09-20，维护者反馈）：「登录时启动」的开关在开发环境下应被禁用且不可交互，并在悬停时
-      明确提示"开发环境下该功能不可用"；其他环境下保持正常可用。
+96. [x] `P1-LOGIN-STARTUP-DEVELOPMENT-GATE`：开发构建不提供登录时启动，设置项整行禁用并保留可见说明。
+    - 背景（2026-09-20，维护者反馈）：「登录时启动」在开发环境下应被禁用且不可交互，并明确提示
+      "开发环境下该功能不可用"；其他环境下保持正常可用。2026-09-23 按既有设置项禁用方式调整为
+      "整行置灰 + 可见文案"。
     - 事实依据（改正前核实，未重新猜 API）：
       ① 契约里早已有 `SettingsStartupItemUnsupportedReason::BuildEnvironment` 与
         `SettingsStartupItemState::can_set_enabled()`，但 ADR-0043 把 Development 一并纳入支持范围后，
@@ -5193,35 +5194,28 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         `cargo clean` 或切换 profile 都会替换/移除它，注册项随之指向过期或不存在的二进制。
       ③ 改动前可见开关与它对外声明的语义不一致：没有动作可做的状态（快照未就绪、有待处理操作）在
         无障碍树里报 disabled，而可见开关仍可点击并发出命令。
-      ④ `gpui-component` 的打包字段 `SettingField::switch` 内部固定构造 `Switch::new("check")`
-        （`src/setting/fields/bool.rs`），无法挂 Tooltip；可挂 Tooltip 的是 `switch::Switch` 自身的
-        `.tooltip()`（`src/switch.rs`，作用于 `SwitchTrack`）。
+      ④ 设置项的既有禁用呈现使用 `SettingItem::disabled(true)` 对整行置灰并传递 disabled render option；
+        「鼠标悬停延迟」等项目已经采用这一模式。
     - 决策：ADR-0051（取代 ADR-0043 中"Development 构建从此支持启动项"这一条；后端与环境隔离命名不变）。
       门禁落在**应用层**：`bongocat-app` 的 `system_startup_item_state()` /
       `system_set_startup_item_enabled()` 在 `BUILD_ENVIRONMENT != Production` 时直接汇报
       `Unsupported(BuildEnvironment)`，不调用 `bongocat-platform`。与既有
       `update_check_available()`（开发构建不安装发布产物）同一模式；`bongocat-platform` 及其测试完全未改。
       判定写成 `matches!(BUILD_ENVIRONMENT, Production)` 而不是"是否为 Development"，使未来新增环境
-      默认不可用。读取与写入两个方向都返回同一状态，写入是 no-op 而非错误——会发送该命令的开关已禁用，
+      默认不可用。读取与写入两个方向都返回同一状态，写入是 no-op 而非错误——会发送该命令的控件已禁用，
       残留窗口或脚本化客户端不应收到用户无法处理的失败。
     - 实现：
       ① `crates/bongocat-app/src/settings.rs`：新增 `startup_item_available()`（`const fn`）与
         `startup_item_build_environment_state()`，两个 `system_*` 函数前置门禁。
-      ② `crates/bongocat-ui/src/window.rs`：`StartupItemPresentation` 新增 `unavailable_hint`
-        （仅 `BuildEnvironment` 有值，其余 7 种状态为 `None`），并新增 `switch_disabled()`
-        （等于 `unavailable_hint.is_some()`）。**刻意让"构建不提供该能力"与"此刻能否操作"分离**：
-        后者仍由 `action` 回答、只由无障碍节点声明，因此已发布构建在快照未就绪时仍把开关呈现为
-        正常可用——这是本次要求的边界。
-      ③ `crates/bongocat-ui/src/window/render.rs`：该行改用 `SettingField::element` 手写
-        `Switch::new(STARTUP_ITEM_SWITCH_ID)`，`.checked(presentation.enabled)` +
-        `.disabled(presentation.switch_disabled())` + `.when_some(unavailable_hint, |s, h| s.tooltip(h))`
-        + `.accessibility_label(开关标签)`。顺带去掉渲染层里第二份"是否勾选"的推导
-        （原 getter 自己 `matches!(Enabled | RequiresApproval)`），改为读 presentation。
+      ② `crates/bongocat-ui/src/window.rs`：`StartupItemPresentation` 新增 `disabled: bool`
+        （仅 `BuildEnvironment` 为 `true`，其余 7 种状态为 `false`）。**刻意让"构建不提供该能力"
+        与"此刻能否操作"分离**：后者仍由 `action` 回答、只由无障碍节点声明，因此已发布构建在快照
+        未就绪时仍把该行呈现为正常可用——这是本次要求的边界。
+      ③ `crates/bongocat-ui/src/window/render.rs`：该行改回标准 `SettingField::switch(...)`，并在
+        `SettingItem` 上使用 `.disabled(startup_item.disabled)` 整行置灰；删除了手写 `Switch`、
+        自定义 id、开关级 `disabled` 和 Tooltip。
       ④ 文案复用目录里已有的 `settings.application.startup.unsupported_build`（中文"开发构建不支持
-        登录时启动"），同一句话既解释该行也作为悬停提示，不新增键。
-    - 工具事实（本次核实，决定实现形态）：`Switch` 的 tooltip 由 `ComponentTooltip::apply` 挂到
-      `SwitchTrack` 上；gpui-base 的 disabled 只停止 mouse-down 传播并丢弃点击回调、并投影
-      `opacity(0.5)`（`state_style.rs`），**不影响命中测试**，因此禁用后轨道的 `on_hover` 仍会触发。
+        登录时启动"），作为开发构建行内可见说明，不新增键。
     - 验证（2026-09-20，本机 macOS / aarch64）：
       `cargo fmt --all -- --check`、`just check` 的三段 clippy（workspace 排除 `bongocat-app` 的
       all-features、`bongocat-app` 的 `storage-test-injection` 与 `production`）全部 `-D warnings`
@@ -5234,22 +5228,21 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       ② `bongocat-app::a_development_build_reports_login_startup_as_unavailable`（`not(production)`）——
         读取返回 `State(Unsupported(BuildEnvironment))`，`true`/`false` 两个写入方向都返回
         `Ok(Unsupported(BuildEnvironment))` 而非错误；
-      ③ `bongocat-ui::the_startup_switch_is_disabled_exactly_where_the_build_cannot_offer_it`——
-        9 种状态 × `blocked` 断言 `switch_disabled()` 恰好等于"构建环境不支持"；
-      ④ `bongocat-ui::a_development_build_disables_the_startup_switch_with_a_hover_hint`——固定中文
-        悬停文案，并断言它与 `description` 同源；
-      ⑤ `bongocat-ui::the_startup_switch_stays_operable_in_every_actionable_state`——已发布构建能产生的
-        三个可操作状态都不禁用、都不带悬停提示。
+      ③ `bongocat-ui::the_startup_row_is_disabled_exactly_where_the_build_cannot_offer_it`——
+        9 种状态 × `blocked` 断言 `disabled` 恰好等于"构建环境不支持"；
+      ④ `bongocat-ui::a_development_build_disables_the_startup_row_with_visible_copy`——固定中文
+        可见说明文案；
+      ⑤ `bongocat-ui::the_startup_row_stays_operable_in_every_actionable_state`——已发布构建能产生的
+        三个可操作状态都不禁用。
     - 覆盖情况（如实说明）：
-      ① **"禁用开关上悬停时 Tooltip 弹层真的出现"没有任何自动化断言。** 弹层由 gpui-kit 的 managed
-        tooltip 系统拥有：`Root::tooltip_overlay` 是 `pub(crate)`、`TooltipOverlay` 的内容字段私有，
-        且 `gpui_base::Tooltip` 只构造 `div().id(id).role(Role::Tooltip)`、不注册 test-support，
-        因此本仓库的 `TestWindowExt::find` / `debug_bounds` 都观察不到它。已核实的是触发路径可达
-        （见上"工具事实"）。实机悬停确认留给 `just dev` / `just dev-smoke`。
+      ① 当前测试覆盖 presentation 的 `disabled` 谓词和命令/无障碍语义；整行置灰沿用 gpui-kit
+        `SettingItem::disabled`，没有像素级截图断言。
       ② 未做视觉/截图确认，也未在 Windows 实机打开设置窗口；本项未改平台代码。
-      ③ 可见开关与无障碍节点在"快照未就绪、有待处理操作"时仍不一致（前者可用、后者报 disabled）：
+      ③ 可见控件与无障碍节点在"快照未就绪、有待处理操作"时仍不一致（前者可用、后者报 disabled）：
         这是改动前就有的行为，本次**刻意保留**（见实现 ②），未顺手改成一致。
-    - 未完成：实机悬停确认 Tooltip 弹层；Windows 实机。
+    - 完整性调整（2026-09-23）：去掉手写 `Switch`、`STARTUP_ITEM_SWITCH_ID`、
+      `unavailable_hint`、`switch_disabled()` 和 Tooltip，改用 `StartupItemPresentation.disabled`
+      驱动标准行级禁用；视觉方式与「鼠标悬停延迟」等禁用设置项一致。
     - 决策记录：ADR-0051（ADR-0043 头部加修订注记；Technical Design 启动项段落与 ADR 摘要同步）。
 
 97. [x] `P1-SETTINGS-ROW-DESCRIPTION-TRIM`：标题已能表达清楚的设置项不再重复写一遍描述，标题本身
@@ -5294,7 +5287,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `None`（渲染层先建 `SettingItem`，再用 `if let Some(description)` 决定是否挂 `.description`），
       其余 7 种状态（checking / unavailable / stale / requires_approval / not_found / 三种
       unsupported）继续保留描述，它们补充的是标题无法表达的加载中、需修复与不可用原因。ADR-0051
-      的「同一句话既解释该行也作为悬停提示」不变：`BuildEnvironment` 仍然 `Some(text)` 同时喂给两处。
+      的开发构建可见说明不变：`BuildEnvironment` 仍然 `Some(text)`，与整行禁用状态一起呈现。
     - 无障碍同步：本项目**开关节点的 `value` 承载的正是描述文本**，因此删除描述的行同时删掉
       `.with_value(…)`，保留描述的行不动；`startup` 节点改为仅在描述存在时
       `.with_value(description)`（`value` 为空，`toggled` 继续表达开关状态），与 commit

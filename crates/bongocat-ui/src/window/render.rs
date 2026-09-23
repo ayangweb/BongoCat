@@ -877,38 +877,25 @@ impl Render for SettingsView {
                     "settings.application.updates.title",
                 ))
                 .items({
-                    // Built by hand instead of `SettingField::switch` so the
-                    // switch can carry a tooltip: the row is the only place the
-                    // unavailable-in-this-build reason can be shown, and the
-                    // packaged switch field cannot take one (ADR-0051). The switch
-                    // position already answers its two steady states, so only the
-                    // states that still need explaining carry a row description.
+                    // The switch position already answers its two steady states,
+                    // so only the states that still need explaining carry a row
+                    // description. The whole row is disabled when the build
+                    // cannot offer login startup (ADR-0051).
                     let mut open_at_login = SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.application.open_at_login.label",
                         ),
-                        SettingField::element({
+                        SettingField::switch(move |_app| startup_item.enabled, {
                             let view = view_entity.clone();
-                            move |_: &RenderOptions, _: &mut Window, _: &mut App| {
-                                Switch::new(STARTUP_ITEM_SWITCH_ID)
-                                    .checked(startup_item.enabled)
-                                    .disabled(startup_item.switch_disabled())
-                                    .when_some(startup_item.unavailable_hint, |switch, hint| {
-                                        switch.tooltip(hint)
-                                    })
-                                    .on_change({
-                                        let view = view.clone();
-                                        move |enabled: &bool, _: &mut Window, cx: &mut App| {
-                                            view.update(cx, |view, cx| {
-                                                view.set_startup_item_enabled(*enabled, cx)
-                                            });
-                                        }
-                                    })
-                                    .into_any_element()
+                            move |enabled: bool, app: &mut App| {
+                                view.update(app, |view, cx| {
+                                    view.set_startup_item_enabled(enabled, cx)
+                                });
                             }
                         }),
-                    );
+                    )
+                    .disabled(startup_item.disabled);
                     if let Some(description) = startup_item.description {
                         open_at_login = open_at_login.description(description);
                     }
