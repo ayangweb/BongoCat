@@ -1,14 +1,15 @@
 use crate::{
     BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, MAXIMUM_CORNER_RADIUS_PERCENT,
     OverlayContextMenuRequest, OverlayError, OverlayInteractionSinks, OverlayPresentationState,
-    OverlayScreenBounds, OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds,
-    PreviewReport, ProductOverlayReport, blend_factors, corner_radius_uniform,
+    OverlayResizeOutcome, OverlayScreenBounds, OverlaySessionOptions, OverlayTickOutcome,
+    OverlayWindowBounds, PreviewReport, ProductOverlayReport, blend_factors, corner_radius_uniform,
     cover::{
         COVER_CAPTURE_FRAMES, COVER_CAPTURE_SCALE_PERCENT, COVER_CAPTURE_TIMEOUT, CapturedFrame,
     },
     default_overlay_window_dimensions,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
+    resize_drag::{ResizeBase, ResizeDrag, ResizeOutcome},
     validate_frame_smoke, validate_model_generation_advance,
 };
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
@@ -78,12 +79,13 @@ use windows::{
                 Common::{
                     DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM,
                     DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
-                    DXGI_FORMAT_R16_UINT, DXGI_FORMAT_R32G32_FLOAT, DXGI_SAMPLE_DESC,
+                    DXGI_FORMAT_R16_UINT, DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_UNKNOWN,
+                    DXGI_SAMPLE_DESC,
                 },
                 DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_PRESENT, DXGI_QUERY_VIDEO_MEMORY_INFO,
-                DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
-                DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIAdapter, IDXGIAdapter3, IDXGIDevice,
-                IDXGIFactory2, IDXGISwapChain1,
+                DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG,
+                DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIAdapter,
+                IDXGIAdapter3, IDXGIDevice, IDXGIFactory2, IDXGISwapChain1,
             },
             Gdi::{
                 EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST,
@@ -101,6 +103,7 @@ use windows::{
         },
         UI::{
             HiDpi::GetDpiForWindow,
+            Input::KeyboardAndMouse::{ReleaseCapture, SetCapture},
             WindowsAndMessaging::{
                 CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
                 GWL_EXSTYLE, GWLP_USERDATA, GetCursorPos, GetWindowLongPtrW, GetWindowRect,
@@ -108,9 +111,10 @@ use windows::{
                 PM_REMOVE, PeekMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE,
                 SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
                 SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, UnregisterClassW,
-                WM_CLOSE, WM_CONTEXTMENU, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCRBUTTONUP,
-                WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP,
-                WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
+                WM_CAPTURECHANGED, WM_CLOSE, WM_CONTEXTMENU, WM_MOUSEMOVE, WM_NCCREATE,
+                WM_NCDESTROY, WM_NCHITTEST, WM_NCMOUSEMOVE, WM_NCRBUTTONDOWN, WM_NCRBUTTONUP,
+                WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+                WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
             },
         },
     },
@@ -446,6 +450,13 @@ struct OverlayWindow {
 
 struct OverlayWindowState {
     context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+    resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    /// The logical size `100%` maps to, which is the size the window would be
+    /// created with for the current model. It is converted to the window's
+    /// physical pixels when a drag begins, so a window that moved to a display
+    /// with a different DPI still scales from the right base.
+    resize_base_logical: (f32, f32),
+    drag: Option<ResizeDrag>,
 }
 
 impl OverlayWindow {
@@ -454,10 +465,11 @@ impl OverlayWindow {
         canvas: CanvasInfo,
         bounds: Option<OverlayWindowBounds>,
         context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+        resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
     ) -> Result<Self, OverlayError> {
         // SAFETY: the class and HWND are created and subsequently used only on
         // the current UI thread. No borrowed Win32 pointers escape this owner.
-        unsafe { Self::create_inner(options, canvas, bounds, context_menu_sender) }
+        unsafe { Self::create_inner(options, canvas, bounds, context_menu_sender, resize_sender) }
             .map_err(windows_error("create Win32 overlay"))
     }
 
@@ -466,6 +478,7 @@ impl OverlayWindow {
         canvas: CanvasInfo,
         bounds: Option<OverlayWindowBounds>,
         context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+        resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
     ) -> WindowsResult<Self> {
         // A saved box that no longer touches any display is only restorable when
         // the placement constraint can pull it back onto one. With the
@@ -508,6 +521,9 @@ impl OverlayWindow {
         let initial_y = bounds.map_or(cursor.y, |value| value.y);
         let mut state = Box::new(OverlayWindowState {
             context_menu_sender,
+            resize_sender,
+            resize_base_logical: (base_width, base_height),
+            drag: None,
         });
         let hwnd = match unsafe {
             CreateWindowExW(
@@ -609,6 +625,16 @@ impl OverlayWindow {
 
     fn assert_owner_thread(&self) {
         assert_eq!(self.owner_thread, thread::current().id());
+    }
+
+    /// Whether a right-button resize drag is in progress on this window.
+    fn is_resize_dragging(&self) -> bool {
+        self.assert_owner_thread();
+        // SAFETY: userdata is either null before WM_NCCREATE or the live boxed
+        // state this window owns, and it is read on the owner thread.
+        let state =
+            unsafe { GetWindowLongPtrW(self.hwnd, GWLP_USERDATA) as *const OverlayWindowState };
+        !state.is_null() && unsafe { (*state).drag.is_some() }
     }
 
     fn bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {
@@ -714,13 +740,24 @@ impl Drop for OverlayWindow {
     }
 }
 
+/// The swap chain buffers and the views that read and write them.
+///
+/// They are grouped because `ResizeBuffers` only succeeds once every reference
+/// to the old buffers is released, so a resize has to drop all three together
+/// and rebuild them from the resized chain.
+struct RenderTargets {
+    render_target: ID3D11RenderTargetView,
+    staging_texture: ID3D11Texture2D,
+    back_buffer: ID3D11Texture2D,
+}
+
 struct Renderer {
     visual: IDCompositionVisual,
     target: IDCompositionTarget,
     composition_device: IDCompositionDevice,
-    render_target: ID3D11RenderTargetView,
-    staging_texture: ID3D11Texture2D,
-    back_buffer: ID3D11Texture2D,
+    /// `None` only while a resize is between dropping the old buffers and
+    /// rebuilding them; every other path requires them to be present.
+    targets: Option<RenderTargets>,
     swap_chain: IDXGISwapChain1,
     memory_adapter: IDXGIAdapter3,
     pipelines: Pipelines,
@@ -732,6 +769,7 @@ struct Renderer {
     width: u32,
     height: u32,
     opacity: f32,
+    corner_radius_percent: u8,
     corner_radius: [f32; 4],
     owner_thread: ThreadId,
     _not_send_or_sync: std::marker::PhantomData<Rc<()>>,
@@ -805,9 +843,11 @@ impl Renderer {
             visual,
             target,
             composition_device,
-            render_target,
-            staging_texture,
-            back_buffer,
+            targets: Some(RenderTargets {
+                render_target,
+                staging_texture,
+                back_buffer,
+            }),
             swap_chain,
             memory_adapter,
             pipelines,
@@ -819,6 +859,7 @@ impl Renderer {
             width: window.width,
             height: window.height,
             opacity: f32::from(options.opacity_percent) / 100.0,
+            corner_radius_percent: options.corner_radius_percent,
             corner_radius: corner_radius_uniform(
                 options.corner_radius_percent,
                 window.width as f32,
@@ -827,6 +868,71 @@ impl Renderer {
             owner_thread: thread::current().id(),
             _not_send_or_sync: std::marker::PhantomData,
         })
+    }
+
+    /// Match the swap chain, the render targets and the mask targets to a new
+    /// window size.
+    ///
+    /// A right-button resize drag changes the window size while the frame loop
+    /// keeps running, so the buffers are resized in place rather than rebuilt:
+    /// the D3D11 device, the pipelines, the composition graph and every model
+    /// texture stay alive, and only the size-dependent resources are replaced.
+    ///
+    /// Returns whether the size changed.
+    fn resize(&mut self, width: u32, height: u32) -> Result<bool, OverlayError> {
+        self.assert_owner_thread();
+        if (width, height) == (self.width, self.height) {
+            return Ok(false);
+        }
+        // SAFETY: the swap chain, its buffers and the device belong to this
+        // renderer and thread; the immediate context is flushed before the old
+        // buffers are released.
+        unsafe { self.resize_inner(width, height) }
+            .map_err(windows_error("resize D3D11 overlay"))?;
+        Ok(true)
+    }
+
+    unsafe fn resize_inner(&mut self, width: u32, height: u32) -> WindowsResult<()> {
+        unsafe {
+            self.context.OMSetRenderTargets(None, None);
+            self.context.PSSetShaderResources(0, Some(&[None, None]));
+            self.context.ClearState();
+            self.context.Flush();
+        }
+        // Dropping the views and the buffer handles is what makes
+        // `ResizeBuffers` legal: DXGI refuses while any reference to a back
+        // buffer is alive.
+        self.targets = None;
+        unsafe {
+            self.swap_chain.ResizeBuffers(
+                0,
+                width,
+                height,
+                DXGI_FORMAT_UNKNOWN,
+                DXGI_SWAP_CHAIN_FLAG(0),
+            )?;
+        }
+        let back_buffer: ID3D11Texture2D = unsafe { self.swap_chain.GetBuffer(0)? };
+        let render_target = unsafe {
+            create_render_target(&self.device, &back_buffer, COMPOSITION_RENDER_TARGET_FORMAT)?
+        };
+        let staging_texture = unsafe { create_staging_texture(&self.device, &back_buffer)? };
+        self.targets = Some(RenderTargets {
+            render_target,
+            staging_texture,
+            back_buffer,
+        });
+        for mesh in &mut self.model.meshes {
+            if mesh.mask_target.is_some() {
+                mesh.mask_target =
+                    Some(unsafe { create_mask_target(&self.device, width, height)? });
+            }
+        }
+        self.width = width;
+        self.height = height;
+        self.corner_radius =
+            corner_radius_uniform(self.corner_radius_percent, width as f32, height as f32);
+        Ok(())
     }
 
     fn sync_frame(&mut self, frame: &RenderFrame) -> Result<bool, OverlayError> {
@@ -979,13 +1085,17 @@ impl Renderer {
                 };
             }
         }
+        let targets = self
+            .targets
+            .as_ref()
+            .ok_or_else(|| invariant_error("renderer targets are unavailable"))?;
         unsafe {
             self.context.OMSetRenderTargets(
-                Some(&[Some(self.render_target.clone())]),
+                Some(&[Some(targets.render_target.clone())]),
                 None::<&ID3D11DepthStencilView>,
             );
             self.context
-                .ClearRenderTargetView(&self.render_target, &[0.0; 4]);
+                .ClearRenderTargetView(&targets.render_target, &[0.0; 4]);
             self.context
                 .PSSetShader(&self.pipelines.fragment_shader, None);
         }
@@ -1119,11 +1229,11 @@ impl Renderer {
         if verify || capture {
             unsafe {
                 self.context
-                    .CopyResource(&self.staging_texture, &self.back_buffer);
+                    .CopyResource(&targets.staging_texture, &targets.back_buffer);
                 if verify {
                     verify_frame_smoke(
                         &self.context,
-                        &self.staging_texture,
+                        &targets.staging_texture,
                         self.width,
                         self.height,
                     )?;
@@ -1135,7 +1245,7 @@ impl Renderer {
             let captured = unsafe {
                 read_staging_frame(
                     &self.context,
-                    &self.staging_texture,
+                    &targets.staging_texture,
                     self.width,
                     self.height,
                 )
@@ -1235,10 +1345,16 @@ impl NativeOverlay {
         options: OverlaySessionOptions,
         bounds: Option<OverlayWindowBounds>,
         context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+        resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
     ) -> Result<Self, OverlayError> {
         validate_options(options)?;
-        let window =
-            OverlayWindow::create(options, frame.snapshot.canvas, bounds, context_menu_sender)?;
+        let window = OverlayWindow::create(
+            options,
+            frame.snapshot.canvas,
+            bounds,
+            context_menu_sender,
+            resize_sender,
+        )?;
         let renderer = Renderer::create(&window, frame, options)?;
         Ok(Self {
             renderer,
@@ -1286,6 +1402,18 @@ impl NativeOverlay {
         Ok(())
     }
 
+    /// Match the swap chain and the mask targets to the window's current size.
+    ///
+    /// A right-button resize drag changes the window size directly through
+    /// `SetWindowPos`, so the renderer keeps the size it was created with until
+    /// this runs.
+    ///
+    /// Returns whether the size changed.
+    fn sync_window_size(&mut self) -> Result<bool, OverlayError> {
+        let bounds = self.window.bounds()?;
+        self.renderer.resize(bounds.width, bounds.height)
+    }
+
     fn draw(&mut self, verify: bool) -> Result<(), OverlayError> {
         self.renderer.draw(verify)?;
         self.presentation.record_presented_frame();
@@ -1321,6 +1449,7 @@ pub(super) struct ProductOverlaySession {
     last_frame: RenderFrame,
     retry_backoff: FrameRetryBackoff,
     context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+    resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
     hover: PointerHoverHide,
     placement: OverlayPlacementConstraint,
     /// Monotonic base for every time-based rule in this session. The hover fade
@@ -1352,6 +1481,7 @@ impl ProductOverlaySession {
     ) -> Result<Self, OverlayError> {
         let OverlayInteractionSinks {
             context_menu_sender,
+            resize_sender,
         } = interaction_sinks;
         validate_options(options)?;
         let initial_frame = render_consumer
@@ -1366,6 +1496,7 @@ impl ProductOverlaySession {
             options,
             options.window_bounds,
             context_menu_sender.clone(),
+            resize_sender.clone(),
         ) {
             Ok(overlay) => overlay,
             Err(error) => {
@@ -1414,6 +1545,7 @@ impl ProductOverlaySession {
             last_frame: initial_frame,
             retry_backoff: FrameRetryBackoff::default(),
             context_menu_sender,
+            resize_sender,
             hover: PointerHoverHide::default(),
             placement: OverlayPlacementConstraint::default(),
             session_started: Instant::now(),
@@ -1452,7 +1584,9 @@ impl ProductOverlaySession {
         if next_options != self.options {
             if self.options.requires_window_recreation(next_options) {
                 let bounds = self.overlay.window.bounds()?;
-                let bounds = if next_options.scale_percent != self.options.scale_percent {
+                let bounds = if next_options.scale_percent != self.options.scale_percent
+                    && !self.bounds_match_scale(bounds, next_options.scale_percent)
+                {
                     bounds.rescale(self.options.scale_percent, next_options.scale_percent)
                 } else {
                     bounds
@@ -1462,6 +1596,7 @@ impl ProductOverlaySession {
                     next_options,
                     Some(bounds),
                     self.context_menu_sender.clone(),
+                    self.resize_sender.clone(),
                 )?;
                 if runtime_snapshot.overlay_visible {
                     replacement.draw(self.frames_presented == 0)?;
@@ -1476,6 +1611,10 @@ impl ProductOverlaySession {
             }
             self.options = next_options;
         }
+        // A right-button resize drag changes the window size directly, so the
+        // swap chain and the mask targets follow here, before anything draws
+        // against them.
+        self.overlay.sync_window_size()?;
         if self.options.keep_inside_screen {
             let bounds = self.overlay.window.bounds()?;
             // A box that is still outside the displays is only corrected once it
@@ -1515,6 +1654,7 @@ impl ProductOverlaySession {
                     self.options,
                     Some(bounds),
                     self.context_menu_sender.clone(),
+                    self.resize_sender.clone(),
                 ) {
                     Ok(replacement) => replacement,
                     Err(error) if frame.model_commit.is_some() => {
@@ -1646,9 +1786,13 @@ impl ProductOverlaySession {
         input_running: bool,
     ) -> Result<(), OverlayError> {
         let bounds = self.overlay.window.bounds()?;
-        let pointer_inside = cursor.is_some_and(|sample| {
-            pointer_inside_window(bounds, sample.position.x, sample.position.y)
-        });
+        // A right-button resize drag keeps the overlay visible: the hover hide
+        // fades the window out and starts passing pointer events through, which
+        // would end the drag the window itself is running.
+        let pointer_inside = !self.overlay.window.is_resize_dragging()
+            && cursor.is_some_and(|sample| {
+                pointer_inside_window(bounds, sample.position.x, sample.position.y)
+            });
         let fade = self.hover.observe(PointerHoverObservation {
             enabled: options.hide_on_pointer_hover && input_running,
             delay: Duration::from_millis(u64::from(options.hide_on_pointer_hover_delay_ms)),
@@ -1673,11 +1817,28 @@ impl ProductOverlaySession {
         options: OverlaySessionOptions,
         bounds: Option<OverlayWindowBounds>,
         context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+        resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
     ) -> Result<NativeOverlay, OverlayError> {
-        let mut overlay = NativeOverlay::create(frame, options, bounds, context_menu_sender)?;
+        let mut overlay =
+            NativeOverlay::create(frame, options, bounds, context_menu_sender, resize_sender)?;
         let alpha = f32::from(options.opacity_percent) / 100.0 * self.hover.visible() as f32;
         overlay.apply_presentation(alpha, options.click_through || self.hover.hidden())?;
         Ok(overlay)
+    }
+
+    /// Whether the live window box already matches a scale.
+    ///
+    /// A resize drag resizes the window before the scale reaches the
+    /// configuration, so the rebuild that follows the write-back must not scale
+    /// the box a second time. The base is derived in physical pixels, which is
+    /// the unit the box itself is in. See [`crate::bounds_match_scale`].
+    fn bounds_match_scale(&self, bounds: OverlayWindowBounds, scale_percent: u16) -> bool {
+        let (base_width, base_height) =
+            default_overlay_window_dimensions(self.last_frame.snapshot.canvas);
+        // SAFETY: the HWND is live and read on its owner thread.
+        let dpi = unsafe { GetDpiForWindow(self.overlay.window.hwnd) };
+        resize_base_for_dpi(base_width, base_height, dpi)
+            .is_some_and(|base| crate::bounds_match_scale(bounds, base, scale_percent))
     }
 
     pub(super) fn is_visible(&self) -> bool {
@@ -3128,10 +3289,69 @@ fn windows_error(context: &'static str) -> impl FnOnce(Error) -> OverlayError {
     move |error| OverlayError::new(format!("{context}: {error}"))
 }
 
+/// The physical window size that `100%` maps to for one model canvas.
+///
+/// The drag state machine works in physical pixels because that is the unit
+/// `SetWindowPos` takes, while the `100%` size is defined in logical pixels by
+/// the DPI-independent overlay contract.
+fn resize_base_for_dpi(base_width: f32, base_height: f32, dpi: u32) -> Option<ResizeBase> {
+    let width = logical_to_physical(base_width.round() as u32, dpi).ok()?;
+    let height = logical_to_physical(base_height.round() as u32, dpi).ok()?;
+    ResizeBase::new(f64::from(width), f64::from(height))
+}
+
+/// The pointer position the resize math measures against, in screen pixels.
+///
+/// The screen origin is the top-left of the virtual desktop, which is the same
+/// downwards-positive axis the drag math assumes.
+fn resize_pointer() -> (f64, f64) {
+    let point = current_cursor_position();
+    (f64::from(point.x), f64::from(point.y))
+}
+
+/// Whether the message starts a right-button resize drag.
+fn begins_resize_drag(message: u32) -> bool {
+    // The overlay answers `HTCAPTION` from `WM_NCHITTEST`, so a right click
+    // arrives as a non-client message; the client form is kept for the paths
+    // that hit-test differently.
+    matches!(message, WM_NCRBUTTONDOWN | WM_RBUTTONDOWN)
+}
+
+/// Whether the message reports the pointer moving while a drag is active.
+fn moves_resize_drag(message: u32) -> bool {
+    matches!(message, WM_NCMOUSEMOVE | WM_MOUSEMOVE)
+}
+
+/// Whether the message ends a right-button resize drag.
+fn ends_resize_drag(message: u32) -> bool {
+    matches!(message, WM_NCRBUTTONUP | WM_RBUTTONUP)
+}
+
+/// Apply one drag step to the window, keeping its top-left corner where it is.
+///
+/// The origin is what the user grabbed, and the legacy implementation resized
+/// from a fixed top-left corner, so the drag grows down and to the right.
+unsafe fn apply_resize(hwnd: HWND, outcome: ResizeOutcome) {
+    // SAFETY: the HWND is live on its owner thread and the size is bounded by
+    // the resize state machine.
+    let _ = unsafe {
+        SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            outcome.width as i32,
+            outcome.height as i32,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+        )
+    };
+}
+
 fn requests_context_menu(message: u32) -> bool {
-    // Returning HTCAPTION for the draggable overlay makes Windows report a
-    // right-click as a non-client message instead of WM_CONTEXTMENU.
-    matches!(message, WM_CONTEXTMENU | WM_NCRBUTTONUP)
+    // The non-client form is what the overlay's `HTCAPTION` hit test produces,
+    // but that message is consumed by the resize drag first; what is left here
+    // is the client form and the non-client path that never saw a press.
+    matches!(message, WM_CONTEXTMENU)
 }
 
 unsafe extern "system" fn window_proc(
@@ -3170,15 +3390,88 @@ unsafe extern "system" fn window_proc(
             let _ = unsafe { DestroyWindow(hwnd) };
             return LRESULT(0);
         }
-        message if requests_context_menu(message) && !state.is_null() => {
-            // SAFETY: the state belongs to this HWND and remains live while it is dispatched.
-            let state = unsafe { &*state };
+        _ => {}
+    }
+    if !state.is_null() {
+        // SAFETY: the state belongs to this HWND and remains live while it is dispatched.
+        let state = unsafe { &mut *state };
+        if begins_resize_drag(message) {
+            // The base is converted with the window's current DPI rather than
+            // the one it was created with, because a window that has moved to
+            // another display has to scale from that display's pixels.
+            // SAFETY: the HWND is live and read on its owner thread.
+            let base = resize_base_for_dpi(
+                state.resize_base_logical.0,
+                state.resize_base_logical.1,
+                unsafe { GetDpiForWindow(hwnd) },
+            );
+            let mut rect = RECT::default();
+            // SAFETY: the HWND is live and read on its owner thread.
+            let measured = unsafe { GetWindowRect(hwnd, &mut rect) }.is_ok();
+            if let Some(base) = base
+                && measured
+            {
+                // The drag starts from the size the window actually has, so a
+                // box that drifted from the stored scale does not jump on the
+                // first pointer move.
+                let width = (rect.right - rect.left).max(0) as u32;
+                state.drag = Some(ResizeDrag::begin(
+                    resize_pointer(),
+                    base,
+                    base.scale_percent_for_width(width),
+                ));
+                // SAFETY: the HWND is live on its owner thread. Capture is what
+                // keeps pointer messages arriving once the drag leaves the box.
+                let _ = unsafe { SetCapture(hwnd) };
+            }
+            return LRESULT(0);
+        }
+        if state.drag.is_some() && moves_resize_drag(message) {
+            let mut drag = state.drag.take().expect("checked resize drag state");
+            let outcome = drag.observe(resize_pointer());
+            state.drag = Some(drag);
+            if let Some(outcome) = outcome {
+                // SAFETY: the HWND is live and belongs to this thread.
+                unsafe { apply_resize(hwnd, outcome) };
+            }
+            return LRESULT(0);
+        }
+        if ends_resize_drag(message) {
+            // The drag is taken before the capture is released: releasing it
+            // delivers `WM_CAPTURECHANGED` synchronously, which clears the drag
+            // state, and the release must not turn the drag into a menu click.
+            let drag = state.drag.take();
+            // SAFETY: the capture was taken by this window when the drag began.
+            let _ = unsafe { ReleaseCapture() };
+            match drag {
+                Some(drag) if drag.dragging() => {
+                    if let Some(scale_percent) = drag.finish()
+                        && let Some(sender) = &state.resize_sender
+                    {
+                        let _ = sender.try_send(OverlayResizeOutcome { scale_percent });
+                    }
+                }
+                _ => {
+                    if let Some(sender) = &state.context_menu_sender {
+                        let _ = sender.try_send(OverlayContextMenuRequest);
+                    }
+                }
+            }
+            return LRESULT(0);
+        }
+        if message == WM_CAPTURECHANGED {
+            // Losing the capture (another window took it, the system cancelled
+            // the mode) ends the drag rather than leaving it stuck. A release
+            // that still arrives afterwards is then treated as a plain right
+            // click, which is the same outcome as a click without movement.
+            state.drag = None;
+        }
+        if requests_context_menu(message) {
             if let Some(sender) = &state.context_menu_sender {
                 let _ = sender.try_send(OverlayContextMenuRequest);
             }
             return LRESULT(0);
         }
-        _ => {}
     }
     // SAFETY: unhandled messages are forwarded with the exact parameters
     // supplied by user32, as required by the window procedure contract.
@@ -3243,10 +3536,12 @@ mod tests {
             origin_y: 1024.0,
             pixels_per_unit: 1024.0,
         };
-        let first = OverlayWindow::create(OverlaySessionOptions::default(), canvas, None, None)
-            .expect("create first overlay window");
-        let second = OverlayWindow::create(OverlaySessionOptions::default(), canvas, None, None)
-            .expect("reuse class for replacement overlay window");
+        let first =
+            OverlayWindow::create(OverlaySessionOptions::default(), canvas, None, None, None)
+                .expect("create first overlay window");
+        let second =
+            OverlayWindow::create(OverlaySessionOptions::default(), canvas, None, None, None)
+                .expect("reuse class for replacement overlay window");
 
         assert_ne!(first.hwnd, second.hwnd);
         drop(first);
@@ -3268,6 +3563,7 @@ mod tests {
                 ..OverlaySessionOptions::default()
             },
             canvas,
+            None,
             None,
             None,
         )
@@ -3350,6 +3646,7 @@ mod tests {
             canvas,
             Some(candidate),
             None,
+            None,
         )
         .expect("create constrained overlay window");
         let created = window.bounds().expect("constrained bounds");
@@ -3412,7 +3709,49 @@ mod tests {
     #[test]
     fn context_menu_messages_cover_client_and_nonclient_right_click() {
         assert!(requests_context_menu(WM_CONTEXTMENU));
-        assert!(requests_context_menu(WM_NCRBUTTONUP));
         assert!(!requests_context_menu(WM_CLOSE));
+        // The right-button release is the resize drag's end, not a menu click:
+        // it decides between the two from the drag state it was given.
+        assert!(!requests_context_menu(WM_NCRBUTTONUP));
+    }
+
+    #[test]
+    fn right_button_messages_split_into_begin_move_and_end() {
+        assert!(begins_resize_drag(WM_NCRBUTTONDOWN));
+        assert!(begins_resize_drag(WM_RBUTTONDOWN));
+        assert!(moves_resize_drag(WM_NCMOUSEMOVE));
+        assert!(moves_resize_drag(WM_MOUSEMOVE));
+        assert!(ends_resize_drag(WM_NCRBUTTONUP));
+        assert!(ends_resize_drag(WM_RBUTTONUP));
+
+        // A left click still drags the window through the system move loop, so
+        // the resize drag must not claim its messages.
+        assert!(!begins_resize_drag(WM_MOUSEMOVE));
+        assert!(!ends_resize_drag(WM_CONTEXTMENU));
+        assert!(!begins_resize_drag(WM_CLOSE));
+        assert!(!ends_resize_drag(WM_CAPTURECHANGED));
+    }
+
+    #[test]
+    fn the_resize_base_is_the_logical_size_scaled_by_the_window_dpi() {
+        // 100% is defined in logical pixels, while the drag works in the
+        // physical pixels `SetWindowPos` takes.
+        let base = resize_base_for_dpi(350.0, 350.0, 96).expect("96 DPI base");
+        assert_eq!(base, ResizeBase::new(350.0, 350.0).expect("square base"));
+
+        let scaled = resize_base_for_dpi(350.0, 350.0, 192).expect("192 DPI base");
+        assert_eq!(scaled, ResizeBase::new(700.0, 700.0).expect("doubled base"));
+
+        // 150% is not an exact multiple of 96, so the rounding is what the
+        // window creation path uses as well.
+        let fractional = resize_base_for_dpi(350.0, 200.0, 144).expect("144 DPI base");
+        assert_eq!(
+            fractional,
+            ResizeBase::new(
+                f64::from(logical_to_physical(350, 144).expect("scaled width")),
+                f64::from(logical_to_physical(200, 144).expect("scaled height")),
+            )
+            .expect("scaled base")
+        );
     }
 }

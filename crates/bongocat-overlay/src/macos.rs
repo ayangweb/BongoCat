@@ -1,15 +1,16 @@
 use crate::{
     BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, FrameTimingCollector,
     MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
-    OverlayInteractionSinks, OverlayPresentationState, OverlayScreenBounds, OverlaySessionOptions,
-    OverlayTickOutcome, OverlayWindowBounds, PreviewReport, ProductOverlayReport, blend_factors,
-    corner_radius_uniform,
+    OverlayInteractionSinks, OverlayPresentationState, OverlayResizeOutcome, OverlayScreenBounds,
+    OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
+    ProductOverlayReport, blend_factors, corner_radius_uniform,
     cover::{
         COVER_CAPTURE_FRAMES, COVER_CAPTURE_SCALE_PERCENT, COVER_CAPTURE_TIMEOUT, CapturedFrame,
     },
     default_overlay_window_dimensions,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
+    resize_drag::{ResizeBase, ResizeDrag, ResizeOutcome},
     validate_frame_smoke, validate_model_generation_advance,
 };
 use block2::RcBlock;
@@ -52,10 +53,12 @@ use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize};
 use objc2_quartz_core::CAMetalLayer as ObjcMetalLayer;
 use raw_window_handle::{AppKitWindowHandle, HandleError, HasWindowHandle, WindowHandle};
 use std::{
+    cell::Cell,
     collections::{BTreeMap, BTreeSet},
     mem::{self, ManuallyDrop},
     path::Path,
     ptr::NonNull,
+    rc::Rc,
     sync::{Arc, mpsc::SyncSender},
     thread,
     time::{Duration, Instant},
@@ -272,7 +275,8 @@ pub(super) struct ProductOverlaySession {
     pending_model_frame: Option<RenderFrame>,
     retry_backoff: FrameRetryBackoff,
     context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
-    context_menu_monitor: Option<Retained<AnyObject>>,
+    resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    right_button_monitor: Option<RightButtonMonitor>,
     hover: PointerHoverHide,
     placement: OverlayPlacementConstraint,
     /// Monotonic base for every time-based rule in this session. The hover fade
@@ -293,6 +297,7 @@ impl ProductOverlaySession {
     ) -> Result<Self, OverlayError> {
         let OverlayInteractionSinks {
             context_menu_sender,
+            resize_sender,
         } = interaction_sinks;
         validate_product_options(options)?;
         let initial_frame = render_consumer
@@ -359,10 +364,14 @@ impl ProductOverlaySession {
                     diagnostics_producer.clone(),
                 )
             });
+        let (base_width, base_height) =
+            default_overlay_window_dimensions(initial_frame.snapshot.canvas);
         let context_menu_monitor = install_context_menu_monitor(
             mtm,
-            overlay.panel.windowNumber(),
+            Retained::clone(&overlay.panel),
+            ResizeBase::new(f64::from(base_width), f64::from(base_height)),
             context_menu_sender.clone(),
+            resize_sender.clone(),
         );
         Ok(Self {
             application,
@@ -383,7 +392,8 @@ impl ProductOverlaySession {
             pending_model_frame: None,
             retry_backoff,
             context_menu_sender,
-            context_menu_monitor,
+            resize_sender,
+            right_button_monitor: context_menu_monitor,
             hover: PointerHoverHide::default(),
             placement: OverlayPlacementConstraint::default(),
             session_started: Instant::now(),
@@ -429,7 +439,9 @@ impl ProductOverlaySession {
         if next_options != self.options {
             if self.options.requires_window_recreation(next_options) {
                 let bounds = self.window_bounds()?;
-                let bounds = if next_options.scale_percent != self.options.scale_percent {
+                let bounds = if next_options.scale_percent != self.options.scale_percent
+                    && !self.bounds_match_scale(bounds, next_options.scale_percent)
+                {
                     bounds.rescale(self.options.scale_percent, next_options.scale_percent)
                 } else {
                     bounds
@@ -457,7 +469,7 @@ impl ProductOverlaySession {
                 let mtm = MainThreadMarker::new().ok_or_else(|| {
                     OverlayError::new("macOS overlay settings update lost the main thread")
                 })?;
-                self.refresh_context_menu_monitor(mtm);
+                self.refresh_right_button_monitor(mtm);
             } else {
                 if next_options.always_on_top != self.options.always_on_top {
                     self.overlay.set_always_on_top(next_options.always_on_top);
@@ -465,6 +477,10 @@ impl ProductOverlaySession {
             }
             self.options = next_options;
         }
+        // A right-button resize drag changes the panel frame directly, so the
+        // drawable and the mask targets follow here, before anything draws
+        // against them.
+        self.overlay.sync_window_size()?;
         if self.options.keep_inside_screen {
             let mtm = MainThreadMarker::new().ok_or_else(|| {
                 OverlayError::new("macOS overlay placement check lost the main thread")
@@ -627,7 +643,7 @@ impl ProductOverlaySession {
                 let mtm = MainThreadMarker::new().ok_or_else(|| {
                     OverlayError::new("macOS overlay model update lost the main thread")
                 })?;
-                self.refresh_context_menu_monitor(mtm);
+                self.refresh_right_button_monitor(mtm);
                 self.frames_presented = self.frames_presented.saturating_add(1);
                 return Ok(if overlay_visible {
                     OverlayTickOutcome::Presented
@@ -698,9 +714,17 @@ impl ProductOverlaySession {
         let mtm = MainThreadMarker::new()
             .ok_or_else(|| OverlayError::new("macOS overlay hover update lost the main thread"))?;
         let bounds = self.window_bounds()?;
-        let pointer_inside = cursor
-            .and_then(|sample| appkit_cursor_position(sample, mtm))
-            .is_some_and(|position| pointer_inside_window(bounds, position.x, position.y));
+        // A right-button resize drag keeps the overlay visible: the hover hide
+        // fades the window out and starts passing pointer events through, which
+        // would end the drag.
+        let resizing = self
+            .right_button_monitor
+            .as_ref()
+            .is_some_and(RightButtonMonitor::is_resize_dragging);
+        let pointer_inside = !resizing
+            && cursor
+                .and_then(|sample| appkit_cursor_position(sample, mtm))
+                .is_some_and(|position| pointer_inside_window(bounds, position.x, position.y));
         let fade = self.hover.observe(PointerHoverObservation {
             enabled: options.hide_on_pointer_hover && input_running,
             delay: Duration::from_millis(u64::from(options.hide_on_pointer_hover_delay_ms)),
@@ -769,7 +793,7 @@ impl ProductOverlaySession {
     pub(super) fn finish_after_runtime_shutdown(
         mut self,
     ) -> Result<ProductOverlayReport, OverlayError> {
-        self.remove_context_menu_monitor();
+        self.remove_right_button_monitor();
         if !self.input_stopped {
             return Err(OverlayError::new(
                 "platform input must stop before the runtime",
@@ -817,27 +841,54 @@ impl HasWindowHandle for ProductOverlaySession {
 }
 
 impl ProductOverlaySession {
-    fn refresh_context_menu_monitor(&mut self, mtm: MainThreadMarker) {
-        self.remove_context_menu_monitor();
-        self.context_menu_monitor = install_context_menu_monitor(
+    /// The window size a resize drag treats as `100%`.
+    ///
+    /// It is the same size the window would be created with for the current
+    /// model, so a drag maps onto the scale the settings page shows, and a
+    /// model switch with a different canvas aspect ratio keeps the mapping
+    /// correct because the base is recomputed from the current frame.
+    fn resize_base(&self) -> Option<ResizeBase> {
+        let (width, height) = default_overlay_window_dimensions(self.last_frame.snapshot.canvas);
+        ResizeBase::new(f64::from(width), f64::from(height))
+    }
+
+    /// Whether the live window box already matches a scale.
+    ///
+    /// A resize drag resizes the window before the scale reaches the
+    /// configuration, so the rebuild that follows the write-back must not scale
+    /// the box a second time. See [`crate::bounds_match_scale`].
+    fn bounds_match_scale(&self, bounds: OverlayWindowBounds, scale_percent: u16) -> bool {
+        self.resize_base()
+            .is_some_and(|base| crate::bounds_match_scale(bounds, base, scale_percent))
+    }
+
+    /// Re-install the right-button monitor for the current panel.
+    ///
+    /// A replacement window is a different panel with a different window
+    /// number, so the monitor that belonged to the old one is dropped first.
+    fn refresh_right_button_monitor(&mut self, mtm: MainThreadMarker) {
+        self.remove_right_button_monitor();
+        self.right_button_monitor = install_context_menu_monitor(
             mtm,
-            self.overlay.panel.windowNumber(),
+            Retained::clone(&self.overlay.panel),
+            self.resize_base(),
             self.context_menu_sender.clone(),
+            self.resize_sender.clone(),
         );
     }
 
-    fn remove_context_menu_monitor(&mut self) {
-        if let Some(monitor) = self.context_menu_monitor.take() {
+    fn remove_right_button_monitor(&mut self) {
+        if let Some(monitor) = self.right_button_monitor.take() {
             // SAFETY: this monitor was created by NSEvent for this session and is
             // removed on the AppKit main thread before its callback state drops.
-            unsafe { NSEvent::removeMonitor(&monitor) };
+            unsafe { NSEvent::removeMonitor(&monitor.token) };
         }
     }
 }
 
 impl Drop for ProductOverlaySession {
     fn drop(&mut self) {
-        self.remove_context_menu_monitor();
+        self.remove_right_button_monitor();
     }
 }
 
@@ -1025,29 +1076,175 @@ mod product_options_tests {
     }
 }
 
+/// State shared by the right-button event monitor.
+///
+/// The monitor sees every right-button event in the process, so it holds the
+/// panel it belongs to, the base size a drag scales from, and the sinks that
+/// carry the resulting request back to the application. `Cell` is what lets a
+/// plain `Fn` callback own the drag: AppKit's local monitor API takes no
+/// mutable context, and every callback runs on the same main thread.
+struct ResizeMonitorState {
+    panel: Retained<NSPanel>,
+    /// `None` when the panel's base size could not be derived, which leaves the
+    /// right button a plain context-menu click.
+    base: Option<ResizeBase>,
+    drag: Cell<Option<ResizeDrag>>,
+    context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+    resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+}
+
+/// The right-button event monitor for one panel, together with the state its
+/// callbacks read.
+struct RightButtonMonitor {
+    /// The token `NSEvent::removeMonitor` needs at shutdown.
+    token: Retained<AnyObject>,
+    /// Shared with the monitor callbacks, which run on the same main thread.
+    state: Rc<ResizeMonitorState>,
+}
+
+impl RightButtonMonitor {
+    /// Whether a right-button resize drag is in progress.
+    ///
+    /// The hover hide has to stand down while it is: the overlay fades out and
+    /// starts passing pointer events through, which would end the drag.
+    fn is_resize_dragging(&self) -> bool {
+        self.state.drag.get().is_some()
+    }
+}
+
+/// Install the right-button monitor for one panel.
+///
+/// A right button that moves past the drag threshold resizes the window; one
+/// that does not is still the context-menu request it always was. The monitor
+/// is installed whenever either handoff exists, because the two share the same
+/// button and the same event.
 fn install_context_menu_monitor(
     _: MainThreadMarker,
-    panel_window_number: isize,
-    sender: Option<SyncSender<OverlayContextMenuRequest>>,
-) -> Option<Retained<AnyObject>> {
-    let sender = sender?;
+    panel: Retained<NSPanel>,
+    base: Option<ResizeBase>,
+    context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+    resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+) -> Option<RightButtonMonitor> {
+    if context_menu_sender.is_none() && resize_sender.is_none() {
+        return None;
+    }
+    let window_number = panel.windowNumber();
+    let state = Rc::new(ResizeMonitorState {
+        panel,
+        base,
+        drag: Cell::new(None),
+        context_menu_sender,
+        resize_sender,
+    });
+    let shared = Rc::clone(&state);
     let handler: RcBlock<dyn Fn(NonNull<NSEvent>) -> *mut NSEvent> =
         RcBlock::new(move |event: NonNull<NSEvent>| {
             // SAFETY: AppKit supplies a valid NSEvent pointer for the duration of
             // this local event-monitor callback, and returns it to continue normal dispatch.
             let event_ref = unsafe { event.as_ref() };
-            if event_ref.r#type() == objc2_app_kit::NSEventType::RightMouseUp
-                && event_ref.windowNumber() == panel_window_number
-            {
-                let _ = sender.try_send(OverlayContextMenuRequest);
+            if event_ref.windowNumber() == window_number {
+                match event_ref.r#type() {
+                    objc2_app_kit::NSEventType::RightMouseDown => begin_resize(&state),
+                    objc2_app_kit::NSEventType::RightMouseDragged => drag_resize(&state),
+                    objc2_app_kit::NSEventType::RightMouseUp => finish_resize(&state),
+                    _ => {}
+                }
             }
             event.as_ptr()
         });
     // SAFETY: the handler returns AppKit's original valid event pointer and is
     // retained by the returned monitor token until session shutdown.
-    unsafe {
-        NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::RightMouseUp, &handler)
+    let token = unsafe {
+        NSEvent::addLocalMonitorForEventsMatchingMask_handler(
+            NSEventMask::RightMouseDown
+                | NSEventMask::RightMouseDragged
+                | NSEventMask::RightMouseUp,
+            &handler,
+        )
+    }?;
+    Some(RightButtonMonitor {
+        token,
+        state: shared,
+    })
+}
+
+/// The pointer position the resize math measures against.
+///
+/// AppKit's screen coordinates grow upwards while the drag math assumes a
+/// downwards-positive axis (the legacy webview and the Windows adapter both use
+/// one), so the vertical component is negated once, here. The window's own
+/// coordinate space is deliberately not used: the drag changes the frame while
+/// it runs, which would make the same screen position read differently from one
+/// event to the next.
+fn resize_pointer() -> (f64, f64) {
+    let location = NSEvent::mouseLocation();
+    (location.x, -location.y)
+}
+
+fn begin_resize(state: &ResizeMonitorState) {
+    let Some(base) = state.base else {
+        return;
+    };
+    // The drag starts from the width the panel actually has, so a box that
+    // drifted from the stored scale does not jump on the first pointer move.
+    let width = state.panel.frame().size.width.max(0.0).round() as u32;
+    state.drag.set(Some(ResizeDrag::begin(
+        resize_pointer(),
+        base,
+        base.scale_percent_for_width(width),
+    )));
+}
+
+fn drag_resize(state: &ResizeMonitorState) {
+    let Some(mut drag) = state.drag.take() else {
+        return;
+    };
+    let outcome = drag.observe(resize_pointer());
+    state.drag.set(Some(drag));
+    if let Some(outcome) = outcome {
+        apply_resize(state, outcome);
     }
+}
+
+fn finish_resize(state: &ResizeMonitorState) {
+    let Some(drag) = state.drag.take() else {
+        // A right button that was never observed going down is still a click:
+        // the monitor can miss the press when the panel was replaced mid-click.
+        request_context_menu(state);
+        return;
+    };
+    if !drag.dragging() {
+        request_context_menu(state);
+        return;
+    }
+    let Some(scale_percent) = drag.finish() else {
+        return;
+    };
+    if let Some(sender) = &state.resize_sender {
+        let _ = sender.try_send(OverlayResizeOutcome { scale_percent });
+    }
+}
+
+fn request_context_menu(state: &ResizeMonitorState) {
+    if let Some(sender) = &state.context_menu_sender {
+        let _ = sender.try_send(OverlayContextMenuRequest);
+    }
+}
+
+/// Apply one drag step to the panel, keeping the window's top edge where it is.
+///
+/// AppKit window frames are anchored at their bottom-left corner, so growing a
+/// window from a fixed origin would move its top edge up the screen. The origin
+/// is corrected instead, which is what makes a right-button drag feel like the
+/// legacy `setSize` call: the top-left corner the user grabbed stays put.
+fn apply_resize(state: &ResizeMonitorState, outcome: ResizeOutcome) {
+    let frame = state.panel.frame();
+    let top = frame.origin.y + frame.size.height;
+    let size = NSSize::new(f64::from(outcome.width), f64::from(outcome.height));
+    state.panel.setFrame_display(
+        NSRect::new(NSPoint::new(frame.origin.x, top - size.height), size),
+        true,
+    );
 }
 
 fn pump_application_events(application: &NSApplication) {
@@ -1753,6 +1950,35 @@ impl NativeOverlay {
         self.panel.setIgnoresMouseEvents(click_through);
     }
 
+    /// Align the Metal drawable and the mask targets with the panel's frame.
+    ///
+    /// A right-button resize drag changes the panel frame directly, so the
+    /// layer and the mask textures keep the size they were created with until
+    /// this runs. Everything else in the renderer reads the drawable size per
+    /// frame — the model transform, the corner radius, the mask uniforms — so
+    /// re-sizing the drawable is what makes the next frame match the window.
+    ///
+    /// Returns whether the size changed.
+    fn sync_window_size(&mut self) -> Result<bool, OverlayError> {
+        let frame = self.panel.frame();
+        let backing = self.panel.backingScaleFactor();
+        let width = (frame.size.width * backing).round().max(1.0) as u64;
+        let height = (frame.size.height * backing).round().max(1.0) as u64;
+        let current = self.layer.drawable_size();
+        if current.width.round().max(1.0) as u64 == width
+            && current.height.round().max(1.0) as u64 == height
+        {
+            return Ok(false);
+        }
+        self.layer
+            .set_drawable_size(core_graphics_types::geometry::CGSize::new(
+                width as f64,
+                height as f64,
+            ));
+        self.model.resize_masks(&self.device, width, height);
+        Ok(true)
+    }
+
     fn draw_in_autorelease_pool(
         &self,
         verify_frame: bool,
@@ -2267,6 +2493,21 @@ impl GpuModel {
         self.model_opacity = snapshot.model_opacity;
         self.mirror_horizontal = snapshot.mirror_horizontal;
         Ok(())
+    }
+
+    /// Re-create every mask target at a new drawable size.
+    ///
+    /// A mask pass renders at the drawable size, so a window resize invalidates
+    /// those textures even though the meshes they clip do not change. Textures,
+    /// vertex and index buffers, bounds and the solid mask are all
+    /// size-independent and stay as they are, which is what keeps a resize from
+    /// reloading every model asset.
+    fn resize_masks(&mut self, device: &Device, width: u64, height: u64) {
+        for mesh in &mut self.meshes {
+            if mesh.mask_texture.is_some() {
+                mesh.mask_texture = Some(create_mask_texture(device, width, height));
+            }
+        }
     }
 }
 

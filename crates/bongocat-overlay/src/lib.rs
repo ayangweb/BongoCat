@@ -12,6 +12,11 @@ mod hover;
 /// sessions for the same reason as [`hover`].
 mod placement;
 
+/// Right-button drag resizing of the model window. Gated with the native
+/// sessions for the same reason as [`hover`]: only they receive the pointer
+/// messages the state machine consumes.
+mod resize_drag;
+
 /// The backend-independent half of the model cover capture. Gated with the native
 /// sessions: only they can produce the pixels, and only they carry the image
 /// dependency the PNG encoding needs.
@@ -221,6 +226,22 @@ impl OverlayWindowBounds {
             ..self
         }
     }
+}
+
+/// Whether a window box is already the size one scale maps to.
+///
+/// A right-button resize drag resizes the native window before the scale it
+/// settled on is written back to configuration, so the tick that observes the
+/// new scale must not apply the ratio a second time. The one-pixel tolerance
+/// absorbs the rounding the physical-to-logical conversion introduces on the
+/// way back from the window system.
+pub(crate) fn bounds_match_scale(
+    bounds: OverlayWindowBounds,
+    base: resize_drag::ResizeBase,
+    scale_percent: u16,
+) -> bool {
+    let (width, height) = base.dimensions(scale_percent);
+    bounds.width.abs_diff(width) <= 1 && bounds.height.abs_diff(height) <= 1
 }
 
 /// One display's full frame in the shared virtual-desktop coordinate space.
@@ -459,10 +480,24 @@ pub struct ProductOverlaySession {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlayContextMenuRequest;
 
+/// The end of a right-button drag that resized the model window.
+///
+/// The overlay reports only the scale the drag settled on. Window geometry is
+/// already published through the placement path the frame loop owns, and the
+/// application is the only owner of configuration, so the scale is a request
+/// rather than a write.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OverlayResizeOutcome {
+    /// The scale the drag ended on, clamped to the `25–400` configuration
+    /// contract by the state machine.
+    pub scale_percent: u16,
+}
+
 /// Optional application-owned event handoffs consumed by the native overlay.
 /// They carry no overlay state and are never used to render or mutate config.
 pub struct OverlayInteractionSinks {
     pub context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
+    pub resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
 }
 
 impl ProductOverlaySession {
@@ -483,6 +518,7 @@ impl ProductOverlaySession {
             options,
             OverlayInteractionSinks {
                 context_menu_sender: None,
+                resize_sender: None,
             },
         )
     }

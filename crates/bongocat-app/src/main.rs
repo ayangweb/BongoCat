@@ -9,8 +9,8 @@
 use async_io::Timer;
 use bongocat_live2d::CoreLogHandle;
 use bongocat_overlay::{
-    OverlayContextMenuRequest, OverlayInteractionSinks, OverlaySessionOptions, OverlayWindowBounds,
-    ProductOverlaySession,
+    OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome,
+    OverlaySessionOptions, OverlayWindowBounds, ProductOverlaySession,
 };
 use bongocat_platform::{GlobalShortcutService, ShortcutDispatcher};
 #[cfg(target_os = "windows")]
@@ -217,6 +217,32 @@ impl OverlayPlacementDebouncer {
         }
         pending
     }
+}
+
+/// Bring the stored overlay scale to the one a right-button resize drag settled
+/// on.
+///
+/// The drag already resized the native window, so this only aligns the
+/// configuration — and with it the settings page — with what the user sees. A
+/// failed snapshot read, a configuration that already matches, and a missing
+/// config revision are all non-errors: the window keeps working either way, and
+/// the placement write the frame loop already performs is what makes the new
+/// size survive a restart.
+async fn publish_overlay_scale(client: &SettingsClient, scale_percent: u16) {
+    let Ok(snapshot) = client.read_snapshot().await else {
+        return;
+    };
+    let Some(config_revision) = snapshot.config_revision else {
+        return;
+    };
+    if snapshot.overlay.scale_percent == scale_percent {
+        return;
+    }
+    let settings = SettingsOverlay {
+        scale_percent,
+        ..snapshot.overlay
+    };
+    let _ = client.set_overlay_settings(config_revision, settings).await;
 }
 
 #[derive(Clone)]
@@ -2099,6 +2125,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (shortcut_sender, shortcut_receiver) = std::sync::mpsc::sync_channel(64);
     let (context_menu_sender, context_menu_receiver) =
         std::sync::mpsc::sync_channel::<OverlayContextMenuRequest>(1);
+    // A right-button resize drag ends by reporting the scale it settled on. The
+    // queue only has to hold the latest one: a drag is a single gesture, and a
+    // second drag cannot start before the first has been released.
+    let (resize_sender, resize_receiver) = std::sync::mpsc::sync_channel::<OverlayResizeOutcome>(1);
     let (status_icon_sender, status_icon_receiver) = std::sync::mpsc::sync_channel(4);
     let status_icon = Arc::new(ProductStatusIcon {
         sender: status_icon_sender,
@@ -2178,6 +2208,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             overlay_options,
             OverlayInteractionSinks {
                 context_menu_sender: Some(context_menu_sender),
+                resize_sender: Some(resize_sender),
             },
         ) {
             Ok(overlay) => overlay,
@@ -2747,6 +2778,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     break;
                 }
                 let context_menu_requested = context_menu_receiver.try_recv().is_ok();
+                let resize_outcome = resize_receiver.try_recv().ok();
                 #[cfg(target_os = "macos")]
                 let (keep_running, next_retry_delay) = cx.update(|cx| {
                     if !cx.has_global::<ProductCoordinator>() {
@@ -2964,6 +2996,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 {
                     retry_delay = next_retry_delay;
+                }
+                // A right-button resize drag reports the scale it settled on
+                // after it has already resized the window, so this only brings
+                // the stored configuration to the same number.
+                if let Some(outcome) = resize_outcome {
+                    publish_overlay_scale(&frame_settings_client, outcome.scale_percent).await;
                 }
                 if !keep_running {
                     break;
