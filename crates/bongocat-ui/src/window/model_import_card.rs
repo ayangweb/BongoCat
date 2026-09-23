@@ -18,20 +18,11 @@
 //! pressed it and the cancel request, and the page owns everything the import
 //! then does.
 
-use super::models::{MODEL_CARD_MIN_HEIGHT, MODEL_CARD_WIDTH};
+use super::models::MODEL_CARD_MIN_HEIGHT;
 use super::*;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::{Sizable as _, Size, button::Button, spinner::Spinner};
 use gpui_kit::{ElementId, RenderOnce};
-
-/// The width the card occupies in the model grid.
-///
-/// It is the model card's own width, taken from the grid rather than repeated —
-/// the two are cells in the same grid, so they are not allowed to disagree. Its
-/// height is not set here either: the grid stretches every cell on a row to that
-/// row's tallest one, which is a model card, and [`MODEL_CARD_MIN_HEIGHT`] is
-/// only the floor the card keeps when it is alone on its row.
-const CARD_WIDTH: Pixels = px(MODEL_CARD_WIDTH);
 
 /// The spacing between the spinner and the step line under it.
 ///
@@ -162,7 +153,7 @@ impl RenderOnce for ModelImportCard {
 
         let card = div()
             .id((id, "trigger"))
-            .w(CARD_WIDTH)
+            .w_full()
             .min_h(px(MODEL_CARD_MIN_HEIGHT))
             .flex_none()
             .flex()
@@ -274,7 +265,7 @@ fn progress_card(
     }
     div()
         .id(root_id)
-        .w(CARD_WIDTH)
+        .w_full()
         .min_h(px(MODEL_CARD_MIN_HEIGHT))
         .flex_none()
         .flex()
@@ -475,24 +466,128 @@ mod tests {
 
     impl Render for GridHarness {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-            super::models::model_grid()
-                .child(
+            super::models::model_grid(
+                3,
+                [
                     ModelImportCard::new("prompt-cell", "Import model")
-                        .hint("Click to choose a model folder"),
-                )
-                .child(
+                        .hint("Click to choose a model folder")
+                        .into_any_element(),
                     ModelImportCard::new("progress-cell", "Import model")
-                        .step(Some("Importing model…".into())),
-                )
-                .child(
+                        .step(Some("Importing model…".into()))
+                        .into_any_element(),
                     div()
                         .id("neighbour-cell")
                         .flex_none()
                         .w(px(240.0))
                         .h(tall_cell_height())
-                        .test_support(),
-                )
+                        .test_support()
+                        .into_any_element(),
+                ],
+            )
         }
+    }
+
+    /// A grid with enough plain cells to exercise every responsive column count.
+    struct ResponsiveGridHarness {
+        columns: usize,
+    }
+
+    impl Render for ResponsiveGridHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            super::models::model_grid(
+                self.columns,
+                (0usize..8)
+                    .map(|index| {
+                        div()
+                            .id(("responsive-grid-cell", index))
+                            .w_full()
+                            .h(px(120.0))
+                            .test_support()
+                            .into_any_element()
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        }
+    }
+
+    fn assert_responsive_grid(cx: &mut TestAppContext, width: Pixels, expected_columns: usize) {
+        let window = cx.open_window(size(width, px(1_000.0)), move |_, _| {
+            ResponsiveGridHarness {
+                columns: super::models::model_grid_columns(width),
+            }
+        });
+        let mut visual = VisualTestContext::from_window(*window, cx);
+        visual.update(|window, cx| window.render_frame(cx));
+
+        let cells = (0usize..8)
+            .map(|index| {
+                visual.update(|window, _| {
+                    window
+                        .find(ElementId::from(("responsive-grid-cell", index)))
+                        .bounds()
+                })
+            })
+            .collect::<Vec<_>>();
+        let row_y = cells[0].origin.y;
+        let first_row = cells
+            .iter()
+            .take_while(|cell| cell.origin.y == row_y)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            first_row.len(),
+            expected_columns,
+            "width {width:?} must select {expected_columns} columns"
+        );
+
+        let mut row_start = 0;
+        while row_start < cells.len() {
+            let row_y = cells[row_start].origin.y;
+            let row_end = cells[row_start..]
+                .iter()
+                .position(|cell| cell.origin.y != row_y)
+                .map_or(cells.len(), |offset| row_start + offset);
+            let row = &cells[row_start..row_end];
+            let row_right = row.last().expect("a row has a cell").right();
+            if row.len() == expected_columns {
+                assert!(
+                    (row_right - width).abs() <= px(1.0),
+                    "a full row must end at the container edge, got {row_right:?} for {width:?}"
+                );
+            } else {
+                assert!(
+                    row_right < width,
+                    "a short final row must leave its unused columns empty, got {row_right:?} for {width:?}"
+                );
+            }
+            if row_start > 0 {
+                assert!(
+                    (row[0].size.width - cells[0].size.width).abs() <= px(1.0),
+                    "cards on a short row must match the full-row column width"
+                );
+                assert!(
+                    (row[0].origin.x - cells[0].origin.x).abs() <= px(1.0),
+                    "cards on a short row must align with the first column"
+                );
+            }
+            for pair in row.windows(2) {
+                assert!(
+                    (pair[0].size.width - pair[1].size.width).abs() <= px(1.0),
+                    "cells on a responsive row must have equal widths, got {:?} and {:?}",
+                    pair[0].size.width,
+                    pair[1].size.width,
+                );
+            }
+            row_start = row_end;
+        }
+    }
+
+    #[gpui_kit::test]
+    fn the_catalog_grid_uses_two_to_five_equal_columns(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        assert_responsive_grid(cx, px(500.0), 2);
+        assert_responsive_grid(cx, px(750.0), 3);
+        assert_responsive_grid(cx, px(960.0), 4);
+        assert_responsive_grid(cx, px(1_250.0), 5);
     }
 
     /// A cell taller than the import card's own floor, which is what a model card

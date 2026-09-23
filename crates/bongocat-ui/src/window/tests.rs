@@ -1882,6 +1882,78 @@ impl Render for ModelsPageHarness {
     }
 }
 
+/// Reproduce the real `Settings -> SettingGroup -> SettingItem` wrapper around
+/// the model catalog. The catalog's own harness bypasses this list layout, which
+/// is where a child cannot influence a container-query element's height.
+struct WrappedModelsPageHarness {
+    view: Entity<SettingsView>,
+    snapshot: Option<SettingsSnapshot>,
+}
+
+impl Render for WrappedModelsPageHarness {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let snapshot = self.snapshot.clone();
+        let view = self.view.clone();
+        let page = SettingPage::new("Models").group(SettingGroup::new().item(SettingItem::render(
+            move |_, window, app| {
+                let tokens = Tokens::from_theme(app);
+                let snapshot = snapshot.clone();
+                view.clone().update(app, move |view, cx| {
+                    super::models::content(view, window, cx, snapshot.as_ref(), tokens)
+                        .into_any_element()
+                })
+            },
+        )));
+
+        div().size_full().child(
+            Settings::new("wrapped-models-page")
+                .sidebar_width(px(220.0))
+                .with_group_variant(GroupBoxVariant::Outline)
+                .page(page),
+        )
+    }
+}
+
+/// The actual settings list path must keep the catalog visible; a container
+/// query used directly inside a setting item collapses to zero height there.
+#[gpui_kit::test]
+fn the_model_catalog_is_visible_through_the_settings_item_wrapper(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let seeded = crate::tests::snapshot(1, false, true);
+
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::EnglishUnitedStates,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        view.update(cx, |view, _| view.snapshot = Some(seeded.clone()));
+        let page = cx.new(|_| WrappedModelsPageHarness {
+            view,
+            snapshot: Some(seeded),
+        });
+        Root::new(page, window, cx)
+    });
+
+    visual.update(|window, cx| window.render_frame(cx));
+    let import = rendered_bounds(
+        visual,
+        ElementId::from((ElementId::from("model-import-card"), "trigger")),
+    );
+
+    assert!(import.size.width > px(0.0));
+    assert!(import.size.height >= px(super::models::MODEL_CARD_MIN_HEIGHT));
+}
+
 /// The bounds an element was painted at.
 fn rendered_bounds(visual: &mut VisualTestContext, id: ElementId) -> Bounds<Pixels> {
     visual.update(|window, _| {

@@ -1,13 +1,19 @@
 use super::*;
-use gpui_kit::Rems;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::{Sizable as _, Size, StyleSized as _};
+use gpui_kit::{AnyElement, Rems};
 
-/// Model cards are a fixed width so the grid stays a grid. Covers arrive at
-/// several aspect ratios, and sizing each card around its own artwork would
-/// ragged every column. The import card is a cell in the same grid, so it takes
-/// its width from here rather than repeating the number.
-pub(super) const MODEL_CARD_WIDTH: f32 = 240.0;
+/// The narrowest column the catalog allows. The number of columns is the width
+/// divided by this floor, up to [`MODEL_GRID_MAX_COLUMNS`]; the grid then
+/// stretches every column equally, so every row ends at the container's edge.
+pub(super) const MODEL_CARD_MIN_WIDTH: f32 = 240.0;
+/// The catalog never spreads past this many columns, even on a very wide window.
+pub(super) const MODEL_GRID_MAX_COLUMNS: usize = 5;
+/// Horizontal chrome between the settings window and the model grid: the
+/// resizable sidebar and the page and group padding the grid sits inside. Column
+/// selection only needs the grid's approximate width; the final row grid still
+/// stretches exactly to the space it is given.
+const MODEL_GRID_WINDOW_CHROME: f32 = 284.0;
 /// Height of the cover area. A cover is cropped into this box rather than
 /// resized around it, so one unusual image cannot resize the whole page.
 const MODEL_CARD_COVER_HEIGHT: f32 = 140.0;
@@ -39,25 +45,66 @@ const MODEL_TITLE_LINE_HEIGHT: Rems = Rems(1.25);
 /// How far the cover picker sits from the cover's own corner.
 const MODEL_COVER_PICKER_INSET: Pixels = px(8.0);
 
-/// The grid every model cell lives in.
+/// How many columns the catalog uses at a usable width.
 ///
-/// Cells wrap, and every cell on a row is stretched to that row's tallest one, so
-/// the import card — the grid's first cell — is exactly as tall as the model
-/// cards beside it without either of them carrying the other's height.
-/// `content_start` is what keeps a row at its content height: a wrapped flex
-/// container stretches its lines to fill the scroll area by default, which would
-/// size the cells to the window instead of to the cards.
-pub(super) fn model_grid() -> Stateful<Div> {
+/// Two at the narrowest desktop window, then one more per
+/// [`MODEL_CARD_MIN_WIDTH`]
+/// of room until the cap. Keeping the count derived from the same width the
+/// column floor came from means the columns stay roughly square-necked: they do
+/// not balloon on a wide window, and they do not fall below the model card's
+/// former 240px.
+pub(super) fn model_grid_columns(width: Pixels) -> usize {
+    let fit = (f32::from(width) / MODEL_CARD_MIN_WIDTH).floor().max(2.0);
+    (fit as usize).clamp(2, MODEL_GRID_MAX_COLUMNS)
+}
+
+/// Select the column count from the settings window's available width.
+pub(super) fn model_grid_columns_for_window(width: Pixels) -> usize {
+    model_grid_columns(px((f32::from(width) - MODEL_GRID_WINDOW_CHROME).max(0.0)))
+}
+
+/// The scrolling catalog body. The window width picks a column count, then the
+/// cells are split into rows here. Every row keeps that full column template so
+/// a short final row leaves its unused columns empty instead of stretching one
+/// card across the whole width.
+pub(super) fn model_grid(
+    columns: usize,
+    children: impl IntoIterator<Item = AnyElement>,
+) -> Stateful<Div> {
+    let columns = columns.clamp(2, MODEL_GRID_MAX_COLUMNS);
+    let mut children = children.into_iter();
+    let mut rows = Vec::new();
+    loop {
+        let row = children.by_ref().take(columns).collect::<Vec<_>>();
+        if row.is_empty() {
+            break;
+        }
+        rows.push(
+            div()
+                .w_full()
+                .grid()
+                .grid_cols(u16::try_from(columns).expect("the column cap fits in u16"))
+                .gap_3()
+                .children(row)
+                .into_any_element(),
+        );
+    }
+
     div()
         .id("model-catalog")
+        .min_w_0()
         .min_h_0()
         .flex_1()
-        .flex()
-        .flex_wrap()
-        .items_stretch()
-        .content_start()
-        .gap_3()
         .overflow_y_scroll()
+        .child(
+            div()
+                .w_full()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .pb_3()
+                .children(rows),
+        )
 }
 
 pub(super) fn content(
@@ -181,8 +228,7 @@ pub(super) fn content(
             // two cells' geometry: the grid's whole job is to make them match.
             let card = div()
                 .id(("model-card", index))
-                .flex_none()
-                .w(px(MODEL_CARD_WIDTH))
+                .w_full()
                 .flex()
                 .flex_col()
                 .gap_2()
@@ -241,11 +287,15 @@ pub(super) fn content(
         .flex_col()
         .text_color(tokens.text)
         .id("models-content")
-        .child(
-            model_grid()
-                .child(model_import_card(view, cx, language))
-                .children(model_cards),
-        )
+        .child(model_grid(
+            model_grid_columns_for_window(window.viewport_size().width),
+            {
+                let mut grid_children = Vec::with_capacity(model_cards.len() + 1);
+                grid_children.push(model_import_card(view, cx, language).into_any_element());
+                grid_children.extend(model_cards.into_iter().map(IntoElement::into_any_element));
+                grid_children
+            },
+        ))
 }
 
 /// The cover area of a card: the image when the package ships one, and an
