@@ -870,6 +870,15 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::PreviewModelBehavior {
+                model,
+                behavior,
+                reply,
+            } => {
+                let result = preview_model_behavior(&application, &model, behavior)
+                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetModelTitle {
                 expected_config_revision,
                 model,
@@ -1745,6 +1754,38 @@ fn settings_model_behavior(behavior: ModelBehaviorSnapshot) -> SettingsModelBeha
     }
 }
 
+/// Play one behavior of the model the runtime is actually running.
+///
+/// The request names the model it was rendered for, because a shortcut row
+/// belongs to one model's behavior list and the page keeps rows for whichever
+/// model is live. The runtime only plays the active model's own motions and
+/// expressions, so a request whose model has since been switched away from is
+/// answered with [`SettingsErrorCode::ModelBehaviorPreviewUnavailable`] instead
+/// of being played against whatever is loaded now. Nothing is persisted, and
+/// the failure of a preview never changes the model in use.
+fn preview_model_behavior(
+    application: &Application,
+    model: &SettingsModelKey,
+    behavior: SettingsModelBehavior,
+) -> Result<(), SettingsError> {
+    let runtime = application.runtime_client().snapshot();
+    let active_matches = runtime.active_model.is_some_and(|active| {
+        active.id.as_str() == model.id
+            && application.active_model_origin() == Some(model_origin(model.origin))
+    });
+    if !active_matches {
+        return Err(SettingsError::new(
+            SettingsErrorCode::ModelBehaviorPreviewUnavailable,
+        ));
+    }
+
+    let result = match behavior {
+        SettingsModelBehavior::Motion { group, index } => application.preview_motion(group, index),
+        SettingsModelBehavior::Expression { name } => application.set_expression(name),
+    };
+    result.map(|_| ()).map_err(map_preview_error)
+}
+
 #[derive(Serialize)]
 struct DiagnosticsExportDocument {
     format_version: u32,
@@ -2163,6 +2204,25 @@ fn check_revision(application: &Application, expected: u64) -> Result<(), Settin
         Ok(())
     } else {
         Err(SettingsError::new(SettingsErrorCode::SnapshotOutdated))
+    }
+}
+
+/// The error a failed preview reports.
+///
+/// A preview is the only path that reaches the runtime's motion and expression
+/// commands with an id the page built, so the id errors are preview failures
+/// rather than the generic "the setting did not take effect": the page that
+/// sent one has to be able to say the behavior itself could not be played.
+fn map_preview_error(error: ApplicationError) -> SettingsError {
+    match error {
+        ApplicationError::MotionId(_)
+        | ApplicationError::ExpressionId(_)
+        | ApplicationError::RuntimeCommand(_)
+        | ApplicationError::RuntimeCommandFailed(_)
+        | ApplicationError::RuntimeDidNotPublish => {
+            SettingsError::new(SettingsErrorCode::ModelBehaviorPreviewFailed)
+        }
+        other => map_application_error(other),
     }
 }
 

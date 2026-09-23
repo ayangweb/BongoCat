@@ -143,12 +143,28 @@ pub(super) struct BehaviorOrdinal {
     pub(super) number: usize,
 }
 
+/// What a model behavior row's play control asks for: one behavior of the model
+/// the row belongs to.
+///
+/// The row keeps the behavior whole instead of re-parsing it out of the
+/// binding's `behavior_id`, and carries the model key the row was built from
+/// rather than looking the active model up again at click time — so the control
+/// can only ever play what the row is actually showing.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct PlayableBehavior {
+    pub(super) model: SettingsModelKey,
+    pub(super) behavior: SettingsModelBehavior,
+}
+
 pub(super) struct ShortcutRow {
     pub(super) target: ShortcutCaptureTarget,
     /// Where this row sits in the active model's behavior list, for the rows
     /// that are model behaviors. `None` on an application command, which is
     /// named by the command itself.
     pub(super) behavior: Option<BehaviorOrdinal>,
+    /// The behavior this row's binding fires, for the rows that are model
+    /// behaviors. `None` on an application command.
+    pub(super) playable: Option<PlayableBehavior>,
     pub(super) shortcut: Option<String>,
 }
 
@@ -186,6 +202,7 @@ pub(super) fn window_shortcut_rows(shortcuts: &SettingsShortcuts) -> Vec<Shortcu
         .map(|command| ShortcutRow {
             target: ShortcutCaptureTarget::Command((*command).to_owned()),
             behavior: None,
+            playable: None,
             shortcut: shortcuts
                 .commands
                 .iter()
@@ -239,6 +256,10 @@ pub(super) fn shortcut_rows(
                 behavior_id: behavior_id.clone(),
             },
             behavior: Some(BehaviorOrdinal { kind, number }),
+            playable: Some(PlayableBehavior {
+                model: model.clone(),
+                behavior: behavior.clone(),
+            }),
             shortcut: shortcuts
                 .model_behaviors
                 .iter()
@@ -293,16 +314,28 @@ fn model_behavior_id(behavior: &SettingsModelBehavior) -> String {
     .behavior_id()
 }
 
+/// The tab index of a row's capture control.
+///
+/// A row's controls are numbered as one group of three consecutive indices —
+/// capture, play, clear — in the order they read from left to right. The stride
+/// is fixed rather than derived from which controls a row actually renders, so a
+/// row that leaves the play slot empty (every application command) keeps the
+/// rows around it numbered where they were.
 pub(super) fn shortcut_capture_tab_index(index: usize) -> isize {
     100_isize.saturating_add(
         isize::try_from(index)
-            .unwrap_or(isize::MAX / 2)
-            .saturating_mul(2),
+            .unwrap_or(isize::MAX / 3)
+            .saturating_mul(3),
     )
 }
 
-pub(super) fn shortcut_clear_tab_index(index: usize) -> isize {
+/// The tab index of a row's play control, between the capture and clear ones.
+pub(super) fn shortcut_play_tab_index(index: usize) -> isize {
     shortcut_capture_tab_index(index).saturating_add(1)
+}
+
+pub(super) fn shortcut_clear_tab_index(index: usize) -> isize {
+    shortcut_capture_tab_index(index).saturating_add(2)
 }
 
 pub(super) fn replace_shortcut(

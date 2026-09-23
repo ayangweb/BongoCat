@@ -14,6 +14,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - The built-in models can now be renamed and given a different cover, exactly like the models you import — the standard, keyboard and gamepad cards show the name and picture you chose instead of the ones they shipped with. Both are kept on your side: the app's own model files are never written to, so uninstalling, reinstalling or verifying the app cannot lose or reset them, and deleting the cover file you picked brings the built-in artwork back. Deleting stays the one thing a built-in model does not offer, since it is part of the app rather than something you installed.
 
 - Importing a BongoCatMver source now lets you choose which available conversion modes to import. Exactly one applicable mode is selected by default, and only the selected modes are converted.
+- A model's shortcut rows can now play what they bind. Every motion and expression on the Shortcuts page carries a play button beside its chord, so you can see and hear what a recorded shortcut does without pressing it; each press fires that one behavior straight away and saves nothing. Playing is a preview of the model in use, so a row left over from a model that is no longer active refuses to play rather than firing a same-named behavior on whichever model is loaded now.
 
 ### 🗑️ Removals
 
@@ -36,6 +37,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - Editing a model card no longer changes its size. The name turns into the field that edits it inside the same row, the button that replaces the cover is drawn on the cover picture itself, and the action row becomes Save and Cancel where it was — so the card, and the grid row it sits in, keep their height from the moment you press Edit until you save or cancel. The replacement button now sits over a rounded translucent black cover mask, so its label stays legible when hover lightens the button, and reads "Change cover" instead of "Choose cover", including on a model that has no cover yet.
 - The model page now keeps a fixed order: the built-in standard, keyboard and gamepad models first, then the models you imported, each new import joining the end. The whole list used to be sorted by model ID, which happened to run the built-in models backwards — gamepad, keyboard, standard — and dropped a newly imported model anywhere in the middle.
 - The model page now lays cards out in two to five equal-width columns as the window changes size. Every full row fills the available width, and a final row with only a few cards keeps the same column width instead of stretching the last card across the row.
+- A shortcut row is now one control. The chord sits inside a frame with the button that clears it at the trailing edge, and on a model's rows a play button at the leading edge; the clear button used to be drawn outside the frame and only appeared once the row had a binding. It now keeps its place on every row and dims while there is nothing to clear, so the chord no longer shifts sideways as shortcuts are recorded and removed, and both buttons are reachable with the keyboard and name themselves on hover.
 
 ## 2.0.0 - 2026-09-16
 

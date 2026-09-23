@@ -32,6 +32,8 @@ impl SettingsView {
         let target_set = targets.iter().cloned().collect::<BTreeSet<_>>();
         self.shortcut_row_focus
             .retain(|target, _| target_set.contains(target));
+        self.shortcut_play_focus
+            .retain(|target, _| target_set.contains(target));
         self.shortcut_clear_focus
             .retain(|target, _| target_set.contains(target));
         // A capture started before its scope's switch turned off must not
@@ -50,6 +52,8 @@ impl SettingsView {
             self.cancel_shortcut_capture(cx);
         }
         for (index, row) in rows.into_iter().enumerate() {
+            // Read before the target is moved out of the row below.
+            let playable = row.playable.is_some();
             let target = row.target;
             let editable = self.shortcut_target_editable(&target);
             let tab_index = shortcut_capture_tab_index(index);
@@ -61,6 +65,18 @@ impl SettingsView {
                 .clone()
                 .tab_index(tab_index)
                 .tab_stop(!commands_blocked && editable);
+            // The play control exists only on a model behavior row, so only
+            // those rows put it in the tab order. Its handle is kept for every
+            // row anyway: the render path looks one up by target without
+            // re-deciding whether this row renders the control.
+            let play_focus = self
+                .shortcut_play_focus
+                .entry(target.clone())
+                .or_insert_with(|| cx.focus_handle());
+            *play_focus = play_focus
+                .clone()
+                .tab_index(shortcut_play_tab_index(index))
+                .tab_stop(!commands_blocked && editable && playable);
             let clear_focus = self
                 .shortcut_clear_focus
                 .entry(target)
@@ -264,6 +280,64 @@ impl SettingsView {
             }),
             cx,
         );
+    }
+
+    /// Play the behavior a model shortcut row binds.
+    ///
+    /// The play control is the only way to see what a recorded chord will do
+    /// before pressing it, so the request carries the model and behavior the row
+    /// is rendered from. Nothing is persisted and no revision is sent: playing a
+    /// behavior is not a configuration change, so there is nothing a stale
+    /// revision could protect, and however the preview ends the row is left
+    /// exactly as it was.
+    pub(super) fn play_shortcut_behavior(
+        &mut self,
+        target: ShortcutCaptureTarget,
+        model: SettingsModelKey,
+        behavior: SettingsModelBehavior,
+        cx: &mut Context<Self>,
+    ) {
+        // The unified gate rule's guard arm: the row is disabled while its
+        // scope's switch is off, so a request nothing displays plays nothing
+        // either. The structural blocks (no snapshot, an import running) come
+        // from the availability check below.
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot) {
+            return;
+        }
+        // A row only exists for the model the runtime is running, and the
+        // service plays a behavior of the active model only. The request carries
+        // the row's own key rather than the current snapshot's, so a row left
+        // over from a model that has since been switched away from is refused
+        // instead of playing the new model's behavior of the same name.
+        if snapshot.active_model.as_ref() != Some(&model) {
+            return;
+        }
+        if !self.shortcut_commands_available() {
+            return;
+        }
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = client.preview_model_behavior(model, behavior).await;
+            let _ = this.update(cx, |view, cx| {
+                match result {
+                    Ok(snapshot)
+                        if accepts_snapshot_revision(
+                            view.snapshot.as_ref().map(|current| current.revision),
+                            snapshot.revision,
+                        ) =>
+                    {
+                        view.snapshot = Some(snapshot);
+                    }
+                    Ok(_) => {}
+                    Err(error) => view.pending_notification = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub(super) fn clear_shortcut(&mut self, target: ShortcutCaptureTarget, cx: &mut Context<Self>) {

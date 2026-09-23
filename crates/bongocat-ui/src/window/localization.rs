@@ -80,6 +80,12 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         }
         SettingsErrorCode::ModelUnavailable => "errors.settings.model_unavailable",
         SettingsErrorCode::ModelSwitchFailed => "errors.settings.model_switch_failed",
+        SettingsErrorCode::ModelBehaviorPreviewUnavailable => {
+            "errors.settings.model_behavior_preview_unavailable"
+        }
+        SettingsErrorCode::ModelBehaviorPreviewFailed => {
+            "errors.settings.model_behavior_preview_failed"
+        }
         SettingsErrorCode::ModelTitleInvalid => "errors.settings.model_title_invalid",
         SettingsErrorCode::ModelCoverInvalid => "errors.settings.model_cover_invalid",
         SettingsErrorCode::ModelCoverUpdateFailed => "errors.settings.model_cover_update_failed",

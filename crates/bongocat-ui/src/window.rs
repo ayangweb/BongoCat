@@ -31,11 +31,11 @@ use gpui_kit::component::{
 };
 
 use gpui_kit::{
-    Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, Entity, FocusHandle, Focusable,
-    Hsla, ImageSource, KeyDownEvent, KeyUpEvent, Modifiers, ObjectFit, Pixels, Render,
-    SharedString, Stateful, TitlebarOptions, VisualContext, WeakEntity, Window, WindowAppearance,
-    WindowBounds, WindowHandle, WindowOptions, base::StyledExt, div, img, point, prelude::*, px,
-    size,
+    Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, ElementId, Entity, FocusHandle,
+    Focusable, Hsla, ImageSource, KeyDownEvent, KeyUpEvent, Modifiers, MouseButton, ObjectFit,
+    Pixels, Render, SharedString, Stateful, TitlebarOptions, VisualContext, WeakEntity, Window,
+    WindowAppearance, WindowBounds, WindowHandle, WindowOptions, base::StyledExt, div, img, point,
+    prelude::*, px, size,
 };
 use std::{
     cell::RefCell,
@@ -606,6 +606,13 @@ pub struct SettingsView {
     shortcut_capture: Option<ShortcutCapture>,
     shortcut_capture_blur_subscription: Option<gpui_kit::Subscription>,
     shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
+    /// Focus handles of the play controls, one per row.
+    ///
+    /// The map covers every row, not only the model behaviors that render a
+    /// play control, so the entry can be looked up by target without asking
+    /// whether this row has one — the same way `shortcut_clear_focus` covers
+    /// rows whose binding is empty.
+    shortcut_play_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     shortcut_clear_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     window_hidden: bool,
     applied_theme: Option<SettingsTheme>,
@@ -2038,6 +2045,22 @@ fn command_button(
         .child(Button::new(label).label(label).disabled(disabled))
 }
 
+/// Wrap one icon button in the element that owns its settings identity.
+///
+/// The wrapper carries the key context and the keyboard tab position, and the
+/// caller gives it the id it is queried by; the button inside is what the
+/// pointer presses. The caller builds that button, because its size and variant
+/// are the only things that tell one icon control apart from another — the
+/// models page's card controls and a shortcut row's compact ones share this
+/// wrapper and nothing else.
+fn icon_command_control(focus: &FocusHandle, tab_index: isize, button: Button) -> Div {
+    div()
+        .key_context("SettingsControl")
+        .track_focus(focus)
+        .tab_index(tab_index)
+        .child(button)
+}
+
 fn icon_command_button(
     id: &'static str,
     label: &'static str,
@@ -2046,9 +2069,9 @@ fn icon_command_button(
     tab_index: isize,
     disabled: bool,
 ) -> Div {
-    div()
-        .key_context("SettingsControl")
-        .track_focus(focus)
-        .tab_index(tab_index)
-        .child(Button::new(id).icon(icon).tooltip(label).disabled(disabled))
+    icon_command_control(
+        focus,
+        tab_index,
+        Button::new(id).icon(icon).tooltip(label).disabled(disabled),
+    )
 }

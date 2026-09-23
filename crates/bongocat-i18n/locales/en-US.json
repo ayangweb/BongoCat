@@ -241,7 +241,8 @@
       }
     },
     "actions": {
-      "clear": "Clear"
+      "clear": "Clear",
+      "play": "Play"
     },
     "capture": {
       "press_to_record": "Press to record shortcut",
@@ -284,6 +285,8 @@
       "backup_location_open_failed": "Configuration backup folder could not be opened",
       "model_unavailable": "Selected model is unavailable",
       "model_switch_failed": "Selected model could not be activated",
+      "model_behavior_preview_unavailable": "That action or expression belongs to a model that is no longer in use",
+      "model_behavior_preview_failed": "The action or expression could not be played",
       "model_title_invalid": "Model name is not usable",
       "model_not_found": "The model was not found",
       "model_cover_invalid": "Cover image must be a PNG file",

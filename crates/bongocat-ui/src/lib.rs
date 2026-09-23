@@ -925,6 +925,8 @@ pub enum SettingsErrorCode {
     BackupLocationOpenFailed,
     ModelUnavailable,
     ModelSwitchFailed,
+    ModelBehaviorPreviewUnavailable,
+    ModelBehaviorPreviewFailed,
     ModelTitleInvalid,
     ModelCoverInvalid,
     ModelCoverUpdateFailed,
@@ -952,7 +954,7 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 35] = [
+    pub const ALL: [Self; 37] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -964,6 +966,8 @@ impl SettingsErrorCode {
         Self::BackupLocationOpenFailed,
         Self::ModelUnavailable,
         Self::ModelSwitchFailed,
+        Self::ModelBehaviorPreviewUnavailable,
+        Self::ModelBehaviorPreviewFailed,
         Self::ModelTitleInvalid,
         Self::ModelCoverInvalid,
         Self::ModelCoverUpdateFailed,
@@ -1003,6 +1007,8 @@ impl SettingsErrorCode {
             Self::BackupLocationOpenFailed => "backup_location_open_failed",
             Self::ModelUnavailable => "model_unavailable",
             Self::ModelSwitchFailed => "model_switch_failed",
+            Self::ModelBehaviorPreviewUnavailable => "model_behavior_preview_unavailable",
+            Self::ModelBehaviorPreviewFailed => "model_behavior_preview_failed",
             Self::ModelTitleInvalid => "model_title_invalid",
             Self::ModelCoverInvalid => "model_cover_invalid",
             Self::ModelCoverUpdateFailed => "model_cover_update_failed",
@@ -1072,6 +1078,10 @@ impl fmt::Display for SettingsError {
             }
             SettingsErrorCode::ModelUnavailable => "Selected model is unavailable",
             SettingsErrorCode::ModelSwitchFailed => "Selected model could not be activated",
+            SettingsErrorCode::ModelBehaviorPreviewUnavailable => {
+                "The behavior is not available for the model in use"
+            }
+            SettingsErrorCode::ModelBehaviorPreviewFailed => "The behavior could not be played",
             SettingsErrorCode::ModelTitleInvalid => "Model name is not usable",
             SettingsErrorCode::ModelCoverInvalid => "Cover image must be a PNG file",
             SettingsErrorCode::ModelCoverUpdateFailed => "Model cover could not be updated",
@@ -1238,6 +1248,19 @@ pub enum SettingsCommand {
         expected_config_revision: u64,
         model: SettingsModelKey,
         title: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Play one declared behavior of the model in use, without persisting
+    /// anything.
+    ///
+    /// The shortcut rows carry this because a recorded chord is only meaningful
+    /// against the motion or expression it fires: the row that holds the
+    /// binding is the one place a user can hear and see what it does. The
+    /// command is deliberately revision-free — it changes no configuration, so
+    /// there is nothing for a stale revision to protect.
+    PreviewModelBehavior {
+        model: SettingsModelKey,
+        behavior: SettingsModelBehavior,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetModelCover {
@@ -1640,6 +1663,19 @@ impl SettingsClient {
         .await
     }
 
+    pub async fn preview_model_behavior(
+        &self,
+        model: SettingsModelKey,
+        behavior: SettingsModelBehavior,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::PreviewModelBehavior {
+            model,
+            behavior,
+            reply,
+        })
+        .await
+    }
+
     pub async fn set_model_cover(
         &self,
         model: SettingsModelKey,
@@ -1993,6 +2029,18 @@ impl SettingsClient {
             expected_config_revision,
             model,
             title,
+            reply,
+        })
+    }
+
+    pub fn preview_model_behavior_blocking(
+        &self,
+        model: SettingsModelKey,
+        behavior: SettingsModelBehavior,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::PreviewModelBehavior {
+            model,
+            behavior,
             reply,
         })
     }

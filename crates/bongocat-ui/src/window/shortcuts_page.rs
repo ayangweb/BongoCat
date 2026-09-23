@@ -1,5 +1,8 @@
 use super::*;
 
+use gpui_kit::base::TestSupportExt as _;
+use gpui_kit::component::Sizable as _;
+
 /// Which set of shortcut bindings one group of the page renders.
 ///
 /// The two sets used to be tabs. They are titled groups now: `SettingPage`
@@ -262,6 +265,8 @@ fn shortcut_row(
 ) -> Div {
     let target_name = row.name(language);
     let target = row.target;
+    let playable = row.playable;
+    let shortcut = row.shortcut;
     let capture = view
         .shortcut_capture
         .as_ref()
@@ -277,28 +282,144 @@ fn shortcut_row(
         .get(&target)
         .expect("shortcut row focus is synchronized")
         .clone();
+    let play_focus = view
+        .shortcut_play_focus
+        .get(&target)
+        .expect("shortcut play focus is synchronized")
+        .clone();
     let clear_focus = view
         .shortcut_clear_focus
         .get(&target)
         .expect("shortcut clear focus is synchronized")
         .clone();
-    let clear_key_focus = clear_focus.clone();
     let keyboard_target = target.clone();
     let clear_target = target.clone();
     let clear_key_target = target.clone();
+    let clear_key_focus = clear_focus.clone();
     // The two scopes are one page and their element ids live in one namespace,
     // so the scope prefix keeps the ids apart without folding the row index
     // (which is already unique across the page) into the name.
-    let (capture_id, clear_id) = match scope {
+    let (capture_id, play_id, clear_id) = match scope {
         ShortcutScope::Window => (
             ("capture-window-shortcut", row_index),
+            ("play-window-shortcut", row_index),
             ("clear-window-shortcut", row_index),
         ),
         ShortcutScope::Model => (
             ("capture-model-shortcut", row_index),
+            ("play-model-shortcut", row_index),
             ("clear-model-shortcut", row_index),
         ),
     };
+    let chord = if let Some(capture) = capture {
+        shortcut_capture_preview(&capture.modifiers, &capture.keys)
+            .map(|shortcut| shortcut_display(&shortcut))
+            .unwrap_or_else(|| {
+                bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "shortcuts.capture.press_to_record",
+                )
+                .to_owned()
+            })
+    } else if let Some(shortcut) = shortcut.as_ref() {
+        shortcut_display(shortcut)
+    } else {
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "shortcuts.capture.click_to_record",
+        )
+        .to_owned()
+    };
+    // The frame around the chord is the group's: the play and clear controls sit
+    // inside it, at the leading and trailing edges, so the row reads as one
+    // control the way an input group's addons do. The chord itself keeps the
+    // middle and stays centred, which is where it was when the clear button
+    // lived outside the frame.
+    let mut frame = div()
+        .id(capture_id)
+        // Observed before the focus binding, so the rendered test can click the
+        // frame itself: the controls sit inside it, and "a press that is not on
+        // one of them records a chord" is only measurable against its bounds.
+        .test_support()
+        .key_context("SettingsControl")
+        .track_focus(&focus)
+        .tab_index(shortcut_capture_tab_index(row_index))
+        .h(px(32.))
+        .min_w(px(180.))
+        .flex()
+        .items_center()
+        .gap_1()
+        .px_1()
+        .border_1()
+        .border_color(if capturing {
+            tokens.accent
+        } else {
+            tokens.border
+        })
+        .rounded_md()
+        .when(capturing, |this| this.focus_ring_style(window, cx))
+        .cursor_pointer()
+        .text_color(if capturing || shortcut.is_some() {
+            tokens.text
+        } else {
+            tokens.muted
+        })
+        .when(row_disabled, |this| this.cursor_default());
+    if let Some(playable) = playable {
+        frame = frame.child(shortcut_play_control(
+            cx,
+            language,
+            play_id.into(),
+            play_focus,
+            target.clone(),
+            playable,
+            shortcut_play_tab_index(row_index),
+            row_disabled,
+        ));
+    }
+    frame = frame
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(chord),
+        )
+        .child(shortcut_clear_control(
+            cx,
+            language,
+            clear_id.into(),
+            clear_focus,
+            clear_key_focus,
+            clear_target,
+            clear_key_target,
+            shortcut_clear_tab_index(row_index),
+            // The clear control keeps its place on every row, the way an input
+            // group's trailing button does, and only greys out when there is
+            // nothing to clear — a control that came and went would move the
+            // chord every time a binding was recorded or removed.
+            row_disabled || shortcut.is_none(),
+        ));
+    if !row_disabled {
+        frame = frame
+            .on_click(cx.listener(move |view, _, window, cx| {
+                view.begin_shortcut_capture(target.clone(), window, cx);
+            }))
+            .when(capturing, |this| {
+                this.on_mouse_down_out(cx.listener(|view, _, window, cx| {
+                    view.cancel_shortcut_capture(cx);
+                    window.blur(cx);
+                }))
+            })
+            .on_key_down(cx.listener(move |view, event, window, cx| {
+                if view.shortcut_capture.is_none() && is_activation_key(event) {
+                    cx.stop_propagation();
+                    view.begin_shortcut_capture(keyboard_target.clone(), window, cx);
+                }
+            }));
+    }
     div()
         .flex()
         .items_center()
@@ -311,97 +432,149 @@ fn shortcut_row(
         // rather than a live label sitting next to a dead control.
         .when(row_disabled, |this| this.opacity(0.5))
         .child(div().min_w_0().flex_1().child(target_name))
+        .child(frame)
+}
+
+/// The compact icon button that lives inside a shortcut row's frame.
+///
+/// The row's controls are the only ones in the settings window that sit inside
+/// another control's border, so they take the extra-small size that fits the
+/// frame's height rather than the standard icon button the models page renders
+/// beside a card. Ghost keeps the frame's own border the only one the row shows.
+/// [`icon_command_control`] supplies the wrapper the control is queried and
+/// tabbed through by.
+fn shortcut_icon_button(
+    id: &'static str,
+    label: &'static str,
+    icon: impl Into<Icon>,
+    disabled: bool,
+) -> Button {
+    Button::new(id)
+        .ghost()
+        .xsmall()
+        .icon(icon)
+        .tooltip(label)
+        .disabled(disabled)
+}
+
+/// The play control that sits before the chord on a model behavior row.
+///
+/// Only a model behavior row has something to play, so an application command
+/// renders no control here at all and its frame simply starts with the chord.
+///
+/// The press is stopped before it reaches the frame: the frame starts a capture
+/// on any click inside it, and pressing play is not a request to record a chord.
+/// The stop lives on a wrapper around the control rather than on the control
+/// itself, because stopping an event also stops the handlers that come after it
+/// — including the control's own click.
+#[allow(clippy::too_many_arguments)]
+fn shortcut_play_control(
+    cx: &mut Context<SettingsView>,
+    language: SettingsLanguage,
+    id: ElementId,
+    focus: FocusHandle,
+    target: ShortcutCaptureTarget,
+    playable: PlayableBehavior,
+    tab_index: isize,
+    disabled: bool,
+) -> impl IntoElement {
+    let focus_for_click = focus.clone();
+    let focus_for_key = focus.clone();
+    let click_target = target.clone();
+    let key_target = target.clone();
+    let click_model = playable.model.clone();
+    let key_model = playable.model;
+    let click_behavior = playable.behavior.clone();
+    let key_behavior = playable.behavior;
+    div()
+        .flex_none()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(
-            div()
-                .key_context("SettingsControl")
-                .track_focus(&focus)
-                .tab_index(shortcut_capture_tab_index(row_index))
-                .id(capture_id)
-                .h(px(32.))
-                .min_w(px(180.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .px_3()
-                .border_1()
-                .border_color(if capturing {
-                    tokens.accent
-                } else {
-                    tokens.border
-                })
-                .rounded_md()
-                .when(capturing, |this| this.focus_ring_style(window, cx))
-                .cursor_pointer()
-                .text_color(if capturing || row.shortcut.is_some() {
-                    tokens.text
-                } else {
-                    tokens.muted
-                })
-                .when(row_disabled, |this| this.cursor_default())
-                .child(if let Some(capture) = capture {
-                    shortcut_capture_preview(&capture.modifiers, &capture.keys)
-                        .map(|shortcut| shortcut_display(&shortcut))
-                        .unwrap_or_else(|| {
-                            bongocat_i18n::text(
-                                language.catalog_locale(),
-                                "shortcuts.capture.press_to_record",
-                            )
-                            .to_owned()
-                        })
-                } else if let Some(shortcut) = row.shortcut.clone() {
-                    shortcut_display(&shortcut)
-                } else {
-                    bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "shortcuts.capture.click_to_record",
-                    )
-                    .to_owned()
-                })
-                .when(!row_disabled, |this| {
-                    this.on_click(cx.listener(move |view, _, window, cx| {
-                        view.begin_shortcut_capture(target.clone(), window, cx);
-                    }))
-                    .when(capturing, |this| {
-                        this.on_mouse_down_out(cx.listener(|view, _, window, cx| {
-                            view.cancel_shortcut_capture(cx);
-                            window.blur(cx);
-                        }))
-                    })
-                    .on_key_down(cx.listener(
-                        move |view, event, window, cx| {
-                            if view.shortcut_capture.is_none() && is_activation_key(event) {
-                                cx.stop_propagation();
-                                view.begin_shortcut_capture(keyboard_target.clone(), window, cx);
-                            }
-                        },
-                    ))
-                }),
-        )
-        .when(row.shortcut.is_some(), |actions| {
-            actions.child(
-                command_button(
-                    bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.clear"),
-                    &clear_focus,
-                    shortcut_clear_tab_index(row_index),
-                    window,
-                    tokens,
-                    row_disabled,
-                )
-                .id(clear_id)
-                .when(!row_disabled, |button| {
-                    button
-                        .on_click(cx.listener(move |view, _, window, cx| {
-                            window.focus(&clear_focus, cx);
-                            view.clear_shortcut(clear_target.clone(), cx);
-                        }))
-                        .on_key_down(cx.listener(move |view, event, window, cx| {
-                            if is_activation_key(event) {
-                                cx.stop_propagation();
-                                window.focus(&clear_key_focus, cx);
-                                view.clear_shortcut(clear_key_target.clone(), cx);
-                            }
-                        }))
-                }),
+            icon_command_control(
+                &focus,
+                tab_index,
+                shortcut_icon_button(
+                    "play-model-behavior-control",
+                    bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.play"),
+                    gpui_kit::assets::IconName::Play,
+                    disabled,
+                ),
             )
-        })
+            .id(id)
+            .test_support()
+            .when(!disabled, |this| {
+                this.on_click(cx.listener(move |view, _, window, cx| {
+                    window.focus(&focus_for_click, cx);
+                    view.play_shortcut_behavior(
+                        click_target.clone(),
+                        click_model.clone(),
+                        click_behavior.clone(),
+                        cx,
+                    );
+                }))
+                .on_key_down(cx.listener(move |view, event, window, cx| {
+                    if is_activation_key(event) {
+                        cx.stop_propagation();
+                        window.focus(&focus_for_key, cx);
+                        view.play_shortcut_behavior(
+                            key_target.clone(),
+                            key_model.clone(),
+                            key_behavior.clone(),
+                            cx,
+                        );
+                    }
+                }))
+            }),
+        )
+}
+
+/// The clear control that sits after the chord.
+///
+/// It replaces the standalone button the row used to render beside the frame,
+/// and keeps the same two jobs: drop this row's binding, and put the row's
+/// keyboard focus back on the control it was pressed from. Like the play
+/// control's, its press is stopped by a wrapper so it cannot reach the frame.
+#[allow(clippy::too_many_arguments)]
+fn shortcut_clear_control(
+    cx: &mut Context<SettingsView>,
+    language: SettingsLanguage,
+    id: ElementId,
+    focus: FocusHandle,
+    key_focus: FocusHandle,
+    target: ShortcutCaptureTarget,
+    key_target: ShortcutCaptureTarget,
+    tab_index: isize,
+    disabled: bool,
+) -> impl IntoElement {
+    let focus_for_click = focus.clone();
+    div()
+        .flex_none()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(
+            icon_command_control(
+                &focus,
+                tab_index,
+                shortcut_icon_button(
+                    "clear-shortcut-control",
+                    bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.clear"),
+                    gpui_kit::assets::IconName::Close,
+                    disabled,
+                ),
+            )
+            .id(id)
+            .test_support()
+            .when(!disabled, |this| {
+                this.on_click(cx.listener(move |view, _, window, cx| {
+                    window.focus(&focus_for_click, cx);
+                    view.clear_shortcut(target.clone(), cx);
+                }))
+                .on_key_down(cx.listener(move |view, event, window, cx| {
+                    if is_activation_key(event) {
+                        cx.stop_propagation();
+                        window.focus(&key_focus, cx);
+                        view.clear_shortcut(key_target.clone(), cx);
+                    }
+                }))
+            }),
+        )
 }

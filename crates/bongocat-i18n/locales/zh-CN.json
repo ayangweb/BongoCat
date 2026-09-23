@@ -241,7 +241,8 @@
       }
     },
     "actions": {
-      "clear": "清除"
+      "clear": "清除",
+      "play": "播放"
     },
     "capture": {
       "press_to_record": "按下录制快捷键",
@@ -284,6 +285,8 @@
       "backup_location_open_failed": "无法打开配置备份文件夹",
       "model_unavailable": "所选模型不可用",
       "model_switch_failed": "无法启用所选模型",
+      "model_behavior_preview_unavailable": "该动作或表情属于已不再使用的模型",
+      "model_behavior_preview_failed": "无法播放该动作或表情",
       "model_title_invalid": "模型名称不可用",
       "model_not_found": "找不到该模型",
       "model_cover_invalid": "封面图必须是 PNG 文件",
