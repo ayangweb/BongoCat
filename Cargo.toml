@@ -111,3 +111,13 @@ inherits = "release"
 strip = "none"
 debug = "full"
 lto = false
+
+# Transition patch (2026-09-23): `SettingGroup::variant()` lets one group
+# override the settings-level `GroupBoxVariant`, which the models page uses to
+# present its grid without the Outline card container. Backport of upstream
+# longbridge/gpui-kit#3203 (issue #3202) onto the 0.6.6 release commit (the
+# facade is patched, not `gpui-component`, so the whole tree resolves inside
+# one commit instead of mixing git and registry copies of the inner crates);
+# remove this section once a gpui-kit release carries the override.
+[patch.crates-io]
+gpui-kit = { git = "https://github.com/ayangweb/gpui-kit", rev = "720aeef7b33f95fdefcf5e7dc6257308bc51aa22" }

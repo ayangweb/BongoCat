@@ -938,23 +938,30 @@ impl Render for SettingsView {
         // The page shell already carries the title and description, and the
         // model list is one flat grid, so the group and item render without
         // their own labels — labelling each nesting level is what turned this
-        // page into stacked boxes in the first place.
+        // page into stacked boxes in the first place. The grid's cards are
+        // themselves self-drawn surfaces, so the group renders with no card
+        // container of its own (`variant(Normal)` overrides the window-wide
+        // Outline) rather than nesting a second box around them.
         let models_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.models.title",
         ))
         .icon(IconName::Cat)
-        .group(SettingGroup::new().item(SettingItem::render({
-            let view = view_entity.clone();
-            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
-                let snapshot = view.read(app).snapshot.clone();
-                let tokens = Tokens::from_theme(app);
-                view.update(app, move |view, cx| {
-                    models::content(view, window, cx, snapshot.as_ref(), tokens)
-                })
-                .into_any_element()
-            }
-        })));
+        .group(
+            SettingGroup::new()
+                .variant(GroupBoxVariant::Normal)
+                .item(SettingItem::render({
+                    let view = view_entity.clone();
+                    move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                        let snapshot = view.read(app).snapshot.clone();
+                        let tokens = Tokens::from_theme(app);
+                        view.update(app, move |view, cx| {
+                            models::content(view, window, cx, snapshot.as_ref(), tokens)
+                        })
+                        .into_any_element()
+                    }
+                })),
+        );
 
         // The page's two scopes are two titled groups rather than tabs: a
         // `SettingPage` cannot host child pages, but the settings component

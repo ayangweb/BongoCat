@@ -1910,16 +1910,18 @@ impl Render for WrappedModelsPageHarness {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let snapshot = self.snapshot.clone();
         let view = self.view.clone();
-        let page = SettingPage::new("Models").group(SettingGroup::new().item(SettingItem::render(
-            move |_, window, app| {
-                let tokens = Tokens::from_theme(app);
-                let snapshot = snapshot.clone();
-                view.clone().update(app, move |view, cx| {
-                    super::models::content(view, window, cx, snapshot.as_ref(), tokens)
-                        .into_any_element()
-                })
-            },
-        )));
+        let page = SettingPage::new("Models").group(
+            SettingGroup::new()
+                .variant(GroupBoxVariant::Normal)
+                .item(SettingItem::render(move |_, window, app| {
+                    let tokens = Tokens::from_theme(app);
+                    let snapshot = snapshot.clone();
+                    view.clone().update(app, move |view, cx| {
+                        super::models::content(view, window, cx, snapshot.as_ref(), tokens)
+                            .into_any_element()
+                    })
+                })),
+        );
 
         div().size_full().child(
             Settings::new("wrapped-models-page")

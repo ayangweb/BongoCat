@@ -1573,7 +1573,8 @@ git source 及 `gpui`、platform、component、assets 的直接 manifest 依赖�
 按钮、模型 ID、overlay scale/opacity 与 gamepad dead-zone 已迁移到 `Tag`、
 `Switch`、`Button`、`Input` 和 `NumberInput`。输入实体通过 `InputEvent` 与
 `NumberInputEvent` 接入现有 typed command/draft，并从 snapshot 同步。`0.6.6` 没有普通 Card
-primitive，设置内容容器使用官方 `GroupBox::outline()`，导航继续保留无状态薄封装；快捷键捕获和平台辅助功能焦点
+primitive，设置内容容器使用官方 `GroupBox::outline()`（模型管理页是唯一例外：其内容是自绘
+卡片网格，经 `SettingGroup::variant(Normal)` 去掉外层卡片容器，见 ADR-0056），导航继续保留无状态薄封装；快捷键捕获和平台辅助功能焦点
 继续保留领域适配层。语言设置使用官方 `Select`；模型卡的删除确认出现浮层需求后，用官方
 `Popover` 封装了项目内 `PopConfirm`（`crates/bongocat-ui/src/pop_confirm.rs`）——`0.6.6` 没有
 `PopConfirm` primitive，也没有 `Popover::arrow`，箭头待依赖升级后补；标签页仍无需求，出现时
