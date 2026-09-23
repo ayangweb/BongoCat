@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Implementation TODO
 
 状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-22
+最后更新：2026-09-23
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
@@ -4614,11 +4614,12 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 决策记录：ADR-0048。调研报告 `docs/theme-mode-native-surface-research.md`；主题色的 crate
       边界评估见 `docs/theme-color-extraction-evaluation.md`（结论：不拆 crate）。
 
-87. [ ] `P7-MACOS-SMOKE-EXIT-CODE`：macOS 上被记录的 smoke 失败不影响进程退出码。
-    - 背景（2026-09-18，做 `P7-NATIVE-THEME-SURFACES` 时顺带发现）：`--settings-window-smoke` 在
+87. [ ] `P7-MACOS-SMOKE-EXIT-CODE`：macOS 上被记录的 smoke 失败（含 `finish()` 内新产生的失败）
+    使进程以非零码退出。
+    - 背景（2026-09-18，做 `P7-NATIVE-THEME-SURFACES` 时顺带发现）：`--settings-window-smoke` 曾在
       macOS 上无论记录多少失败都以 0 退出，因此 CI 的
       `Smoke macOS settings window lifecycle`、`Smoke hidden overlay model switching`、
-      `Smoke native system menu lifecycle` 三个步骤**在 macOS 上无法失败**——它们都是裸
+      `Smoke native system menu lifecycle` 三个步骤当时**在 macOS 上无法失败**——它们都是裸
       `cargo run`，只靠退出码判定。这不只影响本项，而是影响所有以 macOS smoke 为证据的条目。
     - 根因（已用探针逐步确认，非推测）：`App::quit()` 在 macOS 上走
       `msg_send![NSApplication, terminate: nil]`（`gpui-pre-macos-0.3.5/src/platform.rs:557-575`），
@@ -4626,24 +4627,36 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       （同文件 `1392`）→ `App::shutdown()`（`gpui-pre-0.3.5/src/app.rs:944`）→ 跑 `on_app_quit`
       观察者并 `block_with_timeout(SHUTDOWN_TIMEOUT)` 等待，然后 AppKit 直接 `exit(0)`。
       `NSApplication::run()` 不返回，所以 `bongocat-app/src/main.rs` 末尾的失败汇总
-      （`let failures = match Arc::try_unwrap(failures)`）对 macOS **不可达**。
-    - 实现（2026-09-18）：新增 macOS-only `exit_after_automated_smoke`。automated verification
-      在 `on_app_quit` 调 `begin_product_shutdown` 后、等待可能无法完成的异步 `finish()` 前，检查
-      `ProductShutdown.coordinator.failures`；已有失败则写入固定的 `product run failed: ...` 并
-      `std::process::exit(1)`。正常产品启动（没有 smoke/diagnostic 参数）不走该路径；Windows 仍
-      使用原有的 `windows_product_exit_code`。
-    - 变异证据（本机 macOS arm64 release）：故意在 settings smoke 分支记录
+      （`let failures = match Arc::try_unwrap(failures)`）对 macOS **不可达**。在应用自有的退出路径中，
+      若不先完成 `finish()` 就终止，`finish()` 内新产生的失败也会漏过退出码。
+    - 实现（2026-09-18）：新增 macOS-only `exit_after_automated_smoke`。该 helper 检查
+      `ProductShutdown.coordinator.failures`，已有失败则写入固定的 `product run failed: ...` 并
+      `std::process::exit(1)`；它保留为 AppKit 自行发起终止时的兜底路径。正常产品启动（没有
+      smoke/diagnostic 参数）不走该路径；Windows 仍使用原有的 `windows_product_exit_code`。
+    - 实现（2026-09-23）：应用自有的 macOS 退出路径改为在 `on_app_quit` 中先调
+      `begin_product_shutdown`，再由 `finish_product_quit` 的异步任务 await 完整的
+      `ProductShutdown::finish()`；使用最终 accumulator 计算退出码后
+      `std::process::exit(product_failures_exit_code(&failures))`。因此 `finish()` 内新产生的失败也会
+      纳入退出码；`exit_after_automated_smoke` 只覆盖 AppKit 自行终止、异步 shutdown 无法跑完的
+      兜底路径。application-owned Windows shutdown 仍走原有路径，不变；两边共用的
+      `product_failures_exit_code` 统一失败输出与退出码，Mac 侧新增单测覆盖空/非空与
+      最终共享列表读取。
+    - 变异证据（本机 macOS arm64 release，2026-09-18）：故意在 settings smoke 分支记录
       `forced smoke failure`，`--run-seconds 4 --settings-window-smoke` 得到 **exit 1** 且 stderr
       输出 `product run failed: forced smoke failure`；还原后干净 smoke 得到 **exit 0**。此前
       已用探针确认失败确实进入 accumulator；所有探针与变异均已还原。
-    - 当前边界：如果失败只在 `ProductShutdown::finish()` 内新产生，而 AppKit 在 future 完成前终止，
-      仍可能无法反映到退出码；当前 smoke 断言和绝大多数 runtime failure 都在 quit 之前已记录。
-      因此本项仍保持 `[ ]`，直到 Windows cfg 编译/CI 与 finish 内失败传播有证据。
-    - 退出条件：macOS 上被记录的失败使进程以非零码退出；用变异确认退出码变化；Windows 行为不回归；
-      finish 内失败传播策略明确；相关 ADR/TODO 中所有以 macOS smoke 为依据的证据重新核对。
+    - 验证（2026-09-23，本机 macOS arm64 release）：干净 `--run-seconds 4 --settings-window-smoke`
+      得到 **exit 0**；在 `ProductShutdown::finish()` 入口临时记录 `forced finish failure` 后，同一
+      命令得到 **exit 1**，stderr 输出 `product run failed: forced finish failure`，确认失败发生在
+      最终 shutdown 阶段时也会映射到退出码；探针已还原。实现与验证已完成，待按 §0.2
+      在 `next` 提交后勾选。
+    - 当前边界：应用自有的 quit 已 await 完整 `finish()` 并把最终失败列表映射到退出码，因此
+      `finish()` 内新产生的失败有明确传播路径；剩余边界仅是 AppKit 自行终止且 shutdown future
+      未完成时，只能由 `exit_after_automated_smoke` 检查调用时已存在的失败。
+    - 退出条件：macOS 上被记录的失败使进程以非零码退出；用变异确认退出码变化；Windows 侧继续复用
+      同一失败输出/退出码 helper，应用自有 shutdown 路径不变；finish 内失败传播策略明确。
     - 依赖：无（可独立实施）。与 ADR-0048 的关系：ADR-0048 残余风险 10 已更新为当前边界，
       残余风险 11（smoke 只证明一致性，不证明解析正确）仍然有效。
-
 88. [ ] `P1-GLOBE-KEY-AND-FUNCTION-KEY-NAMING`：地球键独立命名，`Fn` 保持功能键回退语义。
     - 背景（2026-09-19）：需求是"F1–F24 与 macOS 左下角地球键都要完整支持，且不能共用一张图"。
       考古修正了前提：**`Fn` 从来不是地球键的名字**，它是旧版

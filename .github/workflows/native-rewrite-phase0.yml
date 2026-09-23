@@ -478,8 +478,14 @@ jobs:
         if: matrix.os == 'macos-latest'
         timeout-minutes: 2
         run: |
+          set +e
           output=$(target/storage-test-injection/release/bongocat-app --configuration-recovery-smoke 2>&1)
+          status=$?
+          set -e
           printf '%s\n' "$output"
+          if ((status != 0)); then
+            exit "$status"
+          fi
           grep -Fq 'bongocat-app: configuration recovery required' <<<"$output"
           grep -Fq 'bongocat-app: recovery window opened' <<<"$output"
           grep -Fq 'bongocat-app: recovery notice verified' <<<"$output"
@@ -757,8 +763,14 @@ jobs:
             exit 1
           fi
 
+          set +e
           wait "$open_waiter"
+          open_status=$?
+          set -e
           cat "$stdout_path" "$stderr_path" 2>/dev/null || true
+          if [ "$open_status" -ne 0 ]; then
+            exit "$open_status"
+          fi
           grep -Fq \
             'bongocat-app: application reopen restored the settings window' \
             "$stdout_path"

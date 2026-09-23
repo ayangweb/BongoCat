@@ -192,12 +192,15 @@ smoke 断言都调它。**smoke 此前用 `component_theme_mode(theme, cx.window
 10. **macOS 的 AppKit 退出路径不会回到 `main`，所以失败必须在可达边界处理。** `App::quit()`
    走 `msg_send![NSApplication, terminate:]`（`gpui-pre-macos-0.3.5/src/platform.rs:557-575`），
    `NSApplication::run()` 不返回；末尾的 `Arc::try_unwrap(failures)` 汇总对 macOS 永远不可达。
-   原先 smoke 记录失败却 exit 0，已由 TODO 第 87 项修复：automated verification 在
-   `on_app_quit` 调 `begin_product_shutdown` 后、等待异步 `finish()` 前检查已有失败，写入固定的
-   `product run failed: ...` 并 `std::process::exit(1)`。实测故意注入 `forced smoke failure` 得到
-   exit 1；干净的 `--settings-window-smoke` 得到 exit 0。
-   **剩余边界**：如果失败只在 `finish().await` 内新产生，而 AppKit 在 future 完成前终止，仍可能
-   无法反映到退出码；当前 smoke 断言和绝大多数 runtime failure 都在 quit 之前已记录。
+   原先 smoke 记录失败却 exit 0，已由 TODO 第 87 项修复：应用自有的 macOS 退出路径在
+   `on_app_quit` 中先 `begin_product_shutdown`，await 完整的 `ProductShutdown::finish()`，再按
+   最终 accumulator `std::process::exit(product_failures_exit_code(&failures))`；`finish()` 内
+   新产生的失败因此也会传播。`exit_after_automated_smoke` 仅保留给 AppKit 自行终止、异步
+   shutdown 来不及完成的兜底路径。干净 `--settings-window-smoke` 得到 exit 0；在
+   `ProductShutdown::finish()` 内临时注入 `forced finish failure` 得到 exit 1 与
+   `product run failed: forced finish failure`，探针已还原。
+   **剩余边界**：AppKit 自行终止且 shutdown future 未完成时，兜底 helper 只能看到调用时已记录的
+   失败；该路径仍受 OS 终止时序限制。
 11. **收敛成单一解析入口后，smoke 的断言只能验证"一致"，不能验证"正确"。** 产品设的值与 smoke
    期望的值来自同一个 `resolved_theme_mode`，所以把一个错误的解析同时喂给两边时断言仍然通过
    （已用变异确认）。解析本身的正确性依赖 `NSApplication.effectiveAppearance` 与
@@ -272,14 +275,15 @@ smoke 断言都调它。**smoke 此前用 `component_theme_mode(theme, cx.window
   `apply_component_theme` → `apply_native_theme` → `NSApplication.setAppearance` /
   `effectiveAppearance`，无 panic、无 `WrongThread`、正常 shutdown。现在 exit 0 有基本的
   失败传播保证：automated smoke 若在 quit 前记录失败会 exit 1。
-- **退出码变异验证**：在 smoke 分支故意记录 `forced smoke failure`，同一命令得到
-  `exit 1` 且 stderr 输出 `product run failed: forced smoke failure`；还原后干净 smoke 得到
-  `exit 0`。这证明第 87 项修复点确实可达且有牙齿。
+- **退出码变异验证**：2026-09-18 在 smoke 分支注入 `forced smoke failure` 得到 exit 1；
+  2026-09-23 在 `ProductShutdown::finish()` 内注入 `forced finish failure`，同一 `--settings-window-smoke`
+  命令得到 exit 1 且 stderr 输出 `product run failed: forced finish failure`；两次还原后均得到
+  干净 smoke exit 0。这证明应用自有退出路径在最终 shutdown 阶段也有牙齿。
 - **主题断言的强度仍有限**：`resolved_theme_mode` 同时被产品路径和 smoke 期望值调用，因此
   smoke 验证的是一致性；解析本身由 macOS `effectiveAppearance`/`appearanceNamed:` 文档化 API
   与不变量单测约束，不是端到端的肉眼主题验证。
 
 **未运行**：双平台实机主题切换（肉眼确认标题栏/弹框/托盘菜单/文件面板的深浅色）；Windows DWM
 暗色边框与暗色弹框/菜单/文件框实测；`SetPreferredAppMode` 在 Windows 10 1903 / 11 各版本上的
-行为；运行中切换系统主题后的跟随行为；提高对比度 + 暗色组合；只在
-`ProductShutdown::finish()` 内新产生失败时的 macOS 退出码传播。
+行为；运行中切换系统主题后的跟随行为；提高对比度 + 暗色组合；AppKit 自行终止且 shutdown
+future 未完成时的 macOS 退出码时序。

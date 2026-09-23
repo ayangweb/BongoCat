@@ -641,6 +641,35 @@ impl Drop for FrameSourceRunGuard {
     }
 }
 
+/// Turn the final shared failure list into a process exit code, printing any
+/// failures once.
+fn product_failures_exit_code(failures: &Arc<Mutex<Vec<String>>>) -> i32 {
+    let failures = failures
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if failures.is_empty() {
+        return 0;
+    }
+    let mut stderr = io::stderr().lock();
+    let _ = writeln!(stderr, "product run failed: {}", failures.join("; "));
+    let _ = stderr.flush();
+    1
+}
+
+/// Leave the GPUI loop after a startup failure that happens before a
+/// `ProductCoordinator` exists, so `finish_product_quit` cannot take over shutdown.
+///
+/// An automated run must still report startup failure: a bare `cx.quit()` could
+/// terminate with status 0. Exit directly when anything was recorded; otherwise
+/// quit normally.
+fn quit_after_startup_failure(cx: &mut App, failures: &Arc<Mutex<Vec<String>>>) {
+    let exit_code = product_failures_exit_code(failures);
+    if exit_code != 0 {
+        std::process::exit(exit_code);
+    }
+    cx.quit();
+}
+
 fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>) {
     failures
         .lock()
@@ -698,7 +727,24 @@ fn request_windows_product_quit(shutdown_requested: &AtomicBool) {
 
 fn finish_product_quit(cx: &mut App) {
     #[cfg(target_os = "macos")]
-    cx.quit();
+    {
+        // The application-owned quit must own its exit boundary: AppKit can terminate
+        // the process after `on_app_quit` completes without returning from
+        // `NSApplication::run()`, so the fallback `exit_after_automated_smoke` sees
+        // only the failures that existed at that point. Await the whole shutdown
+        // here, then make the exit code from the final list (TODO
+        // P7-MACOS-SMOKE-EXIT-CODE).
+        if cx.has_global::<ProductCoordinator>() {
+            let shutdown = begin_product_shutdown(cx);
+            cx.spawn(async move |_| {
+                let failures = shutdown.finish().await;
+                std::process::exit(product_failures_exit_code(&failures));
+            })
+            .detach();
+            return;
+        }
+        cx.quit();
+    }
 
     #[cfg(target_os = "windows")]
     {
@@ -858,25 +904,17 @@ fn exit_after_automated_smoke(failures: &Arc<Mutex<Vec<String>>>) {
     let mut stderr = io::stderr().lock();
     let _ = writeln!(stderr, "product run failed: {}", failures.join("; "));
     let _ = stderr.flush();
-    // AppKit terminates the process after gpui's `on_app_quit` future completes, without
-    // returning from `NSApplication::run()`. This is therefore the only reachable exit-code
-    // boundary on macOS automated runs (TODO P7-MACOS-SMOKE-EXIT-CODE). Normal product quits
-    // never call this helper: they do not set `automated_verification`.
+    // The fallback for OS-initiated termination on macOS. An application-owned quit
+    // (`finish_product_quit`) awaits the full shutdown and exits from the final list;
+    // this helper only covers paths where AppKit starts termination itself and the
+    // shutdown future never gets to run to completion. Normal product quits never call
+    // it: they do not set `automated_verification` (TODO P7-MACOS-SMOKE-EXIT-CODE).
     std::process::exit(1);
 }
 
 #[cfg(target_os = "windows")]
 fn windows_product_exit_code(failures: &Arc<Mutex<Vec<String>>>) -> i32 {
-    let failures = failures
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if failures.is_empty() {
-        return 0;
-    }
-    let mut stderr = io::stderr().lock();
-    let _ = writeln!(stderr, "product run failed: {}", failures.join("; "));
-    let _ = stderr.flush();
-    1
+    product_failures_exit_code(failures)
 }
 
 fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> {
@@ -2148,7 +2186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(error) = application.shutdown() {
                     record_failure(&run_failures, error.to_string());
                 }
-                cx.quit();
+                quit_after_startup_failure(cx, &run_failures);
                 return;
             }
         };
@@ -2168,7 +2206,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Err(error) = overlay.stop_input() {
                         record_failure(&run_failures, error.to_string());
                     }
-                    cx.quit();
+                    quit_after_startup_failure(cx, &run_failures);
                     return;
                 }
             };
@@ -2185,7 +2223,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = client.shutdown_blocking();
                 let _ = settings_service.join();
                 let _ = overlay.finish_after_runtime_shutdown();
-                cx.quit();
+                quit_after_startup_failure(cx, &run_failures);
                 return;
             }
         };
@@ -2209,7 +2247,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(error) = overlay.finish_after_runtime_shutdown() {
                     record_failure(&run_failures, error.to_string());
                 }
-                cx.quit();
+                quit_after_startup_failure(cx, &run_failures);
                 return;
             }
         };
@@ -2237,7 +2275,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(error) = overlay.finish_after_runtime_shutdown() {
                     record_failure(&run_failures, error.to_string());
                 }
-                cx.quit();
+                quit_after_startup_failure(cx, &run_failures);
                 return;
             }
         };
@@ -4449,5 +4487,28 @@ mod tests {
         ] {
             assert!(RunOptions::parse(arguments).is_err());
         }
+    }
+
+    #[test]
+    fn product_failures_exit_code_is_zero_only_without_failures() {
+        let empty = Arc::new(Mutex::new(Vec::new()));
+        assert_eq!(product_failures_exit_code(&empty), 0);
+
+        let failed = Arc::new(Mutex::new(Vec::new()));
+        record_failure(&failed, "runtime crashed");
+        assert_eq!(product_failures_exit_code(&failed), 1);
+    }
+
+    #[test]
+    fn product_failures_exit_code_reads_the_final_shared_list() {
+        // Mirrors the macOS quit path: a snapshot taken before `finish()` would have
+        // reported success, so the code must be derived from the shared list the
+        // shutdown future mutates (TODO P7-MACOS-SMOKE-EXIT-CODE).
+        let failures = Arc::new(Mutex::new(Vec::new()));
+        let at_quit_request = product_failures_exit_code(&failures);
+        assert_eq!(at_quit_request, 0);
+
+        record_failure(&failures, "product overlay presented no frames");
+        assert_eq!(product_failures_exit_code(&failures), 1);
     }
 }
