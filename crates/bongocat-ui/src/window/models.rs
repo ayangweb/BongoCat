@@ -342,7 +342,18 @@ fn model_card_cover(
             .into_any_element(),
     });
     match editing {
-        Some(draft) => frame.child(model_cover_picker(draft, window, cx, language, tokens)),
+        Some(draft) => frame
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .rounded_md()
+                    .bg(Hsla::black().opacity(0.45))
+                    .id("model-cover-edit-mask"),
+            )
+            .child(model_cover_picker(draft, window, cx, language, tokens)),
         None => frame,
     }
 }
@@ -351,9 +362,9 @@ fn model_card_cover(
 ///
 /// It is drawn on the cover it acts on, in the corner, so choosing a cover is
 /// one gesture on the thing being changed and costs the card no height — the
-/// box it sits in is already there. The button keeps the component's own
-/// surface rather than a translucent wash, because the artwork under it is
-/// whatever the package shipped and the label has to stay readable on all of it.
+/// box it sits in is already there. The button sits over a black translucent mask
+/// because the component lightens its surface on hover; the mask keeps the
+/// label readable over whatever artwork the package shipped.
 fn model_cover_picker(
     draft: &ModelEditDraft,
     window: &Window,
