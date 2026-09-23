@@ -2,15 +2,13 @@ use std::{fmt, fs, path::Path};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectoryOpenError {
-    UnsupportedPlatform,
     InvalidPath,
     DirectoryUnavailable,
     LaunchFailed,
 }
 
 impl DirectoryOpenError {
-    pub const ALL: [Self; 4] = [
-        Self::UnsupportedPlatform,
+    pub const ALL: [Self; 3] = [
         Self::InvalidPath,
         Self::DirectoryUnavailable,
         Self::LaunchFailed,
@@ -18,7 +16,6 @@ impl DirectoryOpenError {
 
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::UnsupportedPlatform => "directory_open_unsupported_platform",
             Self::InvalidPath => "directory_open_invalid_path",
             Self::DirectoryUnavailable => "directory_open_unavailable",
             Self::LaunchFailed => "directory_open_launch_failed",
@@ -84,10 +81,6 @@ mod tests {
 
         for (error, expected) in [
             (
-                DirectoryOpenError::UnsupportedPlatform,
-                "directory_open_unsupported_platform",
-            ),
-            (
                 DirectoryOpenError::InvalidPath,
                 "directory_open_invalid_path",
             ),
@@ -103,7 +96,7 @@ mod tests {
             assert_eq!(error.as_str(), expected);
             assert_eq!(error.to_string(), expected);
         }
-        assert_eq!(DirectoryOpenError::ALL.len(), 4);
+        assert_eq!(DirectoryOpenError::ALL.len(), 3);
     }
 
     #[test]

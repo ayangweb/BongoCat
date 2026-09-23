@@ -8,7 +8,6 @@ pub(crate) const MAX_CLIPBOARD_TEXT_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClipboardError {
-    UnsupportedPlatform,
     WrongThread,
     TextTooLarge,
     InvalidText,
@@ -19,7 +18,6 @@ pub enum ClipboardError {
 impl fmt::Display for ClipboardError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::UnsupportedPlatform => "clipboard_unsupported_platform",
             Self::WrongThread => "clipboard_wrong_thread",
             Self::TextTooLarge => "clipboard_text_too_large",
             Self::InvalidText => "clipboard_text_invalid",

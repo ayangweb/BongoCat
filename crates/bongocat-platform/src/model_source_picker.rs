@@ -39,7 +39,6 @@ pub enum ModelSourcePickerOutcome {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ModelSourcePickerError {
-    UnsupportedPlatform,
     WrongThread,
     BackendUnavailable,
     SelectionUnavailable,
@@ -47,8 +46,7 @@ pub enum ModelSourcePickerError {
 }
 
 impl ModelSourcePickerError {
-    pub const ALL: [Self; 5] = [
-        Self::UnsupportedPlatform,
+    pub const ALL: [Self; 4] = [
         Self::WrongThread,
         Self::BackendUnavailable,
         Self::SelectionUnavailable,
@@ -57,7 +55,6 @@ impl ModelSourcePickerError {
 
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::UnsupportedPlatform => "model_source_picker_unsupported_platform",
             Self::WrongThread => "model_source_picker_wrong_thread",
             Self::BackendUnavailable => "model_source_picker_backend_unavailable",
             Self::SelectionUnavailable => "model_source_picker_selection_unavailable",
@@ -298,10 +295,6 @@ mod tests {
         codes.dedup();
         assert_eq!(codes.len(), ModelSourcePickerError::ALL.len());
         for (error, expected) in [
-            (
-                ModelSourcePickerError::UnsupportedPlatform,
-                "model_source_picker_unsupported_platform",
-            ),
             (
                 ModelSourcePickerError::WrongThread,
                 "model_source_picker_wrong_thread",

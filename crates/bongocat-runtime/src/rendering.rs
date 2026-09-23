@@ -6,8 +6,8 @@ use bongocat_render::{
 };
 
 use bongocat_live2d::{
-    ExpressionClip, ExpressionLayer, Live2dError, Live2dErrorCode, Live2dModel, MotionClip,
-    ParameterUpdate, ProductParameter,
+    ExpressionClip, ExpressionLayer, Live2dError, Live2dModel, MotionClip, ParameterUpdate,
+    ProductParameter,
 };
 use bongocat_render::RenderFrame;
 use std::sync::Arc;
@@ -471,18 +471,16 @@ fn apply_model_input(
 }
 
 fn map_live2d_error(
-    error: Live2dError,
+    _error: Live2dError,
     fallback: RuntimeRenderErrorCode,
 ) -> RuntimeRenderErrorCode {
-    match error.code {
-        Live2dErrorCode::PlatformUnsupported => RuntimeRenderErrorCode::PlatformUnsupported,
-        _ => fallback,
-    }
+    fallback
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bongocat_live2d::Live2dErrorCode;
     use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
     use std::path::Path;
 
@@ -510,11 +508,7 @@ mod tests {
             let mapped = map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed);
             assert_eq!(
                 mapped,
-                if code == Live2dErrorCode::PlatformUnsupported {
-                    RuntimeRenderErrorCode::PlatformUnsupported
-                } else {
-                    RuntimeRenderErrorCode::ModelEvaluationFailed
-                },
+                RuntimeRenderErrorCode::ModelEvaluationFailed,
                 "unexpected mapping for {code}"
             );
         }

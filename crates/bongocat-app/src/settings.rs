@@ -1437,9 +1437,6 @@ const fn settings_runtime_error_code(code: RuntimeRenderErrorCode) -> SettingsRu
         RuntimeRenderErrorCode::GpuPreparationFailed => {
             SettingsRuntimeErrorCode::GpuPreparationFailed
         }
-        RuntimeRenderErrorCode::PlatformUnsupported => {
-            SettingsRuntimeErrorCode::PlatformUnsupported
-        }
         RuntimeRenderErrorCode::TransportClosed => SettingsRuntimeErrorCode::TransportClosed,
         RuntimeRenderErrorCode::OverlaySettingsInvalid => {
             SettingsRuntimeErrorCode::OverlaySettingsInvalid

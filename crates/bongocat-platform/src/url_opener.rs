@@ -6,21 +6,15 @@ const MAX_EXTERNAL_URL_BYTES: usize = 2_048;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExternalUrlOpenError {
-    UnsupportedPlatform,
     InvalidUrl,
     LaunchFailed,
 }
 
 impl ExternalUrlOpenError {
-    pub const ALL: [Self; 3] = [
-        Self::UnsupportedPlatform,
-        Self::InvalidUrl,
-        Self::LaunchFailed,
-    ];
+    pub const ALL: [Self; 2] = [Self::InvalidUrl, Self::LaunchFailed];
 
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::UnsupportedPlatform => "external_url_open_unsupported_platform",
             Self::InvalidUrl => "external_url_open_invalid_url",
             Self::LaunchFailed => "external_url_open_launch_failed",
         }
@@ -113,10 +107,6 @@ mod tests {
     fn external_url_errors_have_stable_anonymous_codes() {
         for (error, expected) in [
             (
-                ExternalUrlOpenError::UnsupportedPlatform,
-                "external_url_open_unsupported_platform",
-            ),
-            (
                 ExternalUrlOpenError::InvalidUrl,
                 "external_url_open_invalid_url",
             ),
@@ -128,7 +118,7 @@ mod tests {
             assert_eq!(error.as_str(), expected);
             assert_eq!(error.to_string(), expected);
         }
-        assert_eq!(ExternalUrlOpenError::ALL.len(), 3);
+        assert_eq!(ExternalUrlOpenError::ALL.len(), 2);
     }
 
     #[test]

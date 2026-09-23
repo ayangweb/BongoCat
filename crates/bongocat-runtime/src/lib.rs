@@ -137,7 +137,6 @@ pub enum RuntimeRenderErrorCode {
     MotionLoadFailed,
     ExpressionLoadFailed,
     GpuPreparationFailed,
-    PlatformUnsupported,
     TransportClosed,
     OverlaySettingsInvalid,
     MaximumFpsInvalid,
@@ -145,13 +144,12 @@ pub enum RuntimeRenderErrorCode {
 }
 
 impl RuntimeRenderErrorCode {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 9] = [
         Self::ModelLoadFailed,
         Self::ModelEvaluationFailed,
         Self::MotionLoadFailed,
         Self::ExpressionLoadFailed,
         Self::GpuPreparationFailed,
-        Self::PlatformUnsupported,
         Self::TransportClosed,
         Self::OverlaySettingsInvalid,
         Self::MaximumFpsInvalid,
@@ -165,7 +163,6 @@ impl RuntimeRenderErrorCode {
             Self::MotionLoadFailed => "motion_load_failed",
             Self::ExpressionLoadFailed => "expression_load_failed",
             Self::GpuPreparationFailed => "gpu_preparation_failed",
-            Self::PlatformUnsupported => "platform_unsupported",
             Self::TransportClosed => "transport_closed",
             Self::OverlaySettingsInvalid => "overlay_settings_invalid",
             Self::MaximumFpsInvalid => "maximum_fps_invalid",

@@ -132,7 +132,6 @@ pub enum Live2dErrorCode {
     MocReviveFailed,
     ModelInitializeFailed,
     ModelMemoryInvalid,
-    PlatformUnsupported,
     ResourceIo,
     TextureIndexInvalid,
     ParameterValueInvalid,
@@ -144,7 +143,7 @@ pub enum Live2dErrorCode {
 }
 
 impl Live2dErrorCode {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 16] = [
         Self::CoreVersionMismatch,
         Self::EmptyMoc,
         Self::InvalidCoreArray,
@@ -153,7 +152,6 @@ impl Live2dErrorCode {
         Self::MocReviveFailed,
         Self::ModelInitializeFailed,
         Self::ModelMemoryInvalid,
-        Self::PlatformUnsupported,
         Self::ResourceIo,
         Self::TextureIndexInvalid,
         Self::ParameterValueInvalid,
@@ -175,7 +173,6 @@ impl Live2dErrorCode {
             Self::MocReviveFailed => "moc_revive_failed",
             Self::ModelInitializeFailed => "model_initialize_failed",
             Self::ModelMemoryInvalid => "model_memory_invalid",
-            Self::PlatformUnsupported => "platform_unsupported",
             Self::ResourceIo => "resource_io",
             Self::TextureIndexInvalid => "texture_index_invalid",
             Self::ParameterValueInvalid => "parameter_value_invalid",
