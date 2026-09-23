@@ -482,7 +482,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Overlay：Win32 透明无边框 popup；无已保存 bounds 时以 `350px` 作为 `100%` 的默认逻辑
   宽度，高度按 Cubism Core 返回的当前模型 Canvas 宽高比自适应，两者再应用缩放
   设置；已保存 bounds 优先，设置/模型切换时重建窗口；非 click-through 模式的
-  客户区支持拖动，click-through 仍返回 `HTTRANSPARENT`。
+  客户区支持拖动，click-through 仍返回 `HTTRANSPARENT`。右键拖动缩放窗口：位移越过
+  `3px` 后按 `(dx + dy) * 0.5` 改 `overlay.scale_percent`（钳制在 `25–400`），窗口左上角
+  不动，尺寸逐帧经 `IDXGISwapChain1::ResizeBuffers` 与就地重建的 render target、staging
+  纹理、mask target 生效（不重建窗口、不重载模型纹理），松手后缩放写回配置（ADR-0057）。
   `keep_inside_screen` 开启时，窗口必须完整落在所有显示器矩形（`EnumDisplayMonitors` +
   `MONITORINFO.rcMonitor`）的并集内，因此允许覆盖任务栏，负坐标保持有效；跨显示器摆放只要不越过
   桌面边界就不纠正。创建、缩放/设置重建和模型重建立即收敛一个不可用的放置（窗口大于显示器时保留
@@ -521,6 +524,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Overlay：通过 `objc2` 创建透明 nonactivating `NSPanel`；无已保存 bounds 时以
   `350px` 作为 `100%` 的默认逻辑宽度，高度按 Cubism Core 返回的当前模型
   Canvas 宽高比自适应，两者再应用缩放设置；已保存 bounds 优先，允许通过窗口背景拖动。
+  右键拖动缩放窗口：位移越过 `3px` 后按 `(dx + dy) * 0.5` 改 `overlay.scale_percent`
+  （钳制在 `25–400`），窗口顶边不动（AppKit frame 原点在左下角，因此修正 origin.y），尺寸
+  逐帧经 `setFrame:display:` 与重设的 drawable size 生效，mask 纹理随 drawable 尺寸重建，
+  松手后缩放写回配置（ADR-0057）。
   `always_on_top` 开启时使用高于程序坞的 AppKit main-menu window level，关闭时恢复 normal
   window level。配置的 runtime snapshot 变化和任何 overlay 重建都必须立即重放当前层级，
   不能由其他路径覆盖。

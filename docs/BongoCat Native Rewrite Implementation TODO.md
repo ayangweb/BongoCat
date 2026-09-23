@@ -231,6 +231,20 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - macOS 实机与 Windows push/PR runner 已分别通过。
 - [ ] 验证 overlay 可置顶、穿透、显示/隐藏、拖动和缩放。
   - 状态（2026-08-29）：双平台置顶、穿透和显示/隐藏已通过；双平台 programmatic resize 和 backing-scale/swapchain 重建已实现。Windows drag 模式通过移除 `WS_EX_TRANSPARENT` 并让 `WM_NCHITTEST` 返回 `HTCAPTION` 进入系统拖动循环，macOS drag 模式通过 `movableByWindowBackground` 与 mouse-ignore 状态进入 AppKit 拖动循环；受控 smoke 验证两平台 click-through -> drag -> click-through、窗口位置 `24x18` 变化及 renderer 重建后重新应用。macOS 每帧还通过 `convertRectToBacking` 校正 drawable size，受控 stale-size smoke 已从 `1x1` 恢复到当前 Retina 尺寸并继续非空绘制；物理鼠标完整手势、外接显示器及 DPI/Retina 热切换仍待完成，因此保持未勾选。
+  - 状态（2026-09-23）：右键拖动缩放已按 ADR-0057 在正式 overlay 实现。平台无关状态机在
+    `bongocat-overlay/src/resize_drag.rs`（`3px` 阈值区分单击与拖动、`(dx + dy) * 0.5`
+    映射、`25–400` 钳制、按 `100%` 基准算绝对尺寸），平台适配只负责读指针与改原生窗口。
+    Windows 经 `WM_NCRBUTTONDOWN/MOUSEMOVE/RBUTTONUP` + `SetCapture` 驱动，尺寸就地经
+    `IDXGISwapChain1::ResizeBuffers` 与重建的 RTV/staging/mask target 生效；macOS 经
+    `NSEvent` local monitor 的 `RightMouseDown/Dragged/Up` 驱动，尺寸经 `setFrame:display:`
+    与重设的 drawable size 生效（mask 纹理随尺寸重建）。拖动起点由窗口当前宽度反算，不用配置里
+    的 `scale_percent`，因此窗口几何与配置不同步时第一次移动不会跳；拖动期间 `hide_on_pointer_hover`
+    被抑制（它会淡出并穿透窗口，正好中断拖动）。松手后缩放经新增的
+    `OverlayInteractionSinks::resize_sender` 报给应用并写回 `overlay.scale_percent`；写回后
+    的重建路径用 `bounds_match_scale` 避免按比例二次缩放。平台无关部分单元测试已通过
+    （`cargo test -p bongocat-overlay`，65 passed）。**未验证**：双平台实机拖动观感、DPI 与
+    Retina 下的实际尺寸、以及「右键单击仍弹菜单」的人工确认；Windows 侧代码在本机无法编译
+    （无交叉工具链），只经过静态审查，因此保持未勾选。
 - [ ] 连续创建/销毁 overlay 100 次，无窗口、swapchain、layer 或线程泄漏。
   - 状态（2026-08-29）：Windows 已在一个 100-cycle driver-pool 预热批次后，对第二个等长 batch 使用 ToolHelp thread snapshot、`IDXGIAdapter3::QueryVideoMemoryInfo(LOCAL)` 和 process handle 执行零增长门禁；真实 hardware D3D11 已在 runner 通过。macOS release 100-cycle 在普通与 NSZombie 模式均通过，AppKit windows 与 Rust owner 都回到 0；1/10/100-cycle `leaks` 基线定位并消除了 AppKit transform animation retain cycle。macOS runner 在 commit `5baa6ba` 即使观测到两批 `currentAllocatedSize` 相等，随后 300-cycle 仍由 `5242880` 扩展到 `8388608`，证明无显示 compositor 的一次相等读数不是可靠收敛信号。当前 probe 对 window/owner/thread 保持零增长，并把 Metal 增长限制为按真实 drawable 尺寸和 `maximumDrawableCount` 计算的一个三缓冲 pool；超出仍失败，driver 零斜率留给 Instruments/Metal System Trace 长期采样。本机仍为 `393216 -> 393216`；新 runner 与 driver 专项证据待完成，因此保持未勾选。
   - 状态（2026-08-30）：push run `33270546247` 与本机均复现 macOS 瞬时进程线程数 `7 -> 8`，采样栈显示变化来自 AppKit/Metal/libdispatch/GPUI `async-io` worker，窗口数、Rust overlay owner 和 Metal allocation 均未增长。probe 现逐个预热 cycle 记录线程高水位，再拒绝测量 batch 超出该上界；这避免把系统 worker 池在两次瞬时采样间的收缩/恢复误报为 overlay 泄漏，同时仍会捕获随等长 batch 持续增长的线程。CI 复验和 driver 专项证据仍待完成。
