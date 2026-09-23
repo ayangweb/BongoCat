@@ -194,7 +194,7 @@ settings 协议。导入成功通知在本次导入最后一次封面回调到�
 
 Windows 侧（2026-09-23）：`bongocat-overlay` 整体无法交叉编译到 `x86_64-pc-windows-msvc`
 （`bongocat-model` 拉进 `libdeflate-sys`，其 C 构建需要 Windows SDK），因此按
-`rust-ci-failure-triage` §5.1 的手法搭隔离 crate，把 `GpuModel::prepare` 的缓冲创建与
+`bongocat-rust-ci-triage` §5.1 的手法搭隔离 crate，把 `GpuModel::prepare` 的缓冲创建与
 `sync_snapshot` 的顶点上传守卫逐字抄入后 `cargo check --target x86_64-pc-windows-msvc` 通过，
 并用 `compile_error!` 探针与一次 `E0308` 变异确认该检查真的在编译、也真的能抓住类型错误。
 **这只是类型证据，Windows 实机截取与启用仍未验证。**

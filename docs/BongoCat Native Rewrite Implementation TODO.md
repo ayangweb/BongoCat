@@ -1460,7 +1460,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     模型纹理与 76 张 1200×1040 键位图上传）实测 395 ms，远在     runtime 的 2 s 激活超时之内。
   - Windows 侧（2026-09-23，本机 macOS / aarch64）：`bongocat-overlay` 整体无法交叉编译到
     `x86_64-pc-windows-msvc`——`bongocat-model` 拉进 `libdeflate-sys`，它的 C 构建需要 Windows SDK。
-    因此按 `rust-ci-failure-triage` §5.1 的手法搭了隔离 crate（`bongocat-render` 零依赖 +
+    因此按 `bongocat-rust-ci-triage` §5.1 的手法搭了隔离 crate（`bongocat-render` 零依赖 +
     `windows = "=0.62.2"` 绑定），把 `GpuModel::prepare` 的每 drawable 缓冲创建（含占位分支）与
     `sync_snapshot` 的顶点上传守卫逐字抄入，`cargo check --target x86_64-pc-windows-msvc` 通过。
     按同一节的纪律又做了两道确认：`compile_error!` 探针确实报错（证明文件真的被编译，不是指纹缓存
