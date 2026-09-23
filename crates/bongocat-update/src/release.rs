@@ -90,20 +90,21 @@ impl UpdateTargetTriple {
 }
 
 /// The release target this binary was built for.
-///
-/// `None` on any target outside the three shipped combinations. The update runtime
-/// treats that as a hard failure instead of picking an arbitrary asset.
-pub const HOST_TARGET_TRIPLE: Option<UpdateTargetTriple> = {
-    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        Some(UpdateTargetTriple::Aarch64AppleDarwin)
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        Some(UpdateTargetTriple::X86_64AppleDarwin)
-    } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        Some(UpdateTargetTriple::X86_64PcWindowsMsvc)
-    } else {
-        None
-    }
-};
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub const HOST_TARGET_TRIPLE: UpdateTargetTriple = UpdateTargetTriple::Aarch64AppleDarwin;
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub const HOST_TARGET_TRIPLE: UpdateTargetTriple = UpdateTargetTriple::X86_64AppleDarwin;
+
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+pub const HOST_TARGET_TRIPLE: UpdateTargetTriple = UpdateTargetTriple::X86_64PcWindowsMsvc;
+
+#[cfg(not(any(
+    all(target_os = "macos", target_arch = "aarch64"),
+    all(target_os = "macos", target_arch = "x86_64"),
+    all(target_os = "windows", target_arch = "x86_64")
+)))]
+compile_error!("BongoCat Native Rewrite builds only for macOS and x86_64 Windows");
 
 /// Immutable configuration for one update run.
 ///
@@ -126,19 +127,16 @@ pub struct ReleaseConfiguration {
 }
 
 impl ReleaseConfiguration {
-    /// The configuration for the current build, or `None` when the host target is
-    /// outside the shipped combinations.
+    /// The configuration for the current build.
     pub const fn for_current_build(
         environment: BuildEnvironment,
         repository_owner: &'static str,
         repository_name: &'static str,
         binary_name: &'static str,
         bundle_name: &'static str,
-    ) -> Option<Self> {
-        let Some(target) = HOST_TARGET_TRIPLE else {
-            return None;
-        };
-        Some(Self {
+    ) -> Self {
+        let target = HOST_TARGET_TRIPLE;
+        Self {
             channel: ReleaseChannel::from_environment(environment),
             repository_owner,
             repository_name,
@@ -149,7 +147,7 @@ impl ReleaseConfiguration {
                 None
             },
             target,
-        })
+        }
     }
 }
 
@@ -208,14 +206,12 @@ mod tests {
     }
 
     #[test]
-    fn host_target_is_one_of_the_shipped_combinations_or_none() {
-        if let Some(target) = HOST_TARGET_TRIPLE {
-            assert!(matches!(
-                target,
-                UpdateTargetTriple::Aarch64AppleDarwin
-                    | UpdateTargetTriple::X86_64AppleDarwin
-                    | UpdateTargetTriple::X86_64PcWindowsMsvc
-            ));
-        }
+    fn host_target_is_one_of_the_shipped_combinations() {
+        assert!(matches!(
+            HOST_TARGET_TRIPLE,
+            UpdateTargetTriple::Aarch64AppleDarwin
+                | UpdateTargetTriple::X86_64AppleDarwin
+                | UpdateTargetTriple::X86_64PcWindowsMsvc
+        ));
     }
 }

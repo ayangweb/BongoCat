@@ -2694,20 +2694,15 @@ fn compose_model_input(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     use bongocat_model::PresetModelCatalog;
     use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, ModelStore};
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     use bongocat_render::{
         ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome, RenderConsumer, RenderFrame,
         RenderSnapshot,
     };
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     use std::collections::BTreeMap;
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     use std::fs;
     use std::path::{Path, PathBuf};
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     use tempfile::TempDir;
     use tempfile::tempdir;
 
@@ -2795,13 +2790,11 @@ mod tests {
         assert!(!sequence_reached(10, 11));
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[derive(Default)]
     struct ManualClock {
         now: Mutex<Duration>,
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     impl ManualClock {
         fn set(&self, now: Duration) {
             *self
@@ -2811,7 +2804,6 @@ mod tests {
         }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     impl MonotonicClock for ManualClock {
         fn now(&self) -> Duration {
             *self
@@ -2842,7 +2834,6 @@ mod tests {
         .expect("valid cursor sample")
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn preset_model(id: &str) -> CommittedModel {
         PresetModelCatalog::open(
             repository_root().join("resources/models"),
@@ -2853,7 +2844,6 @@ mod tests {
         .expect("preset model")
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn preset_model_with_motion_fade_out(fade_out_seconds: f64) -> (TempDir, CommittedModel) {
         let catalog = tempdir().expect("temporary preset catalog");
         let source = repository_root().join("resources/models/standard");
@@ -2890,7 +2880,6 @@ mod tests {
         (catalog, model)
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn clone_model_tree(source: &Path, destination: &Path) {
         fs::create_dir_all(destination).expect("create copied model directory");
         for entry in fs::read_dir(source).expect("read source model directory") {
@@ -2907,7 +2896,6 @@ mod tests {
         }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn wait_for_render_frame(
         consumer: &RenderConsumer,
         predicate: impl Fn(&RenderFrame) -> bool,
@@ -2924,7 +2912,6 @@ mod tests {
         }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn assert_same_render_content(before: &RenderSnapshot, after: &RenderSnapshot) {
         let mut before = before.clone();
         let mut after = after.clone();
@@ -2937,7 +2924,6 @@ mod tests {
         assert_eq!(before, after);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn wait_for_prepared_model(
         client: &RuntimeClient,
         consumer: &RenderConsumer,
@@ -2959,7 +2945,6 @@ mod tests {
         frame
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn report_model_prepared(
         client: &RuntimeClient,
         consumer: &RenderConsumer,
@@ -3425,7 +3410,6 @@ mod tests {
         owner.shutdown(TIMEOUT).expect("clean shutdown");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn runtime_tick_publishes_keyboard_fallback_release_from_runtime_clock() {
         let clock = Arc::new(ManualClock::default());
@@ -3831,7 +3815,6 @@ mod tests {
         owner.shutdown(TIMEOUT).expect("clean shutdown");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn runtime_smooths_cursor_with_the_injected_monotonic_clock() {
         let clock = Arc::new(ManualClock::default());
@@ -3935,7 +3918,6 @@ mod tests {
         owner.shutdown(TIMEOUT).expect("clean shutdown");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn runtime_worker_owns_model_evaluation_and_render_publication() {
         let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
@@ -3999,7 +3981,6 @@ mod tests {
         );
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn motion_commands_use_priority_identity_and_injectable_time() {
         let clock = Arc::new(ManualClock::default());
@@ -4179,7 +4160,6 @@ mod tests {
         assert_eq!(client.snapshot().command_transport.runtime_stopped, 1);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn shortcut_action_dispatch_reuses_typed_motion_and_expression_commands() {
         let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
@@ -4236,7 +4216,6 @@ mod tests {
     /// A behaviour shortcut is one visible run of the clip. The preset motions
     /// declare `Meta.Loop: true` and last 1.633s, so a runtime that honored the
     /// clip flag would keep the model animating for as long as the app runs.
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn shortcut_motion_stops_after_one_cycle_even_though_the_clip_loops() {
         let clock = Arc::new(ManualClock::default());
@@ -4332,7 +4311,6 @@ mod tests {
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn preview_motion_stops_after_one_cycle_even_when_the_clip_loops() {
         let clock = Arc::new(ManualClock::default());
@@ -4380,7 +4358,6 @@ mod tests {
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn stopped_motion_fades_without_a_jump_and_duplicate_stop_does_not_restart_it() {
         let (_catalog, model) = preset_model_with_motion_fade_out(1.0);
@@ -4481,7 +4458,6 @@ mod tests {
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn expression_commands_crossfade_and_preserve_the_active_expression_on_error() {
         let clock = Arc::new(ManualClock::default());
@@ -4567,7 +4543,6 @@ mod tests {
         assert!(stopped.active_expression.is_none());
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn reliable_input_bypasses_deferred_commands_during_model_preparation() {
         let (owner, consumer) = RuntimeOwner::start_with_rendering(true, 8);
@@ -4605,7 +4580,6 @@ mod tests {
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn cpu_and_gpu_model_failures_preserve_the_active_model_and_bindings() {
         let data = tempdir().expect("data root");

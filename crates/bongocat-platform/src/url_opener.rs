@@ -47,14 +47,8 @@ fn open_external_url_with(
     launch(url.as_str())
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn launch_url(url: &str) -> Result<(), ExternalUrlOpenError> {
     opener::open(url).map_err(|_| ExternalUrlOpenError::LaunchFailed)
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn launch_url(_url: &str) -> Result<(), ExternalUrlOpenError> {
-    Err(ExternalUrlOpenError::UnsupportedPlatform)
 }
 
 fn parse_external_url(value: &str) -> Result<Url, ExternalUrlOpenError> {

@@ -1,8 +1,3 @@
-#![cfg_attr(
-    not(any(target_os = "macos", target_os = "windows")),
-    forbid(unsafe_code)
-)]
-
 use bongocat_model::CommittedModel;
 use bongocat_render::{KeySide, RenderResources, RenderSnapshot, TextureAsset, TextureId};
 use image::ImageReader;
@@ -26,20 +21,15 @@ pub use motion::{
     MotionUserDataOccurrence,
 };
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod core;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod core_log;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod sys;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use core_log::{CoreLogError, CoreLogHandle, CoreLogReporter, CoreLogStats};
 
 pub const CUBISM_SDK_RELEASE: &str = "5-r.5";
 pub const CUBISM_CORE_VERSION: u32 = 0x0600_0001;
 pub const CUBISM_LATEST_MOC_VERSION: u32 = 6;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const MAX_MODEL_EFFECT_TARGETS: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -114,7 +104,6 @@ impl ProductParameter {
         }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) const fn slot(self) -> usize {
         self as usize
     }
@@ -232,13 +221,9 @@ pub struct Live2dModel {
     resources: Arc<RenderResources>,
     motions: BTreeMap<String, Vec<MotionClip>>,
     expressions: BTreeMap<String, ExpressionClip>,
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     eye_blink_parameter_ids: Vec<String>,
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     lip_sync_parameter_ids: Vec<String>,
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     model_opacity: f32,
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     core: core::CoreModel,
 }
 
@@ -288,32 +273,20 @@ impl Live2dModel {
             }
         }
 
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            let eye_blink_parameter_ids = parameter_group_ids(model, "EyeBlink");
-            let lip_sync_parameter_ids = parameter_group_ids(model, "LipSync");
-            let moc_path = model.root().join(&model.index().moc);
-            let core = core::CoreModel::load(&moc_path)?;
-            core.validate_texture_indices(resources.textures.len())?;
-            Ok(Self {
-                resources,
-                motions,
-                expressions,
-                eye_blink_parameter_ids,
-                lip_sync_parameter_ids,
-                model_opacity: 1.0,
-                core,
-            })
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = (resources, motions, expressions);
-            Err(Live2dError::new(
-                Live2dErrorCode::PlatformUnsupported,
-                "Cubism Core is available only on the Windows and macOS product targets",
-            ))
-        }
+        let eye_blink_parameter_ids = parameter_group_ids(model, "EyeBlink");
+        let lip_sync_parameter_ids = parameter_group_ids(model, "LipSync");
+        let moc_path = model.root().join(&model.index().moc);
+        let core = core::CoreModel::load(&moc_path)?;
+        core.validate_texture_indices(resources.textures.len())?;
+        Ok(Self {
+            resources,
+            motions,
+            expressions,
+            eye_blink_parameter_ids,
+            lip_sync_parameter_ids,
+            model_opacity: 1.0,
+            core,
+        })
     }
 
     pub fn texture_assets(&self) -> &[TextureAsset] {
@@ -324,7 +297,6 @@ impl Live2dModel {
         Arc::clone(&self.resources)
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn part_opacity_by_id(&self, id: &str) -> Result<Option<f32>, Live2dError> {
         self.core.part_opacity_by_id(id)
     }
@@ -340,50 +312,17 @@ impl Live2dModel {
     }
 
     pub fn parameter_range(&self, parameter: ProductParameter) -> Option<ParameterRange> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            self.core.parameter_range(parameter)
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = parameter;
-            None
-        }
+        self.core.parameter_range(parameter)
     }
 
     pub fn parameter_value(&self, parameter: ProductParameter) -> Result<Option<f32>, Live2dError> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            self.core.parameter_value(parameter)
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = parameter;
-            Err(Live2dError::new(
-                Live2dErrorCode::PlatformUnsupported,
-                "Cubism Core is available only on the Windows and macOS product targets",
-            ))
-        }
+        self.core.parameter_value(parameter)
     }
 
     /// Read a model-declared parameter by its stable Core identifier.
     /// Unknown IDs return `None` so optional effect groups remain portable.
     pub fn parameter_value_by_id(&self, id: &str) -> Result<Option<f32>, Live2dError> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            self.core.parameter_value_by_id(id)
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = id;
-            Err(Live2dError::new(
-                Live2dErrorCode::PlatformUnsupported,
-                "Cubism Core is available only on the Windows and macOS product targets",
-            ))
-        }
+        self.core.parameter_value_by_id(id)
     }
 
     pub fn set_parameter(
@@ -391,19 +330,7 @@ impl Live2dModel {
         parameter: ProductParameter,
         value: f32,
     ) -> Result<ParameterUpdate, Live2dError> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            self.core.set_parameter(parameter, value)
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = (parameter, value);
-            Err(Live2dError::new(
-                Live2dErrorCode::PlatformUnsupported,
-                "Cubism Core is available only on the Windows and macOS product targets",
-            ))
-        }
+        self.core.set_parameter(parameter, value)
     }
 
     pub fn set_normalized_parameter(
@@ -443,30 +370,18 @@ impl Live2dModel {
                 format!("{id} received a non-finite normalized value"),
             ));
         }
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            let Some(range) = self.core.parameter_range_by_id(id) else {
-                return Ok(ParameterUpdate::Unsupported);
-            };
-            let normalized = value.clamp(-1.0, 1.0);
-            let mapped = if normalized >= 0.0 {
-                range.default + (range.maximum - range.default) * normalized
-            } else {
-                range.default + (range.default - range.minimum) * normalized
-            };
-            self.core.set_parameter_by_id(id, mapped, 1.0)
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = id;
-            Err(Live2dError::new(
-                Live2dErrorCode::PlatformUnsupported,
-                "Cubism Core is available only on the Windows and macOS product targets",
-            ))
-        }
+        let Some(range) = self.core.parameter_range_by_id(id) else {
+            return Ok(ParameterUpdate::Unsupported);
+        };
+        let normalized = value.clamp(-1.0, 1.0);
+        let mapped = if normalized >= 0.0 {
+            range.default + (range.maximum - range.default) * normalized
+        } else {
+            range.default + (range.default - range.minimum) * normalized
+        };
+        self.core.set_parameter_by_id(id, mapped, 1.0)
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn apply_automatic_effects(
         &mut self,
         breath: f32,
@@ -533,7 +448,6 @@ impl Live2dModel {
             motion.evaluate_once(elapsed)
         };
 
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let model_opacity_applied = if let Some(opacity) = evaluation.model.opacity {
             self.model_opacity = opacity.clamp(0.0, 1.0);
             true
@@ -541,7 +455,6 @@ impl Live2dModel {
             false
         };
 
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let (applied_parameter_count, applied_eye_blink_count, applied_lip_sync_count) = {
             let mut applied_parameters = 0;
             let mut applied_eye_blink = 0;
@@ -615,7 +528,6 @@ impl Live2dModel {
             (applied_parameters, applied_eye_blink, applied_lip_sync)
         };
 
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let applied_part_opacity_count = {
             let mut count = 0;
             for sample in &evaluation.part_opacities {
@@ -629,26 +541,6 @@ impl Live2dModel {
             }
             count
         };
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        let applied_parameter_count = {
-            let _ = (
-                &evaluation.model,
-                &evaluation.parameters,
-                &evaluation.part_opacities,
-                weight,
-            );
-            0
-        };
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        let applied_part_opacity_count = 0;
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        let applied_eye_blink_count = 0;
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        let applied_lip_sync_count = 0;
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        let model_opacity_applied = false;
 
         Ok(MotionApplyStatus {
             finished: evaluation.finished,
@@ -673,7 +565,6 @@ impl Live2dModel {
             }
         }
 
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let applied_parameter_count = {
             let parameter_ids = layers
                 .iter()
@@ -717,47 +608,19 @@ impl Live2dModel {
             applied
         };
 
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        let applied_parameter_count = {
-            let _ = layers;
-            0
-        };
-
         Ok(ExpressionApplyStatus {
             applied_parameter_count,
         })
     }
 
     pub fn restore_parameter_defaults(&mut self) -> Result<(), Live2dError> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            self.core.restore_parameter_defaults()
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            Err(Live2dError::new(
-                Live2dErrorCode::PlatformUnsupported,
-                "Cubism Core is available only on the Windows and macOS product targets",
-            ))
-        }
+        self.core.restore_parameter_defaults()
     }
 
     pub fn update_and_snapshot(&mut self) -> Result<RenderSnapshot, Live2dError> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            let mut snapshot = self.core.update_and_snapshot()?;
-            snapshot.model_opacity = self.model_opacity;
-            Ok(snapshot)
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            Err(Live2dError::new(
-                Live2dErrorCode::PlatformUnsupported,
-                "Cubism Core is available only on the Windows and macOS product targets",
-            ))
-        }
+        let mut snapshot = self.core.update_and_snapshot()?;
+        snapshot.model_opacity = self.model_opacity;
+        Ok(snapshot)
     }
 }
 
@@ -1160,7 +1023,6 @@ fn load_background_asset(
     }))
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn parameter_group_ids(model: &CommittedModel, name: &str) -> Vec<String> {
     model
         .index()
@@ -2300,7 +2162,6 @@ mod tests {
         assert!(error.to_string().starts_with("resource_io: "));
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn expression_layers_apply_add_multiply_and_overwrite_to_core_parameters() {
         use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
@@ -2368,7 +2229,6 @@ mod tests {
         assert!((eye - eye_default * 0.5).abs() < 0.0001);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn part_opacity_motion_curves_use_the_core_part_sink() {
         use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
@@ -2422,7 +2282,6 @@ mod tests {
         );
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn model_motion_curves_apply_eye_blink_lip_sync_and_render_opacity() {
         use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
@@ -2499,7 +2358,6 @@ mod tests {
         assert!((snapshot.model_opacity - 0.4).abs() < 0.0001);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn automatic_effects_use_declared_group_and_optional_breath_parameter() {
         use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
@@ -2547,7 +2405,6 @@ mod tests {
         );
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn all_preset_models_expose_the_automatic_effect_parameter_contract() {
         use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};

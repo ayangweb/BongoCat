@@ -19,15 +19,7 @@ fn main() -> ExitCode {
 fn run() -> Result<String, String> {
     let mut arguments = env::args().skip(1);
     if arguments.next().as_deref() == Some(CAPTURE_COVER) {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            return capture_cover(arguments);
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = arguments;
-            return Err("model cover capture requires Windows or macOS".to_owned());
-        }
+        return capture_cover(arguments);
     }
     let model_id = arguments.next().unwrap_or_else(|| "standard".to_owned());
     if !matches!(model_id.as_str(), "standard" | "keyboard" | "gamepad") {
@@ -108,7 +100,6 @@ fn run() -> Result<String, String> {
 /// This is the capture the product runs after importing a model, driven from the
 /// command line so the whole path — hidden window, GPU readback, crop, encode —
 /// can be exercised and inspected without going through an import.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn capture_cover(arguments: impl Iterator<Item = String>) -> Result<String, String> {
     const USAGE: &str =
         "usage: bongocat-overlay capture-cover <standard|keyboard|gamepad> <output.png>";

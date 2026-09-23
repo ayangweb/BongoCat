@@ -14,16 +14,11 @@
 //! Windows that flag only covers the cancellation path: an accepted run selects
 //! the folder by hand and uses `--expect-selected`.
 
-use bongocat_platform::pick_model_folder;
-use std::{error::Error, io};
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use bongocat_platform::ModelSourcePickerError;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use bongocat_platform::ModelSourcePickerOutcome;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+use bongocat_platform::{ModelSourcePickerOutcome, pick_model_folder};
 use std::{
     env,
+    error::Error,
+    io,
     path::PathBuf,
     sync::{Arc, atomic::AtomicBool, mpsc},
 };
@@ -123,20 +118,17 @@ fn run_native_application(_application: &NativeApplication) {
     NSApplication::sharedApplication(mtm).run();
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 enum ExpectedOutcome {
     Cancelled,
     Selected(PathBuf),
     SelectedAny,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 struct SmokeOptions {
     expected: ExpectedOutcome,
     automated: bool,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn smoke_options() -> Result<SmokeOptions, io::Error> {
     let mut arguments = env::args().skip(1);
     let expected = match arguments.next().as_deref() {
@@ -277,30 +269,6 @@ fn start_automation(
     Ok(None)
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn verify_unsupported_platform() -> Result<(), Box<dyn Error>> {
-    // The platform layer exposes no native model source picker on this target. The entry point
-    // must reject the request synchronously and must never invoke the completion callback.
-    match pick_model_folder(|_| {
-        unreachable!("the source picker must not invoke its callback without a native backend")
-    }) {
-        Err(ModelSourcePickerError::UnsupportedPlatform) => {}
-        Ok(()) => {
-            return Err(io::Error::other(
-                "the source picker reported success without a native backend",
-            )
-            .into());
-        }
-        Err(error) => {
-            return Err(io::Error::other(format!(
-                "the source picker reported '{error}' instead of an unsupported platform"
-            ))
-            .into());
-        }
-    }
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn run_native_picker_smoke() -> Result<(), Box<dyn Error>> {
     let options = smoke_options()?;
     #[cfg(target_os = "macos")]
@@ -356,13 +324,5 @@ fn run_native_picker_smoke() -> Result<(), Box<dyn Error>> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        verify_unsupported_platform()
-    }
-
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        run_native_picker_smoke()
-    }
+    run_native_picker_smoke()
 }

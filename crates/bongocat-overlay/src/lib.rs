@@ -1,8 +1,3 @@
-#![cfg_attr(
-    not(any(target_os = "macos", target_os = "windows")),
-    forbid(unsafe_code)
-)]
-
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]
@@ -11,48 +6,35 @@ mod windows;
 /// Pointer hover hide is only reachable through the native sessions, so the
 /// module shares their platform gate rather than warning as dead code on the
 /// targets that cannot create an overlay.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod hover;
 
 /// Overlay placement constraint and its settle delay. Gated with the native
 /// sessions for the same reason as [`hover`].
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod placement;
 
 /// The backend-independent half of the model cover capture. Gated with the native
 /// sessions: only they can produce the pixels, and only they carry the image
 /// dependency the PNG encoding needs.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod cover;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use cover::ModelCoverCapture;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::PlatformInputServiceStatus;
 use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_render::BlendMode;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_render::CanvasInfo;
 use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_runtime::PlatformInputDiagnosticsProducer;
 use bongocat_runtime::{
     CursorProducer, GamepadAxisProducer, InputProducer, OverlaySettings, RuntimeClient,
     hover_hide_delay_ms,
 };
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use raw_window_handle::{HandleError, HasWindowHandle, WindowHandle};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::collections::BTreeSet;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::sync::Arc;
 use std::{fmt, path::Path, sync::mpsc::SyncSender, time::Duration};
 
 pub const DEFAULT_OVERLAY_WINDOW_WIDTH: u32 = 350;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) const FRAME_SMOKE_GRID_DIMENSION: u64 = 17;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const MIN_OVERLAY_WINDOW_DIMENSION: f32 = 64.0;
 
 /// Upper bound of the overlay corner radius, in percent of the window box.
@@ -68,7 +50,6 @@ const MIN_OVERLAY_WINDOW_DIMENSION: f32 = 64.0;
 /// readers are the platform modules and the renderer payload they share, so an
 /// unguarded declaration would be dead code on the targets that cannot create
 /// an overlay.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) const MAXIMUM_CORNER_RADIUS_PERCENT: u8 = 50;
 
 /// Build the renderer's corner-radius uniform payload.
@@ -79,7 +60,6 @@ pub(crate) const MAXIMUM_CORNER_RADIUS_PERCENT: u8 = 50;
 /// pixels. The corner coverage is evaluated per drawable pixel and multiplied
 /// into each drawable's alpha, which is how the renderers already apply window
 /// opacity.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) fn corner_radius_uniform(
     corner_radius_percent: u8,
     width: f32,
@@ -89,7 +69,6 @@ pub(crate) fn corner_radius_uniform(
     [f32::from(percent) / 100.0, width, height, 0.0]
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn default_overlay_window_dimensions(canvas: CanvasInfo) -> (f32, f32) {
     let canvas_width = canvas.width.max(MIN_OVERLAY_WINDOW_DIMENSION);
     let canvas_height = canvas.height.max(MIN_OVERLAY_WINDOW_DIMENSION);
@@ -150,7 +129,6 @@ impl OverlaySessionOptions {
     /// Z-order, mouse-routing and hover changes are applied directly to the
     /// native window. Other settings still require replacing native window
     /// resources.
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
         self.scale_percent != next.scale_percent
             || self.opacity_percent != next.opacity_percent
@@ -194,7 +172,6 @@ impl OverlayWindowBounds {
         }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) fn validate(self) -> Result<Self, OverlayError> {
         const MAX_COORDINATE: i32 = 1_000_000;
         const MIN_DIMENSION: u32 = 64;
@@ -209,7 +186,6 @@ impl OverlayWindowBounds {
         Ok(self)
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) fn rescale(self, previous_percent: u16, next_percent: u16) -> Self {
         let ratio = f64::from(next_percent) / f64::from(previous_percent);
         Self {
@@ -226,7 +202,6 @@ impl OverlayWindowBounds {
     /// larger than the display on an axis, so an oversized window stays pinned
     /// to the display's top-left corner instead of being resized or pushed off
     /// the opposite edge.
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) fn clamp_to(self, screen: OverlayScreenBounds) -> Self {
         let maximum_x = if self.width <= screen.width {
             screen.x.saturating_add_unsigned(screen.width - self.width)
@@ -254,7 +229,6 @@ impl OverlayWindowBounds {
 /// menu bar occupies, so the placement constraint keeps the overlay on a screen
 /// without pushing it clear of the desktop chrome. Coordinates may be negative
 /// for a display placed left of or above the primary one.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OverlayScreenBounds {
     pub x: i32,
@@ -263,7 +237,6 @@ pub(crate) struct OverlayScreenBounds {
     pub height: u32,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl HasWindowHandle for ProductOverlaySession {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
         self.inner.window_handle()
@@ -304,7 +277,6 @@ impl OverlayTickOutcome {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct FramePixelStatistics {
     pub sampled_pixels: usize,
@@ -321,7 +293,6 @@ pub(crate) struct FramePixelStatistics {
 /// three channels are treated only as an unordered color tuple. The checks
 /// establish that a transparent overlay retained background and anti-aliased
 /// model coverage; they do not claim cross-backend pixels are identical.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) fn validate_frame_smoke(
     pixels: impl IntoIterator<Item = [u8; 4]>,
 ) -> Result<FramePixelStatistics, &'static str> {
@@ -361,9 +332,7 @@ pub(crate) fn validate_frame_smoke(
     Ok(statistics)
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const FRAME_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(100);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const FRAME_RETRY_MAXIMUM_DELAY: Duration = Duration::from_secs(1);
 
 /// Bounded retry cadence for temporary presentation failures.
@@ -371,13 +340,11 @@ const FRAME_RETRY_MAXIMUM_DELAY: Duration = Duration::from_secs(1);
 /// The frame source owns the actual timer. This state only converts repeated
 /// temporary failures into a deterministic delay, so a hidden compositor never
 /// turns into a busy loop or a stream of renderer errors.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct FrameRetryBackoff {
     consecutive_failures: u8,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl FrameRetryBackoff {
     pub(crate) fn register_temporary_failure(&mut self) -> Duration {
         let exponent = self.consecutive_failures.min(4);
@@ -393,7 +360,6 @@ impl FrameRetryBackoff {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum BlendFactor {
     Zero,
@@ -402,7 +368,6 @@ pub(crate) enum BlendFactor {
     DestinationColor,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct BlendFactors {
     pub source_rgb: BlendFactor,
@@ -411,7 +376,6 @@ pub(crate) struct BlendFactors {
     pub destination_alpha: BlendFactor,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) const fn blend_factors(mode: BlendMode) -> BlendFactors {
     match mode {
         BlendMode::Normal => BlendFactors {
@@ -435,13 +399,11 @@ pub(crate) const fn blend_factors(mode: BlendMode) -> BlendFactors {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Default)]
 pub(crate) struct OverlayPresentationState {
     has_presented_frame: bool,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl OverlayPresentationState {
     pub(crate) fn record_presented_frame(&mut self) {
         self.has_presented_frame = true;
@@ -457,7 +419,6 @@ impl OverlayPresentationState {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn input_start_failure_diagnostics(error: PlatformInputError) -> PlatformInputDiagnostics {
     PlatformInputDiagnostics {
         service_status: match error {
@@ -473,7 +434,6 @@ fn input_start_failure_diagnostics(error: PlatformInputError) -> PlatformInputDi
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn start_platform_input<T>(
     diagnostics_producer: &PlatformInputDiagnosticsProducer,
     start: impl FnOnce() -> Result<T, PlatformInputError>,
@@ -563,22 +523,6 @@ impl ProductOverlaySession {
             )
             .map(|inner| Self { inner })
         }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = (
-                runtime_client,
-                input_producer,
-                cursor_producer,
-                gamepad_axis_producer,
-                render_consumer,
-                options,
-                interaction_sinks,
-            );
-            Err(OverlayError::new(
-                "the product Live2D overlay is available on Windows and macOS",
-            ))
-        }
     }
 
     pub fn run_for(&mut self, duration: Duration) -> Result<(), OverlayError> {
@@ -590,14 +534,6 @@ impl ProductOverlaySession {
         #[cfg(target_os = "windows")]
         {
             self.inner.run_for(duration)
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = duration;
-            Err(OverlayError::new(
-                "the product Live2D overlay is available on Windows and macOS",
-            ))
         }
     }
 
@@ -611,13 +547,6 @@ impl ProductOverlaySession {
         {
             self.inner.tick()
         }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            Err(OverlayError::new(
-                "the product Live2D overlay is available on Windows and macOS",
-            ))
-        }
     }
 
     pub fn window_bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {
@@ -630,21 +559,12 @@ impl ProductOverlaySession {
         {
             self.inner.window_bounds()
         }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            Err(OverlayError::new(
-                "the product Live2D overlay is available on Windows and macOS",
-            ))
-        }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn is_visible(&self) -> bool {
         self.inner.is_visible()
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn model_generation(&self) -> u64 {
         self.inner.model_generation()
     }
@@ -664,13 +584,6 @@ impl ProductOverlaySession {
         {
             self.inner.stop_input()
         }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            Err(OverlayError::new(
-                "the product Live2D overlay is available on Windows and macOS",
-            ))
-        }
     }
 
     pub fn finish_after_runtime_shutdown(self) -> Result<ProductOverlayReport, OverlayError> {
@@ -682,13 +595,6 @@ impl ProductOverlaySession {
         #[cfg(target_os = "windows")]
         {
             self.inner.finish_after_runtime_shutdown()
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            Err(OverlayError::new(
-                "the product Live2D overlay is available on Windows and macOS",
-            ))
         }
     }
 }
@@ -803,7 +709,6 @@ fn percentile_nearest_rank(sorted_samples: &[u64], percentile: u8) -> u64 {
     sorted_samples[rank.saturating_sub(1)]
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OverlayErrorKind {
     Fatal,
@@ -812,7 +717,6 @@ enum OverlayErrorKind {
 
 #[derive(Debug)]
 pub struct OverlayError {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     kind: OverlayErrorKind,
     detail: String,
 }
@@ -820,13 +724,11 @@ pub struct OverlayError {
 impl OverlayError {
     pub(crate) fn new(detail: impl Into<String>) -> Self {
         Self {
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
             kind: OverlayErrorKind::Fatal,
             detail: detail.into(),
         }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) fn temporary_presentation_unavailable(detail: impl Into<String>) -> Self {
         Self {
             kind: OverlayErrorKind::TemporaryPresentationUnavailable,
@@ -834,7 +736,6 @@ impl OverlayError {
         }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) const fn is_temporary_presentation_unavailable(&self) -> bool {
         matches!(
             self.kind,
@@ -870,7 +771,6 @@ impl std::error::Error for OverlayError {}
 ///
 /// The capture must run where a native window can be created: the main thread on
 /// macOS, and the thread that owns the window on Windows.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn capture_model_cover(
     model: Arc<bongocat_model::CommittedModel>,
 ) -> Result<ModelCoverCapture, OverlayError> {
@@ -902,7 +802,6 @@ pub fn capture_model_cover(
 ///
 /// The session must live where a native window can be created: the main thread
 /// on macOS, and the thread that owns the window on Windows.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub struct ModelCoverCaptureSession {
     #[cfg(target_os = "macos")]
     inner: macos::CoverCaptureSession,
@@ -910,7 +809,6 @@ pub struct ModelCoverCaptureSession {
     inner: windows::CoverCaptureSession,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl ModelCoverCaptureSession {
     pub fn start(model: Arc<bongocat_model::CommittedModel>) -> Result<Self, OverlayError> {
         Ok(Self {
@@ -999,17 +897,8 @@ pub fn run_model_switch_preview(
     {
         windows::run_model_switch_preview(model_id, model_root, switch_cycles)
     }
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = (model_id, model_root, switch_cycles);
-        Err(OverlayError::new(
-            "the Live2D model-switch preview is available on Windows and macOS",
-        ))
-    }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) fn validate_model_generation_advance(
     active_generation: u64,
     candidate_generation: u64,

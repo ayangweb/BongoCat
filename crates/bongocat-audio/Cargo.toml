@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+[dependencies]
 rodio.workspace = true
 
 [lints]

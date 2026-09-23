@@ -13,8 +13,6 @@ bongocat-model.workspace = true
 bongocat-platform.workspace = true
 bongocat-render.workspace = true
 bongocat-runtime.workspace = true
-
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 raw-window-handle.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]

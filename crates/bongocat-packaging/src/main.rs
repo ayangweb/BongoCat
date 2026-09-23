@@ -1377,9 +1377,9 @@ fn generate_signing_key(path: &Path) -> Result<Vec<PathBuf>> {
 
 /// Restrict the private key to its owner.
 ///
-/// `cargo-packager` writes the key with the process umask, which on a default macOS or
-/// Linux account leaves it world-readable. Windows has no equivalent mode, so there the
-/// file inherits the account's ACL.
+/// `cargo-packager` writes the key with the process umask, which on macOS leaves it
+/// world-readable. Windows has no equivalent mode, so there the file inherits the
+/// account's ACL.
 #[cfg(unix)]
 fn restrict_private_key(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;

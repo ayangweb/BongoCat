@@ -12,13 +12,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::collections::HashMap;
 
 // Playback completion is diagnostic state only. A short health check keeps
 // that state reasonably fresh without waking an idle worker at 100 Hz.
 const WORKER_POLL_INTERVAL: Duration = Duration::from_millis(100);
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const PREFERRED_OUTPUT_BUFFER_FRAMES: u32 = 512;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -463,9 +461,7 @@ impl Drop for MotionAudioService {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BackendError {
-    #[cfg(any(target_os = "macos", target_os = "windows", test))]
     ResourceIo,
-    #[cfg(any(target_os = "macos", target_os = "windows", test))]
     DecodeFailed,
     OutputUnavailable,
 }
@@ -635,12 +631,10 @@ fn process_command(
 
 fn record_backend_error(diagnostics: &mut MotionAudioDiagnostics, error: BackendError) {
     let code = match error {
-        #[cfg(any(target_os = "macos", target_os = "windows", test))]
         BackendError::ResourceIo => {
             diagnostics.resource_failures = diagnostics.resource_failures.saturating_add(1);
             MotionAudioErrorCode::ResourceIo
         }
-        #[cfg(any(target_os = "macos", target_os = "windows", test))]
         BackendError::DecodeFailed => {
             diagnostics.decode_failures = diagnostics.decode_failures.saturating_add(1);
             MotionAudioErrorCode::DecodeFailed
@@ -655,7 +649,6 @@ fn record_backend_error(diagnostics: &mut MotionAudioDiagnostics, error: Backend
     diagnostics.state = MotionAudioState::Degraded;
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Default)]
 struct SystemAudioBackend {
     output: Option<rodio::MixerDeviceSink>,
@@ -663,7 +656,6 @@ struct SystemAudioBackend {
     prepared: HashMap<PathBuf, rodio::buffer::SamplesBuffer>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl AudioBackend for SystemAudioBackend {
     fn prepare(&mut self, paths: &[PathBuf]) -> Result<usize, BackendError> {
         use rodio::Source;
@@ -726,25 +718,6 @@ impl AudioBackend for SystemAudioBackend {
 
     fn is_playing(&self) -> bool {
         self.player.as_ref().is_some_and(|player| !player.empty())
-    }
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-#[derive(Default)]
-struct SystemAudioBackend;
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-impl AudioBackend for SystemAudioBackend {
-    fn play(&mut self, _path: &Path, _volume: MotionAudioVolume) -> Result<(), BackendError> {
-        Err(BackendError::OutputUnavailable)
-    }
-
-    fn stop(&mut self) -> bool {
-        false
-    }
-
-    fn is_playing(&self) -> bool {
-        false
     }
 }
 
@@ -1172,7 +1145,6 @@ mod tests {
         assert_eq!(client.diagnostics().state, MotionAudioState::Stopped);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn product_backend_classifies_missing_and_invalid_audio_without_opening_a_device() {
         let service = MotionAudioService::start(2).expect("product audio service");
@@ -1201,7 +1173,6 @@ mod tests {
         service.shutdown(TIMEOUT).expect("clean shutdown");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn bundled_flac_is_accepted_by_the_product_decoder() {
         use rodio::Source;

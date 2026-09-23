@@ -190,12 +190,10 @@ mod dispatcher_tests {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use global::{
     GlobalShortcutCounters, GlobalShortcutService, GlobalShortcutServiceError, ShortcutHotkeyError,
 };
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod global {
     //! OS-registered global shortcuts backed by the `global-hotkey` crate
     //! (ADR-0044). A single owner thread holds the platform manager, mirrors

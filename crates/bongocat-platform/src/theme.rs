@@ -23,10 +23,6 @@
 //! Windows has a documented API for the frame only (`DWMWA_USE_IMMERSIVE_DARK_MODE`); the
 //! other rows follow the *system* theme, which [`init_native_theme`] opts the process into.
 //!
-//! Linux is outside the first release (ADR-0006). Its compositor draws the frame and the
-//! GTK portal supplies the panels, so there is nothing here for the product to set and
-//! every entry point is a documented no-op.
-
 use raw_window_handle::HasWindowHandle;
 use std::fmt;
 
@@ -403,29 +399,6 @@ mod platform {
         }
         .map_err(|_| NativeThemeError::NativeCallFailed)?;
         result.map_err(|_| NativeThemeError::NativeCallFailed)
-    }
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-mod platform {
-    use super::{AppTheme, NativeThemeError};
-    use raw_window_handle::HasWindowHandle;
-
-    pub(super) fn apply_process(_theme: Option<AppTheme>) -> Result<(), NativeThemeError> {
-        Ok(())
-    }
-
-    pub(super) fn apply(
-        _window: &impl HasWindowHandle,
-        _theme: Option<AppTheme>,
-    ) -> Result<(), NativeThemeError> {
-        // The compositor owns the frame and the GTK portal owns the panels, so there is
-        // no application-level switch to set. See the module docs.
-        Ok(())
-    }
-
-    pub(super) fn init() -> Result<(), NativeThemeError> {
-        Ok(())
     }
 }
 

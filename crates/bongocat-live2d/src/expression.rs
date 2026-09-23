@@ -147,7 +147,6 @@ impl ExpressionClip {
         self.parameters.values()
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) fn parameter(&self, id: &str) -> Option<&ExpressionParameter> {
         self.parameters.get(id)
     }

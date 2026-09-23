@@ -78,10 +78,6 @@ pub const fn current_platform_id() -> &'static str {
     {
         "windows"
     }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        "unsupported"
-    }
 }
 
 /// Resolve a translation that can vary per supported platform.
@@ -441,7 +437,7 @@ mod tests {
     #[test]
     fn current_platform_id_is_one_of_the_supported_platforms() {
         assert!(
-            matches!(current_platform_id(), "macos" | "windows" | "unsupported"),
+            matches!(current_platform_id(), "macos" | "windows"),
             "platform id must be a known suffix, got {:?}",
             current_platform_id()
         );

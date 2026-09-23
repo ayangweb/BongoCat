@@ -280,8 +280,6 @@ pub enum UpdateEvent {
 /// Why this build cannot check for or install updates.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UpdateUnavailability {
-    /// The host is outside the shipped targets.
-    UnsupportedHost,
     /// The build's channel is not allowed to update.
     DevelopmentChannel,
     /// No release signing key is provisioned.
@@ -364,14 +362,14 @@ impl UpdateOutcome {
 /// Every update run re-derives its updater from the immutable
 /// [`ReleaseConfiguration`], so no mutable state can retarget a later run.
 pub struct UpdateRuntime {
-    configuration: Option<ReleaseConfiguration>,
+    configuration: ReleaseConfiguration,
     current_version: &'static str,
     diagnostics: UpdateDiagnosticsTracker,
 }
 
 impl UpdateRuntime {
     pub fn new(
-        configuration: Option<ReleaseConfiguration>,
+        configuration: ReleaseConfiguration,
         current_version: &'static str,
         diagnostics: UpdateDiagnosticsTracker,
     ) -> Self {
@@ -402,35 +400,27 @@ impl UpdateRuntime {
     }
 
     /// The release channel this build is bound to.
-    ///
-    /// `None` on a host outside the shipped targets, where there is no release
-    /// configuration at all.
-    pub fn channel(&self) -> Option<ReleaseChannel> {
-        self.configuration
-            .map(|configuration| configuration.channel)
+    pub fn channel(&self) -> ReleaseChannel {
+        self.configuration.channel
     }
 
     /// Whether this build can actually run an update.
     ///
-    /// False when the host target is outside the shipped set, when the build's
-    /// channel is not allowed to update, or when no release signing key is
-    /// provisioned. Callers use this to decide whether to offer an update entry point
-    /// at all, rather than offering one that can only fail.
+    /// False when the build's channel is not allowed to update, or when no
+    /// release signing key is provisioned. Callers use this to decide whether to
+    /// offer an update entry point at all, rather than offering one that can only
+    /// fail.
     pub fn is_available(&self) -> bool {
         self.unavailability().is_none()
     }
 
     /// Why this build cannot update, or `None` when it can.
     ///
-    /// The order is the order the gates are applied in: a host that is not shipped has
-    /// no configuration at all, then the channel, then the signing key. Callers
-    /// surface the first reason so the UI can explain the absence of the entry point
-    /// instead of leaving it unexplained.
+    /// The order is the order the gates are applied in: the channel, then the
+    /// signing key. Callers surface the first reason so the UI can explain the
+    /// absence of the entry point instead of leaving it unexplained.
     pub fn unavailability(&self) -> Option<UpdateUnavailability> {
-        let Some(configuration) = self.configuration else {
-            return Some(UpdateUnavailability::UnsupportedHost);
-        };
-        if !configuration.channel.is_enabled() {
+        if !self.configuration.channel.is_enabled() {
             return Some(UpdateUnavailability::DevelopmentChannel);
         }
         if configured_signing_key(RELEASE_SIGNING_KEY).is_none() {
@@ -534,9 +524,7 @@ impl UpdateRuntime {
     /// the build is not allowed to update or cannot authenticate what it would
     /// download.
     fn updater(&self, endpoint: Url, timeout: std::time::Duration) -> Result<Updater, UpdateError> {
-        let configuration = self
-            .configuration
-            .ok_or_else(|| UpdateError::new(UpdateErrorCode::NotConfigured))?;
+        let configuration = self.configuration;
         if !configuration.channel.is_enabled() {
             return Err(UpdateError::new(UpdateErrorCode::EnvironmentDisabled));
         }
@@ -589,9 +577,7 @@ impl UpdateRuntime {
 
     /// Fetch the release manifest, trying the proxy sources before the official one.
     fn fetch_manifest(&self) -> Result<ManifestFetch<cargo_packager_updater::Update>, UpdateError> {
-        let configuration = self
-            .configuration
-            .ok_or_else(|| UpdateError::new(UpdateErrorCode::NotConfigured))?;
+        let configuration = self.configuration;
         let sources = Self::manifest_sources(configuration)?;
         Self::select_manifest_source(&sources, |source| self.check_source(source))
     }
@@ -617,7 +603,7 @@ impl UpdateRuntime {
     /// Derived from the immutable release identity, so the update window can offer a
     /// link without owning the repository layout itself.
     pub fn release_page_url(&self, version: &str) -> Option<String> {
-        let configuration = self.configuration?;
+        let configuration = self.configuration;
         Some(format!(
             "https://github.com/{}/{}/releases/tag/v{}",
             configuration.repository_owner,
@@ -757,14 +743,6 @@ fn restart_current_process() -> Result<std::convert::Infallible, UpdateError> {
     std::process::exit(0);
 }
 
-#[cfg(not(any(unix, windows)))]
-fn restart_current_process() -> Result<std::convert::Infallible, UpdateError> {
-    Err(UpdateError::at(
-        UpdateStage::Install,
-        UpdateErrorCode::RestartFailed,
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -780,10 +758,9 @@ mod tests {
 
     /// A fixed release configuration.
     ///
-    /// The gating tests must not go through `for_current_build`: that returns `None` on
-    /// any host outside the shipped combinations (the Linux CI runner is one), which
-    /// would turn the channel and error-code assertions below into no-ops there instead
-    /// of real checks.
+    /// The gating tests must not go through `for_current_build`: a missing
+    /// configuration would turn the channel and error-code assertions below into
+    /// no-ops instead of real checks.
     fn configuration(channel: ReleaseChannel) -> ReleaseConfiguration {
         ReleaseConfiguration {
             channel,
@@ -797,7 +774,7 @@ mod tests {
 
     fn runtime_for(channel: ReleaseChannel) -> UpdateRuntime {
         UpdateRuntime::new(
-            Some(configuration(channel)),
+            configuration(channel),
             env!("CARGO_PKG_VERSION"),
             UpdateDiagnosticsTracker::default(),
         )
@@ -810,7 +787,7 @@ mod tests {
     #[test]
     fn development_builds_never_reach_the_network() {
         let runtime = development_runtime();
-        assert_eq!(runtime.channel().map(|c| c.as_str()), Some("development"));
+        assert_eq!(runtime.channel().as_str(), "development");
 
         let error = runtime
             .check()
@@ -842,23 +819,6 @@ mod tests {
         assert!(configured_signing_key(None).is_none());
         assert!(configured_signing_key(Some("")).is_none());
         assert!(configured_signing_key(Some("   \n\t")).is_none());
-    }
-
-    #[test]
-    fn a_host_outside_the_shipped_targets_has_no_release_configuration() {
-        let runtime = UpdateRuntime::new(
-            None,
-            env!("CARGO_PKG_VERSION"),
-            UpdateDiagnosticsTracker::default(),
-        );
-
-        assert_eq!(runtime.channel(), None);
-        assert!(!runtime.is_available());
-
-        let error = runtime
-            .check()
-            .expect_err("an unsupported host has no release configuration");
-        assert_eq!(error.code(), UpdateErrorCode::NotConfigured);
     }
 
     /// The endpoint is the repository's shared release manifest.
@@ -1292,13 +1252,6 @@ mod tests {
             runtime.release_page_url("v1.2.3").as_deref(),
             Some("https://github.com/ayangweb/BongoCat/releases/tag/v1.2.3")
         );
-
-        let unsupported = UpdateRuntime::new(
-            None,
-            env!("CARGO_PKG_VERSION"),
-            UpdateDiagnosticsTracker::default(),
-        );
-        assert_eq!(unsupported.release_page_url("1.2.3"), None);
     }
 
     #[test]
@@ -1323,17 +1276,6 @@ mod tests {
         assert_eq!(
             runtime_for(ReleaseChannel::Production).unavailability(),
             None
-        );
-
-        let unsupported = UpdateRuntime::new(
-            None,
-            env!("CARGO_PKG_VERSION"),
-            UpdateDiagnosticsTracker::default(),
-        );
-        assert_eq!(
-            unsupported.unavailability(),
-            Some(UpdateUnavailability::UnsupportedHost),
-            "a host outside the shipped targets has no configuration at all"
         );
     }
 

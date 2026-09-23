@@ -17,7 +17,7 @@ use std::sync::{
 /// backwards compatible; renaming or removing one is not.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UpdateErrorCode {
-    /// The build has no release configuration (unsupported host target).
+    /// The build has no release configuration.
     NotConfigured,
     /// The build's release channel is not allowed to update.
     EnvironmentDisabled,

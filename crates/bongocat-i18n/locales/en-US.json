@@ -204,8 +204,7 @@
     },
     "unavailable": {
       "development_build": "Development builds cannot install release updates.",
-      "signing_key_missing": "This version carries no update verification data, so updates stay disabled.",
-      "unsupported_host": "No updates are available for this system."
+      "signing_key_missing": "This version carries no update verification data, so updates stay disabled."
     },
     "about": {
       "label": "Check for Updates",

@@ -929,7 +929,6 @@ use std::time::Duration;
 #[cfg(target_os = "macos")]
 const MACOS_COMPOSITOR_SETTLE_INTERVAL: Duration = Duration::from_millis(17);
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const AUTO_QUIT_MILESTONE_WAIT_ATTEMPTS: usize = 200;
 
 #[cfg(target_os = "macos")]
@@ -938,13 +937,11 @@ type PlatformOverlay = macos_overlay::NativeOverlay;
 #[cfg(target_os = "windows")]
 type PlatformOverlay = windows_overlay::NativeOverlay;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 struct OverlayGlobal {
     overlay: Option<PlatformOverlay>,
     frame_source: FrameSourceState,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Default)]
 struct FrameSourceState {
     started: bool,
@@ -960,7 +957,6 @@ struct FrameSourceState {
     injected_failure: bool,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FrameFailureKind {
     SurfaceUnavailable,
@@ -968,7 +964,6 @@ enum FrameFailureKind {
     Fatal,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl FrameFailureKind {
     fn label(self) -> &'static str {
         match self {
@@ -979,20 +974,15 @@ impl FrameFailureKind {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 struct FrameFailure {
     kind: FrameFailureKind,
     message: String,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 struct FrameTickOutcome {
     keep_running: bool,
     status: Option<String>,
 }
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-struct OverlayGlobal {}
 
 impl Global for OverlayGlobal {}
 
@@ -1203,10 +1193,8 @@ fn main() {
 
         let mut overlay_status = "GPUI settings + native overlay".to_string();
 
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let mut run_visibility_smoke = false;
 
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             let overlay = if simulate_failure {
                 Err("simulated overlay initialization failure".to_string())
@@ -1255,8 +1243,6 @@ fn main() {
             }
         }
 
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        cx.set_global(OverlayGlobal {});
 
         let settings_window = cx
             .open_window(
@@ -1279,7 +1265,6 @@ fn main() {
         println!("gpui-overlay-spike: GPUI settings window opened");
         cx.activate(true);
 
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
         if run_visibility_smoke {
             {
                 let frame_source = &mut cx.global_mut::<OverlayGlobal>().frame_source;
@@ -1349,7 +1334,6 @@ fn main() {
                 Timer::after(Duration::from_millis(milliseconds)).await;
                 println!("gpui-overlay-spike: auto quit requested");
 
-                #[cfg(any(target_os = "macos", target_os = "windows"))]
                 for _ in 0..AUTO_QUIT_MILESTONE_WAIT_ATTEMPTS {
                     let milestone_complete = cx
                         .update(|cx| {
@@ -1367,14 +1351,10 @@ fn main() {
                 }
 
                 cx.update(|cx| {
-                    #[cfg(any(target_os = "macos", target_os = "windows"))]
-                    {
-                        cx.global_mut::<OverlayGlobal>().frame_source.running = false;
-                    }
+                    cx.global_mut::<OverlayGlobal>().frame_source.running = false;
                 })
                 .ok();
 
-                #[cfg(any(target_os = "macos", target_os = "windows"))]
                 for _ in 0..20 {
                     Timer::after(Duration::from_millis(10)).await;
                     let stopped = cx
@@ -1389,7 +1369,6 @@ fn main() {
                 }
 
                 cx.update(|cx| {
-                    #[cfg(any(target_os = "macos", target_os = "windows"))]
                     {
                         let global = cx.global_mut::<OverlayGlobal>();
                         assert!(
@@ -1418,7 +1397,6 @@ fn main() {
     });
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn frame_smoke_milestone_complete(
     frame_source: &FrameSourceState,
     recovery_expected: bool,
@@ -1430,7 +1408,7 @@ fn frame_smoke_milestone_complete(
         && (!recovery_expected || (frame_source.injected_failure && frame_source.recoveries > 0))
 }
 
-#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
+#[cfg(test)]
 mod frame_source_tests {
     use super::*;
 
@@ -1460,7 +1438,6 @@ mod frame_source_tests {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn tick_frame_source(
     global: &mut OverlayGlobal,
     simulate_renderer_loss_at_frame: Option<u64>,
@@ -1549,7 +1526,6 @@ fn tick_frame_source(
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn enter_frame_recovery(global: &mut OverlayGlobal, failure: FrameFailure) -> FrameTickOutcome {
     global.frame_source.failures += 1;
     global.frame_source.recovery_attempts = 0;
@@ -1576,7 +1552,6 @@ fn enter_frame_recovery(global: &mut OverlayGlobal, failure: FrameFailure) -> Fr
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn try_recover_overlay(global: &mut OverlayGlobal) -> FrameTickOutcome {
     if global.frame_source.retry_ticks_remaining > 0 {
         global.frame_source.retry_ticks_remaining -= 1;

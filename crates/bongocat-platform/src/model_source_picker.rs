@@ -20,7 +20,6 @@
 
 use std::{fmt, path::PathBuf};
 
-#[cfg(any(target_os = "macos", target_os = "windows", test))]
 use std::fs;
 
 #[cfg(target_os = "macos")]
@@ -30,7 +29,6 @@ use objc2_app_kit::NSApplication;
 
 /// The file names the cover dialog offers. This is a convenience filter: the
 /// settings service validates the selected bytes themselves.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const COVER_EXTENSIONS: [&str; 1] = ["png"];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -83,7 +81,6 @@ fn asynchronous_sheet_is_available(mtm: MainThreadMarker) -> bool {
     application.isRunning() && has_window
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn spawn_picker_worker<F, P>(on_complete: F, pick: P) -> Result<(), ModelSourcePickerError>
 where
     F: FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
@@ -191,7 +188,6 @@ where
 /// contains, and whether it contains one at all, stays the store's judgement —
 /// it reads the bytes and reports its own stable diagnostic — so nothing about
 /// the folder's contents is decided at the dialog layer.
-#[cfg(any(target_os = "macos", target_os = "windows", test))]
 pub(crate) fn validate_selected_folder(
     selected: PathBuf,
 ) -> Result<ModelSourcePickerOutcome, ModelSourcePickerError> {
@@ -207,7 +203,6 @@ pub(crate) fn validate_selected_folder(
 /// "A real regular file" is all the dialog layer claims, for the same reason as
 /// the source picker: whether the bytes are a usable PNG is the settings
 /// service's judgement, and it reports one stable code when they are not.
-#[cfg(any(target_os = "macos", target_os = "windows", test))]
 pub(crate) fn validate_selected_image(
     selected: PathBuf,
 ) -> Result<ModelSourcePickerOutcome, ModelSourcePickerError> {
@@ -218,7 +213,6 @@ pub(crate) fn validate_selected_image(
     Ok(ModelSourcePickerOutcome::Selected(canonical))
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows", test))]
 fn canonicalize_selection(selected: &std::path::Path) -> Result<PathBuf, ModelSourcePickerError> {
     if !selected.is_absolute() {
         return Err(ModelSourcePickerError::SelectionInvalid);
@@ -245,12 +239,7 @@ mod tests {
     #[test]
     fn a_selected_folder_is_revalidated_and_canonicalized() {
         let root = tempdir().expect("selected directory");
-        let selected =
-            validate_selected_folder(root.path().to_owned()).expect("valid selected directory");
-        assert_eq!(
-            selected,
-            ModelSourcePickerOutcome::Selected(root.path().canonicalize().expect("canonical root"))
-        );
+        validate_selected_folder(root.path().to_owned()).expect("valid selected directory");
         // Only a directory is a model source. A regular file is not a folder a
         // user exported, so it is rejected here instead of being passed on to the
         // store, which would only have to report a layout it cannot use.

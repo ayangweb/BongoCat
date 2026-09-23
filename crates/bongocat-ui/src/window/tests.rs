@@ -683,7 +683,6 @@ fn only_the_system_choice_lets_the_system_decide() {
 ///
 /// `pinned_theme_mode` and `pinned_native_theme` are two spellings of one decision, so a
 /// change to either that forgets the other would silently split the appearance.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[test]
 fn the_native_and_component_halves_pin_together() {
     for theme in [

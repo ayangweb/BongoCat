@@ -43,7 +43,6 @@ mod diagnostics_bundle;
 #[cfg(test)]
 mod product_icon_contract;
 mod settings;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod startup_permission;
 mod update;
 use app_log::ApplicationRunMarker;
@@ -56,7 +55,6 @@ pub use settings::{
     ApplicationSettingsService, SettingsServiceJoinError, StatusIconCapability,
     TaskbarIconCapability,
 };
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use startup_permission::ensure_startup_permission;
 pub use update::{ApplicationUpdateService, UpdateServiceError, restart_required_after_install};
 
@@ -1862,14 +1860,7 @@ impl Application {
 }
 
 fn system_language() -> Language {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        bongocat_platform::system_language()
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        Language::EnglishUnitedStates
-    }
+    bongocat_platform::system_language()
 }
 
 /// Where a preset model sits on the Models page: the position of the input mode
@@ -2412,14 +2403,12 @@ fn bind_drawable_key(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     use bongocat_render::{ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome};
     use bongocat_runtime::{
         GamepadAxis, GamepadAxisKey, GamepadAxisSample, GamepadButton, GamepadButtonKey, HandSide,
         InputControl, InputEdge, InputEvent, InputSource, MonotonicMillis, PhysicalKey,
         RuntimeState,
     };
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     use std::time::Instant;
     use std::{fs, path::Path};
     use tempfile::tempdir;
@@ -3070,7 +3059,6 @@ mod tests {
     /// move the paw either. The bundled `standard` model ships `KeyA.png` but no
     /// `Dot.png`, which makes the two keys a complete pair: one draws and
     /// presses, the other does nothing at all.
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn a_key_the_active_model_cannot_draw_never_moves_the_paw() {
         let base = tempdir().expect("temp directory");
@@ -3149,7 +3137,6 @@ mod tests {
     /// The binding test above proves the Map; this proves the press actually
     /// survives the whole path for the model that is active at runtime. F1 and
     /// F13 bracket the two HID function-key ranges.
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn function_key_presses_reach_the_model_snapshot_with_the_left_hand() {
         let base = tempdir().expect("temp directory");
@@ -3276,11 +3263,6 @@ mod tests {
 
     /// The same modifier as a config bit set, for the one test that drives the
     /// runtime instead of reading a chord string back.
-    ///
-    /// Starting a rendering application is a macOS/Windows capability, so that
-    /// test is gated and this helper has no caller on Linux. Gate it the same
-    /// way rather than leaving a function the Linux lint sees as dead.
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn behavior_shortcut_primary_modifiers() -> bongocat_config::ShortcutModifiers {
         let bits = if cfg!(target_os = "macos") {
             bongocat_config::ShortcutModifiers::META
@@ -3295,7 +3277,6 @@ mod tests {
     /// page show a default in every row instead of an empty field. The Native
     /// rewrite does the same on activation, and the assignment rides on the
     /// same commit that selects the model.
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn activating_a_model_fills_in_the_legacy_default_behavior_shortcuts() {
         let base = tempdir().expect("temp directory");
@@ -4637,7 +4618,6 @@ mod tests {
         restarted.shutdown().expect("clean restart shutdown");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn rejected_gpu_model_switch_restores_the_previous_config_selection() {
         let base = tempdir().expect("temp directory");
@@ -4738,7 +4718,6 @@ mod tests {
             .collect()
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn wait_for_model_commit_frame(
         consumer: &RenderConsumer,
         token: ModelCommitToken,
@@ -4755,7 +4734,6 @@ mod tests {
         }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn wait_for_any_model_commit_frame(consumer: &RenderConsumer) -> bongocat_render::RenderFrame {
         let deadline = Instant::now() + RUNTIME_TIMEOUT;
         loop {

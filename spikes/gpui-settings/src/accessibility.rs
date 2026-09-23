@@ -339,9 +339,6 @@ impl AccessibilityBridge {
             other => return Err(format!("expected Win32 window handle, found {other:?}")),
         };
 
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        return Err(format!("unsupported GPUI accessibility handle: {raw:?}"));
-
         #[cfg(target_os = "macos")]
         return Ok((
             Self {

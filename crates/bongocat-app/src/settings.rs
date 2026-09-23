@@ -14,7 +14,6 @@ use bongocat_model::{
 };
 #[cfg(target_os = "macos")]
 use bongocat_platform::{InputPermission, input_monitoring_permission};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{
     StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
     open_directory, set_startup_item_enabled, startup_item_state,
@@ -24,7 +23,6 @@ use bongocat_runtime::{
     PlatformInputServiceStatus, RuntimeRenderErrorCode, RuntimeSnapshot, RuntimeState,
 };
 use bongocat_storage::{create_private_dir_all, write_private_atomic};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsStartupItemError;
 use bongocat_ui::{
     DIAGNOSTICS_EXPORT_FORMAT_VERSION, RuntimeHealth, SettingsApplicationShortcut,
@@ -1074,29 +1072,13 @@ fn persist_window_state(
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn system_open_backup_location(path: &std::path::Path) -> Result<(), SettingsError> {
     open_directory(path)
         .map_err(|_| SettingsError::new(SettingsErrorCode::BackupLocationOpenFailed))
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn system_open_backup_location(_path: &std::path::Path) -> Result<(), SettingsError> {
-    Err(SettingsError::new(
-        SettingsErrorCode::BackupLocationOpenFailed,
-    ))
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn system_open_model_location(path: &std::path::Path) -> Result<(), SettingsError> {
     open_directory(path).map_err(|_| SettingsError::new(SettingsErrorCode::ModelLocationOpenFailed))
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn system_open_model_location(_path: &std::path::Path) -> Result<(), SettingsError> {
-    Err(SettingsError::new(
-        SettingsErrorCode::ModelLocationOpenFailed,
-    ))
 }
 
 const fn settings_import_progress(progress: ModelImportProgress) -> SettingsModelImportProgress {
@@ -1582,7 +1564,6 @@ const fn input_service_is_degraded(status: SettingsInputServiceStatus) -> bool {
 /// The test is written as "is this Production" rather than "is this
 /// Development" so an added environment defaults to unavailable instead of
 /// silently gaining a registration.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const fn startup_item_available() -> bool {
     matches!(BUILD_ENVIRONMENT, BuildEnvironment::Production)
 }
@@ -1591,12 +1572,10 @@ const fn startup_item_available() -> bool {
 ///
 /// Both directions report the same value so a client that reads and then writes
 /// never observes the capability changing underneath it.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const fn startup_item_build_environment_state() -> SettingsStartupItemState {
     SettingsStartupItemState::Unsupported(SettingsStartupItemUnsupportedReason::BuildEnvironment)
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn system_startup_item_state() -> SettingsStartupItemStatus {
     if !startup_item_available() {
         return SettingsStartupItemStatus::State(startup_item_build_environment_state());
@@ -1609,14 +1588,6 @@ fn system_startup_item_state() -> SettingsStartupItemStatus {
         })
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const fn system_startup_item_state() -> SettingsStartupItemStatus {
-    SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(
-        SettingsStartupItemUnsupportedReason::Platform,
-    ))
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn system_set_startup_item_enabled(
     enabled: bool,
 ) -> Result<SettingsStartupItemState, SettingsError> {
@@ -1632,16 +1603,6 @@ fn system_set_startup_item_enabled(
         .map_err(|_| SettingsError::new(SettingsErrorCode::StartupItemUpdateFailed))
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn system_set_startup_item_enabled(
-    _enabled: bool,
-) -> Result<SettingsStartupItemState, SettingsError> {
-    Err(SettingsError::new(
-        SettingsErrorCode::StartupItemUpdateFailed,
-    ))
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const fn startup_item_environment() -> StartupItemEnvironment {
     match crate::BUILD_ENVIRONMENT {
         bongocat_config::BuildEnvironment::Development => StartupItemEnvironment::Development,
@@ -1649,7 +1610,6 @@ const fn startup_item_environment() -> StartupItemEnvironment {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const fn settings_startup_item_state(state: StartupItemState) -> SettingsStartupItemState {
     match state {
         StartupItemState::Unsupported(reason) => {
@@ -1673,7 +1633,6 @@ const fn settings_startup_item_state(state: StartupItemState) -> SettingsStartup
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const fn settings_startup_item_error(error: StartupItemError) -> SettingsStartupItemError {
     match error {
         StartupItemError::CurrentExecutableUnavailable => {
@@ -4685,7 +4644,6 @@ mod tests {
     /// Written as an equality so the same test covers both feature sets: the
     /// Development build the workspace tests run as, and the `production` build
     /// the release pipeline compiles.
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn login_startup_is_gated_on_the_build_environment() {
         assert_eq!(
@@ -4699,10 +4657,7 @@ mod tests {
     ///
     /// Only the Development direction is observable here: the released direction
     /// would have to register a real login item on the machine running the test.
-    #[cfg(all(
-        not(feature = "production"),
-        any(target_os = "macos", target_os = "windows")
-    ))]
+    #[cfg(not(feature = "production"))]
     #[test]
     fn a_development_build_reports_login_startup_as_unavailable() {
         let unavailable = SettingsStartupItemState::Unsupported(

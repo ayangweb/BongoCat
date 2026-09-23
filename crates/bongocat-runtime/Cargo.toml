@@ -11,8 +11,6 @@ publish.workspace = true
 bongocat-audio.workspace = true
 bongocat-model.workspace = true
 bongocat-render.workspace = true
-
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 bongocat-live2d.workspace = true
 
 [dev-dependencies]

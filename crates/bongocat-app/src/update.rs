@@ -348,7 +348,6 @@ const fn error_code(code: bongocat_update::UpdateErrorCode) -> UpdateErrorCode {
 
 const fn unavailable_reason(reason: UpdateUnavailability) -> UpdateUnavailableReason {
     match reason {
-        UpdateUnavailability::UnsupportedHost => UpdateUnavailableReason::UnsupportedHost,
         UpdateUnavailability::DevelopmentChannel => UpdateUnavailableReason::DevelopmentBuild,
         UpdateUnavailability::SigningKeyMissing => UpdateUnavailableReason::SigningKeyMissing,
     }
@@ -361,7 +360,6 @@ mod tests {
         error_code, failure_stage, progress_info, restart_required_after_install,
         unavailable_reason,
     };
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     use bongocat_ui::UpdateWindowHandle;
     use bongocat_ui::{UpdateCommand, UpdateStateHandle, UpdateUnavailableReason};
     use bongocat_update::{
@@ -400,10 +398,6 @@ mod tests {
 
     #[test]
     fn unavailability_reasons_are_preserved() {
-        assert_eq!(
-            unavailable_reason(UpdateUnavailability::UnsupportedHost),
-            UpdateUnavailableReason::UnsupportedHost
-        );
         assert_eq!(
             unavailable_reason(UpdateUnavailability::DevelopmentChannel),
             UpdateUnavailableReason::DevelopmentBuild
@@ -780,7 +774,6 @@ mod tests {
 
     /// The application stores the window handle next to the worker, so it has to be
     /// movable across the thread boundary the coordinator is built on.
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn the_update_window_handle_is_send() {
         fn assert_send<T: Send>() {}

@@ -13,16 +13,11 @@ use bongocat_runtime::{
 };
 use serde_json::Value;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::sync::Arc;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_audio::MotionAudioClient;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_render::{ModelCommitFeedback, ModelCommitOutcome, RenderConsumer, RenderFrame};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_runtime::{ExpressionId, MonotonicClock, MotionId, MotionPriority};
 
 const TIMEOUT: Duration = Duration::from_secs(2);
@@ -421,25 +416,21 @@ fn assert_checkpoint(
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Default)]
 struct FixtureClock(std::sync::Mutex<Duration>);
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl FixtureClock {
     fn set_ms(&self, value: u64) {
         *self.0.lock().expect("fixture clock") = Duration::from_millis(value);
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl MonotonicClock for FixtureClock {
     fn now(&self) -> Duration {
         *self.0.lock().expect("fixture clock")
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn wait_for_render_frame(
     consumer: &RenderConsumer,
     predicate: impl Fn(&RenderFrame) -> bool,
@@ -459,7 +450,6 @@ fn wait_for_render_frame(
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn activate_fixture_model(
     client: &bongocat_runtime::RuntimeClient,
     consumer: &RenderConsumer,
@@ -497,7 +487,6 @@ fn activate_fixture_model(
         .expect("model committed")
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn fixture_motion(motion_id: &str) -> MotionId {
     let (group, index) = match motion_id {
         "walk" => ("CAT_motion", 0),
@@ -508,7 +497,6 @@ fn fixture_motion(motion_id: &str) -> MotionId {
     MotionId::new(group, index).expect("fixture motion id")
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[test]
 fn model_motion_expression_audio_fixture_matches_product_runtime() {
     let root = repository_root().join("shared/fixtures");

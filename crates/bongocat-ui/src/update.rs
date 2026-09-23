@@ -32,8 +32,6 @@ pub enum UpdateUnavailableReason {
     DevelopmentBuild,
     /// No release signing key is provisioned, so nothing could be authenticated.
     SigningKeyMissing,
-    /// The host is outside the shipped targets.
-    UnsupportedHost,
 }
 
 /// The stage an update stopped in.
@@ -464,7 +462,7 @@ impl UpdateServiceEndpoint {
 /// Test-only, and deliberately the single source for "all of them": the render tests
 /// iterate it, so a new `UpdatePhase` variant cannot be added without a rendering
 /// branch being exercised.
-#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
+#[cfg(test)]
 pub(crate) fn every_renderable_phase() -> Vec<UpdatePhase> {
     let notes = "## What's new\n\n- a change\n";
     let release = |notes: Option<&str>| UpdateReleaseInfo {
@@ -482,9 +480,6 @@ pub(crate) fn every_renderable_phase() -> Vec<UpdatePhase> {
         },
         UpdatePhase::Unavailable {
             reason: UpdateUnavailableReason::SigningKeyMissing,
-        },
-        UpdatePhase::Unavailable {
-            reason: UpdateUnavailableReason::UnsupportedHost,
         },
         UpdatePhase::Idle,
         UpdatePhase::Checking,

@@ -1,8 +1,3 @@
-#![cfg_attr(
-    not(any(target_os = "macos", target_os = "windows")),
-    forbid(unsafe_code)
-)]
-
 use std::fmt;
 
 pub use bongocat_runtime::{PlatformInputDiagnostics, PlatformInputServiceStatus};
@@ -26,7 +21,6 @@ mod single_instance;
 pub use single_instance::{SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceError};
 
 mod shortcut;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use shortcut::{
     GlobalShortcutCounters, GlobalShortcutService, GlobalShortcutServiceError, ShortcutHotkeyError,
 };
@@ -46,29 +40,22 @@ pub use theme::{
 
 mod system_menu;
 pub use system_menu::{SystemMenuAction, SystemMenuError, SystemMenuPresentation};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod system_menu_native;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use system_menu_native::SystemMenu;
 
 mod startup_item;
 pub use startup_item::{
     StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
 };
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod startup_item_native;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod startup_permission;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use startup_permission::{
     STARTUP_PERMISSION_CAPABILITY, StartupPermissionPrompt, StartupPermissionStatus,
     check_startup_permission, startup_permission_available,
 };
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod native_window;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use native_window::NativeWindowError;
 
 #[cfg(target_os = "macos")]
@@ -101,7 +88,6 @@ pub struct DisplayBounds {
 }
 
 impl DisplayBounds {
-    #[cfg(any(test, target_os = "macos", target_os = "windows"))]
     fn intersects_window(self, x: f32, y: f32, width: f32, height: f32) -> bool {
         x < self.x + self.width
             && x + width > self.x
@@ -141,14 +127,7 @@ mod display_bounds_tests {
 pub fn pick_model_folder(
     on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
 ) -> Result<(), ModelSourcePickerError> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    return model_source_picker::pick_model_folder(on_complete);
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = on_complete;
-        Err(ModelSourcePickerError::UnsupportedPlatform)
-    }
+    model_source_picker::pick_model_folder(on_complete)
 }
 
 /// Let the user choose the image that replaces a model's cover.
@@ -159,45 +138,20 @@ pub fn pick_model_folder(
 pub fn pick_model_cover(
     on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
 ) -> Result<(), ModelSourcePickerError> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    return model_source_picker::pick_model_cover(on_complete);
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = on_complete;
-        Err(ModelSourcePickerError::UnsupportedPlatform)
-    }
+    model_source_picker::pick_model_cover(on_complete)
 }
 
 pub fn startup_item_state(
     environment: StartupItemEnvironment,
 ) -> Result<StartupItemState, StartupItemError> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    return startup_item_native::state(environment);
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = environment;
-        Ok(StartupItemState::Unsupported(
-            StartupItemUnsupportedReason::Platform,
-        ))
-    }
+    startup_item_native::state(environment)
 }
 
 pub fn set_startup_item_enabled(
     environment: StartupItemEnvironment,
     enabled: bool,
 ) -> Result<StartupItemState, StartupItemError> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    return startup_item_native::set_enabled(environment, enabled);
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = (environment, enabled);
-        Ok(StartupItemState::Unsupported(
-            StartupItemUnsupportedReason::Platform,
-        ))
-    }
+    startup_item_native::set_enabled(environment, enabled)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

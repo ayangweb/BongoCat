@@ -11,11 +11,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod pop_confirm;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod window;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use window::{SettingsView, SettingsWindowHandle, SettingsWindowSeed, open_settings_window};
 
 mod update;
@@ -24,11 +21,8 @@ pub use update::{
     UpdatePhase, UpdateProgressInfo, UpdateReleaseInfo, UpdateServiceClosed, UpdateServiceEndpoint,
     UpdateSnapshot, UpdateStateHandle, UpdateUnavailableReason,
 };
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod update_markdown;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod update_window;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use update_window::{UpdateView, UpdateWindowHandle, open_update_window};
 
 const MIN_SETTINGS_WINDOW_WIDTH: u32 = 640;

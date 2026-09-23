@@ -233,13 +233,3 @@ pub fn post_mouse_move(
     }
     Ok(())
 }
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub fn post_mouse_move(
-    _window: &Window,
-    _x: i16,
-    _y: i16,
-    _content_height: i16,
-) -> Result<(), String> {
-    Err("tooltip platform probe supports only macOS and Windows".into())
-}

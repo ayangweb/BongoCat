@@ -619,7 +619,6 @@ fn unavailable_message(locale: &str, reason: UpdateUnavailableReason) -> String 
     let key = match reason {
         UpdateUnavailableReason::DevelopmentBuild => "update.unavailable.development_build",
         UpdateUnavailableReason::SigningKeyMissing => "update.unavailable.signing_key_missing",
-        UpdateUnavailableReason::UnsupportedHost => "update.unavailable.unsupported_host",
     };
     text(locale, key).to_owned()
 }

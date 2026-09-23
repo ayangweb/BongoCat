@@ -1831,7 +1831,6 @@ const fn pinned_theme_mode(theme: SettingsTheme) -> Option<ThemeMode> {
 }
 
 /// The native appearance a preference pins, or `None` when it follows the system.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const fn pinned_native_theme(theme: SettingsTheme) -> Option<bongocat_platform::AppTheme> {
     match theme {
         SettingsTheme::System => None,
@@ -1850,10 +1849,7 @@ const fn pinned_native_theme(theme: SettingsTheme) -> Option<bongocat_platform::
 /// the choice to everything it paints itself, so the user's selection is never lost to a
 /// cosmetic failure.
 fn apply_native_theme(theme: SettingsTheme, window: &Window) {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let _ = bongocat_platform::apply_theme(window, pinned_native_theme(theme));
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let _ = (theme, window);
 }
 
 /// The appearance the operating system is using, for the "follow the system" choice.

@@ -6,50 +6,35 @@
 )]
 #![forbid(unsafe_code)]
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use async_io::Timer;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_live2d::CoreLogHandle;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_overlay::{
     OverlayContextMenuRequest, OverlayInteractionSinks, OverlaySessionOptions, OverlayWindowBounds,
     ProductOverlaySession,
 };
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{GlobalShortcutService, ShortcutDispatcher};
 #[cfg(target_os = "windows")]
 use bongocat_platform::{
     SingleInstance, SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceStart,
 };
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_platform::{SystemMenu, SystemMenuAction, SystemMenuPresentation};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_runtime::hover_hide_delay_ms;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::SettingsView;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use bongocat_ui::{
     SettingsClient, SettingsError, SettingsErrorCode, SettingsModelAvailability, SettingsModelKey,
     SettingsModelOrigin, SettingsOverlay, SettingsSnapshot, SettingsWindowHandle,
     SettingsWindowSeed, open_settings_window,
 };
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use gpui_kit::{
     App, Application as GpuiApplication, Global, QuitMode, assets::AllAssets,
     platform::current_platform,
 };
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use gpui_kit::{AsyncApp, Context, Window};
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 use gpui_kit::{px, size};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "windows")]
 use std::{cell::RefCell, rc::Rc};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::{
     env, fmt,
     io::{self, Write},
@@ -59,19 +44,14 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 use zip::ZipArchive;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 struct StatusIconRequest {
     visible: bool,
     reply: std::sync::mpsc::SyncSender<Result<(), SettingsError>>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMenuPresentation {
     let locale = match snapshot.resolved_language.code() {
         "zh-CN" => "zh-CN",
@@ -109,7 +89,6 @@ fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMenuPresentati
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 async fn apply_system_menu_overlay_action(
     client: SettingsClient,
     action: SystemMenuAction,
@@ -144,7 +123,6 @@ async fn apply_system_menu_overlay_action(
     .map_err(|error| error.to_string())
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn restart_product() -> Result<(), String> {
     Command::new(env::current_exe().map_err(|error| error.to_string())?)
         .stdin(Stdio::null())
@@ -155,7 +133,6 @@ fn restart_product() -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const OVERLAY_PLACEMENT_DEBOUNCE: Duration = Duration::from_millis(150);
 
 /// How often the GPUI thread looks for a cover capture the settings worker queued.
@@ -163,7 +140,6 @@ const OVERLAY_PLACEMENT_DEBOUNCE: Duration = Duration::from_millis(150);
 /// The capture itself is a render of a few dozen frames; this only bounds how long a
 /// newly imported model shows the cover its source shipped before the captured one
 /// replaces it.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const COVER_CAPTURE_POLL_INTERVAL_MS: u64 = 50;
 
 /// Capture a model cover without owning the main thread for the whole capture.
@@ -174,7 +150,6 @@ const COVER_CAPTURE_POLL_INTERVAL_MS: u64 = 50;
 /// on the foreground executor: the main loop keeps pumping, so the settings
 /// window keeps redrawing (the import card's spinner keeps turning) and the
 /// overlay frame loop keeps ticking while the capture's model settles (ADR-0055).
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 async fn capture_model_cover_without_blocking(
     model: Arc<bongocat_model::CommittedModel>,
 ) -> Result<bongocat_overlay::ModelCoverCapture, bongocat_overlay::OverlayError> {
@@ -189,17 +164,13 @@ async fn capture_model_cover_without_blocking(
 ///
 /// The check is opt-in and must never compete with startup for the network or the
 /// window server.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const AUTOMATIC_UPDATE_CHECK_STARTUP_DELAY: Duration = Duration::from_secs(10);
 
 /// How often a long-running process re-checks after the first automatic check.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const AUTOMATIC_UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// How long the automatic check waits for its own result to be published.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const AUTOMATIC_UPDATE_CHECK_SETTLE_ATTEMPTS: u32 = 120;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const AUTOMATIC_UPDATE_CHECK_SETTLE_INTERVAL: Duration = Duration::from_millis(500);
 
 /// How many 50ms ticks the settings-window smoke waits for its first frame.
@@ -207,17 +178,14 @@ const AUTOMATIC_UPDATE_CHECK_SETTLE_INTERVAL: Duration = Duration::from_millis(5
 /// The page assertions read state that only a render assigns, so the smoke has
 /// to wait for a frame rather than for a fixed delay: on a loaded machine the
 /// old 500ms start-up delay was not always enough.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const SMOKE_FIRST_FRAME_WAIT_TICKS: u32 = 120;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Default)]
 struct OverlayPlacementDebouncer {
     last_sent_at: Option<Instant>,
     pending: Option<OverlayWindowBounds>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl OverlayPlacementDebouncer {
     fn observe(
         &mut self,
@@ -251,13 +219,11 @@ impl OverlayPlacementDebouncer {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone)]
 struct ProductStatusIcon {
     sender: std::sync::mpsc::SyncSender<StatusIconRequest>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl bongocat_app::StatusIconCapability for ProductStatusIcon {
     fn set_visible(&self, visible: bool) -> Result<(), SettingsError> {
         let (reply, receiver) = std::sync::mpsc::sync_channel(1);
@@ -295,10 +261,8 @@ impl bongocat_app::TaskbarIconCapability for ProductTaskbarIcon {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const DEFAULT_RUN_SECONDS: u64 = 0;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn gpui_application() -> GpuiApplication {
     // Quitting is owned by the product shutdown paths (tray menu, smoke recipes,
     // update restart), not by window bookkeeping: the product stays alive behind
@@ -307,7 +271,6 @@ fn gpui_application() -> GpuiApplication {
     GpuiApplication::new_inaccessible(current_platform(false)).with_quit_mode(QuitMode::Explicit)
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RunOptions {
     run_duration: Duration,
@@ -346,7 +309,6 @@ struct RunOptions {
     single_instance_result_file: Option<PathBuf>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl RunOptions {
     fn parse(arguments: impl IntoIterator<Item = String>) -> Result<Self, RunOptionsError> {
         let mut arguments = arguments.into_iter();
@@ -506,14 +468,12 @@ impl RunOptions {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Debug, Eq, PartialEq)]
 struct RunOptionsError {
     message: String,
     help: bool,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl RunOptionsError {
     fn new(message: impl Into<String>) -> Self {
         Self {
@@ -530,7 +490,6 @@ impl RunOptionsError {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl fmt::Display for RunOptionsError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.help {
@@ -541,10 +500,8 @@ impl fmt::Display for RunOptionsError {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl std::error::Error for RunOptionsError {}
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
     return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke] [--single-instance-ready-file <path>] [--single-instance-result-file <path>]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
@@ -559,13 +516,11 @@ fn usage() -> &'static str {
     "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Debug)]
 struct ProductRunError {
     failures: Vec<String>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl fmt::Display for ProductRunError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -576,10 +531,8 @@ impl fmt::Display for ProductRunError {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl std::error::Error for ProductRunError {}
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 struct ProductCoordinator {
     _core_log: CoreLogHandle,
     #[cfg(target_os = "macos")]
@@ -639,17 +592,14 @@ struct ProductCoordinator {
     shutdown_flush_complete: Arc<AtomicBool>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl Global for ProductCoordinator {}
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Debug, Default)]
 struct FrameSourceShutdown {
     stop_requested: Arc<AtomicBool>,
     stopped: Arc<AtomicBool>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl FrameSourceShutdown {
     fn request_stop(&self) {
         self.stop_requested.store(true, Ordering::Release);
@@ -681,19 +631,16 @@ impl FrameSourceShutdown {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 struct FrameSourceRunGuard {
     stopped: Arc<AtomicBool>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl Drop for FrameSourceRunGuard {
     fn drop(&mut self) {
         self.stopped.store(true, Ordering::Release);
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>) {
     failures
         .lock()
@@ -701,7 +648,6 @@ fn record_failure(failures: &Arc<Mutex<Vec<String>>>, failure: impl Into<String>
         .push(failure.into());
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 const fn native_theme_for_startup(
     theme: bongocat_config::Theme,
 ) -> Option<bongocat_platform::AppTheme> {
@@ -718,7 +664,6 @@ const fn native_theme_for_startup(
 /// The window is pre-rendered and kept for the product lifetime on both platforms, so a
 /// close no longer releases the view; what can still fail is `AsyncApp::update` returning
 /// `Err` while the platform is inside a window callback of its own.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 async fn update_settings_window<R>(
     cx: &mut AsyncApp,
     window_handle: &SettingsWindowHandle,
@@ -751,7 +696,6 @@ fn request_windows_product_quit(shutdown_requested: &AtomicBool) {
     shutdown_requested.store(true, Ordering::Release);
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn finish_product_quit(cx: &mut App) {
     #[cfg(target_os = "macos")]
     cx.quit();
@@ -769,7 +713,6 @@ fn finish_product_quit(cx: &mut App) {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn request_product_quit(cx: &mut App) {
     let window = cx
         .try_global::<ProductCoordinator>()
@@ -796,7 +739,6 @@ fn start_windows_product_shutdown(cx: &mut App) {
     .detach();
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 struct ProductShutdown {
     coordinator: ProductCoordinator,
     overlay: ProductOverlaySession,
@@ -804,7 +746,6 @@ struct ProductShutdown {
     update_service: Option<bongocat_app::ApplicationUpdateService>,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl ProductShutdown {
     async fn finish(self) -> Arc<Mutex<Vec<String>>> {
         let failures = Arc::clone(&self.coordinator.failures);
@@ -858,7 +799,6 @@ impl ProductShutdown {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
     let mut coordinator = cx.remove_global::<ProductCoordinator>();
     coordinator.frame_source_running = false;
@@ -939,7 +879,6 @@ fn windows_product_exit_code(failures: &Arc<Mutex<Vec<String>>>) -> i32 {
     1
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> {
     let (existing, taskbar_icon_visible) = cx
         .try_global::<ProductCoordinator>()
@@ -1002,7 +941,6 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
 /// The window is a singleton like the settings window: the system menu, the About
 /// page and an automatic check all route through here, so a second request focuses
 /// the existing window instead of stacking another one.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn ensure_update_window(cx: &mut App) -> Result<bongocat_ui::UpdateWindowHandle, String> {
     let (existing, update_client, settings_client, language, appearance_theme) = {
         let coordinator = cx
@@ -1043,7 +981,6 @@ fn ensure_update_window(cx: &mut App) -> Result<bongocat_ui::UpdateWindowHandle,
 }
 
 /// Open the update window and start a check in it.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn open_update_window_and_check(cx: &mut App) {
     let result = ensure_update_window(cx).and_then(|window_handle| {
         window_handle
@@ -1059,14 +996,12 @@ fn open_update_window_and_check(cx: &mut App) {
 ///
 /// The automatic check already ran, so opening the window here only surfaces its
 /// result; asking for another check would repeat the request the user did not make.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn show_update_window(cx: &mut App) {
     if let Err(error) = ensure_update_window(cx) {
         record_update_window_failure(cx, error);
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn record_update_window_failure(cx: &App, error: String) {
     if let Some(failures) = cx
         .try_global::<ProductCoordinator>()
@@ -1077,7 +1012,6 @@ fn record_update_window_failure(cx: &App, error: String) {
 }
 
 /// Whether the update window is currently on screen.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn update_window_is_open(cx: &mut App) -> bool {
     cx.try_global::<ProductCoordinator>()
         .and_then(|coordinator| coordinator.update_window.as_ref())
@@ -1085,7 +1019,6 @@ fn update_window_is_open(cx: &mut App) -> bool {
 }
 
 /// The phase the update worker is currently publishing.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn published_update_phase(cx: &mut App) -> Option<bongocat_ui::UpdatePhase> {
     cx.try_global::<ProductCoordinator>()
         .and_then(|coordinator| coordinator.update_service.as_ref())
@@ -1093,7 +1026,6 @@ fn published_update_phase(cx: &mut App) -> Option<bongocat_ui::UpdatePhase> {
 }
 
 /// Ask the update worker for a check, unless this build cannot update at all.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn request_update_check(cx: &mut App) -> bool {
     let Some(client) = cx
         .try_global::<ProductCoordinator>()
@@ -1112,7 +1044,6 @@ fn request_update_check(cx: &mut App) -> bool {
 }
 
 /// Whether the update window asked for the process to be replaced.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn take_update_restart_request(cx: &mut App) -> bool {
     cx.try_global::<ProductCoordinator>()
         .and_then(|coordinator| coordinator.update_service.as_ref())
@@ -1249,7 +1180,6 @@ fn product_taskbar_icon_state(cx: &mut App) -> Result<(bool, bool), String> {
         .map_err(|error| error.to_string())?
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn product_overlay_state(cx: &mut App) -> Result<(u64, bool), String> {
     let coordinator = cx
         .try_global::<ProductCoordinator>()
@@ -1268,7 +1198,6 @@ fn product_overlay_state(cx: &mut App) -> Result<(u64, bool), String> {
     Ok((overlay.model_generation(), overlay.is_visible()))
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn toggle_settings_window(cx: &mut App) -> Result<(), String> {
     let existing = cx
         .try_global::<ProductCoordinator>()
@@ -1297,7 +1226,6 @@ fn toggle_settings_window(cx: &mut App) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn handle_shortcut_toggle_settings(cx: &mut App) {
     let requested = cx
         .try_global::<ProductCoordinator>()
@@ -1322,7 +1250,6 @@ fn build_single_instance_environment() -> SingleInstanceEnvironment {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn write_smoke_status(status: &str) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "bongocat-app: {status}")?;
@@ -1340,7 +1267,6 @@ fn write_smoke_marker(path: &Path, status: &str) -> io::Result<()> {
 ///
 /// This is the repeatable acceptance path for both platforms: it is run once while the capability
 /// is missing and once while it is granted, and it never writes product state.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn run_startup_permission_smoke() -> Result<(), Box<dyn std::error::Error>> {
     let state = if bongocat_platform::startup_permission_available() {
         "available"
@@ -1424,16 +1350,10 @@ fn run_startup_item_smoke() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 struct SmokeRoot(PathBuf);
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 impl SmokeRoot {
     fn cleanup(mut self) -> io::Result<()> {
         let result = std::fs::remove_dir_all(&self.0);
@@ -1442,10 +1362,7 @@ impl SmokeRoot {
     }
 }
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 impl Drop for SmokeRoot {
     fn drop(&mut self) {
         if !self.0.as_os_str().is_empty() {
@@ -1454,10 +1371,7 @@ impl Drop for SmokeRoot {
     }
 }
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{
         ApplicationState, BuildEnvironment, ConfigStore, Language, StateStore, StorageLayout,
@@ -1732,22 +1646,13 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 const PANIC_DIAGNOSTICS_SMOKE_ROOT_ENV: &str = "BONGOCAT_PANIC_DIAGNOSTICS_SMOKE_ROOT";
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 const PANIC_DIAGNOSTICS_SMOKE_PAYLOAD: &str = "panic-smoke-sensitive-payload";
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 fn run_panic_diagnostics_smoke_child() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{BuildEnvironment, StorageLayout};
 
@@ -1764,10 +1669,7 @@ fn run_panic_diagnostics_smoke_child() -> Result<(), Box<dyn std::error::Error>>
     panic!("{PANIC_DIAGNOSTICS_SMOKE_PAYLOAD}: {}", root.display());
 }
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 fn read_application_logs(directory: &Path) -> io::Result<String> {
     let mut paths = Vec::new();
     for entry in std::fs::read_dir(directory)? {
@@ -1789,10 +1691,7 @@ fn read_application_logs(directory: &Path) -> io::Result<String> {
     Ok(logs)
 }
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 fn run_diagnostics_export_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{BuildEnvironment, StorageLayout};
 
@@ -1858,10 +1757,7 @@ fn run_diagnostics_export_smoke() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 fn run_diagnostics_export_failure_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{BuildEnvironment, StorageLayout};
 
@@ -1954,10 +1850,7 @@ fn run_diagnostics_export_failure_smoke() -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-#[cfg(all(
-    feature = "storage-test-injection",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "storage-test-injection")]
 fn run_panic_diagnostics_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{BuildEnvironment, StorageLayout};
 
@@ -2051,7 +1944,6 @@ fn run_panic_diagnostics_smoke() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_options = match RunOptions::parse(env::args().skip(1)) {
         Ok(options) => options,
@@ -4032,7 +3924,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn preset_root() -> PathBuf {
     if let Ok(executable) = env::current_exe()
         && let Some(root) = bundled_preset_root(&executable)
@@ -4070,24 +3961,7 @@ fn executable_relative_preset_root(executable: &Path) -> Option<PathBuf> {
     Some(executable.parent()?.join("resources/models"))
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn preset_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("repository root")
-        .join("resources/models")
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut application = bongocat_app::Application::start(preset_root())?;
-    application.install_process_panic_hook();
-    application.shutdown()?;
-    Ok(())
-}
-
-#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
+#[cfg(test)]
 mod tests {
     use super::*;
 

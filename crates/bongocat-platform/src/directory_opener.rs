@@ -53,14 +53,8 @@ fn open_directory_with(
     launch(&canonical)
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn launch_directory(path: &Path) -> Result<(), DirectoryOpenError> {
     opener::open(path).map_err(|_| DirectoryOpenError::LaunchFailed)
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn launch_directory(_path: &Path) -> Result<(), DirectoryOpenError> {
-    Err(DirectoryOpenError::UnsupportedPlatform)
 }
 
 #[cfg(test)]

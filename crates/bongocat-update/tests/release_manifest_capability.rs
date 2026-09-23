@@ -104,7 +104,7 @@ fn host_platform_key() -> String {
     } else if cfg!(target_os = "windows") {
         "windows"
     } else {
-        "linux"
+        unreachable!("the capability test runs on a shipped platform")
     };
     let arch = if cfg!(target_arch = "aarch64") {
         "aarch64"

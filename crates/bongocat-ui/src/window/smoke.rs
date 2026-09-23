@@ -1,7 +1,6 @@
 use super::*;
 
 impl SettingsView {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn report_service_error(&mut self, error: SettingsError, cx: &mut Context<Self>) {
         self.pending = None;
         self.pending_notification = Some(error);

@@ -120,7 +120,6 @@ impl StorageLayout {
 #[derive(Debug)]
 pub enum PlatformStorageError {
     DataDirectoryUnavailable,
-    UnsupportedPlatform,
 }
 
 impl fmt::Display for PlatformStorageError {
@@ -129,7 +128,6 @@ impl fmt::Display for PlatformStorageError {
             Self::DataDirectoryUnavailable => {
                 formatter.write_str("platform data directory is unavailable")
             }
-            Self::UnsupportedPlatform => formatter.write_str("platform is not supported"),
         }
     }
 }
@@ -154,13 +152,6 @@ pub fn platform_layout(
         .ok_or(PlatformStorageError::DataDirectoryUnavailable)?
         .join(BUNDLE_ID);
     Ok(StorageLayout::under_application_root(root, environment))
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub fn platform_layout(
-    _environment: BuildEnvironment,
-) -> Result<StorageLayout, PlatformStorageError> {
-    Err(PlatformStorageError::UnsupportedPlatform)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

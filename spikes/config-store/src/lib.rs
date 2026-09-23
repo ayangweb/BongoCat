@@ -125,13 +125,6 @@ pub fn platform_layout(
     Ok(StorageLayout::under_application_root(base, environment))
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub fn platform_layout(
-    _environment: BuildEnvironment,
-) -> Result<StorageLayout, PlatformStorageError> {
-    Err(PlatformStorageError::DataDirectoryUnavailable)
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct NativeConfig {

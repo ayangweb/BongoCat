@@ -1,6 +1,5 @@
 use std::fmt;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use arboard::Clipboard;
 #[cfg(target_os = "macos")]
 use objc2::{MainThreadMarker, rc::autoreleasepool};
@@ -43,11 +42,6 @@ pub fn read_clipboard_text() -> Result<Option<String>, ClipboardError> {
     {
         read_text()
     }
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        Err(ClipboardError::UnsupportedPlatform)
-    }
 }
 
 pub fn write_clipboard_text(value: &str) -> Result<(), ClipboardError> {
@@ -63,15 +57,8 @@ pub fn write_clipboard_text(value: &str) -> Result<(), ClipboardError> {
     {
         write_text(value)
     }
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = value;
-        Err(ClipboardError::UnsupportedPlatform)
-    }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn read_text() -> Result<Option<String>, ClipboardError> {
     let mut clipboard = Clipboard::new().map_err(|_| ClipboardError::ReadFailed)?;
     match clipboard.get_text() {
@@ -84,7 +71,6 @@ fn read_text() -> Result<Option<String>, ClipboardError> {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn write_text(value: &str) -> Result<(), ClipboardError> {
     let mut clipboard = Clipboard::new().map_err(|_| ClipboardError::WriteFailed)?;
     clipboard

@@ -204,8 +204,7 @@
     },
     "unavailable": {
       "development_build": "开发版本不会安装正式版更新。",
-      "signing_key_missing": "当前版本没有内置更新验证信息，因此更新功能保持关闭。",
-      "unsupported_host": "当前系统没有可用的更新。"
+      "signing_key_missing": "当前版本没有内置更新验证信息，因此更新功能保持关闭。"
     },
     "about": {
       "label": "检查更新",
