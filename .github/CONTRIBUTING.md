@@ -6,7 +6,7 @@ Native Rewrite 使用 Rust 2024。请先阅读仓库根目录的 `AGENTS.md`、�
 ## 开发环境
 
 - Rust `1.97.1`，包含 `clippy` 和 `rustfmt`。
-- macOS 或 Windows 平台工作需要在对应系统完成 smoke 验证；Linux 只用于共享 crate 检查。
+- macOS 或 Windows 平台工作需要在对应系统完成 smoke 验证；Linux 不是首发目标，也不作为 Native workspace 编译门槛。
 
 Native 产品 workspace 位于仓库根目录，不需要 Node.js、pnpm、Tauri 或 Web 前端工具链。
 

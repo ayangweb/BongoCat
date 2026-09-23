@@ -9,7 +9,7 @@ permissions:
 jobs:
   native-toolchain:
     name: Verify Native Rust toolchains
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
       - name: Check current stable toolchain
@@ -114,7 +114,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -142,16 +142,6 @@ jobs:
           cargo clippy --manifest-path Cargo.toml --locked -p bongocat-app --all-targets --features production -- -D warnings
       - name: Run tests
         run: cargo test --manifest-path Cargo.toml --locked --workspace
-      - name: Verify app build environment selection
-        if: matrix.os == 'ubuntu-latest'
-        shell: bash
-        run: |
-          cargo check --manifest-path Cargo.toml --locked -p bongocat-app
-          cargo check --manifest-path Cargo.toml --locked -p bongocat-app --features production
-          if cargo check --manifest-path Cargo.toml --locked -p bongocat-app --features production,storage-test-injection; then
-            echo 'Production app build accepted storage test injection' >&2
-            exit 1
-          fi
       - name: Check release build
         run: cargo check --manifest-path Cargo.toml --locked --workspace --release
       - name: Check production environment build
