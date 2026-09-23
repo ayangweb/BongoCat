@@ -322,6 +322,13 @@ pub struct ModelConfig {
     pub preset_models: Vec<ModelMetadata>,
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
+    /// Whether a motion that ships an audio clip is allowed to play it.
+    ///
+    /// Defaults to `false`: the Interaction page renders this as the "play
+    /// motion audio" opt-in, so a fresh v1 configuration stays silent until the
+    /// user turns it on. This is a deliberate divergence from the legacy
+    /// implementation, which recorded an enabled default; the reasoning lives
+    /// in `shared/config/native-config-contract.md`.
     pub play_motion_audio: bool,
     /// Whether motion/expression bindings reach the platform shortcut table.
     ///
@@ -1190,7 +1197,7 @@ impl Default for NativeConfig {
                 preset_models: Vec::new(),
                 mirror: false,
                 mirror_pointer_tracking: false,
-                play_motion_audio: true,
+                play_motion_audio: false,
                 enable_behavior_shortcuts: false,
                 maximum_fps: 60,
                 ignore_pointer: false,

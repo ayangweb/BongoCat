@@ -28,7 +28,7 @@
     "preset_models": [],
     "mirror": false,
     "mirror_pointer_tracking": false,
-    "play_motion_audio": true,
+    "play_motion_audio": false,
     "enable_behavior_shortcuts": false,
     "maximum_fps": 60,
     "ignore_pointer": false,

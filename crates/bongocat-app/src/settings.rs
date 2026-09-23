@@ -4292,12 +4292,14 @@ mod tests {
                 false,
             )
             .expect("hide overlay");
-        let muted = client
+        // A fresh v1 configuration is silent, so the update that gets persisted
+        // has to enable audio to leave a value the file can prove.
+        let audio_enabled = client
             .set_motion_audio_enabled_blocking(
                 hidden.config_revision.expect("config revision"),
-                false,
+                true,
             )
-            .expect("disable motion audio");
+            .expect("enable motion audio");
         let model_settings = bongocat_ui::SettingsModelSettings {
             mirror: true,
             mirror_pointer_tracking: true,
@@ -4305,7 +4307,7 @@ mod tests {
         };
         let configured_model = client
             .set_model_settings_blocking(
-                muted.config_revision.expect("config revision"),
+                audio_enabled.config_revision.expect("config revision"),
                 model_settings,
             )
             .expect("update model settings");
@@ -4340,13 +4342,13 @@ mod tests {
             .expect("update gamepad settings");
         assert_eq!(configured_gamepad.gamepad_axis_settings, gamepad_settings);
         assert!(hidden.revision > initial.revision);
-        assert!(muted.revision > hidden.revision);
-        assert!(!muted.overlay_visible);
-        assert!(!muted.motion_audio_enabled);
+        assert!(audio_enabled.revision > hidden.revision);
+        assert!(!audio_enabled.overlay_visible);
+        assert!(audio_enabled.motion_audio_enabled);
 
         let persisted = std::fs::read_to_string(config_path).expect("persisted config");
         assert!(persisted.contains("\"visible\": false"));
-        assert!(persisted.contains("\"play_motion_audio\": false"));
+        assert!(persisted.contains("\"play_motion_audio\": true"));
         assert!(persisted.contains("\"selected_model_id\": \"keyboard\""));
         assert!(persisted.contains("\"selected_model_origin\": \"preset\""));
         assert!(persisted.contains("\"click_through\": true"));
@@ -4546,8 +4548,12 @@ mod tests {
             hidden_config
         );
 
+        // The fresh v1 configuration is silent (`play_motion_audio: false`), so
+        // the stale request has to ask for the opposite value: a request that
+        // already matched the committed config could be applied without any
+        // observable difference.
         let stale_audio_error = client
-            .set_motion_audio_enabled_blocking(initial_config_revision, false)
+            .set_motion_audio_enabled_blocking(initial_config_revision, true)
             .expect_err("stale motion audio update");
         assert_eq!(
             stale_audio_error.code(),
@@ -4558,19 +4564,19 @@ mod tests {
             .expect("snapshot after stale audio");
         assert_eq!(after_stale_audio.revision, hidden.revision);
         assert!(!after_stale_audio.overlay_visible);
-        assert!(after_stale_audio.motion_audio_enabled);
+        assert!(!after_stale_audio.motion_audio_enabled);
         assert_eq!(
             std::fs::read(&config_path).expect("preserved hidden config"),
             hidden_config
         );
 
-        let muted = client
+        let enabled = client
             .set_motion_audio_enabled_blocking(
                 hidden.config_revision.expect("config revision"),
-                false,
+                true,
             )
-            .expect("disable motion audio");
-        let muted_config = std::fs::read(&config_path).expect("muted config");
+            .expect("enable motion audio");
+        let enabled_config = std::fs::read(&config_path).expect("enabled config");
         let stale_visibility_error = client
             .set_overlay_visible_blocking(hidden.config_revision.expect("config revision"), true)
             .expect_err("stale overlay visibility update");
@@ -4579,12 +4585,12 @@ mod tests {
             SettingsErrorCode::SnapshotOutdated
         );
         let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
-        assert_eq!(unchanged.revision, muted.revision);
+        assert_eq!(unchanged.revision, enabled.revision);
         assert!(!unchanged.overlay_visible);
-        assert!(!unchanged.motion_audio_enabled);
+        assert!(unchanged.motion_audio_enabled);
         assert_eq!(
-            std::fs::read(&config_path).expect("preserved muted config"),
-            muted_config
+            std::fs::read(&config_path).expect("preserved enabled config"),
+            enabled_config
         );
 
         client.shutdown_blocking().expect("service shutdown");

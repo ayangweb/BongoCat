@@ -49,7 +49,7 @@ shortcuts
 | `model`       | `preset_models`                       | 内置模型被改名后的元数据列表（id + title） |
 | `model`       | `mirror`                              | 水平镜像模型                           |
 | `model`       | `mirror_pointer_tracking`             | 镜像指针跟随方向                       |
-| `model`       | `play_motion_audio`                   | 播放动作音效                           |
+| `model`       | `play_motion_audio`                   | 播放动作音效，默认 `false`             |
 | `model`       | `enable_behavior_shortcuts`           | 启用模型动作/表情绑定                  |
 | `model`       | `maximum_fps`                         | overlay 最大帧率                       |
 | `model`       | `ignore_pointer`                      | 模型求值忽略指针位置                   |
@@ -88,6 +88,12 @@ typed settings command 修改该值后，仍按配置 revision 原子提交并�
 
 登录启动不属于配置字段。它是可被系统设置或其它进程改变的平台能力，settings service 只读取
 typed platform snapshot，并仅在显式用户 command 时调用平台 adapter；不得持久化第二份布尔值。
+
+`model.play_motion_audio` 默认 `false`。设置页把它呈现为"动作音效"开关，也就是正向字段的直出：
+打开后，带音效资源的 motion 在播放时同时播放该音效；关闭时 runtime 既不预解码也不发布 `Play`。
+默认关闭是对旧版行为的刻意收窄：`docs/phase-0/behavior-inventory.md` 记录的旧版观察是"默认音效开"，
+因此旧版第一次启动就会出声，用户还没打开过任何设置页面。`next` 把是否出声交给用户，新装或新建的
+配置一律静音，只有显式打开开关之后才会有声音。
 
 `model.enable_behavior_shortcuts` 默认 `false`，只决定配置中的 `shortcuts.model_behaviors` 是否
 进入活动的 `CompiledShortcuts`：关闭时不改写、不删除这些绑定，只把它们排除在平台匹配表之外，

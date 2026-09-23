@@ -3814,10 +3814,10 @@ mod tests {
         assert_eq!(application.config().appearance.theme, ConfigTheme::Dark);
 
         let audio_snapshot = application
-            .set_motion_audio_enabled(false)
-            .expect("disable motion audio");
-        assert!(!audio_snapshot.motion_audio_enabled);
-        assert!(!application.config().model.play_motion_audio);
+            .set_motion_audio_enabled(true)
+            .expect("enable motion audio");
+        assert!(audio_snapshot.motion_audio_enabled);
+        assert!(application.config().model.play_motion_audio);
 
         let frame_rate_snapshot = application
             .set_maximum_fps(120)
@@ -3827,7 +3827,7 @@ mod tests {
 
         let persisted = std::fs::read_to_string(config_path).expect("persisted config");
         assert!(persisted.contains("\"visible\": false"));
-        assert!(persisted.contains("\"play_motion_audio\": false"));
+        assert!(persisted.contains("\"play_motion_audio\": true"));
         assert!(persisted.contains("\"scale_percent\": 150"));
         assert!(persisted.contains("\"click_through\": true"));
         assert!(persisted.contains("\"maximum_fps\": 120"));

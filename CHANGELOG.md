@@ -38,6 +38,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 - The model page now keeps a fixed order: the built-in standard, keyboard and gamepad models first, then the models you imported, each new import joining the end. The whole list used to be sorted by model ID, which happened to run the built-in models backwards — gamepad, keyboard, standard — and dropped a newly imported model anywhere in the middle.
 - The model page now lays cards out in two to five equal-width columns as the window changes size. Every full row fills the available width, and a final row with only a few cards keeps the same column width instead of stretching the last card across the row.
 - A shortcut row is now one control. The chord sits inside a frame with the button that clears it at the trailing edge, and on a model's rows a play button at the leading edge; the clear button used to be drawn outside the frame and only appeared once the row had a binding. It now keeps its place on every row and dims while there is nothing to clear, so the chord no longer shifts sideways as shortcuts are recorded and removed, and both buttons are reachable with the keyboard and name themselves on hover.
+- Motion audio is now off by default. The previous default made a fresh configuration audible on its very first launch, before any settings page had been opened; a new or newly installed configuration now starts silent, and the switch on the Interaction page turns the sound on.
 
 ## 2.0.0 - 2026-09-16
 
