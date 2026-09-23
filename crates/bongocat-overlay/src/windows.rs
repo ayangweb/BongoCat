@@ -106,11 +106,11 @@ use windows::{
                 GWL_EXSTYLE, GWLP_USERDATA, GetCursorPos, GetWindowLongPtrW, GetWindowRect,
                 HTCAPTION, HTTRANSPARENT, HWND_NOTOPMOST, HWND_TOPMOST, IsWindowVisible, MSG,
                 PM_REMOVE, PeekMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE,
-                SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowLongPtrW,
-                SetWindowPos, ShowWindow, TranslateMessage, UnregisterClassW, WM_CLOSE,
-                WM_CONTEXTMENU, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCRBUTTONUP, WNDCLASSW,
-                WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
-                WS_POPUP,
+                SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+                SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, UnregisterClassW,
+                WM_CLOSE, WM_CONTEXTMENU, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCRBUTTONUP,
+                WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP,
+                WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
             },
         },
     },
@@ -492,7 +492,12 @@ impl OverlayWindow {
         }
         let mut extended = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_NOREDIRECTIONBITMAP;
         if options.click_through {
-            extended |= WS_EX_TRANSPARENT;
+            // `WS_EX_TRANSPARENT` alone leaves a DirectComposition-backed
+            // top-level window on the desktop input path: `WM_NCHITTEST`
+            // returns `HTTRANSPARENT`, but a real click still selects this
+            // HWND. Layering is the Win32 pair that makes the whole window
+            // pass through to the window underneath it.
+            extended |= WS_EX_TRANSPARENT | WS_EX_LAYERED;
         }
         let scale = options.scale_percent;
         let (base_width, base_height) = default_overlay_window_dimensions(canvas);
@@ -666,19 +671,33 @@ impl OverlayWindow {
         Ok(())
     }
 
-    fn set_click_through(&self, click_through: bool) {
+    fn set_click_through(&self, click_through: bool) -> Result<(), OverlayError> {
         self.assert_owner_thread();
-        // SAFETY: the HWND is live and confined to its owner thread. Changing
-        // this extended style only changes hit testing for the existing window.
+        // SAFETY: the HWND is live and confined to its owner thread. The
+        // extended style controls whether the desktop input path can select this
+        // window; `SWP_FRAMECHANGED` refreshes the cached non-client state
+        // after the style update.
         unsafe {
+            let click_through_style = WS_EX_TRANSPARENT.0 as isize | WS_EX_LAYERED.0 as isize;
             let mut style = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE);
             if click_through {
-                style |= WS_EX_TRANSPARENT.0 as isize;
+                style |= click_through_style;
             } else {
-                style &= !(WS_EX_TRANSPARENT.0 as isize);
+                style &= !click_through_style;
             }
             SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, style);
+            SetWindowPos(
+                self.hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER,
+            )
+            .map_err(windows_error("update overlay click-through"))?;
         }
+        Ok(())
     }
 }
 
@@ -1245,8 +1264,8 @@ impl NativeOverlay {
         self.window.set_always_on_top(always_on_top)
     }
 
-    fn set_click_through(&self, click_through: bool) {
-        self.window.set_click_through(click_through);
+    fn set_click_through(&self, click_through: bool) -> Result<(), OverlayError> {
+        self.window.set_click_through(click_through)
     }
 
     /// Apply the per-frame presentation state without replacing the window.
@@ -1255,15 +1274,16 @@ impl NativeOverlay {
     /// and `click_through` is the effective pointer routing. The hover hide
     /// forces pass-through on so an invisible overlay cannot swallow a click
     /// meant for whatever is underneath it.
-    fn apply_presentation(&mut self, alpha: f32, click_through: bool) {
+    fn apply_presentation(&mut self, alpha: f32, click_through: bool) -> Result<(), OverlayError> {
         if alpha != self.applied_alpha {
             self.renderer.opacity = alpha;
             self.applied_alpha = alpha;
         }
         if click_through != self.applied_click_through {
-            self.set_click_through(click_through);
+            self.set_click_through(click_through)?;
             self.applied_click_through = click_through;
         }
+        Ok(())
     }
 
     fn draw(&mut self, verify: bool) -> Result<(), OverlayError> {
@@ -1637,7 +1657,7 @@ impl ProductOverlaySession {
         });
         let alpha = f32::from(options.opacity_percent) / 100.0 * fade as f32;
         self.overlay
-            .apply_presentation(alpha, options.click_through || self.hover.hidden());
+            .apply_presentation(alpha, options.click_through || self.hover.hidden())?;
         Ok(())
     }
 
@@ -1656,7 +1676,7 @@ impl ProductOverlaySession {
     ) -> Result<NativeOverlay, OverlayError> {
         let mut overlay = NativeOverlay::create(frame, options, bounds, context_menu_sender)?;
         let alpha = f32::from(options.opacity_percent) / 100.0 * self.hover.visible() as f32;
-        overlay.apply_presentation(alpha, options.click_through || self.hover.hidden());
+        overlay.apply_presentation(alpha, options.click_through || self.hover.hidden())?;
         Ok(overlay)
     }
 
@@ -3215,6 +3235,52 @@ mod tests {
         assert_ne!(first.hwnd, second.hwnd);
         drop(first);
         drop(second);
+    }
+
+    #[test]
+    fn click_through_style_pairs_layered_and_transparent_hit_testing() {
+        let canvas = CanvasInfo {
+            width: 2048.0,
+            height: 2048.0,
+            origin_x: 1024.0,
+            origin_y: 1024.0,
+            pixels_per_unit: 1024.0,
+        };
+        let window = OverlayWindow::create(
+            OverlaySessionOptions {
+                click_through: true,
+                ..OverlaySessionOptions::default()
+            },
+            canvas,
+            None,
+            None,
+        )
+        .expect("create click-through overlay window");
+        let transparent = WS_EX_TRANSPARENT.0 as isize;
+        let layered = WS_EX_LAYERED.0 as isize;
+        // SAFETY: the test owns the live HWND and reads its extended style on
+        // the creation thread.
+        let style = unsafe { GetWindowLongPtrW(window.hwnd, GWL_EXSTYLE) };
+        assert_ne!(style & transparent, 0);
+        assert_ne!(style & layered, 0);
+
+        window
+            .set_click_through(false)
+            .expect("disable overlay click-through");
+        // SAFETY: the test owns the live HWND and reads its extended style on
+        // the creation thread.
+        let style = unsafe { GetWindowLongPtrW(window.hwnd, GWL_EXSTYLE) };
+        assert_eq!(style & transparent, 0);
+        assert_eq!(style & layered, 0);
+
+        window
+            .set_click_through(true)
+            .expect("enable overlay click-through");
+        // SAFETY: the test owns the live HWND and reads its extended style on
+        // the creation thread.
+        let style = unsafe { GetWindowLongPtrW(window.hwnd, GWL_EXSTYLE) };
+        assert_ne!(style & transparent, 0);
+        assert_ne!(style & layered, 0);
     }
 
     #[test]
