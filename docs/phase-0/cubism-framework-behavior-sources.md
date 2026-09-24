@@ -56,8 +56,9 @@ BongoCat must freeze the product-visible update order as a typed Rust contract a
 The three shipped models do not reference physics3 or pose3. They can validate motion, expression and renderer paths, but cannot satisfy physics/pose acceptance. A separately authorized fixture is required; user models found on a developer machine are not copied into the repository or CI.
 
 The SDK-independent motion3/exp3 parser and numeric evaluator now lives in
-`bongocat-live2d-playback`; `bongocat-live2d` retains the Core adapter and
-resource/application boundary. This crate split does not change the R5 oracle,
+`bongocat-live2d-playback`; model-package resource preparation and key-image
+resolution live in `bongocat-live2d-render`; `bongocat-live2d` retains the Core
+adapter and application boundary. These crate splits do not change the R5 oracle,
 license, or physics/pose evidence gates.
 
 ## 3. License Boundary

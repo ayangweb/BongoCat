@@ -212,9 +212,10 @@ active expression unchanged. The per-frame order is defaults, motion, expression
 input, then Cubism Core update.
 
 `bongocat-live2d-playback` owns the SDK-independent motion3/exp3 byte parser and numeric
-curve/blend evaluation. `bongocat-live2d` reads model resources and writes those results into
-Core; runtime remains the sole owner of active playback identity, priority, stop/crossfade timing,
-and model-generation cleanup.
+curve/blend evaluation. `bongocat-live2d-render` prepares model-package `RenderResources` and
+owns the shared key-image inventory/overlay resolver; `bongocat-live2d` writes the resulting
+motion/expression values into Core. Runtime remains the sole owner of active playback identity,
+priority, stop/crossfade timing, and model-generation cleanup.
 
 The fixed-version Cubism Core, header, generated bindings, and preset model development baseline are
 committed under `vendor/cubism/5-r.5` and `resources/models`. Builds do not download SDK artifacts.

@@ -1,5 +1,5 @@
 use crate::{ModelInputSnapshot, ModelSettings, MotionId, RuntimeRenderErrorCode};
-use bongocat_live2d::resolve_key_overlays;
+use bongocat_live2d_render::resolve_key_overlays;
 use bongocat_model::CommittedModel;
 use bongocat_render::{
     ModelCommitFeedback, ModelCommitToken, RenderConsumer, RenderProducer, latest_render_channel,

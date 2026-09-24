@@ -20,6 +20,7 @@ bongocat-config.workspace = true
 bongocat-i18n.workspace = true
 bongocat-input.workspace = true
 bongocat-ui-protocol.workspace = true
+bongocat-live2d-render.workspace = true
 bongocat-model-store.workspace = true
 bongocat-live2d.workspace = true
 bongocat-log.workspace = true

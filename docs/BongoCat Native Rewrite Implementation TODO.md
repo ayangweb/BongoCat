@@ -462,10 +462,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据（2026-09-24）：store 事务测试与 shared model fixtures 在新 crate 中通过；导入失败不留下 destination/staging，源目录保持只读且不变；Mver、键名、封面和 app/runtime/live2d 接线保持原有行为。
 - [x] 创建 bongocat-live2d-playback：motion3/exp3 纯解析、曲线求值和 expression 混合。
   - 验收证据（2026-09-24）：playback 不依赖 Cubism Core、model、render、runtime 或 filesystem；12 个纯数值测试通过，Core resource loader 与 apply status 仍由 `bongocat-live2d` 持有，runtime 直接依赖 playback 类型。
+- [x] 创建 bongocat-live2d-render：模型资源准备、键位图清单和 overlay 解析。
+  - 验收证据（2026-09-24）：crate 只依赖 model/render/image 与标准库，不加载 Cubism Core 或 GPU；三个预置模型资源准备、键位图同源扫描和 runtime overlay contract 测试通过，`bongocat-live2d` 只消费准备好的 `RenderResources`。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和 Core-coupled 模型适配。
   - 状态（2026-08-31）：正式 crate 已完成 Core 版本门禁、Moc/Model safe owner、
     drawable snapshot、parameter id/range/default；motion3/exp3 的纯解析与数值求值已移入
-    `bongocat-live2d-playback`，本 crate 负责资源读取、Core 写入和稳定错误映射。三个预置模型均在加载阶段缓存所有声明的
+    `bongocat-live2d-playback`，模型到 `RenderResources` 的准备已移入 `bongocat-live2d-render`，
+    本 crate 只负责 Core 写入和稳定错误映射。三个预置模型均在加载阶段缓存所有声明的
     motion/expression，不向上暴露 raw pointer。motion 主动 stop fade、PartOpacity 以及
     EyeBlink/LipSync/Opacity Model target 已进入正式 runtime/render contract；UserData 也已
     进入跨帧、循环去重和有界诊断 contract。physics 与 pose 求值尚未实现，因此总项保持未完成。
@@ -4375,7 +4378,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       （该行为变化已由下一项 ADR-0042 闭合：缺图按键不再产生任何动作。）
     - 缺图按键不再触发按键动作（2026-09-17，ADR-0042）：修正 ADR-0041 残余风险 1 记录的缺陷
       ——预置 `standard` 没有 `Dot.png` 等资源，按下这些键时左爪仍会下压，用户看到的是"爪子按下去
-      却什么都没出现"。① `bongocat-live2d` 新增 `KeyImageInventory`（`read`/`provides`/`can_draw`）：
+      却什么都没出现"。① `bongocat-live2d-render` 新增 `KeyImageInventory`（`read`/`provides`/`can_draw`）：
       不解码图片地列出 `resources/left-keys`/`right-keys` 的资源名，并按 `key_name_candidates` 的
       候选顺序（精确名、`Fn`/修饰键家族图、`AltGr`/`Return` 旧名、`Kp*`→主键盘回退）回答"这个键
       能不能画出来"；`load_key_assets` 与它共用同一个私有目录扫描 `key_image_files`，因此清单与
@@ -4391,7 +4394,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       模型补图后绑定自动恢复，命名不以美术存在为前提这条契约不变。**作用范围仅键位图**：鼠标
       （`ParamMouseLeftDown`/`ParamMouseRightDown` 是指针状态）与手柄按钮（无键位图词表，其美术
       本就不进入按键层）不在本规则内。
-      验收证据：`bongocat-live2d` 52 测试（新增 2：
+      验收证据：`bongocat-live2d-render` 资源 contract 与 `bongocat-live2d` 集成测试：
       `key_image_inventory_lists_exactly_the_assets_the_renderer_loads` 对三个预置模型断言清单与
       `load_key_assets` 的 (side, name) 集合逐侧相等；
       `a_shipped_model_can_draw_only_the_keys_it_ships_artwork_for` 逐键断言 `standard` 能画

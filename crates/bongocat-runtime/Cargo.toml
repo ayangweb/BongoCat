@@ -11,6 +11,7 @@ publish.workspace = true
 bongocat-audio.workspace = true
 bongocat-input.workspace = true
 bongocat-live2d-playback.workspace = true
+bongocat-live2d-render.workspace = true
 bongocat-model.workspace = true
 bongocat-render.workspace = true
 bongocat-live2d.workspace = true

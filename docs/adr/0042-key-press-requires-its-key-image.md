@@ -17,14 +17,14 @@ ADR-0041 把标点键、`PrintScreen`、导航键和小键盘整块都绑到了�
    （`resolve_key_overlays`）。两者都由 `InputState::model_snapshot` 里同一个 `hand_for`
    归属决定：有归属的按键才置 hand 标志并成为该侧的候选 press，`None => {}` 的按键直接被丢弃。
    **所以"绑定"就是那个唯一开关**，不需要第二套门禁。
-2. **图是模型包自带的，只有渲染侧知道。** `bongocat-live2d::load_key_assets` 扫描
+2. **图是模型包自带的，只有渲染侧知道。** `bongocat-live2d-render::load_key_assets` 扫描
    `resources/left-keys` / `resources/right-keys`，`resolve_key_overlays` 用
    `key_name_candidates` 的候选顺序在已加载的资产里找图；找不到就不画。
 3. **预置 `standard` 的 55 张键位图里没有 `Dot.png`、`Minus.png`、`PrintScreen.png`、
    `NumLock.png`、小键盘 `*`/`+`/`-`/`.`**，也没有 `right-keys` 目录。按下 `.`、`,`、`-`
    或 `PrintScreen` 时，用户看到的是"爪子按下去但什么都没出现"——动作指向一个永远画不出来的东西。
 4. **判断必须发生在模型与绑定相遇的地方。** runtime 是平台无关 crate，只在 Windows/macOS
-   依赖 `bongocat-live2d`，且它的 `model_snapshot` 只接收 `InputBindings`；renderer 只消费不可变
+   依赖 `bongocat-live2d` 与 `bongocat-live2d-render`，且它的 `model_snapshot` 只接收 `InputBindings`；renderer 只消费不可变
    `RenderSnapshot`，不得决定动作（Technical Design §5.2/§5.3）。而 `bongocat-app` 在模型激活时
    本来就为每个模型计算绑定（`input_bindings_for_model`），手上正好有 `CommittedModel`。
 5. **"可绘制"必须与实际绘制同源。** 如果判断用的目录扫描或候选顺序与渲染侧不一致，就会出现
@@ -32,7 +32,7 @@ ADR-0041 把标点键、`PrintScreen`、导航键和小键盘整块都绑到了�
 
 ## 决策
 
-### 1. `bongocat-live2d` 提供键位图清单
+### 1. `bongocat-live2d-render` 提供键位图清单
 
 新增 `KeyImageInventory`：
 
@@ -111,7 +111,7 @@ ADR-0041 把标点键、`PrintScreen`、导航键和小键盘整块都绑到了�
 
 已完成（2026-09-17，本机 Windows / x86_64-pc-windows-msvc）：
 
-- `bongocat-live2d` 52 测试（新增 2）：
+- `bongocat-live2d-render` 资源 contract 与 `bongocat-live2d` 集成测试：
   `key_image_inventory_lists_exactly_the_assets_the_renderer_loads` 对三个预置模型断言清单与
   `load_key_assets` 加载到的 (side, name) 集合逐侧相等（"报告"与"绘制"同源）；
   `a_shipped_model_can_draw_only_the_keys_it_ships_artwork_for` 断言 `standard` 能画 `KeyA`、

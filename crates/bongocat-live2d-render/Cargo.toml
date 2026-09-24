@@ -1,0 +1,16 @@
+[package]
+name = "bongocat-live2d-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+bongocat-model.workspace = true
+bongocat-render.workspace = true
+image.workspace = true
+
+[lints]
+workspace = true

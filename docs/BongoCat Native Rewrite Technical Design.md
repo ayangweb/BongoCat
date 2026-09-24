@@ -276,7 +276,8 @@ Platform input ---> Runtime thread ---> Model/Animation state
 - `model`：模型包解析、路径安全、资源索引和只读预置模型目录；不持有用户 store 的写入生命周期。
 - `model-store`：用户模型 store、writer lock、staging/提交/删除、目录与 BongoCatMver 导入、键名归一化和用户侧封面覆盖。
 - `live2d-playback`：motion3/exp3 字节解析、曲线/fade/loop/UserData 与 expression 混合的纯数值求值；不持有 Cubism Core 或 GPU 资源。
-- `live2d`：Cubism Core 生命周期、模型资源读取、Core parameter/part 写入、motion/expression 到 Core 的适配和 RenderResources。
+- `live2d-render`：将 `CommittedModel` 的纹理、背景和键位图资源准备为 `RenderResources`，并提供同源的键位图清单与 overlay 解析；不持有 Cubism Core 或 GPU handle。
+- `live2d`：Cubism Core 生命周期、Core parameter/part 写入、motion/expression 到 Core 的适配和不可变 `RenderSnapshot` 生产。
 - `audio`：motion 音效的有序 command、FLAC 解码、唯一 voice、输出设备和 shutdown。
 - `render`：不可变 render snapshot 和 renderer contract。
 - `config`：环境隔离、当前 v1 schema、验证、备份和原子提交。
@@ -288,18 +289,19 @@ ui protocol <------- app -------> runtime <------- platform adapters
                     |                 |
                     v                 v
              model-store ---------> model
-                    ^                 ^
-                    |                 |
-              user model data     live2d ---------> live2d-playback
+                    ^                 |
+                    |                 v
+              user model data     live2d-render ---------> render contract
+                                      ^                 ^
+                                      |                 |
+                                      +------ live2d ---+
                                       |
-                                      v
-                               render contract
-                                    ^
-                                    |
+                                      +------ live2d-playback
+
                          D3D11 renderer / Metal renderer
 ```
 
-业务 crate 不得导入 Win32、Objective-C、GPUI 或 GPU handle。平台实现可以依赖业务定义的 command/event 类型。runtime 可直接使用 `live2d-playback` 的 clip/evaluation 类型，但 playback 不读取 runtime command、Core snapshot 或 GPU 资源。
+业务 crate 不得导入 Win32、Objective-C、GPUI 或 GPU handle。平台实现可以依赖业务定义的 command/event 类型。runtime 可直接使用 `live2d-playback` 的 clip/evaluation 类型和 `live2d-render` 的键位图解析 contract；两层都不读取 runtime command、Core snapshot 或 GPU 资源。
 
 ## 7. 仓库布局
 
@@ -320,6 +322,7 @@ BongoCat/
     bongocat-model-store/     用户模型持久化、导入事务、Mver 转换和封面覆盖
     bongocat-live2d/          Cubism Core 边界与 Core-coupled model adapter
     bongocat-live2d-playback/ motion3/exp3 纯解析、曲线求值和 expression 混合
+    bongocat-live2d-render/  模型资源准备、键位图清单和 overlay 解析
     bongocat-audio/           motion 音效队列、解码与设备 owner
     bongocat-render/          render snapshot/contract
     bongocat-ui/              GPUI 设置界面和 design system
@@ -608,7 +611,7 @@ CGEvent keycode `63`（`kVK_Function`）以 `FlagsChanged` + `MaskSecondaryFn` �
 （不猜值）、在 macOS 侧 Carbon 没有 `kVK_F21`…`kVK_F24`，`0x70..=0x73` 属于"命名到位但两个平台都不可达"。
 
 **只有模型确实提供对应键位图时，按键才产生动作**（见 ADR-0042）：`bongocat-app` 在激活模型时用
-`bongocat-live2d::KeyImageInventory` 读取该模型的键位图清单（与渲染侧加载共用同一次目录扫描和同一套
+`bongocat-live2d-render::KeyImageInventory` 读取该模型的键位图清单（与渲染侧加载共用同一次目录扫描和同一套
 候选回退），并只把清单里能画出来的键写进 `InputBindings`。写入 runtime 的每模型绑定因此是
 "静态 hand 表 ∩ 该模型的键位图"：缺图的按键不进入 `InputState::model_snapshot`，既不驱动
 `CatParamLeftHandDown`/`CatParamRightHandDown`，也不产生按键层，所以按键层与爪部反馈永远一致。
@@ -646,8 +649,8 @@ model evaluation + render snapshot
 - 不把未经验证的新纯 Rust Cubism 兼容 crate 作为生产基础。
 - `.model3.json`、motion、expression、physics 和 pose 兼容性由 fixture 验证。
 - motion3/exp3 的字节解析、曲线/fade/loop/UserData 求值和 expression Add/Multiply/Overwrite
-  混合由 `bongocat-live2d-playback` 纯数值完成；`bongocat-live2d` 负责从 `CommittedModel`
-  读取资源、做 Core ID/range/part 校验并把结果写入 Core。
+  混合由 `bongocat-live2d-playback` 纯数值完成；`bongocat-live2d-render` 从 `CommittedModel`
+  读取并准备 `RenderResources`，`bongocat-live2d` 再做 Core ID/range/part 校验并把结果写入 Core。
 - 每帧从 Core 默认 parameter 开始，依次应用 motion、expression、自动 EyeBlink/Breath、
   physics/pose（实现后）、类型化产品输入，最后调用 Core update。motion 的自然结束与显式停止均使用 model3/
   curve fade，显式停止的外层正弦权重与 curve 权重相乘。`PartOpacity` motion curve
@@ -883,7 +886,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   校验与单次 `rename` 提交尾部，因此不可能绕过包校验，也不存在第二个临时位置。
 - 键位图合成是"最小画布上的 Porter-Duff over"：画布取两层较小的宽高、两层锚在原点，因此过大
   的一层被裁切而非缩放；模式没有 `keyboard/` 图集时按字节安装 paw 图而不合成；某个绑定缺 paw
-  或配套键帽时只跳过该绑定。输出文件名沿用产品自己的词汇表——键盘键是 `bongocat-live2d` 从
+  或配套键帽时只跳过该绑定。输出文件名沿用产品自己的词汇表——键盘键是 `bongocat-live2d-render` 从
   HID usage 解析出的名字，手柄键是随包预置 gamepad 模型已经装载的名字（`gamepad` 的键位表用
   XInput 序号，不是虚拟键码）；无法命名的控制码不产出图片也不报错。
 - 合成图按 lossless 方式重编码（`oxipng`，只开库入口）：位深/颜色类型/调色板/灰度缩减保持解码

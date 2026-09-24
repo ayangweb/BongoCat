@@ -793,6 +793,7 @@ dependencies = [
  "bongocat-i18n",
  "bongocat-input",
  "bongocat-live2d",
+ "bongocat-live2d-render",
  "bongocat-log",
  "bongocat-model",
  "bongocat-model-store",
@@ -847,12 +848,12 @@ name = "bongocat-live2d"
 version = "2.0.0"
 dependencies = [
  "bongocat-live2d-playback",
+ "bongocat-live2d-render",
  "bongocat-log",
  "bongocat-model",
  "bongocat-model-store",
  "bongocat-render",
  "bongocat-storage",
- "image",
  "serde",
  "serde_json",
  "tempfile",
@@ -864,6 +865,15 @@ version = "2.0.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "bongocat-live2d-render"
+version = "2.0.0"
+dependencies = [
+ "bongocat-model",
+ "bongocat-render",
+ "image",
 ]
 
 [[package]]
@@ -978,6 +988,7 @@ dependencies = [
  "bongocat-input",
  "bongocat-live2d",
  "bongocat-live2d-playback",
+ "bongocat-live2d-render",
  "bongocat-model",
  "bongocat-model-store",
  "bongocat-render",

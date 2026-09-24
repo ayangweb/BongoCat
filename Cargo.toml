@@ -7,6 +7,7 @@ members = [
     "crates/bongocat-input",
     "crates/bongocat-ui-protocol",
     "crates/bongocat-live2d-playback",
+    "crates/bongocat-live2d-render",
     "crates/bongocat-model-store",
     "crates/bongocat-config",
     "crates/bongocat-live2d",
@@ -80,6 +81,7 @@ bongocat-config = { path = "crates/bongocat-config" }
 bongocat-input = { path = "crates/bongocat-input" }
 bongocat-ui-protocol = { path = "crates/bongocat-ui-protocol" }
 bongocat-live2d-playback = { path = "crates/bongocat-live2d-playback" }
+bongocat-live2d-render = { path = "crates/bongocat-live2d-render" }
 bongocat-model-store = { path = "crates/bongocat-model-store" }
 bongocat-audio = { path = "crates/bongocat-audio" }
 bongocat-i18n = { path = "crates/bongocat-i18n" }

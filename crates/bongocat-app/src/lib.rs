@@ -15,7 +15,7 @@ use bongocat_input::{
     CursorProducer, GamepadAxisProducer, GamepadAxisSettings, GamepadButton, HandSide,
     InputBindings, InputProducer, PhysicalKey,
 };
-use bongocat_live2d::KeyImageInventory;
+use bongocat_live2d_render::KeyImageInventory;
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelBehaviorSnapshot, ModelCatalogEntry, ModelError, ModelId,
     ModelOrigin, ModelPackageLimits, PresetModelCatalog,
@@ -2292,7 +2292,7 @@ fn input_bindings_for_committed_model(model: &CommittedModel) -> InputBindings {
 /// the renderer, because the renderer is not allowed to decide actions and
 /// because the runtime is the single owner of pressed state.
 ///
-/// `bongocat-live2d::KeyImageInventory` answers "can this key be drawn" with the
+/// `bongocat-live2d-render::KeyImageInventory` answers "can this key be drawn" with the
 /// same directory scan and the same candidate fallbacks the renderer uses, so a
 /// key that is bound here is exactly a key that draws.
 fn input_bindings_for_model(

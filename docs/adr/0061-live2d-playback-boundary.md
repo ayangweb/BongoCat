@@ -28,7 +28,8 @@ The crate depends only on `serde`, `serde_json`, and the standard library. It
 does not depend on `bongocat-model`, `bongocat-render`, `bongocat-live2d`,
 runtime, GPUI, platform APIs, or the filesystem. `MotionClip::load` and
 `ExpressionClip::load` are not part of this crate; `bongocat-live2d` reads the
-committed model resources and calls `from_slice`.
+committed model resources through the render-resource adapter and calls
+`from_slice`.
 
 `bongocat-live2d` remains responsible for:
 
