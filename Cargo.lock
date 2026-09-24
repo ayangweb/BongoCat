@@ -846,6 +846,7 @@ version = "2.0.0"
 name = "bongocat-live2d"
 version = "2.0.0"
 dependencies = [
+ "bongocat-live2d-playback",
  "bongocat-log",
  "bongocat-model",
  "bongocat-model-store",
@@ -855,6 +856,14 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "bongocat-live2d-playback"
+version = "2.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -968,6 +977,7 @@ dependencies = [
  "bongocat-audio",
  "bongocat-input",
  "bongocat-live2d",
+ "bongocat-live2d-playback",
  "bongocat-model",
  "bongocat-model-store",
  "bongocat-render",

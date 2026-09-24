@@ -275,7 +275,8 @@ Platform input ---> Runtime thread ---> Model/Animation state
 - `platform`：窗口、输入、托盘、权限、显示器、启动项、文件和更新。
 - `model`：模型包解析、路径安全、资源索引和只读预置模型目录；不持有用户 store 的写入生命周期。
 - `model-store`：用户模型 store、writer lock、staging/提交/删除、目录与 BongoCatMver 导入、键名归一化和用户侧封面覆盖。
-- `live2d`：Cubism Core 生命周期、motion/expression/physics/pose 求值。
+- `live2d-playback`：motion3/exp3 字节解析、曲线/fade/loop/UserData 与 expression 混合的纯数值求值；不持有 Cubism Core 或 GPU 资源。
+- `live2d`：Cubism Core 生命周期、模型资源读取、Core parameter/part 写入、motion/expression 到 Core 的适配和 RenderResources。
 - `audio`：motion 音效的有序 command、FLAC 解码、唯一 voice、输出设备和 shutdown。
 - `render`：不可变 render snapshot 和 renderer contract。
 - `config`：环境隔离、当前 v1 schema、验证、备份和原子提交。
@@ -286,16 +287,19 @@ Platform input ---> Runtime thread ---> Model/Animation state
 ui protocol <------- app -------> runtime <------- platform adapters
                     |                 |
                     v                 v
-             model-store ---------> model / live2d
-                    ^                 |
-                    |                 v
-              user model data     render contract
+             model-store ---------> model
+                    ^                 ^
+                    |                 |
+              user model data     live2d ---------> live2d-playback
+                                      |
+                                      v
+                               render contract
                                     ^
                                     |
                          D3D11 renderer / Metal renderer
 ```
 
-业务 crate 不得导入 Win32、Objective-C、GPUI 或 GPU handle。平台实现可以依赖业务定义的 command/event 类型。
+业务 crate 不得导入 Win32、Objective-C、GPUI 或 GPU handle。平台实现可以依赖业务定义的 command/event 类型。runtime 可直接使用 `live2d-playback` 的 clip/evaluation 类型，但 playback 不读取 runtime command、Core snapshot 或 GPU 资源。
 
 ## 7. 仓库布局
 
@@ -314,7 +318,8 @@ BongoCat/
     bongocat-storage/         用户私有存储原语：权限、私有目录、原子替换
     bongocat-model/           模型包解析、只读资源索引和预置模型目录
     bongocat-model-store/     用户模型持久化、导入事务、Mver 转换和封面覆盖
-    bongocat-live2d/          Cubism Core 边界与模型求值
+    bongocat-live2d/          Cubism Core 边界与 Core-coupled model adapter
+    bongocat-live2d-playback/ motion3/exp3 纯解析、曲线求值和 expression 混合
     bongocat-audio/           motion 音效队列、解码与设备 owner
     bongocat-render/          render snapshot/contract
     bongocat-ui/              GPUI 设置界面和 design system
@@ -640,6 +645,9 @@ model evaluation + render snapshot
   runtime、UI 或 diagnostics export。
 - 不把未经验证的新纯 Rust Cubism 兼容 crate 作为生产基础。
 - `.model3.json`、motion、expression、physics 和 pose 兼容性由 fixture 验证。
+- motion3/exp3 的字节解析、曲线/fade/loop/UserData 求值和 expression Add/Multiply/Overwrite
+  混合由 `bongocat-live2d-playback` 纯数值完成；`bongocat-live2d` 负责从 `CommittedModel`
+  读取资源、做 Core ID/range/part 校验并把结果写入 Core。
 - 每帧从 Core 默认 parameter 开始，依次应用 motion、expression、自动 EyeBlink/Breath、
   physics/pose（实现后）、类型化产品输入，最后调用 Core update。motion 的自然结束与显式停止均使用 model3/
   curve fade，显式停止的外层正弦权重与 curve 权重相乘。`PartOpacity` motion curve
@@ -649,10 +657,9 @@ model evaluation + render snapshot
   覆盖的首个同名 Parameter group（最多 64 个 ID）使用 motion fade 插值。`Opacity` 作为
   独立 model opacity 进入 `RenderSnapshot`，只在 renderer 最终颜色 pass 与 drawable/
   窗口透明度相乘，不参与 mask 生成，并保持到后续 motion opacity curve 更新或模型切换。
-  expression 使用 `.exp3.json` 的
-  Add/Multiply/Overwrite 和正弦淡入淡出；替换期间最多保留上一层与当前层，稳定后只保留
-  最新 expression，使内存和每帧成本保持有界。真实输入最后覆盖对应产品 parameter，
-  避免表情让按下状态失真。
+  expression 的 Add/Multiply/Overwrite 和正弦淡入淡出由 `bongocat-live2d-playback` 纯函数计算；
+  替换期间最多保留上一层与当前层，稳定后只保留最新 expression，使内存和每帧成本保持有界。
+  真实输入最后覆盖对应产品 parameter，避免表情让按下状态失真。
 - 模型加载采用 prepare/commit/rollback，失败时保留当前可用模型。
 - 模型切换是 CPU/GPU 两阶段提交：runtime 先保留旧 active model/bindings，准备新的
   Cubism generation，并随候选 `RenderSnapshot` 发布一次性强类型 commit token；平台

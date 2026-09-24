@@ -55,6 +55,11 @@ BongoCat must freeze the product-visible update order as a typed Rust contract a
 
 The three shipped models do not reference physics3 or pose3. They can validate motion, expression and renderer paths, but cannot satisfy physics/pose acceptance. A separately authorized fixture is required; user models found on a developer machine are not copied into the repository or CI.
 
+The SDK-independent motion3/exp3 parser and numeric evaluator now lives in
+`bongocat-live2d-playback`; `bongocat-live2d` retains the Core adapter and
+resource/application boundary. This crate split does not change the R5 oracle,
+license, or physics/pose evidence gates.
+
 ## 3. License Boundary
 
 Native Framework and Samples use the Live2D Open Software License, not the repository MIT license. Core and its header use the Live2D Proprietary Software License. `Core/RedistributableFiles.txt` lists runtime libraries but does not list the Core header, so publishing generated Rust bindings derived from that header also requires an explicit Live2D answer.

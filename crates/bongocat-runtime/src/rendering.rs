@@ -5,10 +5,8 @@ use bongocat_render::{
     ModelCommitFeedback, ModelCommitToken, RenderConsumer, RenderProducer, latest_render_channel,
 };
 
-use bongocat_live2d::{
-    ExpressionClip, ExpressionLayer, Live2dError, Live2dModel, MotionClip, ParameterUpdate,
-    ProductParameter,
-};
+use bongocat_live2d::{Live2dError, Live2dModel, ParameterUpdate, ProductParameter};
+use bongocat_live2d_playback::{ExpressionClip, ExpressionLayer, MotionClip};
 use bongocat_render::RenderFrame;
 use std::sync::Arc;
 use std::time::Duration;

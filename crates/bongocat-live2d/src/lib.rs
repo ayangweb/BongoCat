@@ -8,17 +8,9 @@ use std::{
     sync::Arc,
 };
 
-mod expression;
-pub use expression::{
-    ExpressionApplyStatus, ExpressionBlendMode, ExpressionClip, ExpressionLayer,
-    ExpressionParameter,
-};
-
-mod motion;
-pub use motion::{
-    MotionApplyStatus, MotionClip, MotionCurveTarget, MotionEvaluation, MotionModelSample,
-    MotionParameterSample, MotionPartOpacitySample, MotionUserDataEvaluation, MotionUserDataEvent,
-    MotionUserDataOccurrence,
+use bongocat_live2d_playback::{
+    ExpressionClip, ExpressionLayer, MotionClip, PlaybackError, PlaybackErrorCode,
+    evaluate_expression_parameter,
 };
 
 mod core;
@@ -214,6 +206,31 @@ impl fmt::Display for Live2dError {
 
 impl std::error::Error for Live2dError {}
 
+impl From<PlaybackError> for Live2dError {
+    fn from(error: PlaybackError) -> Self {
+        let code = match error.code {
+            PlaybackErrorCode::ExpressionInvalid => Live2dErrorCode::ExpressionInvalid,
+            PlaybackErrorCode::MotionInvalid => Live2dErrorCode::MotionInvalid,
+        };
+        Self::new(code, error.detail)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MotionApplyStatus {
+    pub finished: bool,
+    pub applied_parameter_count: usize,
+    pub applied_part_opacity_count: usize,
+    pub applied_eye_blink_count: usize,
+    pub applied_lip_sync_count: usize,
+    pub model_opacity_applied: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ExpressionApplyStatus {
+    pub applied_parameter_count: usize,
+}
+
 pub struct Live2dModel {
     resources: Arc<RenderResources>,
     motions: BTreeMap<String, Vec<MotionClip>>,
@@ -222,6 +239,73 @@ pub struct Live2dModel {
     lip_sync_parameter_ids: Vec<String>,
     model_opacity: f32,
     core: core::CoreModel,
+}
+
+fn load_motion_clip(
+    model: &CommittedModel,
+    group_name: &str,
+    motion_index: usize,
+) -> Result<MotionClip, Live2dError> {
+    let group = model
+        .index()
+        .motion_groups
+        .iter()
+        .find(|group| group.name == group_name)
+        .ok_or_else(|| {
+            Live2dError::new(
+                Live2dErrorCode::MotionNotFound,
+                format!("motion group {group_name:?} does not exist"),
+            )
+        })?;
+    let resource = group.motions.get(motion_index).ok_or_else(|| {
+        Live2dError::new(
+            Live2dErrorCode::MotionNotFound,
+            format!("motion {group_name}[{motion_index}] does not exist"),
+        )
+    })?;
+    let path = model.root().join(&resource.file);
+    let bytes = fs::read(&path).map_err(|error| {
+        Live2dError::new(
+            Live2dErrorCode::ResourceIo,
+            format!("cannot read {}: {error}", path.display()),
+        )
+    })?;
+    MotionClip::from_slice(
+        &bytes,
+        resource.fade_in_seconds.map_or(1.0, |value| value.get()),
+        resource.fade_out_seconds.map_or(1.0, |value| value.get()),
+    )
+    .map_err(|error: PlaybackError| {
+        let mut error: Live2dError = error.into();
+        error.detail = format!("{}: {}", path.display(), error.detail);
+        error
+    })
+}
+
+fn load_expression_clip(model: &CommittedModel, name: &str) -> Result<ExpressionClip, Live2dError> {
+    let resource = model
+        .index()
+        .expressions
+        .iter()
+        .find(|resource| resource.name == name)
+        .ok_or_else(|| {
+            Live2dError::new(
+                Live2dErrorCode::ExpressionNotFound,
+                format!("expression {name:?} is not declared by model3"),
+            )
+        })?;
+    let path = model.root().join(&resource.file);
+    let bytes = fs::read(&path).map_err(|error| {
+        Live2dError::new(
+            Live2dErrorCode::ResourceIo,
+            format!("cannot read {}: {error}", path.display()),
+        )
+    })?;
+    ExpressionClip::from_slice(&bytes).map_err(|error: PlaybackError| {
+        let mut error: Live2dError = error.into();
+        error.detail = format!("{}: {}", path.display(), error.detail);
+        error
+    })
 }
 
 impl Live2dModel {
@@ -253,15 +337,15 @@ impl Live2dModel {
                     .motions
                     .iter()
                     .enumerate()
-                    .map(|(index, _)| MotionClip::load(model, &group.name, index))
+                    .map(|(index, _)| load_motion_clip(model, &group.name, index))
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok((group.name.clone(), clips))
+                Ok::<_, Live2dError>((group.name.clone(), clips))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         let mut expressions = BTreeMap::new();
         for resource in &model.index().expressions {
             let name = resource.name.clone();
-            let clip = ExpressionClip::load(model, &name)?;
+            let clip = load_expression_clip(model, &name)?;
             if expressions.insert(name.clone(), clip).is_some() {
                 return Err(Live2dError::new(
                     Live2dErrorCode::ExpressionInvalid,
@@ -577,24 +661,7 @@ impl Live2dModel {
                 let Some(current) = self.core.parameter_value_by_id(id)? else {
                     continue;
                 };
-                let mut overwrite = current;
-                let mut additive = 0.0;
-                let mut multiply = 1.0;
-                for layer in layers {
-                    let (next_overwrite, next_additive, next_multiply) =
-                        match layer.clip.parameter(id) {
-                            Some(parameter) => match parameter.blend {
-                                ExpressionBlendMode::Additive => (current, parameter.value, 1.0),
-                                ExpressionBlendMode::Multiply => (current, 0.0, parameter.value),
-                                ExpressionBlendMode::Overwrite => (parameter.value, 0.0, 1.0),
-                            },
-                            None => (current, 0.0, 1.0),
-                        };
-                    overwrite += (next_overwrite - overwrite) * layer.weight;
-                    additive += (next_additive - additive) * layer.weight;
-                    multiply += (next_multiply - multiply) * layer.weight;
-                }
-                let target = (overwrite + additive) * multiply;
+                let target = evaluate_expression_parameter(id, current, layers);
                 if matches!(
                     self.core.set_parameter_by_id(id, target, 1.0)?,
                     ParameterUpdate::Applied { .. }
@@ -2157,6 +2224,28 @@ mod tests {
         assert_eq!(Live2dErrorCode::MotionInvalid.to_string(), "motion_invalid");
         let error = Live2dError::new(Live2dErrorCode::ResourceIo, "/private/model.moc3");
         assert!(error.to_string().starts_with("resource_io: "));
+    }
+
+    #[test]
+    fn preset_motion_and_expression_resources_load_through_live2d_adapter() {
+        use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
+        use std::path::Path;
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/models");
+        let catalog = PresetModelCatalog::open(root, ModelPackageLimits::default())
+            .expect("preset model catalog");
+        for id in ["standard", "keyboard", "gamepad"] {
+            let committed = catalog
+                .load(&ModelId::parse(id).expect("model id"))
+                .expect("preset model");
+            let model = Live2dModel::load(&committed).expect("Live2D model");
+            assert!(model.motion_clip("CAT_motion", 0).is_some());
+            assert!(
+                model
+                    .expression_clip("live2d_expression0.exp3.json")
+                    .is_some()
+            );
+        }
     }
 
     #[test]

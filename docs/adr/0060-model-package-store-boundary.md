@@ -67,7 +67,7 @@ visibility provides that stronger guarantee.
   destinations are written;
 - `CommittedModel` construction is a documented store/preset product invariant,
   not a compiler-enforced sealed type in this slice;
-- Cubism Core and model evaluation remain in `bongocat-live2d`.
+- Cubism Core lifecycle and Core-coupled parameter application remain in `bongocat-live2d`; pure motion/expression playback is owned by `bongocat-live2d-playback`.
 
 ## Rejected alternatives
 

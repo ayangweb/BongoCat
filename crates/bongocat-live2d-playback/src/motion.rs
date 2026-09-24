@@ -1,7 +1,6 @@
-use crate::{Live2dError, Live2dErrorCode};
-use bongocat_model::CommittedModel;
+use crate::{PlaybackError, PlaybackErrorCode};
 use serde::Deserialize;
-use std::{fs, time::Duration};
+use std::time::Duration;
 
 const TIME_TOLERANCE: f32 = 0.000_001;
 const BEZIER_ITERATIONS: usize = 18;
@@ -11,7 +10,7 @@ const MODEL_OPACITY_ID: &str = "Opacity";
 const MAX_USER_DATA_OCCURRENCES_PER_EVALUATION: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MotionCurveTarget {
+enum MotionCurveTarget {
     Model,
     Parameter,
     PartOpacity,
@@ -64,16 +63,6 @@ pub struct MotionUserDataOccurrence {
 pub struct MotionUserDataEvaluation {
     pub occurrences: Vec<MotionUserDataOccurrence>,
     pub skipped_occurrences: u64,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct MotionApplyStatus {
-    pub finished: bool,
-    pub applied_parameter_count: usize,
-    pub applied_part_opacity_count: usize,
-    pub applied_eye_blink_count: usize,
-    pub applied_lip_sync_count: usize,
-    pub model_opacity_applied: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -188,56 +177,16 @@ struct RawUserData {
 }
 
 impl MotionClip {
-    pub fn load(
-        model: &CommittedModel,
-        group_name: &str,
-        motion_index: usize,
-    ) -> Result<Self, Live2dError> {
-        let group = model
-            .index()
-            .motion_groups
-            .iter()
-            .find(|group| group.name == group_name)
-            .ok_or_else(|| {
-                Live2dError::new(
-                    Live2dErrorCode::MotionNotFound,
-                    format!("motion group {group_name:?} does not exist"),
-                )
-            })?;
-        let resource = group.motions.get(motion_index).ok_or_else(|| {
-            Live2dError::new(
-                Live2dErrorCode::MotionNotFound,
-                format!("motion {group_name}[{motion_index}] does not exist"),
-            )
-        })?;
-        let path = model.root().join(&resource.file);
-        let bytes = fs::read(&path).map_err(|error| {
-            Live2dError::new(
-                Live2dErrorCode::ResourceIo,
-                format!("cannot read {}: {error}", path.display()),
-            )
-        })?;
-        Self::from_slice(
-            &bytes,
-            resource.fade_in_seconds.map_or(1.0, |value| value.get()),
-            resource.fade_out_seconds.map_or(1.0, |value| value.get()),
-        )
-        .map_err(|mut error| {
-            error.detail = format!("{}: {}", path.display(), error.detail);
-            error
-        })
-    }
-
     pub fn from_slice(
         bytes: &[u8],
         fade_in_seconds: f32,
         fade_out_seconds: f32,
-    ) -> Result<Self, Live2dError> {
+    ) -> Result<Self, PlaybackError> {
         validate_fade(fade_in_seconds, "motion fade in")?;
         validate_fade(fade_out_seconds, "motion fade out")?;
         let raw: RawMotion = serde_json::from_slice(bytes).map_err(|error| {
-            Live2dError::new(
-                Live2dErrorCode::MotionInvalid,
+            PlaybackError::new(
+                PlaybackErrorCode::MotionInvalid,
                 format!("motion3 JSON is invalid: {error}"),
             )
         })?;
@@ -261,13 +210,13 @@ impl MotionClip {
                 || entry.time < 0.0
                 || entry.time > raw.meta.duration + TIME_TOLERANCE
             {
-                return Err(Live2dError::new(
-                    Live2dErrorCode::MotionInvalid,
+                return Err(PlaybackError::new(
+                    PlaybackErrorCode::MotionInvalid,
                     "UserData.Time is outside the motion duration",
                 ));
             }
             total.checked_add(entry.value.len()).ok_or_else(|| {
-                Live2dError::new(Live2dErrorCode::MotionInvalid, "UserData size overflowed")
+                PlaybackError::new(PlaybackErrorCode::MotionInvalid, "UserData size overflowed")
             })
         })?;
         if user_data_size != raw.meta.total_user_data_size {
@@ -278,8 +227,8 @@ impl MotionClip {
             .into_iter()
             .map(|entry| {
                 let local_time = Duration::try_from_secs_f32(entry.time).map_err(|_| {
-                    Live2dError::new(
-                        Live2dErrorCode::MotionInvalid,
+                    PlaybackError::new(
+                        PlaybackErrorCode::MotionInvalid,
                         "UserData.Time cannot be represented by the runtime clock",
                     )
                 })?;
@@ -288,7 +237,7 @@ impl MotionClip {
                     value: entry.value,
                 })
             })
-            .collect::<Result<Vec<_>, Live2dError>>()?;
+            .collect::<Result<Vec<_>, PlaybackError>>()?;
 
         let mut total_segments = 0usize;
         let mut total_points = 0usize;
@@ -298,14 +247,14 @@ impl MotionClip {
             .map(|curve| {
                 let (curve, segments, points) = MotionCurve::parse(curve, raw.meta.duration)?;
                 total_segments = total_segments.checked_add(segments).ok_or_else(|| {
-                    Live2dError::new(Live2dErrorCode::MotionInvalid, "segment count overflowed")
+                    PlaybackError::new(PlaybackErrorCode::MotionInvalid, "segment count overflowed")
                 })?;
                 total_points = total_points.checked_add(points).ok_or_else(|| {
-                    Live2dError::new(Live2dErrorCode::MotionInvalid, "point count overflowed")
+                    PlaybackError::new(PlaybackErrorCode::MotionInvalid, "point count overflowed")
                 })?;
                 Ok(curve)
             })
-            .collect::<Result<Vec<_>, Live2dError>>()?;
+            .collect::<Result<Vec<_>, PlaybackError>>()?;
         if total_segments != raw.meta.total_segment_count
             || total_points != raw.meta.total_point_count
         {
@@ -505,7 +454,7 @@ impl MotionClip {
 }
 
 impl MotionCurve {
-    fn parse(raw: RawCurve, duration: f32) -> Result<(Self, usize, usize), Live2dError> {
+    fn parse(raw: RawCurve, duration: f32) -> Result<(Self, usize, usize), PlaybackError> {
         if raw.id.trim().is_empty() {
             return invalid("curve Id must not be blank");
         }
@@ -728,7 +677,7 @@ fn motion_weight(
     (fade_in * fade_out).clamp(0.0, 1.0)
 }
 
-fn validate_time(time: f32, minimum: f32, maximum: f32, label: &str) -> Result<(), Live2dError> {
+fn validate_time(time: f32, minimum: f32, maximum: f32, label: &str) -> Result<(), PlaybackError> {
     if !time.is_finite() || time + TIME_TOLERANCE < minimum || time > maximum + TIME_TOLERANCE {
         return invalid(format!(
             "{label} time {time} is outside [{minimum}, {maximum}]"
@@ -737,66 +686,27 @@ fn validate_time(time: f32, minimum: f32, maximum: f32, label: &str) -> Result<(
     Ok(())
 }
 
-fn validate_fade(value: f32, label: &str) -> Result<(), Live2dError> {
+fn validate_fade(value: f32, label: &str) -> Result<(), PlaybackError> {
     if !value.is_finite() || value < 0.0 {
         return invalid(format!("{label} must be finite and non-negative"));
     }
     Ok(())
 }
 
-fn require_width(values: &[f32], index: usize, width: usize) -> Result<(), Live2dError> {
+fn require_width(values: &[f32], index: usize, width: usize) -> Result<(), PlaybackError> {
     if values.len().saturating_sub(index) < width {
         return invalid(format!("segment at index {index} is truncated"));
     }
     Ok(())
 }
 
-fn invalid<T>(detail: impl Into<String>) -> Result<T, Live2dError> {
-    Err(Live2dError::new(Live2dErrorCode::MotionInvalid, detail))
+fn invalid<T>(detail: impl Into<String>) -> Result<T, PlaybackError> {
+    Err(PlaybackError::new(PlaybackErrorCode::MotionInvalid, detail))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
-    use std::path::{Path, PathBuf};
-
-    fn repository_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .expect("repository root")
-            .to_owned()
-    }
-
-    fn preset_model(id: &str) -> CommittedModel {
-        PresetModelCatalog::open(
-            repository_root().join("resources/models"),
-            ModelPackageLimits::default(),
-        )
-        .expect("preset catalog")
-        .load(&ModelId::parse(id).expect("model id"))
-        .expect("preset model")
-    }
-
-    #[test]
-    fn all_preset_motions_parse_and_loop() {
-        for model_id in ["standard", "keyboard", "gamepad"] {
-            let model = preset_model(model_id);
-            for group in &model.index().motion_groups {
-                for index in 0..group.motions.len() {
-                    let clip = MotionClip::load(&model, &group.name, index).expect("motion clip");
-                    assert!(clip.is_looping());
-                    assert!(
-                        !clip
-                            .evaluate(clip.duration() * 3 + Duration::from_millis(20))
-                            .finished
-                    );
-                    assert_eq!(clip.evaluate(Duration::ZERO).parameters.len(), 2);
-                }
-            }
-        }
-    }
 
     #[test]
     fn evaluates_all_segment_kinds_and_natural_completion() {
@@ -828,8 +738,14 @@ mod tests {
 
     #[test]
     fn applies_sine_fade_and_wraps_loop_time() {
-        let model = preset_model("standard");
-        let clip = MotionClip::load(&model, "CAT_motion", 0).expect("preset motion");
+        let json = br#"{
+          "Version":3,
+          "Meta":{"Duration":2.0,"Fps":30.0,"Loop":true,"AreBeziersRestricted":true,
+            "CurveCount":1,"TotalSegmentCount":1,"TotalPointCount":2,
+            "UserDataCount":0,"TotalUserDataSize":0},
+          "Curves":[{"Target":"Parameter","Id":"ParamTest","Segments":[0,0, 0,2,1]}]
+        }"#;
+        let clip = MotionClip::from_slice(json, 0.0, 0.0).expect("synthetic motion");
         let at_start = clip.evaluate(Duration::ZERO);
         assert_eq!(at_start.parameters[0].weight, 1.0);
         let wrapped = clip.evaluate(clip.duration() + Duration::from_millis(100));
@@ -975,7 +891,7 @@ mod tests {
             MotionClip::from_slice(bad_count, 0.0, 0.0)
                 .expect_err("bad count")
                 .code,
-            Live2dErrorCode::MotionInvalid
+            PlaybackErrorCode::MotionInvalid
         );
 
         let truncated = br#"{
@@ -989,7 +905,7 @@ mod tests {
             MotionClip::from_slice(truncated, 0.0, 0.0)
                 .expect_err("truncated segment")
                 .code,
-            Live2dErrorCode::MotionInvalid
+            PlaybackErrorCode::MotionInvalid
         );
     }
 }

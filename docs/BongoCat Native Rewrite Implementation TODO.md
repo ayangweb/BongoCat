@@ -460,10 +460,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     以真实只读目录签发预置 `CommittedModel`，拒绝 symlink root/entry 和 catalog root 逃逸。
 - [x] 创建 bongocat-model-store：installed store、锁、staging、导入/删除、Mver 转换、键名归一化和用户侧封面覆盖。
   - 验收证据（2026-09-24）：store 事务测试与 shared model fixtures 在新 crate 中通过；导入失败不留下 destination/staging，源目录保持只读且不变；Mver、键名、封面和 app/runtime/live2d 接线保持原有行为。
-- [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
+- [x] 创建 bongocat-live2d-playback：motion3/exp3 纯解析、曲线求值和 expression 混合。
+  - 验收证据（2026-09-24）：playback 不依赖 Cubism Core、model、render、runtime 或 filesystem；12 个纯数值测试通过，Core resource loader 与 apply status 仍由 `bongocat-live2d` 持有，runtime 直接依赖 playback 类型。
+- [ ] 创建 bongocat-live2d：Cubism safe wrapper 和 Core-coupled 模型适配。
   - 状态（2026-08-31）：正式 crate 已完成 Core 版本门禁、Moc/Model safe owner、
-    drawable snapshot、parameter id/range/default、motion3 curve/fade 和 exp3
-    Add/Multiply/Overwrite/transition 求值；三个预置模型均在加载阶段缓存所有声明的
+    drawable snapshot、parameter id/range/default；motion3/exp3 的纯解析与数值求值已移入
+    `bongocat-live2d-playback`，本 crate 负责资源读取、Core 写入和稳定错误映射。三个预置模型均在加载阶段缓存所有声明的
     motion/expression，不向上暴露 raw pointer。motion 主动 stop fade、PartOpacity 以及
     EyeBlink/LipSync/Opacity Model target 已进入正式 runtime/render contract；UserData 也已
     进入跨帧、循环去重和有界诊断 contract。physics 与 pose 求值尚未实现，因此总项保持未完成。
@@ -1343,7 +1345,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     前恢复全部 Core parameter default，再按 motion -> expression -> typed product input
     顺序覆盖，停止 motion 或替换 expression 后不残留旧值。physics 所需的分层状态仍未完成。
 - [ ] 实现 motion curve、fade、priority 和 completion。
-  - 状态（2026-08-31）：正式 `bongocat-live2d` 已严格解析 motion3 v3 Meta、user data 和
+  - 状态（2026-08-31）：`bongocat-live2d-playback` 已严格解析 motion3 v3 Meta、user data 和
     linear/Bezier/stepped/inverse-stepped segment，验证 finite/time/count 边界并以二分反解
     非受限 Bezier 时间。三个预置模型的全部 motion 引用均通过真实解析、循环时间求值和
     Core/drawable 变化测试；非循环自然 completion、model3/curve fade、`idle/normal/force`
@@ -1363,8 +1365,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     绘制顺序和其他 RenderSnapshot 内容必须保持一致。此前因全快照比较造成的脆弱失败已
     修正，runtime 61 项测试和共享 fixture 2 项均通过。
 - [x] 实现 expression 混合和互斥/叠加语义。
-  - 验收证据（2026-08-30）：正式 `bongocat-live2d` 严格解析 Type、fade、parameter、
-    duplicate ID 与 Add/Multiply/Overwrite；三个 model3 声明的 9 个 exp3 全部在模型 prepare
+  - 验收证据（2026-08-30）：`bongocat-live2d-playback` 严格解析 Type、fade、parameter、
+    duplicate ID 与 Add/Multiply/Overwrite；三个 model3 声明的 9 个 exp3 全部由
+    `bongocat-live2d` 在模型 prepare
     阶段缓存。`SetExpression` 使用强类型 name/command/snapshot 和可注入单调时钟，上一层
     按 FadeOutTime、当前层按 FadeInTime 正弦过渡，最多同时保留两层。真实 Core
     测试覆盖三种 blend，runtime 测试覆盖 drawable 变化、快速替换、无效请求保留、GPU

@@ -9,6 +9,7 @@ publish.workspace = true
 build = "build.rs"
 
 [dependencies]
+bongocat-live2d-playback.workspace = true
 bongocat-model.workspace = true
 bongocat-render.workspace = true
 bongocat-log.workspace = true

@@ -1,7 +1,6 @@
-use crate::{Live2dError, Live2dErrorCode};
-use bongocat_model::CommittedModel;
+use crate::{PlaybackError, PlaybackErrorCode};
 use serde::Deserialize;
-use std::{collections::BTreeMap, fs, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 
 const DEFAULT_FADE_SECONDS: f32 = 1.0;
 
@@ -32,9 +31,29 @@ pub struct ExpressionLayer<'a> {
     pub weight: f32,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct ExpressionApplyStatus {
-    pub applied_parameter_count: usize,
+/// Blend one parameter's expression layers over a caller-provided base value.
+///
+/// The function is deliberately pure: it does not query or mutate Cubism Core,
+/// so the live2d owner remains responsible for reading the current parameter
+/// and writing the returned value back.
+pub fn evaluate_expression_parameter(id: &str, base: f32, layers: &[ExpressionLayer<'_>]) -> f32 {
+    let mut overwrite = base;
+    let mut additive = 0.0;
+    let mut multiply = 1.0;
+    for layer in layers {
+        let (next_overwrite, next_additive, next_multiply) = match layer.clip.parameter(id) {
+            Some(parameter) => match parameter.blend {
+                ExpressionBlendMode::Additive => (base, parameter.value, 1.0),
+                ExpressionBlendMode::Multiply => (base, 0.0, parameter.value),
+                ExpressionBlendMode::Overwrite => (parameter.value, 0.0, 1.0),
+            },
+            None => (base, 0.0, 1.0),
+        };
+        overwrite += (next_overwrite - overwrite) * layer.weight;
+        additive += (next_additive - additive) * layer.weight;
+        multiply += (next_multiply - multiply) * layer.weight;
+    }
+    (overwrite + additive) * multiply
 }
 
 #[derive(Deserialize)]
@@ -69,35 +88,10 @@ enum RawBlendMode {
 }
 
 impl ExpressionClip {
-    pub fn load(model: &CommittedModel, name: &str) -> Result<Self, Live2dError> {
-        let resource = model
-            .index()
-            .expressions
-            .iter()
-            .find(|resource| resource.name == name)
-            .ok_or_else(|| {
-                Live2dError::new(
-                    Live2dErrorCode::ExpressionNotFound,
-                    format!("expression {name:?} is not declared by model3"),
-                )
-            })?;
-        let path = model.root().join(&resource.file);
-        let bytes = fs::read(&path).map_err(|error| {
-            Live2dError::new(
-                Live2dErrorCode::ResourceIo,
-                format!("cannot read {}: {error}", path.display()),
-            )
-        })?;
-        Self::from_slice(&bytes).map_err(|mut error| {
-            error.detail = format!("{}: {}", path.display(), error.detail);
-            error
-        })
-    }
-
-    pub fn from_slice(bytes: &[u8]) -> Result<Self, Live2dError> {
+    pub fn from_slice(bytes: &[u8]) -> Result<Self, PlaybackError> {
         let raw: RawExpression = serde_json::from_slice(bytes).map_err(|error| {
-            Live2dError::new(
-                Live2dErrorCode::ExpressionInvalid,
+            PlaybackError::new(
+                PlaybackErrorCode::ExpressionInvalid,
                 format!("exp3 JSON is invalid: {error}"),
             )
         })?;
@@ -176,50 +170,23 @@ fn fade_weight(elapsed_seconds: f32, duration_seconds: f32) -> f32 {
     0.5 - 0.5 * (progress * std::f32::consts::PI).cos()
 }
 
-fn validate_fade(value: f32, label: &str) -> Result<(), Live2dError> {
+fn validate_fade(value: f32, label: &str) -> Result<(), PlaybackError> {
     if !value.is_finite() || value < 0.0 {
         return invalid(format!("{label} must be finite and non-negative"));
     }
     Ok(())
 }
 
-fn invalid<T>(detail: impl Into<String>) -> Result<T, Live2dError> {
-    Err(Live2dError::new(Live2dErrorCode::ExpressionInvalid, detail))
+fn invalid<T>(detail: impl Into<String>) -> Result<T, PlaybackError> {
+    Err(PlaybackError::new(
+        PlaybackErrorCode::ExpressionInvalid,
+        detail,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
-    use std::path::{Path, PathBuf};
-
-    fn repository_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .expect("repository root")
-            .to_owned()
-    }
-
-    fn preset_model(id: &str) -> CommittedModel {
-        PresetModelCatalog::open(
-            repository_root().join("resources/models"),
-            ModelPackageLimits::default(),
-        )
-        .expect("preset catalog")
-        .load(&ModelId::parse(id).expect("model id"))
-        .expect("preset model")
-    }
-
-    #[test]
-    fn parses_every_declared_preset_expression() {
-        for model_id in ["standard", "keyboard", "gamepad"] {
-            let model = preset_model(model_id);
-            for resource in &model.index().expressions {
-                ExpressionClip::load(&model, &resource.name).expect("preset expression");
-            }
-        }
-    }
 
     #[test]
     fn parses_all_blend_modes_and_defaults() {
@@ -249,6 +216,32 @@ mod tests {
     }
 
     #[test]
+    fn blends_expression_layers_without_a_core_parameter_source() {
+        let clip = ExpressionClip::from_slice(
+            br#"{
+              "Type":"Live2D Expression",
+              "Parameters":[
+                {"Id":"Add","Value":1.0},
+                {"Id":"Multiply","Value":0.5,"Blend":"Multiply"},
+                {"Id":"Overwrite","Value":-1.0,"Blend":"Overwrite"}
+              ]
+            }"#,
+        )
+        .expect("valid expression");
+        let layers = [ExpressionLayer {
+            clip: &clip,
+            weight: 1.0,
+        }];
+        assert_eq!(evaluate_expression_parameter("Add", 2.0, &layers), 3.0);
+        assert_eq!(evaluate_expression_parameter("Multiply", 2.0, &layers), 1.0);
+        assert_eq!(
+            evaluate_expression_parameter("Overwrite", 2.0, &layers),
+            -1.0
+        );
+        assert_eq!(evaluate_expression_parameter("Missing", 2.0, &layers), 2.0);
+    }
+
+    #[test]
     fn applies_sine_fade_weights() {
         let clip = ExpressionClip::from_slice(
             br#"{"Type":"Live2D Expression","FadeInTime":2.0,"FadeOutTime":2.0,"Parameters":[]}"#,
@@ -274,7 +267,7 @@ mod tests {
                 ExpressionClip::from_slice(invalid_json.as_bytes())
                     .expect_err("invalid expression")
                     .code,
-                Live2dErrorCode::ExpressionInvalid
+                PlaybackErrorCode::ExpressionInvalid
             );
         }
     }
