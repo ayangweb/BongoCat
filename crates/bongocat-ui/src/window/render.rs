@@ -972,6 +972,64 @@ impl Render for SettingsView {
                     );
                     items
                 }),
+            SettingGroup::new()
+                .title(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.logging.title",
+                ))
+                .items(vec![
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.application.logging.level.label",
+                        ),
+                        SettingField::element({
+                            let view = view_entity.clone();
+                            move |_: &RenderOptions, _: &mut Window, app: &mut App| {
+                                let state = view.read(app).logging_level_select.clone();
+                                Select::new(&state)
+                                    .disabled(editing_blocked)
+                                    .into_any_element()
+                            }
+                        }),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.application.logging.level.description",
+                    ))
+                    .disabled(editing_blocked),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.application.logging.retention_days.label",
+                        ),
+                        SettingField::number_input(
+                            logging_retention_number_field_options(),
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app).snapshot.as_ref().map_or(
+                                        f64::from(SettingsLogging::default().retention_days),
+                                        |snapshot| f64::from(snapshot.logging.retention_days),
+                                    )
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_logging_retention_days_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.application.logging.retention_days.description",
+                    ))
+                    .disabled(editing_blocked),
+                ]),
         ]);
 
         // The page shell already carries the title and description, and the

@@ -11,6 +11,8 @@ use std::{
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
 pub const SCHEMA_VERSION: u32 = 1;
+const DEFAULT_LOG_RETENTION_DAYS: u8 = 7;
+const MAXIMUM_LOG_RETENTION_DAYS: u8 = 30;
 const RECOVERY_LOCK_TIMEOUT: Duration = Duration::from_secs(1);
 const RECOVERY_LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -133,6 +135,7 @@ pub struct NativeConfig {
     pub appearance: AppearanceConfig,
     pub overlay: OverlayConfig,
     pub input: InputConfig,
+    pub logging: LoggingConfig,
     pub model: ModelConfig,
     pub shortcuts: ShortcutConfig,
 }
@@ -186,6 +189,33 @@ pub struct OverlayConfig {
 pub struct InputConfig {
     pub gamepad_stick_dead_zone: f64,
     pub gamepad_trigger_dead_zone: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct LoggingConfig {
+    pub level: LoggingLevel,
+    pub retention_days: u8,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            level: LoggingLevel::default(),
+            retention_days: DEFAULT_LOG_RETENTION_DAYS,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LoggingLevel {
+    Error,
+    Warn,
+    #[default]
+    Info,
+    Debug,
+    Trace,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -287,6 +317,7 @@ impl Default for NativeConfig {
                 gamepad_stick_dead_zone: 0.15,
                 gamepad_trigger_dead_zone: 0.0,
             },
+            logging: LoggingConfig::default(),
             model: ModelConfig {
                 selected_model_id: None,
                 selected_model_origin: None,
@@ -332,6 +363,9 @@ impl NativeConfig {
             || !self.input.gamepad_trigger_dead_zone.is_finite()
         {
             return Err(ConfigError::InvalidValue("input.gamepad_trigger_dead_zone"));
+        }
+        if !(1..=MAXIMUM_LOG_RETENTION_DAYS).contains(&self.logging.retention_days) {
+            return Err(ConfigError::InvalidValue("logging.retention_days"));
         }
         if !(15..=240).contains(&self.model.maximum_fps) {
             return Err(ConfigError::InvalidValue("model.maximum_fps"));
@@ -1029,6 +1063,8 @@ mod tests {
         assert!(value["overlay"].get("hideOnHoverDelay").is_none());
         assert!(value["input"].get("gamepad_stick_dead_zone").is_some());
         assert!(value["input"].get("gamepad_trigger_dead_zone").is_some());
+        assert!(value["logging"].get("level").is_some());
+        assert!(value["logging"].get("retention_days").is_some());
         assert!(value["model"].get("release_fallback_timeout_ms").is_some());
         assert!(value["model"].get("selected_model_origin").is_some());
     }

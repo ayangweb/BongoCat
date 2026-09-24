@@ -7,8 +7,12 @@
 #![forbid(unsafe_code)]
 
 use async_io::Timer;
-use bongocat_app::application_shortcut_dispatcher;
+use bongocat_app::{
+    ApplicationLogCode, ApplicationLogContext, ApplicationLogEvent, application_shortcut_dispatcher,
+};
 use bongocat_live2d::CoreLogHandle;
+#[cfg(feature = "storage-test-injection")]
+use bongocat_log::{LogLevel, LogStream, is_log_file_name, parse_log_line};
 use bongocat_overlay::{
     OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome,
     OverlaySessionOptions, OverlayWindowBounds, ProductOverlaySession,
@@ -1742,8 +1746,10 @@ fn read_application_logs(directory: &Path) -> io::Result<String> {
             continue;
         }
         let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name.starts_with("application-") && name.contains(".jsonl") {
+        if name
+            .to_str()
+            .is_some_and(|name| is_log_file_name(LogStream::Application, name))
+        {
             paths.push(entry.path());
         }
     }
@@ -1753,6 +1759,21 @@ fn read_application_logs(directory: &Path) -> io::Result<String> {
         logs.push_str(&std::fs::read_to_string(path)?);
     }
     Ok(logs)
+}
+
+#[cfg(feature = "storage-test-injection")]
+fn contains_application_event(
+    logs: &str,
+    code: bongocat_app::ApplicationLogCode,
+    level: LogLevel,
+) -> bool {
+    logs.lines().any(|line| {
+        parse_log_line(line).is_some_and(|parsed| {
+            parsed.code == code.as_str()
+                && parsed.module == code.component().as_str()
+                && parsed.level == level
+        })
+    })
 }
 
 #[cfg(feature = "storage-test-injection")]
@@ -1779,6 +1800,7 @@ fn run_diagnostics_export_smoke() -> Result<(), Box<dyn std::error::Error>> {
     if status.format_version != 1
         || status.preview_bundle_format_version != 1
         || status.preview_bundle_entry_count != 3
+        || status.preview_bundle_skipped_source_files != 0
         || status.bytes_written == 0
         || status.preview_bundle_bytes_written == 0
     {
@@ -1806,12 +1828,25 @@ fn run_diagnostics_export_smoke() -> Result<(), Box<dyn std::error::Error>> {
     entries.sort_unstable();
     if entries
         != [
-            "application-events.jsonl",
+            "application-events.log",
             "diagnostics.json",
             "manifest.json",
         ]
     {
         return Err("diagnostics preview archive entries diverged from the v1 contract".into());
+    }
+    let mut application_events = String::new();
+    std::io::Read::read_to_string(
+        &mut archive.by_name("application-events.log")?,
+        &mut application_events,
+    )?;
+    if !application_events
+        .lines()
+        .any(|line| line == "INFO  [application] application/started")
+    {
+        return Err(
+            "diagnostics preview did not contain the canonical application start event".into(),
+        );
     }
 
     client.shutdown_blocking()?;
@@ -1918,11 +1953,6 @@ fn run_diagnostics_export_failure_smoke() -> Result<(), Box<dyn std::error::Erro
 fn run_panic_diagnostics_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{BuildEnvironment, StorageLayout};
 
-    const PANICKED_RECORD: &str =
-        "{\"component\":\"application\",\"level\":\"error\",\"code\":\"panicked\"}";
-    const CLEAN_SHUTDOWN_RECORD: &str =
-        "{\"component\":\"application\",\"level\":\"info\",\"code\":\"shutdown_completed\"}";
-
     let root = env::temp_dir().join(format!(
         "bongocat-panic-diagnostics-smoke-{}",
         std::process::id()
@@ -1972,7 +2002,11 @@ fn run_panic_diagnostics_smoke() -> Result<(), Box<dyn std::error::Error>> {
         return Err("panic diagnostics child did not preserve the unclean run marker".into());
     }
     let crashed_logs = read_application_logs(&layout.logs)?;
-    if !crashed_logs.lines().any(|line| line == PANICKED_RECORD) {
+    if !contains_application_event(
+        &crashed_logs,
+        bongocat_app::ApplicationLogCode::Panicked,
+        LogLevel::Error,
+    ) {
         return Err("panic diagnostics child did not persist the stable panic record".into());
     }
     if crashed_logs.contains(PANIC_DIAGNOSTICS_SMOKE_PAYLOAD)
@@ -1996,10 +2030,11 @@ fn run_panic_diagnostics_smoke() -> Result<(), Box<dyn std::error::Error>> {
         return Err("panic diagnostics or restart changed the current configuration".into());
     }
     let completed_logs = read_application_logs(&layout.logs)?;
-    if !completed_logs
-        .lines()
-        .any(|line| line == CLEAN_SHUTDOWN_RECORD)
-    {
+    if !contains_application_event(
+        &completed_logs,
+        bongocat_app::ApplicationLogCode::ShutdownCompleted,
+        LogLevel::Info,
+    ) {
         return Err("clean restart did not persist its completed shutdown record".into());
     }
 
@@ -2064,8 +2099,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let mut application = bongocat_app::Application::start(preset_root())?;
+    let application_log = application.log_handle();
     application.install_process_panic_hook();
-    let core_log = CoreLogHandle::install(application.logs_directory().join("cubism-core.jsonl"))?;
+    let core_log = CoreLogHandle::install(
+        application.logs_directory(),
+        application.log_settings_controller(),
+    )?;
     let core_log_reporter = core_log.reporter();
     application.set_core_log_diagnostics_provider(move || {
         let stats = core_log_reporter.stats();
@@ -2291,6 +2330,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             bongocat_app::BUILD_ENVIRONMENT,
             bongocat_app::PRODUCT_VERSION,
             update_diagnostics,
+            application_log.clone(),
         ) {
             Ok(service) => service,
             Err(error) => {
@@ -2378,6 +2418,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // installed it is still withholding its cards until this capture reports.
         let cover_capture_client = settings_client.clone();
         let cover_capture_signals = main_thread_signals.clone();
+        let cover_capture_log = application_log.clone();
         cx.spawn(async move |cx| {
             loop {
                 Timer::after(Duration::from_millis(COVER_CAPTURE_POLL_INTERVAL_MS)).await;
@@ -2396,6 +2437,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Err(_) => false,
                     };
                     if !captured {
+                        cover_capture_log.record(
+                            ApplicationLogEvent::new(ApplicationLogCode::ModelOperationFailed)
+                                .with_context(ApplicationLogContext::Operation("cover_capture"))
+                                .with_context(ApplicationLogContext::Reason(
+                                    "overlay_capture_failed",
+                                )),
+                        );
                         // Undo the import before reporting it, so the model is
                         // never revealed: the settings window reads the catalog
                         // this removal republishes, and the card for a model that
@@ -2756,6 +2804,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(target_os = "windows")]
         let frame_shutdown_requested = Arc::clone(&shutdown_requested);
         let frame_settings_client = settings_client.clone();
+        let frame_application_log = application_log.clone();
         let frame_source_guard = frame_source_shutdown.run_guard();
         cx.spawn(async move |cx| {
             let _frame_source_guard = frame_source_guard;
@@ -2816,6 +2865,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             && let Some(overlay) = coordinator.overlay.as_ref()
                             && let Err(error) = menu.show_context_menu_for_window(overlay)
                         {
+                            frame_application_log.record(
+                                ApplicationLogEvent::new(ApplicationLogCode::ServiceFailed)
+                                    .with_context(ApplicationLogContext::Service("system_menu"))
+                                    .with_context(ApplicationLogContext::Reason(
+                                        "context_menu_failed",
+                                    )),
+                            );
                             record_failure(&coordinator.failures, error.to_string());
                         }
                         match result {
@@ -2850,6 +2906,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Err(error) => {
                                 coordinator.frame_source_running = false;
+                                frame_application_log.record(
+                                    ApplicationLogEvent::new(ApplicationLogCode::ServiceFailed)
+                                        .with_context(ApplicationLogContext::Service("overlay"))
+                                        .with_context(ApplicationLogContext::Reason("tick_failed")),
+                                );
                                 (
                                     false,
                                     Some(error.to_string()),
@@ -2940,6 +3001,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .ok_or(bongocat_platform::SystemMenuError::WindowHandleUnavailable)
                             .and_then(|overlay| menu.show_context_menu_for_window(overlay));
                         if let Err(error) = result {
+                            frame_application_log.record(
+                                ApplicationLogEvent::new(ApplicationLogCode::ServiceFailed)
+                                    .with_context(ApplicationLogContext::Service("system_menu"))
+                                    .with_context(ApplicationLogContext::Reason(
+                                        "context_menu_failed",
+                                    )),
+                            );
                             record_failure(&coordinator.failures, error.to_string());
                         }
                     }
@@ -2956,6 +3024,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Some(Err(error)) => {
                                 coordinator.frame_source_running = false;
+                                frame_application_log.record(
+                                    ApplicationLogEvent::new(ApplicationLogCode::ServiceFailed)
+                                        .with_context(ApplicationLogContext::Service("overlay"))
+                                        .with_context(ApplicationLogContext::Reason("tick_failed")),
+                                );
                                 (
                                     Some(error.to_string()),
                                     Some(Arc::clone(&coordinator.failures)),

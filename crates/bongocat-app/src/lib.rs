@@ -6,16 +6,20 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRevision, ConfigStore, Language,
-    ModelBehaviorAction, ModelBehaviorBinding, ModelMetadata, NativeConfig, OverlayWindowPlacement,
-    PlatformStorageError, SelectedModelOrigin, ShortcutBinding, ShortcutConfig, ShortcutModifiers,
-    ShortcutTable, StorageLayout, Theme as ConfigTheme, WindowPlacement, WindowState,
-    WindowStateError, WindowStateStore, platform_layout,
+    LoggingConfig, LoggingLevel, ModelBehaviorAction, ModelBehaviorBinding, ModelMetadata,
+    NativeConfig, OverlayWindowPlacement, PlatformStorageError, SelectedModelOrigin,
+    ShortcutBinding, ShortcutConfig, ShortcutModifiers, ShortcutTable, StorageLayout,
+    Theme as ConfigTheme, WindowPlacement, WindowState, WindowStateError, WindowStateLoadStatus,
+    WindowStateStore, platform_layout,
 };
 use bongocat_input::{
     CursorProducer, GamepadAxisProducer, GamepadAxisSettings, GamepadButton, HandSide,
     InputBindings, InputProducer, PhysicalKey,
 };
 use bongocat_live2d_render::KeyImageInventory;
+use bongocat_log::{
+    LogLevel as RuntimeLogLevel, LogSettings as RuntimeLogSettings, LogSettingsController,
+};
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelBehaviorSnapshot, ModelCatalogEntry, ModelError, ModelId,
     ModelOrigin, ModelPackageLimits, PresetModelCatalog,
@@ -53,9 +57,9 @@ mod startup_permission;
 mod update;
 use app_log::ApplicationRunMarker;
 pub use app_log::{
-    ApplicationLogCode, ApplicationLogComponent, ApplicationLogDiagnostics, ApplicationLogError,
-    ApplicationLogEvent, ApplicationLogEventCounts, ApplicationLogHandle, ApplicationLogLevel,
-    ApplicationPanicHook, CoreLogDiagnostics,
+    ApplicationLogCode, ApplicationLogComponent, ApplicationLogContext, ApplicationLogDiagnostics,
+    ApplicationLogError, ApplicationLogEvent, ApplicationLogEventCounts, ApplicationLogHandle,
+    ApplicationLogLevel, ApplicationPanicHook, CoreLogDiagnostics,
 };
 pub use settings::{
     ApplicationSettingsService, SettingsServiceJoinError, StatusIconCapability,
@@ -247,6 +251,33 @@ impl fmt::Display for ApplicationError {
     }
 }
 
+impl ApplicationError {
+    pub(crate) const fn stable_code(&self) -> &'static str {
+        match self {
+            Self::PlatformStorage(_) => "platform_storage_failed",
+            Self::Config(_) | Self::ConfigRollback(_) => "config_failed",
+            Self::Model(_) => "model_preparation_failed",
+            Self::ModelStore(_) => "model_store_failed",
+            Self::MotionId(_) => "motion_id_invalid",
+            Self::ExpressionId(_) => "expression_id_invalid",
+            Self::PresetModelDeletion(_) => "preset_model_deletion_rejected",
+            Self::ModelNotFound(_) => "model_not_found",
+            Self::ModelTitleInvalid => "model_title_invalid",
+            Self::ModelCoverInvalid => "model_cover_invalid",
+            Self::RuntimeCommand(_) => "runtime_transport_failed",
+            Self::RuntimeCommandFailed(_) => "runtime_command_failed",
+            Self::RuntimeDidNotPublish => "runtime_snapshot_timeout",
+            Self::RuntimeDidNotPrepareModel => "runtime_model_prepare_timeout",
+            Self::RenderConsumerUnavailable => "render_consumer_unavailable",
+            Self::Shutdown(_) => "runtime_shutdown_failed",
+            Self::MotionAudioShutdown(_) => "audio_shutdown_failed",
+            Self::ShutdownAggregate(_) => "shutdown_aggregate_failed",
+            Self::ApplicationLog(_) => "application_log_failed",
+            Self::WindowState(_) => "window_state_failed",
+        }
+    }
+}
+
 impl std::error::Error for ApplicationError {}
 
 #[derive(Debug, Eq, PartialEq)]
@@ -397,19 +428,159 @@ impl Application {
         enable_rendering: bool,
         system_language: Language,
     ) -> Result<Self, ApplicationError> {
-        let preset_models = PresetModelCatalog::open(preset_root, ModelPackageLimits::default())?;
-        let model_store = ModelStore::new(
+        // Install the app-owned sink before opening user-data stores so their
+        // bounded failures are observable. Historical cleanup stays deferred
+        // until the persisted logging policy has been loaded.
+        let application_log = ApplicationLogHandle::install_with_settings(
+            &layout.logs,
+            RuntimeLogSettings::default(),
+            true,
+        )?;
+        let (run_marker, previous_run) = match application_log.begin_run() {
+            Ok(result) => result,
+            Err(error) => {
+                application_log.record(
+                    ApplicationLogEvent::new(ApplicationLogCode::StartupFailed)
+                        .with_context(ApplicationLogContext::Phase("run_marker"))
+                        .with_context(ApplicationLogContext::Reason("run_marker_failed")),
+                );
+                return Err(error.into());
+            }
+        };
+        let preset_models =
+            match PresetModelCatalog::open(preset_root, ModelPackageLimits::default()) {
+                Ok(catalog) => catalog,
+                Err(error) => {
+                    application_log.record(
+                        ApplicationLogEvent::new(ApplicationLogCode::StartupFailed)
+                            .with_context(ApplicationLogContext::Phase("preset_catalog"))
+                            .with_context(ApplicationLogContext::Reason(
+                                "preset_catalog_open_failed",
+                            )),
+                    );
+                    return Err(error.into());
+                }
+            };
+        let model_store = match ModelStore::new(
             &layout.models,
             layout.locks.join("models.writer.lock"),
             ModelPackageLimits::default(),
-        )?;
-        let preset_covers = PresetCoverStore::open(layout.model_overrides.clone())?;
-        let config_store = ConfigStore::new(layout.clone())?;
-        let application_log = ApplicationLogHandle::install(&layout.logs)?;
-        let (run_marker, previous_run) = application_log.begin_run()?;
+        ) {
+            Ok(store) => store,
+            Err(error) => {
+                application_log.record(
+                    ApplicationLogEvent::new(ApplicationLogCode::StartupFailed)
+                        .with_context(ApplicationLogContext::Phase("model_store"))
+                        .with_context(ApplicationLogContext::Reason(
+                            "model_store_initialization_failed",
+                        )),
+                );
+                return Err(error.into());
+            }
+        };
+        let preset_covers = match PresetCoverStore::open(layout.model_overrides.clone()) {
+            Ok(store) => store,
+            Err(error) => {
+                application_log.record(
+                    ApplicationLogEvent::new(ApplicationLogCode::StartupFailed)
+                        .with_context(ApplicationLogContext::Phase("preset_cover_store"))
+                        .with_context(ApplicationLogContext::Reason(
+                            "preset_cover_store_initialization_failed",
+                        )),
+                );
+                return Err(error.into());
+            }
+        };
+        let config_store = match ConfigStore::new(layout.clone()) {
+            Ok(store) => store,
+            Err(error) => {
+                application_log.record(
+                    ApplicationLogEvent::new(ApplicationLogCode::StartupFailed)
+                        .with_context(ApplicationLogContext::Phase("config_store"))
+                        .with_context(ApplicationLogContext::Reason(
+                            "config_store_initialization_failed",
+                        )),
+                );
+                return Err(error.into());
+            }
+        };
         let window_state_store = WindowStateStore::new(layout);
-        let window_state = window_state_store.load_or_default().state;
-        let loaded = config_store.load_or_default()?;
+        let window_state_outcome = window_state_store.load_or_default();
+        let recovered_window_source = match window_state_outcome.status {
+            WindowStateLoadStatus::Loaded | WindowStateLoadStatus::Missing => None,
+            WindowStateLoadStatus::IgnoredInvalid => Some("invalid"),
+            WindowStateLoadStatus::IgnoredUnsupportedSchema(_) => Some("unsupported_schema"),
+            WindowStateLoadStatus::IgnoredIo => Some("io"),
+        };
+        if let Some(source) = recovered_window_source {
+            application_log.record(
+                ApplicationLogEvent::new(ApplicationLogCode::StateRecovered)
+                    .with_context(ApplicationLogContext::State("window_state"))
+                    .with_context(ApplicationLogContext::Source(source)),
+            );
+        }
+        if matches!(
+            window_state_outcome.status,
+            WindowStateLoadStatus::IgnoredInvalid
+                | WindowStateLoadStatus::IgnoredUnsupportedSchema(_)
+        ) {
+            application_log.record_once(
+                ApplicationLogEvent::new(ApplicationLogCode::ParsingFailed)
+                    .with_context(ApplicationLogContext::Operation("window_state_load"))
+                    .with_context(ApplicationLogContext::Reason("invalid_state")),
+            );
+        } else if matches!(
+            window_state_outcome.status,
+            WindowStateLoadStatus::IgnoredIo
+        ) {
+            application_log.record_once(
+                ApplicationLogEvent::new(ApplicationLogCode::FilesystemOperationFailed)
+                    .with_context(ApplicationLogContext::Operation("window_state_load"))
+                    .with_context(ApplicationLogContext::Reason("io")),
+            );
+        }
+        let window_state = window_state_outcome.state;
+        let loaded = match config_store.load_or_default() {
+            Ok(loaded) => loaded,
+            Err(error) => {
+                let event = match &error {
+                    ConfigError::Io(_) => {
+                        ApplicationLogEvent::new(ApplicationLogCode::FilesystemOperationFailed)
+                            .with_context(ApplicationLogContext::Operation("config_load"))
+                            .with_context(ApplicationLogContext::Reason("io"))
+                    }
+                    ConfigError::Json(_)
+                    | ConfigError::InvalidValue(_)
+                    | ConfigError::UnsupportedSchema(_) => {
+                        ApplicationLogEvent::new(ApplicationLogCode::ParsingFailed)
+                            .with_context(ApplicationLogContext::Operation("config_load"))
+                            .with_context(ApplicationLogContext::Reason("invalid_config"))
+                    }
+                    _ => ApplicationLogEvent::new(ApplicationLogCode::StartupFailed)
+                        .with_context(ApplicationLogContext::Phase("config_load"))
+                        .with_context(ApplicationLogContext::Reason("config_load_failed")),
+                };
+                application_log.record(event);
+                return Err(error.into());
+            }
+        };
+        if let Some(recovery) = loaded.recovery {
+            application_log.record(
+                ApplicationLogEvent::new(ApplicationLogCode::StateRecovered)
+                    .with_context(ApplicationLogContext::State("config"))
+                    .with_context(ApplicationLogContext::Source("backup"))
+                    .with_context(ApplicationLogContext::Count(u64::from(
+                        recovery.skipped_newer_backups(),
+                    ))),
+            );
+        } else if loaded.interrupted_recovery.is_some() {
+            application_log.record(
+                ApplicationLogEvent::new(ApplicationLogCode::StateRecovered)
+                    .with_context(ApplicationLogContext::State("config"))
+                    .with_context(ApplicationLogContext::Source("interrupted_temp")),
+            );
+        }
+        application_log.replace_settings(runtime_log_settings(&loaded.config.logging));
         let mut config = loaded.config;
         let mut config_revision = Some(loaded.revision);
         if !config.overlay.visible {
@@ -419,8 +590,18 @@ impl Application {
             // best effort like other startup corrections — a storage failure
             // still leaves this session visible.
             config.overlay.visible = true;
-            if let Ok(revision) = config_store.commit(&config) {
-                config_revision = Some(revision);
+            match config_store.commit(&config) {
+                Ok(revision) => config_revision = Some(revision),
+                Err(_) => {
+                    application_log.record(
+                        ApplicationLogEvent::new(ApplicationLogCode::StatePersistFailed)
+                            .with_context(ApplicationLogContext::State("config"))
+                            .with_context(ApplicationLogContext::Operation(
+                                "normalize_overlay_visibility",
+                            ))
+                            .with_context(ApplicationLogContext::Reason("config_commit_failed")),
+                    );
+                }
             }
         }
         let shortcut_table = ShortcutTable::new(active_shortcuts(
@@ -433,7 +614,14 @@ impl Application {
                     let client = service.client();
                     (Some(service), client)
                 }
-                Err(_) => (None, bongocat_audio::MotionAudioClient::unavailable()),
+                Err(_) => {
+                    application_log.record(
+                        ApplicationLogEvent::new(ApplicationLogCode::ServiceDegraded)
+                            .with_context(ApplicationLogContext::Service("audio"))
+                            .with_context(ApplicationLogContext::Reason("audio_start_failed")),
+                    );
+                    (None, bongocat_audio::MotionAudioClient::unavailable())
+                }
             };
         let runtime_overlay_visible = config.overlay.visible;
         let runtime_motion_audio_enabled = config.model.play_motion_audio;
@@ -626,6 +814,10 @@ impl Application {
         self.application_log.diagnostics()
     }
 
+    pub fn log_settings_controller(&self) -> LogSettingsController {
+        self.application_log.settings_controller()
+    }
+
     pub fn set_core_log_diagnostics_provider(
         &mut self,
         provider: impl Fn() -> CoreLogDiagnostics + Send + Sync + 'static,
@@ -657,8 +849,16 @@ impl Application {
             .map(|provider| provider().sanitized())
     }
 
+    pub fn log_handle(&self) -> ApplicationLogHandle {
+        self.application_log.clone()
+    }
+
     pub fn record_log(&self, event: ApplicationLogEvent) {
         self.application_log.record(event);
+    }
+
+    pub fn record_log_once(&self, event: ApplicationLogEvent) {
+        self.application_log.record_once(event);
     }
 
     pub fn install_process_panic_hook(&mut self) {
@@ -980,6 +1180,23 @@ impl Application {
         self.config = next_config;
         self.config_revision = Some(next_revision);
         Ok(snapshot)
+    }
+
+    pub fn set_logging_settings(
+        &mut self,
+        settings: bongocat_ui_protocol::SettingsLogging,
+    ) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.logging = logging_config_from_settings(settings);
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.application_log
+            .replace_settings(runtime_log_settings(&next_config.logging));
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
     }
 
     pub fn set_shortcuts(
@@ -1353,42 +1570,55 @@ impl Application {
         origin: ModelOrigin,
         id: impl Into<String>,
     ) -> Result<ModelCommitToken, ApplicationError> {
-        if self.render_consumer.is_none() {
-            return Err(ApplicationError::RenderConsumerUnavailable);
+        self.application_log.record(
+            ApplicationLogEvent::new(ApplicationLogCode::ModelPrepareStarted)
+                .with_context(ApplicationLogContext::Operation("model_activation")),
+        );
+        let result = (|| {
+            if self.render_consumer.is_none() {
+                return Err(ApplicationError::RenderConsumerUnavailable);
+            }
+            let id = ModelId::parse(id)?;
+            let committed = self.load_model(origin, &id)?;
+            self.persist_default_behavior_shortcuts(&committed);
+            let input_bindings = input_bindings_for_committed_model(&committed);
+            let client = self.runtime.client();
+            let sequence = client
+                .send(RuntimeCommand::ActivateModelWithBindings {
+                    model: Arc::new(committed),
+                    input_bindings: Arc::new(input_bindings),
+                })
+                .map_err(ApplicationError::RuntimeCommand)?;
+            let snapshot = client
+                .wait_for_model_preparation(sequence, RUNTIME_TIMEOUT)
+                .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
+            if let Some(failure) = snapshot
+                .last_command_failure
+                .filter(|failure| failure.sequence == sequence)
+            {
+                return Err(ApplicationError::RuntimeCommandFailed(failure));
+            }
+            let token = snapshot
+                .pending_model
+                .filter(|pending| pending.token.command_sequence == sequence)
+                .map(|pending| pending.token)
+                .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
+            self.active_model_origin = Some(origin);
+            self.active_model_id = Some(id);
+            // The model that just became live owns the behavior half of the
+            // platform table. Rebuilding here swaps the previous model's chords
+            // out and registers the incoming model's own chords.
+            self.refresh_shortcut_table();
+            Ok(token)
+        })();
+        if let Err(error) = &result {
+            self.application_log.record_once(
+                ApplicationLogEvent::new(ApplicationLogCode::ModelActivationFailed)
+                    .with_context(ApplicationLogContext::Phase("prepare"))
+                    .with_context(ApplicationLogContext::Reason(error.stable_code())),
+            );
         }
-        let id = ModelId::parse(id)?;
-        let committed = self.load_model(origin, &id)?;
-        self.persist_default_behavior_shortcuts(&committed);
-        let input_bindings = input_bindings_for_committed_model(&committed);
-        let client = self.runtime.client();
-        let sequence = client
-            .send(RuntimeCommand::ActivateModelWithBindings {
-                model: Arc::new(committed),
-                input_bindings: Arc::new(input_bindings),
-            })
-            .map_err(ApplicationError::RuntimeCommand)?;
-        let snapshot = client
-            .wait_for_model_preparation(sequence, RUNTIME_TIMEOUT)
-            .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
-        if let Some(failure) = snapshot
-            .last_command_failure
-            .filter(|failure| failure.sequence == sequence)
-        {
-            return Err(ApplicationError::RuntimeCommandFailed(failure));
-        }
-        let token = snapshot
-            .pending_model
-            .filter(|pending| pending.token.command_sequence == sequence)
-            .map(|pending| pending.token)
-            .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
-        self.active_model_origin = Some(origin);
-        self.active_model_id = Some(id);
-        // The model that just became live owns the behavior half of the
-        // platform table. Rebuilding here is what both swaps the previous
-        // model's chords out — they must stop working the moment the model
-        // stops being shown — and registers the incoming model's own chords.
-        self.refresh_shortcut_table();
-        Ok(token)
+        result
     }
 
     pub fn select_model(
@@ -1396,48 +1626,61 @@ impl Application {
         origin: ModelOrigin,
         id: impl Into<String>,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
-        let id = ModelId::parse(id)?;
-        let committed = self.load_model(origin, &id)?;
-        let mut next_config = self.config.clone();
-        next_config.model.selected_model_id = Some(id.as_str().to_owned());
-        next_config.model.selected_model_origin = Some(config_origin_from_model(origin));
-        // Switching models is also when the new model's motions and expressions
-        // receive the legacy default chords, so the Shortcuts page offers a
-        // default for every behavior the user has not recorded yet. The
-        // assignment rides on the same commit as the selection itself.
-        assign_default_behavior_shortcuts(&mut next_config, &committed);
-        let next_revision = self
-            .config_store
-            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.application_log.record(
+            ApplicationLogEvent::new(ApplicationLogCode::ModelPrepareStarted)
+                .with_context(ApplicationLogContext::Operation("model_selection")),
+        );
+        let result = (|| {
+            let id = ModelId::parse(id)?;
+            let committed = self.load_model(origin, &id)?;
+            let mut next_config = self.config.clone();
+            next_config.model.selected_model_id = Some(id.as_str().to_owned());
+            next_config.model.selected_model_origin = Some(config_origin_from_model(origin));
+            // Switching models is also when the new model's motions and
+            // expressions receive the legacy default chords, so the assignment
+            // rides on the same commit as the selection itself.
+            assign_default_behavior_shortcuts(&mut next_config, &committed);
+            let next_revision = self
+                .config_store
+                .commit_if_revision(&next_config, self.ready_config_revision()?)?;
 
-        let input_bindings = Arc::new(input_bindings_for_committed_model(&committed));
-        let result = self.wait_for_model_command(RuntimeCommand::ActivateModelWithBindings {
-            model: Arc::new(committed),
-            input_bindings,
-        });
-        match result {
-            Ok(snapshot) => {
-                self.config = next_config;
-                self.config_revision = Some(next_revision);
-                self.active_model_origin = Some(origin);
-                self.active_model_id = Some(id);
-                // Switching models swaps the behavior half of the platform
-                // table: the model being left must stop answering its shortcuts
-                // and the incoming one must answer its own immediately, without
-                // waiting for a restart or for the behavior switch to be
-                // toggled.
-                self.refresh_shortcut_table();
-                Ok(snapshot)
+            let input_bindings = Arc::new(input_bindings_for_committed_model(&committed));
+            let result = self.wait_for_model_command(RuntimeCommand::ActivateModelWithBindings {
+                model: Arc::new(committed),
+                input_bindings,
+            });
+            match result {
+                Ok(snapshot) => {
+                    self.config = next_config;
+                    self.config_revision = Some(next_revision);
+                    self.active_model_origin = Some(origin);
+                    self.active_model_id = Some(id);
+                    self.refresh_shortcut_table();
+                    Ok(snapshot)
+                }
+                Err(error) => {
+                    self.config_revision = Some(
+                        self.config_store
+                            .commit_if_revision(&self.config, next_revision)
+                            .map_err(ApplicationError::ConfigRollback)?,
+                    );
+                    Err(error)
+                }
             }
-            Err(error) => {
-                self.config_revision = Some(
-                    self.config_store
-                        .commit_if_revision(&self.config, next_revision)
-                        .map_err(ApplicationError::ConfigRollback)?,
-                );
-                Err(error)
-            }
+        })();
+        if let Err(error) = &result {
+            self.application_log.record_once(
+                ApplicationLogEvent::new(ApplicationLogCode::ModelActivationFailed)
+                    .with_context(ApplicationLogContext::Phase("selection"))
+                    .with_context(ApplicationLogContext::Reason(error.stable_code())),
+            );
+        } else {
+            self.application_log.record(
+                ApplicationLogEvent::new(ApplicationLogCode::ModelOperationCompleted)
+                    .with_context(ApplicationLogContext::Operation("selection")),
+            );
         }
+        result
     }
 
     fn load_model(
@@ -1480,27 +1723,40 @@ impl Application {
         origin: ModelOrigin,
         id: impl Into<String>,
     ) -> Result<(), ApplicationError> {
-        let id = ModelId::parse(id)?;
-        if origin == ModelOrigin::Preset {
-            return Err(ApplicationError::PresetModelDeletion(id));
+        let result = (|| {
+            let id = ModelId::parse(id)?;
+            if origin == ModelOrigin::Preset {
+                return Err(ApplicationError::PresetModelDeletion(id));
+            }
+            // Deleting the active installed model first switches to the standard
+            // preset, so the runtime never keeps ownership of removed files.
+            if self.is_selected_installed_model(&id) {
+                self.select_model(ModelOrigin::Preset, STANDARD_PRESET_MODEL_ID)?;
+            }
+            self.model_store
+                .delete(&id)
+                .map_err(ApplicationError::ModelStore)?;
+            let mut installed_models = self.config.model.installed_models.clone();
+            let before = installed_models.len();
+            installed_models.retain(|metadata| metadata.id != id.as_str());
+            if installed_models.len() != before {
+                self.commit_model_metadata(ModelOrigin::Installed, installed_models)?;
+            }
+            Ok(())
+        })();
+        match &result {
+            Ok(()) => self.application_log.record(
+                ApplicationLogEvent::new(ApplicationLogCode::ModelOperationCompleted)
+                    .with_context(ApplicationLogContext::Operation("delete"))
+                    .with_context(ApplicationLogContext::Count(1)),
+            ),
+            Err(error) => self.application_log.record_once(
+                ApplicationLogEvent::new(ApplicationLogCode::ModelOperationFailed)
+                    .with_context(ApplicationLogContext::Operation("delete"))
+                    .with_context(ApplicationLogContext::Reason(error.stable_code())),
+            ),
         }
-        // Deleting the model the overlay is showing is allowed: the standard
-        // preset takes over first, so the package being removed is never the one
-        // the runtime is holding. A switch that fails aborts the delete rather
-        // than pulling the files out from under the live model.
-        if self.is_selected_installed_model(&id) {
-            self.select_model(ModelOrigin::Preset, STANDARD_PRESET_MODEL_ID)?;
-        }
-        self.model_store
-            .delete(&id)
-            .map_err(ApplicationError::ModelStore)?;
-        let mut installed_models = self.config.model.installed_models.clone();
-        let before = installed_models.len();
-        installed_models.retain(|metadata| metadata.id != id.as_str());
-        if installed_models.len() != before {
-            self.commit_model_metadata(ModelOrigin::Installed, installed_models)?;
-        }
-        Ok(())
+        result
     }
 
     /// Whether `id` is the installed model the application is showing or has
@@ -1613,89 +1869,104 @@ impl Application {
         Observe: FnMut(ModelImportProgress),
         IsCancelled: FnMut() -> bool,
     {
-        let title_hint = title_hint.into();
-        let source_root = source_root.as_ref();
-        let language = self.effective_language();
-        let mut aggregate = ImportProgressAccumulator::new(observe);
+        let result = (|| {
+            let title_hint = title_hint.into();
+            let source_root = source_root.as_ref();
+            let language = self.effective_language();
+            let mut aggregate = ImportProgressAccumulator::new(observe);
 
-        // Which models the source describes is decided from its own bytes, not
-        // from anything the caller selected: the folder is inspected for a
-        // legacy key table. The store only reports a legacy source once a mode
-        // really carries a usable model, so an empty mode list cannot occur —
-        // treating it as a package keeps the loop below total and still reports
-        // a real diagnostic from the package path.
-        let content = self
-            .model_store
-            .inspect_source(source_root)
-            .map_err(ApplicationError::ModelStore)?;
-        let modes = match content {
-            // A legacy source keeps the selected modes it really carries, in
-            // the declared mode order.
-            ModelSourceContent::Mver { modes } if !modes.is_empty() => {
-                let selected = MverInputMode::ALL
-                    .into_iter()
-                    .filter(|mode| modes.contains(mode) && selected_modes.contains(mode))
-                    .collect::<Vec<_>>();
-                if selected.is_empty() {
-                    return Err(ApplicationError::ModelStore(
-                        ModelStoreError::source_conversion_failed(
-                            "none of the selected BongoCatMver modes are present",
-                        ),
-                    ));
-                }
-                Some(selected)
-            }
-            // An Mver source with no convertible mode falls back to the
-            // package path, exactly as before.
-            ModelSourceContent::Mver { modes } => {
-                debug_assert!(modes.is_empty());
-                None
-            }
-            ModelSourceContent::Package => None,
-        };
-
-        let mut installed = Vec::new();
-        let mut installed_models = self.config.model.installed_models.clone();
-        let count = modes.as_ref().map_or(1, Vec::len);
-        for index in 0..count {
-            let id = self
+            // Which models the source describes is decided from its own bytes, not
+            // from anything the caller selected: the folder is inspected for a
+            // legacy key table. The store only reports a legacy source once a mode
+            // really carries a usable model, so an empty mode list cannot occur —
+            // treating it as a package keeps the loop below total and still reports
+            // a real diagnostic from the package path.
+            let content = self
                 .model_store
-                .allocate_unique_id()
+                .inspect_source(source_root)
                 .map_err(ApplicationError::ModelStore)?;
-            let fallback = id.as_str().to_owned();
-            let model = match modes.as_ref() {
-                None => self.model_store.import_with_observer(
-                    id,
-                    source_root,
-                    |update| aggregate.report(update),
-                    &mut is_cancelled,
-                ),
-                Some(modes) => self.model_store.import_mver_with_observer(
-                    id,
-                    modes[index],
-                    source_root,
-                    |update| aggregate.report(update),
-                    &mut is_cancelled,
-                ),
-            }
-            .map_err(ApplicationError::ModelStore)?;
-            let title = match modes.as_ref() {
-                None => installed_model_title(&title_hint, source_root, &fallback),
-                Some(modes) => legacy_model_title(
-                    &title_hint,
-                    source_root,
-                    &fallback,
-                    legacy_mode_label(language, modes[index]),
-                ),
+            let modes = match content {
+                // A legacy source keeps the selected modes it really carries, in
+                // the declared mode order.
+                ModelSourceContent::Mver { modes } if !modes.is_empty() => {
+                    let selected = MverInputMode::ALL
+                        .into_iter()
+                        .filter(|mode| modes.contains(mode) && selected_modes.contains(mode))
+                        .collect::<Vec<_>>();
+                    if selected.is_empty() {
+                        return Err(ApplicationError::ModelStore(
+                            ModelStoreError::source_conversion_failed(
+                                "none of the selected BongoCatMver modes are present",
+                            ),
+                        ));
+                    }
+                    Some(selected)
+                }
+                // An Mver source with no convertible mode falls back to the
+                // package path, exactly as before.
+                ModelSourceContent::Mver { modes } => {
+                    debug_assert!(modes.is_empty());
+                    None
+                }
+                ModelSourceContent::Package => None,
             };
-            installed_models.push(ModelMetadata {
-                id: model.id().as_str().to_owned(),
-                title,
-            });
-            self.commit_model_metadata(ModelOrigin::Installed, installed_models.clone())?;
-            installed.push(model);
+
+            let mut installed = Vec::new();
+            let mut installed_models = self.config.model.installed_models.clone();
+            let count = modes.as_ref().map_or(1, Vec::len);
+            for index in 0..count {
+                let id = self
+                    .model_store
+                    .allocate_unique_id()
+                    .map_err(ApplicationError::ModelStore)?;
+                let fallback = id.as_str().to_owned();
+                let model = match modes.as_ref() {
+                    None => self.model_store.import_with_observer(
+                        id,
+                        source_root,
+                        |update| aggregate.report(update),
+                        &mut is_cancelled,
+                    ),
+                    Some(modes) => self.model_store.import_mver_with_observer(
+                        id,
+                        modes[index],
+                        source_root,
+                        |update| aggregate.report(update),
+                        &mut is_cancelled,
+                    ),
+                }
+                .map_err(ApplicationError::ModelStore)?;
+                let title = match modes.as_ref() {
+                    None => installed_model_title(&title_hint, source_root, &fallback),
+                    Some(modes) => legacy_model_title(
+                        &title_hint,
+                        source_root,
+                        &fallback,
+                        legacy_mode_label(language, modes[index]),
+                    ),
+                };
+                installed_models.push(ModelMetadata {
+                    id: model.id().as_str().to_owned(),
+                    title,
+                });
+                self.commit_model_metadata(ModelOrigin::Installed, installed_models.clone())?;
+                installed.push(model);
+            }
+            Ok(installed)
+        })();
+        match &result {
+            Ok(installed) => self.application_log.record(
+                ApplicationLogEvent::new(ApplicationLogCode::ModelOperationCompleted)
+                    .with_context(ApplicationLogContext::Operation("import"))
+                    .with_context(ApplicationLogContext::Count(installed.len() as u64)),
+            ),
+            Err(error) => self.application_log.record_once(
+                ApplicationLogEvent::new(ApplicationLogCode::ModelOperationFailed)
+                    .with_context(ApplicationLogContext::Operation("import"))
+                    .with_context(ApplicationLogContext::Reason(error.stable_code())),
+            ),
         }
-        Ok(installed)
+        result
     }
 
     /// Drop metadata records whose installed model directory no longer
@@ -1708,8 +1979,16 @@ impl Application {
     /// it is simply not shown, and it names the model again if a later build
     /// ships it.
     fn prune_missing_installed_metadata(&mut self) {
-        let Ok(catalog) = self.model_store.list() else {
-            return;
+        let catalog = match self.model_store.list() {
+            Ok(catalog) => catalog,
+            Err(_) => {
+                self.application_log.record_once(
+                    ApplicationLogEvent::new(ApplicationLogCode::ModelOperationFailed)
+                        .with_context(ApplicationLogContext::Operation("metadata_prune"))
+                        .with_context(ApplicationLogContext::Reason("model_catalog_unavailable")),
+                );
+                return;
+            }
         };
         let present = catalog
             .entries
@@ -1727,7 +2006,17 @@ impl Application {
         if kept.len() == self.config.model.installed_models.len() {
             return;
         }
-        let _ = self.commit_model_metadata(ModelOrigin::Installed, kept);
+        if self
+            .commit_model_metadata(ModelOrigin::Installed, kept)
+            .is_err()
+        {
+            self.application_log.record_once(
+                ApplicationLogEvent::new(ApplicationLogCode::StatePersistFailed)
+                    .with_context(ApplicationLogContext::State("config"))
+                    .with_context(ApplicationLogContext::Operation("metadata_prune"))
+                    .with_context(ApplicationLogContext::Reason("config_commit_failed")),
+            );
+        }
     }
 
     /// Restore the model selection at startup. The configured selection is
@@ -1761,17 +2050,17 @@ impl Application {
         let configured_selection = match ModelId::parse(id) {
             Ok(id) => (origin, id),
             Err(_) => {
-                self.fallback_to_standard_preset();
+                self.fallback_to_standard_preset("model_id_invalid");
                 return self
                     .prepare_model(ModelOrigin::Preset, self.standard_preset_id().as_str())
                     .map(|_| ());
             }
         };
         let (origin, id) = configured_selection;
-        if self.prepare_model(origin, id.as_str()).is_ok() {
-            return Ok(());
+        match self.prepare_model(origin, id.as_str()) {
+            Ok(_) => return Ok(()),
+            Err(error) => self.fallback_to_standard_preset(error.stable_code()),
         }
-        self.fallback_to_standard_preset();
         self.prepare_model(ModelOrigin::Preset, self.standard_preset_id().as_str())
             .map(|_| ())
     }
@@ -1779,9 +2068,11 @@ impl Application {
     /// Record the anonymous fallback event and persist the standard preset
     /// as the corrected selection. A failed commit keeps the stale selection
     /// on disk; the next startup simply retries the fallback.
-    fn fallback_to_standard_preset(&mut self) {
-        self.application_log
-            .record(ApplicationLogEvent::model_selection_fallback());
+    fn fallback_to_standard_preset(&mut self, reason: &'static str) {
+        self.application_log.record(
+            ApplicationLogEvent::model_selection_fallback()
+                .with_context(ApplicationLogContext::Reason(reason)),
+        );
         self.persist_model_selection(ModelOrigin::Preset, &self.standard_preset_id());
     }
 
@@ -1844,7 +2135,7 @@ impl Application {
     pub fn shutdown(self) -> Result<RuntimeSnapshot, ApplicationError> {
         self.application_log
             .record(ApplicationLogEvent::shutdown_started());
-        self.run_marker.mark_shutdown_started()?;
+        let marker_start = self.run_marker.mark_shutdown_started();
         let runtime_result = self.runtime.shutdown(RUNTIME_TIMEOUT);
         let audio_result = self
             .motion_audio
@@ -1853,14 +2144,25 @@ impl Application {
             .map(|_| ());
         match combine_shutdown_results(runtime_result, audio_result) {
             Ok(stopped) => {
-                self.run_marker.complete()?;
+                let marker_complete = self.run_marker.complete();
+                let marker_error = marker_start.err().or(marker_complete.err());
+                if let Some(error) = marker_error {
+                    self.application_log.record(
+                        ApplicationLogEvent::shutdown_failed()
+                            .with_context(ApplicationLogContext::Reason("run_marker_failed")),
+                    );
+                    return Err(ApplicationError::ApplicationLog(error));
+                }
                 self.application_log
                     .record(ApplicationLogEvent::shutdown_completed());
                 Ok(stopped)
             }
             Err(error) => {
-                self.application_log
-                    .record(ApplicationLogEvent::shutdown_failed());
+                drop(self.run_marker);
+                self.application_log.record(
+                    ApplicationLogEvent::shutdown_failed()
+                        .with_context(ApplicationLogContext::Reason(error.stable_code())),
+                );
                 Err(error)
             }
         }
@@ -1911,6 +2213,53 @@ fn installed_model_order(records: &[ModelMetadata], id: &str) -> usize {
         .iter()
         .position(|record| record.id == id)
         .unwrap_or(usize::MAX)
+}
+
+const fn runtime_log_level(level: LoggingLevel) -> RuntimeLogLevel {
+    match level {
+        LoggingLevel::Error => RuntimeLogLevel::Error,
+        LoggingLevel::Warn => RuntimeLogLevel::Warn,
+        LoggingLevel::Info => RuntimeLogLevel::Info,
+        LoggingLevel::Debug => RuntimeLogLevel::Debug,
+        LoggingLevel::Trace => RuntimeLogLevel::Trace,
+    }
+}
+
+fn runtime_log_settings(config: &LoggingConfig) -> RuntimeLogSettings {
+    RuntimeLogSettings {
+        level: runtime_log_level(config.level),
+        retention_days: u64::from(config.retention_days),
+    }
+}
+
+const fn logging_config_from_settings(
+    settings: bongocat_ui_protocol::SettingsLogging,
+) -> LoggingConfig {
+    LoggingConfig {
+        level: match settings.level {
+            bongocat_ui_protocol::SettingsLogLevel::Error => LoggingLevel::Error,
+            bongocat_ui_protocol::SettingsLogLevel::Warn => LoggingLevel::Warn,
+            bongocat_ui_protocol::SettingsLogLevel::Info => LoggingLevel::Info,
+            bongocat_ui_protocol::SettingsLogLevel::Debug => LoggingLevel::Debug,
+            bongocat_ui_protocol::SettingsLogLevel::Trace => LoggingLevel::Trace,
+        },
+        retention_days: settings.retention_days,
+    }
+}
+
+const fn settings_logging_from_config(
+    config: &LoggingConfig,
+) -> bongocat_ui_protocol::SettingsLogging {
+    bongocat_ui_protocol::SettingsLogging {
+        level: match config.level {
+            LoggingLevel::Error => bongocat_ui_protocol::SettingsLogLevel::Error,
+            LoggingLevel::Warn => bongocat_ui_protocol::SettingsLogLevel::Warn,
+            LoggingLevel::Info => bongocat_ui_protocol::SettingsLogLevel::Info,
+            LoggingLevel::Debug => bongocat_ui_protocol::SettingsLogLevel::Debug,
+            LoggingLevel::Trace => bongocat_ui_protocol::SettingsLogLevel::Trace,
+        },
+        retention_days: config.retention_days,
+    }
 }
 
 const fn config_origin_from_model(origin: ModelOrigin) -> SelectedModelOrigin {
@@ -4127,7 +4476,7 @@ mod tests {
                 .find(|path| {
                     path.file_name().is_some_and(|name| {
                         let name = name.to_string_lossy();
-                        name.starts_with("application-") && name.ends_with(".jsonl")
+                        name.starts_with("application-") && name.ends_with(".log")
                     })
                 })
                 .expect("development application log"),
@@ -4141,7 +4490,7 @@ mod tests {
                 .find(|path| {
                     path.file_name().is_some_and(|name| {
                         let name = name.to_string_lossy();
-                        name.starts_with("application-") && name.ends_with(".jsonl")
+                        name.starts_with("application-") && name.ends_with(".log")
                     })
                 })
                 .expect("production application log"),

@@ -19,6 +19,8 @@ schema_version
 application
 appearance
 overlay
+input
+logging
 model
 shortcuts
 ```
@@ -43,6 +45,8 @@ shortcuts
 | `overlay`     | `keep_inside_screen`                  | 保持在所有屏幕范围内，允许覆盖任务栏等区域 |
 | `input`       | `gamepad_stick_dead_zone`             | 左/右摇杆死区，`[0, 1)`                |
 | `input`       | `gamepad_trigger_dead_zone`           | 扳机死区，`[0, 1)`                     |
+| `logging`     | `level`                               | 写入阈值：`error`、`warn`、`info`、`debug`、`trace` |
+| `logging`     | `retention_days`                      | 日志保留天数，`[1, 30]`                |
 | `model`       | `selected_model_id`                   | 当前模型稳定 ID，与 origin 成对为空    |
 | `model`       | `selected_model_origin`               | `preset` / `installed`，与 ID 成对为空 |
 | `model`       | `installed_models`                    | 用户导入模型的元数据列表（id + title） |
@@ -88,6 +92,12 @@ typed settings command 修改该值后，仍按配置 revision 原子提交并�
 
 登录启动不属于配置字段。它是可被系统设置或其它进程改变的平台能力，settings service 只读取
 typed platform snapshot，并仅在显式用户 command 时调用平台 adapter；不得持久化第二份布尔值。
+
+`logging.level` 默认 `info`，使用 `error`、`warn`、`info`、`debug`、`trace` 五个闭合值；该值
+是应用与 Cubism Core 共用的写入阈值，数值越小只保留越严重的记录。`logging.retention_days`
+默认 `7`、范围 `1..=30`，降低后立即按当前环境重新收敛旧文件。日志始终先按 UTC 日切换，再按
+`1 MiB` 单文件上限切分；轮转方式、单文件上限、目录总字节和文件数量都是防止异常增长的安全策略，
+没有对应的用户配置项。
 
 `model.play_motion_audio` 默认 `false`。设置页把它呈现为"动作音效"开关，也就是正向字段的直出：
 打开后，带音效资源的 motion 在播放时同时播放该音效；关闭时 runtime 既不预解码也不发布 `Play`。

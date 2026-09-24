@@ -94,6 +94,14 @@ impl<T: Clone + PartialEq> SettingsPatchDebouncer<T> {
         self.pending.is_some()
     }
 
+    pub(crate) fn pending_value(&self) -> Option<&T> {
+        self.pending.as_ref()
+    }
+
+    pub(crate) fn discard_pending(&mut self) {
+        self.pending = None;
+    }
+
     pub(crate) fn ready(&self, now: Instant) -> Option<T> {
         self.pending.as_ref().and_then(|pending| {
             self.last_sent_at
@@ -145,6 +153,7 @@ pub(crate) mod tests {
             release_fallback_timeout_ms: 500,
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
+            logging: SettingsLogging::default(),
             shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             diagnostics_export: None,
@@ -251,5 +260,39 @@ pub(crate) mod tests {
             Some(20)
         );
         assert!(debouncer.is_pending());
+    }
+
+    #[test]
+    fn one_logging_debouncer_keeps_the_complete_policy_across_both_fields() {
+        let origin = Instant::now();
+        let mut debouncer = SettingsPatchDebouncer::default();
+        let level_only = SettingsLogging {
+            level: SettingsLogLevel::Debug,
+            retention_days: 7,
+        };
+        let complete = SettingsLogging {
+            level: SettingsLogLevel::Trace,
+            retention_days: 30,
+        };
+
+        assert_eq!(debouncer.observe(level_only, origin), Some(level_only));
+        assert_eq!(
+            debouncer.observe(complete, origin + Duration::from_millis(25)),
+            None
+        );
+        assert_eq!(debouncer.pending_value(), Some(&complete));
+        assert_eq!(
+            debouncer.flush(origin + Duration::from_millis(30)),
+            Some(complete)
+        );
+
+        debouncer.mark_sent(&level_only);
+        assert_eq!(
+            debouncer.pending_value(),
+            Some(&complete),
+            "acknowledging the first policy must retain the newer complete policy"
+        );
+        debouncer.mark_sent(&complete);
+        assert_eq!(debouncer.pending_value(), None);
     }
 }

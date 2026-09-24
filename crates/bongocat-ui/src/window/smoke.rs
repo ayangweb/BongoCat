@@ -43,6 +43,9 @@ impl SettingsView {
         if let Err(error) = self.show_split_pages_for_smoke(cx) {
             failures.push(error);
         }
+        if let Err(error) = self.show_application_logging_for_smoke(cx) {
+            failures.push(error);
+        }
         if let Err(error) = self.show_shortcuts_page_for_smoke(cx) {
             failures.push(error);
         }
@@ -71,6 +74,51 @@ impl SettingsView {
             if bongocat_i18n::text(language.catalog_locale(), title_key).is_empty() {
                 return Err(format!("page {title_key} has no localized title"));
             }
+        }
+        Ok(())
+    }
+
+    pub fn show_application_logging_for_smoke(
+        &mut self,
+        _cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let snapshot = self
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| "application logging has not received a settings snapshot".to_owned())?;
+        let locale = snapshot.resolved_language.catalog_locale();
+        for key in [
+            "settings.application.logging.title",
+            "settings.application.logging.level.label",
+            "settings.application.logging.level.description",
+            "settings.application.logging.retention_days.label",
+            "settings.application.logging.retention_days.description",
+        ] {
+            if bongocat_i18n::text(locale, key).is_empty() {
+                return Err(format!(
+                    "application logging is missing localized text for {key}"
+                ));
+            }
+        }
+        let options = logging_level_options(snapshot.resolved_language);
+        if options.len() != SettingsLogLevel::ALL.len()
+            || options.iter().any(|option| option.is_empty())
+            || options.iter().copied().collect::<BTreeSet<_>>().len() != options.len()
+        {
+            return Err(
+                "application logging does not expose one unique label per level".to_owned(),
+            );
+        }
+        for level in SettingsLogLevel::ALL {
+            let display = logging_level_display_name(level, snapshot.resolved_language);
+            if logging_level_from_display_name(display, snapshot.resolved_language) != Some(level) {
+                return Err("application logging level labels are not reversible".to_owned());
+            }
+        }
+        if !(1..=bongocat_config::MAXIMUM_LOG_RETENTION_DAYS)
+            .contains(&snapshot.logging.retention_days)
+        {
+            return Err("application logging retention is outside 1..=30 days".to_owned());
         }
         Ok(())
     }

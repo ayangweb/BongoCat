@@ -17,6 +17,10 @@
     { "id": "blank-installed-model-title", "file": "invalid-blank-installed-model-title.json", "expected": "reject" },
     { "id": "preset-model-metadata", "file": "accept-preset-model-metadata.json", "expected": "accept" },
     { "id": "duplicate-preset-model-id", "file": "invalid-duplicate-preset-model-id.json", "expected": "reject" },
-    { "id": "blank-preset-model-title", "file": "invalid-blank-preset-model-title.json", "expected": "reject" }
+    { "id": "blank-preset-model-title", "file": "invalid-blank-preset-model-title.json", "expected": "reject" },
+    { "id": "logging-boundary", "file": "accept-logging-boundary.json", "expected": "accept" },
+    { "id": "log-retention-zero", "file": "invalid-log-retention-zero.json", "expected": "reject" },
+    { "id": "log-retention-too-large", "file": "invalid-log-retention-too-large.json", "expected": "reject" },
+    { "id": "unknown-log-level", "file": "invalid-log-level.json", "expected": "reject" }
   ]
 }

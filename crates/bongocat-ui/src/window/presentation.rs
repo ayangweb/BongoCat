@@ -1,6 +1,53 @@
 use super::*;
 use bongocat_config::ModelBehaviorAction;
 
+pub(super) fn logging_level_display_name(
+    level: SettingsLogLevel,
+    display_language: SettingsLanguage,
+) -> &'static str {
+    let key = match level {
+        SettingsLogLevel::Error => "settings.application.logging.level.options.error",
+        SettingsLogLevel::Warn => "settings.application.logging.level.options.warn",
+        SettingsLogLevel::Info => "settings.application.logging.level.options.info",
+        SettingsLogLevel::Debug => "settings.application.logging.level.options.debug",
+        SettingsLogLevel::Trace => "settings.application.logging.level.options.trace",
+    };
+    bongocat_i18n::text(display_language.catalog_locale(), key)
+}
+
+pub(super) fn logging_level_from_display_name(
+    name: &str,
+    display_language: SettingsLanguage,
+) -> Option<SettingsLogLevel> {
+    SettingsLogLevel::ALL
+        .into_iter()
+        .find(|level| logging_level_display_name(*level, display_language) == name)
+}
+
+pub(super) fn logging_level_options(
+    display_language: SettingsLanguage,
+) -> [&'static str; SettingsLogLevel::ALL.len()] {
+    SettingsLogLevel::ALL.map(|level| logging_level_display_name(level, display_language))
+}
+
+pub(super) fn logging_retention_number_field_options() -> NumberFieldOptions {
+    NumberFieldOptions {
+        min: 1.0,
+        max: f64::from(bongocat_config::MAXIMUM_LOG_RETENTION_DAYS),
+        step: 1.0,
+    }
+}
+
+pub(super) fn normalize_logging_retention_days(raw: f64) -> u8 {
+    let maximum = f64::from(bongocat_config::MAXIMUM_LOG_RETENTION_DAYS);
+    let value = if raw.is_nan() {
+        f64::from(bongocat_config::DEFAULT_LOG_RETENTION_DAYS)
+    } else {
+        raw.round()
+    };
+    value.clamp(1.0, maximum) as u8
+}
+
 pub(super) fn is_activation_key(event: &KeyDownEvent) -> bool {
     !event.keystroke.modifiers.control
         && !event.keystroke.modifiers.platform

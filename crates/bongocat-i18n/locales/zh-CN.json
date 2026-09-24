@@ -438,6 +438,24 @@
       "updates": {
         "title": "启动与更新"
       },
+      "logging": {
+        "title": "日志",
+        "level": {
+          "label": "日志级别",
+          "description": "级别越高，记录的细节越多。",
+          "options": {
+            "error": "仅错误",
+            "warn": "错误和警告",
+            "info": "常规信息",
+            "debug": "诊断信息",
+            "trace": "全部细节"
+          }
+        },
+        "retention_days": {
+          "label": "日志保留天数",
+          "description": "删除早于指定天数的日志；日志总大小仍受安全上限限制。"
+        }
+      },
       "status_icon": {
         "label": {
           "macos": "显示菜单栏图标",

@@ -22,6 +22,8 @@ pub use window_state::{
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
 pub const WINDOW_STATE_FILE_NAME: &str = "window-state.json";
 pub const SCHEMA_VERSION: u32 = 1;
+pub const DEFAULT_LOG_RETENTION_DAYS: u8 = 7;
+pub const MAXIMUM_LOG_RETENTION_DAYS: u8 = 30;
 const BACKUP_FORMAT_VERSION: u32 = 1;
 const MAX_CONFIG_BACKUPS: usize = 8;
 const MAX_CONFIG_BACKUP_BYTES: u64 = 8 * 1024 * 1024;
@@ -164,6 +166,7 @@ pub struct NativeConfig {
     pub appearance: AppearanceConfig,
     pub overlay: OverlayConfig,
     pub input: InputConfig,
+    pub logging: LoggingConfig,
     pub model: ModelConfig,
     pub shortcuts: ShortcutConfig,
 }
@@ -174,6 +177,56 @@ pub struct ApplicationConfig {
     pub show_taskbar_icon: bool,
     pub show_status_icon: bool,
     pub check_for_updates_automatically: bool,
+}
+
+/// User-controlled filtering and retention for the human-readable application
+/// and Cubism Core logs. Daily rollover and the per-file size guard are fixed
+/// safety policy and therefore intentionally do not appear in configuration.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct LoggingConfig {
+    pub level: LoggingLevel,
+    pub retention_days: u8,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            level: LoggingLevel::default(),
+            retention_days: DEFAULT_LOG_RETENTION_DAYS,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LoggingLevel {
+    Error,
+    Warn,
+    #[default]
+    Info,
+    Debug,
+    Trace,
+}
+
+impl LoggingLevel {
+    pub const ALL: [Self; 5] = [
+        Self::Error,
+        Self::Warn,
+        Self::Info,
+        Self::Debug,
+        Self::Trace,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Trace => "trace",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -1192,6 +1245,7 @@ impl Default for NativeConfig {
                 gamepad_stick_dead_zone: 0.15,
                 gamepad_trigger_dead_zone: 0.0,
             },
+            logging: LoggingConfig::default(),
             model: ModelConfig {
                 selected_model_id: None,
                 selected_model_origin: None,
@@ -1240,6 +1294,9 @@ impl NativeConfig {
             || !self.input.gamepad_trigger_dead_zone.is_finite()
         {
             return Err(ConfigError::InvalidValue("input.gamepad_trigger_dead_zone"));
+        }
+        if !(1..=MAXIMUM_LOG_RETENTION_DAYS).contains(&self.logging.retention_days) {
+            return Err(ConfigError::InvalidValue("logging.retention_days"));
         }
         if !(15..=240).contains(&self.model.maximum_fps) {
             return Err(ConfigError::InvalidValue("model.maximum_fps"));
@@ -2906,6 +2963,37 @@ mod tests {
             assert!(matches!(
                 config.validate(),
                 Err(ConfigError::InvalidValue("overlay.corner_radius_percent"))
+            ));
+        }
+    }
+
+    #[test]
+    fn logging_settings_use_the_closed_level_set_and_bounded_retention() {
+        assert_eq!(LoggingConfig::default().level, LoggingLevel::Info);
+        assert_eq!(
+            LoggingConfig::default().retention_days,
+            DEFAULT_LOG_RETENTION_DAYS
+        );
+        for level in LoggingLevel::ALL {
+            let value = serde_json::to_value(level).expect("serialize logging level");
+            assert_eq!(value, serde_json::Value::String(level.as_str().to_owned()));
+            assert_eq!(
+                serde_json::from_value::<LoggingLevel>(value).expect("deserialize logging level"),
+                level
+            );
+        }
+
+        for accepted in [1_u8, DEFAULT_LOG_RETENTION_DAYS, 30] {
+            let mut config = NativeConfig::default();
+            config.logging.retention_days = accepted;
+            assert!(config.validate().is_ok(), "retention {accepted}");
+        }
+        for rejected in [0_u8, MAXIMUM_LOG_RETENTION_DAYS + 1, u8::MAX] {
+            let mut config = NativeConfig::default();
+            config.logging.retention_days = rejected;
+            assert!(matches!(
+                config.validate(),
+                Err(ConfigError::InvalidValue("logging.retention_days"))
             ));
         }
     }

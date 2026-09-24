@@ -538,7 +538,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     workspace 和独立工具执行 locked license/source policy，workflow `33480729115` 及后续 run 通过。
 - [x] 配置 panic hook 和 release 可诊断退出。
   - 状态（2026-09-01）：正式 `Application` 入口在完成日志 writer 初始化后安装可恢复的
-    process panic hook；hook 只写固定 `application/error/panicked` JSONL 事件，不读取 panic
+    process panic hook；hook 只写固定 `application/panicked` UTF-8 文本记录，不读取 panic
     payload、源码位置或 backtrace，并使用非阻塞锁避免二次 panic/死锁。`ApplicationPanicHook`
     在 owner drop 时恢复之前的 hook；单元测试覆盖含用户路径 payload 的脱敏、日志锁占用时
     直接丢弃和 hook 恢复。新增环境隔离的持久运行标记：只有完整 runtime/audio shutdown 才清理，
@@ -559,11 +559,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     stop -> runtime/config -> audio/renderer/GPU/overlay 的 join 与析构顺序；Native 三平台
     workspace format、Clippy、test 和 release check 通过。平台真实驱动、权限和长时 soak
     仍由对应 Phase 0/8 门禁跟踪，不扩大本项完成范围。
-- [x] 建立结构化日志字段和用户路径脱敏规则。
-  - 验收证据（2026-09-01）：Application sink 只接受固定 component/level/code 字段，Cubism Core
-    callback 使用独立结构化 sink 并将路径、换行和超长消息脱敏/截断；panic hook 不读取 payload，
-    Diagnostics 导出只包含匿名统计与固定事件计数。app/Core 单元测试覆盖路径脱敏、长度上限、
-    callback panic boundary、日志轮转和导出无路径，三平台 Native CI 通过。
+- [x] 建立稳定文本日志字段和用户路径脱敏规则。
+  - 验收证据（2026-09-24）：Application sink 只接受固定 component/level/code/message 与有界 context，
+    Cubism Core callback 使用独立脱敏文本 sink；panic hook 不读取 payload，Diagnostics 导出只包含匿名统计与固定事件计数。
+    app/Core 单元测试覆盖路径/URL/敏感标记脱敏、长度上限、callback panic boundary、日志轮转和导出无路径，
+    双平台 Native CI/发布 smoke 仍按各自门禁跟踪。
 - [x] 提供开发/测试所需 Cubism 二进制的可验证安装说明。
   - 验收证据（2026-09-01）：`docs/phase-0/cubism-sdk-source-and-license.md` 第 4 节提供
     维护者人工接受 Live2D 协议后下载固定 `5-r.5` ZIP、校验 archive/header/Core SHA-256、
@@ -1279,8 +1279,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 - [ ] 封装 Core version、logging、Moc consistency 和 Model creation。
   - 状态（2026-08-30）：Core version、Moc consistency 和 Model creation 已进入正式
     safe wrapper；2026-09-01 已在 `bongocat-live2d::CoreLogHandle` 接入 Core logging
-    callback。callback 以 panic-safe、最大 512 bytes 消息、路径脱敏和 1 MiB 单文件预算
-    写入当前 Development/Production 环境的 `logs/cubism-core.jsonl`，超出预算计数丢弃，
+    callback。callback 以 panic-safe、最大 512 bytes 消息、路径/URL/敏感标记脱敏和 1 MiB 单文件预算
+    写入当前 Development/Production 环境的 `logs/cubism-core-YYYY-MM-DD.log`（超限后使用
+    `.N.log` 分段），并与 application 日志共享过滤和 retention policy；超出预算计数丢弃，
     handle drop 先卸载 callback 再释放 sink；纯 Rust 测试覆盖过滤、容量、写入和卸载。
     Core logging 已完成，但该行仍等待 FFI 错误映射、完整 Moc/Model 资源矩阵和双平台
     实机证据后再勾选。
@@ -1732,8 +1733,9 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     中英 shell/Appearance/runtime status 已接入，Models、Diagnostics、其余 General 文案、更新状态
     和完整错误边界仍待完成，因此保持未勾选。
 - [ ] 通用：启动项、任务栏/菜单栏、语言、主题和日志。
-  - 状态（2026-09-04）：启动项、任务栏/菜单栏可见性、主题和语言已有正式 UI/持久化闭环；
-    日志设置和其余 General 文案本地化仍待完成，因此保持未勾选。
+  - 状态（2026-09-24）：启动项、任务栏/菜单栏可见性、主题、语言和 Application 日志设置已有正式
+    typed UI/持久化闭环；日志页面提供本地化级别选择和 1–30 天保留天数输入，完整策略在一次
+    debounce 窗口内提交并在失败后保留重试值。其余 General 文案本地化仍待完成，因此保持未勾选。
 - [ ] 窗口：显示器、位置、缩放、透明度、置顶、穿透和显隐。
 - [ ] 模型：预置/用户模型、导入、删除、切换和兼容诊断。
   - 状态（2026-09-18）：页面按 ADR-0047 重做为「网格首位导入卡片 + 封面卡片」：每张卡片显示包内
@@ -1796,6 +1798,10 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     页面以本地化、只读文本显示该 build identity，不读取路径、设备信息或网络来源。renderer/runtime
     stable code、输入可靠性计数、macOS Input Monitoring 权限、模型目录诊断与匿名日志导出仍已各自接入；GPU
     细节、update 诊断、完整产品错误边界及双平台实机证据尚待完成，因此总项保持未勾选。
+  - 状态（2026-09-24）：日志设置已投影到 Application 页面；Diagnostics 的 typed export 读取当前
+    application/Core 匿名统计，并从严格解析的 `.log` 来源生成不含时间戳、message、context 或路径的
+    `application-events.log` preview。Core 原始 message、历史 JSONL 和失败来源正文仍不进入包；Windows
+    release 与 OS-level failure evidence 仍待完成，因此总项保持未勾选。
 - [x] About：许可证、Cubism attribution、第三方依赖和隐私说明。
   - 验收证据（2026-09-05）：GPUI Settings 新增只读 About 页面，以现有编译期 build identity
     显示产品版本/环境，并提供中英文 MIT 应用许可证、第三方 Rust 依赖许可证策略、Cubism Native
@@ -2358,35 +2364,27 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
       而不是静默的。定向测试覆盖"不可用构建收到 Check 后不进入管线、只重新发布原因"。
       更新 channel 的独立 sequence store 仍由既有定向测试覆盖。
 - [x] 日志 rotation、总大小和保留天数有上限。
-  - 状态（2026-09-05）：Cubism Core 日志 sink 已在单文件达到 1 MiB 时执行有界路径轮转，最多保留
-    1 个活动文件加 7 个轮转文件，总量不超过 8 MiB；活动文件和轮转失败均有有界 dropped 计数；测试覆盖触发轮转、保留上限和
-    活动文件恢复写入。应用级 writer 现按 UTC 日分文件，单文件 1 MiB、总量 8 MiB、最多 8 个文件、
-    保留最近 7 日，并覆盖日期切换、轮转、过期/总量清理和失败计数；Core 历史日志仍未纳入同一
-    retention policy；Core rotation files 现也在初始化和成功轮转后按 7 日上限清理，且 CoreLogStats
-    已暴露匿名 written/dropped/rotated/pruned/active-bytes/retained-files 指标并有 rotation 回归；两类
-    历史日志现以 retained-bytes/files 的饱和总数聚合导出，但 retention enforcement 仍由两个
-    隔离 writer 仍分别维护自身 rotation 计数，但已通过共享 helper 形成统一目录级 budget。
-  - 验收证据（2026-09-07）：新增无平台依赖的 `bongocat-log` retention helper，统一扫描已知
-    application/Core JSONL 文件，按 7 日 metadata 保留和 8 MiB 目录级 budget 清理最旧轮转文件；
-    活动文件始终保留，symlink/未知文件不会被触碰。application 与 Core writer 均在初始化/写入后
-    调用同一策略，跨 writer aggregate、过期轮转和活动文件保护回归通过；`cargo fmt`、定向
-    workspace test、严格 Clippy 与 locked release check 通过。
-    - 状态（2026-09-07）：补充未知文件与 Unix symlink 隔离回归；目录级清理仅处理已知 JSONL
-      命名，非日志数据和链接均保留。
+  - 状态（2026-09-24）：application 与 Cubism Core 统一使用 `bongocat-log` 文本 writer：按 UTC 日切换，
+    单个活动文件达到 1 MiB 后使用编号分段，两类日志合计最多 8 MiB/32 个文件，当前 UTC 日活动文件
+    始终保留，过期或超预算的最旧已轮转文件优先删除。`logging.retention_days` 配置为 1–30 天、
+    默认 7 天，持久化后立即更新两个 stream 的共享 controller；未知文件、非法日期和 Unix symlink
+    不参与清理。轮转、写入和清理失败只增加匿名 dropped/pruned 计数，不阻断 runtime。测试覆盖
+    日切、1 MiB 分段、共享策略、目录级预算、活动文件保护、未知文件与 symlink 隔离。
   - [x] `P7-CORE-LOG-DIAGNOSTICS`：将 Cubism Core retention 指标接入匿名 diagnostics export。
     - 依赖：`CoreLogStats`、应用 diagnostics export 和 ADR-0016 的隐私边界。
     - 退出条件：产品启动将只读 Core 指标 provider 注册到 `Application`；每次导出实时采样
       written/dropped/rotated/pruned/bytes/retained_files，并与 application logs 分栏序列化；不导出
       日志正文、路径或 Core message；provider、导出字段和隐私回归通过。
-    - 状态（2026-09-06）：Core callback owner 通过 `CoreLogReporter` 提供只读匿名统计，正式产品入口
-      注册 provider；settings worker 将当前采样写入 `core_logs`，无需读取或复制 `cubism-core.jsonl`。
+    - 状态（2026-09-24）：Core callback owner 通过 `CoreLogReporter` 提供只读匿名统计，正式产品入口
+      注册 provider；settings worker 将当前采样写入 `core_logs`，无需读取或复制任何 Core `.log` 正文。
       应用 provider 与原子 export 定向测试覆盖缺失/存在 Core owner 和字段值。
-    - 状态（2026-09-06）：Core FFI callback 已改为只做 512-byte 有界复制与容量 128 的非阻塞入队；
-      JSON、轮转和文件 I/O 只在专用 Rust worker 执行。global callback-slot contention、queue full 和
+    - 状态（2026-09-24）：Core FFI callback 已改为只做 512-byte 有界复制与容量 128 的非阻塞入队；
+      文本格式化、轮转和文件 I/O 只在专用 Rust worker 执行。global callback-slot contention、queue full 和
       stop 后迟到记录均只递增匿名 dropped，关闭先注销 callback 再排空并 join worker。`bongocat-live2d`
       39 项定向测试覆盖 contention、saturation、late callback 和 shutdown drain；macOS Development release
-      诊断导出 smoke 与 `bongocat-app --run-seconds 4` 正常启动/退出均通过。跨域历史日志的统一
-      retention/aggregate policy 已由 `bongocat-log` 共享 helper 接入。
+      diagnostics-export、panic-diagnostics 与 settings-window smoke 均通过。独立 bounded
+      `bongocat-app --run-seconds 4` 在本机最新尝试中超时并留下 unclean marker，仍需单独复核；
+      跨域历史日志的统一 retention/aggregate policy 已由 `bongocat-log` 共享 helper 接入。
     - 状态（2026-09-07）：`CoreLogReporter::stats()` 每次采样都会从当前文件集合刷新
       `retained_files`/`retained_bytes`，因此 application writer 清理 Core 轮转文件后，下一次
       diagnostics export 不会继续显示过期容量；跨 writer 统计刷新回归通过。
@@ -2395,7 +2393,10 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     prepare、platform、transport 和 overlay validation 定义 10 个固定 snake_case code，并以唯一性
     contract 防止诊断协议依赖 Rust `Debug` 名称；该 code 已投影到 SettingsSnapshot 和 Diagnostics
     页面。input/config/model 已有各自 typed code，update diagnostics 现通过统一 catalog 过滤后
-    进入匿名导出；真实 update worker 错误源和跨平台完整错误矩阵仍待完成，因此保持未勾选。
+    进入匿名导出；update worker 的跨平台完整错误矩阵和真实安装回滚仍待完成，因此保持未勾选。
+  - 状态（2026-09-24）：Application-owned update worker 已通过 typed stable code 记录 check/install
+    unavailable、阶段变化、成功和失败；不把 progress、release URL、版本或动态库错误写入文本日志。
+    真实 Windows/macOS endpoint、签名发布链路和安装回滚仍未完成，因此总项保持未勾选。
   - 状态（2026-09-05）：`ModelStoreDiagnostic` 现为 11 个来源无关、固定
     `model_store_*` code；枚举包含完整 `ALL` 集合与唯一性回归。settings service 继续按 import/
     delete 操作映射为既有可操作 `SettingsErrorCode`，不公开 model store 的资源名或 I/O detail。
@@ -2416,8 +2417,11 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     错误源和安装回滚观测仍待发布链路。
   - 状态（2026-09-06）：当前 configuration recovery diagnostics 现导出既有
     `configuration_recovery_required` stable code，同时保留 checked-backup 聚合；正常配置和用户已
-    恢复默认值但需要重启的状态不伪装为错误。其它 config write failure 与 update code 尚无持久的
-    产品观测源，因此总项保持未勾选。
+    恢复默认值但需要重启的状态不伪装为错误。
+  - 状态（2026-09-24）：Application owner 已把 config/window state 的解析、I/O、恢复和持久化失败
+    写入闭合 `application/*`、`filesystem/*` 与 `parser/*` event；update worker 也记录 check/install
+    阶段、结果和稳定失败码，不写 endpoint、版本、路径或动态错误文本。匿名 diagnostics counters
+    仍只提供聚合，真实跨平台错误矩阵与安装回滚证据未齐，因此总项保持未勾选。
   - 状态（2026-09-06）：平台 input diagnostics 将启动失败的既有匿名
     `platform_input_*` code 与 service status 一起发布，settings/Diagnostics export 保留该 code；
     例如 `TapCreateFailed` 保持为 `platform_input_tap_create_failed`，不将其降级为无信息的
@@ -2429,22 +2433,20 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     catalog，新增平台生命周期错误若未同步 diagnostics 过滤边界会直接失败。
   - 状态（2026-09-07）：runtime shutdown timeout/worker panic 计数已加入 settings/UI
     diagnostics presentation，页面以中英文匿名文案显示累计失败数并将其标记为 actionable；
-    UI localization/presentation contract 与严格 Clippy 通过。update worker、真实安装回滚和
+    UI localization/presentation contract 与严格 Clippy 通过。update worker 已接入；真实安装回滚和
     平台错误源仍待后续发布链路接入。
   - 状态（2026-09-07）：`bongocat-update::UpdateDiagnostics` 已作为可选 app-owned provider
     接入匿名 `diagnostics.json`；导出只包含稳定 update error code 与 check/download/install
     阶段计数，未注册 worker 时保持 `null`，不暴露 endpoint、artifact、版本或签名材料。app/update
-    定向测试、严格 Clippy 与 release check 通过；真实 update worker、安装回滚和平台错误源仍待
-    后续发布链路接入。
+    定向测试、严格 Clippy 与 release check 通过；真实安装回滚和平台错误源仍待后续发布链路接入。
   - 状态（2026-09-07）：更新 diagnostics provider 的 `last_error_code` 现在经过
     `bongocat-update` 统一稳定码目录校验，覆盖 manifest、transport、download、staging、sequence、
     schedule 和 install 边界；未知字符串在进入 Application/diagnostics export 前被丢弃，保留计数。
-    目录覆盖、Application/导出边界和隐私回归通过，未改变真实 update worker、安装回滚或平台
-    错误源仍待接入的状态。
+    目录覆盖、Application/导出边界和隐私回归通过，未改变安装回滚或平台错误源仍待接入的状态。
   - 状态（2026-09-07）：`UpdateDiagnosticsTracker` 提供 app-owned、可跨 worker clone 的原子阶段计数
     与稳定错误码记录；`Application::set_update_diagnostics_tracker` 将其接入现有匿名导出边界，
     未注册 tracker 时仍保持 `update: null`。共享事件、未知错误码脱敏和 Application 投影回归通过；
-    真实 update worker、endpoint、下载/安装调度仍待发布链路接入。
+    endpoint、下载/安装调度和安装回滚仍待发布链路接入。
   - 状态（2026-09-15）：**真实 update worker 已接入**。`ApplicationUpdateService` 用应用自己的
     `UpdateDiagnosticsTracker`（在 `Application` 移交给设置服务之前注册，因此与匿名导出边界共享
     同一实例），每次 check/download/install 都推进对应计数与最后稳定错误码。UI 侧另有独立目录
@@ -2459,7 +2461,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     来自 manifest 的 `version` 字段。按 ADR-0034，新增码向后兼容。
   - 状态（2026-09-07）：check、download、install coordinator 增加显式 diagnostics 包装入口，统一记录
     started/succeeded/failed 及稳定失败 code，旧无诊断 API 保持兼容。三阶段成功、失败和取消路径的
-    tracker 回归通过；这些入口仍是 worker 调用边界，不代表已建立真实后台更新线程或发布 endpoint。
+    tracker 回归通过；这些入口仍是 worker 调用边界，不代表发布 endpoint 或安装回滚链已验证。
   - 状态（2026-09-07）：automatic update scheduler 增加 diagnostics 包装入口，在单调时钟回退时将
     `update_schedule_monotonic_time_regressed` 作为匿名 check failure 记录；调度器原有的 rebasing
     和无重试语义不变，回归通过。
@@ -2469,16 +2471,15 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     失败始终计入阶段计数，取消不会触发 shutdown 或 install；三阶段 coordinator 的稳定观测边界完整。
   - 状态（2026-09-07）：稳定 update error-code contract 进一步校验 verifier、manifest transport、
     download、install、schedule、sequence 和 staging 七个 catalog 的全局唯一性；69 个公开 code
-    无跨边界重名，未知 provider code 仍被丢弃。该检查只强化匿名 diagnostics 协议，不代表真实
-    update worker、endpoint 或安装回滚链已接入。
+    无跨边界重名，未知 provider code 仍被丢弃。该检查只强化匿名 diagnostics 协议，不代表发布
+    endpoint 或安装回滚链已验证。
   - 状态（2026-09-07）：目录打开与外部 HTTPS URL wrapper 的公开错误现在也统一为
     `directory_open_*`/`external_url_open_*` stable code；枚举 `ALL` 与逐项回归固定全部 code，
-    不再把自然语言或底层启动失败文本传播到 app 层。真实 update worker、安装回滚和平台错误源仍待
-    后续发布链路接入。
+    不再把自然语言或底层启动失败文本传播到 app 层。安装回滚和平台错误源仍待后续发布链路接入。
 - [ ] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；
-    Cubism Core message/原始 `.jsonl` 明确排除，只保留现有匿名聚合统计。2026-09-06 已接入 app-owned
+    Cubism Core message/原始 `.log` 正文明确排除，历史 JSONL 也不作为来源；只保留现有匿名聚合统计。2026-09-24 已接入 app-owned
     writer：它只枚举严格命名的 regular application logs、逐条以 closed schema 重新序列化为固定 code
     record，输出后用 ZIP reader 复核唯一固定 entries、manifest、匿名 diagnostics JSON 和 event count；
     每个来源和匿名 diagnostics entry 均最多 1 MiB、最多 8 个 application 来源，ZIP 总量最多 10 MiB；未知字段/损坏来源
@@ -2508,8 +2509,10 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     路径、按键值、原始 JSON、时间戳或动态 I/O 文本。Diagnostics 页面提供键盘和 AccessKit 可访问
     的 Export 控件，并显示本次导出的字节数；app/ui 定向测试覆盖原子写入、聚合排序、隐私边界和
     typed command。应用级 writer 的匿名 written/dropped/rotated/pruned/bytes/retained_files
-    统计与 Core retention 指标现已并入导出，但导出仍不读取或合并 Core/应用原始日志正文，预览器和
-    跨域历史日志打包仍待完成，因此本项保持未勾选。
+    统计与 Core retention 指标现已并入导出；preview writer 严格读取当前 application `.log` 并生成
+    `application-events.log`，不复制原始正文，Core 历史内容按 ADR-0064 明确排除。剩余工作只是
+    Windows release smoke、OS-level sync/replace failure injection 以及真实磁盘满/ACL/UAC/电源故障
+    证据，因此本项保持未勾选。
 - [ ] 更新 manifest 定义 `schema_version`、channel、最低可升级版本、发布时间和防回滚字段。
   - 状态（2026-09-13）：**本项随 ADR-0029 作废**。manifest v1 schema、单调 `release_sequence`
     防回滚、`minimum_upgradable_version` 与 target artifact 列表不再属于本项目契约；

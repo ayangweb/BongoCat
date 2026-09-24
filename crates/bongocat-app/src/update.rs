@@ -10,6 +10,9 @@
 //! requires the product's shutdown sequence, which belongs to the application. The
 //! worker therefore only records the request and the application acts on it.
 
+use crate::app_log::{
+    ApplicationLogCode, ApplicationLogContext, ApplicationLogEvent, ApplicationLogHandle,
+};
 use std::{
     fmt,
     sync::{
@@ -92,16 +95,27 @@ impl ApplicationUpdateService {
         environment: BuildEnvironment,
         current_version: &'static str,
         diagnostics: UpdateDiagnosticsTracker,
+        application_log: ApplicationLogHandle,
     ) -> Result<Self, UpdateServiceError> {
-        Self::start_with_engine(
+        Self::start_with_engine_and_log(
             UpdateRuntime::for_current_build(environment, current_version, diagnostics),
             current_version,
+            Some(application_log),
         )
     }
 
+    #[cfg(test)]
     fn start_with_engine(
         engine: impl UpdateEngine,
         current_version: &'static str,
+    ) -> Result<Self, UpdateServiceError> {
+        Self::start_with_engine_and_log(engine, current_version, None)
+    }
+
+    fn start_with_engine_and_log(
+        engine: impl UpdateEngine,
+        current_version: &'static str,
+        application_log: Option<ApplicationLogHandle>,
     ) -> Result<Self, UpdateServiceError> {
         let initial_phase = match engine.unavailability() {
             Some(reason) => UpdatePhase::Unavailable {
@@ -117,7 +131,15 @@ impl ApplicationUpdateService {
         let worker_state = state.clone();
         let worker = thread::Builder::new()
             .name("bongocat-update-service".to_owned())
-            .spawn(move || run_worker(Box::new(engine), endpoint, worker_state, worker_restart))
+            .spawn(move || {
+                run_worker(
+                    Box::new(engine),
+                    endpoint,
+                    worker_state,
+                    worker_restart,
+                    application_log,
+                )
+            })
             .map_err(UpdateServiceError::Spawn)?;
         Ok(Self {
             client,
@@ -184,11 +206,16 @@ fn run_worker(
     endpoint: UpdateServiceEndpoint,
     state: UpdateStateHandle,
     restart_requested: Arc<AtomicBool>,
+    application_log: Option<ApplicationLogHandle>,
 ) {
     loop {
         match endpoint.recv_blocking() {
-            Ok(UpdateCommand::Check) => run_check(engine.as_ref(), &state),
-            Ok(UpdateCommand::Install) => run_install(engine.as_ref(), &state),
+            Ok(UpdateCommand::Check) => {
+                run_check(engine.as_ref(), &state, application_log.as_ref())
+            }
+            Ok(UpdateCommand::Install) => {
+                run_install(engine.as_ref(), &state, application_log.as_ref())
+            }
             Ok(UpdateCommand::Restart) => {
                 restart_requested.store(true, Ordering::Release);
             }
@@ -197,22 +224,51 @@ fn run_worker(
     }
 }
 
-fn run_check(engine: &dyn UpdateEngine, state: &UpdateStateHandle) {
+fn record_update_event(application_log: Option<&ApplicationLogHandle>, event: ApplicationLogEvent) {
+    if let Some(application_log) = application_log {
+        application_log.record(event);
+    }
+}
+
+fn run_check(
+    engine: &dyn UpdateEngine,
+    state: &UpdateStateHandle,
+    application_log: Option<&ApplicationLogHandle>,
+) {
     if let Some(reason) = engine.unavailability() {
         state.publish(UpdatePhase::Unavailable {
             reason: unavailable_reason(reason),
         });
+        record_update_event(
+            application_log,
+            ApplicationLogEvent::new(ApplicationLogCode::UpdateUnavailable).with_context(
+                ApplicationLogContext::Reason(match reason {
+                    UpdateUnavailability::DevelopmentChannel => "development_channel",
+                    UpdateUnavailability::SigningKeyMissing => "signing_key_missing",
+                }),
+            ),
+        );
         return;
     }
     state.publish(UpdatePhase::Checking);
     match engine.check() {
         Ok(UpdateOutcome::UpToDate) => {
             state.publish(UpdatePhase::UpToDate);
+            record_update_event(
+                application_log,
+                ApplicationLogEvent::new(ApplicationLogCode::UpdateCheckCompleted)
+                    .with_context(ApplicationLogContext::Result("up_to_date")),
+            );
         }
         Ok(UpdateOutcome::Available { release }) => {
             state.publish(UpdatePhase::Available {
                 release: release_info(engine, release),
             });
+            record_update_event(
+                application_log,
+                ApplicationLogEvent::new(ApplicationLogCode::UpdateCheckCompleted)
+                    .with_context(ApplicationLogContext::Result("available")),
+            );
         }
         Ok(UpdateOutcome::Installed { .. }) => {
             // A check never installs anything. Reporting it as a completed install
@@ -223,25 +279,58 @@ fn run_check(engine: &dyn UpdateEngine, state: &UpdateStateHandle) {
                 code: UpdateErrorCode::Internal,
                 release: None,
             });
+            record_update_event(
+                application_log,
+                ApplicationLogEvent::new(ApplicationLogCode::UpdateCheckFailed)
+                    .with_context(ApplicationLogContext::Reason("internal")),
+            );
         }
         Err(error) => {
+            record_update_event(
+                application_log,
+                ApplicationLogEvent::new(ApplicationLogCode::NetworkOperationFailed)
+                    .with_context(ApplicationLogContext::Operation("update_check"))
+                    .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+            );
             state.publish(failure_phase(error, None));
         }
     }
 }
 
-fn run_install(engine: &dyn UpdateEngine, state: &UpdateStateHandle) {
+fn run_install(
+    engine: &dyn UpdateEngine,
+    state: &UpdateStateHandle,
+    application_log: Option<&ApplicationLogHandle>,
+) {
     if let Some(reason) = engine.unavailability() {
         state.publish(UpdatePhase::Unavailable {
             reason: unavailable_reason(reason),
         });
+        record_update_event(
+            application_log,
+            ApplicationLogEvent::new(ApplicationLogCode::UpdateUnavailable).with_context(
+                ApplicationLogContext::Reason(match reason {
+                    UpdateUnavailability::DevelopmentChannel => "development_channel",
+                    UpdateUnavailability::SigningKeyMissing => "signing_key_missing",
+                }),
+            ),
+        );
         return;
     }
     // The release to install is the one the last check announced. Without one there
     // is nothing to install, so the state is left untouched rather than guessed at.
     let Some(release) = state.phase().release().cloned() else {
+        record_update_event(
+            application_log,
+            ApplicationLogEvent::new(ApplicationLogCode::UpdateInstallFailed)
+                .with_context(ApplicationLogContext::Reason("release_not_available")),
+        );
         return;
     };
+    record_update_event(
+        application_log,
+        ApplicationLogEvent::new(ApplicationLogCode::UpdateInstallStarted),
+    );
     state.publish(UpdatePhase::Downloading {
         release: release.clone(),
         progress: UpdateProgressInfo::default(),
@@ -256,11 +345,21 @@ fn run_install(engine: &dyn UpdateEngine, state: &UpdateStateHandle) {
             });
         }
         UpdateEvent::DownloadFinished => {
+            record_update_event(
+                application_log,
+                ApplicationLogEvent::new(ApplicationLogCode::UpdatePhaseChanged)
+                    .with_context(ApplicationLogContext::State("verifying")),
+            );
             state.publish(UpdatePhase::Verifying {
                 release: observed_release.clone(),
             });
         }
         UpdateEvent::Verified => {
+            record_update_event(
+                application_log,
+                ApplicationLogEvent::new(ApplicationLogCode::UpdatePhaseChanged)
+                    .with_context(ApplicationLogContext::State("installing")),
+            );
             state.publish(UpdatePhase::Installing {
                 release: observed_release.clone(),
             });
@@ -273,9 +372,18 @@ fn run_install(engine: &dyn UpdateEngine, state: &UpdateStateHandle) {
                 version,
                 restart_required: restart_required_after_install(),
             });
+            record_update_event(
+                application_log,
+                ApplicationLogEvent::new(ApplicationLogCode::UpdateInstallCompleted),
+            );
         }
         Ok(UpdateOutcome::UpToDate) => {
             state.publish(UpdatePhase::UpToDate);
+            record_update_event(
+                application_log,
+                ApplicationLogEvent::new(ApplicationLogCode::UpdateInstallFailed)
+                    .with_context(ApplicationLogContext::Reason("internal")),
+            );
         }
         Ok(UpdateOutcome::Available { .. }) => {
             state.publish(UpdatePhase::Failed {
@@ -283,8 +391,18 @@ fn run_install(engine: &dyn UpdateEngine, state: &UpdateStateHandle) {
                 code: UpdateErrorCode::Internal,
                 release: Some(release),
             });
+            record_update_event(
+                application_log,
+                ApplicationLogEvent::new(ApplicationLogCode::UpdateInstallFailed)
+                    .with_context(ApplicationLogContext::Reason("internal")),
+            );
         }
         Err(error) => {
+            record_update_event(
+                application_log,
+                ApplicationLogEvent::new(ApplicationLogCode::UpdateInstallFailed)
+                    .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+            );
             state.publish(failure_phase(error, Some(release)));
         }
     }
@@ -360,15 +478,18 @@ mod tests {
         error_code, failure_stage, progress_info, restart_required_after_install,
         unavailable_reason,
     };
+    use crate::app_log::{ApplicationLogCode, ApplicationLogHandle};
     use bongocat_ui_protocol::{UpdateCommand, UpdateStateHandle, UpdateUnavailableReason};
     use bongocat_update::{
         UpdateError, UpdateErrorCode as SourceCode, UpdateEvent, UpdateOutcome, UpdateProgress,
         UpdateRelease, UpdateStage, UpdateUnavailability,
     };
     use std::{
+        fs,
         sync::{Arc, Mutex},
         time::{Duration, Instant},
     };
+    use tempfile::tempdir;
 
     /// The two code catalogs are a contract: a code that exists in one and not the
     /// other would surface in a window as a missing translation.
@@ -688,6 +809,55 @@ mod tests {
     }
 
     /// An install with nothing checked is not an error, but it must not invent one.
+    #[test]
+    fn update_worker_records_bounded_phase_and_failure_events() {
+        let directory = tempdir().expect("temporary log directory");
+        let log = ApplicationLogHandle::install_with_settings(
+            directory.path(),
+            bongocat_log::LogSettings::default(),
+            false,
+        )
+        .expect("application log");
+        let engine = ScriptedEngine::installing(
+            Err(UpdateError::at(
+                UpdateStage::Verify,
+                SourceCode::SignatureInvalid,
+            )),
+            vec![UpdateEvent::DownloadFinished],
+        );
+        let service =
+            ApplicationUpdateService::start_with_engine_and_log(engine, "1.1.0", Some(log.clone()))
+                .expect("start the worker");
+        let state = service.state();
+        service.client().request_check().expect("queue a check");
+        let (_, revision) = wait_for_settled(&state, state.snapshot().revision);
+        service
+            .client()
+            .request_install()
+            .expect("queue an install");
+        wait_for_settled(&state, revision);
+        service.join().expect("join the worker");
+
+        let mut paths = fs::read_dir(directory.path())
+            .expect("read logs")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("application-") && name.ends_with(".log"))
+            })
+            .collect::<Vec<_>>();
+        paths.sort();
+        let contents = fs::read_to_string(paths.pop().expect("application log")).expect("log text");
+        assert!(contents.contains(ApplicationLogCode::UpdateCheckCompleted.as_str()));
+        assert!(contents.contains(ApplicationLogCode::UpdateInstallStarted.as_str()));
+        assert!(contents.contains(ApplicationLogCode::UpdatePhaseChanged.as_str()));
+        assert!(contents.contains(ApplicationLogCode::UpdateInstallFailed.as_str()));
+        assert!(!contents.contains("https://"));
+        assert!(!contents.contains("1.2.0"));
+    }
+
     #[test]
     fn an_install_without_a_checked_release_leaves_the_state_alone() {
         let engine = ScriptedEngine::available(Ok(UpdateOutcome::Installed {

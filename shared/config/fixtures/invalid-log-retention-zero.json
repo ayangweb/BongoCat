@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "logging": { "level": "info", "retention_days": 7 },
+  "logging": { "level": "info", "retention_days": 0 },
   "application": {
     "show_taskbar_icon": true,
     "show_status_icon": true,
@@ -26,10 +26,10 @@
     "selected_model_id": null,
     "selected_model_origin": null,
     "installed_models": [],
-    "preset_models": [{ "id": "standard", "title": "我的猫" }],
+    "preset_models": [],
     "mirror": false,
     "mirror_pointer_tracking": false,
-    "play_motion_audio": true,
+    "play_motion_audio": false,
     "enable_behavior_shortcuts": false,
     "maximum_fps": 60,
     "ignore_pointer": false,

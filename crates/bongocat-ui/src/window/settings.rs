@@ -191,6 +191,75 @@ impl SettingsView {
         );
     }
 
+    pub(super) fn set_logging_level(&mut self, level: SettingsLogLevel, cx: &mut Context<Self>) {
+        let Some((persisted, _)) = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| (snapshot.logging, snapshot.config_revision))
+        else {
+            return;
+        };
+        let mut settings = self
+            .logging_settings_debouncer
+            .pending_value()
+            .copied()
+            .unwrap_or(persisted);
+        settings.level = level;
+        self.queue_logging_settings(settings, cx);
+    }
+
+    pub(super) fn set_logging_retention_days_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if self.model_import.is_running() {
+            return;
+        }
+        let Some((persisted, _)) = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| (snapshot.logging, snapshot.config_revision))
+        else {
+            return;
+        };
+        let mut settings = self
+            .logging_settings_debouncer
+            .pending_value()
+            .copied()
+            .unwrap_or(persisted);
+        settings.retention_days = normalize_logging_retention_days(raw);
+        self.queue_logging_settings(settings, cx);
+    }
+
+    fn queue_logging_settings(&mut self, settings: SettingsLogging, cx: &mut Context<Self>) {
+        let Some((persisted, expected_config_revision)) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| Some((snapshot.logging, snapshot.config_revision?)))
+        else {
+            return;
+        };
+        if settings == persisted && self.pending != Some(PendingOperation::LoggingSettings) {
+            self.logging_settings_debouncer.discard_pending();
+            return;
+        }
+        let should_send = self
+            .logging_settings_debouncer
+            .observe(settings, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .map(|settings| {
+                self.start_request(
+                    PendingOperation::LoggingSettings,
+                    Some(SettingValue::LoggingSettings {
+                        expected_config_revision,
+                        settings,
+                    }),
+                    cx,
+                );
+            })
+            .is_some();
+        if !should_send {
+            self.schedule_logging_settings_flush(cx);
+        }
+    }
+
     pub(super) fn set_overlay_settings(
         &mut self,
         settings: SettingsOverlay,

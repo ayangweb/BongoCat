@@ -1,15 +1,14 @@
 #![allow(unsafe_code)]
 
 use crate::sys;
-use bongocat_log::enforce_directory_retention;
-use bongocat_storage::{set_private_directory, set_private_file};
-use serde::Serialize;
+use bongocat_log::{LogLevel, LogRecord, LogSettingsController, LogStream, TextLogWriter};
+use bongocat_storage::set_private_directory;
 use std::{
-    fs::{self, File, OpenOptions},
-    io::{self, Write},
+    ffi::CStr,
+    fs,
     os::raw::c_char,
     panic::{AssertUnwindSafe, catch_unwind},
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -19,20 +18,17 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-const MAX_LOG_BYTES: u64 = 1024 * 1024;
-const MAX_TOTAL_LOG_FILES: u32 = 8;
-const MAX_ROTATED_LOG_FILES: u32 = MAX_TOTAL_LOG_FILES - 1;
 const MAX_MESSAGE_BYTES: usize = 512;
+const MAX_SAFE_CORE_TOKEN_BYTES: usize = 64;
+const REDACTED_CORE_TOKEN: &str = "<redacted>";
 const CALLBACK_QUEUE_CAPACITY: usize = 128;
 const WORKER_POLL_INTERVAL: Duration = Duration::from_millis(10);
-const RETENTION_DAYS: u64 = 7;
-const SECONDS_PER_DAY: u64 = 86_400;
 
 #[derive(Debug)]
 pub enum CoreLogError {
-    CreateDirectory(io::Error),
-    OpenFile(io::Error),
-    StartWorker(io::Error),
+    CreateDirectory(std::io::Error),
+    OpenFile(std::io::Error),
+    StartWorker(std::io::Error),
 }
 
 impl std::fmt::Display for CoreLogError {
@@ -62,10 +58,7 @@ pub struct CoreLogStats {
 
 #[derive(Debug)]
 struct CoreLogState {
-    file: Option<File>,
-    path: PathBuf,
-    bytes: u64,
-    stats: CoreLogStats,
+    writer: TextLogWriter,
 }
 
 #[derive(Clone, Copy)]
@@ -83,13 +76,6 @@ struct CoreLogSink {
     global_drop_baseline: u64,
 }
 
-#[derive(Serialize)]
-struct CoreLogRecord<'a> {
-    component: &'static str,
-    level: &'static str,
-    message: &'a str,
-}
-
 static CORE_LOG_SINK: OnceLock<Mutex<Option<Arc<CoreLogSink>>>> = OnceLock::new();
 static CORE_LOG_CALLBACK_DROPS: AtomicU64 = AtomicU64::new(0);
 
@@ -105,7 +91,6 @@ fn sink_slot() -> &'static Mutex<Option<Arc<CoreLogSink>>> {
 #[derive(Debug)]
 pub struct CoreLogHandle {
     sink: Arc<CoreLogSink>,
-    path: PathBuf,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -117,35 +102,18 @@ pub struct CoreLogReporter {
 }
 
 impl CoreLogHandle {
-    pub fn install(path: impl AsRef<Path>) -> Result<Self, CoreLogError> {
-        let path = path.as_ref().to_owned();
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(CoreLogError::CreateDirectory)?;
-            set_private_directory(parent).map_err(CoreLogError::CreateDirectory)?;
-            let _ = enforce_directory_retention(parent, Some(&path), SystemTime::now());
-        }
-        let pruned = prune_expired_rotated_logs(&path, SystemTime::now());
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
+    pub fn install(
+        directory: impl AsRef<Path>,
+        settings: LogSettingsController,
+    ) -> Result<Self, CoreLogError> {
+        let directory = directory.as_ref();
+        fs::create_dir_all(directory).map_err(CoreLogError::CreateDirectory)?;
+        set_private_directory(directory).map_err(CoreLogError::CreateDirectory)?;
+        let writer = TextLogWriter::open(directory, LogStream::CubismCore, settings)
             .map_err(CoreLogError::OpenFile)?;
-        set_private_file(&file).map_err(CoreLogError::OpenFile)?;
-        let bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
         let (sender, receiver) = sync_channel(CALLBACK_QUEUE_CAPACITY);
         let sink = Arc::new(CoreLogSink {
-            state: Mutex::new(CoreLogState {
-                file: Some(file),
-                path: path.clone(),
-                bytes,
-                stats: CoreLogStats {
-                    pruned,
-                    bytes,
-                    retained_files: retained_log_files(&path),
-                    retained_bytes: retained_log_bytes(&path),
-                    ..CoreLogStats::default()
-                },
-            }),
+            state: Mutex::new(CoreLogState { writer }),
             sender,
             accepting: AtomicBool::new(true),
             callback_dropped: AtomicU64::new(0),
@@ -171,13 +139,8 @@ impl CoreLogHandle {
         drop(slot);
         Ok(Self {
             sink,
-            path,
             worker: Some(worker),
         })
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
     }
 
     pub fn stats(&self) -> CoreLogStats {
@@ -249,10 +212,16 @@ impl CoreLogSink {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut stats = state.stats;
-        let path = state.path.clone();
-        stats.retained_files = retained_log_files(&path);
-        stats.retained_bytes = retained_log_bytes(&path);
+        let writer = state.writer.stats();
+        let mut stats = CoreLogStats {
+            written: writer.written,
+            dropped: writer.dropped,
+            rotated: writer.rotated,
+            pruned: writer.pruned,
+            bytes: writer.active_bytes,
+            retained_files: writer.retained_files,
+            retained_bytes: writer.retained_bytes,
+        };
         let local_drops = self.callback_dropped.load(Ordering::Relaxed);
         let global_drops = CORE_LOG_CALLBACK_DROPS
             .load(Ordering::Relaxed)
@@ -302,11 +271,22 @@ impl CoreLogSink {
     }
 
     fn record(&self, message: CoreLogMessage) {
-        let mut state = self
+        let state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        record_message(&mut state, &message.bytes[..message.length]);
+        let message = sanitize_message(&message.bytes[..message.length]);
+        // Cubism's callback has no typed severity. Treating every vendor
+        // message as debug prevents routine Core chatter from becoming the
+        // default user log; actual Core/renderer failures are logged by the
+        // app owner with a stable error or warning code.
+        let _ = state.writer.record(LogRecord::new(
+            SystemTime::now(),
+            LogLevel::Debug,
+            "cubism.core",
+            "cubism/core/message",
+            message,
+        ));
     }
 }
 
@@ -316,315 +296,197 @@ impl CoreLogMessage {
             bytes: [0; MAX_MESSAGE_BYTES],
             length: 0,
         };
-        for index in 0..MAX_MESSAGE_BYTES {
-            // SAFETY: the Core callback contract supplies a readable
-            // null-terminated string for this invocation. The bounded loop
-            // reads no more than MAX_MESSAGE_BYTES bytes before returning.
-            let byte = unsafe { *message.add(index) } as u8;
-            if byte == 0 {
-                break;
-            }
-            copied.bytes[index] = byte;
-            copied.length = index + 1;
-        }
+        // SAFETY: the Core callback contract supplies a readable,
+        // null-terminated string for this invocation. `CStr::from_ptr` is the
+        // standard wrapper for that C boundary; the subsequent copy is capped
+        // at MAX_MESSAGE_BYTES and never exposes the original pointer to the
+        // queue.
+        let source = unsafe { CStr::from_ptr(message) }.to_bytes();
+        copied.length = source.len().min(MAX_MESSAGE_BYTES);
+        copied.bytes[..copied.length].copy_from_slice(&source[..copied.length]);
         copied
     }
 }
 
-fn record_message(state: &mut CoreLogState, bytes: &[u8]) {
-    let message = sanitize_message(bytes);
-    let record = CoreLogRecord {
-        component: "cubism_core",
-        level: "info",
-        message: &message,
-    };
-    let Ok(mut line) = serde_json::to_vec(&record) else {
-        return;
-    };
-    line.push(b'\n');
-    let Ok(line_len) = u64::try_from(line.len()) else {
-        return;
-    };
-    if state.bytes.saturating_add(line_len) > MAX_LOG_BYTES && !rotate_logs(state) {
-        state.stats.dropped = state.stats.dropped.saturating_add(1);
-        return;
-    }
-    let Some(file) = state.file.as_mut() else {
-        state.stats.dropped = state.stats.dropped.saturating_add(1);
-        return;
-    };
-    if file.write_all(&line).is_err() || file.flush().is_err() {
-        state.stats.dropped = state.stats.dropped.saturating_add(1);
-        return;
-    }
-    state.bytes = state.bytes.saturating_add(line_len);
-    state.stats.written = state.stats.written.saturating_add(1);
-    state.stats.bytes = state.bytes;
-    state.stats.retained_bytes = state.stats.retained_bytes.saturating_add(line_len);
-    if let Some(directory) = state.path.parent() {
-        let _ = enforce_directory_retention(directory, Some(&state.path), SystemTime::now());
-    }
-}
-
-fn rotate_logs(state: &mut CoreLogState) -> bool {
-    let Some(file) = state.file.take() else {
-        return false;
-    };
-    drop(file);
-
-    for generation in (1..MAX_ROTATED_LOG_FILES).rev() {
-        let source = rotated_log_path(&state.path, generation);
-        let destination = rotated_log_path(&state.path, generation + 1);
-        let _ = fs::remove_file(&destination);
-        if source.exists() && fs::rename(&source, &destination).is_err() {
-            reopen_active_log(state);
-            return false;
-        }
-    }
-    let first = rotated_log_path(&state.path, 1);
-    let _ = fs::remove_file(&first);
-    if fs::rename(&state.path, &first).is_err() {
-        reopen_active_log(state);
-        return false;
-    }
-
-    // Re-open the active path after moving the old file into the rotation set.
-    if reopen_active_log(state) {
-        state.bytes = 0;
-        state.stats.bytes = 0;
-        state.stats.rotated = state.stats.rotated.saturating_add(1);
-        state.stats.pruned = state
-            .stats
-            .pruned
-            .saturating_add(prune_expired_rotated_logs(&state.path, SystemTime::now()));
-        state.stats.retained_files = retained_log_files(&state.path);
-        state.stats.retained_bytes = retained_log_bytes(&state.path);
-        true
-    } else {
-        let _ = fs::rename(&first, &state.path);
-        reopen_active_log(state);
-        false
-    }
-}
-
-fn reopen_active_log(state: &mut CoreLogState) -> bool {
-    let Ok(file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&state.path)
-    else {
-        return false;
-    };
-    if set_private_file(&file).is_err() {
-        return false;
-    }
-    let bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
-    state.file = Some(file);
-    state.bytes = bytes;
-    state.stats.bytes = bytes;
-    state.stats.retained_files = retained_log_files(&state.path);
-    state.stats.retained_bytes = retained_log_bytes(&state.path);
-    true
-}
-
-fn rotated_log_path(path: &Path, generation: u32) -> PathBuf {
-    let mut rotated = path.as_os_str().to_owned();
-    rotated.push(format!(".{generation}"));
-    PathBuf::from(rotated)
-}
-
-fn prune_expired_rotated_logs(path: &Path, now: SystemTime) -> u64 {
-    (1..=MAX_ROTATED_LOG_FILES)
-        .filter_map(|generation| {
-            let rotated = rotated_log_path(path, generation);
-            let modified = fs::metadata(&rotated).ok()?.modified().ok()?;
-            is_expired(modified, now).then(|| fs::remove_file(rotated).is_ok())
-        })
-        .filter(|removed| *removed)
-        .count() as u64
-}
-
-fn retained_log_files(path: &Path) -> u64 {
-    u64::from(path.is_file())
-        + (1..=MAX_ROTATED_LOG_FILES)
-            .filter(|generation| rotated_log_path(path, *generation).is_file())
-            .count() as u64
-}
-
-fn retained_log_bytes(path: &Path) -> u64 {
-    fs::metadata(path)
-        .map(|metadata| metadata.len())
-        .unwrap_or(0)
-        .saturating_add(
-            (1..=MAX_ROTATED_LOG_FILES)
-                .filter_map(|generation| fs::metadata(rotated_log_path(path, generation)).ok())
-                .map(|metadata| metadata.len())
-                .sum(),
-        )
-}
-
-fn is_expired(modified: SystemTime, now: SystemTime) -> bool {
-    now.duration_since(modified)
-        .is_ok_and(|age| age.as_secs() >= RETENTION_DAYS.saturating_mul(SECONDS_PER_DAY))
-}
-
 fn sanitize_message(bytes: &[u8]) -> String {
     let text = String::from_utf8_lossy(&bytes[..bytes.len().min(MAX_MESSAGE_BYTES)]);
-    text.split_whitespace()
-        .map(|token| {
-            if token.contains('/')
-                || token.contains('\\')
-                || token.starts_with("~")
-                || token.as_bytes().get(1).is_some_and(|byte| *byte == b':')
-            {
-                "<redacted-path>"
-            } else {
-                token
+    let tokens = text.split_whitespace().collect::<Vec<_>>();
+
+    // A Core callback has no typed field boundary. Keep only short, plain
+    // diagnostic words and numbers; punctuation-bearing tokens are commonly
+    // paths, URLs, assignments, or serialized resource fragments. Redacting the
+    // whole message when it contains a sensitive marker also prevents a value
+    // following a word such as `token` or `password` from being retained.
+    if tokens.iter().any(|token| is_sensitive_core_token(token)) {
+        return REDACTED_CORE_TOKEN.to_owned();
+    }
+
+    let mut output = String::new();
+    for token in tokens {
+        let rendered = if is_safe_core_token(token) {
+            token
+        } else {
+            REDACTED_CORE_TOKEN
+        };
+        if !output.is_empty() {
+            if output.len().saturating_add(1) >= MAX_MESSAGE_BYTES {
+                break;
             }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+            output.push(' ');
+        }
+        let remaining = MAX_MESSAGE_BYTES.saturating_sub(output.len());
+        if remaining == 0 {
+            break;
+        }
+        if rendered.len() > remaining {
+            output.push_str(&rendered[..remaining]);
+            break;
+        }
+        output.push_str(rendered);
+    }
+    if output.is_empty() {
+        REDACTED_CORE_TOKEN.to_owned()
+    } else {
+        output
+    }
+}
+
+fn is_safe_core_token(token: &str) -> bool {
+    !token.is_empty()
+        && token.len() <= MAX_SAFE_CORE_TOKEN_BYTES
+        && token.bytes().all(|byte| byte.is_ascii_alphanumeric())
+}
+
+fn is_sensitive_core_token(token: &str) -> bool {
+    let normalized = token.to_ascii_lowercase();
+    [
+        "key",
+        "token",
+        "secret",
+        "password",
+        "passwd",
+        "credential",
+        "clipboard",
+        "url",
+        "uri",
+        "path",
+        "file",
+        "config",
+        "payload",
+        "content",
+        "signature",
+        "authorization",
+        "bearer",
+        "permission",
+        "denied",
+        "error",
+        "failed",
+        "failure",
+        "invalid",
+        "corrupt",
+        "unavailable",
+        "errno",
+        "exception",
+        "network",
+        "connection",
+        "socket",
+        "address",
+        "dns",
+        "http",
+        "https",
+        "proxy",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bongocat_log::LogSettings;
     use std::ffi::CString;
     use tempfile::tempdir;
 
     static CORE_LOG_INSTALL_TEST_LOCK: Mutex<()> = Mutex::new(());
 
+    fn debug_settings() -> LogSettingsController {
+        LogSettingsController::new(LogSettings {
+            level: LogLevel::Debug,
+            retention_days: bongocat_log::DEFAULT_RETENTION_DAYS,
+        })
+    }
+
+    fn core_log_path(directory: &Path) -> std::path::PathBuf {
+        let mut paths = fs::read_dir(directory)
+            .expect("read Core logs")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("cubism-core-") && name.ends_with(".log"))
+            })
+            .collect::<Vec<_>>();
+        paths.sort();
+        paths.pop().expect("Core log")
+    }
+
     #[test]
     fn sanitizes_paths_and_bounds_message_bytes() {
         let message =
             sanitize_message(b"model /Users/example/private\nC:\\Users\\name\\model.moc3 stable");
-        assert_eq!(message, "model <redacted-path> <redacted-path> stable");
+        assert_eq!(message, "model <redacted> <redacted> stable");
         assert!(sanitize_message(&vec![b'x'; MAX_MESSAGE_BYTES + 20]).len() <= MAX_MESSAGE_BYTES);
+        assert_eq!(
+            sanitize_message(b"https://example.invalid/private"),
+            "<redacted>"
+        );
+        assert_eq!(sanitize_message(b"token=secret"), "<redacted>");
+        assert_eq!(sanitize_message(b"token secret"), "<redacted>");
+        assert_eq!(
+            sanitize_message(b"Authorization: Bearer abc123"),
+            "<redacted>"
+        );
+        assert_eq!(sanitize_message(b"Permission denied"), "<redacted>");
+        assert_eq!(sanitize_message(b"clipboard"), "<redacted>");
     }
 
     #[test]
-    fn expiration_keeps_recent_and_clock_regressed_rotated_logs() {
-        let now = std::time::UNIX_EPOCH
-            + std::time::Duration::from_secs(RETENTION_DAYS * SECONDS_PER_DAY);
-        assert!(is_expired(std::time::UNIX_EPOCH, now));
-        assert!(!is_expired(
-            std::time::UNIX_EPOCH + std::time::Duration::from_secs(1),
-            now
-        ));
-        assert!(!is_expired(now, std::time::UNIX_EPOCH));
-    }
-
-    #[test]
-    fn sink_rotates_before_dropping_records_at_the_file_limit() {
-        let directory = tempdir().expect("temporary directory");
-        let path = directory.path().join("logs/core.jsonl");
-        fs::create_dir_all(path.parent().expect("log parent")).expect("log directory");
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .expect("log file");
-        let mut state = CoreLogState {
-            file: Some(file),
-            path: path.clone(),
-            bytes: MAX_LOG_BYTES - 1,
-            stats: CoreLogStats {
-                bytes: MAX_LOG_BYTES - 1,
-                ..CoreLogStats::default()
-            },
-        };
-        record_message(&mut state, b"one");
-        let stats = state.stats;
-        assert_eq!(stats.written, 1);
-        assert_eq!(stats.dropped, 0);
-        assert_eq!(stats.rotated, 1);
-        assert_eq!(stats.retained_files, 2);
-        assert!(stats.bytes < MAX_LOG_BYTES);
-        assert_eq!(stats.retained_bytes, retained_log_bytes(&path));
-        assert!(rotated_log_path(&path, 1).is_file());
-        assert!(fs::metadata(&path).expect("active log").len() > 0);
-    }
-
-    #[test]
-    fn rotation_retains_only_the_configured_number_of_files() {
-        let directory = tempdir().expect("temporary directory");
-        let path = directory.path().join("core.jsonl");
-        fs::write(&path, vec![b'x'; MAX_LOG_BYTES as usize]).expect("seed active log");
-        for generation in 1..=MAX_ROTATED_LOG_FILES {
-            fs::write(rotated_log_path(&path, generation), b"old").expect("seed rotated log");
-        }
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .expect("log file");
-        let mut state = CoreLogState {
-            file: Some(file),
-            path: path.clone(),
-            bytes: MAX_LOG_BYTES,
-            stats: CoreLogStats {
-                bytes: MAX_LOG_BYTES,
-                ..CoreLogStats::default()
-            },
-        };
-        record_message(&mut state, b"rotation");
-        let stats = state.stats;
-        assert_eq!(stats.rotated, 1);
-        assert_eq!(stats.retained_files, u64::from(MAX_TOTAL_LOG_FILES));
-        assert!(rotated_log_path(&path, MAX_ROTATED_LOG_FILES).is_file());
-        assert!(!rotated_log_path(&path, MAX_ROTATED_LOG_FILES + 1).exists());
-        let retained_bytes = (0..=MAX_ROTATED_LOG_FILES)
-            .map(|generation| {
-                let retained = if generation == 0 {
-                    path.clone()
-                } else {
-                    rotated_log_path(&path, generation)
-                };
-                fs::metadata(retained).expect("retained log metadata").len()
-            })
-            .sum::<u64>();
-        assert!(retained_bytes <= MAX_TOTAL_LOG_FILES as u64 * MAX_LOG_BYTES);
-        assert_eq!(stats.retained_bytes, retained_bytes);
-        assert!(fs::read(&path).expect("active contents").contains(&b'\n'));
-    }
-
-    #[test]
-    fn missing_active_file_handle_can_be_reopened_after_a_rotation_failure() {
-        let directory = tempdir().expect("temporary directory");
-        let path = directory.path().join("core.jsonl");
-        fs::write(&path, b"active").expect("seed active log");
-        let mut state = CoreLogState {
-            file: None,
-            path: path.clone(),
-            bytes: 0,
-            stats: CoreLogStats {
-                bytes: 0,
-                ..CoreLogStats::default()
-            },
-        };
-        assert!(reopen_active_log(&mut state));
-        assert!(state.file.is_some());
-        assert_eq!(state.bytes, b"active".len() as u64);
-        assert_eq!(state.stats.retained_files, 1);
-        assert_eq!(state.stats.retained_bytes, b"active".len() as u64);
-    }
-
-    #[test]
-    fn installed_callback_writes_structured_record_and_is_removed_on_drop() {
+    fn default_info_filter_keeps_untyped_core_messages_out_of_the_user_log() {
         let _install_guard = CORE_LOG_INSTALL_TEST_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let directory = tempdir().expect("temporary directory");
-        let path = directory.path().join("core.jsonl");
-        let handle = CoreLogHandle::install(&path).expect("install Core logger");
+        let handle = CoreLogHandle::install(directory.path(), LogSettingsController::default())
+            .expect("install Core logger");
+        let message = CString::new("routine Core message").expect("message");
+        // SAFETY: the CString is null-terminated and remains alive for this
+        // synchronous callback invocation.
+        unsafe { core_log_callback(message.as_ptr()) };
+        drop(handle);
+        let contents = fs::read_to_string(core_log_path(directory.path())).expect("read log");
+        assert!(!contents.contains("routine Core message"));
+    }
+
+    #[test]
+    fn installed_callback_writes_one_sanitized_debug_line_and_is_removed_on_drop() {
+        let _install_guard = CORE_LOG_INSTALL_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let directory = tempdir().expect("temporary directory");
+        let handle = CoreLogHandle::install(directory.path(), debug_settings())
+            .expect("install Core logger");
         let message = CString::new("Core warning /private/model.moc3").expect("message");
         // SAFETY: the CString is null-terminated and remains alive for the
         // synchronous callback invocation.
         unsafe { core_log_callback(message.as_ptr()) };
         wait_for_written(&handle, 1);
+        let path = core_log_path(directory.path());
         assert_eq!(handle.stats().retained_files, 1);
         let contents = fs::read_to_string(&path).expect("read log");
-        assert!(contents.contains("cubism_core"));
+        assert!(
+            contents.contains("DEBUG [cubism.core] cubism/core/message | Core warning <redacted>")
+        );
         assert!(!contents.contains("/private/model.moc3"));
         drop(handle);
         assert!(
@@ -641,13 +503,13 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let directory = tempdir().expect("temporary directory");
-        let handle = CoreLogHandle::install(directory.path().join("core.jsonl"))
+        let handle = CoreLogHandle::install(directory.path(), debug_settings())
             .expect("install Core logger");
         let message = CString::new("callback slot contention").expect("message");
         let slot = sink_slot()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // SAFETY: the CString is null-terminated and remains alive for the
+        // SAFETY: the CString is null-terminated and remains alive for this
         // synchronous callback invocation.
         unsafe { core_log_callback(message.as_ptr()) };
         drop(slot);
@@ -661,16 +523,17 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let directory = tempdir().expect("temporary directory");
-        let path = directory.path().join("core.jsonl");
-        let handle = CoreLogHandle::install(&path).expect("install Core logger");
+        let handle = CoreLogHandle::install(directory.path(), debug_settings())
+            .expect("install Core logger");
+        let path = core_log_path(directory.path());
         let message = CString::new("queue saturation").expect("message");
         let state = handle
             .sink
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // The worker may already be holding one dequeued message while it
-        // waits for `state`, so exceed both that in-flight slot and the queue.
+        // The worker may already have dequeued one message and be waiting for
+        // this same state lock, so exceed both the in-flight slot and queue.
         for _ in 0..=(CALLBACK_QUEUE_CAPACITY + 1) {
             // SAFETY: the CString is null-terminated and remains alive for
             // each synchronous callback invocation.
@@ -689,11 +552,11 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let directory = tempdir().expect("temporary directory");
-        let handle = CoreLogHandle::install(directory.path().join("core.jsonl"))
+        let handle = CoreLogHandle::install(directory.path(), debug_settings())
             .expect("install Core logger");
         handle.sink.accepting.store(false, Ordering::Release);
         let message = CString::new("late callback").expect("message");
-        // SAFETY: the CString is null-terminated and remains alive for the
+        // SAFETY: the CString is null-terminated and remains alive for this
         // synchronous callback invocation.
         unsafe { core_log_callback(message.as_ptr()) };
         assert_eq!(handle.stats().written, 0);
@@ -706,15 +569,21 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let directory = tempdir().expect("temporary directory");
-        let path = directory.path().join("core.jsonl");
-        let handle = CoreLogHandle::install(&path).expect("install Core logger");
-        fs::write(rotated_log_path(&path, 1), b"rotated").expect("seed rotated log");
+        let handle = CoreLogHandle::install(directory.path(), debug_settings())
+            .expect("install Core logger");
+        let active = core_log_path(directory.path());
+        let stem = active
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .expect("Core log stem");
+        let rotated = directory.path().join(format!("{stem}.1.log"));
+        fs::write(&rotated, b"rotated").expect("seed rotated log");
         assert_eq!(handle.stats().retained_files, 2);
-        fs::remove_file(rotated_log_path(&path, 1)).expect("prune rotated log");
+        fs::remove_file(rotated).expect("prune rotated log");
         assert_eq!(handle.stats().retained_files, 1);
         assert_eq!(
             handle.stats().retained_bytes,
-            fs::metadata(&path).unwrap().len()
+            fs::metadata(active).expect("active metadata").len()
         );
     }
 
@@ -737,10 +606,11 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let directory = tempdir().expect("temporary directory");
-        let path = directory.path().join("logs/core.jsonl");
-        let handle = CoreLogHandle::install(&path).expect("install Core logger");
+        let logs = directory.path().join("logs");
+        let handle = CoreLogHandle::install(&logs, debug_settings()).expect("install Core logger");
+        let path = core_log_path(&logs);
         assert_eq!(
-            fs::metadata(path.parent().expect("log parent"))
+            fs::metadata(&logs)
                 .expect("log directory metadata")
                 .permissions()
                 .mode()

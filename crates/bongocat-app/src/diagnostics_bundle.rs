@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
+use crate::ApplicationLogCode;
 use atomic_write_file::AtomicWriteFile;
+use bongocat_log::{LogLevel, LogStream, MAX_LOG_FILE_BYTES, is_log_file_name, parse_log_line};
 use bongocat_storage::set_private_path;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -12,9 +14,7 @@ use std::{
 };
 use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
 
-const APPLICATION_LOG_PREFIX: &str = "application-";
-const APPLICATION_LOG_SUFFIX: &str = ".jsonl";
-const APPLICATION_EVENTS_ENTRY: &str = "application-events.jsonl";
+const APPLICATION_EVENTS_ENTRY: &str = "application-events.log";
 const DIAGNOSTICS_ENTRY: &str = "diagnostics.json";
 const MANIFEST_ENTRY: &str = "manifest.json";
 const PREVIEW_BUNDLE_ENTRIES: [&str; 3] =
@@ -23,12 +23,12 @@ const PREVIEW_BUNDLE_NAME: &str = "diagnostics-preview.zip";
 pub(crate) const PREVIEW_BUNDLE_FORMAT_VERSION: u32 = 1;
 pub(crate) const PREVIEW_BUNDLE_ENTRY_COUNT: u32 = PREVIEW_BUNDLE_ENTRIES.len() as u32;
 const MAX_APPLICATION_LOG_FILES: usize = 8;
-const MAX_APPLICATION_LOG_BYTES: u64 = 1024 * 1024;
+const MAX_APPLICATION_LOG_BYTES: u64 = MAX_LOG_FILE_BYTES;
 const MAX_APPLICATION_EVENTS_BYTES: u64 =
     MAX_APPLICATION_LOG_FILES as u64 * MAX_APPLICATION_LOG_BYTES;
 const MAX_DIAGNOSTICS_JSON_BYTES: u64 = 1024 * 1024;
 const MAX_PREVIEW_BUNDLE_BYTES: u64 = 10 * 1024 * 1024;
-const MAX_EVENT_LINE_BYTES: usize = 1024;
+const MAX_PREVIEW_EVENT_LINE_BYTES: usize = 256;
 
 #[cfg(test)]
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -90,12 +90,10 @@ pub(crate) struct PreviewBundleStatus {
 #[derive(Debug)]
 pub(crate) struct PreviewBundleError;
 
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 struct SourceEvent {
-    component: String,
-    level: String,
-    code: String,
+    level: LogLevel,
+    module: String,
+    code: ApplicationLogCode,
 }
 
 #[derive(Serialize)]
@@ -125,7 +123,7 @@ pub(crate) fn write_preview_bundle(
     if diagnostics_json.len() as u64 > MAX_DIAGNOSTICS_JSON_BYTES {
         return Err(PreviewBundleError);
     }
-    let (events, skipped_source_files) = collect_application_events(directory);
+    let (events, skipped_source_files) = collect_application_events(directory)?;
     let manifest = serde_json::to_vec(&PreviewManifest {
         schema_version: PREVIEW_BUNDLE_FORMAT_VERSION,
         diagnostics_entry: DIAGNOSTICS_ENTRY,
@@ -152,15 +150,16 @@ pub(crate) fn write_preview_bundle(
     })
 }
 
-fn collect_application_events(directory: &Path) -> (Vec<SourceEvent>, u64) {
-    let mut paths = fs::read_dir(directory)
-        .ok()
-        .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| is_application_log_path(path))
-        .collect::<Vec<_>>();
+fn collect_application_events(
+    directory: &Path,
+) -> Result<(Vec<SourceEvent>, u64), PreviewBundleError> {
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(directory).map_err(|_| PreviewBundleError)? {
+        let path = entry.map_err(|_| PreviewBundleError)?.path();
+        if is_application_log_path(&path) {
+            paths.push(path);
+        }
+    }
     paths.sort_unstable();
 
     let mut events = Vec::new();
@@ -171,76 +170,60 @@ fn collect_application_events(directory: &Path) -> (Vec<SourceEvent>, u64) {
             Err(()) => skipped = skipped.saturating_add(1),
         }
     }
-    (events, skipped)
+    Ok((events, skipped))
 }
 
 fn is_application_log_path(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
-    let valid_name = name
-        .strip_prefix(APPLICATION_LOG_PREFIX)
-        .is_some_and(|suffix| {
-            suffix
-                .strip_suffix(APPLICATION_LOG_SUFFIX)
-                .is_some_and(|day| !day.is_empty() && day.bytes().all(|byte| byte.is_ascii_digit()))
-                || suffix
-                    .split_once(".jsonl.")
-                    .is_some_and(|(day, generation)| {
-                        !day.is_empty()
-                            && day.bytes().all(|byte| byte.is_ascii_digit())
-                            && !generation.is_empty()
-                            && generation.bytes().all(|byte| byte.is_ascii_digit())
-                    })
-        });
-    valid_name
+    is_log_file_name(LogStream::Application, name)
         && fs::symlink_metadata(path)
             .is_ok_and(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
 }
 
 fn parse_application_log(path: &Path) -> Result<Vec<SourceEvent>, ()> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| ())?;
+    if !metadata.is_file() || metadata.len() > MAX_APPLICATION_LOG_BYTES {
+        return Err(());
+    }
     let bytes = fs::read(path).map_err(|_| ())?;
     if bytes.len() as u64 > MAX_APPLICATION_LOG_BYTES {
         return Err(());
     }
+    if bytes.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !bytes.ends_with(b"\n") {
+        return Err(());
+    }
     let text = std::str::from_utf8(&bytes).map_err(|_| ())?;
     let mut events = Vec::new();
-    for line in text.lines() {
-        if line.is_empty() || line.len() > MAX_EVENT_LINE_BYTES {
-            return Err(());
-        }
-        let event = serde_json::from_str::<SourceEvent>(line).map_err(|_| ())?;
-        if !is_valid_event(&event) {
-            return Err(());
-        }
-        events.push(event);
+    for line in text.split_terminator('\n') {
+        events.push(parse_source_event(line).ok_or(())?);
     }
     Ok(events)
 }
 
-fn is_valid_event(event: &SourceEvent) -> bool {
-    matches!(
-        event.component.as_str(),
-        "application" | "configuration" | "input" | "model" | "renderer" | "runtime" | "settings"
-    ) && matches!(event.level.as_str(), "info" | "warn" | "error")
-        && matches!(
-            event.code.as_str(),
-            "started"
-                | "previous_run_unclean"
-                | "shutdown_started"
-                | "shutdown_completed"
-                | "shutdown_failed"
-                | "panicked"
-                | "runtime_unavailable"
-                | "diagnostics_export_failed"
-        )
+fn parse_source_event(line: &str) -> Option<SourceEvent> {
+    let parsed = parse_log_line(line)?;
+    let code = ApplicationLogCode::parse(parsed.code)?;
+    (parsed.module == code.component().as_str() && parsed.level == code.level()).then(|| {
+        SourceEvent {
+            level: parsed.level,
+            module: parsed.module.to_owned(),
+            code,
+        }
+    })
 }
 
 fn serialize_events(events: &[SourceEvent]) -> Result<Vec<u8>, PreviewBundleError> {
     let mut bytes = Vec::new();
     for event in events {
-        serde_json::to_writer(&mut bytes, event).map_err(|_| PreviewBundleError)?;
-        bytes.push(b'\n');
+        let level = event.level.to_string();
+        bytes.extend_from_slice(
+            format!("{level:<5} [{}] {}\n", event.module, event.code.as_str()).as_bytes(),
+        );
         if bytes.len() as u64 > MAX_APPLICATION_EVENTS_BYTES {
             return Err(PreviewBundleError);
         }
@@ -340,19 +323,42 @@ fn verify_archive(bytes: &[u8]) -> Result<(), PreviewBundleError> {
 }
 
 fn verified_event_count(bytes: &[u8]) -> Result<u64, PreviewBundleError> {
+    if bytes.is_empty() {
+        return Ok(0);
+    }
+    if !bytes.ends_with(b"\n") {
+        return Err(PreviewBundleError);
+    }
     let text = std::str::from_utf8(bytes).map_err(|_| PreviewBundleError)?;
     let mut count = 0_u64;
-    for line in text.lines() {
-        if line.is_empty() || line.len() > MAX_EVENT_LINE_BYTES {
-            return Err(PreviewBundleError);
-        }
-        let event = serde_json::from_str::<SourceEvent>(line).map_err(|_| PreviewBundleError)?;
-        if !is_valid_event(&event) {
-            return Err(PreviewBundleError);
-        }
+    for line in text.split_terminator('\n') {
+        parse_preview_event_line(line).ok_or(PreviewBundleError)?;
         count = count.saturating_add(1);
     }
     Ok(count)
+}
+
+fn parse_preview_event_line(line: &str) -> Option<(LogLevel, ApplicationLogCode)> {
+    if line.is_empty() || line.len() > MAX_PREVIEW_EVENT_LINE_BYTES {
+        return None;
+    }
+    let bytes = line.as_bytes();
+    let level = match bytes.get(..5)? {
+        b"ERROR" => LogLevel::Error,
+        b"WARN " => LogLevel::Warn,
+        b"INFO " => LogLevel::Info,
+        b"DEBUG" => LogLevel::Debug,
+        b"TRACE" => LogLevel::Trace,
+        _ => return None,
+    };
+    if *bytes.get(5)? != b' ' || *bytes.get(6)? != b'[' {
+        return None;
+    }
+    let remainder = line.get(7..)?;
+    let module_end = remainder.find("] ")?;
+    let module = &remainder[..module_end];
+    let code = ApplicationLogCode::parse(remainder.get(module_end + 2..)?)?;
+    (module == code.component().as_str() && level == code.level()).then_some((level, code))
 }
 
 fn write_private_atomic(path: &Path, bytes: &[u8]) -> Result<(), PreviewBundleError> {
@@ -429,21 +435,27 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    #[test]
-    fn bundle_reserializes_only_fixed_application_records() {
-        let directory = tempdir().expect("temporary directory");
-        fs::write(
-            directory.path().join("application-1.jsonl"),
-            b"{\"component\":\"application\",\"level\":\"info\",\"code\":\"started\"}\n",
-        )
-        .expect("application log");
-        fs::write(directory.path().join("core.jsonl"), b"private core message").expect("core log");
+    fn source_line(
+        level: LogLevel,
+        code: ApplicationLogCode,
+        message: &str,
+        context: Option<(&str, &str)>,
+    ) -> String {
+        let level = level.to_string();
+        let mut line = format!(
+            "2026-09-24T12:34:56.789Z {level:<5} [{}] {} | {message}",
+            code.component().as_str(),
+            code.as_str()
+        );
+        if let Some((key, value)) = context {
+            line.push_str(&format!(" | {key}={value}"));
+        }
+        line.push('\n');
+        line
+    }
 
-        let status = write_preview_bundle(directory.path(), b"{\"format_version\":1}")
-            .expect("preview bundle");
-        assert_eq!(status.application_event_count, 1);
-        assert_eq!(status.skipped_source_files, 0);
-        let bytes = fs::read(directory.path().join(PREVIEW_BUNDLE_NAME)).expect("bundle bytes");
+    fn read_application_events(path: &Path) -> String {
+        let bytes = fs::read(path).expect("bundle bytes");
         let mut archive = ZipArchive::new(Cursor::new(bytes)).expect("read bundle");
         let mut events = String::new();
         std::io::Read::read_to_string(
@@ -453,25 +465,123 @@ mod tests {
             &mut events,
         )
         .expect("event text");
-        assert!(events.contains("started"));
+        events
+    }
+
+    #[test]
+    fn bundle_reserializes_only_fixed_application_records() {
+        let directory = tempdir().expect("temporary directory");
+        let line = source_line(
+            LogLevel::Info,
+            ApplicationLogCode::Started,
+            "Application started",
+            Some(("private", "secret-model-name")),
+        );
+        assert!(is_log_file_name(
+            LogStream::Application,
+            "application-2026-09-24.log"
+        ));
+        assert!(
+            parse_log_line(line.trim_end_matches('\n')).is_some(),
+            "source line must match the shared grammar: {line:?}"
+        );
+        assert!(parse_source_event(line.trim_end_matches('\n')).is_some());
+        fs::write(directory.path().join("application-2026-09-24.log"), line)
+            .expect("application log");
+        fs::write(
+            directory.path().join("cubism-core-2026-09-24.log"),
+            "2026-09-24T12:34:56.789Z DEBUG [cubism-core] core/callback | private core message\n",
+        )
+        .expect("core log");
+        fs::write(
+            directory.path().join("application-2026-09-23.jsonl"),
+            "{\"component\":\"application\",\"level\":\"info\",\"code\":\"started\"}\n",
+        )
+        .expect("legacy log");
+
+        let status = write_preview_bundle(directory.path(), b"{\"format_version\":1}")
+            .expect("preview bundle");
+        assert_eq!(status.application_event_count, 1);
+        assert_eq!(status.skipped_source_files, 0);
+        let events = read_application_events(&directory.path().join(PREVIEW_BUNDLE_NAME));
+        assert_eq!(events, "INFO  [application] application/started\n");
+        assert!(!events.contains("2026-"));
+        assert!(!events.contains("Application started"));
+        assert!(!events.contains("secret-model-name"));
         assert!(!events.contains("private core message"));
     }
 
     #[test]
     fn bundle_skips_invalid_application_logs_without_copying_their_contents() {
         let directory = tempdir().expect("temporary directory");
+        let valid = source_line(
+            LogLevel::Info,
+            ApplicationLogCode::Started,
+            "Application started",
+            None,
+        );
         fs::write(
-            directory.path().join("application-1.jsonl"),
-            b"{\"component\":\"application\",\"level\":\"info\",\"code\":\"started\",\"private\":\"model-name\"}\n",
+            directory.path().join("application-2026-09-24.log"),
+            format!(
+                "{valid}2026-09-24T12:34:56.789Z INFO  [application] application/private | secret-model-name\n"
+            ),
         )
         .expect("invalid application log");
+        fs::write(
+            directory.path().join("application-2026-02-30.log"),
+            "not a product log date\n",
+        )
+        .expect("impossible-date file");
 
         let status = write_preview_bundle(directory.path(), b"{\"format_version\":1}")
             .expect("preview bundle");
         assert_eq!(status.application_event_count, 0);
         assert_eq!(status.skipped_source_files, 1);
         let bytes = fs::read(directory.path().join(PREVIEW_BUNDLE_NAME)).expect("bundle bytes");
-        assert!(!String::from_utf8_lossy(&bytes).contains("model-name"));
+        assert!(!String::from_utf8_lossy(&bytes).contains("secret-model-name"));
+    }
+
+    #[test]
+    fn bundle_accepts_every_catalog_code_from_active_and_rotated_logs() {
+        let directory = tempdir().expect("temporary directory");
+        let codes = ApplicationLogCode::ALL;
+        let midpoint = codes.len() / 2;
+        let mut active = String::new();
+        let mut rotated = String::new();
+        for (index, code) in codes.iter().copied().enumerate() {
+            let line = source_line(code.level(), code, "Fixed catalog message", None);
+            if index < midpoint {
+                active.push_str(&line);
+            } else {
+                rotated.push_str(&line);
+            }
+        }
+        fs::write(directory.path().join("application-2026-09-24.log"), active)
+            .expect("active application log");
+        fs::write(
+            directory.path().join("application-2026-09-23.2.log"),
+            rotated,
+        )
+        .expect("rotated application log");
+
+        let status = write_preview_bundle(directory.path(), b"{\"format_version\":1}")
+            .expect("preview bundle");
+        assert_eq!(status.application_event_count, codes.len() as u64);
+        assert_eq!(status.skipped_source_files, 0);
+        let events = read_application_events(&directory.path().join(PREVIEW_BUNDLE_NAME));
+        assert_eq!(events.lines().count(), codes.len());
+        for code in codes {
+            assert!(events.contains(code.as_str()));
+        }
+    }
+
+    #[test]
+    fn unreadable_log_directory_fails_instead_of_exporting_an_empty_preview() {
+        let directory = tempdir().expect("temporary directory");
+        let missing = directory.path().join("missing");
+
+        assert!(write_preview_bundle(&missing, b"{\"format_version\":1}").is_err());
+        assert!(!missing.join(PREVIEW_BUNDLE_NAME).exists());
     }
 
     #[test]

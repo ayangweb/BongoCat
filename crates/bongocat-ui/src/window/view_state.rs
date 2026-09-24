@@ -83,6 +83,18 @@ impl SettingsView {
                 cx,
             )
         });
+        self.logging_level_select.update(cx, |select, cx| {
+            select.set_items(
+                SearchableVec::new(logging_level_options(snapshot.resolved_language)),
+                window,
+                cx,
+            );
+            select.set_selected_value(
+                &logging_level_display_name(snapshot.logging.level, snapshot.resolved_language),
+                window,
+                cx,
+            )
+        });
         self.syncing_component_inputs = false;
     }
 
@@ -121,6 +133,14 @@ impl SettingsView {
                 cx,
             )
         });
+        let logging_level_select = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(logging_level_options(seed.language)),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
         cx.subscribe(
             &language_select,
             |view, _, event: &SelectEvent<SearchableVec<&'static str>>, cx| {
@@ -152,6 +172,21 @@ impl SettingsView {
             },
         )
         .detach();
+        cx.subscribe(
+            &logging_level_select,
+            |view, _, event: &SelectEvent<SearchableVec<&'static str>>, cx| {
+                if view.syncing_component_inputs {
+                    return;
+                }
+                let display_language = view.display_language();
+                if let SelectEvent::Confirm(Some(name)) = event
+                    && let Some(level) = logging_level_from_display_name(name, display_language)
+                {
+                    view.set_logging_level(level, cx);
+                }
+            },
+        )
+        .detach();
         Self {
             client,
             seed,
@@ -176,6 +211,8 @@ impl SettingsView {
             maximum_fps_timer_generation: 0,
             release_fallback_timeout_debouncer: crate::SettingsPatchDebouncer::default(),
             release_fallback_timeout_timer_generation: 0,
+            logging_settings_debouncer: crate::SettingsPatchDebouncer::default(),
+            logging_settings_timer_generation: 0,
             flush_pending_requested: false,
             quit_after_flush: false,
             model_delete_confirmation: None,
@@ -191,6 +228,7 @@ impl SettingsView {
             applied_theme: None,
             language_select,
             theme_select,
+            logging_level_select,
             request_quit,
             request_update,
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),

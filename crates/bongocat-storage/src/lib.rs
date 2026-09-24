@@ -170,7 +170,7 @@ mod tests {
     #[cfg(unix)]
     fn set_private_file_restricts_an_open_file() {
         let directory = tempdir().expect("tempdir");
-        let path = directory.path().join("log.jsonl");
+        let path = directory.path().join("private.log");
         let file = File::create(&path).expect("create");
         set_private_file(&file).expect("restrict");
         drop(file);
@@ -181,7 +181,7 @@ mod tests {
     #[cfg(unix)]
     fn set_private_path_restricts_a_file_by_path() {
         let directory = tempdir().expect("tempdir");
-        let path = directory.path().join("log.jsonl");
+        let path = directory.path().join("private.log");
         File::create(&path).expect("create");
         set_private_path(&path).expect("restrict");
         assert_eq!(mode_of(&path), 0o600);

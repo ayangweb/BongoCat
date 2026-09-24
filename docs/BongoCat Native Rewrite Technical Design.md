@@ -652,10 +652,12 @@ model evaluation + render snapshot
   attribution 与再分发清单；该发布工作不阻塞本地功能实现和 `next` 开发提交。
 - 原始指针不离开 safe wrapper；Moc 必须比 Model 活得更久。
 - Core 全局日志 callback 只在 callback 生命周期内有界复制至多 512 bytes，并以容量 128 的
-  非阻塞队列交给专用 Rust worker；callback 不获取 writer mutex、不序列化、不执行文件 I/O。
-  全局 callback-slot 竞争、队列满、停止后的迟到 callback 都只增加匿名 dropped 计数。关闭时先
-  注销 Core callback，拒绝新记录，再排空已接收记录并 join worker；Core message 与日志路径不进入
-  runtime、UI 或 diagnostics export。
+  非阻塞队列交给专用 Rust worker；callback 不获取 writer mutex、不转义/格式化文本、不执行文件 I/O。
+  worker 通过 application/Core 共用的文本 writer 写入当天的 `cubism-core-YYYY-MM-DD.log`；Core callback
+  不提供可信级别，因此原始 message 固定按 `debug` 过滤，实际 Core/renderer 失败仍由 app owner 以
+  `error`/`warn` stable code 记录。全局 callback-slot 竞争、队列满、停止后的迟到 callback 都只增加
+  匿名 dropped 计数。关闭时先注销 Core callback，拒绝新记录，再排空已接收记录并 join worker；
+  Core message 与日志路径不进入 runtime、UI 或 diagnostics export。
 - 不把未经验证的新纯 Rust Cubism 兼容 crate 作为生产基础。
 - `.model3.json`、motion、expression、physics 和 pose 兼容性由 fixture 验证。
 - motion3/exp3 的字节解析、曲线/fade/loop/UserData 求值和 expression Add/Multiply/Overwrite
@@ -1110,27 +1112,35 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   不得声称更新功能或 stable 发布完成。ADR-0034 记录了换实现新引入的能力损失（归档完整性校验、
   per-platform 资产匹配、公钥轮换窗）与待验证项；ADR-0035 记录了 worker、窗口、发布说明与
   "安装后协调 shutdown 而非安装前"这一处需要维护者复核的取舍。
-- 日志不记录真实按键序列、剪贴板内容或用户文件内容。
+- 日志不记录真实按键序列、剪贴板内容、用户路径、配置/模型正文、URL、密钥/凭据或动态 OS 错误文本。
 - 匿名 diagnostics export 由 settings service 的强类型 command 触发（自 Diagnostics 页面移除后无 UI
   入口，只由隔离 smoke 与排障路径使用），在当前环境 logs 目录以同目录
   原子替换写出固定格式的 JSON。导出只包含稳定错误码、匿名聚合计数、模型来源计数和 revision；
   不包含模型 ID、用户路径、按键值、原始配置/事件内容、时间戳或动态平台错误文本。
-- 应用日志由 app-owned writer 以固定组件、级别和 code 写入 `application-<utc_day>.jsonl`，
-  不接受自由文本。单文件上限为 1 MiB，应用日志总量上限为 8 MiB、最多保留 8 个文件，且只
-  保留最近 7 个 UTC 日；达到文件上限时执行有界轮转，启动和日期切换时执行过期/总量清理。
-  清理或写入失败只增加匿名 dropped/pruned 计数，不删除当前配置或模型数据。
+- application 与 Cubism Core 共用一套 UTF-8 单行文本 writer：每条记录依次包含 UTC 时间、级别、
+  module、闭合 stable code、固定人类可读 message 和经过转义/截断的允许上下文；不写 JSONL，也不接受
+  动态 OS 错误或用户资源正文作为日志协议。application 按 UTC 日写
+  `application-YYYY-MM-DD.log`，Core 写 `cubism-core-YYYY-MM-DD.log`；单个文件达到 1 MiB 后切分
+  编号文件，两类日志合计最多 8 MiB/32 个文件。
+- 当前 v1 `logging.level` 接受 `error`/`warn`/`info`/`debug`/`trace` 并默认 `info`；
+  `logging.retention_days` 接受 `1..=30` 并默认 `7`。日志先按日切换、再按单文件大小轮转，不提供
+  rotation mode 配置；设置变更后立即更新共享过滤/retention controller 并清理允许删除的旧文件。
+  `error` 用于关键失败，`warn` 用于降级/fallback/可恢复异常，`info` 用于重要业务状态，
+  `debug`/`trace` 用于低频开发诊断；逐输入、逐帧、下载进度与 temporary presentation unavailable
+  不逐次记录。清理或写入失败只增加匿名 dropped/pruned 计数，不删除当前配置或模型数据。
 - writer 初始化后同步创建环境隔离的运行标记；标记只含 v1 schema 与固定 phase：`running`、
   `shutting_down` 或 `panicked`。下一次启动将旧标记匿名分类为 forced/unknown、shutdown interrupted
   或 panic 后立刻覆盖为新的 `running`，避免重复恢复循环；只有 runtime、音频与配置相关 owner
-  完成正常 shutdown 后才删除。process panic hook 使用非阻塞写入追加固定 `application/error/panicked`
-  code，不读取 payload、源码位置、backtrace 或用户路径；Development-only 隔离 smoke 必须以同一
-  release 可执行文件产生真实 `panic=abort`，验证日志脱敏、配置字节不变、重启分类和标记清理；
-  默认产品 CLI/API 不暴露该测试入口。
+  完成正常 shutdown 后才删除。process panic hook 使用非阻塞写入追加固定
+  `application/panicked` 文本 code，不读取 payload、源码位置、backtrace 或用户路径；
+  Development-only 隔离 smoke 必须以同一 release 可执行文件产生真实 `panic=abort`，验证日志脱敏、
+  配置字节不变、重启分类和标记清理；默认产品 CLI/API 不暴露该测试入口。
 - 匿名 diagnostics export 的摘要只读取 app-owned writer 和 Cubism Core 的匿名
   written/dropped/rotated/pruned/active-bytes/retained-files/retained-bytes 统计，并另输出二者
   retained-bytes/files 的饱和聚合，不读取或复制 Core message。可预览的
-  application lifecycle 历史仅能按 ADR-0027 严格重新解析为固定 code record，再与该摘要组成当前
-  环境的私有 preview bundle；Core 历史内容不属于该 bundle。
+  application lifecycle 历史仅能按 ADR-0027 从已知 `.log` 文件严格提取闭合 code，再重写为不含
+  原始时间戳/上下文的 `application-events.log`，与该摘要组成当前环境的私有 preview bundle；Core
+  历史内容不属于该 bundle。
 
 初始字段命名和数据分类见 `shared/config/native-config-contract.md`，环境和 Bundle ID 决策见 ADR-0008。
 

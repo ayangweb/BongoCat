@@ -4,7 +4,7 @@
   "title": "BongoCat Native Rewrite configuration",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "application", "appearance", "overlay", "input", "model", "shortcuts"],
+  "required": ["schema_version", "application", "appearance", "overlay", "input", "logging", "model", "shortcuts"],
   "properties": {
     "schema_version": { "const": 1 },
     "application": {
@@ -18,6 +18,9 @@
     },
     "input": {
       "$ref": "#/$defs/input"
+    },
+    "logging": {
+      "$ref": "#/$defs/logging"
     },
     "model": {
       "$ref": "#/$defs/model"
@@ -69,6 +72,15 @@
       "properties": {
         "gamepad_stick_dead_zone": { "type": "number", "minimum": 0, "exclusiveMaximum": 1 },
         "gamepad_trigger_dead_zone": { "type": "number", "minimum": 0, "exclusiveMaximum": 1 }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "retention_days"],
+      "properties": {
+        "level": { "enum": ["error", "warn", "info", "debug", "trace"] },
+        "retention_days": { "type": "integer", "minimum": 1, "maximum": 30 }
       }
     },
     "model": {

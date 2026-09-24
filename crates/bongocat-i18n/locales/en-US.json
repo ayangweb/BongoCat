@@ -438,6 +438,24 @@
       "updates": {
         "title": "Startup and updates"
       },
+      "logging": {
+        "title": "Logging",
+        "level": {
+          "label": "Log level",
+          "description": "Higher levels include all lower-level details.",
+          "options": {
+            "error": "Errors only",
+            "warn": "Errors and warnings",
+            "info": "Standard details",
+            "debug": "Diagnostic details",
+            "trace": "All details"
+          }
+        },
+        "retention_days": {
+          "label": "Keep logs (days)",
+          "description": "Delete logs older than this many days. Total log storage is still capped."
+        }
+      },
       "status_icon": {
         "label": {
           "macos": "Show menu bar icon",

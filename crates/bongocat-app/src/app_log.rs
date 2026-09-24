@@ -1,74 +1,71 @@
 #![forbid(unsafe_code)]
 
 use bongocat_log::{
-    MAX_TOTAL_LOG_BYTES as SHARED_MAX_TOTAL_LOG_BYTES, enforce_directory_retention,
+    LogLevel, LogRecord, LogSettings, LogSettingsController, LogStream, TextLogWriter,
 };
-use bongocat_storage::{set_private_directory, set_private_file, set_private_path};
-use serde::Serialize;
+use bongocat_storage::{set_private_directory, set_private_file};
 use std::{
-    collections::BTreeMap,
-    fs::{self, File, OpenOptions},
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    fs::OpenOptions,
     io::{self, Write},
     panic::{self, PanicHookInfo},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
+    time::SystemTime,
 };
 
-const LOG_FILE_PREFIX: &str = "application-";
-const LOG_FILE_SUFFIX: &str = ".jsonl";
+pub use bongocat_log::LogLevel as ApplicationLogLevel;
+
 const RUN_MARKER_NAME: &str = "application-running.marker";
 const RUN_MARKER_RUNNING: &[u8] = b"{\"schema_version\":1,\"phase\":\"running\"}\n";
 const RUN_MARKER_SHUTTING_DOWN: &[u8] = b"{\"schema_version\":1,\"phase\":\"shutting_down\"}\n";
 const RUN_MARKER_PANICKED: &[u8] = b"{\"schema_version\":1,\"phase\":\"panicked\"}\n";
-const MAX_LOG_BYTES: u64 = 1024 * 1024;
-const MAX_LOG_FILES: usize = 8;
-const MAX_TOTAL_LOG_BYTES: u64 = SHARED_MAX_TOTAL_LOG_BYTES;
-const RETENTION_DAYS: u64 = 7;
-const SECONDS_PER_DAY: u64 = 86_400;
+const MAX_RECORDED_ONCE_KEYS: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ApplicationLogComponent {
     Application,
     Configuration,
+    Filesystem,
     Input,
+    Logging,
     Model,
+    Network,
+    Parser,
     Renderer,
     Runtime,
+    Service,
     Settings,
+    Ui,
+    Update,
+    Window,
 }
 
 impl ApplicationLogComponent {
-    const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Application => "application",
             Self::Configuration => "configuration",
+            Self::Filesystem => "filesystem",
             Self::Input => "input",
+            Self::Logging => "logging",
             Self::Model => "model",
+            Self::Network => "network",
+            Self::Parser => "parser",
             Self::Renderer => "renderer",
             Self::Runtime => "runtime",
+            Self::Service => "service",
             Self::Settings => "settings",
+            Self::Ui => "ui",
+            Self::Update => "update",
+            Self::Window => "window",
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum ApplicationLogLevel {
-    Info,
-    Warn,
-    Error,
-}
-
-impl ApplicationLogLevel {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Info => "info",
-            Self::Warn => "warn",
-            Self::Error => "error",
-        }
-    }
-}
-
+/// Closed application event catalog. Code and message are fixed project-owned
+/// values; only the small, allow-listed context after the message varies.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ApplicationLogCode {
     Started,
@@ -77,92 +74,398 @@ pub enum ApplicationLogCode {
     ShutdownCompleted,
     ShutdownFailed,
     Panicked,
+    LoggingSettingsChanged,
     RuntimeUnavailable,
     DiagnosticsExportFailed,
     ModelSelectionFallback,
+    StartupFailed,
+    StateRecovered,
+    StatePersistFailed,
+    ServiceDegraded,
+    ServiceRecovered,
+    ServiceFailed,
+    ModelPrepareStarted,
+    ModelActivationFailed,
+    ModelOperationCompleted,
+    ModelOperationFailed,
+    WindowVisibilityChanged,
+    WindowStatePersisted,
+    InputStatusChanged,
+    InputPermissionUnavailable,
+    UpdateUnavailable,
+    UpdateCheckCompleted,
+    UpdateCheckFailed,
+    UpdatePhaseChanged,
+    UpdateInstallStarted,
+    UpdateInstallCompleted,
+    UpdateInstallFailed,
+    SettingsCommandFailed,
+    UiTransportFailed,
+    FilesystemOperationFailed,
+    NetworkOperationFailed,
+    ParsingFailed,
 }
 
 impl ApplicationLogCode {
-    const fn as_str(self) -> &'static str {
+    pub const ALL: &'static [Self] = &[
+        Self::Started,
+        Self::PreviousRunUnclean,
+        Self::ShutdownStarted,
+        Self::ShutdownCompleted,
+        Self::ShutdownFailed,
+        Self::Panicked,
+        Self::LoggingSettingsChanged,
+        Self::RuntimeUnavailable,
+        Self::DiagnosticsExportFailed,
+        Self::ModelSelectionFallback,
+        Self::StartupFailed,
+        Self::StateRecovered,
+        Self::StatePersistFailed,
+        Self::ServiceDegraded,
+        Self::ServiceRecovered,
+        Self::ServiceFailed,
+        Self::ModelPrepareStarted,
+        Self::ModelActivationFailed,
+        Self::ModelOperationCompleted,
+        Self::ModelOperationFailed,
+        Self::WindowVisibilityChanged,
+        Self::WindowStatePersisted,
+        Self::InputStatusChanged,
+        Self::InputPermissionUnavailable,
+        Self::UpdateUnavailable,
+        Self::UpdateCheckCompleted,
+        Self::UpdateCheckFailed,
+        Self::UpdatePhaseChanged,
+        Self::UpdateInstallStarted,
+        Self::UpdateInstallCompleted,
+        Self::UpdateInstallFailed,
+        Self::SettingsCommandFailed,
+        Self::UiTransportFailed,
+        Self::FilesystemOperationFailed,
+        Self::NetworkOperationFailed,
+        Self::ParsingFailed,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Started => "started",
-            Self::PreviousRunUnclean => "previous_run_unclean",
-            Self::ShutdownStarted => "shutdown_started",
-            Self::ShutdownCompleted => "shutdown_completed",
-            Self::ShutdownFailed => "shutdown_failed",
-            Self::Panicked => "panicked",
-            Self::RuntimeUnavailable => "runtime_unavailable",
-            Self::DiagnosticsExportFailed => "diagnostics_export_failed",
-            Self::ModelSelectionFallback => "model_selection_fallback",
+            Self::Started => "application/started",
+            Self::PreviousRunUnclean => "application/previous_run_unclean",
+            Self::ShutdownStarted => "application/shutdown_started",
+            Self::ShutdownCompleted => "application/shutdown_completed",
+            Self::ShutdownFailed => "application/shutdown_failed",
+            Self::Panicked => "application/panicked",
+            Self::LoggingSettingsChanged => "logging/settings_changed",
+            Self::RuntimeUnavailable => "settings/runtime_unavailable",
+            Self::DiagnosticsExportFailed => "settings/diagnostics_export_failed",
+            Self::ModelSelectionFallback => "model/selection_fallback",
+            Self::StartupFailed => "application/startup_failed",
+            Self::StateRecovered => "application/state_recovered",
+            Self::StatePersistFailed => "application/state_persist_failed",
+            Self::ServiceDegraded => "service/degraded",
+            Self::ServiceRecovered => "service/recovered",
+            Self::ServiceFailed => "service/failed",
+            Self::ModelPrepareStarted => "model/prepare_started",
+            Self::ModelActivationFailed => "model/activation_failed",
+            Self::ModelOperationCompleted => "model/operation_completed",
+            Self::ModelOperationFailed => "model/operation_failed",
+            Self::WindowVisibilityChanged => "window/visibility_changed",
+            Self::WindowStatePersisted => "window/state_persisted",
+            Self::InputStatusChanged => "input/status_changed",
+            Self::InputPermissionUnavailable => "input/permission_unavailable",
+            Self::UpdateUnavailable => "update/unavailable",
+            Self::UpdateCheckCompleted => "update/check_completed",
+            Self::UpdateCheckFailed => "update/check_failed",
+            Self::UpdatePhaseChanged => "update/phase_changed",
+            Self::UpdateInstallStarted => "update/install_started",
+            Self::UpdateInstallCompleted => "update/install_completed",
+            Self::UpdateInstallFailed => "update/install_failed",
+            Self::SettingsCommandFailed => "settings/command_failed",
+            Self::UiTransportFailed => "ui/transport_failed",
+            Self::FilesystemOperationFailed => "filesystem/operation_failed",
+            Self::NetworkOperationFailed => "network/operation_failed",
+            Self::ParsingFailed => "parser/failed",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|code| code.as_str() == value)
+    }
+
+    pub const fn level(self) -> LogLevel {
+        match self {
+            Self::Started
+            | Self::ShutdownStarted
+            | Self::ShutdownCompleted
+            | Self::LoggingSettingsChanged
+            | Self::StateRecovered
+            | Self::ServiceRecovered
+            | Self::ModelOperationCompleted
+            | Self::WindowVisibilityChanged
+            | Self::InputStatusChanged
+            | Self::UpdateUnavailable
+            | Self::UpdateCheckCompleted
+            | Self::UpdatePhaseChanged
+            | Self::UpdateInstallStarted
+            | Self::UpdateInstallCompleted => LogLevel::Info,
+            Self::PreviousRunUnclean
+            | Self::ModelSelectionFallback
+            | Self::StatePersistFailed
+            | Self::ServiceDegraded
+            | Self::InputPermissionUnavailable
+            | Self::SettingsCommandFailed => LogLevel::Warn,
+            Self::ShutdownFailed
+            | Self::Panicked
+            | Self::RuntimeUnavailable
+            | Self::DiagnosticsExportFailed
+            | Self::StartupFailed
+            | Self::ServiceFailed
+            | Self::ModelActivationFailed
+            | Self::ModelOperationFailed
+            | Self::UpdateCheckFailed
+            | Self::UpdateInstallFailed
+            | Self::UiTransportFailed
+            | Self::FilesystemOperationFailed
+            | Self::NetworkOperationFailed
+            | Self::ParsingFailed => LogLevel::Error,
+            Self::ModelPrepareStarted | Self::WindowStatePersisted => LogLevel::Debug,
+        }
+    }
+
+    pub const fn component(self) -> ApplicationLogComponent {
+        match self {
+            Self::Started
+            | Self::PreviousRunUnclean
+            | Self::ShutdownStarted
+            | Self::ShutdownCompleted
+            | Self::ShutdownFailed
+            | Self::Panicked
+            | Self::StartupFailed
+            | Self::StateRecovered
+            | Self::StatePersistFailed => ApplicationLogComponent::Application,
+            Self::LoggingSettingsChanged => ApplicationLogComponent::Logging,
+            Self::RuntimeUnavailable
+            | Self::DiagnosticsExportFailed
+            | Self::SettingsCommandFailed => ApplicationLogComponent::Settings,
+            Self::ModelSelectionFallback
+            | Self::ModelPrepareStarted
+            | Self::ModelActivationFailed
+            | Self::ModelOperationCompleted
+            | Self::ModelOperationFailed => ApplicationLogComponent::Model,
+            Self::ServiceDegraded | Self::ServiceRecovered | Self::ServiceFailed => {
+                ApplicationLogComponent::Service
+            }
+            Self::WindowVisibilityChanged | Self::WindowStatePersisted => {
+                ApplicationLogComponent::Window
+            }
+            Self::InputStatusChanged | Self::InputPermissionUnavailable => {
+                ApplicationLogComponent::Input
+            }
+            Self::UpdateUnavailable
+            | Self::UpdateCheckCompleted
+            | Self::UpdateCheckFailed
+            | Self::UpdatePhaseChanged
+            | Self::UpdateInstallStarted
+            | Self::UpdateInstallCompleted
+            | Self::UpdateInstallFailed => ApplicationLogComponent::Update,
+            Self::UiTransportFailed => ApplicationLogComponent::Ui,
+            Self::FilesystemOperationFailed => ApplicationLogComponent::Filesystem,
+            Self::NetworkOperationFailed => ApplicationLogComponent::Network,
+            Self::ParsingFailed => ApplicationLogComponent::Parser,
+        }
+    }
+
+    const fn message(self) -> &'static str {
+        match self {
+            Self::Started => "Application started",
+            Self::PreviousRunUnclean => "The previous run ended unexpectedly",
+            Self::ShutdownStarted => "Application shutdown started",
+            Self::ShutdownCompleted => "Application shutdown completed",
+            Self::ShutdownFailed => "Application shutdown failed",
+            Self::Panicked => "Application panicked",
+            Self::LoggingSettingsChanged => "Logging settings changed",
+            Self::RuntimeUnavailable => "Runtime service is unavailable",
+            Self::DiagnosticsExportFailed => "Diagnostics export failed",
+            Self::ModelSelectionFallback => {
+                "The selected model was unavailable; restored the standard preset"
+            }
+            Self::StartupFailed => "Application startup failed",
+            Self::StateRecovered => "Application state was recovered",
+            Self::StatePersistFailed => "Application state could not be persisted",
+            Self::ServiceDegraded => "A service is degraded",
+            Self::ServiceRecovered => "A service recovered",
+            Self::ServiceFailed => "A service failed",
+            Self::ModelPrepareStarted => "Model preparation started",
+            Self::ModelActivationFailed => "Model activation failed",
+            Self::ModelOperationCompleted => "Model operation completed",
+            Self::ModelOperationFailed => "Model operation failed",
+            Self::WindowVisibilityChanged => "Model window visibility changed",
+            Self::WindowStatePersisted => "Window state was persisted",
+            Self::InputStatusChanged => "Input service status changed",
+            Self::InputPermissionUnavailable => "Input monitoring permission is unavailable",
+            Self::UpdateUnavailable => "Updates are unavailable",
+            Self::UpdateCheckCompleted => "Update check completed",
+            Self::UpdateCheckFailed => "Update check failed",
+            Self::UpdatePhaseChanged => "Update phase changed",
+            Self::UpdateInstallStarted => "Update installation started",
+            Self::UpdateInstallCompleted => "Update installation completed",
+            Self::UpdateInstallFailed => "Update installation failed",
+            Self::SettingsCommandFailed => "Settings command failed",
+            Self::UiTransportFailed => "Settings service transport failed",
+            Self::FilesystemOperationFailed => "Filesystem operation failed",
+            Self::NetworkOperationFailed => "Network operation failed",
+            Self::ParsingFailed => "Data parsing failed",
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ApplicationLogContext {
+    Operation(&'static str),
+    Phase(&'static str),
+    Service(&'static str),
+    Reason(&'static str),
+    State(&'static str),
+    Source(&'static str),
+    Result(&'static str),
+    Count(u64),
+    Bytes(u64),
+    Revision(u64),
+    PreviousLevel(&'static str),
+    CurrentLevel(&'static str),
+    PreviousRetentionDays(u64),
+    CurrentRetentionDays(u64),
+}
+
+impl ApplicationLogContext {
+    const fn key(self) -> &'static str {
+        match self {
+            Self::Operation(_) => "operation",
+            Self::Phase(_) => "phase",
+            Self::Service(_) => "service",
+            Self::Reason(_) => "reason",
+            Self::State(_) => "state",
+            Self::Source(_) => "source",
+            Self::Result(_) => "result",
+            Self::Count(_) => "count",
+            Self::Bytes(_) => "bytes",
+            Self::Revision(_) => "revision",
+            Self::PreviousLevel(_) => "previous_level",
+            Self::CurrentLevel(_) => "current_level",
+            Self::PreviousRetentionDays(_) => "previous_retention_days",
+            Self::CurrentRetentionDays(_) => "current_retention_days",
+        }
+    }
+
+    fn value(self) -> String {
+        match self {
+            Self::Operation(value)
+            | Self::Phase(value)
+            | Self::Service(value)
+            | Self::Reason(value)
+            | Self::State(value)
+            | Self::Source(value)
+            | Self::Result(value)
+            | Self::PreviousLevel(value)
+            | Self::CurrentLevel(value) => value.to_owned(),
+            Self::Count(value)
+            | Self::Bytes(value)
+            | Self::Revision(value)
+            | Self::PreviousRetentionDays(value)
+            | Self::CurrentRetentionDays(value) => value.to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ApplicationLogEvent {
-    pub component: ApplicationLogComponent,
-    pub level: ApplicationLogLevel,
-    pub code: ApplicationLogCode,
+    code: ApplicationLogCode,
+    context: Vec<ApplicationLogContext>,
 }
 
 impl ApplicationLogEvent {
-    pub const fn started() -> Self {
+    pub const fn new(code: ApplicationLogCode) -> Self {
         Self {
-            component: ApplicationLogComponent::Application,
-            level: ApplicationLogLevel::Info,
-            code: ApplicationLogCode::Started,
+            code,
+            context: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_context(mut self, context: ApplicationLogContext) -> Self {
+        self.context.push(context);
+        self
+    }
+
+    pub const fn started() -> Self {
+        Self::new(ApplicationLogCode::Started)
     }
 
     pub const fn shutdown_started() -> Self {
-        Self {
-            component: ApplicationLogComponent::Application,
-            level: ApplicationLogLevel::Info,
-            code: ApplicationLogCode::ShutdownStarted,
-        }
+        Self::new(ApplicationLogCode::ShutdownStarted)
     }
 
     pub const fn previous_run_unclean() -> Self {
-        Self {
-            component: ApplicationLogComponent::Application,
-            level: ApplicationLogLevel::Warn,
-            code: ApplicationLogCode::PreviousRunUnclean,
-        }
+        Self::new(ApplicationLogCode::PreviousRunUnclean)
     }
 
     pub const fn shutdown_completed() -> Self {
-        Self {
-            component: ApplicationLogComponent::Application,
-            level: ApplicationLogLevel::Info,
-            code: ApplicationLogCode::ShutdownCompleted,
-        }
+        Self::new(ApplicationLogCode::ShutdownCompleted)
     }
 
     pub const fn shutdown_failed() -> Self {
-        Self {
-            component: ApplicationLogComponent::Application,
-            level: ApplicationLogLevel::Error,
-            code: ApplicationLogCode::ShutdownFailed,
-        }
+        Self::new(ApplicationLogCode::ShutdownFailed)
     }
 
     pub const fn panicked() -> Self {
-        Self {
-            component: ApplicationLogComponent::Application,
-            level: ApplicationLogLevel::Error,
-            code: ApplicationLogCode::Panicked,
-        }
+        Self::new(ApplicationLogCode::Panicked)
     }
 
     /// The configured selected model was missing or unusable at startup and
-    /// the application fell back to the standard preset model. The event is
-    /// anonymous: it never names the failed model or the underlying error.
+    /// the application fell back to the standard preset model.
     pub const fn model_selection_fallback() -> Self {
-        Self {
-            component: ApplicationLogComponent::Model,
-            level: ApplicationLogLevel::Warn,
-            code: ApplicationLogCode::ModelSelectionFallback,
+        Self::new(ApplicationLogCode::ModelSelectionFallback)
+    }
+
+    pub(crate) fn logging_settings_changed(previous: LogSettings, current: LogSettings) -> Self {
+        Self::new(ApplicationLogCode::LoggingSettingsChanged)
+            .with_context(ApplicationLogContext::PreviousLevel(
+                previous.level.as_str(),
+            ))
+            .with_context(ApplicationLogContext::CurrentLevel(current.level.as_str()))
+            .with_context(ApplicationLogContext::PreviousRetentionDays(
+                previous.retention_days,
+            ))
+            .with_context(ApplicationLogContext::CurrentRetentionDays(
+                current.retention_days,
+            ))
+    }
+
+    fn to_record(&self, timestamp: SystemTime) -> LogRecord {
+        let mut record = LogRecord::new(
+            timestamp,
+            self.code.level(),
+            self.code.component().as_str(),
+            self.code.as_str(),
+            self.code.message(),
+        );
+        for context in &self.context {
+            record = record.with_context(context.key(), context.value());
         }
+        record
+    }
+
+    fn once_key(&self) -> String {
+        let mut key = self.code.as_str().to_owned();
+        for context in &self.context {
+            key.push('\u{1f}');
+            key.push_str(context.key());
+            key.push('=');
+            key.push_str(&context.value());
+        }
+        key
     }
 }
 
@@ -236,12 +539,11 @@ impl std::error::Error for ApplicationLogError {}
 #[derive(Debug)]
 struct ApplicationLogState {
     directory: PathBuf,
-    day: u64,
-    path: PathBuf,
-    file: Option<File>,
-    bytes: u64,
+    writer: TextLogWriter,
+    controller: LogSettingsController,
     diagnostics: ApplicationLogDiagnostics,
-    code_counts: BTreeMap<ApplicationLogEvent, u64>,
+    code_counts: BTreeMap<ApplicationLogCode, u64>,
+    recorded_once: BTreeSet<String>,
 }
 
 #[derive(Debug)]
@@ -291,38 +593,75 @@ impl Drop for ApplicationPanicHook {
     }
 }
 
-#[derive(Serialize)]
-struct ApplicationLogRecord {
-    component: &'static str,
-    level: &'static str,
-    code: &'static str,
-}
-
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct LogFile {
-    day: u64,
-    generation: usize,
-    path: PathBuf,
-    bytes: u64,
-}
-
 impl ApplicationLogHandle {
     pub fn install(directory: impl AsRef<Path>) -> Result<Self, ApplicationLogError> {
+        Self::install_with_settings(directory, LogSettings::default(), false)
+    }
+
+    pub fn install_with_settings(
+        directory: impl AsRef<Path>,
+        settings: LogSettings,
+        deferred_retention: bool,
+    ) -> Result<Self, ApplicationLogError> {
+        let directory = directory.as_ref();
+        fs::create_dir_all(directory).map_err(ApplicationLogError::CreateDirectory)?;
+        set_private_directory(directory).map_err(ApplicationLogError::CreateDirectory)?;
+        let controller = LogSettingsController::new(settings);
+        let writer = if deferred_retention {
+            TextLogWriter::open_deferred(directory, LogStream::Application, controller.clone())
+        } else {
+            TextLogWriter::open(directory, LogStream::Application, controller.clone())
+        }
+        .map_err(ApplicationLogError::OpenFile)?;
+        let mut state = ApplicationLogState {
+            directory: directory.to_owned(),
+            writer,
+            controller,
+            diagnostics: ApplicationLogDiagnostics::default(),
+            code_counts: BTreeMap::new(),
+            recorded_once: BTreeSet::new(),
+        };
+        refresh_diagnostics(&mut state);
         Ok(Self {
-            sink: Arc::new(ApplicationLogSink::open(directory.as_ref(), current_day())?),
+            sink: Arc::new(ApplicationLogSink {
+                state: Mutex::new(state),
+            }),
         })
     }
 
     pub fn record(&self, event: ApplicationLogEvent) {
-        self.sink.record(current_day(), event);
+        self.sink.record(event);
+    }
+
+    /// Record an event only once for this process. Use this for polling or
+    /// retry loops whose error state is already summarized elsewhere.
+    pub fn record_once(&self, event: ApplicationLogEvent) {
+        self.sink.record_once(event);
     }
 
     pub fn diagnostics(&self) -> ApplicationLogDiagnostics {
-        self.sink
+        let mut state = self
+            .sink
             .state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .diagnostics
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        refresh_diagnostics(&mut state);
+        state.diagnostics
+    }
+
+    pub fn settings_controller(&self) -> LogSettingsController {
+        self.sink.controller()
+    }
+
+    pub fn settings(&self) -> LogSettings {
+        self.sink.controller().settings()
+    }
+
+    /// Apply a successfully persisted policy to the shared controller. When
+    /// raising the threshold, the change is recorded under the old level; when
+    /// lowering it, the same event is recorded under the new level.
+    pub fn replace_settings(&self, settings: LogSettings) {
+        self.sink.replace_settings(settings);
     }
 
     pub fn install_panic_hook(&self) -> ApplicationPanicHook {
@@ -336,7 +675,7 @@ impl ApplicationLogHandle {
             .directory
             .clone();
         panic::set_hook(Box::new(move |_| {
-            sink.try_record(current_day(), ApplicationLogEvent::panicked());
+            sink.try_record(ApplicationLogEvent::panicked());
             let _ = write_run_marker(&directory.join(RUN_MARKER_NAME), RUN_MARKER_PANICKED);
         }));
         ApplicationPanicHook {
@@ -392,282 +731,151 @@ fn write_run_marker(path: &Path, contents: &[u8]) -> Result<(), ApplicationLogEr
 }
 
 impl ApplicationLogSink {
-    fn open(directory: &Path, day: u64) -> Result<Self, ApplicationLogError> {
-        fs::create_dir_all(directory).map_err(ApplicationLogError::CreateDirectory)?;
-        set_private_directory(directory).map_err(ApplicationLogError::CreateDirectory)?;
-        let path = active_path(directory, day);
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(ApplicationLogError::OpenFile)?;
-        set_private_file(&file).map_err(ApplicationLogError::OpenFile)?;
-        let bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
-        let mut state = ApplicationLogState {
-            directory: directory.to_owned(),
-            day,
-            path,
-            file: Some(file),
-            bytes,
-            diagnostics: ApplicationLogDiagnostics {
-                bytes,
-                retained_files: 1,
-                ..ApplicationLogDiagnostics::default()
-            },
-            code_counts: BTreeMap::new(),
-        };
-        prune_logs(&mut state, day);
-        refresh_totals(&mut state);
-        Ok(Self {
-            state: Mutex::new(state),
-        })
+    fn controller(&self) -> LogSettingsController {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .controller
+            .clone()
     }
 
-    fn record(&self, day: u64, event: ApplicationLogEvent) {
+    fn replace_settings(&self, settings: LogSettings) {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        record_locked(&mut state, day, event);
+        let previous = state.controller.settings();
+        if previous == settings {
+            state.writer.refresh_policy();
+            refresh_diagnostics(&mut state);
+            return;
+        }
+
+        let event = ApplicationLogEvent::logging_settings_changed(previous, settings);
+        if LogLevel::Info.is_enabled(previous.level) {
+            record_event_locked(&mut state, event.clone());
+        }
+        state.controller.replace_settings(settings);
+        state.writer.refresh_policy();
+        if !LogLevel::Info.is_enabled(previous.level) && LogLevel::Info.is_enabled(settings.level) {
+            record_event_locked(&mut state, event);
+        }
+        refresh_diagnostics(&mut state);
     }
 
-    fn try_record(&self, day: u64, event: ApplicationLogEvent) {
+    fn record(&self, event: ApplicationLogEvent) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        record_event_locked(&mut state, event);
+    }
+
+    fn record_once(&self, event: ApplicationLogEvent) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !event
+            .code
+            .level()
+            .is_enabled(state.controller.settings().level)
+        {
+            return;
+        }
+        let key = event.once_key();
+        let should_record = if state.recorded_once.contains(&key) {
+            false
+        } else if state.recorded_once.len() < MAX_RECORDED_ONCE_KEYS {
+            state.recorded_once.insert(key);
+            true
+        } else {
+            false
+        };
+        if should_record {
+            record_event_locked(&mut state, event);
+        }
+    }
+
+    fn try_record(&self, event: ApplicationLogEvent) {
         let Ok(mut state) = self.state.try_lock() else {
             return;
         };
-        record_locked(&mut state, day, event);
+        let timestamp = SystemTime::now();
+        let record = event.to_record(timestamp);
+        if matches!(state.writer.try_record(record), Some(Ok(true))) {
+            count_event(&mut state, event.code);
+        }
+        refresh_diagnostics(&mut state);
     }
 }
 
-fn record_locked(state: &mut ApplicationLogState, day: u64, event: ApplicationLogEvent) {
-    if day != state.day {
-        switch_day(state, day);
+fn record_event_locked(state: &mut ApplicationLogState, event: ApplicationLogEvent) {
+    let timestamp = SystemTime::now();
+    let record = event.to_record(timestamp);
+    if matches!(state.writer.record(record), Ok(true)) {
+        count_event(state, event.code);
     }
-    let record = ApplicationLogRecord {
-        component: event.component.as_str(),
-        level: event.level.as_str(),
-        code: event.code.as_str(),
-    };
-    let Ok(mut line) = serde_json::to_vec(&record) else {
-        state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
-        return;
-    };
-    line.push(b'\n');
-    let Ok(line_len) = u64::try_from(line.len()) else {
-        state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
-        return;
-    };
-    if state.bytes.saturating_add(line_len) > MAX_LOG_BYTES && !rotate_active(state) {
-        state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
-        return;
-    }
-    let Some(file) = state.file.as_mut() else {
-        state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
-        return;
-    };
-    if file.write_all(&line).is_err() || file.flush().is_err() {
-        state.diagnostics.dropped = state.diagnostics.dropped.saturating_add(1);
-        return;
-    }
-    state.bytes = state.bytes.saturating_add(line_len);
-    state.diagnostics.written = state.diagnostics.written.saturating_add(1);
-    state.diagnostics.bytes = state.diagnostics.bytes.saturating_add(line_len);
-    *state.code_counts.entry(event).or_default() = state
-        .code_counts
-        .get(&event)
-        .copied()
-        .unwrap_or(0)
-        .saturating_add(1);
-    let count = match event.code {
-        ApplicationLogCode::Started => &mut state.diagnostics.events.started,
-        ApplicationLogCode::PreviousRunUnclean => {
-            &mut state.diagnostics.events.previous_run_unclean
-        }
-        ApplicationLogCode::ShutdownStarted => &mut state.diagnostics.events.shutdown_started,
-        ApplicationLogCode::ShutdownCompleted => &mut state.diagnostics.events.shutdown_completed,
-        ApplicationLogCode::ShutdownFailed => &mut state.diagnostics.events.shutdown_failed,
-        ApplicationLogCode::Panicked => &mut state.diagnostics.events.panicked,
-        ApplicationLogCode::RuntimeUnavailable => &mut state.diagnostics.events.runtime_unavailable,
-        ApplicationLogCode::DiagnosticsExportFailed => {
-            &mut state.diagnostics.events.diagnostics_export_failed
-        }
-        ApplicationLogCode::ModelSelectionFallback => {
-            &mut state.diagnostics.events.model_selection_fallback
-        }
-    };
+    refresh_diagnostics(state);
+}
+
+fn count_event(state: &mut ApplicationLogState, code: ApplicationLogCode) {
+    let count = state.code_counts.entry(code).or_default();
     *count = count.saturating_add(1);
-    prune_logs(state, day);
-    refresh_totals(state);
-}
 
-fn switch_day(state: &mut ApplicationLogState, day: u64) {
-    if let Some(file) = state.file.take() {
-        let _ = file.sync_all();
-    }
-    state.day = day;
-    state.path = active_path(&state.directory, day);
-    state.bytes = 0;
-    state.file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&state.path)
-        .ok();
-    if let Some(file) = state.file.as_ref() {
-        let _ = set_private_file(file);
-        state.bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
-    }
-    prune_logs(state, day);
-    refresh_totals(state);
-}
-
-fn rotate_active(state: &mut ApplicationLogState) -> bool {
-    let Some(file) = state.file.take() else {
-        return false;
+    let events = &mut state.diagnostics.events;
+    let target = match code {
+        ApplicationLogCode::Started => &mut events.started,
+        ApplicationLogCode::PreviousRunUnclean => &mut events.previous_run_unclean,
+        ApplicationLogCode::ShutdownStarted => &mut events.shutdown_started,
+        ApplicationLogCode::ShutdownCompleted => &mut events.shutdown_completed,
+        ApplicationLogCode::ShutdownFailed => &mut events.shutdown_failed,
+        ApplicationLogCode::Panicked => &mut events.panicked,
+        ApplicationLogCode::RuntimeUnavailable => &mut events.runtime_unavailable,
+        ApplicationLogCode::DiagnosticsExportFailed => &mut events.diagnostics_export_failed,
+        ApplicationLogCode::ModelSelectionFallback => &mut events.model_selection_fallback,
+        ApplicationLogCode::LoggingSettingsChanged
+        | ApplicationLogCode::StartupFailed
+        | ApplicationLogCode::StateRecovered
+        | ApplicationLogCode::StatePersistFailed
+        | ApplicationLogCode::ServiceDegraded
+        | ApplicationLogCode::ServiceRecovered
+        | ApplicationLogCode::ServiceFailed
+        | ApplicationLogCode::ModelPrepareStarted
+        | ApplicationLogCode::ModelActivationFailed
+        | ApplicationLogCode::ModelOperationCompleted
+        | ApplicationLogCode::ModelOperationFailed
+        | ApplicationLogCode::WindowVisibilityChanged
+        | ApplicationLogCode::WindowStatePersisted
+        | ApplicationLogCode::InputStatusChanged
+        | ApplicationLogCode::InputPermissionUnavailable
+        | ApplicationLogCode::UpdateUnavailable
+        | ApplicationLogCode::UpdateCheckCompleted
+        | ApplicationLogCode::UpdateCheckFailed
+        | ApplicationLogCode::UpdatePhaseChanged
+        | ApplicationLogCode::UpdateInstallStarted
+        | ApplicationLogCode::UpdateInstallCompleted
+        | ApplicationLogCode::UpdateInstallFailed
+        | ApplicationLogCode::SettingsCommandFailed
+        | ApplicationLogCode::UiTransportFailed
+        | ApplicationLogCode::FilesystemOperationFailed
+        | ApplicationLogCode::NetworkOperationFailed
+        | ApplicationLogCode::ParsingFailed => return,
     };
-    if file.sync_all().is_err() {
-        state.file = None;
-        return false;
-    }
-    drop(file);
-    for generation in (1..MAX_LOG_FILES).rev() {
-        let source = rotated_path(&state.path, generation);
-        let destination = rotated_path(&state.path, generation + 1);
-        let _ = fs::remove_file(&destination);
-        if source.exists() && fs::rename(&source, &destination).is_err() {
-            reopen_active(state);
-            return false;
-        }
-    }
-    let first = rotated_path(&state.path, 1);
-    let _ = fs::remove_file(&first);
-    if fs::rename(&state.path, &first).is_err() {
-        reopen_active(state);
-        return false;
-    }
-    if !reopen_active(state) {
-        let _ = fs::rename(&first, &state.path);
-        reopen_active(state);
-        return false;
-    }
-    state.bytes = 0;
-    state.diagnostics.rotated = state.diagnostics.rotated.saturating_add(1);
-    refresh_totals(state);
-    true
+    *target = target.saturating_add(1);
 }
 
-fn reopen_active(state: &mut ApplicationLogState) -> bool {
-    let Ok(file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&state.path)
-    else {
-        return false;
-    };
-    if set_private_file(&file).is_err() {
-        return false;
-    }
-    state.bytes = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
-    state.file = Some(file);
-    true
-}
-
-fn prune_logs(state: &mut ApplicationLogState, current_day: u64) {
-    let mut files = collect_log_files(&state.directory);
-    let oldest_day = current_day.saturating_sub(RETENTION_DAYS.saturating_sub(1));
-    for file in files.iter().filter(|file| file.day < oldest_day) {
-        if fs::remove_file(&file.path).is_ok() {
-            state.diagnostics.pruned = state.diagnostics.pruned.saturating_add(1);
-        }
-    }
-    files.retain(|file| file.day >= oldest_day);
-    files.sort_by(|left, right| {
-        right
-            .day
-            .cmp(&left.day)
-            .then_with(|| left.generation.cmp(&right.generation))
-    });
-    let mut total_bytes = files.iter().map(|file| file.bytes).sum::<u64>();
-    for file in files.iter().skip(MAX_LOG_FILES) {
-        if file.path == state.path {
-            continue;
-        }
-        if fs::remove_file(&file.path).is_ok() {
-            total_bytes = total_bytes.saturating_sub(file.bytes);
-            state.diagnostics.pruned = state.diagnostics.pruned.saturating_add(1);
-        }
-    }
-    let mut remaining = collect_log_files(&state.directory);
-    remaining.sort_by(|left, right| {
-        right
-            .day
-            .cmp(&left.day)
-            .then_with(|| left.generation.cmp(&right.generation))
-    });
-    total_bytes = remaining.iter().map(|file| file.bytes).sum();
-    for file in remaining.iter().rev() {
-        if total_bytes <= MAX_TOTAL_LOG_BYTES || file.path == state.path {
-            continue;
-        }
-        if fs::remove_file(&file.path).is_ok() {
-            total_bytes = total_bytes.saturating_sub(file.bytes);
-            state.diagnostics.pruned = state.diagnostics.pruned.saturating_add(1);
-        }
-    }
-    let _ = enforce_directory_retention(&state.directory, Some(&state.path), SystemTime::now());
-    refresh_totals(state);
-}
-
-fn collect_log_files(directory: &Path) -> Vec<LogFile> {
-    let Ok(entries) = fs::read_dir(directory) else {
-        return Vec::new();
-    };
-    entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let path = entry.path();
-            let name = path.file_name()?.to_str()?;
-            let suffix = name.strip_prefix(LOG_FILE_PREFIX)?;
-            let (day_text, generation) = if let Some(day) = suffix.strip_suffix(LOG_FILE_SUFFIX) {
-                (day, 0)
-            } else if let Some((day, generation)) = suffix.split_once(".jsonl.") {
-                (day, generation.parse::<usize>().ok()?)
-            } else {
-                return None;
-            };
-            let day = day_text.parse::<u64>().ok()?;
-            let bytes = entry.metadata().ok()?.len();
-            let _ = set_private_path(&path);
-            Some(LogFile {
-                day,
-                generation,
-                path,
-                bytes,
-            })
-        })
-        .collect()
-}
-
-fn refresh_totals(state: &mut ApplicationLogState) {
-    let files = collect_log_files(&state.directory);
-    state.diagnostics.bytes = files.iter().map(|file| file.bytes).sum::<u64>();
-    state.diagnostics.retained_files = files.len() as u64;
-}
-
-fn active_path(directory: &Path, day: u64) -> PathBuf {
-    directory.join(format!("{LOG_FILE_PREFIX}{day}{LOG_FILE_SUFFIX}"))
-}
-
-fn rotated_path(path: &Path, generation: usize) -> PathBuf {
-    let mut rotated = path.as_os_str().to_owned();
-    rotated.push(format!(".{generation}"));
-    PathBuf::from(rotated)
-}
-
-fn current_day() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs() / SECONDS_PER_DAY)
-        .unwrap_or(0)
+fn refresh_diagnostics(state: &mut ApplicationLogState) {
+    let writer = state.writer.stats();
+    state.diagnostics.written = writer.written;
+    state.diagnostics.dropped = writer.dropped;
+    state.diagnostics.rotated = writer.rotated;
+    state.diagnostics.pruned = writer.pruned;
+    // The historical diagnostics field is the sum of all retained application
+    // files, not only the active one. The shared writer exposes the active
+    // value separately for Core's two-field contract.
+    state.diagnostics.bytes = writer.retained_bytes;
+    state.diagnostics.retained_files = writer.retained_files;
 }
 
 #[cfg(test)]
@@ -675,50 +883,127 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    fn sink(directory: &Path, day: u64) -> ApplicationLogSink {
-        ApplicationLogSink::open(directory, day).expect("open application log")
+    fn only_log(directory: &Path) -> PathBuf {
+        let mut paths = fs::read_dir(directory)
+            .expect("read logs")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("application-") && name.ends_with(".log"))
+            })
+            .collect::<Vec<_>>();
+        paths.sort();
+        paths.pop().expect("application log")
     }
 
     #[test]
-    fn writes_only_stable_fields_and_aggregates_codes() {
+    fn writes_a_single_human_readable_line_with_stable_code() {
         let directory = tempdir().expect("temporary directory");
-        let sink = sink(directory.path(), 20_000);
-        sink.record(20_000, ApplicationLogEvent::started());
-        let state = sink.state.lock().expect("state lock");
-        assert_eq!(state.diagnostics.written, 1);
-        assert_eq!(state.code_counts.len(), 1);
-        let contents = fs::read_to_string(&state.path).expect("log contents");
-        assert_eq!(
-            contents,
-            "{\"component\":\"application\",\"level\":\"info\",\"code\":\"started\"}\n"
+        let handle = ApplicationLogHandle::install(directory.path()).expect("application log");
+        handle.record(ApplicationLogEvent::started());
+        let contents = fs::read_to_string(only_log(directory.path())).expect("log contents");
+        assert!(
+            contents.contains(" INFO  [application] application/started | Application started\n")
         );
-        assert!(!contents.contains("/"));
+        assert!(!contents.contains('{'));
+        assert_eq!(handle.diagnostics().written, 1);
     }
 
     #[test]
-    fn switches_day_and_prunes_old_files() {
+    fn level_filter_and_shared_controller_update_are_applied_without_restart() {
         let directory = tempdir().expect("temporary directory");
-        fs::write(active_path(directory.path(), 1), b"old").expect("old log");
-        let sink = sink(directory.path(), 10);
-        sink.record(10, ApplicationLogEvent::started());
-        let mut state = sink.state.lock().expect("state lock");
-        switch_day(&mut state, 11);
-        assert!(!active_path(directory.path(), 1).exists());
-        assert!(active_path(directory.path(), 11).is_file());
-        assert_eq!(state.diagnostics.retained_files, 2);
+        let handle = ApplicationLogHandle::install_with_settings(
+            directory.path(),
+            LogSettings {
+                level: LogLevel::Error,
+                retention_days: 30,
+            },
+            false,
+        )
+        .expect("application log");
+        handle.record(ApplicationLogEvent::started());
+        assert_eq!(handle.diagnostics().written, 0);
+        assert_eq!(handle.settings().retention_days, 30);
+
+        handle.replace_settings(LogSettings {
+            level: LogLevel::Debug,
+            retention_days: 7,
+        });
+        handle.record(ApplicationLogEvent::started());
+        let diagnostics = handle.diagnostics();
+        let contents = fs::read_to_string(only_log(directory.path())).expect("log contents");
+        assert_eq!(diagnostics.written, 2, "{contents}");
+        assert_eq!(diagnostics.events.started, 1, "{contents}");
+        assert!(contents.contains("logging/settings_changed | Logging settings changed"));
     }
 
     #[test]
-    fn rotates_at_one_mib_and_keeps_bounded_file_set() {
+    fn record_once_does_not_consume_a_filtered_event_before_a_later_policy_change() {
         let directory = tempdir().expect("temporary directory");
-        let path = active_path(directory.path(), 42);
-        fs::write(&path, vec![b'x'; MAX_LOG_BYTES as usize]).expect("seed log");
-        let sink = sink(directory.path(), 42);
-        sink.record(42, ApplicationLogEvent::shutdown_started());
-        let state = sink.state.lock().expect("state lock");
-        assert_eq!(state.diagnostics.rotated, 1);
-        assert!(rotated_path(&path, 1).is_file());
-        assert!(state.diagnostics.retained_files <= MAX_LOG_FILES as u64);
+        let handle = ApplicationLogHandle::install_with_settings(
+            directory.path(),
+            LogSettings {
+                level: LogLevel::Error,
+                retention_days: 7,
+            },
+            false,
+        )
+        .expect("application log");
+        handle.record_once(ApplicationLogEvent::started());
+        assert_eq!(handle.diagnostics().written, 0);
+        handle.replace_settings(LogSettings {
+            level: LogLevel::Info,
+            retention_days: 7,
+        });
+        handle.record_once(ApplicationLogEvent::started());
+        let diagnostics = handle.diagnostics();
+        assert_eq!(diagnostics.written, 2, "settings event plus start event");
+        assert_eq!(diagnostics.events.started, 1);
+    }
+
+    #[test]
+    fn typed_context_stays_on_one_bounded_line() {
+        let directory = tempdir().expect("temporary directory");
+        let handle = ApplicationLogHandle::install(directory.path()).expect("application log");
+        handle.record(
+            ApplicationLogEvent::new(ApplicationLogCode::RuntimeUnavailable)
+                .with_context(ApplicationLogContext::Operation("load_model")),
+        );
+        let contents = fs::read_to_string(only_log(directory.path())).expect("log contents");
+        assert_eq!(contents.lines().count(), 1);
+        assert!(contents.contains("operation=load_model"));
+    }
+
+    #[test]
+    fn record_once_suppresses_only_the_same_code_and_context() {
+        let directory = tempdir().expect("temporary directory");
+        let handle = ApplicationLogHandle::install(directory.path()).expect("application log");
+        let event = ApplicationLogEvent::new(ApplicationLogCode::RuntimeUnavailable)
+            .with_context(ApplicationLogContext::Operation("start"));
+        handle.record_once(event.clone());
+        handle.record_once(event.clone());
+        handle.record_once(event.clone());
+        handle.record_once(event.with_context(ApplicationLogContext::Operation("stop")));
+        assert_eq!(handle.diagnostics().written, 2);
+    }
+
+    #[test]
+    fn code_catalog_round_trips_and_owns_its_severity_and_message() {
+        let mut codes = BTreeSet::new();
+        let mut messages = BTreeSet::new();
+        for code in ApplicationLogCode::ALL {
+            assert!(codes.insert(code.as_str()));
+            assert!(messages.insert(code.message()));
+            assert_eq!(ApplicationLogCode::parse(code.as_str()), Some(*code));
+            let record = ApplicationLogEvent::new(*code).to_record(SystemTime::UNIX_EPOCH);
+            assert_eq!(record.level, code.level());
+            assert_eq!(record.code, code.as_str());
+            assert_eq!(record.module, code.component().as_str());
+            assert_eq!(record.message, code.message());
+        }
+        assert_eq!(ApplicationLogCode::parse("unknown/event"), None);
     }
 
     #[test]
@@ -744,14 +1029,12 @@ mod tests {
         assert!(panic.is_err());
         drop(hook);
 
-        let state = handle.sink.state.lock().expect("state lock");
-        let contents = fs::read_to_string(&state.path).expect("log contents");
-        assert_eq!(
-            contents,
-            "{\"component\":\"application\",\"level\":\"error\",\"code\":\"panicked\"}\n"
+        let contents = fs::read_to_string(only_log(directory.path())).expect("log contents");
+        assert!(
+            contents.contains("ERROR [application] application/panicked | Application panicked")
         );
         assert!(!contents.contains("secret-model"));
-        assert_eq!(state.diagnostics.written, 1);
+        assert!(handle.diagnostics().written >= 1);
     }
 
     #[test]
@@ -759,9 +1042,7 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let handle = ApplicationLogHandle::install(directory.path()).expect("application log");
         let state = handle.sink.state.lock().expect("state lock");
-        handle
-            .sink
-            .try_record(current_day(), ApplicationLogEvent::panicked());
+        handle.sink.try_record(ApplicationLogEvent::panicked());
         assert_eq!(state.diagnostics.written, 0);
     }
 
@@ -813,7 +1094,7 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let handle = ApplicationLogHandle::install(directory.path()).expect("application log");
         handle.record(ApplicationLogEvent::started());
-        let state = handle.sink.state.lock().expect("state lock");
+        let log_path = only_log(directory.path());
         assert_eq!(
             fs::metadata(directory.path())
                 .expect("log directory metadata")
@@ -823,14 +1104,13 @@ mod tests {
             0o700
         );
         assert_eq!(
-            fs::metadata(&state.path)
+            fs::metadata(log_path)
                 .expect("active log metadata")
                 .permissions()
                 .mode()
                 & 0o777,
             0o600
         );
-        drop(state);
         let (marker, _) = handle.begin_run().expect("run marker");
         let marker_path = directory.path().join(RUN_MARKER_NAME);
         assert_eq!(

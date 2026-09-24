@@ -1,8 +1,9 @@
+use crate::app_log::ApplicationLogContext;
 use crate::diagnostics_bundle::write_preview_bundle;
 use crate::{
-    Application, ApplicationError, ApplicationLogCode, ApplicationLogComponent,
-    ApplicationLogDiagnostics, ApplicationLogEvent, ApplicationLogLevel,
-    ApplicationMainThreadSignals, BUILD_ENVIRONMENT, CoreLogDiagnostics, PRODUCT_VERSION,
+    Application, ApplicationError, ApplicationLogCode, ApplicationLogDiagnostics,
+    ApplicationLogEvent, ApplicationMainThreadSignals, BUILD_ENVIRONMENT, CoreLogDiagnostics,
+    PRODUCT_VERSION, settings_logging_from_config,
 };
 use bongocat_config::{
     BuildEnvironment, ConfigError, ConfigWriteFailureReason, NativeConfig, OverlayWindowPlacement,
@@ -513,31 +514,77 @@ fn run_service(
     let mut clock = SettingsSnapshotClock::new(application.config_revision());
     loop {
         let Ok(command) = endpoint.recv_blocking() else {
-            let _ = persist_window_state(&mut application, &window_state);
+            if persist_window_state(&mut application, &window_state).is_err() {
+                application.record_log_once(
+                    ApplicationLogEvent::new(ApplicationLogCode::StatePersistFailed)
+                        .with_context(ApplicationLogContext::State("window_state"))
+                        .with_context(ApplicationLogContext::Operation("service_shutdown"))
+                        .with_context(ApplicationLogContext::Reason("window_state_persist_failed")),
+                );
+            }
+            application.record_log_once(
+                ApplicationLogEvent::new(ApplicationLogCode::UiTransportFailed)
+                    .with_context(ApplicationLogContext::Operation("settings_endpoint")),
+            );
             let _ = application.shutdown();
             break;
         };
         match command {
             SettingsCommand::SettingsWindowPlacementChanged => {
-                let _ = persist_window_state(&mut application, &window_state);
+                if persist_window_state(&mut application, &window_state).is_err() {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::StatePersistFailed)
+                            .with_context(ApplicationLogContext::State("window_state"))
+                            .with_context(ApplicationLogContext::Operation("persist"))
+                            .with_context(ApplicationLogContext::Reason(
+                                "window_state_persist_failed",
+                            )),
+                    );
+                } else {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::WindowStatePersisted)
+                            .with_context(ApplicationLogContext::Operation("settings")),
+                    );
+                }
             }
             SettingsCommand::OverlayWindowPlacementChanged {
                 x,
                 y,
                 width,
                 height,
-            } => {
-                if let Ok(placement) = OverlayWindowPlacement::new(x, y, width, height) {
-                    let _ = application.persist_overlay_window_placement(placement);
+            } => match OverlayWindowPlacement::new(x, y, width, height) {
+                Ok(placement) => {
+                    if application
+                        .persist_overlay_window_placement(placement)
+                        .is_err()
+                    {
+                        application.record_log_once(
+                            ApplicationLogEvent::new(ApplicationLogCode::StatePersistFailed)
+                                .with_context(ApplicationLogContext::State("window_state"))
+                                .with_context(ApplicationLogContext::Operation("persist_overlay"))
+                                .with_context(ApplicationLogContext::Reason(
+                                    "window_state_persist_failed",
+                                )),
+                        );
+                    } else {
+                        application.record_log_once(
+                            ApplicationLogEvent::new(ApplicationLogCode::WindowStatePersisted)
+                                .with_context(ApplicationLogContext::Operation("overlay")),
+                        );
+                    }
                 }
-            }
+                Err(_) => application.record_log_once(
+                    ApplicationLogEvent::new(ApplicationLogCode::ParsingFailed)
+                        .with_context(ApplicationLogContext::Operation("overlay_placement"))
+                        .with_context(ApplicationLogContext::Reason("invalid_window_placement")),
+                ),
+            },
             SettingsCommand::TriggerApplicationShortcut { command } => {
                 if let Err(error) = apply_application_shortcut(&mut application, command) {
-                    application.record_log(ApplicationLogEvent {
-                        component: ApplicationLogComponent::Settings,
-                        level: ApplicationLogLevel::Error,
-                        code: ApplicationLogCode::RuntimeUnavailable,
-                    });
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::RuntimeUnavailable)
+                            .with_context(ApplicationLogContext::Operation("application_shortcut")),
+                    );
                     let _ = error;
                 }
             }
@@ -571,6 +618,21 @@ fn run_service(
                             .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                match &result {
+                    Ok(_) => application.record_log(
+                        ApplicationLogEvent::new(ApplicationLogCode::WindowVisibilityChanged)
+                            .with_context(ApplicationLogContext::Result(if visible {
+                                "visible"
+                            } else {
+                                "hidden"
+                            })),
+                    ),
+                    Err(error) => application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
+                            .with_context(ApplicationLogContext::Operation("overlay_visibility"))
+                            .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+                    ),
+                }
                 let _ = reply.respond(result);
             }
             SettingsCommand::SetAppearanceTheme {
@@ -806,6 +868,27 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetLoggingSettings {
+                expected_config_revision,
+                settings,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_logging_settings(settings)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                if let Err(error) = &result {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
+                            .with_context(ApplicationLogContext::Operation("logging_settings"))
+                            .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+                    );
+                }
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetShortcuts {
                 expected_config_revision,
                 shortcuts,
@@ -1009,11 +1092,10 @@ fn run_service(
                         })
                 };
                 if result.is_err() {
-                    application.record_log(ApplicationLogEvent {
-                        component: ApplicationLogComponent::Settings,
-                        level: ApplicationLogLevel::Error,
-                        code: ApplicationLogCode::DiagnosticsExportFailed,
-                    });
+                    application.record_log(
+                        ApplicationLogEvent::new(ApplicationLogCode::DiagnosticsExportFailed)
+                            .with_context(ApplicationLogContext::Operation("export")),
+                    );
                 }
                 let _ = reply.respond(result);
             }
@@ -1144,6 +1226,7 @@ impl InputMonitoringPermissionCache {
 struct SettingsSnapshotClock {
     revision: u64,
     observed_config_revision: Option<u64>,
+    observed_runtime_diagnostics: Option<SettingsRuntimeDiagnostics>,
     observed_input_diagnostics: Option<SettingsInputDiagnostics>,
     observed_startup_item: Option<SettingsStartupItemStatus>,
     diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
@@ -1155,6 +1238,7 @@ impl SettingsSnapshotClock {
         Self {
             revision: 0,
             observed_config_revision: config_revision,
+            observed_runtime_diagnostics: None,
             observed_input_diagnostics: None,
             observed_startup_item: None,
             diagnostics_export: None,
@@ -1185,22 +1269,33 @@ impl SettingsSnapshotClock {
         self.mark_changed();
     }
 
-    fn observe_input_diagnostics(&mut self, diagnostics: SettingsInputDiagnostics) {
-        match self.observed_input_diagnostics.replace(diagnostics) {
-            Some(previous) if previous != diagnostics => {
-                self.mark_changed();
-            }
-            Some(_) | None => {}
-        }
+    fn observe_runtime_diagnostics(
+        &mut self,
+        diagnostics: SettingsRuntimeDiagnostics,
+    ) -> Option<SettingsRuntimeDiagnostics> {
+        self.observed_runtime_diagnostics.replace(diagnostics)
     }
 
-    fn observe_startup_item(&mut self, status: SettingsStartupItemStatus) {
-        match self.observed_startup_item.replace(status) {
-            Some(previous) if previous != status => {
-                self.mark_changed();
-            }
-            Some(_) | None => {}
+    fn observe_input_diagnostics(
+        &mut self,
+        diagnostics: SettingsInputDiagnostics,
+    ) -> Option<SettingsInputDiagnostics> {
+        let previous = self.observed_input_diagnostics.replace(diagnostics);
+        if previous.is_some_and(|previous| previous != diagnostics) {
+            self.mark_changed();
         }
+        previous
+    }
+
+    fn observe_startup_item(
+        &mut self,
+        status: SettingsStartupItemStatus,
+    ) -> Option<SettingsStartupItemStatus> {
+        let previous = self.observed_startup_item.replace(status);
+        if previous.is_some_and(|previous| previous != status) {
+            self.mark_changed();
+        }
+        previous
     }
 
     fn observe_diagnostics_export(&mut self, status: SettingsDiagnosticsExportStatus) {
@@ -1286,6 +1381,7 @@ fn snapshot(
                 .round()
                 .clamp(0.0, 99.0) as u8,
         },
+        logging: settings_logging_from_config(&application.config().logging),
         shortcuts: settings_shortcuts(application.config()),
         startup_item,
         diagnostics_export: clock.diagnostics_export,
@@ -1326,8 +1422,97 @@ fn observe_snapshot_state(
         clock.input_monitoring_permission(),
     );
     clock.observe_config(application.config_revision());
-    clock.observe_input_diagnostics(input_diagnostics);
-    clock.observe_startup_item(startup_item);
+    let runtime_diagnostics = settings_runtime_diagnostics(&runtime);
+    if let Some(previous) = clock.observe_runtime_diagnostics(runtime_diagnostics) {
+        match (previous.render_error, runtime_diagnostics.render_error) {
+            (None, Some(error)) => application.record_log(
+                ApplicationLogEvent::new(ApplicationLogCode::ServiceDegraded)
+                    .with_context(ApplicationLogContext::Service("renderer"))
+                    .with_context(ApplicationLogContext::Reason(error.as_str())),
+            ),
+            (Some(_), None) => application.record_log(
+                ApplicationLogEvent::new(ApplicationLogCode::ServiceRecovered)
+                    .with_context(ApplicationLogContext::Service("renderer"))
+                    .with_context(ApplicationLogContext::Reason("render_recovered")),
+            ),
+            (Some(previous), Some(current)) if previous != current => application.record_log(
+                ApplicationLogEvent::new(ApplicationLogCode::ServiceDegraded)
+                    .with_context(ApplicationLogContext::Service("renderer"))
+                    .with_context(ApplicationLogContext::Reason(current.as_str())),
+            ),
+            _ => {}
+        }
+        if runtime_diagnostics.command_transport.queue_full > previous.command_transport.queue_full
+        {
+            application.record_log_once(
+                ApplicationLogEvent::new(ApplicationLogCode::ServiceDegraded)
+                    .with_context(ApplicationLogContext::Service("runtime_command_transport"))
+                    .with_context(ApplicationLogContext::Reason("queue_full")),
+            );
+        }
+    }
+    if let Some(previous) = clock.observe_input_diagnostics(input_diagnostics) {
+        if previous.service_status != input_diagnostics.service_status {
+            application.record_log(
+                ApplicationLogEvent::new(ApplicationLogCode::InputStatusChanged).with_context(
+                    ApplicationLogContext::State(input_service_status_code(
+                        input_diagnostics.service_status,
+                    )),
+                ),
+            );
+        }
+        if previous.input_monitoring_permission != input_diagnostics.input_monitoring_permission {
+            match input_diagnostics.input_monitoring_permission {
+                SettingsInputMonitoringPermission::Denied => application.record_log(
+                    ApplicationLogEvent::new(ApplicationLogCode::InputPermissionUnavailable)
+                        .with_context(ApplicationLogContext::Reason("permission_denied")),
+                ),
+                SettingsInputMonitoringPermission::Granted => application.record_log(
+                    ApplicationLogEvent::new(ApplicationLogCode::InputStatusChanged)
+                        .with_context(ApplicationLogContext::State("input_monitoring_granted")),
+                ),
+                SettingsInputMonitoringPermission::Unsupported => application.record_log(
+                    ApplicationLogEvent::new(ApplicationLogCode::InputStatusChanged)
+                        .with_context(ApplicationLogContext::State("input_monitoring_unsupported")),
+                ),
+            }
+        }
+        if input_diagnostics.transport_queue_full > previous.transport_queue_full {
+            application.record_log_once(
+                ApplicationLogEvent::new(ApplicationLogCode::ServiceDegraded)
+                    .with_context(ApplicationLogContext::Service("input"))
+                    .with_context(ApplicationLogContext::Reason("transport_queue_full")),
+            );
+        }
+        if input_diagnostics.transport_recovered_after_overflow
+            > previous.transport_recovered_after_overflow
+        {
+            application.record_log(
+                ApplicationLogEvent::new(ApplicationLogCode::ServiceRecovered)
+                    .with_context(ApplicationLogContext::Service("input"))
+                    .with_context(ApplicationLogContext::Reason(
+                        "transport_overflow_recovered",
+                    )),
+            );
+        }
+    }
+    if let Some(previous) = clock.observe_startup_item(startup_item)
+        && previous != startup_item
+    {
+        let event = match startup_item {
+            SettingsStartupItemStatus::ReadError(_) => {
+                ApplicationLogEvent::new(ApplicationLogCode::ServiceDegraded)
+                    .with_context(ApplicationLogContext::Service("startup_item"))
+            }
+            SettingsStartupItemStatus::State(_) => {
+                ApplicationLogEvent::new(ApplicationLogCode::ServiceRecovered)
+                    .with_context(ApplicationLogContext::Service("startup_item"))
+            }
+        };
+        application.record_log(event.with_context(ApplicationLogContext::State(
+            startup_item_status_code(startup_item),
+        )));
+    }
     if catalog_changed {
         clock.mark_catalog_changed();
     }
@@ -1549,6 +1734,45 @@ fn system_input_monitoring_permission() -> SettingsInputMonitoringPermission {
 #[cfg(not(target_os = "macos"))]
 const fn system_input_monitoring_permission() -> SettingsInputMonitoringPermission {
     SettingsInputMonitoringPermission::Unsupported
+}
+
+const fn startup_item_status_code(status: SettingsStartupItemStatus) -> &'static str {
+    match status {
+        SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled) => "disabled",
+        SettingsStartupItemStatus::State(SettingsStartupItemState::Enabled) => "enabled",
+        SettingsStartupItemStatus::State(SettingsStartupItemState::Stale) => "stale",
+        SettingsStartupItemStatus::State(SettingsStartupItemState::RequiresApproval) => {
+            "requires_approval"
+        }
+        SettingsStartupItemStatus::State(SettingsStartupItemState::NotFound) => "not_found",
+        SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(
+            SettingsStartupItemUnsupportedReason::Platform,
+        )) => "unsupported_platform",
+        SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(
+            SettingsStartupItemUnsupportedReason::OperatingSystem,
+        )) => "unsupported_operating_system",
+        SettingsStartupItemStatus::State(SettingsStartupItemState::Unsupported(
+            SettingsStartupItemUnsupportedReason::BuildEnvironment,
+        )) => "unsupported_build_environment",
+        SettingsStartupItemStatus::ReadError(
+            SettingsStartupItemError::CurrentExecutableUnavailable,
+        ) => "current_executable_unavailable",
+        SettingsStartupItemStatus::ReadError(SettingsStartupItemError::InvalidExecutablePath) => {
+            "invalid_executable_path"
+        }
+        SettingsStartupItemStatus::ReadError(SettingsStartupItemError::BackendUnavailable) => {
+            "backend_unavailable"
+        }
+        SettingsStartupItemStatus::ReadError(SettingsStartupItemError::StateReadFailed) => {
+            "state_read_failed"
+        }
+        SettingsStartupItemStatus::ReadError(SettingsStartupItemError::EnableFailed) => {
+            "enable_failed"
+        }
+        SettingsStartupItemStatus::ReadError(SettingsStartupItemError::DisableFailed) => {
+            "disable_failed"
+        }
+    }
 }
 
 const fn input_service_is_degraded(status: SettingsInputServiceStatus) -> bool {
@@ -2692,6 +2916,7 @@ mod tests {
             release_fallback_timeout_ms: 500,
             model_settings: bongocat_ui_protocol::SettingsModelSettings::default(),
             gamepad_axis_settings: bongocat_ui_protocol::SettingsGamepadAxisSettings::default(),
+            logging: bongocat_ui_protocol::SettingsLogging::default(),
             shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             diagnostics_export: None,
@@ -2989,15 +3214,15 @@ mod tests {
         assert_eq!(projected.transport_runtime_stopped, 19);
 
         let mut clock = SettingsSnapshotClock::new(Some(7));
-        clock.observe_input_diagnostics(projected);
+        let _ = clock.observe_input_diagnostics(projected);
         assert_eq!(clock.revision, 0);
         let changed = SettingsInputDiagnostics {
             transport_queue_full: 20,
             ..projected
         };
-        clock.observe_input_diagnostics(changed);
+        let _ = clock.observe_input_diagnostics(changed);
         assert_eq!(clock.revision, 1);
-        clock.observe_input_diagnostics(changed);
+        let _ = clock.observe_input_diagnostics(changed);
         assert_eq!(clock.revision, 1);
     }
 
@@ -3043,8 +3268,8 @@ mod tests {
         let startup = SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled);
         let mut clock = SettingsSnapshotClock::new(Some(7));
         clock.observe_config(Some(8));
-        clock.observe_input_diagnostics(diagnostics);
-        clock.observe_startup_item(startup);
+        let _ = clock.observe_input_diagnostics(diagnostics);
+        let _ = clock.observe_startup_item(startup);
         clock.mark_catalog_changed();
         clock.observe_diagnostics_export(SettingsDiagnosticsExportStatus {
             format_version: DIAGNOSTICS_EXPORT_FORMAT_VERSION,
@@ -3582,6 +3807,118 @@ mod tests {
                 .config()
                 .application
                 .check_for_updates_automatically
+        );
+        restarted.shutdown().expect("restart shutdown");
+    }
+
+    #[test]
+    fn service_persists_logging_settings_and_applies_them_after_commit() {
+        use bongocat_ui_protocol::{SettingsLogLevel, SettingsLogging};
+
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let config_path = layout.config.clone();
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let controller = application.log_settings_controller();
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        assert_eq!(initial.logging, SettingsLogging::default());
+        let initial_revision = initial.config_revision.expect("initial config revision");
+        let committed = client
+            .set_logging_settings_blocking(
+                initial_revision,
+                SettingsLogging {
+                    level: SettingsLogLevel::Trace,
+                    retention_days: 30,
+                },
+            )
+            .expect("commit logging settings");
+        assert_eq!(committed.logging.level, SettingsLogLevel::Trace);
+        assert_eq!(committed.logging.retention_days, 30);
+        assert_ne!(committed.config_revision, initial.config_revision);
+        assert_eq!(
+            controller.settings(),
+            bongocat_log::LogSettings {
+                level: bongocat_log::LogLevel::Trace,
+                retention_days: 30,
+            }
+        );
+        let committed_config = fs::read(&config_path).expect("committed config");
+
+        let stale = client
+            .set_logging_settings_blocking(
+                initial_revision,
+                SettingsLogging {
+                    level: SettingsLogLevel::Error,
+                    retention_days: 1,
+                },
+            )
+            .expect_err("stale logging settings");
+        assert_eq!(stale.code(), SettingsErrorCode::SnapshotOutdated);
+        assert_eq!(
+            fs::read(&config_path).expect("preserved config"),
+            committed_config
+        );
+        assert_eq!(controller.settings().retention_days, 30);
+
+        let current_revision = committed.config_revision.expect("current config revision");
+        for invalid_retention in [0, 31] {
+            let invalid = client
+                .set_logging_settings_blocking(
+                    current_revision,
+                    SettingsLogging {
+                        level: SettingsLogLevel::Info,
+                        retention_days: invalid_retention,
+                    },
+                )
+                .expect_err("invalid logging retention");
+            assert_eq!(invalid.code(), SettingsErrorCode::ConfigPersistFailed);
+            assert_eq!(
+                fs::read(&config_path).expect("preserved config"),
+                committed_config
+            );
+            assert_eq!(controller.settings().retention_days, 30);
+        }
+
+        let occupied = config_path.with_extension("json.tmp");
+        fs::create_dir(&occupied).expect("occupied config target");
+        let persist_failed = client
+            .set_logging_settings_blocking(
+                current_revision,
+                SettingsLogging {
+                    level: SettingsLogLevel::Warn,
+                    retention_days: 14,
+                },
+            )
+            .expect_err("logging persistence failure");
+        assert_eq!(
+            persist_failed.code(),
+            SettingsErrorCode::ConfigTargetOccupied
+        );
+        assert_eq!(
+            client.read_snapshot_blocking().expect("unchanged snapshot"),
+            committed
+        );
+        assert_eq!(controller.settings().level, bongocat_log::LogLevel::Trace);
+        fs::remove_dir(occupied).expect("remove occupied config target");
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+        let restarted = Application::start_with_layout(layout).expect("application restart");
+        assert_eq!(
+            restarted.config().logging.level,
+            bongocat_config::LoggingLevel::Trace
+        );
+        assert_eq!(restarted.config().logging.retention_days, 30);
+        assert_eq!(
+            restarted.log_settings_controller().settings(),
+            bongocat_log::LogSettings {
+                level: bongocat_log::LogLevel::Trace,
+                retention_days: 30,
+            }
         );
         restarted.shutdown().expect("restart shutdown");
     }

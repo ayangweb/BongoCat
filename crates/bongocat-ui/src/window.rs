@@ -1,13 +1,14 @@
 use crate::{
     RuntimeHealth, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsError,
-    SettingsErrorCode, SettingsGamepadAxisSettings, SettingsLanguage, SettingsModelAvailability,
-    SettingsModelBehavior, SettingsModelBehaviorBinding, SettingsModelDiagnostic,
-    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
-    SettingsModelImportRequest, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
-    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsErrorCode, SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel,
+    SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
+    SettingsModelKey, SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent,
+    SettingsMverMode, SettingsOperationId, SettingsOverlay, SettingsShortcutBinding,
+    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -124,6 +125,7 @@ pub(crate) type SettingsWindowRequest = Rc<dyn Fn(&mut App)>;
 
 type LanguageSelectState = SelectState<SearchableVec<&'static str>>;
 type ThemeSelectState = SelectState<SearchableVec<&'static str>>;
+type LoggingLevelSelectState = SelectState<SearchableVec<&'static str>>;
 
 #[derive(Clone, Copy)]
 pub(crate) struct Tokens {
@@ -163,6 +165,7 @@ enum PendingOperation {
     #[cfg(target_os = "windows")]
     TaskbarIconVisibility,
     AutomaticUpdateCheck,
+    LoggingSettings,
     OverlayVisibility,
     OverlaySettings,
     OverlayScale,
@@ -615,6 +618,8 @@ pub struct SettingsView {
     maximum_fps_timer_generation: u64,
     release_fallback_timeout_debouncer: crate::SettingsPatchDebouncer<u32>,
     release_fallback_timeout_timer_generation: u64,
+    logging_settings_debouncer: crate::SettingsPatchDebouncer<SettingsLogging>,
+    logging_settings_timer_generation: u64,
     flush_pending_requested: bool,
     quit_after_flush: bool,
     model_delete_confirmation: Option<SettingsModelKey>,
@@ -638,6 +643,7 @@ pub struct SettingsView {
     applied_theme: Option<SettingsTheme>,
     language_select: Entity<LanguageSelectState>,
     theme_select: Entity<ThemeSelectState>,
+    logging_level_select: Entity<LoggingLevelSelectState>,
     request_quit: Rc<dyn Fn(&mut App)>,
     /// Opens the update window and starts a check.
     request_update: SettingsWindowRequest,
@@ -976,6 +982,40 @@ impl SettingsView {
         .detach();
     }
 
+    fn schedule_logging_settings_flush(&mut self, cx: &mut Context<Self>) {
+        self.logging_settings_timer_generation =
+            self.logging_settings_timer_generation.saturating_add(1);
+        let generation = self.logging_settings_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.logging_settings_timer_generation != generation || view.pending.is_some() {
+                    return;
+                }
+                let Some(settings) = view.logging_settings_debouncer.ready(Instant::now()) else {
+                    return;
+                };
+                let Some(expected_config_revision) = view
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.config_revision)
+                else {
+                    return;
+                };
+                view.start_request(
+                    PendingOperation::LoggingSettings,
+                    Some(SettingValue::LoggingSettings {
+                        expected_config_revision,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
     fn flush_pending_setting_patches(&mut self, cx: &mut Context<Self>) {
         if self.pending.is_some() {
             return;
@@ -1077,6 +1117,15 @@ impl SettingsView {
                 }),
                 cx,
             );
+        } else if let Some(settings) = self.logging_settings_debouncer.flush(now) {
+            self.start_request(
+                PendingOperation::LoggingSettings,
+                Some(SettingValue::LoggingSettings {
+                    expected_config_revision,
+                    settings,
+                }),
+                cx,
+            );
         } else {
             self.flush_pending_requested = false;
             let should_quit = self.quit_after_flush;
@@ -1165,6 +1214,10 @@ impl SettingsView {
             Some(SettingValue::ReleaseFallbackTimeout { timeout_ms, .. }) => Some(*timeout_ms),
             _ => None,
         };
+        let sent_logging_settings = match value.as_ref() {
+            Some(SettingValue::LoggingSettings { settings, .. }) => Some(*settings),
+            _ => None,
+        };
         cx.spawn(async move |this, cx| {
             let result = match value {
                 None => client.read_snapshot().await,
@@ -1207,6 +1260,14 @@ impl SettingsView {
                 }) => {
                     client
                         .set_check_for_updates_automatically(expected_config_revision, enabled)
+                        .await
+                }
+                Some(SettingValue::LoggingSettings {
+                    expected_config_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_logging_settings(expected_config_revision, settings)
                         .await
                 }
                 Some(SettingValue::OverlayVisible {
@@ -1401,6 +1462,14 @@ impl SettingsView {
                         view.schedule_release_fallback_timeout_flush(cx);
                     }
                 }
+                if result.is_ok()
+                    && let Some(settings) = sent_logging_settings
+                {
+                    view.logging_settings_debouncer.mark_sent(&settings);
+                    if view.logging_settings_debouncer.is_pending() {
+                        view.schedule_logging_settings_flush(cx);
+                    }
+                }
                 if result.is_err() {
                     if operation == PendingOperation::AppearanceTheme {
                         view.applied_theme = None;
@@ -1428,6 +1497,12 @@ impl SettingsView {
                     if sent_release_fallback_timeout.is_some() {
                         view.schedule_release_fallback_timeout_flush(cx);
                     }
+                    if sent_logging_settings.is_some() {
+                        view.schedule_logging_settings_flush(cx);
+                    }
+                }
+                if sent_logging_settings.is_none() && view.logging_settings_debouncer.is_pending() {
+                    view.schedule_logging_settings_flush(cx);
                 }
                 if let Some(snapshot) = refreshed
                     && accepts_snapshot_revision(
@@ -1508,6 +1583,10 @@ enum SettingValue {
     CheckForUpdatesAutomatically {
         expected_config_revision: u64,
         enabled: bool,
+    },
+    LoggingSettings {
+        expected_config_revision: u64,
+        settings: SettingsLogging,
     },
     OverlayVisible {
         expected_config_revision: u64,

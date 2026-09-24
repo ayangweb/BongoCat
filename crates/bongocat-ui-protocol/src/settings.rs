@@ -302,6 +302,51 @@ pub enum SettingsLanguage {
     EnglishUnitedStates,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SettingsLogLevel {
+    Error,
+    Warn,
+    #[default]
+    Info,
+    Debug,
+    Trace,
+}
+
+impl SettingsLogLevel {
+    pub const ALL: [Self; 5] = [
+        Self::Error,
+        Self::Warn,
+        Self::Info,
+        Self::Debug,
+        Self::Trace,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Trace => "trace",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsLogging {
+    pub level: SettingsLogLevel,
+    pub retention_days: u8,
+}
+
+impl Default for SettingsLogging {
+    fn default() -> Self {
+        Self {
+            level: SettingsLogLevel::Info,
+            retention_days: 7,
+        }
+    }
+}
+
 impl SettingsLanguage {
     pub const ALL: [Self; 3] = [
         Self::System,
@@ -355,6 +400,7 @@ pub struct SettingsSnapshot {
     pub release_fallback_timeout_ms: u32,
     pub model_settings: SettingsModelSettings,
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,
+    pub logging: SettingsLogging,
     pub shortcuts: SettingsShortcuts,
     pub startup_item: SettingsStartupItemStatus,
     pub diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
@@ -1133,6 +1179,11 @@ pub enum SettingsCommand {
         settings: SettingsGamepadAxisSettings,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetLoggingSettings {
+        expected_config_revision: u64,
+        settings: SettingsLogging,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetShortcuts {
         expected_config_revision: u64,
         shortcuts: SettingsShortcuts,
@@ -1490,6 +1541,19 @@ impl SettingsClient {
         settings: SettingsGamepadAxisSettings,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::SetGamepadAxisSettings {
+            expected_config_revision,
+            settings,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_logging_settings(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsLogging,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetLoggingSettings {
             expected_config_revision,
             settings,
             reply,
@@ -1859,6 +1923,18 @@ impl SettingsClient {
         settings: SettingsGamepadAxisSettings,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetGamepadAxisSettings {
+            expected_config_revision,
+            settings,
+            reply,
+        })
+    }
+
+    pub fn set_logging_settings_blocking(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsLogging,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetLoggingSettings {
             expected_config_revision,
             settings,
             reply,
@@ -2259,6 +2335,50 @@ mod tests {
             .expect("gamepad snapshot");
         assert_eq!(result.gamepad_axis_settings.stick_dead_zone_percent, 25);
         worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn logging_settings_command_preserves_the_complete_typed_policy() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let expected = SettingsLogging {
+            level: SettingsLogLevel::Trace,
+            retention_days: 30,
+        };
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetLoggingSettings {
+                expected_config_revision,
+                settings,
+                reply,
+            } = endpoint.recv_blocking().expect("logging command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert_eq!(settings, expected);
+            let mut result = snapshot(8, true, true);
+            result.logging = settings;
+            reply.respond(Ok(result)).expect("logging reply");
+        });
+        let result = client
+            .set_logging_settings_blocking(7, expected)
+            .expect("logging snapshot");
+        assert_eq!(result.logging, expected);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn logging_settings_default_and_level_catalog_match_the_native_contract() {
+        assert_eq!(
+            SettingsLogging::default(),
+            SettingsLogging {
+                level: SettingsLogLevel::Info,
+                retention_days: 7,
+            }
+        );
+        assert_eq!(
+            SettingsLogLevel::ALL.map(SettingsLogLevel::as_str),
+            ["error", "warn", "info", "debug", "trace"]
+        );
     }
 
     #[test]
@@ -2940,6 +3060,7 @@ mod tests {
             release_fallback_timeout_ms: 500,
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
+            logging: SettingsLogging::default(),
             shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             diagnostics_export: None,
