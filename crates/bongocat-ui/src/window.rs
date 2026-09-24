@@ -1692,13 +1692,16 @@ fn startup_item_presentation(
 
 /// The import suggestion shown to the user is the chosen folder's own name.
 ///
-/// The rule lives in `model_source_display_name` because the settings service's
+/// The picker has already resolved a directory before this view receives the
+/// path, so the view supplies `is_directory = true` rather than probing the
+/// filesystem on the GPUI executor. The rule lives in
+/// `model_source_display_name` because the settings service's
 /// fallback title has to agree with what the page pre-filled. The portable store
 /// id is allocated by the settings service at import time, so the displayed name
 /// never needs ASCII folding; hand-typed edits are still sanitized by
 /// `sanitize_model_title_input`.
 fn suggested_model_title(source_root: &Path) -> String {
-    crate::model_source_display_name(source_root).unwrap_or_else(|| "custom-model".to_owned())
+    crate::model_source_display_name(source_root, true).unwrap_or_else(|| "custom-model".to_owned())
 }
 
 /// The catalog key naming one BongoCat Mver conversion mode.

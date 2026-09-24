@@ -51,14 +51,22 @@ impl SettingsView {
                 SearchableVec::new(
                     SettingsLanguage::ALL
                         .into_iter()
-                        .map(|language| language.display_name(snapshot.resolved_language))
+                        .map(|language| {
+                            crate::settings_language_display_name(
+                                language,
+                                snapshot.resolved_language,
+                            )
+                        })
                         .collect::<Vec<_>>(),
                 ),
                 window,
                 cx,
             );
             select.set_selected_value(
-                &snapshot.language.display_name(snapshot.resolved_language),
+                &crate::settings_language_display_name(
+                    snapshot.language,
+                    snapshot.resolved_language,
+                ),
                 window,
                 cx,
             )
@@ -95,7 +103,9 @@ impl SettingsView {
                 SearchableVec::new(
                     SettingsLanguage::ALL
                         .into_iter()
-                        .map(|language| language.display_name(seed.language))
+                        .map(|language| {
+                            crate::settings_language_display_name(language, seed.language)
+                        })
                         .collect::<Vec<_>>(),
                 ),
                 Some(IndexPath::new(0)),
@@ -120,7 +130,7 @@ impl SettingsView {
                 let display_language = view.display_language();
                 if let SelectEvent::Confirm(Some(name)) = event
                     && let Some(language) =
-                        SettingsLanguage::from_display_name(name, display_language)
+                        crate::settings_language_from_display_name(name, display_language)
                 {
                     view.set_language(language, cx);
                 }

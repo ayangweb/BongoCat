@@ -10,7 +10,7 @@
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use crate::{
-    SettingsClient, SettingsLanguage, SettingsTheme, UPDATE_STATE_POLL_INTERVAL, UpdateClient,
+    SettingsClient, SettingsLanguage, SettingsTheme, UpdateClient, UpdateErrorCode,
     UpdateFailureStage, UpdatePhase, UpdateProgressInfo, UpdateSnapshot, UpdateUnavailableReason,
     window::{Tokens, apply_component_theme},
 };
@@ -30,9 +30,31 @@ const WINDOW_HEIGHT: f32 = 460.0;
 const WINDOW_MIN_WIDTH: f32 = 460.0;
 const WINDOW_MIN_HEIGHT: f32 = 340.0;
 
+/// How often the update window re-reads the shared update state while it is open.
+const UPDATE_STATE_POLL_INTERVAL: Duration = Duration::from_millis(250);
+
 /// How often the window re-reads the settings snapshot for the display language and the
 /// appearance.
 const SETTINGS_POLL_INTERVAL: Duration = Duration::from_secs(1);
+
+fn update_error_message_key(code: UpdateErrorCode) -> &'static str {
+    match code {
+        UpdateErrorCode::NotConfigured => "update.error.not_configured",
+        UpdateErrorCode::EnvironmentDisabled => "update.error.environment_disabled",
+        UpdateErrorCode::SignatureKeyMissing => "update.error.signature_key_missing",
+        UpdateErrorCode::ReleaseFetchFailed => "update.error.release_fetch_failed",
+        UpdateErrorCode::ReleaseManifestInvalid => "update.error.release_manifest_invalid",
+        UpdateErrorCode::NoMatchingAsset => "update.error.no_matching_asset",
+        UpdateErrorCode::DownloadTransportFailed => "update.error.download_transport_failed",
+        UpdateErrorCode::ChecksumMismatch => "update.error.checksum_mismatch",
+        UpdateErrorCode::SignatureInvalid => "update.error.signature_invalid",
+        UpdateErrorCode::ArchiveInvalid => "update.error.archive_invalid",
+        UpdateErrorCode::InstallPathNotWritable => "update.error.install_path_not_writable",
+        UpdateErrorCode::InstallFailed => "update.error.install_failed",
+        UpdateErrorCode::RestartFailed => "update.error.restart_failed",
+        UpdateErrorCode::Internal => "update.error.internal",
+    }
+}
 
 #[derive(Clone)]
 pub struct UpdateWindowHandle {
@@ -397,7 +419,10 @@ impl Render for UpdateView {
                         format_text(locale, stage_message_key(*stage), &[("version", version)]),
                         tokens,
                     ))
-                    .child(hint_line(text(locale, code.message_key()), tokens))
+                    .child(hint_line(
+                        text(locale, update_error_message_key(*code)),
+                        tokens,
+                    ))
             }
         };
 
@@ -739,8 +764,8 @@ pub fn open_update_window(
 
 #[cfg(test)]
 mod tests {
-    use super::{human_bytes, stage_message_key};
-    use crate::UpdateFailureStage;
+    use super::{human_bytes, stage_message_key, update_error_message_key};
+    use crate::{UpdateErrorCode, UpdateFailureStage, UpdateWindowHandle};
 
     #[test]
     fn every_stage_has_its_own_message() {
@@ -755,6 +780,21 @@ mod tests {
         for key in keys {
             assert!(key.starts_with("update.error.stage."));
         }
+    }
+
+    #[test]
+    fn every_error_code_resolves_to_text_and_the_handle_is_send() {
+        for code in UpdateErrorCode::ALL {
+            let key = update_error_message_key(code);
+            for locale in ["en-US", "zh-CN"] {
+                let message = bongocat_i18n::text(locale, key);
+                assert_ne!(message, key, "{locale} is missing {key}");
+                assert!(!message.trim().is_empty(), "{locale} has an empty {key}");
+            }
+        }
+
+        fn assert_send<T: Send>() {}
+        assert_send::<Option<UpdateWindowHandle>>();
     }
 
     #[test]

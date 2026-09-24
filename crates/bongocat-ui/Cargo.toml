@@ -11,6 +11,7 @@ publish.workspace = true
 async-channel.workspace = true
 bongocat-config.workspace = true
 bongocat-i18n.workspace = true
+bongocat-ui-protocol.workspace = true
 pulldown-cmark.workspace = true
 bongocat-platform.workspace = true
 gpui-kit.workspace = true

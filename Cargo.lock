@@ -801,6 +801,7 @@ dependencies = [
  "bongocat-runtime",
  "bongocat-storage",
  "bongocat-ui",
+ "bongocat-ui-protocol",
  "bongocat-update",
  "embed-resource",
  "gpui-kit",
@@ -977,9 +978,17 @@ dependencies = [
  "bongocat-config",
  "bongocat-i18n",
  "bongocat-platform",
+ "bongocat-ui-protocol",
  "gpui-kit",
  "pulldown-cmark",
  "raw-window-handle",
+]
+
+[[package]]
+name = "bongocat-ui-protocol"
+version = "2.0.0"
+dependencies = [
+ "async-channel",
 ]
 
 [[package]]

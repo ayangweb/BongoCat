@@ -2,8 +2,8 @@
 //!
 //! One dedicated thread owns the [`UpdateRuntime`] for the lifetime of the process
 //! and is the only thing that touches the network. It converts the update
-//! subsystem's own types into the UI protocol in `bongocat_ui` and publishes the
-//! result into shared state, so the GPUI thread never blocks on a check, a transfer
+//! subsystem's own types into the UI protocol in `bongocat-ui-protocol` and publishes
+//! the result into shared state, so the GPUI thread never blocks on a check, a transfer
 //! or an install, and a window that is closed or slow cannot stall the worker.
 //!
 //! Restarting is the one step the worker cannot take: replacing the process image
@@ -20,7 +20,7 @@ use std::{
 };
 
 use bongocat_config::BuildEnvironment;
-use bongocat_ui::{
+use bongocat_ui_protocol::{
     UpdateClient, UpdateCommand, UpdateErrorCode, UpdateFailureStage, UpdatePhase,
     UpdateProgressInfo, UpdateReleaseInfo, UpdateServiceEndpoint, UpdateSnapshot,
     UpdateStateHandle, UpdateUnavailableReason,
@@ -360,8 +360,7 @@ mod tests {
         error_code, failure_stage, progress_info, restart_required_after_install,
         unavailable_reason,
     };
-    use bongocat_ui::UpdateWindowHandle;
-    use bongocat_ui::{UpdateCommand, UpdateStateHandle, UpdateUnavailableReason};
+    use bongocat_ui_protocol::{UpdateCommand, UpdateStateHandle, UpdateUnavailableReason};
     use bongocat_update::{
         UpdateError, UpdateErrorCode as SourceCode, UpdateEvent, UpdateOutcome, UpdateProgress,
         UpdateRelease, UpdateStage, UpdateUnavailability,
@@ -770,13 +769,5 @@ mod tests {
         let service =
             ApplicationUpdateService::start_with_engine(engine, "1.1.0").expect("start the worker");
         drop(service);
-    }
-
-    /// The application stores the window handle next to the worker, so it has to be
-    /// movable across the thread boundary the coordinator is built on.
-    #[test]
-    fn the_update_window_handle_is_send() {
-        fn assert_send<T: Send>() {}
-        assert_send::<Option<UpdateWindowHandle>>();
     }
 }

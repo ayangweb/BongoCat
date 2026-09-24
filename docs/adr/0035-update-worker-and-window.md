@@ -1,7 +1,7 @@
 # ADR-0035: 更新 worker、更新窗口与发布说明
 
 状态：已接受（2026-09-15）
-依赖：ADR-0034（detached minisign 信任模型）、ADR-0029（第三方库边界）、ADR-0016（匿名诊断导出）
+依赖：ADR-0034（detached minisign 信任模型）、ADR-0029（第三方库边界）、ADR-0016（匿名诊断导出）、ADR-0059（UI protocol 边界）
 
 ## 背景
 
@@ -42,10 +42,11 @@ worker 把当前阶段写入 `UpdateStateHandle`（`Arc<Mutex<UpdateSnapshot>>` 
 **关闭窗口不取消任何操作**，因为操作不属于窗口。这是刻意的：库没有取消钩子（见 §9），一个
 "取消"按钮只能让 UI 停止显示，而传输仍在继续——那是在撒谎。窗口因此始终可以关闭。
 
-### 3. UI 拥有协议，app 负责适配
+### 3. UI protocol 拥有跨层 contract，app 负责适配
 
-`bongocat_ui::update` 定义 `UpdateSnapshot` / `UpdatePhase` / `UpdateClient` 等全部 UI 面类型，
-`bongocat-ui` **不依赖** `bongocat-update`。`bongocat-app` 做映射，且映射是穷尽 `match`：
+`bongocat-ui-protocol` 定义 `UpdateSnapshot` / `UpdatePhase` / `UpdateClient` 等全部更新面
+类型，`bongocat-ui` 只负责 GPUI view 和展示策略。`bongocat-ui-protocol` 与 `bongocat-ui` 都不
+依赖 `bongocat-update`。`bongocat-app` 做映射，且映射是穷尽 `match`：
 
 - `UpdateStage` → `UpdateFailureStage`
 - 14 个 `UpdateErrorCode` → UI 的同名目录

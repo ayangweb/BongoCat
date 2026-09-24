@@ -1125,7 +1125,13 @@ fn the_hover_hide_delay_only_applies_while_the_switch_is_on() {
 #[test]
 fn cancellation_requested_while_starting_reaches_the_created_operation() {
     let (client, _endpoint) = SettingsClient::bounded(1);
-    let (operation, _, _) = client.prepare_model_import().expect("prepared import");
+    let operation = client
+        .start_model_import_blocking(SettingsModelImportRequest {
+            title: "custom-model".to_owned(),
+            source_root: PathBuf::from("/private/source"),
+            selected_mver_modes: Vec::new(),
+        })
+        .expect("prepared import");
     let draft = ModelImportDraft {
         title: "custom-model".to_owned(),
         source_root: Some(PathBuf::from("/private/source")),

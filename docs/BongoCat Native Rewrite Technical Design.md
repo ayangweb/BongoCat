@@ -110,8 +110,9 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   `Root`，图标使用 `gpui_kit::assets`，项目只保留领域适配、产品 token 覆盖和组件库未覆盖
   的薄业务控件。应用统一调用 `gpui_kit::init`，平台入口只从 `gpui_kit::platform` 获取。
 - GPUI `Entity` 只保存视图状态；真实输入、动画、配置和模型状态由 runtime 管理。
-- 正式 `bongocat-ui` 只定义设置 command/snapshot 协议和 GPUI 视图；`bongocat-app`
-  的有界 service worker 独占配置写入和 runtime command，UI executor 不执行阻塞 I/O。
+- 正式 `bongocat-ui-protocol` 定义设置 command/snapshot 协议，`bongocat-ui` 只负责 GPUI 视图与
+  presentation policy；`bongocat-app` 的有界 service worker 独占配置写入和 runtime command，
+  UI executor 不执行阻塞 I/O。
 - `SettingsSnapshot.revision` 是 UI 快照排序用的单调版本，能够因 runtime、平台状态、诊断或
   catalog 变化推进；可编辑配置另携带可选 `config_revision`，仅由当前环境的持久化配置版本
   驱动。修改配置的 command 必须携带 `expected_config_revision`，在任何 config/runtime 写入
@@ -306,6 +307,7 @@ BongoCat/
   crates/
     bongocat-app/             入口、装配和 shutdown
     bongocat-input/           平台无关输入协议、producer 和 latest-value transport
+    bongocat-ui-protocol/     设置/更新 DTO、typed command、reply 和 bounded client
     bongocat-runtime/         状态、输入 reducer、模型投影、动画和命令
     bongocat-config/          schema、环境隔离和原子存储
     bongocat-storage/         用户私有存储原语：权限、私有目录、原子替换
@@ -329,6 +331,12 @@ BongoCat/
 ```
 
 crate 是编译和责任边界，不是动态库。首期不为目录美观建立空 crate；只有依赖方向或测试隔离确实需要时才拆分。
+
+`bongocat-ui-protocol` 只承载设置/更新服务的进程内强类型 contract：snapshot、command、reply、
+operation control、state handle 和 bounded client/endpoint。它不依赖 GPUI、OS API、配置、平台、
+本地化或 update 库；`bongocat-ui` 负责把这些 contract 映射为 GPUI view，app service 负责把
+config/platform/update producer 映射为 protocol 类型。debounce、语言显示文案、更新窗口轮询节奏和
+文件选择后的展示判断留在 UI/适配器，不进入跨层 contract。
 
 正式 workspace 位于仓库根目录，是仓库中唯一的产品构建入口。历史 Vue/Tauri 实现仅在
 远端 `master` 和 `pre-refactor-tauri` 分支中保留，当前工作树不包含其源码、资源或构建入口；
@@ -1035,8 +1043,9 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   类型的中间表示后渲染，不存在可注入的 markup 层；原始 HTML 按字面文本显示，图片只渲染 alt 文本、
   不发起请求，链接仅 HTTPS 且无空白/控制字符才可点击。输入截断至 32 KiB，块嵌套超过 8 层压平但
   不丢内容；GFM 表格不渲染（按 CommonMark 退化为段落）。
-- 更新协议由 UI 侧拥有（`bongocat_ui::update`），`bongocat-ui` 不依赖 `bongocat-update`；`bongocat-app`
-  做穷尽映射（stage 与 14 个错误码），新增一项会让映射编译失败，直到它被赋予用户可见含义。
+- 更新协议由 `bongocat-ui-protocol` 拥有，`bongocat-ui` 只负责窗口与展示策略；两者不依赖
+  `bongocat-update`。`bongocat-app` 做穷尽映射（stage 与 14 个错误码），新增一项会让映射编译失败，
+  直到它被赋予用户可见含义。
 - 安装后是否需要重启进程是**平台事实**：macOS 由库整包替换 `.app`，运行中的进程此后执行已删除的
   文件（预设模型目录是惰性读盘的），因此安装成功后自动重启——先按 §5.3 的顺序完成产品 shutdown，
   再 `exec` 新构建；Windows 由安装器 `/R` 重启，`Installed` 在该平台不可观测。

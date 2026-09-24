@@ -24,8 +24,7 @@ use bongocat_runtime::{
     RuntimeState,
 };
 use bongocat_storage::{create_private_dir_all, write_private_atomic};
-use bongocat_ui::SettingsStartupItemError;
-use bongocat_ui::{
+use bongocat_ui_protocol::{
     DIAGNOSTICS_EXPORT_FORMAT_VERSION, RuntimeHealth, SettingsApplicationShortcut,
     SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsCommand,
     SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings,
@@ -36,9 +35,9 @@ use bongocat_ui::{
     SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
     SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
     SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemError,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_update::UpdateDiagnostics;
 use serde::Serialize;
@@ -1688,11 +1687,11 @@ const fn settings_model_origin(origin: ModelOrigin) -> SettingsModelOrigin {
     }
 }
 
-fn model_mver_input_mode(mode: bongocat_ui::SettingsMverMode) -> MverInputMode {
+fn model_mver_input_mode(mode: bongocat_ui_protocol::SettingsMverMode) -> MverInputMode {
     match mode {
-        bongocat_ui::SettingsMverMode::Standard => MverInputMode::Standard,
-        bongocat_ui::SettingsMverMode::Keyboard => MverInputMode::Keyboard,
-        bongocat_ui::SettingsMverMode::Gamepad => MverInputMode::Gamepad,
+        bongocat_ui_protocol::SettingsMverMode::Standard => MverInputMode::Standard,
+        bongocat_ui_protocol::SettingsMverMode::Keyboard => MverInputMode::Keyboard,
+        bongocat_ui_protocol::SettingsMverMode::Gamepad => MverInputMode::Gamepad,
     }
 }
 
@@ -2371,7 +2370,7 @@ mod tests {
     use bongocat_config::{ConfigStore, OverlayWindowPlacement, StateStore, StorageLayout};
     use bongocat_input::{InputDiagnostics, InputTransportDiagnostics};
     use bongocat_runtime::{RuntimeOwner, RuntimeWorkDiagnostics};
-    use bongocat_ui::{SettingsModelImportRequest, SettingsStartupItemError};
+    use bongocat_ui_protocol::{SettingsModelImportRequest, SettingsStartupItemError};
     use std::{
         fs, io,
         sync::{
@@ -2686,8 +2685,8 @@ mod tests {
             behavior_shortcuts_enabled: true,
             maximum_fps: 60,
             release_fallback_timeout_ms: 500,
-            model_settings: bongocat_ui::SettingsModelSettings::default(),
-            gamepad_axis_settings: bongocat_ui::SettingsGamepadAxisSettings::default(),
+            model_settings: bongocat_ui_protocol::SettingsModelSettings::default(),
+            gamepad_axis_settings: bongocat_ui_protocol::SettingsGamepadAxisSettings::default(),
             shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
             diagnostics_export: None,
@@ -4300,7 +4299,7 @@ mod tests {
                 true,
             )
             .expect("enable motion audio");
-        let model_settings = bongocat_ui::SettingsModelSettings {
+        let model_settings = bongocat_ui_protocol::SettingsModelSettings {
             mirror: true,
             mirror_pointer_tracking: true,
             ignore_pointer: true,
@@ -4328,7 +4327,7 @@ mod tests {
             )
             .expect("update release fallback timeout");
         assert_eq!(configured_fallback.release_fallback_timeout_ms, 1_500);
-        let gamepad_settings = bongocat_ui::SettingsGamepadAxisSettings {
+        let gamepad_settings = bongocat_ui_protocol::SettingsGamepadAxisSettings {
             stick_dead_zone_percent: 20,
             trigger_dead_zone_percent: 10,
         };
@@ -4472,7 +4471,7 @@ mod tests {
         let stale_model_error = client
             .set_model_settings_blocking(
                 initial_config_revision,
-                bongocat_ui::SettingsModelSettings {
+                bongocat_ui_protocol::SettingsModelSettings {
                     mirror: true,
                     mirror_pointer_tracking: true,
                     ignore_pointer: true,
@@ -4489,7 +4488,7 @@ mod tests {
         assert_eq!(after_stale_model_settings.revision, hidden.revision);
         assert_eq!(
             after_stale_model_settings.model_settings,
-            bongocat_ui::SettingsModelSettings::default()
+            bongocat_ui_protocol::SettingsModelSettings::default()
         );
         assert_eq!(
             std::fs::read(&config_path).expect("preserved hidden config"),
@@ -4499,7 +4498,7 @@ mod tests {
         let stale_gamepad_error = client
             .set_gamepad_axis_settings_blocking(
                 initial_config_revision,
-                bongocat_ui::SettingsGamepadAxisSettings {
+                bongocat_ui_protocol::SettingsGamepadAxisSettings {
                     stick_dead_zone_percent: 20,
                     trigger_dead_zone_percent: 10,
                 },

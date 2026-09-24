@@ -449,6 +449,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 创建 bongocat-runtime：状态、输入语义、动画和 command。
 - [x] 创建 bongocat-input：平台无关输入协议、可靠 producer、cursor/gamepad latest-value transport 和匿名诊断。
   - 验收证据（2026-09-24）：`bongocat-input` 不依赖 runtime、renderer、GPUI 或 OS API；`InputState`、`ModelInputSnapshot`、runtime command/worker 和 shutdown 仍由 `bongocat-runtime` 独占。Windows/macOS 平台输入 producer 通过 typed submitter 接入同一 runtime FIFO；input crate、runtime、platform、app、overlay 测试及 release check 通过。
+- [x] 创建 bongocat-ui-protocol：设置/更新 DTO、typed command/reply、state handle 和 bounded client。
+  - 验收证据（2026-09-24）：protocol crate 的唯一直接依赖为 `async-channel`，不依赖 GPUI、OS、config、platform、i18n、update、model 或 runtime；app settings/update/lib 与 protocol 直接接线，GPUI view 保留 debounce、本地化、渲染轮询和窗口句柄测试。protocol、UI、app 测试及 workspace release check 通过。
 - [x] 创建 bongocat-config：环境隔离、schema、验证和原子存储。
 - [x] 创建 bongocat-model：模型包、导入和资源索引。
   - 验收证据（2026-08-30）：正式 `bongocat-model` 已实现可移植 `ModelId`、model3
@@ -480,9 +482,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     Live2D 与 macOS Metal overlay 已改用该 contract。
 - [ ] 创建 bongocat-ui：GPUI 页面和 design system。
   - 状态（2026-08-31）：正式 crate 已建立平台无关的有界 typed command/reply、稳定错误码、
-    revisioned snapshot 与 closed-service contract；Windows/macOS GPUI 最小窗口提供真实
-    loading/error/disabled 状态、可见焦点、系统明暗配色、overlay 显隐和 motion audio
-    switch。完整基础控件、页面、AccessKit adapter、IME/本地化和窗口重建尚未完成，
+    revisioned snapshot 与 closed-service contract；settings/update 的跨层 contract 已移入
+    `bongocat-ui-protocol`，GPUI crate 只保留 view 与 presentation policy。Windows/macOS
+    GPUI 最小窗口提供真实 loading/error/disabled 状态、可见焦点、系统明暗配色、overlay 显隐和
+    motion audio switch。完整基础控件、页面、AccessKit adapter、IME/本地化和窗口重建尚未完成，
     因此保持未勾选。
 - [ ] 创建 bongocat-platform：Windows/macOS 系统服务。
   - 状态（2026-08-30）：正式 crate 已接入 macOS listen-only CGEventTap 与 Windows Raw
@@ -492,7 +495,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     泄漏到 runtime；macOS 生命周期通知、双平台 GameController/XInput 与其余系统服务尚未
     迁入，因此总项保持未完成。
 - [ ] 创建 shared/config、behavior、fixtures、resources。
-- [x] 避免空 crate；首批建立 app/runtime/config，随后仅在真实依赖和测试隔离需要时增加 input 等边界 crate。
+- [x] 避免空 crate；首批建立 app/runtime/config，随后仅在真实依赖和测试隔离需要时增加 input、ui-protocol 等边界 crate。
 
 ### 2.2 工程质量
 
@@ -2384,7 +2387,7 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 状态（2026-09-15）：**真实 update worker 已接入**。`ApplicationUpdateService` 用应用自己的
     `UpdateDiagnosticsTracker`（在 `Application` 移交给设置服务之前注册，因此与匿名导出边界共享
     同一实例），每次 check/download/install 都推进对应计数与最后稳定错误码。UI 侧另有独立目录
-    `bongocat_ui::UpdateErrorCode`（14 项，含本次新增的 `update_release_manifest_invalid`），由
+    `bongocat-ui-protocol` 的 `UpdateErrorCode`（14 项，含本次新增的 `update_release_manifest_invalid`），由
     `bongocat-app` 的穷尽映射与逐项字符串比对锁定；
     新增一个 code 会让映射编译失败，直到它被赋予本地化文案。跨平台完整错误矩阵与真实发布链路
     证据仍待完成，因此总项保持未勾选。
@@ -3867,8 +3870,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `models.import.archive.*` 均不再存在；来源选择先收敛为 `pick_model_source`，同日收窄为
       只选文件夹的 `pick_model_folder`，再随本项一起撤回——当前**压缩包既没有 UI 入口、也没有
       store 侧实现**。本项保留的只是"当年做过什么、怎么做的"这份记录。
-      建议标题规则统一在 `bongocat_ui::model_source_display_name`（归档去掉 `.zip`，目录保留原名），
-      UI 预填与 service 兜底共用它——**这条规则仍然保留在代码里**，删掉它会让恢复时失去单一实现。
+      建议标题规则统一在 `bongocat-ui-protocol::model_source_display_name`（由 adapter 提供是否为目录；
+      归档去掉 `.zip`，目录保留原名），UI 预填与 service 兜底共用它——**这条规则仍然保留在代码里**，
+      删掉它会让恢复时失去单一实现。
     - 依赖评估（2026-09-16，§9）：`zip =8.6.0`（已在 workspace 依赖中，供诊断包写归档；本次打开
       `deflate-flate2`，MIT）+ `flate2 =1.1.10`（显式后端 `rust_backend`/miniz_oxide，纯 Rust）。
       两者均为当次核对的 crates.io 最新非 yanked 稳定版；不给 `bongocat-model` 打开 AES/bzip2/
@@ -5863,7 +5867,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `MverSource::Archive`、`SourceArchiveUnsupported`、`maximum_archive_bytes` 与
       `bongocat-model` 的 `zip`/`flate2` 依赖都不再存在，模型来源只剩用户选中的文件夹。
       恢复该功能前先与维护者确认（压缩包上传需要一组本次未做的新功能）；
-      `bongocat_ui::model_source_display_name` 的「去掉归档扩展名」规则保留，因为 settings service
+      `bongocat-ui-protocol::model_source_display_name` 的「去掉归档扩展名」规则保留，因为 settings service
       的兜底标题仍与它共用，删掉会让恢复时失去单一实现。
     - 验收证据（2026-09-22，本机 macOS / aarch64）：`cargo test -p bongocat-ui --lib` 139 通过（含
       `model_import_card` 5 项 UI 测试：按下卡片只打开一次选择器且键盘等价、进度面替换提示且下一步

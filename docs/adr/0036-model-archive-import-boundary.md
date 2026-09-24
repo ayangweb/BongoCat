@@ -25,8 +25,8 @@
 决策 2（压缩包不是第二个解析器，共用 `PreparedModel` 校验）、以及解压前按中央目录校验的安全边界。
 **恢复前先与维护者确认**：压缩包上传需要一组本次未做的新功能，不是把代码加回来那么简单。
 
-`bongocat_ui::model_source_display_name` 的「去掉归档扩展名」规则**保留**：settings service 的
-兜底标题仍与它共用，且删掉它会让恢复时的那条契约失去单一实现。
+`bongocat-ui-protocol::model_source_display_name` 的「去掉归档扩展名」规则**保留**：settings service 的
+兜底标题仍与它共用，且删掉它会让恢复时的那条契约失去单一实现；调用方负责提供来源是否为目录。
 
 同日更早的两次 UI 修订也一并成为历史记录，保留如下：决策 10 的「一个来源一个按钮」先被单一上传卡片
 取代（依据是 `rfd 0.17.2` 新增的 `pick_file_or_folder`——`NSOpenPanel` 可以在同一次调用里既接受

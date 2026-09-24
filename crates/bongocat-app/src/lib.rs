@@ -92,7 +92,7 @@ impl ApplicationMainThreadSignals {
     /// the cover it ships is left in place until a capture replaces it.
     pub fn request_model_cover_capture(
         &self,
-        key: bongocat_ui::SettingsModelKey,
+        key: bongocat_ui_protocol::SettingsModelKey,
         model: CommittedModel,
     ) {
         self.cover_captures
@@ -120,13 +120,13 @@ impl ApplicationMainThreadSignals {
 /// work: the GPUI thread gets something it can render, not an id it would have to
 /// re-open the store for.
 pub struct CoverCaptureRequest {
-    key: bongocat_ui::SettingsModelKey,
+    key: bongocat_ui_protocol::SettingsModelKey,
     model: Arc<CommittedModel>,
 }
 
 impl CoverCaptureRequest {
     /// The model as the settings protocol names it, for writing the cover back.
-    pub fn key(&self) -> &bongocat_ui::SettingsModelKey {
+    pub fn key(&self) -> &bongocat_ui_protocol::SettingsModelKey {
         &self.key
     }
 
@@ -981,7 +981,7 @@ impl Application {
 
     pub fn set_shortcuts(
         &mut self,
-        shortcuts: bongocat_ui::SettingsShortcuts,
+        shortcuts: bongocat_ui_protocol::SettingsShortcuts,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let mut next_config = self.config.clone();
         let commands_enabled = next_config.shortcuts.commands_enabled;
@@ -1004,7 +1004,7 @@ impl Application {
     /// table without changing the persisted configuration.
     pub fn suspend_shortcut_capture(
         &mut self,
-        shortcuts_without_capture_target: bongocat_ui::SettingsShortcuts,
+        shortcuts_without_capture_target: bongocat_ui_protocol::SettingsShortcuts,
     ) -> Result<(), ApplicationError> {
         let mut temporary = self.config.clone();
         let commands_enabled = temporary.shortcuts.commands_enabled;
@@ -1551,7 +1551,7 @@ impl Application {
     pub fn inspect_model_source(
         &self,
         source_root: impl AsRef<Path>,
-    ) -> Result<bongocat_ui::SettingsModelSourceContent, ApplicationError> {
+    ) -> Result<bongocat_ui_protocol::SettingsModelSourceContent, ApplicationError> {
         self.model_store
             .inspect_source(source_root)
             .map(settings_model_source_content)
@@ -2039,19 +2039,21 @@ fn legacy_mode_label(language: Language, mode: MverInputMode) -> &'static str {
 /// compile error here rather than a silent gap in the dialog.
 fn settings_model_source_content(
     content: ModelSourceContent,
-) -> bongocat_ui::SettingsModelSourceContent {
+) -> bongocat_ui_protocol::SettingsModelSourceContent {
     match content {
-        ModelSourceContent::Package => bongocat_ui::SettingsModelSourceContent::Package,
-        ModelSourceContent::Mver { modes } => bongocat_ui::SettingsModelSourceContent::Mver {
-            modes: modes
-                .into_iter()
-                .map(|mode| match mode {
-                    MverInputMode::Standard => bongocat_ui::SettingsMverMode::Standard,
-                    MverInputMode::Keyboard => bongocat_ui::SettingsMverMode::Keyboard,
-                    MverInputMode::Gamepad => bongocat_ui::SettingsMverMode::Gamepad,
-                })
-                .collect(),
-        },
+        ModelSourceContent::Package => bongocat_ui_protocol::SettingsModelSourceContent::Package,
+        ModelSourceContent::Mver { modes } => {
+            bongocat_ui_protocol::SettingsModelSourceContent::Mver {
+                modes: modes
+                    .into_iter()
+                    .map(|mode| match mode {
+                        MverInputMode::Standard => bongocat_ui_protocol::SettingsMverMode::Standard,
+                        MverInputMode::Keyboard => bongocat_ui_protocol::SettingsMverMode::Keyboard,
+                        MverInputMode::Gamepad => bongocat_ui_protocol::SettingsMverMode::Gamepad,
+                    })
+                    .collect(),
+            }
+        }
     }
 }
 
@@ -2095,12 +2097,12 @@ fn normalize_model_title(value: &str) -> Option<String> {
 /// The source-folder default title; over-long or missing folder names
 /// degrade to the model id.
 ///
-/// The name itself comes from `bongocat_ui::model_source_display_name` so the
+/// The name itself comes from `bongocat_ui_protocol::model_source_display_name` so the
 /// service's fallback and the settings page's pre-filled title agree. The source
 /// is the folder a user picked; the shared rule also knows how to drop an archive
 /// extension, which is what the `名字.zip` exported from that folder carries.
 fn installed_model_title_from_source(source_root: &Path, fallback: &str) -> String {
-    bongocat_ui::model_source_display_name(source_root)
+    bongocat_ui_protocol::model_source_display_name(source_root, source_root.is_dir())
         .map(|name| clamp_model_title(&name))
         .filter(|title| !title.is_empty())
         .unwrap_or_else(|| fallback.to_owned())
@@ -2204,7 +2206,7 @@ fn assign_default_behavior_shortcuts(config: &mut NativeConfig, model: &Committe
 /// separately: recording or clearing a chord must never switch the window
 /// shortcuts back on behind the user's back.
 fn shortcut_config_from_settings(
-    shortcuts: bongocat_ui::SettingsShortcuts,
+    shortcuts: bongocat_ui_protocol::SettingsShortcuts,
     commands_enabled: bool,
 ) -> ShortcutConfig {
     ShortcutConfig {
@@ -3385,12 +3387,12 @@ mod tests {
         // Control+Alt+0 sits outside the primary tier, so the expectation below
         // reads the same on macOS and Windows.
         application
-            .set_shortcuts(bongocat_ui::SettingsShortcuts {
-                commands: vec![bongocat_ui::SettingsShortcutBinding {
+            .set_shortcuts(bongocat_ui_protocol::SettingsShortcuts {
+                commands: vec![bongocat_ui_protocol::SettingsShortcutBinding {
                     command: "toggle_overlay".to_owned(),
                     shortcut: "Control+Alt+0".to_owned(),
                 }],
-                ..bongocat_ui::SettingsShortcuts::default()
+                ..bongocat_ui_protocol::SettingsShortcuts::default()
             })
             .expect("persist user shortcuts");
         let modifiers = bongocat_config::ShortcutModifiers::from_bits(
@@ -3448,12 +3450,12 @@ mod tests {
         // Both chords sit outside the primary tier, so the expectation below
         // reads the same on macOS and Windows.
         application
-            .set_shortcuts(bongocat_ui::SettingsShortcuts {
-                commands: vec![bongocat_ui::SettingsShortcutBinding {
+            .set_shortcuts(bongocat_ui_protocol::SettingsShortcuts {
+                commands: vec![bongocat_ui_protocol::SettingsShortcutBinding {
                     command: "toggle_overlay".to_owned(),
                     shortcut: "Control+Alt+0".to_owned(),
                 }],
-                model_behaviors: vec![bongocat_ui::SettingsModelBehaviorBinding {
+                model_behaviors: vec![bongocat_ui_protocol::SettingsModelBehaviorBinding {
                     model_id: "standard".to_owned(),
                     behavior_id: "motion:CAT_motion:0".to_owned(),
                     shortcut: "Control+Alt+9".to_owned(),
@@ -3529,7 +3531,7 @@ mod tests {
 
         // What the page's "Clear all shortcuts" button sends.
         application
-            .set_shortcuts(bongocat_ui::SettingsShortcuts::default())
+            .set_shortcuts(bongocat_ui_protocol::SettingsShortcuts::default())
             .expect("clear all shortcuts");
         assert!(application.config().shortcuts.commands.is_empty());
         assert!(application.config().shortcuts.model_behaviors.is_empty());
@@ -3564,12 +3566,12 @@ mod tests {
         application
             .set_behavior_shortcuts_enabled(true)
             .expect("enable behavior shortcuts");
-        let shortcuts = bongocat_ui::SettingsShortcuts {
-            commands: vec![bongocat_ui::SettingsShortcutBinding {
+        let shortcuts = bongocat_ui_protocol::SettingsShortcuts {
+            commands: vec![bongocat_ui_protocol::SettingsShortcutBinding {
                 command: "toggle_overlay".to_owned(),
                 shortcut: "ctrl+shift+b".to_owned(),
             }],
-            model_behaviors: vec![bongocat_ui::SettingsModelBehaviorBinding {
+            model_behaviors: vec![bongocat_ui_protocol::SettingsModelBehaviorBinding {
                 model_id: "standard".to_owned(),
                 behavior_id: "expression:happy".to_owned(),
                 shortcut: "alt+m".to_owned(),
@@ -3637,9 +3639,9 @@ mod tests {
         // other model will be handed: outside the primary tier, so the
         // expectation below reads the same on macOS and Windows.
         application
-            .set_shortcuts(bongocat_ui::SettingsShortcuts {
+            .set_shortcuts(bongocat_ui_protocol::SettingsShortcuts {
                 commands: Vec::new(),
-                model_behaviors: vec![bongocat_ui::SettingsModelBehaviorBinding {
+                model_behaviors: vec![bongocat_ui_protocol::SettingsModelBehaviorBinding {
                     model_id: "standard".to_owned(),
                     behavior_id: "motion:CAT_motion:0".to_owned(),
                     shortcut: "Control+Alt+9".to_owned(),
@@ -3709,8 +3711,8 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let mut application =
             Application::start_with_layout(layout.clone()).expect("start application");
-        let shortcuts = bongocat_ui::SettingsShortcuts {
-            commands: vec![bongocat_ui::SettingsShortcutBinding {
+        let shortcuts = bongocat_ui_protocol::SettingsShortcuts {
+            commands: vec![bongocat_ui_protocol::SettingsShortcutBinding {
                 command: "toggle_overlay".to_owned(),
                 shortcut: "Meta+L".to_owned(),
             }],
@@ -3733,7 +3735,7 @@ mod tests {
         );
 
         application
-            .suspend_shortcut_capture(bongocat_ui::SettingsShortcuts::default())
+            .suspend_shortcut_capture(bongocat_ui_protocol::SettingsShortcuts::default())
             .expect("suspend shortcut");
         assert!(
             application

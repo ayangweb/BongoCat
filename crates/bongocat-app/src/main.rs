@@ -20,11 +20,10 @@ use bongocat_platform::{
 };
 use bongocat_platform::{SystemMenu, SystemMenuAction, SystemMenuPresentation};
 use bongocat_runtime::hover_hide_delay_ms;
-use bongocat_ui::SettingsView;
-use bongocat_ui::{
+use bongocat_ui::{SettingsView, SettingsWindowHandle, SettingsWindowSeed, open_settings_window};
+use bongocat_ui_protocol::{
     SettingsClient, SettingsError, SettingsErrorCode, SettingsModelAvailability, SettingsModelKey,
-    SettingsModelOrigin, SettingsOverlay, SettingsSnapshot, SettingsWindowHandle,
-    SettingsWindowSeed, open_settings_window,
+    SettingsModelOrigin, SettingsOverlay, SettingsSnapshot,
 };
 use gpui_kit::{
     App, Application as GpuiApplication, Global, QuitMode, assets::AllAssets,
@@ -580,14 +579,14 @@ struct ProductCoordinator {
     /// one frame of it: the settings window used to redraw from English into the
     /// user's language as soon as the snapshot landed. Reading it here keeps the
     /// windows off a blocking read on the GPUI thread.
-    product_language: bongocat_ui::SettingsLanguage,
+    product_language: bongocat_ui_protocol::SettingsLanguage,
     /// The appearance a product window opens with.
     ///
     /// The same reason as `product_language`: a window has to apply the product's
     /// theme on its first frame, and the settings snapshot only reaches it on the next
     /// poll. Opening on the default would let the update window clear an override the
     /// settings window has already installed (ADR-0048).
-    product_appearance_theme: bongocat_ui::SettingsTheme,
+    product_appearance_theme: bongocat_ui_protocol::SettingsTheme,
     /// When a completed install that needs a restart was first observed.
     #[cfg(target_os = "macos")]
     update_installed_since: Option<Instant>,
@@ -1084,7 +1083,7 @@ fn update_window_is_open(cx: &mut App) -> bool {
 }
 
 /// The phase the update worker is currently publishing.
-fn published_update_phase(cx: &mut App) -> Option<bongocat_ui::UpdatePhase> {
+fn published_update_phase(cx: &mut App) -> Option<bongocat_ui_protocol::UpdatePhase> {
     cx.try_global::<ProductCoordinator>()
         .and_then(|coordinator| coordinator.update_service.as_ref())
         .map(|service| service.state().phase())
@@ -1101,7 +1100,7 @@ fn request_update_check(cx: &mut App) -> bool {
     };
     if matches!(
         client.snapshot().phase,
-        bongocat_ui::UpdatePhase::Unavailable { .. }
+        bongocat_ui_protocol::UpdatePhase::Unavailable { .. }
     ) {
         return false;
     }
@@ -1146,7 +1145,7 @@ fn poll_update_restart(cx: &mut App) -> bool {
     let requested = take_update_restart_request(cx);
     let install_completed = matches!(
         published_update_phase(cx),
-        Some(bongocat_ui::UpdatePhase::Installed {
+        Some(bongocat_ui_protocol::UpdatePhase::Installed {
             restart_required: true,
             ..
         })
@@ -1442,7 +1441,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
         ApplicationState, BuildEnvironment, ConfigStore, Language, StateStore, StorageLayout,
         Theme, WindowPlacement,
     };
-    use bongocat_ui::{SettingsLanguage, SettingsTheme};
+    use bongocat_ui_protocol::{SettingsLanguage, SettingsTheme};
 
     const RESIZED_WIDTH: u32 = 700;
     const RESIZED_HEIGHT: u32 = 520;
@@ -1855,7 +1854,7 @@ fn run_diagnostics_export_failure_smoke() -> Result<(), Box<dyn std::error::Erro
     let error = client
         .export_diagnostics_blocking()
         .expect_err("diagnostics export must reject a directory destination");
-    if error.code() != bongocat_ui::SettingsErrorCode::DiagnosticsExportFailed {
+    if error.code() != bongocat_ui_protocol::SettingsErrorCode::DiagnosticsExportFailed {
         return Err("diagnostics export returned an unstable filesystem failure code".into());
     }
     if std::fs::read(&preview)? != previous_preview {
@@ -1887,7 +1886,7 @@ fn run_diagnostics_export_failure_smoke() -> Result<(), Box<dyn std::error::Erro
         }
         let error =
             result.expect_err("diagnostics export must reject an immutable preview destination");
-        if error.code() != bongocat_ui::SettingsErrorCode::DiagnosticsExportFailed {
+        if error.code() != bongocat_ui_protocol::SettingsErrorCode::DiagnosticsExportFailed {
             return Err("immutable diagnostics preview returned an unstable error code".into());
         }
         if std::fs::read(&preview)? != previous_preview {
@@ -2510,8 +2509,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     for _ in 0..AUTOMATIC_UPDATE_CHECK_SETTLE_ATTEMPTS {
                         Timer::after(AUTOMATIC_UPDATE_CHECK_SETTLE_INTERVAL).await;
                         match cx.update(published_update_phase) {
-                            Some(bongocat_ui::UpdatePhase::Checking) => continue,
-                            Some(bongocat_ui::UpdatePhase::Available { .. }) => {
+                            Some(bongocat_ui_protocol::UpdatePhase::Checking) => continue,
+                            Some(bongocat_ui_protocol::UpdatePhase::Available { .. }) => {
                                 // Surface the result rather than leaving it for the
                                 // user to discover. The window is a singleton, so a
                                 // second automatic check cannot stack one.

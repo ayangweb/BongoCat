@@ -161,8 +161,8 @@ AGENTS §5.4 要求这类封装只能待在 `bongocat-platform`。
 
 ## 6. 对调用方与构建的影响
 
-- **调用方**：`bongocat-app` 只经 `bongocat_ui::SettingsTheme` 与 settings service 交互，
-  两种方案下它的代码都不需要改。这也是"拆不拆对收益没差别"的直接证据——没有第二个消费者。
+- **调用方**：`bongocat-app` 通过 `bongocat-ui-protocol::SettingsTheme` 与 settings service 交互；
+  本文记录的是 ADR-0059 之前仅针对主题类型的局部评估，当前设置/更新整体 contract 已按 ADR-0059 抽出。
 - **构建**：新 crate 会多一个编译单元和一组 CI 检查目标（当前门禁按 crate 分别跑 clippy）。
   收益是 25 行代码的归属更"整齐"，不成比例。
 - **测试**：主题逻辑是纯映射，在 `bongocat-ui` 内单测即可，不需要 crate 隔离。
