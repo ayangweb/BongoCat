@@ -5,6 +5,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt, fs,
     sync::Arc,
+    time::Duration,
 };
 
 use bongocat_live2d_playback::{
@@ -14,6 +15,7 @@ use bongocat_live2d_playback::{
 
 mod core;
 mod core_log;
+mod physics;
 mod sys;
 
 pub use core_log::{CoreLogError, CoreLogHandle, CoreLogReporter, CoreLogStats};
@@ -22,6 +24,19 @@ pub const CUBISM_SDK_RELEASE: &str = "5-r.5";
 pub const CUBISM_CORE_VERSION: u32 = 0x0600_0001;
 pub const CUBISM_LATEST_MOC_VERSION: u32 = 6;
 const MAX_MODEL_EFFECT_TARGETS: usize = 64;
+// These are the fixed Cubism Framework breath parameters used by the
+// Bongo-Cat-Mver reference. They are intentionally independent of model3
+// groups: compatible models use the conventional IDs even when their model3
+// omits a Breath group.
+const REFERENCE_BREATH_TARGETS: [(&str, f32, f32, f32); 5] = [
+    ("ParamAngleX", 0.0, 15.0, 6.5345),
+    ("ParamAngleY", 0.0, 8.0, 3.5345),
+    ("ParamAngleZ", 0.0, 10.0, 5.5345),
+    ("ParamBodyAngleX", 0.0, 4.0, 15.5345),
+    ("ParamBreath", 0.5, 0.5, 3.2345),
+];
+const AUTOMATIC_BREATH_CONTRIBUTION_WEIGHT: f32 = 0.5;
+const GENERIC_BREATH_PERIOD: f32 = 4.0;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(usize)]
@@ -234,8 +249,10 @@ pub struct Live2dModel {
     resources: Arc<RenderResources>,
     motions: BTreeMap<String, Vec<MotionClip>>,
     expressions: BTreeMap<String, ExpressionClip>,
+    breath_parameter_ids: Vec<String>,
     eye_blink_parameter_ids: Vec<String>,
     lip_sync_parameter_ids: Vec<String>,
+    physics: Option<physics::PhysicsRuntime>,
     model_opacity: f32,
     core: core::CoreModel,
 }
@@ -340,8 +357,13 @@ impl Live2dModel {
             }
         }
 
+        let breath_parameter_ids = parameter_group_ids(model, "Breath");
         let eye_blink_parameter_ids = parameter_group_ids(model, "EyeBlink");
         let lip_sync_parameter_ids = parameter_group_ids(model, "LipSync");
+        let physics = model
+            .physics_definition()
+            .map_err(|error| Live2dError::new(Live2dErrorCode::ResourceIo, error.to_string()))?
+            .map(physics::PhysicsRuntime::new);
         let moc_path = model.root().join(&model.index().moc);
         let core = core::CoreModel::load(&moc_path)?;
         core.validate_texture_indices(resources.textures.len())?;
@@ -349,8 +371,10 @@ impl Live2dModel {
             resources,
             motions,
             expressions,
+            breath_parameter_ids,
             eye_blink_parameter_ids,
             lip_sync_parameter_ids,
+            physics,
             model_opacity: 1.0,
             core,
         })
@@ -449,15 +473,52 @@ impl Live2dModel {
         self.core.set_parameter_by_id(id, mapped, 1.0)
     }
 
+    /// Apply the reference automatic effects at an injected monotonic time.
+    ///
+    /// The fixed targets match Bongo-Cat-Mver's Cubism Framework breath
+    /// configuration. They are applied after product input, as in the
+    /// reference, so the conventional angle parameters are not overwritten by
+    /// the neutral input snapshot. A model's first explicit Breath group may
+    /// contribute additional IDs; the fixed targets are not duplicated.
     pub fn apply_automatic_effects(
         &mut self,
-        breath: f32,
+        elapsed: Duration,
         eye_blink: f32,
     ) -> Result<usize, Live2dError> {
-        let mut applied = usize::from(matches!(
-            self.set_normalized_parameter_by_id("ParamBreath", breath)?,
-            ParameterUpdate::Applied { .. }
-        ));
+        let seconds = elapsed.as_secs_f64();
+        let mut applied = 0;
+        for (id, offset, peak, cycle) in REFERENCE_BREATH_TARGETS {
+            let target = offset as f64
+                + peak as f64 * (std::f64::consts::TAU * seconds / cycle as f64).sin();
+            if matches!(
+                self.set_parameter_by_id_with_weight(
+                    id,
+                    target as f32,
+                    AUTOMATIC_BREATH_CONTRIBUTION_WEIGHT
+                )?,
+                ParameterUpdate::Applied { .. }
+            ) {
+                applied += 1;
+            }
+        }
+
+        let generic_phase = ((std::f64::consts::TAU * seconds / GENERIC_BREATH_PERIOD as f64).sin()
+            + 1.0) as f32
+            * 0.5;
+        for id in self.breath_parameter_ids.clone() {
+            if REFERENCE_BREATH_TARGETS
+                .iter()
+                .any(|(fixed, ..)| *fixed == id)
+            {
+                continue;
+            }
+            if matches!(
+                self.apply_automatic_breath(&id, generic_phase)?,
+                ParameterUpdate::Applied { .. }
+            ) {
+                applied += 1;
+            }
+        }
         let eye_blink_ids = self.eye_blink_parameter_ids.clone();
         for id in eye_blink_ids {
             if matches!(
@@ -468,6 +529,53 @@ impl Live2dModel {
             }
         }
         Ok(applied)
+    }
+
+    fn set_parameter_by_id_with_weight(
+        &mut self,
+        id: &str,
+        value: f32,
+        weight: f32,
+    ) -> Result<ParameterUpdate, Live2dError> {
+        if !value.is_finite() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::ParameterValueInvalid,
+                format!("{id} received a non-finite automatic value"),
+            ));
+        }
+        self.core.set_parameter_by_id(id, value, weight)
+    }
+
+    fn apply_automatic_breath(
+        &mut self,
+        id: &str,
+        phase: f32,
+    ) -> Result<ParameterUpdate, Live2dError> {
+        if !phase.is_finite() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::ParameterValueInvalid,
+                format!("{id} received a non-finite automatic phase"),
+            ));
+        }
+        let Some(range) = self.core.parameter_range_by_id(id) else {
+            return Ok(ParameterUpdate::Unsupported);
+        };
+        let phase = phase.clamp(0.0, 1.0);
+        let target = range.minimum + (range.maximum - range.minimum) * phase;
+        self.set_parameter_by_id_with_weight(id, target, AUTOMATIC_BREATH_CONTRIBUTION_WEIGHT)
+    }
+
+    pub fn apply_physics(&mut self, delta: Duration) -> Result<usize, Live2dError> {
+        let Some(physics) = self.physics.as_mut() else {
+            return Ok(0);
+        };
+        physics.evaluate(delta, &mut self.core)
+    }
+
+    pub fn reset_physics(&mut self) {
+        if let Some(physics) = self.physics.as_mut() {
+            physics.reset();
+        }
     }
 
     pub fn apply_motion(
@@ -2052,7 +2160,7 @@ mod tests {
     }
 
     #[test]
-    fn automatic_effects_use_declared_group_and_optional_breath_parameter() {
+    fn automatic_effects_match_reference_breath_and_eye_blink() {
         use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
         use std::path::Path;
 
@@ -2071,10 +2179,15 @@ mod tests {
         model
             .restore_parameter_defaults()
             .expect("restore parameter defaults");
+        assert_eq!(model.breath_parameter_ids, ["ParamBreath"]);
+        let breath_range = model
+            .core
+            .parameter_range_by_id("ParamBreath")
+            .expect("breath range");
         let applied = model
-            .apply_automatic_effects(1.0, -1.0)
+            .apply_automatic_effects(std::time::Duration::from_secs(1), -1.0)
             .expect("automatic effects");
-        assert_eq!(applied, 3);
+        assert_eq!(applied, 7);
         assert_eq!(
             model
                 .core
@@ -2089,13 +2202,168 @@ mod tests {
                 .expect("right eye"),
             Some(0.0)
         );
+        let breath = model
+            .core
+            .parameter_value_by_id("ParamBreath")
+            .expect("breath")
+            .expect("supported breath parameter");
+        assert!(
+            breath > breath_range.default && breath < breath_range.maximum,
+            "reference breath must stay within its authored range: {breath}"
+        );
+    }
+
+    #[test]
+    fn reference_breath_does_not_require_a_model_group() {
+        use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
+        use std::path::Path;
+
+        let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("repository root");
+        let committed = PresetModelCatalog::open(
+            repository_root.join("resources/models"),
+            ModelPackageLimits::default(),
+        )
+        .expect("preset catalog")
+        .load(&ModelId::parse("standard").expect("model id"))
+        .expect("preset model");
+        let mut model = Live2dModel::load(&committed).expect("Live2D model");
+        let breath_default = model
+            .core
+            .parameter_value_by_id("ParamBreath")
+            .expect("breath value")
+            .expect("supported breath parameter");
+        let breath_range = model
+            .core
+            .parameter_range_by_id("ParamBreath")
+            .expect("breath range");
+        model.breath_parameter_ids.clear();
+
+        model
+            .restore_parameter_defaults()
+            .expect("restore parameter defaults");
         assert_eq!(
             model
+                .apply_automatic_effects(std::time::Duration::from_secs(1), -1.0)
+                .expect("automatic effects without Breath"),
+            7,
+            "the fixed reference targets remain active without a model3 Breath group"
+        );
+        let breath = model
+            .core
+            .parameter_value_by_id("ParamBreath")
+            .expect("breath value")
+            .expect("supported breath parameter");
+        assert_ne!(
+            breath, breath_default,
+            "the conventional reference target should not be ignored"
+        );
+
+        for step in 0..=40 {
+            model
+                .restore_parameter_defaults()
+                .expect("restore parameter defaults");
+            model
+                .apply_automatic_effects(std::time::Duration::from_millis(step * 100), 1.0)
+                .expect("reference automatic effects");
+            let breath = model
                 .core
                 .parameter_value_by_id("ParamBreath")
-                .expect("breath"),
-            Some(1.0)
-        );
+                .expect("breath value")
+                .expect("supported breath parameter");
+            assert!(breath.is_finite(), "reference step {step}: {breath}");
+            let lower = breath_range.default
+                + (breath_range.minimum - breath_range.default)
+                    * AUTOMATIC_BREATH_CONTRIBUTION_WEIGHT;
+            let upper = breath_range.default
+                + (breath_range.maximum - breath_range.default)
+                    * AUTOMATIC_BREATH_CONTRIBUTION_WEIGHT;
+            assert!(
+                (lower..=upper).contains(&breath),
+                "reference step {step}: {breath} escaped [{lower}, {upper}]"
+            );
+        }
+    }
+
+    #[test]
+    fn declared_physics_drives_a_parameter_without_a_model_motion() {
+        use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
+        use serde_json::json;
+        use std::fs;
+        use std::path::Path;
+
+        fn copy_tree(source: &Path, destination: &Path) {
+            fs::create_dir_all(destination).expect("destination directory");
+            for entry in fs::read_dir(source).expect("source directory") {
+                let entry = entry.expect("source entry");
+                let target = destination.join(entry.file_name());
+                if entry.file_type().expect("entry type").is_dir() {
+                    copy_tree(&entry.path(), &target);
+                } else {
+                    fs::copy(entry.path(), target).expect("copied model file");
+                }
+            }
+        }
+
+        let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("repository root");
+        let package = tempfile::tempdir().expect("temporary package");
+        let source = repository_root.join("resources/models/standard");
+        let catalog_root = package.path().join("catalog");
+        let model_root = catalog_root.join("physics");
+        copy_tree(&source, &model_root);
+        let model_path = model_root.join("cat.model3.json");
+        let mut model_json: serde_json::Value =
+            serde_json::from_slice(&fs::read(&model_path).expect("model3")).expect("model3 JSON");
+        model_json["FileReferences"]["Physics"] = json!("cat.physics3.json");
+        fs::write(
+            &model_path,
+            serde_json::to_vec_pretty(&model_json).expect("model3 JSON serialization"),
+        )
+        .expect("updated model3");
+        fs::write(
+            model_root.join("cat.physics3.json"),
+            r#"{
+              "Version":3,
+              "Meta":{
+                "PhysicsSettingCount":1,"TotalInputCount":1,"TotalOutputCount":1,"VertexCount":2,"Fps":60,
+                "EffectiveForces":{"Gravity":{"X":0,"Y":-1},"Wind":{"X":0,"Y":0}},
+                "PhysicsDictionary":[{"Id":"PhysicsSetting1","Name":"test"}]
+              },
+              "PhysicsSettings":[{
+                "Id":"PhysicsSetting1",
+                "Input":[{"Source":{"Target":"Parameter","Id":"ParamAngleX"},"Weight":100,"Type":"X","Reflect":false}],
+                "Output":[{"Destination":{"Target":"Parameter","Id":"ParamAngleX"},"VertexIndex":1,"Scale":1,"Weight":100,"Type":"X","Reflect":false}],
+                "Vertices":[
+                  {"Position":{"X":0,"Y":0},"Mobility":1,"Delay":0,"Acceleration":0,"Radius":0},
+                  {"Position":{"X":0,"Y":10},"Mobility":1,"Delay":0,"Acceleration":0,"Radius":10}
+                ],
+                "Normalization":{"Position":{"Minimum":-10,"Default":0,"Maximum":10},"Angle":{"Minimum":-10,"Default":0,"Maximum":10}}
+              }]
+            }"#,
+        )
+        .expect("physics fixture");
+
+        let committed = PresetModelCatalog::open(&catalog_root, ModelPackageLimits::default())
+            .expect("catalog")
+            .load(&ModelId::parse("physics").expect("model id"))
+            .expect("committed model");
+        let mut model = Live2dModel::load(&committed).expect("Live2D model");
+        model
+            .set_parameter(ProductParameter::AngleX, 30.0)
+            .expect("input");
+        model
+            .apply_physics(std::time::Duration::from_millis(100))
+            .expect("physics evaluation");
+        let output = model
+            .parameter_value_by_id("ParamAngleX")
+            .expect("physics value")
+            .expect("physics parameter");
+        assert!(output.abs() > 0.1, "physics output: {output}");
     }
 
     #[test]
@@ -2122,19 +2390,33 @@ mod tests {
                 ["ParamEyeLOpen", "ParamEyeROpen"],
                 "{id} EyeBlink group"
             );
-            assert!(
-                model.core.parameter_range_by_id("ParamBreath").is_some(),
-                "{id} breath parameter"
+            assert_eq!(
+                model.breath_parameter_ids,
+                ["ParamBreath"],
+                "{id} Breath group"
             );
+            let breath_range = model
+                .core
+                .parameter_range_by_id("ParamBreath")
+                .unwrap_or_else(|| panic!("{id} breath parameter"));
             model
                 .restore_parameter_defaults()
                 .expect("restore parameter defaults");
             assert_eq!(
                 model
-                    .apply_automatic_effects(1.0, -1.0)
+                    .apply_automatic_effects(std::time::Duration::from_secs(1), -1.0)
                     .expect("automatic effects"),
-                3,
+                7,
                 "{id} automatic effect count"
+            );
+            let breath = model
+                .core
+                .parameter_value_by_id("ParamBreath")
+                .expect("breath value")
+                .expect("supported breath parameter");
+            assert!(
+                breath > breath_range.default && breath < breath_range.maximum,
+                "{id} reference breath stayed within its authored range: {breath}"
             );
         }
     }

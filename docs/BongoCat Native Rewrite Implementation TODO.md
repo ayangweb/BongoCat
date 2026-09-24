@@ -391,9 +391,10 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 验证 motion、expression、physics、pose 至少各一个真实样本。
   - 状态（2026-08-30）：6 个预置 motion3 已完成实际时间求值，三个 model3 声明的
     9 个 exp3 已进入正式 runtime 并以真实 Core/drawable 验证 Add 淡入与替换；合成
-    Core 测试另覆盖 Multiply/Overwrite。15 个预置 exp3 均已有结构门禁。本机 13 个历史
-    physics3 仍只以匿名只读方式通过静态 parser，合成 pose3 也仅固定结构拒绝边界；
-    physics/pose 的实际求值和可分发真实 fixture 尚未完成，因此总项保持未勾选。
+    Core 测试另覆盖 Multiply/Overwrite。15 个预置 exp3 均已有结构门禁。13 个历史 physics3
+    仍只作为本地结构证据，产品 parser 现可把它们转换为受边界约束的 v3 definition，临时标准包
+    physics contract 已证明固定步进/插值会写入 Core；可分发真实 physics fixture 与 R5 黑盒轨迹
+    尚未完成。合成 pose3 仍只固定结构拒绝边界，pose 实际求值尚未完成，因此总项保持未勾选。
 - [x] 验证模型切换/销毁 100 次，无 CPU/GPU 资源增长。
   - 验收证据（2026-08-30）：macOS release switch probe 先以不存在的 PNG 验证失败 GPU
     prepare 不改变 active generation，随后执行 100 个 standard -> keyboard -> gamepad ->
@@ -471,7 +472,9 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     本 crate 只负责 Core 写入和稳定错误映射。三个预置模型均在加载阶段缓存所有声明的
     motion/expression，不向上暴露 raw pointer。motion 主动 stop fade、PartOpacity 以及
     EyeBlink/LipSync/Opacity Model target 已进入正式 runtime/render contract；UserData 也已
-    进入跨帧、循环去重和有界诊断 contract。physics 与 pose 求值尚未实现，因此总项保持未完成。
+    进入跨帧、循环去重和有界诊断 contract。声明的 physics3 v3 现在由模型 contract 解析、由
+    `bongocat-live2d` 以固定步进和输出插值求值，并由 runtime 用单调 delta 驱动；临时标准包和本机
+    真实导入模型提供行为证据，但完整 R5 黑盒/跨平台证据与 pose 求值仍未完成，因此总项保持未完成。
 - [x] 创建 bongocat-audio：motion 音效 command、FLAC、设备 owner 和 shutdown。
   - 验收证据（2026-08-31）：ADR-0012 精确锁定最新稳定版 `rodio 0.22.2`，只启用
     `playback + flac`；独立 worker 以容量 16 的强类型队列管理唯一 voice，runtime 只做
@@ -1397,19 +1400,29 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     阶段缓存。`SetExpression` 使用强类型 name/command/snapshot 和可注入单调时钟，上一层
     按 FadeOutTime、当前层按 FadeInTime 正弦过渡，最多同时保留两层。真实 Core
     测试覆盖三种 blend，runtime 测试覆盖 drawable 变化、快速替换、无效请求保留、GPU
-    rejection 保留和成功模型 commit 清理；产品输入最后应用。快捷键/GPUI 入口由后续项跟踪。
+    rejection 保留和成功模型 commit 清理；expression 层之后进入产品输入，再进入当前 reference
+    breath/physics 顺序。快捷键/GPUI 入口由后续项跟踪。
   - 复核（2026-09-24）：固定 Mver/R5 expression 语义与当前实现一致——expression 没有 duration
     或自然完成，最新 expression 淡入完成后持续应用，直到下一次有效 expression、成功模型 commit
     或 shutdown 清理；不存在与 motion 相同的“终点后自动清空”缺陷。真实 Core frame-order 回归
     新增 2 秒后的第二帧，证明默认 parameter 恢复后最新 expression 仍以满权重覆盖对应参数；非零
     FadeInTime 的定向回归还证明测试时钟回退不会让已完成淡入重新开始。
 - [ ] 实现 physics、pose、eye blink、breath 等实际需求。
-  - 状态（2026-09-01）：正式 runtime 已在 motion/expression 之后、产品输入之前加入可注入单调时钟驱动的
-    `ParamBreath` 四秒正弦周期和 `EyeBlink` 五秒周期（每周期 180ms 闭眼）；缺失参数安全跳过，纯函数
-    边界测试固定周期与范围。新增三预置模型 contract 验证，确认 `EyeBlink` group 的双眼参数与
-    `ParamBreath` 均可通过同一 safe parameter API 驱动；新增 runtime precedence 回归锁定
-    `motion -> expression -> automatic effects -> product input -> Core update`，眨眼/呼吸不会被旧层残留值
-    覆盖。physics/pose 仍等待可授权真实 fixture、R5 黑盒轨迹和求值实现，不得以合成数据宣称完成。
+  - 状态（2026-09-24）：上一版按 model3 `Parameter`/`Breath` 组 opt-in 的修正确实阻止了该第三方
+    模型每四秒越过姿态阈值，但也把参考实现中由 `CubismBreath + physics3` 提供的待机头发运动一并
+    去掉了。固定 Mver 源码在每次加载时始终配置 `ParamAngleX`、`ParamAngleY`、`ParamAngleZ`、
+    `ParamBodyAngleX`、`ParamBreath` 五个呼吸目标，并在 motion/expression/产品拖动之后、Core update
+    之前求值声明的 physics3；该模型没有 motion/expression，但 `cat.physics3.json` 有 14 个 setting、
+    48 个粒子和 33 个输出，正是头发待机飘动的来源。
+  - 当前实现：固定 Mver offset/peak/cycle 以 `0.5` 权重写入上述目标；model3 首个 Breath 组仍可
+    提供最多 64 个额外 ID，但不再是约定目标生效的前提，固定 ID 不重复应用。对
+    `ParamBreath(min=0, default=0, max=1)` 的模型，贡献保持在 `0.5` 及以下，因此不会触发作者的
+    53 个 drawable 显隐阈值；模型层有界解析 physics3，Live2D 层以固定步进、延迟、惯性、输出插值
+    和未知 ID 跳过规则求值，runtime 用单调帧间 delta 驱动并在时钟回退时 reset。
+  - 验证：增加无模型 motion 的临时标准包 physics contract，证明声明的物理输出会写入 Core；本地
+    对当前导入模型做了 25 秒逐帧诊断：可见 drawable 数量保持 166，头发参数持续变化，
+    `ParamBreath` 最大值为 `0.5`，没有再发生四秒完整姿态切换。physics/pose 仍未完成全量 Cubism
+    R5 黑盒兼容与跨平台证据，checkbox 保持未勾选。
 - [ ] 实现键盘、鼠标、手柄到参数/动作/表情映射。
   - 状态（2026-09-01）：正式 `InputBindings` 现支持按 `GamepadButton` 的强类型左右手映射，
     `gamepad` 预置将 South/East 分别投影到左右手；Windows/macOS 预览路径与 runtime 共用该

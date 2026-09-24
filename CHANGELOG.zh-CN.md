@@ -26,6 +26,7 @@ BongoCat 2.0.0 是本更新日志记录的首个版本。
 
 ### 🐛 问题修复
 
+- 导入模型重新获得头发等 physics 驱动的待机飘动，同时不再来回切换完整姿态。Native renderer 现在参考 BongoCat-Mver 的固定呼吸参数，并在产品输入之后求值模型声明且已验证的 physics3。约定参数 `ParamBreath` 使用半权重贡献，因此 `0..1` 范围的模型会保持在 `0.5` 显隐阈值以内，不会触发姿态切换。model3 的 `Breath` 组仍可提供额外参数，但不再是参考目标生效的前提。
 - 模型切换后的窗口尺寸现在保持一致：高度会根据模型 Canvas 的宽高比和当前实际宽度重新计算；Windows 和 macOS 的初次创建与模型切换共用同一套取整规则，不再出现 1px 的差异。
 - 修改模型窗口的尺寸或透明度时，窗口不会再短暂变成完全透明。缩放现在直接更新现有原生表面，新的 swap chain 或 drawable 会在 compositor 显示新尺寸前先完成首帧绘制。
 - Windows 和 macOS 现在使用同一套 encoded-space 模型颜色契约。presentation opacity 只在完成后的窗口 surface 上统一施加一次，不再逐个 Live2D 部件重复衰减，从而避免重叠部件出现重影；drawable 的剔除也会遵循 Cubism 的 `double_sided` 状态和镜像后的 winding。

@@ -41,11 +41,17 @@
 - Expression parameters support `Add`, `Multiply`, and `Overwrite`. Layers are folded oldest to
   newest from the post-motion parameter value. Product input is applied after expression layers so
   a physically pressed key or button remains authoritative for mapped controls.
-- Automatic model effects are evaluated after motion and expression layers and before product input.
-  `ParamBreath` receives a deterministic four-second sine cycle when declared by the model. The
-  first `EyeBlink` group parameters (`ParamEyeLOpen` and `ParamEyeROpen` when present) remain open
-  except for a deterministic 180ms closed window at the start of each five-second cycle. Missing
-  parameters are ignored, and product input remains authoritative for mapped controls.
+- Automatic model effects follow the fixed Mver order: product input is applied first, then the
+  reference automatic layer and declared physics3 are evaluated before Core update. The fixed
+  `ParamAngleX`, `ParamAngleY`, `ParamAngleZ`, `ParamBodyAngleX`, and `ParamBreath` breath targets
+  use the Mver offset/peak/cycle values and a `0.5` contribution weight, even when model3 omits a
+  `Breath` group. An optional first `Parameter`/`Breath` group may add up to 64 IDs; fixed IDs are
+  not duplicated. The reported model's `ParamBreath` therefore remains at or below `0.5` while its
+  angle targets feed the declared physics rig and restore idle hair movement. Validated physics3
+  uses fixed-step inertia/delay and output interpolation; unknown IDs are ignored. The first
+  `EyeBlink` group parameters (`ParamEyeLOpen` and `ParamEyeROpen` when present) remain open except
+  for a deterministic 180ms closed window at the start of each five-second cycle. Product input
+  remains authoritative for controls not composed by the reference breath/physics path.
 - A successful model commit clears motion and expression state. CPU/GPU preparation failure keeps
   the previous model, motion, expression, and input bindings usable.
 - `audio_trigger` is an ordered side effect. It is not part of the render snapshot and must never

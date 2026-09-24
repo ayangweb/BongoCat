@@ -76,8 +76,8 @@ model-opacity samples remain a renderer-owned motion layer that is reapplied aft
 default reset. "Terminal sample" includes the resource's natural model3/curve fade weights; completion
 does not strip a natural fade-out to expose an earlier raw curve endpoint. Core part opacities are
 restored to their fresh-model values before the active motion is applied, so removing or replacing a
-motion cannot leave stale part visibility. Expression, automatic effects, product input, and Core
-update continue in their existing order.
+motion cannot leave stale part visibility. The later reference-compatible amendment below updates
+the automatic/product/physics sub-order; the completed-motion lifecycle itself is unchanged.
 
 Completed playback is not advanced again and does not reserve motion priority. The worker derives
 completion from the injected monotonic clock as well as the last delivered frame, so a hidden or
@@ -94,6 +94,48 @@ pinned at full weight after fade-in, including across a test-clock rollback, unt
 expression replaces it, a model commit succeeds, or shutdown clears it. No expression clear,
 duration, new crate, dependency, FFI call, or frozen whole-model snapshot is introduced.
 
+### Superseded amendment: automatic breath is an explicit weighted model-range group
+
+> This intermediate rule is retained as history only; the reference-compatible
+> amendment below supersedes it for the current runtime.
+
+A parameter merely named `ParamBreath` is not sufficient intent: third-party models can use that
+conventional ID for authored pose selection. A signed sine written through the generic `[-1, 1]`
+normalized-parameter helper also turns a common one-sided `0..1` range into a long clamp at the
+minimum followed by a full-range sweep. A model-authored drawable threshold can then switch large
+groups of parts every cycle even when the package has no motion or expression.
+
+Automatic breathing is therefore opt-in through the first model3 `Parameter` group named `Breath`,
+with the same first-64-ID bound as EyeBlink and LipSync. A model without that group keeps its
+authored parameter defaults. For declared IDs, the runtime emits a deterministic four-second
+unit-interval sine phase; the Core-coupled adapter maps it across each parameter's declared range
+and applies it with `0.5` weight after motion/expression. Eye blink keeps its existing normalized
+open/closed input. This is a parameter-evaluation correction, not a motion or expression trigger,
+and it does not add renderer-side state.
+
+### Superseding amendment: restore the Mver reference breath and physics path
+
+The explicit-group-only rule above was sufficient to stop the imported model's full-pose threshold
+crossing, but it also removed the model's authored idle hair movement. The fixed Mver source shows
+that this is not an optional model-specific effect: `myUserModel.cpp` always creates a
+`CubismBreath` instance with the conventional `ParamAngleX`, `ParamAngleY`, `ParamAngleZ`,
+`ParamBodyAngleX`, and `ParamBreath` IDs, then loads and evaluates the declared `physics3` resource.
+The update order is motion/expression, product drag, breath, physics, and Core update.
+
+Native therefore applies the same five fixed breath targets with their reference offsets, peaks,
+cycles, and `0.5` contribution weight after typed product input. A model3 `Breath` group remains an
+optional source of up to 64 additional IDs; it is no longer required for the conventional targets,
+and fixed IDs are not applied twice. For the reported model, the `ParamBreath` range is `0..1` with
+default `0`, so the reference contribution stays at or below `0.5` and does not cross its authored
+visibility threshold, while the fixed angle targets feed the declared physics rig and restore the
+hair's idle motion.
+
+Validated physics3 v3 definitions are parsed by the model contract and evaluated by a bounded Rust
+runtime with fixed-step interpolation, inertia, delay, and typed parameter IDs. Unknown input or
+output IDs are skipped rather than reaching Core. This is a compatibility path for the declared
+physics resource, not a claim that every Cubism feature or every platform has completed the full
+R5 black-box gate; pose evaluation remains separate and unfinished.
+
 ## Rejected alternatives
 
 - Moving Cubism Core, model loading, or GPU resource preparation into the new
@@ -106,4 +148,5 @@ duration, new crate, dependency, FFI call, or frozen whole-model snapshot is int
   rejected because resource I/O and model identity are not part of numeric clip
   evaluation.
 - Creating empty physics/pose modules: rejected until authorized fixtures and
-  the R5 compatibility gate define their contracts.
+  the R5 compatibility gate define their contracts. A bounded physics evaluator
+  is now allowed only for declared, validated v3 resources; pose remains gated.

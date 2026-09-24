@@ -26,6 +26,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 ### 🐛 Bug Fixes
 
+- Imported models keep their idle hair and other physics-driven movement again while no longer alternating between unrelated full poses. The Native renderer now follows the BongoCat-Mver reference breath targets and evaluates a model's validated physics3 resource after product input. The conventional `ParamBreath` target uses a half-weight contribution, so a model with a `0..1` range stays at or below its `0.5` visibility threshold instead of switching poses. A model3 `Breath` group is still supported for additional parameters, but is not required for the reference targets.
 - The model window now keeps the same dimensions when switching back to a model. Its height is recalculated from the model's canvas aspect ratio and the live width, while initial creation and model switching use one shared rounding rule on Windows and macOS instead of differing by a pixel.
 - Changing the model window's scale or opacity no longer briefly makes the whole window transparent. Both settings now update the existing native surface, and resized swap-chain or drawable content is presented before the compositor can show the new size.
 - Model rendering now uses one encoded-space color contract on Windows and macOS. Presentation opacity is applied once to the completed window surface instead of once per Live2D part, preventing overlapping parts from ghosting, and drawable culling follows Cubism's double-sided state and mirror winding.

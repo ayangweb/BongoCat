@@ -83,6 +83,13 @@
     "groups": [
       {
         "target": "Parameter",
+        "name": "Breath",
+        "ids": [
+          "ParamBreath"
+        ]
+      },
+      {
+        "target": "Parameter",
         "name": "EyeBlink",
         "ids": [
           "ParamEyeLOpen",
@@ -553,7 +560,7 @@
       "right_keys": []
     },
     "package_file_count": 71,
-    "package_total_bytes": 1378997,
+    "package_total_bytes": 1379108,
     "unreferenced_files": [
       "exp_1.exp3.json",
       "exp_2.exp3.json"
@@ -641,6 +648,13 @@
     "pose": null,
     "user_data": null,
     "groups": [
+      {
+        "target": "Parameter",
+        "name": "Breath",
+        "ids": [
+          "ParamBreath"
+        ]
+      },
       {
         "target": "Parameter",
         "name": "EyeBlink",
@@ -1146,7 +1160,7 @@
       ]
     },
     "package_file_count": 75,
-    "package_total_bytes": 1374095,
+    "package_total_bytes": 1374206,
     "unreferenced_files": [
       "exp_1.exp3.json",
       "exp_2.exp3.json"
@@ -1234,6 +1248,13 @@
     "pose": null,
     "user_data": null,
     "groups": [
+      {
+        "target": "Parameter",
+        "name": "Breath",
+        "ids": [
+          "ParamBreath"
+        ]
+      },
       {
         "target": "Parameter",
         "name": "LipSync",
@@ -1363,7 +1384,7 @@
       ]
     },
     "package_file_count": 28,
-    "package_total_bytes": 1043646,
+    "package_total_bytes": 1043757,
     "unreferenced_files": [
       "exp_1.exp3.json",
       "exp_2.exp3.json"

@@ -210,6 +210,70 @@ pub struct ModelPackageIndex {
     pub unreferenced_files: Vec<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PhysicsVector {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PhysicsRange {
+    pub minimum: f64,
+    pub default: f64,
+    pub maximum: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PhysicsChannel {
+    X,
+    Y,
+    Angle,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PhysicsInput {
+    pub parameter_id: String,
+    pub weight: f64,
+    pub channel: PhysicsChannel,
+    pub reflect: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PhysicsOutput {
+    pub parameter_id: String,
+    pub vertex_index: usize,
+    pub scale: f64,
+    pub weight: f64,
+    pub channel: PhysicsChannel,
+    pub reflect: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PhysicsVertex {
+    pub position: PhysicsVector,
+    pub mobility: f64,
+    pub delay: f64,
+    pub acceleration: f64,
+    pub radius: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PhysicsSetting {
+    pub inputs: Vec<PhysicsInput>,
+    pub outputs: Vec<PhysicsOutput>,
+    pub vertices: Vec<PhysicsVertex>,
+    pub normalization_position: PhysicsRange,
+    pub normalization_angle: PhysicsRange,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PhysicsDefinition {
+    pub fps: f64,
+    pub gravity: PhysicsVector,
+    pub wind: PhysicsVector,
+    pub settings: Vec<PhysicsSetting>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ImageResource {
     pub file: String,
@@ -261,6 +325,7 @@ pub struct PreparedModel {
     id: ModelId,
     canonical_root: PathBuf,
     index: ModelPackageIndex,
+    limits: ModelPackageLimits,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -347,6 +412,10 @@ impl InstalledModel {
         self.prepared.index()
     }
 
+    pub fn physics_definition(&self) -> Result<Option<PhysicsDefinition>, ModelError> {
+        self.prepared.physics_definition()
+    }
+
     pub fn snapshot(&self) -> ModelSnapshot {
         self.prepared.snapshot()
     }
@@ -376,6 +445,10 @@ impl CommittedModel {
 
     pub fn index(&self) -> &ModelPackageIndex {
         self.prepared.index()
+    }
+
+    pub fn physics_definition(&self) -> Result<Option<PhysicsDefinition>, ModelError> {
+        self.prepared.physics_definition()
     }
 
     pub fn snapshot(&self) -> ModelSnapshot {
@@ -502,6 +575,7 @@ impl PreparedModel {
             id,
             canonical_root,
             index,
+            limits,
         })
     }
 
@@ -523,6 +597,22 @@ impl PreparedModel {
 
     pub fn index(&self) -> &ModelPackageIndex {
         &self.index
+    }
+
+    pub fn physics_definition(&self) -> Result<Option<PhysicsDefinition>, ModelError> {
+        let Some(reference) = self.index.physics.as_deref() else {
+            return Ok(None);
+        };
+        let mut reader = PackageReader::new(&self.canonical_root, self.limits)?;
+        let normalized = reader.resolve_physics(reference)?;
+        let path = self.canonical_root.join(path_from_reference(&normalized));
+        load_physics_definition(
+            &path,
+            &normalized,
+            self.limits.maximum_json_bytes,
+            self.limits.maximum_json_depth,
+        )
+        .map(Some)
     }
 
     pub fn snapshot(&self) -> ModelSnapshot {
@@ -863,9 +953,9 @@ struct RawPhysicsInput {
     #[serde(rename = "Weight")]
     weight: f64,
     #[serde(rename = "Type")]
-    _kind: RawPhysicsChannel,
+    kind: RawPhysicsChannel,
     #[serde(rename = "Reflect")]
-    _reflect: bool,
+    reflect: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -880,9 +970,9 @@ struct RawPhysicsOutput {
     #[serde(rename = "Weight")]
     weight: f64,
     #[serde(rename = "Type")]
-    _kind: RawPhysicsChannel,
+    kind: RawPhysicsChannel,
     #[serde(rename = "Reflect")]
-    _reflect: bool,
+    reflect: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -1734,6 +1824,100 @@ fn validate_physics_resource(
         maximum_depth,
         ModelDiagnostic::ModelResourceInvalid,
     )?;
+    validate_physics_resource_value(&physics, reference)
+}
+
+fn load_physics_definition(
+    path: &Path,
+    reference: &str,
+    maximum_bytes: u64,
+    maximum_depth: usize,
+) -> Result<PhysicsDefinition, ModelError> {
+    let physics: RawPhysicsResource = read_json(
+        path,
+        reference,
+        maximum_bytes,
+        maximum_depth,
+        ModelDiagnostic::ModelResourceInvalid,
+    )?;
+    validate_physics_resource_value(&physics, reference)?;
+    Ok(PhysicsDefinition {
+        fps: physics.meta.fps,
+        gravity: PhysicsVector {
+            x: physics.meta.effective_forces.gravity.x,
+            y: physics.meta.effective_forces.gravity.y,
+        },
+        wind: PhysicsVector {
+            x: physics.meta.effective_forces.wind.x,
+            y: physics.meta.effective_forces.wind.y,
+        },
+        settings: physics
+            .settings
+            .into_iter()
+            .map(|setting| PhysicsSetting {
+                inputs: setting
+                    .inputs
+                    .into_iter()
+                    .map(|input| PhysicsInput {
+                        parameter_id: input.source.id,
+                        weight: input.weight,
+                        channel: match input.kind {
+                            RawPhysicsChannel::X => PhysicsChannel::X,
+                            RawPhysicsChannel::Y => PhysicsChannel::Y,
+                            RawPhysicsChannel::Angle => PhysicsChannel::Angle,
+                        },
+                        reflect: input.reflect,
+                    })
+                    .collect(),
+                outputs: setting
+                    .outputs
+                    .into_iter()
+                    .map(|output| PhysicsOutput {
+                        parameter_id: output.destination.id,
+                        vertex_index: output.vertex_index,
+                        scale: output.scale,
+                        weight: output.weight,
+                        channel: match output.kind {
+                            RawPhysicsChannel::X => PhysicsChannel::X,
+                            RawPhysicsChannel::Y => PhysicsChannel::Y,
+                            RawPhysicsChannel::Angle => PhysicsChannel::Angle,
+                        },
+                        reflect: output.reflect,
+                    })
+                    .collect(),
+                vertices: setting
+                    .vertices
+                    .into_iter()
+                    .map(|vertex| PhysicsVertex {
+                        position: PhysicsVector {
+                            x: vertex.position.x,
+                            y: vertex.position.y,
+                        },
+                        mobility: vertex.mobility,
+                        delay: vertex.delay,
+                        acceleration: vertex.acceleration,
+                        radius: vertex.radius,
+                    })
+                    .collect(),
+                normalization_position: PhysicsRange {
+                    minimum: setting.normalization.position.minimum,
+                    default: setting.normalization.position.default,
+                    maximum: setting.normalization.position.maximum,
+                },
+                normalization_angle: PhysicsRange {
+                    minimum: setting.normalization.angle.minimum,
+                    default: setting.normalization.angle.default,
+                    maximum: setting.normalization.angle.maximum,
+                },
+            })
+            .collect(),
+    })
+}
+
+fn validate_physics_resource_value(
+    physics: &RawPhysicsResource,
+    reference: &str,
+) -> Result<(), ModelError> {
     if physics.version != 3 {
         return invalid_resource(reference, "physics3 Version must be 3");
     }
@@ -2643,6 +2827,13 @@ mod tests {
                 eye_blink.ids,
                 ["ParamEyeLOpen".to_owned(), "ParamEyeROpen".to_owned()]
             );
+            let breath = prepared
+                .index()
+                .groups
+                .iter()
+                .find(|group| group.target == "Parameter" && group.name == "Breath")
+                .expect("Breath parameter group");
+            assert_eq!(breath.ids, ["ParamBreath".to_owned()]);
             assert_eq!(
                 prepared.root(),
                 root.canonicalize().expect("canonical root")
@@ -2904,6 +3095,20 @@ mod tests {
             limits.maximum_json_depth,
         )
         .expect("valid physics resource must be accepted");
+        let definition = load_physics_definition(
+            &physics,
+            "model.physics3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect("typed physics definition");
+        assert_eq!(definition.fps, 60.0);
+        assert_eq!(definition.settings.len(), 1);
+        assert_eq!(definition.settings[0].inputs[0].parameter_id, "ParamInput");
+        assert_eq!(
+            definition.settings[0].outputs[0].parameter_id,
+            "ParamOutput"
+        );
 
         for (invalid, detail) in [
             (

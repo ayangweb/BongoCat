@@ -11,7 +11,6 @@ use bongocat_render::RenderFrame;
 use std::sync::Arc;
 use std::time::Duration;
 
-const BREATH_PERIOD: Duration = Duration::from_secs(4);
 const BLINK_PERIOD: Duration = Duration::from_secs(5);
 const BLINK_CLOSED_DURATION: Duration = Duration::from_millis(180);
 
@@ -48,6 +47,7 @@ struct ActiveRenderModel {
     resources: Arc<bongocat_render::RenderResources>,
     model_generation: u64,
     next_frame_number: u64,
+    last_evaluated_at: Option<Duration>,
     motion: Option<MotionPlayback>,
     expressions: Vec<ExpressionPlayback>,
 }
@@ -134,6 +134,7 @@ impl RuntimeRenderer {
             resources,
             model_generation,
             next_frame_number: 1,
+            last_evaluated_at: None,
             motion: None,
             expressions: Vec::new(),
         });
@@ -388,8 +389,20 @@ impl RuntimeRenderer {
             .map_err(|error| {
                 map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
             })?;
-        apply_automatic_effects(&mut active.model, now)?;
+        let physics_delta = match active.last_evaluated_at {
+            Some(previous) if now >= previous => now - previous,
+            Some(_) => {
+                active.model.reset_physics();
+                Duration::ZERO
+            }
+            None => Duration::ZERO,
+        };
         apply_model_input(&mut active.model, input, self.model_settings)?;
+        apply_automatic_effects(&mut active.model, now)?;
+        active.model.apply_physics(physics_delta).map_err(|error| {
+            map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
+        })?;
+        active.last_evaluated_at = Some(now);
         let mut snapshot = active.model.update_and_snapshot().map_err(|error| {
             map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
         })?;
@@ -424,24 +437,21 @@ fn apply_automatic_effects(
     model: &mut Live2dModel,
     now: Duration,
 ) -> Result<(), RuntimeRenderErrorCode> {
-    let (breath, blink) = automatic_effect_values(now);
+    let (breath_time, blink) = automatic_effect_values(now);
     model
-        .apply_automatic_effects(breath, blink)
+        .apply_automatic_effects(breath_time, blink)
         .map_err(|error| map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed))?;
     Ok(())
 }
 
-fn automatic_effect_values(now: Duration) -> (f32, f32) {
-    let breath_phase =
-        (now.as_secs_f64() % BREATH_PERIOD.as_secs_f64()) / BREATH_PERIOD.as_secs_f64();
-    let breath = (std::f64::consts::TAU * breath_phase).sin() as f32;
+fn automatic_effect_values(now: Duration) -> (Duration, f32) {
     let blink_phase = now.as_secs_f64() % BLINK_PERIOD.as_secs_f64();
     let blink = if blink_phase < BLINK_CLOSED_DURATION.as_secs_f64() {
         -1.0
     } else {
         0.0
     };
-    (breath, blink)
+    (now, blink)
 }
 
 fn apply_model_input(
@@ -560,29 +570,26 @@ mod tests {
     #[test]
     fn automatic_effects_are_periodic_and_deterministic() {
         let start = automatic_effect_values(Duration::ZERO);
-        let quarter = automatic_effect_values(Duration::from_secs(1));
-        let full_cycle = automatic_effect_values(BREATH_PERIOD);
-        assert_eq!(start.0, 0.0);
-        assert!((quarter.0 - 1.0).abs() < 0.000_001);
-        assert!((full_cycle.0 - start.0).abs() < 0.000_001);
+        let full_cycle = automatic_effect_values(BLINK_PERIOD);
+        assert_eq!(start.0, Duration::ZERO);
+        assert_eq!(full_cycle.0, BLINK_PERIOD);
         assert_eq!(start.1, -1.0);
         assert_eq!(automatic_effect_values(BLINK_CLOSED_DURATION).1, 0.0);
-        assert_eq!(automatic_effect_values(BLINK_PERIOD).1, -1.0);
+        assert_eq!(full_cycle.1, -1.0);
     }
 
     #[test]
-    fn automatic_effects_keep_breath_in_normalized_range() {
-        for millis in (0..=BREATH_PERIOD.as_millis()).step_by(37) {
-            let (breath, blink) = automatic_effect_values(Duration::from_millis(
+    fn automatic_effects_keep_blink_in_closed_or_open_contract() {
+        for millis in (0..=BLINK_PERIOD.as_millis()).step_by(37) {
+            let (_, blink) = automatic_effect_values(Duration::from_millis(
                 u64::try_from(millis).expect("duration fits u64"),
             ));
-            assert!((-1.0..=1.0).contains(&breath));
             assert!(blink == -1.0 || blink == 0.0);
         }
     }
 
     #[test]
-    fn frame_evaluation_order_is_motion_expression_effects_input_then_core_update() {
+    fn frame_evaluation_order_is_motion_expression_input_effects_then_core_update() {
         let (bootstrap, _consumer) = RuntimeRenderer::channel();
         let mut renderer = RuntimeRenderer::start(bootstrap);
         let token = renderer
@@ -647,7 +654,7 @@ mod tests {
             ("ParamEyeLOpen", 0.0),
             ("ParamEyeROpen", 0.0),
             ("ParamMouthOpenY", 0.8),
-            ("ParamAngleX", -15.0),
+            ("ParamAngleX", -7.5),
         ] {
             let actual = model
                 .parameter_value_by_id(id)
@@ -686,13 +693,14 @@ mod tests {
             .prepare(1, &preset_model("standard"), ModelInputSnapshot::default())
             .expect("prepare model");
         assert!(renderer.commit(token));
-        let angle_default = renderer
+        let mouth_default = renderer
             .active
             .as_ref()
             .expect("active model")
             .model
-            .parameter_value(ProductParameter::AngleX)
-            .expect("angle parameter");
+            .parameter_value_by_id("ParamMouthOpenY")
+            .expect("mouth parameter")
+            .expect("supported parameter");
 
         let motion = MotionClip::from_slice(
             br#"{
@@ -701,7 +709,7 @@ mod tests {
                 "CurveCount":2,"TotalSegmentCount":2,"TotalPointCount":4,
                 "UserDataCount":0,"TotalUserDataSize":0},
               "Curves":[
-                {"Target":"Parameter","Id":"ParamAngleX","Segments":[0,0,0,1,1]},
+                {"Target":"Parameter","Id":"ParamMouthOpenY","Segments":[0,0,0,1,1]},
                 {"Target":"PartOpacity","Id":"Part","Segments":[0,0,0,1,0.25]}
               ]
             }"#,
@@ -732,9 +740,10 @@ mod tests {
             assert_eq!(
                 active
                     .model
-                    .parameter_value(ProductParameter::AngleX)
-                    .expect("angle parameter"),
-                angle_default,
+                    .parameter_value_by_id("ParamMouthOpenY")
+                    .expect("mouth parameter")
+                    .expect("supported parameter"),
+                mouth_default,
                 "the held sample includes the resource's completed natural fade"
             );
             assert_eq!(
@@ -974,7 +983,12 @@ mod tests {
             .parameter_value_by_id("ParamAngleX")
             .expect("parameter value")
             .expect("supported parameter");
-        assert!(ignored_angle.abs() < 0.0001);
+        let expected_reference_angle =
+            0.5 * 15.0 * (std::f64::consts::TAU * 0.001 / 6.5345).sin() as f32;
+        assert!(
+            (ignored_angle - expected_reference_angle).abs() < 0.0001,
+            "ignored pointer must leave only the reference breath: {ignored_angle}"
+        );
         let frame = consumer.take_latest().expect("updated frame");
         assert!(!frame.snapshot.mirror_horizontal);
     }

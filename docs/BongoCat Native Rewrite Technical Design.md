@@ -661,13 +661,20 @@ model evaluation + render snapshot
   混合由 `bongocat-live2d-playback` 纯数值完成；`bongocat-live2d-render` 从 `CommittedModel`
   读取并准备 `RenderResources`，`bongocat-live2d` 再做 Core ID/range/part 校验并把结果写入 Core。
 - 每帧从 Core 默认 parameter 和模型初始化时捕获的 part opacity 开始，依次应用 motion、
-  expression、自动 EyeBlink/Breath、physics/pose（实现后）、类型化产品输入，最后调用 Core
-  update。completed motion 仍以 clip 声明时长对应的完整求值样本参与这一步，因此默认值逐帧恢复
-  不会抹掉动作最终姿态；该样本保留自然结束 fade 的权重，显式停止的外层正弦权重再与 motion
-  原有权重路径相乘。`PartOpacity` motion curve 遵循 R5 Framework 语义，按 curve ID 写入 Core
-  part-opacity sink，和普通 parameter curve 使用独立的目标表与权重路径；每帧先恢复初始 part
-  opacity，因此 stop、替换或不含该 part 的后继动作不会残留旧值。model3 `Groups` 由模型索引保留并
-  校验；motion `Model` target 中
+  expression、类型化产品输入、自动 EyeBlink/参考 Breath、physics3（已声明时），最后调用 Core
+  update；这与固定 Mver 参考实现的更新顺序一致，使 neutral pointer input 不会抹掉角度呼吸，
+  physics 也能看到产品输入。自动 Breath 使用 Mver 的固定 Cubism Framework 参数集合
+  `ParamAngleX/Y/Z`、`ParamBodyAngleX` 和 `ParamBreath`，按各目标的 offset/peak/cycle 计算，
+  再以 `0.5` 权重作为贡献写入；它不要求 model3 存在 `Breath` 组。model3 首个
+  `Parameter`/`Breath` 组仍可声明最多 64 个额外 ID，固定 ID 不重复驱动，缺少该组也不影响
+  固定参考目标。声明的 physics3 由 `bongocat-model` 做有界解析、由 `bongocat-live2d` 按 R5
+  结构执行固定步进、惯性、延迟和输出插值；未知输入/输出安全跳过，pose 仍未实现。不得把
+  有符号正弦直接钳到单边参数范围，也不得按满量程绝对覆盖参数。completed motion 仍以 clip
+  声明时长对应的完整求值样本参与这一步，因此默认值逐帧恢复不会抹掉动作最终姿态；该样本保留
+  自然结束 fade 的权重，显式停止的外层正弦权重再与 motion 原有权重路径相乘。`PartOpacity`
+  motion curve 遵循 R5 Framework 语义，按 curve ID 写入 Core part-opacity sink，和普通 parameter
+  curve 使用独立的目标表与权重路径；每帧先恢复初始 part opacity，因此 stop、替换或不含该 part
+  的后继动作不会残留旧值。model3 `Groups` 由模型索引保留并校验；motion `Model` target 中
   `EyeBlink` 对匹配的 Parameter curve 做乘法、`LipSync` 做加法，对未被 Parameter curve
   覆盖的首个同名 Parameter group（最多 64 个 ID）使用 motion fade 插值。`Opacity` 作为
   独立 model opacity 进入 `RenderSnapshot`，只在 renderer 的模型颜色合成中与 drawable opacity
@@ -676,8 +683,8 @@ model evaluation + render snapshot
   expression 的 Add/Multiply/Overwrite 和正弦淡入淡出由 `bongocat-live2d-playback` 纯函数计算；
   替换期间最多保留上一层与当前层，淡入完成后将当前层权重锁定为 `1.0`，稳定后只保留并持续
   应用最新 expression，直到被下一次有效 expression、成功的模型切换或 shutdown 清理；测试时钟
-  回退不会重新启动已完成的淡入。内存和每帧成本保持有界。真实输入最后覆盖
-  对应产品 parameter，避免表情让按下状态失真。
+  回退不会重新启动已完成的淡入。内存和每帧成本保持有界。产品输入与 reference Breath/physics
+  的组合顺序遵循本节前述 Mver 顺序。
 - 模型加载采用 prepare/commit/rollback，失败时保留当前可用模型。
 - 模型切换是 CPU/GPU 两阶段提交：runtime 先保留旧 active model/bindings，准备新的
   Cubism generation，并随候选 `RenderSnapshot` 发布一次性强类型 commit token；平台
@@ -687,7 +694,9 @@ model evaluation + render snapshot
   commit feedback 使用不可覆盖的可靠单槽并且同时只允许一个候选 generation，不能被
   普通帧、cursor 或输入事件合并。等待 GPU 确认期间可靠输入仍由旧 bindings 消费。
 
-官方 Cubism Framework 的动作、物理等逻辑必须在 Phase 0 验证 Rust 实现的兼容性。未达到退出门槛时必须形成 go/no-go ADR，不能绕过该门槛扩大实现范围。
+官方 Cubism Framework 的动作、physics3 等逻辑必须在 Phase 0 验证 Rust 实现的兼容性；当前
+physics3 只覆盖已验证的 v3 结构与 R5 数值路径，pose、完整黑盒轨迹和未覆盖的平台/资源边界仍
+须形成 go/no-go ADR，不能绕过该门槛扩大实现范围。
 
 ### 11.2 Renderer
 

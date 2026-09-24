@@ -54,6 +54,13 @@
   "Groups": [
     {
       "Target": "Parameter",
+      "Name": "Breath",
+      "Ids": [
+        "ParamBreath"
+      ]
+    },
+    {
+      "Target": "Parameter",
       "Name": "EyeBlink",
       "Ids": [
         "ParamEyeLOpen",
