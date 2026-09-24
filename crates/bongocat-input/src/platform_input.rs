@@ -123,7 +123,7 @@ impl PlatformInputDiagnosticsProducer {
             .value
     }
 
-    pub(crate) fn stop(&self) {
+    pub fn stop(&self) {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

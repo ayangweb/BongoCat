@@ -4,6 +4,7 @@ members = [
     "crates/bongocat-app",
     "crates/bongocat-audio",
     "crates/bongocat-i18n",
+    "crates/bongocat-input",
     "crates/bongocat-config",
     "crates/bongocat-live2d",
     "crates/bongocat-log",
@@ -73,6 +74,7 @@ url = "=2.5.8"
 zip = { version = "=8.6.0", default-features = false }
 
 bongocat-config = { path = "crates/bongocat-config" }
+bongocat-input = { path = "crates/bongocat-input" }
 bongocat-audio = { path = "crates/bongocat-audio" }
 bongocat-i18n = { path = "crates/bongocat-i18n" }
 bongocat-live2d = { path = "crates/bongocat-live2d" }

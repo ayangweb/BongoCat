@@ -23,16 +23,15 @@ mod resize_drag;
 mod cover;
 pub use cover::ModelCoverCapture;
 
-use bongocat_platform::PlatformInputServiceStatus;
-use bongocat_platform::{PlatformInputDiagnostics, PlatformInputError};
+use bongocat_input::{
+    CursorProducer, GamepadAxisProducer, InputProducer, PlatformInputDiagnostics,
+    PlatformInputDiagnosticsProducer, PlatformInputServiceStatus,
+};
+use bongocat_platform::PlatformInputError;
 use bongocat_render::BlendMode;
 use bongocat_render::CanvasInfo;
 use bongocat_render::{RenderConsumer, RenderTransportDiagnostics};
-use bongocat_runtime::PlatformInputDiagnosticsProducer;
-use bongocat_runtime::{
-    CursorProducer, GamepadAxisProducer, InputProducer, OverlaySettings, RuntimeClient,
-    hover_hide_delay_ms,
-};
+use bongocat_runtime::{OverlaySettings, RuntimeClient, hover_hide_delay_ms};
 use raw_window_handle::{HandleError, HasWindowHandle, WindowHandle};
 use std::collections::BTreeSet;
 use std::sync::Arc;

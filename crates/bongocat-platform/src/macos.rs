@@ -4,7 +4,7 @@ use crate::{
 };
 use block2::RcBlock;
 use bongocat_config::Language;
-use bongocat_runtime::{
+use bongocat_input::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
     GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
     GamepadButtonKey, GamepadConnection, GamepadConnectionError, InputControl, InputEdge,

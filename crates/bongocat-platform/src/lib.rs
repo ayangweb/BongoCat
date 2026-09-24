@@ -1,6 +1,6 @@
 use std::fmt;
 
-pub use bongocat_runtime::{PlatformInputDiagnostics, PlatformInputServiceStatus};
+pub use bongocat_input::{PlatformInputDiagnostics, PlatformInputServiceStatus};
 
 mod installation;
 pub use installation::InstallationLayout;
@@ -244,7 +244,7 @@ mod platform_input_error_tests {
         assert!(
             PlatformInputError::ALL
                 .iter()
-                .all(|code| bongocat_runtime::is_stable_platform_input_error_code(code.as_str()))
+                .all(|code| bongocat_input::is_stable_platform_input_error_code(code.as_str()))
         );
     }
 }

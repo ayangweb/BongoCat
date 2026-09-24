@@ -1,9 +1,6 @@
 #![forbid(unsafe_code)]
 
-mod cursor;
-mod gamepad;
-mod input;
-mod platform_input;
+mod input_state;
 mod rendering;
 
 use bongocat_audio::{
@@ -24,28 +21,21 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub use cursor::{
+pub use bongocat_input::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorSampleError,
-    CursorSnapshot, CursorTransportDiagnostics, CursorViewport, NormalizedCursorPosition,
-};
-use cursor::{CursorSlot, CursorSmoother};
-use gamepad::{DEFAULT_GAMEPAD_AXIS_CAPACITY, GamepadAxisSlot};
-pub use gamepad::{
+    CursorSnapshot, CursorTransportDiagnostics, CursorViewport, GamepadAxis, GamepadAxisKey,
     GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadAxisSettings,
-    GamepadAxisTransportDiagnostics, GamepadConnectionError,
+    GamepadAxisTransportDiagnostics, GamepadButton, GamepadButtonKey, GamepadConnection,
+    GamepadConnectionError, HandSide, InputBindings, InputControl, InputDiagnostics, InputEdge,
+    InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource, InputSubmitError,
+    InputSubmitter, InputTransportDiagnostics, MonotonicMillis, MouseButton,
+    NormalizedCursorPosition, PhysicalKey, PlatformInputDiagnostics,
+    PlatformInputDiagnosticsProducer, PlatformInputDiagnosticsPublishError,
+    PlatformInputServiceStatus, SequencedInputEvent, is_stable_platform_input_error_code,
 };
-pub use input::{
-    GamepadAxis, GamepadAxisKey, GamepadButton, GamepadButtonKey, GamepadConnection, HandSide,
-    InputBindings, InputControl, InputDiagnostics, InputDisposition, InputEdge, InputEvent,
-    InputResetReason, InputSnapshot, InputSource, InputTransportDiagnostics, ModelInputSnapshot,
-    MonotonicMillis, MouseButton, PhysicalKey, ReconciliationPolicy, SequencedInputEvent,
-};
-use input::{InputState, InputTransportCounters};
-pub use platform_input::{
-    PlatformInputDiagnostics, PlatformInputDiagnosticsProducer,
-    PlatformInputDiagnosticsPublishError, PlatformInputServiceStatus,
-    is_stable_platform_input_error_code,
-};
+use bongocat_input::{CursorSmoother, DEFAULT_GAMEPAD_AXIS_CAPACITY};
+use input_state::{InputDisposition, InputState};
+pub use input_state::{InputSnapshot, ModelInputSnapshot};
 use rendering::{MotionStopStatus, RenderEvaluation, RuntimeRenderBootstrap, RuntimeRenderer};
 
 pub const DEFAULT_MAXIMUM_FPS: u16 = 60;
@@ -780,83 +770,59 @@ impl CommandSequenceTracker {
     }
 }
 
-#[derive(Default)]
-struct InputProducerState {
-    next_sequence: u64,
-    recovery_pending: bool,
-}
-
-#[derive(Clone)]
-pub struct InputProducer {
-    runtime: RuntimeClient,
-    state: Arc<Mutex<InputProducerState>>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum InputPublishError {
-    QueueFull(InputEvent),
-    RuntimeStopped(InputEvent),
-}
-
-impl fmt::Display for InputPublishError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::QueueFull(_) => formatter.write_str("runtime input queue is full"),
-            Self::RuntimeStopped(_) => formatter.write_str("runtime is stopped"),
-        }
-    }
-}
-
-impl std::error::Error for InputPublishError {}
-
-impl InputProducer {
-    fn new(runtime: RuntimeClient) -> Self {
-        let state = Arc::clone(&runtime.input_producer_state);
-        Self { runtime, state }
-    }
-
-    pub fn publish(&self, event: InputEvent) -> Result<u64, InputPublishError> {
-        let mut state = self
-            .state
+impl Producer {
+    fn send(&self, command: RuntimeCommand) -> Result<u64, SendError> {
+        let mut next_sequence = self
+            .next_sequence
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let input_sequence = state.next_sequence;
-        state.next_sequence = state.next_sequence.wrapping_add(1);
-        let command = RuntimeCommand::ApplyInput(Arc::new(SequencedInputEvent {
-            sequence: input_sequence,
-            event: event.clone(),
-        }));
-        match self.runtime.send(command) {
-            Ok(_) => {
-                self.runtime.input_transport.enqueued();
-                if state.recovery_pending {
-                    state.recovery_pending = false;
-                    self.runtime.input_transport.recovered_after_overflow();
+        if !self.accepting.load(Ordering::Acquire) {
+            self.command_transport.runtime_stopped();
+            return Err(SendError::RuntimeStopped(command));
+        }
+        let envelope = CommandEnvelope {
+            sequence: *next_sequence,
+            command: WorkerCommand::Product(command),
+        };
+        match self.sender.try_send(envelope) {
+            Ok(()) => {
+                let accepted = *next_sequence;
+                *next_sequence = next_sequence.wrapping_add(1);
+                self.command_transport.enqueued();
+                Ok(accepted)
+            }
+            Err(TrySendError::Full(envelope)) => match envelope.command {
+                WorkerCommand::Product(command) => {
+                    self.command_transport.queue_full();
+                    Err(SendError::QueueFull(command))
                 }
-                Ok(input_sequence)
-            }
-            Err(SendError::QueueFull(_)) => {
-                state.recovery_pending = true;
-                self.runtime.input_transport.queue_full();
-                Err(InputPublishError::QueueFull(event))
-            }
-            Err(SendError::RuntimeStopped(_)) => {
-                self.runtime.input_transport.runtime_stopped();
-                Err(InputPublishError::RuntimeStopped(event))
-            }
+                WorkerCommand::Shutdown => unreachable!("clients cannot send shutdown"),
+            },
+            Err(TrySendError::Disconnected(envelope)) => match envelope.command {
+                WorkerCommand::Product(command) => {
+                    self.command_transport.runtime_stopped();
+                    Err(SendError::RuntimeStopped(command))
+                }
+                WorkerCommand::Shutdown => unreachable!("clients cannot send shutdown"),
+            },
         }
     }
+}
 
-    pub fn recover(
-        &self,
-        reason: InputResetReason,
-        at: MonotonicMillis,
-    ) -> Result<u64, InputPublishError> {
-        self.publish(InputEvent::Reset { reason, at })
-    }
+struct RuntimeInputSubmitter {
+    producer: Arc<Producer>,
+}
 
-    pub fn diagnostics(&self) -> InputTransportDiagnostics {
-        self.runtime.input_transport.snapshot()
+impl InputSubmitter for RuntimeInputSubmitter {
+    fn submit(&self, event: SequencedInputEvent) -> Result<(), InputSubmitError> {
+        match self
+            .producer
+            .send(RuntimeCommand::ApplyInput(Arc::new(event)))
+        {
+            Ok(_) => Ok(()),
+            Err(SendError::QueueFull(_)) => Err(InputSubmitError::QueueFull),
+            Err(SendError::RuntimeStopped(_)) => Err(InputSubmitError::RuntimeStopped),
+        }
     }
 }
 
@@ -864,10 +830,9 @@ impl InputProducer {
 pub struct RuntimeClient {
     producer: Arc<Producer>,
     snapshot: Arc<SnapshotCell>,
-    input_transport: Arc<InputTransportCounters>,
-    input_producer_state: Arc<Mutex<InputProducerState>>,
-    cursor_slot: Arc<CursorSlot>,
-    gamepad_axis_slot: Arc<GamepadAxisSlot>,
+    input_producer: InputProducer,
+    cursor_producer: CursorProducer,
+    gamepad_axis_producer: GamepadAxisProducer,
     platform_input_diagnostics: PlatformInputDiagnosticsProducer,
     motion_audio: MotionAudioClient,
     shutdown_diagnostics: Arc<ShutdownDiagnosticsCounters>,
@@ -875,41 +840,7 @@ pub struct RuntimeClient {
 
 impl RuntimeClient {
     pub fn send(&self, command: RuntimeCommand) -> Result<u64, SendError> {
-        let mut next_sequence = self
-            .producer
-            .next_sequence
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !self.producer.accepting.load(Ordering::Acquire) {
-            self.producer.command_transport.runtime_stopped();
-            return Err(SendError::RuntimeStopped(command));
-        }
-        let envelope = CommandEnvelope {
-            sequence: *next_sequence,
-            command: WorkerCommand::Product(command),
-        };
-        match self.producer.sender.try_send(envelope) {
-            Ok(()) => {
-                let accepted = *next_sequence;
-                *next_sequence = next_sequence.wrapping_add(1);
-                self.producer.command_transport.enqueued();
-                Ok(accepted)
-            }
-            Err(TrySendError::Full(envelope)) => match envelope.command {
-                WorkerCommand::Product(command) => {
-                    self.producer.command_transport.queue_full();
-                    Err(SendError::QueueFull(command))
-                }
-                WorkerCommand::Shutdown => unreachable!("clients cannot send shutdown"),
-            },
-            Err(TrySendError::Disconnected(envelope)) => match envelope.command {
-                WorkerCommand::Product(command) => {
-                    self.producer.command_transport.runtime_stopped();
-                    Err(SendError::RuntimeStopped(command))
-                }
-                WorkerCommand::Shutdown => unreachable!("clients cannot send shutdown"),
-            },
-        }
+        self.producer.send(command)
     }
 
     pub fn trigger_shortcut(&self, action: ShortcutAction) -> Result<u64, SendError> {
@@ -926,8 +857,16 @@ impl RuntimeClient {
         self.with_transport_diagnostics(snapshot)
     }
 
+    pub fn input_producer(&self) -> InputProducer {
+        self.input_producer.clone()
+    }
+
+    pub fn cursor_producer(&self) -> CursorProducer {
+        self.cursor_producer.clone()
+    }
+
     pub fn gamepad_axis_producer(&self) -> GamepadAxisProducer {
-        GamepadAxisProducer::new(Arc::clone(&self.gamepad_axis_slot))
+        self.gamepad_axis_producer.clone()
     }
 
     pub fn platform_input_diagnostics_producer(&self) -> PlatformInputDiagnosticsProducer {
@@ -1145,7 +1084,7 @@ impl RuntimeClient {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         loop {
-            if self.cursor_slot.diagnostics().consumed >= minimum_consumed {
+            if self.cursor_producer.diagnostics().consumed >= minimum_consumed {
                 return Some(self.with_transport_diagnostics(snapshot.clone()));
             }
             if snapshot.state == RuntimeState::Stopped {
@@ -1161,17 +1100,18 @@ impl RuntimeClient {
                 .wait_timeout(snapshot, remaining)
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             snapshot = next;
-            if result.timed_out() && self.cursor_slot.diagnostics().consumed < minimum_consumed {
+            if result.timed_out() && self.cursor_producer.diagnostics().consumed < minimum_consumed
+            {
                 return None;
             }
         }
     }
 
     fn with_transport_diagnostics(&self, mut snapshot: RuntimeSnapshot) -> RuntimeSnapshot {
-        snapshot.input.transport = self.input_transport.snapshot();
+        snapshot.input.transport = self.input_producer.diagnostics();
         snapshot.command_transport = self.producer.command_transport.snapshot();
-        snapshot.cursor.transport = self.cursor_slot.diagnostics();
-        snapshot.gamepad_axis_transport = self.gamepad_axis_slot.diagnostics();
+        snapshot.cursor.transport = self.cursor_producer.diagnostics();
+        snapshot.gamepad_axis_transport = self.gamepad_axis_producer.diagnostics();
         snapshot.platform_input = self.platform_input_diagnostics.diagnostics();
         snapshot.motion_audio = self.motion_audio.diagnostics();
         snapshot.shutdown = self.shutdown_diagnostics.snapshot();
@@ -1374,29 +1314,30 @@ impl RuntimeOwner {
             )),
             changed: Condvar::new(),
         });
-        let input_transport = Arc::new(InputTransportCounters::default());
-        let cursor_slot = Arc::new(CursorSlot::default());
-        let gamepad_axis_slot = Arc::new(GamepadAxisSlot::with_capacity(
-            DEFAULT_GAMEPAD_AXIS_CAPACITY,
-        ));
         let platform_input_diagnostics = PlatformInputDiagnosticsProducer::default();
         let command_transport = Arc::new(CommandTransportCounters::default());
         let shutdown_diagnostics = Arc::new(ShutdownDiagnosticsCounters::default());
         let accepting = Arc::new(AtomicBool::new(true));
+        let producer = Arc::new(Producer {
+            sender,
+            next_sequence: Mutex::new(0),
+            command_transport: Arc::clone(&command_transport),
+            accepting: Arc::clone(&accepting),
+        });
+        let input_producer = InputProducer::new(Arc::new(RuntimeInputSubmitter {
+            producer: Arc::clone(&producer),
+        }));
+        let cursor_producer = CursorProducer::new();
+        let gamepad_axis_producer =
+            GamepadAxisProducer::with_capacity(DEFAULT_GAMEPAD_AXIS_CAPACITY);
         let shutdown = Arc::new(ShutdownSignal::default());
         let worker_shutdown = Arc::clone(&shutdown);
         let client = RuntimeClient {
-            producer: Arc::new(Producer {
-                sender,
-                next_sequence: Mutex::new(0),
-                command_transport: Arc::clone(&command_transport),
-                accepting: Arc::clone(&accepting),
-            }),
+            producer,
             snapshot: Arc::clone(&snapshot),
-            input_transport,
-            input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
-            cursor_slot: Arc::clone(&cursor_slot),
-            gamepad_axis_slot: Arc::clone(&gamepad_axis_slot),
+            input_producer,
+            cursor_producer: cursor_producer.clone(),
+            gamepad_axis_producer: gamepad_axis_producer.clone(),
             platform_input_diagnostics,
             motion_audio: motion_audio.clone(),
             shutdown_diagnostics: Arc::clone(&shutdown_diagnostics),
@@ -1408,8 +1349,8 @@ impl RuntimeOwner {
                     receiver,
                     RuntimeWorkerBootstrap {
                         snapshot,
-                        cursor_slot,
-                        gamepad_axis_slot,
+                        cursor_producer,
+                        gamepad_axis_producer,
                         initial_overlay_visible,
                         initial_motion_audio_enabled,
                         renderer,
@@ -1436,11 +1377,11 @@ impl RuntimeOwner {
     }
 
     pub fn input_producer(&self) -> InputProducer {
-        InputProducer::new(self.client())
+        self.client.input_producer.clone()
     }
 
     pub fn cursor_producer(&self) -> CursorProducer {
-        CursorProducer::new(Arc::clone(&self.client.cursor_slot))
+        self.client.cursor_producer.clone()
     }
 
     pub fn gamepad_axis_producer(&self) -> GamepadAxisProducer {
@@ -1499,8 +1440,8 @@ impl RuntimeOwner {
     }
 
     fn request_shutdown(&self) {
-        self.client.cursor_slot.stop();
-        self.client.gamepad_axis_slot.stop();
+        self.client.cursor_producer.stop();
+        self.client.gamepad_axis_producer.stop();
         self.client.platform_input_diagnostics.stop();
         let mut next_sequence = self
             .client
@@ -1550,8 +1491,8 @@ struct GamepadAxisValues {
 }
 
 impl GamepadAxisValues {
-    fn consume(&mut self, slot: &GamepadAxisSlot) -> bool {
-        let samples = slot.take();
+    fn consume(&mut self, producer: &GamepadAxisProducer) -> bool {
+        let samples = producer.take();
         if samples.is_empty() {
             return false;
         }
@@ -1604,8 +1545,8 @@ impl GamepadAxisValues {
 
 struct RuntimeWorkerBootstrap {
     snapshot: Arc<SnapshotCell>,
-    cursor_slot: Arc<CursorSlot>,
-    gamepad_axis_slot: Arc<GamepadAxisSlot>,
+    cursor_producer: CursorProducer,
+    gamepad_axis_producer: GamepadAxisProducer,
     initial_overlay_visible: bool,
     initial_motion_audio_enabled: bool,
     renderer: Option<RuntimeRenderBootstrap>,
@@ -1620,8 +1561,8 @@ struct RuntimeWorkerBootstrap {
 fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBootstrap) {
     let RuntimeWorkerBootstrap {
         snapshot,
-        cursor_slot,
-        gamepad_axis_slot,
+        cursor_producer,
+        gamepad_axis_producer,
         initial_overlay_visible,
         initial_motion_audio_enabled,
         renderer,
@@ -1711,7 +1652,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         match received {
             Ok(envelope) => {
                 consume_cursor(
-                    &cursor_slot,
+                    &cursor_producer,
                     &snapshot,
                     &input_state,
                     &input_bindings,
@@ -1720,7 +1661,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     clock.now(),
                 );
                 consume_gamepad_axes(
-                    &gamepad_axis_slot,
+                    &gamepad_axis_producer,
                     &snapshot,
                     &mut gamepad_axis_values,
                     &input_state,
@@ -2224,7 +2165,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     clock.now(),
                 );
                 consume_cursor(
-                    &cursor_slot,
+                    &cursor_producer,
                     &snapshot,
                     &input_state,
                     &input_bindings,
@@ -2233,7 +2174,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     clock.now(),
                 );
                 consume_gamepad_axes(
-                    &gamepad_axis_slot,
+                    &gamepad_axis_producer,
                     &snapshot,
                     &mut gamepad_axis_values,
                     &input_state,
@@ -2288,7 +2229,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         }
     }
     consume_cursor(
-        &cursor_slot,
+        &cursor_producer,
         &snapshot,
         &input_state,
         &input_bindings,
@@ -2297,7 +2238,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         clock.now(),
     );
     consume_gamepad_axes(
-        &gamepad_axis_slot,
+        &gamepad_axis_producer,
         &snapshot,
         &mut gamepad_axis_values,
         &input_state,
@@ -2306,7 +2247,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         gamepad_axis_settings,
     );
     gamepad_axis_values.clear();
-    gamepad_axis_slot.stop();
+    gamepad_axis_producer.stop();
     if let Some(renderer) = &renderer {
         renderer.close();
     }
@@ -2700,7 +2641,7 @@ fn stop_motion_audio(client: &MotionAudioClient, sequence: u64, reason: MotionAu
 }
 
 fn consume_cursor(
-    cursor_slot: &CursorSlot,
+    cursor_producer: &CursorProducer,
     snapshot: &SnapshotCell,
     input_state: &InputState,
     input_bindings: &InputBindings,
@@ -2708,7 +2649,7 @@ fn consume_cursor(
     normalized_cursor: &mut NormalizedCursorPosition,
     now: Duration,
 ) {
-    let sample = cursor_slot.take();
+    let sample = cursor_producer.take();
     if let Some(sample) = sample {
         smoother.set_target(sample, now);
     }
@@ -2726,7 +2667,7 @@ fn consume_cursor(
 }
 
 fn consume_gamepad_axes(
-    slot: &GamepadAxisSlot,
+    producer: &GamepadAxisProducer,
     snapshot: &SnapshotCell,
     values: &mut GamepadAxisValues,
     input_state: &InputState,
@@ -2734,7 +2675,7 @@ fn consume_gamepad_axes(
     normalized_cursor: NormalizedCursorPosition,
     settings: GamepadAxisSettings,
 ) {
-    if !values.consume(slot) {
+    if !values.consume(producer) {
         return;
     }
     publish(snapshot, |current| {
@@ -4889,15 +4830,22 @@ mod tests {
     #[test]
     fn full_queue_returns_the_original_typed_command() {
         let (sender, _receiver) = mpsc::sync_channel(1);
-        let input_transport = Arc::new(InputTransportCounters::default());
         let motion_audio = MotionAudioClient::unavailable();
+        let producer = Arc::new(Producer {
+            sender,
+            next_sequence: Mutex::new(0),
+            command_transport: Arc::new(CommandTransportCounters::default()),
+            accepting: Arc::new(AtomicBool::new(true)),
+        });
         let client = RuntimeClient {
-            producer: Arc::new(Producer {
-                sender,
-                next_sequence: Mutex::new(0),
-                command_transport: Arc::new(CommandTransportCounters::default()),
-                accepting: Arc::new(AtomicBool::new(true)),
-            }),
+            input_producer: InputProducer::new(Arc::new(RuntimeInputSubmitter {
+                producer: Arc::clone(&producer),
+            })),
+            cursor_producer: CursorProducer::new(),
+            gamepad_axis_producer: GamepadAxisProducer::with_capacity(
+                DEFAULT_GAMEPAD_AXIS_CAPACITY,
+            ),
+            producer,
             snapshot: Arc::new(SnapshotCell {
                 value: Mutex::new(RuntimeSnapshot::starting(
                     true,
@@ -4906,12 +4854,6 @@ mod tests {
                 )),
                 changed: Condvar::new(),
             }),
-            input_transport,
-            input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
-            cursor_slot: Arc::new(CursorSlot::default()),
-            gamepad_axis_slot: Arc::new(GamepadAxisSlot::with_capacity(
-                DEFAULT_GAMEPAD_AXIS_CAPACITY,
-            )),
             platform_input_diagnostics: PlatformInputDiagnosticsProducer::default(),
             motion_audio,
             shutdown_diagnostics: Arc::new(ShutdownDiagnosticsCounters::default()),
@@ -4969,15 +4911,15 @@ mod tests {
     #[test]
     fn input_producer_overflow_is_observable_and_recovery_resets_state() {
         let (sender, receiver) = mpsc::sync_channel(2);
-        let input_transport = Arc::new(InputTransportCounters::default());
         let motion_audio = MotionAudioClient::unavailable();
+        let runtime_producer = Arc::new(Producer {
+            sender,
+            next_sequence: Mutex::new(0),
+            command_transport: Arc::new(CommandTransportCounters::default()),
+            accepting: Arc::new(AtomicBool::new(true)),
+        });
         let client = RuntimeClient {
-            producer: Arc::new(Producer {
-                sender,
-                next_sequence: Mutex::new(0),
-                command_transport: Arc::new(CommandTransportCounters::default()),
-                accepting: Arc::new(AtomicBool::new(true)),
-            }),
+            producer: Arc::clone(&runtime_producer),
             snapshot: Arc::new(SnapshotCell {
                 value: Mutex::new(RuntimeSnapshot::starting(
                     true,
@@ -4986,18 +4928,19 @@ mod tests {
                 )),
                 changed: Condvar::new(),
             }),
-            input_transport,
-            input_producer_state: Arc::new(Mutex::new(InputProducerState::default())),
-            cursor_slot: Arc::new(CursorSlot::default()),
-            gamepad_axis_slot: Arc::new(GamepadAxisSlot::with_capacity(
+            input_producer: InputProducer::new(Arc::new(RuntimeInputSubmitter {
+                producer: runtime_producer,
+            })),
+            cursor_producer: CursorProducer::new(),
+            gamepad_axis_producer: GamepadAxisProducer::with_capacity(
                 DEFAULT_GAMEPAD_AXIS_CAPACITY,
-            )),
+            ),
             platform_input_diagnostics: PlatformInputDiagnosticsProducer::default(),
             motion_audio,
             shutdown_diagnostics: Arc::new(ShutdownDiagnosticsCounters::default()),
         };
-        let producer = InputProducer::new(client.clone());
-        let sibling_producer = InputProducer::new(client.clone());
+        let producer = client.input_producer.clone();
+        let sibling_producer = producer.clone();
         let down = InputEvent::Edge {
             control: InputControl::Key(PhysicalKey::KEY_A),
             edge: InputEdge::Down,

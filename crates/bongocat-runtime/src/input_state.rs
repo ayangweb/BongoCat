@@ -1,271 +1,25 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
 
-use crate::NormalizedCursorPosition;
+use bongocat_input::{
+    GamepadButton, GamepadConnection, HandSide, InputBindings, InputControl, InputDiagnostics,
+    InputEdge, InputEvent, InputResetReason, InputSource, InputTransportDiagnostics,
+    MonotonicMillis, MouseButton, NormalizedCursorPosition, SequencedInputEvent,
+};
+#[cfg(test)]
+use bongocat_input::{GamepadButtonKey, PhysicalKey};
 use bongocat_render::{KeyPress, KeyPressSet, KeySide};
 
-pub const DEFAULT_MISSING_CONFIRMATIONS: u8 = 2;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct MonotonicMillis(u64);
-
-impl MonotonicMillis {
-    pub const fn new(value: u64) -> Self {
-        Self(value)
-    }
-
-    pub const fn value(self) -> u64 {
-        self.0
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PhysicalKey(u16);
-
-impl PhysicalKey {
-    pub const KEY_A: Self = Self(0x04);
-    pub const LEFT_CONTROL: Self = Self(0xe0);
-    pub const LEFT_ALT: Self = Self(0xe2);
-    /// The Apple Fn / globe key, which lives on Apple's vendor-defined HID page
-    /// rather than on the Keyboard/Keypad page; see
-    /// [`bongocat_render::GLOBE_KEY_USAGE`] for why the value is `0xff03` and
-    /// why the name is `Globe` rather than `Fn`.
-    pub const GLOBE: Self = Self(bongocat_render::GLOBE_KEY_USAGE);
-
-    pub const fn from_hid_usage(usage: u16) -> Self {
-        Self(usage)
-    }
-
-    pub const fn hid_usage(self) -> u16 {
-        self.0
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum MouseButton {
-    Left,
-    Right,
-    Middle,
-    Back,
-    Forward,
-    Other(u8),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct GamepadConnection {
-    pub device_id: u8,
-    pub generation: u64,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum GamepadButton {
-    South,
-    East,
-    West,
-    North,
-    LeftShoulder,
-    RightShoulder,
-    LeftTrigger,
-    RightTrigger,
-    Select,
-    Start,
-    LeftStick,
-    RightStick,
-    DpadUp,
-    DpadDown,
-    DpadLeft,
-    DpadRight,
-}
-
-impl GamepadButton {
-    pub const ALL: [Self; 16] = [
-        Self::South,
-        Self::East,
-        Self::West,
-        Self::North,
-        Self::LeftShoulder,
-        Self::RightShoulder,
-        Self::LeftTrigger,
-        Self::RightTrigger,
-        Self::Select,
-        Self::Start,
-        Self::LeftStick,
-        Self::RightStick,
-        Self::DpadUp,
-        Self::DpadDown,
-        Self::DpadLeft,
-        Self::DpadRight,
-    ];
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct GamepadButtonKey {
-    pub connection: GamepadConnection,
-    pub button: GamepadButton,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum GamepadAxis {
-    LeftStickX,
-    LeftStickY,
-    RightStickX,
-    RightStickY,
-    LeftTrigger,
-    RightTrigger,
-}
-
-impl GamepadAxis {
-    pub const ALL: [Self; 6] = [
-        Self::LeftStickX,
-        Self::LeftStickY,
-        Self::RightStickX,
-        Self::RightStickY,
-        Self::LeftTrigger,
-        Self::RightTrigger,
-    ];
-
-    pub const fn is_trigger(self) -> bool {
-        matches!(self, Self::LeftTrigger | Self::RightTrigger)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct GamepadAxisKey {
-    pub connection: GamepadConnection,
-    pub axis: GamepadAxis,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum InputControl {
-    Key(PhysicalKey),
-    Mouse(MouseButton),
-    Gamepad(GamepadButtonKey),
-}
+const DEFAULT_MISSING_CONFIRMATIONS: u8 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HandSide {
-    Left,
-    Right,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct InputBindings {
-    key_hands: BTreeMap<PhysicalKey, HandSide>,
-    gamepad_hands: BTreeMap<GamepadButton, HandSide>,
-}
-
-impl InputBindings {
-    pub fn new(key_hands: BTreeMap<PhysicalKey, HandSide>) -> Self {
-        Self::with_gamepad_hands(key_hands, BTreeMap::new())
-    }
-
-    pub fn with_gamepad_hands(
-        key_hands: BTreeMap<PhysicalKey, HandSide>,
-        gamepad_hands: BTreeMap<GamepadButton, HandSide>,
-    ) -> Self {
-        Self {
-            key_hands,
-            gamepad_hands,
-        }
-    }
-
-    pub fn hand_for(&self, key: PhysicalKey) -> Option<HandSide> {
-        self.key_hands.get(&key).copied()
-    }
-
-    pub fn hand_for_gamepad(&self, button: GamepadButton) -> Option<HandSide> {
-        self.gamepad_hands.get(&button).copied()
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InputEdge {
-    Down,
-    Up,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InputSource {
-    Capture,
-    Reconciliation,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InputResetReason {
-    SessionLock,
-    Sleep,
-    DeviceRemoved,
-    ServiceRestart,
-    QueueOverflow,
-    PermissionChanged,
-    SequenceGap,
-    NonMonotonicTime,
-    Test,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum InputEvent {
-    GamepadConnected {
-        connection: GamepadConnection,
-        at: MonotonicMillis,
-    },
-    GamepadDisconnected {
-        connection: GamepadConnection,
-        at: MonotonicMillis,
-    },
-    Edge {
-        control: InputControl,
-        edge: InputEdge,
-        source: InputSource,
-        at: MonotonicMillis,
-    },
-    Reconcile {
-        pressed: BTreeSet<InputControl>,
-        at: MonotonicMillis,
-    },
-    Reset {
-        reason: InputResetReason,
-        at: MonotonicMillis,
-    },
-}
-
-impl InputEvent {
-    const fn at(&self) -> MonotonicMillis {
-        match self {
-            Self::GamepadConnected { at, .. }
-            | Self::GamepadDisconnected { at, .. }
-            | Self::Edge { at, .. }
-            | Self::Reconcile { at, .. }
-            | Self::Reset { at, .. } => *at,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SequencedInputEvent {
-    pub sequence: u64,
-    pub event: InputEvent,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ReconciliationPolicy {
+pub(crate) struct ReconciliationPolicy {
     missing_confirmations: u8,
 }
 
 impl ReconciliationPolicy {
-    pub const fn new(missing_confirmations: u8) -> Option<Self> {
-        if missing_confirmations == 0 {
-            None
-        } else {
-            Some(Self {
-                missing_confirmations,
-            })
-        }
-    }
-
     pub const fn missing_confirmations(self) -> u8 {
         self.missing_confirmations
     }
@@ -275,72 +29,6 @@ impl Default for ReconciliationPolicy {
     fn default() -> Self {
         Self {
             missing_confirmations: DEFAULT_MISSING_CONFIRMATIONS,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct InputDiagnostics {
-    pub captured_down: u64,
-    pub captured_up: u64,
-    pub reconciled_release: u64,
-    pub fallback_release: u64,
-    pub released_by_reset: u64,
-    pub duplicate_down: u64,
-    pub unmatched_release: u64,
-    pub invalid_source: u64,
-    pub reset_count: u64,
-    pub sequence_gap_count: u64,
-    pub missing_sequence_count: u64,
-    pub duplicate_sequence_count: u64,
-    pub out_of_order_sequence_count: u64,
-    pub non_monotonic_time_count: u64,
-    pub gamepad_connections: u64,
-    pub gamepad_disconnections: u64,
-    pub stale_gamepad_events: u64,
-    pub released_by_disconnect: u64,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct InputTransportDiagnostics {
-    pub enqueued: u64,
-    pub queue_full: u64,
-    pub recovered_after_overflow: u64,
-    pub runtime_stopped: u64,
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct InputTransportCounters {
-    enqueued: AtomicU64,
-    queue_full: AtomicU64,
-    recovered_after_overflow: AtomicU64,
-    runtime_stopped: AtomicU64,
-}
-
-impl InputTransportCounters {
-    pub(crate) fn enqueued(&self) {
-        self.enqueued.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub(crate) fn queue_full(&self) {
-        self.queue_full.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub(crate) fn recovered_after_overflow(&self) {
-        self.recovered_after_overflow
-            .fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub(crate) fn runtime_stopped(&self) {
-        self.runtime_stopped.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub(crate) fn snapshot(&self) -> InputTransportDiagnostics {
-        InputTransportDiagnostics {
-            enqueued: self.enqueued.load(Ordering::Relaxed),
-            queue_full: self.queue_full.load(Ordering::Relaxed),
-            recovered_after_overflow: self.recovered_after_overflow.load(Ordering::Relaxed),
-            runtime_stopped: self.runtime_stopped.load(Ordering::Relaxed),
         }
     }
 }
@@ -378,7 +66,7 @@ pub struct ModelInputSnapshot {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InputDisposition {
+pub(crate) enum InputDisposition {
     Applied,
     AppliedAfterSequenceGap { missing: u64 },
     DuplicateSequence,
@@ -407,17 +95,17 @@ pub(crate) struct InputState {
 }
 
 impl InputState {
-    pub(crate) fn is_gamepad_connected(&self, connection: GamepadConnection) -> bool {
+    pub fn is_gamepad_connected(&self, connection: GamepadConnection) -> bool {
         self.active_gamepads.contains(&connection)
     }
 
     #[cfg(test)]
-    pub(crate) fn apply(&mut self, envelope: SequencedInputEvent) -> InputDisposition {
+    pub fn apply(&mut self, envelope: SequencedInputEvent) -> InputDisposition {
         let observed_at = Duration::from_millis(envelope.event.at().value());
         self.apply_observed(envelope, observed_at)
     }
 
-    pub(crate) fn apply_observed(
+    pub fn apply_observed(
         &mut self,
         envelope: SequencedInputEvent,
         observed_at: Duration,
@@ -476,7 +164,7 @@ impl InputState {
         InputDisposition::Applied
     }
 
-    pub(crate) fn expire_keyboard_fallback(&mut self, now: Duration, timeout_ms: u32) -> usize {
+    pub fn expire_keyboard_fallback(&mut self, now: Duration, timeout_ms: u32) -> usize {
         if timeout_ms == 0 {
             return 0;
         }
@@ -503,11 +191,11 @@ impl InputState {
         expired.len()
     }
 
-    pub(crate) fn force_reset(&mut self, reason: InputResetReason) {
+    pub fn force_reset(&mut self, reason: InputResetReason) {
         self.reset(reason);
     }
 
-    pub(crate) fn snapshot(&self) -> InputSnapshot {
+    pub fn snapshot(&self) -> InputSnapshot {
         InputSnapshot {
             pressed_key_count: self
                 .pressed
@@ -532,7 +220,7 @@ impl InputState {
         }
     }
 
-    pub(crate) fn model_snapshot(
+    pub fn model_snapshot(
         &self,
         bindings: &InputBindings,
         cursor: NormalizedCursorPosition,

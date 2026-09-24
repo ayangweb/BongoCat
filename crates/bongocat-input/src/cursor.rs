@@ -80,14 +80,14 @@ const CURSOR_DAMPING_DECAY_AT_60_FPS: f64 = 0.75;
 const CURSOR_SETTLE_DISTANCE: f64 = 0.5;
 
 #[derive(Default)]
-pub(crate) struct CursorSmoother {
+pub struct CursorSmoother {
     target: Option<CursorSample>,
     current: Option<CursorPosition>,
     last_updated_at: Option<Duration>,
 }
 
 impl CursorSmoother {
-    pub(crate) fn set_target(&mut self, sample: CursorSample, now: Duration) {
+    pub fn set_target(&mut self, sample: CursorSample, now: Duration) {
         if self.target.is_none()
             || self
                 .target
@@ -103,7 +103,7 @@ impl CursorSmoother {
         self.last_updated_at = Some(now);
     }
 
-    pub(crate) fn advance(&mut self, now: Duration) -> bool {
+    pub fn advance(&mut self, now: Duration) -> bool {
         let (Some(target), Some(current), Some(previous)) =
             (self.target, self.current, self.last_updated_at)
         else {
@@ -130,7 +130,7 @@ impl CursorSmoother {
         true
     }
 
-    pub(crate) fn normalized(&self) -> NormalizedCursorPosition {
+    pub fn normalized(&self) -> NormalizedCursorPosition {
         match (self.current, self.target) {
             (Some(current), Some(target)) => normalize_position(current, target.viewport),
             _ => NormalizedCursorPosition::default(),
@@ -254,16 +254,32 @@ pub struct CursorProducer {
 }
 
 impl CursorProducer {
-    pub(crate) fn new(slot: Arc<CursorSlot>) -> Self {
-        Self { slot }
+    pub fn new() -> Self {
+        Self {
+            slot: Arc::new(CursorSlot::default()),
+        }
     }
 
     pub fn publish(&self, sample: CursorSample) -> Result<(), CursorPublishError> {
         self.slot.publish(sample)
     }
 
+    pub fn take(&self) -> Option<CursorSample> {
+        self.slot.take()
+    }
+
     pub fn diagnostics(&self) -> CursorTransportDiagnostics {
         self.slot.diagnostics()
+    }
+
+    pub fn stop(&self) {
+        self.slot.stop();
+    }
+}
+
+impl Default for CursorProducer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

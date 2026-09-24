@@ -8,6 +8,7 @@ use bongocat_config::{
     BuildEnvironment, ConfigError, ConfigWriteFailureReason, NativeConfig, OverlayWindowPlacement,
     ShortcutCommand, StateError, WindowPlacement,
 };
+use bongocat_input::{PlatformInputDiagnostics, PlatformInputServiceStatus};
 use bongocat_model::{
     CommittedModel, ModelBehaviorSnapshot, ModelCatalogEntry, ModelDiagnostic, ModelImportProgress,
     ModelImportStage, ModelOrigin, ModelStoreDiagnostic, MverInputMode,
@@ -19,8 +20,8 @@ use bongocat_platform::{
     open_directory, set_startup_item_enabled, startup_item_state,
 };
 use bongocat_runtime::{
-    InputSnapshot, ModelSettings, OverlaySettings, PlatformInputDiagnostics,
-    PlatformInputServiceStatus, RuntimeRenderErrorCode, RuntimeSnapshot, RuntimeState,
+    InputSnapshot, ModelSettings, OverlaySettings, RuntimeRenderErrorCode, RuntimeSnapshot,
+    RuntimeState,
 };
 use bongocat_storage::{create_private_dir_all, write_private_atomic};
 use bongocat_ui::SettingsStartupItemError;
@@ -791,7 +792,7 @@ fn run_service(
             } => {
                 let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        let runtime_settings = bongocat_runtime::GamepadAxisSettings::new(
+                        let runtime_settings = bongocat_input::GamepadAxisSettings::new(
                             f32::from(settings.stick_dead_zone_percent.min(99)) / 100.0,
                             f32::from(settings.trigger_dead_zone_percent.min(99)) / 100.0,
                         )
@@ -1505,7 +1506,7 @@ fn settings_input_diagnostics(
         },
         service_error_code: platform
             .service_error_code
-            .filter(|code| bongocat_runtime::is_stable_platform_input_error_code(code)),
+            .filter(|code| bongocat_input::is_stable_platform_input_error_code(code)),
         service_start_attempts: platform.service_start_attempts,
         pressed_key_count: input.pressed_key_count,
         pressed_mouse_button_count: input.pressed_mouse_button_count,
@@ -2368,9 +2369,8 @@ mod tests {
     use super::*;
     use crate::ApplicationLogEventCounts;
     use bongocat_config::{ConfigStore, OverlayWindowPlacement, StateStore, StorageLayout};
-    use bongocat_runtime::{
-        InputDiagnostics, InputTransportDiagnostics, RuntimeOwner, RuntimeWorkDiagnostics,
-    };
+    use bongocat_input::{InputDiagnostics, InputTransportDiagnostics};
+    use bongocat_runtime::{RuntimeOwner, RuntimeWorkDiagnostics};
     use bongocat_ui::{SettingsModelImportRequest, SettingsStartupItemError};
     use std::{
         fs, io,

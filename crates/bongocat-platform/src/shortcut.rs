@@ -1,18 +1,16 @@
-use bongocat_config::{ModelBehaviorAction, ShortcutTarget};
-use bongocat_runtime::{
-    ExpressionId, MotionId, MotionPriority, RuntimeClient, SendError, ShortcutAction,
-};
-use std::sync::mpsc::SyncSender;
+use bongocat_config::ShortcutTarget;
+use std::sync::Arc;
 
-/// Dispatches matched model behavior shortcuts without exposing configuration
-/// strings or platform key codes to the runtime. The global shortcut service
-/// resolves an OS-registered hotkey event to its configured target and hands
-/// it here; application-level targets are intentionally reported as ignored
-/// until the settings service owns their persistence-aware command path.
+type ShortcutHandler =
+    dyn Fn(&ShortcutTarget) -> Result<ShortcutDispatch, ShortcutDispatchError> + Send + Sync;
+
+/// Dispatches a matched shortcut target without exposing configuration strings
+/// or platform key codes to the operating-system adapter. The application owns
+/// the typed mapping and supplies this callback; the platform owner only
+/// forwards the already-matched target.
 #[derive(Clone)]
 pub struct ShortcutDispatcher {
-    runtime: RuntimeClient,
-    application_sink: Option<SyncSender<bongocat_config::ShortcutCommand>>,
+    handler: Arc<ShortcutHandler>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -23,39 +21,23 @@ pub enum ShortcutDispatch {
     IgnoredInactiveModel,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ShortcutDispatchError {
-    Runtime(SendError),
     ApplicationQueueFull,
+    RuntimeQueueFull,
+    RuntimeStopped,
 }
-
-impl PartialEq for ShortcutDispatchError {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::ApplicationQueueFull, Self::ApplicationQueueFull)
-                | (Self::Runtime(_), Self::Runtime(_))
-        )
-    }
-}
-
-impl Eq for ShortcutDispatchError {}
 
 impl ShortcutDispatcher {
-    pub fn new(runtime: RuntimeClient) -> Self {
+    pub fn new<F>(handler: F) -> Self
+    where
+        F: Fn(&ShortcutTarget) -> Result<ShortcutDispatch, ShortcutDispatchError>
+            + Send
+            + Sync
+            + 'static,
+    {
         Self {
-            runtime,
-            application_sink: None,
-        }
-    }
-
-    pub fn with_application_sink(
-        runtime: RuntimeClient,
-        application_sink: SyncSender<bongocat_config::ShortcutCommand>,
-    ) -> Self {
-        Self {
-            runtime,
-            application_sink: Some(application_sink),
+            handler: Arc::new(handler),
         }
     }
 
@@ -63,130 +45,37 @@ impl ShortcutDispatcher {
         &self,
         target: &ShortcutTarget,
     ) -> Result<ShortcutDispatch, ShortcutDispatchError> {
-        match target {
-            ShortcutTarget::Application(command) => match self.application_sink.as_ref() {
-                Some(sender) => sender
-                    .try_send(*command)
-                    .map(|()| ShortcutDispatch::ApplicationQueued)
-                    .map_err(|_| ShortcutDispatchError::ApplicationQueueFull),
-                None => Ok(ShortcutDispatch::IgnoredApplicationCommand),
-            },
-            ShortcutTarget::ModelBehavior { model_id, action } => {
-                let Some(active) = self.runtime.snapshot().active_model else {
-                    return Ok(ShortcutDispatch::IgnoredInactiveModel);
-                };
-                if active.id.as_str() != model_id {
-                    return Ok(ShortcutDispatch::IgnoredInactiveModel);
-                }
-                let action = match action {
-                    ModelBehaviorAction::Motion { group, index } => ShortcutAction::StartMotion {
-                        motion: MotionId::new(group, *index).expect("validated motion group"),
-                        priority: MotionPriority::Normal,
-                    },
-                    ModelBehaviorAction::Expression { name } => ShortcutAction::SetExpression(
-                        ExpressionId::new(name).expect("validated expression name"),
-                    ),
-                };
-                self.runtime
-                    .trigger_shortcut(action)
-                    .map(|_| ShortcutDispatch::Triggered)
-                    .map_err(ShortcutDispatchError::Runtime)
-            }
-        }
+        (self.handler)(target)
     }
 }
 
 #[cfg(test)]
 mod dispatcher_tests {
     use super::*;
-    use bongocat_config::{CompiledShortcuts, ShortcutBinding, ShortcutCommand, ShortcutConfig};
-
-    fn compiled(shortcut: &str, command: &str) -> CompiledShortcuts {
-        ShortcutConfig {
-            commands_enabled: true,
-            commands: vec![ShortcutBinding {
-                command: command.to_owned(),
-                shortcut: shortcut.to_owned(),
-            }],
-            model_behaviors: Vec::new(),
-        }
-        .compile()
-        .expect("compiled shortcuts")
-    }
-
-    fn first_target(compiled: &CompiledShortcuts) -> ShortcutTarget {
-        compiled
-            .iter()
-            .next()
-            .expect("one binding")
-            .target()
-            .clone()
-    }
+    use bongocat_config::{ShortcutCommand, ShortcutTarget};
 
     #[test]
-    fn application_targets_without_a_sink_are_ignored() {
-        let runtime = bongocat_runtime::RuntimeOwner::start(true, 16);
-        let client = runtime.client();
-        client
-            .wait_for_revision(1, std::time::Duration::from_secs(1))
-            .expect("runtime ready");
-        let dispatcher = ShortcutDispatcher::new(client.clone());
-        let target = first_target(&compiled("Control+B", "toggle_overlay"));
+    fn forwards_targets_to_the_application_handler() {
+        let dispatcher = ShortcutDispatcher::new(|target| {
+            assert_eq!(
+                target,
+                &ShortcutTarget::Application(ShortcutCommand::ToggleOverlay)
+            );
+            Ok(ShortcutDispatch::ApplicationQueued)
+        });
         assert_eq!(
-            dispatcher.execute(&target),
-            Ok(ShortcutDispatch::IgnoredApplicationCommand)
-        );
-        runtime
-            .shutdown(std::time::Duration::from_secs(1))
-            .expect("runtime stop");
-    }
-
-    #[test]
-    fn application_targets_are_queued_for_the_application_owner() {
-        let runtime = bongocat_runtime::RuntimeOwner::start(true, 16);
-        let client = runtime.client();
-        client
-            .wait_for_revision(1, std::time::Duration::from_secs(1))
-            .expect("runtime ready");
-        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-        let dispatcher = ShortcutDispatcher::with_application_sink(client.clone(), sender);
-        let target = first_target(&compiled("Meta+O", "open_settings"));
-        assert_eq!(
-            dispatcher.execute(&target),
+            dispatcher.execute(&ShortcutTarget::Application(ShortcutCommand::ToggleOverlay)),
             Ok(ShortcutDispatch::ApplicationQueued)
         );
-        assert_eq!(
-            receiver
-                .recv_timeout(std::time::Duration::from_secs(1))
-                .expect("open settings command"),
-            ShortcutCommand::OpenSettings
-        );
-        runtime
-            .shutdown(std::time::Duration::from_secs(1))
-            .expect("runtime stop");
     }
 
     #[test]
-    fn model_behaviors_without_an_active_model_are_ignored() {
-        let runtime = bongocat_runtime::RuntimeOwner::start(true, 16);
-        let client = runtime.client();
-        client
-            .wait_for_revision(1, std::time::Duration::from_secs(1))
-            .expect("runtime ready");
-        let dispatcher = ShortcutDispatcher::new(client.clone());
-        let target = ShortcutTarget::ModelBehavior {
-            model_id: "standard".to_owned(),
-            action: ModelBehaviorAction::Expression {
-                name: "happy".to_owned(),
-            },
-        };
+    fn preserves_the_handler_error_for_platform_diagnostics() {
+        let dispatcher = ShortcutDispatcher::new(|_| Err(ShortcutDispatchError::RuntimeQueueFull));
         assert_eq!(
-            dispatcher.execute(&target),
-            Ok(ShortcutDispatch::IgnoredInactiveModel)
+            dispatcher.execute(&ShortcutTarget::Application(ShortcutCommand::ToggleOverlay)),
+            Err(ShortcutDispatchError::RuntimeQueueFull)
         );
-        runtime
-            .shutdown(std::time::Duration::from_secs(1))
-            .expect("runtime stop");
     }
 }
 
@@ -210,11 +99,12 @@ mod global {
     //!   Bindings whose keys have no Carbon scancode (ScrollLock, Pause)
     //!   cannot register and are reported as registration failures instead of
     //!   blocking the remaining bindings.
+    #[cfg(test)]
+    use super::ShortcutDispatch;
     use super::{ShortcutDispatchError, ShortcutDispatcher};
     use bongocat_config::{
         CompiledShortcuts, ShortcutChord, ShortcutModifiers, ShortcutTable, ShortcutTarget,
     };
-    use bongocat_runtime::SendError;
     use global_hotkey::hotkey::{Code, HotKey, Modifiers};
     use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
     use std::collections::{BTreeSet, HashMap};
@@ -538,10 +428,10 @@ mod global {
                 match dispatcher.execute(&registration.target) {
                     Ok(_) => {}
                     Err(ShortcutDispatchError::ApplicationQueueFull)
-                    | Err(ShortcutDispatchError::Runtime(SendError::QueueFull(_))) => {
+                    | Err(ShortcutDispatchError::RuntimeQueueFull) => {
                         counters.queue_overflows.fetch_add(1, Ordering::Relaxed);
                     }
-                    Err(ShortcutDispatchError::Runtime(SendError::RuntimeStopped(_))) => {
+                    Err(ShortcutDispatchError::RuntimeStopped) => {
                         counters
                             .runtime_stopped_events
                             .fetch_add(1, Ordering::Relaxed);
@@ -1035,11 +925,6 @@ mod global {
         #[test]
         #[ignore = "registers a real OS-wide hotkey for the test duration"]
         fn owner_thread_registers_and_unregisters_real_hotkeys() {
-            let runtime = bongocat_runtime::RuntimeOwner::start(true, 16);
-            let client = runtime.client();
-            client
-                .wait_for_revision(1, std::time::Duration::from_secs(1))
-                .expect("runtime ready");
             let compiled = ShortcutConfig {
                 commands_enabled: true,
                 commands: vec![ShortcutBinding {
@@ -1050,10 +935,9 @@ mod global {
             }
             .compile()
             .expect("compiled shortcuts");
-            let (sender, receiver) = std::sync::mpsc::sync_channel(1);
             let service = GlobalShortcutService::start(
                 ShortcutTable::new(compiled),
-                ShortcutDispatcher::with_application_sink(client.clone(), sender),
+                ShortcutDispatcher::new(|_| Ok(ShortcutDispatch::IgnoredApplicationCommand)),
             )
             .expect("global shortcut service starts");
             // The owner thread must have registered the binding with the OS
@@ -1061,16 +945,6 @@ mod global {
             assert!(service.registration_failures().is_empty());
             std::thread::sleep(std::time::Duration::from_millis(200));
             service.stop().expect("service stops and unregisters");
-            // The application sink stayed empty: no hotkey was pressed during
-            // the test.
-            assert!(
-                receiver
-                    .recv_timeout(std::time::Duration::from_millis(50))
-                    .is_err()
-            );
-            runtime
-                .shutdown(std::time::Duration::from_secs(1))
-                .expect("runtime stop");
         }
     }
 }

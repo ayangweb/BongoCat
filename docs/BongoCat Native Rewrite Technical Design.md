@@ -305,7 +305,8 @@ BongoCat/
   resources/                  随产品打包的模型与 Native 产品图标
   crates/
     bongocat-app/             入口、装配和 shutdown
-    bongocat-runtime/         状态、输入语义、动画和命令
+    bongocat-input/           平台无关输入协议、producer 和 latest-value transport
+    bongocat-runtime/         状态、输入 reducer、模型投影、动画和命令
     bongocat-config/          schema、环境隔离和原子存储
     bongocat-storage/         用户私有存储原语：权限、私有目录、原子替换
     bongocat-model/           模型包、目录导入和资源索引
@@ -337,7 +338,7 @@ crate 是编译和责任边界，不是动态库。首期不为目录美观建�
 
 ### 8.1 状态所有权
 
-单一 runtime 线程拥有 `AppState`、`InputState`、`AnimationState` 和当前模型控制状态。其他线程不能通过共享可变引用修改它们。
+单一 runtime 线程拥有 `AppState`、`InputState`、`AnimationState` 和当前模型控制状态。其他线程不能通过共享可变引用修改它们。`bongocat-input` 只拥有平台无关的事件协议、可靠输入 hand-off、latest-value transport 和匿名诊断；`InputState`、输入到模型的投影以及 worker/shutdown 生命周期仍由 `bongocat-runtime` 独占。
 
 ```text
 Input producers ---- reliable edge queue -----+

@@ -3,7 +3,7 @@ use crate::{
     PlatformInputServiceStatus,
 };
 use bongocat_config::Language;
-use bongocat_runtime::{
+use bongocat_input::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
     GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
     GamepadButtonKey, GamepadConnection, GamepadConnectionError, InputControl, InputEdge,

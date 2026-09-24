@@ -341,8 +341,14 @@ pub struct GamepadAxisProducer {
 }
 
 impl GamepadAxisProducer {
-    pub(crate) fn new(slot: Arc<GamepadAxisSlot>) -> Self {
-        Self { slot }
+    pub fn new() -> Self {
+        Self::with_capacity(DEFAULT_GAMEPAD_AXIS_CAPACITY)
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            slot: Arc::new(GamepadAxisSlot::with_capacity(capacity)),
+        }
     }
 
     pub fn publish(&self, sample: GamepadAxisSample) -> Result<(), GamepadAxisPublishError> {
@@ -357,8 +363,21 @@ impl GamepadAxisProducer {
         self.slot.clear_connection(connection);
     }
 
+    pub fn take(&self) -> Vec<GamepadAxisSample> {
+        self.slot.take()
+    }
+
     pub fn diagnostics(&self) -> GamepadAxisTransportDiagnostics {
         self.slot.diagnostics()
+    }
+
+    pub fn stop(&self) {
+        self.slot.stop();
+    }
+
+    #[cfg(test)]
+    fn from_slot(slot: Arc<GamepadAxisSlot>) -> Self {
+        Self { slot }
     }
 
     pub fn is_fully_accounted(&self) -> bool {
@@ -368,6 +387,12 @@ impl GamepadAxisProducer {
                 + diagnostics.consumed
                 + diagnostics.discarded
                 + diagnostics.pending
+    }
+}
+
+impl Default for GamepadAxisProducer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -407,7 +432,7 @@ mod tests {
         assert_eq!(samples[0].value, 0.9999);
         assert_eq!(slot.diagnostics().coalesced, 9_999);
         assert_eq!(slot.diagnostics().discarded, 0);
-        assert!(GamepadAxisProducer::new(Arc::new(slot)).is_fully_accounted());
+        assert!(GamepadAxisProducer::from_slot(Arc::new(slot)).is_fully_accounted());
     }
 
     #[test]
@@ -438,7 +463,7 @@ mod tests {
     #[test]
     fn connection_allocator_is_monotonic_per_device_and_stops_with_runtime() {
         let slot = Arc::new(GamepadAxisSlot::with_capacity(12));
-        let producer = GamepadAxisProducer::new(Arc::clone(&slot));
+        let producer = GamepadAxisProducer::from_slot(Arc::clone(&slot));
         let first = producer.connect(3).expect("first connection");
         producer
             .publish(GamepadAxisSample {
@@ -493,7 +518,7 @@ mod tests {
     #[test]
     fn capacity_rejection_preserves_latest_value_accounting() {
         let slot = Arc::new(GamepadAxisSlot::with_capacity(1));
-        let producer = GamepadAxisProducer::new(Arc::clone(&slot));
+        let producer = GamepadAxisProducer::from_slot(Arc::clone(&slot));
         producer
             .publish(sample(GamepadAxis::LeftStickX, 0.25, 1))
             .expect("first axis key accepted");

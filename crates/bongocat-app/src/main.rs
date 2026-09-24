@@ -7,12 +7,13 @@
 #![forbid(unsafe_code)]
 
 use async_io::Timer;
+use bongocat_app::application_shortcut_dispatcher;
 use bongocat_live2d::CoreLogHandle;
 use bongocat_overlay::{
     OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome,
     OverlaySessionOptions, OverlayWindowBounds, ProductOverlaySession,
 };
-use bongocat_platform::{GlobalShortcutService, ShortcutDispatcher};
+use bongocat_platform::GlobalShortcutService;
 #[cfg(target_os = "windows")]
 use bongocat_platform::{
     SingleInstance, SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceStart,
@@ -2156,7 +2157,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // service thread (ADR-0044); the input pipeline no longer matches edges.
     let shortcut_service = match GlobalShortcutService::start(
         application.shortcut_table(),
-        ShortcutDispatcher::with_application_sink(runtime_client.clone(), shortcut_sender),
+        application_shortcut_dispatcher(runtime_client.clone(), shortcut_sender),
     ) {
         Ok(service) => Some(service),
         Err(error) => {

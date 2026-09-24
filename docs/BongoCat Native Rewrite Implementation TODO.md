@@ -447,6 +447,8 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     有界 service worker 提供 revisioned snapshot、显隐/音效持久化和显式 shutdown；
     installed-model 选择、窗口重开和跨平台多模型切换确认仍属后续任务。
 - [x] 创建 bongocat-runtime：状态、输入语义、动画和 command。
+- [x] 创建 bongocat-input：平台无关输入协议、可靠 producer、cursor/gamepad latest-value transport 和匿名诊断。
+  - 验收证据（2026-09-24）：`bongocat-input` 不依赖 runtime、renderer、GPUI 或 OS API；`InputState`、`ModelInputSnapshot`、runtime command/worker 和 shutdown 仍由 `bongocat-runtime` 独占。Windows/macOS 平台输入 producer 通过 typed submitter 接入同一 runtime FIFO；input crate、runtime、platform、app、overlay 测试及 release check 通过。
 - [x] 创建 bongocat-config：环境隔离、schema、验证和原子存储。
 - [x] 创建 bongocat-model：模型包、导入和资源索引。
   - 验收证据（2026-08-30）：正式 `bongocat-model` 已实现可移植 `ModelId`、model3
@@ -490,7 +492,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     泄漏到 runtime；macOS 生命周期通知、双平台 GameController/XInput 与其余系统服务尚未
     迁入，因此总项保持未完成。
 - [ ] 创建 shared/config、behavior、fixtures、resources。
-- [x] 避免空 crate；首批只建立 app/runtime/config 三个有独立依赖和测试价值的 crate。
+- [x] 避免空 crate；首批建立 app/runtime/config，随后仅在真实依赖和测试隔离需要时增加 input 等边界 crate。
 
 ### 2.2 工程质量
 

@@ -11,6 +11,10 @@ use bongocat_config::{
     ShortcutConfig, ShortcutModifiers, ShortcutTable, StateError, StateStore, StorageLayout,
     Theme as ConfigTheme, WindowPlacement, platform_layout,
 };
+use bongocat_input::{
+    CursorProducer, GamepadAxisProducer, GamepadAxisSettings, GamepadButton, HandSide,
+    InputBindings, InputProducer, PhysicalKey,
+};
 use bongocat_live2d::KeyImageInventory;
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelBehaviorSnapshot, ModelCatalogEntry, ModelError, ModelId,
@@ -20,11 +24,10 @@ use bongocat_model::{
 };
 use bongocat_render::{FUNCTION_KEY_USAGES, KeySide, ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
-    CursorProducer, ExpressionId, ExpressionIdError, GamepadAxisProducer, GamepadAxisSettings,
-    GamepadButton, HandSide, InputBindings, InputProducer, ModelSettings, MotionId, MotionIdError,
-    MotionPriority, OverlaySettings, PhysicalKey, RuntimeClient, RuntimeCommand,
-    RuntimeCommandFailure, RuntimeOwner, RuntimeRenderErrorCode, RuntimeSnapshot, SendError,
-    ShutdownError, maximum_fps_is_valid, release_fallback_timeout_is_valid,
+    ExpressionId, ExpressionIdError, ModelSettings, MotionId, MotionIdError, MotionPriority,
+    OverlaySettings, RuntimeClient, RuntimeCommand, RuntimeCommandFailure, RuntimeOwner,
+    RuntimeRenderErrorCode, RuntimeSnapshot, SendError, ShutdownError, maximum_fps_is_valid,
+    release_fallback_timeout_is_valid,
 };
 use bongocat_update::{UpdateDiagnostics, UpdateDiagnosticsTracker};
 use std::{
@@ -43,6 +46,7 @@ mod diagnostics_bundle;
 #[cfg(test)]
 mod product_icon_contract;
 mod settings;
+mod shortcuts;
 mod startup_permission;
 mod update;
 use app_log::ApplicationRunMarker;
@@ -55,6 +59,7 @@ pub use settings::{
     ApplicationSettingsService, SettingsServiceJoinError, StatusIconCapability,
     TaskbarIconCapability,
 };
+pub use shortcuts::application_shortcut_dispatcher;
 pub use startup_permission::ensure_startup_permission;
 pub use update::{ApplicationUpdateService, UpdateServiceError, restart_required_after_install};
 

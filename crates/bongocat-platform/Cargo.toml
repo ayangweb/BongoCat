@@ -10,7 +10,7 @@ publish.workspace = true
 [dependencies]
 async-channel.workspace = true
 bongocat-config.workspace = true
-bongocat-runtime.workspace = true
+bongocat-input.workspace = true
 # `HasWindowHandle` is the parameter type of the public `apply_theme`, so the trait
 # has to resolve on both shipped platforms. `raw-window-handle` is a cross-platform
 # handle abstraction, not a platform-specific binding.
@@ -67,6 +67,7 @@ windows = { version = "=0.62.2", features = [
 ] }
 
 [dev-dependencies]
+bongocat-runtime.workspace = true
 tempfile.workspace = true
 
 [lints.clippy]

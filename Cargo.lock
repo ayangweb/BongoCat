@@ -791,6 +791,7 @@ dependencies = [
  "bongocat-audio",
  "bongocat-config",
  "bongocat-i18n",
+ "bongocat-input",
  "bongocat-live2d",
  "bongocat-log",
  "bongocat-model",
@@ -836,6 +837,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bongocat-input"
+version = "2.0.0"
+
+[[package]]
 name = "bongocat-live2d"
 version = "2.0.0"
 dependencies = [
@@ -875,6 +880,7 @@ name = "bongocat-overlay"
 version = "2.0.0"
 dependencies = [
  "block2 0.6.2",
+ "bongocat-input",
  "bongocat-live2d",
  "bongocat-model",
  "bongocat-platform",
@@ -913,6 +919,7 @@ dependencies = [
  "auto-launch",
  "block2 0.6.2",
  "bongocat-config",
+ "bongocat-input",
  "bongocat-runtime",
  "dispatch2",
  "global-hotkey",
@@ -937,12 +944,16 @@ dependencies = [
 [[package]]
 name = "bongocat-render"
 version = "2.0.0"
+dependencies = [
+ "bongocat-input",
+]
 
 [[package]]
 name = "bongocat-runtime"
 version = "2.0.0"
 dependencies = [
  "bongocat-audio",
+ "bongocat-input",
  "bongocat-live2d",
  "bongocat-model",
  "bongocat-render",
