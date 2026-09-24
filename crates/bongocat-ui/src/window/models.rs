@@ -219,7 +219,7 @@ pub(super) fn content(
                     "models.identity.status.unavailable",
                 )
             } else {
-                bongocat_i18n::text(language.catalog_locale(), "models.actions.activate")
+                bongocat_i18n::text(language.catalog_locale(), "models.actions.use")
             };
             let cover = editing
                 .and_then(|draft| draft.cover.clone())
@@ -565,7 +565,7 @@ fn model_card_actions(
     row = row.child(
         icon_command_button(
             "open-model-location-control",
-            bongocat_i18n::text(language.catalog_locale(), "models.actions.open_location"),
+            bongocat_i18n::text(language.catalog_locale(), "models.actions.open_folder"),
             IconName::FolderOpen,
             &focus.open_location,
             action_tabs.open_location,
@@ -833,19 +833,5 @@ pub(super) fn import_card_step(
             step("models.import.step.importing")
         }
         ModelImportState::Capturing => step("models.import.step.capturing"),
-    }
-}
-
-#[cfg(test)]
-pub(super) fn empty_model_catalog_status(
-    catalog: Option<&crate::SettingsModelCatalog>,
-    language: SettingsLanguage,
-) -> &'static str {
-    match catalog {
-        None => bongocat_i18n::text(language.catalog_locale(), "models.catalog.loading"),
-        Some(catalog) if catalog.error.is_some() => {
-            bongocat_i18n::text(language.catalog_locale(), "models.catalog.unavailable")
-        }
-        Some(_) => bongocat_i18n::text(language.catalog_locale(), "models.catalog.empty"),
     }
 }

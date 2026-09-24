@@ -63,7 +63,7 @@ impl SettingsView {
             .ok_or_else(|| "split pages have not received a settings snapshot".to_owned())?
             .resolved_language;
         for title_key in [
-            "navigation.overlay.title",
+            "navigation.model_window.title",
             "navigation.interaction.title",
             "navigation.input.title",
             "navigation.application.title",
@@ -193,8 +193,8 @@ impl SettingsView {
             let expected_origin = bongocat_i18n::text(
                 language.catalog_locale(),
                 match entry.origin {
-                    SettingsModelOrigin::Preset => "models.identity.source.preset",
-                    SettingsModelOrigin::Installed => "models.identity.source.installed",
+                    SettingsModelOrigin::Preset => "models.identity.source.built_in",
+                    SettingsModelOrigin::Installed => "models.identity.source.imported",
                 },
             );
             if !status.contains(expected_origin) {

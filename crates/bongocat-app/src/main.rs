@@ -62,8 +62,8 @@ fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMenuPresentati
         title: text("system_menu.title"),
         tooltip: text("system_menu.title"),
         open_settings: text("system_menu.open_settings"),
-        show_overlay: text("system_menu.show_overlay"),
-        hide_overlay: text("system_menu.hide_overlay"),
+        show_overlay: text("system_menu.show_model_window"),
+        hide_overlay: text("system_menu.hide_model_window"),
         click_through: text("system_menu.click_through"),
         check_for_updates: text("system_menu.check_for_updates"),
         open_source: text("system_menu.open_source"),
@@ -2429,12 +2429,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // The check is a read-only platform query; only a missing capability shows the
         // prompt, and the prompt outcome is neither persisted nor logged.
         //
-        // Windows: the primary button promises "quit and go to settings". A successful
+        // Windows: the primary button promises "exit and open the program folder". A successful
         // permission flow (the executable's folder was revealed) raises the same shutdown
         // flag the tray quit uses, so the product exits through the regular shutdown
         // coordinator while the user flips the compatibility flag. A failed reveal keeps
         // the product running, per the ADR rule that a failed flow only counts as
-        // "later". macOS has no quit promise: its primary button only opens System
+        // "continue for now". macOS has no quit promise: its primary button only opens System
         // Settings.
         //
         // Lifecycle: the thread is deliberately detached. It owns only the resolved

@@ -218,6 +218,7 @@ settings 的 `report_progress` 会丢弃回退的更新，而 store 每个模型
   之和；标题在拼接模式名后仍不超上限且模式名保留；进度折叠的单元语义。
 - `bongocat-i18n` 4 测试通过（两个 locale 的键与占位符完全一致），新增
   `models.legacy.mode.*` 与改写后的 `models.installed.description`。
+  （该历史 key 后续在 2026-09-24 catalog 审计中改为 `models.mver.mode.*`。）
 - `cargo fmt --all --check`、三组 clippy（workspace `--all-targets --all-features` 与
   `bongocat-app` 的 `storage-test-injection`/`production`）、`cargo test --locked --workspace`
   （全部二进制全绿）、`cargo check --locked --workspace --release` 全部通过。

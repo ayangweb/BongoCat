@@ -1,6 +1,6 @@
 # ADR-0032: Startup Permission Prompt Boundary
 
-状态：已接受（2026-09-14）；同日实机验收发现 macOS 侧必须使用不触碰 AppKit 的 `rfd` 路径，见「macOS 弹框实现修正」；2026-09-15 修正检查执行方式为专用 worker 线程上的非阻塞检查，见「非阻塞执行修正」；同日启用 Windows 自定义按钮文案，见「Windows 按钮文案修正」；2026-09-18 为修复主题跟随把 macOS 提示改为主线程 `NSAlert`，见「主题外观修正」
+状态：已接受（2026-09-14）；同日实机验收发现 macOS 侧必须使用不触碰 AppKit 的 `rfd` 路径，见「macOS 弹框实现修正」；2026-09-15 修正检查执行方式为专用 worker 线程上的非阻塞检查，见「非阻塞执行修正」；同日启用 Windows 自定义按钮文案，见「Windows 按钮文案修正」；2026-09-18 为修复主题跟随把 macOS 提示改为主线程 `NSAlert`，见「主题外观修正」；2026-09-24 收口 Windows 按钮文案，使其准确描述“退出并打开程序文件夹”和“继续运行”
 
 ## 背景
 
@@ -196,14 +196,16 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
   - macOS 12+：未授权启动出现原生提示；「打开系统设置」落点为「隐私与安全性 → 输入监控」且产品
     已在列表中；「稍后再说」后猫窗口正常出现且输入服务进入匿名 `PermissionDenied`；授权并重启后
     不再提示。
-  - Windows 10 1903+：普通权限启动出现原生提示且按钮为「退出并前往设置」/「稍后设置」两个
-    自定义文案（Task Dialog）；「退出并前往设置」能定位可执行文件且产品随后走常规 shutdown
+  - Windows 10 1903+：普通权限启动出现原生提示且按钮为「退出并打开程序文件夹」/「继续运行」两个
+    自定义文案（Task Dialog）；「退出并打开程序文件夹」能定位可执行文件且产品随后走常规 shutdown
     退出；勾选兼容性开关并重启后不再提示；提权启动时完全不提示。
 - Windows 实机矩阵与 macOS TCC 矩阵仍是发布门禁，cross-check 只能证明编译与边界。
 
 ## Windows 按钮文案修正（2026-09-15）
 
-产品要求 Windows 提示的两个按钮显示自有文案（「退出并前往设置」/「稍后设置」），而原始决策下
+> 本节保留 2026-09-15 的实现背景；按钮名称已按 2026-09-24 的 catalog 审计同步为当前文案。
+
+产品要求 Windows 提示的两个按钮显示自有文案（「退出并打开程序文件夹」/「继续运行」），而原始决策下
 Windows 走 `MessageBoxW`、只显示系统标准 OK/Cancel。「替换边界」曾推断 manifest 前提不满足，实查
 后发现只差一半：
 
@@ -226,10 +228,10 @@ manifest 另加来源。
   `std::thread` 上调用 `TaskDialogIndirect`，与本项目专用 worker 线程同构，该路径经 Tauri
   生态长期使用。
 - 失败语义保持保守：`TaskDialogIndirect` 绑定失败（激活上下文不可用）时 `rfd` 返回 `Cancel`，
-  映射逻辑把它视为「稍后设置」，绝不会被误判为同意；文案正文（已精简）不引用具体按钮名，
+  映射逻辑把它视为「继续运行」，绝不会被误判为同意；文案正文（已精简）不引用具体按钮名，
   两种按钮形态下都成立。
-- 按钮顺序与默认焦点由 Task Dialog 决定：主按钮「退出并前往设置」在前且为默认按钮（与原
-  `MessageBoxW` 默认「确定」一致），Esc/关闭窗口等价于「稍后设置」。
+- 按钮顺序与默认焦点由 Task Dialog 决定：主按钮「退出并打开程序文件夹」在前且为默认按钮（与原
+  `MessageBoxW` 默认「确定」一致），Esc/关闭窗口等价于「继续运行」。
 - Windows 的主按钮现在名副其实：权限流程成功（`reveal` 已定位可执行文件）后，worker 通过托盘
   退出使用的同一个 `shutdown_requested` 标志请求退出，产品走常规 shutdown coordinator
   （flush 配置、停 runtime、join 服务）后进程退出，不绕过任何清理步骤；兼容性开关需要重启
@@ -283,7 +285,7 @@ macOS 的 `rfd` 无父窗口消息框（同步与异步都是）最终调用 `CF
 替换点只有 `bongocat-platform` 的私有 `startup_permission` adapter 和 `bongocat-app` 的文案
 构造。升级 `rfd` 时只需复验 **Windows** 侧：无父窗口消息框仍为原生实现、在
 `common-controls-v6` + ComCtl32 v6 manifest 齐备时仍通过 `TaskDialogIndirect` 显示自定义按钮、
-manifest 缺失时仍回退到 `MB_OKCANCEL` 且结果被当作「稍后设置」、以及无父窗口路径仍不需要应用
+manifest 缺失时仍回退到 `MB_OKCANCEL` 且结果被当作「继续运行」、以及无父窗口路径仍不需要应用
 已运行（macOS 提示已不再使用 `rfd`，见「主题外观修正」）。`common-controls-v6` feature 与
 executable 内嵌的 ComCtl32 v6 manifest 必须同时存在，缺一会让
 Windows 对话框静默失败或按钮回退为系统标准文案。manifest 的唯一来源是 `gpui-pre` 静态库内嵌

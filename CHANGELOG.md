@@ -43,6 +43,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 ### 🎨 UI and Experience
 
+- Settings and model-management copy is now clearer and more consistent across English and Simplified Chinese, including model windows, imports, updates, permissions, and error messages.
 - The BongoCatMver conversion dialog is centered, and its confirm button now reads "OK" in English and "确定" in Chinese.
 - A successful model import now shows a confirmation notification once its cover capture finishes.
 - The delete confirmation opened from a model card now appears above the delete button, with an arrow pointing back to it so the connection is clear.

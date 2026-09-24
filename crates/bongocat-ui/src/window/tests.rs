@@ -1,9 +1,6 @@
 use super::shortcuts_page::ShortcutScope;
 use super::*;
-use crate::{
-    SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
-    SettingsShortcutBinding,
-};
+use crate::{SettingsModelBehaviorBinding, SettingsShortcutBinding};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
@@ -29,6 +26,19 @@ fn model_entry(
         availability,
         directory: None,
         cover: None,
+    }
+}
+
+#[test]
+fn settings_error_display_matches_the_english_catalog_copy() {
+    for code in SettingsErrorCode::ALL {
+        let error = SettingsError::new(code);
+        assert_eq!(
+            settings_error(SettingsLanguage::EnglishUnitedStates, error),
+            error.to_string(),
+            "the protocol error text and catalog drifted for {code:?}"
+        );
+        assert!(!settings_error(SettingsLanguage::ChineseSimplified, error).is_empty());
     }
 }
 
@@ -841,7 +851,7 @@ fn shortcut_presentations_follow_the_resolved_language() {
             shortcut: None,
         }
         .name(SettingsLanguage::EnglishUnitedStates),
-        "Show or hide model window"
+        "Show or hide the model window"
     );
 }
 
@@ -1161,33 +1171,6 @@ fn cancellation_requested_while_starting_reaches_the_created_operation() {
     // The request has landed, so the card stops offering to send another one.
     assert!(draft.shows_cancel());
     assert!(!draft.is_cancellable());
-}
-
-#[test]
-fn model_catalog_statuses_cover_loading_empty_and_error() {
-    assert_eq!(
-        super::models::empty_model_catalog_status(None, SettingsLanguage::EnglishUnitedStates),
-        "Loading models…"
-    );
-
-    let empty = SettingsModelCatalog::default();
-    assert_eq!(
-        super::models::empty_model_catalog_status(
-            Some(&empty),
-            SettingsLanguage::ChineseSimplified,
-        ),
-        "没有可用模型"
-    );
-
-    let mut unavailable = empty;
-    unavailable.error = Some(SettingsModelCatalogError::Unavailable);
-    assert_eq!(
-        super::models::empty_model_catalog_status(
-            Some(&unavailable),
-            SettingsLanguage::ChineseSimplified,
-        ),
-        "模型列表不可用"
-    );
 }
 
 #[test]
@@ -1904,7 +1887,7 @@ fn invalid_model_status_is_stable_and_path_free() {
     let status = model_availability_status(&entry, SettingsLanguage::EnglishUnitedStates);
     assert_eq!(
         status.as_ref().map(|status| status.as_ref()),
-        Some("Installed · Package layout is invalid")
+        Some("Imported · Package layout is invalid")
     );
     let status = status.as_ref().map(|status| status.as_ref()).unwrap_or("");
     assert!(!status.contains("private-model"));
@@ -1933,7 +1916,7 @@ fn model_presentations_follow_the_resolved_language() {
     );
     let invalid_status = model_availability_status(&invalid, SettingsLanguage::ChineseSimplified)
         .expect("invalid models keep a diagnostic status");
-    assert_eq!(invalid_status, "已安装 · 模型纹理无效");
+    assert_eq!(invalid_status, "已导入 · 模型纹理无效");
 
     // The import card shows the step it is on rather than the ones it has
     // finished, and the step follows the resolved language too. Idle is the
@@ -1968,7 +1951,7 @@ fn model_presentations_follow_the_resolved_language() {
     };
     assert_eq!(
         super::models::import_card_step(&capturing, SettingsLanguage::ChineseSimplified).as_deref(),
-        Some("正在截取封面…")
+        Some("正在截取模型封面…")
     );
 }
 

@@ -8,12 +8,19 @@ pub(super) fn build_info_detail(
     build_info: &SettingsBuildInfo,
 ) -> String {
     let environment = match build_info.environment {
-        SettingsBuildEnvironment::Development => "diagnostics.build.environment.development",
-        SettingsBuildEnvironment::Production => "diagnostics.build.environment.production",
+        SettingsBuildEnvironment::Development => {
+            "about.product_information.version.environment.development"
+        }
+        SettingsBuildEnvironment::Production => {
+            "about.product_information.version.environment.release"
+        }
     };
     format!(
         "{} {} · {}",
-        bongocat_i18n::text(language.catalog_locale(), "diagnostics.build.version"),
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "about.product_information.version.label",
+        ),
         build_info.product_version,
         bongocat_i18n::text(language.catalog_locale(), environment)
     )
@@ -21,7 +28,7 @@ pub(super) fn build_info_detail(
 
 pub(super) fn shortcut_command_name(language: SettingsLanguage, command: &str) -> String {
     let key = match command {
-        "toggle_overlay" => "shortcuts.command_names.toggle_overlay",
+        "toggle_overlay" => "shortcuts.command_names.toggle_model_window",
         "open_settings" => "shortcuts.command_names.open_settings",
         "toggle_mirror" => "shortcuts.command_names.toggle_mirror",
         "toggle_click_through" => "shortcuts.command_names.toggle_click_through",
@@ -64,36 +71,38 @@ pub(super) fn shortcut_behavior_name(
 }
 
 pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -> &'static str {
-    // The key is spelled out in full rather than assembled from a suffix. The source scan in
+    // The enum names are stable protocol identifiers; these presentation paths deliberately use
+    // the terms shown to the user. The key is spelled out in full rather than assembled from a suffix.
+    // The source scan in
     // `bongocat-i18n` only sees literals, so a suffix would leave all of these keys unchecked.
     let key = match error.code() {
         SettingsErrorCode::ServiceUnavailable => "errors.settings.service_unavailable",
         SettingsErrorCode::SnapshotOutdated => "errors.settings.snapshot_outdated",
-        SettingsErrorCode::RuntimeUnavailable => "errors.settings.runtime_unavailable",
+        SettingsErrorCode::RuntimeUnavailable => "errors.settings.setting_not_applied",
         SettingsErrorCode::InvalidShortcutBindings => "errors.settings.invalid_shortcut_bindings",
-        SettingsErrorCode::ConfigPersistFailed => "errors.settings.config_persist_failed",
+        SettingsErrorCode::ConfigPersistFailed => "errors.settings.setting_save_failed",
         SettingsErrorCode::ConfigPermissionDenied => "errors.settings.config_permission_denied",
         SettingsErrorCode::ConfigStorageFull => "errors.settings.config_storage_full",
         SettingsErrorCode::ConfigTargetOccupied => "errors.settings.config_target_occupied",
         SettingsErrorCode::BackupLocationOpenFailed => {
-            "errors.settings.backup_location_open_failed"
+            "errors.settings.configuration_backup_open_failed"
         }
         SettingsErrorCode::ModelUnavailable => "errors.settings.model_unavailable",
-        SettingsErrorCode::ModelSwitchFailed => "errors.settings.model_switch_failed",
+        SettingsErrorCode::ModelSwitchFailed => "errors.settings.model_activation_failed",
         SettingsErrorCode::ModelBehaviorPreviewUnavailable => {
-            "errors.settings.model_behavior_preview_unavailable"
+            "errors.settings.model_behavior_unavailable"
         }
         SettingsErrorCode::ModelBehaviorPreviewFailed => {
-            "errors.settings.model_behavior_preview_failed"
+            "errors.settings.model_behavior_play_failed"
         }
-        SettingsErrorCode::ModelTitleInvalid => "errors.settings.model_title_invalid",
+        SettingsErrorCode::ModelTitleInvalid => "errors.settings.model_name_invalid",
         SettingsErrorCode::ModelCoverInvalid => "errors.settings.model_cover_invalid",
         SettingsErrorCode::ModelCoverUpdateFailed => "errors.settings.model_cover_update_failed",
         SettingsErrorCode::ModelSourcePickerUnavailable => {
-            "errors.settings.model_source_picker_unavailable"
+            "errors.settings.model_file_picker_unavailable"
         }
-        SettingsErrorCode::ModelLocationOpenFailed => "errors.settings.model_location_open_failed",
-        SettingsErrorCode::InvalidModelId => "errors.settings.invalid_model_id",
+        SettingsErrorCode::ModelLocationOpenFailed => "errors.settings.model_folder_open_failed",
+        SettingsErrorCode::InvalidModelId => "errors.settings.model_id_invalid",
         SettingsErrorCode::ModelAlreadyInstalled => "errors.settings.model_already_installed",
         SettingsErrorCode::ModelImportInvalidPackage => {
             "errors.settings.model_import_invalid_package"
@@ -109,22 +118,20 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
             "errors.settings.model_import_source_unsupported"
         }
         SettingsErrorCode::ModelImportCancelled => "errors.settings.model_import_cancelled",
-        SettingsErrorCode::ModelStoreBusy => "errors.settings.model_store_busy",
+        SettingsErrorCode::ModelStoreBusy => "errors.settings.model_operations_busy",
         SettingsErrorCode::ModelImportFailed => "errors.settings.model_import_failed",
         SettingsErrorCode::PresetModelCannotBeDeleted => {
-            "errors.settings.preset_model_cannot_be_deleted"
+            "errors.settings.built_in_model_cannot_be_deleted"
         }
         SettingsErrorCode::ModelNotFound => "errors.settings.model_not_found",
         SettingsErrorCode::ModelDeleteFailed => "errors.settings.model_delete_failed",
         SettingsErrorCode::DiagnosticsExportFailed => "errors.settings.diagnostics_export_failed",
-        SettingsErrorCode::StartupItemUpdateFailed => "errors.settings.startup_item_update_failed",
-        SettingsErrorCode::StatusIconUpdateFailed => "errors.settings.status_icon_update_failed",
+        SettingsErrorCode::StartupItemUpdateFailed => "errors.settings.login_startup_update_failed",
+        SettingsErrorCode::StatusIconUpdateFailed => "errors.settings.system_icon_update_failed",
         SettingsErrorCode::TaskbarIconUpdateFailed => "errors.settings.taskbar_icon_update_failed",
         SettingsErrorCode::WindowHideFailed => "errors.settings.window_hide_failed",
-        SettingsErrorCode::WindowStatePersistFailed => {
-            "errors.settings.window_state_persist_failed"
-        }
-        SettingsErrorCode::ShutdownFailed => "errors.settings.shutdown_failed",
+        SettingsErrorCode::WindowStatePersistFailed => "errors.settings.window_layout_save_failed",
+        SettingsErrorCode::ShutdownFailed => "errors.settings.application_shutdown_failed",
     };
     // The catalog is compile-time embedded; the returned string is leaked and
     // cached by the i18n facade just like every other UI message.
@@ -147,8 +154,8 @@ pub(super) fn model_invalid_summary(
     let origin = bongocat_i18n::text(
         language.catalog_locale(),
         match origin {
-            SettingsModelOrigin::Preset => "models.identity.source.preset",
-            SettingsModelOrigin::Installed => "models.identity.source.installed",
+            SettingsModelOrigin::Preset => "models.identity.source.built_in",
+            SettingsModelOrigin::Installed => "models.identity.source.imported",
         },
     );
     bongocat_i18n::format_text(
@@ -157,17 +164,6 @@ pub(super) fn model_invalid_summary(
         &[
             ("origin", origin.to_owned()),
             ("diagnostic", diagnostic.to_owned()),
-        ],
-    )
-}
-
-pub(super) fn runtime_status(language: SettingsLanguage, health: &str, revision: u64) -> String {
-    bongocat_i18n::format_text(
-        language.catalog_locale(),
-        "settings.runtime.status_detail",
-        &[
-            ("health", health.to_owned()),
-            ("revision", revision.to_string()),
         ],
     )
 }

@@ -72,8 +72,8 @@ mod view_state;
 use crate::pop_confirm::PopConfirm;
 pub use lifecycle::open_settings_window;
 use localization::{
-    build_info_detail, model_invalid_summary, runtime_status, settings_error,
-    shortcut_behavior_name, shortcut_command_name, shortcut_conflict_message,
+    build_info_detail, model_invalid_summary, settings_error, shortcut_behavior_name,
+    shortcut_command_name, shortcut_conflict_message,
 };
 #[cfg(test)]
 mod tests;
@@ -1730,9 +1730,9 @@ fn suggested_model_title(source_root: &Path) -> String {
 /// "Keyboard mode" in the same words the card for a converted model will.
 fn mver_mode_label_key(mode: SettingsMverMode) -> &'static str {
     match mode {
-        SettingsMverMode::Standard => "models.legacy.mode.standard",
-        SettingsMverMode::Keyboard => "models.legacy.mode.keyboard",
-        SettingsMverMode::Gamepad => "models.legacy.mode.gamepad",
+        SettingsMverMode::Standard => "models.mver.mode.standard",
+        SettingsMverMode::Keyboard => "models.mver.mode.keyboard",
+        SettingsMverMode::Gamepad => "models.mver.mode.gamepad",
     }
 }
 
@@ -1834,7 +1834,7 @@ fn model_availability_status(
                 }
                 SettingsModelDiagnostic::ModelJsonInvalid
                 | SettingsModelDiagnostic::ModelUnsupportedVersion => {
-                    "models.validation.model_definition_unsupported"
+                    "models.validation.model_format_invalid_or_unsupported"
                 }
                 SettingsModelDiagnostic::ModelTextureInvalidPng
                 | SettingsModelDiagnostic::ModelTextureMissing => {

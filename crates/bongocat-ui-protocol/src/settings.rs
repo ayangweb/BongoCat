@@ -968,13 +968,13 @@ impl fmt::Display for SettingsError {
         formatter.write_str(match self.code {
             SettingsErrorCode::ServiceUnavailable => "Settings service is unavailable",
             SettingsErrorCode::SnapshotOutdated => {
-                "Settings changed in the background; review the latest settings and retry"
+                "Settings changed elsewhere. Review the latest settings and try again."
             }
             SettingsErrorCode::RuntimeUnavailable => "The setting did not take effect",
             SettingsErrorCode::InvalidShortcutBindings => {
                 "Shortcut bindings are invalid or conflict"
             }
-            SettingsErrorCode::ConfigPersistFailed => "Setting could not be saved",
+            SettingsErrorCode::ConfigPersistFailed => "The setting could not be saved",
             SettingsErrorCode::ConfigPermissionDenied => {
                 "The configuration file cannot be written; check permissions and retry"
             }
@@ -985,49 +985,49 @@ impl fmt::Display for SettingsError {
                 "The configuration location is in use; close the program using it and retry"
             }
             SettingsErrorCode::BackupLocationOpenFailed => {
-                "Configuration backup folder could not be opened"
+                "The configuration backup folder could not be opened"
             }
             SettingsErrorCode::ModelUnavailable => "Selected model is unavailable",
-            SettingsErrorCode::ModelSwitchFailed => "Selected model could not be activated",
+            SettingsErrorCode::ModelSwitchFailed => "The selected model could not be activated",
             SettingsErrorCode::ModelBehaviorPreviewUnavailable => {
-                "The behavior is not available for the model in use"
+                "That action or expression belongs to a model that is no longer in use"
             }
-            SettingsErrorCode::ModelBehaviorPreviewFailed => "The behavior could not be played",
-            SettingsErrorCode::ModelTitleInvalid => "Model name is not usable",
+            SettingsErrorCode::ModelBehaviorPreviewFailed => "The action or expression could not be played",
+            SettingsErrorCode::ModelTitleInvalid => "The model name is not usable",
             SettingsErrorCode::ModelCoverInvalid => "Cover image must be a PNG file",
             SettingsErrorCode::ModelCoverUpdateFailed => "Model cover could not be updated",
             SettingsErrorCode::ModelSourcePickerUnavailable => {
-                "The file dialog could not be opened"
+                "The file dialog could not be completed. Try again."
             }
             SettingsErrorCode::ModelLocationOpenFailed => "The model folder could not be opened",
-            SettingsErrorCode::InvalidModelId => "Model id is invalid",
+            SettingsErrorCode::InvalidModelId => "The model ID is invalid",
             SettingsErrorCode::ModelAlreadyInstalled => "This model is already installed",
             SettingsErrorCode::ModelImportInvalidPackage => "Model package is invalid",
             SettingsErrorCode::ModelImportDropInvalid => {
                 "Drop one valid model folder at a time"
             }
-            SettingsErrorCode::ModelImportSourceInvalid => "The selected folder contains the model library itself; choose a specific model folder instead.",
+            SettingsErrorCode::ModelImportSourceInvalid => "The selected folder contains BongoCat's model storage. Choose an individual model folder instead.",
             SettingsErrorCode::ModelImportSourceChanged => "Model source changed during import",
             SettingsErrorCode::ModelImportSourceUnsupported => {
                 "The model source contains an unsupported file"
             }
             SettingsErrorCode::ModelImportCancelled => "Model import was cancelled",
-            SettingsErrorCode::ModelStoreBusy => "Models are busy with another operation; try again in a moment",
+            SettingsErrorCode::ModelStoreBusy => {
+                "Another model operation is in progress. Try again in a moment."
+            }
             SettingsErrorCode::ModelImportFailed => "Model could not be imported",
-            SettingsErrorCode::PresetModelCannotBeDeleted => "Preset model cannot be deleted",
+            SettingsErrorCode::PresetModelCannotBeDeleted => "Built-in models cannot be deleted",
             SettingsErrorCode::ModelNotFound => "The model was not found",
-            SettingsErrorCode::ModelDeleteFailed => "Installed model could not be deleted",
+            SettingsErrorCode::ModelDeleteFailed => "The imported model could not be deleted",
             SettingsErrorCode::DiagnosticsExportFailed => "Diagnostics could not be exported",
-            SettingsErrorCode::StartupItemUpdateFailed => "Startup setting could not be updated",
-            SettingsErrorCode::StatusIconUpdateFailed => {
-                "The status icon display could not be updated"
+            SettingsErrorCode::StartupItemUpdateFailed => {
+                "The login startup setting could not be updated"
             }
-            SettingsErrorCode::TaskbarIconUpdateFailed => {
-                "The taskbar icon display could not be updated"
-            }
+            SettingsErrorCode::StatusIconUpdateFailed => "Could not update the system icon.",
+            SettingsErrorCode::TaskbarIconUpdateFailed => "Could not update the taskbar icon.",
             SettingsErrorCode::WindowHideFailed => "Settings window could not be hidden",
-            SettingsErrorCode::WindowStatePersistFailed => "Window layout could not be saved",
-            SettingsErrorCode::ShutdownFailed => "Application shutdown did not complete",
+            SettingsErrorCode::WindowStatePersistFailed => "The window layout could not be saved",
+            SettingsErrorCode::ShutdownFailed => "BongoCat could not close completely",
         })
     }
 }
@@ -2524,7 +2524,7 @@ mod tests {
         for (code, expected) in [
             (
                 SettingsErrorCode::SnapshotOutdated,
-                "Settings changed in the background; review the latest settings and retry",
+                "Settings changed elsewhere. Review the latest settings and try again.",
             ),
             (
                 SettingsErrorCode::ConfigPermissionDenied,

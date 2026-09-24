@@ -29,7 +29,7 @@ mod keys {
     #[cfg(target_os = "windows")]
     pub(super) const DESCRIPTION: &str = "startup_permission.administrator.description";
     #[cfg(target_os = "windows")]
-    pub(super) const PRIMARY: &str = "startup_permission.administrator.open_folder";
+    pub(super) const PRIMARY: &str = "startup_permission.administrator.open_program_folder";
     #[cfg(target_os = "windows")]
     pub(super) const SECONDARY: &str = "startup_permission.administrator.keep_running";
 }

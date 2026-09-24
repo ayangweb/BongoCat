@@ -2027,9 +2027,9 @@ fn legacy_model_title(hint: &str, source_root: &Path, fallback: &str, label: &st
 /// The localized name of one BongoCatMver input mode.
 fn legacy_mode_label(language: Language, mode: MverInputMode) -> &'static str {
     let key = match mode {
-        MverInputMode::Standard => "models.legacy.mode.standard",
-        MverInputMode::Keyboard => "models.legacy.mode.keyboard",
-        MverInputMode::Gamepad => "models.legacy.mode.gamepad",
+        MverInputMode::Standard => "models.mver.mode.standard",
+        MverInputMode::Keyboard => "models.mver.mode.keyboard",
+        MverInputMode::Gamepad => "models.mver.mode.gamepad",
     };
     bongocat_i18n::text(locale_code(language), key)
 }

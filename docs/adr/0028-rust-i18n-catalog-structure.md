@@ -32,19 +32,19 @@ locale 文件保留根级 `_version: 1`，所有叶子 key 使用 `snake_case`�
 | `settings`    | 外观、overlay、模型交互、输入、应用和运行时设置 |
 | `models`      | catalog、身份、导入流程、行为和校验             |
 | `shortcuts`   | 快捷键范围、录入、动作和冲突                    |
-| `diagnostics` | runtime、输入指标、配置恢复和导出               |
+| `diagnostics` | 预留 runtime、输入指标、配置恢复和导出（当前无叶子） |
 | `about`       | 产品信息、许可证、Cubism attribution 和隐私     |
 | `actions`     | 跨页面且语义稳定的确认、取消、刷新等动作        |
 | `status`      | 跨页面生命周期状态                              |
 | `errors`      | 按 settings/models/runtime 归属的错误消息       |
 
 页面区域使用 `title`、`description` 等有限且有上下文的字段；实体或状态继续使用具体名称，
-例如 `models.identity.source.preset` 和 `settings.overlay.maximum_fps.description`，不使用
+例如 `models.identity.source.built_in` 和 `settings.overlay.maximum_fps.description`，不使用
 无上下文的 `common.name`。需要参数的消息保留 `%{name}` 占位符，所有 locale 的 key、层级和
 占位符集合必须完全一致。
 
 Rust 在文案实际使用处直接通过 `bongocat-i18n` 查询稳定路径，例如
-`"models.catalog.loading"`。`bongocat-i18n` 保持唯一的 `rust_i18n::i18n!` catalog owner：
+`"models.catalog.load_failed"`。`bongocat-i18n` 保持唯一的 `rust_i18n::i18n!` catalog owner：
 UI 不重复嵌入 JSON，也不使用会在并发窗口间共享状态的全局 locale。动态摘要、错误、快捷键冲突
 和诊断指标在负责其展示语义的函数中通过同一 facade 查询，不按语言分支写自然语言。
 

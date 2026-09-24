@@ -37,7 +37,13 @@ pub(super) fn content(snapshot: Option<&SettingsSnapshot>) -> Stateful<Div> {
         .flex_col()
         .gap_4()
         .child(div().text_sm().child(snapshot.map_or_else(
-            || bongocat_i18n::text(language.catalog_locale(), "diagnostics.build.title").to_owned(),
+            || {
+                bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "about.product_information.version.title",
+                )
+                .to_owned()
+            },
             |snapshot| build_info_detail(language, &snapshot.build_info),
         )))
         .children(ABOUT_SECTIONS.into_iter().map(|section| {

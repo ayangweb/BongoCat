@@ -3591,6 +3591,13 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `bongocat-i18n` 继续是唯一的 rust-i18n catalog owner，因此保留显式 locale 查询而不在 UI
       crate 重复初始化 `t!`。三种历史前端语言仍不在
       Native v1 支持范围；完整 UI 编译、双平台 smoke 和 CI 语言资源门禁尚未完成，因此不得勾选。
+    - 本轮 catalog 审计（2026-09-24）：删除仅由 `#[cfg(test)]` helper 使用的
+      `models.catalog.loading`、`models.catalog.unavailable`、`models.catalog.empty`，并删除重复的
+      Mver 取消键；将 About 的版本信息从已移除的 Diagnostics 页面键域移回
+      `about.product_information.version.*`，将模型窗口、文件夹、模型格式、按键释放超时和
+      稳定错误码等用户语义同步到 key；移除无用户价值的 runtime revision 展示，保留协议/平台
+      防御性错误码的本地化映射。`tools/validate-locales.py` 与 `bongocat-i18n` key 守门通过，
+      当前两份 locale 各 246 个叶子。
 
 62. [x] `P5-BEHAVIOR-SHORTCUT-TOGGLE`：让当前 v1 的模型行为快捷键开关作用于正式输入链路。
     - 依赖：`P5-SHORTCUT-CONTRACT`、当前 v1 `model.enable_behavior_shortcuts`、settings

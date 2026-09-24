@@ -32,8 +32,8 @@ pub(super) fn build_mver_mode_dialog(
     let text = |key: &str| SharedString::from(bongocat_i18n::text(locale, key));
     let title = text("models.import.mver_dialog.title");
     let description = text("models.import.mver_dialog.description");
-    let confirm_label = text("models.import.mver_dialog.confirm");
-    let cancel_label = text("models.import.mver_dialog.cancel");
+    let confirm_label = text("models.import.mver_dialog.import");
+    let cancel_label = text("actions.cancel");
 
     let on_ok_view = view.clone();
     let on_cancel_view = view.clone();

@@ -141,7 +141,7 @@ impl Render for SettingsView {
                         bongocat_i18n::text(language.catalog_locale(), "status.stopped")
                     }
                 };
-                runtime_status(language, health, snapshot.revision).into()
+                health.into()
             }
             _ => bongocat_i18n::text(language.catalog_locale(), "status.connecting").into(),
         };
@@ -204,11 +204,11 @@ impl Render for SettingsView {
         ]);
 
         // The model window itself: how it behaves on the desktop, how it looks,
-        // and how often it draws. The runtime status moved to Application and
+        // and how often it draws. The application status moved to Application and
         // the motion audio to Interaction, where they describe those pages.
         let overlay_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),
-            "navigation.overlay.title",
+            "navigation.model_window.title",
         ))
         .icon(IconName::AppWindow)
         .groups(vec![
@@ -713,7 +713,7 @@ impl Render for SettingsView {
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.input.release_fallback_timeout.label",
+                            "settings.input.key_release_timeout.label",
                         ),
                         SettingField::number_input(
                             NumberFieldOptions {
@@ -742,7 +742,7 @@ impl Render for SettingsView {
                     )
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.input.release_fallback_timeout.description",
+                        "settings.input.key_release_timeout.description",
                     )),
                 ]),
             SettingGroup::new()
@@ -830,10 +830,13 @@ impl Render for SettingsView {
         ))
         .icon(IconName::Cog)
         .groups(vec![
-            // No group title: the runtime status is the first thing on the page and the only
+            // No group title: the application status is the first thing on the page and the only
             // row the group holds, so a heading here would just repeat the row's own label.
             SettingGroup::new().items(vec![SettingItem::new(
-                bongocat_i18n::text(language.catalog_locale(), "settings.runtime.title"),
+                bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.application.status.title",
+                ),
                 SettingField::element({
                     let status = status.clone();
                     move |_: &RenderOptions, _: &mut Window, _: &mut App| {

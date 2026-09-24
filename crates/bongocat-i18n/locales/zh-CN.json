@@ -10,7 +10,7 @@
     "models": {
       "title": "模型管理"
     },
-    "overlay": {
+    "model_window": {
       "title": "模型窗口"
     },
     "interaction": {
@@ -32,8 +32,8 @@
   "system_menu": {
     "title": "BongoCat",
     "open_settings": "设置",
-    "show_overlay": "显示模型窗口",
-    "hide_overlay": "隐藏模型窗口",
+    "show_model_window": "显示模型窗口",
+    "hide_model_window": "隐藏模型窗口",
     "click_through": "鼠标穿透",
     "check_for_updates": "检查更新",
     "open_source": "查看项目源码",
@@ -49,16 +49,24 @@
       "later": "稍后再说"
     },
     "administrator": {
-      "title": "建议以管理员身份运行",
-      "description": "BongoCat 需要以管理员身份运行，才能在其他窗口位于前台时正常接收键盘和鼠标输入。\n\n设置方法：右键 BongoCat → 属性 → 兼容性 → 勾选「以管理员身份运行此程序」。",
-      "open_folder": "退出并前往设置",
-      "keep_running": "稍后设置"
+      "title": "建议授予管理员权限",
+      "description": "BongoCat 需要管理员权限，才能在其他应用以管理员权限运行时继续接收键盘和鼠标输入。\n\n设置方法：右键 BongoCat → 属性 → 兼容性 → 勾选「以管理员身份运行此程序」。",
+      "open_program_folder": "退出并打开程序文件夹",
+      "keep_running": "继续运行"
     }
   },
   "about": {
     "page_title": "关于 BongoCat",
     "product_information": {
-      "title": "产品信息"
+      "title": "产品信息",
+      "version": {
+        "title": "版本信息",
+        "label": "版本",
+        "environment": {
+          "development": "开发版",
+          "release": "正式版"
+        }
+      }
     },
     "legal": {
       "application_license": {
@@ -81,16 +89,13 @@
   },
   "models": {
     "catalog": {
-      "loading": "正在加载模型…",
-      "unavailable": "模型列表不可用",
-      "empty": "没有可用模型",
       "load_failed": "无法加载模型列表"
     },
     "identity": {
       "title": "模型名称",
       "source": {
-        "preset": "预置",
-        "installed": "已安装"
+        "built_in": "内置",
+        "imported": "已导入"
       },
       "status": {
         "active": "当前使用",
@@ -102,45 +107,44 @@
     },
     "edit": {
       "cover": {
-        "label": "更换封面图"
+        "label": "选择封面"
       }
     },
     "actions": {
-      "activate": "启用",
+      "use": "使用",
       "edit": "编辑",
-      "open_location": "打开所在文件夹",
+      "open_folder": "打开模型文件夹",
       "save": "保存",
       "delete": "删除"
     },
     "validation": {
       "package_layout_invalid": "模型包结构无效",
       "package_safety_limits_exceeded": "模型包超出安全限制",
-      "model_definition_unsupported": "模型格式不受支持",
+      "model_format_invalid_or_unsupported": "模型格式无效或不受支持",
       "texture_invalid": "模型纹理无效",
       "files_unavailable": "模型文件不可用",
       "resource_invalid": "模型资源无效"
     },
     "import": {
-      "success": "模型导入成功",
+      "success": "模型导入完成",
       "failed": "模型导入失败",
       "mver_dialog": {
         "title": "选择要转换的模式",
         "description": "请选择需要导入的 BongoCat Mver 模式。",
-        "confirm": "确定",
-        "cancel": "取消"
+        "import": "导入"
       },
       "step": {
         "choosing": "正在打开文件选择器…",
         "validating_source": "正在读取模型文件夹…",
         "importing": "正在导入模型…",
-        "capturing": "正在截取封面…"
+        "capturing": "正在截取模型封面…"
       },
       "drop": {
         "ready": {
           "title": "松开鼠标即可导入"
         },
         "busy": {
-          "title": "正在处理其他模型，请稍候"
+          "title": "正在处理另一个模型操作，请稍候"
         },
         "invalid": {
           "title": "请一次拖入一个模型文件夹"
@@ -149,7 +153,7 @@
       "title": "导入模型",
       "hint": "点击选择或拖入模型文件夹"
     },
-    "legacy": {
+    "mver": {
       "mode": {
         "standard": "标准模式",
         "keyboard": "键盘模式",
@@ -157,7 +161,7 @@
       }
     },
     "behaviors": {
-      "empty": "没有可用的动作"
+      "empty": "没有可用的动作或表情"
     },
     "invalid_summary": "%{origin} · %{diagnostic}",
     "delete_confirmation": "你确定要删除这个模型吗？"
@@ -167,14 +171,14 @@
       "title": "BongoCat 更新"
     },
     "heading": {
-      "title": "软件更新"
+      "title": "更新 BongoCat"
     },
     "current_version": "当前版本 %{version}",
     "status": {
       "idle": "检查 BongoCat 是否有新版本。",
       "checking": "正在检查更新…",
       "up_to_date": "BongoCat %{version} 已是最新版本。",
-      "available": "BongoCat %{version} 可供更新。",
+      "available": "BongoCat %{version} 可以安装。",
       "downloading": "正在下载… %{percent}%",
       "downloading_unknown": "正在下载…",
       "downloading_detail": "BongoCat %{version} · %{downloaded} / %{total}",
@@ -201,27 +205,27 @@
         "install": "无法安装 BongoCat %{version}。"
       },
       "not_configured": "当前版本未开启更新功能。",
-      "environment_disabled": "当前版本不允许安装正式版更新。",
+      "environment_disabled": "当前版本无法安装更新。",
       "signature_key_missing": "当前版本无法验证更新包，因此没有安装更新。",
       "release_fetch_failed": "找不到发布信息，请稍后重试。",
-      "release_manifest_invalid": "发布信息无法识别，它可能来自另一个版本的 BongoCat。",
+      "release_manifest_invalid": "更新信息无效或与当前版本不兼容，请稍后重试。",
       "no_matching_asset": "该版本没有提供适用于这台电脑的安装包。",
       "download_transport_failed": "下载未完成，请检查网络后重试。",
-      "checksum_mismatch": "下载的更新包与预期内容不一致。",
+      "checksum_mismatch": "下载的更新包已损坏或不完整。",
       "signature_invalid": "无法验证该更新包，已放弃安装。",
       "archive_invalid": "无法读取已下载的更新包。",
       "install_path_not_writable": "无法在当前位置更新 BongoCat。",
-      "install_failed": "无法安装该更新，上一个版本仍可用。",
+      "install_failed": "无法更新 BongoCat。",
       "restart_failed": "无法重启 BongoCat，请手动启动以使用新版本。",
       "internal": "更新因未预期原因失败。"
     },
     "unavailable": {
       "development_build": "开发版本不会安装正式版更新。",
-      "signing_key_missing": "当前版本没有内置更新验证信息，因此更新功能保持关闭。"
+      "signing_key_missing": "当前版本无法验证更新，因此更新功能已关闭。"
     },
     "about": {
       "label": "检查更新",
-      "description": "与官方最新版本对比并安装更新。"
+      "description": "检查并安装最新的官方版本。"
     }
   },
   "actions": {
@@ -229,20 +233,10 @@
     "confirm": "确认",
     "close": "关闭"
   },
-  "diagnostics": {
-    "build": {
-      "title": "版本信息",
-      "version": "版本",
-      "environment": {
-        "development": "开发版",
-        "production": "正式版"
-      }
-    }
-  },
   "shortcuts": {
     "scopes": {
       "window": "窗口快捷键",
-      "model": "模型快捷键"
+      "model": "模型行为快捷键"
     },
     "switches": {
       "enable_window_shortcuts": {
@@ -257,13 +251,13 @@
       "play": "播放"
     },
     "capture": {
-      "press_to_record": "按下录制快捷键",
-      "click_to_record": "点击录制快捷键"
+      "press_to_record": "按下组合键以录制",
+      "click_to_record": "点击以录制快捷键"
     },
     "command_names": {
-      "toggle_overlay": "显示或隐藏模型窗口",
+      "toggle_model_window": "显示或隐藏模型窗口",
       "open_settings": "显示或隐藏设置窗口",
-      "toggle_mirror": "切换模型镜像",
+      "toggle_mirror": "切换模型水平镜像",
       "toggle_click_through": "切换鼠标穿透",
       "toggle_always_on_top": "切换始终置顶"
     },
@@ -276,7 +270,7 @@
     }
   },
   "status": {
-    "refreshing": "正在刷新运行状态…",
+    "refreshing": "正在刷新状态…",
     "saving": "正在保存更改…",
     "connecting": "正在连接后台服务…",
     "starting": "正在启动",
@@ -287,43 +281,43 @@
   "errors": {
     "settings": {
       "service_unavailable": "设置服务不可用",
-      "snapshot_outdated": "设置已在后台更改；请确认最新设置后重试",
-      "runtime_unavailable": "设置未能生效",
+      "snapshot_outdated": "设置已在别处更改，请查看最新设置后重试。",
+      "setting_not_applied": "设置未能生效",
       "invalid_shortcut_bindings": "快捷键绑定无效或存在冲突",
-      "config_persist_failed": "无法保存设置",
+      "setting_save_failed": "无法保存设置",
       "config_permission_denied": "无法写入配置文件；请检查权限后重试",
       "config_storage_full": "存放配置的磁盘已满；请清理空间后重试",
       "config_target_occupied": "配置位置被占用；请关闭占用它的程序后重试",
-      "backup_location_open_failed": "无法打开配置备份文件夹",
+      "configuration_backup_open_failed": "无法打开配置备份文件夹",
       "model_unavailable": "所选模型不可用",
-      "model_switch_failed": "无法启用所选模型",
-      "model_behavior_preview_unavailable": "该动作或表情属于已不再使用的模型",
-      "model_behavior_preview_failed": "无法播放该动作或表情",
-      "model_title_invalid": "模型名称不可用",
+      "model_activation_failed": "无法启用所选模型",
+      "model_behavior_unavailable": "该动作或表情属于已不再使用的模型",
+      "model_behavior_play_failed": "无法播放该动作或表情",
+      "model_name_invalid": "模型名称不可用",
       "model_not_found": "找不到该模型",
       "model_cover_invalid": "封面图必须是 PNG 文件",
       "model_cover_update_failed": "模型封面更新失败",
-      "model_source_picker_unavailable": "无法打开文件选择窗口",
-      "model_location_open_failed": "无法打开模型所在文件夹",
-      "invalid_model_id": "模型 ID 无效",
+      "model_file_picker_unavailable": "无法完成文件选择，请重试。",
+      "model_folder_open_failed": "无法打开模型文件夹",
+      "model_id_invalid": "模型 ID 无效",
       "model_already_installed": "该模型已安装",
       "model_import_invalid_package": "模型包无效",
       "model_import_drop_invalid": "请一次拖入一个有效的模型文件夹",
-      "model_import_source_invalid": "所选文件夹包含模型库本身；请改选具体的模型文件夹。",
+      "model_import_source_invalid": "所选文件夹包含 BongoCat 的模型存储位置；请改选单个模型文件夹。",
       "model_import_source_changed": "模型来源在导入期间发生变化",
       "model_import_source_unsupported": "模型来源中包含不支持的文件",
       "model_import_cancelled": "模型导入已取消",
-      "model_store_busy": "模型正在处理其他操作；请稍后重试",
+      "model_operations_busy": "另一个模型操作正在进行，请稍后重试。",
       "model_import_failed": "无法导入模型",
-      "preset_model_cannot_be_deleted": "无法删除预置模型",
-      "model_delete_failed": "无法删除已安装模型",
+      "built_in_model_cannot_be_deleted": "无法删除内置模型",
+      "model_delete_failed": "无法删除已导入模型",
       "diagnostics_export_failed": "无法导出诊断信息",
-      "startup_item_update_failed": "无法更新登录启动设置",
-      "status_icon_update_failed": "无法更新状态图标的显示",
-      "taskbar_icon_update_failed": "无法更新任务栏图标的显示",
+      "login_startup_update_failed": "无法更新登录时启动设置",
+      "system_icon_update_failed": "无法更新系统图标。",
+      "taskbar_icon_update_failed": "无法更新任务栏图标。",
       "window_hide_failed": "无法隐藏设置窗口",
-      "window_state_persist_failed": "无法保存窗口布局",
-      "shutdown_failed": "应用未能完成关闭"
+      "window_layout_save_failed": "无法保存窗口布局",
+      "application_shutdown_failed": "BongoCat 未能完全关闭"
     }
   },
   "settings": {
@@ -367,7 +361,7 @@
       },
       "keep_inside_screen": {
         "label": "保持在屏幕内",
-        "description": "让模型窗口始终完整显示在屏幕上，可覆盖任务栏、程序坞等系统区域。"
+        "description": "让模型窗口始终完整显示在屏幕上，可覆盖任务栏、程序坞或菜单栏等系统区域。"
       },
       "hide_on_mouse_hover": {
         "label": "鼠标悬停时隐藏",
@@ -394,10 +388,6 @@
         "description": "将动画和模型窗口的刷新率限制为每秒 15 至 240 帧。"
       }
     },
-    "runtime": {
-      "title": "运行状态",
-      "status_detail": "%{health} · 第 %{revision} 次刷新"
-    },
     "model_interaction": {
       "model": {
         "title": "模型"
@@ -409,7 +399,7 @@
         "label": "水平镜像模型"
       },
       "motion_audio": {
-        "label": "动作音效"
+        "label": "播放动作音效"
       },
       "mirror_mouse_tracking": {
         "label": "镜像鼠标跟随"
@@ -422,7 +412,7 @@
       "keyboard": {
         "title": "键盘"
       },
-      "release_fallback_timeout": {
+      "key_release_timeout": {
         "label": "按键释放超时（毫秒）",
         "description": "长时间收不到按键松开事件时自动松开，避免按键一直卡住；0 表示不自动松开。"
       },
@@ -439,6 +429,9 @@
       }
     },
     "application": {
+      "status": {
+        "title": "应用状态"
+      },
       "system": {
         "title": "系统图标"
       },
@@ -462,13 +455,13 @@
         "label": "登录时启动"
       },
       "startup": {
-        "checking": "正在检查登录启动状态…",
+        "checking": "正在检查登录项…",
         "unavailable": "暂时无法获取状态；点击开关重试",
         "stale": "应用位置已变化；重新开关一次即可修复",
-        "requires_approval": "需要在系统设置中批准",
+        "requires_approval": "请在系统设置中批准 BongoCat",
         "not_found": "登录项缺失；重新开关一次即可修复",
         "unsupported_platform": "当前系统不支持登录时启动",
-        "unsupported_os": "登录时启动需要 macOS 13 或更高版本",
+        "unsupported_os": "当前操作系统不支持登录时启动",
         "unsupported_build": "开发版本不支持登录时启动"
       }
     }
