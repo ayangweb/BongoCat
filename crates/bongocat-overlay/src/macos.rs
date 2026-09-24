@@ -1,13 +1,13 @@
 use crate::{
-    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, FrameTimingCollector,
-    MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
+    BlendFactor, DrawableCullMode, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff,
+    FrameTimingCollector, MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
     OverlayInteractionSinks, OverlayPresentationState, OverlayResizeOutcome, OverlayScreenBounds,
     OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
     ProductOverlayReport, blend_factors, corner_radius_uniform,
     cover::{
         COVER_CAPTURE_FRAMES, COVER_CAPTURE_SCALE_PERCENT, COVER_CAPTURE_TIMEOUT, CapturedFrame,
     },
-    default_overlay_window_dimensions,
+    default_overlay_window_dimensions, drawable_cull_mode,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
     model_switch_window_bounds, model_window_dimensions,
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
@@ -34,11 +34,11 @@ use bongocat_runtime::{
 use image::ImageReader;
 use metal::{
     Buffer, CommandQueue, CompileOptions, Device, MTLBlendFactor, MTLClearColor,
-    MTLCommandBufferStatus, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat,
+    MTLCommandBufferStatus, MTLCullMode, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat,
     MTLPrimitiveType, MTLRegion, MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerMinMagFilter,
-    MTLSize, MTLStorageMode, MTLStoreAction, MTLTextureType, MTLTextureUsage, MetalLayer,
-    RenderPassDescriptor, RenderPipelineDescriptor, RenderPipelineState, SamplerDescriptor,
-    SamplerState, Texture, TextureDescriptor,
+    MTLSize, MTLStorageMode, MTLStoreAction, MTLTextureType, MTLTextureUsage, MTLWinding,
+    MetalLayer, RenderPassDescriptor, RenderPipelineDescriptor, RenderPipelineState,
+    SamplerDescriptor, SamplerState, Texture, TextureDescriptor,
 };
 use objc2::{
     MainThreadMarker, MainThreadOnly,
@@ -71,13 +71,13 @@ const METAL_COMPLETION_TIMEOUT: Duration = Duration::from_secs(2);
 const SWITCH_WARMUP_FRAMES: u64 = 30;
 const SWITCH_SETTLE_FRAMES: u64 = 30;
 const PRESET_MODEL_IDS: [&str; 3] = ["standard", "keyboard", "gamepad"];
-// PNG RGBA payloads are encoded sRGB. Sampling and color blending therefore
-// happen in linear space, while the drawable encodes its premultiplied result
-// back to sRGB for the window compositor. Masks carry alpha only. The Windows
-// backend reaches the same contract through its `_SRGB` render target view, so
-// either side changing this format must keep the other in step.
-const COLOR_ATTACHMENT_FORMAT: MTLPixelFormat = MTLPixelFormat::BGRA8Unorm_sRGB;
-const MODEL_TEXTURE_FORMAT: MTLPixelFormat = MTLPixelFormat::RGBA8Unorm_sRGB;
+// The renderer follows the encoded-space compatibility contract in ADR-0063.
+// Keep the same encoded RGB values on both native backends: do not let an
+// sRGB texture view decode the source or an sRGB drawable re-encode the
+// composited frame. Alpha is still premultiplied for the window compositor,
+// and masks carry coverage only.
+const COLOR_ATTACHMENT_FORMAT: MTLPixelFormat = MTLPixelFormat::BGRA8Unorm;
+const MODEL_TEXTURE_FORMAT: MTLPixelFormat = MTLPixelFormat::RGBA8Unorm;
 const MASK_TEXTURE_FORMAT: MTLPixelFormat = MTLPixelFormat::BGRA8Unorm;
 const RIGHT_ARROW: PhysicalKey = PhysicalKey::from_hid_usage(0x4f);
 const SHADER_SOURCE: &str = r#"
@@ -95,6 +95,8 @@ const SHADER_SOURCE: &str = r#"
         float4 screen_color;
         float4 mask_settings;
         float4 corner_radius;
+        // Model/drawable opacity only. Window presentation opacity is applied
+        // once to the completed panel surface.
         float opacity;
         float3 padding;
     };
@@ -139,6 +141,9 @@ const SHADER_SOURCE: &str = r#"
         return output;
     }
 
+    // The source texture is an ordinary UNORM view on purpose. This is the
+    // encoded-space compatibility blend: do not insert a linear/sRGB conversion
+    // here without changing both backends and the product contract.
     fragment float4 cubism_fragment(
         RasterVertex input [[stage_in]],
         texture2d<float> model_texture [[texture(0)]],
@@ -202,6 +207,7 @@ struct Mesh {
     screen_color: [f32; 4],
     masks: Vec<DrawableId>,
     visible: bool,
+    double_sided: bool,
     inverted_mask: bool,
     mask_texture: Option<Texture>,
 }
@@ -472,6 +478,15 @@ impl ProductOverlaySession {
                 })?;
                 self.refresh_right_button_monitor(mtm);
             } else {
+                if next_options.scale_percent != self.options.scale_percent {
+                    let bounds = self.window_bounds()?;
+                    let bounds = if self.bounds_match_scale(bounds, next_options.scale_percent) {
+                        bounds
+                    } else {
+                        bounds.rescale(self.options.scale_percent, next_options.scale_percent)
+                    };
+                    self.overlay.resize(bounds)?;
+                }
                 if next_options.always_on_top != self.options.always_on_top {
                     self.overlay.set_always_on_top(next_options.always_on_top);
                 }
@@ -742,7 +757,7 @@ impl ProductOverlaySession {
     /// Create a native window that already carries the current hover fade.
     ///
     /// A replacement window is created with the configured opacity, so a
-    /// settings change or model change while the overlay is hover-hidden would
+    /// resource or model change while the overlay is hover-hidden would
     /// otherwise show the new window at full opacity before the next tick could
     /// correct it.
     fn create_overlay(
@@ -857,8 +872,8 @@ impl ProductOverlaySession {
     /// Whether the live window box already matches a scale.
     ///
     /// A resize drag resizes the window before the scale reaches the
-    /// configuration, so the rebuild that follows the write-back must not scale
-    /// the box a second time. See [`crate::bounds_match_scale`].
+    /// configuration, so the in-place resize that follows the write-back must
+    /// not scale the box a second time. See [`crate::bounds_match_scale`].
     fn bounds_match_scale(&self, bounds: OverlayWindowBounds, scale_percent: u16) -> bool {
         self.resize_base()
             .is_some_and(|base| crate::bounds_match_scale(bounds, base, scale_percent))
@@ -1786,6 +1801,9 @@ impl NativeOverlay {
         panel.setHasShadow(false);
         panel.setAnimationBehavior(NSWindowAnimationBehavior::None);
         panel.setBackgroundColor(Some(&NSColor::clearColor()));
+        // Apply presentation opacity once to the completed panel surface. The
+        // renderer keeps model-authored alpha intact while all Live2D parts,
+        // masks, background, and key overlays are blended.
         panel.setAlphaValue(f64::from(options.opacity_percent) / 100.0);
         panel.setLevel(main_window_level(options.always_on_top));
         panel.setCollectionBehavior(
@@ -1858,9 +1876,10 @@ impl NativeOverlay {
     /// Apply the per-frame presentation state without replacing the window.
     ///
     /// `alpha` is the configured window opacity multiplied by the hover fade,
-    /// and `click_through` is the effective pointer routing. The hover hide
-    /// forces pass-through on so an invisible overlay cannot swallow a click
-    /// meant for whatever is underneath it.
+    /// and `click_through` is the effective pointer routing. The alpha is
+    /// applied once to the completed panel surface, not to each Live2D part.
+    /// The hover hide forces pass-through on so an invisible overlay cannot
+    /// swallow a click meant for whatever is underneath it.
     fn apply_presentation(&mut self, alpha: f64, click_through: bool) {
         if alpha != self.applied_alpha {
             self.panel.setAlphaValue(alpha);
@@ -1870,6 +1889,45 @@ impl NativeOverlay {
             self.set_click_through(click_through);
             self.applied_click_through = click_through;
         }
+    }
+
+    /// Resize the existing panel and its Metal layer without replacing the
+    /// renderer. This keeps scale changes on the same compositor surface, so a
+    /// freshly-created panel cannot flash transparent before its first frame.
+    fn resize(&mut self, bounds: OverlayWindowBounds) -> Result<(), OverlayError> {
+        let bounds = bounds.validate()?;
+        let current_frame = self.panel.frame();
+        let current = OverlayWindowBounds::new(
+            rounded_i32(current_frame.origin.x)?,
+            rounded_i32(current_frame.origin.y)?,
+            rounded_u32(current_frame.size.width)?,
+            rounded_u32(current_frame.size.height)?,
+        );
+        if current == bounds {
+            return Ok(());
+        }
+        let visible = self.panel.isVisible();
+        self.panel.setFrame_display(
+            NSRect::new(
+                NSPoint::new(f64::from(bounds.x), f64::from(bounds.y)),
+                NSSize::new(f64::from(bounds.width), f64::from(bounds.height)),
+            ),
+            true,
+        );
+        let resized = self.sync_window_size()?;
+        if visible && resized {
+            // A newly-sized CAMetalLayer drawable is empty until it is
+            // presented. Fill it before returning to the frame loop so the
+            // resized panel cannot expose a transparent compositor frame.
+            match self.draw(false) {
+                Ok(()) => {}
+                // The normal frame path below owns retry/backoff for a
+                // temporarily unavailable drawable.
+                Err(error) if error.is_temporary_presentation_unavailable() => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
     }
 
     /// Move the window to a corrected box without touching its size, z-order or
@@ -2054,6 +2112,7 @@ impl NativeOverlay {
             mask_attachment.set_store_action(MTLStoreAction::Store);
             mask_attachment.set_clear_color(MTLClearColor::new(0.0, 0.0, 0.0, 0.0));
             let mask_encoder = command_buffer.new_render_command_encoder(mask_pass);
+            mask_encoder.set_front_facing_winding(MTLWinding::CounterClockwise);
             mask_encoder.set_render_pipeline_state(&self.pipelines.mask);
             for source_id in &mesh.masks {
                 let source = self
@@ -2082,6 +2141,10 @@ impl NativeOverlay {
                 let texture = self.model.textures.get(&source.texture_id).ok_or_else(|| {
                     OverlayError::new(format!("texture {} is unavailable", source.texture_id))
                 })?;
+                mask_encoder.set_cull_mode(metal_cull_mode(
+                    source.double_sided,
+                    self.model.mirror_horizontal,
+                ));
                 mask_encoder.set_fragment_texture(0, Some(texture));
                 mask_encoder.set_fragment_sampler_state(0, Some(&self.sampler));
                 mask_encoder.draw_indexed_primitives(
@@ -2096,7 +2159,9 @@ impl NativeOverlay {
         }
 
         let encoder = command_buffer.new_render_command_encoder(pass);
+        encoder.set_front_facing_winding(MTLWinding::CounterClockwise);
         if let Some(background) = &self.model.background {
+            encoder.set_cull_mode(MTLCullMode::None);
             let uniforms = Uniforms {
                 scale_offset,
                 multiply_color: [1.0; 4],
@@ -2134,6 +2199,10 @@ impl NativeOverlay {
                 continue;
             }
             let mask_texture = &mesh.mask_texture;
+            encoder.set_cull_mode(metal_cull_mode(
+                mesh.double_sided,
+                self.model.mirror_horizontal,
+            ));
             let uniforms = Uniforms {
                 scale_offset,
                 multiply_color: mesh.multiply_color,
@@ -2183,6 +2252,7 @@ impl NativeOverlay {
             let Some(texture) = self.model.key_textures.get(&overlay.asset_id) else {
                 continue;
             };
+            encoder.set_cull_mode(MTLCullMode::None);
             let uniforms = Uniforms {
                 scale_offset,
                 multiply_color: [1.0; 4],
@@ -2434,6 +2504,7 @@ impl GpuModel {
                     screen_color: drawable.screen_color,
                     masks: drawable.masks.clone(),
                     visible: drawable.visible,
+                    double_sided: drawable.double_sided,
                     inverted_mask: drawable.inverted_mask,
                     mask_texture: (!drawable.masks.is_empty())
                         .then(|| create_mask_texture(device, drawable_width, drawable_height)),
@@ -2517,6 +2588,7 @@ impl GpuModel {
             mesh.screen_color = drawable.screen_color;
             mesh.masks.clone_from(&drawable.masks);
             mesh.visible = drawable.visible;
+            mesh.double_sided = drawable.double_sided;
             mesh.inverted_mask = drawable.inverted_mask;
         }
         self.meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
@@ -2874,6 +2946,14 @@ fn load_texture(device: &Device, asset: &TextureAsset) -> Result<Texture, Overla
     Ok(texture)
 }
 
+fn metal_cull_mode(double_sided: bool, mirror_horizontal: bool) -> MTLCullMode {
+    match drawable_cull_mode(double_sided, mirror_horizontal) {
+        DrawableCullMode::None => MTLCullMode::None,
+        DrawableCullMode::Front => MTLCullMode::Front,
+        DrawableCullMode::Back => MTLCullMode::Back,
+    }
+}
+
 fn model_transform(
     bounds: ModelBounds,
     width: f32,
@@ -2904,9 +2984,10 @@ fn model_transform(
 /// Read one frame's pixels out of a drawable texture.
 ///
 /// This is the full-frame form of [`verify_frame_smoke`]: same readback, every
-/// pixel of it. The drawable is BGRA, and the layer's sRGB pixel format means the
-/// bytes are the values the compositor received rather than a linear-space copy,
-/// so the cover is encoded from exactly what the overlay shows.
+/// pixel of it. The drawable is BGRA and uses the same encoded values as the
+/// renderer's compatibility contract, so the bytes are what the compositor
+/// receives rather than a hidden linear-space copy and the cover matches what
+/// the overlay shows.
 fn read_drawable_frame(texture: &metal::TextureRef) -> Result<CapturedFrame, OverlayError> {
     let width = u32::try_from(texture.width())
         .map_err(|_| OverlayError::new("Metal drawable width is out of range"))?;
@@ -2997,9 +3078,9 @@ mod tests {
     }
 
     #[test]
-    fn color_formats_decode_assets_and_encode_the_composited_frame_as_srgb() {
-        assert_eq!(MODEL_TEXTURE_FORMAT, MTLPixelFormat::RGBA8Unorm_sRGB);
-        assert_eq!(COLOR_ATTACHMENT_FORMAT, MTLPixelFormat::BGRA8Unorm_sRGB);
+    fn color_formats_match_the_encoded_space_contract() {
+        assert_eq!(MODEL_TEXTURE_FORMAT, MTLPixelFormat::RGBA8Unorm);
+        assert_eq!(COLOR_ATTACHMENT_FORMAT, MTLPixelFormat::BGRA8Unorm);
         assert_eq!(MASK_TEXTURE_FORMAT, MTLPixelFormat::BGRA8Unorm);
     }
 

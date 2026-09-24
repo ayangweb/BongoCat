@@ -512,14 +512,15 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - 应用：GPUI/Win32 主事件循环，单实例使用 named mutex + 唤醒消息。
 - Overlay：Win32 透明无边框 popup；无已保存 bounds 时以 `350px` 作为 `100%` 的默认逻辑
   宽度，高度按 Cubism Core 返回的当前模型 Canvas 宽高比自适应，两者再应用缩放
-  设置；已保存 bounds 优先，设置/模型切换时重建窗口；非 click-through 模式的
+  设置；已保存 bounds 优先，需要资源重建的设置/模型切换时重建窗口，普通 scale/opacity
+  更新在现有窗口上完成；非 click-through 模式的
   客户区支持拖动，click-through 仍返回 `HTTRANSPARENT`。右键拖动缩放窗口：位移越过
   `3px` 后按 `(dx + dy) * 0.5` 改 `overlay.scale_percent`（钳制在 `25–400`），窗口左上角
   不动，尺寸逐帧经 `IDXGISwapChain1::ResizeBuffers` 与就地重建的 render target、staging
   纹理、mask target 生效（不重建窗口、不重载模型纹理），松手后缩放写回配置（ADR-0057）。
   `keep_inside_screen` 开启时，窗口必须完整落在所有显示器矩形（`EnumDisplayMonitors` +
   `MONITORINFO.rcMonitor`）的并集内，因此允许覆盖任务栏，负坐标保持有效；跨显示器摆放只要不越过
-  桌面边界就不纠正。创建、缩放/设置重建和模型重建立即收敛一个不可用的放置（窗口大于显示器时保留
+  桌面边界就不纠正。创建、缩放/资源设置重建和模型重建立即收敛一个不可用的放置（窗口大于显示器时保留
   尺寸并把原点贴到显示器原点）；拖动后的收敛由 frame tick 驱动的延迟约束完成：窗口静止累计 1 秒后
   才移回显示器内，期间任何被观测到的位移都重新计时，因此跨显示器拖拽不会被打断。约束缓存最多
   `500ms` 复用一次放置检查，显示器变化（含拔掉外接屏）在静止窗口下也会被重新评估并纠正。关闭时
@@ -565,7 +566,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   `keep_inside_screen` 开启时，窗口必须完整落在所有 `NSScreen` 的 `frame`（含菜单栏与程序坞
   占用条）并集内，因此允许覆盖系统区域，负坐标保持有效；跨显示器摆放只要不越过桌面边界就不纠正。
   需要纠正时选择与窗口交叠面积最大的 screen，完全无交叠时选择中心距离最近的 screen，再收敛原点。
-  创建、缩放/设置重建和模型重建立即收敛一个不可用的放置（窗口大于显示器时保留尺寸并把原点贴到
+  创建、缩放/资源设置重建和模型重建立即收敛一个不可用的放置（窗口大于显示器时保留尺寸并把原点贴到
   显示器原点）；拖动后的收敛由 frame tick 驱动的延迟约束完成：窗口静止累计 1 秒后才移回显示器内，
   期间任何被观测到的位移都重新计时，因此跨显示器拖拽不会被打断。约束缓存最多 `500ms` 复用一次
   放置检查，显示器变化（含拔掉外接屏）在静止窗口下也会被重新评估并纠正。关闭时不执行该收敛，但
@@ -669,8 +670,9 @@ model evaluation + render snapshot
   校验；motion `Model` target 中
   `EyeBlink` 对匹配的 Parameter curve 做乘法、`LipSync` 做加法，对未被 Parameter curve
   覆盖的首个同名 Parameter group（最多 64 个 ID）使用 motion fade 插值。`Opacity` 作为
-  独立 model opacity 进入 `RenderSnapshot`，只在 renderer 最终颜色 pass 与 drawable/
-  窗口透明度相乘，不参与 mask 生成，并保持到后续 motion opacity curve 更新或模型切换。
+  独立 model opacity 进入 `RenderSnapshot`，只在 renderer 的模型颜色合成中与 drawable opacity
+  相乘，不参与 mask 生成；窗口 presentation opacity 不进入逐 drawable alpha，而是在模型、背景、
+  按键和 mask 完成合成后由平台最终 surface 统一施加，并保持到后续 motion opacity curve 更新或模型切换。
   expression 的 Add/Multiply/Overwrite 和正弦淡入淡出由 `bongocat-live2d-playback` 纯函数计算；
   替换期间最多保留上一层与当前层，淡入完成后将当前层权重锁定为 `1.0`，稳定后只保留并持续
   应用最新 expression，直到被下一次有效 expression、成功的模型切换或 shutdown 清理；测试时钟
@@ -702,7 +704,7 @@ RenderSnapshot
         └── macOS Metal renderer
 ```
 
-renderer 负责遮罩、混合、裁剪、纹理上传、dirty flag、present 和 GPU 生命周期；不读取配置、不决定动作、不访问 GPUI entity。
+renderer 负责遮罩、混合、裁剪、纹理上传、dirty flag、present 和 GPU 生命周期；不读取配置、不决定动作、不访问 GPUI entity。模型、背景和按键先在 premultiplied render target 中按模型 alpha 完成合成；窗口呈现 opacity 不再乘入每个 drawable，而是在合成完成后由 Windows DirectComposition visual effect 或 macOS `NSPanel` 对最终 surface 统一施加一次，避免多层 Live2D 互相重复衰减。Core 的 `double_sided` 必须同时驱动 D3D11/Metal 的背面剔除状态。水平镜像会反转三角形 winding，因此单面 drawable 在镜像时必须改用相反的剔除面；D3D11 与 Metal 都以 counter-clockwise 为正面，背景和按键 overlay 不剔除。
 
 Cubism Core 在每次 `UpdateModel` 后的 drawable dynamic flags 必须随 `RenderSnapshot` 一起复制，
 并在 `ResetDrawableDynamicFlags` 前完成读取。v1 中 drawable index topology 在同一 model generation
@@ -710,19 +712,21 @@ Cubism Core 在每次 `UpdateModel` 后的 drawable dynamic flags 必须随 `Ren
 `vertex_positions_changed` 时重写对应 vertex buffer，render order、visibility、opacity 与颜色仍以
 同一帧 snapshot 更新 CPU-side draw state。
 
-所有 v1 PNG RGBA 贴图（Cubism texture、背景与按键 overlay）按 sRGB 编码解释；Windows 使用
-`R8G8B8A8_UNORM_SRGB`、macOS 使用 `RGBA8Unorm_sRGB`，使 shader sampling 和颜色计算在
-linear 空间进行。最终预乘 alpha 颜色在两端都必须经过 linear -> sRGB 编码：macOS 将它交给
-`BGRA8Unorm_sRGB` drawable，Windows 的 flip presentation model 只能使用非 sRGB 的
-`B8G8R8A8_UNORM` back buffer，因此编码由该 buffer 的 render target view 以
-`B8G8R8A8_UNORM_SRGB` 承担；normal、additive 与 multiplicative blend 使用相同 linear
-premultiplied 输入。clipping mask 只携带 alpha，保持 linear UNORM，避免对 coverage 作
-gamma 转换。缺少这一编码时 linear 值会按已编码值被直接扫描输出，中间调整体偏暗（黑与白不受
-影响），并让两平台观感不一致。v1 不解释或转换嵌入 ICC/wide-gamut profile；模型导入将此类颜色
-管理作为明确的后续能力，而不是让平台默认行为决定结果。系统级显示色彩管理仍存在平台差异：
-macOS 由 Core Animation 把 sRGB 内容转换到显示器色彩空间，Windows DirectComposition 不做
-这一步，因此同一组 sRGB 值在广色域显示器上的绝对观感仍可能不同；这属于合成器行为，不由
-renderer 消除。
+所有 v1 PNG RGBA 贴图（Cubism texture、背景与按键 overlay）遵循 ADR-0063 固定的
+encoded-space 兼容契约：Windows 使用 `R8G8B8A8_UNORM` texture view 和
+`B8G8R8A8_UNORM` composition/render target，macOS 使用 `RGBA8Unorm` texture view 和
+`BGRA8Unorm` drawable。两端 shader 都不得加入 sRGB decode 或 encode；normal、additive 与
+multiplicative blend 使用相同的 premultiplied 输入。clipping mask 只携带 alpha，保持
+UNORM，避免对 coverage 作颜色空间转换。
+
+该契约是为兼容历史 Mver 观感而作的产品选择，不是对实际 Mver 二进制来源链或跨平台像素
+一致性的既成证明。精确 Mver build provenance、背景/按键上传语义和目标硬件 readback 仍是
+TODO 的验收门禁。若未来要切换到物理 linear-light 合成，必须同时修改两端的 texture view、
+composition attachment、shader 和跨平台像素 contract，不能只改一个平台。v1 不解释或转换
+嵌入 ICC/wide-gamut profile；模型导入将此类颜色管理作为明确的后续能力，而不是让平台默认
+行为决定结果。系统级显示色彩管理仍存在平台差异：macOS Core Animation 与 Windows
+DirectComposition 对最终 surface 的显示转换不同，因此同一组 encoded 值在广色域显示器上的
+绝对观感仍可能不同；这属于合成器行为，不由 renderer 消除。
 
 窗口圆角是 overlay 窗口自身的形状属性，与模型、动作和输入无关。`overlay.corner_radius_percent`
 按窗口宽高的百分比给出四个角的椭圆半径：`N%` 表示水平半轴为窗口宽度的 `N%`、垂直半轴为窗口
@@ -730,8 +734,9 @@ renderer 消除。
 圆角比垂直圆角更大；`0` 保持直角，`50` 时四条弧线相接、内容被裁剪为窗口的内切椭圆。renderer
 在片元着色器中按 drawable 像素位置求该椭圆的 coverage，并把它乘进每次绘制的 alpha，因此圆角
 只改变窗口边缘的合成结果，不改变 `RenderSnapshot`、模型资源、绘制顺序或 blend 模式。该值只
-作用于 overlay 窗口；GPUI 设置窗口和其他产品窗口保持各自的平台边框。改变圆角与改变缩放、
-不透明度、屏幕范围约束一样需要重建原生窗口资源。
+作用于 overlay 窗口；GPUI 设置窗口和其他产品窗口保持各自的平台边框。改变圆角与改变屏幕范围约束
+仍需要重建原生窗口资源；缩放通过现有窗口与 renderer 原地调整，不透明度则更新最终 surface 的
+presentation alpha，二者都不应因为设置变化替换 HWND/NSPanel。
 
 指针悬停隐藏是 overlay 窗口的临时呈现状态，不是窗口可见性。`overlay.hide_on_pointer_hover`
 开启时，指针进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_seconds` 之后，owner 把
@@ -750,8 +755,8 @@ renderer 消除。
 
 指针采样缺失、或平台输入服务不在 `Running` 状态时一律视为「不在窗口内」。这条降级规则保证指针
 链路失效时 overlay 最坏情况是保持可见，而不会永久停在全透明且穿透的状态。悬停隐藏与
-`opacity_percent` 共同决定最终 alpha，因此改变不透明度仍会重建窗口，而开关和延迟本身在 frame
-tick 内原地生效。
+`opacity_percent` 共同决定最终 alpha。改变不透明度只更新现有 surface 的 presentation alpha；开关和
+延迟本身也在 frame tick 内原地生效，不触发原生窗口重建。
 
 原生 overlay 窗口创建后默认保持隐藏。平台 owner 只有在对应 renderer 已成功完成至少一次
 非空帧 draw/present 后才允许首次显示；启动、隐藏后重显、设置导致的窗口重建和模型切换重建

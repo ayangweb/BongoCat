@@ -1,12 +1,13 @@
 use crate::{
-    BlendFactor, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff, MAXIMUM_CORNER_RADIUS_PERCENT,
-    OverlayContextMenuRequest, OverlayError, OverlayInteractionSinks, OverlayPresentationState,
-    OverlayResizeOutcome, OverlayScreenBounds, OverlaySessionOptions, OverlayTickOutcome,
-    OverlayWindowBounds, PreviewReport, ProductOverlayReport, blend_factors, corner_radius_uniform,
+    BlendFactor, DrawableCullMode, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff,
+    MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
+    OverlayInteractionSinks, OverlayPresentationState, OverlayResizeOutcome, OverlayScreenBounds,
+    OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
+    ProductOverlayReport, blend_factors, corner_radius_uniform,
     cover::{
         COVER_CAPTURE_FRAMES, COVER_CAPTURE_SCALE_PERCENT, COVER_CAPTURE_TIMEOUT, CapturedFrame,
     },
-    default_overlay_window_dimensions,
+    default_overlay_window_dimensions, drawable_cull_mode,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
     model_switch_window_bounds, model_window_dimensions,
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
@@ -60,7 +61,8 @@ use windows::{
                 D3D11_BLEND_DEST_COLOR, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_ONE,
                 D3D11_BLEND_OP_ADD, D3D11_BLEND_ZERO, D3D11_BUFFER_DESC,
                 D3D11_COLOR_WRITE_ENABLE_ALL, D3D11_CPU_ACCESS_READ,
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CULL_NONE, D3D11_FILL_SOLID,
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CULL_BACK, D3D11_CULL_FRONT,
+                D3D11_CULL_MODE, D3D11_CULL_NONE, D3D11_FILL_SOLID,
                 D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_INPUT_ELEMENT_DESC,
                 D3D11_INPUT_PER_VERTEX_DATA, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE,
                 D3D11_RASTERIZER_DESC, D3D11_RENDER_TARGET_BLEND_DESC,
@@ -73,15 +75,14 @@ use windows::{
                 ID3D11SamplerState, ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
             },
             DirectComposition::{
-                DCompositionCreateDevice, IDCompositionDevice, IDCompositionTarget,
-                IDCompositionVisual,
+                DCompositionCreateDevice, IDCompositionDevice, IDCompositionEffectGroup,
+                IDCompositionTarget, IDCompositionVisual,
             },
             Dxgi::{
                 Common::{
                     DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM,
-                    DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
-                    DXGI_FORMAT_R16_UINT, DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_UNKNOWN,
-                    DXGI_SAMPLE_DESC,
+                    DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R16_UINT, DXGI_FORMAT_R32G32_FLOAT,
+                    DXGI_FORMAT_UNKNOWN, DXGI_SAMPLE_DESC,
                 },
                 DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_PRESENT, DXGI_QUERY_VIDEO_MEMORY_INFO,
                 DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG,
@@ -139,20 +140,14 @@ const SWITCH_WARMUP_CYCLES: u64 = 100;
 const THREAD_SETTLE_INTERVAL: Duration = Duration::from_millis(10);
 const THREAD_SETTLE_SAMPLES: u32 = 25;
 const THREAD_SETTLE_TIMEOUT: Duration = Duration::from_secs(2);
-// The flip presentation model used by composition swapchains has no sRGB back
-// buffer format, so the swap chain keeps the UNORM member of the family. Alpha
-// remains premultiplied for the compositor and masks carry alpha only.
+// The renderer follows the encoded-space compatibility contract in ADR-0063.
+// Keep the same encoded RGB values on both native backends: do not let an
+// sRGB texture view decode the source or an sRGB render target re-encode the
+// composited frame. Alpha is still premultiplied for the compositor, and masks
+// carry coverage only.
 const COMPOSITION_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
-// The back buffer stays UNORM, but its render target view is created as the
-// sRGB member of the same family: that view is what makes the hardware encode
-// the linear shader result on store, exactly like the macOS
-// `BGRA8Unorm_sRGB` drawable. Without it the linear premultiplied output is
-// scanned out as if it were already sRGB-encoded, which darkens every midtone
-// (black and white are unaffected) and makes the two platforms disagree.
-const COMPOSITION_RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
-const MODEL_TEXTURE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-// Alpha-only coverage must stay linear; an sRGB view here would gamma-convert
-// the mask and double-apply the encode.
+const COMPOSITION_RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
+const MODEL_TEXTURE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
 const MASK_TEXTURE_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 
 fn current_cursor_position() -> POINT {
@@ -260,6 +255,8 @@ const SHADER_SOURCE: &str = r#"
         float4 screen_color;
         float4 mask_settings;
         float4 corner_radius;
+        // Model/drawable opacity only. Window presentation opacity is applied
+        // once to the completed DirectComposition surface.
         float opacity;
         float3 padding;
     };
@@ -307,6 +304,9 @@ const SHADER_SOURCE: &str = r#"
     Texture2D<float4> mask_texture : register(t1);
     SamplerState texture_sampler : register(s0);
 
+    // The source texture is an ordinary UNORM view on purpose. This is the
+    // encoded-space compatibility blend: do not insert a linear/sRGB conversion
+    // here without changing both backends and the product contract.
     float4 cubism_fragment(RasterVertex input) : SV_TARGET {
         float4 texture_color = model_texture.Sample(texture_sampler, input.uv);
         float3 color = texture_color.rgb * multiply_color.rgb;
@@ -358,6 +358,7 @@ struct Mesh {
     screen_color: [f32; 4],
     masks: Vec<DrawableId>,
     visible: bool,
+    double_sided: bool,
     inverted_mask: bool,
     mask_target: Option<MaskTarget>,
 }
@@ -396,6 +397,8 @@ struct Pipelines {
     constant_buffer: ID3D11Buffer,
     sampler: ID3D11SamplerState,
     rasterizer: ID3D11RasterizerState,
+    cull_back_rasterizer: ID3D11RasterizerState,
+    cull_front_rasterizer: ID3D11RasterizerState,
     normal_blend: ID3D11BlendState,
     additive_blend: ID3D11BlendState,
     multiplicative_blend: ID3D11BlendState,
@@ -674,12 +677,20 @@ impl OverlayWindow {
         Ok(())
     }
 
-    fn set_bounds(&mut self, bounds: OverlayWindowBounds) -> Result<(), OverlayError> {
+    /// Resize and move the existing HWND without replacing its renderer.
+    ///
+    /// Scale changes are presentation geometry, not a new model generation.
+    /// Keeping the HWND alive avoids exposing a freshly-created DirectComposition
+    /// surface before its first compositor tick has settled.
+    fn resize(&mut self, bounds: OverlayWindowBounds) -> Result<(), OverlayError> {
         self.assert_owner_thread();
-        bounds.validate()?;
+        let bounds = bounds.validate()?;
+        if self.bounds()? == bounds {
+            return Ok(());
+        }
         // SAFETY: the HWND is live and confined to its owner thread. The caller
-        // supplies the complete validated box, and no z-order or activation
-        // state is changed by this model-switch resize.
+        // supplies a validated virtual-screen box, and the operation preserves
+        // z-order and activation while changing only geometry.
         unsafe {
             SetWindowPos(
                 self.hwnd,
@@ -690,7 +701,7 @@ impl OverlayWindow {
                 bounds.height as i32,
                 SWP_NOACTIVATE | SWP_NOZORDER,
             )
-            .map_err(windows_error("resize overlay for model switch"))?;
+            .map_err(windows_error("resize the existing overlay window"))?;
         }
         self.width = bounds.width;
         self.height = bounds.height;
@@ -776,6 +787,12 @@ struct RenderTargets {
 
 struct Renderer {
     visual: IDCompositionVisual,
+    /// Applies presentation opacity after every model, mask, background, and
+    /// key drawable has already been composited into the swap-chain surface.
+    /// Keeping this at the visual subtree is important: multiplying the
+    /// configured alpha into each drawable makes overlapping Live2D parts
+    /// accumulate transparency and produces a ghosted image.
+    opacity_effect: IDCompositionEffectGroup,
     target: IDCompositionTarget,
     composition_device: IDCompositionDevice,
     /// `None` only while a resize is between dropping the old buffers and
@@ -791,7 +808,6 @@ struct Renderer {
     model: GpuModel,
     width: u32,
     height: u32,
-    opacity: f32,
     corner_radius_percent: u8,
     corner_radius: [f32; 4],
     owner_thread: ThreadId,
@@ -842,8 +858,15 @@ impl Renderer {
             unsafe { DCompositionCreateDevice(&dxgi_device)? };
         let target = unsafe { composition_device.CreateTargetForHwnd(window.hwnd, true)? };
         let visual = unsafe { composition_device.CreateVisual()? };
+        // The default DirectComposition layer opacity mode treats this visual's
+        // swap-chain subtree as one surface. That is the final-composite
+        // boundary we need; Multiply mode would reintroduce per-surface fading.
+        let opacity_effect = unsafe { composition_device.CreateEffectGroup()? };
+        let initial_opacity = f32::from(options.opacity_percent) / 100.0;
         unsafe {
+            opacity_effect.SetOpacity2(initial_opacity)?;
             visual.SetContent(&swap_chain)?;
+            visual.SetEffect(&opacity_effect)?;
             target.SetRoot(&visual)?;
             composition_device.Commit()?;
         }
@@ -864,6 +887,7 @@ impl Renderer {
         };
         Ok(Self {
             visual,
+            opacity_effect,
             target,
             composition_device,
             targets: Some(RenderTargets {
@@ -881,7 +905,6 @@ impl Renderer {
             model,
             width: window.width,
             height: window.height,
-            opacity: f32::from(options.opacity_percent) / 100.0,
             corner_radius_percent: options.corner_radius_percent,
             corner_radius: corner_radius_uniform(
                 options.corner_radius_percent,
@@ -891,6 +914,30 @@ impl Renderer {
             owner_thread: thread::current().id(),
             _not_send_or_sync: std::marker::PhantomData,
         })
+    }
+
+    /// Apply the effective presentation opacity to the completed composition
+    /// subtree rather than to individual drawables.
+    ///
+    /// The renderer keeps the swap-chain pixels at their model-authored alpha;
+    /// DirectComposition applies this value once after all model, background,
+    /// mask, and key layers have been blended. This preserves a coherent image
+    /// for models with many overlapping Live2D parts.
+    fn set_opacity(&self, opacity: f32) -> Result<(), OverlayError> {
+        let alpha = opacity.clamp(0.0, 1.0);
+        // SAFETY: the renderer owns both COM interfaces, they are confined to
+        // its owner thread, and the effect has already been attached to the
+        // visual before this method can be called. The value is finite after
+        // clamping, as required by IDCompositionEffectGroup::SetOpacity.
+        unsafe {
+            self.opacity_effect
+                .SetOpacity2(alpha)
+                .map_err(windows_error("set DirectComposition opacity"))?;
+            self.composition_device
+                .Commit()
+                .map_err(windows_error("commit DirectComposition opacity"))?;
+        }
+        Ok(())
     }
 
     /// Match the swap chain, the render targets and the mask targets to a new
@@ -1129,10 +1176,11 @@ impl Renderer {
                 screen_color: [0.0; 4],
                 mask_settings: [0.0; 4],
                 corner_radius: self.corner_radius,
-                opacity: self.opacity,
+                opacity: 1.0,
                 padding: [0.0; 3],
             };
             unsafe {
+                self.context.RSSetState(&self.pipelines.rasterizer);
                 self.context
                     .OMSetBlendState(&self.pipelines.normal_blend, None, u32::MAX);
                 self.context.UpdateSubresource(
@@ -1189,7 +1237,7 @@ impl Renderer {
                     f32::from(mesh.inverted_mask),
                 ],
                 corner_radius: self.corner_radius,
-                opacity: mesh.opacity * self.model.model_opacity * self.opacity,
+                opacity: mesh.opacity * self.model.model_opacity,
                 padding: [0.0; 3],
             };
             unsafe {
@@ -1210,10 +1258,11 @@ impl Renderer {
                 screen_color: [0.0; 4],
                 mask_settings: [0.0; 4],
                 corner_radius: self.corner_radius,
-                opacity: self.opacity,
+                opacity: 1.0,
                 padding: [0.0; 3],
             };
             unsafe {
+                self.context.RSSetState(&self.pipelines.rasterizer);
                 self.context
                     .OMSetBlendState(&self.pipelines.normal_blend, None, u32::MAX);
                 self.context.UpdateSubresource(
@@ -1304,6 +1353,13 @@ impl Renderer {
             .get(&mesh.texture_id)
             .ok_or_else(|| invariant_error("drawable texture is unavailable"))?;
         unsafe {
+            let rasterizer =
+                match drawable_cull_mode(mesh.double_sided, self.model.mirror_horizontal) {
+                    DrawableCullMode::None => &self.pipelines.rasterizer,
+                    DrawableCullMode::Front => &self.pipelines.cull_front_rasterizer,
+                    DrawableCullMode::Back => &self.pipelines.cull_back_rasterizer,
+                };
+            self.context.RSSetState(rasterizer);
             self.context.UpdateSubresource(
                 &self.pipelines.constant_buffer,
                 0,
@@ -1355,9 +1411,10 @@ struct NativeOverlay {
     renderer: Renderer,
     window: OverlayWindow,
     presentation: OverlayPresentationState,
-    /// Window opacity currently applied to the renderer, including the hover
-    /// fade. It lives here rather than on the session so replacing the native
-    /// window resets it together with the renderer that carries it.
+    /// Window opacity currently applied to the DirectComposition effect,
+    /// including the hover fade. It lives here rather than on the session so
+    /// replacing the native window resets it together with the renderer that
+    /// carries it.
     applied_alpha: f32,
     applied_click_through: bool,
 }
@@ -1407,15 +1464,37 @@ impl NativeOverlay {
         self.window.set_click_through(click_through)
     }
 
+    /// Resize the existing native window and its swap-chain-backed renderer.
+    fn resize(&mut self, bounds: OverlayWindowBounds) -> Result<(), OverlayError> {
+        let visible = self.window.is_visible();
+        self.window.resize(bounds)?;
+        let resized = self.renderer.resize(bounds.width, bounds.height)?;
+        if visible && resized {
+            // ResizeBuffers leaves a new back buffer without content until the
+            // next draw. Fill it before returning to the window loop so the
+            // compositor cannot show the resized HWND as a transparent frame.
+            match self.draw(false) {
+                Ok(()) => {}
+                // The normal frame path below owns retry/backoff for a
+                // temporarily occluded swap chain.
+                Err(error) if error.is_temporary_presentation_unavailable() => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    }
+
     /// Apply the per-frame presentation state without replacing the window.
     ///
     /// `alpha` is the configured window opacity multiplied by the hover fade,
-    /// and `click_through` is the effective pointer routing. The hover hide
-    /// forces pass-through on so an invisible overlay cannot swallow a click
-    /// meant for whatever is underneath it.
+    /// and `click_through` is the effective pointer routing. The alpha is
+    /// applied once to the completed DirectComposition visual, after all
+    /// drawables have been blended. The hover hide forces pass-through on so an
+    /// invisible overlay cannot swallow a click meant for whatever is
+    /// underneath it.
     fn apply_presentation(&mut self, alpha: f32, click_through: bool) -> Result<(), OverlayError> {
         if alpha != self.applied_alpha {
-            self.renderer.opacity = alpha;
+            self.renderer.set_opacity(alpha)?;
             self.applied_alpha = alpha;
         }
         if click_through != self.applied_click_through {
@@ -1433,7 +1512,7 @@ impl NativeOverlay {
     /// immediately, before the next frame is drawn.
     fn resize_for_model(&mut self, canvas: CanvasInfo) -> Result<(), OverlayError> {
         let bounds = model_switch_window_bounds(self.window.bounds()?, canvas);
-        self.window.set_bounds(bounds)?;
+        self.window.resize(bounds)?;
         self.renderer.resize(bounds.width, bounds.height)?;
         Ok(())
     }
@@ -1641,6 +1720,15 @@ impl ProductOverlaySession {
                 }
                 self.overlay = replacement;
             } else {
+                if next_options.scale_percent != self.options.scale_percent {
+                    let bounds = self.overlay.window.bounds()?;
+                    let bounds = if self.bounds_match_scale(bounds, next_options.scale_percent) {
+                        bounds
+                    } else {
+                        bounds.rescale(self.options.scale_percent, next_options.scale_percent)
+                    };
+                    self.overlay.resize(bounds)?;
+                }
                 if next_options.always_on_top != self.options.always_on_top {
                     self.overlay.set_always_on_top(next_options.always_on_top)?;
                 }
@@ -1847,7 +1935,7 @@ impl ProductOverlaySession {
     /// Create a native window that already carries the current hover fade.
     ///
     /// A replacement window is created with the configured opacity, so a
-    /// settings change or model change while the overlay is hover-hidden would
+    /// resource or model change while the overlay is hover-hidden would
     /// otherwise show the new window at full opacity before the next tick could
     /// correct it.
     fn create_overlay(
@@ -1868,9 +1956,10 @@ impl ProductOverlaySession {
     /// Whether the live window box already matches a scale.
     ///
     /// A resize drag resizes the window before the scale reaches the
-    /// configuration, so the rebuild that follows the write-back must not scale
-    /// the box a second time. The base is derived in physical pixels, which is
-    /// the unit the box itself is in. See [`crate::bounds_match_scale`].
+    /// configuration, so the in-place resize that follows the write-back must
+    /// not scale the box a second time. The base is derived in physical pixels,
+    /// which is the unit the box itself is in. See
+    /// [`crate::bounds_match_scale`].
     fn bounds_match_scale(&self, bounds: OverlayWindowBounds, scale_percent: u16) -> bool {
         let (base_width, base_height) =
             default_overlay_window_dimensions(self.last_frame.snapshot.canvas);
@@ -2559,6 +2648,7 @@ impl GpuModel {
                 screen_color: drawable.screen_color,
                 masks: drawable.masks.clone(),
                 visible: drawable.visible,
+                double_sided: drawable.double_sided,
                 inverted_mask: drawable.inverted_mask,
                 mask_target: if drawable.masks.is_empty() {
                     None
@@ -2652,6 +2742,7 @@ impl GpuModel {
             mesh.screen_color = drawable.screen_color;
             mesh.masks.clone_from(&drawable.masks);
             mesh.visible = drawable.visible;
+            mesh.double_sided = drawable.double_sided;
             mesh.inverted_mask = drawable.inverted_mask;
         }
         self.meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
@@ -2948,13 +3039,9 @@ unsafe fn create_pipelines(device: &ID3D11Device) -> WindowsResult<Pipelines> {
     };
     let mut sampler = None;
     unsafe { device.CreateSamplerState(&sampler_desc, Some(&mut sampler))? };
-    let rasterizer_desc = D3D11_RASTERIZER_DESC {
-        FillMode: D3D11_FILL_SOLID,
-        CullMode: D3D11_CULL_NONE,
-        ..Default::default()
-    };
-    let mut rasterizer = None;
-    unsafe { device.CreateRasterizerState(&rasterizer_desc, Some(&mut rasterizer))? };
+    let rasterizer = unsafe { create_rasterizer_state(device, D3D11_CULL_NONE)? };
+    let cull_back_rasterizer = unsafe { create_rasterizer_state(device, D3D11_CULL_BACK)? };
+    let cull_front_rasterizer = unsafe { create_rasterizer_state(device, D3D11_CULL_FRONT)? };
     Ok(Pipelines {
         vertex_shader: required(vertex_shader, "vertex shader")?,
         fragment_shader: required(fragment_shader, "fragment shader")?,
@@ -2962,7 +3049,9 @@ unsafe fn create_pipelines(device: &ID3D11Device) -> WindowsResult<Pipelines> {
         input_layout: required(input_layout, "input layout")?,
         constant_buffer: required(constant_buffer, "constant buffer")?,
         sampler: required(sampler, "sampler")?,
-        rasterizer: required(rasterizer, "rasterizer")?,
+        rasterizer,
+        cull_back_rasterizer,
+        cull_front_rasterizer,
         normal_blend: unsafe { create_blend_state(device, blend_factors(BlendMode::Normal))? },
         additive_blend: unsafe { create_blend_state(device, blend_factors(BlendMode::Additive))? },
         multiplicative_blend: unsafe {
@@ -2970,6 +3059,28 @@ unsafe fn create_pipelines(device: &ID3D11Device) -> WindowsResult<Pipelines> {
         },
         mask_blend: unsafe { create_blend_state(device, blend_factors(BlendMode::Normal))? },
     })
+}
+
+fn rasterizer_descriptor(cull_mode: D3D11_CULL_MODE) -> D3D11_RASTERIZER_DESC {
+    D3D11_RASTERIZER_DESC {
+        FillMode: D3D11_FILL_SOLID,
+        CullMode: cull_mode,
+        // Cubism's D3D11 renderer treats counter-clockwise triangles as the
+        // front face. Keep that explicit now that single-sided drawables are
+        // actually culled instead of being masked by CULL_NONE.
+        FrontCounterClockwise: true.into(),
+        ..Default::default()
+    }
+}
+
+unsafe fn create_rasterizer_state(
+    device: &ID3D11Device,
+    cull_mode: D3D11_CULL_MODE,
+) -> WindowsResult<ID3D11RasterizerState> {
+    let descriptor = rasterizer_descriptor(cull_mode);
+    let mut state = None;
+    unsafe { device.CreateRasterizerState(&descriptor, Some(&mut state))? };
+    required(state, "rasterizer state")
 }
 
 unsafe fn create_blend_state(
@@ -3133,10 +3244,9 @@ unsafe fn create_mask_target(
 /// Create a render target view, possibly with a format the texture itself does
 /// not carry.
 ///
-/// A view may name any format in the same family as the resource, which is how
-/// a UNORM flip-model back buffer still gets the hardware sRGB encode. The
-/// caller owns that pairing: a view format from an unrelated family fails here
-/// instead of rendering with the wrong semantics.
+/// A view may name any format in the same family as the resource. The explicit
+/// descriptor keeps the composition and mask paths pinned to their respective
+/// UNORM formats instead of inheriting an unrelated view format by accident.
 /// `..Default::default()` zeroes the descriptor union, selecting its
 /// `Texture2D { MipSlice: 0 }` member.
 unsafe fn create_render_target(
@@ -3174,10 +3284,10 @@ unsafe fn create_staging_texture(
 /// This is the full-frame form of [`verify_frame_smoke`]: same mapping, every row
 /// of it. The staging texture keeps the back buffer's BGRA layout and its own row
 /// pitch, so each row is copied into a tightly packed buffer that
-/// [`CapturedFrame::from_premultiplied_bgra`] can take. The render target view is
-/// the sRGB member of the format family, so the bytes are what the compositor would
-/// have received rather than a linear-space copy, and the cover is encoded from
-/// exactly what the overlay shows.
+/// [`CapturedFrame::from_premultiplied_bgra`] can take. The back buffer is
+/// UNORM, so the bytes are the same encoded values the overlay presents rather
+/// than a hidden linear-space copy, and the cover is encoded from exactly what
+/// the overlay shows.
 unsafe fn read_staging_frame(
     context: &ID3D11DeviceContext,
     texture: &ID3D11Texture2D,
@@ -3558,17 +3668,19 @@ mod tests {
     }
 
     #[test]
-    fn color_formats_decode_assets_and_encode_the_composited_frame_as_srgb() {
-        assert_eq!(MODEL_TEXTURE_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
+    fn cull_states_use_cubism_counter_clockwise_front_faces() {
+        for cull_mode in [D3D11_CULL_NONE, D3D11_CULL_BACK, D3D11_CULL_FRONT] {
+            let descriptor = rasterizer_descriptor(cull_mode);
+            assert_eq!(descriptor.CullMode, cull_mode);
+            assert!(descriptor.FrontCounterClockwise.as_bool());
+        }
+    }
+
+    #[test]
+    fn color_formats_match_the_encoded_space_contract() {
+        assert_eq!(MODEL_TEXTURE_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM);
         assert_eq!(COMPOSITION_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM);
-        // The encode lives in the render target view, because a flip-model back
-        // buffer has no sRGB format. Dropping it here darkens every midtone
-        // instead of failing, so it is pinned rather than left to the caller.
-        assert_eq!(
-            COMPOSITION_RENDER_TARGET_FORMAT,
-            DXGI_FORMAT_B8G8R8A8_UNORM_SRGB
-        );
-        // Alpha-only coverage stays linear so the mask is not gamma-converted.
+        assert_eq!(COMPOSITION_RENDER_TARGET_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM);
         assert_eq!(MASK_TEXTURE_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM);
     }
 

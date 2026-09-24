@@ -9,8 +9,8 @@
 ## Context
 
 当前 v1 的 `overlay.keep_inside_work_area` 约束 overlay 窗口避开工作区之外的一切区域：
-Windows 用 `MONITORINFO.rcWork`、macOS 用 `NSScreen.visibleFrame`，并在创建、设置/模型重建和
-每一次 frame tick 里收敛窗口原点。由此产生两类不符合预期的行为：
+Windows 用 `MONITORINFO.rcWork`、macOS 用 `NSScreen.visibleFrame`，并在创建、需要资源重建的
+设置/模型重建和每一次 frame tick 里收敛窗口原点。由此产生两类不符合预期的行为：
 
 - 模型窗口无法覆盖任务栏、程序坞和菜单栏所在的那一条区域。用户把猫放在任务栏上方这类明显
   合理的摆放会被立刻推回工作区内。
@@ -29,7 +29,7 @@ Windows 用 `MONITORINFO.rcWork`、macOS 用 `NSScreen.visibleFrame`，并在创
 - 纠正目标是“与窗口交叠面积最大的显示器，无交叠时取中心距离最近者”，保持窗口尺寸不变；
   窗口大于显示器时把原点贴到显示器原点（与旧行为一致）。
 - 纠正**延迟**执行：窗口连续静止 `1s`（`PLACEMENT_SETTLE_DELAY`）后才移回显示器内，期间
-  任何被观测到的位移都重新计时。创建、缩放/设置重建和模型重建这些没有拖拽在途的路径仍然
+  任何被观测到的位移都重新计时。创建、缩放/资源设置重建和模型重建这些没有拖拽在途的路径仍然
   立即收敛。
 - 放置检查最多缓存 `500ms`（`PLACEMENT_INSPECTION_INTERVAL`）后重新评估。这既让静止窗口不必
   每帧枚举显示器（macOS 会分配、Windows 会进窗口管理器），也让显示器拓扑变化——包括拔掉

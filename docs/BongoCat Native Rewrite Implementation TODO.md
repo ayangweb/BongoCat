@@ -241,7 +241,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     的 `scale_percent`，因此窗口几何与配置不同步时第一次移动不会跳；拖动期间 `hide_on_pointer_hover`
     被抑制（它会淡出并穿透窗口，正好中断拖动）。松手后缩放经新增的
     `OverlayInteractionSinks::resize_sender` 报给应用并写回 `overlay.scale_percent`；写回后
-    的重建路径用 `bounds_match_scale` 避免按比例二次缩放。平台无关部分单元测试已通过
+    的原地尺寸更新路径用 `bounds_match_scale` 避免按比例二次缩放。平台无关部分单元测试已通过
     （`cargo test -p bongocat-overlay`，65 passed）。**未验证**：双平台实机拖动观感、DPI 与
     Retina 下的实际尺寸、以及「右键单击仍弹菜单」的人工确认；Windows 侧代码在本机无法编译
     （无交叉工具链），只经过静态审查，因此保持未勾选。
@@ -1090,21 +1090,26 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     绘制三个预置模型，并消费与 Metal 相同的 immutable frame、model generation 和
     commit token。完整 resize、device-loss、D3D debug layer 与实机 GPU 矩阵仍待完成，
     因此保持未勾选。
-- [ ] `P3-WINDOWS-SRGB-ENCODE`：Windows 后端的最终 linear -> sRGB 编码在实机与跨平台像素对照下成立。
-  - 状态（2026-09-18）：`COMPOSITION_FORMAT` 保持 flip model 要求的 `B8G8R8A8_UNORM`，
-    但 back buffer 的 render target view 改为同族的 `B8G8R8A8_UNORM_SRGB`（常量
-    `COMPOSITION_RENDER_TARGET_FORMAT`），编码由硬件在写入时完成，与 macOS
-    `BGRA8Unorm_sRGB` drawable 语义一致；alpha-only mask target 保持 linear UNORM。修复前
-    Windows 把 linear 预乘值写进被 DirectComposition 当作 sRGB 的 surface，中间调 ≈ v^2.2，
-    是两平台明显色差的唯一代码来源（详见 ADR-0046）。
-  - 已核实（2026-09-18）：`cargo fmt -p bongocat-overlay -- --check`、`cargo clippy -p
-    bongocat-overlay --all-targets --all-features -- -D warnings`、`cargo test -p
-    bongocat-overlay` 通过；改动涉及的 D3D11 调用形态用独立探针在
-    `--target x86_64-pc-windows-msvc` 下 check 与 clippy 通过后删除。本机
-    （macOS 26.5.2 / Apple M1 Pro / toolchain 1.97.1）无法为 Windows 目标构建
-    `bongocat-overlay`：`libdeflate-sys` 经 `oxipng` 进入依赖图，交叉构建缺 MSVC C 头文件。
-  - 尚缺：`windows.rs` 的格式契约单元测试只在 Windows job 执行，本机未运行；Windows 实机首帧
-    与同 snapshot 的两平台 readback 色值对照未做。因此本项保持未勾选。
+- [ ] `P3-MVER-COLOR-COMPATIBILITY`：跨平台颜色兼容总门禁（Windows D3D11 / macOS Metal），
+  两者都在实机与同 snapshot readback 中保持选定的 encoded-space 观感。
+  - 状态（2026-09-24）：固定 Mver commit 直接确认 `myUserModel.cpp` 调用外部
+    `LAppTextureManager` 并在 `#else` 分支调用 `IsPremultipliedAlpha(false)`，但该 commit 不含
+    texture manager 实现、OpenGL shader、完整 build flags 或 SFML/Cubism 版本来源。独立的
+    Cubism Native Framework R5 `5-r.5` 行为来源展示了普通 UNORM/encoded-space 参考路径，
+    但不能单独证明 Mver 二进制来源链。基于用户报告和这组有限证据，ADR-0063 选择 encoded-space
+    兼容契约：Windows 使用 `R8G8B8A8_UNORM` texture + `B8G8R8A8_UNORM` composition view，
+    macOS 使用 `RGBA8Unorm` texture + `BGRA8Unorm` drawable；两端均不自动 decode/encode，
+    alpha-only mask 保持 UNORM。精确来源链和像素等价仍待核对，详见 ADR-0063 与 migration
+    reference。
+  - 已完成自动化部分：`cargo fmt --all -- --check`、目标 crate 的 format/clippy/test contract、
+    `cargo check --workspace --release --locked` 和 macOS target check；完整 workspace test 在
+    `bongocat-app` 测试二进制处报告 136 passed、1 个既有无关失败
+    （`settings::tests::service_renames_and_covers_a_model_of_either_origin` 的 Windows 路径分隔/前缀断言），
+    命令随后停止，不能写成 workspace test 全通过。尚缺 Windows/macOS 目标机
+    首帧截图、同 snapshot 跨平台 readback、颜色 tolerance 和实际硬件/驱动证据；mipmap 生成/缩小过滤、
+    背景与按键层顺序及复杂 mask channel parity 也尚未冻结，因此本项保持未勾选。
+  - 2026-09-18 的 `P3-WINDOWS-SRGB-ENCODE` 仅验证过“两端都执行 linear -> sRGB”这一中间方案；
+    它不能作为 Mver 兼容验收，已由本项取代。
 - [ ] 配置变化时切换 HWND_TOPMOST/HWND_NOTOPMOST，禁止帧轮询。
 - [ ] 切换 click-through 并验证拖动模式。
 - [ ] 处理 device lost、resize、休眠和 GPU 切换。
@@ -1172,18 +1177,23 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     的本机单元测试、完整 workspace 门禁、macOS release settings/Models lifecycle 与隐藏切模 smoke
     通过；包含后续 Windows overlay 修复的 run `33865854261` 又在 macOS job `101000445151` 与
     Windows job `101000445117` 通过完整 release lifecycle 和有序 shutdown。
-- [x] 明确 sRGB/linear、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
-  - 验收证据（2026-09-06）：`bongocat-overlay` 将模型、背景和按键 PNG 固定为 sRGB texture
-    view（D3D11 `R8G8B8A8_UNORM_SRGB` / Metal `RGBA8Unorm_sRGB`），将最终预乘 alpha
-    composition/drawable attachment 遵循平台约束（D3D11 DirectComposition 使用
-    `B8G8R8A8_UNORM`，Metal 使用 `BGRA8Unorm_sRGB`），并保留 alpha-only mask 的 linear
-    UNORM format。两端 shader 都在
-    采样解码后的 linear RGB 执行 multiply/screen、mask 和预乘，format contract 单元测试覆盖
-    两个实现。嵌入 ICC/wide-gamut profile 的转换尚未实现，v1 明确不依赖平台默认色彩管理。
-  - 更正（2026-09-18）：本条的结论不成立于当时的实现。D3D11 侧只把 swapchain 固定为
-    `B8G8R8A8_UNORM`，没有同时把 back buffer 的 render target view 设为 `_SRGB`，因此 Windows
-    缺少最终 linear -> sRGB 编码，两平台颜色语义实际相反而不是一致。单元测试只断言了常量组合，
-    没有断言“两端都执行编码”，所以当时无法发现；修复与证据见 §4.2 和 ADR-0046。
+- [ ] 明确 Mver 兼容的 encoded-space、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
+  - 状态（2026-09-24）：固定 Mver commit 只直接证明 renderer 调用、`IsPremultipliedAlpha(false)`
+    分支和外部 texture manager 的使用关系；其 texture manager 实现、shader、build flags 与
+    SFML/Cubism 版本并未随 commit 固定。独立的 Cubism R5 `5-r.5` 行为来源提供普通 UNORM/
+    encoded-space 的参考证据，但不等于 Mver 二进制来源证明。ADR-0063 据此选择兼容性契约：
+    Windows 使用 `R8G8B8A8_UNORM` texture + `B8G8R8A8_UNORM` composition view，macOS 使用
+    `RGBA8Unorm` texture + `BGRA8Unorm` drawable；两端关闭自动 sRGB decode/encode，alpha-only
+    mask 保持 UNORM。模型、背景和按键先按原始 alpha 完成合成，
+    presentation opacity 再由 Windows DirectComposition visual effect 或 macOS `NSPanel`
+    对最终 surface 统一施加一次；同时消费 Core 的 `double_sided`；D3D11/Metal 都以 CCW 为正面，
+    水平镜像时改用相反剔除面，背景和按键 overlay
+    不剔除。format、blend-factor 与 culling contract 已通过，详见 ADR-0063。
+  - 未完成：精确 Mver build provenance、目标 Windows/macOS 硬件首帧、截图、同 snapshot readback
+    与颜色 tolerance 对照；因此本条不勾选。嵌入 ICC/wide-gamut profile 的转换仍未实现，v1
+    明确不依赖平台默认色彩管理。
+  - 历史说明：2026-09-06/18 的 sRGB/linear 方案及 `P3-WINDOWS-SRGB-ENCODE` 只证明过中间方案，
+    已由 Mver compatibility 决策取代，不能作为当前观感验收。
 - [ ] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。
   - 状态（2026-09-06）：macOS 的 `CAMetalLayer::next_drawable == None` 已分类为临时
     presentation unavailable；产品 frame source 收到非错误的 deferred tick，以 `100 ms` 起、
@@ -1448,17 +1458,17 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     预置 `standard` preview 已实际报告 5 个 masked drawable；本次 `cargo test -p bongocat-render
 --locked` 通过 12 项 transport/resource contract test。Windows hardware pixel comparison 仍由
     `D3D11/Metal 对相同 snapshot 行为一致` 与 release matrix 单独验收。
-- [x] 实现 texture upload、sampler、过滤和颜色空间策略。
-  - 验收证据（2026-09-06）：Metal 与 D3D11 均在 GPU upload 前重新 decode PNG RGBA 并核对已经
-    preflight 的尺寸；模型、背景和按键纹理固定以 sRGB view 采样，最终 pre-multiplied composition
-    attachment 固定为 sRGB，alpha-only clipping mask 保持 linear UNORM。两端均使用 linear
-    min/mag filter 与 clamp-to-edge addressing，shader 在 decoded linear RGB 执行颜色和 blend
-    运算。`color_formats_decode_assets_and_encode_the_composited_frame_as_srgb` 的双 backend unit
-    contract 固定这组格式；Technical Design 已将嵌入 ICC/wide-gamut profile 的转换明确排除在 v1
-    范围外，因此不依赖平台默认颜色管理。
-  - 更正（2026-09-18）：“最终 pre-multiplied composition attachment 固定为 sRGB”只对 Metal 成立；
-    D3D11 的 attachment 是 `B8G8R8A8_UNORM`，编码本应来自 render target view 而没有设置。修复见
-    §4.2，两端编码语义现已由常量与单元测试固定。
+- [ ] 实现 texture upload、sampler、过滤和 Mver 兼容颜色空间策略。
+  - 状态（2026-09-24）：Metal 与 D3D11 均在 GPU upload 前重新 decode PNG RGBA 并核对已经
+    preflight 的尺寸；模型、背景和按键纹理使用普通 UNORM view，shader 按 ADR-0063 的
+    encoded-space compatibility contract 直接执行颜色和 blend 运算，最终 premultiplied
+    composition 也使用普通 UNORM attachment。alpha-only clipping mask 保持 UNORM；两端继续使用
+    linear min/mag filter 与 clamp-to-edge addressing。format contract 固定这组格式，详见
+    ADR-0063。
+  - 尚缺：精确 Mver build provenance、目标硬件上的同 snapshot readback、截图和颜色 tolerance
+    证据；因此本条保持未勾选。
+  - 2026-09-06/18 的 sRGB view、linear-light shader 与 Windows `_SRGB` RTV 方案是历史中间方案，
+    已被 Mver compatibility 决策取代。
 - [x] 只在 dirty 时更新必要 GPU 资源。
   - 验收证据（2026-09-06）：`CoreModel::update_and_snapshot` 在 reset Core dynamic flags 前复制六个
     drawable change bits；immutable `DrawableSnapshot` 将这些 flags 交给两端 GPU owner。Metal 与
@@ -1571,15 +1581,17 @@ audio worker 预解码候选模型的去重 FLAC；PCM 预热完成或稳定失�
 
 ### 6.1 Command/Snapshot 边界
 
-状态（2026-09-01）：overlay 的 click-through、always-on-top、scale 和 opacity 已定义为
+状态（2026-09-24；原 2026-09-01）：overlay 的 click-through、always-on-top、scale 和 opacity 已定义为
 `bongocat-runtime::OverlaySettings`，通过 revisioned runtime snapshot 与 typed settings
 command 在配置事务后更新；非法范围由 runtime 拒绝并保留上一组值。`Application` 和
 `SettingsClient` 已接线并有 persistence/rejection contract。General 页面现已通过
 typed command/snapshot 暴露 click-through 与 always-on-top，并将设置变更应用到双平台
-overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可见控件、双平台实机
-动态重建与 device/display 专项证据仍待完成。General 页面现已增加 25–400% 的 25% 步进缩放
+overlay owner；设置更新失败时保留旧 snapshot。scale/opacity 的可见控件已接入；scale 现在在
+现有 HWND/NSPanel 上原地调整尺寸并立即填充新的 swap-chain/drawable，opacity 只更新最终 surface
+presentation alpha，不再触发窗口替换，因此避免设置更新时短暂显示未初始化透明帧。双平台实机
+动态更新与 device/display 专项证据仍待完成。General 页面现已增加 25–400% 的 25% 步进缩放
 和 1–100% 的 10% 步进透明度控件，按钮和 AccessKit 语义复用同一 snapshot，并在边界禁用。
-双平台实机动态重建与 device/display 专项证据仍待完成，故不将 Phase 5 或 P0 overlay 门禁标记完成。
+双平台实机动态更新与 device/display 专项证据仍待完成，故不将 Phase 5 或 P0 overlay 门禁标记完成。
 
 - [ ] 按 app、window、input、model、shortcut、update、diagnostics 定义 command。
 - [ ] command 使用强类型 request/result 和稳定 error code。
@@ -4502,7 +4514,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：约束区域从单块显示器的 `rcWork` / `visibleFrame` 改为所有显示器矩形
       （`rcMonitor` / `NSScreen.frame`）的并集；“完整显示”按并集覆盖判定，跨显示器摆放不纠正；
       只在窗口真正离开桌面时纠正，目标为交叠面积最大（无交叠取中心最近）的显示器且不改变窗口尺寸；
-      创建/缩放重建/模型重建立即收敛，拖动后的收敛延迟 `PLACEMENT_SETTLE_DELAY`（1s）执行并在每次
+      创建/缩放/资源设置重建/模型重建立即收敛，拖动后的收敛延迟 `PLACEMENT_SETTLE_DELAY`（1s）执行并在每次
       观测到位移时重新计时，因此不影响跨显示器拖拽；放置检查缓存不超过
       `PLACEMENT_INSPECTION_INTERVAL`（500ms），使显示器变化在静止窗口下仍被纠正；判定与倒计时为
       平台无关可测代码；字段、中英文案、共享 schema/fixture、契约表与 AX/UIA 语义同步；完整 Native

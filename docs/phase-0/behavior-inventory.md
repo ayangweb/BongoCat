@@ -41,6 +41,11 @@
 描述。默认值不变：窗口快捷键默认生效、模型快捷键默认关闭。门禁都只把对应的一半排除在平台匹配表之外，
 不清空、不改写绑定。决策见 ADR-0052。
 
+修订记录（2026-09-24）：行为清单基线 `44f44bc` 的 `src/pages/main/index.vue` 将
+`window.opacity / 100` 施加到包含背景、Live2D canvas 和按键图的根容器，而不是分别修改每个
+Live2D drawable。Native Rewrite 因此将窗口 presentation opacity 定义为最终 surface 的一次性
+alpha；平台实现细节仍需实机 readback 验证。
+
 ## 功能矩阵
 
 | 领域       | 行为                                                | 优先级    | 源码结论                                             | 待确认                          |

@@ -1,8 +1,14 @@
 # ADR-0046: Overlay 颜色契约以两端都执行 linear -> sRGB 编码为准
 
-状态：Accepted
+状态：Superseded by ADR-0063
 日期：2026-09-18
+取代日期：2026-09-24
 取代：无（修正 Technical Design §Renderer 颜色段落与两条 Phase 3/5 验收证据的结论）
+
+> 本文记录的是曾经用于补齐 Windows/macOS 线性编码不对称的修复决策与预期实现路径；
+> 当时没有完成目标硬件的像素验证。它讨论了“两端是否都执行 linear -> sRGB 编码”，
+> 但没有解决“是否要匹配 Bongo-Cat-Mver 的历史 encoded-space 观感”问题；当前产品目标由
+> ADR-0063 取代。
 
 ## Context
 
@@ -36,16 +42,17 @@ swapchain format”当作完整结论，导致编码步骤从未执行，而 Tec
    `DXGI_FORMAT_B8G8R8A8_UNORM_SRGB`（`COMPOSITION_RENDER_TARGET_FORMAT`）承担编码。
 2. **alpha-only clipping mask target 保持 linear UNORM。** mask 只携带 coverage，对它做编码
    等于二次施加 gamma。
-3. **不为对齐旧版观感而退回 gamma 空间。** 旧版 BongoCatMver 走官方 Cubism Framework 的
-   OpenGL renderer，全程不使用 sRGB，属于 gamma 空间合成；仓库当前契约明确选择了 linear 合成
-   （decode + linear 运算 + encode），本条修复只补齐 Windows 缺失的编码，不改变这一选择。
+3. **不为对齐旧版观感而退回 gamma 空间。** 当时审查的 BongoCatMver/OpenGL 参考路径没有显示
+   sRGB texture view 或 framebuffer encode，因此本条选择继续采用 linear 合成（decode + linear
+   运算 + encode）；该来源链与最终像素当时均未完成验证，本条修复只补齐 Windows 缺失的编码。
 4. **本机不可验证的 Windows 侧改动必须留下可重复的形态证据。** 由于 `bongocat-overlay` 在
    非 Windows 主机上无法为 Windows 目标构建，涉及 D3D11 调用形态的改动应以独立探针 crate 在
    `--target x86_64-pc-windows-msvc` 下通过 check/clippy，并在合并前删除探针。
 
 ## Consequences
 
-- 同一组 sRGB 贴图在两平台产出相同的 surface 字节；Windows 以往“整体偏暗、对比更强”的观感消失。
+- 按当时的设计，同一组 sRGB 贴图应在两平台产出相同的 surface 字节，并预期消除 Windows
+  以往“整体偏暗、对比更强”的观感；该结果当时没有目标硬件 readback 证据。
 - 修复是格式层的，不改变 drawable 拓扑、遮罩算法、frame 调度或任何产品配置，因此不需要
   数据迁移，也不影响 `schema_version: 1`。
 - 未收敛的残差是系统级显示色彩管理：macOS 由 Core Animation 把 sRGB 内容转换到显示器色彩空间，
@@ -55,6 +62,9 @@ swapchain format”当作完整结论，导致编码步骤从未执行，而 Tec
   的纹理视图与附件格式，并同步本文第 3 条与 Technical Design。
 
 ## Verification
+
+以下记录的是 2026-09-18 当时的中间方案；其中测试名称和格式断言已被 ADR-0063 的
+encoded-space contract 取代，不能作为当前实现的验证结果。
 
 - `windows.rs` 的 `color_formats_decode_assets_and_encode_the_composited_frame_as_srgb` 增加
   `COMPOSITION_RENDER_TARGET_FORMAT` 断言；`macos.rs` 的对应测试继续固定
@@ -68,4 +78,5 @@ swapchain format”当作完整结论，导致编码步骤从未执行，而 Tec
 - D3D11 调用形态（descriptor 字段、view 维度、`CreateRenderTargetView` 参数类型、DXGI 常量）
   以临时独立探针在 `--target x86_64-pc-windows-msvc` 下 check 与 clippy 通过。
 - 尚未完成：Windows 实机首帧、Windows job 的单元测试执行结果、同 snapshot 的两平台 readback
-  色值对照。以上未完成前，`P3-WINDOWS-SRGB-ENCODE` 保持未勾选。
+  色值对照。该历史任务已由 `P3-MVER-COLOR-COMPATIBILITY` 取代；在新的跨平台硬件证据完成前，
+  两条任务都不得作为当前观感验收依据。

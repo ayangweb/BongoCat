@@ -1,7 +1,8 @@
 # Bongo-Cat-Mver Reference Baseline
 
 状态：行为参考已固定
-记录日期：2026-08-30
+初始记录日期：2026-08-30
+最后核对日期：2026-09-24
 
 ## 1. 固定来源
 
@@ -31,19 +32,32 @@
 `docs/phase-0/mver-frame-rate-semantics.md`；该文档只是本基线在帧率一项上的展开，commit 与使用规则
 仍以本文件为准。
 
-## 3. 已确认的渲染结论
+## 3. 已确认与待核对的渲染证据
 
-固定版本通过官方 Cubism Framework OpenGL renderer 绘制模型：
+固定 commit 的源码树能直接确认：
 
+- `myUserModel.cpp` 通过官方 Cubism Framework 的 OpenGL renderer 绘制模型。
 - model3 layout 交给 model matrix 处理；调用方再组合 projection/MVP。
-- texture 按 model setting 的 index 绑定，并显式配置 premultiplied-alpha 模式。
-- clipping、drawable order 和 blend 由官方 renderer 完成。
-- standard/gamepad 等最终画面不是只有 Live2D drawable；背景、设备和按键资源在
-  mode 层按产品状态另行组合。
+- texture 按 model setting 的 index 绑定，并通过 `LAppTextureManager::CreateTextureFromPngFile`
+  交给外部依赖加载。
+- `myUserModel.cpp` 在 `PREMULTIPLIED_ALPHA_ENABLE` 未定义时调用
+  `IsPremultipliedAlpha(false)`；但该宏是否在实际 Mver build 中定义，固定 commit 没有提供
+  足够的构建配置证明。
+- clipping、drawable order 和 blend 交由官方 renderer；standard/gamepad 等最终画面还会叠加
+  背景、设备和按键资源，组合顺序在 mode 层。
 
-这些结论用于确定测试问题和预期行为。Native Rewrite 的 Metal/D3D11 renderer、
-safe wrapper、runtime 和资源 compositor 仍须按 Technical Design 的 Rust 边界实现，并遵守
-ADR-0030 规定的现有方案复用顺序。
+该 commit **不包含** `LAppTextureManager` 实现、官方 OpenGL shader、Cubism Framework/SFML
+版本锁定或完整 build flags，因此不能仅凭它断言实际二进制的纹理上传格式、shader 数学和所有
+背景/按键 compositor 细节。另行固定的 Cubism Native Framework R5 `5-r.5` 行为来源
+（见 `docs/phase-0/cubism-framework-behavior-sources.md`）确实展示了普通 `GL_RGBA` render target
+与 encoded-space shader 参考路径，但它是独立的 R5 oracle，不是该 Mver 二进制来源的直接证明。
+
+因此，encoded-space 颜色契约目前是基于用户报告、固定 Mver 调用关系和独立 R5 参考来源的
+兼容性选择；精确来源链、背景/按键上传语义和最终像素一致性仍由 TODO 的实机/readback 门禁
+确认。行为清单基线 `44f44bc` 的旧版 `src/pages/main/index.vue` 另直接确认窗口 opacity 施加于
+包含背景、Live2D canvas 和按键图的根容器；这属于 legacy 产品行为证据，不是固定 Mver C++ commit
+对 opacity 或 shader 的直接证明。Native Rewrite 的 Metal/D3D11 renderer、safe wrapper、runtime
+和资源 compositor 仍须按 Technical Design 的 Rust 边界实现，并遵守 ADR-0030 规定的现有方案复用顺序。
 
 ## 4. 动作与表情生命周期证据
 

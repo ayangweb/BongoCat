@@ -1,7 +1,8 @@
 # Cubism Framework Behavior Sources
 
 状态：R5 `5-r.5` 行为来源已固定；最终发布合规清单待完成
-记录日期：2026-08-30
+初始记录日期：2026-08-30
+最后核对日期：2026-09-24
 
 > 本文是工程溯源与测试设计，不构成法律意见，也不授权复制、翻译或重新许可 Live2D 源码。
 
@@ -27,8 +28,15 @@
 | renderer common contract | `Framework/src/Rendering/CubismRenderer.cpp`               | `ce008f9148b1fd591d077ab90a963da9431ac08c` |
 | D3D11 renderer           | `Framework/src/Rendering/D3D11/CubismRenderer_D3D11.cpp`   | `917b46ba352f4e80566c07369baba3d703ec54fb` |
 | D3D11 effect shader      | `Framework/src/Rendering/D3D11/Shaders/CubismEffect.fx`    | `bbaca13cbbcfb9b184e6e8a5e63f40e99619f217` |
+| OpenGL renderer          | `Framework/src/Rendering/OpenGL/CubismRenderer_OpenGLES2.cpp` | `5d4fe7baa6e32a68f1db6f58bc7db9240dae487b` |
+| OpenGL render target     | `Framework/src/Rendering/OpenGL/CubismRenderTarget_OpenGLES2.cpp` | `9cf612c00edb591d6f70f795c598f10d1e7c45ae` |
+| OpenGL blend shader      | `Framework/src/Rendering/OpenGL/Shaders/Standard/FragShaderSrcBlend.frag` | `972b032fa991295f3dce7a384b7aafec25485713` |
 | Metal renderer           | `Framework/src/Rendering/Metal/CubismRenderer_Metal.mm`    | `d46eddfb748669a55e6c47ea22bfba5774ec4504` |
 | Metal shader set         | `Framework/src/Rendering/Metal/Shaders/MetalShaders.metal` | `696adec0e2e38e1fa83d499f1369c388bab1576a` |
+
+OpenGL 条目是独立的 R5 renderer 行为来源，用于审查 encoded-space 兼容假设；它们不证明
+Mver commit 所链接的实际 Cubism/SFML build 版本。颜色验收仍需 Mver provenance 与目标机
+readback 证据。
 
 平台 Samples 只用于观察官方装配顺序，不作为 BongoCat 架构模板：
 

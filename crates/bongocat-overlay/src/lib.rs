@@ -63,8 +63,9 @@ pub(crate) const MAXIMUM_CORNER_RADIUS_PERCENT: u8 = 50;
 /// ellipse), and `y`/`z` carry the drawable dimensions so the fragment shader
 /// can recover pixel coordinates and size its antialiased band in device
 /// pixels. The corner coverage is evaluated per drawable pixel and multiplied
-/// into each drawable's alpha, which is how the renderers already apply window
-/// opacity.
+/// into each drawable's alpha. Presentation opacity is applied later, once to
+/// the completed native surface, so overlapping Live2D parts do not each fade
+/// independently.
 pub(crate) fn corner_radius_uniform(
     corner_radius_percent: u8,
     width: f32,
@@ -170,13 +171,11 @@ impl OverlaySessionOptions {
         }
     }
 
-    /// Z-order, mouse-routing and hover changes are applied directly to the
-    /// native window. Other settings still require replacing native window
-    /// resources.
+    /// Z-order, mouse-routing, hover, opacity, and scale changes are applied
+    /// directly to the native surface. Corner-radius and screen-constraint
+    /// changes still require replacing the native window resources.
     pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
-        self.scale_percent != next.scale_percent
-            || self.opacity_percent != next.opacity_percent
-            || self.corner_radius_percent != next.corner_radius_percent
+        self.corner_radius_percent != next.corner_radius_percent
             || self.keep_inside_screen != next.keep_inside_screen
     }
 }
@@ -434,6 +433,29 @@ pub(crate) struct BlendFactors {
     pub destination_rgb: BlendFactor,
     pub source_alpha: BlendFactor,
     pub destination_alpha: BlendFactor,
+}
+
+/// The platform-independent culling decision for one model drawable.
+///
+/// Core's `double_sided` flag disables culling. A horizontal mirror negates the
+/// model X scale and therefore reverses triangle winding, so the mirrored
+/// backends must cull the opposite face to keep the original front surface.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DrawableCullMode {
+    None,
+    Front,
+    Back,
+}
+
+pub(crate) const fn drawable_cull_mode(
+    double_sided: bool,
+    mirror_horizontal: bool,
+) -> DrawableCullMode {
+    match (double_sided, mirror_horizontal) {
+        (true, _) => DrawableCullMode::None,
+        (false, false) => DrawableCullMode::Back,
+        (false, true) => DrawableCullMode::Front,
+    }
 }
 
 pub(crate) const fn blend_factors(mode: BlendMode) -> BlendFactors {
@@ -1023,6 +1045,14 @@ mod tests {
     }
 
     #[test]
+    fn mirrored_single_sided_drawables_reverse_culling() {
+        assert_eq!(drawable_cull_mode(false, false), DrawableCullMode::Back);
+        assert_eq!(drawable_cull_mode(false, true), DrawableCullMode::Front);
+        assert_eq!(drawable_cull_mode(true, false), DrawableCullMode::None);
+        assert_eq!(drawable_cull_mode(true, true), DrawableCullMode::None);
+    }
+
+    #[test]
     fn frame_smoke_requires_transparent_and_antialiased_model_coverage() {
         let statistics =
             validate_frame_smoke([[0, 0, 0, 0], [32, 64, 96, 127], [200, 160, 120, 255]])
@@ -1210,7 +1240,7 @@ mod tests {
     }
 
     #[test]
-    fn z_order_click_through_and_hover_changes_use_in_place_window_transitions() {
+    fn presentation_and_geometry_changes_use_in_place_window_transitions() {
         let current = OverlaySessionOptions::default();
         let mut next = current;
         next.always_on_top = false;
@@ -1230,11 +1260,20 @@ mod tests {
         next.hide_on_pointer_hover_delay_ms = 1_500;
         assert!(!current.requires_window_recreation(next));
 
+        next = current;
         next.opacity_percent = 80;
-        assert!(current.requires_window_recreation(next));
+        assert!(!current.requires_window_recreation(next));
+
+        next = current;
+        next.scale_percent = 125;
+        assert!(!current.requires_window_recreation(next));
 
         next = current;
         next.corner_radius_percent = 25;
+        assert!(current.requires_window_recreation(next));
+
+        next = current;
+        next.keep_inside_screen = false;
         assert!(current.requires_window_recreation(next));
     }
 
