@@ -6012,8 +6012,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       完整 `just check` 六道门通过；
       `tools/tests` 66 项、fixture validator、locale validator（246 keys × 2）、JSON Schema
       validator 与 `git diff --check` 均通过。
-    - 退出条件：变更进入 `next` 提交；用真实动作与表情在 Windows/macOS 确认最终姿态、替换、
-      显式停止和模型切换观感。当前未提交、未做双平台实机 smoke，因此保持未勾选。
+    - 状态（2026-09-24，已提交）：实现提交 `1917eae5` 已进入并推送 `next`。当前未做
+      Windows/macOS 双平台实机 smoke；仍需用真实动作与表情确认最终姿态、替换、显式停止和
+      模型切换观感，因此本项保持未勾选。
 
 ## 13. 待决策清单
 
