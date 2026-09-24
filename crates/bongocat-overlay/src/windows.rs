@@ -8,6 +8,7 @@ use crate::{
     },
     default_overlay_window_dimensions,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
+    model_switch_window_bounds, model_window_dimensions,
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
     resize_drag::{ResizeBase, ResizeDrag, ResizeOutcome},
     validate_frame_smoke, validate_model_generation_advance,
@@ -455,7 +456,7 @@ struct OverlayWindowState {
     /// created with for the current model. It is converted to the window's
     /// physical pixels when a drag begins, so a window that moved to a display
     /// with a different DPI still scales from the right base.
-    resize_base_logical: (f32, f32),
+    resize_base_logical: (u32, u32),
     drag: Option<ResizeDrag>,
 }
 
@@ -514,8 +515,7 @@ impl OverlayWindow {
         }
         let scale = options.scale_percent;
         let (base_width, base_height) = default_overlay_window_dimensions(canvas);
-        let logical_width = (base_width * f32::from(scale) / 100.0).round() as u32;
-        let logical_height = (base_height * f32::from(scale) / 100.0).round() as u32;
+        let (logical_width, logical_height) = model_window_dimensions(canvas, scale);
         let cursor = current_cursor_position();
         let initial_x = bounds.map_or(cursor.x, |value| value.x);
         let initial_y = bounds.map_or(cursor.y, |value| value.y);
@@ -671,6 +671,29 @@ impl OverlayWindow {
             )
             .map_err(windows_error("keep the overlay on a display"))?;
         }
+        Ok(())
+    }
+
+    fn set_bounds(&mut self, bounds: OverlayWindowBounds) -> Result<(), OverlayError> {
+        self.assert_owner_thread();
+        bounds.validate()?;
+        // SAFETY: the HWND is live and confined to its owner thread. The caller
+        // supplies the complete validated box, and no z-order or activation
+        // state is changed by this model-switch resize.
+        unsafe {
+            SetWindowPos(
+                self.hwnd,
+                None,
+                bounds.x,
+                bounds.y,
+                bounds.width as i32,
+                bounds.height as i32,
+                SWP_NOACTIVATE | SWP_NOZORDER,
+            )
+            .map_err(windows_error("resize overlay for model switch"))?;
+        }
+        self.width = bounds.width;
+        self.height = bounds.height;
         Ok(())
     }
 
@@ -1402,6 +1425,19 @@ impl NativeOverlay {
         Ok(())
     }
 
+    /// Adapt the window to a newly prepared model while keeping its live width.
+    ///
+    /// The model-switch probe updates the D3D11 model in place instead of
+    /// replacing the HWND, so it applies the same canvas-aspect rule as the
+    /// product session explicitly. The swap chain follows the native resize
+    /// immediately, before the next frame is drawn.
+    fn resize_for_model(&mut self, canvas: CanvasInfo) -> Result<(), OverlayError> {
+        let bounds = model_switch_window_bounds(self.window.bounds()?, canvas);
+        self.window.set_bounds(bounds)?;
+        self.renderer.resize(bounds.width, bounds.height)?;
+        Ok(())
+    }
+
     /// Match the swap chain and the mask targets to the window's current size.
     ///
     /// A right-button resize drag changes the window size directly through
@@ -1648,7 +1684,10 @@ impl ProductOverlaySession {
         if let Some(frame) = next_frame {
             let model_changed = frame.model_generation != self.overlay.renderer.model_generation;
             if model_changed {
-                let bounds = self.overlay.window.bounds()?;
+                let bounds = model_switch_window_bounds(
+                    self.overlay.window.bounds()?,
+                    frame.snapshot.canvas,
+                );
                 let mut replacement = match self.create_overlay(
                     &frame,
                     self.options,
@@ -1970,7 +2009,7 @@ impl CoverCaptureSession {
         };
         let frame_interval = frame_interval_for_maximum_fps(options.maximum_fps)
             .expect("cover capture options carry a validated maximum FPS");
-        let mut overlay = match NativeOverlay::create(&initial_frame, options, None, None) {
+        let mut overlay = match NativeOverlay::create(&initial_frame, options, None, None, None) {
             Ok(overlay) => overlay,
             Err(error) => {
                 reject_model_commit(&runtime_client, &render_consumer, initial_token)?;
@@ -2082,14 +2121,19 @@ pub(crate) fn run_model_switch_preview(
     )?;
 
     let com_apartment = ComApartment::initialize()?;
-    let mut overlay =
-        match NativeOverlay::create(&initial_frame, OverlaySessionOptions::default(), None, None) {
-            Ok(overlay) => overlay,
-            Err(error) => {
-                reject_model_commit(&runtime_client, &render_consumer, initial_token)?;
-                return Err(error);
-            }
-        };
+    let mut overlay = match NativeOverlay::create(
+        &initial_frame,
+        OverlaySessionOptions::default(),
+        None,
+        None,
+        None,
+    ) {
+        Ok(overlay) => overlay,
+        Err(error) => {
+            reject_model_commit(&runtime_client, &render_consumer, initial_token)?;
+            return Err(error);
+        }
+    };
     overlay.draw(true)?;
     overlay.set_visible(true)?;
     report_model_commit(
@@ -2205,6 +2249,7 @@ pub(crate) fn run_model_switch_preview(
                 "D3D11 renderer did not replace a newer model generation",
             ));
         }
+        overlay.resize_for_model(frame.snapshot.canvas)?;
         if overlay.renderer.model_generation <= generation_before {
             return Err(OverlayError::new(
                 "D3D11 renderer committed a non-monotonic model generation",
@@ -3294,9 +3339,9 @@ fn windows_error(context: &'static str) -> impl FnOnce(Error) -> OverlayError {
 /// The drag state machine works in physical pixels because that is the unit
 /// `SetWindowPos` takes, while the `100%` size is defined in logical pixels by
 /// the DPI-independent overlay contract.
-fn resize_base_for_dpi(base_width: f32, base_height: f32, dpi: u32) -> Option<ResizeBase> {
-    let width = logical_to_physical(base_width.round() as u32, dpi).ok()?;
-    let height = logical_to_physical(base_height.round() as u32, dpi).ok()?;
+fn resize_base_for_dpi(base_width: u32, base_height: u32, dpi: u32) -> Option<ResizeBase> {
+    let width = logical_to_physical(base_width, dpi).ok()?;
+    let height = logical_to_physical(base_height, dpi).ok()?;
     ResizeBase::new(f64::from(width), f64::from(height))
 }
 
@@ -3736,15 +3781,15 @@ mod tests {
     fn the_resize_base_is_the_logical_size_scaled_by_the_window_dpi() {
         // 100% is defined in logical pixels, while the drag works in the
         // physical pixels `SetWindowPos` takes.
-        let base = resize_base_for_dpi(350.0, 350.0, 96).expect("96 DPI base");
+        let base = resize_base_for_dpi(350, 350, 96).expect("96 DPI base");
         assert_eq!(base, ResizeBase::new(350.0, 350.0).expect("square base"));
 
-        let scaled = resize_base_for_dpi(350.0, 350.0, 192).expect("192 DPI base");
+        let scaled = resize_base_for_dpi(350, 350, 192).expect("192 DPI base");
         assert_eq!(scaled, ResizeBase::new(700.0, 700.0).expect("doubled base"));
 
         // 150% is not an exact multiple of 96, so the rounding is what the
         // window creation path uses as well.
-        let fractional = resize_base_for_dpi(350.0, 200.0, 144).expect("144 DPI base");
+        let fractional = resize_base_for_dpi(350, 200, 144).expect("144 DPI base");
         assert_eq!(
             fractional,
             ResizeBase::new(

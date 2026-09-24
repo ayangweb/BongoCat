@@ -9,6 +9,7 @@ use crate::{
     },
     default_overlay_window_dimensions,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
+    model_switch_window_bounds, model_window_dimensions,
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
     resize_drag::{ResizeBase, ResizeDrag, ResizeOutcome},
     validate_frame_smoke, validate_model_generation_advance,
@@ -19,7 +20,7 @@ use bongocat_platform::{
     MacInputService, PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus,
 };
 use bongocat_render::{
-    BlendMode, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
+    BlendMode, CanvasInfo, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
     ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame,
     RenderResources, RenderSnapshot, TextureAsset, TextureId, validate_render_snapshot,
 };
@@ -553,7 +554,8 @@ impl ProductOverlaySession {
         if let Some(frame) = next_frame {
             let model_changed = frame.model_generation != self.overlay.model_generation;
             if model_changed {
-                let bounds = self.window_bounds()?;
+                let bounds =
+                    model_switch_window_bounds(self.window_bounds()?, frame.snapshot.canvas);
                 let replacement = self.create_overlay(
                     MainThreadMarker::new().ok_or_else(|| {
                         OverlayError::new("macOS overlay model update lost the main thread")
@@ -1500,6 +1502,7 @@ pub(crate) fn run_model_preview(
                 Err(error) => return Err(error),
             };
             if gpu_model_switched {
+                overlay.resize_for_model(frame.snapshot.canvas)?;
                 let token = frame
                     .model_commit
                     .ok_or_else(|| OverlayError::new("model switch frame has no commit token"))?;
@@ -1739,14 +1742,12 @@ impl NativeOverlay {
         // the window falls back to the cursor's display instead.
         let bounds = bounds
             .filter(|bounds| options.keep_inside_screen || overlay_bounds_visible(mtm, *bounds));
-        let window_scale = f64::from(options.scale_percent) / 100.0;
-        let (base_width, base_height) = default_overlay_window_dimensions(frame.snapshot.canvas);
-        let window_width = bounds.map_or(f64::from(base_width) * window_scale, |bounds| {
-            f64::from(bounds.width)
-        });
-        let window_height = bounds.map_or(f64::from(base_height) * window_scale, |bounds| {
-            f64::from(bounds.height)
-        });
+        let (default_width, default_height) =
+            model_window_dimensions(frame.snapshot.canvas, options.scale_percent);
+        let window_width =
+            bounds.map_or(f64::from(default_width), |bounds| f64::from(bounds.width));
+        let window_height =
+            bounds.map_or(f64::from(default_height), |bounds| f64::from(bounds.height));
         let origin = bounds.map_or_else(
             || centered_origin(mtm, window_width, window_height),
             |bounds| NSPoint::new(f64::from(bounds.x), f64::from(bounds.y)),
@@ -1879,6 +1880,37 @@ impl NativeOverlay {
         if self.panel.frame().origin != origin {
             self.panel.setFrameOrigin(origin);
         }
+    }
+
+    /// Adapt the panel to a newly prepared model while keeping the live width.
+    ///
+    /// The model-switch probe updates the GPU model in place instead of
+    /// replacing the panel, so it has to apply the same canvas-aspect rule as
+    /// the product session explicitly. The resize happens after GPU
+    /// preparation succeeds; a failed preparation therefore leaves the old
+    /// window geometry untouched.
+    fn resize_for_model(&mut self, canvas: CanvasInfo) -> Result<(), OverlayError> {
+        let frame = self.panel.frame();
+        let current = OverlayWindowBounds::new(
+            rounded_i32(frame.origin.x)?,
+            rounded_i32(frame.origin.y)?,
+            rounded_u32(frame.size.width)?,
+            rounded_u32(frame.size.height)?,
+        );
+        let target = model_switch_window_bounds(current, canvas);
+        let target_frame = NSRect::new(
+            NSPoint::new(f64::from(target.x), f64::from(target.y)),
+            NSSize::new(f64::from(target.width), f64::from(target.height)),
+        );
+        if frame.origin.x != target_frame.origin.x
+            || frame.origin.y != target_frame.origin.y
+            || frame.size.width != target_frame.size.width
+            || frame.size.height != target_frame.size.height
+        {
+            self.panel.setFrame_display(target_frame, true);
+        }
+        self.sync_window_size()?;
+        Ok(())
     }
 
     fn sync_frame(&mut self, frame: &RenderFrame) -> Result<bool, OverlayError> {

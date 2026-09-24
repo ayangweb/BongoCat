@@ -40,6 +40,7 @@ use std::{fmt, path::Path, sync::mpsc::SyncSender, time::Duration};
 pub const DEFAULT_OVERLAY_WINDOW_WIDTH: u32 = 350;
 pub(crate) const FRAME_SMOKE_GRID_DIMENSION: u64 = 17;
 const MIN_OVERLAY_WINDOW_DIMENSION: f32 = 64.0;
+const MAX_OVERLAY_WINDOW_DIMENSION: u32 = 16_384;
 
 /// Upper bound of the overlay corner radius, in percent of the window box.
 ///
@@ -73,12 +74,51 @@ pub(crate) fn corner_radius_uniform(
     [f32::from(percent) / 100.0, width, height, 0.0]
 }
 
-fn default_overlay_window_dimensions(canvas: CanvasInfo) -> (f32, f32) {
+pub(crate) fn cover_window_dimension(value: f64) -> u32 {
+    let value = if value.is_finite() {
+        value.ceil()
+    } else {
+        f64::from(MIN_OVERLAY_WINDOW_DIMENSION)
+    };
+    value.clamp(
+        f64::from(MIN_OVERLAY_WINDOW_DIMENSION),
+        f64::from(MAX_OVERLAY_WINDOW_DIMENSION),
+    ) as u32
+}
+
+fn model_window_height_for_width(canvas: CanvasInfo, width: u32) -> u32 {
     let canvas_width = canvas.width.max(MIN_OVERLAY_WINDOW_DIMENSION);
     let canvas_height = canvas.height.max(MIN_OVERLAY_WINDOW_DIMENSION);
-    let width = DEFAULT_OVERLAY_WINDOW_WIDTH as f32;
-    let height = (width * canvas_height / canvas_width).max(MIN_OVERLAY_WINDOW_DIMENSION);
+    cover_window_dimension(f64::from(width) * f64::from(canvas_height) / f64::from(canvas_width))
+}
+
+fn model_window_dimensions(canvas: CanvasInfo, scale_percent: u16) -> (u32, u32) {
+    let width = cover_window_dimension(
+        f64::from(DEFAULT_OVERLAY_WINDOW_WIDTH) * f64::from(scale_percent) / 100.0,
+    );
+    let height = model_window_height_for_width(canvas, width);
     (width, height)
+}
+
+fn default_overlay_window_dimensions(canvas: CanvasInfo) -> (u32, u32) {
+    model_window_dimensions(canvas, 100)
+}
+
+/// Recompute only the height when a model switch changes the canvas.
+///
+/// The live width is deliberately the scale source: it is the width the user
+/// currently sees, so it already includes the configured scale and any
+/// right-button drag (and it can be a persisted/manual geometry). The shared
+/// cover rounding keeps the model fully inside the native window and makes a
+/// switch back to a model reproduce its startup dimensions.
+pub(crate) fn model_switch_window_bounds(
+    current: OverlayWindowBounds,
+    canvas: CanvasInfo,
+) -> OverlayWindowBounds {
+    OverlayWindowBounds {
+        height: model_window_height_for_width(canvas, current.width),
+        ..current
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -193,8 +233,8 @@ impl OverlayWindowBounds {
     pub(crate) fn rescale(self, previous_percent: u16, next_percent: u16) -> Self {
         let ratio = f64::from(next_percent) / f64::from(previous_percent);
         Self {
-            width: ((f64::from(self.width) * ratio).round() as u32).clamp(64, 16_384),
-            height: ((f64::from(self.height) * ratio).round() as u32).clamp(64, 16_384),
+            width: cover_window_dimension(f64::from(self.width) * ratio),
+            height: cover_window_dimension(f64::from(self.height) * ratio),
             ..self
         }
     }
@@ -1237,8 +1277,91 @@ mod tests {
             pixels_per_unit: 350.0,
         };
 
-        assert_eq!(default_overlay_window_dimensions(landscape), (350.0, 200.0));
-        assert_eq!(default_overlay_window_dimensions(portrait), (350.0, 700.0));
+        assert_eq!(default_overlay_window_dimensions(landscape), (350, 200));
+        assert_eq!(default_overlay_window_dimensions(portrait), (350, 700));
+    }
+
+    #[test]
+    fn standard_model_switch_matches_the_initial_window_height() {
+        let standard = CanvasInfo {
+            width: 612.0,
+            height: 354.0,
+            origin_x: 306.0,
+            origin_y: 177.0,
+            pixels_per_unit: 354.0,
+        };
+        let current = OverlayWindowBounds::new(0, 0, 350, 203);
+
+        assert_eq!(default_overlay_window_dimensions(standard), (350, 203));
+        assert_eq!(
+            model_switch_window_bounds(current, standard),
+            OverlayWindowBounds::new(0, 0, 350, 203)
+        );
+
+        let (scaled_width, scaled_height) = model_window_dimensions(standard, 125);
+        assert_eq!(
+            model_switch_window_bounds(
+                OverlayWindowBounds::new(0, 0, scaled_width, scaled_height),
+                standard,
+            ),
+            OverlayWindowBounds::new(0, 0, scaled_width, scaled_height)
+        );
+    }
+
+    #[test]
+    fn model_switch_keeps_width_and_recomputes_height_at_the_live_scale() {
+        let landscape = CanvasInfo {
+            width: 700.0,
+            height: 400.0,
+            origin_x: 350.0,
+            origin_y: 200.0,
+            pixels_per_unit: 400.0,
+        };
+        let portrait = CanvasInfo {
+            width: 350.0,
+            height: 700.0,
+            origin_x: 175.0,
+            origin_y: 350.0,
+            pixels_per_unit: 350.0,
+        };
+        let current = OverlayWindowBounds::new(-240, 180, 700, 123);
+
+        assert_eq!(
+            model_switch_window_bounds(current, landscape),
+            OverlayWindowBounds::new(-240, 180, 700, 400)
+        );
+        assert_eq!(
+            model_switch_window_bounds(current, portrait),
+            OverlayWindowBounds::new(-240, 180, 700, 1_400)
+        );
+    }
+
+    #[test]
+    fn model_switch_height_uses_the_existing_width_instead_of_rescaling_twice() {
+        let canvas = CanvasInfo {
+            width: 350.0,
+            height: 700.0,
+            origin_x: 175.0,
+            origin_y: 350.0,
+            pixels_per_unit: 350.0,
+        };
+        // 50% of the 350px base width is 175px. The new height must be 350px,
+        // not another 50% applied to an already scaled width.
+        assert_eq!(
+            model_switch_window_bounds(OverlayWindowBounds::new(0, 0, 175, 1), canvas),
+            OverlayWindowBounds::new(0, 0, 175, 350)
+        );
+
+        // The result remains within the same bounds contract as a native window.
+        let extreme = CanvasInfo {
+            width: 100_000.0,
+            height: 1.0,
+            ..canvas
+        };
+        assert_eq!(
+            model_switch_window_bounds(OverlayWindowBounds::new(0, 0, 64, 1), extreme),
+            OverlayWindowBounds::new(0, 0, 64, 64)
+        );
     }
 
     #[test]

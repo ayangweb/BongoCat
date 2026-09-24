@@ -9,6 +9,7 @@
 //! [`RESIZE_DRAG_THRESHOLD`] 之后才算缩放；没有越过阈值就松开的右键仍然是菜单。
 //! 平台适配层负责自己那份无法便携的部分：读取指针位置、改原生窗口尺寸、以及在
 //! 拖动结束时把最终缩放报回配置。
+use crate::cover_window_dimension;
 
 /// 指针位移超过它才算缩放，而不是一次右键单击。
 ///
@@ -28,13 +29,6 @@ pub(crate) const RESIZE_DRAG_PERCENT_PER_PIXEL: f64 = 0.5;
 /// 一致，因此拖动产生的结果总能被配置接受，设置页的滑块也总有一个可显示的值。
 pub(crate) const MINIMUM_RESIZE_DRAG_SCALE_PERCENT: u16 = 25;
 pub(crate) const MAXIMUM_RESIZE_DRAG_SCALE_PERCENT: u16 = 400;
-
-/// 窗口尺寸的硬边界，与 [`OverlayWindowBounds::validate`] 一致。
-///
-/// 一个极端宽高比的模型在 `25%` 时可能算出小于下限的高度，此时尺寸先被钳制，
-/// 而不是让拖动产生一个配置拒绝的窗口。
-const MINIMUM_WINDOW_DIMENSION: f64 = 64.0;
-const MAXIMUM_WINDOW_DIMENSION: f64 = 16_384.0;
 
 /// `100%` 缩放时窗口的基准尺寸，与窗口 bounds 使用同一坐标单位。
 ///
@@ -57,8 +51,8 @@ impl ResizeBase {
     pub(crate) fn dimensions(self, scale_percent: u16) -> (u32, u32) {
         let factor = f64::from(scale_percent) / 100.0;
         (
-            clamp_dimension(self.width * factor),
-            clamp_dimension(self.height * factor),
+            cover_window_dimension(self.width * factor),
+            cover_window_dimension(self.height * factor),
         )
     }
 
@@ -163,12 +157,6 @@ impl ResizeDrag {
     fn dimensions(&self) -> (u32, u32) {
         self.base.dimensions(self.scale)
     }
-}
-
-fn clamp_dimension(value: f64) -> u32 {
-    value
-        .round()
-        .clamp(MINIMUM_WINDOW_DIMENSION, MAXIMUM_WINDOW_DIMENSION) as u32
 }
 
 #[cfg(test)]
