@@ -1,7 +1,7 @@
 # Native Rewrite Rust Dependency Version Audit
 
 状态：所有直接依赖已使用 crates.io 最新稳定版或其已记录的 ABI/transition 例外；lockfile 已更新到上游约束允许的最新解析结果
-日期：2026-09-23（新增 ADR-0056 `gpui-kit` transition patch；`gpui-kit` 复核至 `0.6.6`；上次全量审计 2026-09-13）
+日期：2026-09-24（`gpui-kit` 切换到上游固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`；上次全量审计 2026-09-13）
 Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
@@ -18,7 +18,7 @@ cargo update --manifest-path <workspace>/Cargo.toml --dry-run --verbose
 cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 ```
 
-预发布版本、yanked 版本和未固定 git branch 不属于“最新稳定版”。直接依赖精确 pin，传递依赖由 `Cargo.lock` 固定。ADR-0056 另有一个固定 revision 的 `gpui-kit` 过渡 patch，用于在本仓库完成 models page override；它不改变 crate 的 `0.6.6` 版本契约。
+预发布版本、yanked 版本和未固定 git branch 不属于“最新稳定版”。直接依赖精确 pin，传递依赖由 `Cargo.lock` 固定。`gpui-kit` 是唯一直接依赖例外：crates.io 最新稳定版尚不含本仓库需要的两项已合并 API，因此精确固定包含它们的完整上游 commit，待对应 release 发布后恢复 registry pin。
 
 ## Direct Dependencies
 
@@ -37,7 +37,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级                                          |
 | `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级                                          |
 | `embed-resource`                      |       `3.0.11` | Windows 产品图标新增时最新                               |
-| `gpui-kit`                            |        `0.6.6` | release 基线已复核；根目录通过 ADR-0056 patch 使用修复 rev   |
+| `gpui-kit`                            | `0.6.5` @ `500852f` | 上游固定 revision；含 variant 与 Popover arrow                |
 | `futures-lite`                        |        `2.6.1` | 已是最新                                                 |
 | `gpui`                                |        `0.2.2` | spike 直接依赖；正式 UI 经 `gpui-kit` suite 传递              |
 | `libc`                                |      `0.2.189` | 新增时即为最新稳定版                                     |
@@ -70,7 +70,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
 
-`gpui-kit` 的 crates.io 版本仍是 `=0.6.6`；ADR-0056 在根 `Cargo.toml` 加入临时 `[patch.crates-io]`，把 `gpui-kit = 0.6.6` 固定到 `ayangweb/gpui-kit` rev `720aeef7b33f95fdefcf5e7dc6257308bc51aa22`，并让 suite 内各包从同一 commit 解析。它只回移 models page 所需的 `SettingGroup::variant()` override。上游 release 包含该能力后必须删除 patch，并恢复 `deny.toml` 的纯 registry 来源期望。
+`cargo search gpui-kit --limit 1` 与 `cargo info gpui-kit` 在 2026-09-24 仍显示 crates.io 最新稳定版为 `0.6.6`，但该 release 不含后来合并的 `SettingGroup::variant()` 与 `Popover::arrow()`。ADR-0056 因此删除根目录 `[patch.crates-io]` 和 `ayangweb/gpui-kit` fork，直接固定上游 `longbridge/gpui-kit` merge commit `500852f449c05dc01920ec82f3ae2656a61d0387`；该 commit 的 package 元数据为 `0.6.5`。lockfile 中五个 GPUI Kit suite package 统一从这一 git source 解析，`gpui-pre` 仍为 crates.io `0.3.6`。`deny.toml` 只放行该上游仓库；包含两项 API 的 release 发布后必须切回 registry 精确 pin。
 
 ### 已记录的上游阻塞：`tray-icon 0.25.0` 的 Windows `set_tooltip`
 
@@ -99,7 +99,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `generic-array 0.14.7` | `0.14.9`  | `gpui_http_client -> sha2` |
 | `smallvec 1.15.2`      | `1.16.0`  | GPUI Kit/image/URL graphs  |
 
-这些版本不能通过手改 lockfile 或 `cargo update --precise` 安全升级；ADR-0056 的 patch 只用于同版本 `gpui-kit` 的 `SettingGroup::variant()` 回移，不用于越过这些上游约束。解除方式是 GPUI 发布兼容的新版本后升级 GPUI 并重跑双平台 UI/overlay smoke；不为追求表面版本一致而 fork 上游。
+这些版本不能通过手改 lockfile 或 `cargo update --precise` 安全升级；ADR-0056 的上游固定 revision 只用于取得已经合并的 GPUI Kit API，不用于越过这些上游约束。解除方式是 GPUI 发布兼容的新版本后升级 GPUI 并重跑双平台 UI/overlay smoke；不为追求表面版本一致而改写上游依赖图。
 
 `rodio 0.22.2` 在审计日是 crates.io 最新非 yanked 稳定版（MIT OR Apache-2.0，
 Rust 1.87+），但其 playback feature 约束 `cpal 0.17.x`，因此完整 `cargo update` 合法解析
@@ -207,7 +207,7 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   build 不链接 ALSA。真实预置 FLAC header/首样本、资源/解码失败、抢占、overflow 恢复和
   shutdown 均有 Rust 测试；默认设备热切换与长期资源测量留给后续平台验收；
 - `bindgen 0.72.1` 与 `sha2 0.11.0` 只存在于离线 Cubism raw binding 工具；三个当前可绑定 target 的合成 header golden、外部路径/hash/不可覆盖/provenance 测试和 release check 通过；
-- `cargo-deny 0.20.2` 驱动 14 个 manifest 的 locked license/source policy，目标矩阵为三个首发 target。ADR-0056 的临时 git patch 与 `allow-git = []` 当前会让 source check 报 `source-not-allowed`；license check 与 source 命令本身仍可复现。
+- `cargo-deny 0.20.2` 驱动 14 个 manifest 的 locked license/source policy，目标矩阵为三个首发 target。ADR-0056 只在 `allow-git` 中放行固定上游 `https://github.com/longbridge/gpui-kit`，其它未知 git source 继续失败。
 
 GPUI 图继续报告已单独建档的 `block 0.1.6` 和 `proc-macro-error2 2.0.1`
 future-incompatibility。两者本身已是各自当前最新版，升级直接依赖没有解除上游约束；

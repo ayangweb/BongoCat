@@ -187,7 +187,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.5 GPUI spike
 
-状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，历史 spike 精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；它只保留为 Phase 0 证据，正式 Native workspace 当时使用 `gpui-kit = "=0.6.1"`，后续升级至 `=0.6.6`。默认预编译 shader、release `.app`、原生 Application/Edit/Window 菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range；本机 WeType 拼音 2.2.3 进一步通过真实系统组合更新、候选提交和已有中文前缀后的再次组合。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip 已通过双平台原生合成 mouse-move -> GPUI 500ms delay -> build -> hover exit 链路，modal AlertDialog 的 Cancel 初始焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏也已验证。Windows UIA runner 已读取基础 role/name、selected/action、dialog，并通过 loading -> error -> retry/revision 2 恢复门禁；`busy=true` 因 runner 托管 UIA client 缺少属性标识而仍未验证。Apple 拼音、Windows IME、物理键盘/pointer 和目标 DPI 仍未验证；tooltip 朗读与真实辅助技术操作属于 ADR-0054 前的历史证据，不再是当前项目自有 gate，详见 `docs/phase-0/gpui-settings-spike.md`。
+状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，历史 spike 精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；它只保留为 Phase 0 证据，正式 Native workspace 当时使用 `gpui-kit = "=0.6.1"`，后续升级至 `=0.6.6`，并于 2026-09-24 固定到含新增组件 API 的上游 revision。默认预编译 shader、release `.app`、原生 Application/Edit/Window 菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range；本机 WeType 拼音 2.2.3 进一步通过真实系统组合更新、候选提交和已有中文前缀后的再次组合。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip 已通过双平台原生合成 mouse-move -> GPUI 500ms delay -> build -> hover exit 链路，modal AlertDialog 的 Cancel 初始焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏也已验证。Windows UIA runner 已读取基础 role/name、selected/action、dialog，并通过 loading -> error -> retry/revision 2 恢复门禁；`busy=true` 因 runner 托管 UIA client 缺少属性标识而仍未验证。Apple 拼音、Windows IME、物理键盘/pointer 和目标 DPI 仍未验证；tooltip 朗读与真实辅助技术操作属于 ADR-0054 前的历史证据，不再是当前项目自有 gate，详见 `docs/phase-0/gpui-settings-spike.md`。
 
 - [x] 建立最小 Rust workspace 和 GPUI hello/settings 窗口。
 - [x] 固定 `gpui = "=0.2.2"` 并提交 Cargo.lock。
@@ -1664,32 +1664,28 @@ presentation alpha，不再触发窗口替换，因此避免设置更新时短�
 
 ### 6.3 Design System
 
-状态（2026-09-22）：最初于 2026-09-09 对照 `v0.6.0...v0.6.1` 源码与
+状态（2026-09-24；原 2026-09-22）：最初于 2026-09-09 对照 `v0.6.0...v0.6.1` 源码与
 docs.rs/crates.io metadata 完成 gpui-kit 0.6.1 迁移评估；2026-09-19 升级到
 `gpui-kit = "=0.6.4"`（v0.6.2 功能版与 v0.6.4 补丁：新增 Carousel/Empty/InputGroup、
-文本流式淡入与 motion Sequence 等，无 breaking API 变化）；2026-09-22 升级到最新稳定版
-`gpui-kit = "=0.6.6"`（v0.6.5/v0.6.6 补丁：masked label 跳过高亮，`gpui-pre` 改为精确
-pin，无 breaking API 变化）。`gpui-kit 0.6.6` 使用
-Apache-2.0 许可证并默认提供
-component/assets；Native workspace 以精确固定的 crates.io `gpui-kit = "=0.6.6"` 作为唯一
-直接 GPUI 依赖，已删除 Zed 与旧组件
-git source 及 `gpui`、platform、component、assets 的直接 manifest 依赖。完整 `cargo update`
-解析到 `gpui-pre 0.3.6`（Zed 快照 `bcf6582ce3500df93a8a39366640173e6786cea6`，
-`zed-version` 仍为 `0.2.2`），gpui-base/gpui-component/gpui-kit-assets 为 `0.6.6`——
-这四者在本次升级前已由此前一次完整 `cargo update` 解析到位，本次 lockfile 唯一 diff 是
-`gpui-kit 0.6.4 -> 0.6.6`（v0.6.6 的 `gpui-pre =0.3.6` 精确约束与既有解析一致）；该同步包
-元数据对应 Zed `gpui 0.2.2` revision
-`bcf6582ce3500df93a8a39366640173e6786cea6`。设置窗口调用 `gpui_kit::init`，使用
+文本流式淡入与 motion Sequence 等，无 breaking API 变化）；2026-09-22 升级到 crates.io
+最新稳定版 `gpui-kit = "=0.6.6"`。该 release 不含后来合并的 `SettingGroup::variant()` 与
+`Popover::arrow()`；2026-09-24 删除维护者 fork 的 `[patch.crates-io]`，改为直接固定上游
+`longbridge/gpui-kit` merge commit `500852f449c05dc01920ec82f3ae2656a61d0387`（package
+版本 `0.6.5`）。Native workspace 仍只有 `gpui-kit` 一个直接 GPUI 依赖，完整 `cargo update`
+后 GPUI Kit suite 五个 package 统一从该 commit 解析，GPUI 仍为 crates.io `gpui-pre 0.3.6`
+同步包（Zed 快照 `bcf6582ce3500df93a8a39366640173e6786cea6`，`zed-version` 仍为 `0.2.2`）。
+设置窗口调用 `gpui_kit::init`，使用
 `gpui_kit::component::Root` 并随系统外观同步 `Theme`；状态标签、开关、
 按钮、模型 ID、overlay scale/opacity 与 gamepad dead-zone 已迁移到 `Tag`、
 `Switch`、`Button`、`Input` 和 `NumberInput`。输入实体通过 `InputEvent` 与
-`NumberInputEvent` 接入现有 typed command/draft，并从 snapshot 同步。`0.6.6` 没有普通 Card
-primitive，设置内容容器使用官方 `GroupBox::outline()`（模型管理页是唯一例外：其内容是自绘
-卡片网格，经 `SettingGroup::variant(Normal)` 去掉外层卡片容器，见 ADR-0056），导航继续保留无状态薄封装；快捷键捕获和平台辅助功能焦点
-继续保留领域适配层。语言设置使用官方 `Select`；模型卡的删除确认出现浮层需求后，用官方
-`Popover` 封装了项目内 `PopConfirm`（`crates/bongocat-ui/src/pop_confirm.rs`）——`0.6.6` 没有
-`PopConfirm` primitive，也没有 `Popover::arrow`，箭头待依赖升级后补；标签页仍无需求，出现时
-直接使用 `TabBar`，不预建无业务用途的组件。双平台辅助功能与缩放实机证据
+`NumberInputEvent` 接入现有 typed command/draft，并从 snapshot 同步。当前固定 revision 没有普通
+Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型管理页是唯一例外：其内容是
+自绘卡片网格，经 `SettingGroup::variant(Normal)` 去掉外层卡片容器，见 ADR-0056），导航继续
+保留无状态薄封装；快捷键捕获和平台辅助功能焦点继续保留领域适配层。语言设置使用官方
+`Select`；模型卡的删除确认出现浮层需求后，用官方 `Popover` 封装项目内 `PopConfirm`
+（`crates/bongocat-ui/src/pop_confirm.rs`）。`PopConfirm::arrow(bool)` 转发上游 Popover arrow，
+模型删除确认向上显示并启用 anchor-aligned arrow；上游仍没有 `PopConfirm` primitive，因此保留这层
+薄封装。标签页仍无需求，出现时直接使用 `TabBar`，不预建无业务用途的组件。双平台辅助功能与缩放实机证据
 仍待补齐，详见 ADR-0020。偏好设置整体使用 `gpui_kit::component::setting`
 官方 `Settings`、`SettingPage`、`SettingGroup`、`SettingItem` 和 `SettingField` 结构；General
 按 Overlay、Model interaction、Input、Startup 分组，Models 与 Diagnostics 使用独立页面和
@@ -1701,10 +1697,15 @@ primitive，设置内容容器使用官方 `GroupBox::outline()`（模型管理�
 重复的 GPUI adapter，避免两套 `accesskit_macos` 在同一个 NSView 注册固定 Objective-C 类名并
 触发 `SIGABRT`。本机 release 设置 smoke 已验证启动、项目桥接语义和有序退出；迁移到 GPUI
 原生 element 语义及删除项目桥接/兼容构造仍是后续 Design System 工作，不据此勾选总项。
-本次迁移已通过源码/API 兼容审查；升级后的 format、Clippy、unit/doc tests、release check，以及 release
-设置窗口与 Models 页面 smoke。macOS 到 `x86_64-pc-windows-msvc` 的交叉 check 会在
-GPUI Kit 配套 HTTP/TLS 链编译 `aws-lc-sys`/`ring` 时因本机没有 Windows SDK headers 停止；
-Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-latest` runner 验证。
+2026-09-24 验证：`cargo fmt --all -- --check`、`just check` 的三段严格 Clippy、
+`cargo test --locked -p bongocat-ui --lib`（130 passed，含 arrow 几何回归）、
+`cargo check --locked --workspace --release` 与 Windows release
+`--settings-window-smoke --models-page-smoke` 均通过。`just check` 的 workspace test 在
+既有的 Windows canonical-path 断言 `service_renames_and_covers_a_model_of_either_origin`
+处停止（136 passed / 1 failed），该失败与本次 GPUI Kit 切换及 arrow 改动无关；不能把
+完整 `just check` 记为全绿。使用临时安装的精确 `cargo-deny 0.20.2` 对正式 workspace、
+12 个 spike workspace 与 bindgen tool 的 14 个 manifest 执行 locked `licenses sources`
+检查均通过；本机没有 `bash`，因此等价的 shell wrapper 本身未直接运行。
 
 - [ ] 定义颜色、排版、间距、圆角、边框、阴影和焦点 token。
 - [ ] 实现 Button、IconButton、TextInput、NumberInput、Slider、Switch。
@@ -4622,14 +4623,20 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 交互调整（2026-09-21）：删除确认从「删除控件就地替换成 确定/取消 两个内联按钮」改为
       `PopConfirm` 确认浮层（`crates/bongocat-ui/src/pop_confirm.rs`，基于官方
       `gpui_kit::component::popover::Popover` 封装，零新增依赖；`0.6.6` 没有 `PopConfirm`
-      primitive，也没有 `Popover::arrow`，箭头待依赖升级后补）。浮层由卡片上的删除控件原地打开
-      （`Anchor::TopRight`，标题前 `TriangleAlert` + 新增 `Tokens::danger`），确定/取消用
+      primitive，2026-09-24 切到含 `Popover::arrow` 的上游固定 revision 后由 `PopConfirm`
+      转发并启用箭头）。浮层由卡片上的删除控件原地打开
+      （`Anchor::BottomRight`，向上显示；标题前 `TriangleAlert` + 新增 `Tokens::danger`），确定/取消用
       `Size::Small`、确定用 `ButtonVariant::Primary`（危险语义由标题前的图标承载，按钮不走
       danger 色）。页面的 `model_delete_confirmation` 仍是
       唯一事实来源，只有「确定」路径才到 `delete_model`；`ModelRowAction` 的 `CancelDelete`
       与卡片的确认态 tab stop 随之删除，卡片操作行恒为四个控件（选中 / 打开所在文件夹 / 编辑 /
       删除）。文案 `models.delete_confirmation` 改为「你确定要删除这个模型吗？」，删
       `models.actions.confirm_deletion`。
+    - 后续修订（2026-09-24）：删除 ADR-0056 的维护者 fork patch，根依赖改为上游固定
+      revision；`PopConfirm` 转发 `Popover::arrow(bool)`，模型删除确认向上显示并启用箭头。新增组件几何
+      回归证明 arrow 会扩大 trigger 与 surface 的间距；`bongocat-ui` 130 项测试、严格 Clippy、
+      release check 和 Windows 设置/Models smoke 通过。上游 Root 现在自动挂载 dialog、sheet 与
+      notification layer，业务根视图同步删除旧的手动 layer 调用。
     - 顺带修正（2026-09-21）：`model_delete_confirmation_is_valid` 原先只看「installed、非激活、
       仍在目录」，漏了 `commands_blocked`——确认开着时若有导入在飞，`can_delete` 变 false 会让
       浮层卸载，命令结束后又自己弹回来。改为直接委托 `model_row_actions(...).can_delete`。

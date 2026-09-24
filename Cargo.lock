@@ -2898,8 +2898,8 @@ dependencies = [
 
 [[package]]
 name = "gpui-base"
-version = "0.6.6"
-source = "git+https://github.com/ayangweb/gpui-kit?rev=720aeef7b33f95fdefcf5e7dc6257308bc51aa22#720aeef7b33f95fdefcf5e7dc6257308bc51aa22"
+version = "0.6.5"
+source = "git+https://github.com/longbridge/gpui-kit?rev=500852f449c05dc01920ec82f3ae2656a61d0387#500852f449c05dc01920ec82f3ae2656a61d0387"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -2935,8 +2935,8 @@ dependencies = [
 
 [[package]]
 name = "gpui-component"
-version = "0.6.6"
-source = "git+https://github.com/ayangweb/gpui-kit?rev=720aeef7b33f95fdefcf5e7dc6257308bc51aa22#720aeef7b33f95fdefcf5e7dc6257308bc51aa22"
+version = "0.6.5"
+source = "git+https://github.com/longbridge/gpui-kit?rev=500852f449c05dc01920ec82f3ae2656a61d0387#500852f449c05dc01920ec82f3ae2656a61d0387"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2978,8 +2978,8 @@ dependencies = [
 
 [[package]]
 name = "gpui-component-macros"
-version = "0.6.6"
-source = "git+https://github.com/ayangweb/gpui-kit?rev=720aeef7b33f95fdefcf5e7dc6257308bc51aa22#720aeef7b33f95fdefcf5e7dc6257308bc51aa22"
+version = "0.6.5"
+source = "git+https://github.com/longbridge/gpui-kit?rev=500852f449c05dc01920ec82f3ae2656a61d0387#500852f449c05dc01920ec82f3ae2656a61d0387"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2989,8 +2989,8 @@ dependencies = [
 
 [[package]]
 name = "gpui-kit"
-version = "0.6.6"
-source = "git+https://github.com/ayangweb/gpui-kit?rev=720aeef7b33f95fdefcf5e7dc6257308bc51aa22#720aeef7b33f95fdefcf5e7dc6257308bc51aa22"
+version = "0.6.5"
+source = "git+https://github.com/longbridge/gpui-kit?rev=500852f449c05dc01920ec82f3ae2656a61d0387#500852f449c05dc01920ec82f3ae2656a61d0387"
 dependencies = [
  "gpui-base",
  "gpui-component",
@@ -3002,8 +3002,8 @@ dependencies = [
 
 [[package]]
 name = "gpui-kit-assets"
-version = "0.6.6"
-source = "git+https://github.com/ayangweb/gpui-kit?rev=720aeef7b33f95fdefcf5e7dc6257308bc51aa22#720aeef7b33f95fdefcf5e7dc6257308bc51aa22"
+version = "0.6.5"
+source = "git+https://github.com/longbridge/gpui-kit?rev=500852f449c05dc01920ec82f3ae2656a61d0387#500852f449c05dc01920ec82f3ae2656a61d0387"
 dependencies = [
  "anyhow",
  "gpui-pre",

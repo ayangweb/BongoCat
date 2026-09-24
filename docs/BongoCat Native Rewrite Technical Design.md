@@ -98,13 +98,14 @@ GPUI 用于设置窗口、模型管理、快捷键编辑、权限状态、更新
 
 GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 Live2D 纹理合成路径。因此：
 
-- 正式 Native workspace 精确固定 crates.io `gpui-kit = "=0.6.6"` 并提交 `Cargo.lock`；
-  GPUI Kit 是唯一直接 GPUI 依赖，通过其 crates.io 同步包提供元数据对应 Zed `gpui 0.2.2`
-  的整套 GPUI crate，禁止另行声明或替换 `gpui`、platform、component 和 assets。
-- ADR-0056 的过渡期在根 `Cargo.toml` 使用临时 `[patch.crates-io]`，把 `gpui-kit` 固定到
-  上游修复 rev `720aeef7b33f95fdefcf5e7dc6257308bc51aa22`；lockfile 中 GPUI Kit suite
-  因此解析到同一 git commit。该 patch 只用于 `SettingGroup::variant()`，待 crates.io release
-  包含等价能力后删除并恢复纯 registry 来源。
+- 正式 Native workspace 只直接依赖上游 `longbridge/gpui-kit` 的固定 revision
+  `500852f449c05dc01920ec82f3ae2656a61d0387`（package 版本 `0.6.5`）并提交
+  `Cargo.lock`；GPUI Kit 是唯一直接 GPUI 依赖，其 suite 内五个 package 都从同一 git
+  commit 解析。禁止另行声明或替换 `gpui`、platform、component 和 assets。
+- 该精确 revision 已合并 `SettingGroup::variant()` 与 `Popover::arrow()`，但包含这些能力的
+  crates.io release 尚未发布；因此不再使用 `[patch.crates-io]` 或维护者 fork。GPUI Kit 仍通过
+  crates.io 的 `gpui-pre 0.3.6` 同步包提供元数据对应 Zed `gpui 0.2.2` 的整套 GPUI crate。
+  上游 release 包含上述能力后，必须切回 crates.io 精确 pin 并删除 git source。
 - 不自动跟随 Zed main，不直接依赖 Zed 应用内部 UI crate。
 - 以 `gpui_kit::component` 提供的主题和基础组件为 design system 基础；窗口使用其官方
   `Root`，图标使用 `gpui_kit::assets`，项目只保留领域适配、产品 token 覆盖和组件库未覆盖

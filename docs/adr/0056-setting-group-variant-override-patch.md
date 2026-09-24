@@ -1,41 +1,41 @@
-# ADR-0056: SettingGroup 按组 variant 覆盖的过渡 patch
+# ADR-0056: SettingGroup variant 与上游 GPUI Kit 固定 revision
 
-状态：已接受（2026-09-23）
+状态：已接受（2026-09-23；2026-09-24 修订）
 
 ## 背景
 
-模型管理页的内容是一个自绘卡片的模型网格。设置窗口的组容器走官方
-`Settings::with_group_variant(GroupBoxVariant::Outline)`（ADR-0019/0020），该页因此在外层
-多出一个卡片容器：边框、内边距与圆角包裹在自绘网格外面，读作双重容器。
+模型管理页的内容是自绘卡片网格。设置窗口的组容器使用官方
+`Settings::with_group_variant(GroupBoxVariant::Outline)`，因此该页在外层多出一个卡片容器：
+边框、内边距与圆角包裹在自绘网格外面。`SettingGroup::variant(GroupBoxVariant::Normal)`
+可以在不改变其它页面的情况下移除这一层容器。
 
-`gpui-kit 0.6.6`（crates.io 最新）的 `Settings::with_group_variant` 文档写明该值
-"unless overridden individually"，但 `SettingGroup` 没有任何覆盖 API；`SettingGroup` 的
-`Styled` refinement 只落到 `GroupBox` 外层 wrapper，而 Outline 的边框与内边距画在内层
-元素上，样式上无法去除。全局换 variant 不可行：快捷键页两个带标题组的标题在 Outline 下
-画在边框盒外，且带标题组是二级侧边栏入口，其他页面无法保持像素不变。上游 main 在 0.6.6
-之后对 setting 模块无改动，无可摘修复。
+`gpui-kit 0.6.6` 的文档已经承诺 group variant 可单独覆盖，但实现没有对应 API。维护者向
+`longbridge/gpui-kit` 提交 issue #3202 与 PR #3203；PR 已于 2026-09-23 合并，merge commit
+为 `500852f449c05dc01920ec82f3ae2656a61d0387`。同一上游 revision 还包含
+`Popover::arrow(bool)`，可供项目内 `PopConfirm` 转发。对应能力尚未发布到 crates.io。
 
 ## 决策
 
-- 向上游提交 issue（longbridge/gpui-kit#3202）与 PR（#3203）：为 `SettingGroup` 增加
-  `variant(GroupBoxVariant)` 覆盖，`render` 时 `self.variant.unwrap_or(options.group_variant())`，
-  兑现 `with_group_variant` 的既有文档承诺。
-- 在上游合并发版前，通过 `[patch.crates-io]` 将 `gpui-kit = "=0.6.6"` 指向维护者 fork 的
-  过渡分支 `patch/0.6.6-setting-group-variant`（rev `720aeef7`）。该分支从 0.6.6 发布
-  commit（`9765ae2c`）切出，仅重放上述覆盖与其测试。patch 的是 facade `gpui-kit` 而非
-  `gpui-component`，使整棵 gpui 系依赖树在单一 commit 内解析，避免 git/registry 双份
-  同名包的 `links` 冲突与类型分裂。
-- 模型管理页的组（`crates/bongocat-ui/src/window/render.rs`）使用
-  `SettingGroup::variant(GroupBoxVariant::Normal)`，页面内容直接呈现；其余页面的
-  Outline 卡片保持不变。`WrappedModelsPageHarness`（`window/tests.rs`）同步该覆盖，
-  以继续忠实复现产品的真实包装链。
-- `Cargo.lock` 中 gpui-kit/gpui-component/gpui-base/gpui-component-macros/gpui-kit-assets
-  五个包换源到该 git rev，其余依赖与 `gpui-pre 0.3.6` 解析不变。
+- 根 workspace 直接依赖上游 `longbridge/gpui-kit` 的固定 revision
+  `500852f449c05dc01920ec82f3ae2656a61d0387`，删除 `[patch.crates-io]` 与维护者 fork
+  依赖。该 commit 的 package 元数据为 `0.6.5`；revision 比版本号更重要，禁止改用未固定的
+  `main` branch。
+- lockfile 中 `gpui-kit`、`gpui-component`、`gpui-base`、`gpui-component-macros` 与
+  `gpui-kit-assets` 全部从上述同一 git commit 解析；GPUI 本身仍来自 crates.io
+  `gpui-pre 0.3.6` 同步包，不引入第二套 GPUI 类型。
+- 模型管理页继续调用 `SettingGroup::variant(GroupBoxVariant::Normal)`，调用点与测试 harness
+  不因依赖来源切换而改变。
+- `PopConfirm` 增加 `arrow(bool)` 转发，模型删除确认在按钮上方显示并启用 anchor-aligned arrow。上游 revision
+  同时改为由 `Root` 自动挂载 dialog、sheet 与 notification layer，因此业务根视图删除旧的
+  `Root::render_*_layer` 调用。
+- `deny.toml` 只允许 `https://github.com/longbridge/gpui-kit`，其它 git source 仍拒绝。
 
 ## 影响
 
-- 其他页面布局与样式不变；设置窗口的搜索、二级侧边栏与重置路径不受影响（组结构未变）。
-- 该 patch 是过渡措施：上游 PR 合并发版后，升级 `gpui-kit` 并删除 `[patch.crates-io]`
-  段，锁定版本规则（ADR-0020）恢复为 crates.io 精确 pin。升级前 CI 需要访问
-  `github.com/ayangweb/gpui-kit`。
-- 上游 PR 被要求改名或改形态时，本仓库同步更新 patch 分支与引用 rev。
+- 依赖来源从维护者 fork patch 切换为上游固定 commit；不再维护或信任 fork 分支。
+- 上游发布同时包含 `SettingGroup::variant()` 与 `Popover::arrow()` 的 crates.io release 后，
+  必须升级到该 release 的精确 registry pin，删除 git source，并恢复纯 registry 来源策略。
+- `Root` layer API 迁移只删除重复挂载；窗口仍使用 `gpui_kit::component::Root`，dialog、
+  sheet 与 notification 的 owner 仍为 GPUI Kit。
+- `PopConfirm::arrow` 默认关闭以保持调用方显式选择；当前模型删除确认使用 `BottomRight` 向上显示并显式启用箭头。组件几何测试
+  固定 arrow 会为 trigger 与 surface 预留额外间距。

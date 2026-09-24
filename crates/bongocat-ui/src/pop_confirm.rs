@@ -10,10 +10,8 @@
 //! so the caller keeps ownership of what happens on confirm, on cancel and on
 //! failure.
 //!
-//! There is no arrow. GPUI Kit's `Popover` gained one after the version this
-//! workspace pins (0.6.4 has neither `arrow` nor `offset`), so a tail here would
-//! be a hand-rolled shape that the next upgrade replaces. The surface works
-//! without it; add `.arrow(true)` at the call site once the dependency moves.
+//! GPUI Kit's `Popover` draws the optional anchor-aligned arrow, so this
+//! wrapper only forwards whether the caller wants one.
 
 use std::rc::Rc;
 
@@ -85,6 +83,7 @@ pub struct PopConfirm {
     confirm_label: Option<SharedString>,
     cancel_label: Option<SharedString>,
     anchor: Anchor,
+    arrow: bool,
     trigger: Option<AnyElement>,
     open: Option<bool>,
     on_open_change: Option<OpenChangeCallback>,
@@ -104,6 +103,7 @@ impl PopConfirm {
             confirm_label: None,
             cancel_label: None,
             anchor: Anchor::TopLeft,
+            arrow: false,
             trigger: None,
             open: None,
             on_open_change: None,
@@ -148,6 +148,12 @@ impl PopConfirm {
     /// so the surface grows back over the container instead of past it.
     pub fn anchor(mut self, anchor: impl Into<Anchor>) -> Self {
         self.anchor = anchor.into();
+        self
+    }
+
+    /// Show an anchor-aligned arrow pointing toward the trigger.
+    pub fn arrow(mut self, arrow: bool) -> Self {
+        self.arrow = arrow;
         self
     }
 
@@ -307,6 +313,7 @@ impl RenderOnce for PopConfirm {
             confirm_label,
             cancel_label,
             anchor,
+            arrow,
             trigger,
             open,
             on_open_change,
@@ -317,6 +324,7 @@ impl RenderOnce for PopConfirm {
 
         Popover::new(id.clone())
             .anchor(anchor)
+            .arrow(arrow)
             .when_some(trigger, |this, trigger| {
                 this.trigger(TriggerSlot {
                     element: trigger,
@@ -421,6 +429,7 @@ mod tests {
         log: Rc<RefCell<Log>>,
         open: bool,
         with_icon: bool,
+        arrow: bool,
     }
 
     impl Render for Harness {
@@ -436,6 +445,7 @@ mod tests {
                         .test_support(),
                 )
                 .open(self.open)
+                .arrow(self.arrow)
                 .on_open_change(cx.listener(|this, open: &bool, _, cx| {
                     this.log.borrow_mut().opened.push(*open);
                     this.open = *open;
@@ -459,6 +469,7 @@ mod tests {
             log: Rc::new(RefCell::new(Log::default())),
             open: false,
             with_icon,
+            arrow: false,
         })
     }
 
@@ -529,6 +540,40 @@ mod tests {
             view.read_with(visual, |view, _| view.log.borrow().opened.clone()),
             vec![true],
             "the surface must report opening exactly once"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn the_arrow_reserves_space_between_the_trigger_and_surface(cx: &mut TestAppContext) {
+        let (view, visual) = harness(cx, false);
+        visual.update(|window, cx| window.render_frame(cx));
+
+        let mut gaps = Vec::new();
+        for arrow in [false, true] {
+            view.update(visual, |view, cx| {
+                view.open = true;
+                view.arrow = arrow;
+                cx.notify();
+            });
+            visual.update(|window, cx| window.render_frame(cx));
+            let trigger_bottom = visual.update(|window, _| {
+                window
+                    .try_find(TRIGGER)
+                    .map(|snapshot| snapshot.bounds().bottom())
+                    .expect("the trigger is drawn")
+            });
+            let surface_top = visual.update(|window, _| {
+                window
+                    .try_find(part("surface"))
+                    .map(|snapshot| snapshot.bounds().top())
+                    .expect("the open surface is drawn")
+            });
+            gaps.push(surface_top - trigger_bottom);
+        }
+
+        assert!(
+            gaps[1] > gaps[0],
+            "the arrow must reserve space between the trigger and the surface"
         );
     }
 

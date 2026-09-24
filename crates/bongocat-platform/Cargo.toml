@@ -11,9 +11,6 @@ publish.workspace = true
 async-channel.workspace = true
 bongocat-config.workspace = true
 bongocat-input.workspace = true
-# `HasWindowHandle` is the parameter type of the public `apply_theme`, so the trait
-# has to resolve on both shipped platforms. `raw-window-handle` is a cross-platform
-# handle abstraction, not a platform-specific binding.
 raw-window-handle.workspace = true
 url.workspace = true
 
@@ -31,11 +28,8 @@ auto-launch = "=0.6.0"
 [target.'cfg(target_os = "macos")'.dependencies]
 async-io.workspace = true
 block2 = "=0.6.2"
-# `run_on_main` hands the startup permission prompt to the main thread, where AppKit
-# windows must be built and the theme-following `NSAlert` has to run (ADR-0032, 2026-09-18).
 dispatch2 = "=0.3.1"
 objc2 = "=0.6.4"
-# `NSAlert` carries the theme-following startup permission prompt (ADR-0048, ADR-0032).
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSAlert", "NSAppearance", "NSApplication", "NSButton", "NSCell", "NSControl", "NSEvent", "NSGraphics", "NSMenu", "NSMenuItem", "NSPanel", "NSResponder", "NSRunningApplication", "NSWorkspace", "NSView", "NSWindow", "block2", "objc2-core-foundation"] }
 objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["CFDate", "CFMachPort", "CFRunLoop"] }
 objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["CGDirectDisplay", "CGError", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
@@ -46,8 +40,6 @@ objc2-game-controller = { version = "=0.3.2", default-features = false, features
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",
     "Win32_Globalization",
-    # `DwmSetWindowAttribute` + `DWMWA_USE_IMMERSIVE_DARK_MODE` is the only documented
-    # way to make a window frame follow an application theme (ADR-0048).
     "Win32_Graphics_Dwm",
     "Win32_Security",
     "Win32_Graphics_Gdi",
@@ -56,9 +48,6 @@ windows = { version = "=0.62.2", features = [
     "Win32_System_Registry",
     "Win32_System_StationsAndDesktops",
     "Win32_System_Threading",
-    # `UISettings.GetColorValue(Foreground)` is how gpui's Windows backend itself reads
-    # the system appearance before pinning a window frame (ADR-0048); the theme module
-    # must derive "follow the system" from the same source so the two writers agree.
     "UI_ViewManagement",
     "Win32_UI_Input",
     "Win32_UI_Input_KeyboardAndMouse",

@@ -627,9 +627,9 @@ fn model_card_actions(
                 ("delete-model-confirmation", index),
                 bongocat_i18n::text(language.catalog_locale(), "models.delete_confirmation"),
             )
-            // The control sits at the trailing edge of the card, so the surface
-            // grows back over the card instead of past the window edge.
-            .anchor(Anchor::TopRight)
+            // Open above the trailing-edge control and grow back over the card.
+            .anchor(Anchor::BottomRight)
+            .arrow(true)
             .icon(gpui_kit::assets::IconName::TriangleAlert, tokens.danger)
             .confirm_label(bongocat_i18n::text(
                 language.catalog_locale(),

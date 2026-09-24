@@ -15,9 +15,6 @@ serde.workspace = true
 serde_json.workspace = true
 tar.workspace = true
 
-# Test-only: the merge test deserializes the manifest it writes with the update
-# library's own reader type, so a manifest shape the runtime cannot read fails here
-# instead of on a user's machine. The reader is the one `bongocat-update` runs.
 [dev-dependencies]
 cargo-packager-updater.workspace = true
 

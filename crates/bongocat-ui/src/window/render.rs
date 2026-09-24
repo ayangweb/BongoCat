@@ -1145,8 +1145,6 @@ impl Render for SettingsView {
             .flex_col()
             .child(div().min_h_0().w_full().flex_1().child(settings))
             .child(model_drag_exit_listener)
-            .children(Root::render_notification_layer(window, cx))
-            .children(Root::render_dialog_layer(window, cx))
             .children(model_drag_overlay)
             .into_any_element()
     }

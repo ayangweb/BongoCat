@@ -252,8 +252,8 @@ impl SettingsView {
     /// The dialog is `gpui-kit`'s, and each option is one of its checkboxes:
     /// no hand-built surface stands in for the component. The values the
     /// dialog *renders* come from an [`MverDialogSnapshot`] taken here rather
-    /// than a later read of the draft: `Root::render_dialog_layer` builds the
-    /// dialog inside `SettingsView::render`, so a `read_with` there would
+    /// than a later read of the draft: `Root` owns the dialog layer inside
+    /// `SettingsView::render`, so a `read_with` there would
     /// re-borrow the entity `render` already holds. The snapshot is the
     /// frame's controlled state; toggles write back to it and to the draft,
     /// the confirm callback reads the draft, and a cancel simply drops it.

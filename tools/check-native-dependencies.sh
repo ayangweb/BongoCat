@@ -41,11 +41,6 @@ check_release_dependency_tree() {
     printf 'release dependency tree clean: %s\n' "$target"
 }
 
-# The three shipped target/arch combinations, and only those. Windows ARM64 is not
-# one of them: Cubism Native R5 has no desktop ARM64 Core, and Windows on ARM runs
-# the x64 build under emulation (AGENTS.md §1, ADR-0033). `deny.toml`'s `[graph]
-# targets` declares the same list, and `tools/tests/test_native_release_target_matrix.py`
-# fails if the two ever drift apart.
 for target in \
     x86_64-pc-windows-msvc \
     x86_64-apple-darwin \
