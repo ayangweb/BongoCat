@@ -478,8 +478,11 @@ impl Live2dModel {
     /// The fixed targets match Bongo-Cat-Mver's Cubism Framework breath
     /// configuration. They are applied after product input, as in the
     /// reference, so the conventional angle parameters are not overwritten by
-    /// the neutral input snapshot. A model's first explicit Breath group may
-    /// contribute additional IDs; the fixed targets are not duplicated.
+    /// the neutral input snapshot. The `0.5` contribution is additive, matching
+    /// `CubismBreath`'s `AddParameterValue`; blending toward the breath target
+    /// would incorrectly cancel a strong mouse-driven angle. A model's first
+    /// explicit Breath group may contribute additional IDs; the fixed targets
+    /// are not duplicated.
     pub fn apply_automatic_effects(
         &mut self,
         elapsed: Duration,
@@ -491,7 +494,7 @@ impl Live2dModel {
             let target = offset as f64
                 + peak as f64 * (std::f64::consts::TAU * seconds / cycle as f64).sin();
             if matches!(
-                self.set_parameter_by_id_with_weight(
+                self.add_parameter_by_id_with_weight(
                     id,
                     target as f32,
                     AUTOMATIC_BREATH_CONTRIBUTION_WEIGHT
@@ -502,6 +505,9 @@ impl Live2dModel {
             }
         }
 
+        // The optional model3 Breath group keeps the existing model-range
+        // blend contract; only the five fixed Mver targets above use the
+        // reference additive contribution.
         let generic_phase = ((std::f64::consts::TAU * seconds / GENERIC_BREATH_PERIOD as f64).sin()
             + 1.0) as f32
             * 0.5;
@@ -529,6 +535,21 @@ impl Live2dModel {
             }
         }
         Ok(applied)
+    }
+
+    fn add_parameter_by_id_with_weight(
+        &mut self,
+        id: &str,
+        value: f32,
+        weight: f32,
+    ) -> Result<ParameterUpdate, Live2dError> {
+        if !value.is_finite() {
+            return Err(Live2dError::new(
+                Live2dErrorCode::ParameterValueInvalid,
+                format!("{id} received a non-finite automatic value"),
+            ));
+        }
+        self.core.add_parameter_by_id(id, value, weight)
     }
 
     fn set_parameter_by_id_with_weight(
@@ -2180,6 +2201,26 @@ mod tests {
             .restore_parameter_defaults()
             .expect("restore parameter defaults");
         assert_eq!(model.breath_parameter_ids, ["ParamBreath"]);
+
+        model
+            .set_parameter(ProductParameter::AngleX, -15.0)
+            .expect("product angle input");
+        model
+            .apply_automatic_effects(std::time::Duration::ZERO, 0.0)
+            .expect("additive reference breath");
+        assert_eq!(
+            model
+                .core
+                .parameter_value_by_id("ParamAngleX")
+                .expect("angle value")
+                .expect("supported angle parameter"),
+            -15.0,
+            "reference breath must add to, not blend away, mouse input"
+        );
+
+        model
+            .restore_parameter_defaults()
+            .expect("restore parameter defaults");
         let breath_range = model
             .core
             .parameter_range_by_id("ParamBreath")
@@ -2337,7 +2378,7 @@ mod tests {
               "PhysicsSettings":[{
                 "Id":"PhysicsSetting1",
                 "Input":[{"Source":{"Target":"Parameter","Id":"ParamAngleX"},"Weight":100,"Type":"X","Reflect":false}],
-                "Output":[{"Destination":{"Target":"Parameter","Id":"ParamAngleX"},"VertexIndex":1,"Scale":1,"Weight":100,"Type":"X","Reflect":false}],
+                "Output":[{"Destination":{"Target":"Parameter","Id":"ParamAngleY"},"VertexIndex":1,"Scale":1,"Weight":100,"Type":"X","Reflect":false}],
                 "Vertices":[
                   {"Position":{"X":0,"Y":0},"Mobility":1,"Delay":0,"Acceleration":0,"Radius":0},
                   {"Position":{"X":0,"Y":10},"Mobility":1,"Delay":0,"Acceleration":0,"Radius":10}
@@ -2360,7 +2401,7 @@ mod tests {
             .apply_physics(std::time::Duration::from_millis(100))
             .expect("physics evaluation");
         let output = model
-            .parameter_value_by_id("ParamAngleX")
+            .parameter_value_by_id("ParamAngleY")
             .expect("physics value")
             .expect("physics parameter");
         assert!(output.abs() > 0.1, "physics output: {output}");

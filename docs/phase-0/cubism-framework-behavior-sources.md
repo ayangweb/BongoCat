@@ -70,6 +70,17 @@ adapter, reference breath, and bounded physics3 evaluation. These crate splits d
 not change the R5 oracle, license, or the remaining authorized-fixture/black-box
 physics/pose evidence gates.
 
+2026-09-24 follow-up: the fixed Mver `CubismBreath` path calls
+`AddParameterValue`, so the Native reference-breath contribution is additive
+(`current + value * weight`) before Core clamping; it must not use the
+motion/expression-style target blend. The Mver source tree does not identify its
+linked Framework revision. Its update shape is consistent with the 4-r.x
+sample, while Native deliberately retains the pinned R5 fixed-step/interpolation
+contract. The Rust evaluator also converts sub-rig angles from degrees to radians exactly once; a
+second conversion would reduce a 30-degree input to roughly 0.52 degrees. The evaluator also
+skips root-particle outputs and clamps raw physics values before applying `Output.Weight`, matching
+the R5 path. This correction does not claim a complete Mver physics oracle.
+
 ## 3. License Boundary
 
 Native Framework and Samples use the Live2D Open Software License, not the repository MIT license. Core and its header use the Live2D Proprietary Software License. `Core/RedistributableFiles.txt` lists runtime libraries but does not list the Core header, so publishing generated Rust bindings derived from that header also requires an explicit Live2D answer.

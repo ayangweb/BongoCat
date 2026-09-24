@@ -301,6 +301,49 @@ impl CoreModel {
         })
     }
 
+    /// Apply an additive parameter contribution, matching Cubism's
+    /// `AddParameterValue` operation used by the reference breath layer.
+    ///
+    /// This is intentionally separate from [`Self::set_parameter_by_id`]:
+    /// motion/expression evaluation blends toward a target, while the
+    /// reference automatic effects add their weighted contribution to the
+    /// current value before the Core range is applied.
+    pub(crate) fn add_parameter_by_id(
+        &mut self,
+        id: &str,
+        amount: f32,
+        weight: f32,
+    ) -> Result<ParameterUpdate, Live2dError> {
+        if !amount.is_finite() || !weight.is_finite() || !(0.0..=1.0).contains(&weight) {
+            return Err(Live2dError::new(
+                Live2dErrorCode::ParameterValueInvalid,
+                format!("{id} received an invalid additive value or weight"),
+            ));
+        }
+        let Some(resolved) = self.parameters_by_id.get(id).copied() else {
+            return Ok(ParameterUpdate::Unsupported);
+        };
+        // SAFETY: self uniquely owns the Model and the index was validated
+        // against this Model's parameter count while building parameters_by_id.
+        let (value, requested) = unsafe {
+            let count = self.parameter_count()?;
+            let values = checked_slice_mut(
+                sys::csmGetParameterValues(self.model.as_ptr()),
+                count,
+                "parameter values",
+            )?;
+            let current = values[resolved.index];
+            let requested = current + amount * weight;
+            let clamped = requested.clamp(resolved.range.minimum, resolved.range.maximum);
+            values[resolved.index] = clamped;
+            (clamped, requested)
+        };
+        Ok(ParameterUpdate::Applied {
+            value,
+            clamped: value != requested,
+        })
+    }
+
     pub(crate) fn parameter_range_by_id(&self, id: &str) -> Option<ParameterRange> {
         self.parameters_by_id.get(id).map(|resolved| resolved.range)
     }
@@ -1185,6 +1228,36 @@ mod tests {
                 .expect_err("unknown high bits are unsupported")
                 .code,
             Live2dErrorCode::UnsupportedBlendMode
+        );
+    }
+
+    #[test]
+    fn additive_parameter_updates_preserve_the_reference_breath_semantics() {
+        let committed = preset_model("standard");
+        let moc_path = committed.root().join(&committed.index().moc);
+        let mut core = CoreModel::load(&moc_path).expect("load Cubism model");
+        core.set_parameter_by_id("ParamAngleX", -15.0, 1.0)
+            .expect("base angle");
+        let update = core
+            .add_parameter_by_id("ParamAngleX", 10.0, 0.5)
+            .expect("additive breath contribution");
+        assert_eq!(
+            update,
+            ParameterUpdate::Applied {
+                value: -10.0,
+                clamped: false,
+            }
+        );
+
+        let clamped = core
+            .add_parameter_by_id("ParamAngleX", 100.0, 1.0)
+            .expect("clamped additive contribution");
+        assert_eq!(
+            clamped,
+            ParameterUpdate::Applied {
+                value: 30.0,
+                clamped: true,
+            }
         );
     }
 

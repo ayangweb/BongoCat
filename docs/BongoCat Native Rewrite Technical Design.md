@@ -665,8 +665,10 @@ model evaluation + render snapshot
   update；这与固定 Mver 参考实现的更新顺序一致，使 neutral pointer input 不会抹掉角度呼吸，
   physics 也能看到产品输入。自动 Breath 使用 Mver 的固定 Cubism Framework 参数集合
   `ParamAngleX/Y/Z`、`ParamBodyAngleX` 和 `ParamBreath`，按各目标的 offset/peak/cycle 计算，
-  再以 `0.5` 权重作为贡献写入；它不要求 model3 存在 `Breath` 组。model3 首个
-  `Parameter`/`Breath` 组仍可声明最多 64 个额外 ID，固定 ID 不重复驱动，缺少该组也不影响
+  再以 `current + value * 0.5` 的加法贡献写入并按 Core 范围 clamp；不能把 Breath 目标向当前值
+  插值，否则鼠标角度会被削弱。它不要求 model3 存在 `Breath` 组。model3 首个
+  `Parameter`/`Breath` 组仍可声明最多 64 个额外 ID，并保留既有的 model-range blend 语义；
+  固定 ID 不重复驱动，缺少该组也不影响
   固定参考目标。声明的 physics3 由 `bongocat-model` 做有界解析、由 `bongocat-live2d` 按 R5
   结构执行固定步进、惯性、延迟和输出插值；未知输入/输出安全跳过，pose 仍未实现。不得把
   有符号正弦直接钳到单边参数范围，也不得按满量程绝对覆盖参数。completed motion 仍以 clip

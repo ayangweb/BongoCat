@@ -123,12 +123,15 @@ that this is not an optional model-specific effect: `myUserModel.cpp` always cre
 The update order is motion/expression, product drag, breath, physics, and Core update.
 
 Native therefore applies the same five fixed breath targets with their reference offsets, peaks,
-cycles, and `0.5` contribution weight after typed product input. A model3 `Breath` group remains an
-optional source of up to 64 additional IDs; it is no longer required for the conventional targets,
-and fixed IDs are not applied twice. For the reported model, the `ParamBreath` range is `0..1` with
-default `0`, so the reference contribution stays at or below `0.5` and does not cross its authored
-visibility threshold, while the fixed angle targets feed the declared physics rig and restore the
-hair's idle motion.
+cycles, and `0.5` contribution weight after typed product input. The contribution is additive
+(`current + value * 0.5`, followed by the Core range clamp), matching the reference
+`AddParameterValue` call; it is not a blend toward the breath target, which would weaken a
+mouse-driven angle before physics reads it. A model3 `Breath` group remains an optional source of up
+to 64 additional IDs and retains its existing model-range blend behavior; it is no longer required
+for the conventional targets, and fixed IDs are not applied twice. For the reported model, the
+`ParamBreath` range is `0..1` with default `0`; the reference contribution stays at or below `0.5`
+and does not cross its authored visibility threshold,
+while the fixed angle targets feed the declared physics rig and restore the hair's idle motion.
 
 Validated physics3 v3 definitions are parsed by the model contract and evaluated by a bounded Rust
 runtime with fixed-step interpolation, inertia, delay, and typed parameter IDs. Unknown input or

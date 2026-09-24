@@ -1414,8 +1414,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     `ParamBodyAngleX`、`ParamBreath` 五个呼吸目标，并在 motion/expression/产品拖动之后、Core update
     之前求值声明的 physics3；该模型没有 motion/expression，但 `cat.physics3.json` 有 14 个 setting、
     48 个粒子和 33 个输出，正是头发待机飘动的来源。
-  - 当前实现：固定 Mver offset/peak/cycle 以 `0.5` 权重写入上述目标；model3 首个 Breath 组仍可
-    提供最多 64 个额外 ID，但不再是约定目标生效的前提，固定 ID 不重复应用。对
+  - 当前实现：固定 Mver offset/peak/cycle 以 `current + value * 0.5` 的加法贡献写入上述目标，
+    再按 Core 范围 clamp；不能向 Breath 目标插值，否则会削弱鼠标输入到 physics 的角度驱动。model3
+    首个 Breath 组仍可提供最多 64 个额外 ID，并保留既有的 model-range blend 语义，但不再是约定目标生效的前提，
+    固定 ID 不重复应用。对
     `ParamBreath(min=0, default=0, max=1)` 的模型，贡献保持在 `0.5` 及以下，因此不会触发作者的
     53 个 drawable 显隐阈值；模型层有界解析 physics3，Live2D 层以固定步进、延迟、惯性、输出插值
     和未知 ID 跳过规则求值，runtime 用单调帧间 delta 驱动并在时钟回退时 reset。

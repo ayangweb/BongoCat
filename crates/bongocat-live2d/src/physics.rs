@@ -11,6 +11,8 @@ use std::collections::{BTreeSet, HashMap};
 use std::f32::consts::PI;
 use std::time::Duration;
 
+// These are Cubism Framework constants; authored per-model coefficients
+// (Mobility, Delay, Acceleration, Radius, and Scale) remain data-driven.
 const AIR_RESISTANCE: f32 = 5.0;
 const MAX_DELTA_TIME: f32 = 5.0;
 const MAX_WEIGHT: f32 = 100.0;
@@ -270,7 +272,9 @@ impl PhysicsRuntime {
         for setting_index in 0..self.definition.settings.len() {
             let setting = self.definition.settings[setting_index].clone();
             let (initial_translation, total_angle) = self.input_for_setting(core, &setting)?;
-            let radian = (-total_angle * PI / 180.0).to_radians();
+            // `total_angle` is expressed in degrees; convert exactly once
+            // before applying the sub-rig rotation.
+            let radian = rotation_radians(total_angle);
             let rotated_x =
                 initial_translation.x * radian.cos() - initial_translation.y * radian.sin();
             let rotated_y = rotated_x * radian.sin() + initial_translation.y * radian.cos();
@@ -285,6 +289,9 @@ impl PhysicsRuntime {
             );
 
             for (output_index, output) in setting.outputs.iter().enumerate() {
+                if !output_index_is_valid(output, self.particles[setting_index].len()) {
+                    continue;
+                }
                 let value = self.output_value(output, &self.particles[setting_index]);
                 if !value.is_finite() {
                     return Err(Live2dError::new(
@@ -430,12 +437,7 @@ impl PhysicsRuntime {
             .or(core.parameter_value_by_id(&output.parameter_id)?)
             .unwrap_or(range.default);
         let weight = (output.weight as f32 / MAX_WEIGHT).clamp(0.0, 1.0);
-        let next = if weight >= 1.0 {
-            value
-        } else {
-            current + (value - current) * weight
-        }
-        .clamp(range.minimum, range.maximum);
+        let next = blend_output_value(current, value, range, weight);
         self.parameter_cache
             .insert(output.parameter_id.clone(), next);
         Ok(())
@@ -446,11 +448,19 @@ impl PhysicsRuntime {
         for setting_index in 0..self.definition.settings.len() {
             let setting = &self.definition.settings[setting_index];
             for (output_index, output) in setting.outputs.iter().enumerate() {
-                if core.parameter_range_by_id(&output.parameter_id).is_none() {
+                if !output_index_is_valid(output, self.particles[setting_index].len()) {
                     continue;
                 }
+                let Some(range) = core.parameter_range_by_id(&output.parameter_id) else {
+                    continue;
+                };
                 let value = self.previous_outputs[setting_index][output_index] * (1.0 - alpha)
                     + self.current_outputs[setting_index][output_index] * alpha;
+                // Cubism clamps the raw physics result before applying the
+                // output weight. Clamping only after the blend makes a partial
+                // output overshoot the authored range and then get pinned to
+                // the boundary, which visibly stiffens secondary hair motion.
+                let value = value.clamp(range.minimum, range.maximum);
                 let weight = (output.weight as f32 / MAX_WEIGHT).clamp(0.0, 1.0);
                 if matches!(
                     core.set_parameter_by_id(&output.parameter_id, value, weight)?,
@@ -461,6 +471,23 @@ impl PhysicsRuntime {
             }
         }
         Ok(applied)
+    }
+}
+
+fn rotation_radians(total_angle: f32) -> f32 {
+    -total_angle * PI / 180.0
+}
+
+fn output_index_is_valid(output: &PhysicsOutput, particle_count: usize) -> bool {
+    output.vertex_index > 0 && output.vertex_index < particle_count
+}
+
+fn blend_output_value(current: f32, raw: f32, range: crate::ParameterRange, weight: f32) -> f32 {
+    let bounded = raw.clamp(range.minimum, range.maximum);
+    if weight >= 1.0 {
+        bounded
+    } else {
+        current + (bounded - current) * weight
     }
 }
 
@@ -511,4 +538,72 @@ fn direction_to_radian(from: Vector2, to: Vector2) -> f32 {
         result -= PI * 2.0;
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subrig_angles_are_converted_to_radians_exactly_once() {
+        assert!((rotation_radians(30.0) + PI / 6.0).abs() < 1.0e-6);
+        assert!((rotation_radians(90.0) + PI / 2.0).abs() < 1.0e-6);
+        assert!((rotation_radians(-45.0) - PI / 4.0).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn output_values_are_bounded_before_the_weight_is_applied() {
+        let range = crate::ParameterRange {
+            minimum: 0.0,
+            maximum: 1.0,
+            default: 0.0,
+        };
+        assert_eq!(blend_output_value(0.5, 2.0, range, 0.5), 0.75);
+        assert_eq!(blend_output_value(0.5, -2.0, range, 0.5), 0.25);
+        assert_eq!(blend_output_value(0.5, 2.0, range, 1.0), 1.0);
+    }
+
+    #[test]
+    fn the_root_particle_is_not_a_valid_physics_output() {
+        let output = PhysicsOutput {
+            parameter_id: "Param".to_owned(),
+            vertex_index: 0,
+            scale: 1.0,
+            weight: 100.0,
+            channel: PhysicsChannel::Angle,
+            reflect: false,
+        };
+        assert!(!output_index_is_valid(&output, 2));
+        assert!(!output_index_is_valid(
+            &PhysicsOutput {
+                vertex_index: 2,
+                ..output.clone()
+            },
+            2
+        ));
+        assert!(output_index_is_valid(
+            &PhysicsOutput {
+                vertex_index: 1,
+                ..output
+            },
+            2
+        ));
+    }
+
+    #[test]
+    fn reflected_input_normalization_keeps_the_authored_direction() {
+        let normalization = PhysicsRange {
+            minimum: -10.0,
+            default: 0.0,
+            maximum: 10.0,
+        };
+        assert_eq!(
+            normalize_parameter(30.0, -30.0, 30.0, 0.0, normalization, false),
+            -10.0
+        );
+        assert_eq!(
+            normalize_parameter(30.0, -30.0, 30.0, 0.0, normalization, true),
+            10.0
+        );
+    }
 }

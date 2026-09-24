@@ -44,9 +44,11 @@
 - Automatic model effects follow the fixed Mver order: product input is applied first, then the
   reference automatic layer and declared physics3 are evaluated before Core update. The fixed
   `ParamAngleX`, `ParamAngleY`, `ParamAngleZ`, `ParamBodyAngleX`, and `ParamBreath` breath targets
-  use the Mver offset/peak/cycle values and a `0.5` contribution weight, even when model3 omits a
-  `Breath` group. An optional first `Parameter`/`Breath` group may add up to 64 IDs; fixed IDs are
-  not duplicated. The reported model's `ParamBreath` therefore remains at or below `0.5` while its
+  use the Mver offset/peak/cycle values and an additive `current + value * 0.5` contribution before
+  Core range clamping, even when model3 omits a
+  `Breath` group. An optional first `Parameter`/`Breath` group may add up to 64 IDs and retains its
+  existing model-range blend behavior; fixed IDs are not duplicated. The reported model's
+  `ParamBreath` therefore remains at or below `0.5` while its
   angle targets feed the declared physics rig and restore idle hair movement. Validated physics3
   uses fixed-step inertia/delay and output interpolation; unknown IDs are ignored. The first
   `EyeBlink` group parameters (`ParamEyeLOpen` and `ParamEyeROpen` when present) remain open except

@@ -82,11 +82,12 @@
 同一固定提交的 `BongoCatMver/src/myUserModel.cpp` 还显示了待机运动的另一条来源：
 
 - 每次加载模型都会创建 `CubismBreath`，固定配置 `ParamAngleX`、`ParamAngleY`、`ParamAngleZ`、
-  `ParamBodyAngleX` 和 `ParamBreath` 的 offset/peak/cycle，并以 `0.5` 权重写回；这不依赖 model3
-  是否声明 `Breath` 组。
+  `ParamBodyAngleX` 和 `ParamBreath` 的 offset/peak/cycle，并以 `0.5` 权重通过
+  `AddParameterValue` 加法写回；这不依赖 model3 是否声明 `Breath` 组。
 - `Update()` 在 motion、expression 和产品拖动之后调用 breath，再对 model3 声明的 `physics3`
-  执行 `Evaluate()`，最后调用 Core update。physics 的输入/输出、粒子延迟、移动性和固定 FPS
-  插值共同产生头发等部件的待机飘动。
+  执行 `Evaluate()`，最后调用 Core update。physics 的输入/输出、粒子延迟、移动性以及其链接
+  Framework 的时间步/插值语义共同产生头发等部件的待机飘动；固定仓库没有包含 SDK 版本或
+  Framework 源码，不能把 R5 的 fixed-step 细节直接归给 Mver。
 - 因此“模型没有 motion 文件”不等于“没有待机动画”；本仓库当前的 Rust physics3 v3 求值和
   reference breath 只能以固定提交的结构证据与本地真实模型诊断为依据，不能把整个 Cubism
   Framework 兼容性宣称为完成。

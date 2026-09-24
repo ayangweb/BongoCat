@@ -654,7 +654,7 @@ mod tests {
             ("ParamEyeLOpen", 0.0),
             ("ParamEyeROpen", 0.0),
             ("ParamMouthOpenY", 0.8),
-            ("ParamAngleX", -7.5),
+            ("ParamAngleX", -15.0),
         ] {
             let actual = model
                 .parameter_value_by_id(id)
