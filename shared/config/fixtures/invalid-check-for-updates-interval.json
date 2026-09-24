@@ -5,7 +5,7 @@
     "show_taskbar_icon": true,
     "show_status_icon": true,
     "check_for_updates_automatically": true,
-    "check_for_updates_interval_hours": 24
+    "check_for_updates_interval_hours": 8761
   },
   "appearance": { "theme": "system", "language": "system" },
   "overlay": {
@@ -27,13 +27,10 @@
     "selected_model_id": null,
     "selected_model_origin": null,
     "installed_models": [],
-    "preset_models": [
-      { "id": "standard", "title": "第一个" },
-      { "id": "standard", "title": "重复 ID" }
-    ],
+    "preset_models": [],
     "mirror": false,
     "mirror_pointer_tracking": false,
-    "play_motion_audio": true,
+    "play_motion_audio": false,
     "enable_behavior_shortcuts": false,
     "maximum_fps": 60,
     "ignore_pointer": false,

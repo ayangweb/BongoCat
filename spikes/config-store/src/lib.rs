@@ -11,6 +11,8 @@ use std::{
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
 pub const SCHEMA_VERSION: u32 = 1;
+pub const DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS: u16 = 24;
+pub const MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS: u16 = 24 * 365;
 const DEFAULT_LOG_RETENTION_DAYS: u8 = 7;
 const MAXIMUM_LOG_RETENTION_DAYS: u8 = 30;
 const RECOVERY_LOCK_TIMEOUT: Duration = Duration::from_secs(1);
@@ -146,6 +148,7 @@ pub struct ApplicationConfig {
     pub show_taskbar_icon: bool,
     pub show_status_icon: bool,
     pub check_for_updates_automatically: bool,
+    pub check_for_updates_interval_hours: u16,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -224,6 +227,7 @@ pub struct ModelConfig {
     pub selected_model_id: Option<String>,
     pub selected_model_origin: Option<SelectedModelOrigin>,
     pub installed_models: Vec<InstalledModelMetadata>,
+    pub preset_models: Vec<InstalledModelMetadata>,
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     pub play_motion_audio: bool,
@@ -297,6 +301,7 @@ impl Default for NativeConfig {
                 show_taskbar_icon: true,
                 show_status_icon: true,
                 check_for_updates_automatically: true,
+                check_for_updates_interval_hours: DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
             },
             appearance: AppearanceConfig {
                 theme: Theme::System,
@@ -322,9 +327,10 @@ impl Default for NativeConfig {
                 selected_model_id: None,
                 selected_model_origin: None,
                 installed_models: Vec::new(),
+                preset_models: Vec::new(),
                 mirror: false,
                 mirror_pointer_tracking: false,
-                play_motion_audio: true,
+                play_motion_audio: false,
                 enable_behavior_shortcuts: false,
                 maximum_fps: 60,
                 ignore_pointer: false,
@@ -339,6 +345,13 @@ impl NativeConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.schema_version != SCHEMA_VERSION {
             return Err(ConfigError::UnsupportedSchema(self.schema_version));
+        }
+        if !(1..=MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS)
+            .contains(&self.application.check_for_updates_interval_hours)
+        {
+            return Err(ConfigError::InvalidValue(
+                "application.check_for_updates_interval_hours",
+            ));
         }
         if !(25..=400).contains(&self.overlay.scale_percent) {
             return Err(ConfigError::InvalidValue("overlay.scale_percent"));
@@ -404,6 +417,23 @@ impl NativeConfig {
                 || metadata.title.chars().any(char::is_control)
             {
                 return Err(ConfigError::InvalidValue("model.installed_models.title"));
+            }
+        }
+        let mut preset_ids = std::collections::BTreeSet::new();
+        for metadata in &self.model.preset_models {
+            let id = metadata.id.trim();
+            if id.is_empty()
+                || id.len() > MODEL_METADATA_MAXIMUM_ID_BYTES
+                || !preset_ids.insert(id)
+            {
+                return Err(ConfigError::InvalidValue("model.preset_models.id"));
+            }
+            let title = metadata.title.trim();
+            if title.is_empty()
+                || title.chars().count() > MODEL_METADATA_MAXIMUM_TITLE_CHARS
+                || metadata.title.chars().any(char::is_control)
+            {
+                return Err(ConfigError::InvalidValue("model.preset_models.title"));
             }
         }
         if self
@@ -1067,6 +1097,28 @@ mod tests {
         assert!(value["logging"].get("retention_days").is_some());
         assert!(value["model"].get("release_fallback_timeout_ms").is_some());
         assert!(value["model"].get("selected_model_origin").is_some());
+        assert_eq!(value["application"]["check_for_updates_interval_hours"], 24);
+    }
+
+    #[test]
+    fn update_interval_uses_the_current_v1_bounds() {
+        let mut config = NativeConfig::default();
+        assert_eq!(
+            config.application.check_for_updates_interval_hours,
+            DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS
+        );
+        config.application.check_for_updates_interval_hours = 1;
+        assert!(config.validate().is_ok());
+        config.application.check_for_updates_interval_hours =
+            MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS;
+        assert!(config.validate().is_ok());
+        config.application.check_for_updates_interval_hours = 0;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue(
+                "application.check_for_updates_interval_hours"
+            ))
+        ));
     }
 
     #[test]

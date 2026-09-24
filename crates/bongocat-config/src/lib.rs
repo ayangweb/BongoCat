@@ -22,6 +22,8 @@ pub use window_state::{
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
 pub const WINDOW_STATE_FILE_NAME: &str = "window-state.json";
 pub const SCHEMA_VERSION: u32 = 1;
+pub const DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS: u16 = 24;
+pub const MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS: u16 = 24 * 365;
 pub const DEFAULT_LOG_RETENTION_DAYS: u8 = 7;
 pub const MAXIMUM_LOG_RETENTION_DAYS: u8 = 30;
 const BACKUP_FORMAT_VERSION: u32 = 1;
@@ -177,6 +179,8 @@ pub struct ApplicationConfig {
     pub show_taskbar_icon: bool,
     pub show_status_icon: bool,
     pub check_for_updates_automatically: bool,
+    /// Whole hours to wait after an automatic update check before checking again.
+    pub check_for_updates_interval_hours: u16,
 }
 
 /// User-controlled filtering and retention for the human-readable application
@@ -1225,6 +1229,7 @@ impl Default for NativeConfig {
                 show_taskbar_icon: true,
                 show_status_icon: true,
                 check_for_updates_automatically: true,
+                check_for_updates_interval_hours: DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
             },
             appearance: AppearanceConfig {
                 theme: Theme::System,
@@ -1268,6 +1273,13 @@ impl NativeConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.schema_version != SCHEMA_VERSION {
             return Err(ConfigError::UnsupportedSchema(self.schema_version));
+        }
+        if !(1..=MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS)
+            .contains(&self.application.check_for_updates_interval_hours)
+        {
+            return Err(ConfigError::InvalidValue(
+                "application.check_for_updates_interval_hours",
+            ));
         }
         if !(25..=400).contains(&self.overlay.scale_percent) {
             return Err(ConfigError::InvalidValue("overlay.scale_percent"));
@@ -2963,6 +2975,40 @@ mod tests {
             assert!(matches!(
                 config.validate(),
                 Err(ConfigError::InvalidValue("overlay.corner_radius_percent"))
+            ));
+        }
+    }
+
+    #[test]
+    fn check_for_updates_interval_defaults_to_24_hours_and_accepts_whole_hours() {
+        let default = NativeConfig::default();
+        assert_eq!(
+            default.application.check_for_updates_interval_hours,
+            DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS
+        );
+
+        for accepted in [
+            1,
+            DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
+            48,
+            MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS,
+        ] {
+            let mut config = NativeConfig::default();
+            config.application.check_for_updates_interval_hours = accepted;
+            assert!(
+                config.validate().is_ok(),
+                "check interval {accepted} hours must be accepted"
+            );
+        }
+
+        for rejected in [0, MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS + 1] {
+            let mut config = NativeConfig::default();
+            config.application.check_for_updates_interval_hours = rejected;
+            assert!(matches!(
+                config.validate(),
+                Err(ConfigError::InvalidValue(
+                    "application.check_for_updates_interval_hours"
+                ))
             ));
         }
     }

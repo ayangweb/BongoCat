@@ -152,6 +152,112 @@ fn logging_flush_sends_one_complete_policy_and_chains_the_confirmed_revision(
 }
 
 #[gpui_kit::test]
+fn update_interval_edits_are_debounced_and_flushed_with_the_latest_revision(
+    cx: &mut TestAppContext,
+) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(7, true, true);
+    initial.config_revision = Some(7);
+    initial.check_for_updates_automatically = true;
+    initial.check_for_updates_interval_hours = 24;
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+
+    view.update(visual, |view, cx| {
+        view.set_check_for_updates_interval_hours(48.0, cx);
+    });
+    visual.run_until_parked();
+    let first_command = endpoint
+        .try_recv()
+        .expect("first automatic update interval");
+    let crate::SettingsCommand::SetCheckForUpdatesIntervalHours {
+        expected_config_revision,
+        interval_hours: first_interval,
+        reply: first_reply,
+    } = first_command
+    else {
+        panic!("the interval change must use the typed settings command");
+    };
+    assert_eq!(expected_config_revision, 7);
+    assert_eq!(first_interval, 48);
+
+    view.update(visual, |view, cx| {
+        view.set_check_for_updates_interval_hours(12.0, cx);
+        view.flush_pending_settings(cx);
+    });
+    visual.run_until_parked();
+    assert!(
+        endpoint.try_recv().is_err(),
+        "the newer interval must wait behind the in-flight command"
+    );
+
+    let mut confirmed = crate::tests::snapshot(8, true, true);
+    confirmed.config_revision = Some(8);
+    confirmed.check_for_updates_interval_hours = first_interval;
+    first_reply
+        .respond(Ok(confirmed))
+        .expect("first interval reply");
+    visual.run_until_parked();
+
+    let second_command = endpoint
+        .try_recv()
+        .expect("flushed automatic update interval");
+    let crate::SettingsCommand::SetCheckForUpdatesIntervalHours {
+        expected_config_revision,
+        interval_hours: second_interval,
+        reply: second_reply,
+    } = second_command
+    else {
+        panic!("the flush must continue through the interval command");
+    };
+    assert_eq!(expected_config_revision, 8);
+    assert_eq!(second_interval, 12);
+
+    let mut completed = crate::tests::snapshot(9, true, true);
+    completed.config_revision = Some(9);
+    completed.check_for_updates_interval_hours = second_interval;
+    second_reply
+        .respond(Ok(completed))
+        .expect("second interval reply");
+    visual.run_until_parked();
+
+    assert!(view.read_with(visual, |view, _| {
+        !view.flush_pending_requested
+            && view
+                .check_for_updates_interval_debouncer
+                .pending_value()
+                .is_none()
+            && view
+                .snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.config_revision)
+                == Some(9)
+    }));
+    assert!(endpoint.try_recv().is_err());
+}
+
+#[gpui_kit::test]
+fn the_update_interval_is_inert_while_automatic_checks_are_off(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut snapshot = crate::tests::snapshot(7, true, true);
+    snapshot.config_revision = Some(7);
+    snapshot.check_for_updates_automatically = false;
+    snapshot.check_for_updates_interval_hours = 24;
+    view.update(visual, |view, _| view.snapshot = Some(snapshot));
+
+    view.update(visual, |view, cx| {
+        view.set_check_for_updates_interval_hours(48.0, cx);
+    });
+    visual.run_until_parked();
+
+    assert!(endpoint.try_recv().is_err());
+    assert!(view.read_with(visual, |view, _| {
+        view.check_for_updates_interval_debouncer
+            .pending_value()
+            .is_none()
+    }));
+}
+
+#[gpui_kit::test]
 fn a_failed_logging_policy_keeps_the_latest_complete_value_for_retry(cx: &mut TestAppContext) {
     let (view, visual, endpoint) = settings_view_with_endpoint(cx);
     let mut initial = crate::tests::snapshot(11, true, true);
@@ -1226,6 +1332,33 @@ fn logging_level_options_use_the_complete_reversible_localized_catalog() {
         logging_level_from_display_name("not a log level", SettingsLanguage::EnglishUnitedStates),
         None
     );
+}
+
+#[test]
+fn update_check_interval_is_presented_as_whole_hours_from_one_to_one_year() {
+    let options = check_for_updates_interval_number_field_options();
+    assert_eq!(options.min, 1.0);
+    assert_eq!(options.max, 8760.0);
+    assert_eq!(options.step, 1.0);
+
+    for (raw, expected) in [
+        (f64::NEG_INFINITY, 1),
+        (-10.2, 1),
+        (0.49, 1),
+        (1.0, 1),
+        (23.5, 24),
+        (24.0, 24),
+        (47.6, 48),
+        (8760.49, 8760),
+        (f64::INFINITY, 8760),
+        (f64::NAN, 24),
+    ] {
+        assert_eq!(
+            normalize_check_for_updates_interval_hours(raw),
+            expected,
+            "{raw}"
+        );
+    }
 }
 
 #[test]

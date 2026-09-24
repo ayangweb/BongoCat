@@ -167,6 +167,9 @@ impl SettingsView {
         enabled: bool,
         cx: &mut Context<Self>,
     ) {
+        if self.editing_blocked(self.snapshot.as_ref()) {
+            return;
+        }
         let Some(expected_config_revision) = self
             .snapshot
             .as_ref()
@@ -181,6 +184,15 @@ impl SettingsView {
         {
             return;
         }
+        if !enabled {
+            // A value still waiting in the debounce window belongs to the old
+            // enabled schedule. Do not let it race the switch-off command and
+            // resurrect an edit after automatic checks have been disabled.
+            self.check_for_updates_interval_debouncer.discard_pending();
+            self.check_for_updates_interval_timer_generation = self
+                .check_for_updates_interval_timer_generation
+                .saturating_add(1);
+        }
         self.start_request(
             PendingOperation::AutomaticUpdateCheck,
             Some(SettingValue::CheckForUpdatesAutomatically {
@@ -189,6 +201,46 @@ impl SettingsView {
             }),
             cx,
         );
+    }
+
+    pub(super) fn set_check_for_updates_interval_hours(
+        &mut self,
+        raw: f64,
+        cx: &mut Context<Self>,
+    ) {
+        if self.editing_blocked(self.snapshot.as_ref()) {
+            return;
+        }
+        let value = normalize_check_for_updates_interval_hours(raw);
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if !snapshot.check_for_updates_automatically
+            || snapshot.check_for_updates_interval_hours == value
+        {
+            return;
+        }
+        let expected_config_revision = snapshot.config_revision;
+        let should_send = self
+            .check_for_updates_interval_debouncer
+            .observe(value, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .and_then(|interval_hours| {
+                expected_config_revision.map(|expected_config_revision| {
+                    self.start_request(
+                        PendingOperation::CheckForUpdatesIntervalHours,
+                        Some(SettingValue::CheckForUpdatesIntervalHours {
+                            expected_config_revision,
+                            interval_hours,
+                        }),
+                        cx,
+                    );
+                })
+            })
+            .is_some();
+        if !should_send {
+            self.schedule_check_for_updates_interval_flush(cx);
+        }
     }
 
     pub(super) fn set_logging_level(&mut self, level: SettingsLogLevel, cx: &mut Context<Self>) {

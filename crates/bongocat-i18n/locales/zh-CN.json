@@ -455,7 +455,11 @@
       },
       "auto_update": {
         "label": "自动检查更新",
-        "description": "启动时及每 24 小时检查更新。"
+        "description": "启动时及按设定间隔检查更新。",
+        "interval": {
+          "label": "自动检查更新间隔（小时）",
+          "description": "自动检查更新后等待 1–8760 小时再检查。"
+        }
       },
       "open_at_login": {
         "label": "登录时启动"

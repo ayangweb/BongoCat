@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Implementation TODO
 
 状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-24
+最后更新：2026-09-25
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
@@ -2230,9 +2230,17 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     路径**，见 ADR-0035 待验证项 2。`cargo fmt`、两种 feature 组合的严格 Clippy 与 workspace 测试通过。
 - [x] 自动检查更新开关真正生效。
   - 验收证据（2026-09-15）：`check_for_updates_automatically` 此前只被写入配置、**没有任何代码读取**。
-    现在由 GPUI 侧调度（开关值只有设置服务读得到）：启动后等 10 秒开始首次检查，之后每 24 小时一次；
-    发现可用更新且窗口未打开时打开更新窗口。**间隔未持久化**，频繁重启的机器会退化为每次启动检查，
-    见 ADR-0035 残余风险 6。
+    现在由 GPUI 侧调度（开关值只有设置服务读得到）：启动后等 10 秒开始首次检查，发现可用更新且窗口未打开时打开更新窗口。
+    - 补充（2026-09-25）：固定 24 小时间隔已改为当前 v1 的
+      `application.check_for_updates_interval_hours`，默认 `24`、范围 `1..=8760`。该值经
+      revision-checked typed command 原子持久化，设置页以带单位的整数输入修改，重启后恢复；GPUI
+      调度器以最近一次实际派发为期限锚点，并通过只读取自动更新设置的轻量轮询重新安排下一次检查，
+      间隔变短后若已到期会立即检查。设置服务瞬时不可用时按有界间隔重试，不结束调度。关闭自动检查不会
+      改写间隔，手动检查不受影响；ADR-0035 原残余风险 6 已由本补充关闭。
+     - 验证（2026-09-25）：`bongocat-config` 59 项、`bongocat-ui-protocol` 42 项、`bongocat-ui` 139 项、
+       `bongocat-app` 自动更新定向测试、`config-store` 22 项及两个恢复测试、Draft 2020-12 schema/locale
+       校验、定向 Clippy 和 `cargo check --workspace --release` 通过。全量 workspace 测试另有既有 Windows
+       路径规范化测试失败，未由本项改动触及；工具测试另受当前 Windows 账户 symlink 权限和路径分隔符断言影响。
 - [x] 发布说明随共享 manifest 一起发布。
   - 验收证据（2026-09-15）：`bongocat-packaging --merge-manifests` 新增 `--release-notes <file>`，
     把说明写进 `latest.json` 顶层 `notes`（上限 32 KiB，超长在字符边界截断并追加可见标记，空文件按
@@ -3757,6 +3765,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       实现 commit `1106807` 的 CI run `33938263954` 全绿；Windows/macOS/Ubuntu workspace jobs
       `101230369276`/`101230369290`/`101230369343` 均通过完整 workspace 门禁和对应产品 smoke。
 
+     - 当前契约（2026-09-25）：固定 `24 h` 已扩展为 v1 `application.check_for_updates_interval_hours`
+       （默认 `24`、范围 `1..=8760`）。当前 GPUI 调度器以实际派发为期限锚点，轻量轮询配置变化并
+       重排期限；旧的自研 manifest scheduler 证据仍仅作为历史记录。
+
 71. [x] `P9-BLOCK-LEGACY-AUTO-RELEASE`：阻止 Native Rewrite 开发期间由 tag 自动发布历史 App。
     - 依赖：Phase 0 发布门禁、历史源码保留规则与尚未完成的 Native 签名/安装流水线。
     - 退出条件：历史 Tauri release workflow 保留用于考古和回滚，但只允许显式手动触发；任何
@@ -5143,8 +5155,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       + 外观 3（缩放、不透明度、圆角）+ 性能 1（最大帧率）= 10；Interaction = 模型 3（行为快捷键、
       镜像模型、动作音效）+ 鼠标 2（镜像鼠标跟随、忽略鼠标输入）= 5；Input = 键盘 1（按键释放超时）
       + 手柄 2（摇杆死区、扳机死区）= 3；Application = 运行状态 1 + 系统图标 2（状态图标、任务栏图标）
-      + 启动与更新 2（自动检查更新、开机自启）= 5。合计 **25**，与拆分前"通用"页的
-      外观 2 + 模型窗口 12 + 模型交互 4 + 输入 3 + 应用 4 = 25 对账一致。
+      + 启动与更新 3（自动检查更新、检查间隔、开机自启）= 6。合计 **26**，与拆分前"通用"页的
+      外观 2 + 模型窗口 12 + 模型交互 4 + 输入 3 + 应用 4 = 25；新增的自动检查间隔使当前总数为 26。
       两处归属变化：`settings.runtime.title` 从"模型窗口"组移入 Application 页（在那里**不再单独设
       分组标题**——它只有一个设置项，标题会和项标签重复）；`settings.overlay.motion_audio.label`
       从"模型窗口"组移入 Interaction 页的"模型"分组。`settings.overlay.release_fallback_timeout.label`
@@ -5453,8 +5465,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       信息是否丢失。丢失则该信息必须留下——要么保留描述，要么写进标题。据此保留的描述都承载
       标题无法表达的内容：数值项的取值区间、悬停隐藏延迟及其中 0 的含义、「保持在屏幕内」可覆盖
       任务栏/程序坞等系统区域、悬停时淡出并移开后恢复、行为快捷键是全局快捷键且触发动作与表情、
-      按键释放超时的失败语义与其 0 值、自动检查更新的 24 小时节奏、摇杆/扳机死区的定义，以及
+      按键释放超时的失败语义与其 0 值、自动检查更新的可配置间隔、摇杆/扳机死区的定义，以及
       登录项的失效与缺失修复提示。
+    - 当前补充（2026-09-25）：自动检查更新间隔现在用独立的“自动检查更新间隔（小时）”字段与
+       `1..=8760` 范围文案表达可配置行为；固定 24 小时节奏不再是当前配置契约的一部分。
     - 删除 15 个键（两个 locale 同步删除，各 303 → 288 键）：
       ① `settings.appearance.theme.description`、`settings.appearance.language.description`；
       ② `settings.overlay.visibility` /`.always_on_top`/`.click_through` 三条 `.description`；

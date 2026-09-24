@@ -375,6 +375,12 @@ impl SettingsLanguage {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AutomaticUpdateSettings {
+    pub enabled: bool,
+    pub interval_hours: u16,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsSnapshot {
     pub revision: u64,
@@ -388,6 +394,7 @@ pub struct SettingsSnapshot {
     pub status_icon_visible: bool,
     pub taskbar_icon_visible: bool,
     pub check_for_updates_automatically: bool,
+    pub check_for_updates_interval_hours: u16,
     pub overlay_visible: bool,
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
@@ -1109,6 +1116,11 @@ pub enum SettingsCommand {
     ReadSnapshotRevision {
         reply: SettingsReply<u64>,
     },
+    /// Read only the persisted automatic-update schedule without rebuilding the
+    /// model-catalog snapshot.
+    ReadAutomaticUpdateSettings {
+        reply: SettingsReply<Result<AutomaticUpdateSettings, SettingsError>>,
+    },
     SetOverlayVisible {
         expected_config_revision: u64,
         visible: bool,
@@ -1137,6 +1149,11 @@ pub enum SettingsCommand {
     SetCheckForUpdatesAutomatically {
         expected_config_revision: u64,
         enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    SetCheckForUpdatesIntervalHours {
+        expected_config_revision: u64,
+        interval_hours: u16,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     SetOverlaySettings {
@@ -1374,6 +1391,22 @@ impl SettingsClient {
             .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))
     }
 
+    pub async fn read_automatic_update_settings(
+        &self,
+    ) -> Result<AutomaticUpdateSettings, SettingsError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send(SettingsCommand::ReadAutomaticUpdateSettings {
+                reply: SettingsReply(reply),
+            })
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        receiver
+            .recv()
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
+    }
+
     pub async fn set_overlay_visible(
         &self,
         expected_config_revision: u64,
@@ -1447,6 +1480,19 @@ impl SettingsClient {
         self.request(|reply| SettingsCommand::SetCheckForUpdatesAutomatically {
             expected_config_revision,
             enabled,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_check_for_updates_interval_hours(
+        &self,
+        expected_config_revision: u64,
+        interval_hours: u16,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetCheckForUpdatesIntervalHours {
+            expected_config_revision,
+            interval_hours,
             reply,
         })
         .await
@@ -1773,6 +1819,20 @@ impl SettingsClient {
             .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))
     }
 
+    pub fn read_automatic_update_settings_blocking(
+        &self,
+    ) -> Result<AutomaticUpdateSettings, SettingsError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send_blocking(SettingsCommand::ReadAutomaticUpdateSettings {
+                reply: SettingsReply(reply),
+            })
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        receiver
+            .recv_blocking()
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
+    }
+
     pub fn set_overlay_visible_blocking(
         &self,
         expected_config_revision: u64,
@@ -1841,6 +1901,18 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SetCheckForUpdatesAutomatically {
             expected_config_revision,
             enabled,
+            reply,
+        })
+    }
+
+    pub fn set_check_for_updates_interval_hours_blocking(
+        &self,
+        expected_config_revision: u64,
+        interval_hours: u16,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetCheckForUpdatesIntervalHours {
+            expected_config_revision,
+            interval_hours,
             reply,
         })
     }
@@ -2507,6 +2579,64 @@ mod tests {
     }
 
     #[test]
+    fn automatic_update_settings_read_returns_only_the_schedule() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::ReadAutomaticUpdateSettings { reply } = endpoint
+                .recv_blocking()
+                .expect("automatic update settings command")
+            else {
+                panic!("unexpected command");
+            };
+            reply
+                .respond(Ok(AutomaticUpdateSettings {
+                    enabled: true,
+                    interval_hours: 48,
+                }))
+                .expect("automatic update settings reply");
+        });
+        assert_eq!(
+            client
+                .read_automatic_update_settings_blocking()
+                .expect("automatic update settings"),
+            AutomaticUpdateSettings {
+                enabled: true,
+                interval_hours: 48,
+            }
+        );
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn check_for_updates_interval_command_preserves_typed_value() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetCheckForUpdatesIntervalHours {
+                expected_config_revision,
+                interval_hours,
+                reply,
+            } = endpoint
+                .recv_blocking()
+                .expect("check-for-updates interval command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert_eq!(interval_hours, 48);
+            let mut result = snapshot(8, true, true);
+            result.check_for_updates_interval_hours = interval_hours;
+            reply
+                .respond(Ok(result))
+                .expect("check-for-updates interval reply");
+        });
+        let result = client
+            .set_check_for_updates_interval_hours_blocking(7, 48)
+            .expect("check-for-updates interval snapshot");
+        assert_eq!(result.check_for_updates_interval_hours, 48);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
     fn maximum_fps_command_preserves_typed_value() {
         let (client, endpoint) = SettingsClient::bounded(1);
         let worker = thread::spawn(move || {
@@ -3030,7 +3160,7 @@ mod tests {
 
     /// A snapshot with the fields a settings test does not care about left at
     /// their defaults. `pub(crate)` so the settings-window tests can seed a view
-    /// with one catalog instead of restating all twenty-eight fields.
+    /// with one catalog instead of restating every field.
     pub(crate) fn snapshot(
         revision: u64,
         overlay_visible: bool,
@@ -3051,6 +3181,7 @@ mod tests {
             status_icon_visible: true,
             taskbar_icon_visible: true,
             check_for_updates_automatically: true,
+            check_for_updates_interval_hours: 24,
             overlay_visible,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled,

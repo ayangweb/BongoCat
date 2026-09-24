@@ -93,6 +93,10 @@ impl SettingsView {
             "settings.application.logging.level.description",
             "settings.application.logging.retention_days.label",
             "settings.application.logging.retention_days.description",
+            "settings.application.auto_update.label",
+            "settings.application.auto_update.description",
+            "settings.application.auto_update.interval.label",
+            "settings.application.auto_update.interval.description",
         ] {
             if bongocat_i18n::text(locale, key).is_empty() {
                 return Err(format!(
@@ -119,6 +123,11 @@ impl SettingsView {
             .contains(&snapshot.logging.retention_days)
         {
             return Err("application logging retention is outside 1..=30 days".to_owned());
+        }
+        if !(1..=bongocat_config::MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS)
+            .contains(&snapshot.check_for_updates_interval_hours)
+        {
+            return Err("automatic update interval is outside 1..=8760 hours".to_owned());
         }
         Ok(())
     }

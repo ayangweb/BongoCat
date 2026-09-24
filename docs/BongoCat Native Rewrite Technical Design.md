@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-24
+最后更新：2026-09-25
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -1038,7 +1038,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   **detached minisign 签名**：发行载荷必须由发布私钥签名，客户端以编译进构建的公钥校验，
   私钥不得进入源码、产物或配置。签名端与打包端是同一个 crate（`cargo_packager::sign`），
   因此签名器与验签器不会各自演进。ADR-0021、ADR-0022、ADR-0025 与 ADR-0026 定义的 detached
-  清单签名、manifest v1 schema、单调 `release_sequence` 防降级与 24 小时调度已由 ADR-0029 取代；
+  清单签名、manifest v1 schema、单调 `release_sequence` 防降级与旧自研 manifest scheduler 已由 ADR-0029 取代；
   ADR-0029 的库选择与 zipsign 归档内嵌签名模型已由 ADR-0034 取代，均不再有效。
 - 更新源由不可变 `ReleaseConfiguration` 描述：发行仓库、构建期 channel、target triple、二进制名与
   macOS bundle 名全部是编译期常量，任何用户配置、CLI 或运行时输入都不能改变它们。Development
@@ -1103,8 +1103,11 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 安装后是否需要重启进程是**平台事实**：macOS 由库整包替换 `.app`，运行中的进程此后执行已删除的
   文件（预设模型目录是惰性读盘的），因此安装成功后自动重启——先按 §5.3 的顺序完成产品 shutdown，
   再 `exec` 新构建；Windows 由安装器 `/R` 重启，`Installed` 在该平台不可观测。
-- 自动检查由 GPUI 侧调度（开关值只有设置服务读得到）：启动后等 10 秒首次检查，之后每 24 小时一次，
-  发现可用更新且窗口未打开时打开更新窗口。间隔未持久化。
+- 自动检查由 GPUI 侧调度（开关与间隔只有设置服务读得到）：启动后等 10 秒首次检查，之后按
+  `application.check_for_updates_interval_hours` 等待下一次检查；该整小时字段默认 `24`、范围为
+  `1..=8760`，并随当前 v1 配置持久化。调度器以最近一次实际派发为期限锚点，并以低成本设置轮询
+  重新读取间隔，因此修改间隔会重排下一次期限（缩短后若已到期则立即检查）。发现可用更新且窗口未
+  打开时打开更新窗口。关闭自动检查不会改写已保存间隔；手动检查不受该字段影响。
 - 传输有 30 分钟上限：transport 自身无超时，不设界会让 worker 永久阻塞；取值覆盖整条载荷传输。
   下载**不支持取消**——库没有 abort 钩子，真取消只能自研下载与验签，而自研验证层已被 ADR-0029/0034
   删除，因此不提供取消按钮而不是提供一个假的。

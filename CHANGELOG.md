@@ -8,6 +8,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 ### ✨ Features
 
+- Automatic update checks now use a configurable interval. The Application page can set any whole number of hours from 1 to 8,760; the default is 24 hours, and the chosen interval is preserved across restarts. Turning automatic checks off does not erase it, and manual checks remain available.
 - Logs are now ordinary dated `.log` files that can be opened directly in any text editor. Each line shows the UTC time, level, module, stable event code, message, and a short privacy-safe context. Logs roll over by day and also at 1 MiB so a noisy day cannot create one unbounded file; application and Cubism Core logs share an 8 MiB total budget, and old files are removed automatically. The default level is `info`.
 - The Application page can set the log level from `error` through `trace` and choose a 1–30 day retention period (7 days by default). Daily rollover and the per-file size guard are always active, so there is no rotation-mode setting to manage.
 - The model window can now be resized by dragging with the right mouse button held down. A right click that stays put is still the context menu; the resize starts once the pointer has moved past a few pixels. Dragging down and to the right grows the window, up and to the left shrinks it, within the same 25–400% range the settings page offers. The window follows the pointer while you drag, and the scale it settles on is written back to the settings, so the slider follows it.
@@ -26,6 +27,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 ### ⚠️ Upgrade Notice
 
+- The Native v1 configuration now requires `application.check_for_updates_interval_hours`. Earlier v1 development builds did not write this field; their configurations are not migrated and follow the existing strict recovery path (latest valid backup, then defaults if needed).
 - The persisted window layout file is now named `window-state.json` instead of the overly broad `state.json`. Its format and schema version are unchanged; pre-release data under the old name is not migrated.
 
 ### 🐛 Bug Fixes

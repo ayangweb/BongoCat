@@ -53,6 +53,12 @@ impl Render for SettingsView {
         // its row renders disabled rather than accepting a value nothing
         // reads — the unified gate rule's control arm.
         let hover_hide_delay_gate = SettingGate::new(editing_blocked, hover_hide_delay_available);
+        let check_for_updates_interval_gate = SettingGate::new(
+            editing_blocked,
+            snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.check_for_updates_automatically),
+        );
         // One gate per shortcut scope: the switch that owns the group plus the
         // shared structural editing state. Each scope's rows read their own
         // gate; the gate switches themselves stay operable while off.
@@ -922,7 +928,45 @@ impl Render for SettingsView {
                         .description(bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.application.auto_update.description",
-                        )),
+                        ))
+                        .disabled(check_for_updates_interval_gate.disables_switch()),
+                    );
+                    items.push(
+                        SettingItem::new(
+                            bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.application.auto_update.interval.label",
+                            ),
+                            SettingField::number_input(
+                                check_for_updates_interval_number_field_options(),
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app).snapshot.as_ref().map_or(
+                                            f64::from(
+                                                bongocat_config::DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
+                                            ),
+                                            |snapshot| {
+                                                f64::from(snapshot.check_for_updates_interval_hours)
+                                            },
+                                        )
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_check_for_updates_interval_hours(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )
+                        .description(bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.application.auto_update.interval.description",
+                        ))
+                        .disabled(check_for_updates_interval_gate.disables_controls()),
                     );
                     items
                 }),

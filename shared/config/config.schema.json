@@ -33,11 +33,12 @@
     "application": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["show_taskbar_icon", "show_status_icon", "check_for_updates_automatically"],
+      "required": ["show_taskbar_icon", "show_status_icon", "check_for_updates_automatically", "check_for_updates_interval_hours"],
       "properties": {
         "show_taskbar_icon": { "type": "boolean" },
         "show_status_icon": { "type": "boolean" },
-        "check_for_updates_automatically": { "type": "boolean" }
+        "check_for_updates_automatically": { "type": "boolean" },
+        "check_for_updates_interval_hours": { "type": "integer", "minimum": 1, "maximum": 8760 }
       }
     },
     "appearance": {

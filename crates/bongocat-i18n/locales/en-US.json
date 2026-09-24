@@ -455,7 +455,11 @@
       },
       "auto_update": {
         "label": "Check for updates automatically",
-        "description": "Check for updates at startup and every 24 hours."
+        "description": "Check for updates at startup and at the interval you set.",
+        "interval": {
+          "label": "Automatic update check interval (hours)",
+          "description": "Check again 1–8,760 hours after an automatic update check."
+        }
       },
       "open_at_login": {
         "label": "Open at login"

@@ -26,8 +26,9 @@ use bongocat_platform::{SystemMenu, SystemMenuAction, SystemMenuPresentation};
 use bongocat_runtime::hover_hide_delay_ms;
 use bongocat_ui::{SettingsView, SettingsWindowHandle, SettingsWindowSeed, open_settings_window};
 use bongocat_ui_protocol::{
-    SettingsClient, SettingsError, SettingsErrorCode, SettingsModelAvailability, SettingsModelKey,
-    SettingsModelOrigin, SettingsOverlay, SettingsSnapshot,
+    AutomaticUpdateSettings, SettingsClient, SettingsError, SettingsErrorCode,
+    SettingsModelAvailability, SettingsModelKey, SettingsModelOrigin, SettingsOverlay,
+    SettingsSnapshot,
 };
 use gpui_kit::{
     App, Application as GpuiApplication, Global, QuitMode, assets::AllAssets,
@@ -170,8 +171,34 @@ async fn capture_model_cover_without_blocking(
 /// window server.
 const AUTOMATIC_UPDATE_CHECK_STARTUP_DELAY: Duration = Duration::from_secs(10);
 
-/// How often a long-running process re-checks after the first automatic check.
-const AUTOMATIC_UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+/// Convert the persisted whole-hour setting into the scheduler's duration.
+fn check_for_updates_interval(interval_hours: u16) -> Duration {
+    const SECONDS_PER_HOUR: u64 = 60 * 60;
+    Duration::from_secs(u64::from(interval_hours) * SECONDS_PER_HOUR)
+}
+
+/// A short poll lets a changed interval or switch re-arm the schedule without
+/// rebuilding the full settings snapshot (which scans the model catalog).
+const AUTOMATIC_UPDATE_SETTINGS_POLL_INTERVAL: Duration = Duration::from_secs(60);
+const AUTOMATIC_UPDATE_SETTINGS_RETRY_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Return the next scheduler delay, capped so persisted setting changes are
+/// observed promptly. A missing `last_dispatch` means the first check is due.
+fn automatic_update_schedule_delay(
+    settings: AutomaticUpdateSettings,
+    last_dispatch: Option<Instant>,
+    now: Instant,
+) -> Duration {
+    if !settings.enabled {
+        return AUTOMATIC_UPDATE_SETTINGS_POLL_INTERVAL;
+    }
+    let Some(last_dispatch) = last_dispatch else {
+        return Duration::ZERO;
+    };
+    check_for_updates_interval(settings.interval_hours)
+        .saturating_sub(now.saturating_duration_since(last_dispatch))
+        .min(AUTOMATIC_UPDATE_SETTINGS_POLL_INTERVAL)
+}
 
 /// How long the automatic check waits for its own result to be published.
 const AUTOMATIC_UPDATE_CHECK_SETTLE_ATTEMPTS: u32 = 120;
@@ -2536,42 +2563,83 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .detach();
 
-        // The automatic check is driven from the GPUI side because the opt-in lives in
-        // the user's configuration, which only the settings service can read. The
-        // worker stays a plain command receiver; nothing about the schedule reaches it.
+        // The automatic check is driven from the GPUI side because the opt-in and
+        // interval live in the user's configuration, which only the settings service
+        // can read. The worker stays a plain command receiver; nothing about the
+        // schedule reaches it. A cheap settings-only poll lets a changed interval or
+        // switch re-arm this schedule without rebuilding the model-catalog snapshot.
         let automatic_check_client = settings_client.clone();
         cx.spawn(async move |cx| {
             Timer::after(AUTOMATIC_UPDATE_CHECK_STARTUP_DELAY).await;
+            let mut settings = loop {
+                if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
+                    return;
+                }
+                match automatic_check_client.read_automatic_update_settings().await {
+                    Ok(settings) => break settings,
+                    Err(_) => {
+                        Timer::after(AUTOMATIC_UPDATE_SETTINGS_RETRY_INTERVAL).await;
+                    }
+                }
+            };
+            let mut last_dispatch = None;
             loop {
                 if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
                     break;
                 }
-                let enabled = automatic_check_client
-                    .read_snapshot()
-                    .await
-                    .is_ok_and(|snapshot| snapshot.check_for_updates_automatically);
-                if enabled && cx.update(request_update_check) {
-                    // Wait for the check to settle before deciding what to show. The
-                    // bound keeps a worker that never reports back from parking this
-                    // loop for the rest of the interval.
-                    for _ in 0..AUTOMATIC_UPDATE_CHECK_SETTLE_ATTEMPTS {
-                        Timer::after(AUTOMATIC_UPDATE_CHECK_SETTLE_INTERVAL).await;
-                        match cx.update(published_update_phase) {
-                            Some(bongocat_ui_protocol::UpdatePhase::Checking) => continue,
-                            Some(bongocat_ui_protocol::UpdatePhase::Available { .. }) => {
-                                // Surface the result rather than leaving it for the
-                                // user to discover. The window is a singleton, so a
-                                // second automatic check cannot stack one.
-                                if !cx.update(update_window_is_open) {
-                                    cx.update(show_update_window);
+
+                if settings.enabled {
+                    let delay =
+                        automatic_update_schedule_delay(settings, last_dispatch, Instant::now());
+                    if delay.is_zero() {
+                        if cx.update(request_update_check) {
+                            // Measure the configured interval from the actual dispatch,
+                            // not from the end of the settle window.
+                            last_dispatch = Some(Instant::now());
+                            // Wait for the check to settle before deciding what to show.
+                            // The bound keeps a worker that never reports back from
+                            // parking this loop indefinitely.
+                            for _ in 0..AUTOMATIC_UPDATE_CHECK_SETTLE_ATTEMPTS {
+                                Timer::after(AUTOMATIC_UPDATE_CHECK_SETTLE_INTERVAL).await;
+                                match cx.update(published_update_phase) {
+                                    Some(bongocat_ui_protocol::UpdatePhase::Checking) => continue,
+                                    Some(bongocat_ui_protocol::UpdatePhase::Available { .. }) => {
+                                        // Surface the result rather than leaving it for
+                                        // the user to discover. The window is a singleton,
+                                        // so a second automatic check cannot stack one.
+                                        if !cx.update(update_window_is_open) {
+                                            cx.update(show_update_window);
+                                        }
+                                        break;
+                                    }
+                                    _ => break,
                                 }
-                                break;
                             }
-                            _ => break,
+                        } else {
+                            Timer::after(AUTOMATIC_UPDATE_SETTINGS_POLL_INTERVAL).await;
                         }
+                    } else {
+                        Timer::after(delay).await;
                     }
+                } else {
+                    Timer::after(AUTOMATIC_UPDATE_SETTINGS_POLL_INTERVAL).await;
                 }
-                Timer::after(AUTOMATIC_UPDATE_CHECK_INTERVAL).await;
+
+                let next_settings =
+                    match automatic_check_client.read_automatic_update_settings().await {
+                        Ok(settings) => settings,
+                        Err(_) => {
+                            Timer::after(AUTOMATIC_UPDATE_SETTINGS_RETRY_INTERVAL).await;
+                            continue;
+                        }
+                    };
+                // Re-enabling automatic checks starts a fresh schedule. Changing only
+                // the interval keeps the last dispatch as the anchor, so a shorter
+                // interval can become due immediately without resetting a long wait.
+                if next_settings.enabled && !settings.enabled {
+                    last_dispatch = None;
+                }
+                settings = next_settings;
             }
         })
         .detach();
@@ -4143,6 +4211,70 @@ fn executable_relative_preset_root(executable: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_update_check_interval_uses_the_configured_whole_hours() {
+        assert_eq!(check_for_updates_interval(1), Duration::from_secs(60 * 60));
+        assert_eq!(
+            check_for_updates_interval(bongocat_config::DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS),
+            Duration::from_secs(24 * 60 * 60)
+        );
+        assert_eq!(
+            check_for_updates_interval(48),
+            Duration::from_secs(48 * 60 * 60)
+        );
+    }
+
+    #[test]
+    fn automatic_update_schedule_rearms_from_the_last_dispatch_and_caps_polling() {
+        let origin = Instant::now();
+        let enabled = AutomaticUpdateSettings {
+            enabled: true,
+            interval_hours: 1,
+        };
+        assert_eq!(
+            automatic_update_schedule_delay(enabled, None, origin),
+            Duration::ZERO
+        );
+        assert_eq!(
+            automatic_update_schedule_delay(
+                enabled,
+                Some(origin),
+                origin + Duration::from_secs(30)
+            ),
+            AUTOMATIC_UPDATE_SETTINGS_POLL_INTERVAL
+        );
+        assert_eq!(
+            automatic_update_schedule_delay(
+                enabled,
+                Some(origin),
+                origin + Duration::from_secs(3600)
+            ),
+            Duration::ZERO
+        );
+        assert_eq!(
+            automatic_update_schedule_delay(
+                AutomaticUpdateSettings {
+                    enabled: true,
+                    interval_hours: bongocat_config::MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS,
+                },
+                Some(origin),
+                origin + Duration::from_secs(60),
+            ),
+            AUTOMATIC_UPDATE_SETTINGS_POLL_INTERVAL
+        );
+        assert_eq!(
+            automatic_update_schedule_delay(
+                AutomaticUpdateSettings {
+                    enabled: false,
+                    interval_hours: 24,
+                },
+                Some(origin),
+                origin,
+            ),
+            AUTOMATIC_UPDATE_SETTINGS_POLL_INTERVAL
+        );
+    }
 
     #[test]
     fn persisted_theme_resolves_for_process_startup_without_a_settings_window() {

@@ -144,6 +144,8 @@ pub(crate) mod tests {
             status_icon_visible: true,
             taskbar_icon_visible: true,
             check_for_updates_automatically: true,
+            check_for_updates_interval_hours:
+                bongocat_config::DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
             overlay_visible,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled,

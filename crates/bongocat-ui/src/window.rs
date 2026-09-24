@@ -164,6 +164,7 @@ enum PendingOperation {
     #[cfg(target_os = "windows")]
     TaskbarIconVisibility,
     AutomaticUpdateCheck,
+    CheckForUpdatesIntervalHours,
     LoggingSettings,
     OverlayVisibility,
     OverlaySettings,
@@ -603,6 +604,8 @@ pub struct SettingsView {
     /// page. It is temporary view state only; the selected path is handed to the
     /// existing settings-service import contract after validation.
     model_drag: Option<ModelDragOverlayState>,
+    check_for_updates_interval_debouncer: crate::SettingsPatchDebouncer<u16>,
+    check_for_updates_interval_timer_generation: u64,
     overlay_scale_debouncer: crate::SettingsPatchDebouncer<u16>,
     overlay_scale_timer_generation: u64,
     overlay_opacity_debouncer: crate::SettingsPatchDebouncer<u8>,
@@ -719,6 +722,46 @@ impl PartialEq for SettingsWindowHandle {
 impl Eq for SettingsWindowHandle {}
 
 impl SettingsView {
+    fn schedule_check_for_updates_interval_flush(&mut self, cx: &mut Context<Self>) {
+        self.check_for_updates_interval_timer_generation = self
+            .check_for_updates_interval_timer_generation
+            .saturating_add(1);
+        let generation = self.check_for_updates_interval_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.check_for_updates_interval_timer_generation != generation
+                    || view.pending.is_some()
+                {
+                    return;
+                }
+                let Some(interval_hours) = view
+                    .check_for_updates_interval_debouncer
+                    .ready(Instant::now())
+                else {
+                    return;
+                };
+                let Some(expected_config_revision) = view
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.config_revision)
+                else {
+                    return;
+                };
+                view.start_request(
+                    PendingOperation::CheckForUpdatesIntervalHours,
+                    Some(SettingValue::CheckForUpdatesIntervalHours {
+                        expected_config_revision,
+                        interval_hours,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
     fn schedule_overlay_scale_flush(&mut self, cx: &mut Context<Self>) {
         self.overlay_scale_timer_generation = self.overlay_scale_timer_generation.saturating_add(1);
         let generation = self.overlay_scale_timer_generation;
@@ -1038,7 +1081,16 @@ impl SettingsView {
             }
             return;
         };
-        if let Some(scale_percent) = self.overlay_scale_debouncer.flush(now) {
+        if let Some(interval_hours) = self.check_for_updates_interval_debouncer.flush(now) {
+            self.start_request(
+                PendingOperation::CheckForUpdatesIntervalHours,
+                Some(SettingValue::CheckForUpdatesIntervalHours {
+                    expected_config_revision,
+                    interval_hours,
+                }),
+                cx,
+            );
+        } else if let Some(scale_percent) = self.overlay_scale_debouncer.flush(now) {
             let mut settings = snapshot.overlay;
             settings.scale_percent = scale_percent;
             self.start_request(
@@ -1176,6 +1228,12 @@ impl SettingsView {
             cx.notify();
         }
         let client = self.client.clone();
+        let sent_check_for_updates_interval = match value.as_ref() {
+            Some(SettingValue::CheckForUpdatesIntervalHours { interval_hours, .. }) => {
+                Some(*interval_hours)
+            }
+            _ => None,
+        };
         let sent_overlay_scale = match value.as_ref() {
             Some(SettingValue::OverlayScale { scale_percent, .. }) => Some(*scale_percent),
             _ => None,
@@ -1258,6 +1316,17 @@ impl SettingsView {
                 }) => {
                     client
                         .set_check_for_updates_automatically(expected_config_revision, enabled)
+                        .await
+                }
+                Some(SettingValue::CheckForUpdatesIntervalHours {
+                    expected_config_revision,
+                    interval_hours,
+                }) => {
+                    client
+                        .set_check_for_updates_interval_hours(
+                            expected_config_revision,
+                            interval_hours,
+                        )
                         .await
                 }
                 Some(SettingValue::LoggingSettings {
@@ -1402,6 +1471,15 @@ impl SettingsView {
                     view.pending = None;
                 }
                 if result.is_ok()
+                    && let Some(interval_hours) = sent_check_for_updates_interval
+                {
+                    view.check_for_updates_interval_debouncer
+                        .mark_sent(&interval_hours);
+                    if view.check_for_updates_interval_debouncer.is_pending() {
+                        view.schedule_check_for_updates_interval_flush(cx);
+                    }
+                }
+                if result.is_ok()
                     && let Some(scale_percent) = sent_overlay_scale
                 {
                     view.overlay_scale_debouncer.mark_sent(&scale_percent);
@@ -1474,6 +1552,9 @@ impl SettingsView {
                     }
                     // Keep failed debounced patches alive and retry after the stable window.
                     // The debouncer only clears a value after a successful acknowledgement.
+                    if sent_check_for_updates_interval.is_some() {
+                        view.schedule_check_for_updates_interval_flush(cx);
+                    }
                     if sent_overlay_scale.is_some() {
                         view.schedule_overlay_scale_flush(cx);
                     }
@@ -1498,6 +1579,11 @@ impl SettingsView {
                     if sent_logging_settings.is_some() {
                         view.schedule_logging_settings_flush(cx);
                     }
+                }
+                if sent_check_for_updates_interval.is_none()
+                    && view.check_for_updates_interval_debouncer.is_pending()
+                {
+                    view.schedule_check_for_updates_interval_flush(cx);
                 }
                 if sent_logging_settings.is_none() && view.logging_settings_debouncer.is_pending() {
                     view.schedule_logging_settings_flush(cx);
@@ -1581,6 +1667,10 @@ enum SettingValue {
     CheckForUpdatesAutomatically {
         expected_config_revision: u64,
         enabled: bool,
+    },
+    CheckForUpdatesIntervalHours {
+        expected_config_revision: u64,
+        interval_hours: u16,
     },
     LoggingSettings {
         expected_config_revision: u64,

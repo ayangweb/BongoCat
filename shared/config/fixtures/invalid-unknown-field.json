@@ -5,6 +5,7 @@
     "show_taskbar_icon": true,
     "show_status_icon": true,
     "check_for_updates_automatically": true,
+    "check_for_updates_interval_hours": 24,
     "launch_at_login": true
   },
   "appearance": { "theme": "system", "language": "en-US" },

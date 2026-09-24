@@ -28,11 +28,11 @@ use bongocat_runtime::{
 };
 use bongocat_storage::{create_private_dir_all, write_private_atomic};
 use bongocat_ui_protocol::{
-    DIAGNOSTICS_EXPORT_FORMAT_VERSION, RuntimeHealth, SettingsApplicationShortcut,
-    SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsCommand,
-    SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings,
-    SettingsInputDiagnostics, SettingsInputMonitoringPermission, SettingsInputServiceStatus,
-    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
+    AutomaticUpdateSettings, DIAGNOSTICS_EXPORT_FORMAT_VERSION, RuntimeHealth,
+    SettingsApplicationShortcut, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
+    SettingsCommand, SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode,
+    SettingsGamepadAxisSettings, SettingsInputDiagnostics, SettingsInputMonitoringPermission,
+    SettingsInputServiceStatus, SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
     SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
@@ -605,6 +605,13 @@ fn run_service(
                     observe_snapshot_state(&application, &mut clock, startup_item.state(), false);
                 let _ = reply.respond(clock.revision);
             }
+            SettingsCommand::ReadAutomaticUpdateSettings { reply } => {
+                let application_config = &application.config().application;
+                let _ = reply.respond(Ok(AutomaticUpdateSettings {
+                    enabled: application_config.check_for_updates_automatically,
+                    interval_hours: application_config.check_for_updates_interval_hours,
+                }));
+            }
             SettingsCommand::SetOverlayVisible {
                 expected_config_revision,
                 visible,
@@ -722,6 +729,20 @@ fn run_service(
                     .and_then(|()| {
                         application
                             .set_check_for_updates_automatically(enabled)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetCheckForUpdatesIntervalHours {
+                expected_config_revision,
+                interval_hours,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_check_for_updates_interval_hours(interval_hours)
                             .map_err(map_application_error)
                     })
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
@@ -1350,6 +1371,10 @@ fn snapshot(
             .config()
             .application
             .check_for_updates_automatically,
+        check_for_updates_interval_hours: application
+            .config()
+            .application
+            .check_for_updates_interval_hours,
         overlay_visible: runtime.overlay_visible,
         overlay: SettingsOverlay {
             click_through: runtime.overlay_settings.click_through,
@@ -2907,6 +2932,7 @@ mod tests {
             status_icon_visible: true,
             taskbar_icon_visible: true,
             check_for_updates_automatically: true,
+            check_for_updates_interval_hours: 24,
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
             motion_audio_enabled: true,
@@ -3768,7 +3794,7 @@ mod tests {
     }
 
     #[test]
-    fn service_persists_automatic_update_check_preference_and_rejects_stale_revision() {
+    fn service_persists_automatic_update_preferences_and_rejects_stale_revisions() {
         let base = tempdir().expect("temporary storage");
         let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
         let application =
@@ -3778,25 +3804,73 @@ mod tests {
 
         let initial = client.read_snapshot_blocking().expect("initial snapshot");
         assert!(initial.check_for_updates_automatically);
+        assert_eq!(initial.check_for_updates_interval_hours, 24);
+        let custom_interval = client
+            .set_check_for_updates_interval_hours_blocking(
+                initial.config_revision.expect("config revision"),
+                48,
+            )
+            .expect("set automatic update interval");
+        assert_eq!(custom_interval.check_for_updates_interval_hours, 48);
+
         let disabled = client
             .set_check_for_updates_automatically_blocking(
-                initial.config_revision.expect("config revision"),
+                custom_interval
+                    .config_revision
+                    .expect("custom interval config revision"),
                 false,
             )
             .expect("disable automatic update checks");
         assert!(!disabled.check_for_updates_automatically);
-        assert_ne!(disabled.config_revision, initial.config_revision);
+        assert_eq!(disabled.check_for_updates_interval_hours, 48);
 
-        let stale = client
+        let stale_enabled = client
             .set_check_for_updates_automatically_blocking(
-                initial.config_revision.expect("config revision"),
+                initial.config_revision.expect("initial config revision"),
                 true,
             )
             .expect_err("reject stale automatic update preference");
-        assert_eq!(stale.code(), SettingsErrorCode::SnapshotOutdated);
+        assert_eq!(stale_enabled.code(), SettingsErrorCode::SnapshotOutdated);
+        let stale_interval = client
+            .set_check_for_updates_interval_hours_blocking(
+                custom_interval
+                    .config_revision
+                    .expect("custom interval config revision"),
+                72,
+            )
+            .expect_err("reject stale automatic update interval");
+        assert_eq!(stale_interval.code(), SettingsErrorCode::SnapshotOutdated);
         assert_eq!(
             client.read_snapshot_blocking().expect("unchanged snapshot"),
             disabled
+        );
+
+        for invalid_interval in [
+            0,
+            bongocat_config::MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS + 1,
+        ] {
+            let invalid = client
+                .set_check_for_updates_interval_hours_blocking(
+                    disabled.config_revision.expect("disabled config revision"),
+                    invalid_interval,
+                )
+                .expect_err("reject invalid automatic update interval");
+            assert_eq!(invalid.code(), SettingsErrorCode::ConfigPersistFailed);
+        }
+        assert_eq!(
+            client
+                .read_snapshot_blocking()
+                .expect("invalid interval is unchanged"),
+            disabled
+        );
+        assert_eq!(
+            client
+                .read_automatic_update_settings_blocking()
+                .expect("automatic update schedule"),
+            AutomaticUpdateSettings {
+                enabled: false,
+                interval_hours: 48,
+            }
         );
 
         client.shutdown_blocking().expect("service shutdown");
@@ -3807,6 +3881,13 @@ mod tests {
                 .config()
                 .application
                 .check_for_updates_automatically
+        );
+        assert_eq!(
+            restarted
+                .config()
+                .application
+                .check_for_updates_interval_hours,
+            48
         );
         restarted.shutdown().expect("restart shutdown");
     }

@@ -38,6 +38,24 @@ pub(super) fn logging_retention_number_field_options() -> NumberFieldOptions {
     }
 }
 
+pub(super) fn check_for_updates_interval_number_field_options() -> NumberFieldOptions {
+    NumberFieldOptions {
+        min: 1.0,
+        max: f64::from(bongocat_config::MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS),
+        step: 1.0,
+    }
+}
+
+pub(super) fn normalize_check_for_updates_interval_hours(raw: f64) -> u16 {
+    let maximum = f64::from(bongocat_config::MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS);
+    let value = if raw.is_nan() {
+        f64::from(bongocat_config::DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS)
+    } else {
+        raw.round()
+    };
+    value.clamp(1.0, maximum) as u16
+}
+
 pub(super) fn normalize_logging_retention_days(raw: f64) -> u8 {
     let maximum = f64::from(bongocat_config::MAXIMUM_LOG_RETENTION_DAYS);
     let value = if raw.is_nan() {

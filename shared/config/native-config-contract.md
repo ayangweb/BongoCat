@@ -6,7 +6,7 @@
 
 - JSON key 统一使用 `snake_case`，Rust 字段保持同名，不维护旧字段 alias。
 - 名称描述当前产品语义，不沿用历史 UI 组件名、Pinia store 名或平台 API 名。
-- 单位写入字段名：毫秒使用 `_ms`，百分比使用 `_percent`，帧率使用 `_fps`。
+- 单位写入字段名：毫秒使用 `_ms`，小时使用 `_hours`，百分比使用 `_percent`，帧率使用 `_fps`。
 - 布尔值使用可直接判断真假的语义名称，避免 `mode`、`behavior`、`enabled2` 等含糊字段。
 - 路径不直接作为资源身份；模型使用由 Native Rewrite 生成的稳定 ID，并在模型索引中解析。
 
@@ -32,6 +32,7 @@ shortcuts
 | `application` | `show_taskbar_icon`                   | Windows 任务栏可见性                   |
 | `application` | `show_status_icon`                    | 托盘/菜单栏入口可见性                  |
 | `application` | `check_for_updates_automatically`     | 自动检查更新                           |
+| `application` | `check_for_updates_interval_hours`    | 自动检查间隔小时数，`[1, 8760]`         |
 | `appearance`  | `theme`                               | `system`、`light` 或 `dark`            |
 | `appearance`  | `language`                            | UI locale                              |
 | `overlay`     | `visible`                             | 主猫窗口可见性                         |
@@ -64,6 +65,10 @@ shortcuts
 
 首次启动创建当前 v1 配置时，`overlay.click_through` 默认为 `false`。用户后续通过
 typed settings command 修改该值后，仍按配置 revision 原子提交并在重启时从当前环境恢复。
+
+`application.check_for_updates_interval_hours` 以整小时存储，默认 `24`，接受 `1..=8760`。
+关闭 `check_for_updates_automatically` 只会停止调度，不清空已保存的间隔；重新开启后继续使用该值。
+该字段只控制自动检查，不改变手动检查入口。
 
 `overlay.visible` 是会话内状态，不跨重启保留。每次启动确认配置可用（`Ready`）后，若当前 v1
 值为 `false`，应用先在内存里把它规整回 `true`，再尽力按原子提交写回 `config.json`；写入失败不
