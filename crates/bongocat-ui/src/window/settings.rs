@@ -598,7 +598,8 @@ impl SettingsView {
             self.random_behavior_debouncer.pending_value().copied(),
             enabled,
         );
-        if settings.enabled == snapshot.random_behavior.enabled {
+        if settings == snapshot.random_behavior && self.pending.is_none() {
+            self.random_behavior_debouncer.discard_pending();
             return;
         }
         let Some(expected_config_revision) = snapshot.config_revision else {

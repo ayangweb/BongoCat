@@ -13,6 +13,9 @@ pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
 pub const SCHEMA_VERSION: u32 = 1;
 pub const DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS: u16 = 24;
 pub const MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS: u16 = 24 * 365;
+pub const DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS: u32 = 30;
+pub const MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS: u32 = 1;
+pub const MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS: u32 = 3_600;
 const DEFAULT_LOG_RETENTION_DAYS: u8 = 7;
 const MAXIMUM_LOG_RETENTION_DAYS: u8 = 30;
 const RECOVERY_LOCK_TIMEOUT: Duration = Duration::from_secs(1);
@@ -232,6 +235,8 @@ pub struct ModelConfig {
     pub mirror_pointer_tracking: bool,
     pub play_motion_audio: bool,
     pub enable_behavior_shortcuts: bool,
+    pub random_behavior_enabled: bool,
+    pub random_behavior_interval_seconds: u32,
     pub maximum_fps: u16,
     pub ignore_pointer: bool,
     pub release_fallback_timeout_ms: u32,
@@ -332,6 +337,8 @@ impl Default for NativeConfig {
                 mirror_pointer_tracking: false,
                 play_motion_audio: false,
                 enable_behavior_shortcuts: false,
+                random_behavior_enabled: false,
+                random_behavior_interval_seconds: DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
                 maximum_fps: 60,
                 ignore_pointer: false,
                 release_fallback_timeout_ms: 500,
@@ -351,6 +358,13 @@ impl NativeConfig {
         {
             return Err(ConfigError::InvalidValue(
                 "application.check_for_updates_interval_hours",
+            ));
+        }
+        if !(MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS..=MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS)
+            .contains(&self.model.random_behavior_interval_seconds)
+        {
+            return Err(ConfigError::InvalidValue(
+                "model.random_behavior_interval_seconds",
             ));
         }
         if !(25..=400).contains(&self.overlay.scale_percent) {
@@ -422,9 +436,7 @@ impl NativeConfig {
         let mut preset_ids = std::collections::BTreeSet::new();
         for metadata in &self.model.preset_models {
             let id = metadata.id.trim();
-            if id.is_empty()
-                || id.len() > MODEL_METADATA_MAXIMUM_ID_BYTES
-                || !preset_ids.insert(id)
+            if id.is_empty() || id.len() > MODEL_METADATA_MAXIMUM_ID_BYTES || !preset_ids.insert(id)
             {
                 return Err(ConfigError::InvalidValue("model.preset_models.id"));
             }
@@ -1119,6 +1131,33 @@ mod tests {
                 "application.check_for_updates_interval_hours"
             ))
         ));
+    }
+
+    #[test]
+    fn random_behavior_settings_follow_the_current_v1_bounds() {
+        let mut config = NativeConfig::default();
+        assert!(!config.model.random_behavior_enabled);
+        assert_eq!(
+            config.model.random_behavior_interval_seconds,
+            DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS
+        );
+        for accepted in [
+            MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+            MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+        ] {
+            config.model.random_behavior_enabled = true;
+            config.model.random_behavior_interval_seconds = accepted;
+            assert!(config.validate().is_ok());
+        }
+        for rejected in [0, MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS + 1] {
+            config.model.random_behavior_interval_seconds = rejected;
+            assert!(matches!(
+                config.validate(),
+                Err(ConfigError::InvalidValue(
+                    "model.random_behavior_interval_seconds"
+                ))
+            ));
+        }
     }
 
     #[test]

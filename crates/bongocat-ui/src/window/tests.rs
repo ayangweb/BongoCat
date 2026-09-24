@@ -1562,6 +1562,90 @@ fn random_behavior_toggle_keeps_a_pending_interval_in_the_same_patch() {
     );
 }
 
+#[gpui_kit::test]
+fn rapid_random_behavior_toggle_queues_the_latest_value(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(7, true, true);
+    initial.config_revision = Some(7);
+    initial.random_behavior = SettingsRandomBehavior {
+        enabled: false,
+        interval_seconds: 30,
+    };
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+
+    view.update(visual, |view, cx| {
+        view.set_random_behavior_enabled(true, cx);
+    });
+    visual.run_until_parked();
+    let first_command = endpoint.try_recv().expect("first random behavior toggle");
+    let crate::SettingsCommand::SetRandomBehaviorSettings {
+        expected_config_revision,
+        settings: first_settings,
+        reply: first_reply,
+    } = first_command
+    else {
+        panic!("the first toggle must use the typed random behavior command");
+    };
+    assert_eq!(expected_config_revision, 7);
+    assert_eq!(
+        first_settings,
+        SettingsRandomBehavior {
+            enabled: true,
+            interval_seconds: 30,
+        }
+    );
+
+    view.update(visual, |view, cx| {
+        view.set_random_behavior_enabled(false, cx);
+        view.flush_pending_settings(cx);
+    });
+    visual.run_until_parked();
+    assert!(
+        endpoint.try_recv().is_err(),
+        "the reversal must wait for the in-flight toggle"
+    );
+
+    let mut confirmed = crate::tests::snapshot(8, true, true);
+    confirmed.config_revision = Some(8);
+    confirmed.random_behavior = first_settings;
+    first_reply
+        .respond(Ok(confirmed))
+        .expect("first toggle reply");
+    view.update(visual, |view, cx| {
+        view.flush_pending_settings(cx);
+    });
+    visual.run_until_parked();
+
+    let second_command = endpoint
+        .try_recv()
+        .expect("reversal random behavior toggle");
+    let crate::SettingsCommand::SetRandomBehaviorSettings {
+        expected_config_revision,
+        settings: second_settings,
+        reply: second_reply,
+    } = second_command
+    else {
+        panic!("the reversal must use the typed random behavior command");
+    };
+    assert_eq!(expected_config_revision, 8);
+    assert_eq!(
+        second_settings,
+        SettingsRandomBehavior {
+            enabled: false,
+            interval_seconds: 30,
+        }
+    );
+
+    let mut completed = crate::tests::snapshot(9, true, true);
+    completed.config_revision = Some(9);
+    completed.random_behavior = second_settings;
+    second_reply
+        .respond(Ok(completed))
+        .expect("reversal toggle reply");
+    visual.run_until_parked();
+    assert!(endpoint.try_recv().is_err());
+}
+
 #[test]
 fn cancellation_requested_while_starting_reaches_the_created_operation() {
     let (client, _endpoint) = SettingsClient::bounded(1);

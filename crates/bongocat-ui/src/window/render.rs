@@ -638,7 +638,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
+                    )
+                    .disabled(random_behavior_gate.disables_switch()),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
