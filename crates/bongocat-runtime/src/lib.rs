@@ -405,6 +405,8 @@ pub enum ShortcutAction {
     SetExpression(ExpressionId),
 }
 
+/// The runtime's current motion layer. A one-shot motion remains present after
+/// completion so its terminal pose can still be stopped or replaced.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ActiveMotionSnapshot {
     pub motion: MotionId,
@@ -493,11 +495,11 @@ pub enum RuntimeCommand {
         model: Arc<CommittedModel>,
         input_bindings: Arc<InputBindings>,
     },
-    /// Starts a product motion. The runtime plays the clip exactly once: a
-    /// shortcut press is one visible run, after which the model returns to its
-    /// idle parameters, so the clip's declared `Meta.Loop` never keeps it
-    /// running. While that run is still in flight, a repeat request for the
-    /// same motion at the same priority is a no-op.
+    /// Starts a product motion. The runtime plays the clip exactly once, then
+    /// keeps its final evaluated pose as the current motion layer. The clip's
+    /// declared `Meta.Loop` never keeps it advancing. While that run is still
+    /// in flight, a repeat request for the same motion at the same priority is
+    /// a no-op; after completion, the next request may replace or restart it.
     StartMotion {
         motion: MotionId,
         priority: MotionPriority,
@@ -1929,11 +1931,11 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         | RuntimeCommand::PreviewMotion(_)),
                     ) => {
                         // Both trigger sources play a single cycle. A shortcut
-                        // press must produce one visible run and hand the
-                        // model back to its idle parameters; the clip's own
+                        // press must produce one visible run and then hold the
+                        // clip's final evaluated pose; the clip's own
                         // `Meta.Loop` describes how the asset was authored, not
                         // how the product drives it, so honoring it here would
-                        // keep the cat animating with no way back.
+                        // keep the cat animating forever.
                         let repeat_is_idempotent =
                             matches!(command, RuntimeCommand::StartMotion { .. });
                         let (motion, priority, looping) = match command {
@@ -1950,16 +1952,24 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         // of the R5 motion queue ignores the request while the
                         // current motion is unfinished, so key repeat or a
                         // press burst neither restarts the clip nor replays its
-                        // audio. One-shot playback bounds the guard to exactly
-                        // one cycle. A preview stays a direct UI action and
-                        // restarts on every request.
+                        // audio. Once the one-shot run has completed, its final
+                        // pose remains visible but no longer reserves priority;
+                        // the next request may replace it. A preview stays a
+                        // direct UI action and restarts on every request.
+                        let motion_is_settled = renderer
+                            .as_ref()
+                            .is_some_and(RuntimeRenderer::motion_is_settled);
                         let duplicate = repeat_is_idempotent
+                            && !motion_is_settled
                             && active_motion.as_ref().is_some_and(|active| {
                                 active.motion == motion
                                     && active.priority == priority
                                     && active.stop_command_sequence.is_none()
                             });
-                        let current_priority = active_motion.as_ref().map(|active| active.priority);
+                        let current_priority = active_motion
+                            .as_ref()
+                            .filter(|_| !motion_is_settled)
+                            .map(|active| active.priority);
                         let can_replace =
                             current_priority.is_none_or(|current| priority >= current);
                         if duplicate || !can_replace {
@@ -4232,8 +4242,10 @@ mod tests {
     /// A behaviour shortcut is one visible run of the clip. The preset motions
     /// declare `Meta.Loop: true` and last 1.633s, so a runtime that honored the
     /// clip flag would keep the model animating for as long as the app runs.
+    /// The one-shot run settles on its final pose and remains the current
+    /// motion until another request replaces it or an explicit stop removes it.
     #[test]
-    fn shortcut_motion_stops_after_one_cycle_even_though_the_clip_loops() {
+    fn shortcut_motion_holds_its_final_pose_after_one_cycle() {
         let clock = Arc::new(ManualClock::default());
         let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
             true,
@@ -4291,19 +4303,16 @@ mod tests {
 
         clock.set(Duration::from_secs(2));
         let tick_sequence = client.send(RuntimeCommand::Tick).expect("one-shot tick");
-        let ticked = client
+        let completed = client
             .wait_for_command(tick_sequence, TIMEOUT)
-            .expect("one-shot tick accepted");
-        let completed = if ticked.active_motion.is_none() {
-            ticked
-        } else {
-            client
-                .wait_for_revision(ticked.revision.saturating_add(1), TIMEOUT)
-                .expect("one-shot completion")
-        };
-        assert!(
-            completed.active_motion.is_none(),
-            "a triggered motion must stop after one cycle instead of looping"
+            .expect("one-shot completion");
+        assert_eq!(
+            completed
+                .active_motion
+                .as_ref()
+                .map(|active| active.command_sequence),
+            Some(first_sequence),
+            "a completed motion must hold its final pose instead of advancing or clearing"
         );
 
         // The next press, after the run completed, plays the clip again.
@@ -4324,11 +4333,44 @@ mod tests {
             Some(second_sequence)
         );
 
+        clock.set(Duration::from_secs(4));
+        let second_completion_sequence = client
+            .send(RuntimeCommand::Tick)
+            .expect("second completion");
+        let second_completed = client
+            .wait_for_command(second_completion_sequence, TIMEOUT)
+            .expect("second completion accepted");
+        assert_eq!(
+            second_completed
+                .active_motion
+                .as_ref()
+                .map(|active| active.command_sequence),
+            Some(second_sequence)
+        );
+
+        let lower_after_completion = MotionId::new("CAT_motion_lock", 0).expect("motion id");
+        let replacement_sequence = client
+            .trigger_shortcut(ShortcutAction::StartMotion {
+                motion: lower_after_completion,
+                priority: MotionPriority::Idle,
+            })
+            .expect("completed motion must release its priority reservation");
+        let replaced = client
+            .wait_for_command(replacement_sequence, TIMEOUT)
+            .expect("completed motion replacement");
+        assert_eq!(
+            replaced
+                .active_motion
+                .as_ref()
+                .map(|active| active.command_sequence),
+            Some(replacement_sequence)
+        );
+
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
 
     #[test]
-    fn preview_motion_stops_after_one_cycle_even_when_the_clip_loops() {
+    fn preview_motion_holds_its_final_pose_after_one_cycle() {
         let clock = Arc::new(ManualClock::default());
         let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
             true,
@@ -4359,17 +4401,17 @@ mod tests {
 
         clock.set(Duration::from_secs(10));
         let tick_sequence = client.send(RuntimeCommand::Tick).expect("preview tick");
-        let ticked = client
+        let completed = client
             .wait_for_command(tick_sequence, TIMEOUT)
-            .expect("preview tick accepted");
-        let completed = if ticked.active_motion.is_none() {
-            ticked
-        } else {
-            client
-                .wait_for_revision(ticked.revision.saturating_add(1), TIMEOUT)
-                .expect("preview completed")
-        };
-        assert!(completed.active_motion.is_none());
+            .expect("preview completed");
+        assert_eq!(
+            completed
+                .active_motion
+                .as_ref()
+                .map(|active| active.command_sequence),
+            Some(preview_sequence),
+            "a completed preview must remain on its final pose"
+        );
 
         owner.shutdown(TIMEOUT).expect("runtime shutdown");
     }
@@ -4537,6 +4579,19 @@ mod tests {
                 && frame.snapshot != first_frame.snapshot
         });
         assert_ne!(crossfaded.snapshot, first_frame.snapshot);
+
+        clock.set(Duration::from_secs(2));
+        let persistence_tick = client
+            .send(RuntimeCommand::Tick)
+            .expect("expression persistence");
+        let persisted = client
+            .wait_for_command(persistence_tick, TIMEOUT)
+            .expect("latest expression remains active after both fades complete");
+        assert_eq!(persisted.active_expression, second_active.active_expression);
+        let persisted_frame = wait_for_render_frame(&consumer, |frame| {
+            frame.transport_sequence > crossfaded.transport_sequence
+        });
+        assert_ne!(persisted_frame.snapshot, baseline.snapshot);
 
         let invalid_sequence = client
             .send(RuntimeCommand::SetExpression(

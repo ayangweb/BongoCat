@@ -45,7 +45,25 @@
 safe wrapper、runtime 和资源 compositor 仍须按 Technical Design 的 Rust 边界实现，并遵守
 ADR-0030 规定的现有方案复用顺序。
 
-## 4. 使用规则
+## 4. 动作与表情生命周期证据
+
+固定提交中的 `BongoCatMver/src/myUserModel.cpp` 显示：
+
+- `Update()` 每帧先恢复模型参数，再更新 motion，随后独立更新 expression manager；motion 与
+  expression 是两个不同生命周期的层。
+- `SetExpression()` 以 force priority 启动目标 expression。固定 R5 expression manager 会在最新
+  expression 淡入完成后删除旧层，但保留最新层；最新 expression 没有 duration，也不会自行
+  清除。因此 Native 的“最新表情淡入后持续应用，直到替换、模型切换或 shutdown”是既有参考语义，
+  不是需要新增的定时播放行为。
+- 同一文件在 `_motionManager->IsFinished()` 为真时会启动 idle motion。因此“一次性 motion 播放
+  完后保持最终姿态”不是该 C++ 文件逐字实现的行为，而是 2026-09-24 维护者明确要求并写入
+  `next` 的产品决策。实现只把它与 Mver expression 的持久最新层原则对齐，不把固定提交的
+  idle 自动切换误写成来源事实。
+
+该差异只涉及产品可见的完成语义；仍遵守本文的提交固定、只作行为证据、不复制 C++ 业务代码的
+规则。
+
+## 5. 使用规则
 
 遇到输入、模型、渲染、窗口或模式行为问题时：
 

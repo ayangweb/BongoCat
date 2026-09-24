@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Implementation TODO
 
 状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-23
+最后更新：2026-09-24
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
@@ -1367,6 +1367,12 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     `dynamic_flags`；停止命令同一时刻发布的首帧允许变更标记清零，但 opacity、顶点、
     绘制顺序和其他 RenderSnapshot 内容必须保持一致。此前因全快照比较造成的脆弱失败已
     修正，runtime 61 项测试和共享 fixture 2 项均通过。
+  - 状态（2026-09-24，完成语义修订）：一次性 motion 到达 clip duration 后不再删除 renderer
+    playback 与 runtime active identity，而是进入 completed、把 local time 固定在 duration，
+    并在后续每帧恢复 Core 默认值后继续应用终点 parameter/part-opacity/model-opacity。completed
+    motion 不再预留 priority，下一次请求可替换或重播；显式 stop 仍按 FadeOutTime 从最终姿态退出。
+    新增真实 Core 定向回归证明终点值在后续帧仍为 `1.0`，并覆盖 shortcut/preview 单循环、完成
+    后重播与完成后低优先级请求；runtime 65 项及共享 fixture 2 项通过。
 - [x] 实现 expression 混合和互斥/叠加语义。
   - 验收证据（2026-08-30）：`bongocat-live2d-playback` 严格解析 Type、fade、parameter、
     duplicate ID 与 Add/Multiply/Overwrite；三个 model3 声明的 9 个 exp3 全部由
@@ -1375,6 +1381,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     按 FadeOutTime、当前层按 FadeInTime 正弦过渡，最多同时保留两层。真实 Core
     测试覆盖三种 blend，runtime 测试覆盖 drawable 变化、快速替换、无效请求保留、GPU
     rejection 保留和成功模型 commit 清理；产品输入最后应用。快捷键/GPUI 入口由后续项跟踪。
+  - 复核（2026-09-24）：固定 Mver/R5 expression 语义与当前实现一致——expression 没有 duration
+    或自然完成，最新 expression 淡入完成后持续应用，直到下一次有效 expression、成功模型 commit
+    或 shutdown 清理；不存在与 motion 相同的“终点后自动清空”缺陷。真实 Core frame-order 回归
+    新增 2 秒后的第二帧，证明默认 parameter 恢复后最新 expression 仍以满权重覆盖对应参数。
 - [ ] 实现 physics、pose、eye blink、breath 等实际需求。
   - 状态（2026-09-01）：正式 runtime 已在 motion/expression 之后、产品输入之前加入可注入单调时钟驱动的
     `ParamBreath` 四秒正弦周期和 `EyeBlink` 五秒周期（每周期 180ms 闭眼）；缺失参数安全跳过，纯函数
@@ -4912,12 +4922,17 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       ③ 顺带修正 `docs/BongoCat Native Rewrite Technical Design.md` 的快捷键段落：它仍写着
       "平台 input owner 驱动短生命周期 matcher"，而 ADR-0044 已删除 `ShortcutMatcher` 并把注册交给
       操作系统，属于 ADR 之后的文档漂移。
-    - 退出条件：行为快捷键触发一次动作并自然结束；按住不放只触发一次；播放结束后的下一次按下重新
-      播放；`PreviewMotion` 语义不变；双平台实机确认。
-    - 验收证据（2026-09-19，本机 macOS / aarch64）：`cargo test -p bongocat-runtime --lib` 的新用例
+    - 后续修订（2026-09-24）：本项的“只播一次”和按住只触发一次继续有效，但“自然结束后
+      `active_motion` 为空并回 idle”已由第 107 项取代。现在动作进入 completed 并保持终点
+      motion layer，完成后的下一次按下仍重新播放；显式 stop、替换与模型切换仍清理。
+    - 历史退出条件（其中“结束后清空”已由第 107 项取代）：行为快捷键触发一次动作并自然结束；
+      按住不放只触发一次；播放结束后的下一次按下重新播放；`PreviewMotion` 语义不变；双平台实机确认。
+    - 历史验收证据（2026-09-19，本机 macOS / aarch64）：`cargo test -p bongocat-runtime --lib` 的新用例
       `shortcut_motion_stops_after_one_cycle_even_though_the_clip_loops`（真实 standard 预置 + 注入
       单调时钟：触发后前进到 2s，`active_motion` 必须为空；在飞行中的重复触发保持首次 command
-      sequence；结束后的再次触发拿到新 sequence）与 `bongocat-platform` 的
+      sequence；结束后的再次触发拿到新 sequence；该用例在 2026-09-24 更名为
+      `shortcut_motion_holds_its_final_pose_after_one_cycle`，并把“清空”断言改为“保持 completed
+      identity/终点姿态后仍可重播”）与 `bongocat-platform` 的
       `repeated_pressed_events_for_a_held_chord_dispatch_their_target_once` /
       `one_hold_dispatches_a_single_press_edge_however_many_repeats_arrive` /
       `a_table_change_re_arms_bindings_it_unregistered` / `releases_and_idle_bindings_do_not_interfere`。
@@ -5977,6 +5992,28 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       打乱并失败，证明两半区各自被断言。还原后 140 项全绿。
     - 未运行：Models 页面在 Windows 上的实机外观（本项未改平台代码）；设置窗口 smoke 未复跑
       （改动不在快捷键/无障碍路径上，`--models-page-smoke` 只断言 catalog 非空与 active 在册）。
+
+107. [ ] `P4-MOTION-COMPLETION-HOLD`：一次性动作完成后保持最终姿态，并确认表情不会自动清除。
+    - 背景（2026-09-24，维护者反馈）：动作到达声明时长后虽然渲染过一帧终点值，runtime 却在
+      同一求值中删除 playback 与 active identity；下一帧恢复 Core 默认参数后，动作姿态消失。
+      这与“播完停在最后状态”的要求不符。
+    - 当前实现：`MotionPlayback` 增加 completed 状态；非循环 motion 的 sample time 在 duration
+      处固定，后续每帧仍把终点 parameter/part-opacity/model-opacity 写入 Core，再按既有顺序应用
+      expression、自动效果与产品输入。completed motion 不清 public active identity，因此显式
+      `StopMotion` 仍能按资源 fade 退出；它同时释放 priority 保留，下一请求可替换或重播，避免
+      模型兼容性和低优先级动作被永久阻塞。未新增依赖、crate、FFI 或整帧快照。
+    - 表情复核：expression 没有 duration/natural completion；最新层淡入后已持续应用，替换时只
+      淡出上一层。真实 Core 定向测试新增完成后 2 秒的第二帧，证明默认 parameter 恢复后最新
+      expression 仍以满权重存在，因此没有同类 motion 清除缺陷，也未改写其生产逻辑。
+    - 定向证据（2026-09-24，本机 macOS / aarch64）：`cargo test --locked -p bongocat-runtime`
+      为 65 passed / 0 failed，另有共享 fixture 2 passed；新增完成姿态在 2 秒与 3 秒均保持
+      `Param = 1.0`、完成后 UserData 不重放、零时长 stop 清除、shortcut/preview 完成后 active
+      identity 保持、同动作重播、完成后低优先级请求可接管，以及 expression 跨 2 秒持续应用。
+      完整 `just check` 六道门通过；
+      `tools/tests` 66 项、fixture validator、locale validator（246 keys × 2）、JSON Schema
+      validator 与 `git diff --check` 均通过。
+    - 退出条件：变更进入 `next` 提交；用真实动作与表情在 Windows/macOS 确认最终姿态、替换、
+      显式停止和模型切换观感。当前未提交、未做双平台实机 smoke，因此保持未勾选。
 
 ## 13. 待决策清单
 

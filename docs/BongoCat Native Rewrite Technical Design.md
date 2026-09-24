@@ -1,7 +1,7 @@
 # BongoCat Native Rewrite Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-23
+最后更新：2026-09-24
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
@@ -394,12 +394,16 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   不可变 `RenderSnapshot`，不读取 config 或 GPUI 状态。overlay 隐藏时，runtime 周期等待和产品
   frame source 统一降至 `100 ms`；可靠 command 仍会立即唤醒 runtime，产品重新显示的轮询延迟
   上限为 `100 ms`。
-- `motion_start` 触发的动作只播放一个循环：到达 clip 声明时长后自然完成并清除 active motion，
-  clip 的 `Meta.Loop` 不改变这一点（它描述资源如何制作，不描述产品如何触发），否则猫会永远
-  停在动作里、回不到 idle 参数。同一动作在同一 priority 上仍在播放时，重复请求被忽略（R5
-  motion queue 的 equal-priority 规则），因此按键重复和连按既不会重启 clip 也不会重放 motion
-  音效；播放结束后的下一次触发重新播放。预览播放同样只播放一个循环，但每次请求都重新开始。
-- `motion_stop` 只作用于匹配的当前动作。非零 `FadeOutTime` 在 runtime snapshot 中保留
+- `motion_start` 触发的动作只播放一个循环：到达 clip 声明时长后，动作进入 completed 状态并
+  保留该次求值产生的最终参数、part opacity 与 model opacity，作为当前 motion layer 在后续
+  每帧默认值恢复后继续重放；它不会继续推进，也不会自动退回 idle。clip 的 `Meta.Loop` 不改变
+  这一点（它描述资源如何制作，不描述产品如何触发），否则动作会永远停在循环中。completed
+  motion 不再占用 priority 保留位，下一次请求可替换或重新播放它；显式 `motion_stop` 仍可让最终
+  姿态按资源 fade 退出。同一动作在同一 priority 上仍在播放时，重复请求被忽略（R5 motion
+  queue 的 equal-priority 规则），因此按键重复和连按既不会重启 clip 也不会重放 motion 音效。
+  预览播放同样只播放一个循环并保持最终姿态，但每次请求都重新开始。
+- `motion_stop` 只作用于匹配的当前动作，包括已完成并保持最终姿态的 motion。非零
+  `FadeOutTime` 在 runtime snapshot 中保留
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
   清理；重复 stop 不重启计时，零时长立即清理，旧动作的 stop 不影响后启动动作。
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。
@@ -652,8 +656,10 @@ model evaluation + render snapshot
   混合由 `bongocat-live2d-playback` 纯数值完成；`bongocat-live2d-render` 从 `CommittedModel`
   读取并准备 `RenderResources`，`bongocat-live2d` 再做 Core ID/range/part 校验并把结果写入 Core。
 - 每帧从 Core 默认 parameter 开始，依次应用 motion、expression、自动 EyeBlink/Breath、
-  physics/pose（实现后）、类型化产品输入，最后调用 Core update。motion 的自然结束与显式停止均使用 model3/
-  curve fade，显式停止的外层正弦权重与 curve 权重相乘。`PartOpacity` motion curve
+  physics/pose（实现后）、类型化产品输入，最后调用 Core update。completed motion 仍以 clip
+  声明时长对应的最终样本参与这一步，因此默认 parameter 的逐帧恢复不会抹掉动作最终姿态；
+  motion 的自然结束与显式停止均使用 model3/curve fade，显式停止的外层正弦权重与 curve
+  权重相乘。`PartOpacity` motion curve
   遵循 R5 Framework 语义，按 curve ID 写入 Core part-opacity sink，和普通 parameter
   curve 使用独立的目标表与权重路径。model3 `Groups` 由模型索引保留并校验；motion `Model` target 中
   `EyeBlink` 对匹配的 Parameter curve 做乘法、`LipSync` 做加法，对未被 Parameter curve
@@ -661,8 +667,9 @@ model evaluation + render snapshot
   独立 model opacity 进入 `RenderSnapshot`，只在 renderer 最终颜色 pass 与 drawable/
   窗口透明度相乘，不参与 mask 生成，并保持到后续 motion opacity curve 更新或模型切换。
   expression 的 Add/Multiply/Overwrite 和正弦淡入淡出由 `bongocat-live2d-playback` 纯函数计算；
-  替换期间最多保留上一层与当前层，稳定后只保留最新 expression，使内存和每帧成本保持有界。
-  真实输入最后覆盖对应产品 parameter，避免表情让按下状态失真。
+  替换期间最多保留上一层与当前层，稳定后只保留并持续应用最新 expression，直到被下一次有效
+  expression、成功的模型切换或 shutdown 清理，使内存和每帧成本保持有界。真实输入最后覆盖
+  对应产品 parameter，避免表情让按下状态失真。
 - 模型加载采用 prepare/commit/rollback，失败时保留当前可用模型。
 - 模型切换是 CPU/GPU 两阶段提交：runtime 先保留旧 active model/bindings，准备新的
   Cubism generation，并随候选 `RenderSnapshot` 发布一次性强类型 commit token；平台

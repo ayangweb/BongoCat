@@ -185,10 +185,14 @@ masks, and textures with strong resource IDs and never receives the mutable Cubi
 
 The same worker now owns typed motion playback. `Application::start_motion` resolves a validated
 model3 group/index, applies motion3 linear, Bezier, stepped, or inverse-stepped curves using monotonic
-elapsed time, and publishes the resulting immutable drawable frame. Runtime snapshots expose only
-the active motion identity, priority, originating command sequence, and optional first stop command
-sequence. Explicit stop preserves the first frame, multiplies curve weights by the model3 sine
-fade-out, and clears the motion only after the fade completes; duplicate stops cannot restart it.
+elapsed time, and publishes the resulting immutable drawable frame. A product motion advances for one
+cycle and then remains the current motion layer at the clip's terminal sample; later frames restore
+Core defaults and reapply that final motion contribution instead of snapping back to idle. The
+completed layer no longer reserves priority, so the next motion request may replace or restart it.
+Runtime snapshots expose only the active motion identity, priority, originating command sequence,
+and optional first stop command sequence. Explicit stop also matches a completed held motion,
+preserves the first frame, multiplies curve weights by the model3 sine fade-out, and clears the motion
+only after the fade completes; duplicate stops cannot restart it.
 PartOpacity curves follow the official Framework parameter sink and remain separate from weighted
 parameter samples. Model3 Parameter groups drive R5-compatible Model curves: EyeBlink multiplies
 matching parameter curves, LipSync adds to them, and both update unmatched group parameters with the
@@ -207,9 +211,11 @@ also evaluated from monotonic elapsed time with loop-safe de-duplication and a b
 Expression playback uses `Application::set_expression` with the model3 expression name. Every
 declared exp3 resource is parsed and cached during model preparation; Add, Multiply, and Overwrite
 parameters use the file's sine fade times. Replacing an expression fades the immediately previous
-layer out while the new layer fades in, keeping at most two layers; an invalid request leaves the
-active expression unchanged. The per-frame order is defaults, motion, expression, typed product
-input, then Cubism Core update.
+layer out while the new layer fades in, keeping at most two layers. Once its fade-in completes, the
+newest expression remains applied at full weight until another valid expression replaces it, a model
+commit succeeds, or shutdown begins; expressions do not auto-clear to idle. An invalid request
+leaves the active expression unchanged. The per-frame order is defaults, motion, expression, typed
+product input, then Cubism Core update.
 
 `bongocat-live2d-playback` owns the SDK-independent motion3/exp3 byte parser and numeric
 curve/blend evaluation. `bongocat-live2d-render` prepares model-package `RenderResources` and

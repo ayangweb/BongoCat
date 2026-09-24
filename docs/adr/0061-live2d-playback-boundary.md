@@ -63,6 +63,27 @@ bongocat-runtime --------> bongocat-live2d + bongocat-live2d-playback
 - the old `bongocat-live2d` playback re-export is removed after runtime imports
   the playback types directly.
 
+## Amendment: completed motions hold their terminal pose
+
+The original one-shot policy removed renderer playback and the public active-motion identity as
+soon as a clip reached its declared duration. The following evaluation restored Core defaults, so
+ordinary motion parameters disappeared one frame after the terminal sample. This solved accidental
+looping but did not match the 2026-09-24 product requirement to stop on the action's final state.
+
+A one-shot motion now transitions to an internal completed state at the clip duration. Its local
+sample time is pinned to that duration, and the terminal parameter, part-opacity, and model-opacity
+samples remain a renderer-owned motion layer that is reapplied after each per-frame default reset.
+Expression, automatic effects, product input, and Core update continue in their existing order.
+Completed playback is not advanced again and does not reserve motion priority, preserving the
+pre-existing ability of any later motion request to start from the settled state. The public active
+identity remains current so an explicit `StopMotion` can still fade and remove it; a replacement,
+successful model commit, or shutdown removes the layer as before.
+
+Expressions retain the already-correct stateful lifecycle: the newest expression remains applied
+after fade-in until another valid expression replaces it, a model commit succeeds, or shutdown
+clears it. No expression clear, duration, new crate, dependency, FFI call, or frozen whole-model
+snapshot is introduced.
+
 ## Rejected alternatives
 
 - Moving Cubism Core, model loading, or GPU resource preparation into the new

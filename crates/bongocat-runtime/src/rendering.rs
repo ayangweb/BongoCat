@@ -56,6 +56,7 @@ struct MotionPlayback {
     clip: MotionClip,
     looping: bool,
     started_at: Duration,
+    completed: bool,
     fade_out_started_at: Option<Duration>,
     last_event_elapsed: Option<Duration>,
 }
@@ -190,6 +191,7 @@ impl RuntimeRenderer {
             clip,
             looping,
             started_at: now,
+            completed: false,
             fade_out_started_at: None,
             last_event_elapsed: None,
         });
@@ -204,6 +206,17 @@ impl RuntimeRenderer {
             .and_then(|active| active.model.motion_clip(motion.group(), motion.index()))
             .map(|_| ())
             .ok_or(RuntimeRenderErrorCode::MotionLoadFailed)
+    }
+
+    /// A completed one-shot keeps contributing its terminal sample, but it no
+    /// longer reserves priority. An explicit stop in progress is still stopping,
+    /// not settled, until its fade removes the layer.
+    pub(crate) fn motion_is_settled(&self) -> bool {
+        self.active.as_ref().is_some_and(|active| {
+            active.motion.as_ref().is_some_and(|playback| {
+                playback.completed && playback.fade_out_started_at.is_none()
+            })
+        })
     }
 
     pub(crate) fn stop_motion(&mut self, now: Duration) -> MotionStopStatus {
@@ -269,6 +282,13 @@ impl RuntimeRenderer {
         let mut skipped_motion_user_data = 0;
         let motion_finished = if let Some(playback) = &mut active.motion {
             let elapsed = now.saturating_sub(playback.started_at);
+            let elapsed = if playback.completed {
+                playback.clip.duration()
+            } else if playback.looping {
+                elapsed
+            } else {
+                elapsed.min(playback.clip.duration())
+            };
             let fade_out_elapsed = playback
                 .fade_out_started_at
                 .map(|started_at| now.saturating_sub(started_at));
@@ -307,7 +327,10 @@ impl RuntimeRenderer {
             .map_err(|error| {
                 map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
             })?;
-            status.finished || explicit_fade_finished
+            if !playback.looping && status.finished {
+                playback.completed = true;
+            }
+            explicit_fade_finished
         } else {
             false
         };
@@ -577,6 +600,7 @@ mod tests {
             clip: motion,
             looping: true,
             started_at: Duration::ZERO,
+            completed: false,
             fade_out_started_at: None,
             last_event_elapsed: None,
         });
@@ -608,6 +632,104 @@ mod tests {
                 .expect("supported parameter");
             assert!((actual - expected).abs() < 0.0001, "{id}: {actual}");
         }
+
+        renderer
+            .evaluate(
+                ModelInputSnapshot {
+                    pointer_x: -0.5,
+                    ..ModelInputSnapshot::default()
+                },
+                Duration::from_secs(2),
+            )
+            .expect("expression persistence frame");
+        let active = renderer.active.as_ref().expect("active model");
+        assert_eq!(active.expressions.len(), 1);
+        let mouth = active
+            .model
+            .parameter_value_by_id("ParamMouthOpenY")
+            .expect("parameter value")
+            .expect("supported parameter");
+        assert!(
+            (mouth - 0.8).abs() < 0.0001,
+            "the latest expression must remain active after its fade-in completes: {mouth}"
+        );
+    }
+
+    #[test]
+    fn completed_motion_holds_its_terminal_parameters_until_stopped() {
+        let (bootstrap, _consumer) = RuntimeRenderer::channel();
+        let mut renderer = RuntimeRenderer::start(bootstrap);
+        let token = renderer
+            .prepare(1, &preset_model("standard"), ModelInputSnapshot::default())
+            .expect("prepare model");
+        assert!(renderer.commit(token));
+
+        let motion = MotionClip::from_slice(
+            br#"{
+              "Version":3,
+              "Meta":{"Duration":1.0,"Fps":30.0,"Loop":true,"AreBeziersRestricted":true,
+                "CurveCount":1,"TotalSegmentCount":1,"TotalPointCount":2,
+                "UserDataCount":1,"TotalUserDataSize":2},
+              "Curves":[{"Target":"Parameter","Id":"Param","Segments":[0,0,0,1,1]}],
+              "UserData":[{"Time":0.5,"Value":"go"}]
+            }"#,
+            0.0,
+            0.0,
+        )
+        .expect("motion");
+        renderer.active.as_mut().expect("active model").motion = Some(MotionPlayback {
+            clip: motion,
+            looping: false,
+            started_at: Duration::ZERO,
+            completed: false,
+            fade_out_started_at: None,
+            last_event_elapsed: None,
+        });
+
+        for (now, expected_user_data_events) in [
+            (Duration::from_secs(2), 1),
+            (Duration::from_secs(3), 0),
+            (Duration::from_secs(1), 0),
+        ] {
+            let evaluation = renderer
+                .evaluate(ModelInputSnapshot::default(), now)
+                .expect("completed motion frame");
+            assert!(
+                !evaluation.motion_finished,
+                "natural completion must keep the motion layer current"
+            );
+            assert_eq!(
+                evaluation.motion_user_data.len(),
+                expected_user_data_events,
+                "a completed motion must not replay UserData on later frames"
+            );
+            assert!(renderer.motion_is_settled());
+            let value = renderer
+                .active
+                .as_ref()
+                .expect("active model")
+                .model
+                .parameter_value_by_id("Param")
+                .expect("parameter value")
+                .expect("supported parameter");
+            assert!(
+                (value - 1.0).abs() < 0.0001,
+                "the terminal motion value must be reapplied after defaults at {now:?}: {value}"
+            );
+        }
+
+        assert_eq!(
+            renderer.stop_motion(Duration::from_secs(3)),
+            MotionStopStatus::Finished
+        );
+        assert!(
+            renderer
+                .active
+                .as_ref()
+                .expect("active model")
+                .motion
+                .is_none()
+        );
     }
 
     #[test]
