@@ -110,7 +110,7 @@ HID `0x64`（`Keyboard Non-US \ and |`）不是小键盘键，而是 ISO/ABNT2 �
 2. **左手绑定是产品近似，并且决定了小键盘美术只能放 `left-keys`**：按下小键盘会让左爪下压；
    放在 `right-keys` 的 `Kp*.png` 在左手绑定下不可达。若后续为小键盘出右手美术，需要同时把绑定
    改到右手（届时回退会失去 `left-keys` 里的 `Num*`/`Enter`/`Slash`），决策 3 需要重写。
-   注意 `bongocat-model` 的 Mver 转换是按 legacy 的 `lefthand`/`righthand` 列表决定输出目录的
+   注意 `bongocat-model-store` 的 Mver 转换是按 legacy 的 `lefthand`/`righthand` 列表决定输出目录的
    （`OUTPUT_LEFT_KEYS`/`OUTPUT_RIGHT_KEYS`），因此手写的 legacy 表若把小键盘码放进右手列表，
    产物会落到 `right-keys`；已知真实样本不含小键盘码，所以当前不存在这种产物。
 3. **`NumLock`、`KpMultiply`、`KpPlus` 仍然不画任何东西**：主键盘上没有这三个键（`*`、`+` 只能靠

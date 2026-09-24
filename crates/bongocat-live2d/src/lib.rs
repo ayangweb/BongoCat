@@ -1692,7 +1692,7 @@ mod tests {
             .filter_map(|usage| candidates(usage).first().copied())
             .collect();
 
-        let outputs = bongocat_model::legacy_keyboard_key_image_names();
+        let outputs = bongocat_model_store::legacy_keyboard_key_image_names();
         let unresolvable: Vec<&str> = outputs
             .iter()
             .copied()

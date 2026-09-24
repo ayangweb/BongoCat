@@ -1,6 +1,9 @@
 use crate::key_names::normalize_legacy_key_image_names;
 use crate::mver::{self, ModelSourceContent, MverInputMode, MverSource};
-use crate::{InstalledModel, ModelError, ModelId, ModelPackageLimits, PreparedModel};
+use bongocat_model::{
+    InstalledModel, ModelCatalogEntry, ModelError, ModelId, ModelOrigin, ModelPackageLimits,
+    PACKAGE_COVER_FILE, PACKAGE_RESOURCES_DIRECTORY, PreparedModel,
+};
 use bongocat_storage::{set_private_directory, set_private_file};
 use std::{
     fmt, fs,
@@ -149,43 +152,6 @@ pub struct ModelStore {
 pub struct ModelStoreRecovery {
     pub abandoned_imports_removed: usize,
     pub abandoned_deletions_removed: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ModelCatalogEntry {
-    Ready {
-        origin: crate::ModelOrigin,
-        snapshot: crate::ModelSnapshot,
-    },
-    Invalid {
-        origin: crate::ModelOrigin,
-        id: ModelId,
-        code: crate::ModelDiagnostic,
-        resource: Option<String>,
-        detail: String,
-    },
-}
-
-impl ModelCatalogEntry {
-    pub const fn origin(&self) -> crate::ModelOrigin {
-        match self {
-            Self::Ready { origin, .. } | Self::Invalid { origin, .. } => *origin,
-        }
-    }
-
-    pub fn id(&self) -> &ModelId {
-        match self {
-            Self::Ready { snapshot, .. } => &snapshot.id,
-            Self::Invalid { id, .. } => id,
-        }
-    }
-
-    pub fn snapshot(&self) -> Option<&crate::ModelSnapshot> {
-        match self {
-            Self::Ready { snapshot, .. } => Some(snapshot),
-            Self::Invalid { .. } => None,
-        }
-    }
 }
 
 /// Outcome of scanning the installed model store.
@@ -351,11 +317,11 @@ impl ModelStore {
             let catalog_entry = match PreparedModel::prepare(id.clone(), entry.path(), self.limits)
             {
                 Ok(prepared) => ModelCatalogEntry::Ready {
-                    origin: crate::ModelOrigin::Installed,
+                    origin: ModelOrigin::Installed,
                     snapshot: prepared.snapshot(),
                 },
                 Err(error) => ModelCatalogEntry::Invalid {
-                    origin: crate::ModelOrigin::Installed,
+                    origin: ModelOrigin::Installed,
                     id,
                     code: error.code,
                     resource: error.resource,
@@ -434,7 +400,7 @@ impl ModelStore {
     pub fn replace_cover(&self, id: &ModelId, bytes: &[u8]) -> Result<PathBuf, ModelStoreError> {
         let _lock = self.acquire_lock()?;
         let root = self.installed_path(id)?;
-        let resources = root.join(crate::PACKAGE_RESOURCES_DIRECTORY);
+        let resources = root.join(PACKAGE_RESOURCES_DIRECTORY);
         fs::create_dir_all(&resources).map_err(|error| {
             ModelStoreError::new(
                 ModelStoreDiagnostic::IoError,
@@ -450,8 +416,8 @@ impl ModelStore {
             )
         })?;
 
-        let cover = resources.join(crate::PACKAGE_COVER_FILE);
-        let staging = resources.join(format!(".{}.new", crate::PACKAGE_COVER_FILE));
+        let cover = resources.join(PACKAGE_COVER_FILE);
+        let staging = resources.join(format!(".{}.new", PACKAGE_COVER_FILE));
         let write = || -> io::Result<()> {
             let mut file = File::create(&staging)?;
             set_private_file(&file)?;
@@ -718,7 +684,7 @@ impl ModelStore {
             files_copied: file_count_for_progress(statistics.file_count),
             bytes_copied: statistics.total_bytes,
         });
-        let mut prepared = PreparedModel::prepare(id.clone(), &staging, self.limits)
+        let prepared = PreparedModel::prepare(id.clone(), &staging, self.limits)
             .map_err(ModelStoreError::package)?;
         observation.check_cancelled()?;
 
@@ -752,7 +718,7 @@ impl ModelStore {
             ModelStoreError::new(code, Some(id.as_str().to_owned()), detail)
         })?;
         cleanup.disarm();
-        prepared.canonical_root = destination;
+        let prepared = prepared.relocate(destination);
         Ok(InstalledModel::from_prepared(prepared))
     }
 
@@ -1300,6 +1266,28 @@ mod tests {
     }
 
     #[test]
+    fn shared_fixture_import_preserves_parser_rejection_and_catalog_contract() {
+        let data = tempdir().expect("fixture store root");
+        let store = model_store(data.path());
+        let accepted = store
+            .import(
+                ModelId::parse("fixture-accepted").expect("accepted model id"),
+                fixture("combined-parameters-accepted"),
+            )
+            .expect("accepted fixture import");
+        assert_eq!(accepted.id().as_str(), "fixture-accepted");
+
+        let rejected = store
+            .import(
+                ModelId::parse("fixture-rejected").expect("rejected model id"),
+                fixture("missing-moc"),
+            )
+            .expect_err("rejected fixture import");
+        assert_eq!(rejected.code, ModelStoreDiagnostic::InvalidPackage);
+        assert_eq!(store.list().expect("fixture catalog").entries.len(), 1);
+    }
+
+    #[test]
     fn a_cover_replacement_lands_on_the_package_cover_and_leaves_no_staging_file() {
         let data = tempdir().expect("data root");
         let store = model_store(data.path());
@@ -1686,14 +1674,14 @@ mod tests {
             catalog.entries[0],
             ModelCatalogEntry::Invalid { .. }
         ));
-        assert_eq!(catalog.entries[0].origin(), crate::ModelOrigin::Installed);
+        assert_eq!(catalog.entries[0].origin(), ModelOrigin::Installed);
         assert!(catalog.entries[0].snapshot().is_none());
         assert_eq!(catalog.entries[1].id().as_str(), "zeta");
         assert!(matches!(
             catalog.entries[1],
             ModelCatalogEntry::Ready { .. }
         ));
-        assert_eq!(catalog.entries[1].origin(), crate::ModelOrigin::Installed);
+        assert_eq!(catalog.entries[1].origin(), ModelOrigin::Installed);
         assert!(catalog.entries[1].snapshot().is_some());
         assert_eq!(
             store

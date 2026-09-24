@@ -18,9 +18,11 @@ use bongocat_input::{
 use bongocat_live2d::KeyImageInventory;
 use bongocat_model::{
     CommittedModel, InstalledModel, ModelBehaviorSnapshot, ModelCatalogEntry, ModelError, ModelId,
-    ModelImportProgress, ModelImportStage, ModelOrigin, ModelPackageLimits, ModelSourceContent,
-    ModelStore, ModelStoreError, MverInputMode, PresetCoverStore, PresetModelCatalog,
-    preset_cover_exists,
+    ModelOrigin, ModelPackageLimits, PresetModelCatalog,
+};
+use bongocat_model_store::{
+    ModelImportProgress, ModelImportStage, ModelSourceContent, ModelStore, ModelStoreError,
+    MverInputMode, PresetCoverStore, preset_cover_exists,
 };
 use bongocat_render::{FUNCTION_KEY_USAGES, KeySide, ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{

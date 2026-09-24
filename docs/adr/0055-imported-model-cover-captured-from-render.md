@@ -185,7 +185,7 @@ settings 协议。导入成功通知在本次导入最后一次封面回调到�
 `a_failed_cover_capture_abandons_the_import`（变异验证：去掉 `model_import_failed_pending` 赋值即报
 「the failed capture must be reported to the user」）；`cargo check --workspace --all-targets` 通过；
 `tools/validate-locales.py` 2 locale × 243 键通过；`just check` 六道门全过。真实模型证据（本机 Metal）：
-把两个源各用 `bongocat-model --example model_conversion_smoke` 转成包后跑 `capture_model_cover`，修复
+把两个源各用 `bongocat-model-store --example model_conversion_smoke` 转成包后跑 `capture_model_cover`，修复
 渲染快照 preflight 前报 `drawable geometry is empty`；修复后两个模型都截出封面——`芙宁娜(无气泡)`
 384423 B / 625×640（2.10 s）、`芙宁娜(按键气泡）` 384116 B / 625×640（1.94 s）。`GpuModel::prepare`
 （含 2 张 2048² 模型纹理与 76 张 1200×1040 键位图上传）实测 395 ms，远在 runtime 的 2 s 激活超时
@@ -193,7 +193,7 @@ settings 协议。导入成功通知在本次导入最后一次封面回调到�
 **这条真实模型证据来自一次性探针，探针没有留在仓库里**；留在仓库里的是上面两项自动化测试。
 
 Windows 侧（2026-09-23）：`bongocat-overlay` 整体无法交叉编译到 `x86_64-pc-windows-msvc`
-（`bongocat-model` 拉进 `libdeflate-sys`，其 C 构建需要 Windows SDK），因此按
+（`bongocat-model-store` 拉进 `libdeflate-sys`，其 C 构建需要 Windows SDK），因此按
 `bongocat-rust-ci-triage` §5.1 的手法搭隔离 crate，把 `GpuModel::prepare` 的缓冲创建与
 `sync_snapshot` 的顶点上传守卫逐字抄入后 `cargo check --target x86_64-pc-windows-msvc` 通过，
 并用 `compile_error!` 探针与一次 `E0308` 变异确认该检查真的在编译、也真的能抓住类型错误。

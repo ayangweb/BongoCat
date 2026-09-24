@@ -2710,8 +2710,8 @@ fn compose_model_input(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bongocat_model::PresetModelCatalog;
-    use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, ModelStore};
+    use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
+    use bongocat_model_store::ModelStore;
     use bongocat_render::{
         ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome, RenderConsumer, RenderFrame,
         RenderSnapshot,

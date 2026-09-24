@@ -452,15 +452,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 创建 bongocat-ui-protocol：设置/更新 DTO、typed command/reply、state handle 和 bounded client。
   - 验收证据（2026-09-24）：protocol crate 的唯一直接依赖为 `async-channel`，不依赖 GPUI、OS、config、platform、i18n、update、model 或 runtime；app settings/update/lib 与 protocol 直接接线，GPUI view 保留 debounce、本地化、渲染轮询和窗口句柄测试。protocol、UI、app 测试及 workspace release check 通过。
 - [x] 创建 bongocat-config：环境隔离、schema、验证和原子存储。
-- [x] 创建 bongocat-model：模型包、导入和资源索引。
+- [x] 创建 bongocat-model：模型包解析、只读资源索引、路径安全和预置模型目录。
   - 验收证据（2026-08-30）：正式 `bongocat-model` 已实现可移植 `ModelId`、model3
     索引、引用规范化、文件/包/纹理上限、跨根 symlink 防护和
     `PreparedModel`；三个预置包与缺失 moc、损坏 JSON、非 ASCII、超大纹理、
-    路径穿越、多入口及跨根 symlink 均由产品 workspace 测试。`ModelStore` 又完成
-    环境模型根、受限 staging copy、flush、复验、同根 rename commit 和无覆盖语义；
-    用户模型 catalog、加载、删除、writer lock 和崩溃 staging 回收已进入产品入口；
-    `PresetModelCatalog` 以真实只读目录签发预置 `CommittedModel`，拒绝 symlink root/entry
-    和 catalog root 逃逸。完整 sidecar 强类型校验与预置/用户合并视图继续由 Phase 4 跟踪。
+    路径穿越、多入口及跨根 symlink 均由产品 workspace 测试。`PresetModelCatalog`
+    以真实只读目录签发预置 `CommittedModel`，拒绝 symlink root/entry 和 catalog root 逃逸。
+- [x] 创建 bongocat-model-store：installed store、锁、staging、导入/删除、Mver 转换、键名归一化和用户侧封面覆盖。
+  - 验收证据（2026-09-24）：store 事务测试与 shared model fixtures 在新 crate 中通过；导入失败不留下 destination/staging，源目录保持只读且不变；Mver、键名、封面和 app/runtime/live2d 接线保持原有行为。
 - [ ] 创建 bongocat-live2d：Cubism safe wrapper 和模型求值。
   - 状态（2026-08-31）：正式 crate 已完成 Core 版本门禁、Moc/Model safe owner、
     drawable snapshot、parameter id/range/default、motion3 curve/fade 和 exp3
@@ -495,7 +494,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     泄漏到 runtime；macOS 生命周期通知、双平台 GameController/XInput 与其余系统服务尚未
     迁入，因此总项保持未完成。
 - [ ] 创建 shared/config、behavior、fixtures、resources。
-- [x] 避免空 crate；首批建立 app/runtime/config，随后仅在真实依赖和测试隔离需要时增加 input、ui-protocol 等边界 crate。
+- [x] 避免空 crate；首批建立 app/runtime/config，随后仅在真实依赖和测试隔离需要时增加 input、ui-protocol、model-store 等边界 crate。
 
 ### 2.2 工程质量
 
@@ -1312,8 +1311,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     物理 GPU 矩阵仍待完成，因此总项保持未勾选。
 - [ ] 加载失败保留当前可用模型。
   - 状态（2026-08-30）：文件解析在 runtime 外完成，只有由环境 `ModelStore` 或预置
-    `PresetModelCatalog` 签发、调用方无法自行构造的 `CommittedModel` 能进入
-    `ActivateModel`。runtime worker 在替换 active model 前完成 Cubism load、首轮参数求值
+    `PresetModelCatalog` 签发的 `CommittedModel` 能进入 `ActivateModel`。当前跨 crate store
+    seam 提供 `PreparedModel::relocate` 与 `InstalledModel::from_prepared`，因此“调用方无法自行
+    构造”不再作为编译期保证；产品代码仍只由 model-store/preset catalog 调用该 seam，若未来需要
+    对不受信任调用方密封，必须另建 commit type/ADR。runtime worker 在替换 active model 前完成
+    Cubism load、首轮参数求值
     和首帧 publish；损坏 Moc 切换会返回稳定 command failure，旧 model generation 继续
     出帧，随后有效切换才递增 generation。Metal renderer 又将新 generation 的 texture、
     mesh、mask target 和 canvas 组装为临时 `GpuModel`，完整验证后一次 commit；失败 prepare
@@ -1942,10 +1944,10 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     子进程中途退出后的恢复。完整 `cargo test -p bongocat-config --locked` 通过（46 passed，1 个
     仅供父测试调用的 ignored child probe）；当前配置字节、临时文件和恢复结果均有断言。
 - [x] 覆盖非 ASCII/超长路径、缺失和重复模型。
-  - 验收证据（2026-09-06）：`bongocat-model` 覆盖非 ASCII 源目录与资源名的导入/解析，
+  - 验收证据（2026-09-06）：`bongocat-model` 与 `bongocat-model-store` 覆盖非 ASCII 源目录与资源名的导入/解析，
     65 字符超长 model ID 在文件系统访问前拒绝，缺失 `.moc3`/model3 入口和重复 installed
     ID 均保持稳定诊断且不覆盖既有内容；portable ID property test 另覆盖任意字符串长度与
-    Windows 保留名边界。`cargo test -p bongocat-model --locked` 通过，平台文件选择实机证据
+    Windows 保留名边界。`cargo test -p bongocat-model -p bongocat-model-store --locked` 通过，平台文件选择实机证据
     仍由 `P7-MODEL-DIRECTORY-PICKER` 跟踪。
 - [x] 当前 v1 连续读取 10 次结果一致且不会产生额外写入或备份。
 - [x] 失败注入不丢当前环境的配置或用户模型。
@@ -2756,7 +2758,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
         Entity 重建、Models 页面与 shutdown smoke，Ubuntu jobs `99340456922`/`99340462194` 通过
         共享 contract、Clippy、workspace tests 和 release check。
 18. [x] `P4-MODEL-CATALOG`：建立来源感知的预置/用户模型合并目录并投影到设置服务。
-    - 依赖：正式 `bongocat-model`、环境 `ModelStore`、只读预置资源和 typed settings snapshot。
+    - 依赖：正式 `bongocat-model`、`bongocat-model-store` 的环境 `ModelStore`、只读预置资源和 typed settings snapshot。
     - 退出条件：应用持有 preset catalog；preset/installed 的 ready/invalid 条目都可见且确定
       排序；重复 ID 保留 `(origin, id)` 复合身份；snapshot 只暴露稳定诊断而不泄漏路径；
       model/app/ui 单元测试、Clippy 与完整 Native workspace 门禁通过。
@@ -4210,8 +4212,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       **更新（2026-09-22）**：压缩包来源撤回后，本项只保留目录来源：`MverSource` 退化为持有已
       canonicalize 根路径的 struct，`detect_source_kind` 与 `ArchivePlan` 的按需读取路径都已删除；
       其余契约与证据不变。`LEGACY_RESOURCE_MAXIMUM_BYTES` 仍然约束目录侧的单次读入。
-    - 当时的契约（2026-09-17）：`bongocat-model` 新增 `mver` 模块与公开类型 `MverInputMode`、
-      `ModelSourceContent`。`ModelStore::inspect_source` 复用 `detect_source_kind` 后按上述两条
+    - 当时的契约（2026-09-17）：`bongocat-model-store` 持有 `mver` 模块与公开类型 `MverInputMode`、
+      `ModelSourceContent`；只读包解析与 `PreparedModel` 仍由 `bongocat-model` 提供。
+      `ModelStore::inspect_source` 复用 `detect_source_kind` 后按上述两条
       证据判定；`ModelStore::import_mver_with_observer` 把选中的模式转换进自己的 staging；导入
       尾部抽成 `commit_installed_staging`，目录复制、归档解压与转换三条路径共用
       `PreparedModel::prepare` + 单次 `rename`。归档来源通过 `ArchivePlan` 新增的
@@ -4253,7 +4256,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       没有 `right-keys`、源目录未被写入、合并目录出现 3 条 installed、跨模型进度单调且终值等于
       三模型之和、标题拼接模式名后仍不超上限、进度折叠的单元语义）。`bongocat-i18n` 4 测试
       （两 locale 键与占位符一致）。
-      **真实模型验证**：`cargo run -p bongocat-model --example model_conversion_smoke -- --source
+      **真实模型验证**：`cargo run -p bongocat-model-store --example model_conversion_smoke -- --source
       /Users/ayang/Downloads/bongo_cat_mver_0.1.6_64`（同一路径也可交给新用例
       `converts_the_legacy_sample_named_by_the_environment`，经 `BONGOCAT_MVER_SAMPLE` 指定）。
       逐模式结果：`standard` → 3 张纹理、15 张键位图（`Num1..Num7`/`KeyQ`/`KeyE`/`KeyR`/`Space`/
@@ -4595,7 +4598,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       origin 判断；`config.model.preset_models` 保存预置改名（与 `installed_models` 同记录形状、
       各自独立判重、无导入/删除/裁剪路径）；替换封面写到用户侧 `StorageLayout::model_overrides`
       （`<data>/model-overrides/<id>/resources/cover.png`），由新增的
-      `bongocat-model::PresetCoverStore` 提供原子写入口，快照投影优先取它、回退包内封面。
+      `bongocat-model-store::PresetCoverStore` 提供原子写入口，快照投影优先取它、回退包内封面。
       `ApplicationError::PresetModelMetadata` 与 `SettingsErrorCode::PresetModelMetadataImmutable`
       删除（`ALL` 36 → 35），`ModelNotInstalled` 因服务两个 origin 而改名 `ModelNotFound`
       （文案「找不到该模型」/ "The model was not found"）。包本身仍不被写入：服务层测试断言替换

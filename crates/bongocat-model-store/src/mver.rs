@@ -38,12 +38,13 @@
 //! `model3.json`; anything else returns `None`, so the ordinary package import
 //! reports its own diagnostic rather than this module guessing.
 
-use crate::{
-    ModelPackageLimits, normalize_reference, path_from_reference,
-    store::{
-        CopyStatistics, ImportObservation, ModelImportProgress, ModelImportStage,
-        ModelStoreDiagnostic, ModelStoreError, file_count_for_progress,
-    },
+use crate::store::{
+    CopyStatistics, ImportObservation, ModelImportProgress, ModelImportStage, ModelStoreDiagnostic,
+    ModelStoreError, file_count_for_progress,
+};
+use bongocat_model::{
+    ModelPackageLimits, PACKAGE_COVER_FILE, PACKAGE_RESOURCES_DIRECTORY, normalize_reference,
+    path_from_reference,
 };
 use bongocat_storage::{set_private_directory, set_private_file};
 use image::{ImageEncoder, RgbaImage};
@@ -655,7 +656,7 @@ where
     // model's own artwork, not something the conversion produces.
     for (reference, target) in [
         (plan.background.as_deref(), OUTPUT_BACKGROUND),
-        (plan.cover.as_deref(), crate::PACKAGE_COVER_FILE),
+        (plan.cover.as_deref(), PACKAGE_COVER_FILE),
     ] {
         let Some(reference) = reference else {
             continue;
@@ -664,7 +665,7 @@ where
         let bytes = source.read(reference)?;
         write_staging_file(
             destination,
-            &format!("{}/{target}", crate::PACKAGE_RESOURCES_DIRECTORY),
+            &format!("{}/{target}", PACKAGE_RESOURCES_DIRECTORY),
             &bytes,
             &mut created,
             statistics,
@@ -674,7 +675,7 @@ where
 
     for slot in &plan.slots {
         observation.check_cancelled()?;
-        let target = format!("{}/{}", crate::PACKAGE_RESOURCES_DIRECTORY, slot.reference);
+        let target = format!("{}/{}", PACKAGE_RESOURCES_DIRECTORY, slot.reference);
         let bytes = match &slot.image {
             MverSlotImage::Verbatim(hand) => source.read(hand)?,
             MverSlotImage::Composite { hand, keyboard } => {

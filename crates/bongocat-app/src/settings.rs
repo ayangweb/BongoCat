@@ -10,8 +10,10 @@ use bongocat_config::{
 };
 use bongocat_input::{PlatformInputDiagnostics, PlatformInputServiceStatus};
 use bongocat_model::{
-    CommittedModel, ModelBehaviorSnapshot, ModelCatalogEntry, ModelDiagnostic, ModelImportProgress,
-    ModelImportStage, ModelOrigin, ModelStoreDiagnostic, MverInputMode,
+    CommittedModel, ModelBehaviorSnapshot, ModelCatalogEntry, ModelDiagnostic, ModelOrigin,
+};
+use bongocat_model_store::{
+    ModelImportProgress, ModelImportStage, ModelStoreDiagnostic, MverInputMode,
 };
 #[cfg(target_os = "macos")]
 use bongocat_platform::{InputPermission, input_monitoring_permission};

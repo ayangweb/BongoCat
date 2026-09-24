@@ -1,30 +1,23 @@
 [package]
-name = "bongocat-live2d"
+name = "bongocat-model-store"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-build = "build.rs"
 
 [dependencies]
 bongocat-model.workspace = true
-bongocat-render.workspace = true
-bongocat-log.workspace = true
 bongocat-storage.workspace = true
 image.workspace = true
+oxipng.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+uuid = { version = "=1.26.1", default-features = false, features = ["std", "v4"] }
 
 [dev-dependencies]
-bongocat-model-store.workspace = true
 tempfile.workspace = true
 
-[lints.clippy]
-dbg_macro = "deny"
-print_stderr = "deny"
-print_stdout = "deny"
-
-[lints.rust]
-unsafe_op_in_unsafe_fn = "deny"
+[lints]
+workspace = true

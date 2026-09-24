@@ -2,7 +2,7 @@
 
 状态：已接受（2026-09-17）
 依赖：ADR-0030（先复用既有方案）、ADR-0036（模型来源按内容识别、压缩包与目录共用校验；
-**该 ADR 已于 2026-09-22 撤回**）、ADR-0011（渐进实现与发布门禁）
+**该 ADR 已于 2026-09-22 撤回**）、ADR-0011（渐进实现与发布门禁）、ADR-0060（model/store 边界）
 
 修订（2026-09-22）：ADR-0036 撤回后，本文**决策 4「归档来源不解压」**连同它描述的
 `ArchivePlan` / `MverSource::Archive` 一并失去实现——Mver 源现在只从用户选中的文件夹就地读取，
@@ -195,14 +195,14 @@ settings 的 `report_progress` 会丢弃回退的更新，而 store 每个模型
 
 已完成（2026-09-17，本机 macOS / aarch64）：
 
-- `bongocat-model` 83 测试（`mver.rs` 新增 18 个单元测试 + `store.rs` 新增 5 个）：检测的两条
+- `bongocat-model-store` 83 测试（`mver.rs` 新增 18 个单元测试 + `store.rs` 新增 5 个）：检测的两条
   证据与"配置了模式却没有模型"的跳过、模式文件夹摊在根上的布局、左右手共用键盘图集的
   `lefthand.length + index` 下标、没有 `keyboard/` 图集时按字节复制、合成后包根布局与
   `[128, 0, 127, 255]` 的合成像素、`over` 算子边界（不透明 / 全透明 / 半透明 / 空画布）、
   lossless 重编码在缩小文件的同时保持**每一个 alpha > 0 的像素逐通道不变**、鼠标键与非法码被
   跳过、缺 layer 时跳过绑定、重复绑定只写一次、符号链接被拒绝、归档来源不解压即转换、
   超限资源被拒绝、两个编码空间的键名。
-- **真实模型验证**：`cargo run -p bongocat-model --example model_conversion_smoke -- --source
+- **真实模型验证**：`cargo run -p bongocat-model-store --example model_conversion_smoke -- --source
   /Users/ayang/Downloads/bongo_cat_mver_0.1.6_64`（也不带 `BONGOCAT_MVER_SAMPLE` 时由
   `converts_the_legacy_sample_named_by_the_environment` 覆盖）。逐模式结果：
   `standard` → 3 张纹理、15 张键位图（`Num1..Num7`/`KeyQ`/`KeyE`/`KeyR`/`Space`/`KeyA`/`KeyD`/

@@ -46,10 +46,12 @@ Run the repository validator with:
 python3 tools/validate-fixtures.py
 cargo test --manifest-path spikes/model-package/Cargo.toml --locked
 cargo test --manifest-path Cargo.toml -p bongocat-model shared_custom_model_fixtures
+cargo test --manifest-path Cargo.toml -p bongocat-model-store every_registered_fixture_preserves_the_store_contract
 ```
 
 The formal `bongocat-model` test strictly deserializes this manifest, materializes
-every registered case in an isolated directory, and runs both the product parser
-and transactional `ModelStore` import. It compares the exact stable diagnostic,
-requires every case directory to be registered, and proves that rejection leaves
+every registered case in an isolated directory, and runs the product parser.
+The companion `bongocat-model-store` test runs the transactional `ModelStore`
+import for every case. Together they compare the exact stable diagnostic,
+require every case directory to be registered, and prove that rejection leaves
 no staging/destination entry and does not modify the source package.

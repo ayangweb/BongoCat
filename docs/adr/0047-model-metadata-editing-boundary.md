@@ -69,14 +69,14 @@
   判重、各自独立生命周期：导入创建 installed 记录、删除移除它，预置记录只由改名创建、谁都不删）。
   列表为空表示所有预置都还用构建给的名字。
 - **封面**写进 `StorageLayout::model_overrides`（`<data>/model-overrides/<id>/resources/cover.png`），
-  由 `bongocat-model::PresetCoverStore` 提供唯一写入口，布局与包内封面共用
+  由 `bongocat-model-store::PresetCoverStore` 提供唯一写入口，布局与包内封面共用
   `package_cover_path`。快照投影优先取这份替换封面，包内封面只作为回退。
 - 预置**包本身永远不被写入**：`crates/bongocat-app/src/settings.rs` 的
   `service_renames_and_covers_a_model_of_either_origin` 断言替换后包内 `cover.png` 逐字节不变。
 
 ### 3. 封面位置成为跨 crate 契约
 
-`bongocat-model` 公开布局事实与唯一的写入口：
+`bongocat-model` 公开布局事实，`bongocat-model-store` 提供两个用户侧写入口：
 
 - `PACKAGE_RESOURCES_DIRECTORY`、`PACKAGE_COVER_FILE`、`package_cover_path(root)` 是唯一来源，
   BongoCatMver 转换改用同一组常量（原先的私有 `OUTPUT_*` 常量删除）。

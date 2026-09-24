@@ -75,7 +75,7 @@ AltGr.png → AltRight.png
 
 ### 3. 包导入时归一化，且在 store 自己的 staging 上做
 
-`bongocat-model` 新增 `key_names` 模块：把 staging 树里 `resources/{left-,right-}keys/` 下的
+`bongocat-model-store` 持有 `key_names` 模块：把 staging 树里 `resources/{left-,right-}keys/` 下的
 `Alt.png`、`AltGr.png` 改名为 canonical 名。调用点在目录复制**之后**、共用的
 `commit_installed_staging` **之前**，因此：
 
@@ -141,7 +141,7 @@ Mver 转换路径**不做**这层归一化：转换输出已经是产品词汇�
   `shipped_keyboard_models_draw_both_alt_keys_with_their_own_artwork` 用真实预置模型断言左 Alt 命中
   `resources/left-keys/AltLeft.png`、右 Alt 命中 `.../AltRight.png`、两者字节不同，且预置模型里
   不再存在 `Alt.png`/`AltGr.png`。
-- `bongocat-model` 92 测试（新增 6）：`key_names` 3 个（两侧目录改名、冲突保留 canonical、缺目录/
+- `bongocat-model-store` 92 测试（新增 6）：`key_names` 3 个（两侧目录改名、冲突保留 canonical、缺目录/
   非 PNG 名不动）、`store` 3 个（目录来源不修改源、归档来源同样生效、两侧同存时 canonical 优先）、
   `mver` 2 个（`0x12`/`0xA4`/`0xA5` 的展开；一次绑定产出两侧同名同图且都落盘）。
 - **真实社区模型验证**（新增 env 门禁用例 `imports_the_bongo_cat_sample_named_by_the_environment`，
@@ -156,7 +156,7 @@ Mver 转换路径**不做**这层归一化：转换输出已经是产品词汇�
 
   用例同时断言：导入后 `resources/{left-,right}-keys` 的**完整文件集合与逐文件字节**等于"源集合
   按规则改名后的期望"，且**重新读取源得到的快照与导入前完全一致**（目录不被改写、归档条目不变）。
-- **真实 Mver 样本回归**：`cargo run -p bongocat-model --example model_conversion_smoke -- --source
+- **真实 Mver 样本回归**：`cargo run -p bongocat-model-store --example model_conversion_smoke -- --source
   /Users/ayang/Downloads/bongo_cat_mver_0.1.6_64` 逐模式输出与 ADR-0037 记录的完全一致
   （`standard` 15 张键位图 / 31 文件 / 1 081 672 字节；`keyboard` 23 文件 / 1 015 987 字节且
   `left-keys{Control, KeyR, Shift}`；`gamepad` 28 文件 / 1 082 753 字节），说明展开改动没有改变
@@ -167,7 +167,7 @@ Mver 转换路径**不做**这层归一化：转换输出已经是产品词汇�
 - `cargo fmt --all --check`、三组 clippy（workspace `--all-targets --all-features --exclude
   bongocat-app`、`bongocat-app` 的 `storage-test-injection` 与 `production`，均 `-D warnings`）、
   `cargo test --locked --workspace`（全部测试二进制全绿：`bongocat-app` 126、`bongocat-ui` 115、
-  `bongocat-model` 92、`bongocat-runtime` 73+2、`bongocat-platform` 50、`bongocat-live2d` 45、
+  `bongocat-model-store` 92、`bongocat-runtime` 73+2、`bongocat-platform` 50、`bongocat-live2d` 45、
   `bongocat-update` 36+10、`bongocat-render` 15、`bongocat-overlay` 28、`bongocat-packaging` 23、
   `bongocat-config` 51、`bongocat-audio` 10、`bongocat-i18n` 4、`bongocat-log` 3）、
   `cargo check --locked --workspace --release` 均以退出码 0 通过（仅剩与本次无关的

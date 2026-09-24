@@ -131,7 +131,7 @@ make code `0x1c` + E0 扩展位，macOS keycode `76`），`bongocat-platform` �
   | `Bongo Cat v0.16/BongoCat - 标准模式` | 3 | 同上 |
   | `经典小键盘 · 标准模式.zip` | 0 | 无改名，15 张图逐字节相同 |
 
-- **真实 Mver 样本回归**：`cargo run -p bongocat-model --example model_conversion_smoke --
+- **真实 Mver 样本回归**：`cargo run -p bongocat-model-store --example model_conversion_smoke --
   --source /Users/ayang/Downloads/bongo_cat_mver_0.1.6_64` 逐模式输出与 ADR-0037 记录完全一致
   （standard 31 文件 / 1 081 672 字节、keyboard 23 文件 / 1 015 987 字节、gamepad 28 文件 /
   1 082 753 字节），确认 `0x0D` 展开与 `Return → Enter` 没有改变真实样本的产物。

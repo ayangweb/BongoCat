@@ -8,13 +8,14 @@
 //! only other way to see a conversion is to drive the settings window.
 //!
 //! ```text
-//! cargo run -p bongocat-model --example model_conversion_smoke -- --source <folder>
+//! cargo run -p bongocat-model-store --example model_conversion_smoke -- --source <folder>
 //! ```
 //!
 //! Without `--store` the models are installed into a temporary store that is
 //! removed when the run ends, so the tool never touches product data.
 
-use bongocat_model::{ModelPackageLimits, ModelSourceContent, ModelStore};
+use bongocat_model::ModelPackageLimits;
+use bongocat_model_store::{ModelSourceContent, ModelStore};
 use std::{
     io::{self, Write},
     path::{Path, PathBuf},

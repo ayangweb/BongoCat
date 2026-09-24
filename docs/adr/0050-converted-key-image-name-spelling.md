@@ -81,11 +81,11 @@ canonical 在前。已经安装过、不会被重新归一化的包（`next` 无
   报出 `no key resolves these conversion outputs: ["Backslash"]`；修复后绿。
 - **变异验证（关键）**：把 `0xDC` 改回 `Backslash` 后该测试变红（exit 101），证明断言有牙齿；同时确认
   了"只断言能解析"的初版**不会**变红，因此把断言加强为"同时是 canonical 名"。
-- `bongocat-model` 新增 `the_conversion_emits_the_product_spelling_for_every_key_image`：对
+- `bongocat-model-store` 新增 `the_conversion_emits_the_product_spelling_for_every_key_image`：对
   `BackSlash`/`Backspace`/`Enter`/`AltLeft`/`AltRight` 成对断言"新拼写出现、旧拼写不出现"，并断言输出名
   都是合法资源主干。
-- `bongocat-model` 新增 `a_case_only_legacy_stem_keeps_its_artwork_under_the_canonical_name`：断言
+- `bongocat-model-store` 新增 `a_case_only_legacy_stem_keeps_its_artwork_under_the_canonical_name`：断言
   canonical 名可读到该美术（**不断言旧名消失**——在大小写不敏感的文件系统上它本来就不会消失）。
-- `cargo test --locked -p bongocat-model -p bongocat-live2d` 全绿。
+- `cargo test --locked -p bongocat-model-store -p bongocat-live2d` 全绿。
 
 **未运行**：真实 Mver 样本回归（样本键位表不含 `0xDC`）、Windows 实机归一化路径。

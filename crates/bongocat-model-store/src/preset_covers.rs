@@ -13,7 +13,10 @@
 //! only the root differs. Nothing else about a preset changes: the package, its
 //! model data and its key artwork stay where the build put them.
 
-use crate::{ModelId, ModelStoreDiagnostic, ModelStoreError, PACKAGE_COVER_FILE};
+use crate::{ModelStoreDiagnostic, ModelStoreError};
+use bongocat_model::{
+    ModelId, PACKAGE_COVER_FILE, PACKAGE_RESOURCES_DIRECTORY, package_cover_path,
+};
 use bongocat_storage::{create_private_dir_all, write_private_atomic};
 use std::{fs, path::PathBuf};
 
@@ -64,7 +67,7 @@ impl PresetCoverStore {
     /// The path is the same one a package would use, under this store's root
     /// instead of the package's.
     pub fn cover_path(&self, id: &ModelId) -> PathBuf {
-        crate::package_cover_path(&self.root.join(id.as_str()))
+        package_cover_path(&self.root.join(id.as_str()))
     }
 
     /// Replace a preset's cover with PNG bytes, and answer with the path.
@@ -78,7 +81,7 @@ impl PresetCoverStore {
         // would leave `<id>` readable by everyone while the cover inside it is
         // not.
         let directory = self.root.join(id.as_str());
-        let resources = directory.join(crate::PACKAGE_RESOURCES_DIRECTORY);
+        let resources = directory.join(PACKAGE_RESOURCES_DIRECTORY);
         for level in [&directory, &resources] {
             create_private_dir_all(level).map_err(|error| {
                 ModelStoreError::new(
@@ -129,10 +132,7 @@ mod tests {
         let cover = store.replace_cover(&id, &bytes).expect("replace cover");
 
         assert_eq!(cover, store.root().join("standard/resources/cover.png"));
-        assert_eq!(
-            cover,
-            crate::package_cover_path(&store.root().join("standard"))
-        );
+        assert_eq!(cover, package_cover_path(&store.root().join("standard")));
         assert_eq!(fs::read(&cover).expect("stored cover"), bytes);
         assert!(preset_cover_exists(&cover));
         let leftovers = fs::read_dir(cover.parent().expect("resources"))

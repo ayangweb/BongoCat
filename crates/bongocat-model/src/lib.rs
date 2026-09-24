@@ -1,10 +1,5 @@
 #![forbid(unsafe_code)]
 
-mod key_names;
-mod mver;
-mod preset_covers;
-mod store;
-
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -13,13 +8,6 @@ use std::{
     fs::File,
     io::Read,
     path::{Component, Path, PathBuf},
-};
-
-pub use mver::{ModelSourceContent, MverInputMode, legacy_keyboard_key_image_names};
-pub use preset_covers::{PresetCoverStore, preset_cover_exists};
-pub use store::{
-    InstalledModelCatalog, ModelCatalogEntry, ModelImportProgress, ModelImportStage, ModelStore,
-    ModelStoreDiagnostic, ModelStoreError, ModelStoreRecovery,
 };
 
 pub const INDEX_SCHEMA_VERSION: u32 = 1;
@@ -293,6 +281,44 @@ pub struct CommittedModel {
     origin: ModelOrigin,
 }
 
+/// One entry in the merged model catalog exposed by the model layer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ModelCatalogEntry {
+    Ready {
+        origin: ModelOrigin,
+        snapshot: ModelSnapshot,
+    },
+    Invalid {
+        origin: ModelOrigin,
+        id: ModelId,
+        code: ModelDiagnostic,
+        resource: Option<String>,
+        detail: String,
+    },
+}
+
+impl ModelCatalogEntry {
+    pub const fn origin(&self) -> ModelOrigin {
+        match self {
+            Self::Ready { origin, .. } | Self::Invalid { origin, .. } => *origin,
+        }
+    }
+
+    pub fn id(&self) -> &ModelId {
+        match self {
+            Self::Ready { snapshot, .. } => &snapshot.id,
+            Self::Invalid { id, .. } => id,
+        }
+    }
+
+    pub fn snapshot(&self) -> Option<&ModelSnapshot> {
+        match self {
+            Self::Ready { snapshot, .. } => Some(snapshot),
+            Self::Invalid { .. } => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PresetModelCatalog {
     root: PathBuf,
@@ -300,7 +326,12 @@ pub struct PresetModelCatalog {
 }
 
 impl InstalledModel {
-    pub(crate) fn from_prepared(prepared: PreparedModel) -> Self {
+    /// Wrap a package that has already passed `PreparedModel::prepare`.
+    ///
+    /// The product wiring calls this only from the model-store transaction
+    /// after staging validation and commit; callers must not use it to bypass
+    /// store ownership.
+    pub fn from_prepared(prepared: PreparedModel) -> Self {
         Self { prepared }
     }
 
@@ -472,6 +503,14 @@ impl PreparedModel {
             canonical_root,
             index,
         })
+    }
+
+    /// Rebind a validated package to its committed root after an atomic store
+    /// rename. The package index and validation result are unchanged.
+    pub fn relocate(self, root: impl Into<PathBuf>) -> Self {
+        let mut prepared = self;
+        prepared.canonical_root = root.into();
+        prepared
     }
 
     pub fn id(&self) -> &ModelId {
@@ -1355,7 +1394,11 @@ fn discover_entry(root: &Path) -> Result<PathBuf, ModelError> {
     }
 }
 
-fn normalize_reference(reference: &str) -> Result<String, ModelError> {
+/// Normalize and validate a package-relative resource reference.
+///
+/// This is the shared path-safety primitive used by the read-only package
+/// parser and by the model-store import adapter.
+pub fn normalize_reference(reference: &str) -> Result<String, ModelError> {
     let normalized = reference.replace('\\', "/");
     let path = Path::new(&normalized);
     if normalized.is_empty()
@@ -1399,7 +1442,11 @@ fn normalize_reference(reference: &str) -> Result<String, ModelError> {
     Ok(parts.join("/"))
 }
 
-fn path_from_reference(reference: &str) -> PathBuf {
+/// Convert a normalized slash-separated package reference to a native path.
+///
+/// This function only changes separators; it does not validate the reference.
+/// Callers handling untrusted input must call [`normalize_reference`] first.
+pub fn path_from_reference(reference: &str) -> PathBuf {
     reference.split('/').collect()
 }
 
@@ -2473,7 +2520,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_custom_model_fixtures_match_product_parser_and_store_contract() {
+    fn shared_custom_model_fixtures_match_product_parser_contract() {
         let fixture_root = repository_root().join("shared/fixtures/model-fixtures");
         let manifest: FixtureManifest = serde_json::from_slice(
             &fs::read(fixture_root.join("cases.json")).expect("read fixture manifest"),
@@ -2541,46 +2588,9 @@ mod tests {
                 }
             }
 
-            let data = tempdir().expect("fixture store root");
-            let store = ModelStore::new(
-                data.path().join("models"),
-                data.path().join("locks/models.writer.lock"),
-                ModelPackageLimits::default(),
-            )
-            .expect("fixture model store");
-            let imported = store.import(id.clone(), package.path());
-            match case.expected {
-                FixtureExpectation::Accept => {
-                    let installed = imported.expect("accepted fixture import");
-                    assert_eq!(installed.id(), &id);
-                    let catalog = store.list().expect("fixture catalog");
-                    assert_eq!(catalog.entries.len(), 1);
-                    assert_eq!(catalog.entries[0].origin(), ModelOrigin::Installed);
-                }
-                FixtureExpectation::Reject => {
-                    assert_eq!(
-                        imported.expect_err("rejected fixture import").code,
-                        ModelStoreDiagnostic::InvalidPackage,
-                        "fixture {} store diagnostic",
-                        case.id
-                    );
-                    assert!(
-                        store
-                            .list()
-                            .expect("empty fixture catalog")
-                            .entries
-                            .is_empty()
-                    );
-                    assert!(
-                        fs::read_dir(store.root())
-                            .expect("fixture store entries")
-                            .next()
-                            .is_none(),
-                        "fixture {} must not leave staging or destination entries",
-                        case.id
-                    );
-                }
-            }
+            // Filesystem import and catalog ownership are covered by the
+            // bongocat-model-store crate; this fixture test remains focused on
+            // the platform-neutral package parser and its diagnostics.
             assert_eq!(
                 snapshot_fixture_tree(package.path()),
                 source_before,

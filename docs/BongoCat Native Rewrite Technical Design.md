@@ -273,7 +273,8 @@ Platform input ---> Runtime thread ---> Model/Animation state
 - `runtime`：唯一业务状态所有者，处理输入、快捷键、动画选择和模型命令。
 - `ui`：显示 runtime snapshot，发送显式 command，不直接修改业务字段。
 - `platform`：窗口、输入、托盘、权限、显示器、启动项、文件和更新。
-- `model`：模型包解析、路径安全、资源索引和显式导入（目录与 BongoCatMver 源两种来源），并在导入时把包内的旧键位名归一化到产品词汇表。
+- `model`：模型包解析、路径安全、资源索引和只读预置模型目录；不持有用户 store 的写入生命周期。
+- `model-store`：用户模型 store、writer lock、staging/提交/删除、目录与 BongoCatMver 导入、键名归一化和用户侧封面覆盖。
 - `live2d`：Cubism Core 生命周期、motion/expression/physics/pose 求值。
 - `audio`：motion 音效的有序 command、FLAC 解码、唯一 voice、输出设备和 shutdown。
 - `render`：不可变 render snapshot 和 renderer contract。
@@ -283,15 +284,15 @@ Platform input ---> Runtime thread ---> Model/Animation state
 
 ```text
 ui protocol <------- app -------> runtime <------- platform adapters
-                                  |
-                                  v
-                             model / live2d
-                                  |
-                                  v
-                            render contract
-                                  ^
-                                  |
-                     D3D11 renderer / Metal renderer
+                    |                 |
+                    v                 v
+             model-store ---------> model / live2d
+                    ^                 |
+                    |                 v
+              user model data     render contract
+                                    ^
+                                    |
+                         D3D11 renderer / Metal renderer
 ```
 
 业务 crate 不得导入 Win32、Objective-C、GPUI 或 GPU handle。平台实现可以依赖业务定义的 command/event 类型。
@@ -311,7 +312,8 @@ BongoCat/
     bongocat-runtime/         状态、输入 reducer、模型投影、动画和命令
     bongocat-config/          schema、环境隔离和原子存储
     bongocat-storage/         用户私有存储原语：权限、私有目录、原子替换
-    bongocat-model/           模型包、目录导入和资源索引
+    bongocat-model/           模型包解析、只读资源索引和预置模型目录
+    bongocat-model-store/     用户模型持久化、导入事务、Mver 转换和封面覆盖
     bongocat-live2d/          Cubism Core 边界与模型求值
     bongocat-audio/           motion 音效队列、解码与设备 owner
     bongocat-render/          render snapshot/contract
@@ -932,8 +934,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `preset_models[].title` 是可编辑显示名，也是**唯一一条存放在模型目录之外**的模型事实；封面在
   installed origin 上是包内文件 `resources/cover.png`，在 preset origin 上是用户侧的
   `<data>/model-overrides/<id>/resources/cover.png`（app 包不可写，见 ADR-0047 决策 2），两边都由
-  `bongocat-model` 的 `package_cover_path` 推出布局，分别由 `ModelStore::replace_cover` 与
-  `PresetCoverStore::replace_cover` 做同目录原子替换。导入成功后，每个新安装模型的封面会被换成
+  `bongocat-model` 的 `package_cover_path` 推出布局，分别由 `bongocat-model-store` 的
+  `ModelStore::replace_cover` 与 `PresetCoverStore::replace_cover` 做同目录原子替换。导入成功后，每个新安装模型的封面会被换成
   **该模型自己渲染的一帧**（见 ADR-0055）：settings worker 只把模型与它在协议里的身份排队，
   GPUI 线程在永不显示的原生窗口里渲染、读回、裁切并编码，再经 `ReplaceModelCover` 写回同一位置，
   因此转换输出的占位封面只在捕获失败时保留。预置模型只多一件事是禁止的：删除。它的包永远是

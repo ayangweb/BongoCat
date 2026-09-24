@@ -795,6 +795,7 @@ dependencies = [
  "bongocat-live2d",
  "bongocat-log",
  "bongocat-model",
+ "bongocat-model-store",
  "bongocat-overlay",
  "bongocat-platform",
  "bongocat-render",
@@ -847,6 +848,7 @@ version = "2.0.0"
 dependencies = [
  "bongocat-log",
  "bongocat-model",
+ "bongocat-model-store",
  "bongocat-render",
  "bongocat-storage",
  "image",
@@ -866,10 +868,20 @@ dependencies = [
 name = "bongocat-model"
 version = "2.0.0"
 dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "bongocat-model-store"
+version = "2.0.0"
+dependencies = [
+ "bongocat-model",
  "bongocat-storage",
  "image",
  "oxipng",
- "proptest",
  "serde",
  "serde_json",
  "tempfile",
@@ -957,6 +969,7 @@ dependencies = [
  "bongocat-input",
  "bongocat-live2d",
  "bongocat-model",
+ "bongocat-model-store",
  "bongocat-render",
  "serde_json",
  "tempfile",
