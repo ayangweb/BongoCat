@@ -26,6 +26,13 @@ pub const DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS: u16 = 24;
 pub const MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS: u16 = 24 * 365;
 pub const DEFAULT_LOG_RETENTION_DAYS: u8 = 7;
 pub const MAXIMUM_LOG_RETENTION_DAYS: u8 = 30;
+/// Default delay between automatic model behavior selections.
+pub const DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS: u32 = 30;
+/// Automatic behavior selection is disabled by default; a positive interval is
+/// required when it is enabled so the renderer can never spin on every frame.
+pub const MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS: u32 = 1;
+/// Keep the persisted value bounded to a practical user-selectable range.
+pub const MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS: u32 = 3_600;
 const BACKUP_FORMAT_VERSION: u32 = 1;
 const MAX_CONFIG_BACKUPS: usize = 8;
 const MAX_CONFIG_BACKUP_BYTES: u64 = 8 * 1024 * 1024;
@@ -400,6 +407,13 @@ pub struct ModelConfig {
     /// shortcut at all and every binding is one the user recorded on the
     /// Shortcuts page.
     pub enable_behavior_shortcuts: bool,
+    /// Whether the runtime periodically chooses one declared motion or
+    /// expression from the active model. The interval is measured between
+    /// selection events, so a long motion can still be replaced when the next
+    /// interval arrives.
+    pub random_behavior_enabled: bool,
+    /// Delay between automatic behavior selections, in whole seconds.
+    pub random_behavior_interval_seconds: u32,
     pub maximum_fps: u16,
     pub ignore_pointer: bool,
     pub release_fallback_timeout_ms: u32,
@@ -1260,6 +1274,8 @@ impl Default for NativeConfig {
                 mirror_pointer_tracking: false,
                 play_motion_audio: false,
                 enable_behavior_shortcuts: false,
+                random_behavior_enabled: false,
+                random_behavior_interval_seconds: DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
                 maximum_fps: 60,
                 ignore_pointer: false,
                 release_fallback_timeout_ms: 500,
@@ -1312,6 +1328,13 @@ impl NativeConfig {
         }
         if !(15..=240).contains(&self.model.maximum_fps) {
             return Err(ConfigError::InvalidValue("model.maximum_fps"));
+        }
+        if !(MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS..=MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS)
+            .contains(&self.model.random_behavior_interval_seconds)
+        {
+            return Err(ConfigError::InvalidValue(
+                "model.random_behavior_interval_seconds",
+            ));
         }
         if self.model.release_fallback_timeout_ms > 60_000 {
             return Err(ConfigError::InvalidValue(
@@ -2957,6 +2980,38 @@ mod tests {
         let decoded: NativeConfig =
             serde_json::from_str(&encoded).expect("deserialize enabled hover hide");
         assert_eq!(decoded, enabled);
+    }
+
+    #[test]
+    fn random_behavior_settings_use_a_bounded_positive_interval() {
+        let default = NativeConfig::default();
+        assert!(!default.model.random_behavior_enabled);
+        assert_eq!(
+            default.model.random_behavior_interval_seconds,
+            DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS
+        );
+        for accepted in [
+            MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+            30,
+            MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+        ] {
+            let mut config = NativeConfig::default();
+            config.model.random_behavior_enabled = true;
+            config.model.random_behavior_interval_seconds = accepted;
+            config
+                .validate()
+                .expect("random behavior interval should be accepted");
+        }
+        for rejected in [0, MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS + 1, u32::MAX] {
+            let mut config = NativeConfig::default();
+            config.model.random_behavior_interval_seconds = rejected;
+            assert!(matches!(
+                config.validate(),
+                Err(ConfigError::InvalidValue(
+                    "model.random_behavior_interval_seconds"
+                ))
+            ));
+        }
     }
 
     #[test]

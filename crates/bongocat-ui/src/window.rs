@@ -5,8 +5,8 @@ use crate::{
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
     SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelKey,
     SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode,
-    SettingsOperationId, SettingsOverlay, SettingsShortcutBinding, SettingsShortcuts,
-    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsShortcutBinding,
+    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
     SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
     SettingsWindowState,
 };
@@ -175,6 +175,7 @@ enum PendingOperation {
     MotionAudio,
     CommandShortcuts,
     BehaviorShortcuts,
+    RandomBehavior,
     MaximumFps,
     ReleaseFallbackTimeout,
     ModelSettings,
@@ -620,6 +621,8 @@ pub struct SettingsView {
     maximum_fps_timer_generation: u64,
     release_fallback_timeout_debouncer: crate::SettingsPatchDebouncer<u32>,
     release_fallback_timeout_timer_generation: u64,
+    random_behavior_debouncer: crate::SettingsPatchDebouncer<SettingsRandomBehavior>,
+    random_behavior_timer_generation: u64,
     logging_settings_debouncer: crate::SettingsPatchDebouncer<SettingsLogging>,
     logging_settings_timer_generation: u64,
     flush_pending_requested: bool,
@@ -1024,6 +1027,40 @@ impl SettingsView {
         .detach();
     }
 
+    fn schedule_random_behavior_flush(&mut self, cx: &mut Context<Self>) {
+        self.random_behavior_timer_generation =
+            self.random_behavior_timer_generation.saturating_add(1);
+        let generation = self.random_behavior_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.random_behavior_timer_generation != generation || view.pending.is_some() {
+                    return;
+                }
+                let Some(settings) = view.random_behavior_debouncer.ready(Instant::now()) else {
+                    return;
+                };
+                let Some(expected_config_revision) = view
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.config_revision)
+                else {
+                    return;
+                };
+                view.start_request(
+                    PendingOperation::RandomBehavior,
+                    Some(SettingValue::RandomBehaviorSettings {
+                        expected_config_revision,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
+
     fn schedule_logging_settings_flush(&mut self, cx: &mut Context<Self>) {
         self.logging_settings_timer_generation =
             self.logging_settings_timer_generation.saturating_add(1);
@@ -1168,6 +1205,15 @@ impl SettingsView {
                 }),
                 cx,
             );
+        } else if let Some(settings) = self.random_behavior_debouncer.flush(now) {
+            self.start_request(
+                PendingOperation::RandomBehavior,
+                Some(SettingValue::RandomBehaviorSettings {
+                    expected_config_revision,
+                    settings,
+                }),
+                cx,
+            );
         } else if let Some(settings) = self.logging_settings_debouncer.flush(now) {
             self.start_request(
                 PendingOperation::LoggingSettings,
@@ -1268,6 +1314,10 @@ impl SettingsView {
         };
         let sent_release_fallback_timeout = match value.as_ref() {
             Some(SettingValue::ReleaseFallbackTimeout { timeout_ms, .. }) => Some(*timeout_ms),
+            _ => None,
+        };
+        let sent_random_behavior = match value.as_ref() {
+            Some(SettingValue::RandomBehaviorSettings { settings, .. }) => Some(*settings),
             _ => None,
         };
         let sent_logging_settings = match value.as_ref() {
@@ -1413,6 +1463,14 @@ impl SettingsView {
                         .set_behavior_shortcuts_enabled(expected_config_revision, enabled)
                         .await
                 }
+                Some(SettingValue::RandomBehaviorSettings {
+                    expected_config_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_random_behavior_settings(expected_config_revision, settings)
+                        .await
+                }
                 Some(SettingValue::MaximumFps {
                     expected_config_revision,
                     maximum_fps,
@@ -1539,6 +1597,14 @@ impl SettingsView {
                     }
                 }
                 if result.is_ok()
+                    && let Some(settings) = sent_random_behavior
+                {
+                    view.random_behavior_debouncer.mark_sent(&settings);
+                    if view.random_behavior_debouncer.is_pending() {
+                        view.schedule_random_behavior_flush(cx);
+                    }
+                }
+                if result.is_ok()
                     && let Some(settings) = sent_logging_settings
                 {
                     view.logging_settings_debouncer.mark_sent(&settings);
@@ -1576,6 +1642,9 @@ impl SettingsView {
                     if sent_release_fallback_timeout.is_some() {
                         view.schedule_release_fallback_timeout_flush(cx);
                     }
+                    if sent_random_behavior.is_some() {
+                        view.schedule_random_behavior_flush(cx);
+                    }
                     if sent_logging_settings.is_some() {
                         view.schedule_logging_settings_flush(cx);
                     }
@@ -1584,6 +1653,9 @@ impl SettingsView {
                     && view.check_for_updates_interval_debouncer.is_pending()
                 {
                     view.schedule_check_for_updates_interval_flush(cx);
+                }
+                if sent_random_behavior.is_none() && view.random_behavior_debouncer.is_pending() {
+                    view.schedule_random_behavior_flush(cx);
                 }
                 if sent_logging_settings.is_none() && view.logging_settings_debouncer.is_pending() {
                     view.schedule_logging_settings_flush(cx);
@@ -1715,6 +1787,10 @@ enum SettingValue {
     BehaviorShortcutsEnabled {
         expected_config_revision: u64,
         enabled: bool,
+    },
+    RandomBehaviorSettings {
+        expected_config_revision: u64,
+        settings: SettingsRandomBehavior,
     },
     MaximumFps {
         expected_config_revision: u64,

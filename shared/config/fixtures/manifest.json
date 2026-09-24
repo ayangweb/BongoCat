@@ -24,6 +24,9 @@
     { "id": "logging-boundary", "file": "accept-logging-boundary.json", "expected": "accept" },
     { "id": "log-retention-zero", "file": "invalid-log-retention-zero.json", "expected": "reject" },
     { "id": "log-retention-too-large", "file": "invalid-log-retention-too-large.json", "expected": "reject" },
-    { "id": "unknown-log-level", "file": "invalid-log-level.json", "expected": "reject" }
+    { "id": "unknown-log-level", "file": "invalid-log-level.json", "expected": "reject" },
+    { "id": "random-behavior", "file": "accept-random-behavior.json", "expected": "accept" },
+    { "id": "random-behavior-interval", "file": "invalid-random-behavior-interval.json", "expected": "reject" },
+    { "id": "random-behavior-interval-too-large", "file": "invalid-random-behavior-interval-too-large.json", "expected": "reject" }
   ]
 }

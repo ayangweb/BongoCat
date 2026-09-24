@@ -31,9 +31,9 @@ use bongocat_model_store::{
 use bongocat_render::{FUNCTION_KEY_USAGES, KeySide, ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
     ExpressionId, ExpressionIdError, ModelSettings, MotionId, MotionIdError, MotionPriority,
-    OverlaySettings, RuntimeClient, RuntimeCommand, RuntimeCommandFailure, RuntimeOwner,
-    RuntimeRenderErrorCode, RuntimeSnapshot, SendError, ShutdownError, maximum_fps_is_valid,
-    release_fallback_timeout_is_valid,
+    OverlaySettings, RandomBehaviorSettings, RuntimeClient, RuntimeCommand, RuntimeCommandFailure,
+    RuntimeOwner, RuntimeRenderErrorCode, RuntimeSnapshot, SendError, ShutdownError,
+    maximum_fps_is_valid, release_fallback_timeout_is_valid,
 };
 use bongocat_update::{UpdateDiagnostics, UpdateDiagnosticsTracker};
 use std::{
@@ -244,7 +244,7 @@ impl fmt::Display for ApplicationError {
             Self::ShutdownAggregate(error) => write!(formatter, "shutdown failed: {error}"),
             Self::ApplicationLog(error) => write!(formatter, "application logging failed: {error}"),
             Self::ConfigRollback(error) => {
-                write!(formatter, "model selection config rollback failed: {error}")
+                write!(formatter, "configuration rollback failed: {error}")
             }
             Self::WindowState(error) => write!(formatter, "window state failed: {error}"),
         }
@@ -666,6 +666,14 @@ impl Application {
         let sequence = client
             .send(RuntimeCommand::SetReleaseFallbackTimeout(
                 config.model.release_fallback_timeout_ms,
+            ))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        let sequence = client
+            .send(RuntimeCommand::SetRandomBehaviorSettings(
+                random_behavior_settings_from_config(&config),
             ))
             .map_err(ApplicationError::RuntimeCommand)?;
         client
@@ -1140,6 +1148,59 @@ impl Application {
         self.config = next_config;
         self.config_revision = Some(next_revision);
         Ok(snapshot)
+    }
+
+    pub fn set_random_behavior_settings(
+        &mut self,
+        settings: RandomBehaviorSettings,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        if !settings.is_valid() {
+            return Err(ApplicationError::RuntimeCommandFailed(
+                RuntimeCommandFailure {
+                    sequence: 0,
+                    code: RuntimeRenderErrorCode::RandomBehaviorSettingsInvalid,
+                },
+            ));
+        }
+        let mut next_config = self.config.clone();
+        next_config.model.random_behavior_enabled = settings.enabled;
+        next_config.model.random_behavior_interval_seconds = settings.interval_seconds;
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+
+        let runtime_result = (|| {
+            let client = self.runtime.client();
+            let sequence = client
+                .send(RuntimeCommand::SetRandomBehaviorSettings(settings))
+                .map_err(ApplicationError::RuntimeCommand)?;
+            let snapshot = client
+                .wait_for_command(sequence, RUNTIME_TIMEOUT)
+                .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+            if let Some(failure) = snapshot
+                .last_command_failure
+                .filter(|failure| failure.sequence == sequence)
+            {
+                return Err(ApplicationError::RuntimeCommandFailed(failure));
+            }
+            Ok(snapshot)
+        })();
+        match runtime_result {
+            Ok(snapshot) => {
+                self.config = next_config;
+                self.config_revision = Some(next_revision);
+                Ok(snapshot)
+            }
+            Err(error) => {
+                let rollback_revision = self
+                    .config_store
+                    .commit_if_revision(&self.config, next_revision)
+                    .map_err(ApplicationError::ConfigRollback)?;
+                self.config_revision = Some(rollback_revision);
+                Err(error)
+            }
+        }
     }
 
     pub fn set_model_settings(
@@ -2492,6 +2553,13 @@ const fn model_settings_from_config(config: &NativeConfig) -> ModelSettings {
         mirror: config.model.mirror,
         mirror_pointer_tracking: config.model.mirror_pointer_tracking,
         ignore_pointer: config.model.ignore_pointer,
+    }
+}
+
+const fn random_behavior_settings_from_config(config: &NativeConfig) -> RandomBehaviorSettings {
+    RandomBehaviorSettings {
+        enabled: config.model.random_behavior_enabled,
+        interval_seconds: config.model.random_behavior_interval_seconds,
     }
 }
 
@@ -4289,6 +4357,8 @@ mod tests {
         config.model.mirror = true;
         config.model.mirror_pointer_tracking = true;
         config.model.ignore_pointer = true;
+        config.model.random_behavior_enabled = true;
+        config.model.random_behavior_interval_seconds = 17;
         store.commit(&config).expect("persist model settings");
         drop(store);
 
@@ -4299,6 +4369,16 @@ mod tests {
                 mirror: true,
                 mirror_pointer_tracking: true,
                 ignore_pointer: true,
+            }
+        );
+        assert_eq!(
+            application
+                .runtime_client()
+                .snapshot()
+                .random_behavior_settings,
+            RandomBehaviorSettings {
+                enabled: true,
+                interval_seconds: 17,
             }
         );
         application.shutdown().expect("clean shutdown");

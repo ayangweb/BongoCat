@@ -392,6 +392,12 @@
       "motion_audio": {
         "label": "Play motion sounds"
       },
+      "random_behavior_enabled": {
+        "label": "Randomly play motions or expressions"
+      },
+      "random_behavior_interval": {
+        "label": "Random motion or expression interval (seconds)"
+      },
       "mirror_mouse_tracking": {
         "label": "Mirror mouse tracking"
       },

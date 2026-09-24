@@ -21,6 +21,15 @@
   Each evaluation restores every Core part opacity to the value captured from the fresh model before
   applying the active motion, so stop, replacement, and a motion that targets other parts cannot
   leave stale visibility behind. Missing IDs are skipped without invalidating the remaining motion.
+- When `model.random_behavior_enabled` is on, the runtime waits one complete
+  `random_behavior_interval_seconds` and then chooses uniformly from the active model's declared motions
+  and expressions. A model switch, a settings change, and a clock rollback re-anchor or suppress the
+  automatic schedule without replaying a missed tick. Automatic motions use `Idle` priority and cannot
+  replace a live `Normal` or `Force` product motion; an empty behavior list is a no-op. The random selector
+  is seeded independently in tests so the same seed and monotonic timeline produce the same sequence.
+  A due automatic motion blocked by a live `Normal`/`Force` product motion consumes that interval rather
+  than retrying immediately; random expressions use the normal latest-expression replacement rule, and
+  consecutive selections may repeat the same declared behavior.
 - Model3 `Groups` retain their declared order. `EyeBlink` and `LipSync` use the first matching
   `Parameter` group and at most its first 64 IDs, matching the R5 Framework target bound.
 - A motion `Model/EyeBlink` value multiplies a matching Parameter curve before that curve's fade;

@@ -151,6 +151,7 @@ Native GPUI 设置界面统一使用上游 `longbridge/gpui-kit` 的固定 revis
 - 语义色通过 `ActiveTheme::theme()` 读取。业务代码不重复硬编码默认颜色、字号、间距、圆角或控件高度；无明确产品需求时使用组件默认值和 `Theme`。
 - 常用组件 API：`Button::new(id).label(label)`、`Switch::new(id).checked(bool)`、`Checkbox::new(id).checked(bool)`、`Radio::new(id)`、`InputState::new(window, cx)`、`Input::new(&state)`、`NumberInput::new(&state)`、`Select`、`Slider`、`TabBar`、`Separator::horizontal()`、`Badge::new()`、`Progress`、`Icon`、`Tooltip`、`Dialog`、`Menu`。
 - `Input`/`NumberInput` 绑定 `Entity<InputState>`；文本编辑订阅 `InputEvent`，数字步进订阅 `NumberInputEvent`。范围、步长和最终校验来自业务 schema，组件事件不得绕过 typed command。
+- 组件已在其输入边界内限制范围、步长或格式时，不要再为同一不可达条件新增专用错误码、国际化错误文案或描述；保留 schema/typed command 的防御性校验，只有非 UI 路径可触发且用户需要不同处理时才增加独立错误码和本地化提示。
 - 迁移组件后删除无用的直接 GPUI 依赖、自定义绘制和模块导出；在 TODO 记录已迁移组件、剩余特殊控件和官方文档依据。
 - 设置界面安静、紧凑、适合重复操作；建立项目 design tokens 和基础控件；图标表达常用工具并提供可见 tooltip；控件覆盖 hover、active、focus、disabled、loading、error。
 - 表单支持键盘导航和可见焦点。采用 visual-first 契约：项目不维护 screen-reader/AccessKit tree、辅助桥、隐藏 label/action 或仅供辅助技术的文案；除 `gpui-kit` 传递实现外不新增直接 AccessKit 依赖（ADR-0054）。

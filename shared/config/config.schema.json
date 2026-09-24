@@ -87,7 +87,7 @@
     "model": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["selected_model_id", "selected_model_origin", "installed_models", "preset_models", "mirror", "mirror_pointer_tracking", "play_motion_audio", "enable_behavior_shortcuts", "maximum_fps", "ignore_pointer", "release_fallback_timeout_ms"],
+      "required": ["selected_model_id", "selected_model_origin", "installed_models", "preset_models", "mirror", "mirror_pointer_tracking", "play_motion_audio", "enable_behavior_shortcuts", "random_behavior_enabled", "random_behavior_interval_seconds", "maximum_fps", "ignore_pointer", "release_fallback_timeout_ms"],
       "properties": {
         "selected_model_id": { "type": ["string", "null"], "minLength": 1 },
         "selected_model_origin": { "type": ["string", "null"], "enum": ["preset", "installed", null] },
@@ -97,6 +97,8 @@
         "mirror_pointer_tracking": { "type": "boolean" },
         "play_motion_audio": { "type": "boolean" },
         "enable_behavior_shortcuts": { "type": "boolean" },
+        "random_behavior_enabled": { "type": "boolean" },
+        "random_behavior_interval_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
         "maximum_fps": { "type": "integer", "minimum": 15, "maximum": 240 },
         "ignore_pointer": { "type": "boolean" },
         "release_fallback_timeout_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }

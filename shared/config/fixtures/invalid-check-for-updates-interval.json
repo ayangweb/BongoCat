@@ -32,6 +32,8 @@
     "mirror_pointer_tracking": false,
     "play_motion_audio": false,
     "enable_behavior_shortcuts": false,
+    "random_behavior_enabled": false,
+    "random_behavior_interval_seconds": 30,
     "maximum_fps": 60,
     "ignore_pointer": false,
     "release_fallback_timeout_ms": 500

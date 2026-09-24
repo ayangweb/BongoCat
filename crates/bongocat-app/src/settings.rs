@@ -23,8 +23,8 @@ use bongocat_platform::{
     open_directory, set_startup_item_enabled, startup_item_state,
 };
 use bongocat_runtime::{
-    InputSnapshot, ModelSettings, OverlaySettings, RuntimeRenderErrorCode, RuntimeSnapshot,
-    RuntimeState,
+    InputSnapshot, ModelSettings, OverlaySettings, RandomBehaviorSettings, RuntimeRenderErrorCode,
+    RuntimeSnapshot, RuntimeState,
 };
 use bongocat_storage::{create_private_dir_all, write_private_atomic};
 use bongocat_ui_protocol::{
@@ -36,11 +36,12 @@ use bongocat_ui_protocol::{
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
     SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
-    SettingsOverlay, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
-    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemError,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
-    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
+    SettingsOverlay, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
+    SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
+    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
+    SettingsSnapshot, SettingsStartupItemError, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_update::UpdateDiagnostics;
 use serde::Serialize;
@@ -849,6 +850,25 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetRandomBehaviorSettings {
+                expected_config_revision,
+                settings,
+                reply,
+            } => {
+                let runtime_settings = RandomBehaviorSettings {
+                    enabled: settings.enabled,
+                    interval_seconds: settings.interval_seconds,
+                };
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_random_behavior_settings(runtime_settings)
+                            .map(|_| ())
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetModelSettings {
                 expected_config_revision,
                 settings,
@@ -1393,6 +1413,10 @@ fn snapshot(
         behavior_shortcuts_enabled: application.config().model.enable_behavior_shortcuts,
         maximum_fps: runtime.maximum_fps,
         release_fallback_timeout_ms: runtime.release_fallback_timeout_ms,
+        random_behavior: SettingsRandomBehavior {
+            enabled: runtime.random_behavior_settings.enabled,
+            interval_seconds: runtime.random_behavior_settings.interval_seconds,
+        },
         model_settings: SettingsModelSettings {
             mirror: runtime.model_settings.mirror,
             mirror_pointer_tracking: runtime.model_settings.mirror_pointer_tracking,
@@ -1665,6 +1689,9 @@ const fn settings_runtime_error_code(code: RuntimeRenderErrorCode) -> SettingsRu
         RuntimeRenderErrorCode::MaximumFpsInvalid => SettingsRuntimeErrorCode::MaximumFpsInvalid,
         RuntimeRenderErrorCode::ReleaseFallbackTimeoutInvalid => {
             SettingsRuntimeErrorCode::ReleaseFallbackTimeoutInvalid
+        }
+        RuntimeRenderErrorCode::RandomBehaviorSettingsInvalid => {
+            SettingsRuntimeErrorCode::RandomBehaviorSettingsInvalid
         }
     }
 }
@@ -2940,6 +2967,7 @@ mod tests {
             behavior_shortcuts_enabled: true,
             maximum_fps: 60,
             release_fallback_timeout_ms: 500,
+            random_behavior: SettingsRandomBehavior::default(),
             model_settings: bongocat_ui_protocol::SettingsModelSettings::default(),
             gamepad_axis_settings: bongocat_ui_protocol::SettingsGamepadAxisSettings::default(),
             logging: bongocat_ui_protocol::SettingsLogging::default(),
@@ -4242,11 +4270,22 @@ mod tests {
         sender
             .send(ShortcutCommand::ToggleOverlay)
             .expect("queue application shortcut");
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        // Probe the cheap revision while the handoff is in flight. Building a
+        // full settings snapshot scans the model catalog, which can exceed the
+        // test's whole wait under the workspace's parallel load.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         let updated = loop {
-            let snapshot = client.read_snapshot_blocking().expect("updated snapshot");
-            if !snapshot.overlay_visible || std::time::Instant::now() >= deadline {
-                break snapshot;
+            let revision = client
+                .read_snapshot_revision_blocking()
+                .expect("shortcut revision");
+            if revision > initial.revision {
+                let snapshot = client.read_snapshot_blocking().expect("updated snapshot");
+                if !snapshot.overlay_visible {
+                    break snapshot;
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                break client.read_snapshot_blocking().expect("updated snapshot");
             }
             std::thread::yield_now();
         };
@@ -4734,9 +4773,22 @@ mod tests {
             )
             .expect("update model settings");
         assert_eq!(configured_model.model_settings, model_settings);
+        let random_behavior = SettingsRandomBehavior {
+            enabled: true,
+            interval_seconds: 9,
+        };
+        let configured_random_behavior = client
+            .set_random_behavior_settings_blocking(
+                configured_model.config_revision.expect("config revision"),
+                random_behavior,
+            )
+            .expect("update random behavior settings");
+        assert_eq!(configured_random_behavior.random_behavior, random_behavior);
         let configured_frame_rate = client
             .set_maximum_fps_blocking(
-                configured_model.config_revision.expect("config revision"),
+                configured_random_behavior
+                    .config_revision
+                    .expect("config revision"),
                 120,
             )
             .expect("update maximum FPS");
@@ -4783,6 +4835,8 @@ mod tests {
         assert!(persisted.contains("\"gamepad_trigger_dead_zone\": 0.1"));
         assert!(persisted.contains("\"maximum_fps\": 120"));
         assert!(persisted.contains("\"release_fallback_timeout_ms\": 1500"));
+        assert!(persisted.contains("\"random_behavior_enabled\": true"));
+        assert!(persisted.contains("\"random_behavior_interval_seconds\": 9"));
 
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.runtime_health, RuntimeHealth::Stopped);
@@ -4795,6 +4849,16 @@ mod tests {
                 .snapshot()
                 .release_fallback_timeout_ms,
             1_500
+        );
+        assert_eq!(
+            restarted
+                .runtime_client()
+                .snapshot()
+                .random_behavior_settings,
+            RandomBehaviorSettings {
+                enabled: true,
+                interval_seconds: 9,
+            }
         );
         assert!(
             !restarted
@@ -5686,6 +5750,50 @@ mod tests {
                 "{diagnostic:?} has no delete result code"
             );
         }
+    }
+
+    #[test]
+    fn invalid_random_behavior_settings_leave_config_and_runtime_unchanged() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("application start");
+        let runtime = application.runtime_client();
+        let service = ApplicationSettingsService::start(application).expect("service start");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let initial_config_revision = initial.config_revision.expect("config revision");
+        let initial_runtime = runtime.snapshot();
+        let initial_bytes = std::fs::read(&layout.config).expect("initial config bytes");
+
+        for interval_seconds in [0, 3_601] {
+            client
+                .set_random_behavior_settings_blocking(
+                    initial_config_revision,
+                    SettingsRandomBehavior {
+                        enabled: true,
+                        interval_seconds,
+                    },
+                )
+                .expect_err("invalid random behavior settings must fail");
+            assert_eq!(
+                client
+                    .read_snapshot_blocking()
+                    .expect("snapshot after rejected setting")
+                    .config_revision,
+                Some(initial_config_revision)
+            );
+            assert_eq!(
+                runtime.snapshot().random_behavior_settings,
+                initial_runtime.random_behavior_settings
+            );
+            assert_eq!(
+                std::fs::read(&layout.config).expect("config after rejected setting"),
+                initial_bytes
+            );
+        }
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
     }
 
     #[test]

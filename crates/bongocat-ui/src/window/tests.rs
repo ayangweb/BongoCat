@@ -1544,6 +1544,25 @@ fn the_hover_hide_delay_only_applies_while_the_switch_is_on() {
 }
 
 #[test]
+fn random_behavior_toggle_keeps_a_pending_interval_in_the_same_patch() {
+    let persisted = SettingsRandomBehavior {
+        enabled: false,
+        interval_seconds: 30,
+    };
+    let pending = SettingsRandomBehavior {
+        enabled: false,
+        interval_seconds: 12,
+    };
+    assert_eq!(
+        super::settings::random_behavior_settings_after_toggle(persisted, Some(pending), true),
+        SettingsRandomBehavior {
+            enabled: true,
+            interval_seconds: 12,
+        }
+    );
+}
+
+#[test]
 fn cancellation_requested_while_starting_reaches_the_created_operation() {
     let (client, _endpoint) = SettingsClient::bounded(1);
     let operation = client

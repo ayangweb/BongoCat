@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod input_state;
+mod random_behavior;
 mod rendering;
 
 use bongocat_audio::{
@@ -36,6 +37,11 @@ pub use bongocat_input::{
 use bongocat_input::{CursorSmoother, DEFAULT_GAMEPAD_AXIS_CAPACITY};
 use input_state::{InputDisposition, InputState};
 pub use input_state::{InputSnapshot, ModelInputSnapshot};
+pub use random_behavior::{
+    DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS, MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+    MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS, RandomBehaviorSettings,
+};
+use random_behavior::{RandomBehaviorScheduler, system_seed};
 use rendering::{MotionStopStatus, RenderEvaluation, RuntimeRenderBootstrap, RuntimeRenderer};
 
 pub const DEFAULT_MAXIMUM_FPS: u16 = 60;
@@ -44,6 +50,9 @@ pub const MAXIMUM_FPS: u16 = 240;
 pub const DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS: u32 = 500;
 pub const MAX_RELEASE_FALLBACK_TIMEOUT_MS: u32 = 60_000;
 pub const HIDDEN_OVERLAY_FRAME_INTERVAL: Duration = Duration::from_millis(100);
+// Automatic playback uses a separate high sequence domain so it cannot be
+// mistaken for a product command sequence by command waiters or diagnostics.
+const AUTOMATIC_SEQUENCE_START: u64 = 1_u64 << 63;
 
 pub const fn maximum_fps_is_valid(maximum_fps: u16) -> bool {
     maximum_fps >= MINIMUM_FPS && maximum_fps <= MAXIMUM_FPS
@@ -193,10 +202,11 @@ pub enum RuntimeRenderErrorCode {
     OverlaySettingsInvalid,
     MaximumFpsInvalid,
     ReleaseFallbackTimeoutInvalid,
+    RandomBehaviorSettingsInvalid,
 }
 
 impl RuntimeRenderErrorCode {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::ModelLoadFailed,
         Self::ModelEvaluationFailed,
         Self::MotionLoadFailed,
@@ -206,6 +216,7 @@ impl RuntimeRenderErrorCode {
         Self::OverlaySettingsInvalid,
         Self::MaximumFpsInvalid,
         Self::ReleaseFallbackTimeoutInvalid,
+        Self::RandomBehaviorSettingsInvalid,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -219,6 +230,7 @@ impl RuntimeRenderErrorCode {
             Self::OverlaySettingsInvalid => "overlay_settings_invalid",
             Self::MaximumFpsInvalid => "maximum_fps_invalid",
             Self::ReleaseFallbackTimeoutInvalid => "release_fallback_timeout_invalid",
+            Self::RandomBehaviorSettingsInvalid => "random_behavior_settings_invalid",
         }
     }
 }
@@ -484,6 +496,7 @@ pub enum RuntimeCommand {
     SetOverlaySettings(OverlaySettings),
     SetMaximumFps(u16),
     SetReleaseFallbackTimeout(u32),
+    SetRandomBehaviorSettings(RandomBehaviorSettings),
     SetModelSettings(ModelSettings),
     SetMotionAudioEnabled(bool),
     SetInputBindings(Arc<InputBindings>),
@@ -534,6 +547,7 @@ pub struct RuntimeSnapshot {
     pub overlay_settings: OverlaySettings,
     pub maximum_fps: u16,
     pub release_fallback_timeout_ms: u32,
+    pub random_behavior_settings: RandomBehaviorSettings,
     pub model_settings: ModelSettings,
     pub gamepad_axis_settings: GamepadAxisSettings,
     pub motion_audio_enabled: bool,
@@ -569,6 +583,7 @@ impl RuntimeSnapshot {
             overlay_settings: OverlaySettings::default(),
             maximum_fps: DEFAULT_MAXIMUM_FPS,
             release_fallback_timeout_ms: DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS,
+            random_behavior_settings: RandomBehaviorSettings::default(),
             model_settings: ModelSettings::default(),
             gamepad_axis_settings: GamepadAxisSettings::default(),
             motion_audio_enabled,
@@ -1590,6 +1605,8 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     let mut overlay_visible = initial_overlay_visible;
     let mut maximum_fps = DEFAULT_MAXIMUM_FPS;
     let mut release_fallback_timeout_ms = DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS;
+    let mut random_behavior_scheduler = RandomBehaviorScheduler::new(system_seed());
+    let mut next_automatic_behavior_sequence = AUTOMATIC_SEQUENCE_START;
     let mut motion_audio_enabled = initial_motion_audio_enabled;
     let mut pending_model = None;
     let mut deferred_commands = VecDeque::new();
@@ -1612,10 +1629,25 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
             &mut active_expression,
             &motion_audio,
             &mut next_motion_event_sequence,
+            &mut random_behavior_scheduler,
             overlay_visible,
             &snapshot,
             clock.now(),
         );
+        if pending_model.is_none() && shutdown.sequence().is_none() {
+            maybe_trigger_random_behavior(
+                renderer.as_mut(),
+                active_model.as_deref(),
+                &mut active_motion,
+                &mut active_expression,
+                &mut random_behavior_scheduler,
+                &mut next_automatic_behavior_sequence,
+                &motion_audio,
+                motion_audio_enabled,
+                &snapshot,
+                clock.now(),
+            );
+        }
         let frame_interval = runtime_frame_interval(maximum_fps, overlay_visible);
         let received = if let Some(sequence) = shutdown.sequence() {
             if pending_model.is_some() {
@@ -1766,6 +1798,24 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                             release_fallback_timeout_ms = value;
                             publish(&snapshot, |current| {
                                 current.release_fallback_timeout_ms = value;
+                                current.last_command_failure = None;
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        }
+                    }
+                    WorkerCommand::Product(RuntimeCommand::SetRandomBehaviorSettings(settings)) => {
+                        if !settings.is_valid() {
+                            publish(&snapshot, |current| {
+                                current.last_command_failure = Some(RuntimeCommandFailure {
+                                    sequence,
+                                    code: RuntimeRenderErrorCode::RandomBehaviorSettingsInvalid,
+                                });
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        } else {
+                            random_behavior_scheduler.set_settings(settings, clock.now());
+                            publish(&snapshot, |current| {
+                                current.random_behavior_settings = settings;
                                 current.last_command_failure = None;
                                 current.last_command_sequence = Some(sequence);
                             });
@@ -2206,10 +2256,25 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     &mut active_expression,
                     &motion_audio,
                     &mut next_motion_event_sequence,
+                    &mut random_behavior_scheduler,
                     overlay_visible,
                     &snapshot,
                     clock.now(),
                 );
+                if pending_model.is_none() && shutdown.sequence().is_none() {
+                    maybe_trigger_random_behavior(
+                        renderer.as_mut(),
+                        active_model.as_deref(),
+                        &mut active_motion,
+                        &mut active_expression,
+                        &mut random_behavior_scheduler,
+                        &mut next_automatic_behavior_sequence,
+                        &motion_audio,
+                        motion_audio_enabled,
+                        &snapshot,
+                        clock.now(),
+                    );
+                }
                 if overlay_visible && pending_model.is_none() {
                     evaluate_renderer(
                         renderer.as_mut(),
@@ -2268,6 +2333,90 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     publish(&snapshot, |current| current.state = RuntimeState::Stopped);
     if panic_after_stopped {
         panic!("runtime worker panic injection");
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn maybe_trigger_random_behavior(
+    renderer: Option<&mut RuntimeRenderer>,
+    active_model: Option<&CommittedModel>,
+    active_motion: &mut Option<ActiveMotionSnapshot>,
+    active_expression: &mut Option<ActiveExpressionSnapshot>,
+    scheduler: &mut RandomBehaviorScheduler,
+    next_automatic_sequence: &mut u64,
+    motion_audio: &MotionAudioClient,
+    motion_audio_enabled: bool,
+    snapshot: &SnapshotCell,
+    now: Duration,
+) {
+    let Some(renderer) = renderer else {
+        return;
+    };
+    let Some(model) = active_model else {
+        return;
+    };
+    let Some(behavior) = scheduler.poll(now, || model.snapshot().behaviors) else {
+        return;
+    };
+    let automatic_sequence = *next_automatic_sequence;
+    *next_automatic_sequence = next_automatic_sequence.wrapping_sub(1);
+    match behavior {
+        bongocat_model::ModelBehaviorSnapshot::Motion { group, index } => {
+            let Ok(motion) = MotionId::new(group, index) else {
+                return;
+            };
+            let motion_is_settled = renderer.motion_is_settled(now);
+            let current_priority = active_motion
+                .as_ref()
+                .filter(|_| !motion_is_settled)
+                .map(|active| active.priority);
+            if current_priority.is_some_and(|priority| priority > MotionPriority::Idle) {
+                return;
+            }
+            if renderer.validate_motion(&motion).is_err() {
+                return;
+            }
+            if motion_audio_enabled {
+                if let Some(path) = motion_audio_path(Some(model), &motion) {
+                    let _ = motion_audio.try_publish(MotionAudioCommand::Play {
+                        sequence: automatic_sequence,
+                        path,
+                        volume: MotionAudioVolume::FULL,
+                    });
+                } else {
+                    stop_motion_audio(
+                        motion_audio,
+                        automatic_sequence,
+                        MotionAudioStopReason::MotionReplaced,
+                    );
+                }
+            }
+            if renderer.start_motion(&motion, now, false).is_err() {
+                return;
+            }
+            let active = ActiveMotionSnapshot {
+                motion,
+                priority: MotionPriority::Idle,
+                command_sequence: automatic_sequence,
+                stop_command_sequence: None,
+            };
+            *active_motion = Some(active.clone());
+            publish(snapshot, |current| current.active_motion = Some(active));
+        }
+        bongocat_model::ModelBehaviorSnapshot::Expression { name } => {
+            let Ok(expression) = ExpressionId::new(name) else {
+                return;
+            };
+            if renderer.set_expression(&expression, now).is_err() {
+                return;
+            }
+            let active = ActiveExpressionSnapshot {
+                expression,
+                command_sequence: automatic_sequence,
+            };
+            *active_expression = Some(active.clone());
+            publish(snapshot, |current| current.active_expression = Some(active));
+        }
     }
 }
 
@@ -2378,6 +2527,7 @@ fn process_model_commit_feedback(
     active_expression: &mut Option<ActiveExpressionSnapshot>,
     motion_audio: &MotionAudioClient,
     next_motion_event_sequence: &mut u64,
+    random_behavior_scheduler: &mut RandomBehaviorScheduler,
     overlay_visible: bool,
     snapshot: &SnapshotCell,
     now: Duration,
@@ -2455,6 +2605,7 @@ fn process_model_commit_feedback(
         *active_model = Some(pending.model);
         *active_motion = None;
         *active_expression = None;
+        random_behavior_scheduler.reset(now);
         stop_motion_audio(
             motion_audio,
             command_sequence,
@@ -3055,6 +3206,39 @@ mod tests {
             })
         );
 
+        let random_behavior = RandomBehaviorSettings {
+            enabled: true,
+            interval_seconds: 30,
+        };
+        let sequence = client
+            .send(RuntimeCommand::SetRandomBehaviorSettings(random_behavior))
+            .expect("random behavior command accepted");
+        let updated = client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("random behavior settings snapshot");
+        assert_eq!(updated.random_behavior_settings, random_behavior);
+        assert_eq!(updated.last_command_failure, None);
+
+        let sequence = client
+            .send(RuntimeCommand::SetRandomBehaviorSettings(
+                RandomBehaviorSettings {
+                    enabled: true,
+                    interval_seconds: 0,
+                },
+            ))
+            .expect("invalid random behavior command accepted for typed rejection");
+        let rejected = client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("invalid random behavior rejection");
+        assert_eq!(rejected.random_behavior_settings, random_behavior);
+        assert_eq!(
+            rejected.last_command_failure,
+            Some(RuntimeCommandFailure {
+                sequence,
+                code: RuntimeRenderErrorCode::RandomBehaviorSettingsInvalid,
+            })
+        );
+
         let invalid = OverlaySettings {
             scale_percent: 0,
             ..settings
@@ -3336,6 +3520,113 @@ mod tests {
         let stopped = owner.shutdown(TIMEOUT).expect("clean shutdown");
         assert_eq!(stopped.state, RuntimeState::Stopped);
         assert_eq!(stopped.model_settings, settings);
+    }
+
+    #[test]
+    fn random_behavior_setting_starts_a_model_behavior_after_one_interval() {
+        let clock = Arc::new(ManualClock::default());
+        let (owner, consumer) =
+            RuntimeOwner::start_with_rendering_and_clock(true, 8, clock.clone());
+        let client = owner.client();
+        client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        let settings = RandomBehaviorSettings {
+            enabled: true,
+            interval_seconds: 1,
+        };
+        let sequence = client
+            .send(RuntimeCommand::SetRandomBehaviorSettings(settings))
+            .expect("random behavior setting accepted");
+        client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("random behavior setting published");
+
+        let model = Arc::new(preset_model("standard"));
+        let sequence = client
+            .send(RuntimeCommand::ActivateModel(model))
+            .expect("model activation accepted");
+        let frame = wait_for_prepared_model(&client, &consumer, sequence);
+        let committed = report_model_prepared(&client, &consumer, &frame);
+        assert!(committed.active_model.is_some());
+
+        clock.set(Duration::from_secs(1));
+        let tick = client
+            .send(RuntimeCommand::Tick)
+            .expect("random tick accepted");
+        let mut snapshot = client
+            .wait_for_command(tick, TIMEOUT)
+            .expect("random behavior tick published");
+        let deadline = Instant::now() + TIMEOUT;
+        while snapshot.active_motion.is_none()
+            && snapshot.active_expression.is_none()
+            && Instant::now() < deadline
+        {
+            thread::sleep(Duration::from_millis(2));
+            snapshot = client.snapshot();
+        }
+        assert!(
+            snapshot.active_motion.is_some() || snapshot.active_expression.is_some(),
+            "the due scheduler must select one declared model behavior"
+        );
+        owner.shutdown(TIMEOUT).expect("clean shutdown");
+    }
+
+    #[test]
+    fn random_behavior_does_not_replace_a_live_normal_product_motion() {
+        let clock = Arc::new(ManualClock::default());
+        let (owner, consumer) =
+            RuntimeOwner::start_with_rendering_and_clock(true, 8, clock.clone());
+        let client = owner.client();
+        client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        let settings_sequence = client
+            .send(RuntimeCommand::SetRandomBehaviorSettings(
+                RandomBehaviorSettings {
+                    enabled: true,
+                    interval_seconds: 1,
+                },
+            ))
+            .expect("random behavior setting accepted");
+        client
+            .wait_for_command(settings_sequence, TIMEOUT)
+            .expect("random behavior setting published");
+
+        let activation = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "standard",
+            ))))
+            .expect("model activation accepted");
+        let frame = wait_for_prepared_model(&client, &consumer, activation);
+        report_model_prepared(&client, &consumer, &frame);
+        let manual_motion = MotionId::new("CAT_motion", 0).expect("manual motion");
+        let manual_sequence = client
+            .send(RuntimeCommand::StartMotion {
+                motion: manual_motion.clone(),
+                priority: MotionPriority::Normal,
+            })
+            .expect("manual motion accepted");
+        let manual = client
+            .wait_for_command(manual_sequence, TIMEOUT)
+            .expect("manual motion published");
+        let manual_active = manual.active_motion.expect("manual active motion");
+
+        clock.set(Duration::from_secs(1));
+        let tick = client
+            .send(RuntimeCommand::Tick)
+            .expect("random tick accepted");
+        client
+            .wait_for_command(tick, TIMEOUT)
+            .expect("tick published");
+        let deadline = Instant::now() + TIMEOUT;
+        let mut after_random = client.snapshot();
+        while after_random.revision == manual.revision && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(2));
+            after_random = client.snapshot();
+        }
+        assert_eq!(after_random.active_motion, Some(manual_active));
+        owner.shutdown(TIMEOUT).expect("clean shutdown");
     }
 
     #[test]

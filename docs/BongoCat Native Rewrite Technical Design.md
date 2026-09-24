@@ -411,6 +411,13 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
   清理；重复 stop 不重启计时，零时长立即清理。不同 motion identity 的旧 stop 不影响新动作；
   同一 ID 重播后仍是当前 run，之后到达的同名 stop 有意停止该 run。
+- `model.random_behavior_enabled` 打开时，runtime 以可注入单调时钟按
+  `model.random_behavior_interval_seconds` 从当前模型声明的 motion 与 expression 合并列表中均匀选择
+  一个行为（每个声明项等权）。第一次选择等待一个完整间隔；成功模型切换、设置变更和重新启用都会
+  重锚定时器，长暂停只产生一次选择而不追赶补发。自动 motion 使用 `Idle` priority，不能替换正在进行
+  的 `Normal`/`Force` 产品 motion；随机 expression 继续遵守最新 expression 替换语义，模型没有行为
+  时保持无操作。待处理模型 commit 或 shutdown 时不选择新行为。随机选择器使用 runtime 内部 seed，
+  测试可以通过固定 seed 和单调时间得到同一序列。
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。
 - `ModelSettings` 是 runtime 的强类型模型交互设置：`mirror` 只影响不可变
   `RenderSnapshot::mirror_horizontal` 的水平变换，`mirror_pointer_tracking` 只反转
@@ -854,7 +861,9 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `model.installed_models` 与内置模型的同名列表 `model.preset_models`（每条含稳定唯一 `id`
   与可编辑 `title`），以及
   `input.gamepad_stick_dead_zone` 和 `input.gamepad_trigger_dead_zone`；两个 dead-zone 都
-  必须是 `[0, 1)` 的有限数。两个元数据列表各自判重：列表内 `id` 不得重复，`title` 去除首尾
+  必须是 `[0, 1)` 的有限数。模型随机播放由 `model.random_behavior_enabled` 与
+  `model.random_behavior_interval_seconds` 成对表达，后者为 `[1, 3600]` 秒且默认 `30`；两者直接
+  进入当前 v1，不读取旧字段。两个元数据列表各自判重：列表内 `id` 不得重复，`title` 去除首尾
   空白后不得为空。`preset_models` 为空表示所有内置模型都还用构建给的名字，它没有任何导入、
   删除或裁剪路径。
 - `next` 开发期间不读取或转换任何早期中间结构，不实现 schema migration、字段 alias 或版本兼容

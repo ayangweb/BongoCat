@@ -56,6 +56,8 @@ shortcuts
 | `model`       | `mirror_pointer_tracking`             | 镜像指针跟随方向                       |
 | `model`       | `play_motion_audio`                   | 播放动作音效，默认 `false`             |
 | `model`       | `enable_behavior_shortcuts`           | 启用模型动作/表情绑定                  |
+| `model`       | `random_behavior_enabled`             | 是否按间隔随机播放动作或表情           |
+| `model`       | `random_behavior_interval_seconds`    | 随机播放间隔秒数，`[1, 3600]`          |
 | `model`       | `maximum_fps`                         | overlay 最大帧率，`[15, 240]`          |
 | `model`       | `ignore_pointer`                      | 模型求值忽略指针位置                   |
 | `model`       | `release_fallback_timeout_ms`         | 输入校正失败后的最后保险，不是主语义   |
@@ -113,6 +115,15 @@ typed platform snapshot，并仅在显式用户 command 时调用平台 adapter�
 `model.enable_behavior_shortcuts` 默认 `false`，只决定配置中的 `shortcuts.model_behaviors` 是否
 进入活动的 `CompiledShortcuts`：关闭时不改写、不删除这些绑定，只把它们排除在平台匹配表之外，
 `shortcuts.commands` 里的应用级快捷键不受影响；重新打开时无需重录即可恢复全部已校验绑定。
+
+`model.random_behavior_enabled` 默认 `false`。打开后，runtime 以可注入的单调时钟按
+`random_behavior_interval_seconds` 周期性从当前模型声明的 motion 和 expression 合并列表中均匀选择一个
+（每个声明项等权，不是 motion 与 expression 各占 50%）；第一次
+选择在一个完整间隔后发生，模型成功切换、重新打开开关或修改间隔都会重新开始计时。间隔表示相邻选择
+事件之间的最短周期，不等待前一个动作自然结束；因此较长动作可能在下一个周期被新的随机选择替换。自动
+motion 使用 `Idle` 优先级，不会替换正在进行的手动 `Normal`/`Force` 动作；模型没有可声明行为时保持
+无操作，不把空选择当成错误。`random_behavior_interval_seconds` 接受 `1..=3600`，默认 `30`，即使
+开关关闭也必须是合法值。该功能与 `enable_behavior_shortcuts` 独立，后者只控制全局快捷键门禁。
 
 `model.maximum_fps` 是 `15..=240` 的 overlay 目标帧率。它决定 runtime 周期求值、GPUI 产品 frame
 source 与独立 overlay run loop 的下一帧间隔，间隔按**帧截止时间**计算（单帧工作耗时由等待吸收），

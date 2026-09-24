@@ -135,10 +135,11 @@ pub enum SettingsRuntimeErrorCode {
     OverlaySettingsInvalid,
     MaximumFpsInvalid,
     ReleaseFallbackTimeoutInvalid,
+    RandomBehaviorSettingsInvalid,
 }
 
 impl SettingsRuntimeErrorCode {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::ModelLoadFailed,
         Self::ModelEvaluationFailed,
         Self::MotionLoadFailed,
@@ -148,6 +149,7 @@ impl SettingsRuntimeErrorCode {
         Self::OverlaySettingsInvalid,
         Self::MaximumFpsInvalid,
         Self::ReleaseFallbackTimeoutInvalid,
+        Self::RandomBehaviorSettingsInvalid,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -161,6 +163,7 @@ impl SettingsRuntimeErrorCode {
             Self::OverlaySettingsInvalid => "overlay_settings_invalid",
             Self::MaximumFpsInvalid => "maximum_fps_invalid",
             Self::ReleaseFallbackTimeoutInvalid => "release_fallback_timeout_invalid",
+            Self::RandomBehaviorSettingsInvalid => "random_behavior_settings_invalid",
         }
     }
 }
@@ -405,6 +408,7 @@ pub struct SettingsSnapshot {
     pub behavior_shortcuts_enabled: bool,
     pub maximum_fps: u16,
     pub release_fallback_timeout_ms: u32,
+    pub random_behavior: SettingsRandomBehavior,
     pub model_settings: SettingsModelSettings,
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,
     pub logging: SettingsLogging,
@@ -440,6 +444,21 @@ pub struct SettingsModelSettings {
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     pub ignore_pointer: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsRandomBehavior {
+    pub enabled: bool,
+    pub interval_seconds: u32,
+}
+
+impl Default for SettingsRandomBehavior {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_seconds: 30,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1186,6 +1205,11 @@ pub enum SettingsCommand {
         timeout_ms: u32,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetRandomBehaviorSettings {
+        expected_config_revision: u64,
+        settings: SettingsRandomBehavior,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetModelSettings {
         expected_config_revision: u64,
         settings: SettingsModelSettings,
@@ -1563,6 +1587,19 @@ impl SettingsClient {
         self.request(|reply| SettingsCommand::SetReleaseFallbackTimeout {
             expected_config_revision,
             timeout_ms,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_random_behavior_settings(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsRandomBehavior,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetRandomBehaviorSettings {
+            expected_config_revision,
+            settings,
             reply,
         })
         .await
@@ -1977,6 +2014,18 @@ impl SettingsClient {
         })
     }
 
+    pub fn set_random_behavior_settings_blocking(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsRandomBehavior,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetRandomBehaviorSettings {
+            expected_config_revision,
+            settings,
+            reply,
+        })
+    }
+
     pub fn set_model_settings_blocking(
         &self,
         expected_config_revision: u64,
@@ -2326,6 +2375,15 @@ mod tests {
             SettingsErrorCode::SnapshotOutdated.as_str(),
             "snapshot_outdated"
         );
+        let mut runtime_codes = SettingsRuntimeErrorCode::ALL
+            .iter()
+            .map(|code| code.as_str())
+            .collect::<Vec<_>>();
+        runtime_codes.sort_unstable();
+        runtime_codes.dedup();
+        assert_eq!(runtime_codes.len(), SettingsRuntimeErrorCode::ALL.len());
+        assert!(!SettingsRandomBehavior::default().enabled);
+        assert_eq!(SettingsRandomBehavior::default().interval_seconds, 30);
         assert_eq!(
             SettingsError::new(SettingsErrorCode::ModelSwitchFailed).code(),
             SettingsErrorCode::ModelSwitchFailed
@@ -3089,6 +3147,36 @@ mod tests {
     }
 
     #[test]
+    fn random_behavior_command_preserves_switch_and_interval() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let expected = SettingsRandomBehavior {
+            enabled: true,
+            interval_seconds: 12,
+        };
+        let worker = thread::spawn(move || {
+            let SettingsCommand::SetRandomBehaviorSettings {
+                expected_config_revision,
+                settings,
+                reply,
+            } = endpoint.recv_blocking().expect("random behavior command")
+            else {
+                panic!("unexpected command");
+            };
+            assert_eq!(expected_config_revision, 7);
+            assert_eq!(settings, expected);
+            let mut result = snapshot(8, true, true);
+            result.random_behavior = expected;
+            reply.respond(Ok(result)).expect("random behavior reply");
+        });
+
+        let result = client
+            .set_random_behavior_settings_blocking(7, expected)
+            .expect("random behavior snapshot");
+        assert_eq!(result.random_behavior, expected);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
     fn command_shortcuts_command_preserves_typed_state() {
         let (client, endpoint) = SettingsClient::bounded(1);
         let worker = thread::spawn(move || {
@@ -3189,6 +3277,7 @@ mod tests {
             behavior_shortcuts_enabled: true,
             maximum_fps: 60,
             release_fallback_timeout_ms: 500,
+            random_behavior: SettingsRandomBehavior::default(),
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
             logging: SettingsLogging::default(),

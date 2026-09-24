@@ -392,6 +392,12 @@
       "motion_audio": {
         "label": "播放动作音效"
       },
+      "random_behavior_enabled": {
+        "label": "随机播放动作或表情"
+      },
+      "random_behavior_interval": {
+        "label": "随机播放动作或表情间隔（秒）"
+      },
       "mirror_mouse_tracking": {
         "label": "镜像鼠标跟随"
       },

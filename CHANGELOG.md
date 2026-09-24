@@ -19,6 +19,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 - Importing a BongoCatMver source now lets you choose which available conversion modes to import. Exactly one applicable mode is selected by default, and only the selected modes are converted.
 - A model's shortcut rows can now play what they bind. Every motion and expression on the Shortcuts page carries a play button beside its chord, so you can see and hear what a recorded shortcut does without pressing it; each press fires that one behavior straight away and saves nothing. Playing is a preview of the model in use, so a row left over from a model that is no longer active refuses to play rather than firing a same-named behavior on whichever model is loaded now.
+- The Interaction page can now periodically play a random motion or expression from the active model. The scheduler is off by default, accepts a 1–3600 second interval, and is independent of model shortcut bindings.
 
 ### 🗑️ Removals
 

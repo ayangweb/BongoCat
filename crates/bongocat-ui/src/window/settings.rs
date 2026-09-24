@@ -1,5 +1,15 @@
 use super::*;
 
+pub(super) fn random_behavior_settings_after_toggle(
+    persisted: SettingsRandomBehavior,
+    pending: Option<SettingsRandomBehavior>,
+    enabled: bool,
+) -> SettingsRandomBehavior {
+    let mut settings = pending.unwrap_or(persisted);
+    settings.enabled = enabled;
+    settings
+}
+
 impl SettingsView {
     /// Keep the rendered snapshot current while the window is on screen.
     ///
@@ -574,6 +584,88 @@ impl SettingsView {
             }),
             cx,
         );
+    }
+
+    pub(super) fn set_random_behavior_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.editing_blocked(self.snapshot.as_ref()) {
+            return;
+        }
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        let settings = random_behavior_settings_after_toggle(
+            snapshot.random_behavior,
+            self.random_behavior_debouncer.pending_value().copied(),
+            enabled,
+        );
+        if settings.enabled == snapshot.random_behavior.enabled {
+            return;
+        }
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            return;
+        };
+        let should_send = self
+            .random_behavior_debouncer
+            .observe(settings, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .is_some();
+        if should_send {
+            self.start_request(
+                PendingOperation::RandomBehavior,
+                Some(SettingValue::RandomBehaviorSettings {
+                    expected_config_revision,
+                    settings,
+                }),
+                cx,
+            );
+        } else {
+            self.schedule_random_behavior_flush(cx);
+        }
+    }
+
+    pub(super) fn set_random_behavior_interval_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if self.editing_blocked(self.snapshot.as_ref()) {
+            return;
+        }
+        let value = raw.round().clamp(
+            f64::from(bongocat_config::MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS),
+            f64::from(bongocat_config::MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS),
+        ) as u32;
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if !snapshot.random_behavior.enabled {
+            return;
+        }
+        let mut settings = self
+            .random_behavior_debouncer
+            .pending_value()
+            .copied()
+            .unwrap_or(snapshot.random_behavior);
+        if settings.interval_seconds == value {
+            return;
+        }
+        settings.interval_seconds = value;
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            return;
+        };
+        let should_send = self
+            .random_behavior_debouncer
+            .observe(settings, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .is_some();
+        if should_send {
+            self.start_request(
+                PendingOperation::RandomBehavior,
+                Some(SettingValue::RandomBehaviorSettings {
+                    expected_config_revision,
+                    settings,
+                }),
+                cx,
+            );
+        } else {
+            self.schedule_random_behavior_flush(cx);
+        }
     }
 
     pub(super) fn set_maximum_fps_value(&mut self, raw: f64, cx: &mut Context<Self>) {

@@ -59,6 +59,12 @@ impl Render for SettingsView {
                 .as_ref()
                 .is_some_and(|snapshot| snapshot.check_for_updates_automatically),
         );
+        let random_behavior_gate = SettingGate::new(
+            editing_blocked,
+            snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.random_behavior.enabled),
+        );
         // One gate per shortcut scope: the switch that owns the group plus the
         // shared structural editing state. Each scope's rows read their own
         // gate; the gate switches themselves stay operable while off.
@@ -608,6 +614,65 @@ impl Render for SettingsView {
                             },
                         ),
                     ),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.model_interaction.random_behavior_enabled.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.random_behavior.enabled)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_random_behavior_enabled(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    ),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.model_interaction.random_behavior_interval.label",
+                        ),
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: f64::from(
+                                    bongocat_config::MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+                                ),
+                                max: f64::from(
+                                    bongocat_config::MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+                                ),
+                                step: 1.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app).snapshot.as_ref().map_or(30.0, |snapshot| {
+                                        f64::from(snapshot.random_behavior.interval_seconds)
+                                    })
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_random_behavior_interval_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .disabled(random_behavior_gate.disables_controls()),
                 ]),
             SettingGroup::new()
                 .title(bongocat_i18n::text(

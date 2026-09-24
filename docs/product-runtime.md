@@ -225,6 +225,18 @@ expressions do not auto-clear to idle. An invalid request leaves the active expr
 per-frame order is parameter/part-opacity defaults, motion, expression, typed product input, then
 Cubism Core update.
 
+`model.random_behavior_enabled` and `model.random_behavior_interval_seconds` form one typed runtime
+setting. When enabled, the worker waits one complete interval on its injected monotonic clock and
+uniformly selects from the active model's combined list of declared motions and expressions (each
+item has equal weight). A successful model
+commit, a settings change, or a re-enable re-anchors the schedule; a long pause does not emit a
+catch-up burst. Automatic motion uses `Idle` priority and cannot replace a live `Normal`/`Force`
+product motion, while expressions follow the normal latest-expression replacement rule. The
+scheduler is disabled during a pending model commit and shutdown, and an empty behavior list is a
+no-op. The GPUI Interaction page exposes the switch and whole-second interval through the
+revision-checked settings service; the interval row is disabled while the switch is off but keeps
+its saved value.
+
 `bongocat-live2d-playback` owns the SDK-independent motion3/exp3 byte parser and numeric
 curve/blend evaluation. `bongocat-live2d-render` prepares model-package `RenderResources` and
 owns the shared key-image inventory/overlay resolver; `bongocat-live2d` writes the resulting

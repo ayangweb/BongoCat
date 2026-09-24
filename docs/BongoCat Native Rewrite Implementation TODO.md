@@ -1442,7 +1442,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     viewport 变化直接对齐，周期 tick 在没有新 sample 时继续推进。纯 Rust 与 runtime 集成回归
     覆盖单帧/半帧等价、跨显示器保护和连续模型参数投影；多显示器物理光标与完整 mirror
     实机证据仍待完成，因此总项保持未勾选。
-- [ ] 随机行为支持测试 seed。
+- [ ] 随机模型行为开关、播放间隔与测试 seed。
+  - 状态（2026-09-25）：runtime 已加入固定 seed 的确定性选择器、单调时钟定时器、模型切换重锚和
+    `Idle` motion 优先级门禁；配置、typed settings command、GPUI 开关/间隔控件及 Core-backed
+    runtime 定时回归已接通。仍缺双平台实机观察、长时间随机序列/时钟回退 soak 与发布门禁证据，
+    因此本项保持未勾选。
 - [ ] 逐项记录与旧版的可接受差异。
 
 ### 5.4 GPU 绘制
