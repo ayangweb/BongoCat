@@ -881,7 +881,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 状态（2026-09-14）：ADR-0032 新增启动时的只读 `TokenElevation` 检查（`OpenProcessToken` +
     `GetTokenInformation`）与 `rfd 0.17.2` 原生提示，未提权时给出「属性 → 兼容性 → 勾选以管理员
     身份运行此程序」路径，并用 `opener 0.8.5` 的 reveal 定位当前 executable。产品不原地提权、不写
-    HKCU/HKLM、不注册 service，提示不写配置或 state，每次启动重新读取令牌状态。自动化覆盖文案键、
+    HKCU/HKLM、不注册 service，提示不写配置或 window state，每次启动重新读取令牌状态。自动化覆盖文案键、
     `rfd` 结果映射与运行选项解析；2026-09-15 起启用 `common-controls-v6`，Windows 按钮为
     「退出并前往设置」/「稍后设置」两个自定义文案（Task Dialog；ComCtl32 v6 manifest 由
     `gpui-pre` 静态库内嵌提供，缺失时回退 `MessageBoxW` 且结果按「稍后设置」处理）。reveal 成功后经
@@ -965,7 +965,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     `CGPreflightListenEventAccess`；`CGRequestListenEventAccess` 仍只在用户点击引导按钮后调用，因此
     与 ADR-0024 的「启动、轮询、服务恢复不得弹出请求」一致。引导按钮通过 `NSWorkspace` 打开
     `x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent`。提示不新增配置项、
-    不写 state、不缓存「稍后」，每次启动重新读取平台状态。单元测试固定 `rfd` 结果到选择的映射与中英
+    不写 window state、不缓存「稍后」，每次启动重新读取平台状态。单元测试固定 `rfd` 结果到选择的映射与中英
     文案键；`--startup-permission-smoke` 是只读可重复验收命令（本机当前输出
     `input_monitoring is missing`）。macOS 26.5.2 arm64 实机采样确认提示在 GPUI run loop 之前真实
     显示并阻塞等待用户选择（调用栈为
@@ -1008,7 +1008,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 - [x] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
   - 验收证据（2026-09-01）：`bongocat-config` 的 `NativeConfig`/`WindowState` 与
     `shared/config/config.schema.json`、`window-state.schema.json` 同步；serde 输出使用 `snake_case`，
-    Draft 2020-12 validator 和 Native config/state fixtures 已在 workspace tests 与 CI 校验。
+    Draft 2020-12 validator 和 Native config/window-state fixtures 已在 workspace tests 与 CI 校验。
 - [x] 区分用户配置、运行时状态和诊断数据。
   - 验收证据（2026-09-01）：用户配置写入 `config.json`，窗口状态写入独立 `window-state.json`，运行时
     snapshot/输入诊断只经 typed API 暴露，日志和匿名 diagnostics export 不复用用户配置结构。
@@ -1053,7 +1053,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 验收证据（2026-08-29）：macOS 本机与 Windows push run `33251278193`、job `99097261951` 均通过；平台文件权限仍待产品 crate。
 - [x] 新配置文件和备份使用最小用户权限，不继承过宽 ACL/文件 mode。
   - 验收证据（2026-09-01）：`bongocat-config` 的 `StorageLayout` 创建 root、models、backups、logs、updates 和
-    locks 目录时在 Unix 强制 `0700`；config/state、备份、锁和原子替换结果统一为 `0600`，覆盖
+    locks 目录时在 Unix 强制 `0700`；config/window state、备份、锁和原子替换结果统一为 `0600`，覆盖
     首次创建、恢复和 verification rollback。Windows 依赖 `%APPDATA%` 用户目录 ACL，不修改系统
     ACL；Unix 权限回归测试验证目录/文件 mode，config crate 46 项测试和 Native workspace tests 通过。
     `bongocat-app` 的 application logs、轮转日志和运行标记，以及 `bongocat-model` 的 installed

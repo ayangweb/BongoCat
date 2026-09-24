@@ -27,7 +27,7 @@ Windows 首发仍需要固定安装格式，以便明确 installer 权限、卸�
 - 安装器以当前用户身份安装，不请求管理员权限，不安装 service、driver 或机器级注册项；
   卸载元数据写在 HKCU。
 - installer 升级只在固定 product root 内替换旧的 product files，避免遗留 binary。
-- 安装、升级和卸载不能读取、导入、迁移或删除 Development/Production 的 config、state、models、
+- 安装、升级和卸载不能读取、导入、迁移或删除 Development/Production 的 config、window state、models、
   backups、logs 或 updates 数据。默认卸载只删除 product files；删除用户数据必须是独立且明确的
   用户操作。
 - installer 不联网、不解析 update manifest，也不自行选择 artifact。NSIS 只作为安装 packaging
