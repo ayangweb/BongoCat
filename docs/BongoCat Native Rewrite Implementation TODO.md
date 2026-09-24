@@ -1352,16 +1352,18 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     linear/Bezier/stepped/inverse-stepped segment，验证 finite/time/count 边界并以二分反解
     非受限 Bezier 时间。三个预置模型的全部 motion 引用均通过真实解析、循环时间求值和
     Core/drawable 变化测试；非循环自然 completion、model3/curve fade、`idle/normal/force`
-    抢占、同级最新请求、旧 stop 隔离、错误资源保留当前动作及模型 commit 后清理均进入
+    抢占、同级最新请求、不同 motion identity 的旧 stop 隔离、错误资源保留当前动作及模型 commit
+    后清理均进入
     typed runtime。主动 stop 现在按 FadeOutTime 正弦衰减，snapshot 保留首次 stop sequence，
     重复 stop 不重启计时；真实 Core 测试覆盖停止瞬间、半程和结束帧。PartOpacity target
-    已按官方 Framework 的 parameter sink 语义进入真实 Core 求值且不错误套用 parameter
+    已按官方 Framework 的 part-opacity sink 语义进入真实 Core 求值且不错误套用 parameter
     fade。model3 Groups 已进入 v1 产品索引并校验非空 target/name/parameter ID；Model target
     按 R5 顺序实现 EyeBlink 参数乘法、LipSync 参数加法、未覆盖 group 参数的 motion fade
     和独立 Opacity render contract。真实 Core 测试覆盖左右眼、嘴部参数和 opacity snapshot，
     D3D11/Metal 均只在最终颜色 pass 应用 model opacity。UserData 现按单调 elapsed 的
-    `(previous,current]` 产生 occurrence，循环边界不重复、回退不重放、单 tick 上限 256
-    并计数跳过；accepted motion 的相对 FLAC 音效也已进入独立 owner。UI 选择入口仍未完成，
+    `(previous,current]` 和有效播放模式产生 occurrence；一次性播放 looping asset 不会把起点
+    重复解释成下一 cycle，回退不重放、单 tick 上限 256 并计数跳过；accepted motion 的相对 FLAC
+    音效也已进入独立 owner。UI 选择入口仍未完成，
     因此保持未勾选。
   - 状态（2026-09-06）：runtime fade 回归测试已区分实际渲染内容与 Cubism 每帧
     `dynamic_flags`；停止命令同一时刻发布的首帧允许变更标记清零，但 opacity、顶点、
@@ -1369,10 +1371,15 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     修正，runtime 61 项测试和共享 fixture 2 项均通过。
   - 状态（2026-09-24，完成语义修订）：一次性 motion 到达 clip duration 后不再删除 renderer
     playback 与 runtime active identity，而是进入 completed、把 local time 固定在 duration，
-    并在后续每帧恢复 Core 默认值后继续应用终点 parameter/part-opacity/model-opacity。completed
-    motion 不再预留 priority，下一次请求可替换或重播；显式 stop 仍按 FadeOutTime 从最终姿态退出。
-    新增真实 Core 定向回归证明终点值在后续帧仍为 `1.0`，并覆盖 shortcut/preview 单循环、完成
-    后重播与完成后低优先级请求；runtime 65 项及共享 fixture 2 项通过。
+    并在后续每帧恢复 Core 默认 parameter/part opacity 后继续应用完整终点求值。held sample 保留
+    model3/curve 自然 fade 权重；PartOpacity 每帧先恢复 fresh-model 初值，stop、替换或后继
+    motion 不残留旧部件可见性。completed motion 不再预留 priority，且 worker 直接按注入时钟
+    推导完成，不依赖隐藏期间先投递一帧；下一次请求可替换或重播。显式 stop 仍按 FadeOutTime
+    从最终姿态退出，同 ID 重播仍是后续同名 stop 的当前目标。UserData crossing 改用有效播放模式，
+    一次性播放 `Meta.Loop = true` asset 不再重复发出 time-zero event。真实 Core 和 runtime 回归覆盖
+    终点 parameter/part opacity、自然 fade 后保持、stop 清理、时钟回退、shortcut/preview 单循环、
+    无帧间隔的重播/低优先级接管及 expression 淡入锁定；runtime 68 项、playback 14 项、Live2D
+    44 项及共享 fixture 2 项通过。
 - [x] 实现 expression 混合和互斥/叠加语义。
   - 验收证据（2026-08-30）：`bongocat-live2d-playback` 严格解析 Type、fade、parameter、
     duplicate ID 与 Add/Multiply/Overwrite；三个 model3 声明的 9 个 exp3 全部由
@@ -1384,7 +1391,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 复核（2026-09-24）：固定 Mver/R5 expression 语义与当前实现一致——expression 没有 duration
     或自然完成，最新 expression 淡入完成后持续应用，直到下一次有效 expression、成功模型 commit
     或 shutdown 清理；不存在与 motion 相同的“终点后自动清空”缺陷。真实 Core frame-order 回归
-    新增 2 秒后的第二帧，证明默认 parameter 恢复后最新 expression 仍以满权重覆盖对应参数。
+    新增 2 秒后的第二帧，证明默认 parameter 恢复后最新 expression 仍以满权重覆盖对应参数；非零
+    FadeInTime 的定向回归还证明测试时钟回退不会让已完成淡入重新开始。
 - [ ] 实现 physics、pose、eye blink、breath 等实际需求。
   - 状态（2026-09-01）：正式 runtime 已在 motion/expression 之后、产品输入之前加入可注入单调时钟驱动的
     `ParamBreath` 四秒正弦周期和 `EyeBlink` 五秒周期（每周期 180ms 闭眼）；缺失参数安全跳过，纯函数
@@ -2502,8 +2510,8 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 - [ ] Runtime reducer、输入语义和动画单元测试。
 - [ ] motion/expression priority 和可注入 clock 测试。
   - 状态（2026-08-30）：motion 已使用可注入 `MonotonicClock` 覆盖时间推进、真实 drawable
-    变化、低优先级拒绝、force 抢占、同级替换、旧 stop 不影响新动作、GPU rejection
-    保留及成功模型切换清理；expression 也使用同一 clock 覆盖淡入、替换、错误保留和
+    变化、低优先级拒绝、force 抢占、同级替换、不同 motion identity 的旧 stop 不影响新动作、
+    GPU rejection 保留及成功模型切换清理；expression 也使用同一 clock 覆盖淡入、替换、错误保留和
     模型事务边界。expression 产品协议采用 latest-set-wins，不另设 priority；motion 主动
     stop fade-out 和完整 fixture 对接仍未完成，因此总项保持未勾选。
 - [ ] 配置 v1 schema、环境隔离和原子写入测试。
@@ -5998,23 +6006,26 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       同一求值中删除 playback 与 active identity；下一帧恢复 Core 默认参数后，动作姿态消失。
       这与“播完停在最后状态”的要求不符。
     - 当前实现：`MotionPlayback` 增加 completed 状态；非循环 motion 的 sample time 在 duration
-      处固定，后续每帧仍把终点 parameter/part-opacity/model-opacity 写入 Core，再按既有顺序应用
-      expression、自动效果与产品输入。completed motion 不清 public active identity，因此显式
-      `StopMotion` 仍能按资源 fade 退出；它同时释放 priority 保留，下一请求可替换或重播，避免
-      模型兼容性和低优先级动作被永久阻塞。未新增依赖、crate、FFI 或整帧快照。
-    - 表情复核：expression 没有 duration/natural completion；最新层淡入后已持续应用，替换时只
-      淡出上一层。真实 Core 定向测试新增完成后 2 秒的第二帧，证明默认 parameter 恢复后最新
-      expression 仍以满权重存在，因此没有同类 motion 清除缺陷，也未改写其生产逻辑。
+      处固定，后续每帧仍把完整终点 parameter/part-opacity/model-opacity 写入 Core，再按既有顺序
+      应用 expression、自动效果与产品输入。held sample 保留资源自然 fade 权重；Core part opacity
+      每帧先恢复 fresh-model 初值，避免 stop/替换残留。worker 按注入时钟直接推导 completion，
+      不依赖隐藏期间下一帧先投递。completed motion 不清 public active identity，因此显式
+      `StopMotion` 仍能按资源 fade 退出；它同时释放 priority 保留，下一请求可替换或重播。
+      UserData crossing 使用有效播放模式，一次性播放 looping asset 不会重复 time-zero event。
+      未新增依赖、crate、FFI 或整帧快照。
+    - 表情复核：expression 没有 duration/natural completion；最新层淡入后锁定满权重并持续应用，
+      替换时只淡出上一层，测试时钟回退不会重新启动已完成淡入。真实 Core 定向测试证明默认
+      parameter 恢复后最新 expression 仍存在，因此没有同类 motion 清除缺陷。
     - 定向证据（2026-09-24，本机 macOS / aarch64）：`cargo test --locked -p bongocat-runtime`
-      为 65 passed / 0 failed，另有共享 fixture 2 passed；新增完成姿态在 2 秒与 3 秒均保持
-      `Param = 1.0`、完成后 UserData 不重放、零时长 stop 清除、shortcut/preview 完成后 active
-      identity 保持、同动作重播、完成后低优先级请求可接管，以及 expression 跨 2 秒持续应用。
-      完整 `just check` 六道门通过；
-      `tools/tests` 66 项、fixture validator、locale validator（246 keys × 2）、JSON Schema
-      validator 与 `git diff --check` 均通过。
-    - 状态（2026-09-24，已提交）：实现提交 `1917eae5` 已进入并推送 `next`。当前未做
-      Windows/macOS 双平台实机 smoke；仍需用真实动作与表情确认最终姿态、替换、显式停止和
-      模型切换观感，因此本项保持未勾选。
+      为 68 passed / 0 failed，`bongocat-live2d-playback` 14 passed、`bongocat-live2d` 44 passed，
+      另有共享 fixture 2 passed。回归覆盖完整终点 parameter/part opacity、自然 fade 后保持、
+      零时长 stop 清理、time-zero UserData 仅一次、时钟回退不重放、隐藏后无帧重播与低优先级接管、
+      shortcut/preview active identity，以及非零 expression fade 完成后锁定。完整 `just check`
+      六道门通过；`tools/tests` 66 项、fixture validator、locale validator（246 keys × 2）、
+      JSON Schema validator 与 `git diff --check` 均通过。
+    - 状态（2026-09-24，已提交）：首版实现提交 `1917eae5` 与独立审查后的边界修复均进入
+      `next`。当前未做 Windows/macOS 双平台实机 smoke；仍需用真实动作与表情确认最终姿态、替换、
+      显式停止和模型切换观感，因此本项保持未勾选。
 
 ## 13. 待决策清单
 

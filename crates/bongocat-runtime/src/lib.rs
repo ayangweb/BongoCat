@@ -508,6 +508,8 @@ pub enum RuntimeCommand {
     /// Unlike [`RuntimeCommand::StartMotion`], every request restarts the
     /// preview.
     PreviewMotion(MotionId),
+    /// Stops the current motion with this identity. A replayed run is still the
+    /// current run, so a later stop for the same ID intentionally targets it.
     StopMotion(MotionId),
     SetExpression(ExpressionId),
 }
@@ -1956,9 +1958,10 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         // pose remains visible but no longer reserves priority;
                         // the next request may replace it. A preview stays a
                         // direct UI action and restarts on every request.
+                        let now = clock.now();
                         let motion_is_settled = renderer
                             .as_ref()
-                            .is_some_and(RuntimeRenderer::motion_is_settled);
+                            .is_some_and(|renderer| renderer.motion_is_settled(now));
                         let duplicate = repeat_is_idempotent
                             && !motion_is_settled
                             && active_motion.as_ref().is_some_and(|active| {
@@ -2006,7 +2009,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                             sequence,
                                             &mut active_motion,
                                             &snapshot,
-                                            clock.now(),
+                                            now,
                                         );
                                     } else {
                                         stop_motion_audio(
@@ -2022,7 +2025,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                             sequence,
                                             &mut active_motion,
                                             &snapshot,
-                                            clock.now(),
+                                            now,
                                         );
                                     }
                                 }
@@ -2035,7 +2038,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                         sequence,
                                         &mut active_motion,
                                         &snapshot,
-                                        clock.now(),
+                                        now,
                                     );
                                 }
                             }
@@ -4364,6 +4367,84 @@ mod tests {
                 .as_ref()
                 .map(|active| active.command_sequence),
             Some(replacement_sequence)
+        );
+
+        owner.shutdown(TIMEOUT).expect("runtime shutdown");
+    }
+
+    #[test]
+    fn elapsed_one_shot_settles_before_the_next_rendered_frame() {
+        let clock = Arc::new(ManualClock::default());
+        let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+            true,
+            8,
+            Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+        );
+        let client = owner.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let activation_sequence = client
+            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+                "standard",
+            ))))
+            .expect("activation command");
+        let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+        report_model_prepared(&client, &consumer, &candidate);
+
+        let motion = MotionId::new("CAT_motion", 0).expect("motion id");
+        let first_sequence = client
+            .send(RuntimeCommand::StartMotion {
+                motion: motion.clone(),
+                priority: MotionPriority::Normal,
+            })
+            .expect("start motion");
+        let first = client
+            .wait_for_command(first_sequence, TIMEOUT)
+            .expect("motion started");
+        assert_eq!(
+            first
+                .active_motion
+                .as_ref()
+                .map(|active| active.command_sequence),
+            Some(first_sequence)
+        );
+
+        clock.set(Duration::from_secs(2));
+        let replay_sequence = client
+            .send(RuntimeCommand::StartMotion {
+                motion: motion.clone(),
+                priority: MotionPriority::Normal,
+            })
+            .expect("replay after elapsed duration without an intervening frame");
+        let replayed = client
+            .wait_for_command(replay_sequence, TIMEOUT)
+            .expect("elapsed motion replayed");
+        assert_eq!(
+            replayed
+                .active_motion
+                .as_ref()
+                .map(|active| active.command_sequence),
+            Some(replay_sequence),
+            "clock-derived completion must not wait for renderer.evaluate"
+        );
+
+        clock.set(Duration::from_secs(4));
+        let lower = MotionId::new("CAT_motion_lock", 0).expect("motion id");
+        let replacement_sequence = client
+            .send(RuntimeCommand::StartMotion {
+                motion: lower,
+                priority: MotionPriority::Idle,
+            })
+            .expect("lower-priority replacement after elapsed duration");
+        let replaced = client
+            .wait_for_command(replacement_sequence, TIMEOUT)
+            .expect("elapsed motion released priority");
+        assert_eq!(
+            replaced
+                .active_motion
+                .as_ref()
+                .map(|active| active.command_sequence),
+            Some(replacement_sequence),
+            "a completed motion must release priority without requiring another frame"
         );
 
         owner.shutdown(TIMEOUT).expect("runtime shutdown");

@@ -118,7 +118,7 @@ void LAppPal::UpdateTime()
 
 ## 4. 与 `next` 的对照
 
-| 维度 | 参考实现（Mver + SFML） | `next`（2026-09-23 修复后） |
+| 维度 | 参考实现（Mver + SFML） | `next`（2026-09-24 修复后） |
 | --- | --- | --- |
 | 帧预算算法 | `sleep(预算 − 已用)` | `wait(deadline − now)` |
 | 稳态呈现间隔 | `= 1/fps` | `= 1/fps` |
@@ -139,8 +139,10 @@ void LAppPal::UpdateTime()
 ### 5.2 动画时间的单帧步长上限（评估后决定不加）
 
 两边的动画时间都是「绝对时间戳求差」，因此一次长间隔——系统睡眠、应用挂起、或模型窗口隐藏一段时间
-后重新显示——会作为**一个巨大的步长**到达：一次性 motion 直接进入 completed 并固定在终点样本、
-expression 淡出瞬间结束、motion user data 事件被跳过（`skipped_occurrences` 已有计数）。一个自然的
+后重新显示——会作为**一个巨大的步长**到达：一次性 motion 直接进入 completed 并固定在包含自然
+fade 权重的完整终点样本、
+expression 淡出瞬间结束、motion UserData 跨过的每个时间戳仍按有效播放模式发出（只有单次有界批次
+超过上限时才跳过并计入 `skipped_occurrences`）。一个自然的
 想法是给单帧步长设上限（例如 `100 ms`），让动画「接着演」。
 
 **不采纳的具体阻塞**：这会与 Technical Design 已冻结的契约冲突。该契约要求淡入淡出按

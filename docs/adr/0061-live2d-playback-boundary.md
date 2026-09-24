@@ -71,18 +71,28 @@ ordinary motion parameters disappeared one frame after the terminal sample. This
 looping but did not match the 2026-09-24 product requirement to stop on the action's final state.
 
 A one-shot motion now transitions to an internal completed state at the clip duration. Its local
-sample time is pinned to that duration, and the terminal parameter, part-opacity, and model-opacity
-samples remain a renderer-owned motion layer that is reapplied after each per-frame default reset.
-Expression, automatic effects, product input, and Core update continue in their existing order.
-Completed playback is not advanced again and does not reserve motion priority, preserving the
-pre-existing ability of any later motion request to start from the settled state. The public active
-identity remains current so an explicit `StopMotion` can still fade and remove it; a replacement,
-successful model commit, or shutdown removes the layer as before.
+sample time is pinned to that duration, and the fully evaluated parameter, part-opacity, and
+model-opacity samples remain a renderer-owned motion layer that is reapplied after each per-frame
+default reset. "Terminal sample" includes the resource's natural model3/curve fade weights; completion
+does not strip a natural fade-out to expose an earlier raw curve endpoint. Core part opacities are
+restored to their fresh-model values before the active motion is applied, so removing or replacing a
+motion cannot leave stale part visibility. Expression, automatic effects, product input, and Core
+update continue in their existing order.
 
-Expressions retain the already-correct stateful lifecycle: the newest expression remains applied
-after fade-in until another valid expression replaces it, a model commit succeeds, or shutdown
-clears it. No expression clear, duration, new crate, dependency, FFI call, or frozen whole-model
-snapshot is introduced.
+Completed playback is not advanced again and does not reserve motion priority. The worker derives
+completion from the injected monotonic clock as well as the last delivered frame, so a hidden or
+sleeping overlay cannot swallow a replay or lower-priority request sent after the duration. The public
+active identity remains current so an explicit `StopMotion` can still fade and remove it; a
+replacement, successful model commit, or shutdown removes the layer as before. `StopMotion` continues
+to target the current identity: a different old ID cannot stop a newer motion, while a replayed run
+with the same ID is intentionally the current target of a later same-ID stop.
+
+Motion UserData crossing evaluation uses the runtime's effective playback mode. Playing a
+`Meta.Loop = true` asset once therefore does not emit its time-zero event again at the duration
+boundary. Expressions retain the already-correct stateful lifecycle: the newest expression remains
+pinned at full weight after fade-in, including across a test-clock rollback, until another valid
+expression replaces it, a model commit succeeds, or shutdown clears it. No expression clear,
+duration, new crate, dependency, FFI call, or frozen whole-model snapshot is introduced.
 
 ## Rejected alternatives
 

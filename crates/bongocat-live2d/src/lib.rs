@@ -667,6 +667,10 @@ impl Live2dModel {
         self.core.restore_parameter_defaults()
     }
 
+    pub fn restore_part_opacity_defaults(&mut self) -> Result<(), Live2dError> {
+        self.core.restore_part_opacity_defaults()
+    }
+
     pub fn update_and_snapshot(&mut self) -> Result<RenderSnapshot, Live2dError> {
         let mut snapshot = self.core.update_and_snapshot()?;
         snapshot.model_opacity = self.model_opacity;
@@ -1943,6 +1947,9 @@ mod tests {
         let parameter_before = model
             .parameter_value(ProductParameter::AngleX)
             .expect("angle parameter");
+        let part_opacity_before = model
+            .part_opacity_by_id("Part")
+            .expect("initial part opacity");
         let status = model
             .apply_motion_with_weight(&clip, std::time::Duration::from_millis(500), 1.0)
             .expect("apply part opacity motion");
@@ -1957,6 +1964,14 @@ mod tests {
                 .parameter_value(ProductParameter::AngleX)
                 .expect("angle parameter"),
             parameter_before
+        );
+
+        model
+            .restore_part_opacity_defaults()
+            .expect("restore part opacity defaults");
+        assert_eq!(
+            model.part_opacity_by_id("Part").expect("part opacity"),
+            part_opacity_before
         );
     }
 

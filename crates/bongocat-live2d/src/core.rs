@@ -74,6 +74,7 @@ pub(crate) struct CoreModel {
     parameters: [Option<ResolvedParameter>; ProductParameter::COUNT],
     parameters_by_id: BTreeMap<String, ResolvedParameter>,
     parts_by_id: BTreeMap<String, usize>,
+    part_opacity_defaults: Vec<f32>,
     model_memory: ManuallyDrop<AlignedMemory>,
     moc_memory: ManuallyDrop<AlignedMemory>,
 }
@@ -87,6 +88,11 @@ struct ResolvedParameter {
 struct ResolvedParameters {
     product: [Option<ResolvedParameter>; ProductParameter::COUNT],
     by_id: BTreeMap<String, ResolvedParameter>,
+}
+
+struct ResolvedParts {
+    by_id: BTreeMap<String, usize>,
+    opacity_defaults: Vec<f32>,
 }
 
 impl CoreModel {
@@ -155,13 +161,14 @@ impl CoreModel {
                 )
             })?;
             let parameters = resolve_parameters(model.as_ptr())?;
-            let parts_by_id = resolve_parts(model.as_ptr())?;
+            let parts = resolve_parts(model.as_ptr())?;
             validate_drawable_ids(model.as_ptr())?;
             Ok(Self {
                 model,
                 parameters: parameters.product,
                 parameters_by_id: parameters.by_id,
-                parts_by_id,
+                parts_by_id: parts.by_id,
+                part_opacity_defaults: parts.opacity_defaults,
                 model_memory: ManuallyDrop::new(model_memory),
                 moc_memory: ManuallyDrop::new(moc_memory),
             })
@@ -399,6 +406,27 @@ impl CoreModel {
             for resolved in self.parameters_by_id.values() {
                 values[resolved.index] = resolved.range.default;
             }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn restore_part_opacity_defaults(&mut self) -> Result<(), Live2dError> {
+        // SAFETY: self uniquely owns the Model. The defaults were copied from
+        // this exact part-opacity array while the Model was freshly initialized.
+        unsafe {
+            let count = self.part_count()?;
+            let opacities = checked_slice_mut(
+                sys::csmGetPartOpacities(self.model.as_ptr()),
+                count,
+                "part opacities",
+            )?;
+            if opacities.len() != self.part_opacity_defaults.len() {
+                return Err(Live2dError::new(
+                    Live2dErrorCode::InvalidCoreArray,
+                    "Core returned a part-opacity array with an unexpected length",
+                ));
+            }
+            opacities.copy_from_slice(&self.part_opacity_defaults);
         }
         Ok(())
     }
@@ -745,11 +773,31 @@ unsafe fn resolve_parameters(model: *mut sys::csmModel) -> Result<ResolvedParame
     })
 }
 
-unsafe fn resolve_parts(model: *mut sys::csmModel) -> Result<BTreeMap<String, usize>, Live2dError> {
+unsafe fn resolve_parts(model: *mut sys::csmModel) -> Result<ResolvedParts, Live2dError> {
     // SAFETY: model is freshly initialized and remains owned by CoreModel.
     let count = nonnegative(unsafe { sys::csmGetPartCount(model) }, "part count")?;
     // SAFETY: the pointer/count pair comes from the same live Model.
     let ids = unsafe { checked_slice(sys::csmGetPartIds(model), count, "part ids")? };
+    let opacity_defaults = unsafe {
+        checked_slice(
+            sys::csmGetPartOpacities(model),
+            count,
+            "initial part opacities",
+        )?
+    }
+    .iter()
+    .copied()
+    .map(|opacity| {
+        if opacity.is_finite() {
+            Ok(opacity)
+        } else {
+            Err(Live2dError::new(
+                Live2dErrorCode::InvalidCoreValue,
+                "Core returned a non-finite initial part opacity",
+            ))
+        }
+    })
+    .collect::<Result<Vec<_>, _>>()?;
     let parent_indices = unsafe {
         checked_slice(
             sys::csmGetPartParentPartIndices(model),
@@ -809,7 +857,10 @@ unsafe fn resolve_parts(model: *mut sys::csmModel) -> Result<BTreeMap<String, us
             ));
         }
     }
-    Ok(by_id)
+    Ok(ResolvedParts {
+        by_id,
+        opacity_defaults,
+    })
 }
 
 unsafe fn validate_drawable_ids(model: *const sys::csmModel) -> Result<(), Live2dError> {

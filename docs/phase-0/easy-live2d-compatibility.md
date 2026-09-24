@@ -49,7 +49,7 @@ BongoCat 显式关闭 easy-live2d 的 mouse follow，自己计算显示器归一
 
 1. model3 中的 moc、texture、motion、expression、physics、pose、cdi、user data 和 motion sound 引用在 commit 前全部验证。
 2. motion identity 是 `{group, index}`，expression identity 是 model3 顺序中的 index；UI 可另显示名称，但不得用本地化文本作为稳定 ID。
-3. motion 使用 normal priority，读取 motion3/model3 fade 与 effect ID；产品触发只推进一个循环，完成后保持终点 motion layer，直到替换、显式停止或模型切换。开始新的带声音 motion 时，旧 motion voice 被停止，同一时刻最多一个 motion voice。
+3. motion 使用 normal priority，读取 motion3/model3 fade 与 effect ID；产品触发只推进一个循环，完成后保持包含自然 fade 权重的终点 motion layer，直到替换、显式停止或模型切换。PartOpacity 在每帧 motion 前恢复模型初始值，停止或替换不能残留旧部件可见性。开始新的带声音 motion 时，旧 motion voice 被停止，同一时刻最多一个 motion voice。
 4. expression 保留 add、multiply、overwrite 与 fade 语义；最新 expression 淡入完成后持续应用，直到被替换或模型清理。越界 index 返回稳定错误，不能只写 warning 后假装成功。
 5. 外部输入写入的参数是持久 override。每个 deterministic tick 必须先完成 motion、expression、eye blink/breath、pose 和 physics，再应用 override，最后提交 Core model update；否则持续按键、鼠标按钮或静止摇杆会在下一帧被覆盖。
 6. 不存在的 parameter 返回 `None`/typed diagnostic；存在的 parameter 暴露 Core min/max，输入映射后再由模型范围 clamp。

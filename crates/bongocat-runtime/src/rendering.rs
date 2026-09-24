@@ -70,6 +70,7 @@ pub(crate) enum MotionStopStatus {
 struct ExpressionPlayback {
     clip: ExpressionClip,
     started_at: Duration,
+    fade_in_completed: bool,
     fade_out_started_at: Option<Duration>,
 }
 
@@ -209,12 +210,17 @@ impl RuntimeRenderer {
     }
 
     /// A completed one-shot keeps contributing its terminal sample, but it no
-    /// longer reserves priority. An explicit stop in progress is still stopping,
-    /// not settled, until its fade removes the layer.
-    pub(crate) fn motion_is_settled(&self) -> bool {
+    /// longer reserves priority. Derive completion from the injected clock as
+    /// well as the last delivered frame so a hidden or sleeping overlay cannot
+    /// swallow a command sent after the clip duration. An explicit stop in
+    /// progress is still stopping, not settled, until its fade removes the layer.
+    pub(crate) fn motion_is_settled(&self, now: Duration) -> bool {
         self.active.as_ref().is_some_and(|active| {
             active.motion.as_ref().is_some_and(|playback| {
-                playback.completed && playback.fade_out_started_at.is_none()
+                let completed = playback.completed
+                    || (!playback.looping
+                        && now.saturating_sub(playback.started_at) >= playback.clip.duration());
+                completed && playback.fade_out_started_at.is_none()
             })
         })
     }
@@ -261,6 +267,7 @@ impl RuntimeRenderer {
         active.expressions.push(ExpressionPlayback {
             clip,
             started_at: now,
+            fade_in_completed: false,
             fade_out_started_at: None,
         });
         debug_assert!(active.expressions.len() <= 2);
@@ -278,6 +285,12 @@ impl RuntimeRenderer {
         active.model.restore_parameter_defaults().map_err(|error| {
             map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
         })?;
+        active
+            .model
+            .restore_part_opacity_defaults()
+            .map_err(|error| {
+                map_live2d_error(error, RuntimeRenderErrorCode::ModelEvaluationFailed)
+            })?;
         let mut motion_user_data = Vec::new();
         let mut skipped_motion_user_data = 0;
         let motion_finished = if let Some(playback) = &mut active.motion {
@@ -294,9 +307,11 @@ impl RuntimeRenderer {
                 .map(|started_at| now.saturating_sub(started_at));
             let explicit_fade_finished = fade_out_elapsed
                 .is_some_and(|elapsed| elapsed >= playback.clip.fade_out_duration());
-            let user_data = playback
-                .clip
-                .user_data_events_between(playback.last_event_elapsed, elapsed);
+            let user_data = playback.clip.user_data_events_between_with_looping(
+                playback.last_event_elapsed,
+                elapsed,
+                playback.looping,
+            );
             if playback
                 .last_event_elapsed
                 .is_none_or(|previous| elapsed >= previous)
@@ -344,11 +359,18 @@ impl RuntimeRenderer {
         });
         let expression_layers = active
             .expressions
-            .iter()
+            .iter_mut()
             .map(|playback| {
-                let fade_in = playback
-                    .clip
-                    .fade_in_weight(now.saturating_sub(playback.started_at));
+                let fade_in_elapsed = now.saturating_sub(playback.started_at);
+                let fade_in = if playback.fade_in_completed {
+                    1.0
+                } else {
+                    let weight = playback.clip.fade_in_weight(fade_in_elapsed);
+                    if fade_in_elapsed >= playback.clip.fade_in_duration() {
+                        playback.fade_in_completed = true;
+                    }
+                    weight
+                };
                 let fade_out = playback.fade_out_started_at.map_or(1.0, |started_at| {
                     playback
                         .clip
@@ -607,6 +629,7 @@ mod tests {
         active.expressions.push(ExpressionPlayback {
             clip: expression,
             started_at: Duration::ZERO,
+            fade_in_completed: false,
             fade_out_started_at: None,
         });
 
@@ -656,6 +679,132 @@ mod tests {
     }
 
     #[test]
+    fn completed_motion_holds_the_post_natural_fade_terminal_evaluation() {
+        let (bootstrap, _consumer) = RuntimeRenderer::channel();
+        let mut renderer = RuntimeRenderer::start(bootstrap);
+        let token = renderer
+            .prepare(1, &preset_model("standard"), ModelInputSnapshot::default())
+            .expect("prepare model");
+        assert!(renderer.commit(token));
+        let angle_default = renderer
+            .active
+            .as_ref()
+            .expect("active model")
+            .model
+            .parameter_value(ProductParameter::AngleX)
+            .expect("angle parameter");
+
+        let motion = MotionClip::from_slice(
+            br#"{
+              "Version":3,
+              "Meta":{"Duration":1.0,"Fps":30.0,"Loop":false,"AreBeziersRestricted":true,
+                "CurveCount":2,"TotalSegmentCount":2,"TotalPointCount":4,
+                "UserDataCount":0,"TotalUserDataSize":0},
+              "Curves":[
+                {"Target":"Parameter","Id":"ParamAngleX","Segments":[0,0,0,1,1]},
+                {"Target":"PartOpacity","Id":"Part","Segments":[0,0,0,1,0.25]}
+              ]
+            }"#,
+            0.0,
+            1.0,
+        )
+        .expect("fading motion");
+        renderer.active.as_mut().expect("active model").motion = Some(MotionPlayback {
+            clip: motion,
+            looping: false,
+            started_at: Duration::ZERO,
+            completed: false,
+            fade_out_started_at: None,
+            last_event_elapsed: None,
+        });
+
+        for now in [Duration::from_secs(2), Duration::from_secs(3)] {
+            renderer
+                .evaluate(ModelInputSnapshot::default(), now)
+                .expect("completed fading motion frame");
+            let active = renderer.active.as_ref().expect("active model");
+            assert!(
+                active
+                    .motion
+                    .as_ref()
+                    .is_some_and(|playback| playback.completed)
+            );
+            assert_eq!(
+                active
+                    .model
+                    .parameter_value(ProductParameter::AngleX)
+                    .expect("angle parameter"),
+                angle_default,
+                "the held sample includes the resource's completed natural fade"
+            );
+            assert_eq!(
+                active
+                    .model
+                    .part_opacity_by_id("Part")
+                    .expect("part opacity")
+                    .expect("supported part"),
+                0.25,
+                "PartOpacity keeps its independent R5 sink value"
+            );
+        }
+    }
+
+    #[test]
+    fn latest_expression_stays_full_weight_after_clock_rollback() {
+        let (bootstrap, _consumer) = RuntimeRenderer::channel();
+        let mut renderer = RuntimeRenderer::start(bootstrap);
+        let token = renderer
+            .prepare(1, &preset_model("standard"), ModelInputSnapshot::default())
+            .expect("prepare model");
+        assert!(renderer.commit(token));
+        let expression = ExpressionClip::from_slice(
+            br#"{
+              "Type":"Live2D Expression","FadeInTime":1.0,"FadeOutTime":1.0,
+              "Parameters":[
+                {"Id":"ParamMouthOpenY","Value":0.8,"Blend":"Overwrite"}
+              ]
+            }"#,
+        )
+        .expect("expression");
+        renderer
+            .active
+            .as_mut()
+            .expect("active model")
+            .expressions
+            .push(ExpressionPlayback {
+                clip: expression,
+                started_at: Duration::ZERO,
+                fade_in_completed: false,
+                fade_out_started_at: None,
+            });
+
+        for (now, expected) in [
+            (Duration::from_secs(2), 0.8),
+            (Duration::from_millis(500), 0.8),
+        ] {
+            renderer
+                .evaluate(ModelInputSnapshot::default(), now)
+                .expect("expression frame");
+            let active = renderer.active.as_ref().expect("active model");
+            assert!(
+                active
+                    .expressions
+                    .first()
+                    .is_some_and(|playback| playback.fade_in_completed)
+            );
+            let mouth = active
+                .model
+                .parameter_value_by_id("ParamMouthOpenY")
+                .expect("parameter value")
+                .expect("supported parameter");
+            assert!(
+                (mouth - expected).abs() < 0.0001,
+                "a completed expression fade-in must not restart after clock rollback: {mouth}"
+            );
+        }
+    }
+
+    #[test]
     fn completed_motion_holds_its_terminal_parameters_until_stopped() {
         let (bootstrap, _consumer) = RuntimeRenderer::channel();
         let mut renderer = RuntimeRenderer::start(bootstrap);
@@ -668,10 +817,13 @@ mod tests {
             br#"{
               "Version":3,
               "Meta":{"Duration":1.0,"Fps":30.0,"Loop":true,"AreBeziersRestricted":true,
-                "CurveCount":1,"TotalSegmentCount":1,"TotalPointCount":2,
-                "UserDataCount":1,"TotalUserDataSize":2},
-              "Curves":[{"Target":"Parameter","Id":"Param","Segments":[0,0,0,1,1]}],
-              "UserData":[{"Time":0.5,"Value":"go"}]
+                "CurveCount":2,"TotalSegmentCount":2,"TotalPointCount":4,
+                "UserDataCount":1,"TotalUserDataSize":5},
+              "Curves":[
+                {"Target":"Parameter","Id":"Param","Segments":[0,0,0,1,1]},
+                {"Target":"PartOpacity","Id":"Part","Segments":[0,0,0,1,0.25]}
+              ],
+              "UserData":[{"Time":0.0,"Value":"start"}]
             }"#,
             0.0,
             0.0,
@@ -686,10 +838,11 @@ mod tests {
             last_event_elapsed: None,
         });
 
-        for (now, expected_user_data_events) in [
-            (Duration::from_secs(2), 1),
-            (Duration::from_secs(3), 0),
-            (Duration::from_secs(1), 0),
+        for (now, expected_user_data_events, expected_value, expected_part, settled) in [
+            (Duration::ZERO, 1, 0.0, 0.0, false),
+            (Duration::from_secs(2), 0, 1.0, 0.25, true),
+            (Duration::from_secs(3), 0, 1.0, 0.25, true),
+            (Duration::from_secs(1), 0, 1.0, 0.25, true),
         ] {
             let evaluation = renderer
                 .evaluate(ModelInputSnapshot::default(), now)
@@ -701,23 +854,39 @@ mod tests {
             assert_eq!(
                 evaluation.motion_user_data.len(),
                 expected_user_data_events,
-                "a completed motion must not replay UserData on later frames"
+                "one-shot UserData must follow the effective playback mode exactly once"
             );
-            assert!(renderer.motion_is_settled());
-            let value = renderer
-                .active
-                .as_ref()
-                .expect("active model")
+            assert_eq!(renderer.motion_is_settled(now), settled);
+            let active = renderer.active.as_ref().expect("active model");
+            let value = active
                 .model
                 .parameter_value_by_id("Param")
                 .expect("parameter value")
                 .expect("supported parameter");
             assert!(
-                (value - 1.0).abs() < 0.0001,
-                "the terminal motion value must be reapplied after defaults at {now:?}: {value}"
+                (value - expected_value).abs() < 0.0001,
+                "the evaluated motion parameter must be reapplied after defaults at {now:?}: {value}"
+            );
+            let part_opacity = active
+                .model
+                .part_opacity_by_id("Part")
+                .expect("part opacity")
+                .expect("supported part");
+            assert!(
+                (part_opacity - expected_part).abs() < 0.0001,
+                "the completed PartOpacity sample must remain current at {now:?}: {part_opacity}"
             );
         }
 
+        let part_opacity_before_stop = {
+            let active = renderer.active.as_ref().expect("active model");
+            active
+                .model
+                .part_opacity_by_id("Part")
+                .expect("current part opacity")
+                .expect("supported part")
+        };
+        assert!(part_opacity_before_stop < 1.0);
         assert_eq!(
             renderer.stop_motion(Duration::from_secs(3)),
             MotionStopStatus::Finished
@@ -729,6 +898,21 @@ mod tests {
                 .expect("active model")
                 .motion
                 .is_none()
+        );
+        renderer
+            .evaluate(ModelInputSnapshot::default(), Duration::from_secs(4))
+            .expect("frame after zero-duration stop");
+        assert!(
+            renderer
+                .active
+                .as_ref()
+                .expect("active model")
+                .model
+                .part_opacity_by_id("Part")
+                .expect("part opacity after stop")
+                .expect("supported part")
+                > 0.99,
+            "stopping a motion must restore Core part opacity before the next layer"
         );
     }
 

@@ -5,19 +5,22 @@
 
 ## Commands represented by fixtures
 
-- `model_switch` changes the selected model and clears the active motion and expression only after the switch command is accepted.
-- `motion_start` carries an explicit `idle`, `normal`, or `force` priority. While a motion is running, a lower-priority request cannot replace a higher-priority motion; a request for a different motion at equal priority uses the latest request. A repeat request for the motion that is already running at the same priority is ignored while that run is unfinished, following the R5 motion queue, so key repeat and press bursts neither restart the clip nor replay its motion audio. Once the run completes, it no longer reserves priority and the next request may replace or restart it.
-- A triggered motion plays exactly one cycle even when the clip declares `Meta.Loop = true`: the loop flag describes how the asset was authored, not how the product drives it. At the clip's declared duration, the motion becomes completed and its final evaluated parameter, part-opacity, and model-opacity samples remain the current motion layer on later frames instead of clearing to idle or continuing to advance. A replacement motion, a completed explicit stop, a successful model switch, or shutdown removes it. A UI preview follows the same one-cycle/final-pose rule but restarts on every request.
+- `model_switch` changes the selected model and clears the active motion and expression only after a successful model commit.
+- `motion_start` carries an explicit `idle`, `normal`, or `force` priority. While a motion is running, a lower-priority request cannot replace a higher-priority motion; a request for a different motion at equal priority uses the latest request. A repeat request for the motion that is already running at the same priority is ignored while that run is unfinished, following the R5 motion queue, so key repeat and press bursts neither restart the clip nor replay its motion audio. Completion is derived from the injected monotonic clock, not frame delivery, so a suspended or hidden overlay releases priority before processing a later command. Once the run completes, it no longer reserves priority and the next request may replace or restart it.
+- A triggered motion plays exactly one cycle even when the clip declares `Meta.Loop = true`: the loop flag describes how the asset was authored, not how the product drives it. At the clip's declared duration, the motion becomes completed and its fully evaluated parameter, part-opacity, and model-opacity samples remain the current motion layer on later frames instead of clearing to idle or continuing to advance. The held value is the duration sample after the resource's natural model3/curve fade weights; completion does not discard a natural fade-out to expose an earlier raw curve endpoint. A replacement motion, a completed explicit stop, a successful model switch, or shutdown removes it. A UI preview follows the same one-cycle/final-pose rule but restarts on every request.
 - A model behaviour shortcut triggers its motion once per physical key press. Operating systems repeat the pressed event while a chord stays held, and every repeat is dropped rather than dispatched, so holding a shortcut never retriggers its action.
 - `motion_stop` only stops the named current motion, including a completed motion holding its final
-  pose. Stopping an old motion must not cancel a newer
-  motion. A non-zero model3 `FadeOutTime` keeps the motion active while a sine-eased outer weight
+  pose. A stop for a different motion identity cannot cancel a newer motion; a replayed run with the
+  same identity is still the current run, so a later stop for that ID intentionally targets it. A
+  non-zero model3 `FadeOutTime` keeps the motion active while a sine-eased outer weight
   reaches zero; runtime snapshots retain the first stop command sequence until completion. Repeated
   stops are idempotent and cannot restart the fade. A zero-duration fade clears the motion
   immediately.
-- A motion `PartOpacity` curve follows the R5 Framework sink: its ID resolves against Core
-  parameters and its evaluated value is written without the ordinary parameter-curve fade weight.
-  Missing IDs are skipped without invalidating the remaining motion.
+- A motion `PartOpacity` curve follows the R5 Framework sink: its ID resolves against Core parts
+  and its evaluated value is written without the ordinary parameter-curve fade weight.
+  Each evaluation restores every Core part opacity to the value captured from the fresh model before
+  applying the active motion, so stop, replacement, and a motion that targets other parts cannot
+  leave stale visibility behind. Missing IDs are skipped without invalidating the remaining motion.
 - Model3 `Groups` retain their declared order. `EyeBlink` and `LipSync` use the first matching
   `Parameter` group and at most its first 64 IDs, matching the R5 Framework target bound.
 - A motion `Model/EyeBlink` value multiplies a matching Parameter curve before that curve's fade;
@@ -31,9 +34,10 @@
   runtime state. A failed resolution leaves the current expression active.
 - Setting an expression fades it in with sine easing. A later expression keeps only the immediately
   previous visible layer for sine fade-out, so at most two layers coexist during a bounded
-  transition; the newest expression is the sole active product identity and remains applied at full
+  transition; the newest expression is the sole active product identity and remains pinned at full
   weight after fade-in until another valid expression replaces it, a model commit succeeds, or
-  shutdown occurs. Expressions have no duration or automatic clear-to-idle transition.
+  shutdown occurs. A clock rollback cannot restart a completed fade-in. Expressions have no duration
+  or automatic clear-to-idle transition.
 - Expression parameters support `Add`, `Multiply`, and `Overwrite`. Layers are folded oldest to
   newest from the post-motion parameter value. Product input is applied after expression layers so
   a physically pressed key or button remains authoritative for mapped controls.
@@ -51,8 +55,10 @@
   voice immediately. A rejected motion leaves it unchanged. File, decode, device, and queue errors
   are observable diagnostics but never fail animation or rendering.
 - Motion UserData is emitted once for every timestamp crossed in `(previous_elapsed, elapsed]`, with
-  time-zero events included on the first evaluation. Loop boundaries preserve chronological order,
-  clock rollback emits nothing, and a bounded batch reports skipped occurrences rather than making
-  an unbounded allocation after a long suspension.
+  time-zero events included on the first evaluation. Crossings use the runtime's effective playback
+  mode, so playing a `Meta.Loop = true` asset once cannot reinterpret its start timestamp as a second
+  loop occurrence. Loop boundaries preserve chronological order, clock rollback emits nothing, and a
+  bounded batch reports skipped occurrences rather than making an unbounded allocation after a long
+  suspension.
 
 The command IDs in these fixtures are product protocol values, not Cubism group/index identifiers. A model adapter resolves them to validated resources before runtime commit; failed resolution leaves the previous model and animation state usable.

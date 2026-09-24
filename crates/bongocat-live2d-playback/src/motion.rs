@@ -295,6 +295,18 @@ impl MotionClip {
         previous_elapsed: Option<Duration>,
         elapsed: Duration,
     ) -> MotionUserDataEvaluation {
+        self.user_data_events_between_with_looping(previous_elapsed, elapsed, self.looping)
+    }
+
+    /// Evaluates crossings using the effective playback mode rather than the
+    /// clip's authored `Meta.Loop` value. Product motions may play a looping
+    /// asset exactly once.
+    pub fn user_data_events_between_with_looping(
+        &self,
+        previous_elapsed: Option<Duration>,
+        elapsed: Duration,
+        looping: bool,
+    ) -> MotionUserDataEvaluation {
         if self.user_data.is_empty() || previous_elapsed.is_some_and(|previous| elapsed < previous)
         {
             return MotionUserDataEvaluation::default();
@@ -315,7 +327,7 @@ impl MotionClip {
 
         for (source_index, event) in self.user_data.iter().enumerate() {
             let event_seconds = event.local_time.as_secs_f64();
-            if !self.looping || duration_seconds <= 0.0 {
+            if !looping || duration_seconds <= 0.0 {
                 let follows_previous = previous_seconds
                     .is_none_or(|previous| event_seconds > previous + f64::from(TIME_TOLERANCE));
                 if follows_previous && event_seconds <= elapsed_seconds + f64::from(TIME_TOLERANCE)
@@ -875,6 +887,83 @@ mod tests {
             clip.user_data_events_between(Some(Duration::from_secs(3)), Duration::from_secs(2),)
                 .occurrences
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn one_shot_user_data_uses_effective_playback_mode() {
+        let json = br#"{
+          "Version":3,
+          "Meta":{"Duration":2.0,"Fps":30.0,"Loop":true,"AreBeziersRestricted":true,
+            "CurveCount":0,"TotalSegmentCount":0,"TotalPointCount":0,
+            "UserDataCount":1,"TotalUserDataSize":5},
+          "Curves":[],
+          "UserData":[{"Time":0.0,"Value":"start"}]
+        }"#;
+        let clip = MotionClip::from_slice(json, 0.0, 0.0).expect("user data motion");
+
+        let one_shot =
+            clip.user_data_events_between_with_looping(None, Duration::from_secs(2), false);
+        assert_eq!(
+            one_shot
+                .occurrences
+                .iter()
+                .map(|event| (event.value.as_str(), event.cycle))
+                .collect::<Vec<_>>(),
+            [("start", 0)]
+        );
+        assert_eq!(one_shot.skipped_occurrences, 0);
+        assert!(
+            clip.user_data_events_between_with_looping(
+                Some(Duration::ZERO),
+                Duration::from_secs(2),
+                false,
+            )
+            .occurrences
+            .is_empty(),
+            "a one-shot must not reinterpret its start timestamp as a loop boundary"
+        );
+
+        let looping = clip.user_data_events_between_with_looping(
+            Some(Duration::ZERO),
+            Duration::from_secs(2),
+            true,
+        );
+        assert_eq!(
+            looping
+                .occurrences
+                .iter()
+                .map(|event| (event.value.as_str(), event.cycle))
+                .collect::<Vec<_>>(),
+            [("start", 1)]
+        );
+    }
+
+    #[test]
+    fn one_shot_terminal_evaluation_keeps_natural_fade_weights() {
+        let json = br#"{
+          "Version":3,
+          "Meta":{"Duration":1.0,"Fps":30.0,"Loop":false,"AreBeziersRestricted":true,
+            "CurveCount":1,"TotalSegmentCount":1,"TotalPointCount":2,
+            "UserDataCount":0,"TotalUserDataSize":0},
+          "Curves":[
+            {"Target":"Parameter","Id":"Param","Segments":[0,0,0,1,1]}
+          ]
+        }"#;
+        let clip = MotionClip::from_slice(json, 0.5, 0.5).expect("fading motion");
+        let terminal = clip.evaluate_once(Duration::from_secs(1));
+
+        assert!(terminal.finished);
+        assert_eq!(terminal.local_time, Duration::from_secs(1));
+        assert_eq!(terminal.model.effect_weight, 0.0);
+        let parameter = terminal
+            .parameters
+            .first()
+            .expect("terminal parameter sample");
+        assert_eq!(parameter.value, 1.0);
+        assert_eq!(
+            parameter.weight, 0.0,
+            "completion freezes the fully evaluated duration sample, including its natural fade"
         );
     }
 

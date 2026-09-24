@@ -186,18 +186,24 @@ masks, and textures with strong resource IDs and never receives the mutable Cubi
 The same worker now owns typed motion playback. `Application::start_motion` resolves a validated
 model3 group/index, applies motion3 linear, Bezier, stepped, or inverse-stepped curves using monotonic
 elapsed time, and publishes the resulting immutable drawable frame. A product motion advances for one
-cycle and then remains the current motion layer at the clip's terminal sample; later frames restore
-Core defaults and reapply that final motion contribution instead of snapping back to idle. The
-completed layer no longer reserves priority, so the next motion request may replace or restart it.
+cycle and then remains the current motion layer at the clip's fully evaluated terminal sample; later
+frames restore Core defaults and reapply that final motion contribution instead of snapping back to
+idle. The held sample retains the resource's natural fade weights. Completion is derived from elapsed
+monotonic time even when no frame was delivered, so a hidden or sleeping overlay still releases the
+completed layer's priority before the next command. The completed layer no longer reserves priority,
+so the next motion request may replace or restart it.
 Runtime snapshots expose only the active motion identity, priority, originating command sequence,
 and optional first stop command sequence. Explicit stop also matches a completed held motion,
 preserves the first frame, multiplies curve weights by the model3 sine fade-out, and clears the motion
-only after the fade completes; duplicate stops cannot restart it.
-PartOpacity curves follow the official Framework parameter sink and remain separate from weighted
-parameter samples. Model3 Parameter groups drive R5-compatible Model curves: EyeBlink multiplies
-matching parameter curves, LipSync adds to them, and both update unmatched group parameters with the
-motion fade. Model Opacity travels in the immutable render snapshot and is multiplied only in the
-final D3D11/Metal color pass, leaving mask generation unchanged.
+only after the fade completes; duplicate stops cannot restart it. A different old motion ID cannot
+stop a newer run, while a same-ID replay is the current run targeted by a later same-ID stop.
+PartOpacity curves follow the official Framework part-opacity sink and remain separate from weighted
+parameter samples. Each frame restores the fresh-model part opacity values before applying the active
+motion, preventing stop or replacement from leaving stale part visibility. Model3 Parameter groups
+drive R5-compatible Model curves: EyeBlink multiplies matching parameter curves, LipSync adds to
+them, and both update unmatched group parameters with the motion fade. Model Opacity travels in the
+immutable render snapshot and is multiplied only in the final D3D11/Metal color pass, leaving mask
+generation unchanged.
 Product input is applied after motion curves so an actual pressed key or button remains authoritative
 for hand parameters.
 
@@ -205,17 +211,19 @@ Accepted motions now publish an ordered side effect to the independent `bongocat
 The worker uses rodio with only playback and FLAC enabled, owns one voice, and resolves no model
 metadata itself. A new motion, explicit stop, disabled audio setting, successful model switch, or
 shutdown stops the old voice. Missing/corrupt audio, output failure, or queue pressure is retained as
-anonymous runtime diagnostics and never fails motion or rendering. Motion3 UserData crossings are
-also evaluated from monotonic elapsed time with loop-safe de-duplication and a bounded batch.
+anonymous runtime diagnostics and never fails motion or rendering. Motion3 UserData crossings use
+the effective runtime playback mode, so a one-shot run of a looping asset emits its start timestamp
+only once; crossings remain monotonic, de-duplicated, and bounded.
 
 Expression playback uses `Application::set_expression` with the model3 expression name. Every
 declared exp3 resource is parsed and cached during model preparation; Add, Multiply, and Overwrite
 parameters use the file's sine fade times. Replacing an expression fades the immediately previous
 layer out while the new layer fades in, keeping at most two layers. Once its fade-in completes, the
-newest expression remains applied at full weight until another valid expression replaces it, a model
-commit succeeds, or shutdown begins; expressions do not auto-clear to idle. An invalid request
-leaves the active expression unchanged. The per-frame order is defaults, motion, expression, typed
-product input, then Cubism Core update.
+newest expression's full weight is pinned until another valid expression replaces it, a model commit
+succeeds, or shutdown begins; a test-clock rollback cannot restart that completed fade-in, and
+expressions do not auto-clear to idle. An invalid request leaves the active expression unchanged. The
+per-frame order is parameter/part-opacity defaults, motion, expression, typed product input, then
+Cubism Core update.
 
 `bongocat-live2d-playback` owns the SDK-independent motion3/exp3 byte parser and numeric
 curve/blend evaluation. `bongocat-live2d-render` prepares model-package `RenderResources` and
