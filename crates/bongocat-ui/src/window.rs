@@ -12,6 +12,7 @@ use crate::{
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
     ModelSourcePickerError, ModelSourcePickerOutcome, pick_model_cover, pick_model_folder,
+    validate_model_folder,
 };
 use gpui_kit::component::{
     ActiveTheme, Disableable, Icon, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled,
@@ -31,11 +32,11 @@ use gpui_kit::component::{
 };
 
 use gpui_kit::{
-    Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, ElementId, Entity, FocusHandle,
-    Focusable, Hsla, ImageSource, KeyDownEvent, KeyUpEvent, Modifiers, MouseButton, ObjectFit,
-    Pixels, Render, SharedString, Stateful, TitlebarOptions, VisualContext, WeakEntity, Window,
-    WindowAppearance, WindowBounds, WindowHandle, WindowOptions, base::StyledExt, div, img, point,
-    prelude::*, px, size,
+    Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, DragMoveEvent, ElementId,
+    Entity, ExternalPaths, FocusHandle, Focusable, Hsla, ImageSource, KeyDownEvent, KeyUpEvent,
+    Modifiers, MouseButton, ObjectFit, Pixels, Render, SharedString, Stateful, TitlebarOptions,
+    VisualContext, WeakEntity, Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions,
+    base::StyledExt, div, img, point, prelude::*, px, size,
 };
 use std::{
     cell::RefCell,
@@ -53,6 +54,8 @@ use about::ABOUT_SECTIONS;
 mod lifecycle;
 mod localization;
 mod model_actions;
+mod model_drag_overlay;
+use model_drag_overlay::ModelDragOverlayState;
 mod model_import_card;
 mod model_mver_dialog;
 use model_import_card::ModelImportCard;
@@ -125,6 +128,7 @@ type ThemeSelectState = SelectState<SearchableVec<&'static str>>;
 #[derive(Clone, Copy)]
 pub(crate) struct Tokens {
     pub(crate) canvas: Hsla,
+    pub(crate) overlay: Hsla,
     pub(crate) border: Hsla,
     pub(crate) text: Hsla,
     pub(crate) muted: Hsla,
@@ -140,6 +144,7 @@ impl Tokens {
         let theme = cx.theme();
         Self {
             canvas: theme.background,
+            overlay: theme.overlay,
             border: theme.border,
             text: theme.foreground,
             muted: theme.muted_foreground,
@@ -222,6 +227,9 @@ enum ModelImportState {
     Idle,
     /// A native source dialog is open.
     Picking,
+    /// A dropped path is being revalidated and canonicalized away from the UI
+    /// executor before it can become an import source.
+    ValidatingDrop,
     /// The chosen folder is being classified as a package or a Mver source.
     Inspecting,
     Starting {
@@ -510,7 +518,15 @@ impl ModelImportDraft {
     /// The folder picker and the conversion-mode dialog both stop the card from
     /// starting a second run, so command gates use this rather than picking one.
     fn is_source_surface_open(&self) -> bool {
-        self.is_picker_open() || self.is_inspecting() || self.has_open_mver_mode_dialog()
+        self.is_picker_open()
+            || self.is_validating_drop()
+            || self.is_inspecting()
+            || self.has_open_mver_mode_dialog()
+    }
+
+    /// Whether a dropped source is being checked before inspection begins.
+    fn is_validating_drop(&self) -> bool {
+        matches!(self.state, ModelImportState::ValidatingDrop)
     }
 
     /// Whether the conversion-mode dialog owns the source the user chose.
@@ -581,6 +597,10 @@ pub struct SettingsView {
     /// activated.
     model_import_failed_pending: bool,
     model_import: ModelImportDraft,
+    /// The whole-window file-drop affordance currently shown over every settings
+    /// page. It is temporary view state only; the selected path is handed to the
+    /// existing settings-service import contract after validation.
+    model_drag: Option<ModelDragOverlayState>,
     overlay_scale_debouncer: crate::SettingsPatchDebouncer<u16>,
     overlay_scale_timer_generation: u64,
     overlay_opacity_debouncer: crate::SettingsPatchDebouncer<u8>,

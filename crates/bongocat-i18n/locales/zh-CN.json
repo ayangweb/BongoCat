@@ -131,11 +131,23 @@
       },
       "step": {
         "choosing": "正在打开文件选择器…",
+        "validating_source": "正在读取模型文件夹…",
         "importing": "正在导入模型…",
         "capturing": "正在截取封面…"
       },
+      "drop": {
+        "ready": {
+          "title": "松开鼠标即可导入"
+        },
+        "busy": {
+          "title": "正在处理其他模型，请稍候"
+        },
+        "invalid": {
+          "title": "请一次拖入一个模型文件夹"
+        }
+      },
       "title": "导入模型",
-      "hint": "点击选择模型文件夹"
+      "hint": "点击选择或拖入模型文件夹"
     },
     "legacy": {
       "mode": {
@@ -296,6 +308,7 @@
       "invalid_model_id": "模型 ID 无效",
       "model_already_installed": "该模型已安装",
       "model_import_invalid_package": "模型包无效",
+      "model_import_drop_invalid": "请一次拖入一个有效的模型文件夹",
       "model_import_source_invalid": "所选文件夹包含模型库本身；请改选具体的模型文件夹。",
       "model_import_source_changed": "模型来源在导入期间发生变化",
       "model_import_source_unsupported": "模型来源中包含不支持的文件",

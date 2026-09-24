@@ -819,10 +819,16 @@ pub(super) fn import_card_step(
     let step = |key: &str| Some(bongocat_i18n::text(language.catalog_locale(), key).into());
     match &draft.state {
         ModelImportState::Idle => None,
+        // The native dialog has not returned a path yet; once it does, the
+        // inspection state below uses the shared folder-reading step.
         ModelImportState::Picking => step("models.import.step.choosing"),
-        // Inspection is on the way to one of the two surfaces, and reads as
-        // the choosing step until the folder picker's answer lands.
-        ModelImportState::Inspecting => step("models.import.step.choosing"),
+        // Both source entrances converge on the same folder-reading step after
+        // the user has provided a path. The picker adapter has already done its
+        // filesystem check on its worker; the drop path performs the same check
+        // in the background executor before entering the shared inspection.
+        ModelImportState::ValidatingDrop | ModelImportState::Inspecting => {
+            step("models.import.step.validating_source")
+        }
         ModelImportState::Starting { .. } | ModelImportState::Running(_) => {
             step("models.import.step.importing")
         }

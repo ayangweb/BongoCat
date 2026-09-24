@@ -231,6 +231,7 @@ impl SettingsView {
     /// Hide the window while keeping it alive.
     pub fn hide(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
         self.cancel_shortcut_capture(cx);
+        self.clear_model_drag(cx);
         self.flush_pending_settings(cx);
         self.window_hidden = true;
         bongocat_platform::hide_native_window(window).map_err(|error| error.to_string())

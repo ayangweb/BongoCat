@@ -895,8 +895,9 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   正常 shutdown 前仍强制 flush。配置提交、模型切换和窗口重建必须保留另一窗口已保存的几何，
   窗口完全离开当前显示器时回退到鼠标当前所在显示器居中，fullscreen 不持久化。
 - 模型导入防止路径穿越、符号链接逃逸、压缩炸弹和覆盖现有用户数据。
-- 模型来源只有一种：用户选中的文件夹，就地读取后复制进 store 自己的 staging。压缩包来源与
-  它的解压边界已随实现一并移除（ADR-0036 已撤回，见该 ADR 的撤回说明）；要恢复时先与维护者确认。
+- 模型来源只有一种：用户通过文件夹选择器或窗口拖放提供的文件夹，就地读取后复制进 store 自己的
+  staging。压缩包来源与它的解压边界已随实现一并移除（ADR-0036 已撤回，见该 ADR 的撤回说明）；要恢复
+  时先与维护者确认。
 - 导入在提交前把包内 `resources/left-keys` 与 `resources/right-keys` 下的旧键位名归一化到产品
   词汇表：`Alt.png` → `AltLeft.png`、`AltGr.png` → `AltRight.png`（ADR-0038）。这一步只作用在
   `ModelStore` 自己的 staging 上，因此用户选中的源目录始终是只读输入；改名不改变文件数与字节数，
@@ -952,7 +953,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   还会在 operational 状态下清理指向已不存在模型目录的 `installed_models` 元数据记录；
   目录存在但内容无效的记录保留，由合并目录的稳定诊断码呈现。启动期清理失败的记录留待
   下次启动重试，不影响其他模型或应用整体。
-- 模型导入 command 携带标题与文件选择来源（用户选中的文件夹）；标题只是显示
+- 模型导入 command 携带标题与文件选择来源（文件夹选择器选中的目录，或设置窗口拖入的单个目录）；
+  标题只是显示
   名称，不参与身份——settings service worker 在导入前用随机 UUID v4（`uuid 1.26.1`，精确 pin）
   生成当前 store 内唯一的可移植存储 ID，因此重复导入同一目录不会覆盖已有模型，
   显示名称可以随时编辑，用户也无需发明任何 ID。导入成功后把标题写入 `installed_models`
@@ -993,27 +995,35 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   stage、已复制文件数和字节数，不携带用户路径，并通过共享原子取消令牌在 service worker
   阻塞于分块复制时仍可取消。cancel 在原子 rename 提交前生效并清理 staging，
   final result 携带同一 operation ID；后续 Models 页面只消费该契约，不自行执行文件 I/O。
-- 模型来源选择由 `bongocat-platform` 的私有 adapter 调用 `rfd 0.17.2`，当前只有一个入口
-  `pick_model_folder`：两平台都用 `pick_folder`（macOS `AsyncFileDialog`，Windows `FileDialog`）。
-  macOS 只在 AppKit 主线程且已有窗口可作为 sheet parent 时创建 `AsyncFileDialog`，缺少 sheet
-  parent 时返回 `BackendUnavailable`，不回退同步 `runModal`；Windows 在专用 worker 的 STA 中调用
-  `FileDialog`。两平台都只向上返回 `Selected(PathBuf)`/`Cancelled` 和稳定无路径错误码，Rust 侧
-  重新检查绝对、存在与类型（必须是目录）并 canonicalize；选择层不判定所选目录里是不是可用的
-  模型包（那由 store 按内容判定并给出稳定码），真正的包解析/复制仍只由 settings worker 执行。
-  `rfd` 将取消与后端失败都表示为 `None`，当前 adapter 按取消处理；对话框取消不是错误，错误
-  不得携带系统文本或用户路径。
+- 模型来源进入设置 UI 有两个等价入口：原生文件夹选择器 `pick_model_folder`，以及设置窗口根视图
+  接收的 GPUI `ExternalPaths` 文件拖放。两平台的选择器都用 `rfd 0.17.2` 的 `pick_folder`（macOS
+  `AsyncFileDialog`，Windows `FileDialog`）。macOS 只在 AppKit 主线程且已有窗口可作为 sheet parent
+  时创建 `AsyncFileDialog`，缺少 sheet parent 时返回 `BackendUnavailable`，不回退同步 `runModal`；
+  Windows 在专用 worker 的 STA 中调用 `FileDialog`。两平台都只向上返回 `Selected(PathBuf)` /
+  `Cancelled` 和稳定无路径错误码，Rust 侧重新检查绝对、存在与类型（必须是目录）并 canonicalize；
+  选择层不判定所选目录里是不是可用的模型包，真正的包解析/复制仍只由 settings worker 执行。
+  `rfd` 将取消与后端失败都表示为 `None`，当前 adapter 按取消处理；对话框取消不是错误，错误不得
+  携带系统文本或用户路径。
+- 文件拖放是窗口级手势：根视图和临时蒙层都注册 `ExternalPaths` 的 drag/drop handler，另由
+  paint-phase 的 window listener 接收 `FileDropEvent::Exited`，因此指针已经移出 viewport 时也能立即
+  清理蒙层。一次只接受一个路径；多选在蒙层阶段显示拒绝状态，松手后只产生稳定的
+  `ModelImportDropInvalid` 通知。单路径若不是目录、已不存在或无法 canonicalize，则由后台复验拒绝并
+  通过同一稳定错误码报告。拖入路径先由 `bongocat-platform::validate_model_folder` 在 background
+  executor 复验并 canonicalize，再进入既有 `InspectModelSource`、转换选择、导入、取消和封面截取
+  流程；UI executor 不遍历、复制或解析模型文件。
 - 剪贴板 adapter 通过私有 `arboard 3.6.1` 边界只接受最多 1 MiB、无内嵌 NUL 的纯文本；无文本
   返回空选项，过大、无效、拒绝或系统故障只返回稳定匿名错误，绝不记录文本。macOS 调用必须
   在 AppKit 主线程和 autorelease pool 内，Windows 的打开、写入和关闭由 `arboard` 的 RAII
   guard 在同一线程完成。依赖类型、系统错误和剪贴板内容都不离开 adapter；底层读取在项目
   大小校验前可能已物化系统提供的完整文本，这是当前第三方文本 API 的已知边界。
 - Models 页面在 GPUI Entity 中只保存视图状态——导入草稿（来源目录、由来源名派生的标题、导入状态
-  与本次导入的 baseline，运行中的 operation monitor 就在该状态里）、删除确认、编辑草稿和每行的
-  焦点句柄——不持有任何路径文案：导入卡片只显示匿名的 choosing/importing/capturing 步骤，不进入
-  snapshot、状态文案或日志。导入进行中以 100 ms UI timer 重新渲染卡片，读的只有 operation ID 与
-  取消状态（不读文件数/字节数），cancel 直接设置共享原子令牌；失败与取消都回到上传提示并只经
-  `Notification` 报告，不提供页面内 retry。GPUI executor 不遍历、解析或复制模型文件，成功只
-  刷新 catalog，不隐式切换 active model。
+  与本次导入的 baseline，运行中的 operation monitor 就在该状态里）、删除确认、编辑草稿、每行的
+  焦点句柄，以及文件拖入期间的临时 `Ready`/`Busy`/`InvalidSelection` 蒙层状态——不持有任何路径文案：
+  导入卡片只显示匿名的 choosing/validating-source/importing/capturing 步骤；`validating-source` 是文件夹
+  选择器与拖放在取得路径后共用的“读取模型文件夹”阶段，不进入 snapshot、状态文案或日志。导入进行中以
+  100 ms UI timer 重新渲染卡片，读的只有 operation ID 与取消状态（不读文件数/字节数），cancel 直接
+  设置共享原子令牌；失败与取消都回到上传提示并只经 `Notification` 报告，不提供页面内 retry。GPUI
+  executor 不遍历、解析或复制模型文件，成功只刷新 catalog，不隐式切换 active model。
 - 模型删除 command 同样携带 `(origin, model_id)`；preset 永不可删。installed 模型始终可删，
   包括当前 runtime active 或配置所选的那个：删除前先按同一 typed selection 路径切回标准预置，
   切换失败即中止删除，绝不在 runtime 仍持有该包时移除文件。删除本身仍以 rename 后删除事务退休；
@@ -1273,7 +1283,7 @@ ADR-0026 由本 ADR 取代。本 ADR 的库选择（`self_update 1.3.0`）与签
 
 **该 ADR 已撤回（2026-09-22）**：压缩包来源、解压边界与 `SourceArchiveUnsupported` 稳定码连同
 实现一并移除，`bongocat-model` 不再依赖 `zip`/`flate2`，`ModelPackageLimits` 不再有
-`maximum_archive_bytes`。模型来源只有一种：用户选中的文件夹。ADR 正文保留在
+`maximum_archive_bytes`。模型来源只有一种：由文件夹选择器或窗口拖放提供的文件夹。ADR 正文保留在
 `docs/adr/0036-model-archive-import-boundary.md` 作为恢复该功能时的设计输入——**恢复前先与维护者确认**
 （压缩包上传需要一组本次不做的新功能）。压缩包与第三方模型内容不进入仓库。
 

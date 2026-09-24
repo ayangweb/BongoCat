@@ -6,8 +6,15 @@
 修订（2026-09-22）：决策 1 与「不做拖拽导入」中描述的导入入口已变：导入卡片不再走
 「选择文件夹 / 选择 .zip」两个按钮加标题输入，而是按下即打开一个文件夹选择器并自动开始导入
 （ADR-0036 文首修订）。**入口只接受文件夹**：压缩包上传本次不做，选择器与文案都不再提及压缩包。
-“不做拖拽导入”的结论不变，理由里的按钮形态换成现在的单一入口。本 ADR 关于页面只做选择与元数据
-编辑的决策未变。
+当时“不做拖拽导入”的结论仅适用于本修订之前的实现；窗口级拖放入口由 2026-09-24 修订取代。
+本 ADR 关于页面只做选择与元数据编辑的决策未变。
+
+修订（2026-09-24，窗口级文件拖放）：设置窗口根视图现在接收 GPUI `ExternalPaths`，拖入任意页面都
+显示覆盖整个窗口的导入蒙层。一次只接受一个文件夹；拖放路径先在 background executor 复验并
+canonicalize，再进入既有的来源检查、转换选择、导入和封面截取流程。蒙层自身也注册 drag/drop handler，
+避免渲染后遮住根视图导致真实松手失效；离开窗口则由 paint-phase 的 window listener 捕获
+`FileDropEvent::Exited`，不依赖已不再 hovered 的 hitbox。正常、忙碌和多项目选择分别显示可操作、无等待和拒绝提示；
+拒绝使用稳定 `SettingsErrorCode::ModelImportDropInvalid` 通知，不把路径带入 UI 文案或日志。
 
 修订（2026-09-22，卡片编辑改为原地）：决策 1 里卡片的「编辑」形态已变。编辑器不再把封面按钮、
 标题输入框和保存/取消三行插在封面下面，而是在**卡片已有的行里原地替换**：
@@ -53,7 +60,9 @@
 
 模型管理页只承担两件事：**选择模型** 与 **编辑该模型的标题/封面**。导入卡片占据网格第一格，点击
 后仍走既有的来源选择流程（撰写时为「选择文件夹 / 选择 .zip」按钮加标题输入，2026-09-22 起为
-单一文件夹选择器加自动导入，压缩包入口暂缓）、标题在选中文件夹时按文件夹名预填；其余每张卡片是
+单一文件夹选择器加自动导入，压缩包入口暂缓）。设置窗口根视图同时接收 `ExternalPaths` 文件拖放，
+因此拖入不必先切换到模型管理页，也不要求指针落在导入卡片上；拖放成功后仍由同一来源检查、导入、
+取消和封面截取流程处理。其余每张卡片是
 `cover.png` + 标题 + 可用性 + 操作行（选中 / 打开所在文件夹 / 编辑 / 删除，删除前弹出确认浮层）。
 
 ### 2. 预置模型可以改名和换封面，但与删除无关
@@ -115,6 +124,25 @@ settings 服务通过 `ModelLocationCapability` 注入，与配置备份目录�
 页消费（未激活或未声明的行为不生成编辑入口）。runtime 侧的预览能力
 （`Application::preview_motion`/`set_expression`）保留不动，恢复设置页预览是新增一个命令的事。
 
+### 8. 窗口级拖放使用单文件夹契约
+
+设置窗口的根视图和临时蒙层都注册 GPUI `ExternalPaths` 的 drag/drop handler；另有一个 paint-phase
+的 window listener 接收 `FileDropEvent::Exited`，不依赖离开窗口后已经失效的 hitbox。蒙层只在文件
+拖入期间存在，覆盖设置窗口的完整 viewport，因此当前页面、滚动位置和指针所在的子控件不会改变导入
+语义；蒙层出现后仍需保留自己的 drop handler，不能只依赖根视图的命中测试。
+
+- `Ready`：恰好一个路径且当前没有其它模型来源操作；松手后先在 background executor 调用
+  `bongocat_platform::validate_model_folder`，只把 canonical directory 交给既有 `InspectModelSource`
+  流程。`Ready`、`Busy` 和 `InvalidSelection` 都只显示各自标题，不显示额外说明。
+- `Busy`：已有 picker、drop 校验、来源检查、转换对话框、导入或封面截取；松手不启动第二条流程。
+- `InvalidSelection`：零个或多个路径；蒙层立即说明“一次一个模型文件夹”，松手后通过稳定错误通知
+  结束，不把用户路径写入通知或日志。单个路径若是常规文件、已不存在或无法 canonicalize，则在
+  background 复验失败后走同一稳定通知。
+
+拖放只改变来源的进入方式，不复制模型解析/复制逻辑，也不绕过 `ModelStore` 的安全校验、取消和
+原子提交。拖放路径的目录/类型/canonicalize 检查属于平台 adapter；UI executor 不遍历、复制或解析
+模型文件。
+
 ## 明确不做
 
 - **不为预置模型提供删除**：`delete_model` 的预设拒绝（`PresetModelDeletion`）保持不变。改名与
@@ -123,8 +151,9 @@ settings 服务通过 `ModelLocationCapability` 注入，与配置备份目录�
   只有标题这一行文本。
 - **不重编码封面、不新增图片依赖**：只校验 PNG 签名字节。
 - **不在模型页恢复任何行为/表情入口**：表情列表已在快捷键页。
-- **不做拖拽导入**：旧版导入区可以拖入文件，本次仍是按钮（2026-09-22 起是单一文件夹选择器），
-  因为 GPUI 侧没有可用且已注册的文件拖放通道，本次不新增该通道。
+- **拖放不支持多项目或常规文件**：拖放契约一次只接受一个目录；多选在蒙层阶段拒绝，单路径的
+  文件、缺失或无法 canonicalize 的目录在后台复验后拒绝，二者都以稳定通知说明边界。压缩包仍不属于
+  当前来源。
 - **不让 renderer 或 runtime 参与封面**：封面只被设置页读取。
 
 ## 残余风险与待验证项（不得当作已确认）
@@ -165,6 +194,10 @@ settings 服务通过 `ModelLocationCapability` 注入，与配置备份目录�
     里的「更改封面图」。按钮本身没有改（它打开的确实是这个模型所在的目录），因此这是一条**已知的
     不对称**，而不是被忽略的缺陷；若将来要收口，方向是让预置的这个入口指向
     `model-overrides/<id>/`，代价是它与「模型在哪」不再一致。
+15. **拖放尚未完成双平台实机验收**：当前已覆盖 headless GPUI 的完整窗口蒙层、离开清理、单目录
+    进入既有检查命令和多项目拒绝；尚未在 Windows Explorer 与 macOS Finder 中完成真实文件拖放，
+    也未做 125/150/200% DPI、Retina 和真实主题下的目视检查。实现和自动化 contract 不等于这两个
+    平台门禁已经通过。
 
 ## 验证
 
@@ -259,3 +292,22 @@ settings 服务通过 `ModelLocationCapability` 注入，与配置备份目录�
 
 **未运行**：双平台实机点击（改名/换封面预置卡片、确认包内文件未被写入）、深色主题实机外观、
 `--settings-window-smoke` 与 `--models-page-smoke` 之外的 opt-in smoke。
+
+### 修订（2026-09-24，窗口级文件拖放）已完成自动化部分
+
+- `bongocat-platform` 公开 `validate_model_folder`，复用原生文件夹选择器的绝对路径、目录类型和
+  canonicalize 复验；调用点明确放在 `background_executor`，UI 不执行文件 I/O。
+- `bongocat-ui` 新增 `ModelImportState::ValidatingDrop`、窗口级 `ModelDragOverlayState` 和主题化蒙层。
+  选择器取得路径后的 `Inspecting` 状态与拖放复验共用
+  `models.import.step.validating_source` 的文件夹读取文案。
+  根视图与蒙层都注册 `ExternalPaths` drag/drop handler，paint-phase window listener 接收离开事件；
+  `Ready`、`Busy`、`InvalidSelection` 三种状态各有独立标题，多项目 drop 不启动导入并通过
+  `SettingsErrorCode::ModelImportDropInvalid` 通知说明一次一个文件夹的边界。提示内容区去掉边框和
+  背景色，只保留主题化图标与文字层次。
+- 自动化覆盖：完整 viewport 蒙层与离开清理（含指针移出 viewport）、忙碌状态不启动第二条来源流程、
+  单目录进入既有 `InspectModelSource` command、多项目拒绝，以及选择器取得路径后与拖放共用文件夹读取
+  文案和状态转换；`bongocat-platform`、`bongocat-ui-protocol`、`bongocat-ui` 定向测试和 locale validator
+  已通过。
+- **未运行**：Windows Explorer 与 macOS Finder 的真实文件拖放、拖动时不同页面的目视命中、双平台
+  DPI/Retina 主题布局和真实键盘/指针交互。因此本 ADR 的实现决策已进入代码，但双平台实机验收仍未完成，
+  不应把自动化测试结果写成跨平台行为已确认。

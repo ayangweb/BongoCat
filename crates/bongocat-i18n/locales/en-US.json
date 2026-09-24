@@ -131,11 +131,23 @@
       },
       "step": {
         "choosing": "Opening the file picker…",
+        "validating_source": "Reading the model folder…",
         "importing": "Importing model…",
         "capturing": "Capturing cover…"
       },
+      "drop": {
+        "ready": {
+          "title": "Release to import this model folder"
+        },
+        "busy": {
+          "title": "Another model operation is in progress"
+        },
+        "invalid": {
+          "title": "Please drop one model folder at a time"
+        }
+      },
       "title": "Import model",
-      "hint": "Click to choose a model folder"
+      "hint": "Click to choose or drag a model folder"
     },
     "legacy": {
       "mode": {
@@ -296,6 +308,7 @@
       "invalid_model_id": "Model id is invalid",
       "model_already_installed": "This model is already installed",
       "model_import_invalid_package": "Model package is invalid",
+      "model_import_drop_invalid": "Drop one valid model folder at a time",
       "model_import_source_invalid": "The selected folder contains the model library itself; choose a specific model folder instead.",
       "model_import_source_changed": "Model source changed during import",
       "model_import_source_unsupported": "The model source contains an unsupported file",

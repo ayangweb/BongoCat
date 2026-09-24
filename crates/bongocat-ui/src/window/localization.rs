@@ -98,6 +98,7 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::ModelImportInvalidPackage => {
             "errors.settings.model_import_invalid_package"
         }
+        SettingsErrorCode::ModelImportDropInvalid => "errors.settings.model_import_drop_invalid",
         SettingsErrorCode::ModelImportSourceInvalid => {
             "errors.settings.model_import_source_invalid"
         }

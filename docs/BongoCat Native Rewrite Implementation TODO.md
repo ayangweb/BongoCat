@@ -1614,6 +1614,8 @@ presentation alpha，不再触发窗口替换，因此避免设置更新时短�
     `SettingsRuntimeErrorCode` 投影到 `SettingsSnapshot.runtime_diagnostics`，Diagnostics 页面显示
     匿名 renderer 错误和最近失败 command 序号；统一 Diagnostics 导出、input/model/config/update
     跨域聚合仍待完成。
+  - 状态（2026-09-24）：模型拖放拒绝复用稳定错误码 `ModelImportDropInvalid`；`SettingsErrorCode::ALL`
+    当前为 38 项，协议唯一性测试和双 locale 文案同步更新。
 - [ ] 长操作提供 operation id、progress、cancel 和 final result。
   - 状态（2026-08-31）：模型导入已完成首个正式长操作契约：所有 `SettingsClient` clone
     共用单调 typed ID，progress 仅含 stage/file count/byte count，共享原子 token 可在 settings
@@ -1752,6 +1754,11 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
     文案把 `models.edit.cover.choose`/`.replace` 合并为 `models.edit.cover.label`。新增
     `opening_a_models_editor_does_not_change_the_card` 断言两面的卡片、标题行与输入框 bounds
     相等。双平台实机点击仍未运行，因此总项保持未勾选。
+   - 状态（2026-09-24）：新增窗口级单文件夹拖放入口。设置窗口任意页面拖入 `ExternalPaths` 时显示
+     覆盖完整 viewport 的主题化蒙层；多选显示拒绝状态，单目录在 background executor 复验并
+     canonicalize 后复用既有来源检查、转换、导入、取消和封面截取流程。自动化 contract 已覆盖蒙层
+     生命周期、单目录 command 和多项目通知；Windows Explorer/macOS Finder 真实拖放与高 DPI 目视验收
+     仍待完成，跟踪于当前执行队列第 108 项。
 - [ ] 输入：键鼠、手柄、忽略鼠标、单键模式和校正状态。
 - [ ] 快捷键：捕获、冲突、清除和恢复默认。
   - 状态（2026-09-01）：正式 `bongocat-config` 已加入平台无关的 typed chord 校验和 canonicalization；修饰键别名、顺序和多余空白会稳定化，重复修饰键、多 key、空片段和非法 key 会被拒绝，`commands` 与 `model_behaviors` 共享冲突命名空间。settings service 现以 typed command 完成 revision-checked 原子持久化、snapshot 投影、重启恢复和 `RestoreDefaultShortcuts` 恢复默认；空集合可清除全部绑定。平台输入 owner 已将匹配 target 投递到 runtime 或 settings handoff；UI 编辑入口、平台注册/捕获和实机证据仍待完成。
@@ -5904,7 +5911,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
          Windows 都用 `rfd` 的 `pick_folder`（前者 `AsyncFileDialog`，后者 `FileDialog`）；
          `validate_selected_folder` 取代 `validate_selected_source`，只接受真实目录，常规文件返回
          `SelectionInvalid`。`ModelSourcePickerError` 的稳定码与 `ModelSourcePickerOutcome` 不变。
-      ⑤ `ModelImportState` 收敛为 `Idle | Picking | Starting | Running | Capturing`；失败与取消都回到
+      ⑤ `ModelImportState` 收敛为 `Idle | Picking | ValidatingDrop | Inspecting | Starting | Running |
+         Capturing`（`ValidatingDrop` 为 2026-09-24 窗口拖放复验阶段，`Inspecting` 复用同一
+         文件夹读取文案）；失败与取消都回到
          `Idle` 并只经 `Notification` 报告，卡片不再承载错误文案，也不再展示 worker 的
          `Copying/Validating/...` 细化阶段。
       ⑥ 导入成功后 UI 进入 `Capturing`，把本次新增的 installed 条目记进
@@ -5918,14 +5927,16 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
          `refresh_model_cover` 更名为 `finish_model_cover_capture`。
       ⑧ locale 删除 `models.import.folder/archive/picker/progress/actions.choosing/actions.import`
          共 17 条，新增 `models.import.step.{choosing,importing,capturing}` 与 `models.import.hint`；
-         hint 现在只说文件夹（en `Click to choose a model folder`、zh `点击选择模型文件夹`）。中文三条
+         hint 现在只说文件夹（en `Click to choose or drag a model folder`、zh `点击选择或拖入模型文件夹`）。
+          2026-09-24 再新增 `models.import.step.validating_source`、`models.import.drop.*` 和
+          `errors.settings.model_import_drop_invalid`；中文三条
          步骤文案的省略号由 `……` 改为 `…`，规范见 `docs/localization-copy-conventions.md`。
     - 范围收窄（2026-09-22，第二次修订）：**压缩包上传本次不做**。上传入口只接受文件夹，选择器、校验器
       与文案都不再提及压缩包（`pick_model_source` / `validate_selected_source` / `pick_file_or_folder`
       全部移除）。**store 侧的归档摄入也已一并删除**（第 77 项因此改为未完成并标记已撤回）：
       `archive.rs`、`detect_source_kind`、`plan_archive`/`extract_archive`、`ModelSourceKind`、
       `MverSource::Archive`、`SourceArchiveUnsupported`、`maximum_archive_bytes` 与
-      `bongocat-model` 的 `zip`/`flate2` 依赖都不再存在，模型来源只剩用户选中的文件夹。
+      `bongocat-model` 的 `zip`/`flate2` 依赖都不再存在，模型来源仍只有文件夹。
       恢复该功能前先与维护者确认（压缩包上传需要一组本次未做的新功能）；
       `bongocat-ui-protocol::model_source_display_name` 的「去掉归档扩展名」规则保留，因为 settings service
       的兜底标题仍与它共用，删掉会让恢复时失去单一实现。
@@ -6054,6 +6065,34 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 状态（2026-09-24，已提交）：首版实现提交 `1917eae5` 与独立审查后的边界修复均进入
       `next`。当前未做 Windows/macOS 双平台实机 smoke；仍需用真实动作与表情确认最终姿态、替换、
       显式停止和模型切换观感，因此本项保持未勾选。
+
+108. [ ] `P4-MODEL-FOLDER-DROP`：让设置窗口支持把一个模型文件夹拖到任意页面导入。
+     - 依赖：第 104 项 `P4-MODEL-IMPORT-UPLOAD-CARD`、`bongocat-platform` 文件夹选择器边界、
+       ADR-0047（2026-09-24 修订）。
+     - 退出条件：GPUI `ExternalPaths` 拖入时蒙层覆盖完整设置窗口并随拖放离开清理；单目录在
+       background executor 完成绝对路径/目录类型/canonicalize 复验后进入既有检查、转换、导入、
+       取消和封面截取流程；多选在蒙层阶段显示不可用状态，松手后给出稳定通知且不启动导入；单路径
+       的文件、缺失或无法 canonicalize 的目录在后台复验后同样拒绝；忙碌状态不启动第二条来源流程；
+       UI executor 不执行模型文件遍历、复制或解析；Windows Explorer 与
+       macOS Finder 真实拖放、DPI/Retina 和主题目视验收通过。
+     - 当前契约（2026-09-24）：
+       ① 根视图和蒙层都注册 `ExternalPaths` drag/drop handler，另由 paint-phase window listener 接收
+       `FileDropEvent::Exited`，避免蒙层渲染后拦截根命中，也避免指针移出 viewport 后 exit handler 失效；
+       ② `ModelDragOverlayState` 覆盖 `Ready`、`Busy`、`InvalidSelection`，文案使用 GPUI Kit 主题
+       token；③ `ModelImportState::ValidatingDrop` 只在后台复验期间存在，成功后复用
+       `InspectModelSource`，选择器与拖放共用 `validating_source` 的文件夹读取文案；失败回到 `Idle` 并报告
+       `ModelImportDropInvalid`；④ 新增 UI contract：完整 viewport 蒙层/离开清理（含指针移出 viewport）、
+       忙碌状态不启动第二条流程、单目录 inspection command、多项目拒绝，以及选择器与拖放共用的
+       文件夹读取文案和状态转换。
+     - 自动化证据（2026-09-24）：`cargo test --locked -p bongocat-platform model_source_picker`、
+       `cargo test --locked -p bongocat-ui-protocol settings`、`cargo test --locked -p bongocat-ui --lib`、
+       `python tools/validate-locales.py`、`cargo fmt --all -- --check`、workspace Clippy（不含互斥的
+       `--all-features` 组合）和 `cargo check --locked --workspace --release` 已通过。完整
+       `cargo test --locked --workspace` 当前只剩一个与本改动无关的 Windows canonical-path 断言失败
+       （`service_renames_and_covers_a_model_of_either_origin`）；`--all-features` 也会同时打开项目明确
+       禁止同时启用的 `storage-test-injection` 与 `production`，对应两组 feature-specific Clippy 均已通过。
+     - 未运行：Windows/macOS 文件管理器真实拖放、双平台高 DPI/Retina 视觉检查和真实导入回包；因此本项
+       保持未勾选，不能用 headless contract 代替平台 smoke。
 
 ## 13. 待决策清单
 

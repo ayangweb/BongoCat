@@ -10,6 +10,17 @@ fn model_source_picker_error(_error: ModelSourcePickerError) -> SettingsError {
 }
 
 impl SettingsView {
+    /// Whether a new model source may enter the import flow.
+    ///
+    /// The picker, a dropped path and the visible drop affordance all read this
+    /// one predicate, so a second source cannot enter through a different
+    /// gesture while a command, import or source surface is already active.
+    pub(super) fn model_source_command_available(&self) -> bool {
+        self.pending.is_none()
+            && !self.model_import.is_running()
+            && !self.model_import.is_source_surface_open()
+    }
+
     /// Open the native picker for the folder to import.
     ///
     /// One dialog at a time is the whole flow: the folder the user picks is
@@ -19,10 +30,7 @@ impl SettingsView {
         // The card stays drawn as interactive while a command is in flight —
         // `pending` never feeds a visual gate (ADR-0053) — so the refusal of a
         // second command lives here rather than in the paint.
-        if self.pending.is_some()
-            || self.model_import.is_running()
-            || self.model_import.is_source_surface_open()
-        {
+        if !self.model_source_command_available() {
             return;
         }
         self.model_import.state = ModelImportState::Picking;
@@ -48,6 +56,93 @@ impl SettingsView {
                     // its import now, while a Mver source has to wait for the
                     // user to pick which modes this run converts.
                     view.inspect_model_source(source_root, cx);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Reflect an external file drag over the settings window.
+    ///
+    /// GPUI translates Finder/Explorer file drags into [`ExternalPaths`]. The
+    /// number of paths is enough to decide whether the drop can enter the
+    /// one-folder import contract without touching the filesystem on the UI
+    /// thread. A regular file is rejected by the same canonical directory
+    /// validation as the native picker once it is released.
+    pub(super) fn update_model_drag(&mut self, path_count: usize, cx: &mut Context<Self>) {
+        let next = if path_count != 1 {
+            ModelDragOverlayState::InvalidSelection
+        } else if !self.model_source_command_available() {
+            ModelDragOverlayState::Busy
+        } else {
+            ModelDragOverlayState::Ready
+        };
+        if self.model_drag != Some(next) {
+            self.model_drag = Some(next);
+            cx.notify();
+        }
+    }
+
+    /// Remove the temporary drag affordance when the platform drag leaves or is
+    /// submitted. It is presentation state and must never survive the gesture.
+    pub(super) fn clear_model_drag(&mut self, cx: &mut Context<Self>) {
+        if self.model_drag.take().is_some() {
+            cx.notify();
+        }
+    }
+
+    /// Accept one dropped model folder and hand it to the existing inspection
+    /// and import flow.
+    ///
+    /// The path first goes through the picker adapter's absolute/directory/
+    /// canonicalization check on a background executor. Only the canonical
+    /// directory crosses into the settings command, where package validation,
+    /// conversion-mode selection, transactional import and cover capture already
+    /// live. The UI never walks or copies the model package itself.
+    pub(super) fn accept_model_folder_drop(&mut self, paths: &[PathBuf], cx: &mut Context<Self>) {
+        self.model_drag = None;
+        if !self.model_source_command_available() {
+            cx.notify();
+            return;
+        }
+        let Some(source_root) = paths.first().filter(|_| paths.len() == 1).cloned() else {
+            self.pending_notification = Some(SettingsError::new(
+                SettingsErrorCode::ModelImportDropInvalid,
+            ));
+            cx.notify();
+            return;
+        };
+
+        self.model_import.state = ModelImportState::ValidatingDrop;
+        cx.notify();
+        let validation = cx
+            .background_executor()
+            .spawn(async move { validate_model_folder(source_root) });
+        cx.spawn(async move |this, cx| {
+            let result = validation.await;
+            let _ = this.update(cx, |view, cx| {
+                // A newer gesture or a failed view teardown may have reset the
+                // draft while the tiny validation task was in flight. Never let
+                // a stale path resurrect an import the user no longer owns.
+                if !view.model_import.is_validating_drop() {
+                    return;
+                }
+                match result {
+                    Ok(ModelSourcePickerOutcome::Selected(source_root)) => {
+                        if let Some(source_root) = view.apply_model_source_result(Ok(
+                            ModelSourcePickerOutcome::Selected(source_root),
+                        )) {
+                            view.inspect_model_source(source_root, cx);
+                        }
+                    }
+                    Ok(ModelSourcePickerOutcome::Cancelled) => view.model_import.reset(),
+                    Err(_) => {
+                        view.model_import.reset();
+                        view.pending_notification = Some(SettingsError::new(
+                            SettingsErrorCode::ModelImportDropInvalid,
+                        ));
+                    }
                 }
                 cx.notify();
             });

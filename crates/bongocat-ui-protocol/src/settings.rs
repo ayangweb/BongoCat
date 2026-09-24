@@ -843,6 +843,7 @@ pub enum SettingsErrorCode {
     InvalidModelId,
     ModelAlreadyInstalled,
     ModelImportInvalidPackage,
+    ModelImportDropInvalid,
     ModelImportSourceInvalid,
     ModelImportSourceChanged,
     ModelImportSourceUnsupported,
@@ -862,7 +863,7 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 37] = [
+    pub const ALL: [Self; 38] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -884,6 +885,7 @@ impl SettingsErrorCode {
         Self::InvalidModelId,
         Self::ModelAlreadyInstalled,
         Self::ModelImportInvalidPackage,
+        Self::ModelImportDropInvalid,
         Self::ModelImportSourceInvalid,
         Self::ModelImportSourceChanged,
         Self::ModelImportSourceUnsupported,
@@ -925,6 +927,7 @@ impl SettingsErrorCode {
             Self::InvalidModelId => "invalid_model_id",
             Self::ModelAlreadyInstalled => "model_already_installed",
             Self::ModelImportInvalidPackage => "model_import_invalid_package",
+            Self::ModelImportDropInvalid => "model_import_drop_invalid",
             Self::ModelImportSourceInvalid => "model_import_source_invalid",
             Self::ModelImportSourceChanged => "model_import_source_changed",
             Self::ModelImportSourceUnsupported => "model_import_source_unsupported",
@@ -1000,6 +1003,9 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::InvalidModelId => "Model id is invalid",
             SettingsErrorCode::ModelAlreadyInstalled => "This model is already installed",
             SettingsErrorCode::ModelImportInvalidPackage => "Model package is invalid",
+            SettingsErrorCode::ModelImportDropInvalid => {
+                "Drop one valid model folder at a time"
+            }
             SettingsErrorCode::ModelImportSourceInvalid => "The selected folder contains the model library itself; choose a specific model folder instead.",
             SettingsErrorCode::ModelImportSourceChanged => "Model source changed during import",
             SettingsErrorCode::ModelImportSourceUnsupported => {

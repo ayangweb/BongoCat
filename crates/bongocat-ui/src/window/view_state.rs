@@ -161,6 +161,7 @@ impl SettingsView {
             model_import_success_pending: false,
             model_import_failed_pending: false,
             model_import: ModelImportDraft::default(),
+            model_drag: None,
             overlay_scale_debouncer: crate::SettingsPatchDebouncer::default(),
             overlay_scale_timer_generation: 0,
             overlay_opacity_debouncer: crate::SettingsPatchDebouncer::default(),

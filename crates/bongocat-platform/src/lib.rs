@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, path::PathBuf};
 
 pub use bongocat_input::{PlatformInputDiagnostics, PlatformInputServiceStatus};
 
@@ -128,6 +128,17 @@ pub fn pick_model_folder(
     on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
 ) -> Result<(), ModelSourcePickerError> {
     model_source_picker::pick_model_folder(on_complete)
+}
+
+/// Revalidate and canonicalize a model folder supplied by a non-dialog source.
+///
+/// File drops bypass the native picker, but they must not bypass its filesystem
+/// boundary. Callers run this away from a UI executor; it performs metadata and
+/// canonicalization I/O before returning the same stable selection vocabulary.
+pub fn validate_model_folder(
+    selected: PathBuf,
+) -> Result<ModelSourcePickerOutcome, ModelSourcePickerError> {
+    model_source_picker::validate_selected_folder(selected)
 }
 
 /// Let the user choose the image that replaces a model's cover.

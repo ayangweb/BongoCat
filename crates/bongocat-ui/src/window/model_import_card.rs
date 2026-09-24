@@ -311,7 +311,7 @@ mod tests {
             let opened = self.opened.clone();
             div().p_4().child(
                 ModelImportCard::new(CARD, "Import model")
-                    .hint("Click to choose a model folder")
+                    .hint("Click to choose or drag a model folder")
                     .step(self.step.clone())
                     .interactive(self.interactive)
                     .track_focus(Some(self.focus.clone()))
@@ -470,7 +470,7 @@ mod tests {
                 3,
                 [
                     ModelImportCard::new("prompt-cell", "Import model")
-                        .hint("Click to choose a model folder")
+                        .hint("Click to choose or drag a model folder")
                         .into_any_element(),
                     ModelImportCard::new("progress-cell", "Import model")
                         .step(Some("Importing model…".into()))

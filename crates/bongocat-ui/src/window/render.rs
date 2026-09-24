@@ -1,5 +1,5 @@
 use super::*;
-use gpui_kit::assets::IconName;
+use gpui_kit::{FileDropEvent, assets::IconName, canvas};
 
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -7,6 +7,26 @@ impl Render for SettingsView {
         if viewport.width <= px(0.) || viewport.height <= px(0.) {
             return div().size_full().into_any_element();
         }
+        // `on_file_drop_exit` is intentionally hitbox-scoped in GPUI. Once the
+        // pointer is outside the window, that hitbox is no longer hovered and
+        // the element callback can miss the platform's DragLeave/DragExit event.
+        // Register a window-level listener from a paint-phase canvas instead;
+        // it remains active even when the drag leaves from outside the viewport.
+        let drag_exit_view = cx.entity().downgrade();
+        let model_drag_exit_listener = canvas(|_bounds, _window, _cx| {}, {
+            let drag_exit_view = drag_exit_view.clone();
+            move |_bounds, _state, window, _cx| {
+                window.on_mouse_event(move |event: &FileDropEvent, _phase, _window, cx| {
+                    if matches!(event, FileDropEvent::Exited) {
+                        let _ = drag_exit_view.update(cx, |view, cx| view.clear_model_drag(cx));
+                    }
+                });
+            }
+        })
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full();
         let snapshot = self.snapshot.clone();
         // The appearance is applied on every frame, seeded included: the first frame is
         // painted before the service answers the first snapshot, and it has to be the
@@ -1075,9 +1095,37 @@ impl Render for SettingsView {
                 application_page,
                 about_page,
             ]);
+        let model_drag_overlay = self.model_drag.map(|state| {
+            let view = cx.entity().downgrade();
+            model_drag_overlay::render(state, language, Tokens::from_theme(cx))
+                .on_drag_move(
+                    cx.listener(|view, event: &DragMoveEvent<ExternalPaths>, _, cx| {
+                        let path_count = event.drag(cx).paths().len();
+                        view.update_model_drag(path_count, cx);
+                    }),
+                )
+                .on_drop({
+                    let view = view.clone();
+                    move |paths: &ExternalPaths, _, cx| {
+                        let _ = view.update(cx, |view, cx| {
+                            view.accept_model_folder_drop(paths.paths(), cx);
+                        });
+                    }
+                })
+        });
 
         div()
             .id("bongocat-settings-root")
+            .relative()
+            .on_drag_move(
+                cx.listener(|view, event: &DragMoveEvent<ExternalPaths>, _, cx| {
+                    let path_count = event.drag(cx).paths().len();
+                    view.update_model_drag(path_count, cx);
+                }),
+            )
+            .on_drop(cx.listener(|view, paths: &ExternalPaths, _, cx| {
+                view.accept_model_folder_drop(paths.paths(), cx);
+            }))
             .on_key_down(cx.listener(|view, event, window, cx| {
                 if view.shortcut_capture.is_some() {
                     cx.stop_propagation();
@@ -1096,8 +1144,10 @@ impl Render for SettingsView {
             .flex()
             .flex_col()
             .child(div().min_h_0().w_full().flex_1().child(settings))
+            .child(model_drag_exit_listener)
             .children(Root::render_notification_layer(window, cx))
             .children(Root::render_dialog_layer(window, cx))
+            .children(model_drag_overlay)
             .into_any_element()
     }
 }
