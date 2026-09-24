@@ -269,15 +269,6 @@
       "conflict": "%{shortcut} 已被其他快捷键占用"
     }
   },
-  "status": {
-    "refreshing": "正在刷新状态…",
-    "saving": "正在保存更改…",
-    "connecting": "正在连接后台服务…",
-    "starting": "正在启动",
-    "ready": "就绪",
-    "degraded": "部分功能不可用",
-    "stopped": "已停止"
-  },
   "errors": {
     "settings": {
       "service_unavailable": "设置服务不可用",
@@ -429,9 +420,6 @@
       }
     },
     "application": {
-      "status": {
-        "title": "应用状态"
-      },
       "system": {
         "title": "系统图标"
       },

@@ -5296,6 +5296,28 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `build_info_detail` 读 `.version` / `.environment.*`）与 `about.rs`（读 `.title`）使用。
       据此做了一次全量孤儿键审计，真正的遗留见第 93 项的新增记录。教训：**"看起来像遗留"不等于
       遗留，删键前必须查构造路径**。
+    - 删除 Application 页的「应用状态」行（2026-09-24，维护者要求"去掉应用状态这一项，删除相关的
+      全部代码"）：该行是 `application_page` 的第一个 group（无组标题，因为它是该组唯一一行），
+      也是**整个设置窗口里唯一**显示 `RuntimeHealth` 的位置——值来自 `render.rs` 的
+      `let status: SharedString = match (self.pending, &snapshot) {…}`，其中 `status_is_error` 恒为
+      `false`，所以 `Tag::danger()` 那个分支从未执行过。
+      删除面（逐处已核对）：① `crates/bongocat-ui/src/window/render.rs` 的 `status` /
+      `status_is_error` 计算块与那个单行 group（`settings.application.status.title`）；
+      ② 两个 locale 的 `settings.application.status.title` 与顶层 `status.*` 七个键
+      （`refreshing` / `saving` / `connecting` / `starting` / `ready` / `degraded` / `stopped`）——
+      这七个只被上面那段代码引用，删行后会被 `catalog_keys_are_referenced_by_source` 判为死键；
+      实测 `tools/validate-locales.py` 键数 256 → **248**，两个 locale 一致；③ `window.rs` 里因此
+      不再被引用的两个导入
+      （`RuntimeHealth` 与 `tag::Tag`，二者在 `bongocat-ui` 内只剩这一处使用者）；
+      ④ 四处写着"the header status is the saving indicator"的注释（`render.rs`、`setting_gate.rs`、
+      `shortcuts_page.rs`、`window.rs`）——那句话依赖的显示位正是被删的这一行，留着会误导，
+      已改成不带状态指示器的表述。
+      **协议层不动**：`SettingsSnapshot.runtime_health` 与 `RuntimeHealth` 保留——它们还被
+      `bongocat-app/src/settings.rs` 的 `runtime_health_code`（匿名诊断报告导出）与快照构建使用，
+      不是"这一项"的实现，删掉会连带改诊断导出格式。
+      **行为后果（如实记录）**：`pending` 的"正在保存更改…"/"正在刷新状态…"文案随之失去唯一显示位，
+      设置窗口现在没有任何"保存中"反馈；`pending` 仍只作命令守卫，ADR-0053 决策 5 的门禁口径不变。
+      **未验证**：该行确实从界面上消失（按约定由维护者人工观察）。
 
 95. [x] `P1-SHORTCUT-SCOPE-SUBPAGES`：快捷键页的两个作用域改为两个子级页面，移除 Tab 组件。
     - 背景（2026-09-20，维护者反馈）：快捷键页用 `TabBar` 在"窗口快捷键 / 模型快捷键"之间切换。第 94 项

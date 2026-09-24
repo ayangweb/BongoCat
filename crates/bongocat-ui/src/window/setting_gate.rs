@@ -24,7 +24,7 @@
 //!   survives the switch exactly as the user left it.
 //! - The transient in-flight save flag never feeds a gate. It flips on and
 //!   off around every save and would visibly dim and re-enable the page on
-//!   each control change; the header status is the saving indicator instead.
+//!   each control change.
 //!
 //! To add a gated group: name one predicate from the snapshot that reports
 //! whether the switch is on (positive, no inversion), build one

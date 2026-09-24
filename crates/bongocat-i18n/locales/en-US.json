@@ -269,15 +269,6 @@
       "conflict": "%{shortcut} is already assigned to another shortcut"
     }
   },
-  "status": {
-    "refreshing": "Refreshing…",
-    "saving": "Saving changes…",
-    "connecting": "Connecting to the background service…",
-    "starting": "Starting",
-    "ready": "Ready",
-    "degraded": "Some features are unavailable",
-    "stopped": "Stopped"
-  },
   "errors": {
     "settings": {
       "service_unavailable": "Settings service is unavailable",
@@ -429,9 +420,6 @@
       }
     },
     "application": {
-      "status": {
-        "title": "Application status"
-      },
       "system": {
         "title": "System icons"
       },

@@ -41,11 +41,10 @@ impl Render for SettingsView {
         // model import running. The transient in-flight `pending` flag must
         // not feed any gate or row: it flips on and off around every save and
         // visibly dims and re-enables the page on each control change, which
-        // reads as the page refreshing. The header status is the saving
-        // indicator instead. `editing_blocked` is that one predicate, shared
-        // by every page's gate — the General page's selects and the startup
-        // switch below read it exactly like the gated rows do (see
-        // `setting_gate` for the unified rule).
+        // reads as the page refreshing. `editing_blocked` is that one
+        // predicate, shared by every page's gate — the General page's selects
+        // and the startup switch below read it exactly like the gated rows do
+        // (see `setting_gate` for the unified rule).
         let editing_blocked = self.editing_blocked(snapshot.as_ref());
         let hover_hide_delay_available = snapshot
             .as_ref()
@@ -121,31 +120,6 @@ impl Render for SettingsView {
             );
         }
         self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, editing_blocked, cx);
-        let status: SharedString = match (self.pending, &snapshot) {
-            (Some(PendingOperation::Refresh), _) => {
-                bongocat_i18n::text(language.catalog_locale(), "status.refreshing").into()
-            }
-            (Some(_), _) => bongocat_i18n::text(language.catalog_locale(), "status.saving").into(),
-            (None, Some(snapshot)) => {
-                let health = match snapshot.runtime_health {
-                    RuntimeHealth::Starting => {
-                        bongocat_i18n::text(language.catalog_locale(), "status.starting")
-                    }
-                    RuntimeHealth::Ready => {
-                        bongocat_i18n::text(language.catalog_locale(), "status.ready")
-                    }
-                    RuntimeHealth::Degraded => {
-                        bongocat_i18n::text(language.catalog_locale(), "status.degraded")
-                    }
-                    RuntimeHealth::Stopped => {
-                        bongocat_i18n::text(language.catalog_locale(), "status.stopped")
-                    }
-                };
-                health.into()
-            }
-            _ => bongocat_i18n::text(language.catalog_locale(), "status.connecting").into(),
-        };
-        let status_is_error = false;
         let view_entity = cx.entity();
         let startup_item = startup_item_presentation(
             snapshot.as_ref().map(|snapshot| snapshot.startup_item),
@@ -204,8 +178,8 @@ impl Render for SettingsView {
         ]);
 
         // The model window itself: how it behaves on the desktop, how it looks,
-        // and how often it draws. The application status moved to Application and
-        // the motion audio to Interaction, where they describe those pages.
+        // and how often it draws. The motion audio moved to Interaction, where
+        // it describes that page.
         let overlay_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.model_window.title",
@@ -820,34 +794,14 @@ impl Render for SettingsView {
                 ]),
         ]);
 
-        // The application's own surface: how it is running, how it integrates
-        // with the desktop, and how it starts and updates itself. The runtime
-        // status came here from the model window group it never belonged to —
-        // it reports the app's health, not the window's.
+        // The application's own surface: how it integrates with the desktop and
+        // how it starts and updates itself.
         let application_page = SettingPage::new(bongocat_i18n::text(
             language.catalog_locale(),
             "navigation.application.title",
         ))
         .icon(IconName::Cog)
         .groups(vec![
-            // No group title: the application status is the first thing on the page and the only
-            // row the group holds, so a heading here would just repeat the row's own label.
-            SettingGroup::new().items(vec![SettingItem::new(
-                bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "settings.application.status.title",
-                ),
-                SettingField::element({
-                    let status = status.clone();
-                    move |_: &RenderOptions, _: &mut Window, _: &mut App| {
-                        if status_is_error {
-                            Tag::danger().child(status.clone()).into_any_element()
-                        } else {
-                            Tag::secondary().child(status.clone()).into_any_element()
-                        }
-                    }
-                }),
-            )]),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),

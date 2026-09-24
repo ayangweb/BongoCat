@@ -163,8 +163,7 @@ impl ShortcutScope {
 /// flips on and off around every save, and threading it into every row dimmed
 /// and re-enabled the whole page on each control change, which read as the
 /// page visibly refreshing. Requests that land while another is in flight
-/// already no-op through `start_request` and `shortcut_commands_available`,
-/// and the header status is the saving indicator.
+/// already no-op through `start_request` and `shortcut_commands_available`.
 pub(super) fn group(
     scope: ShortcutScope,
     language: SettingsLanguage,

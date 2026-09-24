@@ -21,6 +21,7 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 ### 🗑️ Removals
 
+- The Application page no longer carries an application status row. It reported the runtime's health — `Ready`, `Stopped` and the states between them — and, while a change was in flight, the save itself; the row, the status copy behind it and the in-flight state it rendered are gone with it.
 - Importing a model from a ZIP archive is gone for now: the upload card opens the folder picker only, no copy mentions archives, and the model library no longer reads ZIP sources at all — the archive reader, its limits and its diagnostics were removed with it. The design is kept in the ADR for when archive import is built properly, which needs work of its own; until then a model is imported from the folder it was exported as.
 
 ### ⚠️ Upgrade Notice

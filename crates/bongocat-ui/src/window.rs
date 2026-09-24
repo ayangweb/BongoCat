@@ -1,12 +1,12 @@
 use crate::{
-    RuntimeHealth, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsError,
-    SettingsErrorCode, SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel,
-    SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
-    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelKey, SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent,
-    SettingsMverMode, SettingsOperationId, SettingsOverlay, SettingsShortcutBinding,
-    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsError, SettingsErrorCode,
+    SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel, SettingsLogging,
+    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
+    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelKey,
+    SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode,
+    SettingsOperationId, SettingsOverlay, SettingsShortcutBinding, SettingsShortcuts,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
     SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
     SettingsWindowState,
 };
@@ -29,7 +29,6 @@ use gpui_kit::component::{
         NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
         Settings,
     },
-    tag::Tag,
 };
 
 use gpui_kit::{
@@ -1155,8 +1154,7 @@ impl SettingsView {
     /// feeds it — it flips on and off around every command, so gating on it
     /// dims and re-enables a whole page on each control change, which reads
     /// as the page refreshing. Re-entrancy is refused by the command guards
-    /// instead (`start_request`, the model command methods), and the header
-    /// status is the saving indicator.
+    /// instead (`start_request`, the model command methods).
     fn editing_blocked(&self, snapshot: Option<&SettingsSnapshot>) -> bool {
         snapshot.is_none()
             || self.model_import.is_running()
