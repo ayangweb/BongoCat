@@ -12,13 +12,15 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-mod state;
-pub use state::{
-    ApplicationState, OverlayWindowPlacement, STATE_SCHEMA_VERSION, StateError, StateLoadOutcome,
-    StateLoadStatus, StateStore, WindowPlacement,
+mod window_state;
+pub use window_state::{
+    OverlayWindowPlacement, WINDOW_STATE_SCHEMA_VERSION, WINDOW_STATE_WRITER_LOCK_FILE_NAME,
+    WindowPlacement, WindowState, WindowStateError, WindowStateLoadOutcome, WindowStateLoadStatus,
+    WindowStateStore,
 };
 
 pub const BUNDLE_ID: &str = "com.ayangweb.bongo-cat";
+pub const WINDOW_STATE_FILE_NAME: &str = "window-state.json";
 pub const SCHEMA_VERSION: u32 = 1;
 const BACKUP_FORMAT_VERSION: u32 = 1;
 const MAX_CONFIG_BACKUPS: usize = 8;
@@ -60,7 +62,7 @@ pub struct StorageLayout {
     pub environment: BuildEnvironment,
     pub root: PathBuf,
     pub config: PathBuf,
-    pub state: PathBuf,
+    pub window_state: PathBuf,
     pub models: PathBuf,
     /// The user side of the models the build ships.
     ///
@@ -86,7 +88,7 @@ impl StorageLayout {
         Self {
             environment,
             config: root.join("config.json"),
-            state: root.join("state.json"),
+            window_state: root.join(WINDOW_STATE_FILE_NAME),
             models: root.join("models"),
             model_overrides: root.join("model-overrides"),
             backups: root.join("backups"),
@@ -2368,6 +2370,23 @@ mod tests {
     const CRASH_PROBE_READY: &str = "BONGOCAT_CONFIG_CRASH_PROBE_READY";
 
     #[test]
+    fn storage_layout_uses_the_domain_specific_window_state_filename() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BuildEnvironment::Development);
+        assert_eq!(
+            layout.window_state,
+            base.path()
+                .join(BUNDLE_ID)
+                .join("development")
+                .join("window-state.json")
+        );
+        assert_eq!(
+            WINDOW_STATE_WRITER_LOCK_FILE_NAME,
+            "window-state.writer.lock"
+        );
+    }
+
+    #[test]
     fn environments_have_identical_shape_and_disjoint_roots() {
         let base = tempdir().expect("temp directory");
         let development = StorageLayout::under(base.path(), BuildEnvironment::Development);
@@ -2376,7 +2395,7 @@ mod tests {
         let relative_shape = |layout: &StorageLayout| {
             [
                 &layout.config,
-                &layout.state,
+                &layout.window_state,
                 &layout.models,
                 &layout.backups,
                 &layout.logs,

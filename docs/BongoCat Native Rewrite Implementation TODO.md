@@ -17,7 +17,7 @@
 > 本文后续已勾选的历史状态若提到旧恢复 UI 或项目 AccessKit bridge，只作为当时的实现证据；
 > 后续代码以 ADR-0054 为准，不得据此重新引入。
 
-> 初始版本基线：`next` 只开发全新的首版，当前完整配置、state 和内部持久格式统一从 v1 开始。
+> 初始版本基线：`next` 只开发全新的首版，当前完整配置、window state 和内部持久格式统一从 v1 开始。
 > 首次正式发布前不实现版本迁移、schema 兼容、旧数据转换或历史版本判断；新增字段直接修改当前
 > v1。保留版本字段和严格的当前版本解析入口，首次发布后的后续版本再以实际发布基线设计迁移。
 
@@ -36,7 +36,7 @@
 - [ ] Linux 不阻塞首发，但共享 crate 不得暴露 Win32/AppKit 类型。
 - [ ] Development 不得读取、写入、锁住或 fallback 到 Production 数据。
 - [ ] 不实现旧配置字段 alias、自动导入或旧目录探测。
-- [ ] `next` 的配置、state 和内部持久格式保持 v1，不包含开发中间版本的迁移或兼容分支。
+- [ ] `next` 的配置、window state 和内部持久格式保持 v1，不包含开发中间版本的迁移或兼容分支。
 - [ ] 新功能实现遵守 ADR-0030：先复用现有代码、标准库、平台能力、已安装依赖和成熟第三方
       方案；只有现成方案无法满足需求或引入成本明显更高时才编写最小自有实现。
 
@@ -1006,11 +1006,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 - 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、OS writer lock contract、中断提交恢复 contract 和双平台真实 path resolver。Windows jobs 先后暴露只读 handle flush、强杀后锁释放延迟，以及首次启动 recovery 后立即重锁提交默认值的竞态；启动恢复以 10 ms 间隔有界重试最多 1 秒，`load_or_default` 又把 recover/read/create-default 合并到单个 guard，普通 commit 仍立即报告竞争。备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
 - [x] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
-  - 验收证据（2026-09-01）：`bongocat-config` 的 `NativeConfig`/`ApplicationState` 与
-    `shared/config/config.schema.json`、`state.schema.json` 同步；serde 输出使用 `snake_case`，
+  - 验收证据（2026-09-01）：`bongocat-config` 的 `NativeConfig`/`WindowState` 与
+    `shared/config/config.schema.json`、`window-state.schema.json` 同步；serde 输出使用 `snake_case`，
     Draft 2020-12 validator 和 Native config/state fixtures 已在 workspace tests 与 CI 校验。
 - [x] 区分用户配置、运行时状态和诊断数据。
-  - 验收证据（2026-09-01）：用户配置写入 `config.json`，窗口状态写入独立 `state.json`，运行时
+  - 验收证据（2026-09-01）：用户配置写入 `config.json`，窗口状态写入独立 `window-state.json`，运行时
     snapshot/输入诊断只经 typed API 暴露，日志和匿名 diagnostics export 不复用用户配置结构。
 - [x] 为字段定义范围、默认值和跨字段约束。
   - 验收证据（2026-09-01）：Rust `NativeConfig::validate` 与 JSON Schema 固定 FPS、缩放、透明度、
@@ -1024,7 +1024,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 - [x] Windows 使用 `%APPDATA%\com.ayangweb.bongo-cat\<environment>\` 数据根。
 - [x] macOS 使用 `Application Support/com.ayangweb.bongo-cat/<environment>/` 数据根。
   - 双平台 target-specific resolver test 已通过。
-- [x] 两个环境的 `config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/` 和 `locks/` 相对结构一致；spike 测试逐项比较相对路径。
+- [x] 两个环境的 `config.json`、`window-state.json`、`models/`、`backups/`、`logs/`、`updates/` 和 `locks/` 相对结构一致；spike 测试逐项比较相对路径。
 - [x] 环境不能由 CLI、进程环境变量或设置项在运行时切换，也不能 fallback 到另一环境。
   - 验收证据（2026-09-14）：`bongocat-app` 只在编译期根据 `production` Cargo feature 选择
     `BuildEnvironment`；运行时 API 不接受环境选择，也无 CLI/设置切换或另一环境 fallback。
@@ -1845,17 +1845,17 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
   - 验收证据（2026-08-31）：Native schema/Rust 类型没有 serde alias 或 legacy 字段，严格未知
     字段 fixture 与单元测试拒绝 `legacy_alias`/`old_pinia_field`；产品 `ConfigStore` 只解析当前
     环境的完整 v1 `config.json`，不执行迁移或兼容转换。
-- [ ] 独立 `state.json` v1 schema 只保存可恢复窗口布局，不进入用户配置事务。
-  - 状态（2026-09-04）：正式 `StateStore` v1 保存 settings 与 overlay 的有限坐标/尺寸，
+- [ ] 独立 `window-state.json` v1 schema 只保存可恢复窗口布局，不进入用户配置事务。
+  - 状态（2026-09-04）：正式 `WindowStateStore` v1 保存 settings 与 overlay 的有限坐标/尺寸，
     settings 的 maximized、独立 writer lock、原子提交后验证/回滚、损坏/非 v1 schema 非阻塞回退和
     未知文件防覆盖已实现；settings worker 接收合并后的 GPUI bounds 更新和 overlay 几何变化并及时
     落盘，shutdown 仍强制 flush。更新后的双平台实机多显示器恢复证据尚未完成，因此保持未勾选，
-    由 `P6-STATE-WINDOW-LAYOUT` 跟踪。
+    由 `P6-WINDOW-STATE-LAYOUT` 跟踪。
   - 状态（2026-09-06）：新增 shared reject fixture 在合法窗口布局旁注入 `overlay.visible` 配置
-    字段；`state.schema.json` 与 `StateStore` parser 均拒绝它，固定 state 不得承载用户配置。该
+    字段；`window-state.schema.json` 与 `WindowStateStore` parser 均拒绝它，固定 window state 不得承载用户配置。该
     fixture 不影响 config.json 事务，双平台多显示器恢复证据仍是本项剩余门槛。
-  - 状态（2026-09-07）：state contract 测试改为读取共享 `state-fixtures/manifest.json`，逐项执行
-    accept/reject 断言并拒绝 manifest 内重复文件；新增 state fixture 未同步 manifest 时会明确失败。
+  - 状态（2026-09-07）：window-state contract 测试改为读取共享 `window-state-fixtures/manifest.json`，逐项执行
+    accept/reject 断言并拒绝 manifest 内重复文件；新增 window-state fixture 未同步 manifest 时会明确失败。
 
 ### 7.2 环境与持久化事务
 
@@ -1911,21 +1911,21 @@ Windows 原生 build、UIA、设置窗口和 shutdown smoke 仍须由 `windows-l
 
 - [x] Development 与 Production 的相对目录树和 JSON schema 完全一致。
   - 验收证据（2026-09-06）：`bongocat-config::environments_have_identical_shape_and_disjoint_roots`
-    逐项比较两个环境的 config、state、models、backups、logs、updates 和 locks 相对路径，
-    并确认根目录互不包含；两个环境共用同一严格 v1 `NativeConfig`/`ApplicationState` 类型与
-    `config.schema.json`/`state.schema.json`。`python3 tools/validate-json-schema.py` 已通过
-    9 个 input、9 个 expected、10 个 config 和 6 个 state fixture；原 4 个 update fixture 已随
+    逐项比较两个环境的 config、window state、models、backups、logs、updates 和 locks 相对路径，
+    并确认根目录互不包含；两个环境共用同一严格 v1 `NativeConfig`/`WindowState` 类型与
+    `config.schema.json`/`window-state.schema.json`。`python3 tools/validate-json-schema.py` 已通过
+    9 个 input、9 个 expected、10 个 config 和 6 个 window-state fixture；原 4 个 update fixture 已随
     ADR-0029 删除，环境同构测试仍通过。
-- [x] 配置、state、模型、备份、日志、锁和单实例 namespace 均包含环境边界。
-  - 验收证据（2026-09-06）：`StorageLayout` 为 Development/Production 分别派生 config、state、
-    models、backups、logs、updates 和 locks 根；config/state/model/update 的环境边界已有定向
+- [x] 配置、window state、模型、备份、日志、锁和单实例 namespace 均包含环境边界。
+  - 验收证据（2026-09-06）：`StorageLayout` 为 Development/Production 分别派生 config、window state、
+    models、backups、logs、updates 和 locks 根；config/window-state/model/update 的环境边界已有定向
     contract。`Application::start` 的双环境回归进一步断言两套 application writer 将独立事件写入
     各自 logs，内容不会交叉。Windows `SingleInstanceEnvironment` 使用按环境分开的 mutex、window
     class、window title 与 wake message；产品入口只由不可变 build environment 选择其 namespace。
 - [x] 两个环境可同时运行，不争用 writer lock、模型目录或日志文件。
   - 验收证据（2026-09-06）：`development_and_production_applications_never_share_roots` 在同一
     进程中同时启动两套正式 Application，以同一 model ID 分别导入，确认 models 根彼此独立；两者
-    又在并存期间各自写入不同 application log event 并断言日志目录和内容不交叉。config/state
+    又在并存期间各自写入不同 application log event 并断言日志目录和内容不交叉。config/window-state
     的跨环境 writer lock/restart contract 与 update channel 的独立 sequence store 已由各自定向测试覆盖。
 - [x] 开发构建即使收到指向 Production 的 CLI 参数或进程环境变量也拒绝越界。
   - 验收证据（2026-09-14）：`bongocat-app` 仅在编译期根据 `production` feature 选择
@@ -3188,10 +3188,10 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       验证破坏注入、原 bytes 回滚、temp 清理和重启重试均有正式 crate 回归。底层事务与故障注入
       最初由 commit `fd0f1d2` 建立；本次无迁移的 v1 实现已通过本地 format、Clippy、workspace test、
       release check、config-store contract 和 schema/fixture 门禁。
-44. [x] `P6-STATE-WINDOW-LAYOUT`：以环境内 `state.json` 恢复所有产品窗口布局。- 依赖：`P6-STORAGE-LAYOUT-BOUNDARY`、正式 settings lifecycle、GPUI 公共 bounds API。- 退出条件：state 使用独立 v1 schema、`state.writer.lock` 和原子提交后验证，不进入 config
+44. [x] `P6-WINDOW-STATE-LAYOUT`：以环境内 `window-state.json` 恢复所有产品窗口布局。- 依赖：`P6-STORAGE-LAYOUT-BOUNDARY`、正式 settings lifecycle、GPUI 公共 bounds API。- 退出条件：window state 使用独立 v1 schema、`window-state.writer.lock` 和原子提交后验证，不进入 config
         revision/backup/recovery；settings 与 overlay 坐标/尺寸有界且支持负坐标，settings 另保存
         maximized；完全离屏或无已存状态时回到鼠标当前所在显示器居中；缺失、损坏、I/O 和非 v1 schema
-        不阻塞 config/runtime，当前版本不覆盖未知 state；GPUI observer 合并变化后及时写入，overlay
+        不阻塞 config/runtime，当前版本不覆盖未知 window state；GPUI observer 合并变化后及时写入，overlay
         只在几何变化时写入，settings worker shutdown 强制 flush，配置更新、模型切换、macOS Entity
         重建与 Windows 隐藏/重显均保留最新几何，进程重启读回；config/ui/app 定向测试、严格
         Clippy、完整 Native workspace、三平台 CI 和双平台隔离 storage smoke 通过。- 验收证据（2026-08-31）：typed store、UI tracker、Application/settings worker 接线、损坏隔离、
@@ -3206,10 +3206,13 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         jobs `99500010100`（Ubuntu）、`99500010122`（macOS）和 `99500010167`（Windows）以及
         Windows input/config job `99500010128` 全部通过；Windows 原生状态 smoke 输出与 macOS
         release smoke 一致。2026-09-02 增补运行中落盘、配置/模型更新不覆盖状态和 overlay 完整
-        bounds 恢复；2026-09-04 将当前完整 state 结构重置为 v1。更新后的 Windows/macOS 实机
+        bounds 恢复；2026-09-04 将当前完整 window-state 结构重置为 v1。更新后的 Windows/macOS 实机
         显示器/DPI 热切换仍属于后续平台矩阵。2026-09-04 又将无已保存 bounds 时的
         `100%` 默认宽度统一为 `350px`，高度按当前模型 Canvas 宽高比自适应；完整 bounds 恢复、变化持久化和
         缩放时按比例更新的契约不变。
+    - 命名修订（2026-09-24）：首版尚未发布，按当前单一领域直接命名为 `window-state.json`，并同步
+      `window-state.schema.json`、`window-state-fixtures/`、`window-state.writer.lock` 与 Rust 类型。
+      JSON 结构和 `schema_version: 1` 不变；开发期其它路径不读取、不迁移、不 fallback。
 45. [ ] `P2-GAMEPAD-RUNTIME`：将双平台 GameController/XInput producer 接入正式 runtime。
     - 依赖：`InputControl::Gamepad` 按钮语义、Gamepad axis keyed latest-value contract、现有
       Windows/macOS 平台 producer spike。

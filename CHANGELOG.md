@@ -20,6 +20,10 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 - Importing a model from a ZIP archive is gone for now: the upload card opens the folder picker only, no copy mentions archives, and the model library no longer reads ZIP sources at all — the archive reader, its limits and its diagnostics were removed with it. The design is kept in the ADR for when archive import is built properly, which needs work of its own; until then a model is imported from the folder it was exported as.
 
+### ⚠️ Upgrade Notice
+
+- The persisted window layout file is now named `window-state.json` instead of the overly broad `state.json`. Its format and schema version are unchanged; pre-release data under the old name is not migrated.
+
 ### 🐛 Bug Fixes
 
 - The model window now keeps the same dimensions when switching back to a model. Its height is recalculated from the model's canvas aspect ratio and the live width, while initial creation and model switching use one shared rounding rule on Windows and macOS instead of differing by a pixel.

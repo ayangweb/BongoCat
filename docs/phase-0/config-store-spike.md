@@ -10,7 +10,7 @@
 `spikes/config-store/` 只实现 Native Rewrite 配置契约，不读取或转换旧 Tauri/Pinia 数据：
 
 - Bundle ID 为 `com.ayangweb.bongo-cat`；相同 base 下使用 `development/` 与 `production/` 两个互斥根目录；
-- 两个环境具有完全一致的相对结构：`config.json`、`state.json`、`models/`、`backups/`、`logs/`、`updates/`、`locks/`；
+- 两个环境具有完全一致的相对结构：`config.json`、`window-state.json`、`models/`、`backups/`、`logs/`、`updates/`、`locks/`；
 - `NativeConfig` 是强类型结构，当前与共享默认 fixture 对齐为 `schema_version = 1`，模型选择
   使用成对的 `selected_model_origin`/`selected_model_id`，JSON key 使用当前产品语义的
   `snake_case`；`next` 不读取或迁移开发中间结构；
@@ -44,7 +44,7 @@ Windows job `99097619545` 在 Windows Server 2025 / `windows-2025-vs2026` runner
 17 项 unit test 和 2 项 process integration test；后者明确包含
 `development_and_production_processes_commit_and_restart_independently`，验证两个环境并发
 提交、退出后重建 store 及 sentinel/lock root 隔离。该证据只覆盖 config store，不替代未来
-state、模型、日志、单实例和更新 channel 的环境隔离测试。
+window state、模型、日志、单实例和更新 channel 的环境隔离测试。
 
 后续 push run `33255204781` 的独立 Windows config-store job 在强杀子进程并 `wait` 后立即
 恢复时偶发一次 `LockUnavailable`，而同 commit 的 Windows input/config job、对应 PR job及

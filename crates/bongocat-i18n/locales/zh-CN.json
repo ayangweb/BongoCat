@@ -309,7 +309,7 @@
       "status_icon_update_failed": "无法更新状态图标的显示",
       "taskbar_icon_update_failed": "无法更新任务栏图标的显示",
       "window_hide_failed": "无法隐藏设置窗口",
-      "state_persist_failed": "无法保存窗口布局",
+      "window_state_persist_failed": "无法保存窗口布局",
       "shutdown_failed": "应用未能完成关闭"
     }
   },

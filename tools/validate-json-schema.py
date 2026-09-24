@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INPUT_DIR = ROOT / "shared" / "fixtures" / "input-sequences"
 EXPECTED_DIR = ROOT / "shared" / "fixtures" / "expected-state"
 CONFIG_DIR = ROOT / "shared" / "config" / "fixtures"
-STATE_DIR = ROOT / "shared" / "config" / "state-fixtures"
+WINDOW_STATE_DIR = ROOT / "shared" / "config" / "window-state-fixtures"
 MODEL_FIXTURE_DIR = ROOT / "shared" / "fixtures" / "model-fixtures"
 
 
@@ -153,14 +153,14 @@ def main() -> int:
         validate_schema(ROOT / "shared" / "config" / "config.schema.json"),
         "config",
     )
-    state_count = validate_manifest_fixtures(
-        STATE_DIR,
-        validate_schema(ROOT / "shared" / "config" / "state.schema.json"),
-        "state",
+    window_state_count = validate_manifest_fixtures(
+        WINDOW_STATE_DIR,
+        validate_schema(ROOT / "shared" / "config" / "window-state.schema.json"),
+        "window-state",
     )
     print(
         f"validated {input_count} input, {expected_count} expected, and "
-        f"{config_count} config, {state_count} state fixture(s), "
+        f"{config_count} config, {window_state_count} window-state fixture(s), "
         "with Draft 2020-12"
     )
     return 0

@@ -1438,8 +1438,8 @@ impl Drop for SmokeRoot {
 #[cfg(feature = "storage-test-injection")]
 fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_config::{
-        ApplicationState, BuildEnvironment, ConfigStore, Language, StateStore, StorageLayout,
-        Theme, WindowPlacement,
+        BuildEnvironment, ConfigStore, Language, StorageLayout, Theme, WindowPlacement,
+        WindowState, WindowStateStore,
     };
     use bongocat_ui_protocol::{SettingsLanguage, SettingsTheme};
 
@@ -1461,7 +1461,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
     config.appearance.language = Language::ChineseSimplified;
     config_store.commit(&config)?;
     drop(config_store);
-    StateStore::new(layout.clone()).commit(&ApplicationState::with_settings_window(Some(
+    WindowStateStore::new(layout.clone()).commit(&WindowState::with_settings_window(Some(
         WindowPlacement::new(999_000, 999_000, 800, 600, false)?,
     )))?;
     let application =
@@ -1667,7 +1667,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                 service
                     .join()
                     .map_err(|error| io::Error::other(error.to_string()))?;
-                let persisted = StateStore::new(layout.clone()).load_or_default().state;
+                let persisted = WindowStateStore::new(layout.clone()).load_or_default().state;
                 let expected = WindowPlacement::new(
                     expected.x,
                     expected.y,

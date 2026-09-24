@@ -9,7 +9,8 @@ use std::{
     io::{self, ErrorKind},
 };
 
-pub const STATE_SCHEMA_VERSION: u32 = 1;
+pub const WINDOW_STATE_SCHEMA_VERSION: u32 = 1;
+pub const WINDOW_STATE_WRITER_LOCK_FILE_NAME: &str = "window-state.writer.lock";
 const MIN_WINDOW_WIDTH: u32 = 640;
 const MIN_WINDOW_HEIGHT: u32 = 480;
 const MIN_OVERLAY_DIMENSION: u32 = 64;
@@ -36,7 +37,7 @@ pub struct OverlayWindowPlacement {
 }
 
 impl OverlayWindowPlacement {
-    pub fn new(x: i32, y: i32, width: u32, height: u32) -> Result<Self, StateError> {
+    pub fn new(x: i32, y: i32, width: u32, height: u32) -> Result<Self, WindowStateError> {
         let placement = Self {
             x,
             y,
@@ -47,18 +48,18 @@ impl OverlayWindowPlacement {
         Ok(placement)
     }
 
-    fn validate(self) -> Result<(), StateError> {
+    fn validate(self) -> Result<(), WindowStateError> {
         if !(-MAX_WINDOW_COORDINATE..=MAX_WINDOW_COORDINATE).contains(&self.x) {
-            return Err(StateError::InvalidValue("overlay_window.x"));
+            return Err(WindowStateError::InvalidValue("overlay_window.x"));
         }
         if !(-MAX_WINDOW_COORDINATE..=MAX_WINDOW_COORDINATE).contains(&self.y) {
-            return Err(StateError::InvalidValue("overlay_window.y"));
+            return Err(WindowStateError::InvalidValue("overlay_window.y"));
         }
         if !(MIN_OVERLAY_DIMENSION..=MAX_WINDOW_DIMENSION).contains(&self.width) {
-            return Err(StateError::InvalidValue("overlay_window.width"));
+            return Err(WindowStateError::InvalidValue("overlay_window.width"));
         }
         if !(MIN_OVERLAY_DIMENSION..=MAX_WINDOW_DIMENSION).contains(&self.height) {
-            return Err(StateError::InvalidValue("overlay_window.height"));
+            return Err(WindowStateError::InvalidValue("overlay_window.height"));
         }
         Ok(())
     }
@@ -71,7 +72,7 @@ impl WindowPlacement {
         width: u32,
         height: u32,
         maximized: bool,
-    ) -> Result<Self, StateError> {
+    ) -> Result<Self, WindowStateError> {
         let placement = Self {
             x,
             y,
@@ -83,18 +84,18 @@ impl WindowPlacement {
         Ok(placement)
     }
 
-    fn validate(self) -> Result<(), StateError> {
+    fn validate(self) -> Result<(), WindowStateError> {
         if !(-MAX_WINDOW_COORDINATE..=MAX_WINDOW_COORDINATE).contains(&self.x) {
-            return Err(StateError::InvalidValue("settings_window.x"));
+            return Err(WindowStateError::InvalidValue("settings_window.x"));
         }
         if !(-MAX_WINDOW_COORDINATE..=MAX_WINDOW_COORDINATE).contains(&self.y) {
-            return Err(StateError::InvalidValue("settings_window.y"));
+            return Err(WindowStateError::InvalidValue("settings_window.y"));
         }
         if !(MIN_WINDOW_WIDTH..=MAX_WINDOW_DIMENSION).contains(&self.width) {
-            return Err(StateError::InvalidValue("settings_window.width"));
+            return Err(WindowStateError::InvalidValue("settings_window.width"));
         }
         if !(MIN_WINDOW_HEIGHT..=MAX_WINDOW_DIMENSION).contains(&self.height) {
-            return Err(StateError::InvalidValue("settings_window.height"));
+            return Err(WindowStateError::InvalidValue("settings_window.height"));
         }
         Ok(())
     }
@@ -102,23 +103,23 @@ impl WindowPlacement {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ApplicationState {
+pub struct WindowState {
     pub schema_version: u32,
     pub settings_window: Option<WindowPlacement>,
     pub overlay_window: Option<OverlayWindowPlacement>,
 }
 
-impl Default for ApplicationState {
+impl Default for WindowState {
     fn default() -> Self {
         Self {
-            schema_version: STATE_SCHEMA_VERSION,
+            schema_version: WINDOW_STATE_SCHEMA_VERSION,
             settings_window: None,
             overlay_window: None,
         }
     }
 }
 
-impl ApplicationState {
+impl WindowState {
     pub fn with_settings_window(settings_window: Option<WindowPlacement>) -> Self {
         Self {
             settings_window,
@@ -131,15 +132,15 @@ impl ApplicationState {
         overlay_window: Option<OverlayWindowPlacement>,
     ) -> Self {
         Self {
-            schema_version: STATE_SCHEMA_VERSION,
+            schema_version: WINDOW_STATE_SCHEMA_VERSION,
             settings_window,
             overlay_window,
         }
     }
 
-    fn validate(&self) -> Result<(), StateError> {
-        if self.schema_version != STATE_SCHEMA_VERSION {
-            return Err(StateError::UnsupportedSchema(u64::from(
+    fn validate(&self) -> Result<(), WindowStateError> {
+        if self.schema_version != WINDOW_STATE_SCHEMA_VERSION {
+            return Err(WindowStateError::UnsupportedSchema(u64::from(
                 self.schema_version,
             )));
         }
@@ -154,7 +155,7 @@ impl ApplicationState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum StateLoadStatus {
+pub enum WindowStateLoadStatus {
     Loaded,
     Missing,
     IgnoredInvalid,
@@ -163,13 +164,13 @@ pub enum StateLoadStatus {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct StateLoadOutcome {
-    pub state: ApplicationState,
-    pub status: StateLoadStatus,
+pub struct WindowStateLoadOutcome {
+    pub state: WindowState,
+    pub status: WindowStateLoadStatus,
 }
 
 #[derive(Debug)]
-pub enum StateError {
+pub enum WindowStateError {
     Io(io::Error),
     Json(serde_json::Error),
     LockUnavailable,
@@ -178,30 +179,37 @@ pub enum StateError {
     VerificationFailed,
 }
 
-impl fmt::Display for StateError {
+impl fmt::Display for WindowStateError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io(error) => write!(formatter, "state I/O failed: {error}"),
-            Self::Json(error) => write!(formatter, "state JSON failed: {error}"),
-            Self::LockUnavailable => formatter.write_str("state writer lock is unavailable"),
+            Self::Io(error) => write!(formatter, "window state I/O failed: {error}"),
+            Self::Json(error) => write!(formatter, "window state JSON failed: {error}"),
+            Self::LockUnavailable => formatter.write_str("window state writer lock is unavailable"),
             Self::UnsupportedSchema(version) => {
-                write!(formatter, "unsupported state schema_version {version}")
+                write!(
+                    formatter,
+                    "unsupported window state schema_version {version}"
+                )
             }
-            Self::InvalidValue(field) => write!(formatter, "invalid state value: {field}"),
-            Self::VerificationFailed => formatter.write_str("state commit failed verification"),
+            Self::InvalidValue(field) => {
+                write!(formatter, "invalid window state value: {field}")
+            }
+            Self::VerificationFailed => {
+                formatter.write_str("window state commit failed verification")
+            }
         }
     }
 }
 
-impl std::error::Error for StateError {}
+impl std::error::Error for WindowStateError {}
 
-impl From<io::Error> for StateError {
+impl From<io::Error> for WindowStateError {
     fn from(error: io::Error) -> Self {
         Self::Io(error)
     }
 }
 
-impl From<serde_json::Error> for StateError {
+impl From<serde_json::Error> for WindowStateError {
     fn from(error: serde_json::Error) -> Self {
         Self::Json(error)
     }
@@ -209,17 +217,17 @@ impl From<serde_json::Error> for StateError {
 
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum InjectedStateWriteFailure {
+enum InjectedWindowStateWriteFailure {
     VerificationCorruption,
 }
 
-pub struct StateStore {
+pub struct WindowStateStore {
     layout: StorageLayout,
     #[cfg(test)]
-    injected_write_failure: Option<InjectedStateWriteFailure>,
+    injected_write_failure: Option<InjectedWindowStateWriteFailure>,
 }
 
-impl StateStore {
+impl WindowStateStore {
     pub fn new(layout: StorageLayout) -> Self {
         Self {
             layout,
@@ -228,110 +236,120 @@ impl StateStore {
         }
     }
 
-    pub fn load_or_default(&self) -> StateLoadOutcome {
-        match fs::read(&self.layout.state) {
-            Ok(bytes) => match parse_state(&bytes) {
-                Ok(state) => StateLoadOutcome {
+    pub fn load_or_default(&self) -> WindowStateLoadOutcome {
+        match fs::read(&self.layout.window_state) {
+            Ok(bytes) => match parse_window_state(&bytes) {
+                Ok(state) => WindowStateLoadOutcome {
                     state,
-                    status: StateLoadStatus::Loaded,
+                    status: WindowStateLoadStatus::Loaded,
                 },
-                Err(StateError::UnsupportedSchema(version)) => StateLoadOutcome {
-                    state: ApplicationState::default(),
-                    status: StateLoadStatus::IgnoredUnsupportedSchema(version),
+                Err(WindowStateError::UnsupportedSchema(version)) => WindowStateLoadOutcome {
+                    state: WindowState::default(),
+                    status: WindowStateLoadStatus::IgnoredUnsupportedSchema(version),
                 },
-                Err(StateError::Json(_) | StateError::InvalidValue(_)) => StateLoadOutcome {
-                    state: ApplicationState::default(),
-                    status: StateLoadStatus::IgnoredInvalid,
-                },
+                Err(WindowStateError::Json(_) | WindowStateError::InvalidValue(_)) => {
+                    WindowStateLoadOutcome {
+                        state: WindowState::default(),
+                        status: WindowStateLoadStatus::IgnoredInvalid,
+                    }
+                }
                 Err(
-                    StateError::Io(_)
-                    | StateError::LockUnavailable
-                    | StateError::VerificationFailed,
-                ) => StateLoadOutcome {
-                    state: ApplicationState::default(),
-                    status: StateLoadStatus::IgnoredIo,
+                    WindowStateError::Io(_)
+                    | WindowStateError::LockUnavailable
+                    | WindowStateError::VerificationFailed,
+                ) => WindowStateLoadOutcome {
+                    state: WindowState::default(),
+                    status: WindowStateLoadStatus::IgnoredIo,
                 },
             },
-            Err(error) if error.kind() == ErrorKind::NotFound => StateLoadOutcome {
-                state: ApplicationState::default(),
-                status: StateLoadStatus::Missing,
+            Err(error) if error.kind() == ErrorKind::NotFound => WindowStateLoadOutcome {
+                state: WindowState::default(),
+                status: WindowStateLoadStatus::Missing,
             },
-            Err(_) => StateLoadOutcome {
-                state: ApplicationState::default(),
-                status: StateLoadStatus::IgnoredIo,
+            Err(_) => WindowStateLoadOutcome {
+                state: WindowState::default(),
+                status: WindowStateLoadStatus::IgnoredIo,
             },
         }
     }
 
-    pub fn commit(&self, state: &ApplicationState) -> Result<(), StateError> {
+    pub fn commit(&self, state: &WindowState) -> Result<(), WindowStateError> {
         state.validate()?;
         create_private_dir_all(&self.layout.root)?;
         create_private_dir_all(&self.layout.locks)?;
         let _lock = self.acquire_writer_lock()?;
-        if let Ok(current) = fs::read(&self.layout.state)
-            && let Err(StateError::UnsupportedSchema(version)) = parse_state(&current)
+        if let Ok(current) = fs::read(&self.layout.window_state)
+            && let Err(WindowStateError::UnsupportedSchema(version)) = parse_window_state(&current)
         {
-            return Err(StateError::UnsupportedSchema(version));
+            return Err(WindowStateError::UnsupportedSchema(version));
         }
         let bytes = serde_json::to_vec_pretty(state)?;
-        let previous = match fs::read(&self.layout.state) {
+        let previous = match fs::read(&self.layout.window_state) {
             Ok(bytes) => Some(bytes),
             Err(error) if error.kind() == ErrorKind::NotFound => None,
             Err(error) => return Err(error.into()),
         };
-        write_private_atomic(&self.layout.state, &bytes)?;
+        write_private_atomic(&self.layout.window_state, &bytes)?;
         #[cfg(test)]
-        if self.injected_write_failure == Some(InjectedStateWriteFailure::VerificationCorruption) {
-            fs::write(&self.layout.state, b"corrupt-after-state-replace")?;
+        if self.injected_write_failure
+            == Some(InjectedWindowStateWriteFailure::VerificationCorruption)
+        {
+            fs::write(
+                &self.layout.window_state,
+                b"corrupt-after-window-state-replace",
+            )?;
         }
-        let verified = fs::read(&self.layout.state)
-            .map_err(StateError::from)
-            .and_then(|bytes| parse_state(&bytes));
+        let verified = fs::read(&self.layout.window_state)
+            .map_err(WindowStateError::from)
+            .and_then(|bytes| parse_window_state(&bytes));
         if !matches!(verified, Ok(ref verified_state) if verified_state == state) {
-            restore_state_bytes(&self.layout.state, previous.as_deref())?;
-            return Err(StateError::VerificationFailed);
+            restore_window_state_bytes(&self.layout.window_state, previous.as_deref())?;
+            return Err(WindowStateError::VerificationFailed);
         }
         Ok(())
     }
 
-    fn acquire_writer_lock(&self) -> Result<WriterLock, StateError> {
+    fn acquire_writer_lock(&self) -> Result<WriterLock, WindowStateError> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(false)
-            .open(self.layout.locks.join("state.writer.lock"))?;
+            .open(self.layout.locks.join(WINDOW_STATE_WRITER_LOCK_FILE_NAME))?;
         set_private_file(&file)?;
         match file.try_lock() {
             Ok(()) => Ok(WriterLock { _file: file }),
-            Err(TryLockError::WouldBlock) => Err(StateError::LockUnavailable),
+            Err(TryLockError::WouldBlock) => Err(WindowStateError::LockUnavailable),
             Err(TryLockError::Error(error)) => Err(error.into()),
         }
     }
 
     #[cfg(test)]
-    fn inject_write_failure(&mut self, failure: InjectedStateWriteFailure) {
+    fn inject_write_failure(&mut self, failure: InjectedWindowStateWriteFailure) {
         self.injected_write_failure = Some(failure);
     }
 }
 
-fn parse_state(bytes: &[u8]) -> Result<ApplicationState, StateError> {
+fn parse_window_state(bytes: &[u8]) -> Result<WindowState, WindowStateError> {
     let value: serde_json::Value = serde_json::from_slice(bytes)?;
     let schema_version = value
         .get("schema_version")
         .and_then(serde_json::Value::as_u64)
-        .ok_or(StateError::InvalidValue("schema_version"))?;
-    if schema_version != u64::from(STATE_SCHEMA_VERSION) {
-        return Err(StateError::UnsupportedSchema(schema_version));
+        .ok_or(WindowStateError::InvalidValue("schema_version"))?;
+    if schema_version != u64::from(WINDOW_STATE_SCHEMA_VERSION) {
+        return Err(WindowStateError::UnsupportedSchema(schema_version));
     }
-    let state: ApplicationState = serde_json::from_value(value)?;
+    let state: WindowState = serde_json::from_value(value)?;
     state.validate()?;
     Ok(state)
 }
 
-fn restore_state_bytes(path: &std::path::Path, previous: Option<&[u8]>) -> Result<(), StateError> {
+fn restore_window_state_bytes(
+    path: &std::path::Path,
+    previous: Option<&[u8]>,
+) -> Result<(), WindowStateError> {
     match previous {
-        Some(bytes) => write_private_atomic(path, bytes).map_err(StateError::from),
+        Some(bytes) => write_private_atomic(path, bytes).map_err(WindowStateError::from),
         None => match fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
@@ -347,24 +365,29 @@ mod tests {
     use std::{collections::BTreeSet, fs::File};
     use tempfile::TempDir;
 
-    fn state_store(root: &TempDir, environment: BuildEnvironment) -> StateStore {
-        StateStore::new(StorageLayout::under(root.path(), environment))
+    fn window_state_store(root: &TempDir, environment: BuildEnvironment) -> WindowStateStore {
+        WindowStateStore::new(StorageLayout::under(root.path(), environment))
     }
 
     fn placement(x: i32, y: i32) -> WindowPlacement {
         WindowPlacement::new(x, y, 800, 600, false).expect("valid placement")
     }
 
-    fn state_fixture(name: &str) -> Vec<u8> {
+    fn window_state_fixture(name: &str) -> Vec<u8> {
         let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(2)
             .expect("repository root");
-        fs::read(repository.join("shared/config/state-fixtures").join(name)).expect("state fixture")
+        fs::read(
+            repository
+                .join("shared/config/window-state-fixtures")
+                .join(name),
+        )
+        .expect("window state fixture")
     }
 
     #[test]
-    fn rust_state_contract_matches_shared_accept_and_reject_fixtures() {
+    fn rust_window_state_contract_matches_shared_accept_and_reject_fixtures() {
         #[derive(Deserialize)]
         struct FixtureManifest {
             #[serde(rename = "schemaVersion")]
@@ -379,9 +402,9 @@ mod tests {
         }
 
         let manifest: FixtureManifest = serde_json::from_str(include_str!(
-            "../../../shared/config/state-fixtures/manifest.json"
+            "../../../shared/config/window-state-fixtures/manifest.json"
         ))
-        .expect("state fixture manifest");
+        .expect("window state fixture manifest");
         assert_eq!(manifest.schema_version, 1);
         let mut declared_files = BTreeSet::new();
         for case in manifest.cases {
@@ -390,7 +413,7 @@ mod tests {
                 "duplicate fixture {}",
                 case.file
             );
-            let result = parse_state(&state_fixture(&case.file));
+            let result = parse_window_state(&window_state_fixture(&case.file));
             match case.expected.as_str() {
                 "accept" => assert!(result.is_ok(), "fixture {} must be accepted", case.file),
                 "reject" => assert!(result.is_err(), "fixture {} must be rejected", case.file),
@@ -400,17 +423,20 @@ mod tests {
     }
 
     #[test]
-    fn missing_corrupt_and_future_state_fall_back_without_touching_config() {
+    fn missing_corrupt_and_future_window_state_fall_back_without_touching_config() {
         let root = TempDir::new().expect("tempdir");
-        let store = state_store(&root, BuildEnvironment::Development);
-        assert_eq!(store.load_or_default().status, StateLoadStatus::Missing);
+        let store = window_state_store(&root, BuildEnvironment::Development);
+        assert_eq!(
+            store.load_or_default().status,
+            WindowStateLoadStatus::Missing
+        );
 
         fs::create_dir_all(&store.layout.root).expect("state root");
         fs::write(&store.layout.config, b"config-sentinel").expect("config sentinel");
-        fs::write(&store.layout.state, b"not-json").expect("corrupt state");
+        fs::write(&store.layout.window_state, b"not-json").expect("corrupt state");
         assert_eq!(
             store.load_or_default().status,
-            StateLoadStatus::IgnoredInvalid
+            WindowStateLoadStatus::IgnoredInvalid
         );
         assert_eq!(
             fs::read(&store.layout.config).expect("config preserved"),
@@ -418,31 +444,31 @@ mod tests {
         );
 
         fs::write(
-            &store.layout.state,
+            &store.layout.window_state,
             br#"{"schema_version":2,"settings_window":null,"overlay_window":null}"#,
         )
         .expect("future state");
         assert_eq!(
             store.load_or_default().status,
-            StateLoadStatus::IgnoredUnsupportedSchema(2)
+            WindowStateLoadStatus::IgnoredUnsupportedSchema(2)
         );
         assert!(matches!(
-            store.commit(&ApplicationState::default()),
-            Err(StateError::UnsupportedSchema(2))
+            store.commit(&WindowState::default()),
+            Err(WindowStateError::UnsupportedSchema(2))
         ));
 
         let oversized_future = br#"{"schema_version":4294967296,"settings_window":null}"#;
-        fs::write(&store.layout.state, oversized_future).expect("oversized future state");
+        fs::write(&store.layout.window_state, oversized_future).expect("oversized future state");
         assert_eq!(
             store.load_or_default().status,
-            StateLoadStatus::IgnoredUnsupportedSchema(4_294_967_296)
+            WindowStateLoadStatus::IgnoredUnsupportedSchema(4_294_967_296)
         );
         assert!(matches!(
-            store.commit(&ApplicationState::default()),
-            Err(StateError::UnsupportedSchema(4_294_967_296))
+            store.commit(&WindowState::default()),
+            Err(WindowStateError::UnsupportedSchema(4_294_967_296))
         ));
         assert_eq!(
-            fs::read(&store.layout.state).expect("oversized future state preserved"),
+            fs::read(&store.layout.window_state).expect("oversized future state preserved"),
             oversized_future
         );
     }
@@ -451,44 +477,44 @@ mod tests {
     fn placement_validation_rejects_unbounded_coordinates_and_dimensions() {
         assert!(matches!(
             WindowPlacement::new(MAX_WINDOW_COORDINATE + 1, 0, 800, 600, false),
-            Err(StateError::InvalidValue("settings_window.x"))
+            Err(WindowStateError::InvalidValue("settings_window.x"))
         ));
         assert!(matches!(
             WindowPlacement::new(0, 0, MIN_WINDOW_WIDTH - 1, 600, false),
-            Err(StateError::InvalidValue("settings_window.width"))
+            Err(WindowStateError::InvalidValue("settings_window.width"))
         ));
         assert!(matches!(
             WindowPlacement::new(0, 0, 800, MAX_WINDOW_DIMENSION + 1, false),
-            Err(StateError::InvalidValue("settings_window.height"))
+            Err(WindowStateError::InvalidValue("settings_window.height"))
         ));
         assert!(matches!(
             OverlayWindowPlacement::new(0, 0, MIN_OVERLAY_DIMENSION - 1, 600),
-            Err(StateError::InvalidValue("overlay_window.width"))
+            Err(WindowStateError::InvalidValue("overlay_window.width"))
         ));
     }
 
     #[test]
     fn commit_is_atomic_verified_and_restart_readable() {
         let root = TempDir::new().expect("tempdir");
-        let store = state_store(&root, BuildEnvironment::Development);
-        let first = ApplicationState::with_settings_window(Some(placement(-120, 48)));
+        let store = window_state_store(&root, BuildEnvironment::Development);
+        let first = WindowState::with_settings_window(Some(placement(-120, 48)));
         store.commit(&first).expect("first commit");
         assert_eq!(store.load_or_default().state, first);
 
-        let original = fs::read(&store.layout.state).expect("original state");
-        let mut faulting = state_store(&root, BuildEnvironment::Development);
-        faulting.inject_write_failure(InjectedStateWriteFailure::VerificationCorruption);
-        let second = ApplicationState::with_settings_window(Some(placement(240, 180)));
+        let original = fs::read(&store.layout.window_state).expect("original state");
+        let mut faulting = window_state_store(&root, BuildEnvironment::Development);
+        faulting.inject_write_failure(InjectedWindowStateWriteFailure::VerificationCorruption);
+        let second = WindowState::with_settings_window(Some(placement(240, 180)));
         assert!(matches!(
             faulting.commit(&second),
-            Err(StateError::VerificationFailed)
+            Err(WindowStateError::VerificationFailed)
         ));
         assert_eq!(
-            fs::read(&faulting.layout.state).expect("restored state"),
+            fs::read(&faulting.layout.window_state).expect("restored state"),
             original
         );
         assert_eq!(
-            state_store(&root, BuildEnvironment::Development)
+            window_state_store(&root, BuildEnvironment::Development)
                 .load_or_default()
                 .state,
             first
@@ -496,12 +522,12 @@ mod tests {
     }
 
     #[test]
-    fn environments_use_independent_state_and_writer_locks() {
+    fn environments_use_independent_window_state_and_writer_locks() {
         let root = TempDir::new().expect("tempdir");
-        let development = state_store(&root, BuildEnvironment::Development);
-        let production = state_store(&root, BuildEnvironment::Production);
-        let development_state = ApplicationState::with_settings_window(Some(placement(-300, 40)));
-        let production_state = ApplicationState::with_settings_window(Some(placement(900, 60)));
+        let development = window_state_store(&root, BuildEnvironment::Development);
+        let production = window_state_store(&root, BuildEnvironment::Production);
+        let development_state = WindowState::with_settings_window(Some(placement(-300, 40)));
+        let production_state = WindowState::with_settings_window(Some(placement(900, 60)));
         development
             .commit(&development_state)
             .expect("development commit");
@@ -511,21 +537,24 @@ mod tests {
 
         assert_eq!(development.load_or_default().state, development_state);
         assert_eq!(production.load_or_default().state, production_state);
-        assert_ne!(development.layout.state, production.layout.state);
         assert_ne!(
-            development.layout.locks.join("state.writer.lock"),
-            production.layout.locks.join("state.writer.lock")
+            development.layout.window_state,
+            production.layout.window_state
+        );
+        assert_ne!(
+            development.layout.locks.join("window-state.writer.lock"),
+            production.layout.locks.join("window-state.writer.lock")
         );
     }
 
     #[test]
-    fn concurrent_writer_is_rejected_without_changing_state() {
+    fn concurrent_writer_is_rejected_without_changing_window_state() {
         let root = TempDir::new().expect("tempdir");
-        let store = state_store(&root, BuildEnvironment::Development);
-        let original = ApplicationState::with_settings_window(Some(placement(10, 20)));
+        let store = window_state_store(&root, BuildEnvironment::Development);
+        let original = WindowState::with_settings_window(Some(placement(10, 20)));
         store.commit(&original).expect("initial commit");
 
-        let lock_path = store.layout.locks.join("state.writer.lock");
+        let lock_path = store.layout.locks.join("window-state.writer.lock");
         let lock = File::options()
             .read(true)
             .write(true)
@@ -533,25 +562,21 @@ mod tests {
             .expect("state lock");
         lock.lock().expect("hold state lock");
         assert!(matches!(
-            store.commit(&ApplicationState::with_settings_window(Some(placement(
-                30, 40
-            )))),
-            Err(StateError::LockUnavailable)
+            store.commit(&WindowState::with_settings_window(Some(placement(30, 40)))),
+            Err(WindowStateError::LockUnavailable)
         ));
         assert_eq!(store.load_or_default().state, original);
     }
 
     #[cfg(unix)]
     #[test]
-    fn state_storage_is_owner_only() {
+    fn window_state_storage_is_owner_only() {
         use std::os::unix::fs::PermissionsExt;
 
         let root = TempDir::new().expect("tempdir");
-        let store = state_store(&root, BuildEnvironment::Development);
+        let store = window_state_store(&root, BuildEnvironment::Development);
         store
-            .commit(&ApplicationState::with_settings_window(Some(placement(
-                10, 20,
-            ))))
+            .commit(&WindowState::with_settings_window(Some(placement(10, 20))))
             .expect("state commit");
         assert_eq!(
             fs::metadata(&store.layout.root)
@@ -570,8 +595,8 @@ mod tests {
             0o700
         );
         for path in [
-            store.layout.state.clone(),
-            store.layout.locks.join("state.writer.lock"),
+            store.layout.window_state.clone(),
+            store.layout.locks.join("window-state.writer.lock"),
         ] {
             assert_eq!(
                 fs::metadata(path)

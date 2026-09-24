@@ -43,7 +43,7 @@ CLI/API，并且 Production 构建与该 feature 的组合在编译期失败。
 ```text
 <data-root>/
   config.json
-  state.json
+  window-state.json
   models/
   backups/
   logs/
@@ -55,10 +55,13 @@ CLI/API，并且 Production 构建与该 feature 的组合在编译期失败。
 
 Native Rewrite 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一使用 `snake_case`，名称从当前产品领域语义定义，不保留旧字段 alias。
 
-`next` 是全新的初始版本，当前完整 `config.json` 与 `state.json` 都从 `schema_version: 1`
+`next` 是全新的初始版本，当前完整 `config.json` 与 `window-state.json` 都以 `schema_version: 1`
 开始。在 `next` 首次正式发布前，新增字段直接修改当前 v1，不保留开发中间结构，也不实现迁移、
 旧数据转换或历史版本兼容判断。解析边界保留版本字段并拒绝非 v1 数据，避免静默改写未知格式。
 首次正式发布后，后续版本才以实际发布的 v1 为基线单独设计顺序、幂等迁移。
+
+`window-state.json` 的领域名称明确限定其只承载 settings 与 overlay 的可恢复窗口状态，不能作为
+通用 application state 容器。开发期旧路径不属于首版兼容输入；产品不读取、迁移或 fallback 到它。
 
 ## Alternatives Considered
 

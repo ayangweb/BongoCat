@@ -120,7 +120,9 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::StatusIconUpdateFailed => "errors.settings.status_icon_update_failed",
         SettingsErrorCode::TaskbarIconUpdateFailed => "errors.settings.taskbar_icon_update_failed",
         SettingsErrorCode::WindowHideFailed => "errors.settings.window_hide_failed",
-        SettingsErrorCode::StatePersistFailed => "errors.settings.state_persist_failed",
+        SettingsErrorCode::WindowStatePersistFailed => {
+            "errors.settings.window_state_persist_failed"
+        }
         SettingsErrorCode::ShutdownFailed => "errors.settings.shutdown_failed",
     };
     // The catalog is compile-time embedded; the returned string is leaked and

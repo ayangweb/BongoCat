@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn write_private_atomic_replaces_the_file_contents() {
         let directory = tempdir().expect("tempdir");
-        let path = directory.path().join("state.json");
+        let path = directory.path().join("payload.json");
         write_private_atomic(&path, b"first").expect("first write");
         write_private_atomic(&path, b"second").expect("second write");
         let mut contents = String::new();
@@ -127,7 +127,7 @@ mod tests {
     #[cfg(unix)]
     fn write_private_atomic_leaves_the_file_owner_only() {
         let directory = tempdir().expect("tempdir");
-        let path = directory.path().join("state.json");
+        let path = directory.path().join("payload.json");
         write_private_atomic(&path, b"private").expect("write");
         assert_eq!(mode_of(&path), 0o600);
     }
@@ -159,7 +159,7 @@ mod tests {
     fn write_private_atomic_tightens_a_previously_loose_file() {
         use std::os::unix::fs::PermissionsExt;
         let directory = tempdir().expect("tempdir");
-        let path = directory.path().join("state.json");
+        let path = directory.path().join("payload.json");
         fs::write(&path, b"loose").expect("seed");
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("loosen");
         write_private_atomic(&path, b"private").expect("write");

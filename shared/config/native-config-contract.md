@@ -213,11 +213,11 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
 明确 reset 清空、reconcile 以平台状态覆盖 transient pressed state。系统级注册、
 事件捕获、清除/恢复默认 UI 和匹配后的 command 执行仍属于后续平台/UI/runtime 接线工作。
 
-窗口坐标、pressed state、权限结果、模型解析缓存和 renderer 状态不属于 `config.json`。可恢复窗口布局写入 `state.json`；其余瞬时/派生状态不持久化。
+窗口坐标、pressed state、权限结果、模型解析缓存和 renderer 状态不属于 `config.json`。可恢复窗口布局写入 `window-state.json`；其余瞬时/派生状态不持久化。
 
-## Application State v1
+## Window State v1
 
-- `state.json` 使用独立的 `schema_version: 1`，只保存可恢复的 settings 与 overlay 窗口布局。
+- `window-state.json` 使用独立的 `schema_version: 1`，只保存可恢复的 settings 与 overlay 窗口布局。
   它不是用户配置，不参与 `config.json` 的 revision、backup 或 recovery-only 状态机。
 - `settings_window` 为空时，窗口在鼠标当前所在显示器居中以 `800x600` 打开。非空值保存 GPUI
   逻辑坐标 `x`/`y`、逻辑尺寸 `width`/`height` 和 `maximized`；坐标允许负值，限制在
@@ -228,12 +228,12 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
   `64x64..16384x16384`。模型切换和非尺寸配置更新沿用完整 bounds；显式修改缩放时按比例更新
   尺寸并保存新结果。
 - 恢复前再次检查窗口与当前显示器是否相交；显示器移除或完全离屏时回到居中默认布局，
-  并以实际可见 bounds 更新内存 state。fullscreen 不作为可恢复设置窗口状态。
-- 缺失、损坏、未知字段、越界值或读取失败只忽略 state 并使用默认布局，不阻塞
-  `config.json`、runtime 或 recovery-only 窗口。非 v1 state 同样回退默认布局，且当前版本
+  并以实际可见 bounds 更新内存 window state。fullscreen 不作为可恢复设置窗口状态。
+- 缺失、损坏、未知字段、越界值或读取失败只忽略 window state 并使用默认布局，不阻塞
+  `config.json`、runtime 或 recovery-only 窗口。非 v1 window state 同样回退默认布局，且当前版本
   拒绝覆盖该文件。
-- state 使用环境内独立的 `locks/state.writer.lock` 和原子替换；提交后重新读取并比较 typed
-  state，验证失败恢复替换前 bytes。它不创建 config backup/quarantine，也不读取另一环境。
+- window state 使用环境内独立的 `locks/window-state.writer.lock` 和原子替换；提交后重新读取并比较 typed
+  window state，验证失败恢复替换前 bytes。它不创建 config backup/quarantine，也不读取另一环境。
 - GPUI bounds observer 只更新共享 typed 内存 tracker，不执行文件 I/O，并在连续变化停止 150 ms
   后通知 settings service worker。overlay frame source 只在完整 bounds 变化时通知同一 worker；
   worker 及时原子提交，正常 shutdown 前仍强制 flush。双平台设置窗口隐藏/重显、

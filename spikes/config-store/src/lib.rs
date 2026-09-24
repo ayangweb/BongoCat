@@ -33,7 +33,7 @@ impl BuildEnvironment {
 pub struct StorageLayout {
     pub root: PathBuf,
     pub config: PathBuf,
-    pub state: PathBuf,
+    pub window_state: PathBuf,
     pub models: PathBuf,
     pub backups: PathBuf,
     pub logs: PathBuf,
@@ -45,7 +45,7 @@ impl StorageLayout {
         let root = base.as_ref().join(environment.directory_name());
         Self {
             config: root.join("config.json"),
-            state: root.join("state.json"),
+            window_state: root.join("window-state.json"),
             models: root.join("models"),
             backups: root.join("backups"),
             logs: root.join("logs"),
@@ -718,7 +718,7 @@ mod tests {
         assert_ne!(development.root, production.root);
         let development_paths = [
             &development.config,
-            &development.state,
+            &development.window_state,
             &development.models,
             &development.backups,
             &development.logs,
@@ -726,7 +726,7 @@ mod tests {
         ];
         let production_paths = [
             &production.config,
-            &production.state,
+            &production.window_state,
             &production.models,
             &production.backups,
             &production.logs,

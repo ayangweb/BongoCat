@@ -309,7 +309,7 @@
       "status_icon_update_failed": "The status icon display could not be updated",
       "taskbar_icon_update_failed": "The taskbar icon display could not be updated",
       "window_hide_failed": "Settings window could not be hidden",
-      "state_persist_failed": "Window layout could not be saved",
+      "window_state_persist_failed": "Window layout could not be saved",
       "shutdown_failed": "Application shutdown did not complete"
     }
   },

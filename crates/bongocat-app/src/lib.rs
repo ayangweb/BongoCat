@@ -5,11 +5,11 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
-    ApplicationState, BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRevision,
-    ConfigStore, Language, ModelBehaviorAction, ModelBehaviorBinding, ModelMetadata, NativeConfig,
-    OverlayWindowPlacement, PlatformStorageError, SelectedModelOrigin, ShortcutBinding,
-    ShortcutConfig, ShortcutModifiers, ShortcutTable, StateError, StateStore, StorageLayout,
-    Theme as ConfigTheme, WindowPlacement, platform_layout,
+    BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRevision, ConfigStore, Language,
+    ModelBehaviorAction, ModelBehaviorBinding, ModelMetadata, NativeConfig, OverlayWindowPlacement,
+    PlatformStorageError, SelectedModelOrigin, ShortcutBinding, ShortcutConfig, ShortcutModifiers,
+    ShortcutTable, StorageLayout, Theme as ConfigTheme, WindowPlacement, WindowState,
+    WindowStateError, WindowStateStore, platform_layout,
 };
 use bongocat_input::{
     CursorProducer, GamepadAxisProducer, GamepadAxisSettings, GamepadButton, HandSide,
@@ -196,7 +196,7 @@ pub enum ApplicationError {
     ShutdownAggregate(ApplicationShutdownError),
     ApplicationLog(ApplicationLogError),
     ConfigRollback(ConfigError),
-    State(StateError),
+    WindowState(WindowStateError),
 }
 
 impl fmt::Display for ApplicationError {
@@ -242,7 +242,7 @@ impl fmt::Display for ApplicationError {
             Self::ConfigRollback(error) => {
                 write!(formatter, "model selection config rollback failed: {error}")
             }
-            Self::State(error) => write!(formatter, "application state failed: {error}"),
+            Self::WindowState(error) => write!(formatter, "window state failed: {error}"),
         }
     }
 }
@@ -296,9 +296,9 @@ impl From<ConfigError> for ApplicationError {
     }
 }
 
-impl From<StateError> for ApplicationError {
-    fn from(error: StateError) -> Self {
-        Self::State(error)
+impl From<WindowStateError> for ApplicationError {
+    fn from(error: WindowStateError) -> Self {
+        Self::WindowState(error)
     }
 }
 
@@ -334,8 +334,8 @@ impl From<ApplicationLogError> for ApplicationError {
 
 pub struct Application {
     config_store: ConfigStore,
-    state_store: StateStore,
-    state: ApplicationState,
+    window_state_store: WindowStateStore,
+    window_state: WindowState,
     config: NativeConfig,
     config_revision: Option<ConfigRevision>,
     system_language: Language,
@@ -407,8 +407,8 @@ impl Application {
         let config_store = ConfigStore::new(layout.clone())?;
         let application_log = ApplicationLogHandle::install(&layout.logs)?;
         let (run_marker, previous_run) = application_log.begin_run()?;
-        let state_store = StateStore::new(layout);
-        let state = state_store.load_or_default().state;
+        let window_state_store = WindowStateStore::new(layout);
+        let window_state = window_state_store.load_or_default().state;
         let loaded = config_store.load_or_default()?;
         let mut config = loaded.config;
         let mut config_revision = Some(loaded.revision);
@@ -510,8 +510,8 @@ impl Application {
             .and_then(|id| ModelId::parse(id).ok());
         let mut application = Self {
             config_store,
-            state_store,
-            state,
+            window_state_store,
+            window_state,
             config,
             config_revision,
             system_language,
@@ -668,23 +668,23 @@ impl Application {
     }
 
     pub const fn settings_window_placement(&self) -> Option<WindowPlacement> {
-        self.state.settings_window
+        self.window_state.settings_window
     }
 
     pub const fn overlay_window_placement(&self) -> Option<OverlayWindowPlacement> {
-        self.state.overlay_window
+        self.window_state.overlay_window
     }
 
     pub fn persist_settings_window_placement(
         &mut self,
         placement: Option<WindowPlacement>,
     ) -> Result<(), ApplicationError> {
-        if self.state.settings_window == placement {
+        if self.window_state.settings_window == placement {
             return Ok(());
         }
-        let state = ApplicationState::with_windows(placement, self.state.overlay_window);
-        self.state_store.commit(&state)?;
-        self.state = state;
+        let window_state = WindowState::with_windows(placement, self.window_state.overlay_window);
+        self.window_state_store.commit(&window_state)?;
+        self.window_state = window_state;
         Ok(())
     }
 
@@ -692,12 +692,13 @@ impl Application {
         &mut self,
         placement: OverlayWindowPlacement,
     ) -> Result<(), ApplicationError> {
-        if self.state.overlay_window == Some(placement) {
+        if self.window_state.overlay_window == Some(placement) {
             return Ok(());
         }
-        let state = ApplicationState::with_windows(self.state.settings_window, Some(placement));
-        self.state_store.commit(&state)?;
-        self.state = state;
+        let window_state =
+            WindowState::with_windows(self.window_state.settings_window, Some(placement));
+        self.window_state_store.commit(&window_state)?;
+        self.window_state = window_state;
         Ok(())
     }
 

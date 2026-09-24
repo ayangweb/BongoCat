@@ -71,7 +71,7 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
 - Windows 不自动提权：不调用 `ShellExecuteEx` + `runas`，不写入 HKCU/HKLM，不注册 service 或
   scheduled task。产品继续按 ADR-0023 以 per-user、无提权方式安装和运行，提示只解释兼容性开关
   这一系统标准路径。
-- 提示不做任何持久化：不新增配置字段、不写入 `state.json`、不新增应用日志事件、不缓存「用户选过
+- 提示不做任何持久化：不新增配置字段、不写入 `window-state.json`、不新增应用日志事件、不缓存「用户选过
   稍后」。每次启动都重新读取平台当前状态；已授权则完全不提示，未授权则本次启动继续提示。判定依据
   只有平台状态。
 - 检查点（2026-09-15 修正）：检查不再阻塞启动流程。产品在 GPUI run loop 内完成 overlay、设置

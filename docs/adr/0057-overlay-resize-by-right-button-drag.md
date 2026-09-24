@@ -58,7 +58,7 @@ catStore.window.scale = round(clamp(scale + delta, 10, 500))
 - **持久化**：拖动结束时把最终缩放通过新的 `OverlayInteractionSinks::resize_sender` 报给应用，
   应用提交 `SettingsCommand::SetOverlaySettings` 写回 `overlay.scale_percent`；窗口几何仍由既有
   的 placement 通路（`OverlayWindowPlacementDebouncer` → `OverlayWindowPlacementChanged`）落到
-  `state.json`。overlay 只提出请求，配置的写入方仍然是应用。
+  `window-state.json`。overlay 只提出请求，配置的写入方仍然是应用。
 - **幂等**：缩放写回配置后，runtime snapshot 的变化会让 frame tick 走到重建分支。该分支现在先
   判断窗口尺寸是否已经等于新缩放对应的尺寸（`bounds_match_scale`，容差 `1px`），相等时不再按
   比例重算——否则拖动刚设好的尺寸会被乘第二次。
@@ -85,7 +85,7 @@ catStore.window.scale = round(clamp(scale + delta, 10, 500))
   拖动已经设好的尺寸，用户不会看到尺寸跳动，只会看到一次重建开销。
 - 缩放值从此有两个来源（设置页与右键拖动），两者都写入同一个 `overlay.scale_percent`，因此
   设置页滑块在拖动结束后会显示拖动结果。
-- 窗口位置与尺寸仍然分离：`scale_percent` 在 `config.json`，实际几何在 `state.json`。若两者
+- 窗口位置与尺寸仍然分离：`scale_percent` 在 `config.json`，实际几何在 `window-state.json`。若两者
   不一致（例如手工编辑配置），下一次拖动会以当前窗口宽度反推的缩放为起点，并在结束时把两者
   对齐。
 - 未验证项：两平台的实机拖动观感、Windows 的 `ResizeBuffers` 路径、macOS 的 drawable resize 与

@@ -820,7 +820,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 | Windows | `%APPDATA%\com.ayangweb.bongo-cat\development\`                     | `%APPDATA%\com.ayangweb.bongo-cat\production\`                     |
 | macOS   | `~/Library/Application Support/com.ayangweb.bongo-cat/development/` | `~/Library/Application Support/com.ayangweb.bongo-cat/production/` |
 
-每个根目录包含 `config.json`、`state.json`、`models/`、`model-overrides/`、`backups/`、`logs/`、`updates/` 和 `locks/`。`model-overrides/` 是预置模型用户侧内容的命名空间（每张替换封面一个 `<id>/resources/cover.png`），因为预置包位于 app 包内、不可写；它与 `models/` 一样只被设置页与 app 层写入。锁、单实例命名、更新 channel 和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。`updates/` 是保留给更新的环境私有命名空间：当前 `cargo-packager-updater` 使用进程临时文件/目录下载和暂存载荷，不落在该目录下，因此 `updates/` 当前无写入方，仅作为环境形状契约的一部分保留。`StorageLayout` 只描述这些用户数据路径；安装器使用平台 `InstallationLayout` 描述 product files root，不能从用户数据根推导或操作安装目录。
+每个根目录包含 `config.json`、`window-state.json`、`models/`、`model-overrides/`、`backups/`、`logs/`、`updates/` 和 `locks/`。`model-overrides/` 是预置模型用户侧内容的命名空间（每张替换封面一个 `<id>/resources/cover.png`），因为预置包位于 app 包内、不可写；它与 `models/` 一样只被设置页与 app 层写入。锁、单实例命名、更新 channel 和诊断同样按环境隔离；任何环境不得读取、写入或 fallback 到另一个环境。`updates/` 是保留给更新的环境私有命名空间：当前 `cargo-packager-updater` 使用进程临时文件/目录下载和暂存载荷，不落在该目录下，因此 `updates/` 当前无写入方，仅作为环境形状契约的一部分保留。`StorageLayout` 只描述这些用户数据路径；安装器使用平台 `InstallationLayout` 描述 product files root，不能从用户数据根推导或操作安装目录。
 
 预置模型属于 product files：macOS 从 `BongoCat.app/Contents/Resources/models` 解析，Windows 从
 `bongocat-app.exe` 同级 `resources/models` 解析。仅未打包的开发二进制可在该相对路径缺失时回退到
@@ -869,13 +869,13 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   snapshot、错误或 GPUI Entity。platform adapter 先验证绝对目录并 canonicalize，再通过 `opener`
   crate 交给系统默认程序；成功只返回当前 snapshot 且不推进 revision，失败只返回
   `BackupLocationOpenFailed`。
-- `config.json` 只包含用户设置；窗口布局写入 `state.json`，pressed state、权限结果和模型解析缓存不持久化。
-- `state.json` 使用独立 v1 schema，保存设置窗口的逻辑坐标、尺寸与 maximized 状态，以及 overlay
+- `config.json` 只包含用户设置；窗口布局写入 `window-state.json`，pressed state、权限结果和模型解析缓存不持久化。
+- `window-state.json` 使用独立 v1 schema，保存设置窗口的逻辑坐标、尺寸与 maximized 状态，以及 overlay
   的坐标与尺寸；不读取或转换 `next` 开发期间出现过的其他结构。坐标支持多显示器负值并设有有限范围，
   设置窗口尺寸限制为 `640x480..16384x16384`，overlay 尺寸限制为
   `64x64..16384x16384`。缺失、损坏、越界、未知字段或读取失败只回退到鼠标当前所在显示器
-  居中的默认尺寸，不得阻塞 config 或 runtime 启动；非 v1 state 回退显示且不被覆盖。
-- state 通过环境内独立的 `state.writer.lock` 和原子替换提交，提交后重读 typed state，失败恢复
+  居中的默认尺寸，不得阻塞 config 或 runtime 启动；非 v1 window state 回退显示且不被覆盖。
+- window state 通过环境内独立的 `window-state.writer.lock` 和原子替换提交，提交后重读 typed window state，失败恢复
   替换前 bytes；它不进入 config revision、backup 或 quarantine。GPUI bounds observer 对连续变化
   合并 150 ms 后通知 settings worker，overlay frame source 仅在几何真正变化时通知同一 worker；
   正常 shutdown 前仍强制 flush。配置提交、模型切换和窗口重建必须保留另一窗口已保存的几何，
