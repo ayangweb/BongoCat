@@ -1,3 +1,4 @@
+use super::about::ABOUT_LOCALIZED_KEYS;
 use super::*;
 
 impl SettingsView {
@@ -293,10 +294,11 @@ impl SettingsView {
             .as_ref()
             .ok_or_else(|| "about page has not received a settings snapshot".to_owned())?;
         let language = snapshot.resolved_language;
-        if ABOUT_SECTIONS.iter().any(|section| {
-            bongocat_i18n::text(language.catalog_locale(), section.title).is_empty()
-                || bongocat_i18n::text(language.catalog_locale(), section.description).is_empty()
-        }) {
+        let locale = language.catalog_locale();
+        if ABOUT_LOCALIZED_KEYS
+            .iter()
+            .any(|key| bongocat_i18n::text(locale, key).is_empty())
+        {
             return Err("about page has incomplete localized content".to_owned());
         }
         Ok(())

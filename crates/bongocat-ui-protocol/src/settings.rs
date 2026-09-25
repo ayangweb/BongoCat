@@ -950,6 +950,9 @@ pub enum SettingsErrorCode {
     ModelNotFound,
     ModelDeleteFailed,
     DiagnosticsExportFailed,
+    SoftwareInfoCopyFailed,
+    ExternalLinkOpenFailed,
+    LogLocationOpenFailed,
     StartupItemUpdateFailed,
     StatusIconUpdateFailed,
     TaskbarIconUpdateFailed,
@@ -959,7 +962,7 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 38] = [
+    pub const ALL: [Self; 41] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -992,6 +995,9 @@ impl SettingsErrorCode {
         Self::ModelNotFound,
         Self::ModelDeleteFailed,
         Self::DiagnosticsExportFailed,
+        Self::SoftwareInfoCopyFailed,
+        Self::ExternalLinkOpenFailed,
+        Self::LogLocationOpenFailed,
         Self::StartupItemUpdateFailed,
         Self::StatusIconUpdateFailed,
         Self::TaskbarIconUpdateFailed,
@@ -1034,6 +1040,9 @@ impl SettingsErrorCode {
             Self::ModelNotFound => "model_not_found",
             Self::ModelDeleteFailed => "model_delete_failed",
             Self::DiagnosticsExportFailed => "diagnostics_export_failed",
+            Self::SoftwareInfoCopyFailed => "software_info_copy_failed",
+            Self::ExternalLinkOpenFailed => "external_link_open_failed",
+            Self::LogLocationOpenFailed => "log_location_open_failed",
             Self::StartupItemUpdateFailed => "startup_item_update_failed",
             Self::StatusIconUpdateFailed => "status_icon_update_failed",
             Self::TaskbarIconUpdateFailed => "taskbar_icon_update_failed",
@@ -1116,6 +1125,9 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ModelNotFound => "The model was not found",
             SettingsErrorCode::ModelDeleteFailed => "The imported model could not be deleted",
             SettingsErrorCode::DiagnosticsExportFailed => "Diagnostics could not be exported",
+            SettingsErrorCode::SoftwareInfoCopyFailed => "Software information could not be copied",
+            SettingsErrorCode::ExternalLinkOpenFailed => "The link could not be opened",
+            SettingsErrorCode::LogLocationOpenFailed => "The application log folder could not be opened",
             SettingsErrorCode::StartupItemUpdateFailed => {
                 "The login startup setting could not be updated"
             }
@@ -1335,6 +1347,13 @@ pub enum SettingsCommand {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     ExportDiagnostics {
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Open the application-owned log directory in the system file manager.
+    ///
+    /// The path stays inside the settings service; the UI only receives the
+    /// resulting settings snapshot and never needs a filesystem path.
+    OpenLogsLocation {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     Shutdown {
@@ -1861,6 +1880,11 @@ impl SettingsClient {
             .await
     }
 
+    pub async fn open_logs_location(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::OpenLogsLocation { reply })
+            .await
+    }
+
     pub async fn shutdown(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::Shutdown { reply })
             .await
@@ -2263,6 +2287,10 @@ impl SettingsClient {
 
     pub fn export_diagnostics_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::ExportDiagnostics { reply })
+    }
+
+    pub fn open_logs_location_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::OpenLogsLocation { reply })
     }
 
     pub fn shutdown_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
@@ -3106,6 +3134,27 @@ mod tests {
         assert_eq!(unchanged.revision, 11);
         assert!(unchanged.overlay_visible);
         assert!(!unchanged.motion_audio_enabled);
+        worker.join().expect("worker join");
+    }
+
+    #[test]
+    fn log_location_command_is_typed_and_keeps_the_path_out_of_the_protocol() {
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let worker = thread::spawn(move || {
+            let SettingsCommand::OpenLogsLocation { reply } =
+                endpoint.recv_blocking().expect("log location command")
+            else {
+                panic!("unexpected command");
+            };
+            reply
+                .respond(Ok(snapshot(13, true, true)))
+                .expect("log location reply");
+        });
+
+        let unchanged = client
+            .open_logs_location_blocking()
+            .expect("log location snapshot");
+        assert_eq!(unchanged.revision, 13);
         worker.join().expect("worker join");
     }
 

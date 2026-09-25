@@ -186,6 +186,9 @@ impl ApplicationSettingsService {
         let diagnostics_export = Arc::new(SystemDiagnosticsExport {
             path: application.logs_directory().join("diagnostics.json"),
         });
+        let log_location = Arc::new(SystemLogLocation {
+            path: application.logs_directory().to_owned(),
+        });
         Self::start_with_capabilities_and_shortcuts(
             application,
             startup_item,
@@ -196,6 +199,7 @@ impl ApplicationSettingsService {
             backup_location,
             diagnostics_export,
             Arc::new(SystemModelLocation),
+            log_location,
             shortcut_receiver,
             signals,
         )
@@ -218,6 +222,35 @@ impl ApplicationSettingsService {
             backup_location,
             diagnostics_export,
             Arc::new(UnavailableModelLocation),
+            Arc::new(UnavailableLogLocation),
+            None,
+            None,
+        )
+    }
+
+    /// Like `start_with_capabilities`, but with a log-location recorder, for
+    /// the one test that asserts "open application logs" without launching a
+    /// real file manager.
+    #[cfg(test)]
+    fn start_with_log_location(
+        application: Application,
+        log_location: Arc<dyn LogLocationCapability>,
+    ) -> Result<Self, SettingsServiceJoinError> {
+        Self::start_with_capabilities_and_shortcuts(
+            application,
+            Arc::new(SystemStartupItem),
+            VisibilityCapabilities {
+                status_icon: Arc::new(UnavailableStatusIcon),
+                taskbar_icon: Arc::new(UnavailableTaskbarIcon),
+            },
+            Arc::new(SystemBackupLocation {
+                path: PathBuf::new(),
+            }),
+            Arc::new(SystemDiagnosticsExport {
+                path: PathBuf::new(),
+            }),
+            Arc::new(UnavailableModelLocation),
+            log_location,
             None,
             None,
         )
@@ -245,6 +278,7 @@ impl ApplicationSettingsService {
                 path: PathBuf::new(),
             }),
             model_location,
+            Arc::new(UnavailableLogLocation),
             None,
             None,
         )
@@ -258,6 +292,7 @@ impl ApplicationSettingsService {
         backup_location: Arc<dyn BackupLocationCapability>,
         diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
         model_location: Arc<dyn ModelLocationCapability>,
+        log_location: Arc<dyn LogLocationCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
         signals: Option<ApplicationMainThreadSignals>,
     ) -> Result<Self, SettingsServiceJoinError> {
@@ -280,6 +315,7 @@ impl ApplicationSettingsService {
                     backup_location,
                     diagnostics_export,
                     model_location,
+                    log_location,
                     worker_window_state,
                     worker_signals,
                 )
@@ -410,6 +446,21 @@ struct SystemModelLocation;
 #[cfg(test)]
 struct UnavailableModelLocation;
 
+/// Opening the application-owned log directory in the system file manager.
+///
+/// The path is kept in the settings worker so the UI never needs to know a
+/// storage root, just as it does for the configuration backup location.
+trait LogLocationCapability: Send + Sync + 'static {
+    fn open(&self) -> Result<(), SettingsError>;
+}
+
+#[cfg(test)]
+struct UnavailableLogLocation;
+
+struct SystemLogLocation {
+    path: PathBuf,
+}
+
 struct SystemDiagnosticsExport {
     path: PathBuf,
 }
@@ -461,6 +512,20 @@ impl ModelLocationCapability for UnavailableModelLocation {
     }
 }
 
+impl LogLocationCapability for SystemLogLocation {
+    fn open(&self) -> Result<(), SettingsError> {
+        open_directory(&self.path)
+            .map_err(|_| SettingsError::new(SettingsErrorCode::LogLocationOpenFailed))
+    }
+}
+
+#[cfg(test)]
+impl LogLocationCapability for UnavailableLogLocation {
+    fn open(&self) -> Result<(), SettingsError> {
+        Err(SettingsError::new(SettingsErrorCode::LogLocationOpenFailed))
+    }
+}
+
 impl DiagnosticsExportCapability for SystemDiagnosticsExport {
     fn export(
         &self,
@@ -509,6 +574,7 @@ fn run_service(
     backup_location: Arc<dyn BackupLocationCapability>,
     diagnostics_export: Arc<dyn DiagnosticsExportCapability>,
     model_location: Arc<dyn ModelLocationCapability>,
+    log_location: Arc<dyn LogLocationCapability>,
     window_state: SettingsWindowState,
     signals: Option<ApplicationMainThreadSignals>,
 ) {
@@ -1140,6 +1206,12 @@ fn run_service(
                             .with_context(ApplicationLogContext::Operation("export")),
                     );
                 }
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::OpenLogsLocation { reply } => {
+                let result = log_location
+                    .open()
+                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
             SettingsCommand::Shutdown { reply } => {
@@ -2939,6 +3011,31 @@ mod tests {
                 Err(SettingsError::new(
                     SettingsErrorCode::ModelLocationOpenFailed,
                 ))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    struct TestLogLocation {
+        invocations: AtomicUsize,
+        fail: AtomicBool,
+    }
+
+    impl TestLogLocation {
+        fn new() -> Self {
+            Self {
+                invocations: AtomicUsize::new(0),
+                fail: AtomicBool::new(false),
+            }
+        }
+    }
+
+    impl LogLocationCapability for TestLogLocation {
+        fn open(&self) -> Result<(), SettingsError> {
+            self.invocations.fetch_add(1, Ordering::AcqRel);
+            if self.fail.load(Ordering::Acquire) {
+                Err(SettingsError::new(SettingsErrorCode::LogLocationOpenFailed))
             } else {
                 Ok(())
             }
@@ -5628,6 +5725,40 @@ mod tests {
             std::fs::read(&bundled_cover).expect("bundled cover after the edit"),
             bundled_bytes,
             "a preset's package is app-bundled and must never be written to"
+        );
+
+        client.shutdown_blocking().expect("service shutdown");
+        service.join().expect("service join");
+    }
+
+    #[test]
+    fn service_opens_the_application_log_directory_without_advancing_revision() {
+        let base = tempdir().expect("temporary storage");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application = Application::start_with_layout(layout).expect("application start");
+        let log_location = Arc::new(TestLogLocation::new());
+        let service =
+            ApplicationSettingsService::start_with_log_location(application, log_location.clone())
+                .expect("service start");
+        let client = service.client();
+        let before = client.read_snapshot_blocking().expect("initial snapshot");
+
+        let opened = client
+            .open_logs_location_blocking()
+            .expect("open application log folder");
+        assert_eq!(log_location.invocations.load(Ordering::Acquire), 1);
+        assert_eq!(
+            opened.config_revision, before.config_revision,
+            "opening a log folder is not a configuration change"
+        );
+
+        log_location.fail.store(true, Ordering::Release);
+        assert_eq!(
+            client
+                .open_logs_location_blocking()
+                .expect_err("failed open")
+                .code(),
+            SettingsErrorCode::LogLocationOpenFailed
         );
 
         client.shutdown_blocking().expect("service shutdown");

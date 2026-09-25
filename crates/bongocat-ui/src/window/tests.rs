@@ -1129,6 +1129,23 @@ fn build_information_is_localized_and_contains_only_compiled_identity() {
 }
 
 #[test]
+fn software_information_is_useful_for_bug_reports_without_paths_or_user_data() {
+    let build_info = crate::SettingsBuildInfo {
+        product_version: env!("CARGO_PKG_VERSION").to_owned(),
+        environment: crate::SettingsBuildEnvironment::Production,
+    };
+    let text = about::software_info_text(SettingsLanguage::EnglishUnitedStates, &build_info);
+    assert!(text.starts_with("BongoCat\n"));
+    assert!(text.contains(&format!("Version {}", env!("CARGO_PKG_VERSION"))));
+    assert!(text.contains("Release build"));
+    assert!(text.contains(&format!("Platform: {}", std::env::consts::OS)));
+    assert!(text.contains(&format!("Architecture: {}", std::env::consts::ARCH)));
+    assert!(!text.contains("Tauri"));
+    assert!(!text.contains('/'));
+    assert!(!text.to_lowercase().contains("path"));
+}
+
+#[test]
 fn shortcut_presentations_follow_the_resolved_language() {
     let command = ShortcutCaptureTarget::Command("toggle_overlay".to_owned());
     assert_eq!(

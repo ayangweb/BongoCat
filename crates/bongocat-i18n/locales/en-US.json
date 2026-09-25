@@ -57,7 +57,6 @@
   },
   "about": {
     "product_information": {
-      "title": "Product Information",
       "version": {
         "title": "Version Information",
         "label": "Version",
@@ -67,23 +66,28 @@
         }
       }
     },
-    "legal": {
-      "application_license": {
-        "title": "Application License",
-        "description": "BongoCat application source code is licensed under the MIT License."
-      },
-      "third_party_licenses": {
-        "title": "Third-Party Licenses",
-        "description": "Third-party Rust dependencies use their own license notices."
-      },
-      "cubism_attribution": {
-        "title": "Live2D Cubism",
-        "description": "Uses Live2D Cubism SDK for Native 5-r.5 (Core 06.00.0001). Cubism Core is licensed under the Live2D Proprietary Software License. Copyright Live2D. Public redistribution and final attribution remain subject to Live2D approval and release review."
-      }
+    "software_information": {
+      "title": "Software information",
+      "description": "Copy version, platform, and architecture details for a bug report.",
+      "copy": "Copy",
+      "copy_success": "Software information copied",
+      "platform": "Platform",
+      "architecture": "Architecture"
     },
-    "privacy": {
-      "title": "Privacy",
-      "description": "Input is processed locally. Diagnostics and logs exclude keystroke sequences, clipboard contents, user file contents and secrets."
+    "project": {
+      "title": "Project home",
+      "description": "View BongoCat's source, releases, and development progress.",
+      "action": "Open project home"
+    },
+    "feedback": {
+      "title": "Problem feedback",
+      "description": "Copy the software information before opening an issue.",
+      "action": "Report an issue"
+    },
+    "logs": {
+      "title": "Application logs",
+      "description": "Logs stay in the current environment and are size- and retention-limited.",
+      "action": "Open log folder"
     }
   },
   "models": {
@@ -228,8 +232,7 @@
       "signing_key_missing": "This version cannot verify updates, so updating is disabled."
     },
     "about": {
-      "label": "Check for Updates",
-      "description": "Check for and install the latest official release."
+      "label": "Check for Updates"
     }
   },
   "actions": {
@@ -310,6 +313,9 @@
       "built_in_model_cannot_be_deleted": "Built-in models cannot be deleted",
       "model_delete_failed": "The imported model could not be deleted",
       "diagnostics_export_failed": "Diagnostics could not be exported",
+      "software_info_copy_failed": "Software information could not be copied",
+      "external_link_open_failed": "The link could not be opened",
+      "log_location_open_failed": "The application log folder could not be opened",
       "login_startup_update_failed": "The login startup setting could not be updated",
       "system_icon_update_failed": "Could not update the system icon.",
       "taskbar_icon_update_failed": "Could not update the taskbar icon.",

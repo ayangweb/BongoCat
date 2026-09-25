@@ -33,7 +33,7 @@ locale 文件保留根级 `_version: 1`，所有叶子 key 使用 `snake_case`�
 | `models`      | catalog、身份、导入流程、行为和校验             |
 | `shortcuts`   | 快捷键范围、录入、动作和冲突                    |
 | `diagnostics` | 预留 runtime、输入指标、配置恢复和导出（当前无叶子） |
-| `about`       | 产品信息、许可证、Cubism attribution 和隐私     |
+| `about`       | 产品信息和用户支持动作                           |
 | `actions`     | 跨页面且语义稳定的确认、取消、刷新等动作        |
 | `status`      | 跨页面生命周期状态                              |
 | `errors`      | 按 settings/models/runtime 归属的错误消息       |

@@ -31,10 +31,10 @@ use gpui_kit::component::{
 };
 
 use gpui_kit::{
-    Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, DragMoveEvent, ElementId,
-    Entity, ExternalPaths, FocusHandle, Focusable, Hsla, ImageSource, KeyDownEvent, KeyUpEvent,
-    Modifiers, MouseButton, ObjectFit, Pixels, Render, SharedString, Stateful, TitlebarOptions,
-    VisualContext, WeakEntity, Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions,
+    Anchor, App, AppContext, Bounds, Context, DisplayId, Div, DragMoveEvent, ElementId, Entity,
+    ExternalPaths, FocusHandle, Focusable, Hsla, ImageSource, KeyDownEvent, KeyUpEvent, Modifiers,
+    MouseButton, ObjectFit, Pixels, Render, SharedString, Stateful, TitlebarOptions, VisualContext,
+    WeakEntity, Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions,
     base::StyledExt, div, img, point, prelude::*, px, size,
 };
 use std::{
@@ -49,7 +49,6 @@ use std::{
 mod presentation;
 use presentation::*;
 mod about;
-use about::ABOUT_SECTIONS;
 mod lifecycle;
 mod localization;
 mod model_actions;
@@ -104,6 +103,9 @@ struct ShortcutConflictNotification;
 struct ModelCatalogErrorNotification;
 
 struct ModelImportSuccessNotification;
+
+/// Marks the confirmation shown after the About page copies software info.
+struct AboutCopySuccessNotification;
 
 /// Marks the notification pushed when a model could not be prepared for
 /// display. It is a failure of the import itself, not of a later command: the
@@ -186,6 +188,7 @@ enum PendingOperation {
     ModelDeletion,
     ModelMetadata,
     ModelLocation,
+    OpenLogsLocation,
     SetShortcuts,
     BeginShortcutCapture,
     CancelShortcutCapture,
@@ -601,6 +604,9 @@ pub struct SettingsView {
     /// told the import failed rather than being handed a card that cannot be
     /// activated.
     model_import_failed_pending: bool,
+    /// Set after the About page successfully copies the privacy-safe build
+    /// summary. It is consumed by the next frame and never becomes page state.
+    about_copy_success_pending: bool,
     model_import: ModelImportDraft,
     /// The whole-window file-drop affordance currently shown over every settings
     /// page. It is temporary view state only; the selected path is handed to the

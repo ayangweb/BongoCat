@@ -1842,13 +1842,13 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     application/Core 匿名统计，并从严格解析的 `.log` 来源生成不含时间戳、message、context 或路径的
     `application-events.log` preview。Core 原始 message、历史 JSONL 和失败来源正文仍不进入包；Windows
     release 与 OS-level failure evidence 仍待完成，因此总项保持未勾选。
-- [x] About：许可证、Cubism attribution、第三方依赖和隐私说明。
-  - 验收证据（2026-09-05）：GPUI Settings 新增只读 About 页面，以现有编译期 build identity
-    显示产品版本/环境，并提供中英文 MIT 应用许可证、第三方 Rust 依赖许可证策略、Cubism Native
-    `5-r.5`/Core `06.00.0001` 与 `Copyright Live2D` attribution，以及本地输入/匿名日志隐私边界。
-    该页明确声明公开再分发和最终 Cubism attribution 仍须 Live2D 批准及发布审核，不把
-    `P0-CUBISM` 或 stable 发布门禁标记完成。UI 本地化回归、AccessKit navigation/focus contract、
-    `bongocat-ui` 全量测试、`bongocat-app` 测试和本机 macOS settings-window smoke 均通过。
+- [x] About：产品信息与支持动作。
+  - 验收证据（2026-09-25）：About 作为普通设置页面提供产品版本/环境与手动检查更新、隐私安全的
+    软件信息复制、项目主页、问题反馈和 application-owned 日志目录入口。复制内容不包含路径、模型
+    名称或用户文件，日志路径由 settings service 持有而不进入 revisioned snapshot；新增复制/链接/日志
+    错误使用稳定 settings error code。法律与隐私正文不再由 About 展示，相关合规证据仍由 Phase 0
+    与发布文档维护。对应 UI、protocol、app service contract 与 settings smoke 已覆盖，双平台文件
+    管理器/系统浏览器和 Retina/DPI 目视验收仍待补。
 
 ### 6.5 UI 质量
 
@@ -6205,13 +6205,13 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
      - 未运行：Windows/macOS 文件管理器真实拖放、双平台高 DPI/Retina 视觉检查和真实导入回包；因此本项
        保持未勾选，不能用 headless contract 代替平台 smoke。
 
-109. [ ] `P1-SETTINGS-INFORMATION-ARCHITECTURE`：将设置侧边栏收敛为任务导向的七个业务分类，并把 About 作为最后的工具入口。
+109. [ ] `P1-SETTINGS-INFORMATION-ARCHITECTURE`：将设置侧边栏收敛为任务导向的七个业务分类，并把 About 作为最后的普通设置入口。
     - 依赖：ADR-0002、ADR-0019、ADR-0047、ADR-0052、ADR-0054、ADR-0056、ADR-0066。
     - 退出条件：一级页面固定为 `Appearance & language`、`Model library`、`Model behavior`、
       `Model window`、`Input & interaction`、`Shortcuts`、`App & system`、`About`；Model library
       单独承载模型卡片，Model behavior 单独承载模型镜像、动作音效和随机行为；Input & interaction
       分为 Mouse、Keyboard、Gamepad；App & system 分为 Startup & desktop、Updates、Logging；
-      Appearance 与 About 删除与页面标题重复的正文分组。模型行为快捷键仍只出现在 Shortcuts，
+      Appearance 与 About 删除与页面标题重复的操作分组；About 只保留产品信息和支持动作。模型行为快捷键仍只出现在 Shortcuts，
       模型库仍只做选择与元数据编辑。
     - 搜索：页面标题、分组标题和旧页面名作为显式关键词；模型库额外索引当前模型显示名。
       不新增第三级导航、常用页、高级页或重复开关。
@@ -6219,7 +6219,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       双语 CHANGELOG、locale key 与 settings smoke 文案；不修改 config/schema/runtime command。
     - 当前实现：导航 contract 位于 `crates/bongocat-ui/src/window/navigation.rs`；GPUI Kit
       `Settings` 仍按页面声明顺序渲染，Model library 与 Model behavior 各自拥有独立页面和正文，
-      About 位于同一菜单最后一项。当前上游公开 API 没有 sidebar footer，因此本项不复制私有导航
+      About 位于同一菜单最后一项，并按普通设置项承载产品/软件信息、项目与反馈、日志目录和手动更新入口；当前上游公开 API 没有 sidebar footer，因此本项不复制私有导航
       实现来强行固定 About。Updates / Logging 分组的行只保留标题与控件，描述 key 已从双语目录
       和 smoke 契约删除。
     - 验证：`bongocat-ui` 导航/页面 contract、双语 locale validator、`bongocat-i18n` 双向 key
@@ -6227,7 +6227,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 自动化证据（2026-09-25，本机 macOS / aarch64）：`cargo fmt --all -- --check`、workspace
       Clippy（`storage-test-injection` 与 `production` 分开）、`cargo test --locked --workspace`、
       `cargo check --locked --workspace --release`、`python3 tools/validate-locales.py`（2 locales /
-      245 keys）、`tools/tests` 66 项，以及 settings window / model library page / state smoke 均通过。
+      261 keys）、`tools/tests` 66 项，以及 settings window / model library page / state smoke 均通过。
     - 未运行：Windows 对应 smoke、800×600 下 Windows 125/150/200% 与 macOS Retina 的最终目视
       检查；因此本项保持未勾选，不能用本机自动化结果替代双平台 UI 门禁。
 

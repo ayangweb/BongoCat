@@ -57,7 +57,6 @@
   },
   "about": {
     "product_information": {
-      "title": "产品信息",
       "version": {
         "title": "版本信息",
         "label": "版本",
@@ -67,23 +66,28 @@
         }
       }
     },
-    "legal": {
-      "application_license": {
-        "title": "应用许可证",
-        "description": "BongoCat 应用源码采用 MIT 许可证。"
-      },
-      "third_party_licenses": {
-        "title": "第三方许可证",
-        "description": "第三方 Rust 依赖遵循各自的许可证声明。"
-      },
-      "cubism_attribution": {
-        "title": "Live2D Cubism",
-        "description": "使用 Live2D Cubism SDK for Native 5-r.5（Core 06.00.0001）。Cubism Core 采用 Live2D 专有软件许可证。版权所有 Live2D。公开再分发和最终署名仍须经 Live2D 批准及发布审核。"
-      }
+    "software_information": {
+      "title": "软件信息",
+      "description": "复制版本、平台和架构信息，反馈问题时使用。",
+      "copy": "复制",
+      "copy_success": "软件信息已复制",
+      "platform": "平台",
+      "architecture": "架构"
     },
-    "privacy": {
-      "title": "隐私",
-      "description": "输入在本地处理。诊断信息和日志不包含按键序列、剪贴板内容、用户文件内容或密钥。"
+    "project": {
+      "title": "项目主页",
+      "description": "查看 BongoCat 的源代码、发布说明和开发进展。",
+      "action": "打开项目主页"
+    },
+    "feedback": {
+      "title": "问题反馈",
+      "description": "提交问题前先复制软件信息。",
+      "action": "反馈问题"
+    },
+    "logs": {
+      "title": "软件日志",
+      "description": "本机日志，自动限制大小与保留天数。",
+      "action": "打开日志目录"
     }
   },
   "models": {
@@ -228,8 +232,7 @@
       "signing_key_missing": "当前版本无法验证更新，因此更新功能已关闭。"
     },
     "about": {
-      "label": "检查更新",
-      "description": "检查并安装最新的官方版本。"
+      "label": "检查更新"
     }
   },
   "actions": {
@@ -310,6 +313,9 @@
       "built_in_model_cannot_be_deleted": "无法删除内置模型",
       "model_delete_failed": "无法删除已导入模型",
       "diagnostics_export_failed": "无法导出诊断信息",
+      "software_info_copy_failed": "无法复制软件信息",
+      "external_link_open_failed": "无法打开链接",
+      "log_location_open_failed": "无法打开软件日志文件夹",
       "login_startup_update_failed": "无法更新登录时启动设置",
       "system_icon_update_failed": "无法更新系统图标。",
       "taskbar_icon_update_failed": "无法更新任务栏图标。",

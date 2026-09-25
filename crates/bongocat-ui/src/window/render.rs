@@ -140,6 +140,19 @@ impl Render for SettingsView {
                 cx,
             );
         }
+        if self.about_copy_success_pending {
+            self.about_copy_success_pending = false;
+            window.push_notification(
+                Notification::new()
+                    .id::<AboutCopySuccessNotification>()
+                    .message(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "about.software_information.copy_success",
+                    ))
+                    .with_type(NotificationType::Success),
+                cx,
+            );
+        }
         self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, editing_blocked, cx);
         let view_entity = cx.entity();
         let startup_item = startup_item_presentation(
@@ -1201,60 +1214,21 @@ impl Render for SettingsView {
                 ),
             ]);
 
-        // About is the final utility destination and uses its own Info icon;
-        // upstream Settings has no public sidebar-footer slot to pin it.
+        // About is the final normal settings destination. Its operational rows
+        // use the same SettingGroup contract as the rest of the settings
+        // window; the page intentionally stays focused on product information
+        // and support actions.
         let about_keywords =
             SettingsNavigationPage::About.search_keywords(language, std::iter::empty());
         let about_page = SettingPage::new(SettingsNavigationPage::About.title(language))
             .icon(SettingsNavigationPage::About.icon())
-            .group({
-                let mut about_group = SettingGroup::new().item(
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "about.product_information.title",
-                        ),
-                        SettingField::element({
-                            let view = view_entity.clone();
-                            move |_: &RenderOptions, _window: &mut Window, app: &mut App| {
-                                let snapshot = view.read(app).snapshot.clone();
-                                view.update(app, move |_view, _cx| {
-                                    about::content(snapshot.as_ref())
-                                })
-                                .into_any_element()
-                            }
-                        }),
-                    )
-                    .layout(Axis::Vertical)
-                    .keywords(about_keywords.clone()),
-                );
-                about_group = about_group.item(
-                    SettingItem::new(
-                        bongocat_i18n::text(language.catalog_locale(), "update.about.label"),
-                        SettingField::element({
-                            let view = view_entity.clone();
-                            let label_locale = language.catalog_locale();
-                            move |_: &RenderOptions, _window: &mut Window, app: &mut App| {
-                                let request_update = view.read(app).request_update.clone();
-                                div()
-                                    .id("about-check-for-updates")
-                                    .on_click(move |_, _, app| (request_update)(app))
-                                    .child(Button::new("about-check-for-updates-button").label(
-                                        bongocat_i18n::text(label_locale, "update.about.label"),
-                                    ))
-                                    .into_any_element()
-                            }
-                        }),
-                    )
-                    .layout(Axis::Vertical)
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "update.about.description",
-                    ))
-                    .keywords(about_keywords),
-                );
-                about_group
-            });
+            .group(about::operational_group(
+                view_entity.clone(),
+                snapshot.as_ref(),
+                language,
+                about_keywords,
+                self.request_update.clone(),
+            ));
 
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))

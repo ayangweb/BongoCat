@@ -195,6 +195,7 @@ impl SettingsView {
             pending_notification: None,
             model_import_success_pending: false,
             model_import_failed_pending: false,
+            about_copy_success_pending: false,
             model_import: ModelImportDraft::default(),
             model_drag: None,
             check_for_updates_interval_debouncer: crate::SettingsPatchDebouncer::default(),

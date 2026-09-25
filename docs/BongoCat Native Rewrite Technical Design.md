@@ -509,18 +509,20 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   health 进入 degraded 并以匿名状态进入 revisioned snapshot，不在后台循环请求权限或重启服务。
 - 设置窗口只展示用户可操作的设置，导航分两级（ADR-0066）。一级页面按用户任务固定为
   Appearance & language、Model library、Model behavior、Model window、Input & interaction、
-  Shortcuts、App & system 七个业务分类，About 作为最后的工具入口。Appearance & language 直接展示主题与
-  语言，不再重复同名分组；Model library 单独展示模型卡片，Model behavior 单独展示模型镜像、动作音效和随机行为，模型行为快捷键仍留在 Shortcuts；Input & interaction 按 Mouse、Keyboard、
+  Shortcuts、App & system 七个业务分类，About 作为设置菜单中的最后一个普通页面。Appearance & language
+  直接展示主题与语言，不再重复同名分组；Model library 单独展示模型卡片，Model behavior 单独展示模型镜像、动作音效和随机行为，模型行为快捷键仍留在 Shortcuts；Input & interaction 按 Mouse、Keyboard、
   Gamepad 分组；App & system 按 Startup & desktop、Updates、Logging 分组。Updates 与 Logging 的设置项只保留标题和控件，
-  不显示重复描述。Model window 继续按 Window behavior、Window appearance、Window performance 分组。同一页面下存在多于一个带标题的 group
-  时 sidebar 把它们渲染为二级菜单项，点击滚动到该分组。页面与分组标题同时作为设置搜索关键词，
+  不显示重复描述。Model window 继续按 Window behavior、Window appearance、Window performance 分组。About 的
+  操作行使用标准设置项：产品信息/手动检查更新、隐私安全的软件信息复制、项目主页、问题反馈和打开
+  application-owned 日志目录；日志路径不进入 SettingsSnapshot，由 settings service 持有并校验。
+  About 不再展示法律与隐私正文。页面与分组标题同时作为设置搜索关键词，
   旧页面名保留为只搜索的别名；模型库还索引当前模型显示名。About 位于同一菜单的最后一项。
   配置损坏在 settings window 出现前完成 fallback，不显示配置恢复横幅、按钮或重启提示。
   原 Diagnostics 页面已移除，输入可靠性计数、runtime/renderer 状态和 build 标识只留在
   app-owned 日志和匿名 diagnostics export 里：周期性刷新只服务于界面上仍在显示的数字。
   `OpenConfigBackupLocation` 与 `ExportDiagnostics` 仍是 settings service 的强类型排障
-  command，不从常规 UI 触发。Development、Production 和 smoke 的设置窗口使用同一套可见
-  页面、分组和按钮组成；smoke 只改变驱动方式，不额外显示“重置偏好设置”等产品窗口没有的控件。
+  command，不从常规 UI 触发；About 的日志动作只打开应用自有目录，不暴露诊断内容。Development、Production
+  和 smoke 的设置窗口使用同一套可见页面、分组和按钮组成；smoke 只改变驱动方式，不额外显示“重置偏好设置”等产品窗口没有的控件。
 - 产品启动时以只读 `CGPreflightListenEventAccess` 检查 Input Monitoring，缺失时用 `rfd` 的原生
   系统弹框引导用户前往「系统设置 → 隐私与安全性 → 输入监控」。检查非阻塞：主线程完成窗口、
   菜单栏等正常初始化后，由专用 worker 线程执行检查与提示，提示未应答或被关闭不影响任何产品
@@ -1413,7 +1415,8 @@ Windows 首发采用固定、可审计 NSIS per-user installer，不请求管理
 
 设置侧边栏固定为七个业务分类（外观与语言、模型库、模型行为、模型窗口、输入与交互、快捷键、应用与系统）
 加最后的关于入口；模型库与模型行为各自独立成页，键鼠/手柄、启动/更新/日志形成明确的二级分组。
-页面与分组标题进入搜索关键词，旧页面名作为搜索别名；不增加第三级导航、常用页或高级页。
+About 仍是 Settings 中的普通页面，产品/软件信息、项目与反馈入口、日志目录和手动检查更新使用标准设置项；
+不展示法律与隐私正文，日志路径不进入 snapshot。页面与分组标题进入搜索关键词，旧页面名作为搜索别名；不增加第三级导航、常用页或高级页。
 
 ## 17. 实施阶段
 

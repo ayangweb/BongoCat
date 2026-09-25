@@ -4,7 +4,7 @@ use gpui_kit::{SharedString, assets::IconName};
 /// The product-owned information architecture of the settings sidebar.
 ///
 /// The order is part of the visible contract: frequent product choices come
-/// first, system preferences follow, and About remains the final utility entry.
+/// first, system preferences follow, and About remains the final normal settings entry.
 /// Titles and icons live here so the renderer, smoke checks, and search
 /// aliases cannot drift into three independent lists.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
