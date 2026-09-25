@@ -3047,6 +3047,14 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       继续将上述行为列为发布门禁。Windows 右键失败的具体根因是 overlay 的 HTCAPTION 命中测试使
       Windows 发送 WM_NCRBUTTONUP 而非 WM_CONTEXTMENU；现已统一转发两类消息并增加映射单测，
       但仍需在实际 Windows overlay 上完成右键弹出复验。
+     - 状态（2026-09-25，ADR-0068）：托盘与 overlay 右键已改为复用同一个 popup 菜单树、同一套 item
+       实例、强类型 action 集合和事件队列，仍由同一 `SystemMenu` owner 管理。共用菜单按设置/模型窗口/可用更新/退出
+       分组；模型窗口子菜单提供显隐、穿透、置顶和鼠标移入隐藏四个 check item，显隐与偏好设置共用
+       `settings.overlay.hide_model_window.label` 且以“已隐藏”为选中值，默认未选中；不再提供单独的“显示模型窗口”项；
+       其它模型窗口属性直接复用偏好设置已有文案，检查更新复用 About 的 `update.about.label`。源码、重启、版本与重复的
+       缩放/透明度行已移除。新增平台
+       layout/action contract 与双语 locale 校验，定向 workspace 检查通过；真实托盘与右键 popup 展开、cursor/DPI/
+       点击外部关闭和两平台 Explorer/菜单栏恢复仍待实机，因此本项总状态不改变。
 28. [x] `P7-WINDOWS-SINGLE-INSTANCE`：按构建环境隔离 Windows 单实例并唤醒现有设置窗口。
     - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、ADR-0008、Windows GPUI message loop。
     - 退出条件：Development/Production 使用不同的 local named mutex、owner window class 和
@@ -6223,6 +6231,13 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       261 keys）、`tools/tests` 66 项，以及 settings window / model library page / state smoke 均通过。
     - 未运行：Windows 对应 smoke、800×600 下 Windows 125/150/200% 与 macOS Retina 的最终目视
       检查；因此本项保持未勾选，不能用本机自动化结果替代双平台 UI 门禁。
+
+110. [ ] `P7-MENU-INFORMATION-ARCHITECTURE`：按入口统一托盘菜单与模型窗口右键菜单，只保留高频、必要或适合当前上下文的操作。
+     - 依赖：`P7-SYSTEM-MENU-LIFECYCLE`、ADR-0031、ADR-0068、当前 settings snapshot/revision 通路。
+     - 退出条件：托盘与模型窗口右键按同一套「设置 → 模型窗口（隐藏模型窗口 check、鼠标穿透、置顶、鼠标移入隐藏）→ 可用的检查更新 → 退出」菜单组织；两个入口不显示单独的“显示模型窗口”、源码、重启、版本或重复的缩放/透明度行；不可用更新通道不创建永久禁用行；同一棵 popup 根、同一套 item 实例、强类型 action 映射和事件队列由唯一 owner 管理；菜单项状态/本地化在两个入口同步；菜单树 contract、双语 locale、workspace 门禁和双平台实机 popup 验收通过。
+     - 当前实现（2026-09-25）：`bongocat-platform::SystemMenu` 持有一个由托盘和 overlay 右键共用的 `Menu` 根、模型窗口 `Submenu` 和一套 item 实例；模型窗口子菜单提供显隐、穿透、置顶和鼠标移入隐藏四个 check item，显隐使用偏好设置共用的 `settings.overlay.hide_model_window.label`，偏好设置开关和菜单 check item 都以“已隐藏”为选中值，默认未选中；其它模型窗口属性直接复用 `settings.overlay.click_through.label`、`settings.overlay.always_on_top.label` 与 `settings.overlay.hide_on_mouse_hover.label`，检查更新复用 About 的 `update.about.label`，通过 revision-checked `SettingsOverlay` command 更新，command 失败会回写 snapshot 恢复 check 状态；`OpenSource`/`Restart`/版本字段和 action 已删除，更新入口按构建/channel 可用性在构造期决定是否创建。`bongocat-platform` layout/action 单测、`bongocat-i18n` 双向 key 守门和 locale validator 已通过。
+     - 验证（2026-09-25，本机 macOS / arm64）：`cargo test --locked -p bongocat-platform`、`cargo test --locked -p bongocat-ui`、`cargo test --locked -p bongocat-i18n`、`python3 tools/validate-locales.py`（2 locales / 254 keys）、`cargo clippy --locked --workspace --all-targets -- -D warnings`、`cargo check --locked --workspace --release` 与 Windows target 的 `bongocat-platform` check/clippy 通过；设置页显隐开关已改为共享“隐藏模型窗口”文案并以未选中为默认，`--settings-window-smoke` 与 system-menu smoke 均通过。完整 workspace 测试以 `cargo test --locked --workspace -- --test-threads=1` 通过；并行默认运行曾受既有时序敏感测试影响。
+     - 未运行：Windows 10 1903+ 与受支持 macOS 实机托盘与 overlay 右键的共用菜单展开、cursor/DPI/Retina、点击外部关闭、action 派发、Explorer/菜单栏恢复和 shutdown 清理；因此本项保持未勾选。
 
 ## 13. 待决策清单
 

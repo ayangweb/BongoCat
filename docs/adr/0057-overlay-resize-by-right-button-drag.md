@@ -11,7 +11,7 @@
 `next` 的模型窗口尺寸只有一个来源：配置 `overlay.scale_percent`。在本 ADR 初始实现时，改变它意味着
 **重建整个窗口**——`OverlaySessionOptions::requires_window_recreation` 把 `scale_percent` 列为重建条件，
 重建会重新创建原生窗口与 GPU 资源，`GpuModel::prepare` 还会重新加载全部模型纹理。因此在这次改动之前，
-调整窗口大小只有设置页滑块（以及系统菜单里的缩放项）这一条路，而且每次都伴随一次可见的重建。
+调整窗口大小只有设置页滑块这一条路，而且每次都伴随一次可见的重建。
 
 旧版（`pre-refactor` 分支 `src/pages/main/index.vue`）在主窗口上实现了这个交互：
 

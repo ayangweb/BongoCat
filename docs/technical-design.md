@@ -214,10 +214,10 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
 - `system.show_status_icon` 通过独立的 revision-checked settings command 修改。settings worker
   以有界 request/reply bridge 请求平台主线程隐藏或显示状态图标，平台成功后才由 Application owner
   原子提交配置；配置提交失败时必须把图标恢复为旧状态。macOS/Windows 共用 `tray-icon 0.25.0` 托盘
-  owner 与直接依赖的 `muda 0.20.0` 菜单 owner：`TrayIcon`、菜单、菜单项 receiver 和强类型事件队列
-  在整个运行期保持存活，`set_visible` 只改变平台表示（macOS 移除 `NSStatusItem`，Windows 保留注册并设置隐藏），
-  重新显示不创建第二套业务状态或菜单 owner。overlay 右键由 `muda` 从 overlay 的真实 HWND/`NSView`
-  弹出同一菜单，不借用托盘隐藏窗口。
+  owner 与直接依赖的 `muda 0.20.0` 菜单 owner：`TrayIcon`、一个 popup 菜单根、菜单项 receiver 和强类型
+  事件队列在整个运行期保持存活，`set_visible` 只改变平台表示（macOS 移除 `NSStatusItem`，Windows 保留
+  注册并设置隐藏），重新显示不创建第二套业务状态或菜单 owner。托盘和 overlay 右键复用同一棵菜单树，
+  由 `muda` 从 overlay 的真实 HWND/`NSView` 弹出，不借用托盘隐藏窗口。
   正式启动不创建或显示设置窗口，设置窗口、单实例唤醒和 application reopen 仍提供恢复入口；
   平台失败只返回稳定匿名 settings error。
 - `system.show_taskbar_icon` 只控制 Windows GPUI 设置窗口的任务栏按钮，不改变窗口可见性，
@@ -569,10 +569,11 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - 输入：Raw Input、状态校正、可选低级 hook、gilrs/WGI 手柄。
 - 产品图标：`bongocat-app` 在构建期把 BongoCat 自有 `.ico` 编译进 Windows executable，用于窗口、
   任务栏和文件身份；它不再是托盘图标来源，托盘也不会回退到系统通用应用图标。
-- 托盘：`tray-icon 0.25.0` 拥有 `TrayIcon` 和固定 GUID，直接依赖的 `muda 0.20.0` 拥有菜单与
-  右键弹出。Windows 状态图标从 BongoCat 自有 `resources/icons/tray-windows.png` 解码，菜单、托盘
-  隐藏点击恢复和 overlay 右键入口均由该唯一菜单 owner 管理；overlay 弹出使用自身 HWND，不借用
-  托盘隐藏窗口。
+- 托盘：`tray-icon 0.25.0` 拥有 `TrayIcon` 和固定 GUID，直接依赖的 `muda 0.20.0` 拥有一个由托盘和
+  overlay 右键共用的 popup 根。Windows 状态图标从 BongoCat 自有
+  `resources/icons/tray-windows.png` 解码；托盘隐藏点击恢复和 overlay 右键入口均由该唯一菜单 owner
+  管理，overlay 弹出使用自身 HWND，不借用托盘隐藏窗口。共用菜单根包含设置入口、模型窗口操作分组（显隐、
+  穿透、置顶、鼠标移入隐藏）、可用的更新入口和退出。
 - 启动项：统一由 `auto-launch 0.6.0` 提供双平台后端。Windows 写当前用户 HKCU Run 并同步
   `StartupApproved\Run` 启用标记；macOS 写 `~/Library/LaunchAgents/{app_name}.plist`
   （`RunAtLoad`）。Production 使用该后端；命令固定为当前 executable 加 `--run-seconds 0`，
@@ -614,10 +615,11 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Spaces：按配置设置 collection behavior 和 full-screen auxiliary。
 - 输入：CGEventTap、状态校正、gilrs/IOHID 手柄。
 - 菜单栏：`tray-icon 0.25.0` 在 macOS 主线程拥有 `NSStatusItem`，同一份直接依赖的
-  `muda 0.20.0` 菜单拥有命令项；状态图标使用 BongoCat 自有 `resources/icons/tray-macos.png` 并作为
-  template image。overlay 右键通过 content `NSView` 在同一主线程调用 `muda` 弹出。登录启动在
-  macOS 13+ Production `.app` 使用 `SMAppService.mainAppService`。macOS 12 和 Development 构建
-  明确报告 capability unsupported，不回退到废弃 API 或自行写 LaunchAgent。
+  `muda 0.20.0` owner 持有一个由托盘和 overlay 右键共用的 popup 根；状态图标使用 BongoCat 自有
+  `resources/icons/tray-macos.png` 并作为 template image。overlay 右键通过 content `NSView` 在同一主线程
+  调用同一棵菜单树，不借用托盘状态项。登录启动在 macOS 13+ Production `.app` 使用
+  `SMAppService.mainAppService`。macOS 12 和 Development 构建明确报告 capability unsupported，不回退到
+  废弃 API 或自行写 LaunchAgent。
 - 发布：Hardened Runtime、签名、notarization 和 TCC 权限说明。
 
 平台 `unsafe` 必须集中在小型 wrapper，写明安全不变量并有 smoke test。业务和 UI crate 默认禁止 `unsafe_code`。
@@ -899,7 +901,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `input.gamepad.stick_dead_zone` 和 `input.gamepad.trigger_dead_zone`；两个 dead-zone 都必须是
   `[0, 1)` 的有限数。模型随机播放由 `model.random_behavior.enabled` 与
   `model.random_behavior.interval_seconds` 成对表达，后者为 `[1, 3600]` 秒且默认 `30`；两者直接
-  进入当前 v1，不读取旧字段。overlay visibility 属于 runtime 会话状态，不写入 config。
+  进入当前 v1，不读取旧字段。overlay visibility 属于 runtime 会话状态，不写入 config；设置页使用
+  `settings.overlay.hide_model_window.label` 将其投影为“隐藏模型窗口”开关，开关选中表示已隐藏，默认未选中。
 - `next` 开发期间不读取或转换任何早期中间结构，不实现 schema migration、字段 alias 或版本兼容
   分支。新增字段直接更新当前 v1 的 Rust 类型、JSON Schema、默认值和 fixture。解析入口保留显式
   版本检查并拒绝非 v1 数据；首次正式发布后的后续版本再以该发布版为基线单独设计迁移链。
@@ -1105,7 +1108,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 签名公钥缺失时失败关闭：`RELEASE_SIGNING_KEY` 已内嵌发布公钥（key ID
   `DF5E2C9D255DD85E`）；缺失、空串或纯空白时 runtime 在发出任何请求前即返回
   `update_signature_key_missing`，绝不静默接受未签名载荷。`UpdateRuntime::is_available()` 仅在
-  production channel 与有效公钥同时具备时为真，系统菜单据此决定是否显示「检查更新」入口。该
+  production channel 与有效公钥同时具备时为真，系统菜单据此决定是否在托盘根中创建「检查更新」入口；该
   门禁产出的是稳定、无路径的错误码，而不是库错误。
 - 发行清单是**一份共享 manifest**（`latest.json`），形状为库的 *static* 形状：顶层 `version`、
   可选的 `notes` 加一个 `platforms` 映射，键为 `<os>-<arch>`，每项含 `url`、`signature`、`format`；
@@ -1394,8 +1397,14 @@ Windows 由安装器 `/R` 负责。明确不做下载取消。**记录一处与 
 
 macOS/Windows 托盘使用 `tray-icon 0.25.0`，菜单与右键弹出使用直接依赖的 `muda 0.20.0`；平台
 adapter 负责加载 PNG、映射强类型 action、调用 hide/show，并从 overlay session 的真实
-HWND/`NSView` 弹出菜单。第三方类型、句柄和错误不进入 runtime/UI 公共 API，Windows 固定 GUID
-与双平台唯一 owner 由 ADR-0031 约束。
+HWND/`NSView` 弹出与托盘共用的菜单树。第三方类型、句柄和错误不进入 runtime/UI 公共 API，Windows
+固定 GUID 与双平台唯一 owner 由 ADR-0031 约束。
+
+### ADR-0068：托盘与模型窗口右键菜单复用
+
+托盘和模型窗口右键由同一个 `SystemMenu` owner 持有一个 popup 根、同一套菜单项、强类型 action 映射和
+事件队列；菜单集中提供设置、模型窗口显隐/穿透/置顶/鼠标移入隐藏、可用的检查更新和退出。源码、版本、
+重启和重复的缩放/透明度不进入原生菜单；菜单层级、析构顺序与平台实机验收门禁见 ADR-0068。
 
 ### ADR-0066：gilrs 手柄后端边界
 

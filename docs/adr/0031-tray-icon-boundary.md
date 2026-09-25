@@ -1,6 +1,6 @@
 # ADR-0031: Tray Icon and Menu Library Boundary
 
-状态：已接受（2026-09-13）；2026-09-14 补充 Windows `set_tooltip` 上游缺陷与 tooltip 创建期不变量
+状态：已接受（2026-09-13）；2026-09-14 补充 Windows `set_tooltip` 上游缺陷与 tooltip 创建期不变量；2026-09-25 接受托盘与 overlay 右键菜单复用（ADR-0068）
 
 > 后续修订（2026-09-23）：ADR-0033 已退役 Windows 原生 ARM64；本文提到的 Windows x64/ARM64 cross-check 只是历史证据，当前 Windows 发布 target 只有 x64。
 
@@ -25,8 +25,8 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
   `Menu`/`MenuItem`/`CheckMenuItem` 提供菜单构建与动态文本、状态更新，`ContextMenu` 提供 Windows
   HWND 与 macOS `NSView` 的右键弹出 API。它没有可设置的菜单标题，因此既有
   `SystemMenuPresentation::title` 不再有对应可变标题 API。`tray-icon 0.25.0` 也依赖同一
-  `muda 0.20.0` 类型来挂载托盘菜单；项目直接声明 `muda`，确保 overlay 菜单与托盘菜单复用同一份
-  强类型 owner，而不是依赖第三方 crate 的重导出。
+  `muda 0.20.0` package 来挂载托盘菜单；项目直接声明 `muda`，确保共用 popup 根使用同一份第三方
+  类型和同一个项目 owner，而不是依赖第三方 crate 的重导出。
 - `tray-icon` 的 `TrayIcon`、`TrayIconEvent::receiver` 与 `muda::MenuEvent::receiver` 均以进程级
   状态和 `Rc<RefCell<_>>`/静态 channel 实现。一个进程只能有一个长期存活的 `SystemMenu` 业务
   owner；隐藏图标只切换平台表示，不能销毁并重建 owner，否则会丢失菜单事件消费者。
@@ -46,17 +46,22 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
 ## 决策
 
 - macOS 与 Windows 状态图标统一由 `bongocat-platform` 私有 `system_menu_native` adapter 管理：
-  `tray-icon 0.25.0` 是托盘/菜单栏图标的 native owner，直接依赖的 `muda 0.20.0` 是菜单和弹出
-  行为的 owner；旧 `system_menu_macos.rs`、`system_menu_windows.rs` 与 `tray-windows.ico` 退役。
-- adapter 是 `SystemMenu` 的唯一 owner，长期持有 `TrayIcon`、根 `Menu`、全部可变菜单项和
-  `muda` 菜单事件 receiver。`set_visible(false)` 只改变平台表示（macOS 移除 `NSStatusItem`，
-  Windows 保留注册并设置隐藏），菜单 owner 与事件通道不销毁；重新显示不创建第二套业务状态。
+  `tray-icon 0.25.0` 是托盘/菜单栏图标的 native owner，直接依赖的 `muda 0.20.0` 是共用 popup 根
+  和菜单事件的 owner；旧 `system_menu_macos.rs`、`system_menu_windows.rs` 与 `tray-windows.ico` 退役。
+- adapter 是 `SystemMenu` 的唯一 owner，长期持有 `TrayIcon`、一个托盘/模型窗口共用菜单根、模型窗口
+  子菜单、全部可变菜单项和 `muda` 菜单事件 receiver。`set_visible(false)` 只改变平台表示（macOS 移除
+  `NSStatusItem`，Windows 保留注册并设置隐藏），菜单 owner 与事件通道不销毁；重新显示不创建第二套
+  业务状态。
 - Windows 使用固定 GUID 与 `tray-windows.png`；macOS 使用 `tray-macos.png` 并标记为 template
   image。两平台在菜单构建时共享相同 action id 到项目自有 `SystemMenuAction` 的映射。
-- Windows 左键抬起映射为 `OpenSettings`，右键由 `tray-icon` 弹出其挂载的同一 `muda` 菜单。
-  macOS 由 `tray-icon` 在左右键时弹出同一菜单。overlay 右键统一由 adapter 的
-  `show_context_menu_for_window` 从 overlay session 获取真实 Windows HWND 或 macOS content
-  `NSView`，再调用 `muda::ContextMenu`；不得继续借用托盘隐藏 HWND，也不创建第二套菜单。
+- Windows 左键抬起映射为 `OpenSettings`，右键由 `tray-icon` 弹出共用菜单。macOS 由 `tray-icon`
+  在左右键时弹出同一菜单；模型窗口右键也调用同一个菜单根。菜单按应用任务组织为「设置 → 模型窗口
+  子菜单（隐藏模型窗口、穿透、置顶、鼠标移入隐藏）→ 可用的检查更新 → 退出」；模型窗口显隐的勾选
+  表示当前已隐藏，不再提供单独的“显示模型窗口”项；其它模型窗口属性直接复用偏好设置已有文案。
+  不可用的更新入口在构造期不创建，两个入口都使用同一组 action id 和同一个事件队列。
+- overlay 右键由 adapter 的 `show_context_menu_for_window` 从 overlay session 获取真实 Windows
+  HWND 或 macOS content `NSView`，再调用对应的 `muda::ContextMenu`；不得继续借用托盘隐藏 HWND，
+  也不得由 overlay 自己创建第二个 owner。
 - 第三方 `tray_icon`/`muda` 类型、platform handle、错误和回调不得进入 `bongocat-runtime`、
   `bongocat-ui` 或公共协议；adapter 只暴露项目自有的 `SystemMenu`、`SystemMenuAction`、
   `SystemMenuError` 和 `SystemMenuPresentation`。
@@ -107,11 +112,12 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
   Windows RC 只嵌入产品 ICO，不再把托盘 PNG/ICO 作为 executable icon group。
 - macOS/Windows target 的 `cargo check`、release build、完整 workspace fmt/clippy/test/check 和
   native dependency policy 必须通过。
-- macOS release system-menu smoke 需验证 `tray-icon` 托盘 owner、直接 `muda` 菜单 action、显隐恢复
-  与 shutdown；现有 smoke 不合成 overlay 右键，因此不能替代真实菜单弹出验证。
-- 发布前必须在 Windows 10 1903+ 与受支持 macOS 实机验证 overlay 右键菜单的 cursor 定位、缩放/DPI、
-  窗口层级、点击外部关闭、action 派发和 shutdown；Windows x64/ARM64 cross-check 只能证明编译与
-  边界，不能证明 tray registration、右键菜单、左键打开设置、Explorer 重启恢复或资源管理器交互。
+- macOS release system-menu smoke 需验证 `tray-icon` 托盘 owner、托盘与 overlay 右键共用的 `muda` popup
+  根、强类型 action、显隐恢复与 shutdown；现有 smoke 注入 action 而不弹出真实菜单，因此不能替代真实菜单弹出验证。
+- 发布前必须在 Windows 10 1903+ 与受支持 macOS 实机验证托盘与 overlay 右键展示同一菜单层级、子菜单展开、
+  cursor 定位、缩放/DPI、窗口层级、点击外部关闭、action 派发和 shutdown；重点确认两个入口的菜单项集合、
+  check 状态和 action 行为一致。Windows x64 cross-check 只能证明编译与边界，不能证明 tray registration、菜单层级、
+  左键打开设置、Explorer 重启恢复或资源管理器交互。
 - `workspace` 的 `Smoke Windows D3D11 product overlay` 在真实 Windows runner 上运行
   `--settings-window-open-smoke` 与 `--settings-window-smoke --models-page-smoke`，是上述
   `set_tooltip` 缺陷的唯一回归来源：2026-09-14 的 job 日志显示 `set_presentation` 每 50ms 重试一次，
@@ -124,7 +130,7 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
 
 替换点只有 `bongocat-platform` 私有 `system_menu_native` adapter 和 overlay 的
 `HasWindowHandle` 实现。升级或替换 `tray-icon`/`muda` 时必须复验：两者仍解析到同一 `muda`
-package、双平台菜单顺序与启用状态、Windows 固定 GUID、GUID 注册下的 `set_tooltip` 是否已修复、
-左键/右键行为、macOS template image 与主线程约束、overlay HWND/`NSView` 生命周期、cursor 定位、
-隐藏后的恢复、shutdown 清理、依赖 target/features、Windows shell failure 语义和 PNG 资源格式。
-adapter 之外不得依赖第三方 tray/menu 类型。
+package、托盘与 overlay 共用 popup 根的 action 投影与层级、菜单项/根的析构顺序、Windows 固定 GUID、
+GUID 注册下的 `set_tooltip` 是否已修复、左键/右键行为、macOS template image 与主线程约束、overlay
+HWND/`NSView` 生命周期、cursor 定位、隐藏后的恢复、shutdown 清理、依赖 target/features、Windows shell
+failure 语义和 PNG 资源格式。adapter 之外不得依赖第三方 tray/menu 类型。

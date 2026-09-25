@@ -32,14 +32,7 @@
   "system_menu": {
     "title": "BongoCat",
     "open_settings": "Settings",
-    "show_model_window": "Show model window",
-    "hide_model_window": "Hide model window",
-    "click_through": "Mouse click-through",
-    "check_for_updates": "Check for updates",
-    "open_source": "View project source",
-    "restart": "Restart application",
-    "quit": "Quit application",
-    "version": "Version %{version}"
+    "quit": "Quit BongoCat"
   },
   "startup_permission": {
     "input_monitoring": {
@@ -353,8 +346,8 @@
       "performance": {
         "title": "Window performance"
       },
-      "visibility": {
-        "label": "Show model window"
+      "hide_model_window": {
+        "label": "Hide model window"
       },
       "always_on_top": {
         "label": "Always on top"

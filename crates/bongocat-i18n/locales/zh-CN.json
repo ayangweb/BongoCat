@@ -32,14 +32,7 @@
   "system_menu": {
     "title": "BongoCat",
     "open_settings": "设置",
-    "show_model_window": "显示模型窗口",
-    "hide_model_window": "隐藏模型窗口",
-    "click_through": "鼠标穿透",
-    "check_for_updates": "检查更新",
-    "open_source": "查看项目源码",
-    "restart": "重启应用",
-    "quit": "退出应用",
-    "version": "版本 %{version}"
+    "quit": "退出 BongoCat"
   },
   "startup_permission": {
     "input_monitoring": {
@@ -353,8 +346,8 @@
       "performance": {
         "title": "窗口性能"
       },
-      "visibility": {
-        "label": "显示模型窗口"
+      "hide_model_window": {
+        "label": "隐藏模型窗口"
       },
       "always_on_top": {
         "label": "始终置顶"

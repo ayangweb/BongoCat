@@ -253,7 +253,7 @@ impl Render for SettingsView {
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.overlay.visibility.label",
+                            "settings.overlay.hide_model_window.label",
                         ),
                         SettingField::switch(
                             {
@@ -262,14 +262,14 @@ impl Render for SettingsView {
                                     view.read(app)
                                         .snapshot
                                         .as_ref()
-                                        .is_some_and(|s| s.overlay_visible)
+                                        .is_some_and(|s| !s.overlay_visible)
                                 }
                             },
                             {
                                 let view = view_entity.clone();
                                 move |value, app| {
                                     view.update(app, |view, cx| {
-                                        view.set_overlay_visible(value, cx)
+                                        view.set_overlay_visible(!value, cx)
                                     });
                                 }
                             },

@@ -1,4 +1,4 @@
-/// Localized text and revisioned state used by both native menu surfaces.
+/// Localized text and revisioned state used by the two native menu surfaces.
 ///
 /// The platform owns native menu handles only. The application supplies this
 /// value from its settings snapshot so platform code never becomes a second
@@ -8,27 +8,38 @@ pub struct SystemMenuPresentation {
     pub title: String,
     pub tooltip: String,
     pub open_settings: String,
-    pub show_overlay: String,
+    pub model_window: String,
+    /// The shared “hide model window” label for the visibility check item.
+    /// The check state means "the model window is hidden"; there is no
+    /// separate Show label.
     pub hide_overlay: String,
     pub click_through: String,
+    pub always_on_top: String,
+    pub hide_on_pointer_hover: String,
     pub check_for_updates: String,
-    pub open_source: String,
-    pub restart: String,
     pub quit: String,
-    pub version: String,
     pub overlay_visible: bool,
     pub click_through_enabled: bool,
+    pub always_on_top_enabled: bool,
+    pub hide_on_pointer_hover_enabled: bool,
     pub update_check_available: bool,
 }
 
+/// A product action emitted by either native menu surface.
+///
+/// Actions are deliberately small and stable: the tray and model-window
+/// context surfaces share the same menu set, while the application remains
+/// the only owner of what each action means.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SystemMenuAction {
     OpenSettings,
+    /// Toggle the session-only model-window visibility. Native menus render
+    /// this as a check item whose checked state means hidden.
     ToggleOverlayVisibility,
     ToggleClickThrough,
+    ToggleAlwaysOnTop,
+    ToggleHideOnPointerHover,
     CheckForUpdates,
-    OpenSource,
-    Restart,
     Quit,
 }
 

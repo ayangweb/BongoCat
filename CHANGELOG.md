@@ -18,6 +18,7 @@
 - Automatic update checks can run every 1–8,760 hours. The update window shows download, verification, installation, retry, and restart status.
 - Logs are readable dated files with adjustable levels, retention, and automatic cleanup.
 - Settings are organized by task, and the light or dark theme follows supported system windows, menus, and file pickers.
+- The tray and model-window context menus now share one menu set with grouped model-window controls, including always-on-top and hide-on-mouse-hover checks; the visibility preference uses the same “Hide model window” label and is unchecked by default, so source, version, restart, and duplicate size/opacity rows are no longer cluttering the menus.
 - Window and model-behavior shortcuts have separate switches. Model shortcuts are opt-in, and holding a shortcut triggers its action only once.
 - Closing Settings now destroys its window; reopening it in the same app process restores the last top-level sidebar page. Update windows keep their existing close-and-destroy behavior.
 

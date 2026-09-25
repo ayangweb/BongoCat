@@ -2449,6 +2449,22 @@ fn model_behavior_shortcut_copy_stays_aligned_between_scope_and_gate() {
 }
 
 #[test]
+fn model_window_visibility_copy_uses_the_shared_hide_label() {
+    for (language, label) in [
+        (SettingsLanguage::EnglishUnitedStates, "Hide model window"),
+        (SettingsLanguage::ChineseSimplified, "隐藏模型窗口"),
+    ] {
+        assert_eq!(
+            bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.overlay.hide_model_window.label"
+            ),
+            label
+        );
+    }
+}
+
+#[test]
 fn hover_hide_copy_uses_the_same_mouse_hover_subject() {
     for (language, switch_label, delay_label) in [
         (

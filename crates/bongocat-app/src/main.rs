@@ -48,7 +48,6 @@ use std::{
     io::{self, Write},
     path::Path,
     path::PathBuf,
-    process::{Command, Stdio},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -70,20 +69,17 @@ fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMenuPresentati
         title: text("system_menu.title"),
         tooltip: text("system_menu.title"),
         open_settings: text("system_menu.open_settings"),
-        show_overlay: text("system_menu.show_model_window"),
-        hide_overlay: text("system_menu.hide_model_window"),
-        click_through: text("system_menu.click_through"),
-        check_for_updates: text("system_menu.check_for_updates"),
-        open_source: text("system_menu.open_source"),
-        restart: text("system_menu.restart"),
+        model_window: text("navigation.model_window.title"),
+        hide_overlay: text("settings.overlay.hide_model_window.label"),
+        click_through: text("settings.overlay.click_through.label"),
+        always_on_top: text("settings.overlay.always_on_top.label"),
+        hide_on_pointer_hover: text("settings.overlay.hide_on_mouse_hover.label"),
+        check_for_updates: text("update.about.label"),
         quit: text("system_menu.quit"),
-        version: bongocat_i18n::format_text(
-            locale,
-            "system_menu.version",
-            &[("version", bongocat_app::PRODUCT_VERSION.to_owned())],
-        ),
         overlay_visible: snapshot.overlay_visible,
         click_through_enabled: snapshot.overlay.click_through,
+        always_on_top_enabled: snapshot.overlay.always_on_top,
+        hide_on_pointer_hover_enabled: snapshot.overlay.hide_on_pointer_hover,
         // A Production build stays gated on its channel and release signing key
         // (`bongocat_app::update_check_available`): without them a check can only fail.
         // A Development build can never update either, but the update window is where
@@ -95,6 +91,28 @@ fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMenuPresentati
                 bongocat_config::BuildEnvironment::Development
             ),
     }
+}
+
+async fn refresh_system_menu_presentation(
+    client: &SettingsClient,
+    cx: &mut AsyncApp,
+) -> Result<(), String> {
+    let snapshot = client
+        .read_snapshot()
+        .await
+        .map_err(|error| error.to_string())?;
+    let presentation = system_menu_presentation(&snapshot);
+    cx.update(|cx| {
+        if !cx.has_global::<ProductCoordinator>() {
+            return Err("system menu owner is unavailable".to_owned());
+        }
+        cx.global_mut::<ProductCoordinator>()
+            .system_menu
+            .as_mut()
+            .ok_or_else(|| "system menu owner is unavailable".to_owned())?
+            .set_presentation(presentation)
+            .map_err(|error| error.to_string())
+    })
 }
 
 async fn apply_system_menu_overlay_action(
@@ -125,20 +143,32 @@ async fn apply_system_menu_overlay_action(
                 )
                 .await
         }
+        SystemMenuAction::ToggleAlwaysOnTop => {
+            client
+                .set_overlay_settings(
+                    revision,
+                    SettingsOverlay {
+                        always_on_top: !snapshot.overlay.always_on_top,
+                        ..snapshot.overlay
+                    },
+                )
+                .await
+        }
+        SystemMenuAction::ToggleHideOnPointerHover => {
+            client
+                .set_overlay_settings(
+                    revision,
+                    SettingsOverlay {
+                        hide_on_pointer_hover: !snapshot.overlay.hide_on_pointer_hover,
+                        ..snapshot.overlay
+                    },
+                )
+                .await
+        }
         _ => return Err("invalid system menu overlay action".to_owned()),
     }
     .map(|_| true)
     .map_err(|error| error.to_string())
-}
-
-fn restart_product() -> Result<(), String> {
-    Command::new(env::current_exe().map_err(|error| error.to_string())?)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| error.to_string())
 }
 
 const OVERLAY_PLACEMENT_DEBOUNCE: Duration = Duration::from_millis(150);
@@ -2698,6 +2728,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let system_menu_snapshot_failures = Arc::clone(&run_failures);
         let system_menu_client = settings_client.clone();
+        let system_menu_action_client = system_menu_client.clone();
         cx.spawn(async move |cx| {
             let mut last_menu_revision = None;
             loop {
@@ -2796,7 +2827,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         cx.update(|cx| ensure_settings_window(cx).map(|_| true))
                     }
                     SystemMenuAction::ToggleOverlayVisibility
-                    | SystemMenuAction::ToggleClickThrough => {
+                    | SystemMenuAction::ToggleClickThrough
+                    | SystemMenuAction::ToggleAlwaysOnTop
+                    | SystemMenuAction::ToggleHideOnPointerHover => {
                         let client = cx.update(|cx| {
                             cx.try_global::<ProductCoordinator>()
                                 .and_then(|coordinator| coordinator.settings_service.as_ref())
@@ -2814,18 +2847,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         open_update_window_and_check(cx);
                         Ok(true)
                     }),
-                    SystemMenuAction::OpenSource => bongocat_platform::open_external_url(
-                        "https://github.com/ayangweb/BongoCat",
-                    )
-                    .map(|_| true)
-                    .map_err(|error| error.to_string()),
-                    SystemMenuAction::Restart => match restart_product() {
-                        Ok(()) => cx.update(|cx| {
-                            request_product_quit(cx);
-                            Ok(false)
-                        }),
-                        Err(error) => Err(error),
-                    },
                     SystemMenuAction::Quit => cx.update(|cx| {
                         request_product_quit(cx);
                         Ok(false)
@@ -2834,7 +2855,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match handled {
                     Ok(true) => {}
                     Ok(false) => break,
-                    Err(error) => record_failure(&system_menu_failures, error),
+                    Err(error) => {
+                        record_failure(&system_menu_failures, error);
+                        if let Err(error) =
+                            refresh_system_menu_presentation(&system_menu_action_client, cx).await
+                        {
+                            record_failure(&system_menu_failures, error);
+                        }
+                    }
                 }
             }
         })
@@ -3730,9 +3758,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let changed = changed.ok_or_else(|| {
                         "system menu overlay action did not reach the runtime".to_owned()
                     })?;
-                    if changed.config_revision == initial.config_revision {
+                    if changed.revision == initial.revision {
                         return Err(
-                            "system menu overlay action did not persist a new configuration revision"
+                            "system menu overlay action did not advance the runtime snapshot"
+                                .to_owned(),
+                        );
+                    }
+                    if changed.config_revision != initial.config_revision {
+                        return Err(
+                            "system menu overlay visibility changed persisted configuration"
                                 .to_owned(),
                         );
                     }

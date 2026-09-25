@@ -89,8 +89,9 @@ typed settings command 修改该值后，仍按配置 revision 原子提交并�
 关闭 `updates.check_automatically` 只会停止调度，不清空已保存的间隔；重新开启后继续使用该值。
 该字段只控制自动检查，不改变手动检查入口。
 
-Overlay 可见性是 runtime 会话状态，不写入 `config.json`。每次启动都以可见状态创建 overlay；设置
-窗口或 `toggle_overlay` 快捷键只改变当前进程的 runtime snapshot，进程退出后不恢复隐藏状态。
+Overlay 可见性是 runtime 会话状态，不写入 `config.json`。每次启动都以可见状态创建 overlay；设置页使用
+`settings.overlay.hide_model_window.label` 将状态投影为“隐藏模型窗口”开关，开关选中表示已隐藏且默认未选中。
+设置窗口或 `toggle_overlay` 快捷键只改变当前进程的 runtime snapshot，进程退出后不恢复隐藏状态。
 
 `overlay.hide_on_pointer_hover` 默认 `false`，`overlay.hide_on_pointer_hover_delay_seconds` 默认
 `0`（立即隐藏）。两者只在窗口呈现层生效：开启后指针进入 overlay 窗口矩形并停留满延迟时间，
@@ -102,9 +103,10 @@ runtime 的 overlay visibility。延迟值在 `next` 首版收窄为 `0..=60` �
 `OverlaySessionOptions` 边界换算一次。
 
 `system.show_status_icon` 控制 Windows 托盘或 macOS 菜单栏状态图标，不销毁系统菜单的
-唯一事件 owner。修改时先通过有界主线程 bridge 应用平台显隐，成功后才按 expected revision
-原子提交配置；平台失败不提交，配置失败则恢复旧的平台可见性。启动直接应用当前 v1 值，隐藏后
-仍可通过设置窗口、Windows 单实例唤醒或 macOS application reopen 恢复入口。
+唯一事件 owner。托盘菜单与 overlay 右键菜单是同一 owner 下的两个 popup 根，共享强类型 action
+映射和事件队列，但展示不同的菜单项集合。修改时先通过有界主线程 bridge 应用平台显隐，成功后才按
+expected revision 原子提交配置；平台失败不提交，配置失败则恢复旧的平台可见性。启动直接应用当前 v1
+值，隐藏后仍可通过设置窗口、Windows 单实例唤醒或 macOS application reopen 恢复入口。
 
 `system.show_taskbar_icon` 只控制 Windows 设置窗口的任务栏按钮，不隐藏或销毁窗口，也不
 影响 overlay；macOS 不把该字段解释为 Dock 图标。修改时先在 GPUI owner 线程切换并回读 HWND

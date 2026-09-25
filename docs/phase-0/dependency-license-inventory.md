@@ -112,7 +112,8 @@ AccessKit 由同一上游仓库维护。当前 `spikes/gpui-settings` 直接依�
 `tray-icon 0.25.0`（MIT OR Apache-2.0，Rust 1.90+）由 Tauri 项目维护，是 macOS/Windows
 状态图标的 native owner；仅在 macOS/Windows 启用并关闭默认 features，避免 Linux
 GTK/libappindicator 系统依赖。`muda 0.20.0`（Apache-2.0 OR MIT，Rust 1.90+）由同一项目维护，
-直接负责共享菜单对象、菜单事件以及 overlay 窗口的右键弹出，并关闭 `gtk3`/`libxdo` 默认 features。
+直接负责托盘与 overlay 共用的 popup 菜单根、菜单事件以及 overlay 窗口的右键弹出，并关闭
+`gtk3`/`libxdo` 默认 features。
 `tray-icon` 与 `muda` 必须由 Cargo 解析为同一个 `muda` package，避免菜单类型版本分裂。第三方
 tray/menu 类型、平台句柄和错误只存在于 `bongocat-platform` 私有 adapter，不进入 runtime/UI 公共 API；
 Windows 隐藏为库内 `NIS_HIDDEN`、销毁为 `NIM_DELETE`，macOS `NSStatusItem` 生命周期由库拥有。
