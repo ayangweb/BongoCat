@@ -65,7 +65,7 @@ GPUI Kit 的 HTTP/TLS 传递图引入 `libbz2-rs-sys 0.2.5`（`bzip2-1.0.6`）�
 
 依赖来源基线仍是 crates.io index；unknown registry 会使检查失败。`allow-git` 只额外放行固定上游
 `https://github.com/longbridge/gpui-kit` rev `500852f449c05dc01920ec82f3ae2656a61d0387` 与固定维护者
-fork `https://github.com/ayangweb/gilrs` rev `035a1cac7a784ec0447d9baba0de02efa6937d22`。GPUI Kit suite
+fork `https://github.com/ayangweb/gilrs` rev `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c`。GPUI Kit suite
 五个 package 与 gilrs/gilrs-core/固定 SDL mapping submodule 都从各自 commit 解析；其它 git source
 继续失败。`required-git-spec = "rev"` 强制所有 git source 必须精确锁定 commit。GPUI release
 门禁与 gilrs fork 生命周期/队列门禁分别由 ADR-0056/0066 管理。

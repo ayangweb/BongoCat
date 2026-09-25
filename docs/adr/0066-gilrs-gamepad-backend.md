@@ -16,7 +16,7 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
 ## 决策
 
 - 根 workspace 精确固定 `https://github.com/ayangweb/gilrs` 的 commit
-  `035a1cac7a784ec0447d9baba0de02efa6937d22`，package 版本为 `gilrs 0.11.2` /
+  `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c`，package 版本为 `gilrs 0.11.2` /
   `gilrs-core 0.6.8`。该 commit 包含 callback context ownership、bounded queue/epoch、authoritative
   reset、WGI/XInput bounded shutdown、macOS IOHID stop/join、target-scoped compile guard 与 xinput
   extreme-axis regression 修复；后续修复仍必须形成可审计的 patch series 并再次精确固定 commit。

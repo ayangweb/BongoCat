@@ -724,7 +724,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     只证明已删除实现，不再作为当前 backend 证据；WGI 焦点/click-through 投递和物理设备矩阵
     仍待完成。
   - 状态（2026-09-25）：共享 `gilrs_gamepad` adapter 固定 fork commit
-    `035a1cac7a784ec0447d9baba0de02efa6937d22`，关闭默认 dead-zone/jitter、环境 mapping 和 force
+    `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c`，关闭默认 dead-zone/jitter、环境 mapping 和 force
     feedback，保留内置 SDL mapping 与 D-pad filter；每 tick 最多 drain 256 event，位置名、
     trigger 连续值、Reset 后 held-state 重播和四设备 generation 已有 Rust contract。backend 构造失败
     只禁用手柄。当前 fork 的 macOS/WGI backend 已提供 bounded queue/epoch、authoritative reset、bounded stop/join acknowledgement 和 callback ownership/close；
@@ -3344,7 +3344,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         记录一次匿名 backend failure 并禁用手柄，Raw Input/CGEventTap 键鼠服务继续运行。
     - [x] 用 gilrs 替换自维护 XInput/GameController backend。
       - 状态（2026-09-25）：根 workspace 精确固定 `ayangweb/gilrs` commit
-        `035a1cac7a784ec0447d9baba0de02efa6937d22`；Windows 使用 WGI，macOS 使用 IOHID。
+        `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c`；Windows 使用 WGI，macOS 使用 IOHID。
         `gilrs_gamepad` 是唯一私有 adapter，gilrs 类型不进入 runtime/UI。默认 jitter/dead-zone、
         环境 mapping 和 force feedback 关闭，保留内置 SDL mapping 与 D-pad filter；每 tick
         最多消费 256 event、最多四设备。Windows XInput 与 macOS GameController producer、
@@ -3370,7 +3370,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         设备和 callback in-flight 静止/恢复证据。
       - 物理 Xbox/DualSense/Switch/非 extended HID profile、lost-release、30 分钟压力、100-cycle
         restart 与 8 小时 soak 尚未完成，因此总项保持未勾选。
-      - fork commit `035a1cac7a784ec0447d9baba0de02efa6937d22` 已通过 bounded queue/epoch、
+      - fork commit `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c` 已通过 bounded queue/epoch、
         authoritative reset、callback ownership/close、bounded stop/join、compile guard 和 xinput
         extreme-axis 回归；这些代码证据不等于上述物理/系统门禁。
 46. [x] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。

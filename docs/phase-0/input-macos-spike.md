@@ -85,7 +85,7 @@ NSZombieEnabled=YES spikes/input-macos/target/release/bongocat-input-macos-spike
 
 2026-09-25 起，GameController producer、`objc2-game-controller` dependency、`--gamepad-ms`
 probe 和相关测试已从当前树删除；本文件其余 CGEventTap 证据继续有效。正式手柄 backend 固定
-`ayangweb/gilrs` commit `035a1cac7a784ec0447d9baba0de02efa6937d22` 的 IOHID 实现。旧 framework
+`ayangweb/gilrs` commit `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c` 的 IOHID 实现。旧 framework
 smoke 只作为已退役实现的历史证据；该 fork commit 已提供持久 callback context、run-loop stop/join、
 bounded queue/reset epoch 和 `IOHIDDeviceGetValue` authoritative snapshot，BongoCat macOS target
 不再启用临时 `wgi` feature。上述代码证据不能替代 TCC deny/grant/revoke、真实设备、100-cycle、

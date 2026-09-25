@@ -30,6 +30,6 @@ cargo check --manifest-path spikes/input-queue/Cargo.toml --locked --release
 该 spike 证明的是容器与 generation 契约。2026-09-25 起，双平台正式手柄 producer 已按 ADR-0066
 迁入精确 gilrs fork 的私有 adapter，旧 macOS GameController 与 Windows XInput backend/probe 已删除；
 连接/断开/按钮边沿与 keyed axis channel 仍使用同一协议。fork backend queue 上界、overflow marker、
-reset epoch、authoritative state 和 bounded stop/join 已由 `035a1cac7a784ec0447d9baba0de02efa6937d22`
+reset epoch、authoritative state 和 bounded stop/join 已由 `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c`
 代码验证；物理手柄、Windows WGI 焦点、macOS TCC/IOHID 设备和长期退出仍未验证，产品 adapter 必须
 继续按该协议接入并把匿名诊断送入 runtime snapshot。
