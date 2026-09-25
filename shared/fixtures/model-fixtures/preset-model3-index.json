@@ -157,14 +157,6 @@
           }
         },
         {
-          "id": "Control",
-          "image": {
-            "file": "resources/left-keys/Control.png",
-            "width": 612,
-            "height": 354
-          }
-        },
-        {
           "id": "ControlLeft",
           "image": {
             "file": "resources/left-keys/ControlLeft.png",
@@ -509,14 +501,6 @@
           }
         },
         {
-          "id": "Shift",
-          "image": {
-            "file": "resources/left-keys/Shift.png",
-            "width": 612,
-            "height": 354
-          }
-        },
-        {
           "id": "ShiftLeft",
           "image": {
             "file": "resources/left-keys/ShiftLeft.png",
@@ -559,8 +543,8 @@
       ],
       "right_keys": []
     },
-    "package_file_count": 71,
-    "package_total_bytes": 1379108,
+    "package_file_count": 69,
+    "package_total_bytes": 1360075,
     "unreferenced_files": [
       "exp_1.exp3.json",
       "exp_2.exp3.json"
@@ -724,14 +708,6 @@
           }
         },
         {
-          "id": "Control",
-          "image": {
-            "file": "resources/left-keys/Control.png",
-            "width": 612,
-            "height": 354
-          }
-        },
-        {
           "id": "ControlLeft",
           "image": {
             "file": "resources/left-keys/ControlLeft.png",
@@ -1076,14 +1052,6 @@
           }
         },
         {
-          "id": "Shift",
-          "image": {
-            "file": "resources/left-keys/Shift.png",
-            "width": 612,
-            "height": 354
-          }
-        },
-        {
           "id": "ShiftLeft",
           "image": {
             "file": "resources/left-keys/ShiftLeft.png",
@@ -1159,8 +1127,8 @@
         }
       ]
     },
-    "package_file_count": 75,
-    "package_total_bytes": 1374206,
+    "package_file_count": 73,
+    "package_total_bytes": 1355173,
     "unreferenced_files": [
       "exp_1.exp3.json",
       "exp_2.exp3.json"
