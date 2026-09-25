@@ -177,31 +177,31 @@ pub enum InputPermission {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum PlatformInputError {
-    #[error("platform_input_backend_unavailable")]
+    #[error("{}", Self::BackendUnavailable.as_str())]
     BackendUnavailable,
-    #[error("platform_input_permission_denied")]
+    #[error("{}", Self::PermissionDenied.as_str())]
     PermissionDenied,
-    #[error("platform_input_tap_create_failed")]
+    #[error("{}", Self::TapCreateFailed.as_str())]
     TapCreateFailed,
-    #[error("platform_input_run_loop_source_failed")]
+    #[error("{}", Self::RunLoopSourceFailed.as_str())]
     RunLoopSourceFailed,
-    #[error("platform_input_window_class_registration_failed")]
+    #[error("{}", Self::WindowClassRegistrationFailed.as_str())]
     WindowClassRegistrationFailed,
-    #[error("platform_input_window_create_failed")]
+    #[error("{}", Self::WindowCreateFailed.as_str())]
     WindowCreateFailed,
-    #[error("platform_input_session_notification_failed")]
+    #[error("{}", Self::SessionNotificationFailed.as_str())]
     SessionNotificationFailed,
-    #[error("platform_input_raw_input_registration_failed")]
+    #[error("{}", Self::RawInputRegistrationFailed.as_str())]
     RawInputRegistrationFailed,
-    #[error("platform_input_timer_create_failed")]
+    #[error("{}", Self::TimerCreateFailed.as_str())]
     TimerCreateFailed,
-    #[error("platform_input_runtime_stopped")]
+    #[error("{}", Self::RuntimeStopped.as_str())]
     RuntimeStopped,
-    #[error("platform_input_startup_timed_out")]
+    #[error("{}", Self::StartupTimedOut.as_str())]
     StartupTimedOut,
-    #[error("platform_input_shutdown_timed_out")]
+    #[error("{}", Self::ShutdownTimedOut.as_str())]
     ShutdownTimedOut,
-    #[error("platform_input_worker_panicked")]
+    #[error("{}", Self::WorkerPanicked.as_str())]
     WorkerPanicked,
 }
 

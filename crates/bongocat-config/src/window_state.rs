@@ -2,6 +2,7 @@
 use super::BuildEnvironment;
 use super::{StorageLayout, WriterLock};
 use bongocat_storage::{create_private_dir_all, set_private_file, write_private_atomic};
+#[cfg(any(test, feature = "schema-generation"))]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -18,30 +19,44 @@ const MIN_OVERLAY_DIMENSION: u32 = 64;
 const MAX_WINDOW_DIMENSION: u32 = 16_384;
 const MAX_WINDOW_COORDINATE: i32 = 1_000_000;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct WindowPlacement {
-    #[schemars(range(min = -1_000_000, max = 1_000_000))]
+    #[cfg_attr(any(test, feature = "schema-generation"), schemars(range(min = -1_000_000, max = 1_000_000)))]
     pub x: i32,
-    #[schemars(range(min = -1_000_000, max = 1_000_000))]
+    #[cfg_attr(any(test, feature = "schema-generation"), schemars(range(min = -1_000_000, max = 1_000_000)))]
     pub y: i32,
-    #[schemars(range(min = 640, max = 16_384))]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(range(min = 640, max = 16_384))
+    )]
     pub width: u32,
-    #[schemars(range(min = 480, max = 16_384))]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(range(min = 480, max = 16_384))
+    )]
     pub height: u32,
     pub maximized: bool,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct OverlayWindowPlacement {
-    #[schemars(range(min = -1_000_000, max = 1_000_000))]
+    #[cfg_attr(any(test, feature = "schema-generation"), schemars(range(min = -1_000_000, max = 1_000_000)))]
     pub x: i32,
-    #[schemars(range(min = -1_000_000, max = 1_000_000))]
+    #[cfg_attr(any(test, feature = "schema-generation"), schemars(range(min = -1_000_000, max = 1_000_000)))]
     pub y: i32,
-    #[schemars(range(min = 64, max = 16_384))]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(range(min = 64, max = 16_384))
+    )]
     pub width: u32,
-    #[schemars(range(min = 64, max = 16_384))]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(range(min = 64, max = 16_384))
+    )]
     pub height: u32,
 }
 
@@ -110,10 +125,14 @@ impl WindowPlacement {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct WindowState {
-    #[schemars(range(min = 1, max = 1))]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(range(min = 1, max = 1))
+    )]
     pub schema_version: u32,
     pub settings_window: Option<WindowPlacement>,
     pub overlay_window: Option<OverlayWindowPlacement>,
@@ -331,6 +350,14 @@ fn parse_window_state(bytes: &[u8]) -> Result<WindowState, WindowStateError> {
     if schema_version != u64::from(WINDOW_STATE_SCHEMA_VERSION) {
         return Err(WindowStateError::UnsupportedSchema(schema_version));
     }
+    let object = value
+        .as_object()
+        .ok_or(WindowStateError::InvalidValue("window_state"))?;
+    for key in ["settings_window", "overlay_window"] {
+        if !object.contains_key(key) {
+            return Err(WindowStateError::InvalidValue(key));
+        }
+    }
     let state: WindowState = serde_json::from_value(value)?;
     state.validate()?;
     Ok(state)
@@ -412,6 +439,19 @@ mod tests {
                 expected => panic!("fixture {} has unknown expectation {expected}", case.file),
             }
         }
+    }
+
+    #[test]
+    fn parser_requires_nullable_window_fields_to_be_present() {
+        let mut value = serde_json::to_value(WindowState::default()).expect("default value");
+        value
+            .as_object_mut()
+            .expect("root object")
+            .remove("settings_window");
+        assert!(matches!(
+            parse_window_state(&serde_json::to_vec(&value).expect("missing settings bytes")),
+            Err(WindowStateError::InvalidValue("settings_window"))
+        ));
     }
 
     #[test]

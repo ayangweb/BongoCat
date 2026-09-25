@@ -23,10 +23,12 @@ BongoCat 在 Windows 和 macOS 上开发。Linux 不是发布目标，也不是�
 just dev
 just check
 just build
+just schema
 ```
 
-可使用 `just dev-smoke` 验证设置窗口生命周期。涉及平台特性的改动还必须在每个受影响的操作系统上
-验证；在其他主机上完成构建或测试不能代替目标平台的 smoke 验证。
+可使用 `just dev-smoke` 验证设置窗口生命周期。修改配置或窗口状态类型后，运行 `just schema`
+重新生成已提交的 JSON Schema 契约。涉及平台特性的改动还必须在每个受影响的操作系统上验证；
+在其他主机上完成构建或测试不能代替目标平台的 smoke 验证。
 
 ## 验证要求
 

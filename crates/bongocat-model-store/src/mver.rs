@@ -465,16 +465,7 @@ fn collect_source_files(
         .min_depth(1)
         .sort_by_file_name()
     {
-        let entry = entry.map_err(|error| {
-            let detail = error
-                .io_error()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| error.to_string());
-            conversion_error(
-                Some(prefix),
-                format!("legacy source directory cannot be listed: {detail}"),
-            )
-        })?;
+        let entry = entry.map_err(|error| source_walk_error(directory, prefix, error))?;
         let reference = source_reference(prefix, directory, entry.path())?;
         let file_type = entry.file_type();
         if file_type.is_symlink() {
@@ -492,6 +483,26 @@ fn collect_source_files(
         }
     }
     Ok(())
+}
+
+fn source_walk_error(directory: &Path, prefix: &str, error: walkdir::Error) -> ModelStoreError {
+    let resource = error
+        .path()
+        .and_then(|path| source_reference(prefix, directory, path).ok())
+        .unwrap_or_else(|| prefix.to_owned());
+    let detail = error
+        .io_error()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "directory traversal failed".to_owned());
+    let action = if error
+        .path()
+        .is_some_and(|path| path == directory || path.is_dir())
+    {
+        "legacy source directory cannot be listed"
+    } else {
+        "legacy source entry cannot be read"
+    };
+    conversion_error(Some(&resource), format!("{action}: {detail}"))
 }
 
 fn source_reference(

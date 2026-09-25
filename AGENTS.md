@@ -185,6 +185,7 @@ just build --environment development --formats app       # 只要 Development .a
 just manifest target/package target/package/*.json      # 合并 per-target manifest fragment
 just keygen ~/.bongocat/release.key                     # 一次性生成更新签名密钥对
 just version                                             # 唯一产品版本号来源
+just schema                                              # 从 Rust 类型生成当前 JSON Schema
 ```
 
 - 不在 `Justfile`、CI、文档中重实现平台判断、目录复制、`Info.plist` 注入、`.app`/`.dmg`/NSIS 组装或版本解析。

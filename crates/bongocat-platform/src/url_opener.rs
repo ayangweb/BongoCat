@@ -4,9 +4,9 @@ const MAX_EXTERNAL_URL_BYTES: usize = 2_048;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ExternalUrlOpenError {
-    #[error("external_url_open_invalid_url")]
+    #[error("{}", Self::InvalidUrl.as_str())]
     InvalidUrl,
-    #[error("external_url_open_launch_failed")]
+    #[error("{}", Self::LaunchFailed.as_str())]
     LaunchFailed,
 }
 

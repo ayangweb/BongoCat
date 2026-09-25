@@ -124,7 +124,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 建立依赖许可证清单，确认当前 spike crate graph 与项目 MIT 发布兼容。
   - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 13 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
 - [x] 审计 BongoCat 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
-  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 21 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1`、`sha2 0.11.0` 与 `libc 0.2.189` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 workspace 并向 `next` 提交分组更新。
+  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 当时审计的 21 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1`、`sha2 0.11.0` 与 `libc 0.2.189` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 workspace 并向 `next` 提交分组更新。
   - 状态（2026-09-25）：本次新增的 `time 0.3.55`、`thiserror 2.0.21`、`schemars 1.2.2` 与 `walkdir 2.5.0` 已按 crates.io 最新稳定版、许可证和替换边界补入依赖审计；四者均复用既有传递图，不新增产品业务 API。
 - [x] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
   - 状态（2026-08-29）：ADR-0010 已固定 Windows 仅支持 x64/ARM64，i686 不再构建或发布。官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 ARM64 当前是发布阻塞；macOS Intel 和最终安装包形式仍待实机与发布链验证。
@@ -1037,6 +1037,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 验收证据（2026-09-01；2026-09-25 更新）：`bongocat-config` 的 `NativeConfig`/`WindowState` 与
     `shared/config/config.schema.json`、`window-state.schema.json` 同步；`just schema` 从 Rust 类型离线生成文档，
     Rust schema drift test、serde `snake_case` 输出、Draft 2020-12 validator 和 configuration/window-state fixtures 已在 workspace tests 与 CI 校验。
+- [x] 保持配置与窗口状态 JSON Schema 为类型派生的离线契约，并隔离 schema-only 依赖。
+  - 验收证据（2026-09-25）：`schema-generation` feature 只用于 `generate_json_schemas`；默认产品构建不启用
+    `schemars` derive 或 schema 写入 API。配置/window-state fixture validator 继续独立检查 Draft 2020-12 结构与语义边界。
 - [x] 区分用户配置、运行时状态和诊断数据。
   - 验收证据（2026-09-01）：用户配置写入 `config.json`，窗口状态写入独立 `window-state.json`，运行时
     snapshot/输入诊断只经 typed API 暴露，日志和匿名 diagnostics export 不复用用户配置结构。
@@ -4063,7 +4066,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 当前契约（2026-09-16）：`OverlayConfig::corner_radius_percent: u8`
       （`crates/bongocat-config/src/lib.rs:264`），`NativeConfig::default()` 为 `0`（:918），
       `validate()` 以 `!(0..=50).contains(..)` 拒绝越界（:953）；共享 schema
-      `shared/config/config.schema.json` 的 `overlay.required` 与
+      `shared/config/config.schema.json` 的 `OverlayConfig.required` 与
       `{"type":"integer","minimum":0,"maximum":50}` 同步。
       `OverlaySettings::corner_radius_percent` 与 `is_valid()` 的 `<= 50` 约束
       （`bongocat-runtime`）、`OverlaySessionOptions::corner_radius_percent`
@@ -4168,7 +4171,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       （`crates/bongocat-config/src/lib.rs:272`）与 `hide_on_pointer_hover_delay_seconds: u32`（:285），
       共享常量 `MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS = 60`（:293），`NativeConfig::default()`
       为 `false` / `0`（:946-947），`validate()` 以 `>` 比较拒绝越界（:985-991）；共享 schema
-      `shared/config/config.schema.json` 的 `overlay.required` 与
+      `shared/config/config.schema.json` 的 `OverlayConfig.required` 与
       `{"type":"integer","minimum":0,"maximum":60}` 同步。
       `OverlaySettings::hide_on_pointer_hover` / `hide_on_pointer_hover_delay_seconds`
       （`crates/bongocat-runtime/src/lib.rs:227/230`）、秒上界常量（:190）与 `is_valid()` 的 `<=` 约束
@@ -5753,7 +5756,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       ⑤ 文案：新增 `shortcuts.switches.enable_window_shortcuts.label` 与
         `shortcuts.switches.enable_model_behavior_shortcuts.label`（中英同步，只有 label），删除
         `settings.model_interaction.behavior_shortcuts.{label,description}`；两个 locale 均为 290 键。
-      ⑥ 配置契约：`config.schema.json` 的 `$defs.shortcuts` 增加必填 `commands_enabled`，14 个配置
+      ⑥ 配置契约：`config.schema.json` 的 `$defs.ShortcutConfig` 增加必填 `commands_enabled`，14 个配置
         fixture 同步补字段（`spikes/config-store` 的配置副本也同步，否则它与共享 fixture 对拍的用例
         会失败——该 spike 是独立 workspace，不在 `just check` 范围内，本次单独跑过）。
     - 验收证据（2026-09-21，本机 macOS / aarch64）：

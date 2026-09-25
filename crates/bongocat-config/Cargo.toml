@@ -7,16 +7,26 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+default = []
+schema-generation = ["dep:schemars"]
+
 [dependencies]
 bongocat-storage.workspace = true
 dirs.workspace = true
-schemars.workspace = true
+schemars = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+schemars.workspace = true
 tempfile.workspace = true
+
+[[bin]]
+name = "generate_json_schemas"
+path = "src/bin/generate_json_schemas.rs"
+required-features = ["schema-generation"]
 
 [lints]
 workspace = true

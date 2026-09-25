@@ -39,13 +39,13 @@ pub enum ModelSourcePickerOutcome {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ModelSourcePickerError {
-    #[error("model_source_picker_wrong_thread")]
+    #[error("{}", Self::WrongThread.as_str())]
     WrongThread,
-    #[error("model_source_picker_backend_unavailable")]
+    #[error("{}", Self::BackendUnavailable.as_str())]
     BackendUnavailable,
-    #[error("model_source_picker_selection_unavailable")]
+    #[error("{}", Self::SelectionUnavailable.as_str())]
     SelectionUnavailable,
-    #[error("model_source_picker_selection_invalid")]
+    #[error("{}", Self::SelectionInvalid.as_str())]
     SelectionInvalid,
 }
 

@@ -29,17 +29,17 @@ impl StartupItemState {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum StartupItemError {
-    #[error("startup_item_current_executable_unavailable")]
+    #[error("{}", Self::CurrentExecutableUnavailable.as_str())]
     CurrentExecutableUnavailable,
-    #[error("startup_item_invalid_executable_path")]
+    #[error("{}", Self::InvalidExecutablePath.as_str())]
     InvalidExecutablePath,
-    #[error("startup_item_backend_unavailable")]
+    #[error("{}", Self::BackendUnavailable.as_str())]
     BackendUnavailable,
-    #[error("startup_item_state_read_failed")]
+    #[error("{}", Self::StateReadFailed.as_str())]
     StateReadFailed,
-    #[error("startup_item_enable_failed")]
+    #[error("{}", Self::EnableFailed.as_str())]
     EnableFailed,
-    #[error("startup_item_disable_failed")]
+    #[error("{}", Self::DisableFailed.as_str())]
     DisableFailed,
 }
 

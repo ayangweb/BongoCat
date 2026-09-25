@@ -10,6 +10,7 @@ const WINDOW_STATE_SCHEMA_FILE: &str = "window-state.schema.json";
 /// and tooling gates. This is a developer entry point, not a runtime writer.
 #[doc(hidden)]
 pub fn write_json_schemas(directory: &Path) -> io::Result<()> {
+    fs::create_dir_all(directory)?;
     for (file_name, schema) in [
         (CONFIG_SCHEMA_FILE, configuration_schema()),
         (WINDOW_STATE_SCHEMA_FILE, window_state_schema()),

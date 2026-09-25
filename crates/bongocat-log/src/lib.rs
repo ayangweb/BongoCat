@@ -955,6 +955,19 @@ impl UtcDate {
     }
 
     fn parse(value: &str) -> Option<Self> {
+        // `time` accepts an optional sign for years outside the fixed-width
+        // format. Log filenames are a strict ASCII `YYYY-MM-DD` contract.
+        let bytes = value.as_bytes();
+        if bytes.len() != 10
+            || bytes[4] != b'-'
+            || bytes[7] != b'-'
+            || !bytes
+                .iter()
+                .enumerate()
+                .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
+        {
+            return None;
+        }
         Date::parse(value, &UTC_DATE_FORMAT).ok().map(Self)
     }
 
@@ -980,6 +993,9 @@ fn format_timestamp(timestamp: SystemTime) -> String {
                 timestamp.second(),
             )
         })
+        // `time::Date` intentionally has a bounded year range. A clock outside
+        // that range is malformed input, so keep the log record representable
+        // instead of emitting an unbounded or wrapped civil date.
         .unwrap_or((UtcDate(Date::MAX), 23, 59, 59));
     format!(
         "{}T{hour:02}:{minute:02}:{second:02}.{:03}Z",
@@ -1035,6 +1051,7 @@ mod tests {
             Some("2000-02-29")
         );
         assert!(UtcDate::parse("1900-02-29").is_none());
+        assert!(UtcDate::parse("+000-01-01").is_none());
         assert!(UtcDate::parse("2000-02-29 ").is_none());
     }
 

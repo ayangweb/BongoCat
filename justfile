@@ -28,7 +28,7 @@ version:
 
 # Regenerate the checked-in configuration and window-state JSON Schemas.
 schema:
-    cargo run --locked -p bongocat-config --bin generate_json_schemas
+    cargo run --locked -p bongocat-config --features schema-generation --bin generate_json_schemas
 
 # Run the workspace tests.
 test:

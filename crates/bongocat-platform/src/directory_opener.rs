@@ -2,11 +2,11 @@ use std::{fs, path::Path};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum DirectoryOpenError {
-    #[error("directory_open_invalid_path")]
+    #[error("{}", Self::InvalidPath.as_str())]
     InvalidPath,
-    #[error("directory_open_unavailable")]
+    #[error("{}", Self::DirectoryUnavailable.as_str())]
     DirectoryUnavailable,
-    #[error("directory_open_launch_failed")]
+    #[error("{}", Self::LaunchFailed.as_str())]
     LaunchFailed,
 }
 

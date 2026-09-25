@@ -54,11 +54,11 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `objc2-service-management`            |        `0.3.2` | 启动项 adapter 新增时最新                                |
 | `serde`                               |      `1.0.229` | 从 `1.0.228` 升级                                        |
 | `serde_json`                          |      `1.0.151` | 从 `1.0.149` 升级                                        |
+| `raw-window-handle`                   |        `0.6.2` | 新增时即为最新                                           |
 | `schemars`                            |        `1.2.2` | 配置与窗口状态 JSON Schema 离线生成；MIT，Rust 1.74+       |
 | `thiserror`                           |       `2.0.21` | 项目错误类型派生；MIT OR Apache-2.0，Rust 1.77+             |
 | `time`                                |       `0.3.55` | 日志 UTC 日期/时间格式化；MIT OR Apache-2.0，Rust 1.88+   |
 | `walkdir`                             |        `2.5.0` | Mver 源目录遍历；MIT/Unlicense，跨平台                    |
-| `raw-window-handle`                   |        `0.6.2` | 新增时即为最新                                           |
 | `rfd`                                 |       `0.17.2` | 双平台目录选择迁移时最新稳定版                           |
 | `rodio`                               |       `0.22.2` | motion 音效新增时最新                                    |
 | `sha2`                                |       `0.11.0` | 新增时即为最新                                           |
@@ -144,7 +144,7 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   `Win32_Globalization` 并调用 `GetUserPreferredUILanguages`，macOS `objc2-foundation 0.3.2`
   增加 `NSLocale` 并调用 `preferredLanguages`。没有新增直接依赖，平台字符串立即规范化为项目
   `Language` 枚举，不向上泄漏 Win32/Foundation 类型。按规则执行完整 `cargo update` 后，
-  `cc 1.4.5`、`find-msvc-tools 0.1.12`、`tinyvec 1.13.2` 和 `tokio-rustls 0.26.5` 在现有上游
+  `cc 1.5.0`、`find-msvc-tools 0.1.14`、`tinyvec 1.13.2` 和 `tokio-rustls 0.26.5` 在现有上游
   约束内更新；其余直接依赖版本不变；
 - `metal 0.33.0` 创建透明 `CAMetalLayer`，完成两次 clear/present、隐藏/重显和自动退出；
 - `libc 0.2.189` 只在 macOS overlay spike 的平台边界调用 `proc_pidinfo`，用于 100-cycle 线程/RSS 资源快照；许可证为 MIT OR Apache-2.0，停止使用该系统指标后可直接移除，不进入项目公共 API；
@@ -217,10 +217,10 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   adapter；底层文本读取会先物化系统内容，之后才执行项目的 1 MiB 校验，这是当前 API 的
   已知替换成本；
 - `atomic-write-file 0.3.1`（BSD-3-Clause）只在 `bongocat-storage` 提供同目录跨平台原子替换；配置、模型、日志与诊断导出都经该 crate 落盘，它只暴露 `&[u8]` 与 `io::Result`，不泄漏库类型。替换边界是私有 commit helper；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
-- `schemars 1.2.2`（MIT，Rust 1.74+）只在 `bongocat-config` 的离线 schema 生成入口使用，生成 `shared/config` 中的 Draft 2020-12 文档；Python `jsonschema` 验证和 Rust `validate()` 仍是独立门禁。它已经存在于 GPUI 传递图，因此没有新增 package 节点；Schema trait 不进入 app/runtime/UI 业务协议，替换边界是配置类型的编译期 schema 派生；
+- `schemars 1.2.2`（MIT，Rust 1.74+）只在 `bongocat-config` 的 `schema-generation` feature 和离线 schema 生成入口使用，生成 `shared/config` 中的 Draft 2020-12 文档；默认产品构建不启用其 derive 或写入 API。Python `jsonschema` 验证和 Rust `validate()` 仍是独立门禁。它已经存在于 GPUI 传递图，因此没有新增 package 节点；Schema trait 不进入 app/runtime/UI 业务协议，替换边界是配置类型的编译期 schema 派生；
 - `thiserror 2.0.21`（MIT OR Apache-2.0，Rust 1.77+）只替代机械性的 `Display`/`Error` 派生，错误文本、stable code 和 source 语义由项目测试与 wrapper 保持；库类型不进入公共 API。它已存在于现有传递图，替换边界是各产品 crate 的错误实现；
 - `time 0.3.55`（MIT OR Apache-2.0，Rust 1.88+）只在 `bongocat-log` 负责 UTC 日期计算、固定时间格式和闰年校验，替换手写日历算法；不进入日志协议或用户配置，替换边界是 logger 内部日期 helper。它已存在于打包/更新传递图；
-- `walkdir 2.5.0`（MIT/Unlicense，跨平台）只在 `bongocat-model-store` 的 Mver 源目录遍历中使用；`follow_links(false)`、UTF-8、深度、排序和符号链接拒绝仍由项目适配层执行，库不进入模型公共 API。它已存在于打包/i18n 传递图，替换边界是该局部遍历；
+- `walkdir 2.5.0`（MIT/Unlicense，跨平台）只在 `bongocat-model-store` 的 Mver 源目录遍历中使用；`follow_links(false)`、UTF-8、深度、排序和符号链接拒绝仍由项目适配层执行，库不进入模型公共 API。它已存在于打包/i18n 传递图，最近一次稳定 release 为 2024-03-01，替换边界是该局部遍历；
 - `rodio 0.22.2`（MIT OR Apache-2.0）只在 `bongocat-audio` 私有 backend 打开系统输出并
   解码现有 FLAC；固定容量的项目 command/diagnostics API 隔离第三方类型，Linux contract
   build 不链接 ALSA。真实预置 FLAC header/首样本、资源/解码失败、抢占、overflow 恢复和

@@ -30,6 +30,11 @@
       "id": "config-field",
       "file": "invalid-config-field.json",
       "expected": "reject"
+    },
+    {
+      "id": "missing-settings-window",
+      "file": "invalid-missing-settings-window.json",
+      "expected": "reject"
     }
   ]
 }

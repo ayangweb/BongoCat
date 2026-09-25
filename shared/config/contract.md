@@ -2,6 +2,16 @@
 
 状态：schema v1；JSON schema、Rust 类型与 fixtures 同步维护
 
+## Schema generation
+
+`config.schema.json` 与 `window-state.schema.json` 是由 `bongocat-config` 的 Rust 类型通过
+`just schema` 离线生成的当前 v1 契约，不应手工编辑。配置类型变更后必须重新生成并通过
+Rust schema drift test 与独立的 Draft 2020-12 fixture validator；产品运行时不加载或写入这些文件。
+JSON Schema 负责结构和可表达的范围约束；模型 ID 的保留名规则、快捷键语义及其它跨字段不变量
+以 Rust validator 为权威，Python companion 只补充可独立检查的模型 ID/control-character 规则。当前 canonical `$id` 分别为
+`https://bongocat.dev/schemas/config-v1.json` 和
+`https://ayangweb.com/bongocat/window-state-v1.schema.json`；它们是开发契约身份，不代表产品运行时网络请求。
+
 ## Naming
 
 - JSON key 统一使用 `snake_case`，Rust 字段保持同名，不维护旧字段 alias。

@@ -27,6 +27,7 @@
 - Switching models or changing size and opacity no longer briefly blanks or makes the model window fully transparent.
 - A triggered motion plays once and holds its final pose until another motion replaces it or you stop it.
 - Corrupt settings automatically fall back to the newest valid backup, then to defaults if no valid backup exists.
+- Invalid or incomplete v1 settings and model IDs are now rejected consistently instead of being partially accepted or silently ignored.
 
 ### 💻 Support Changes
 

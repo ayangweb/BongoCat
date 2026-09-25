@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
+import unicodedata
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -19,10 +21,16 @@ WINDOW_STATE_DIR = ROOT / "shared" / "config" / "window-state-fixtures"
 MODEL_FIXTURE_DIR = ROOT / "shared" / "fixtures" / "model-fixtures"
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant {value}")
+
+
 def load(path: Path) -> object:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return json.loads(
+            path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise RuntimeError(f"{path.relative_to(ROOT)}: invalid JSON: {exc}") from exc
 
 
@@ -61,6 +69,28 @@ def validate_file(path: Path, validator: Draft202012Validator) -> None:
     print(f"ok json-schema {path.relative_to(ROOT)}")
 
 
+_PORTABLE_MODEL_ID = re.compile(r"^[A-Za-z0-9_-](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9_-])?$")
+_WINDOWS_RESERVED_MODEL_IDS = {"CON", "PRN", "AUX", "NUL"}
+
+
+def is_portable_model_id(value: str) -> bool:
+    if len(value.encode("utf-8")) > 64 or not _PORTABLE_MODEL_ID.fullmatch(value):
+        return False
+    stem = value.split(".", 1)[0].upper()
+    return not (
+        stem in _WINDOWS_RESERVED_MODEL_IDS
+        or (
+            len(stem) == 4
+            and stem[:3] in {"COM", "LPT"}
+            and stem[3] in "123456789"
+        )
+    )
+
+
+def has_control_character(value: str) -> bool:
+    return any(unicodedata.category(character) == "Cc" for character in value)
+
+
 def config_semantic_errors(value: object) -> list[str]:
     """Return config invariants that standard JSON Schema cannot express."""
     if not isinstance(value, dict):
@@ -69,6 +99,11 @@ def config_semantic_errors(value: object) -> list[str]:
     if not isinstance(model, dict):
         return []
     errors = []
+    selected = model.get("selected_model")
+    if isinstance(selected, dict) and isinstance(selected.get("id"), str):
+        if not is_portable_model_id(selected["id"]):
+            errors.append("selected model id must be a portable store key")
+
     # Each metadata list is keyed by its own id space: the same id may name a
     # built-in and an imported model at once, so uniqueness is checked per list.
     for field in ("imported_models", "built_in_models"):
@@ -80,8 +115,32 @@ def config_semantic_errors(value: object) -> list[str]:
             for item in records
             if isinstance(item, dict) and isinstance(item.get("id"), str)
         ]
+        for item in records:
+            if not isinstance(item, dict):
+                continue
+            identifier = item.get("id")
+            if isinstance(identifier, str) and not is_portable_model_id(identifier):
+                errors.append(f"{field} id must be a portable store key")
+            title = item.get("title")
+            if isinstance(title, str) and has_control_character(title):
+                errors.append(f"{field} title must not contain control characters")
         if len(ids) != len(set(ids)):
             errors.append(f"{field} ids must be unique")
+
+    shortcuts = value.get("shortcuts")
+    if isinstance(shortcuts, dict):
+        bindings = shortcuts.get("model_behavior_bindings")
+        if isinstance(bindings, list):
+            for binding in bindings:
+                if not isinstance(binding, dict):
+                    continue
+                model = binding.get("model")
+                if (
+                    isinstance(model, dict)
+                    and isinstance(model.get("id"), str)
+                    and not is_portable_model_id(model["id"])
+                ):
+                    errors.append("shortcut model id must be a portable store key")
     return errors
 
 

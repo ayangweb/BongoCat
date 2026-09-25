@@ -28,11 +28,13 @@ from the repository root:
 just dev
 just check
 just build
+just schema
 ```
 
-Use `just dev-smoke` to exercise the settings-window lifecycle. Platform-specific changes must also
-be verified on every affected operating system; a build or test on another host is not a substitute
-for platform smoke coverage.
+Use `just dev-smoke` to exercise the settings-window lifecycle. Run `just schema` after changing the
+configuration or window-state types; it regenerates the checked-in JSON Schema contracts.
+Platform-specific changes must also be verified on every affected operating system; a build or test
+on another host is not a substitute for platform smoke coverage.
 
 ## Validation
 

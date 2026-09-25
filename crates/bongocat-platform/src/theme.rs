@@ -55,15 +55,16 @@ pub enum SystemAppearance {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum NativeThemeError {
     /// The call has to run on the platform's UI thread and did not.
-    #[error("native_theme_wrong_thread")]
+    #[error("{}", Self::WrongThread.as_str())]
     WrongThread,
     /// The window did not expose a handle the platform can use.
-    #[error("native_theme_window_handle_unavailable")]
+    #[error("{}", Self::WindowHandleUnavailable.as_str())]
     WindowHandleUnavailable,
     /// The window's handle belongs to a platform this call does not implement.
-    #[error("native_theme_unsupported_window_handle")]
+    #[error("{}", Self::UnsupportedWindowHandle.as_str())]
     UnsupportedWindowHandle,
-    #[error("native_theme_native_call_failed")]
+    /// The platform call itself failed, or the API is absent on this system.
+    #[error("{}", Self::NativeCallFailed.as_str())]
     NativeCallFailed,
 }
 

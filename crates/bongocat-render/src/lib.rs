@@ -297,25 +297,25 @@ pub struct RenderResources {
 /// from being accepted by one backend and rejected by the other.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum RenderSnapshotValidationError {
-    #[error("model opacity is outside [0, 1]")]
+    #[error("{}", Self::InvalidModelOpacity.message())]
     InvalidModelOpacity,
-    #[error("texture resource ids are not unique")]
+    #[error("{}", Self::DuplicateTextureId.message())]
     DuplicateTextureId,
-    #[error("drawable resource ids are not unique")]
+    #[error("{}", Self::DuplicateDrawableId.message())]
     DuplicateDrawableId,
-    #[error("drawable references a missing texture")]
+    #[error("{}", Self::MissingDrawableTexture.message())]
     MissingDrawableTexture,
-    #[error("drawable references a missing mask source")]
+    #[error("{}", Self::MissingMaskSource.message())]
     MissingMaskSource,
-    #[error("drawable geometry is empty")]
+    #[error("{}", Self::EmptyDrawableGeometry.message())]
     EmptyDrawableGeometry,
-    #[error("drawable triangle index is out of range")]
+    #[error("{}", Self::DrawableIndexOutOfRange.message())]
     DrawableIndexOutOfRange,
-    #[error("drawable vertex contains a non-finite value")]
+    #[error("{}", Self::NonFiniteVertex.message())]
     NonFiniteVertex,
-    #[error("drawable opacity is outside [0, 1]")]
+    #[error("{}", Self::InvalidDrawableOpacity.message())]
     InvalidDrawableOpacity,
-    #[error("drawable blend color contains a non-finite value")]
+    #[error("{}", Self::NonFiniteBlendColor.message())]
     NonFiniteBlendColor,
 }
 
