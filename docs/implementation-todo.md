@@ -125,6 +125,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 13 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
 - [x] 审计 BongoCat 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
   - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 21 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1`、`sha2 0.11.0` 与 `libc 0.2.189` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 workspace 并向 `next` 提交分组更新。
+  - 状态（2026-09-25）：本次新增的 `time 0.3.55`、`thiserror 2.0.21`、`schemars 1.2.2` 与 `walkdir 2.5.0` 已按 crates.io 最新稳定版、许可证和替换边界补入依赖审计；四者均复用既有传递图，不新增产品业务 API。
 - [x] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
   - 状态（2026-08-29）：ADR-0010 已固定 Windows 仅支持 x64/ARM64，i686 不再构建或发布。官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 ARM64 当前是发布阻塞；macOS Intel 和最终安装包形式仍待实机与发布链验证。
   - 状态（2026-09-07）：历史手动 release workflow 已移除 `i686-pc-windows-msvc` matrix entry，避免任何仓库发布入口继续构建 BongoCat 明确排除的 Windows x86 target；历史基线文档中的旧版 i686 产物记录仅保留为考古证据。
@@ -1033,9 +1034,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 - 状态（2026-08-29）：`spikes/config-store/` 已建立 typed NativeConfig、Bundle ID、Development/Production 隔离目录、snake_case 序列化、schema 校验、原子 commit probe、expected revision、OS writer lock contract、中断提交恢复 contract 和双平台真实 path resolver。Windows jobs 先后暴露只读 handle flush、强杀后锁释放延迟，以及首次启动 recovery 后立即重锁提交默认值的竞态；启动恢复以 10 ms 间隔有界重试最多 1 秒，`load_or_default` 又把 recover/read/create-default 合并到单个 guard，普通 commit 仍立即报告竞争。备份策略和 GPUI command 边界仍待产品 crate 阶段完成，详见 `docs/phase-0/config-store-spike.md`。
 
 - [x] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
-  - 验收证据（2026-09-01）：`bongocat-config` 的 `NativeConfig`/`WindowState` 与
-    `shared/config/config.schema.json`、`window-state.schema.json` 同步；serde 输出使用 `snake_case`，
-    Draft 2020-12 validator 和 configuration/window-state fixtures 已在 workspace tests 与 CI 校验。
+  - 验收证据（2026-09-01；2026-09-25 更新）：`bongocat-config` 的 `NativeConfig`/`WindowState` 与
+    `shared/config/config.schema.json`、`window-state.schema.json` 同步；`just schema` 从 Rust 类型离线生成文档，
+    Rust schema drift test、serde `snake_case` 输出、Draft 2020-12 validator 和 configuration/window-state fixtures 已在 workspace tests 与 CI 校验。
 - [x] 区分用户配置、运行时状态和诊断数据。
   - 验收证据（2026-09-01）：用户配置写入 `config.json`，窗口状态写入独立 `window-state.json`，运行时
     snapshot/输入诊断只经 typed API 暴露，日志和匿名 diagnostics export 不复用用户配置结构。

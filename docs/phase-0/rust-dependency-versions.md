@@ -54,6 +54,10 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `objc2-service-management`            |        `0.3.2` | 启动项 adapter 新增时最新                                |
 | `serde`                               |      `1.0.229` | 从 `1.0.228` 升级                                        |
 | `serde_json`                          |      `1.0.151` | 从 `1.0.149` 升级                                        |
+| `schemars`                            |        `1.2.2` | 配置与窗口状态 JSON Schema 离线生成；MIT，Rust 1.74+       |
+| `thiserror`                           |       `2.0.21` | 项目错误类型派生；MIT OR Apache-2.0，Rust 1.77+             |
+| `time`                                |       `0.3.55` | 日志 UTC 日期/时间格式化；MIT OR Apache-2.0，Rust 1.88+   |
+| `walkdir`                             |        `2.5.0` | Mver 源目录遍历；MIT/Unlicense，跨平台                    |
 | `raw-window-handle`                   |        `0.6.2` | 新增时即为最新                                           |
 | `rfd`                                 |       `0.17.2` | 双平台目录选择迁移时最新稳定版                           |
 | `rodio`                               |       `0.22.2` | motion 音效新增时最新                                    |
@@ -213,6 +217,10 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   adapter；底层文本读取会先物化系统内容，之后才执行项目的 1 MiB 校验，这是当前 API 的
   已知替换成本；
 - `atomic-write-file 0.3.1`（BSD-3-Clause）只在 `bongocat-storage` 提供同目录跨平台原子替换；配置、模型、日志与诊断导出都经该 crate 落盘，它只暴露 `&[u8]` 与 `io::Result`，不泄漏库类型。替换边界是私有 commit helper；`dirs 6.0.0`、`serde 1.0.229` 与 `serde_json 1.0.151` 继续提供路径解析和严格序列化；
+- `schemars 1.2.2`（MIT，Rust 1.74+）只在 `bongocat-config` 的离线 schema 生成入口使用，生成 `shared/config` 中的 Draft 2020-12 文档；Python `jsonschema` 验证和 Rust `validate()` 仍是独立门禁。它已经存在于 GPUI 传递图，因此没有新增 package 节点；Schema trait 不进入 app/runtime/UI 业务协议，替换边界是配置类型的编译期 schema 派生；
+- `thiserror 2.0.21`（MIT OR Apache-2.0，Rust 1.77+）只替代机械性的 `Display`/`Error` 派生，错误文本、stable code 和 source 语义由项目测试与 wrapper 保持；库类型不进入公共 API。它已存在于现有传递图，替换边界是各产品 crate 的错误实现；
+- `time 0.3.55`（MIT OR Apache-2.0，Rust 1.88+）只在 `bongocat-log` 负责 UTC 日期计算、固定时间格式和闰年校验，替换手写日历算法；不进入日志协议或用户配置，替换边界是 logger 内部日期 helper。它已存在于打包/更新传递图；
+- `walkdir 2.5.0`（MIT/Unlicense，跨平台）只在 `bongocat-model-store` 的 Mver 源目录遍历中使用；`follow_links(false)`、UTF-8、深度、排序和符号链接拒绝仍由项目适配层执行，库不进入模型公共 API。它已存在于打包/i18n 传递图，替换边界是该局部遍历；
 - `rodio 0.22.2`（MIT OR Apache-2.0）只在 `bongocat-audio` 私有 backend 打开系统输出并
   解码现有 FLAC；固定容量的项目 command/diagnostics API 隔离第三方类型，Linux contract
   build 不链接 ALSA。真实预置 FLAC header/首样本、资源/解码失败、抢占、overflow 恢复和

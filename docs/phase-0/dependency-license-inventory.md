@@ -30,6 +30,10 @@
 | dirs                             | `6.0.0`                        | MIT OR Apache-2.0         | Config path spike                        |
 | atomic-write-file                | `0.3.1`                        | BSD-3-Clause              | configuration atomic replacement         |
 | serde / serde_json               | `1.0.229` / `1.0.151`          | MIT OR Apache-2.0         | Config, model and tool serialization     |
+| schemars                        | `1.2.2`                        | MIT                      | Offline Draft 2020-12 config schema generation |
+| thiserror                       | `2.0.21`                       | MIT OR Apache-2.0         | Mechanical project error derives          |
+| time                            | `0.3.55`                       | MIT OR Apache-2.0         | Logger UTC date/time formatting           |
+| walkdir                         | `2.5.0`                        | MIT OR Unlicense          | Mver source directory traversal           |
 | tempfile                         | `3.27.0`                       | MIT OR Apache-2.0         | Isolated config/model fixture tests      |
 | core-graphics2 / core-foundation | `0.6.1` / `0.10.1`             | MIT OR Apache-2.0         | macOS input boundary spike               |
 | objc2-core-graphics / foundation | `0.3.2` / `0.3.2`              | Zlib OR Apache-2.0 OR MIT | formal macOS input adapter               |
@@ -89,6 +93,8 @@ cargo install cargo-deny --version 0.20.2 --locked
 - 发布阶段的 SBOM 与 notice bundle 生成。
 
 Cubism 版本、来源、hash、再分发条款和 attribution 必须在 `P0-CUBISM` 单独形成书面结论；完成前不得制作可公开分发的 BongoCat 安装包。
+
+`schemars 1.2.2`（MIT）只用于 `bongocat-config` 的离线 JSON Schema 生成；生成结果由独立的 Python Draft 2020-12 validator 和 Rust 配置测试共同校验，Schema trait 不进入产品运行时协议。`thiserror 2.0.21`（MIT OR Apache-2.0）只替代机械性错误派生，不改变项目自有错误码、文本或 source chain。`time 0.3.55`（MIT OR Apache-2.0）只在 `bongocat-log` 内部替换 UTC 日历算法。`walkdir 2.5.0`（MIT OR Unlicense）只在 `bongocat-model-store` 的 Mver 源目录遍历中使用，项目仍负责符号链接、UTF-8、深度、排序和导入安全约束。四者都已存在于正式图中的传递依赖或构建图，不新增运行时业务 API。
 
 `cargo-packager 0.11.8`（Apache-2.0 OR MIT）是打包、bundle、installer 与更新载荷签名的唯一实现，
 由 ADR-0033 引入、ADR-0034 扩展到签名。`cargo-packager-updater 0.2.3`（同一许可证）是它的消费端，

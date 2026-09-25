@@ -1409,6 +1409,22 @@ mod tests {
     }
 
     #[test]
+    fn package_errors_keep_their_model_source_chain() {
+        let source = ModelError {
+            code: bongocat_model::ModelDiagnostic::ModelJsonInvalid,
+            resource: Some("model3.json".to_owned()),
+            detail: "invalid JSON".to_owned(),
+        };
+        let expected = source.to_string();
+        let error = ModelStoreError::package(source);
+
+        assert_eq!(
+            std::error::Error::source(&error).map(ToString::to_string),
+            Some(expected)
+        );
+    }
+
+    #[test]
     fn ordinary_package_mode_is_resolved_from_key_artwork_before_commit() {
         let base = tempdir().expect("mode fixture root");
         let package = |name: &str, left: &[&str], right: &[&str]| {
