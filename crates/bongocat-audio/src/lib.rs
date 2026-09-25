@@ -231,12 +231,12 @@ impl MotionAudioClient {
         }
     }
 
-    /// Publishes a command with a caller-supplied sequence.
+    /// Publishes a command with a caller-supplied sequence for protocol tests.
     ///
-    /// Production callers should prefer [`Self::try_publish_with_sequence`],
-    /// which allocates and enqueues under one lock. This lower-level method is
-    /// retained for protocol tests and callers that already own a sequence.
-    pub fn try_publish(&self, command: MotionAudioCommand) -> Result<(), MotionAudioPublishError> {
+    /// Production callers use [`Self::try_publish_with_sequence`], which
+    /// allocates and enqueues under one lock.
+    #[cfg(test)]
+    fn try_publish(&self, command: MotionAudioCommand) -> Result<(), MotionAudioPublishError> {
         let _publish_guard = self
             .shared
             .publish_lock
@@ -1000,7 +1000,10 @@ mod tests {
                 .try_publish_with_sequence(|sequence| play(sequence, "second.flac"))
                 .expect("second command accepted")
         });
-        let sequences = [first.join().expect("first producer"), second.join().expect("second producer")];
+        let sequences = [
+            first.join().expect("first producer"),
+            second.join().expect("second producer"),
+        ];
         let mut ordered = sequences;
         ordered.sort_unstable();
         assert_eq!(ordered, [0, 1]);
