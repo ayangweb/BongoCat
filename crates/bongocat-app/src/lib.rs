@@ -4497,6 +4497,71 @@ mod tests {
         restarted.shutdown().expect("clean restart shutdown");
     }
 
+    /// A muted model activation must not decode audio. Enabling the setting in
+    /// the same session must queue preparation for the active model before any
+    /// later motion can publish `Play`, without reloading the model or restarting
+    /// the application.
+    #[test]
+    fn a_runtime_motion_audio_opt_in_prepares_the_active_model_without_restarting() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout_internal(
+            layout,
+            repository_preset_root().as_path(),
+            true,
+            Language::EnglishUnitedStates,
+        )
+        .expect("start rendering application");
+        assert!(!application.config().model.play_motion_audio);
+        assert!(!application.runtime_client().snapshot().motion_audio_enabled);
+
+        let token = application
+            .prepare_model(ModelOrigin::Preset, "standard")
+            .expect("prepare standard model while audio is disabled");
+        let consumer = application
+            .take_render_consumer()
+            .expect("take render consumer");
+        let frame = wait_for_model_commit_frame(&consumer, token);
+        consumer
+            .report_model_commit(ModelCommitFeedback {
+                token: frame.model_commit.expect("commit token"),
+                outcome: ModelCommitOutcome::Prepared,
+            })
+            .expect("commit standard model");
+        let activated = application
+            .runtime_client()
+            .wait_for_command(token.command_sequence, RUNTIME_TIMEOUT)
+            .expect("standard model activation");
+        assert!(!activated.motion_audio_enabled);
+        assert_eq!(activated.motion_audio.prepare_requests, 0);
+        assert_eq!(activated.motion_audio.prepared_resources, 0);
+        assert_eq!(activated.motion_audio.play_requests, 0);
+
+        let enabled = application
+            .set_motion_audio_enabled(true)
+            .expect("enable motion audio without restarting");
+        assert!(enabled.motion_audio_enabled);
+        assert!(application.config().model.play_motion_audio);
+
+        let deadline = Instant::now() + RUNTIME_TIMEOUT;
+        let prepared = loop {
+            let snapshot = application.runtime_client().snapshot();
+            if snapshot.motion_audio.prepare_requests == 1
+                && snapshot.motion_audio.prepared_resources > 0
+            {
+                break snapshot;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "runtime opt-in did not prepare the active model audio cache"
+            );
+            std::thread::yield_now();
+        };
+        assert!(prepared.motion_audio_enabled);
+        assert_eq!(prepared.motion_audio.play_requests, 0);
+        application.shutdown().expect("clean shutdown");
+    }
+
     /// Overlay visibility is runtime-only: every fresh process starts visible,
     /// and a session hide never adds a preference to `config.json`.
     #[test]

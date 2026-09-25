@@ -1881,9 +1881,17 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         });
                     }
                     WorkerCommand::Product(RuntimeCommand::SetMotionAudioEnabled(enabled)) => {
+                        let enabling_audio = !motion_audio_enabled && enabled;
                         let disabling_audio = motion_audio_enabled && !enabled;
                         motion_audio_enabled = enabled;
-                        if disabling_audio {
+                        if enabling_audio {
+                            // A muted activation deliberately skips `Prepare`. Queue it
+                            // before publishing the enabled snapshot so any later motion's
+                            // `Play` follows the cache preparation in the audio FIFO.
+                            if let Some(model) = active_model.as_deref() {
+                                let _ = prepare_model_audio(&motion_audio, model);
+                            }
+                        } else if disabling_audio {
                             stop_motion_audio(&motion_audio, MotionAudioStopReason::Disabled);
                         }
                         publish(&snapshot, |current| {
