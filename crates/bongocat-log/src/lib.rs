@@ -19,6 +19,7 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
+use time::{Date, OffsetDateTime, format_description::FormatItem, macros::format_description};
 
 pub const DEFAULT_RETENTION_DAYS: u64 = 7;
 pub const MAX_LOG_FILE_BYTES: u64 = 1024 * 1024;
@@ -26,6 +27,7 @@ pub const MAX_TOTAL_LOG_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_TOTAL_LOG_FILES: u64 = 32;
 
 const SECONDS_PER_DAY: u64 = 86_400;
+const UTC_DATE_FORMAT: &[FormatItem<'static>] = format_description!("[year]-[month]-[day]");
 const RETENTION_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 const MAXIMUM_MODULE_BYTES: usize = 64;
 const MAXIMUM_CODE_BYTES: usize = 128;
@@ -931,11 +933,7 @@ fn sanitize_fragment(value: &str, maximum_bytes: usize, escape_pipe: bool) -> St
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct UtcDate {
-    year: i64,
-    month: u8,
-    day: u8,
-}
+struct UtcDate(Date);
 
 impl UtcDate {
     fn from_system_time(timestamp: SystemTime) -> Self {
@@ -944,73 +942,26 @@ impl UtcDate {
             .unwrap_or_default();
         let total_seconds = i64::try_from(duration.as_secs()).unwrap_or(i64::MAX);
         let days = total_seconds.div_euclid(SECONDS_PER_DAY as i64);
-        Self::from_days(days)
-    }
-
-    fn from_days(days_since_epoch: i64) -> Self {
-        let shifted = days_since_epoch + 719_468;
-        let era = if shifted >= 0 {
-            shifted
-        } else {
-            shifted - 146_096
-        }
-        .div_euclid(146_097);
-        let day_of_era = shifted - era * 146_097;
-        let year_of_era =
-            (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-        let mut year = year_of_era + era * 400;
-        let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-        let month_position = (5 * day_of_year + 2) / 153;
-        let day = day_of_year - (153 * month_position + 2) / 5 + 1;
-        let month = if month_position < 10 {
-            month_position + 3
-        } else {
-            month_position - 9
-        };
-        if month <= 2 {
-            year += 1;
-        }
-        Self {
-            year,
-            month: month as u8,
-            day: day as u8,
-        }
+        let unix_epoch_julian_day = Date::from_ordinal_date(1970, 1)
+            .expect("the Unix epoch is a valid date")
+            .to_julian_day();
+        let maximum_julian_day = Date::MAX.to_julian_day();
+        let julian_day = i32::try_from(days)
+            .ok()
+            .and_then(|days| days.checked_add(unix_epoch_julian_day))
+            .filter(|julian_day| *julian_day <= maximum_julian_day)
+            .unwrap_or(maximum_julian_day);
+        Self(Date::from_julian_day(julian_day).unwrap_or(Date::MAX))
     }
 
     fn parse(value: &str) -> Option<Self> {
-        let bytes = value.as_bytes();
-        if bytes.len() != 10
-            || bytes[4] != b'-'
-            || bytes[7] != b'-'
-            || !bytes
-                .iter()
-                .enumerate()
-                .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
-        {
-            return None;
-        }
-        let year = value[0..4].parse::<i64>().ok()?;
-        let month = value[5..7].parse::<u8>().ok()?;
-        let day = value[8..10].parse::<u8>().ok()?;
-        if !(1..=12).contains(&month) || day == 0 {
-            return None;
-        }
-        let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-        let days_in_month = match month {
-            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-            4 | 6 | 9 | 11 => 30,
-            2 if leap => 29,
-            2 => 28,
-            _ => unreachable!("month range checked above"),
-        };
-        if day > days_in_month {
-            return None;
-        }
-        Some(Self { year, month, day })
+        Date::parse(value, &UTC_DATE_FORMAT).ok().map(Self)
     }
 
     fn as_string(self) -> String {
-        format!("{:04}-{:02}-{:02}", self.year, self.month, self.day)
+        self.0
+            .format(&UTC_DATE_FORMAT)
+            .expect("the fixed UTC date format is valid")
     }
 }
 
@@ -1018,17 +969,21 @@ fn format_timestamp(timestamp: SystemTime) -> String {
     let duration = timestamp
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default();
-    let total_seconds = duration.as_secs();
-    let day = UtcDate::from_days((total_seconds / SECONDS_PER_DAY) as i64);
-    let seconds_of_day = total_seconds % SECONDS_PER_DAY;
-    let hour = seconds_of_day / 3_600;
-    let minute = seconds_of_day % 3_600 / 60;
-    let second = seconds_of_day % 60;
+    let (day, hour, minute, second) = i64::try_from(duration.as_secs())
+        .ok()
+        .and_then(|seconds| OffsetDateTime::from_unix_timestamp(seconds).ok())
+        .map(|timestamp| {
+            (
+                UtcDate(timestamp.date()),
+                timestamp.hour(),
+                timestamp.minute(),
+                timestamp.second(),
+            )
+        })
+        .unwrap_or((UtcDate(Date::MAX), 23, 59, 59));
     format!(
-        "{:04}-{:02}-{:02}T{hour:02}:{minute:02}:{second:02}.{:03}Z",
-        day.year,
-        day.month,
-        day.day,
+        "{}T{hour:02}:{minute:02}:{second:02}.{:03}Z",
+        day.as_string(),
         duration.subsec_millis()
     )
 }
@@ -1063,6 +1018,24 @@ mod tests {
             format_log_line(&record),
             "1970-01-01T00:00:00.000Z INFO  [application] application/started | Application started | model_id=standard\\nnext\n"
         );
+    }
+
+    #[test]
+    fn utc_dates_use_calendar_validation_and_round_trip() {
+        let leap_day = SystemTime::UNIX_EPOCH + Duration::from_secs(951_782_400);
+        assert_eq!(
+            UtcDate::from_system_time(leap_day).as_string(),
+            "2000-02-29"
+        );
+        assert_eq!(format_timestamp(leap_day), "2000-02-29T00:00:00.000Z");
+        assert_eq!(
+            UtcDate::parse("2000-02-29")
+                .map(UtcDate::as_string)
+                .as_deref(),
+            Some("2000-02-29")
+        );
+        assert!(UtcDate::parse("1900-02-29").is_none());
+        assert!(UtcDate::parse("2000-02-29 ").is_none());
     }
 
     #[test]
