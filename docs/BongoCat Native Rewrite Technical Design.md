@@ -418,10 +418,11 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   重锚定时器，长暂停只产生一次选择而不追赶补发。自动 motion 使用 `Idle` priority，不能替换正在进行
   的 `Normal`/`Force` 产品 motion；随机 expression 继续遵守最新 expression 替换语义，模型没有行为
   时保持无操作。待处理模型 commit 或 shutdown 时不选择新行为；自动行为与 shutdown request
-  通过同一 gate 排序，已被接纳的动作在 shutdown 请求前完成，后续请求不会插入新的自动副作用。
-  自动行为的 runtime event sequence 与 audio command sequence 分离，所有生产 audio command 使用
-  `MotionAudioClient` 的独立序号分配器。随机选择器使用 runtime 内部 seed，测试可以通过固定 seed
-  和单调时间得到同一序列。
+  通过同一 admission gate 排序。shutdown request 只记录状态并立即开始有界等待，已被接纳的动作
+  会在 worker 进入 shutdown drain 前完成，后续请求不会插入新的自动副作用。自动行为的 runtime
+  event sequence 与 audio command sequence 分离，所有生产 audio command 使用
+  `MotionAudioClient` 的独立序号分配器，并在同一 publish lock 下完成分配与入队。随机选择器使用
+  runtime 内部 seed，测试可以通过固定 seed 和单调时间得到同一序列。
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。
 - `ModelSettings` 是 runtime 的强类型模型交互设置：`mirror` 只影响不可变
   `RenderSnapshot::mirror_horizontal` 的水平变换，`mirror_pointer_tracking` 只反转

@@ -1148,38 +1148,64 @@ pub struct RuntimeOwner {
 
 #[derive(Default)]
 struct ShutdownSignal {
-    sequence: Mutex<Option<u64>>,
+    state: Mutex<ShutdownState>,
+}
+
+#[derive(Default)]
+struct ShutdownState {
+    sequence: Option<u64>,
+    automatic_in_flight: usize,
+}
+
+struct AutomaticSideEffectGuard<'a> {
+    signal: &'a ShutdownSignal,
+}
+
+impl Drop for AutomaticSideEffectGuard<'_> {
+    fn drop(&mut self) {
+        let mut state = self
+            .signal
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.automatic_in_flight = state.automatic_in_flight.saturating_sub(1);
+    }
 }
 
 impl ShutdownSignal {
     fn request(&self, sequence: u64) {
-        *self
-            .sequence
+        let mut state = self
+            .state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(sequence);
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.sequence = Some(sequence);
     }
 
     fn sequence(&self) -> Option<u64> {
-        *self
-            .sequence
+        self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .sequence
     }
 
-    /// Runs an admitted automatic side effect while holding the shutdown gate.
-    ///
-    /// The request path takes the same mutex. This gives the worker a real
-    /// ordering barrier: either the automatic action finishes before shutdown
-    /// is requested, or shutdown wins and the action is skipped. A separate
-    /// check followed by an unlocked action would leave a TOCTOU window.
+    /// Admits an automatic side effect before shutdown, then releases the
+    /// state lock while the action runs. The request path can therefore mark
+    /// shutdown and begin its bounded wait immediately, while an action that
+    /// was admitted first still finishes on the worker thread.
     fn run_if_not_shutdown(&self, action: impl FnOnce()) {
-        let sequence = self
-            .sequence
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if sequence.is_none() {
-            action();
-        }
+        let guard = {
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if state.sequence.is_some() {
+                return;
+            }
+            state.automatic_in_flight = state.automatic_in_flight.saturating_add(1);
+            AutomaticSideEffectGuard { signal: self }
+        };
+        action();
+        drop(guard);
     }
 }
 
@@ -2060,10 +2086,12 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                         motion_audio_path(active_model.as_deref(), &motion)
                                     {
                                         let _ =
-                                            motion_audio.try_publish(MotionAudioCommand::Play {
-                                                sequence: motion_audio.next_sequence(),
-                                                path,
-                                                volume: MotionAudioVolume::FULL,
+                                            motion_audio.try_publish_with_sequence(|sequence| {
+                                                MotionAudioCommand::Play {
+                                                    sequence,
+                                                    path,
+                                                    volume: MotionAudioVolume::FULL,
+                                                }
                                             });
                                         start_motion(
                                             &mut renderer,
@@ -2418,10 +2446,12 @@ fn maybe_trigger_random_behavior_locked(
             }
             if motion_audio_enabled {
                 if let Some(path) = motion_audio_path(Some(model), &motion) {
-                    let _ = motion_audio.try_publish(MotionAudioCommand::Play {
-                        sequence: motion_audio.next_sequence(),
-                        path,
-                        volume: MotionAudioVolume::FULL,
+                    let _ = motion_audio.try_publish_with_sequence(|sequence| {
+                        MotionAudioCommand::Play {
+                            sequence,
+                            path,
+                            volume: MotionAudioVolume::FULL,
+                        }
                     });
                 } else {
                     stop_motion_audio(motion_audio, MotionAudioStopReason::MotionReplaced);
@@ -2673,16 +2703,14 @@ fn prepare_model_audio(client: &MotionAudioClient, model: &CommittedModel) -> Op
     if paths.is_empty() {
         return None;
     }
-    let sequence = client.next_sequence();
     client
-        .try_publish(MotionAudioCommand::Prepare { sequence, paths })
+        .try_publish_with_sequence(|sequence| MotionAudioCommand::Prepare { sequence, paths })
         .ok()
-        .map(|()| sequence)
 }
 
 fn activate_model_audio(client: &MotionAudioClient, paths: Vec<std::path::PathBuf>) {
-    let _ = client.try_publish(MotionAudioCommand::ActivatePrepared {
-        sequence: client.next_sequence(),
+    let _ = client.try_publish_with_sequence(|sequence| MotionAudioCommand::ActivatePrepared {
+        sequence,
         paths,
     });
 }
@@ -2836,10 +2864,8 @@ fn motion_audio_path(
 }
 
 fn stop_motion_audio(client: &MotionAudioClient, reason: MotionAudioStopReason) {
-    let _ = client.try_publish(MotionAudioCommand::Stop {
-        sequence: client.next_sequence(),
-        reason,
-    });
+    let _ =
+        client.try_publish_with_sequence(|sequence| MotionAudioCommand::Stop { sequence, reason });
 }
 
 fn consume_cursor(
@@ -3437,7 +3463,7 @@ mod tests {
     }
 
     #[test]
-    fn shutdown_barrier_orders_automatic_side_effects_before_request() {
+    fn shutdown_request_is_nonblocking_and_skips_later_automatic_actions() {
         let signal = Arc::new(ShutdownSignal::default());
         let action_signal = Arc::clone(&signal);
         let (entered_tx, entered_rx) = std::sync::mpsc::channel();
@@ -3453,26 +3479,23 @@ mod tests {
             .expect("automatic side effect entered shutdown gate");
 
         let request_signal = Arc::clone(&signal);
-        let (started_tx, started_rx) = std::sync::mpsc::channel();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
         let request = thread::spawn(move || {
-            started_tx.send(()).expect("start shutdown request");
             request_signal.request(7);
             done_tx.send(()).expect("finish shutdown request");
         });
-        started_rx
+        done_rx
             .recv_timeout(TIMEOUT)
-            .expect("shutdown request thread started");
-        assert!(
-            done_rx.recv_timeout(Duration::from_millis(50)).is_err(),
-            "shutdown must wait for an already-admitted automatic side effect"
-        );
+            .expect("shutdown request must not wait for the admitted side effect");
+        assert_eq!(signal.sequence(), Some(7));
+
+        let skipped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let skipped_action = Arc::clone(&skipped);
+        signal.run_if_not_shutdown(|| skipped_action.store(true, Ordering::Relaxed));
+        assert!(!skipped.load(Ordering::Relaxed));
 
         release_tx.send(()).expect("release automatic side effect");
         action.join().expect("automatic side effect thread");
-        done_rx
-            .recv_timeout(TIMEOUT)
-            .expect("shutdown request completed after side effect");
         request.join().expect("shutdown request thread");
     }
 

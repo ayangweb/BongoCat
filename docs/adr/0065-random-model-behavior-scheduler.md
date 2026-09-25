@@ -24,11 +24,12 @@ GPUI 或 renderer 自己决定业务行为的情况下启用周期性随机播�
 - 选择器是 runtime 内部的固定 seed PRNG；生产 seed 只用于进程内变化，测试可以注入 seed
   并用 `MonotonicClock` 得到可重复序列。renderer、GPUI Entity 和平台 callback 不参与选择。
 - 自动行为的 runtime event sequence 与 audio command sequence 分离；所有生产 audio command
-  使用 `MotionAudioClient` 的独立序号分配器，避免自动行为的高位 event sequence 让产品音频
-  waiter 误判低序号 command 已完成。
-- 自动行为和 shutdown request 通过同一 admission gate 排序：已接纳的自动副作用先完成，
-  shutdown 开始后不再选择或发布新的随机行为。显式停止的非零 motion fade 即使 overlay 隐藏、
-  没有下一帧，也在注入单调时钟达到 fade duration 后视为 settled。
+  使用 `MotionAudioClient` 的独立序号分配器，并在同一 publish lock 下完成分配与入队，避免自动
+  行为的高位 event sequence 让产品音频 waiter 误判低序号 command 已完成。
+- 自动行为和 shutdown request 通过同一 admission gate 排序：shutdown request 立即记录状态并
+  开始有界等待，已接纳的自动副作用在 worker 进入 shutdown drain 前完成，后续请求不会插入新的
+  随机行为。显式停止的非零 motion fade 即使 overlay 隐藏、没有下一帧，也在注入单调时钟达到
+  fade duration 后视为 settled。
 - settings 页面把两个字段放在 Interaction 的模型分组中；间隔控件在开关关闭时置灰但保留
   已保存的值。配置写入仍使用原子、revision-checked 的 settings service。
 
@@ -38,8 +39,9 @@ GPUI 或 renderer 自己决定业务行为的情况下启用周期性随机播�
 - runtime scheduler 单元测试覆盖固定 seed、间隔等待、禁用/模型切换重锚和时钟回退；另一个
   Core-backed runtime 集成测试验证模型在一个间隔后确实产生 motion 或 expression。固定 seed 的
   Core-backed 构造器仍属于后续测试基础设施，不把生产 seed 当作可重复性证据。
-- audio/runtime 回归测试覆盖独立音频序号分配、序号回绕比较、隐藏 fade 的逻辑 settled，以及
-  shutdown admission barrier；这些测试不替代双平台实机和长时间 soak 证据。
+- audio/runtime 回归测试覆盖独立音频序号分配、序号回绕比较、overflow recovery 保留模型
+  `Prepare`、隐藏 fade 的逻辑 settled，以及 shutdown admission barrier 和非阻塞 request；这些测试
+  不替代双平台实机和长时间 soak 证据。
 - 仍需双平台实机观察、长时间随机序列/时钟变化 soak，以及正式发布门禁；本 ADR 不把
   scheduler scaffold 宣称为完整 Live2D 兼容或平台发布证据。
 

@@ -233,12 +233,15 @@ commit, a settings change, or a re-enable re-anchors the schedule; a long pause 
 catch-up burst. Automatic motion uses `Idle` priority and cannot replace a live `Normal`/`Force`
 product motion, while expressions follow the normal latest-expression replacement rule. The
 scheduler is disabled during a pending model commit and shutdown, and an empty behavior list is a
-no-op. Automatic behavior and shutdown requests share an admission gate, so an admitted action
-finishes before shutdown is published. Runtime event sequences for automatic playback are separate
-from the `bongocat-audio` command sequence allocator; a hidden overlay's non-zero motion fade is
-considered settled from the injected clock even when no frame was delivered. The GPUI Interaction page
-exposes the switch and whole-second interval through the revision-checked settings service; the
-interval row is disabled while the switch is off but keeps its saved value.
+no-op. Automatic behavior and shutdown requests share an admission gate: the request records
+shutdown immediately and starts its bounded wait, while an already-admitted action finishes before
+the worker drains shutdown state and later actions are skipped. Runtime event sequences for automatic
+playback are separate from the `bongocat-audio` command sequence allocator; overflow recovery retains
+model-preparation commands so accepted audio preparation cannot leave a model commit pending. A
+hidden overlay's non-zero motion fade is considered settled from the injected clock even when no
+frame was delivered. The GPUI Interaction page exposes the switch and whole-second interval through the
+revision-checked settings service; the interval row is disabled while the switch is off but keeps
+its saved value.
 
 `bongocat-live2d-playback` owns the SDK-independent motion3/exp3 byte parser and numeric
 curve/blend evaluation. `bongocat-live2d-render` prepares model-package `RenderResources` and

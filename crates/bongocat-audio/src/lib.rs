@@ -163,6 +163,7 @@ impl MotionAudioDiagnostics {
 struct SharedState {
     diagnostics: Mutex<MotionAudioDiagnostics>,
     changed: Condvar,
+    publish_lock: Mutex<()>,
     shutdown_requested: AtomicBool,
     overflow_recovery_requested: AtomicBool,
     next_sequence: AtomicU64,
@@ -195,6 +196,7 @@ pub struct MotionAudioClient {
 #[derive(Debug, PartialEq)]
 pub enum MotionAudioPublishError {
     QueueFull(MotionAudioCommand),
+    RecoveryPending(MotionAudioCommand),
     ServiceStopped(MotionAudioCommand),
 }
 
@@ -202,6 +204,9 @@ impl fmt::Display for MotionAudioPublishError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::QueueFull(_) => formatter.write_str("motion audio command queue is full"),
+            Self::RecoveryPending(_) => {
+                formatter.write_str("motion audio command recovery is pending")
+            }
             Self::ServiceStopped(_) => formatter.write_str("motion audio service is stopped"),
         }
     }
@@ -218,6 +223,7 @@ impl MotionAudioClient {
             shared: Arc::new(SharedState {
                 diagnostics: Mutex::new(MotionAudioDiagnostics::unavailable()),
                 changed: Condvar::new(),
+                publish_lock: Mutex::new(()),
                 shutdown_requested: AtomicBool::new(true),
                 overflow_recovery_requested: AtomicBool::new(false),
                 next_sequence: AtomicU64::new(0),
@@ -225,13 +231,58 @@ impl MotionAudioClient {
         }
     }
 
+    /// Publishes a command with a caller-supplied sequence.
+    ///
+    /// Production callers should prefer [`Self::try_publish_with_sequence`],
+    /// which allocates and enqueues under one lock. This lower-level method is
+    /// retained for protocol tests and callers that already own a sequence.
     pub fn try_publish(&self, command: MotionAudioCommand) -> Result<(), MotionAudioPublishError> {
+        let _publish_guard = self
+            .shared
+            .publish_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.try_publish_locked(command)
+    }
+
+    /// Allocates and enqueues one audio command as a single operation.
+    ///
+    /// The returned sequence is only valid when the command was accepted by
+    /// the queue. Allocation and enqueue share the publish lock, so cloned
+    /// clients cannot publish sequence `n + 1` before an earlier allocated
+    /// sequence has either been accepted or rejected by the queue.
+    pub fn try_publish_with_sequence<F>(&self, build: F) -> Result<u64, MotionAudioPublishError>
+    where
+        F: FnOnce(u64) -> MotionAudioCommand,
+    {
+        let _publish_guard = self
+            .shared
+            .publish_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let sequence = self.shared.next_sequence.fetch_add(1, Ordering::Relaxed);
+        let command = build(sequence);
+        self.try_publish_locked(command)?;
+        Ok(sequence)
+    }
+
+    fn try_publish_locked(
+        &self,
+        command: MotionAudioCommand,
+    ) -> Result<(), MotionAudioPublishError> {
         if self.shared.shutdown_requested.load(Ordering::Acquire) {
             self.shared.publish(|diagnostics| {
                 diagnostics.rejected_after_shutdown =
                     diagnostics.rejected_after_shutdown.saturating_add(1);
             });
             return Err(MotionAudioPublishError::ServiceStopped(command));
+        }
+        if self
+            .shared
+            .overflow_recovery_requested
+            .load(Ordering::Acquire)
+        {
+            return Err(MotionAudioPublishError::RecoveryPending(command));
         }
         match self.sender.try_send(command) {
             Ok(()) => {
@@ -261,15 +312,6 @@ impl MotionAudioClient {
 
     pub fn diagnostics(&self) -> MotionAudioDiagnostics {
         self.shared.snapshot()
-    }
-
-    /// Allocates the next sequence in the audio command domain.
-    ///
-    /// Audio ordering is independent from runtime product-command ordering;
-    /// callers should use this allocator for every production audio command
-    /// instead of reusing a runtime command sequence.
-    pub fn next_sequence(&self) -> u64 {
-        self.shared.next_sequence.fetch_add(1, Ordering::Relaxed)
     }
 
     pub fn wait_for_sequence(
@@ -380,6 +422,7 @@ impl MotionAudioService {
         let shared = Arc::new(SharedState {
             diagnostics: Mutex::new(MotionAudioDiagnostics::starting()),
             changed: Condvar::new(),
+            publish_lock: Mutex::new(()),
             shutdown_requested: AtomicBool::new(false),
             overflow_recovery_requested: AtomicBool::new(false),
             next_sequence: AtomicU64::new(0),
@@ -558,15 +601,29 @@ fn recover_after_overflow(
     shared: &SharedState,
     backend: &mut dyn AudioBackend,
 ) {
-    if !shared
-        .overflow_recovery_requested
-        .swap(false, Ordering::AcqRel)
-    {
-        return;
-    }
+    let mut retained = Vec::new();
     let mut discarded = 0u64;
-    while receiver.try_recv().is_ok() {
-        discarded = discarded.saturating_add(1);
+    {
+        let _publish_guard = shared
+            .publish_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !shared
+            .overflow_recovery_requested
+            .swap(false, Ordering::AcqRel)
+        {
+            return;
+        }
+        while let Ok(command) = receiver.try_recv() {
+            if matches!(
+                &command,
+                MotionAudioCommand::Prepare { .. } | MotionAudioCommand::ActivatePrepared { .. }
+            ) {
+                retained.push(command);
+            } else {
+                discarded = discarded.saturating_add(1);
+            }
+        }
     }
     let stopped = backend.stop();
     shared.publish(|diagnostics| {
@@ -576,6 +633,14 @@ fn recover_after_overflow(
         }
         diagnostics.current_voice_sequence = None;
     });
+    // Model preparation is a liveness boundary: a runtime activation waits for
+    // its Prepare sequence before committing the model. Transient playback
+    // commands may be discarded, but lifecycle commands are replayed after
+    // the voice reset so that accepted model audio cannot leave activation
+    // pending forever.
+    for command in retained {
+        process_command(command, shared, backend);
+    }
 }
 
 fn process_command(
@@ -884,7 +949,7 @@ mod tests {
     }
 
     #[test]
-    fn allocated_audio_sequences_are_independent_from_runtime_sequences() {
+    fn allocated_audio_sequences_wrap_atomically_at_u64_max() {
         let service = MotionAudioService::start_with_backend(
             4,
             Box::new(RecordingBackend {
@@ -895,8 +960,54 @@ mod tests {
         )
         .expect("audio service");
         let client = service.client();
-        assert_eq!(client.next_sequence(), 0);
-        assert_eq!(client.next_sequence(), 1);
+        client
+            .shared
+            .next_sequence
+            .store(u64::MAX, Ordering::Relaxed);
+        let first = client
+            .try_publish_with_sequence(|sequence| play(sequence, "first.flac"))
+            .expect("first command accepted");
+        let second = client
+            .try_publish_with_sequence(|sequence| play(sequence, "second.flac"))
+            .expect("second command accepted");
+        assert_eq!((first, second), (u64::MAX, 0));
+        let diagnostics = client
+            .wait_for_sequence(second, TIMEOUT)
+            .expect("wrapped commands processed");
+        assert_eq!(diagnostics.last_processed_sequence, Some(second));
+    }
+
+    #[test]
+    fn cloned_clients_allocate_and_enqueue_in_one_order() {
+        let service = MotionAudioService::start_with_backend(
+            4,
+            Box::new(RecordingBackend {
+                events: Arc::new(Mutex::new(Vec::new())),
+                failures: VecDeque::new(),
+                playing: false,
+            }),
+        )
+        .expect("audio service");
+        let first_client = service.client();
+        let second_client = first_client.clone();
+        let first = thread::spawn(move || {
+            first_client
+                .try_publish_with_sequence(|sequence| play(sequence, "first.flac"))
+                .expect("first command accepted")
+        });
+        let second = thread::spawn(move || {
+            second_client
+                .try_publish_with_sequence(|sequence| play(sequence, "second.flac"))
+                .expect("second command accepted")
+        });
+        let sequences = [first.join().expect("first producer"), second.join().expect("second producer")];
+        let mut ordered = sequences;
+        ordered.sort_unstable();
+        assert_eq!(ordered, [0, 1]);
+        let client = service.client();
+        client
+            .wait_for_sequence(1, TIMEOUT)
+            .expect("concurrently allocated commands processed");
     }
 
     #[test]
@@ -1084,6 +1195,51 @@ mod tests {
         assert_eq!(recovered.enqueued_commands, 2);
         assert_eq!(recovered.processed_commands, 1);
         assert_eq!(recovered.voices_stopped, 1);
+        service.shutdown(TIMEOUT).expect("clean shutdown");
+    }
+
+    #[test]
+    fn overflow_recovery_retains_model_prepare_and_rejects_late_commands() {
+        let state = Arc::new((Mutex::new(BlockingState::default()), Condvar::new()));
+        let service = MotionAudioService::start_with_backend(
+            1,
+            Box::new(BlockingBackend {
+                state: Arc::clone(&state),
+            }),
+        )
+        .expect("audio service");
+        let client = service.client();
+        client.try_publish(play(1, "one.flac")).expect("first play");
+        {
+            let (lock, changed) = &*state;
+            let entered = lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let (mut entered, result) = changed
+                .wait_timeout_while(entered, TIMEOUT, |state| !state.entered)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            assert!(!result.timed_out(), "backend did not start processing");
+            client
+                .try_publish(prepare(2, &["prepared.flac"]))
+                .expect("prepare queued before overflow");
+            assert!(matches!(
+                client.try_publish(play(3, "overflow.flac")),
+                Err(MotionAudioPublishError::QueueFull(_))
+            ));
+            assert!(matches!(
+                client.try_publish_with_sequence(|sequence| prepare(sequence, &["late.flac"])),
+                Err(MotionAudioPublishError::RecoveryPending(_))
+            ));
+            entered.released = true;
+            changed.notify_all();
+        }
+
+        let recovered = client
+            .wait_for_sequence(2, TIMEOUT)
+            .expect("retained prepare processed after overflow recovery");
+        assert_eq!(recovered.prepare_requests, 1);
+        assert_eq!(recovered.discarded_commands, 0);
+        assert_eq!(recovered.queue_overflows, 1);
         service.shutdown(TIMEOUT).expect("clean shutdown");
     }
 
