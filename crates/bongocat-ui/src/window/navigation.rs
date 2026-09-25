@@ -1,3 +1,5 @@
+use std::{cell::Cell, rc::Rc};
+
 use crate::SettingsLanguage;
 use gpui_kit::{SharedString, assets::IconName};
 
@@ -7,8 +9,9 @@ use gpui_kit::{SharedString, assets::IconName};
 /// first, system preferences follow, and About remains the final normal settings entry.
 /// Titles and icons live here so the renderer, smoke checks, and search
 /// aliases cannot drift into three independent lists.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum SettingsNavigationPage {
+    #[default]
     Appearance,
     ModelLibrary,
     ModelBehavior,
@@ -19,7 +22,65 @@ pub(super) enum SettingsNavigationPage {
     About,
 }
 
+/// Remembers the last settings page for the lifetime of one application process.
+///
+/// The GPUI `Settings` component owns its selection in window-keyed state. The
+/// settings window is now destroyed on close, so that state cannot survive the
+/// window itself; this small process-owned cell bridges the page reporter in
+/// `render.rs` to the next window without persisting a UI-only preference to disk.
+#[derive(Clone)]
+pub struct SettingsNavigationMemory {
+    page: Rc<Cell<SettingsNavigationPage>>,
+}
+
+impl Default for SettingsNavigationMemory {
+    fn default() -> Self {
+        Self {
+            page: Rc::new(Cell::new(SettingsNavigationPage::default())),
+        }
+    }
+}
+
+impl SettingsNavigationMemory {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The zero-based page index consumed by gpui-kit's `SelectIndex`.
+    pub fn page_index(&self) -> usize {
+        self.page.get().index()
+    }
+
+    /// Set a page for a host that needs to establish an initial navigation state.
+    /// Invalid indexes fall back to the default page.
+    pub fn set_page_index(&self, index: usize) {
+        self.page.set(
+            SettingsNavigationPage::ALL
+                .get(index)
+                .copied()
+                .unwrap_or_default(),
+        );
+    }
+
+    pub(super) fn select(&self, page: SettingsNavigationPage) {
+        self.page.set(page);
+    }
+}
+
 impl SettingsNavigationPage {
+    const fn index(self) -> usize {
+        match self {
+            Self::Appearance => 0,
+            Self::ModelLibrary => 1,
+            Self::ModelBehavior => 2,
+            Self::ModelWindow => 3,
+            Self::InputInteraction => 4,
+            Self::Shortcuts => 5,
+            Self::AppSystem => 6,
+            Self::About => 7,
+        }
+    }
+
     pub(super) const ALL: [Self; 8] = [
         Self::Appearance,
         Self::ModelLibrary,
@@ -136,6 +197,23 @@ where
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn navigation_indices_follow_the_visible_page_order() {
+        for (expected, page) in SettingsNavigationPage::ALL.into_iter().enumerate() {
+            assert_eq!(page.index(), expected);
+        }
+    }
+
+    #[test]
+    fn navigation_memory_starts_at_appearance_and_survives_view_recreation() {
+        let memory = SettingsNavigationMemory::new();
+        assert_eq!(memory.page_index(), 0);
+
+        memory.select(SettingsNavigationPage::ModelBehavior);
+        let recreated_window_memory = memory.clone();
+        assert_eq!(recreated_window_memory.page_index(), 2);
+    }
 
     #[test]
     fn navigation_uses_the_agreed_task_order_with_about_last() {

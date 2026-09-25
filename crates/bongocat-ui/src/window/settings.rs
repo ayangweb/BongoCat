@@ -13,11 +13,11 @@ pub(super) fn random_behavior_settings_after_toggle(
 impl SettingsView {
     /// Keep the rendered snapshot current while the window is on screen.
     ///
-    /// The window is pre-rendered and only hidden when the user closes it, so the poll
-    /// stops while it is off screen: nothing it renders can be seen, the runtime keeps
-    /// running, and [`Self::reopen`] refreshes before the window shows again. Without
-    /// this the hidden window asked the service for a full snapshot — model catalog scan
-    /// included — once a second for the rest of the product's lifetime.
+    /// The window is created for each open and destroyed on close. The poll still
+    /// stops while it is being prepared or closed: nothing it renders can be seen,
+    /// the runtime keeps running, and a newly created window refreshes before it is
+    /// shown. Without this a window waiting for its first snapshot could ask the
+    /// service for a full snapshot — model catalog scan included — while invisible.
     pub(super) fn start_snapshot_polling(&self, cx: &mut Context<Self>) {
         let executor = cx.background_executor().clone();
         cx.spawn(async move |this, cx| {

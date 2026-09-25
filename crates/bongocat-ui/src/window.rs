@@ -25,8 +25,8 @@ use gpui_kit::component::{
     notification::{Notification, NotificationType},
     select::{SearchableVec, Select, SelectEvent, SelectState},
     setting::{
-        NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
-        Settings,
+        NumberFieldOptions, RenderOptions, SelectIndex, SettingField, SettingGroup, SettingItem,
+        SettingPage, Settings,
     },
 };
 
@@ -60,6 +60,7 @@ use model_import_card::ModelImportCard;
 use model_mver_dialog::build_mver_mode_dialog;
 mod models;
 mod navigation;
+pub use navigation::SettingsNavigationMemory;
 use navigation::{SettingsNavigationPage, model_library_search_keywords};
 mod render;
 mod setting_gate;
@@ -652,6 +653,7 @@ pub struct SettingsView {
     shortcut_play_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     shortcut_clear_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     window_hidden: bool,
+    navigation_memory: SettingsNavigationMemory,
     applied_theme: Option<SettingsTheme>,
     language_select: Entity<LanguageSelectState>,
     theme_select: Entity<ThemeSelectState>,
@@ -693,6 +695,11 @@ impl SettingsWindowHandle {
             .upgrade()
             .map(|_| ())
             .ok_or_else(|| std::io::Error::other("settings view was released").into())
+    }
+
+    /// Whether the view entity is still alive, without borrowing the app.
+    pub fn is_open(&self) -> bool {
+        self.view.upgrade().is_some()
     }
 
     pub fn update<C, R>(

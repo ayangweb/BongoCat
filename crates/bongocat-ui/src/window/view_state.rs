@@ -1,6 +1,10 @@
 use super::*;
 
 impl SettingsView {
+    pub(super) fn set_navigation_memory(&mut self, memory: SettingsNavigationMemory) {
+        self.navigation_memory = memory;
+    }
+
     /// The display language for the frame being rendered.
     ///
     /// The snapshot answers as soon as it exists; before that the window renders the
@@ -230,6 +234,7 @@ impl SettingsView {
             shortcut_play_focus: BTreeMap::new(),
             shortcut_clear_focus: BTreeMap::new(),
             window_hidden: true,
+            navigation_memory: SettingsNavigationMemory::default(),
             applied_theme: None,
             language_select,
             theme_select,

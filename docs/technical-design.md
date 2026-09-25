@@ -176,8 +176,10 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   `model.ignore_keyboard` 和 `model.ignore_gamepad`，不停止平台输入采集。`open_settings` 交给
   GPUI coordinator，避免平台线程直接触碰 UI 生命周期。`open_settings` 通过线程安全的一次性请求位
   交给 GPUI frame source，后者在
-  owner 线程切换设置窗口可见性：窗口已显示时隐藏，两个平台都复用同一个预渲染窗口，窗口不存在
-  时才创建并显示。forwarder 必须支持有界停止与 join。
+  owner 线程切换设置窗口可见性：窗口已显示时关闭并销毁，两个平台都走同一套 GPUI close 路径；
+  窗口不存在时才创建并显示。设置窗口的当前侧边栏页面由 app coordinator 持有的 process-local
+  `SettingsNavigationMemory` 记忆，重建窗口时恢复，应用重启后回到 Appearance。forwarder 必须支持
+  有界停止与 join。
 - 快捷键页面由两个带标题的 group 组成，每个 group 的第一行是它自己的门禁开关：`启用窗口快捷键`
   （`shortcuts.commands_enabled`，默认 `true`）与 `启用模型行为快捷键`
   （`shortcuts.model_behaviors_enabled`，默认 `false`）。两个门禁彼此独立，各自只决定对应的一半是否
@@ -224,20 +226,18 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   owner 按 expected revision 原子提交；配置提交失败时恢复旧样式。启动和窗口创建必须先应用当前
   v1 值再显示窗口，平台失败只返回稳定匿名 settings error。
 - 关闭设置窗口不影响 runtime、输入、音频、frame source 和 overlay，它们继续由 app
-  coordinator 持有。两个平台共用一条生命周期：窗口在第一次打开时创建，此后由 coordinator 持有，
-  close 一律被 platform adapter 拦截并只隐藏原生窗口（Windows `ShowWindow(SW_HIDE)`、macOS
-  `NSWindow.orderOut:`），reopen 重显同一 `Entity` 并主动读取最新 revisioned snapshot；窗口从不
-  销毁或重建，因此平台之间没有第二套路径。隐藏期间的周期性快照刷新必须停止：预渲染窗口在屏幕外
-  渲染的内容无人可见，reopen 本身已经先读一次快照，因此只有可见窗口按 `1 s` 重读，隐藏窗口不再
-  长期空转。系统菜单的 presentation 轮询同样不得每秒重建完整快照：它先读取只返回 revision 的命令
-  （`ReadSnapshotRevision`，只比较 service 已持有的状态），仅在 revision 变化时才读取完整快照，
-  完整快照中的模型目录扫描因此不再随 `20 Hz` 轮询反复执行；`CGPreflightListenEventAccess` 这类
-  TCC 查询由 snapshot clock 按上限 `1 s` 缓存，只有显示用途的值不再要求每次快照都访问系统。Windows 侧拦截 close 同时避开 GPUI 0.2.2 的 Windows
-  `WM_CLOSE` 销毁回调同步重入缺陷。Windows 显式退出先请求 frame source 停止并停止输入生产者，确认 frame
-  source 已退出后再 shutdown/join
-  runtime、配置和音频 owner，最后释放 renderer/GPU 与 overlay；由于 GPUI 0.2.2 及当前上游
-  `main` 都会在最终 `WM_DESTROY` 同步重入 `AsyncApp` 并触发进程 fast-fail，平台 adapter 只在
-  这些产品 owner 全部有序关闭后使用进程退出跳过有缺陷的 GPUI 窗口析构。该兼容措施不得提前
+  coordinator 持有。设置和更新窗口的普通 close 都销毁各自的 GPUI 窗口；设置窗口下次打开时创建新的
+  `Entity`，更新窗口也按原有行为重新创建。两个平台共用 GPUI close 路径，平台差异不改变窗口生命周期。
+  设置侧边栏当前页面由 app coordinator 持有的 process-local `SettingsNavigationMemory` 记录：
+  `SettingPage::title_suffix` 在当前页渲染时回报页面，新的设置窗口用该 index 作为
+  `Settings::default_selected_index`；应用重启后重新从 Appearance 开始。系统菜单的 presentation 轮询
+  同样不得每秒重建完整快照：它先读取只返回 revision 的命令（`ReadSnapshotRevision`，只比较 service
+  已持有的状态），仅在 revision 变化时才读取完整快照，完整快照中的模型目录扫描因此不再随 `20 Hz`
+  轮询反复执行；`CGPreflightListenEventAccess` 这类 TCC 查询由 snapshot clock 按上限 `1 s` 缓存，
+  只有显示用途的值不再要求每次快照都访问系统。Windows GPUI 0.2.2 的最终 `WM_DESTROY` 同步重入
+  兼容退出路径仍只用于显式 Quit 后的产品 owner 关闭阶段；普通设置/更新窗口销毁必须由双平台原生
+  smoke 验证。Windows 显式退出先请求 frame source 停止并停止输入生产者，确认 frame source 已退出后
+  再 shutdown/join runtime、配置和音频 owner，最后释放 renderer/GPU 与 overlay；该兼容措施不得提前
   终止业务 shutdown；升级到修复此回调的固定 GPUI 版本后必须移除，并恢复正常 GPUI 析构门禁。
 - 正式 executable 无参数启动时持续运行到显式 Quit 或系统终止；正数 `--run-seconds` 只用于
   有界 smoke/诊断，不能成为安装包或 Finder/Explorer 启动的隐式退出条件。所有正常退出仍须

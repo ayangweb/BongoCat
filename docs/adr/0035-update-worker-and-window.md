@@ -34,7 +34,7 @@ ADR-0034 交付了更新链路与信任模型，并在「后续边界」中明�
 worker 把当前阶段写入 `UpdateStateHandle`（`Arc<Mutex<UpdateSnapshot>>` + revision），窗口按
 `UPDATE_STATE_POLL_INTERVAL`（250 ms）读取。理由：
 
-- 窗口关闭、隐藏或渲染慢，都不会阻塞或反压 worker；下载进度是覆盖写，不是队列。
+- 窗口关闭、销毁或渲染慢，都不会阻塞或反压 worker；下载进度是覆盖写，不是队列。
 - revision 只在阶段真正变化时推进，同一个阶段重复发布不推进 revision，轮询因此不会无意义重绘。
 - 命令通道（`UpdateClient` → `UpdateCommand`）保持有界且非阻塞（`try_send`），窗口不会因为
   worker 忙碌而卡住。

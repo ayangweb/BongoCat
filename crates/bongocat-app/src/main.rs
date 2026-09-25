@@ -24,7 +24,10 @@ use bongocat_platform::{
 };
 use bongocat_platform::{SystemMenu, SystemMenuAction, SystemMenuPresentation};
 use bongocat_runtime::hover_hide_delay_ms;
-use bongocat_ui::{SettingsView, SettingsWindowHandle, SettingsWindowSeed, open_settings_window};
+use bongocat_ui::{
+    SettingsNavigationMemory, SettingsView, SettingsWindowHandle, SettingsWindowSeed,
+    open_settings_window,
+};
 use bongocat_ui_protocol::{
     AutomaticUpdateSettings, SettingsClient, SettingsError, SettingsErrorCode,
     SettingsModelAvailability, SettingsModelKey, SettingsModelOrigin, SettingsOverlay,
@@ -583,10 +586,13 @@ struct ProductCoordinator {
     #[cfg(target_os = "windows")]
     overlay: Rc<RefCell<Option<ProductOverlaySession>>>,
     settings_service: Option<bongocat_app::ApplicationSettingsService>,
+    /// The currently open settings window, if any; close destroys it.
     settings_window: Option<SettingsWindowHandle>,
+    /// Process-local memory for the last settings sidebar page.
+    settings_navigation_memory: SettingsNavigationMemory,
     /// The worker that owns the update pipeline.
     update_service: Option<bongocat_app::ApplicationUpdateService>,
-    /// The open update window, if any.
+    /// The open update window, if any; close destroys it.
     update_window: Option<bongocat_ui::UpdateWindowHandle>,
     /// The display language a product window opens with.
     ///
@@ -733,8 +739,8 @@ const fn native_theme_for_startup(
 /// Run one update against the settings view, retrying while GPUI cannot hand the
 /// window over.
 ///
-/// The window is pre-rendered and kept for the product lifetime on both platforms, so a
-/// close no longer releases the view; what can still fail is `AsyncApp::update` returning
+/// A settings close destroys the window, so callers must stop using an old handle
+/// after they request close; what can still fail is `AsyncApp::update` returning
 /// `Err` while the platform is inside a window callback of its own.
 async fn update_settings_window<R>(
     cx: &mut AsyncApp,
@@ -974,22 +980,30 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
         })
         .unwrap_or((None, true));
     if let Some(window_handle) = existing {
-        match window_handle.update(cx, |view, window, cx| {
-            #[cfg(target_os = "windows")]
-            bongocat_platform::set_taskbar_icon_visible(window, taskbar_icon_visible)
-                .map_err(|error| error.to_string())?;
-            view.reopen(window, cx)
-        }) {
-            Ok(Ok(())) => {
-                cx.activate(true);
-                return Ok(window_handle);
-            }
-            Ok(Err(error)) => return Err(error),
-            Err(_) => {}
+        if window_handle.is_open() {
+            return match window_handle.update(cx, |view, window, cx| {
+                #[cfg(target_os = "windows")]
+                bongocat_platform::set_taskbar_icon_visible(window, taskbar_icon_visible)
+                    .map_err(|error| error.to_string())?;
+                view.reopen(window, cx)
+            }) {
+                Ok(Ok(())) => {
+                    cx.activate(true);
+                    Ok(window_handle)
+                }
+                Ok(Err(error)) => Err(error),
+                Err(error) => Err(format!(
+                    "settings window is temporarily unavailable to reopen: {error}"
+                )),
+            };
         }
+        // Only a released view entity is replaced. A transient GPUI borrow
+        // failure above is returned to the caller instead of stacking a second
+        // settings window.
+        cx.global_mut::<ProductCoordinator>().settings_window = None;
     }
 
-    let (settings_client, window_state, seed) = cx
+    let (settings_client, window_state, seed, navigation_memory) = cx
         .try_global::<ProductCoordinator>()
         .and_then(|coordinator| {
             coordinator.settings_service.as_ref().map(|service| {
@@ -1000,6 +1014,7 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
                         language: coordinator.product_language,
                         appearance_theme: coordinator.product_appearance_theme,
                     },
+                    coordinator.settings_navigation_memory.clone(),
                 )
             })
         })
@@ -1008,6 +1023,7 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
         settings_client,
         window_state,
         seed,
+        navigation_memory,
         taskbar_icon_visible,
         finish_product_quit,
         open_update_window_and_check,
@@ -1232,16 +1248,32 @@ fn restart_after_update(cx: &mut App) {
 
 #[cfg(target_os = "windows")]
 fn apply_taskbar_icon_visibility(cx: &mut App, visible: bool) -> Result<(), SettingsError> {
-    let window_handle = cx
+    if !cx.has_global::<ProductCoordinator>() {
+        return Err(SettingsError::new(
+            SettingsErrorCode::TaskbarIconUpdateFailed,
+        ));
+    }
+    let Some(window_handle) = cx
         .try_global::<ProductCoordinator>()
         .and_then(|coordinator| coordinator.settings_window.clone())
-        .ok_or_else(|| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed))?;
-    window_handle
+    else {
+        // The settings window is intentionally destroyed on close. The native
+        // taskbar button does not exist while it is absent; retain the desired
+        // value and apply it when the next window is created.
+        cx.global_mut::<ProductCoordinator>().taskbar_icon_visible = visible;
+        return Ok(());
+    };
+    let result = window_handle
         .update(cx, |_, window, _| {
             bongocat_platform::set_taskbar_icon_visible(window, visible)
         })
         .map_err(|_| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed))?
-        .map_err(|_| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed))?;
+        .map_err(|_| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed));
+    if result.is_err() && window_handle.is_open() {
+        return Err(SettingsError::new(
+            SettingsErrorCode::TaskbarIconUpdateFailed,
+        ));
+    }
     cx.global_mut::<ProductCoordinator>().taskbar_icon_visible = visible;
     Ok(())
 }
@@ -1288,19 +1320,17 @@ fn toggle_settings_window(cx: &mut App) -> Result<(), String> {
         return Ok(());
     };
 
-    // Closing settings only hides the pre-rendered window; the coordinator keeps the
-    // handle on both platforms so the next open shows the same view.
-    match window_handle.update(cx, |view, window, cx| {
-        if view.window_hidden() {
-            view.reopen(window, cx)
-        } else {
-            view.hide(window, cx)
-        }
-    }) {
+    // Closing settings destroys the current GPUI window. The coordinator clears
+    // the handle from `on_window_closed`; the process-local navigation memory
+    // remains and is supplied to the next window.
+    match window_handle.update(cx, |view, window, cx| view.close(window, cx)) {
         Ok(result) => result?,
         Err(_) => {
-            ensure_settings_window(cx)?;
-            return Ok(());
+            if !window_handle.is_open() {
+                cx.global_mut::<ProductCoordinator>().settings_window = None;
+                return Ok(());
+            }
+            return Err("settings window is temporarily unavailable to close".to_owned());
         }
     }
 
@@ -1498,6 +1528,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                     language: SettingsLanguage::ChineseSimplified,
                     appearance_theme: SettingsTheme::Dark,
                 },
+                SettingsNavigationMemory::new(),
                 true,
                 |cx| cx.quit(),
                 |_: &mut App| {},
@@ -2376,6 +2407,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             overlay,
             settings_service: Some(settings_service),
             settings_window: None,
+            settings_navigation_memory: SettingsNavigationMemory::new(),
             update_service: Some(update_service),
             update_window: None,
             product_language: initial_settings_snapshot.resolved_language,
@@ -2538,8 +2570,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 cx.global_mut::<ProductCoordinator>().settings_window = None;
             }
-            // The update window can be closed at any time, including while a check or
-            // a transfer is still running: the worker owns that work, not the window.
+            // Both product windows are destroyed on close. The update worker keeps
+            // running independently, including while its window is gone.
             let update_window = cx.global::<ProductCoordinator>().update_window.clone();
             if let Some(window_handle) = update_window
                 && !window_handle.is_open()
@@ -3372,6 +3404,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             coordinator.frame_ticks,
                         )
                     };
+                    // The window is visible, so the existing toggle request is a
+                    // close request. The coordinator must drop this handle when
+                    // GPUI finishes destroying the window.
                     cx.global::<ProductCoordinator>()
                         .main_thread_signals
                         .request_open_settings();
@@ -3390,51 +3425,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                let mut hidden = false;
+                let mut destroyed = false;
                 for _ in 0..60 {
                     Timer::after(Duration::from_millis(50)).await;
-                    let observed = update_settings_window(cx, &original_window, |view, _, cx| {
-                        Ok::<_, String>((view.window_hidden(), cx.windows().len()))
-                    })
-                    .await;
-                    match observed {
-                        Ok((true, 1)) => {
-                            hidden = true;
-                            break;
-                        }
-                        Ok((true, windows)) => {
-                            record_failure(
-                                &smoke_failures,
-                                format!(
-                                    "settings close left {windows} windows instead of the one \
-                                     pre-rendered window"
-                                ),
-                            );
-                            #[cfg(target_os = "macos")]
-                            cx.update(request_product_quit);
-                            #[cfg(target_os = "windows")]
-                            request_windows_product_quit(&smoke_shutdown_requested);
-                            return;
-                        }
-                        Ok((false, _)) => {}
-                        Err(error) => {
-                            record_failure(&smoke_failures, error);
-                            #[cfg(target_os = "macos")]
-                            cx.update(request_product_quit);
-                            #[cfg(target_os = "windows")]
-                            request_windows_product_quit(&smoke_shutdown_requested);
-                            return;
-                        }
+                    let observed = cx.update(|cx| {
+                        let coordinator = cx.global::<ProductCoordinator>();
+                        (
+                            coordinator.settings_window.is_none(),
+                            original_window.read(cx).is_err(),
+                        )
+                    });
+                    if observed == (true, true) {
+                        destroyed = true;
+                        break;
                     }
                 }
-                if !hidden {
-                    record_failure(&smoke_failures, "settings window did not hide");
+                if !destroyed {
+                    record_failure(
+                        &smoke_failures,
+                        "settings close did not destroy the window and clear its handle",
+                    );
                     #[cfg(target_os = "macos")]
                     cx.update(request_product_quit);
                     #[cfg(target_os = "windows")]
                     request_windows_product_quit(&smoke_shutdown_requested);
                     return;
                 }
+                let remembered_page = 2;
+                cx.update(|cx| {
+                    cx.global_mut::<ProductCoordinator>()
+                        .settings_navigation_memory
+                        .set_page_index(remembered_page);
+                });
 
                 Timer::after(Duration::from_millis(500)).await;
                 let reopened = cx.update(|cx| -> Result<SettingsWindowHandle, String> {
@@ -3451,13 +3473,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .global::<ProductCoordinator>()
                         .settings_window
                         .clone()
-                        .ok_or_else(|| "settings shortcut did not restore the window".to_owned())?;
+                        .ok_or_else(|| "settings shortcut did not recreate the window".to_owned())?;
                     if cx.windows().len() != 1 {
                         return Err("settings reopen created more than one window".to_owned());
                     }
-                    if reopened != original_window {
+                    if reopened == original_window {
                         return Err(
-                            "settings reopen replaced the pre-rendered window entity".to_owned()
+                            "settings reopen reused the destroyed window handle".to_owned()
                         );
                     }
                     Ok(reopened)
@@ -3480,21 +3502,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         cx.global::<ProductCoordinator>()
                             .settings_window
                             .clone()
-                            .ok_or_else(|| "settings window was not retained".to_owned())?;
+                            .ok_or_else(|| "settings window was not recreated".to_owned())?;
                     let revision = window_handle
                         .update(cx, |view, _, _| view.snapshot_revision())
                         .map_err(|error| error.to_string())?;
                     if revision.is_none() {
                         return Err(
-                            "reopened settings window did not keep a runtime snapshot".to_owned(),
+                            "recreated settings window did not receive a runtime snapshot".to_owned(),
                         );
+                    }
+                    if cx.global::<ProductCoordinator>()
+                        .settings_navigation_memory
+                        .page_index()
+                        != remembered_page
+                    {
+                        return Err("recreated settings window lost its sidebar page memory".to_owned());
                     }
                     Ok(())
                 });
                 match restored {
                     Ok(()) => {
                         if let Err(error) = write_smoke_status(
-                            "settings window hid and reopened from one pre-rendered entity",
+                            "settings window closed, was destroyed, and reopened with a fresh entity",
                         ) {
                             record_failure(&smoke_failures, error.to_string());
                         }
@@ -3858,7 +3887,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let frame_ticks = coordinator.frame_ticks;
                     let application_reopens = coordinator.application_reopens;
                     original_window
-                        .update(cx, |view, window, cx| view.hide(window, cx))
+                        .update(cx, |view, window, cx| view.close(window, cx))
                         .map_err(|error| error.to_string())??;
                     Ok((original_window, frame_ticks, application_reopens))
                 });
@@ -3871,34 +3900,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                // Hiding is the state the dock-icon reopen has to recover from: the window
-                // stays pre-rendered while it is off screen, so this smoke proves the
-                // reopen shows that same view instead of building a second one.
-                let mut hidden = false;
+                // The close destroys the window. The next LaunchServices reopen
+                // must create a new settings entity and restore its current page
+                // from the process-local navigation memory.
+                let mut destroyed = false;
                 for _ in 0..60 {
                     Timer::after(Duration::from_millis(50)).await;
-                    match update_settings_window(cx, &original_window, |view, _, _| {
-                        Ok::<_, String>(view.window_hidden())
-                    })
-                    .await
-                    {
-                        Ok(true) => {
-                            hidden = true;
-                            break;
-                        }
-                        Ok(false) => {}
-                        Err(error) => {
-                            record_failure(&smoke_failures, error);
-                            cx.update(request_product_quit);
-                            return;
-                        }
+                    let observed = cx.update(|cx| {
+                        let coordinator = cx.global::<ProductCoordinator>();
+                        (
+                            coordinator.settings_window.is_none(),
+                            original_window.read(cx).is_err(),
+                        )
+                    });
+                    if observed == (true, true) {
+                        destroyed = true;
+                        break;
                     }
                 }
-                if !hidden {
-                    let _ = write_smoke_status("application-reopen hide failed");
+                if !destroyed {
+                    let _ = write_smoke_status("application-reopen close failed");
                     record_failure(
                         &smoke_failures,
-                        "application-reopen smoke could not hide the settings window",
+                        "application-reopen smoke could not destroy the settings window",
                     );
                     cx.update(request_product_quit);
                     return;
@@ -3920,11 +3944,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             return Ok(false);
                         }
                         let reopened = coordinator.settings_window.clone().ok_or_else(|| {
-                            "application reopen did not retain a settings window".to_owned()
+                            "application reopen did not create a settings window".to_owned()
                         })?;
-                        if reopened != original_window {
+                        if reopened == original_window {
                             return Err(
-                                "application reopen replaced the pre-rendered settings window"
+                                "application reopen reused the destroyed settings window"
                                     .to_owned(),
                             );
                         }
@@ -4009,30 +4033,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                let mut hidden = false;
+                let mut destroyed = false;
                 for _ in 0..60 {
                     Timer::after(Duration::from_millis(50)).await;
-                    match update_settings_window(cx, &settings_window, |view, _, _| {
-                        Ok(view.window_hidden())
-                    })
-                    .await
-                    {
-                        Ok(true) => {
-                            hidden = true;
-                            break;
-                        }
-                        Ok(false) => {}
-                        Err(error) => {
-                            record_failure(&smoke_failures, error);
-                            request_windows_product_quit(&smoke_shutdown_requested);
-                            return;
-                        }
+                    let observed = cx.update(|cx| {
+                        let coordinator = cx.global::<ProductCoordinator>();
+                        (
+                            coordinator.settings_window.is_none(),
+                            settings_window.read(cx).is_err(),
+                        )
+                    });
+                    if observed == (true, true) {
+                        destroyed = true;
+                        break;
                     }
                 }
-                if !hidden {
+                if !destroyed {
                     record_failure(
                         &smoke_failures,
-                        "single-instance smoke could not hide the settings window",
+                        "single-instance smoke could not destroy the settings window",
                     );
                     request_windows_product_quit(&smoke_shutdown_requested);
                     return;
@@ -4052,39 +4071,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 for _ in 0..100 {
                     Timer::after(Duration::from_millis(50)).await;
-                    let restored = update_settings_window(
-                        cx,
-                        &settings_window,
-                        |view, _, cx| -> Result<bool, String> {
-                            let coordinator = cx.global::<ProductCoordinator>();
-                            if coordinator.single_instance_wakes == 0 {
-                                return Ok(false);
-                            }
-                            if coordinator.frame_ticks <= baseline_ticks {
-                                return Err(
-                                    "frame source stopped while waiting for an instance wake"
-                                        .to_owned(),
-                                );
-                            }
-                            if cx.windows().len() != 1 {
-                                return Err("instance wake created more than one settings window"
-                                    .to_owned());
-                            }
-                            if view.window_hidden() {
-                                return Err(
-                                    "instance wake did not show the existing settings window"
-                                        .to_owned(),
-                                );
-                            }
-                            if view.snapshot_revision().is_none() {
-                                return Err(
-                                    "instance wake did not restore a runtime snapshot".to_owned()
-                                );
-                            }
-                            Ok(true)
-                        },
-                    )
-                    .await;
+                    let restored = cx.update(|cx| -> Result<bool, String> {
+                        let coordinator = cx.global::<ProductCoordinator>();
+                        if coordinator.single_instance_wakes == 0 {
+                            return Ok(false);
+                        }
+                        if coordinator.frame_ticks <= baseline_ticks {
+                            return Err(
+                                "frame source stopped while waiting for an instance wake"
+                                    .to_owned(),
+                            );
+                        }
+                        let reopened = coordinator.settings_window.clone().ok_or_else(|| {
+                            "instance wake did not create a settings window".to_owned()
+                        })?;
+                        if cx.windows().len() != 1 {
+                            return Err("instance wake created more than one settings window"
+                                .to_owned());
+                        }
+                        if reopened == settings_window {
+                            return Err(
+                                "instance wake reused the destroyed settings window".to_owned(),
+                            );
+                        }
+                        let hidden = reopened
+                            .update(cx, |view, _, _| view.window_hidden())
+                            .map_err(|error| error.to_string())?;
+                        if hidden {
+                            return Ok(false);
+                        }
+                        let revision = reopened
+                            .update(cx, |view, _, _| view.snapshot_revision())
+                            .map_err(|error| error.to_string())?;
+                        if revision.is_none() {
+                            return Err(
+                                "instance wake did not restore a runtime snapshot".to_owned()
+                            );
+                        }
+                        Ok(true)
+                    });
                     match restored {
                         Ok(true) => {
                             if let Err(error) = write_smoke_status(

@@ -1,9 +1,11 @@
 use super::*;
 
+#[allow(clippy::too_many_arguments)]
 pub fn open_settings_window(
     client: SettingsClient,
     window_state: SettingsWindowState,
     seed: SettingsWindowSeed,
+    navigation_memory: SettingsNavigationMemory,
     _taskbar_icon_visible: bool,
     request_quit: impl Fn(&mut App) + 'static,
     request_update: impl Fn(&mut App) + 'static,
@@ -72,6 +74,7 @@ pub fn open_settings_window(
                     .detach();
                     let mut view =
                         SettingsView::new(client, seed, request_quit, request_update, window, cx);
+                    view.set_navigation_memory(navigation_memory.clone());
                     view.refresh(cx);
                     view
                 });
@@ -103,29 +106,14 @@ pub fn open_settings_window(
                 {
                     *open_taskbar_error.borrow_mut() = Some(error.to_string());
                 }
-                // Closing settings hides the window on both platforms and never destroys it:
-                // the next open shows this pre-rendered view with its current runtime
-                // snapshot. GPUI 0.2.2's Windows `WM_CLOSE` destroy callback re-enters
-                // `AsyncApp` synchronously, and a destroyed macOS window would rebuild the
-                // whole view, so the native close is intercepted and answered with a hide.
+                // Closing settings destroys the GPUI window on both platforms. The
+                // view flushes UI-owned work before returning `true`; the next open
+                // creates a fresh view and uses the app-owned navigation memory to
+                // restore the last sidebar page.
                 let weak_view = view.downgrade();
-                window.on_window_should_close(cx, move |window, cx| {
-                    let _ = weak_view.update(cx, |view, cx| {
-                        view.cancel_shortcut_capture(cx);
-                        view.flush_pending_settings(cx);
-                    });
-                    let result = bongocat_platform::hide_native_window(window);
-                    let _ = weak_view.update(cx, |view, cx| match result {
-                        Ok(()) => {
-                            view.window_hidden = true;
-                            cx.notify();
-                        }
-                        Err(_) => view.report_service_error(
-                            SettingsError::new(crate::SettingsErrorCode::WindowHideFailed),
-                            cx,
-                        ),
-                    });
-                    false
+                window.on_window_should_close(cx, move |_, cx| {
+                    let _ = weak_view.update(cx, |view, cx| view.prepare_close(cx));
+                    true
                 });
                 let overlay_focus = view.read(cx).overlay_focus.clone();
                 window.focus(&overlay_focus, cx);

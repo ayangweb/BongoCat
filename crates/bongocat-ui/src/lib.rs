@@ -8,7 +8,10 @@ use std::time::{Duration, Instant};
 
 mod pop_confirm;
 mod window;
-pub use window::{SettingsView, SettingsWindowHandle, SettingsWindowSeed, open_settings_window};
+pub use window::{
+    SettingsNavigationMemory, SettingsView, SettingsWindowHandle, SettingsWindowSeed,
+    open_settings_window,
+};
 
 // Keep the module path used by update-window render tests while the protocol
 // implementation and its public types live in the dedicated crate.

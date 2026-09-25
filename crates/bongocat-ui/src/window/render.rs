@@ -10,6 +10,23 @@ where
         .map(move |item| item.keywords(keywords.iter().cloned()))
 }
 
+/// `gpui-kit` owns the sidebar selection in window-keyed state. The empty title
+/// suffix is the component's public per-page render hook, so it lets the process
+/// owner observe the active page without taking over the component's navigation.
+fn report_navigation_page(page: SettingsNavigationPage, memory: &SettingsNavigationMemory) {
+    memory.select(page);
+}
+
+fn page_reporter(
+    page: SettingsNavigationPage,
+    memory: SettingsNavigationMemory,
+) -> impl Fn(&mut Window, &mut App) -> Div {
+    move |_, _| {
+        report_navigation_page(page, &memory);
+        div()
+    }
+}
+
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = window.viewport_size();
@@ -155,6 +172,7 @@ impl Render for SettingsView {
         }
         self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, editing_blocked, cx);
         let view_entity = cx.entity();
+        let navigation_memory = self.navigation_memory.clone();
         let startup_item = startup_item_presentation(
             snapshot.as_ref().map(|snapshot| snapshot.startup_item),
             editing_blocked,
@@ -169,6 +187,10 @@ impl Render for SettingsView {
         let appearance_page = SettingPage::new(SettingsNavigationPage::Appearance.title(language))
             .icon(SettingsNavigationPage::Appearance.icon())
             .default_open(true)
+            .title_suffix(page_reporter(
+                SettingsNavigationPage::Appearance,
+                navigation_memory.clone(),
+            ))
             .group(SettingGroup::new().items(with_search_keywords(
                 vec![
                     SettingItem::new(
@@ -216,6 +238,10 @@ impl Render for SettingsView {
             .search_keywords(language, ["settings.overlay.performance.title"]);
         let overlay_page = SettingPage::new(SettingsNavigationPage::ModelWindow.title(language))
             .icon(SettingsNavigationPage::ModelWindow.icon())
+            .title_suffix(page_reporter(
+                SettingsNavigationPage::ModelWindow,
+                navigation_memory.clone(),
+            ))
             .groups(vec![
                 SettingGroup::new()
                     .title(bongocat_i18n::text(
@@ -703,6 +729,10 @@ impl Render for SettingsView {
         let input_interaction_page =
             SettingPage::new(SettingsNavigationPage::InputInteraction.title(language))
                 .icon(SettingsNavigationPage::InputInteraction.icon())
+                .title_suffix(page_reporter(
+                    SettingsNavigationPage::InputInteraction,
+                    navigation_memory.clone(),
+                ))
                 .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -953,6 +983,10 @@ impl Render for SettingsView {
             .search_keywords(language, ["settings.app_system.logging.title"]);
         let app_system_page = SettingPage::new(SettingsNavigationPage::AppSystem.title(language))
             .icon(SettingsNavigationPage::AppSystem.icon())
+            .title_suffix(page_reporter(
+                SettingsNavigationPage::AppSystem,
+                navigation_memory.clone(),
+            ))
             .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -1186,10 +1220,18 @@ impl Render for SettingsView {
         let model_library_page =
             SettingPage::new(SettingsNavigationPage::ModelLibrary.title(language))
                 .icon(SettingsNavigationPage::ModelLibrary.icon())
+                .title_suffix(page_reporter(
+                    SettingsNavigationPage::ModelLibrary,
+                    navigation_memory.clone(),
+                ))
                 .group(model_library_group);
         let model_behavior_page =
             SettingPage::new(SettingsNavigationPage::ModelBehavior.title(language))
                 .icon(SettingsNavigationPage::ModelBehavior.icon())
+                .title_suffix(page_reporter(
+                    SettingsNavigationPage::ModelBehavior,
+                    navigation_memory.clone(),
+                ))
                 .group(model_behavior_group);
 
         // The page's two scopes are two titled groups rather than tabs: a
@@ -1199,6 +1241,10 @@ impl Render for SettingsView {
         // from the sidebar and the body renders them one after the other.
         let shortcuts_page = SettingPage::new(SettingsNavigationPage::Shortcuts.title(language))
             .icon(SettingsNavigationPage::Shortcuts.icon())
+            .title_suffix(page_reporter(
+                SettingsNavigationPage::Shortcuts,
+                navigation_memory.clone(),
+            ))
             .groups(vec![
                 shortcuts_page::group(
                     shortcuts_page::ShortcutScope::Window,
@@ -1222,6 +1268,10 @@ impl Render for SettingsView {
             SettingsNavigationPage::About.search_keywords(language, std::iter::empty());
         let about_page = SettingPage::new(SettingsNavigationPage::About.title(language))
             .icon(SettingsNavigationPage::About.icon())
+            .title_suffix(page_reporter(
+                SettingsNavigationPage::About,
+                navigation_memory.clone(),
+            ))
             .group(about::operational_group(
                 view_entity.clone(),
                 snapshot.as_ref(),
@@ -1232,6 +1282,10 @@ impl Render for SettingsView {
 
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))
+            .default_selected_index(SelectIndex {
+                page_ix: self.navigation_memory.page_index(),
+                group_ix: None,
+            })
             .with_group_variant(GroupBoxVariant::Outline)
             .pages(vec![
                 appearance_page,
@@ -1295,5 +1349,17 @@ impl Render for SettingsView {
             .child(model_drag_exit_listener)
             .children(model_drag_overlay)
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_reporter_updates_the_process_navigation_memory() {
+        let memory = SettingsNavigationMemory::new();
+        report_navigation_page(SettingsNavigationPage::ModelBehavior, &memory);
+        assert_eq!(memory.page_index(), 2);
     }
 }

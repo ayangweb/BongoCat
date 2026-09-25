@@ -1693,9 +1693,9 @@ presentation alpha，不再触发窗口替换，因此避免设置更新时短�
 - [ ] command 成功后使用新 revision/snapshot 更新 UI。
 - [ ] command 失败恢复草稿并显示可操作错误。
 - [ ] 设置窗口重开时从 runtime 恢复，不依赖创建时的旧 snapshot。
-  - 状态（2026-09-20）：生命周期统一为预渲染窗口隐藏/重开后，`reopen` 仍先重显原生窗口再
-    `refresh`，并主动读取当前 revisioned snapshot；本机 macOS release smoke 验证重开后保留
-    当前 snapshot。
+  - 状态（2026-09-25，ADR-0068）：设置窗口 close 后销毁并重新创建；新窗口仍先读取当前
+    revisioned snapshot，且通过 process-local `SettingsNavigationMemory` 恢复上一次一级侧边栏页面。
+    双平台真实 close/重建/导航恢复 smoke 仍待完成。
 - [ ] UI executor 不持有 runtime 写锁或执行阻塞文件操作。
   - 状态（2026-08-31）：当前最小窗口仅 await `SettingsClient`，独立有界 worker 独占
     `Application`、配置 I/O 和 runtime 等待；后续页面仍须持续遵守该边界。
@@ -1893,12 +1893,11 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     以同一 config writer 完成原子持久化，CAS、错误回滚、restart 恢复和 shutdown flush 均有回归；
     `cargo test -p bongocat-ui --lib --locked`（68 passed）与
     `cargo test -p bongocat-app --lib --locked`（94 passed）通过。
-- [ ] 设置窗口隐藏/重开后状态一致。
-  - 状态（2026-09-20）：生命周期已统一为预渲染窗口的隐藏/重开：close 只隐藏原生窗口
-    （macOS `NSWindow.orderOut:`、Windows `ShowWindow(SW_HIDE)`），reopen 重显同一 `Entity`
-    并保留 revisioned snapshot。本机 macOS release `--settings-window-smoke` 与打包 `.app` 的
-    application-reopen smoke 通过（同一 Entity、单进程、正常退出）；Windows 行为未变，但统一后的
-    smoke 断言仍需下一次 Windows 原生 CI 复验，因此保持未勾选。
+- [ ] 设置窗口关闭/重开时状态一致，并恢复上次侧边栏页面。
+  - 状态（2026-09-25，ADR-0068）：设置和更新窗口的普通 close 都销毁当前 GPUI 窗口；设置窗口
+    下一次 open 创建新 `Entity`，从 runtime 读取当前 snapshot，并由 `SettingsNavigationMemory`
+    恢复一级侧边栏页面。纯 contract 与定向 UI/app 测试覆盖默认页、clone 保持和新 handle；双平台
+    release 原生 smoke 仍待完成，因此保持未勾选。
 - [ ] 设置窗口关闭时 overlay CPU、帧率和输入不受明显影响。
 - [ ] GPUI test、contract test 和双平台截图检查通过。
 
@@ -2673,7 +2672,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 - [ ] 30 分钟高频键鼠 + 手柄 + 设置修改压力测试。
 - [ ] 1000 次显示/隐藏、穿透和置顶切换。
 - [ ] 100 次模型切换和损坏模型恢复。
-- [ ] 100 次 GPUI 设置窗口隐藏/重开（窗口按需创建一次后不销毁，因此用显隐循环度量资源增长）。
+- [ ] 100 次 GPUI 设置窗口关闭/重开，并验证每次销毁后重建及一级侧边栏页面记忆；不得把同一进程内页面记忆误记为窗口复用。
 - [ ] 100 次输入服务 restart。
 - [ ] 8 小时固定模型 soak。
 - [ ] 8 小时活跃输入/模型轮换 soak。
@@ -2840,27 +2839,19 @@ workflow、legacy config inspector 及其本地 fixture 已从当前工作树删
     - 验收证据（2026-08-31）：`bongocat-audio`、runtime side-effect 接线、真实预置 FLAC
       decoder 与 motion event/audio contract 已进入正式 workspace；完整 format、
       Clippy、test、release check、双 Windows target check 和 CI 结果随对应提交记录。
-17. [x] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可重显预渲染窗口。
-        - 依赖：正式 GPUI 设置窗口、app coordinator、runtime/render owner。- 退出条件：window close 不触发 shutdown；窗口隐藏期间 frame source 继续推进；
-        两个平台 reopen 都只重显保留的唯一 Entity 并从当前 revisioned snapshot 刷新；显式 Quit
-        仍按既定顺序 join 全部 owner；Windows/macOS release smoke 与完整 workspace 门禁通过。
-        - 状态（2026-09-20）：实现统一为"预渲染窗口 + 隐藏/重开"：macOS platform adapter 新增
-        `NSWindow.orderOut:`/`makeKeyAndOrderFront:`，与 Windows `SW_HIDE`/`SW_SHOW` 走同一条
-        `hide_native_window`/`show_native_window` 路径；`on_window_should_close` 在双平台都只隐藏
-        并返回 `false`，        `SettingsView::hide` 不再 `remove_window()`，coordinator 也不再清空 macOS
-        句柄，因此不再存在"关闭后重建"的第二套逻辑。本机 macOS release smoke 断言同一 Entity
-        重显且保留 snapshot，Windows 行为不变。
-        - 状态（2026-09-20）：隐藏期间的周期性刷新停止，后台不再重建快照。预渲染窗口原来在屏幕外
-        仍按 `1 s` 重建完整快照（含模型目录扫描与 macOS TCC 查询），现只在可见时刷新，reopen 仍先
-        主动读一次；系统菜单轮询改为先读只返回 revision 的 `ReadSnapshotRevision`，仅在 revision
-        变化时读完整快照；`CGPreflightListenEventAccess` 由 snapshot clock 按上限 `1 s` 缓存。本机
-        测量（macOS release，`--settings-window-open-smoke`）：同一 8 s 采样窗口内 TCC preflight
-        队列由 `381` 降到 `43`，设置服务线程的 `stat`/`readdir` 扫描采样约降一个数量级，可见窗口
-        运行的整体 CPU 由 `11.1–13.1%` 降到 `9.5–10.1%`（单核占比），隐藏窗口场景由 `7.5%` 降到
-        `3.8–6.0%`；`cargo test --locked --workspace`、Clippy 与 release settings-window/models-page
-        smoke 均通过。- 注：系统菜单 smoke 在本机持续报 `Open Settings did not restore a runtime
-        snapshot`，未改动的 `next` 代码同样复现，属既有环境失败，与本次改动无关。- 状态（2026-08-31）：macOS release smoke 和 Windows platform target check 本机通过；
-        Windows run `33328391234`、job `99302481796` 已证明普通 close 隐藏有效，但随后允许真实
+17. [ ] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可销毁/重建设置窗口。
+        - 依赖：正式 GPUI 设置窗口、app coordinator、runtime/render owner。- 退出条件：window close 不触发 shutdown；两个平台 close 都销毁当前 GPUI
+        窗口，下一次 open 创建新 Entity 并从当前 revisioned snapshot 刷新；process-local
+        `SettingsNavigationMemory` 恢复一级侧边栏页面；显式 Quit 仍按既定顺序 join 全部 owner；
+        Windows/macOS release smoke 与完整 workspace 门禁通过。
+        - 状态（2026-09-25，ADR-0068）：设置和更新窗口普通 close 均销毁；设置页通过
+        `SettingPage::title_suffix` 回报当前一级页面，coordinator 持有 process-local memory，
+        新窗口用 `Settings::default_selected_index` 恢复。纯 contract、定向 UI/app 测试已通过；
+        双平台真实 close/重建/页面恢复 smoke 仍待完成，因此保持未勾选。
+        - 历史证据（2026-08-31）：此前 macOS/Windows smoke 验证了永久隐藏/重显路径；该结论已由
+          ADR-0068 取代。历史 Windows `WM_DESTROY` fast-fail 证据仍约束显式 Quit 的最终兼容退出，
+          普通设置/更新窗口销毁需重新完成双平台原生 smoke。
+        - 历史状态（2026-08-31）：Windows run `33328391234`、job `99302481796` 已证明普通 close 隐藏有效，但随后允许真实
         `WM_DESTROY` 的两阶段退出仍以 `0xC0000409` fast-fail。上游 commit
         `399258feeaf90ad8a3a208c99221ee87b6452f38` 保留同一同步重入回调，因此当前实现改为先
         有序停止并 join 全部 BongoCat owner，再由 Windows adapter 跳过最终 GPUI 窗口析构；
@@ -3072,7 +3063,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、GPUI `on_reopen`、ADR-0008、产品资源目录。
     - 退出条件：`.app` 固定 Bundle ID、最低系统和禁止多实例 metadata，内置三个预置模型且
       executable 从 `Contents/Resources` 加载；再次 `open` 只触发既有进程的 AppKit reopen，
-      隐藏的预渲染设置窗口被重显并恢复当前 snapshot，后台 frame source 持续；退出仍进入
+      已销毁的设置窗口被重新创建并恢复当前 snapshot 与一级侧边栏页面，后台 frame source 持续；退出仍进入
       shutdown coordinator；ad-hoc strict codesign、release LaunchServices smoke 和完整门禁通过。Distribution signing、Hardened Runtime/notarization 继续由发布门禁跟踪。
     - 验收证据（2026-08-31）：最小产品 `Info.plist`、可重复打包脚本、bundle resource resolver
       与 application-reopen smoke 已实现；本机 release `.app` 先销毁设置 Entity，再从外部执行
@@ -3082,10 +3073,9 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       application reopen callback、设置窗口恢复和正常 quit；同一 job 的 format、Clippy、workspace
       test、release、Production build 与系统菜单 smoke 均通过。Distribution signing、Hardened
       Runtime/notarization 仍由发布门禁跟踪，不计入本项完成声明。
-    - 状态（2026-09-20）：设置窗口生命周期统一为隐藏/重开后，本项验收路径随之改为
-      "隐藏预渲染窗口 → 外部 `open` 触发 reopen → 重显同一 Entity"；本机重新打包
-      Development `.app` 后，该 smoke 报告 primary ready、application-reopen callback、设置窗口
-      恢复和正常 quit，进程数保持 1。
+    - 状态（2026-09-25，ADR-0068）：设置窗口生命周期改为 close 销毁、application reopen 创建新
+      Entity，并由 process-local `SettingsNavigationMemory` 恢复一级侧边栏页面；此前的
+      "隐藏预渲染窗口 → 重显同一 Entity" smoke 结论已过时，需按新生命周期复验。
 30. [x] `P7-STARTUP-ITEM-PLATFORM`：实现环境隔离的双平台当前用户启动项 adapter。
     - 依赖：ADR-0008、ADR-0013、正式 build environment 和产品 executable identity。
     - 退出条件：共享稳定 state/error 区分 disabled/enabled/stale/requires-approval/unsupported；

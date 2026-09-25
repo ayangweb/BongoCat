@@ -26,19 +26,20 @@ the legacy `BONGOCAT_BUILD_ENV` name is ignored.
 This is the current formal visible product entry on macOS and Windows. It loads the selected bundled
 preset (`standard` by default), starts the product runtime and platform input producer, and displays
 the transparent Metal or D3D11 overlay. Closing the settings window leaves the runtime, input, and
-overlay active; reopening the application creates a fresh settings entity from the current runtime
-snapshot on macOS. GPUI 0.2.2 cannot safely destroy its Windows window from `WM_CLOSE`, so Windows
-hides the native window, retains its sole entity, and refreshes that entity when reopened.
-Explicit Windows quit first stops and joins every BongoCat-owned runtime, input, audio, renderer,
-GPU, and overlay owner. The platform adapter then terminates the process without dropping the retained
-GPUI window, because GPUI 0.2.2 synchronously re-enters its borrowed `AsyncApp` from `WM_DESTROY`.
-This final-step workaround must be removed when a fixed GPUI revision is adopted.
+overlay active and destroys the settings GPUI window; the next open creates a fresh settings entity
+from the current runtime snapshot. The process-local settings navigation memory restores the last
+top-level sidebar page until the application restarts. Update windows also destroy their window on
+close while their worker continues independently. Explicit Windows quit first stops and joins every
+BongoCat-owned runtime, input, audio, renderer, GPU, and overlay owner. The platform adapter then
+terminates the process without dropping the final GPUI window, because GPUI 0.2.2 synchronously
+re-enters its borrowed `AsyncApp` from `WM_DESTROY`. This final-step workaround must be removed when
+a fixed GPUI revision is adopted.
 The application stays active until an explicit Quit command by default. `--run-seconds <seconds>`
 with a positive value is reserved for bounded smoke and diagnostic runs; `0` is the explicit spelling
 of the normal unbounded lifetime used by platform startup-item registrations.
 
-The cross-platform product smoke closes or hides the settings window, reopens it, and verifies that
-the frame source continued to run and the current snapshot was restored:
+The cross-platform product smoke closes and reopens the settings window, verifies that a fresh entity
+receives the current snapshot, and checks that the process-local sidebar page is restored:
 
 ```text
 cargo run -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke

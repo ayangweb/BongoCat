@@ -19,6 +19,7 @@
 - Logs are readable dated files with adjustable levels, retention, and automatic cleanup.
 - Settings are organized by task, and the light or dark theme follows supported system windows, menus, and file pickers.
 - Window and model-behavior shortcuts have separate switches. Model shortcuts are opt-in, and holding a shortcut triggers its action only once.
+- Closing Settings now destroys its window; reopening it in the same app process restores the last top-level sidebar page. Update windows keep their existing close-and-destroy behavior.
 
 ### 🐛 User-visible Fixes
 

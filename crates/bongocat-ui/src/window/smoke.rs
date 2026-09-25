@@ -304,7 +304,7 @@ impl SettingsView {
         Ok(())
     }
 
-    /// Show the pre-rendered window again.
+    /// Show a newly created settings window.
     pub fn reopen(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
         bongocat_platform::show_native_window(window).map_err(|error| error.to_string())?;
         self.window_hidden = false;
@@ -313,12 +313,19 @@ impl SettingsView {
         Ok(())
     }
 
-    /// Hide the window while keeping it alive.
-    pub fn hide(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
+    /// Complete the UI-side work that must happen before the settings window is destroyed.
+    pub fn prepare_close(&mut self, cx: &mut Context<Self>) {
         self.cancel_shortcut_capture(cx);
         self.clear_model_drag(cx);
         self.flush_pending_settings(cx);
         self.window_hidden = true;
-        bongocat_platform::hide_native_window(window).map_err(|error| error.to_string())
+        cx.notify();
+    }
+
+    /// Close and destroy the settings window.
+    pub fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
+        self.prepare_close(cx);
+        window.remove_window();
+        Ok(())
     }
 }
