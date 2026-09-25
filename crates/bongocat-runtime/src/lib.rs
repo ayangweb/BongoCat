@@ -3062,6 +3062,34 @@ mod tests {
         .expect("preset model")
     }
 
+    fn preset_model_without_expressions() -> (TempDir, CommittedModel) {
+        let catalog = tempdir().expect("temporary preset catalog");
+        let source = repository_root().join("resources/models/standard");
+        let destination = catalog.path().join("motion-only-model");
+        clone_model_tree(&source, &destination);
+
+        let model3_path = destination.join("cat.model3.json");
+        let mut model3: serde_json::Value =
+            serde_json::from_slice(&fs::read(&model3_path).expect("read copied model3"))
+                .expect("parse copied model3");
+        model3
+            .get_mut("FileReferences")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("model3 file references")
+            .remove("Expressions");
+        fs::write(
+            &model3_path,
+            serde_json::to_vec_pretty(&model3).expect("serialize motion-only model3"),
+        )
+        .expect("write motion-only model3");
+
+        let model = PresetModelCatalog::open(catalog.path(), ModelPackageLimits::default())
+            .expect("temporary preset catalog")
+            .load(&ModelId::parse("motion-only-model").expect("model id"))
+            .expect("temporary preset model");
+        (catalog, model)
+    }
+
     fn preset_model_with_motion_fade_out(fade_out_seconds: f64) -> (TempDir, CommittedModel) {
         let catalog = tempdir().expect("temporary preset catalog");
         let source = repository_root().join("resources/models/standard");
@@ -3671,10 +3699,9 @@ mod tests {
             .wait_for_command(settings_sequence, TIMEOUT)
             .expect("random behavior setting published");
 
+        let (_catalog, model) = preset_model_without_expressions();
         let activation = client
-            .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
-                "standard",
-            ))))
+            .send(RuntimeCommand::ActivateModel(Arc::new(model)))
             .expect("model activation accepted");
         let frame = wait_for_prepared_model(&client, &consumer, activation);
         report_model_prepared(&client, &consumer, &frame);
