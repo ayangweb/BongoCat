@@ -5447,6 +5447,8 @@ mod tests {
             origin: SettingsModelOrigin::BuiltIn,
         };
         let bundled_cover = crate::repository_preset_root()
+            .canonicalize()
+            .expect("canonical preset root")
             .join(&preset.id)
             .join("resources/cover.png");
         let bundled_bytes = std::fs::read(&bundled_cover).expect("bundled preset cover");
