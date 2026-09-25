@@ -1,7 +1,7 @@
 # ADR-0047: 模型管理页只做选择与元数据编辑
 
 状态：已接受（2026-09-18）
-依赖：ADR-0036（模型导入的压缩包来源与解压边界）、ADR-0037（在应用内导入 BongoCatMver 模型）、ADR-0020（GPUI Kit 统一依赖入口）
+依赖：ADR-0036（模型导入的压缩包来源与解压边界）、ADR-0037（在应用内导入 BongoCatMver 模型）、ADR-0020（GPUI Kit 统一依赖入口）、ADR-0065（模型模式元数据与卡片 Badge）
 
 修订（2026-09-22）：决策 1 与「不做拖拽导入」中描述的导入入口已变：导入卡片不再走
 「选择文件夹 / 选择 .zip」两个按钮加标题输入，而是按下即打开一个文件夹选择器并自动开始导入
@@ -63,7 +63,7 @@ canonicalize，再进入既有的来源检查、转换选择、导入和封面�
 单一文件夹选择器加自动导入，压缩包入口暂缓）。设置窗口根视图同时接收 `ExternalPaths` 文件拖放，
 因此拖入不必先切换到模型管理页，也不要求指针落在导入卡片上；拖放成功后仍由同一来源检查、导入、
 取消和封面截取流程处理。其余每张卡片是
-`cover.png` + 标题 + 可用性 + 操作行（选中 / 打开所在文件夹 / 编辑 / 删除，删除前弹出确认浮层）。
+`cover.png` + 模式 Badge + 标题 + 可用性 + 操作行（选中 / 打开所在文件夹 / 编辑 / 删除，删除前弹出确认浮层）。
 
 ### 2. 预置模型可以改名和换封面，但与删除无关
 
@@ -74,9 +74,12 @@ canonicalize，再进入既有的来源检查、转换选择、导入和封面�
 定制内容必须落在用户侧，因为预置包位于 app 包内（macOS `Contents/Resources/models`、Windows
 安装目录 `resources/models`），签名包与 Program Files 都不可写：
 
-- **标题**写进 `config.model.preset_models`（记录形状与 `installed_models` 相同，但列表各自独立
-  判重、各自独立生命周期：导入创建 installed 记录、删除移除它，预置记录只由改名创建、谁都不删）。
-  列表为空表示所有预置都还用构建给的名字。
+- **标题**写进 `config.model.preset_models`，该列表只保存 `id` 与 `title`，但列表各自独立
+  判重、各自独立生命周期：导入创建 installed 记录、删除移除它，预置记录只由改名创建、谁都不删。
+  列表为空表示所有预置都还用构建给的名字。预置模式由稳定 id 派生，不写入用户配置。
+- **模式**由 `SettingsModelEntry.input_mode` 投影到封面上方的 GPUI Kit `Badge` + `Tag` 组合；
+  页面不扫描资源、不解析标题。installed 的模式在导入 metadata 中持久化，普通包若无法通过
+  `left-keys`/`right-keys` 资源判定则不会进入 store；详见 ADR-0065。
 - **封面**写进 `StorageLayout::model_overrides`（`<data>/model-overrides/<id>/resources/cover.png`），
   由 `bongocat-model-store::PresetCoverStore` 提供唯一写入口，布局与包内封面共用
   `package_cover_path`。快照投影优先取这份替换封面，包内封面只作为回退。
@@ -148,7 +151,9 @@ settings 服务通过 `ModelLocationCapability` 注入，与配置备份目录�
 - **不为预置模型提供删除**：`delete_model` 的预设拒绝（`PresetModelDeletion`）保持不变。改名与
   换封面自 2026-09-22 修订起对预置开放（决策 2），删除仍然只属于用户导入的模型。
 - **不把封面写进配置**：封面是图片字节，不是配置字段；用户侧替换封面是布局相同的文件，配置里
-  只有标题这一行文本。
+  只有标题这一行文本。installed 的模式元数据是例外，它是强类型小字段而不是图片资源。
+- **不在 UI 重新判断普通包模式**：ModelStore 在 staging 提交前按 `right-keys`、`East`、`DPad*`
+  等资源规则完成一次判定并把结果写入 metadata；页面不重复扫描资源，判定失败直接拒绝导入。
 - **不重编码封面、不新增图片依赖**：只校验 PNG 签名字节。
 - **不在模型页恢复任何行为/表情入口**：表情列表已在快捷键页。
 - **拖放不支持多项目或常规文件**：拖放契约一次只接受一个目录；多选在蒙层阶段拒绝，单路径的
@@ -271,10 +276,10 @@ settings 服务通过 `ModelLocationCapability` 注入，与配置备份目录�
   这条用例覆盖了**两处编译器抓不到的 origin 守卫**（`begin_model_edit` 直接拒绝预置、
   `sync_model_row_focus` 在下次投影时丢弃非 installed 的草稿）；两处分别用变异验证：
   改回任一个即变红。smoke 的模型页检查由「预置不得暴露编辑」改为「必须至少有一个可编辑的预置」。
-- 配置契约：`shared/config/config.schema.json` 新增 `preset_models`（与 `installed_models` 共用
-  `$defs/model_metadata`），14 个既有 fixture 补 `"preset_models": []`，新增 1 个 accept + 2 个
-  reject fixture，`tools/validate-json-schema.py` 的语义检查按列表各自判重；`validate-json-schema`
-  通过（17 config fixture）。
+- 配置契约：`shared/config/config.schema.json` 保留 `preset_models` 的 `id/title` 形状，
+  `installed_models` 使用含必填 `input_mode` 的专用定义；14 个既有 fixture 补 `"preset_models": []`，
+  另有 installed mode accept/reject fixtures，`tools/validate-json-schema.py` 的语义检查按列表
+  各自判重并拒绝缺失/未知模式。
 - 错误口径：删除 `SettingsErrorCode::PresetModelMetadataImmutable`（`ALL` 36 → 35）与两个 locale
   键；`ModelNotInstalled` 因同时服务两个 origin 而改名 `ModelNotFound`（文案改为「找不到该模型」/
   "The model was not found"），`ApplicationError` 同名改动。

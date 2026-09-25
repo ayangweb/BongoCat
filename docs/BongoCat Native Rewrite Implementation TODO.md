@@ -1245,6 +1245,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     version、Meta FPS/force、setting/dictionary 标识和计数、normalization range、input/output
     权重与 target、vertex 索引及有限系数。该项只是资源静态 preflight；未实现 physics 求值，
     且缺少可分发真实 physics3 fixture 和行为证据，因此不影响本总项的未完成状态。
+   - 状态（2026-09-25）：针对旧版导出的 `physics3` 兼容性，缺少 `Meta.Fps` 的资源现在可正常
+     通过 prepare，并由 runtime 使用当前单调 frame delta；显式的非数值、零或负 FPS 仍以
+     `model_resource_invalid` 拒绝。回归测试覆盖缺省字段、完整模型包 prepare 及非法显式值。
   - 状态（2026-09-06）：产品 parser 现也在 prepare 前验证声明的 `userdata3` v3 version、
     metadata entry count/UTF-8 value byte size，以及非空且唯一的 `(Target, Id)`。该项只校验
     model-level user data resource，不替代 motion `UserData` 的 evaluator/occurrence contract。
@@ -1743,8 +1746,10 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 - [ ] 窗口：显示器、位置、缩放、透明度、置顶、穿透和显隐。
 - [ ] 模型：预置/用户模型、导入、删除、切换和兼容诊断。
   - 状态（2026-09-18）：页面按 ADR-0047 重做为「网格首位导入卡片 + 封面卡片」：每张卡片显示包内
-    `resources/cover.png`（无封面时占位）、标题与可用性，操作行提供选中、打开所在文件夹、编辑
-    （改名/换封面）和删除（仅导入模型，两段确认）。新增
+    `resources/cover.png`（无封面时占位）、模式 Badge、标题与可用性，操作行提供选中、打开所在文件夹、编辑
+    （改名/换封面）和删除（仅导入模型，两段确认）。模式只来自 `SettingsModelEntry.input_mode`；
+    Mver 导入持久化实际 section，普通包在 staging 提交前按 `left-keys`/`right-keys` 与手柄专用
+    键名判定，无法判定直接拒绝导入；新增
     `SetModelTitle`/`SetModelCover`/`OpenModelLocation` 三个 typed command、
     `SettingsModelEntry.directory`/`cover` 投影、`ModelStore::replace_cover` 与共享的包布局常量；
     打开所在文件夹经 `ModelLocationCapability` 注入，与配置备份目录同一 seam。双平台实机点击与
@@ -3807,7 +3812,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 73. [x] `P4-MODEL-LIBRARY-METADATA`：多模型导入去单模型限制并建立标题元数据与启动回退。
     - 依赖：正式 `ModelStore` 多模型目录、v1 配置 store、settings service 导入/删除长操作契约。
     - 退出条件：同一环境可连续导入多个自定义模型且互不覆盖；导入 ID 由 service 分配并与标题
-      解耦；元数据（id + title）进入 v1 配置并在删除时同步；启动恢复选中模型，缺失/损坏时回退
+      解耦；元数据（id + title + input_mode）进入 v1 配置并在删除时同步；启动恢复选中模型，缺失/损坏时回退
       `standard` 预置并持久化修正；全部失败路径不阻塞启动。
     - 当前契约（2026-09-15）：`ModelStore::allocate_unique_id` 以建议值 + `-2`/`-3` 后缀分配
       唯一可移植 ID（非法建议回退 `custom-model`），`import` 底层 `AlreadyExists` 防覆盖语义保留
@@ -3818,12 +3823,12 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       在启动时激活配置选择、缺失/损坏时记录匿名 `model_selection_fallback` 事件并持久化
       `(Preset, standard)`，未配置选择默认激活 standard，operational 启动还清理指向不存在目录的
       元数据记录；`SettingsModelEntry.title` 投影到 Models 页，无记录条目回退显示 ID。
-    - 当前契约（2026-09-22）：v1 配置的模型元数据变成两个同形状的列表——
-      `model.installed_models`（导入创建、删除移除、启动裁剪）与 `model.preset_models`（只由
-      改名创建，无创建/删除/裁剪路径，空列表表示全部沿用构建给的名字）。两者各自判重，同一 id
+    - 当前契约（2026-09-25）：v1 配置的模型元数据仍是两个独立列表，但形状按 origin 分化：
+      `model.installed_models` 保存 `id + title + input_mode`（导入创建、删除移除、启动裁剪；`input_mode` 必填且不参与身份），`model.preset_models` 只保存 `id + title`（只由
+      改名创建，无创建/删除/裁剪路径，空列表表示全部沿用构建给的名字，模式由稳定 preset id 派生）。两者各自判重，同一 id
       可以同时出现在两边。`StorageLayout` 增加 `model-overrides/` 根目录，用于预置模型的用户侧
-      替换封面。schema、14 个既有 fixture、1 个新 accept + 2 个新 reject fixture、
-      `tools/validate-json-schema.py` 的语义检查与 `native-config-contract.md` 已同步。
+      替换封面。schema、既有 fixture、installed mode 的 accept/reject fixtures、
+      `tools/validate-json-schema.py` 的语义检查与 `native-config-contract.md` 已同步。标题改名只更新 `title` 并保留 `input_mode`；删除随 metadata 一起移除。
     - 验收证据（2026-09-15）：`bongocat-config` 48 测试（含两个新 reject fixture 的 manifest 契约）、
       `bongocat-model` 46 测试（含 4 个 `allocate_unique_id` 测试：建议直用/占用后缀/非法回退/超长
       截断）、`bongocat-app` 118 测试（新增导入分配唯一 ID 并登记标题、启动回退持久化 standard、
@@ -4322,10 +4327,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       （`model_store_source_conversion_failed`，`ALL` 由 12 增至 13），映射到既有
       `SettingsErrorCode::ModelImportSourceUnsupported`，未新增用户可见错误码。
       `Application::import_model*` 被 `Application::import_models*` 取代（返回 `Vec<InstalledModel>`），
-      避免留下一条会绕过转换的旁路；标题为「用户标题 · 本地化模式名」，模式名在截断之后拼接；
+      避免留下一条会绕过转换的旁路；标题为「用户标题 · 本地化模式名」，模式名在截断之后拼接；每个转换条目的 `input_mode` 另写入 installed metadata，取实际选中的 legacy section；普通包在 staging 提交前按键图资源判定，无法判定直接拒绝导入。
       跨模型进度由 `ImportProgressAccumulator` 折叠（累计已完成模型的总量、stage 取最大值）。
-      UI 无新增控件：只改写 `models.installed.description` 说明自动转换，新增两个 locale 的
-      `models.legacy.mode.*` 供标题使用。
+      UI 无新增控件：只改写 `models.installed.description` 说明自动转换；现有模式选择对话框
+       决定 section，Models 卡片通过 `SettingsModelEntry.input_mode` 显示模式 Badge。
+      `models.mver.mode.*` 继续供标题后缀使用，`models.mode.*` 供卡片 Badge 使用。
     - 依赖评估（2026-09-17，§9）：`image =0.25.10`（已在 workspace 依赖中，供 Live2D 纹理读取；
       本次复用同一 pin 与同一 `png`-only feature 集）+ `oxipng =10.2.1`
       （lossless PNG 优化器，MIT，MSRV 1.88 ≤ 项目 1.97；只开库入口，`binary`/`parallel`/`zopfli`
@@ -4616,9 +4622,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 
 84. [x] `P0-MODELS-PAGE-CARDS`：模型管理页按旧版交互重做为封面卡片，并统一元数据编辑与错误呈现。
     - 依赖：ADR-0047、ADR-0036（导入边界）、ADR-0037（Mver 转换写入的 `cover.png`）、
-      当前 v1 `model.installed_models[].title`、`bongocat-model` 包布局、`bongocat-platform` 的
+      当前 v1 `model.installed_models[].title`/`input_mode`、`bongocat-model` 包布局、`bongocat-platform` 的
       `open_directory` 与 `opener`、GPUI 的 `img(PathBuf)` 本地文件加载。
-    - 退出条件：模型页展示每个模型的 `cover.png` 与标题并提供「打开所在文件夹」；表情入口移除；
+    - 退出条件：模型页展示每个模型的 `cover.png`、模式 Badge 与标题并提供「打开所在文件夹」；表情入口移除；
       页面只支持切换/选择模型与编辑标题/封面；错误提示统一走通用 Notification 组件。
     - 实现说明（2026-09-18）：`bongocat-model` 新增 `PACKAGE_RESOURCES_DIRECTORY`、
       `PACKAGE_COVER_FILE`、`package_cover_path`（Mver 转换改用同一组常量，删除私有
@@ -4705,6 +4711,14 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 顺带修掉既有假断言（2026-09-22）：`selecting_a_model_keeps_the_behavior_bindings_the_user_recorded`
       用 `config_revision() >` 判断配置被重写，而 revision 是持久化文档的内容哈希
       （`revision_for_bytes`），大小无意义；新增配置字段改变哈希后该断言即失败，已改为 `!=`。
+     - 状态（2026-09-25，模式 Badge 与持久化来源）：新增 `InstalledModelMetadata.input_mode` 与
+       `SettingsModelEntry.input_mode`。Mver 导入使用选中的 legacy section，预置模式由稳定 id
+       派生，普通包在 staging 提交前按 `left-keys`/`right-keys` 资源判定，判定失败直接拒绝导入。
+       每张卡片在封面右上角叠加无图标的 GPUI Kit `Badge` + 中性 `secondary` 本地化 `Tag`，
+       编辑标题时卡片几何不变；改名保留 mode，删除随 metadata 移除，重启从 config 读回。模式 Badge 只改展示，不在
+       本项改变 runtime 输入绑定。决策记录：ADR-0065。
+       自动化新增普通包三种资源形状的分类与无键图拒绝测试；`config.json` schema、locale 和
+       `bongocat-ui` Badge 几何/本地化测试已同步。
 
 85. [x] `P1-PRESET-SCAN-STRAY-FILES`：预置模型目录扫描对陌生条目的容忍。
     - 背景（2026-09-18）：`just check` 的 app 测试在主树失败、在干净 worktree 通过，二分定位到

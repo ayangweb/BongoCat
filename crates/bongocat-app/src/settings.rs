@@ -6,8 +6,8 @@ use crate::{
     PRODUCT_VERSION, settings_logging_from_config,
 };
 use bongocat_config::{
-    BuildEnvironment, ConfigError, ConfigWriteFailureReason, NativeConfig, OverlayWindowPlacement,
-    ShortcutCommand, WindowPlacement, WindowStateError,
+    BuildEnvironment, ConfigError, ConfigWriteFailureReason, ModelInputMode, NativeConfig,
+    OverlayWindowPlacement, ShortcutCommand, WindowPlacement, WindowStateError,
 };
 use bongocat_input::{PlatformInputDiagnostics, PlatformInputServiceStatus};
 use bongocat_model::{
@@ -35,8 +35,8 @@ use bongocat_ui_protocol::{
     SettingsInputServiceStatus, SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelOrigin, SettingsModelSettings,
-    SettingsOverlay, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelMode, SettingsModelOrigin,
+    SettingsModelSettings, SettingsOverlay, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
     SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
     SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
     SettingsSnapshot, SettingsStartupItemError, SettingsStartupItemState,
@@ -1980,6 +1980,14 @@ const fn model_origin(origin: SettingsModelOrigin) -> ModelOrigin {
     }
 }
 
+const fn settings_model_mode(mode: ModelInputMode) -> SettingsModelMode {
+    match mode {
+        ModelInputMode::Standard => SettingsModelMode::Standard,
+        ModelInputMode::Keyboard => SettingsModelMode::Keyboard,
+        ModelInputMode::Gamepad => SettingsModelMode::Gamepad,
+    }
+}
+
 fn settings_model_entry(application: &Application, entry: ModelCatalogEntry) -> SettingsModelEntry {
     let id = entry.id().as_str().to_owned();
     let model_origin = entry.origin();
@@ -1994,6 +2002,9 @@ fn settings_model_entry(application: &Application, entry: ModelCatalogEntry) -> 
         .recorded_model_title(model_origin, &id)
         .map(str::to_owned)
         .unwrap_or_else(|| id.clone());
+    let input_mode = application
+        .model_input_mode(model_origin, &id)
+        .map(settings_model_mode);
     let availability = match entry {
         ModelCatalogEntry::Ready { snapshot, .. } => SettingsModelAvailability::Ready {
             behaviors: snapshot
@@ -2016,6 +2027,7 @@ fn settings_model_entry(application: &Application, entry: ModelCatalogEntry) -> 
     SettingsModelEntry {
         id,
         title,
+        input_mode,
         origin,
         availability,
         directory,
@@ -2995,6 +3007,7 @@ mod tests {
                     SettingsModelEntry {
                         id: "private-model-name".to_owned(),
                         title: "我的猫".to_owned(),
+                        input_mode: Some(SettingsModelMode::Keyboard),
                         origin: SettingsModelOrigin::Installed,
                         availability: SettingsModelAvailability::Ready {
                             behaviors: Vec::new(),
@@ -3007,6 +3020,7 @@ mod tests {
                     SettingsModelEntry {
                         id: "broken-private-model".to_owned(),
                         title: "broken-private-model".to_owned(),
+                        input_mode: None,
                         origin: SettingsModelOrigin::Installed,
                         availability: SettingsModelAvailability::Invalid {
                             diagnostic: SettingsModelDiagnostic::ModelJsonInvalid,
@@ -4121,11 +4135,19 @@ mod tests {
     /// seeding; the merged catalog must still keep both identities.
     fn seed_installed_model(models_root: &std::path::Path, id: &str) {
         let destination = models_root.join(id);
-        std::fs::create_dir_all(&destination).expect("seeded model directory");
-        for entry in std::fs::read_dir(model_fixture()).expect("fixture entries") {
+        copy_model_fixture_tree(&model_fixture(), &destination);
+    }
+
+    fn copy_model_fixture_tree(source: &std::path::Path, destination: &std::path::Path) {
+        std::fs::create_dir_all(destination).expect("seeded model directory");
+        for entry in std::fs::read_dir(source).expect("fixture entries") {
             let entry = entry.expect("fixture entry");
-            std::fs::copy(entry.path(), destination.join(entry.file_name()))
-                .expect("seeded package file");
+            let target = destination.join(entry.file_name());
+            if entry.file_type().expect("fixture file type").is_dir() {
+                copy_model_fixture_tree(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), target).expect("seeded package file");
+            }
         }
     }
 
@@ -4688,6 +4710,19 @@ mod tests {
             entry.origin == SettingsModelOrigin::Preset
                 && matches!(&entry.availability, SettingsModelAvailability::Ready { .. })
         }));
+        assert_eq!(
+            initial
+                .model_catalog
+                .entries
+                .iter()
+                .map(|entry| (entry.id.as_str(), entry.input_mode))
+                .collect::<Vec<_>>(),
+            vec![
+                ("standard", Some(SettingsModelMode::Standard)),
+                ("keyboard", Some(SettingsModelMode::Keyboard)),
+                ("gamepad", Some(SettingsModelMode::Gamepad)),
+            ]
+        );
         let standard = initial
             .model_catalog
             .entries
@@ -5529,6 +5564,11 @@ mod tests {
             .find(|entry| entry.origin == SettingsModelOrigin::Installed)
             .expect("installed entry");
         assert_eq!(first.title, "送葬人 · 标准模式");
+        assert_eq!(
+            first.input_mode,
+            Some(SettingsModelMode::Standard),
+            "the ordinary package is classified from its left-keys artwork, not its title"
+        );
         assert!(matches!(
             &first.availability,
             SettingsModelAvailability::Ready { .. }
@@ -5567,6 +5607,7 @@ mod tests {
                 .any(|entry| entry.title == "经典小键盘 · 标准模式")
         );
         for entry in &installed {
+            assert_eq!(entry.input_mode, Some(SettingsModelMode::Standard));
             assert!(matches!(
                 &entry.availability,
                 SettingsModelAvailability::Ready { .. }

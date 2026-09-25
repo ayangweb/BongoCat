@@ -26,7 +26,7 @@
   "model": {
     "selected_model_id": null,
     "selected_model_origin": null,
-    "installed_models": [{ "id": "cat", "title": "   " }],
+    "installed_models": [{ "id": "cat", "title": "   ", "input_mode": "standard" }],
     "preset_models": [],
     "mirror": false,
     "mirror_pointer_tracking": false,

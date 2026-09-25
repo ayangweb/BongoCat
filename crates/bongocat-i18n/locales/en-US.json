@@ -153,6 +153,11 @@
       "title": "Import model",
       "hint": "Click to choose or drag a model folder"
     },
+    "mode": {
+      "standard": "Standard",
+      "keyboard": "Keyboard",
+      "gamepad": "Gamepad"
+    },
     "mver": {
       "mode": {
         "standard": "Standard mode",

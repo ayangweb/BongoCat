@@ -1,7 +1,7 @@
 # Phase 0 Rust Model Package Spike
 
 状态：三个预置 model3/cdi3/motion3/exp3、历史 physics3 与合成 pose3/userdata3 静态解析通过；Cubism Core、行为求值和 renderer 未进入本 spike
-日期：2026-08-30
+日期：2026-08-30；兼容性补充：2026-09-25
 
 ## Hypothesis
 
@@ -15,7 +15,7 @@
 - 解析 model3 v3 的 moc、texture、display info、expression、motion/sound、physics、pose、user data、group 和 hit area；
 - 强类型解析 cdi3 v3 的 parameter、parameter group 和 part，拒绝重复 ID、悬空/成环 group；
 - 强类型解析 motion3 v3 的 curve target、segment encoding、时间边界、fade、user data 和 Meta 计数，并强类型解析 exp3 的类型、参数、fade 与 Add/Multiply/Overwrite blend；
-- 强类型解析 physics3 v3 的 forces、dictionary、setting、input/output、normalization 和 vertex，校验 Meta 计数、权重、范围、引用索引与有限数值；
+- 强类型解析 physics3 v3 的 forces、dictionary、setting、input/output、normalization 和 vertex，校验 Meta 计数、权重、范围、引用索引与有限数值；旧版资源省略 `Meta.Fps` 时以 `0.0` 表示 frame-delta，显式 FPS 仍须为有限正数；
 - 强类型解析 pose3 的 Type、FadeInTime、group、part Id 和 link，拒绝空 group、重复 part、空/重复 link 和自引用；
 - 强类型解析 userdata3 v3 的 Meta、ArtMesh target、Id 和 Value UTF-8 byte size，拒绝重复 target/Id；
 - 规范化 `/` 与 `\\`，拒绝绝对路径、Windows 盘符、`..` 和 canonical root 之外的符号链接；
@@ -76,7 +76,7 @@ motion3/exp3 强类型验证提交 `3f8f5bc` 的 push run `33269920418` 与 PR r
 
 索引 schema v1 直接把三个 cdi3 的 parameter/group/part 数量固定为 standard `37/2/10`、keyboard `34/2/11`、gamepad `42/2/15`，其中 parameter 与 part 数量和 legacy Core baseline 完全一致。解析器使用 `model_display_info_invalid` 区分 display info 损坏，并在模型提交前拒绝重复 ID、悬空或成环 group。cdi3 是可选显示元数据，不作为 motion/expression 的权威 ID 白名单；真正的跨资源 ID 校验必须在取得 Core 参数/part 表后完成，以免误拒合法但不完整的 display info。
 
-本机历史数据中的 13 个 physics3 仅以只读方式进入本地结构验收：全部为 v3/60 FPS，共 86 个 setting、139 个 input、206 个 output 和 267 个 vertex，文件声明计数与实际数组完全一致。`--physics` 逐个验证成功，输出只包含版本和聚合计数，不包含路径、模型名、dictionary name 或参数 ID；文件未复制到仓库，也不作为可分发 fixture。合成最小 physics3 测试固定 `model_physics_invalid`，覆盖 Meta 计数漂移、dictionary/setting 不一致、权重越界、normalization 逆序和 output vertex 越界。
+本机历史数据中的 13 个 physics3 仅以只读方式进入本地结构验收：全部为 v3/60 FPS，共 86 个 setting、139 个 input、206 个 output 和 267 个 vertex，文件声明计数与实际数组完全一致。`--physics` 逐个验证成功，输出只包含版本和聚合计数，不包含路径、模型名、dictionary name 或参数 ID；文件未复制到仓库，也不作为可分发 fixture。解析器另接受旧版导出中省略 `Meta.Fps` 的 physics3，并以 `fps=0.0` 表示 frame-delta；显式的非数值或非正 FPS 仍返回 `model_physics_invalid`。合成最小 physics3 测试固定 `model_physics_invalid`，覆盖 Meta 计数漂移、dictionary/setting 不一致、权重越界、normalization 逆序和 output vertex 越界。
 
 仓库自造的最小 pose3 只用于静态边界测试，固定 `model_pose_invalid` 并覆盖错误 Type、负 FadeInTime、空 group、重复 part Id、空 link 和自引用。`--pose` 只输出 fade 与 group/part/link 数量，不输出路径或 part Id。三个预置模型没有 pose3，且本批没有引入第三方 pose 文件，因此这项结果不构成真实模型兼容或 linked opacity/fade 求值证据。
 

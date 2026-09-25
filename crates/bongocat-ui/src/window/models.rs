@@ -1,7 +1,7 @@
 use super::*;
 use gpui_kit::base::TestSupportExt as _;
-use gpui_kit::component::{Sizable as _, Size, StyleSized as _};
-use gpui_kit::{AnyElement, Rems};
+use gpui_kit::component::{Sizable as _, Size, StyleSized as _, badge::Badge, tag::Tag};
+use gpui_kit::{AnyElement, Rems, assets::IconName};
 
 /// The narrowest column the catalog allows. The number of columns is the width
 /// divided by this floor, up to [`MODEL_GRID_MAX_COLUMNS`]; the grid then
@@ -42,8 +42,8 @@ const MODEL_TITLE_SIZE: Size = Size::Medium;
 /// fixed height centres whatever line box its text has, so the two faces only
 /// put the name at the same place if the line box is the same one.
 const MODEL_TITLE_LINE_HEIGHT: Rems = Rems(1.25);
-/// How far the cover picker sits from the cover's own corner.
-const MODEL_COVER_PICKER_INSET: Pixels = px(8.0);
+/// How far the mode badge and cover picker sit from the cover's own corner.
+const MODEL_COVER_OVERLAY_INSET: Pixels = px(8.0);
 
 /// How many columns the catalog uses at a usable width.
 ///
@@ -242,7 +242,14 @@ pub(super) fn content(
                 })
                 .bg(tokens.canvas)
                 .child(model_card_cover(
-                    cover, editing, window, cx, language, tokens,
+                    cover,
+                    entry.input_mode,
+                    editing,
+                    window,
+                    cx,
+                    index,
+                    language,
+                    tokens,
                 ))
                 .child(model_card_identity(
                     &entry,
@@ -305,15 +312,19 @@ pub(super) fn content(
 /// While the card is being edited the picker joins the cover as a child of this
 /// box, laid over the corner, rather than as a row under it — see
 /// [`model_cover_picker`].
+#[allow(clippy::too_many_arguments)]
 fn model_card_cover(
     cover: Option<PathBuf>,
+    input_mode: Option<SettingsModelMode>,
     editing: Option<&ModelEditDraft>,
     window: &Window,
     cx: &mut Context<SettingsView>,
+    index: usize,
     language: SettingsLanguage,
     tokens: Tokens,
-) -> Div {
+) -> impl IntoElement {
     let frame = div()
+        .id(("model-card-cover", index))
         .relative()
         .flex_none()
         .w_full()
@@ -325,7 +336,8 @@ fn model_card_cover(
         .rounded_md()
         .border_1()
         .border_color(tokens.border)
-        .bg(tokens.canvas);
+        .bg(tokens.canvas)
+        .test_support();
     let frame = frame.child(match cover {
         Some(cover) => img(cover)
             .w_full()
@@ -341,7 +353,7 @@ fn model_card_cover(
             ))
             .into_any_element(),
     });
-    match editing {
+    let frame = match editing {
         Some(draft) => frame
             .child(
                 div()
@@ -355,7 +367,47 @@ fn model_card_cover(
             )
             .child(model_cover_picker(draft, window, cx, language, tokens)),
         None => frame,
+    };
+    match input_mode {
+        Some(input_mode) => frame.child(model_mode_badge(input_mode, language, index)),
+        None => frame,
     }
+}
+
+pub(super) fn model_mode_label_key(mode: SettingsModelMode) -> &'static str {
+    match mode {
+        SettingsModelMode::Standard => "models.mode.standard",
+        SettingsModelMode::Keyboard => "models.mode.keyboard",
+        SettingsModelMode::Gamepad => "models.mode.gamepad",
+    }
+}
+
+/// The mode indicator drawn over a model cover.
+///
+/// GPUI Kit's `Badge` is an icon/count/dot overlay rather than a text-label
+/// primitive. The card deliberately does not use one of those overlays here:
+/// the visible, localized label is the same compact neutral `Tag` used before,
+/// hosted by the Badge container, so it stays quiet over the cover artwork.
+fn model_mode_badge(
+    mode: SettingsModelMode,
+    language: SettingsLanguage,
+    index: usize,
+) -> impl IntoElement {
+    let label_key = model_mode_label_key(mode);
+    div()
+        .id(("model-mode-badge", index))
+        .absolute()
+        .top(MODEL_COVER_OVERLAY_INSET)
+        .right(MODEL_COVER_OVERLAY_INSET)
+        .child(
+            Badge::new().child(
+                Tag::secondary()
+                    .small()
+                    .rounded_full()
+                    .child(bongocat_i18n::text(language.catalog_locale(), label_key)),
+            ),
+        )
+        .test_support()
 }
 
 /// The control that replaces a card's cover.
@@ -383,8 +435,8 @@ fn model_cover_picker(
         draft.picking,
     )
     .absolute()
-    .right(MODEL_COVER_PICKER_INSET)
-    .bottom(MODEL_COVER_PICKER_INSET)
+    .right(MODEL_COVER_OVERLAY_INSET)
+    .bottom(MODEL_COVER_OVERLAY_INSET)
     .id("choose-model-cover")
     .on_click(cx.listener(move |view, _, window, cx| {
         if !view.model_edit.as_ref().is_some_and(|draft| draft.picking) {

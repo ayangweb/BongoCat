@@ -685,7 +685,8 @@ model evaluation + render snapshot
   `Parameter`/`Breath` 组仍可声明最多 64 个额外 ID，并保留既有的 model-range blend 语义；
   固定 ID 不重复驱动，缺少该组也不影响
   固定参考目标。声明的 physics3 由 `bongocat-model` 做有界解析、由 `bongocat-live2d` 按 R5
-  结构执行固定步进、惯性、延迟和输出插值；未知输入/输出安全跳过，pose 仍未实现。不得把
+  结构执行固定步进、惯性、延迟和输出插值；旧版资源省略 `Meta.Fps` 时使用当前单调 frame delta，
+  不臆造固定频率，但显式提供的 FPS 仍必须是有限正数；未知输入/输出安全跳过，pose 仍未实现。不得把
   有符号正弦直接钳到单边参数范围，也不得按满量程绝对覆盖参数。completed motion 仍以 clip
   声明时长对应的完整求值样本参与这一步，因此默认值逐帧恢复不会抹掉动作最终姿态；该样本保留
   自然结束 fade 的权重，显式停止的外层正弦权重再与 motion 原有权重路径相乘。`PartOpacity`
@@ -863,14 +864,16 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - JSON key 使用 `snake_case`，字段按当前领域语义命名，不提供旧字段 alias。
 - `next` 是全新的初始版本，当前完整配置统一使用 `schema_version: 1`。v1 直接包含成对的
   `selected_model_origin`/`selected_model_id`、用户导入模型的元数据列表
-  `model.installed_models` 与内置模型的同名列表 `model.preset_models`（每条含稳定唯一 `id`
-  与可编辑 `title`），以及
-  `input.gamepad_stick_dead_zone` 和 `input.gamepad_trigger_dead_zone`；两个 dead-zone 都
-  必须是 `[0, 1)` 的有限数。模型随机播放由 `model.random_behavior_enabled` 与
-  `model.random_behavior_interval_seconds` 成对表达，后者为 `[1, 3600]` 秒且默认 `30`；两者直接
-  进入当前 v1，不读取旧字段。两个元数据列表各自判重：列表内 `id` 不得重复，`title` 去除首尾
-  空白后不得为空。`preset_models` 为空表示所有内置模型都还用构建给的名字，它没有任何导入、
-  删除或裁剪路径。
+  `model.installed_models` 与内置模型的同名列表 `model.preset_models`。installed 记录包含稳定唯一
+  的 `id`、可编辑 `title` 与必填的 `input_mode`（`standard`、`keyboard` 或 `gamepad`）；preset
+  记录只包含 `id` 与 `title`，其模式由构建拥有的稳定 id 派生。普通包在 staging 提交前通过
+  `left-keys`/`right-keys` 资源判定模式，判定失败直接拒绝导入；不从标题或路径生成模式。两个
+  元数据列表各自判重：列表内 `id` 不得重复，`title` 去除首尾空白后不得为空。`preset_models`
+  为空表示所有内置模型都还用构建给的名字，它没有任何导入、删除或裁剪路径；`input_mode` 不参与
+  `(origin, model_id)` 身份。以及 `input.gamepad_stick_dead_zone` 和
+  `input.gamepad_trigger_dead_zone`；两个 dead-zone 都必须是 `[0, 1)` 的有限数。模型随机播放由
+  `model.random_behavior_enabled` 与 `model.random_behavior_interval_seconds` 成对表达，后者为
+  `[1, 3600]` 秒且默认 `30`；两者直接进入当前 v1，不读取旧字段。
 - `next` 开发期间不读取或转换任何早期中间结构，不实现 schema migration、字段 alias 或版本兼容
   分支。新增字段直接更新当前 v1 的 Rust 类型、JSON Schema、默认值和 fixture。解析入口保留显式
   版本检查并拒绝非 v1 数据；首次正式发布后的后续版本再以该发布版为基线单独设计迁移链。
@@ -926,9 +929,17 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `config.json` 能解析成 legacy 的 section 形状，且它命名的模式里至少有一个在
   `<资源根>/<模式>/cat_model/` 下恰好带一个 `.model3.json`。缺任一条就回退到普通包导入并
   由那条路径报错，检测本身不报错。
+- 普通包的模式在 staging 复制、键名归一化和第二次 `PreparedModel` 校验之后、原子 rename
+  之前判定：任一手出现手柄专用键名（`DPad*`、`*Trigger*`、`South/East/West/North`、
+  `Start/Select` 等）判 `gamepad`；否则有 `right-keys` 判 `keyboard`；否则有 `left-keys` 判
+  `standard`；两类都没有则以 `InvalidPackage` 拒绝。该结果由 store API 返回并写入 config，
+  不在 UI 每次渲染时重新扫描。手工复制进 store 的异常目录若没有 metadata，只有在仍能通过
+  同一资源判定时才临时投影模式；无效目录不显示模式 Badge。
 - 一个 Mver 源产出**多个** BongoCat 模型：每种输入模式各自转换成一个包，各自分配随机 UUID
-  v4 存储键与元数据记录，因此三种模式是模型列表里三个可独立启用/改名/删除的条目。每个模式
-  独立提交——某个模式的键位图损坏不影响已转换成功的模式，与"这几种模式彼此独立"的事实一致。
+  v4 存储键与元数据记录，因此三种模式是模型列表里三个可独立启用/改名/删除的条目。每个转换
+  模型把所选 legacy source section 的模式写入 `installed_models[].input_mode`；模式事实来自
+  source section，不从转换后目录形状或标题反推。每个模式独立提交——某个模式的键位图损坏不
+  影响已转换成功的模式，与"这几种模式彼此独立"的事实一致。
 - 转换只把合成后的包写进 `ModelStore` 自己的 staging，并与目录复制共用同一个 `PreparedModel`
   校验与单次 `rename` 提交尾部，因此不可能绕过包校验，也不存在第二个临时位置。
 - 键位图合成是"最小画布上的 Porter-Duff over"：画布取两层较小的宽高、两层锚在原点，因此过大
@@ -973,14 +984,15 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   目录存在但内容无效的记录保留，由合并目录的稳定诊断码呈现。启动期清理失败的记录留待
   下次启动重试，不影响其他模型或应用整体。
 - 模型导入 command 携带标题与文件选择来源（文件夹选择器选中的目录，或设置窗口拖入的单个目录）；
-  标题只是显示
-  名称，不参与身份——settings service worker 在导入前用随机 UUID v4（`uuid 1.26.1`，精确 pin）
-  生成当前 store 内唯一的可移植存储 ID，因此重复导入同一目录不会覆盖已有模型，
-  显示名称可以随时编辑，用户也无需发明任何 ID。导入成功后把标题写入 `installed_models`
-  元数据：标题取导入 command 携带的值，页面在选中来源时按文件夹自身的名字预填，
-  导入后可在模型卡片里改名；空白值
-  依次降级为该名字和模型 ID，超长标题截断到元数据上限；元数据提交失败按导入失败报告且已安装
-  目录保留。删除模型在 store 删除成功后同步移除对应元数据记录。
+  标题只是显示名称，不参与身份——settings service worker 在导入前用随机 UUID v4（`uuid 1.26.1`，
+  精确 pin）生成当前 store 内唯一的可移植存储 ID，因此重复导入同一目录不会覆盖已有模型，
+  显示名称可以随时编辑，用户也无需发明任何 ID。导入成功后把标题和模式写入 `installed_models`
+  元数据：Mver 写入实际选中的 source mode；普通包在 staging 通过 `left-keys`/`right-keys` 资源
+  判定为 `standard`/`keyboard`/`gamepad`，判定失败直接拒绝导入，不写入 store 或 config。标题
+  取导入 command 携带的值，页面在选中来源时按文件夹自身的名字预填，导入后可在模型卡片里
+  改名；空白值依次降级为该名字和模型 ID，超长标题截断到元数据上限；元数据提交失败按导入
+  失败报告且已安装目录保留。改名只更新 `title`，保留 `input_mode`；删除模型在 store 删除成功
+  后同步移除对应元数据记录。
 - 模型目录身份是 `(origin, model_id)`。同一 `model_id` 的 preset 与 installed 条目都保留，
   后续选择 command 必须携带 origin，不得以静默覆盖解决冲突。Models 页面的顺序由
   `Application::model_catalog` 一处决定，分两半：preset 在前，按 `MverInputMode::ALL` 的
@@ -989,8 +1001,9 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   模型落在页面末尾且此后不再移动。没有元数据记录、只存在于 store 根目录的包排在该半区末尾并
   按 id 排序；`model_id` 在两半区都出现时 preset 一定在前，因为整个 preset 半区都排在前面。
 - 模型改名与换封面对两个 origin 完全一致（见 ADR-0047）。`installed_models[].title` 与
-  `preset_models[].title` 是可编辑显示名，也是**唯一一条存放在模型目录之外**的模型事实；封面在
-  installed origin 上是包内文件 `resources/cover.png`，在 preset origin 上是用户侧的
+  `preset_models[].title` 是可编辑显示名；installed 记录还保存导入时确定的 `input_mode`，
+  preset 模式由稳定 preset id 派生。封面在 installed origin 上是包内文件
+  `resources/cover.png`，在 preset origin 上是用户侧的
   `<data>/model-overrides/<id>/resources/cover.png`（app 包不可写，见 ADR-0047 决策 2），两边都由
   `bongocat-model` 的 `package_cover_path` 推出布局，分别由 `bongocat-model-store` 的
   `ModelStore::replace_cover` 与 `PresetCoverStore::replace_cover` 做同目录原子替换。导入成功后，每个新安装模型的封面会被换成
@@ -998,9 +1011,10 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   GPUI 线程在永不显示的原生窗口里渲染、读回、裁切并编码，再经 `ReplaceModelCover` 写回同一位置，
   因此转换输出的占位封面只在捕获失败时保留。预置模型只多一件事是禁止的：删除。它的包永远是
   product files，改名与封面只是用户侧的记录，包本身从不被写入。
-- settings 快照把页面需要、但不属于配置的模型事实一并投影：每个模型条目携带自己的包目录与包内
-  封面路径（包内没有封面时为 `None`），页面因此只显示模型自己的图并可直接打开模型文件夹，
-  而不自行推导任何路径。
+- settings 快照把页面需要、但不属于配置的模型事实一并投影：每个模型条目携带 `input_mode`、自己的
+  包目录与包内封面路径（包内没有封面时为 `None`），页面因此只显示模型自己的图、显示已解析的
+  模式并可直接打开模型文件夹，而不自行推导任何路径或扫描资源目录。模式 Badge 是展示元数据，
+  不在 snapshot 层改变 runtime 输入绑定。
 - 模型选择 command 携带完整复合身份。应用先校验并加载候选，再以 expected revision
   持久化选择并启动 runtime/renderer 两阶段提交；候选被拒绝时 runtime 保留旧模型，应用
   使用刚取得的 config revision 原子恢复旧选择。配置写入失败时不得发送激活 command。
@@ -1043,6 +1057,10 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   100 ms UI timer 重新渲染卡片，读的只有 operation ID 与取消状态（不读文件数/字节数），cancel 直接
   设置共享原子令牌；失败与取消都回到上传提示并只经 `Notification` 报告，不提供页面内 retry。GPUI
   executor 不遍历、解析或复制模型文件，成功只刷新 catalog，不隐式切换 active model。
+- Models 卡片的模式信息只来自 `SettingsModelEntry.input_mode`：固定 GPUI Kit `Badge` 作为封面右上角的
+  覆盖层容器，承载无图标的中性 `secondary` `Tag`；三种模式使用相同的主题底色，文字在两种语言中始终可见。
+  它不创建新行，不加入 Tab 顺序，也不在 UI 线程重新扫描资源。`Badge` 的上游 primitive 本身不承载文字，
+  因此可见 `Tag` 才是模式标签。模式 Badge 是配置/来源类别的展示，不改变 renderer 或 runtime 的输入绑定。
 - 模型删除 command 同样携带 `(origin, model_id)`；preset 永不可删。installed 模型始终可删，
   包括当前 runtime active 或配置所选的那个：删除前先按同一 typed selection 路径切回标准预置，
   切换失败即中止删除，绝不在 runtime 仍持有该包时移除文件。删除本身仍以 rename 后删除事务退休；

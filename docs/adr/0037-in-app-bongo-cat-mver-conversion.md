@@ -2,7 +2,8 @@
 
 状态：已接受（2026-09-17）
 依赖：ADR-0030（先复用既有方案）、ADR-0036（模型来源按内容识别、压缩包与目录共用校验；
-**该 ADR 已于 2026-09-22 撤回**）、ADR-0011（渐进实现与发布门禁）、ADR-0060（model/store 边界）
+**该 ADR 已于 2026-09-22 撤回**）、ADR-0011（渐进实现与发布门禁）、ADR-0060（model/store 边界）、
+ADR-0065（模型模式元数据与卡片 Badge）
 
 修订（2026-09-22）：ADR-0036 撤回后，本文**决策 4「归档来源不解压」**连同它描述的
 `ArchivePlan` / `MverSource::Archive` 一并失去实现——Mver 源现在只从用户选中的文件夹就地读取，
@@ -55,10 +56,17 @@
 资源根优先取 `img/`（Mver 应用的实际布局），不存在时取源根本身，以容纳把模式文件夹直接摊在根上
 的模型包。
 
+修订（2026-09-25）：每个 Mver 转换条目现在在 `installed_models[].input_mode` 中持久化
+实际选中的 `standard`/`keyboard`/`gamepad` source section；该字段是模式事实，标题后缀只保留
+既有显示兼容语义。普通模型包则由 ModelStore 在 staging 提交前按 `left-keys`/`right-keys` 资源
+判定模式，判定失败直接拒绝导入。详情见 ADR-0065。
+
 ### 2. 一个源产出多个模型，每个模型独立安装
 
-每个模式转换成一个 BongoCat 包，各自分配一个随机 UUID v4 存储键，各自写一条 `installed_models`
-元数据记录，因此三种模式成为模型列表里三个可以独立启用、改名、删除的普通条目。
+每个模式转换成一个 BongoCat 包，各自分配一个随机 UUID v4 存储键，各自写一条
+`installed_models` 元数据记录和对应的 `input_mode`，因此三种模式成为模型列表里三个可以独立
+启用、改名、删除的普通条目。模式值来自本次导入选择的 legacy section，不从转换后目录形状
+或标题反推。
 
 **逐模式提交**，不做整体回滚：某个模式的键位图损坏时，已经转换成功的模式保留下来。理由是这些
 模型彼此独立，把已经转换成功的模式一起丢弃比留下一个用户可重试的部分结果更糟。
@@ -149,18 +157,19 @@ settings 的 `report_progress` 会丢弃回退的更新，而 store 每个模型
 最大值后再上报。于是用户看到的是一个不倒退、且最终等于三个模型总和的一条序列，而不是卡在
 第一个模型的终值上。
 
-### 10. 无新增 UI 入口
+### 10. 模式选择与卡片投影
 
-不新增按钮，也不新增"选择要转换哪些模式"的选择面：检测发生在服务层（UI executor 不做阻塞
-文件与模型解析，见 Technical Design §5.1），用户手里的东西决定发生什么。Models 页面只把
-`models.installed.description` 改写为说明"BongoCatMver 模型会在导入时自动转换"。
-`Application::import_models*` 是唯一的导入入口，原来的单模型入口被它取代，避免存在一条会绕过
-转换的旁路。
+Mver 导入仍由服务层执行阻塞文件与模型解析；用户在检查来源后通过现有模式选择对话框选择要转换
+的 section。选择的每个 section 生成一个独立模型，并将该 section 写入 installed metadata 的
+`input_mode`。Models 页面只消费 `SettingsModelEntry.input_mode`，不在 UI 线程重新检查资源或从
+标题反解析模式。`Application::import_models*` 仍是唯一的导入入口。
 
 ## 明确不做
 
-- **模式选择**：一次导入转换源中所有带可用 Live2D 包的模式。参考工具默认只转标准模式，但本
-  产品没有理由替用户丢掉另外两个已经躺在源里的模型。
+- **普通包导入后的资源重判**：模式只在 staging 提交前判定一次并写入 metadata；卡片和 runtime
+  不在每次渲染时重新扫描资源。
+- **让模式 Badge 隐式切换 runtime 输入绑定**：`input_mode` 在 ADR-0065 中首先是导入/构建来源
+  元数据；若要让 gamepad metadata 驱动 installed Mver 的实际输入，需要独立 runtime/overlay 任务。
 - **鼠标按键 overlay**：`standard.mouse_left/right/side` 与 `mouse*.png` 不转换。产品当前没有
   鼠标按键的 overlay 通道（`InputControl::Mouse` 不产生 `KeyPress`），参考实现同样忽略它们。
 - **`face/`、`sounds/`、`arm*.png`、`tablet*.png`**：参考实现不处理，产品格式里也没有对应位置；
@@ -212,13 +221,12 @@ settings 的 `report_progress` 会丢弃回退的更新，而 store 每个模型
   `LeftTrigger`,`LeftTrigger2`} + `right-keys`{`East`,`North`,`RightTrigger`,`RightTrigger2`,
   `South`,`West`}、28 文件 / 1 082 753 字节 / 0.74 s。gamepad 的两个集合与仓库内
   `resources/models/gamepad/{left-keys,right-keys}` 的文件名**逐字符一致**；源目录未被修改。
-- `bongocat-app` 124 测试（新增 4 个）：一个 Mver 源导入出 3 个模型、3 个不同 UUID、标题为
-  「我的猫 · 标准模式/键盘模式/手柄模式」、三种模式各自的键位图落位与标准模式没有 `right-keys`、
-  源目录未被写入、合并目录出现 3 条 installed；跨模型进度单调且终值等于三个模型文件数与字节数
-  之和；标题在拼接模式名后仍不超上限且模式名保留；进度折叠的单元语义。
-- `bongocat-i18n` 4 测试通过（两个 locale 的键与占位符完全一致），新增
-  `models.legacy.mode.*` 与改写后的 `models.installed.description`。
-  （该历史 key 后续在 2026-09-24 catalog 审计中改为 `models.mver.mode.*`。）
+- `bongocat-app` 现在还验证：一个 Mver 源导入出 3 个模型、3 个不同 UUID、三条 metadata 的
+  `input_mode` 分别为 `standard`/`keyboard`/`gamepad`，改名只改变 title，模式在重启后仍从
+  config 读回；普通包按 `left-keys`/`right-keys` 资源判定模式，缺少可用键图时导入失败。
+  `bongocat-ui` 验证三种模式的可见标签和 Badge 几何不改变卡片编辑面。
+- `bongocat-i18n` 的 `models.mver.mode.*` 继续用于标题后缀；`models.mode.*` 用于卡片 Badge 的
+  简短可见标签。两种 locale 键与占位符完全一致。
 - `cargo fmt --all --check`、三组 clippy（workspace `--all-targets --all-features` 与
   `bongocat-app` 的 `storage-test-injection`/`production`）、`cargo test --locked --workspace`
   （全部二进制全绿）、`cargo check --locked --workspace --release` 全部通过。

@@ -230,7 +230,7 @@ pub struct ModelConfig {
     pub selected_model_id: Option<String>,
     pub selected_model_origin: Option<SelectedModelOrigin>,
     pub installed_models: Vec<InstalledModelMetadata>,
-    pub preset_models: Vec<InstalledModelMetadata>,
+    pub preset_models: Vec<ModelMetadata>,
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     pub play_motion_audio: bool,
@@ -242,14 +242,30 @@ pub struct ModelConfig {
     pub release_fallback_timeout_ms: u32,
 }
 
-/// User-facing metadata for one user-installed model. The `id` is the stable
-/// store key used as the installed directory name; `title` is an editable
-/// display name that never participates in model identity.
+/// User-facing metadata for one build-shipped model.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ModelMetadata {
+    pub id: String,
+    pub title: String,
+}
+
+/// User-facing metadata for one imported model, including the mode resolved
+/// once at import time.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct InstalledModelMetadata {
     pub id: String,
     pub title: String,
+    pub input_mode: ModelInputMode,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelInputMode {
+    Standard,
+    Keyboard,
+    Gamepad,
 }
 
 pub const MODEL_METADATA_MAXIMUM_ID_BYTES: usize = 64;

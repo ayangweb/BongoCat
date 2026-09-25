@@ -545,6 +545,18 @@ struct PhysicsDefinition {
     settings: Vec<PhysicsSetting>,
 }
 
+fn deserialize_physics_fps<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match Option::<f64>::deserialize(deserializer)? {
+        Some(fps) => Ok(Some(fps)),
+        None => Err(<D::Error as serde::de::Error>::custom(
+            "physics3 Meta.Fps must be a number",
+        )),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PhysicsMeta {
@@ -556,8 +568,10 @@ struct PhysicsMeta {
     output_count: usize,
     #[serde(rename = "VertexCount")]
     vertex_count: usize,
-    #[serde(rename = "Fps")]
-    fps: f64,
+    /// Legacy SDK exports may omit this field; `0.0` represents frame-delta
+    /// evaluation in the bounded Native runtime.
+    #[serde(default, rename = "Fps", deserialize_with = "deserialize_physics_fps")]
+    fps: Option<f64>,
     #[serde(rename = "EffectiveForces")]
     effective_forces: PhysicsForces,
     #[serde(rename = "PhysicsDictionary")]
@@ -1671,7 +1685,11 @@ fn inspect_physics_file(
             format!("physics3 version {} is not supported", physics.version),
         );
     }
-    if !physics.meta.fps.is_finite() || physics.meta.fps <= 0.0 {
+    if physics
+        .meta
+        .fps
+        .is_some_and(|fps| !fps.is_finite() || fps <= 0.0)
+    {
         return resource_error(
             DiagnosticCode::ModelPhysicsInvalid,
             reference,
@@ -1825,7 +1843,7 @@ fn inspect_physics_file(
 
     Ok(PhysicsResourceSummary {
         version: physics.version,
-        fps: physics.meta.fps,
+        fps: physics.meta.fps.unwrap_or(0.0),
         setting_count: physics.settings.len(),
         input_count,
         output_count,
@@ -2767,6 +2785,12 @@ mod tests {
     fn physics_counts_dictionary_ranges_weights_and_vertices_are_validated() {
         let directory = tempfile::tempdir().expect("create physics directory");
         let path = directory.path().join("model.physics3.json");
+        fs::write(&path, MINIMAL_PHYSICS_JSON.replace("\"Fps\":60.0,", ""))
+            .expect("write legacy physics resource");
+        let summary = inspect_physics_resource(&path, 16 * 1024)
+            .expect("legacy physics resource without Fps must be accepted");
+        assert_eq!(summary.fps, 0.0);
+
         for (pointer, replacement, expected_detail) in [
             ("/Meta/TotalOutputCount", Value::from(2), "Meta counts"),
             (
@@ -2789,6 +2813,8 @@ mod tests {
                 Value::from(2),
                 "VertexIndex",
             ),
+            ("/Meta/Fps", Value::from(0), "Meta.Fps"),
+            ("/Meta/Fps", Value::Null, "Meta.Fps"),
         ] {
             let mut physics: Value =
                 serde_json::from_str(MINIMAL_PHYSICS_JSON).expect("parse minimal physics fixture");

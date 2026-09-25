@@ -615,6 +615,18 @@ pub enum SettingsMverMode {
     Gamepad,
 }
 
+/// The input family projected onto one model card.
+///
+/// This is separate from [`SettingsMverMode`]: the latter is a conversion choice
+/// for an inspected Mver source, while this value is the mode already resolved
+/// and stored for an individual model.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum SettingsModelMode {
+    Standard,
+    Keyboard,
+    Gamepad,
+}
+
 /// What inspecting a user-picked source turned out to be.
 ///
 /// `Package` is a single BongoCat model package: nothing converts and any
@@ -796,6 +808,10 @@ pub struct SettingsModelEntry {
     /// User-facing display name. The app layer falls back to the stable id
     /// when no editable title metadata exists (presets and legacy records).
     pub title: String,
+    /// The mode resolved when this model was imported, or derived from the stable
+    /// id for a build-shipped preset. It is absent only for an invalid hand-copied
+    /// store entry; the page never infers it from the title.
+    pub input_mode: Option<SettingsModelMode>,
     pub origin: SettingsModelOrigin,
     pub availability: SettingsModelAvailability,
     /// The package directory the model's files live in, when it is present.

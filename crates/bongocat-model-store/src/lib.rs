@@ -18,5 +18,5 @@ pub use mver::{ModelSourceContent, MverInputMode, legacy_keyboard_key_image_name
 pub use preset_covers::{PresetCoverStore, preset_cover_exists};
 pub use store::{
     InstalledModelCatalog, ModelImportProgress, ModelImportStage, ModelStore, ModelStoreDiagnostic,
-    ModelStoreError, ModelStoreRecovery,
+    ModelStoreError, ModelStoreInputMode, ModelStoreRecovery,
 };

@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-09-24
+- Amended: 2026-09-25
 - Depends on: ADR-0060, ADR-0041, ADR-0050, ADR-0055
 
 ## Context
@@ -134,10 +135,12 @@ and does not cross its authored visibility threshold,
 while the fixed angle targets feed the declared physics rig and restore the hair's idle motion.
 
 Validated physics3 v3 definitions are parsed by the model contract and evaluated by a bounded Rust
-runtime with fixed-step interpolation, inertia, delay, and typed parameter IDs. Unknown input or
-output IDs are skipped rather than reaching Core. This is a compatibility path for the declared
-physics resource, not a claim that every Cubism feature or every platform has completed the full
-R5 black-box gate; pose evaluation remains separate and unfinished.
+runtime with fixed-step interpolation, inertia, delay, and typed parameter IDs. Legacy exported
+resources may omit `Meta.Fps`; that representation uses the incoming monotonic frame delta rather
+than inventing a fixed rate, while an explicitly supplied FPS must still be finite and positive.
+Unknown input or output IDs are skipped rather than reaching Core. This is a compatibility path for
+the declared physics resource, not a claim that every Cubism feature or every platform has
+completed the full R5 black-box gate; pose evaluation remains separate and unfinished.
 
 ## Rejected alternatives
 

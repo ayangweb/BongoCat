@@ -5,12 +5,12 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
-    BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRevision, ConfigStore, Language,
-    LoggingConfig, LoggingLevel, ModelBehaviorAction, ModelBehaviorBinding, ModelMetadata,
-    NativeConfig, OverlayWindowPlacement, PlatformStorageError, SelectedModelOrigin,
-    ShortcutBinding, ShortcutConfig, ShortcutModifiers, ShortcutTable, StorageLayout,
-    Theme as ConfigTheme, WindowPlacement, WindowState, WindowStateError, WindowStateLoadStatus,
-    WindowStateStore, platform_layout,
+    BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRevision, ConfigStore,
+    InstalledModelMetadata, Language, LoggingConfig, LoggingLevel, ModelBehaviorAction,
+    ModelBehaviorBinding, ModelInputMode, ModelMetadata, NativeConfig, OverlayWindowPlacement,
+    PlatformStorageError, SelectedModelOrigin, ShortcutBinding, ShortcutConfig, ShortcutModifiers,
+    ShortcutTable, StorageLayout, Theme as ConfigTheme, WindowPlacement, WindowState,
+    WindowStateError, WindowStateLoadStatus, WindowStateStore, platform_layout,
 };
 use bongocat_input::{
     CursorProducer, GamepadAxisProducer, GamepadAxisSettings, GamepadButton, HandSide,
@@ -26,7 +26,7 @@ use bongocat_model::{
 };
 use bongocat_model_store::{
     ModelImportProgress, ModelImportStage, ModelSourceContent, ModelStore, ModelStoreError,
-    MverInputMode, PresetCoverStore, preset_cover_exists,
+    ModelStoreInputMode, MverInputMode, PresetCoverStore, preset_cover_exists,
 };
 use bongocat_render::{FUNCTION_KEY_USAGES, KeySide, ModelCommitToken, RenderConsumer};
 use bongocat_runtime::{
@@ -1526,10 +1526,48 @@ impl Application {
     /// `None` means the model has never been renamed, which is the ordinary
     /// state of a preset: its name is then the id the build shipped it under.
     pub fn recorded_model_title(&self, origin: ModelOrigin, id: &str) -> Option<&str> {
-        self.model_metadata(origin)
-            .iter()
-            .find(|record| record.id == id)
-            .map(|record| record.title.as_str())
+        match origin {
+            ModelOrigin::Preset => self
+                .config
+                .model
+                .preset_models
+                .iter()
+                .find(|record| record.id == id)
+                .map(|record| record.title.as_str()),
+            ModelOrigin::Installed => self
+                .config
+                .model
+                .installed_models
+                .iter()
+                .find(|record| record.id == id)
+                .map(|record| record.title.as_str()),
+        }
+    }
+
+    /// The input mode shown for one model.
+    ///
+    /// Presets derive it from the stable ids owned by the build. Imported models
+    /// read the value resolved before their store commit. A hand-copied store
+    /// directory is classified on demand only when it is otherwise valid; an
+    /// invalid directory has no mode and therefore no mode badge.
+    pub fn model_input_mode(&self, origin: ModelOrigin, id: &str) -> Option<ModelInputMode> {
+        match origin {
+            ModelOrigin::Preset => preset_model_input_mode(id),
+            ModelOrigin::Installed => self
+                .config
+                .model
+                .installed_models
+                .iter()
+                .find(|record| record.id == id)
+                .map(|record| record.input_mode)
+                .or_else(|| {
+                    let id = ModelId::parse(id).ok()?;
+                    self.model_store
+                        .classify_installed_input_mode(&id)
+                        .ok()
+                        .map(model_input_mode_from_store)
+                }),
+        }
     }
 
     /// The cover the settings page should draw for a model, if it has one.
@@ -1557,46 +1595,69 @@ impl Application {
         id: &ModelId,
         title: String,
     ) -> Result<(), ApplicationError> {
-        let mut records = self.model_metadata(origin).to_vec();
-        match records.iter_mut().find(|record| record.id == id.as_str()) {
-            Some(record) => record.title = title,
-            // A model can legitimately exist without a record — a package copied
-            // into the store by hand, an import interrupted after the directory
-            // was committed, every preset — so naming it creates the record
-            // instead of failing on a missing one.
-            None => records.push(ModelMetadata {
-                id: id.as_str().to_owned(),
-                title,
-            }),
-        }
-        self.commit_model_metadata(origin, records)
-    }
-
-    /// The metadata records that belong to one origin.
-    ///
-    /// The two lists are read by origin and never merged: they are keyed by
-    /// separate id spaces, so the same id may name a preset and an installed
-    /// model at once.
-    fn model_metadata(&self, origin: ModelOrigin) -> &[ModelMetadata] {
         match origin {
-            ModelOrigin::Preset => &self.config.model.preset_models,
-            ModelOrigin::Installed => &self.config.model.installed_models,
+            ModelOrigin::Preset => {
+                let mut records = self.config.model.preset_models.clone();
+                match records.iter_mut().find(|record| record.id == id.as_str()) {
+                    Some(record) => record.title = title,
+                    None => records.push(ModelMetadata {
+                        id: id.as_str().to_owned(),
+                        title,
+                    }),
+                }
+                self.commit_preset_model_metadata(records)
+            }
+            ModelOrigin::Installed => {
+                let mut records = self.config.model.installed_models.clone();
+                match records.iter_mut().find(|record| record.id == id.as_str()) {
+                    Some(record) => record.title = title,
+                    // A package copied into the store by hand can legitimately
+                    // exist without metadata. Classify it once before creating
+                    // the record, using the same import-time rule; an invalid
+                    // package cannot be given a title record.
+                    None => {
+                        let input_mode = self
+                            .model_store
+                            .classify_installed_input_mode(id)
+                            .map(model_input_mode_from_store)
+                            .map_err(ApplicationError::ModelStore)?;
+                        records.push(InstalledModelMetadata {
+                            id: id.as_str().to_owned(),
+                            title,
+                            input_mode,
+                        });
+                    }
+                }
+                self.commit_installed_model_metadata(records)
+            }
         }
     }
 
-    /// Persist one list of editable model metadata. The typed validation in
+    /// Persist build-shipped model metadata. The typed validation in
     /// `bongocat-config` rejects duplicate ids, blank titles, and over-long
     /// values before anything is written.
-    fn commit_model_metadata(
+    fn commit_preset_model_metadata(
         &mut self,
-        origin: ModelOrigin,
         records: Vec<ModelMetadata>,
     ) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
-        match origin {
-            ModelOrigin::Preset => next_config.model.preset_models = records,
-            ModelOrigin::Installed => next_config.model.installed_models = records,
-        }
+        next_config.model.preset_models = records;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    /// Persist imported model metadata under the same transactional guarantees
+    /// as every other configuration write.
+    fn commit_installed_model_metadata(
+        &mut self,
+        records: Vec<InstalledModelMetadata>,
+    ) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.model.installed_models = records;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1815,7 +1876,7 @@ impl Application {
             let before = installed_models.len();
             installed_models.retain(|metadata| metadata.id != id.as_str());
             if installed_models.len() != before {
-                self.commit_model_metadata(ModelOrigin::Installed, installed_models)?;
+                self.commit_installed_model_metadata(installed_models)?;
             }
             Ok(())
         })();
@@ -1859,11 +1920,13 @@ impl Application {
 
     /// Import every model a source describes.
     ///
-    /// A BongoCat package installs one model. A BongoCatMver source installs one
-    /// *converted* model per input mode it carries, each with the same
-    /// generated UUID store key and its own metadata record, so the three modes
-    /// of a legacy model become three ordinary entries in the model list that
-    /// can be activated, renamed and deleted independently.
+    /// A BongoCat package installs one model. Its mode is resolved from the
+    /// committed key artwork before the store atomically renames it into place;
+    /// a package with no classifiable key artwork is rejected. A BongoCatMver
+    /// source installs one *converted* model per input mode it carries, each
+    /// with its own generated UUID store key and metadata record, so the three
+    /// modes of a legacy model become three ordinary entries in the model list
+    /// that can be activated, renamed and deleted independently.
     ///
     /// Each model is committed on its own: a source whose second mode fails
     /// still leaves the first installed and titled. That is deliberate — the
@@ -1995,22 +2058,29 @@ impl Application {
                     .allocate_unique_id()
                     .map_err(ApplicationError::ModelStore)?;
                 let fallback = id.as_str().to_owned();
-                let model = match modes.as_ref() {
-                    None => self.model_store.import_with_observer(
-                        id,
-                        source_root,
-                        |update| aggregate.report(update),
-                        &mut is_cancelled,
-                    ),
-                    Some(modes) => self.model_store.import_mver_with_observer(
-                        id,
-                        modes[index],
-                        source_root,
-                        |update| aggregate.report(update),
-                        &mut is_cancelled,
-                    ),
-                }
-                .map_err(ApplicationError::ModelStore)?;
+                let (model, input_mode) = match modes.as_ref() {
+                    None => self
+                        .model_store
+                        .import_with_observer_and_input_mode(
+                            id,
+                            source_root,
+                            |update| aggregate.report(update),
+                            &mut is_cancelled,
+                        )
+                        .map(|(model, mode)| (model, model_input_mode_from_store(mode)))
+                        .map_err(ApplicationError::ModelStore)?,
+                    Some(modes) => self
+                        .model_store
+                        .import_mver_with_observer(
+                            id,
+                            modes[index],
+                            source_root,
+                            |update| aggregate.report(update),
+                            &mut is_cancelled,
+                        )
+                        .map(|model| (model, model_input_mode_from_mver(modes[index])))
+                        .map_err(ApplicationError::ModelStore)?,
+                };
                 let title = match modes.as_ref() {
                     None => installed_model_title(&title_hint, source_root, &fallback),
                     Some(modes) => legacy_model_title(
@@ -2020,11 +2090,12 @@ impl Application {
                         legacy_mode_label(language, modes[index]),
                     ),
                 };
-                installed_models.push(ModelMetadata {
+                installed_models.push(InstalledModelMetadata {
                     id: model.id().as_str().to_owned(),
                     title,
+                    input_mode,
                 });
-                self.commit_model_metadata(ModelOrigin::Installed, installed_models.clone())?;
+                self.commit_installed_model_metadata(installed_models.clone())?;
                 installed.push(model);
             }
             Ok(installed)
@@ -2081,10 +2152,7 @@ impl Application {
         if kept.len() == self.config.model.installed_models.len() {
             return;
         }
-        if self
-            .commit_model_metadata(ModelOrigin::Installed, kept)
-            .is_err()
-        {
+        if self.commit_installed_model_metadata(kept).is_err() {
             self.application_log.record_once(
                 ApplicationLogEvent::new(ApplicationLogCode::StatePersistFailed)
                     .with_context(ApplicationLogContext::State("config"))
@@ -2248,6 +2316,31 @@ fn system_language() -> Language {
     bongocat_platform::system_language()
 }
 
+const fn model_input_mode_from_mver(mode: MverInputMode) -> ModelInputMode {
+    match mode {
+        MverInputMode::Standard => ModelInputMode::Standard,
+        MverInputMode::Keyboard => ModelInputMode::Keyboard,
+        MverInputMode::Gamepad => ModelInputMode::Gamepad,
+    }
+}
+
+const fn model_input_mode_from_store(mode: ModelStoreInputMode) -> ModelInputMode {
+    match mode {
+        ModelStoreInputMode::Standard => ModelInputMode::Standard,
+        ModelStoreInputMode::Keyboard => ModelInputMode::Keyboard,
+        ModelStoreInputMode::Gamepad => ModelInputMode::Gamepad,
+    }
+}
+
+fn preset_model_input_mode(id: &str) -> Option<ModelInputMode> {
+    match id {
+        "standard" => Some(ModelInputMode::Standard),
+        "keyboard" => Some(ModelInputMode::Keyboard),
+        "gamepad" => Some(ModelInputMode::Gamepad),
+        _ => None,
+    }
+}
+
 /// Where a preset model sits on the Models page: the position of the input mode
 /// it belongs to.
 ///
@@ -2283,7 +2376,7 @@ fn preset_model_order(id: &str) -> usize {
 /// after every model the user actually imported. Ordering those by id keeps the
 /// page stable rather than dependent on the order the scan happened to walk the
 /// directory in.
-fn installed_model_order(records: &[ModelMetadata], id: &str) -> usize {
+fn installed_model_order(records: &[InstalledModelMetadata], id: &str) -> usize {
     records
         .iter()
         .position(|record| record.id == id)
@@ -2968,7 +3061,8 @@ mod tests {
     fn importing_a_legacy_source_installs_one_titled_model_per_mode() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
-        let mut application = Application::start_with_layout(layout).expect("start application");
+        let mut application =
+            Application::start_with_layout(layout.clone()).expect("start application");
         application
             .set_language(Language::ChineseSimplified)
             .expect("set language");
@@ -2993,6 +3087,37 @@ mod tests {
                 "我的猫 · 键盘模式",
                 "我的猫 · 手柄模式"
             ]
+        );
+        assert_eq!(
+            application
+                .config()
+                .model
+                .installed_models
+                .iter()
+                .map(|metadata| metadata.input_mode)
+                .collect::<Vec<_>>(),
+            vec![
+                ModelInputMode::Standard,
+                ModelInputMode::Keyboard,
+                ModelInputMode::Gamepad
+            ],
+            "the selected Mver section, not the converted directory shape, owns the stored mode"
+        );
+        let gamepad_id = installed[2].id().as_str().to_owned();
+        application
+            .set_model_title(ModelOrigin::Installed, gamepad_id.clone(), "我的手柄")
+            .expect("rename converted gamepad model");
+        assert_eq!(
+            application
+                .config()
+                .model
+                .installed_models
+                .iter()
+                .find(|metadata| metadata.id == gamepad_id.as_str())
+                .expect("renamed gamepad metadata")
+                .input_mode,
+            ModelInputMode::Gamepad,
+            "renaming a model changes only its title, never its stored mode"
         );
         let ids = installed
             .iter()
@@ -3059,7 +3184,39 @@ mod tests {
                 .count(),
             3
         );
+        let expected_modes = installed
+            .iter()
+            .map(|model| {
+                (
+                    model.id().as_str().to_owned(),
+                    application.model_input_mode(ModelOrigin::Installed, model.id().as_str()),
+                )
+            })
+            .collect::<Vec<_>>();
         application.shutdown().expect("clean shutdown");
+
+        let restarted = Application::start_with_layout(layout).expect("restart application");
+        assert_eq!(
+            restarted
+                .config()
+                .model
+                .installed_models
+                .iter()
+                .map(|metadata| (metadata.id.as_str(), Some(metadata.input_mode)))
+                .collect::<Vec<_>>(),
+            expected_modes
+                .iter()
+                .map(|(id, mode)| (id.as_str(), *mode))
+                .collect::<Vec<_>>(),
+            "every converted mode is read back from config after restart"
+        );
+        for (id, mode) in expected_modes {
+            assert_eq!(
+                restarted.model_input_mode(ModelOrigin::Installed, &id),
+                mode
+            );
+        }
+        restarted.shutdown().expect("clean shutdown");
     }
 
     #[test]
@@ -3096,6 +3253,16 @@ mod tests {
                 .map(|metadata| metadata.title.as_str())
                 .collect::<Vec<_>>(),
             vec!["仅选模式 · 键盘模式", "仅选模式 · 手柄模式"]
+        );
+        assert_eq!(
+            application
+                .config()
+                .model
+                .installed_models
+                .iter()
+                .map(|metadata| metadata.input_mode)
+                .collect::<Vec<_>>(),
+            vec![ModelInputMode::Keyboard, ModelInputMode::Gamepad]
         );
         assert!(
             installed[0]
@@ -4688,13 +4855,15 @@ mod tests {
         assert_eq!(
             application.config().model.installed_models,
             vec![
-                ModelMetadata {
+                InstalledModelMetadata {
                     id: first.id().as_str().to_owned(),
                     title: "我的猫".to_owned(),
+                    input_mode: ModelInputMode::Standard,
                 },
-                ModelMetadata {
+                InstalledModelMetadata {
                     id: second.id().as_str().to_owned(),
                     title: "我的猫".to_owned(),
+                    input_mode: ModelInputMode::Standard,
                 },
             ]
         );
@@ -4704,9 +4873,10 @@ mod tests {
             .expect("delete first model");
         assert_eq!(
             application.config().model.installed_models,
-            vec![ModelMetadata {
+            vec![InstalledModelMetadata {
                 id: second.id().as_str().to_owned(),
                 title: "我的猫".to_owned(),
+                input_mode: ModelInputMode::Standard,
             }]
         );
         application.shutdown().expect("clean shutdown");
@@ -4720,9 +4890,10 @@ mod tests {
         let mut configured = store.load_or_default().expect("default config").config;
         configured.model.selected_model_id = Some("ghost".to_owned());
         configured.model.selected_model_origin = Some(SelectedModelOrigin::Installed);
-        configured.model.installed_models = vec![ModelMetadata {
+        configured.model.installed_models = vec![InstalledModelMetadata {
             id: "ghost".to_owned(),
             title: "幽灵模型".to_owned(),
+            input_mode: ModelInputMode::Standard,
         }];
         store.commit(&configured).expect("seed selection");
 
@@ -4761,13 +4932,15 @@ mod tests {
         let store = ConfigStore::new(layout.clone()).expect("config store");
         let mut configured = store.load_or_default().expect("default config").config;
         configured.model.installed_models = vec![
-            ModelMetadata {
+            InstalledModelMetadata {
                 id: "ghost".to_owned(),
                 title: "被手动删除".to_owned(),
+                input_mode: ModelInputMode::Standard,
             },
-            ModelMetadata {
+            InstalledModelMetadata {
                 id: "still-there".to_owned(),
                 title: "目录仍在".to_owned(),
+                input_mode: ModelInputMode::Standard,
             },
         ];
         store.commit(&configured).expect("seed metadata");
@@ -4777,9 +4950,10 @@ mod tests {
         let application = Application::start_with_layout(layout).expect("start application");
         assert_eq!(
             application.config().model.installed_models,
-            vec![ModelMetadata {
+            vec![InstalledModelMetadata {
                 id: "still-there".to_owned(),
                 title: "目录仍在".to_owned(),
+                input_mode: ModelInputMode::Standard,
             }]
         );
         application.shutdown().expect("clean shutdown");
@@ -4796,9 +4970,10 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let store = ConfigStore::new(layout.clone()).expect("config store");
         let mut configured = store.load_or_default().expect("default config").config;
-        configured.model.installed_models = vec![ModelMetadata {
+        configured.model.installed_models = vec![InstalledModelMetadata {
             id: "deleted-by-hand".to_owned(),
             title: "被手动删除".to_owned(),
+            input_mode: ModelInputMode::Standard,
         }];
         store.commit(&configured).expect("seed metadata");
         std::fs::create_dir_all(&layout.models).expect("models root");
@@ -5142,12 +5317,20 @@ mod tests {
     /// catalog must still keep both identities.
     fn seed_installed_model(models_root: &Path, id: &str) {
         let destination = models_root.join(id);
-        std::fs::create_dir_all(&destination).expect("seeded model directory");
         let fixture = repository_root().join("shared/fixtures/model-fixtures/cases/非 ASCII 模型");
-        for entry in std::fs::read_dir(fixture).expect("fixture entries") {
+        copy_fixture_tree(&fixture, &destination);
+    }
+
+    fn copy_fixture_tree(source: &Path, destination: &Path) {
+        std::fs::create_dir_all(destination).expect("seeded model directory");
+        for entry in std::fs::read_dir(source).expect("fixture entries") {
             let entry = entry.expect("fixture entry");
-            std::fs::copy(entry.path(), destination.join(entry.file_name()))
-                .expect("seeded package file");
+            let target = destination.join(entry.file_name());
+            if entry.file_type().expect("fixture file type").is_dir() {
+                copy_fixture_tree(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), target).expect("seeded package file");
+            }
         }
     }
 

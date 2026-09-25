@@ -6,6 +6,7 @@ use bongocat_model::{
 };
 use bongocat_storage::{set_private_directory, set_private_file};
 use std::{
+    collections::BTreeSet,
     fmt, fs,
     fs::{File, OpenOptions, TryLockError},
     io::{self, Read, Write},
@@ -62,8 +63,9 @@ impl ModelStoreDiagnostic {
             // cannot turn into a BongoCat package: an unreadable key image, a
             // missing layer, metadata that does not describe a key table. It is
             // deliberately distinct from `InvalidPackage`, which means the
-            // source was read as a package and failed package validation — this
-            // one never became a package at all.
+            // source was read as a package and failed package validation
+            // (including the ordinary-package key-mode contract) — this one
+            // never became a package at all.
             Self::SourceConversionFailed => "model_store_source_conversion_failed",
             Self::SourceSymlinkUnsupported => "model_store_source_symlink_unsupported",
             Self::SourceEntryUnsupported => "model_store_source_entry_unsupported",
@@ -72,6 +74,57 @@ impl ModelStoreDiagnostic {
         }
     }
 }
+
+/// The input family resolved from an ordinary model package's key artwork.
+///
+/// A BongoCatMver import does not use this classifier: its selected legacy
+/// section is authoritative. The three values are kept separate from the config
+/// and UI protocol enums so each boundary owns its stable type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModelStoreInputMode {
+    Standard,
+    Keyboard,
+    Gamepad,
+}
+
+impl From<MverInputMode> for ModelStoreInputMode {
+    fn from(mode: MverInputMode) -> Self {
+        match mode {
+            MverInputMode::Standard => Self::Standard,
+            MverInputMode::Keyboard => Self::Keyboard,
+            MverInputMode::Gamepad => Self::Gamepad,
+        }
+    }
+}
+
+impl ModelStoreInputMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Keyboard => "keyboard",
+            Self::Gamepad => "gamepad",
+        }
+    }
+}
+
+const GAMEPAD_MODE_KEY_IMAGES: &[&str] = &[
+    "South",
+    "East",
+    "West",
+    "North",
+    "LeftTrigger",
+    "RightTrigger",
+    "LeftTrigger2",
+    "RightTrigger2",
+    "LeftThumb",
+    "RightThumb",
+    "DPadLeft",
+    "DPadRight",
+    "DPadUp",
+    "DPadDown",
+    "Start",
+    "Select",
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ModelImportStage {
@@ -138,6 +191,49 @@ impl std::error::Error for ModelStoreError {
         self.source
             .as_ref()
             .map(|source| source as &(dyn std::error::Error + 'static))
+    }
+}
+
+fn key_image_names(root: &Path, directory: &str) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    let Ok(entries) = fs::read_dir(root.join("resources").join(directory)) else {
+        return names;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        if !path.is_file()
+            || !path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+        {
+            continue;
+        }
+        if let Some(name) = path.file_stem().and_then(|name| name.to_str()) {
+            names.insert(name.to_owned());
+        }
+    }
+    names
+}
+
+fn classify_input_mode(root: &Path) -> Result<ModelStoreInputMode, ModelStoreError> {
+    let left = key_image_names(root, "left-keys");
+    let right = key_image_names(root, "right-keys");
+    let has_gamepad_image = [(&left, &right)]
+        .into_iter()
+        .flat_map(|(left, right)| left.iter().chain(right.iter()))
+        .any(|name| GAMEPAD_MODE_KEY_IMAGES.contains(&name.as_str()));
+    if has_gamepad_image {
+        Ok(ModelStoreInputMode::Gamepad)
+    } else if !right.is_empty() {
+        Ok(ModelStoreInputMode::Keyboard)
+    } else if !left.is_empty() {
+        Ok(ModelStoreInputMode::Standard)
+    } else {
+        Err(ModelStoreError::new(
+            ModelStoreDiagnostic::InvalidPackage,
+            Some("resources/left-keys".to_owned()),
+            "an ordinary model package must contain at least one left-keys or right-keys PNG",
+        ))
     }
 }
 
@@ -344,6 +440,19 @@ impl ModelStore {
             .map_err(ModelStoreError::package)
     }
 
+    /// Resolve the input family of an already-installed ordinary package.
+    ///
+    /// This is used only for a store entry that predates metadata (for example a
+    /// folder copied in by hand). Normal imports resolve the mode before their
+    /// atomic commit and persist it in application config.
+    pub fn classify_installed_input_mode(
+        &self,
+        id: &ModelId,
+    ) -> Result<ModelStoreInputMode, ModelStoreError> {
+        let model = self.load(id)?;
+        classify_input_mode(model.root())
+    }
+
     /// Generate the portable store key for a newly imported model. Identity
     /// is a random UUID v4, deliberately independent of the user-visible
     /// title and of the source folder name, so titles can be edited freely
@@ -440,6 +549,9 @@ impl ModelStore {
 
     /// Import a BongoCat model package from the folder a user picked.
     ///
+    /// An ordinary package must carry at least one key PNG. Its input family is
+    /// resolved from the key directories before the atomic commit; a package
+    /// with no classifiable key artwork is rejected as [`ModelStoreDiagnostic::InvalidPackage`].
     /// A BongoCatMver source is not a package: ask [`ModelStore::inspect_source`]
     /// what a user-picked source is first, and install each of its modes with
     /// [`ModelStore::import_mver_with_observer`].
@@ -583,16 +695,41 @@ impl ModelStore {
             &mut observation,
         )?;
         observation.check_cancelled()?;
-        self.commit_installed_staging(&id, staging, &mut cleanup, &statistics, &mut observation)
+        self.commit_installed_staging(
+            &id,
+            staging,
+            Some(ModelStoreInputMode::from(mode)),
+            &mut cleanup,
+            &statistics,
+            &mut observation,
+        )
+        .map(|(model, _)| model)
     }
 
     pub fn import_with_observer<Observe, IsCancelled>(
         &self,
         id: ModelId,
         source_root: impl AsRef<Path>,
+        observe: Observe,
+        is_cancelled: IsCancelled,
+    ) -> Result<InstalledModel, ModelStoreError>
+    where
+        Observe: FnMut(ModelImportProgress),
+        IsCancelled: FnMut() -> bool,
+    {
+        self.import_with_observer_and_input_mode(id, source_root, observe, is_cancelled)
+            .map(|(model, _)| model)
+    }
+
+    /// Import one ordinary package and return the mode resolved from its key
+    /// artwork before the destination is committed.
+    pub fn import_with_observer_and_input_mode<Observe, IsCancelled>(
+        &self,
+        id: ModelId,
+        source_root: impl AsRef<Path>,
         mut observe: Observe,
         mut is_cancelled: IsCancelled,
-    ) -> Result<InstalledModel, ModelStoreError>
+    ) -> Result<(InstalledModel, ModelStoreInputMode), ModelStoreError>
     where
         Observe: FnMut(ModelImportProgress),
         IsCancelled: FnMut() -> bool,
@@ -657,7 +794,14 @@ impl ModelStore {
         // the store's own copy, before the shared validation tail, so the user's
         // source is never written to.
         normalize_legacy_key_image_names(&staging)?;
-        self.commit_installed_staging(&id, staging, &mut cleanup, &statistics, &mut observation)
+        self.commit_installed_staging(
+            &id,
+            staging,
+            None,
+            &mut cleanup,
+            &statistics,
+            &mut observation,
+        )
     }
 
     /// Validate the materialized staging tree and commit it as the installed
@@ -670,10 +814,11 @@ impl ModelStore {
         &self,
         id: &ModelId,
         staging: PathBuf,
+        expected_mode: Option<ModelStoreInputMode>,
         cleanup: &mut StagingCleanup,
         statistics: &CopyStatistics,
         observation: &mut ImportObservation<'_, Observe, IsCancelled>,
-    ) -> Result<InstalledModel, ModelStoreError>
+    ) -> Result<(InstalledModel, ModelStoreInputMode), ModelStoreError>
     where
         Observe: FnMut(ModelImportProgress),
         IsCancelled: FnMut() -> bool,
@@ -686,6 +831,10 @@ impl ModelStore {
         });
         let prepared = PreparedModel::prepare(id.clone(), &staging, self.limits)
             .map_err(ModelStoreError::package)?;
+        let input_mode = match expected_mode {
+            Some(mode) => mode,
+            None => classify_input_mode(prepared.root())?,
+        };
         observation.check_cancelled()?;
 
         let destination = self.canonical_root.join(id.as_str());
@@ -719,7 +868,7 @@ impl ModelStore {
         })?;
         cleanup.disarm();
         let prepared = prepared.relocate(destination);
-        Ok(InstalledModel::from_prepared(prepared))
+        Ok((InstalledModel::from_prepared(prepared), input_mode))
     }
 
     fn create_staging_directory(&self, id: &ModelId) -> Result<PathBuf, ModelStoreError> {
@@ -1263,6 +1412,175 @@ mod tests {
             ModelPackageLimits::default(),
         )
         .expect("model store")
+    }
+
+    #[test]
+    fn ordinary_package_mode_is_resolved_from_key_artwork_before_commit() {
+        let base = tempdir().expect("mode fixture root");
+        let package = |name: &str, left: &[&str], right: &[&str]| {
+            let root = base.path().join(name);
+            for (directory, names) in [("left-keys", left), ("right-keys", right)] {
+                let path = root.join("resources").join(directory);
+                fs::create_dir_all(&path).expect("key directory");
+                for key in names {
+                    fs::write(path.join(format!("{key}.png")), b"fixture").expect("key image");
+                }
+            }
+            root
+        };
+
+        assert_eq!(
+            classify_input_mode(&package("standard", &["KeyA"], &[])).expect("standard mode"),
+            ModelStoreInputMode::Standard
+        );
+        assert_eq!(
+            classify_input_mode(&package("keyboard", &["KeyA"], &["LeftArrow"]))
+                .expect("keyboard mode"),
+            ModelStoreInputMode::Keyboard
+        );
+        assert_eq!(
+            classify_input_mode(&package("gamepad-left", &["DPadUp"], &[]))
+                .expect("gamepad mode from a left-hand image"),
+            ModelStoreInputMode::Gamepad
+        );
+        assert_eq!(
+            classify_input_mode(&package("gamepad-right", &[], &["East"]))
+                .expect("gamepad mode from a right-hand image"),
+            ModelStoreInputMode::Gamepad
+        );
+        let error = classify_input_mode(&package("empty", &[], &[]))
+            .expect_err("a package without key artwork is not a model");
+        assert_eq!(error.code, ModelStoreDiagnostic::InvalidPackage);
+    }
+
+    #[test]
+    fn ordinary_import_returns_the_mode_resolved_before_commit() {
+        let data = tempdir().expect("store root");
+        let store = model_store(data.path());
+        for (id, left, right, expected) in [
+            (
+                "standard-import",
+                &["KeyA"][..],
+                &[][..],
+                ModelStoreInputMode::Standard,
+            ),
+            (
+                "keyboard-import",
+                &["KeyA"][..],
+                &["LeftArrow"][..],
+                ModelStoreInputMode::Keyboard,
+            ),
+            (
+                "gamepad-import",
+                &["DPadUp"][..],
+                &[][..],
+                ModelStoreInputMode::Gamepad,
+            ),
+        ] {
+            let source = tempdir().expect("source root");
+            fs::write(source.path().join("model.moc3"), b"moc").expect("moc");
+            fs::write(
+                source.path().join("cat.model3.json"),
+                r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[]}}"#,
+            )
+            .expect("model3");
+            for (directory, names) in [("left-keys", left), ("right-keys", right)] {
+                let path = source.path().join("resources").join(directory);
+                fs::create_dir_all(&path).expect("key directory");
+                for key in names {
+                    fs::write(path.join(format!("{key}.png")), b"fixture").expect("key image");
+                }
+            }
+
+            let (model, mode) = store
+                .import_with_observer_and_input_mode(
+                    ModelId::parse(id).expect("model id"),
+                    source.path(),
+                    |_| {},
+                    || false,
+                )
+                .expect("classified import");
+            assert_eq!(mode, expected, "mode for {id}");
+            assert!(model.root().join("cat.model3.json").is_file());
+        }
+    }
+
+    #[test]
+    fn ordinary_import_accepts_legacy_physics_without_fps() {
+        let data = tempdir().expect("store root");
+        let store = model_store(data.path());
+        let source = tempdir().expect("source root");
+        fs::write(source.path().join("model.moc3"), b"moc").expect("moc");
+        fs::write(
+            source.path().join("cat.model3.json"),
+            r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[],"Physics":"model.physics3.json"}}"#,
+        )
+        .expect("model3");
+        fs::write(
+            source.path().join("model.physics3.json"),
+            r#"{
+              "Version":3,
+              "Meta":{
+                "PhysicsSettingCount":1,"TotalInputCount":1,"TotalOutputCount":1,"VertexCount":2,
+                "EffectiveForces":{"Gravity":{"X":0,"Y":-1},"Wind":{"X":0,"Y":0}},
+                "PhysicsDictionary":[{"Id":"Physics1","Name":""}]
+              },
+              "PhysicsSettings":[{
+                "Id":"Physics1",
+                "Input":[{"Source":{"Target":"Parameter","Id":"ParamInput"},"Weight":100,"Type":"X","Reflect":false}],
+                "Output":[{"Destination":{"Target":"Parameter","Id":"ParamOutput"},"VertexIndex":1,"Scale":1,"Weight":100,"Type":"Angle","Reflect":false}],
+                "Vertices":[
+                  {"Position":{"X":0,"Y":0},"Mobility":0.8,"Delay":0.8,"Acceleration":1,"Radius":0},
+                  {"Position":{"X":0,"Y":10},"Mobility":0.8,"Delay":0.8,"Acceleration":1,"Radius":10}
+                ],
+                "Normalization":{"Position":{"Minimum":-10,"Default":0,"Maximum":10},"Angle":{"Minimum":-10,"Default":0,"Maximum":10}}
+              }]
+            }"#,
+        )
+        .expect("legacy physics");
+        for (directory, name) in [("left-keys", "KeyA"), ("right-keys", "LeftArrow")] {
+            let path = source.path().join("resources").join(directory);
+            fs::create_dir_all(&path).expect("key directory");
+            fs::write(path.join(format!("{name}.png")), b"fixture").expect("key image");
+        }
+
+        let (model, mode) = store
+            .import_with_observer_and_input_mode(
+                ModelId::parse("legacy-physics").expect("model id"),
+                source.path(),
+                |_| {},
+                || false,
+            )
+            .expect("legacy physics import");
+        assert_eq!(mode, ModelStoreInputMode::Keyboard);
+        assert_eq!(
+            model
+                .physics_definition()
+                .expect("physics definition")
+                .expect("declared physics")
+                .fps,
+            0.0
+        );
+    }
+
+    #[test]
+    fn ordinary_package_without_key_artwork_is_rejected_without_leaving_a_model() {
+        let data = tempdir().expect("store root");
+        let store = model_store(data.path());
+        let source = tempdir().expect("source root");
+        fs::write(source.path().join("model.moc3"), b"moc").expect("moc");
+        fs::write(
+            source.path().join("cat.model3.json"),
+            r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[]}}"#,
+        )
+        .expect("model3");
+
+        let error = store
+            .import(ModelId::parse("empty").expect("model id"), source.path())
+            .expect_err("a package without key artwork must be rejected");
+        assert_eq!(error.code, ModelStoreDiagnostic::InvalidPackage);
+        assert!(store.list().expect("empty catalog").entries.is_empty());
+        assert!(!store.root().join("empty").exists());
     }
 
     #[test]

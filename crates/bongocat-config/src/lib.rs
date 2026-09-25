@@ -375,16 +375,17 @@ pub struct InputConfig {
 pub struct ModelConfig {
     pub selected_model_id: Option<String>,
     pub selected_model_origin: Option<SelectedModelOrigin>,
-    pub installed_models: Vec<ModelMetadata>,
-    /// The same record for the models the build ships.
+    /// User-imported model metadata, including the input mode resolved once at
+    /// import time.
+    pub installed_models: Vec<InstalledModelMetadata>,
+    /// Editable metadata for the models the build ships.
     ///
     /// A preset's name is the id the build gave it until the user renames it,
     /// which is why this list is empty on a fresh configuration and why it has
     /// no import or delete path: nothing creates a preset and nothing removes
-    /// one. The record is a customisation of a model that is always there, and
-    /// it shares [`ModelMetadata`]'s shape because the two lists say the same
-    /// thing about different origins — a model the product owns and a model the
-    /// user installed are both renamed the same way.
+    /// one. The record is a customisation of a model that is always there. Its
+    /// input mode is not duplicated here: the three current preset ids are the
+    /// authoritative mode identity owned by the build.
     pub preset_models: Vec<ModelMetadata>,
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
@@ -419,19 +420,56 @@ pub struct ModelConfig {
     pub release_fallback_timeout_ms: u32,
 }
 
-/// User-facing metadata for one model.
+/// User-facing metadata for one build-shipped model.
 ///
-/// The `id` is the model's stable key — the installed directory name, or the
-/// preset directory the build ships — and `title` is an editable display name
-/// that never participates in model identity. The record itself says nothing
-/// about where the model came from: which list holds it is what carries that,
-/// because the lists have different lifecycles (an import creates a record and
-/// a delete removes it; nothing creates or removes a preset).
+/// The `id` is the preset directory name and `title` is an editable display name
+/// that never participates in model identity. Which list holds the record is
+/// what carries its lifecycle: an import creates installed metadata and a delete
+/// removes it; nothing creates or removes a preset record.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ModelMetadata {
     pub id: String,
     pub title: String,
+}
+
+/// User-facing metadata for one imported model.
+///
+/// `input_mode` is resolved once when the source is imported and then persisted
+/// with the title. The Models page reads this value rather than rescanning the
+/// package on every render, so renaming a model, changing its artwork, or
+/// restarting the application cannot silently change its displayed mode.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct InstalledModelMetadata {
+    pub id: String,
+    pub title: String,
+    pub input_mode: ModelInputMode,
+}
+
+/// The input family a model belongs to.
+///
+/// Mver conversion knows this from the selected source section, the build
+/// derives it from the stable ids of its three presets, and an ordinary package
+/// resolves it from the key artwork before import commits. A package that cannot
+/// be classified is rejected by the model store rather than stored with a
+/// fourth, non-mode value.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelInputMode {
+    Standard,
+    Keyboard,
+    Gamepad,
+}
+
+impl ModelInputMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Keyboard => "keyboard",
+            Self::Gamepad => "gamepad",
+        }
+    }
 }
 
 pub const MODEL_METADATA_MAXIMUM_ID_BYTES: usize = 64;
@@ -1355,12 +1393,18 @@ impl NativeConfig {
         validate_model_metadata(
             "model.installed_models.id",
             "model.installed_models.title",
-            &self.model.installed_models,
+            self.model
+                .installed_models
+                .iter()
+                .map(|record| (record.id.as_str(), record.title.as_str())),
         )?;
         validate_model_metadata(
             "model.preset_models.id",
             "model.preset_models.title",
-            &self.model.preset_models,
+            self.model
+                .preset_models
+                .iter()
+                .map(|record| (record.id.as_str(), record.title.as_str())),
         )?;
         if self
             .shortcuts
@@ -1425,27 +1469,27 @@ impl NativeConfig {
 
 /// Validate one list of user-facing model metadata.
 ///
-/// The configuration holds the same records for the models the build ships and
-/// for the models the user installed, and both lists are checked the same way:
-/// a stable id that is present and unique within its list, and a display name
-/// that is present, printable and short enough. The two error paths are passed
-/// in rather than derived, so each message keeps naming the field a user would
-/// have to look at instead of collapsing into a generic one.
-fn validate_model_metadata(
+/// Both metadata lists are checked the same way even though installed records
+/// also carry an input mode: a stable id that is present and unique within its
+/// list, and a display name that is present, printable and short enough. The
+/// two error paths are passed in rather than derived, so each message keeps
+/// naming the field a user would have to look at instead of collapsing into a
+/// generic one.
+fn validate_model_metadata<'a>(
     id_error: &'static str,
     title_error: &'static str,
-    metadata: &[ModelMetadata],
+    metadata: impl IntoIterator<Item = (&'a str, &'a str)>,
 ) -> Result<(), ConfigError> {
     let mut ids = std::collections::BTreeSet::new();
-    for record in metadata {
-        let id = record.id.trim();
+    for (raw_id, raw_title) in metadata {
+        let id = raw_id.trim();
         if id.is_empty() || id.len() > MODEL_METADATA_MAXIMUM_ID_BYTES || !ids.insert(id) {
             return Err(ConfigError::InvalidValue(id_error));
         }
-        let title = record.title.trim();
+        let title = raw_title.trim();
         if title.is_empty()
             || title.chars().count() > MODEL_METADATA_MAXIMUM_TITLE_CHARS
-            || record.title.chars().any(char::is_control)
+            || raw_title.chars().any(char::is_control)
         {
             return Err(ConfigError::InvalidValue(title_error));
         }

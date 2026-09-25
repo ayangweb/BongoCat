@@ -268,6 +268,9 @@ pub struct PhysicsSetting {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PhysicsDefinition {
+    /// The authored physics step rate. `0.0` means the legacy resource omitted
+    /// `Meta.Fps`; the runtime then uses the current frame delta instead of
+    /// inventing a fixed rate.
     pub fps: f64,
     pub gravity: PhysicsVector,
     pub wind: PhysicsVector,
@@ -884,6 +887,18 @@ struct RawPhysicsResource {
     settings: Vec<RawPhysicsSetting>,
 }
 
+fn deserialize_physics_fps<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match Option::<f64>::deserialize(deserializer)? {
+        Some(fps) => Ok(Some(fps)),
+        None => Err(<D::Error as serde::de::Error>::custom(
+            "physics3 Meta.Fps must be a number",
+        )),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawPhysicsMeta {
@@ -895,8 +910,10 @@ struct RawPhysicsMeta {
     output_count: usize,
     #[serde(rename = "VertexCount")]
     vertex_count: usize,
-    #[serde(rename = "Fps")]
-    fps: f64,
+    /// Legacy SDK exports may omit this field; the runtime then uses the
+    /// incoming frame delta instead of inventing a fixed step rate.
+    #[serde(default, rename = "Fps", deserialize_with = "deserialize_physics_fps")]
+    fps: Option<f64>,
     #[serde(rename = "EffectiveForces")]
     effective_forces: RawPhysicsForces,
     #[serde(rename = "PhysicsDictionary")]
@@ -1842,7 +1859,7 @@ fn load_physics_definition(
     )?;
     validate_physics_resource_value(&physics, reference)?;
     Ok(PhysicsDefinition {
-        fps: physics.meta.fps,
+        fps: physics.meta.fps.unwrap_or(0.0),
         gravity: PhysicsVector {
             x: physics.meta.effective_forces.gravity.x,
             y: physics.meta.effective_forces.gravity.y,
@@ -1921,7 +1938,11 @@ fn validate_physics_resource_value(
     if physics.version != 3 {
         return invalid_resource(reference, "physics3 Version must be 3");
     }
-    if !physics.meta.fps.is_finite() || physics.meta.fps <= 0.0 {
+    if physics
+        .meta
+        .fps
+        .is_some_and(|fps| !fps.is_finite() || fps <= 0.0)
+    {
         return invalid_resource(reference, "physics3 Meta.Fps must be finite and positive");
     }
     validate_physics_vector(
@@ -3110,6 +3131,52 @@ mod tests {
             "ParamOutput"
         );
 
+        // Older exported models can omit Meta.Fps. The runtime already has a
+        // frame-delta path for that representation, so preserve it instead of
+        // rejecting an otherwise valid legacy package at import time.
+        fs::write(&physics, VALID_PHYSICS.replace("\"Fps\":60,", ""))
+            .expect("legacy physics resource without Fps");
+        validate_physics_resource(
+            &physics,
+            "model.physics3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect("legacy physics resource without Fps must be accepted");
+        let legacy_definition = load_physics_definition(
+            &physics,
+            "model.physics3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect("legacy typed physics definition");
+        assert_eq!(legacy_definition.fps, 0.0);
+
+        fs::write(package.path().join("model.moc3"), b"moc").expect("moc resource");
+        fs::write(
+            package.path().join("cat.model3.json"),
+            r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[],"Physics":"model.physics3.json"}}"#,
+        )
+        .expect("model3 resource");
+        let prepared = PreparedModel::prepare(
+            ModelId::parse("physics-without-fps").expect("model id"),
+            package.path(),
+            limits,
+        )
+        .expect("model package without physics Meta.Fps must be accepted");
+        assert_eq!(
+            prepared.index().physics.as_deref(),
+            Some("model.physics3.json")
+        );
+        assert_eq!(
+            prepared
+                .physics_definition()
+                .expect("prepared physics definition")
+                .expect("declared physics definition")
+                .fps,
+            0.0
+        );
+
         for (invalid, detail) in [
             (
                 VALID_PHYSICS.replace("\"TotalOutputCount\":1", "\"TotalOutputCount\":2"),
@@ -3126,6 +3193,14 @@ mod tests {
                 VALID_PHYSICS.replace("\"VertexIndex\":1", "\"VertexIndex\":2"),
                 "VertexIndex",
             ),
+            (
+                VALID_PHYSICS.replace("\"Fps\":60,", "\"Fps\":0,"),
+                "Meta.Fps",
+            ),
+            (
+                VALID_PHYSICS.replace("\"Fps\":60,", "\"Fps\":null,"),
+                "Meta.Fps",
+            ),
         ] {
             fs::write(&physics, invalid).expect("invalid physics resource");
             let error = validate_physics_resource(
@@ -3139,12 +3214,6 @@ mod tests {
             assert!(error.detail.contains(detail), "{}", error.detail);
         }
 
-        fs::write(package.path().join("model.moc3"), b"moc").expect("moc resource");
-        fs::write(
-            package.path().join("cat.model3.json"),
-            r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[],"Physics":"model.physics3.json"}}"#,
-        )
-        .expect("model3 resource");
         fs::write(
             &physics,
             VALID_PHYSICS.replace("\"VertexIndex\":1", "\"VertexIndex\":2"),

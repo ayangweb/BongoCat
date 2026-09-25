@@ -91,7 +91,7 @@
       "properties": {
         "selected_model_id": { "type": ["string", "null"], "minLength": 1 },
         "selected_model_origin": { "type": ["string", "null"], "enum": ["preset", "installed", null] },
-        "installed_models": { "type": "array", "items": { "$ref": "#/$defs/model_metadata" }, "uniqueItems": true },
+        "installed_models": { "type": "array", "items": { "$ref": "#/$defs/installed_model_metadata" }, "uniqueItems": true },
         "preset_models": { "type": "array", "items": { "$ref": "#/$defs/model_metadata" }, "uniqueItems": true },
         "mirror": { "type": "boolean" },
         "mirror_pointer_tracking": { "type": "boolean" },
@@ -137,6 +137,16 @@
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": ".*\\S.*" },
         "title": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": ".*\\S.*" }
+      }
+    },
+    "installed_model_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "input_mode"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": ".*\\S.*" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": ".*\\S.*" },
+        "input_mode": { "enum": ["standard", "keyboard", "gamepad"] }
       }
     },
     "model_behavior_binding": {

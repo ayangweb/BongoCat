@@ -50,8 +50,8 @@ shortcuts
 | `logging`     | `retention_days`                      | 日志保留天数，`[1, 30]`                |
 | `model`       | `selected_model_id`                   | 当前模型稳定 ID，与 origin 成对为空    |
 | `model`       | `selected_model_origin`               | `preset` / `installed`，与 ID 成对为空 |
-| `model`       | `installed_models`                    | 用户导入模型的元数据列表（id + title） |
-| `model`       | `preset_models`                       | 内置模型被改名后的元数据列表（id + title） |
+| `model`       | `installed_models`                    | 用户导入模型的元数据列表（`id` + `title` + `input_mode`） |
+| `model`       | `preset_models`                       | 内置模型被改名后的元数据列表（`id` + `title`） |
 | `model`       | `mirror`                              | 水平镜像模型                           |
 | `model`       | `mirror_pointer_tracking`             | 镜像指针跟随方向                       |
 | `model`       | `play_motion_audio`                   | 播放动作音效，默认 `false`             |
@@ -276,14 +276,18 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
 - `selected_model_id` 与 `selected_model_origin` 必须同时有值或同时为空。
 - `model.installed_models` 只记录用户导入模型的元数据：`id` 是稳定唯一、跨平台可移植的
   存储 key（与安装目录名一致，标题修改不影响它），`title` 是可编辑的显示名称，首次导入
-  默认取来源文件夹名。列表内 `id` 不得重复；`title` 去除首尾空白后不得为空且不超过 128
-  个字符。**列表顺序是导入顺序，也是模型页上这些卡片的显示顺序**：导入把新记录追加到末尾，
-  删除只移除对应记录、不重排其余记录，因此新导入的模型出现在模型页末尾并保持原位。改名就地
-  修改已有记录的 `title`，不改动列表顺序；该列表不得整体排序后写回。
+  默认取来源文件夹名；`input_mode` 是导入时确定的必填模式，闭合集合为 `standard`、`keyboard`、
+  `gamepad`。Mver 导入写入实际选中的 source section；普通包在 staging 提交前按 `left-keys`/
+  `right-keys` 资源判定，判定失败直接拒绝导入，不写入 store 或配置。列表内 `id` 不得重复；
+  `title` 去除首尾空白后不得为空且不超过 128 个字符。**列表顺序是导入顺序，也是模型页上这些
+  卡片的显示顺序**：导入把新记录追加到末尾，删除只移除对应记录、不重排其余记录，因此新导入的
+  模型出现在模型页末尾并保持原位。改名就地修改已有记录的 `title`，保留 `input_mode`，不改动
+  列表顺序；该列表不得整体排序后写回。
 - `model.preset_models` 记录内置模型（随构建分发的 `resources/models/<id>`）被改名后的元数据，
-  记录形状与 `installed_models` 相同、校验规则相同，且**两个列表各自独立判重**：同一个 id 可以
-  同时出现在两边（内置 `standard` 与用户安装的 `standard` 是两张卡片）。列表为空表示所有内置
-  模型都还用构建给的名字。该列表的写入只来自改名，没有任何导入、删除或裁剪路径。
+  只保存 `id` 与 `title`，其模式由构建拥有的稳定 id 派生，不在用户配置中重复保存；校验规则与
+  installed 的身份/标题规则相同，且**两个列表各自独立判重**：同一个 id 可以同时出现在两边
+  （内置 `standard` 与用户安装的 `standard` 是两张卡片）。列表为空表示所有内置模型都还用构建
+  给的名字。该列表的写入只来自改名，没有任何导入、删除或裁剪路径。
 - 内置模型的封面替换不走配置：内置包位于 app 包内（macOS `Contents/Resources/models`、Windows
   安装目录），产品不得写入，替换封面存放在用户数据根的 `model-overrides/<id>/resources/cover.png`
   （与模型包内封面同名同层级），由设置页按来源读取。

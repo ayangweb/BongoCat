@@ -153,6 +153,11 @@
       "title": "导入模型",
       "hint": "点击选择或拖入模型文件夹"
     },
+    "mode": {
+      "standard": "标准",
+      "keyboard": "键盘",
+      "gamepad": "手柄"
+    },
     "mver": {
       "mode": {
         "standard": "标准模式",

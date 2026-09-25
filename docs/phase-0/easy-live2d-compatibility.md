@@ -1,7 +1,7 @@
 # easy-live2d Compatibility Boundary
 
 状态：旧产品依赖面与 Native Rewrite 兼容边界已冻结
-记录日期：2026-08-29
+记录日期：2026-08-29；兼容性补充：2026-09-25
 
 > 本文记录 BongoCat 的产品行为，不授权复制、翻译或重新许可 easy-live2d 或 Cubism Framework 源码。Native Rust 实现仍受 `cubism-framework-behavior-sources.md` 的许可门禁约束。
 
@@ -48,6 +48,7 @@ BongoCat 显式关闭 easy-live2d 的 mouse follow，自己计算显示器归一
 以下是产品可见语义，Native Rewrite 必须以 Rust 类型和 fixture 重建：
 
 1. model3 中的 moc、texture、motion、expression、physics、pose、cdi、user data 和 motion sound 引用在 commit 前全部验证。
+   旧版导出的 physics3 可能省略 `Meta.Fps`；缺省时使用当前单调 frame delta，显式 FPS 仍须为有限正数。
 2. motion identity 是 `{group, index}`，expression identity 是 model3 顺序中的 index；UI 可另显示名称，但不得用本地化文本作为稳定 ID。
 3. motion 使用 normal priority，读取 motion3/model3 fade 与 effect ID；产品触发只推进一个循环，完成后保持包含自然 fade 权重的终点 motion layer，直到替换、显式停止或模型切换。PartOpacity 在每帧 motion 前恢复模型初始值，停止或替换不能残留旧部件可见性。开始新的带声音 motion 时，旧 motion voice 被停止，同一时刻最多一个 motion voice。
 4. expression 保留 add、multiply、overwrite 与 fade 语义；最新 expression 淡入完成后持续应用，直到被替换或模型清理。越界 index 返回稳定错误，不能只写 warning 后假装成功。

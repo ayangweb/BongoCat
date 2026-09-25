@@ -3,7 +3,7 @@ use crate::{
     SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel, SettingsLogging,
     SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
-    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelKey,
+    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelKey, SettingsModelMode,
     SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode,
     SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsShortcutBinding,
     SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
@@ -16,8 +16,7 @@ use bongocat_platform::{
     validate_model_folder,
 };
 use gpui_kit::component::{
-    ActiveTheme, Disableable, Icon, IconName, IndexPath, Root, Theme, ThemeMode, ThemeStyled,
-    WindowExt,
+    ActiveTheme, Disableable, Icon, IndexPath, Root, Theme, ThemeMode, ThemeStyled, WindowExt,
     button::{Button, ButtonVariants},
     checkbox::Checkbox,
     dialog::{Dialog, DialogButtonProps},

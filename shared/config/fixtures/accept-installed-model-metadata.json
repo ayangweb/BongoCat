@@ -27,8 +27,7 @@
     "selected_model_id": null,
     "selected_model_origin": null,
     "installed_models": [
-      { "id": "cat", "title": "第一只", "input_mode": "standard" },
-      { "id": "cat", "title": "重复 ID", "input_mode": "keyboard" }
+      { "id": "cat", "title": "我的手柄模型", "input_mode": "gamepad" }
     ],
     "preset_models": [],
     "mirror": false,

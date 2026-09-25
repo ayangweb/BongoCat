@@ -22,6 +22,7 @@ fn model_entry(
     SettingsModelEntry {
         id: id.to_owned(),
         title: "untitled".to_owned(),
+        input_mode: Some(SettingsModelMode::Standard),
         origin,
         availability,
         directory: None,
@@ -1782,6 +1783,33 @@ fn the_conversion_mode_labels_come_from_the_shared_legacy_keys() {
 }
 
 #[test]
+fn every_model_card_mode_has_a_visible_localized_label() {
+    let mut labels = Vec::new();
+    for mode in [
+        SettingsModelMode::Standard,
+        SettingsModelMode::Keyboard,
+        SettingsModelMode::Gamepad,
+    ] {
+        for locale in [
+            SettingsLanguage::EnglishUnitedStates,
+            SettingsLanguage::ChineseSimplified,
+        ] {
+            let label = bongocat_i18n::text(
+                locale.catalog_locale(),
+                super::models::model_mode_label_key(mode),
+            );
+            assert!(!label.is_empty(), "missing model mode label for {mode:?}");
+            assert_ne!(label, super::models::model_mode_label_key(mode));
+            labels.push(label);
+        }
+    }
+    labels.sort_unstable();
+    let before = labels.len();
+    labels.dedup();
+    assert_eq!(labels.len(), before, "mode labels must be distinguishable");
+}
+
+#[test]
 fn the_dialog_snapshot_keeps_the_same_priority_default() {
     let all = [
         SettingsMverMode::Standard,
@@ -3231,9 +3259,34 @@ fn opening_a_models_editor_does_not_change_the_card(cx: &mut TestAppContext) {
     visual.update(|window, cx| window.render_frame(cx));
 
     let card_id = ElementId::from(("model-card", 0usize));
+    let cover_id = ElementId::from(("model-card-cover", 0usize));
     let title_id = ElementId::from(("model-card-title", 0usize));
+    let mode_badge_id = ElementId::from(("model-mode-badge", 0usize));
     let card_before = rendered_bounds(visual, card_id.clone());
+    let cover_before = rendered_bounds(visual, cover_id);
     let title_before = rendered_bounds(visual, title_id.clone());
+    let mode_badge_before = rendered_bounds(visual, mode_badge_id.clone());
+    assert!(
+        mode_badge_before.left() >= cover_before.left()
+            && mode_badge_before.top() >= cover_before.top()
+            && mode_badge_before.right() <= cover_before.right()
+            && mode_badge_before.bottom() <= cover_before.bottom(),
+        "the mode badge belongs on the cover and must not create another card row"
+    );
+    let cover_inset = px(8.0);
+    let one_pixel = px(1.0);
+    assert!(
+        mode_badge_before.top() >= cover_before.top() + cover_inset - one_pixel,
+        "the mode badge must stay inset from the cover's top edge"
+    );
+    assert!(
+        mode_badge_before.right() <= cover_before.right() - cover_inset + one_pixel,
+        "the mode badge must be anchored to the cover's top-right corner"
+    );
+    assert!(
+        mode_badge_before.left() > cover_before.left() + cover_before.size.width / 2.0,
+        "the mode badge must sit on the right half of the cover"
+    );
 
     // The card's own edit action, so the editor opens the way the page opens it.
     visual.update(|window, cx| {
@@ -3249,6 +3302,7 @@ fn opening_a_models_editor_does_not_change_the_card(cx: &mut TestAppContext) {
 
     let card_after = rendered_bounds(visual, card_id);
     let title_after = rendered_bounds(visual, title_id);
+    let mode_badge_after = rendered_bounds(visual, mode_badge_id);
     let field = rendered_bounds(visual, ElementId::from("model-edit-title-input"));
     let picker = rendered_bounds(visual, ElementId::from("choose-model-cover"));
 
@@ -3266,6 +3320,10 @@ fn opening_a_models_editor_does_not_change_the_card(cx: &mut TestAppContext) {
     assert_eq!(
         title_after, title_before,
         "the field must replace the name inside the same row, at the same height"
+    );
+    assert_eq!(
+        mode_badge_after, mode_badge_before,
+        "editing a title must leave the mode badge in the same place"
     );
     assert_eq!(
         field, title_before,
