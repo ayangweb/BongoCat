@@ -19,7 +19,7 @@
 | Dependency family                | Locked version                 | License                   | Role                                     |
 | -------------------------------- | ------------------------------ | ------------------------- | ---------------------------------------- |
 | GPUI Kit                         | `0.6.5` @ `500852f`            | Apache-2.0                | Formal settings UI facade and components; ADR-0056 exact upstream revision |
-| gilrs / gilrs-core              | `0.11.2` / `0.6.8` @ `429a84c` | Apache-2.0 OR MIT         | Formal WGI/IOHID gamepad backend; ADR-0066 exact maintainer fork revision |
+| gilrs / gilrs-core              | `0.11.2` / `0.6.8` @ `fb3cc4e` | Apache-2.0 OR MIT         | Formal WGI/IOHID gamepad backend; ADR-0066 exact maintainer fork revision |
 | AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | Direct in `spikes/gpui-settings`; formal UI receives `gpui-kit` transitive semantics after ADR-0054 |
 | arboard                          | `3.6.1`                        | MIT OR Apache-2.0         | Dual-platform private text clipboard     |
 | raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI/Win32 native window boundary        |

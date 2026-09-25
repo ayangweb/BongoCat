@@ -38,7 +38,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级                                          |
 | `embed-resource`                      |       `3.0.11` | Windows 产品图标新增时最新                               |
 | `gpui-kit`                            | `0.6.5` @ `500852f` | 上游固定 revision；含 variant 与 Popover arrow                |
-| `gilrs`                               | `0.11.2` @ `429a84c` | 维护者 fork 固定 revision；WGI/IOHID 与后续手柄修复统一维护    |
+| `gilrs`                               | `0.11.2` @ `fb3cc4e` | 维护者 fork 固定 revision；WGI/IOHID 与后续手柄修复统一维护    |
 | `futures-lite`                        |        `2.6.1` | 已是最新                                                 |
 | `gpui`                                |        `0.2.2` | spike 直接依赖；正式 UI 经 `gpui-kit` suite 传递              |
 | `libc`                                |      `0.2.189` | 新增时即为最新稳定版                                     |
