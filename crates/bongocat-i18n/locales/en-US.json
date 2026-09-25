@@ -4,26 +4,26 @@
     "settings": {
       "title": "BongoCat Settings"
     },
-    "general": {
-      "title": "General"
+    "appearance": {
+      "title": "Appearance & language"
     },
-    "models": {
-      "title": "Models"
+    "model_library": {
+      "title": "Model library"
+    },
+    "model_behavior": {
+      "title": "Model behavior"
     },
     "model_window": {
       "title": "Model window"
     },
-    "interaction": {
-      "title": "Interaction"
-    },
-    "input": {
-      "title": "Input"
+    "input_interaction": {
+      "title": "Input & interaction"
     },
     "shortcuts": {
       "title": "Shortcuts"
     },
-    "application": {
-      "title": "Application"
+    "app_system": {
+      "title": "App & system"
     },
     "about": {
       "title": "About"
@@ -56,7 +56,6 @@
     }
   },
   "about": {
-    "page_title": "About BongoCat",
     "product_information": {
       "title": "Product Information",
       "version": {
@@ -247,8 +246,8 @@
       "enable_window_shortcuts": {
         "label": "Enable window shortcuts"
       },
-      "enable_model_shortcuts": {
-        "label": "Enable model shortcuts"
+      "enable_model_behavior_shortcuts": {
+        "label": "Enable model behavior shortcuts"
       }
     },
     "actions": {
@@ -318,7 +317,6 @@
   },
   "settings": {
     "appearance": {
-      "title": "Appearance",
       "theme": {
         "label": "Theme",
         "options": {
@@ -344,7 +342,7 @@
         "title": "Window appearance"
       },
       "performance": {
-        "title": "Performance"
+        "title": "Window performance"
       },
       "visibility": {
         "label": "Show model window"
@@ -364,7 +362,7 @@
         "description": "Fade the model window out while the mouse rests on it, and restore it when the mouse leaves."
       },
       "hide_on_mouse_hover_delay": {
-        "label": "Hover hide delay (seconds)",
+        "label": "Mouse hover hide delay (seconds)",
         "description": "Delay before the model window hides while the mouse rests on it, from 0 to 60 seconds; 0 hides it on entry."
       },
       "scale": {
@@ -384,64 +382,62 @@
         "description": "Limit animation and model window updates to 15 to 240 frames per second."
       }
     },
-    "model_interaction": {
-      "model": {
-        "title": "Model"
-      },
-      "mouse": {
-        "title": "Mouse"
-      },
-      "mirror_model": {
-        "label": "Mirror model horizontally"
-      },
-      "motion_audio": {
-        "label": "Play motion sounds"
-      },
-      "random_behavior_enabled": {
-        "label": "Randomly play motions or expressions"
-      },
-      "random_behavior_interval": {
-        "label": "Random motion or expression interval (seconds)"
-      },
-      "mirror_mouse_tracking": {
-        "label": "Mirror mouse tracking"
-      },
-      "ignore_mouse_input": {
-        "label": "Ignore mouse input"
+    "models": {
+      "behavior": {
+        "mirror_model": {
+          "label": "Mirror model horizontally"
+        },
+        "motion_audio": {
+          "label": "Play motion sounds"
+        },
+        "random_behavior_enabled": {
+          "label": "Randomly play motions or expressions"
+        },
+        "random_behavior_interval": {
+          "label": "Random motion or expression interval (seconds)"
+        }
       }
     },
-    "input": {
-      "keyboard": {
-        "title": "Keyboard"
+    "input_interaction": {
+      "mouse": {
+        "title": "Mouse",
+        "mirror_mouse_tracking": {
+          "label": "Mirror mouse tracking"
+        },
+        "ignore_mouse_input": {
+          "label": "Ignore mouse input"
+        }
       },
-      "key_release_timeout": {
-        "label": "Key release timeout (milliseconds)",
-        "description": "Release the key automatically when no key-up event arrives within this time, so it never stays stuck; 0 disables it."
+      "keyboard": {
+        "title": "Keyboard",
+        "key_release_timeout": {
+          "label": "Key release timeout (milliseconds)",
+          "description": "Release the key automatically when no key-up event arrives within this time, so it never stays stuck; 0 disables it."
+        }
       },
       "gamepad": {
-        "title": "Gamepad"
-      },
-      "gamepad_stick_dead_zone": {
-        "label": "Gamepad stick dead zone",
-        "description": "Ignore small analog stick movement."
-      },
-      "gamepad_trigger_dead_zone": {
-        "label": "Gamepad trigger dead zone",
-        "description": "Ignore small trigger movement."
+        "title": "Gamepad",
+        "stick_dead_zone": {
+          "label": "Gamepad stick dead zone",
+          "description": "Ignore small analog stick movement."
+        },
+        "trigger_dead_zone": {
+          "label": "Gamepad trigger dead zone",
+          "description": "Ignore small trigger movement."
+        }
       }
     },
-    "application": {
-      "system": {
-        "title": "System icons"
+    "app_system": {
+      "desktop": {
+        "title": "Startup & desktop"
       },
       "updates": {
-        "title": "Startup and updates"
+        "title": "Updates"
       },
       "logging": {
         "title": "Logging",
         "level": {
           "label": "Log level",
-          "description": "Higher levels include all lower-level details.",
           "options": {
             "error": "Errors only",
             "warn": "Errors and warnings",
@@ -451,8 +447,7 @@
           }
         },
         "retention_days": {
-          "label": "Keep logs (days)",
-          "description": "Delete logs older than this many days. Total log storage is still capped."
+          "label": "Keep logs (days)"
         }
       },
       "status_icon": {
@@ -466,10 +461,8 @@
       },
       "auto_update": {
         "label": "Check for updates automatically",
-        "description": "Check for updates at startup and at the interval you set.",
         "interval": {
-          "label": "Automatic update check interval (hours)",
-          "description": "Check again 1–8,760 hours after an automatic update check."
+          "label": "Automatic update check interval (hours)"
         }
       },
       "open_at_login": {

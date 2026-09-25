@@ -3284,7 +3284,7 @@ mod tests {
             resolved_language: SettingsLanguage::EnglishUnitedStates,
             status_icon_visible: true,
             taskbar_icon_visible: true,
-            check_for_updates_automatically: true,
+            check_for_updates_automatically: false,
             check_for_updates_interval_hours: 24,
             overlay_visible,
             overlay: SettingsOverlay::default(),

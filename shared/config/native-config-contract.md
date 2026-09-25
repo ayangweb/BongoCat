@@ -31,7 +31,7 @@ shortcuts
 | ------------- | ------------------------------------- | -------------------------------------- |
 | `application` | `show_taskbar_icon`                   | Windows 任务栏可见性                   |
 | `application` | `show_status_icon`                    | 托盘/菜单栏入口可见性                  |
-| `application` | `check_for_updates_automatically`     | 自动检查更新                           |
+| `application` | `check_for_updates_automatically`     | 自动检查更新，默认 `false`              |
 | `application` | `check_for_updates_interval_hours`    | 自动检查间隔小时数，`[1, 8760]`         |
 | `appearance`  | `theme`                               | `system`、`light` 或 `dark`            |
 | `appearance`  | `language`                            | UI locale                              |
@@ -68,6 +68,7 @@ shortcuts
 首次启动创建当前 v1 配置时，`overlay.click_through` 默认为 `false`。用户后续通过
 typed settings command 修改该值后，仍按配置 revision 原子提交并在重启时从当前环境恢复。
 
+`application.check_for_updates_automatically` 默认 `false`；新配置不会在启动时主动检查更新。
 `application.check_for_updates_interval_hours` 以整小时存储，默认 `24`，接受 `1..=8760`。
 关闭 `check_for_updates_automatically` 只会停止调度，不清空已保存的间隔；重新开启后继续使用该值。
 该字段只控制自动检查，不改变手动检查入口。

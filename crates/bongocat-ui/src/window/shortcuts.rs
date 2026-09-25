@@ -282,7 +282,7 @@ impl SettingsView {
         );
     }
 
-    /// Play the behavior a model shortcut row binds.
+    /// Play the behavior a model behavior shortcut row binds.
     ///
     /// The play control is the only way to see what a recorded chord will do
     /// before pressing it, so the request carries the model and behavior the row

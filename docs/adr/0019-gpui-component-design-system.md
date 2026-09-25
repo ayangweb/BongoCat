@@ -28,8 +28,7 @@ Native 设置窗口需要与固定的 `gpui 0.2.2` 兼容的主题、输入和�
   `Application::with_assets` 注册给 GPUI；应用不自维护重复的 `icons/*.svg` 文件。
 - UI 使用组件库的 `Settings`、`SettingPage`、`SettingGroup`、`SettingItem`、`SettingField`，以及
   `Button`、`Switch`、`Tag`、`Input` 和 `NumberInput`。偏好设置页面由官方 Settings
-  sidebar 管理，页面内按职责使用 SettingGroup；Settings 自带的搜索会按 SettingItem 标题和
-  描述过滤，业务关键词放入描述以保持搜索索引与显示文案同源。
+  sidebar 管理，页面内按职责使用 SettingGroup；Settings 自带的搜索会按 SettingItem 标题、描述和显式关键词过滤，页面/分组名称由 ADR-0066 作为关键词提供，业务关键词不再塞进可见描述。
   `InputState` 只持有编辑状态；`InputEvent`/`NumberInputEvent` 转换为现有 typed command，
   runtime snapshot 仍是持久状态事实来源。
 - `gpui-component 0.5.2` 没有普通 `Card` primitive；`HoverCard` 是悬浮预览组件而非内容容器。

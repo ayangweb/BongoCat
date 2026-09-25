@@ -60,6 +60,8 @@ mod model_mver_dialog;
 use model_import_card::ModelImportCard;
 use model_mver_dialog::build_mver_mode_dialog;
 mod models;
+mod navigation;
+use navigation::{SettingsNavigationPage, model_library_search_keywords};
 mod render;
 mod setting_gate;
 use setting_gate::SettingGate;
@@ -1850,7 +1852,7 @@ fn startup_item_presentation(
         None => StartupItemPresentation {
             description: Some(bongocat_i18n::text(
                 language.catalog_locale(),
-                "settings.application.startup.checking",
+                "settings.app_system.startup.checking",
             )),
             enabled: false,
             action: StartupItemAction::None,
@@ -1859,7 +1861,7 @@ fn startup_item_presentation(
         Some(SettingsStartupItemStatus::ReadError(_)) => StartupItemPresentation {
             description: Some(bongocat_i18n::text(
                 language.catalog_locale(),
-                "settings.application.startup.unavailable",
+                "settings.app_system.startup.unavailable",
             )),
             enabled: false,
             action: StartupItemAction::Retry,
@@ -1885,7 +1887,7 @@ fn startup_item_presentation(
             StartupItemPresentation {
                 description: Some(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.application.startup.stale",
+                    "settings.app_system.startup.stale",
                 )),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
@@ -1896,7 +1898,7 @@ fn startup_item_presentation(
             StartupItemPresentation {
                 description: Some(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.application.startup.requires_approval",
+                    "settings.app_system.startup.requires_approval",
                 )),
                 enabled: true,
                 action: StartupItemAction::SetEnabled(false),
@@ -1907,7 +1909,7 @@ fn startup_item_presentation(
             StartupItemPresentation {
                 description: Some(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.application.startup.not_found",
+                    "settings.app_system.startup.not_found",
                 )),
                 enabled: false,
                 action: StartupItemAction::SetEnabled(true),
@@ -1919,21 +1921,21 @@ fn startup_item_presentation(
                 SettingsStartupItemUnsupportedReason::Platform => (
                     Some(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.application.startup.unsupported_platform",
+                        "settings.app_system.startup.unsupported_platform",
                     )),
                     false,
                 ),
                 SettingsStartupItemUnsupportedReason::OperatingSystem => (
                     Some(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.application.startup.unsupported_os",
+                        "settings.app_system.startup.unsupported_os",
                     )),
                     false,
                 ),
                 SettingsStartupItemUnsupportedReason::BuildEnvironment => (
                     Some(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.application.startup.unsupported_build",
+                        "settings.app_system.startup.unsupported_build",
                     )),
                     true,
                 ),

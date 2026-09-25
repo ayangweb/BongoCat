@@ -1542,12 +1542,12 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                     ))
                     .into());
                 }
-                let mut general_verified = false;
-                let mut last_general_error = None;
+                let mut appearance_verified = false;
+                let mut last_appearance_error = None;
                 for _ in 0..200 {
-                    let general =
+                    let appearance =
                         window.update(cx, |view, _, cx| {
-                            view.show_general_page_for_smoke(cx)?;
+                            view.show_appearance_page_for_smoke(cx)?;
                             if view.resolved_language_for_smoke()
                                 != Some(SettingsLanguage::ChineseSimplified)
                             {
@@ -1558,25 +1558,25 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Ok(())
                         });
-                    match general {
+                    match appearance {
                         Ok(Ok(())) => {
-                            general_verified = true;
+                            appearance_verified = true;
                             break;
                         }
-                        Ok(Err(error)) => last_general_error = Some(error),
-                        Err(error) => last_general_error = Some(error.to_string()),
+                        Ok(Err(error)) => last_appearance_error = Some(error),
+                        Err(error) => last_appearance_error = Some(error.to_string()),
                     }
                     Timer::after(Duration::from_millis(10)).await;
                 }
-                if !general_verified {
-                    let detail = last_general_error
+                if !appearance_verified {
+                    let detail = last_appearance_error
                         .unwrap_or_else(|| "settings view was unavailable".to_owned());
                     return Err(io::Error::other(format!(
                         "settings window did not apply the configured theme and localization: {detail}"
                     ))
                     .into());
                 }
-                write_smoke_status("Chinese General localization verified")?;
+                write_smoke_status("Chinese Appearance and language localization verified")?;
                 let mut shortcuts_verified = false;
                 let mut last_shortcuts_error = None;
                 for _ in 0..200 {
@@ -1607,7 +1607,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                 for _ in 0..200 {
                     let models =
                         window.update(cx, |view, _, cx| {
-                            view.show_models_localization_for_smoke(cx)
+                            view.show_model_library_localization_for_smoke(cx)
                         });
                     match models {
                         Ok(Ok(())) => {
@@ -1627,7 +1627,7 @@ fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error::Error>> {
                     ))
                     .into());
                 }
-                write_smoke_status("Chinese Models localization verified")?;
+                write_smoke_status("Chinese Model library localization verified")?;
                 let mut initial = None;
                 let mut last_initial = window_state.placement();
                 for _ in 0..200 {
@@ -3314,7 +3314,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cx.spawn(async move |cx| {
                 Timer::after(Duration::from_millis(500)).await;
                 // Wait for the first frame instead of assuming the delay covered it.
-                // The general page asserts on `applied_theme`, which is only assigned
+                // The appearance page asserts on `applied_theme`, which is only assigned
                 // during a render; on a loaded machine 500ms was not always enough, so
                 // the assertion failed and — because the page calls were chained with
                 // `?` — the remaining pages were never exercised at all.
@@ -3358,7 +3358,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if run_options.models_page_smoke {
                     let models_page =
                         update_settings_window(cx, &smoke_window, |view, _, cx| {
-                            view.show_models_page_for_smoke(cx)
+                            view.show_model_library_page_for_smoke(cx)
                         })
                         .await;
                     match models_page {
@@ -4457,7 +4457,7 @@ mod tests {
     #[test]
     fn models_page_smoke_is_opt_in() {
         let options = RunOptions::parse(["--models-page-smoke".to_owned()])
-            .expect("models page smoke options");
+            .expect("model library page smoke options");
         assert!(options.models_page_smoke);
         assert!(options.settings_window_smoke);
         assert!(!options.hidden_model_switch_smoke);

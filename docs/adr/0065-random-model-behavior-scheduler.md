@@ -30,8 +30,8 @@ GPUI 或 renderer 自己决定业务行为的情况下启用周期性随机播�
   开始有界等待，已接纳的自动副作用在 worker 进入 shutdown drain 前完成，后续请求不会插入新的
   随机行为。显式停止的非零 motion fade 即使 overlay 隐藏、没有下一帧，也在注入单调时钟达到
   fade duration 后视为 settled。
-- settings 页面把两个字段放在 Interaction 的模型分组中；间隔控件在开关关闭时置灰但保留
-  已保存的值。配置写入仍使用原子、revision-checked 的 settings service。
+- settings 页面把两个字段放在独立的 Model behavior 页面中（ADR-0066）；间隔控件在
+  开关关闭时置灰但保留已保存的值。配置写入仍使用原子、revision-checked 的 settings service。
 
 ## 验证
 

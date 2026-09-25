@@ -174,7 +174,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   owner 线程切换设置窗口可见性：窗口已显示时隐藏，两个平台都复用同一个预渲染窗口，窗口不存在
   时才创建并显示。forwarder 必须支持有界停止与 join。
 - 快捷键页面由两个带标题的 group 组成，每个 group 的第一行是它自己的门禁开关：`启用窗口快捷键`
-  （`shortcuts.commands_enabled`，默认 `true`）与 `启用模型快捷键`
+  （`shortcuts.commands_enabled`，默认 `true`）与 `启用模型行为快捷键`
   （`model.enable_behavior_shortcuts`，默认 `false`）。两个门禁彼此独立，各自只决定对应的一半是否
   进入活动的 `CompiledShortcuts`：都不清空、不改写配置中的绑定，因此重新打开时无需重录即可恢复
   全部已校验绑定。门禁的唯一实现点是 `ShortcutConfig::active_bindings`——"此刻生效的绑定"的唯一
@@ -198,7 +198,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   的行为永不重写，因此重复激活是幂等的，只有用户尚未录制的行为会被补上；同一作用域内已被占用的组合键
   跳过而非重用，否则 `shortcuts.conflict` 会让整份配置失效。分配结果随选中模型同一次 commit 落盘，
   且不依赖 `model.enable_behavior_shortcuts`——绑定在快捷键页面始终可见，门禁关闭时该分组行置灰
-  不可改（ADR-0053），是否进入平台匹配表则由同一分组第一行的 `启用模型快捷键` 开关决定。
+  不可改（ADR-0053），是否进入平台匹配表则由同一分组第一行的 `启用模型行为快捷键` 开关决定。
 - 只有当前模型的绑定进入平台编译表。配置按模型保存绑定且跨模型允许复用同一组合键，所以
   `shortcuts.conflict` 是作用域内的判定（命令内唯一、同一模型内唯一、模型绑定不得与命令冲突），
   整份配置本身不是一张无歧义的表：`active_shortcuts` 先按当前模型投影再编译。`prepare_model` 与
@@ -493,10 +493,14 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   的 not-started/running/permission-denied/backend-unavailable/failed/stopped 状态，不携带平台错误文本。
   平台 owner 每次产品启动只尝试一次；权限拒绝或 backend 启动失败不阻止 overlay/runtime，settings
   health 进入 degraded 并以匿名状态进入 revisioned snapshot，不在后台循环请求权限或重启服务。
-- 设置窗口只展示用户可操作的设置，导航分两级。一级页面按领域划分，固定为 General、Models、
-  Model window、Interaction、Input、Shortcuts、Application、About 八页，每页对应一个用户能直接说出的领域；一级页面内
-  用带标题的 group 组织内容，同一页面下存在多于一个带标题的 group 时 sidebar 把它们渲染为二级菜单项，
-  点击滚动到该分组。General 因此只保留外观（主题、语言），不再承载其它领域的分组。
+- 设置窗口只展示用户可操作的设置，导航分两级（ADR-0066）。一级页面按用户任务固定为
+  Appearance & language、Model library、Model behavior、Model window、Input & interaction、
+  Shortcuts、App & system 七个业务分类，About 作为最后的工具入口。Appearance & language 直接展示主题与
+  语言，不再重复同名分组；Model library 单独展示模型卡片，Model behavior 单独展示模型镜像、动作音效和随机行为，模型行为快捷键仍留在 Shortcuts；Input & interaction 按 Mouse、Keyboard、
+  Gamepad 分组；App & system 按 Startup & desktop、Updates、Logging 分组。Updates 与 Logging 的设置项只保留标题和控件，
+  不显示重复描述。Model window 继续按 Window behavior、Window appearance、Window performance 分组。同一页面下存在多于一个带标题的 group
+  时 sidebar 把它们渲染为二级菜单项，点击滚动到该分组。页面与分组标题同时作为设置搜索关键词，
+  旧页面名保留为只搜索的别名；模型库还索引当前模型显示名。About 位于同一菜单的最后一项。
   配置损坏在 settings window 出现前完成 fallback，不显示配置恢复横幅、按钮或重启提示。
   原 Diagnostics 页面已移除，输入可靠性计数、runtime/renderer 状态和 build 标识只留在
   app-owned 日志和匿名 diagnostics export 里：周期性刷新只服务于界面上仍在显示的数字。
@@ -1135,8 +1139,9 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 安装后是否需要重启进程是**平台事实**：macOS 由库整包替换 `.app`，运行中的进程此后执行已删除的
   文件（预设模型目录是惰性读盘的），因此安装成功后自动重启——先按 §5.3 的顺序完成产品 shutdown，
   再 `exec` 新构建；Windows 由安装器 `/R` 重启，`Installed` 在该平台不可观测。
-- 自动检查由 GPUI 侧调度（开关与间隔只有设置服务读得到）：启动后等 10 秒首次检查，之后按
-  `application.check_for_updates_interval_hours` 等待下一次检查；该整小时字段默认 `24`、范围为
+- 自动检查由 GPUI 侧调度（开关与间隔只有设置服务读得到）：新配置的
+  `application.check_for_updates_automatically` 默认为 `false`，不会在启动时主动检查；用户打开后，
+  启动后等 10 秒首次检查，之后按 `application.check_for_updates_interval_hours` 等待下一次检查；该整小时字段默认 `24`、范围为
   `1..=8760`，并随当前 v1 配置持久化。调度器以最近一次实际派发为期限锚点，并以低成本设置轮询
   重新读取间隔，因此修改间隔会重排下一次期限（缩短后若已到期则立即检查）。发现可用更新且窗口未
   打开时打开更新窗口。关闭自动检查不会改写已保存间隔；手动检查不受该字段影响。
@@ -1371,6 +1376,12 @@ Windows 首发采用固定、可审计 NSIS per-user installer，不请求管理
 「独立 Rust update helper 只接收已验证 artifact」已随 ADR-0029 作废：不再有独立 helper，替换由
 更新库在进程内完成（Windows 上由库运行下载到的安装器），installer 权限、原子替换与 rollback 仍是
 独立发布门禁。
+
+### ADR-0066：任务导向的设置信息架构
+
+设置侧边栏固定为七个业务分类（外观与语言、模型库、模型行为、模型窗口、输入与交互、快捷键、应用与系统）
+加最后的关于入口；模型库与模型行为各自独立成页，键鼠/手柄、启动/更新/日志形成明确的二级分组。
+页面与分组标题进入搜索关键词，旧页面名作为搜索别名；不增加第三级导航、常用页或高级页。
 
 ## 17. 实施阶段
 

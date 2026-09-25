@@ -321,7 +321,7 @@ impl Default for NativeConfig {
             application: ApplicationConfig {
                 show_taskbar_icon: true,
                 show_status_icon: true,
-                check_for_updates_automatically: true,
+                check_for_updates_automatically: false,
                 check_for_updates_interval_hours: DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
             },
             appearance: AppearanceConfig {

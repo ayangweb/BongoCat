@@ -4,26 +4,26 @@
     "settings": {
       "title": "BongoCat 设置"
     },
-    "general": {
-      "title": "通用"
+    "appearance": {
+      "title": "外观与语言"
     },
-    "models": {
-      "title": "模型管理"
+    "model_library": {
+      "title": "模型库"
+    },
+    "model_behavior": {
+      "title": "模型行为"
     },
     "model_window": {
       "title": "模型窗口"
     },
-    "interaction": {
-      "title": "交互"
-    },
-    "input": {
-      "title": "输入"
+    "input_interaction": {
+      "title": "输入与交互"
     },
     "shortcuts": {
       "title": "快捷键"
     },
-    "application": {
-      "title": "应用"
+    "app_system": {
+      "title": "应用与系统"
     },
     "about": {
       "title": "关于"
@@ -56,7 +56,6 @@
     }
   },
   "about": {
-    "page_title": "关于 BongoCat",
     "product_information": {
       "title": "产品信息",
       "version": {
@@ -247,8 +246,8 @@
       "enable_window_shortcuts": {
         "label": "启用窗口快捷键"
       },
-      "enable_model_shortcuts": {
-        "label": "启用模型快捷键"
+      "enable_model_behavior_shortcuts": {
+        "label": "启用模型行为快捷键"
       }
     },
     "actions": {
@@ -318,7 +317,6 @@
   },
   "settings": {
     "appearance": {
-      "title": "外观",
       "theme": {
         "label": "主题",
         "options": {
@@ -344,7 +342,7 @@
         "title": "窗口外观"
       },
       "performance": {
-        "title": "性能"
+        "title": "窗口性能"
       },
       "visibility": {
         "label": "显示模型窗口"
@@ -364,7 +362,7 @@
         "description": "鼠标停在模型窗口上时淡出，移开后恢复。"
       },
       "hide_on_mouse_hover_delay": {
-        "label": "悬停隐藏延迟（秒）",
+        "label": "鼠标悬停时隐藏延迟（秒）",
         "description": "鼠标停留在模型窗口上多久后隐藏，范围 0 至 60 秒；0 表示立即隐藏。"
       },
       "scale": {
@@ -384,64 +382,62 @@
         "description": "将动画和模型窗口的刷新率限制为每秒 15 至 240 帧。"
       }
     },
-    "model_interaction": {
-      "model": {
-        "title": "模型"
-      },
-      "mouse": {
-        "title": "鼠标"
-      },
-      "mirror_model": {
-        "label": "水平镜像模型"
-      },
-      "motion_audio": {
-        "label": "播放动作音效"
-      },
-      "random_behavior_enabled": {
-        "label": "随机播放动作或表情"
-      },
-      "random_behavior_interval": {
-        "label": "随机播放动作或表情间隔（秒）"
-      },
-      "mirror_mouse_tracking": {
-        "label": "镜像鼠标跟随"
-      },
-      "ignore_mouse_input": {
-        "label": "忽略鼠标输入"
+    "models": {
+      "behavior": {
+        "mirror_model": {
+          "label": "水平镜像模型"
+        },
+        "motion_audio": {
+          "label": "播放动作音效"
+        },
+        "random_behavior_enabled": {
+          "label": "随机播放动作或表情"
+        },
+        "random_behavior_interval": {
+          "label": "随机播放动作或表情间隔（秒）"
+        }
       }
     },
-    "input": {
-      "keyboard": {
-        "title": "键盘"
+    "input_interaction": {
+      "mouse": {
+        "title": "鼠标",
+        "mirror_mouse_tracking": {
+          "label": "镜像鼠标跟随"
+        },
+        "ignore_mouse_input": {
+          "label": "忽略鼠标输入"
+        }
       },
-      "key_release_timeout": {
-        "label": "按键释放超时（毫秒）",
-        "description": "长时间收不到按键松开事件时自动松开，避免按键一直卡住；0 表示不自动松开。"
+      "keyboard": {
+        "title": "键盘",
+        "key_release_timeout": {
+          "label": "按键释放超时（毫秒）",
+          "description": "长时间收不到按键松开事件时自动松开，避免按键一直卡住；0 表示不自动松开。"
+        }
       },
       "gamepad": {
-        "title": "手柄"
-      },
-      "gamepad_stick_dead_zone": {
-        "label": "手柄摇杆死区",
-        "description": "忽略轻微的摇杆移动。"
-      },
-      "gamepad_trigger_dead_zone": {
-        "label": "手柄扳机死区",
-        "description": "忽略轻微的扳机移动。"
+        "title": "手柄",
+        "stick_dead_zone": {
+          "label": "手柄摇杆死区",
+          "description": "忽略轻微的摇杆移动。"
+        },
+        "trigger_dead_zone": {
+          "label": "手柄扳机死区",
+          "description": "忽略轻微的扳机移动。"
+        }
       }
     },
-    "application": {
-      "system": {
-        "title": "系统图标"
+    "app_system": {
+      "desktop": {
+        "title": "启动与桌面"
       },
       "updates": {
-        "title": "启动与更新"
+        "title": "更新"
       },
       "logging": {
         "title": "日志",
         "level": {
           "label": "日志级别",
-          "description": "级别越高，记录的细节越多。",
           "options": {
             "error": "仅错误",
             "warn": "错误和警告",
@@ -451,8 +447,7 @@
           }
         },
         "retention_days": {
-          "label": "日志保留天数",
-          "description": "删除早于指定天数的日志；日志总大小仍受安全上限限制。"
+          "label": "日志保留天数"
         }
       },
       "status_icon": {
@@ -466,10 +461,8 @@
       },
       "auto_update": {
         "label": "自动检查更新",
-        "description": "启动时及按设定间隔检查更新。",
         "interval": {
-          "label": "自动检查更新间隔（小时）",
-          "description": "自动检查更新后等待 1–8760 小时再检查。"
+          "label": "自动检查更新间隔（小时）"
         }
       },
       "open_at_login": {

@@ -1366,7 +1366,7 @@ impl Application {
         Ok(snapshot)
     }
 
-    /// Every model the Models page can show, in the order the page shows them:
+    /// Every model the Model library page can show, in the order the page shows them:
     /// the build's presets first, then the models the user imported.
     ///
     /// The presets are the three input modes the build ships, and the page
@@ -2341,7 +2341,7 @@ fn preset_model_input_mode(id: &str) -> Option<ModelInputMode> {
     }
 }
 
-/// Where a preset model sits on the Models page: the position of the input mode
+/// Where a preset model sits on the Model library page: the position of the input mode
 /// it belongs to.
 ///
 /// The build ships one preset per mode, and the modes already declare their own
@@ -2364,7 +2364,7 @@ fn preset_model_order(id: &str) -> usize {
         .unwrap_or(MverInputMode::ALL.len())
 }
 
-/// Where an installed model sits on the Models page: the order the user
+/// Where an installed model sits on the Model library page: the order the user
 /// imported it in.
 ///
 /// The configuration's record list is that order. An import appends its record
@@ -4961,7 +4961,7 @@ mod tests {
 
     /// Regression for a model deleted by hand in the file manager: browsing the
     /// models root leaves `.DS_Store` behind, and that single foreign file used
-    /// to fail the whole catalog scan, which turned the Models page into an
+    /// to fail the whole catalog scan, which turned the Model library page into an
     /// unusable "catalog unavailable" state and also stopped stale metadata from
     /// being pruned.
     #[test]
@@ -5016,7 +5016,7 @@ mod tests {
         application.shutdown().expect("clean shutdown");
     }
 
-    /// The Models page lists the build's presets first, in mode order, and the
+    /// The Model library page lists the build's presets first, in mode order, and the
     /// imported models after them in the order they were imported.
     ///
     /// Both halves used to be one list sorted by id, which put the presets in
@@ -5344,7 +5344,7 @@ mod tests {
             .collect()
     }
 
-    /// Every catalog id in the order the Models page shows them.
+    /// Every catalog id in the order the Model library page shows them.
     fn catalog_ids(application: &Application) -> Vec<String> {
         application
             .model_catalog()

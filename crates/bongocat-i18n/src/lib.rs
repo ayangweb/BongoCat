@@ -67,7 +67,7 @@ pub fn format_text(locale: &str, key: &str, values: &[(&str, String)]) -> String
 /// Stable identifier for the platform the catalog text targets.
 ///
 /// Returned as the lower-case snake-case suffix used in catalog overrides such
-/// as `settings.application.status_icon.label.macos`. Add a new value when a
+/// as `settings.app_system.status_icon.label.macos`. Add a new value when a
 /// newly supported platform needs its own copy of an otherwise-shared string.
 pub const fn current_platform_id() -> &'static str {
     #[cfg(target_os = "macos")]
@@ -449,20 +449,20 @@ mod tests {
         // the platform-relative key returns the platform-specific copy on the
         // build host and the fallback copy on every other platform.
         let expected_override = match current_platform_id() {
-            "macos" => text("en-US", "settings.application.status_icon.label.macos"),
-            "windows" => text("en-US", "settings.application.status_icon.label.windows"),
-            _ => text("en-US", "settings.application.status_icon.label"),
+            "macos" => text("en-US", "settings.app_system.status_icon.label.macos"),
+            "windows" => text("en-US", "settings.app_system.status_icon.label.windows"),
+            _ => text("en-US", "settings.app_system.status_icon.label"),
         };
         assert_eq!(
-            platform_text("en-US", "settings.application.status_icon.label"),
+            platform_text("en-US", "settings.app_system.status_icon.label"),
             expected_override
         );
         assert_eq!(
-            platform_text("zh-CN", "settings.application.status_icon.label"),
+            platform_text("zh-CN", "settings.app_system.status_icon.label"),
             match current_platform_id() {
-                "macos" => text("zh-CN", "settings.application.status_icon.label.macos"),
-                "windows" => text("zh-CN", "settings.application.status_icon.label.windows"),
-                _ => text("zh-CN", "settings.application.status_icon.label"),
+                "macos" => text("zh-CN", "settings.app_system.status_icon.label.macos"),
+                "windows" => text("zh-CN", "settings.app_system.status_icon.label.windows"),
+                _ => text("zh-CN", "settings.app_system.status_icon.label"),
             }
         );
     }

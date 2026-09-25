@@ -1,7 +1,7 @@
 # ADR-0055: 导入后的模型封面由渲染一帧截取
 
 状态：已接受（2026-09-22）
-依赖：ADR-0002（GPUI for Settings UI）、ADR-0003（Native Overlay Renderers）、ADR-0037（在应用内导入 BongoCatMver 模型）、ADR-0047（模型管理页只做选择与元数据编辑）
+依赖：ADR-0002（GPUI for Settings UI）、ADR-0003（Native Overlay Renderers）、ADR-0037（在应用内导入 BongoCatMver 模型）、ADR-0047（模型库只做选择与元数据编辑）
 
 ## 背景
 

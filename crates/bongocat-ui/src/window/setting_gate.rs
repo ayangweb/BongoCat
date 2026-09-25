@@ -1,6 +1,6 @@
 //! The unified rule behind every "a switch gates the settings it controls"
 //! scenario — the hover-hide delay on the Overlay page, the automatic update
-//! interval on the Application page, the two shortcut gates on the Shortcuts
+//! interval on the App & system page, the two shortcut gates on the Shortcuts
 //! page, and every future one.
 //!
 //! A gate binds one switch to the settings below it. The rule fixes the

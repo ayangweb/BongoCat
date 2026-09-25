@@ -199,7 +199,7 @@ mod global {
     /// every one of them moves to the incoming model. A mirror that answered
     /// "already registered" for such a chord would keep the platform pointing at
     /// the outgoing model, and the dispatcher drops those targets as an inactive
-    /// model — the incoming model's shortcuts would silently do nothing.
+    /// model — the incoming model's behavior shortcuts would silently do nothing.
     fn plan_registrations(
         registered: &HashMap<u32, Registration>,
         desired: &[Registration],

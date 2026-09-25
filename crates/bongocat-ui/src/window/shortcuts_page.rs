@@ -45,7 +45,7 @@ impl ShortcutScope {
             ),
             Self::Model => bongocat_i18n::text(
                 language.catalog_locale(),
-                "shortcuts.switches.enable_model_shortcuts.label",
+                "shortcuts.switches.enable_model_behavior_shortcuts.label",
             ),
         }
     }
@@ -65,7 +65,7 @@ impl ShortcutScope {
     /// The switch that turns this scope's bindings off and on again.
     ///
     /// It is the first row of the scope's group, above the bindings it gates,
-    /// because the gate used to live on the Interaction page and a list of
+    /// because the gate used to live on the old Interaction page and a list of
     /// chords that silently does nothing is the state that page produced.
     /// Switching it back on never needs the chords to be recorded again: no
     /// gate rewrites the bindings, they only stay out of the platform table.
@@ -177,8 +177,8 @@ pub(super) fn group(
     // element has no title, so the page and scope names are passed as keywords
     // to keep the page reachable through the sidebar's search box.
     let keywords = [
-        bongocat_i18n::text(language.catalog_locale(), "navigation.shortcuts.title").to_owned(),
-        scope.title(language).to_owned(),
+        SettingsNavigationPage::Shortcuts.title(language),
+        scope.title(language).into(),
     ];
     SettingGroup::new()
         .title(scope.title(language))

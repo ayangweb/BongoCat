@@ -1,5 +1,14 @@
 use super::*;
-use gpui_kit::{FileDropEvent, assets::IconName, canvas};
+use gpui_kit::{FileDropEvent, canvas};
+
+fn with_search_keywords<I>(items: I, keywords: &[SharedString]) -> impl Iterator<Item = SettingItem>
+where
+    I: IntoIterator<Item = SettingItem>,
+{
+    items
+        .into_iter()
+        .map(move |item| item.keywords(keywords.iter().cloned()))
+}
 
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -42,7 +51,7 @@ impl Render for SettingsView {
         // not feed any gate or row: it flips on and off around every save and
         // visibly dims and re-enables the page on each control change, which
         // reads as the page refreshing. `editing_blocked` is that one
-        // predicate, shared by every page's gate — the General page's selects
+        // predicate, shared by every page's gate — the Appearance page's selects
         // and the startup switch below read it exactly like the gated rows do
         // (see `setting_gate` for the unified rule).
         let editing_blocked = self.editing_blocked(snapshot.as_ref());
@@ -139,23 +148,16 @@ impl Render for SettingsView {
             language,
         );
 
-        // The landing page keeps the two preferences every user reaches for
-        // first. The other four concerns that used to share this page — the
-        // model window, how the model reacts, the input devices and the
-        // app-level integrations — each have a page now.
-        let general_page = SettingPage::new(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.general.title",
-        ))
-        .icon(IconName::Settings)
-        .default_open(true)
-        .groups(vec![
-            SettingGroup::new()
-                .title(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "settings.appearance.title",
-                ))
-                .items(vec![
+        // Theme and language stay directly on the first page. Repeating an
+        // "Appearance" group below an "Appearance & language" page title would
+        // add a level without helping the user find either control.
+        let appearance_keywords =
+            SettingsNavigationPage::Appearance.search_keywords(language, std::iter::empty());
+        let appearance_page = SettingPage::new(SettingsNavigationPage::Appearance.title(language))
+            .icon(SettingsNavigationPage::Appearance.icon())
+            .default_open(true)
+            .group(SettingGroup::new().items(with_search_keywords(
+                vec![
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -186,24 +188,29 @@ impl Render for SettingsView {
                             }
                         }),
                     ),
-                ]),
-        ]);
+                ],
+                &appearance_keywords,
+            )));
 
         // The model window itself: how it behaves on the desktop, how it looks,
-        // and how often it draws. The motion audio moved to Interaction, where
-        // it describes that page.
-        let overlay_page = SettingPage::new(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.model_window.title",
-        ))
-        .icon(IconName::AppWindow)
-        .groups(vec![
-            SettingGroup::new()
-                .title(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "settings.overlay.behavior.title",
-                ))
-                .items(vec![
+        // and how often it draws. Model-wide mirroring, audio, and random
+        // behavior live with the model instead of being split across pages.
+        let model_window_behavior_keywords = SettingsNavigationPage::ModelWindow
+            .search_keywords(language, ["settings.overlay.behavior.title"]);
+        let model_window_appearance_keywords = SettingsNavigationPage::ModelWindow
+            .search_keywords(language, ["settings.overlay.appearance.title"]);
+        let model_window_performance_keywords = SettingsNavigationPage::ModelWindow
+            .search_keywords(language, ["settings.overlay.performance.title"]);
+        let overlay_page = SettingPage::new(SettingsNavigationPage::ModelWindow.title(language))
+            .icon(SettingsNavigationPage::ModelWindow.icon())
+            .groups(vec![
+                SettingGroup::new()
+                    .title(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.behavior.title",
+                    ))
+                    .items(with_search_keywords(
+                        vec![
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -389,302 +396,311 @@ impl Render for SettingsView {
                         "settings.overlay.hide_on_mouse_hover_delay.description",
                     ))
                     .disabled(hover_hide_delay_gate.disables_controls()),
-                ]),
-            SettingGroup::new()
-                .title(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "settings.overlay.appearance.title",
-                ))
-                .items(vec![
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.overlay.scale.label",
-                        ),
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 25.0,
-                                max: 400.0,
-                                step: 25.0,
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .map_or(100.0, |s| f64::from(s.overlay.scale_percent))
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_overlay_scale_value(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.overlay.scale.description",
+                ],
+                        &model_window_behavior_keywords,
                     )),
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.overlay.opacity.label",
-                        ),
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 1.0,
-                                max: 100.0,
-                                step: 10.0,
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .map_or(100.0, |s| f64::from(s.overlay.opacity_percent))
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_overlay_opacity_value(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(bongocat_i18n::text(
+                SettingGroup::new()
+                    .title(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.overlay.opacity.description",
-                    )),
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.overlay.corner_radius.label",
-                        ),
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 0.0,
-                                max: 50.0,
-                                step: 5.0,
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .map_or(0.0, |s| f64::from(s.overlay.corner_radius_percent))
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_overlay_corner_radius_value(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.overlay.corner_radius.description",
-                    )),
-                ]),
-            SettingGroup::new()
-                .title(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "settings.overlay.performance.title",
-                ))
-                .items(vec![
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.overlay.maximum_fps.label",
-                        ),
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 15.0,
-                                max: 240.0,
-                                step: 15.0,
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .map_or(60.0, |s| f64::from(s.maximum_fps))
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_maximum_fps_value(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.overlay.maximum_fps.description",
-                    )),
-                ]),
-        ]);
-
-        // How the model reacts to what the user does: the two mirror switches
-        // and the motion audio sit with the model they belong to, and the
-        // pointer pair stays apart because it is about following the cursor.
-        // The model behaviour shortcut gate is not here: both shortcut gates
-        // live on the Shortcuts page, directly above the rows they gate, so
-        // nobody has to find the one that silences a list shown elsewhere.
-        let interaction_page = SettingPage::new(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.interaction.title",
-        ))
-        .icon(IconName::MousePointer2)
-        .groups(vec![
-            SettingGroup::new()
-                .title(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "settings.model_interaction.model.title",
-                ))
-                .items(vec![
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.model_interaction.mirror_model.label",
-                        ),
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.model_settings.mirror)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        if let Some(s) = view.snapshot.as_ref() {
-                                            let mut settings = s.model_settings;
-                                            settings.mirror = value;
-                                            view.set_model_settings(settings, cx);
+                        "settings.overlay.appearance.title",
+                    ))
+                    .items(with_search_keywords(
+                        vec![
+                            SettingItem::new(
+                                bongocat_i18n::text(
+                                    language.catalog_locale(),
+                                    "settings.overlay.scale.label",
+                                ),
+                                SettingField::number_input(
+                                    NumberFieldOptions {
+                                        min: 25.0,
+                                        max: 400.0,
+                                        step: 25.0,
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |app| {
+                                            view.read(app).snapshot.as_ref().map_or(100.0, |s| {
+                                                f64::from(s.overlay.scale_percent)
+                                            })
                                         }
-                                    });
-                                }
-                            },
-                        ),
-                    ),
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.model_interaction.motion_audio.label",
-                        ),
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.motion_audio_enabled)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_motion_audio_enabled(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    ),
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.model_interaction.random_behavior_enabled.label",
-                        ),
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.random_behavior.enabled)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_random_behavior_enabled(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .disabled(random_behavior_gate.disables_switch()),
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.model_interaction.random_behavior_interval.label",
-                        ),
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: f64::from(
-                                    bongocat_config::MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |value, app| {
+                                            view.update(app, |view, cx| {
+                                                view.set_overlay_scale_value(value, cx)
+                                            });
+                                        }
+                                    },
                                 ),
-                                max: f64::from(
-                                    bongocat_config::MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+                            )
+                            .description(bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.overlay.scale.description",
+                            )),
+                            SettingItem::new(
+                                bongocat_i18n::text(
+                                    language.catalog_locale(),
+                                    "settings.overlay.opacity.label",
                                 ),
-                                step: 1.0,
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app).snapshot.as_ref().map_or(30.0, |snapshot| {
-                                        f64::from(snapshot.random_behavior.interval_seconds)
-                                    })
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_random_behavior_interval_value(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .disabled(random_behavior_gate.disables_controls()),
-                ]),
+                                SettingField::number_input(
+                                    NumberFieldOptions {
+                                        min: 1.0,
+                                        max: 100.0,
+                                        step: 10.0,
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |app| {
+                                            view.read(app).snapshot.as_ref().map_or(100.0, |s| {
+                                                f64::from(s.overlay.opacity_percent)
+                                            })
+                                        }
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |value, app| {
+                                            view.update(app, |view, cx| {
+                                                view.set_overlay_opacity_value(value, cx)
+                                            });
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.overlay.opacity.description",
+                            )),
+                            SettingItem::new(
+                                bongocat_i18n::text(
+                                    language.catalog_locale(),
+                                    "settings.overlay.corner_radius.label",
+                                ),
+                                SettingField::number_input(
+                                    NumberFieldOptions {
+                                        min: 0.0,
+                                        max: 50.0,
+                                        step: 5.0,
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |app| {
+                                            view.read(app).snapshot.as_ref().map_or(0.0, |s| {
+                                                f64::from(s.overlay.corner_radius_percent)
+                                            })
+                                        }
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |value, app| {
+                                            view.update(app, |view, cx| {
+                                                view.set_overlay_corner_radius_value(value, cx)
+                                            });
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.overlay.corner_radius.description",
+                            )),
+                        ],
+                        &model_window_appearance_keywords,
+                    )),
+                SettingGroup::new()
+                    .title(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.overlay.performance.title",
+                    ))
+                    .items(with_search_keywords(
+                        vec![
+                            SettingItem::new(
+                                bongocat_i18n::text(
+                                    language.catalog_locale(),
+                                    "settings.overlay.maximum_fps.label",
+                                ),
+                                SettingField::number_input(
+                                    NumberFieldOptions {
+                                        min: 15.0,
+                                        max: 240.0,
+                                        step: 15.0,
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |app| {
+                                            view.read(app)
+                                                .snapshot
+                                                .as_ref()
+                                                .map_or(60.0, |s| f64::from(s.maximum_fps))
+                                        }
+                                    },
+                                    {
+                                        let view = view_entity.clone();
+                                        move |value, app| {
+                                            view.update(app, |view, cx| {
+                                                view.set_maximum_fps_value(value, cx)
+                                            });
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.overlay.maximum_fps.description",
+                            )),
+                        ],
+                        &model_window_performance_keywords,
+                    )),
+            ]);
+
+        // Model-wide display and automatic behavior belong with the model the
+        // user is choosing. Behavior shortcut bindings remain on Shortcuts:
+        // that page owns discrete command mappings and their two gates.
+        let model_behavior_keywords =
+            SettingsNavigationPage::ModelBehavior.search_keywords(language, std::iter::empty());
+        let model_behavior_group = SettingGroup::new().items(with_search_keywords(
+            vec![
+                SettingItem::new(
+                    bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.models.behavior.mirror_model.label",
+                    ),
+                    SettingField::switch(
+                        {
+                            let view = view_entity.clone();
+                            move |app| {
+                                view.read(app)
+                                    .snapshot
+                                    .as_ref()
+                                    .is_some_and(|s| s.model_settings.mirror)
+                            }
+                        },
+                        {
+                            let view = view_entity.clone();
+                            move |value, app| {
+                                view.update(app, |view, cx| {
+                                    if let Some(s) = view.snapshot.as_ref() {
+                                        let mut settings = s.model_settings;
+                                        settings.mirror = value;
+                                        view.set_model_settings(settings, cx);
+                                    }
+                                });
+                            }
+                        },
+                    ),
+                ),
+                SettingItem::new(
+                    bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.models.behavior.motion_audio.label",
+                    ),
+                    SettingField::switch(
+                        {
+                            let view = view_entity.clone();
+                            move |app| {
+                                view.read(app)
+                                    .snapshot
+                                    .as_ref()
+                                    .is_some_and(|s| s.motion_audio_enabled)
+                            }
+                        },
+                        {
+                            let view = view_entity.clone();
+                            move |value, app| {
+                                view.update(app, |view, cx| {
+                                    view.set_motion_audio_enabled(value, cx)
+                                });
+                            }
+                        },
+                    ),
+                ),
+                SettingItem::new(
+                    bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.models.behavior.random_behavior_enabled.label",
+                    ),
+                    SettingField::switch(
+                        {
+                            let view = view_entity.clone();
+                            move |app| {
+                                view.read(app)
+                                    .snapshot
+                                    .as_ref()
+                                    .is_some_and(|s| s.random_behavior.enabled)
+                            }
+                        },
+                        {
+                            let view = view_entity.clone();
+                            move |value, app| {
+                                view.update(app, |view, cx| {
+                                    view.set_random_behavior_enabled(value, cx)
+                                });
+                            }
+                        },
+                    ),
+                )
+                .disabled(random_behavior_gate.disables_switch()),
+                SettingItem::new(
+                    bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.models.behavior.random_behavior_interval.label",
+                    ),
+                    SettingField::number_input(
+                        NumberFieldOptions {
+                            min: f64::from(
+                                bongocat_config::MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+                            ),
+                            max: f64::from(
+                                bongocat_config::MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+                            ),
+                            step: 1.0,
+                        },
+                        {
+                            let view = view_entity.clone();
+                            move |app| {
+                                view.read(app).snapshot.as_ref().map_or(30.0, |snapshot| {
+                                    f64::from(snapshot.random_behavior.interval_seconds)
+                                })
+                            }
+                        },
+                        {
+                            let view = view_entity.clone();
+                            move |value, app| {
+                                view.update(app, |view, cx| {
+                                    view.set_random_behavior_interval_value(value, cx)
+                                });
+                            }
+                        },
+                    ),
+                )
+                .disabled(random_behavior_gate.disables_controls()),
+            ],
+            &model_behavior_keywords,
+        ));
+
+        // Continuous device input and the model's response to it form one
+        // task-oriented page. Discrete shortcut bindings stay separate below.
+        let mouse_keywords = SettingsNavigationPage::InputInteraction
+            .search_keywords(language, ["settings.input_interaction.mouse.title"]);
+        let keyboard_keywords = SettingsNavigationPage::InputInteraction
+            .search_keywords(language, ["settings.input_interaction.keyboard.title"]);
+        let gamepad_keywords = SettingsNavigationPage::InputInteraction
+            .search_keywords(language, ["settings.input_interaction.gamepad.title"]);
+        let input_interaction_page =
+            SettingPage::new(SettingsNavigationPage::InputInteraction.title(language))
+                .icon(SettingsNavigationPage::InputInteraction.icon())
+                .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.model_interaction.mouse.title",
+                    "settings.input_interaction.mouse.title",
                 ))
-                .items(vec![
+                .items(with_search_keywords(vec![
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.model_interaction.mirror_mouse_tracking.label",
+                            "settings.input_interaction.mouse.mirror_mouse_tracking.label",
                         ),
                         SettingField::switch(
                             {
@@ -713,7 +729,7 @@ impl Render for SettingsView {
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.model_interaction.ignore_mouse_input.label",
+                            "settings.input_interaction.mouse.ignore_mouse_input.label",
                         ),
                         SettingField::switch(
                             {
@@ -739,27 +755,17 @@ impl Render for SettingsView {
                             },
                         ),
                     ),
-                ]),
-        ]);
-
-        // The two input devices are configured separately: the keyboard's
-        // release recovery has nothing in common with the gamepad dead zones.
-        let input_page = SettingPage::new(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.input.title",
-        ))
-        .icon(IconName::Gamepad2)
-        .groups(vec![
+                ], &mouse_keywords)),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.input.keyboard.title",
+                    "settings.input_interaction.keyboard.title",
                 ))
-                .items(vec![
+                .items(with_search_keywords(vec![
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.input.key_release_timeout.label",
+                            "settings.input_interaction.keyboard.key_release_timeout.label",
                         ),
                         SettingField::number_input(
                             NumberFieldOptions {
@@ -788,19 +794,19 @@ impl Render for SettingsView {
                     )
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.input.key_release_timeout.description",
+                        "settings.input_interaction.keyboard.key_release_timeout.description",
                     )),
-                ]),
+                ], &keyboard_keywords)),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.input.gamepad.title",
+                    "settings.input_interaction.gamepad.title",
                 ))
-                .items(vec![
+                .items(with_search_keywords(vec![
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.input.gamepad_stick_dead_zone.label",
+                            "settings.input_interaction.gamepad.stick_dead_zone.label",
                         ),
                         SettingField::number_input(
                             NumberFieldOptions {
@@ -828,12 +834,12 @@ impl Render for SettingsView {
                     )
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.input.gamepad_stick_dead_zone.description",
+                        "settings.input_interaction.gamepad.stick_dead_zone.description",
                     )),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.input.gamepad_trigger_dead_zone.label",
+                            "settings.input_interaction.gamepad.trigger_dead_zone.label",
                         ),
                         SettingField::number_input(
                             NumberFieldOptions {
@@ -861,32 +867,54 @@ impl Render for SettingsView {
                     )
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.input.gamepad_trigger_dead_zone.description",
+                        "settings.input_interaction.gamepad.trigger_dead_zone.description",
                     )),
-                ]),
+                ], &gamepad_keywords)),
         ]);
 
-        // The application's own surface: how it integrates with the desktop and
-        // how it starts and updates itself.
-        let application_page = SettingPage::new(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.application.title",
-        ))
-        .icon(IconName::Cog)
-        .groups(vec![
+        // The application's own surface: how it integrates with the desktop,
+        // how it updates itself, and how much diagnostic logging it retains.
+        let app_desktop_keywords = SettingsNavigationPage::AppSystem
+            .search_keywords(language, ["settings.app_system.desktop.title"]);
+        let app_updates_keywords = SettingsNavigationPage::AppSystem
+            .search_keywords(language, ["settings.app_system.updates.title"]);
+        let app_logging_keywords = SettingsNavigationPage::AppSystem
+            .search_keywords(language, ["settings.app_system.logging.title"]);
+        let app_system_page = SettingPage::new(SettingsNavigationPage::AppSystem.title(language))
+            .icon(SettingsNavigationPage::AppSystem.icon())
+            .groups(vec![
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.application.system.title",
+                    "settings.app_system.desktop.title",
                 ))
-                .items({
-                    // Only Windows adds the taskbar icon below, so the binding is
-                    // `mut` on one platform and not the other.
-                    #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
-                    let mut items = vec![SettingItem::new(
+                .items(with_search_keywords({
+                    // The login item is the first desktop preference because it
+                    // describes what happens before the rest of the application.
+                    let mut items = Vec::new();
+                    let mut open_at_login = SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.app_system.open_at_login.label",
+                        ),
+                        SettingField::switch(move |_app| startup_item.enabled, {
+                            let view = view_entity.clone();
+                            move |enabled: bool, app: &mut App| {
+                                view.update(app, |view, cx| {
+                                    view.set_startup_item_enabled(enabled, cx)
+                                });
+                            }
+                        }),
+                    )
+                    .disabled(startup_item.disabled);
+                    if let Some(description) = startup_item.description {
+                        open_at_login = open_at_login.description(description);
+                    }
+                    items.push(open_at_login);
+                    items.push(SettingItem::new(
                         bongocat_i18n::platform_text(
                             language.catalog_locale(),
-                            "settings.application.status_icon.label",
+                            "settings.app_system.status_icon.label",
                         ),
                         SettingField::switch(
                             {
@@ -907,12 +935,12 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )];
+                    ));
                     #[cfg(target_os = "windows")]
                     items.push(SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.application.taskbar_icon.label",
+                            "settings.app_system.taskbar_icon.label",
                         ),
                         SettingField::switch(
                             {
@@ -935,41 +963,19 @@ impl Render for SettingsView {
                         ),
                     ));
                     items
-                }),
+                }, &app_desktop_keywords)),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.application.updates.title",
+                    "settings.app_system.updates.title",
                 ))
-                .items({
-                    // The switch position already answers its two steady states,
-                    // so only the states that still need explaining carry a row
-                    // description. The whole row is disabled when the build
-                    // cannot offer login startup (ADR-0051).
-                    let mut open_at_login = SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.application.open_at_login.label",
-                        ),
-                        SettingField::switch(move |_app| startup_item.enabled, {
-                            let view = view_entity.clone();
-                            move |enabled: bool, app: &mut App| {
-                                view.update(app, |view, cx| {
-                                    view.set_startup_item_enabled(enabled, cx)
-                                });
-                            }
-                        }),
-                    )
-                    .disabled(startup_item.disabled);
-                    if let Some(description) = startup_item.description {
-                        open_at_login = open_at_login.description(description);
-                    }
-                    let mut items = vec![open_at_login];
+                .items(with_search_keywords({
+                    let mut items = Vec::new();
                     items.push(
                         SettingItem::new(
                             bongocat_i18n::text(
                                 language.catalog_locale(),
-                                "settings.application.auto_update.label",
+                                "settings.app_system.auto_update.label",
                             ),
                             SettingField::switch(
                                 {
@@ -991,17 +997,13 @@ impl Render for SettingsView {
                                 },
                             ),
                         )
-                        .description(bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.application.auto_update.description",
-                        ))
                         .disabled(check_for_updates_interval_gate.disables_switch()),
                     );
                     items.push(
                         SettingItem::new(
                             bongocat_i18n::text(
                                 language.catalog_locale(),
-                                "settings.application.auto_update.interval.label",
+                                "settings.app_system.auto_update.interval.label",
                             ),
                             SettingField::number_input(
                                 check_for_updates_interval_number_field_options(),
@@ -1028,24 +1030,20 @@ impl Render for SettingsView {
                                 },
                             ),
                         )
-                        .description(bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.application.auto_update.interval.description",
-                        ))
                         .disabled(check_for_updates_interval_gate.disables_controls()),
                     );
                     items
-                }),
+                }, &app_updates_keywords)),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.application.logging.title",
+                    "settings.app_system.logging.title",
                 ))
-                .items(vec![
+                .items(with_search_keywords(vec![
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.application.logging.level.label",
+                            "settings.app_system.logging.level.label",
                         ),
                         SettingField::element({
                             let view = view_entity.clone();
@@ -1057,15 +1055,11 @@ impl Render for SettingsView {
                             }
                         }),
                     )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.application.logging.level.description",
-                    ))
                     .disabled(editing_blocked),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.application.logging.retention_days.label",
+                            "settings.app_system.logging.retention_days.label",
                         ),
                         SettingField::number_input(
                             logging_retention_number_field_options(),
@@ -1088,79 +1082,75 @@ impl Render for SettingsView {
                             },
                         ),
                     )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.application.logging.retention_days.description",
-                    ))
                     .disabled(editing_blocked),
-                ]),
+                ], &app_logging_keywords)),
         ]);
 
-        // The page shell already carries the title and description, and the
-        // model list is one flat grid, so the group and item render without
-        // their own labels — labelling each nesting level is what turned this
-        // page into stacked boxes in the first place. The grid's cards are
-        // themselves self-drawn surfaces, so the group renders with no card
-        // container of its own (`variant(Normal)` overrides the window-wide
-        // Outline) rather than nesting a second box around them.
-        let models_page = SettingPage::new(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.models.title",
-        ))
-        .icon(IconName::Cat)
-        .group(
-            SettingGroup::new()
-                .variant(GroupBoxVariant::Normal)
-                .item(SettingItem::render({
-                    let view = view_entity.clone();
-                    move |_: &RenderOptions, window: &mut Window, app: &mut App| {
-                        let snapshot = view.read(app).snapshot.clone();
-                        let tokens = Tokens::from_theme(app);
-                        view.update(app, move |view, cx| {
-                            models::content(view, window, cx, snapshot.as_ref(), tokens)
-                        })
-                        .into_any_element()
-                    }
-                })),
+        // The model library is a flat grid of self-drawn cards, so its page drops
+        // the window-wide Outline surface. Model behavior is a separate page and
+        // keeps the normal settings-card surface; neither page shares a body or
+        // a scroll region with the other.
+        let model_library_keywords = model_library_search_keywords(
+            language,
+            snapshot
+                .as_ref()
+                .into_iter()
+                .flat_map(|snapshot| snapshot.model_catalog.entries.iter())
+                .map(|entry| entry.title.clone()),
         );
+        let model_library_group = SettingGroup::new().variant(GroupBoxVariant::Normal).item(
+            SettingItem::render({
+                let view = view_entity.clone();
+                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                    let snapshot = view.read(app).snapshot.clone();
+                    let tokens = Tokens::from_theme(app);
+                    view.update(app, move |view, cx| {
+                        models::content(view, window, cx, snapshot.as_ref(), tokens)
+                    })
+                    .into_any_element()
+                }
+            })
+            .keywords(model_library_keywords),
+        );
+        let model_library_page =
+            SettingPage::new(SettingsNavigationPage::ModelLibrary.title(language))
+                .icon(SettingsNavigationPage::ModelLibrary.icon())
+                .group(model_library_group);
+        let model_behavior_page =
+            SettingPage::new(SettingsNavigationPage::ModelBehavior.title(language))
+                .icon(SettingsNavigationPage::ModelBehavior.icon())
+                .group(model_behavior_group);
 
         // The page's two scopes are two titled groups rather than tabs: a
         // `SettingPage` cannot host child pages, but the settings component
         // renders every titled group of a page with more than one group as a
         // second-level sidebar entry, so both scopes stay directly reachable
         // from the sidebar and the body renders them one after the other.
-        let shortcuts_page = SettingPage::new(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.shortcuts.title",
-        ))
-        .icon(IconName::Keyboard)
-        .groups(vec![
-            shortcuts_page::group(
-                shortcuts_page::ShortcutScope::Window,
-                language,
-                view_entity.clone(),
-                command_shortcuts_gate,
-            ),
-            shortcuts_page::group(
-                shortcuts_page::ShortcutScope::Model,
-                language,
-                view_entity.clone(),
-                behavior_shortcuts_gate,
-            ),
-        ]);
+        let shortcuts_page = SettingPage::new(SettingsNavigationPage::Shortcuts.title(language))
+            .icon(SettingsNavigationPage::Shortcuts.icon())
+            .groups(vec![
+                shortcuts_page::group(
+                    shortcuts_page::ShortcutScope::Window,
+                    language,
+                    view_entity.clone(),
+                    command_shortcuts_gate,
+                ),
+                shortcuts_page::group(
+                    shortcuts_page::ShortcutScope::Model,
+                    language,
+                    view_entity.clone(),
+                    behavior_shortcuts_gate,
+                ),
+            ]);
 
-        let about_page = SettingPage::new(bongocat_i18n::text(
-            language.catalog_locale(),
-            "navigation.about.title",
-        ))
-        .icon(IconName::Info)
-        .group({
-            let mut about_group = SettingGroup::new()
-                .title(bongocat_i18n::text(
-                    language.catalog_locale(),
-                    "about.page_title",
-                ))
-                .item(
+        // About is the final utility destination and uses its own Info icon;
+        // upstream Settings has no public sidebar-footer slot to pin it.
+        let about_keywords =
+            SettingsNavigationPage::About.search_keywords(language, std::iter::empty());
+        let about_page = SettingPage::new(SettingsNavigationPage::About.title(language))
+            .icon(SettingsNavigationPage::About.icon())
+            .group({
+                let mut about_group = SettingGroup::new().item(
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -1177,10 +1167,10 @@ impl Render for SettingsView {
                             }
                         }),
                     )
-                    .layout(Axis::Vertical),
+                    .layout(Axis::Vertical)
+                    .keywords(about_keywords.clone()),
                 );
-            about_group =
-                about_group.item(
+                about_group = about_group.item(
                     SettingItem::new(
                         bongocat_i18n::text(language.catalog_locale(), "update.about.label"),
                         SettingField::element({
@@ -1202,22 +1192,23 @@ impl Render for SettingsView {
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
                         "update.about.description",
-                    )),
+                    ))
+                    .keywords(about_keywords),
                 );
-            about_group
-        });
+                about_group
+            });
 
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))
             .with_group_variant(GroupBoxVariant::Outline)
             .pages(vec![
-                general_page,
-                models_page,
+                appearance_page,
+                model_library_page,
+                model_behavior_page,
                 overlay_page,
-                interaction_page,
-                input_page,
+                input_interaction_page,
                 shortcuts_page,
-                application_page,
+                app_system_page,
                 about_page,
             ]);
         let model_drag_overlay = self.model_drag.map(|state| {

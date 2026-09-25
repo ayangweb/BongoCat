@@ -6,11 +6,11 @@ pub(super) fn logging_level_display_name(
     display_language: SettingsLanguage,
 ) -> &'static str {
     let key = match level {
-        SettingsLogLevel::Error => "settings.application.logging.level.options.error",
-        SettingsLogLevel::Warn => "settings.application.logging.level.options.warn",
-        SettingsLogLevel::Info => "settings.application.logging.level.options.info",
-        SettingsLogLevel::Debug => "settings.application.logging.level.options.debug",
-        SettingsLogLevel::Trace => "settings.application.logging.level.options.trace",
+        SettingsLogLevel::Error => "settings.app_system.logging.level.options.error",
+        SettingsLogLevel::Warn => "settings.app_system.logging.level.options.warn",
+        SettingsLogLevel::Info => "settings.app_system.logging.level.options.info",
+        SettingsLogLevel::Debug => "settings.app_system.logging.level.options.debug",
+        SettingsLogLevel::Trace => "settings.app_system.logging.level.options.trace",
     };
     bongocat_i18n::text(display_language.catalog_locale(), key)
 }

@@ -1273,14 +1273,13 @@ fn commands_accept_enter_and_space_without_command_modifiers() {
 }
 
 #[gpui_kit::test]
-fn application_logging_smoke_checks_visible_copy_and_bounds(cx: &mut TestAppContext) {
+fn app_system_smoke_checks_visible_copy_and_bounds(cx: &mut TestAppContext) {
     let (view, visual) = settings_view(cx);
     let mut snapshot = crate::tests::snapshot(1, true, true);
     snapshot.resolved_language = SettingsLanguage::ChineseSimplified;
     view.update(visual, |view, _| view.snapshot = Some(snapshot));
     assert!(
-        view.update(visual, |view, cx| view
-            .show_application_logging_for_smoke(cx))
+        view.update(visual, |view, cx| view.show_app_system_for_smoke(cx))
             .is_ok()
     );
 
@@ -1289,8 +1288,7 @@ fn application_logging_smoke_checks_visible_copy_and_bounds(cx: &mut TestAppCont
         snapshot.logging.retention_days = 0;
     });
     assert!(
-        view.update(visual, |view, cx| view
-            .show_application_logging_for_smoke(cx))
+        view.update(visual, |view, cx| view.show_app_system_for_smoke(cx))
             .is_err(),
         "the smoke must reject a policy outside the visible 1..=30 day field"
     );
@@ -2379,6 +2377,63 @@ fn shortcut_scope_gates_have_their_own_localized_label() {
         assert!(!model_label.is_empty());
         assert_ne!(window_label, model_label);
     }
+}
+
+#[test]
+fn model_behavior_shortcut_copy_stays_aligned_between_scope_and_gate() {
+    for (language, scope_title, gate_title) in [
+        (
+            SettingsLanguage::EnglishUnitedStates,
+            "Model behavior shortcuts",
+            "Enable model behavior shortcuts",
+        ),
+        (
+            SettingsLanguage::ChineseSimplified,
+            "模型行为快捷键",
+            "启用模型行为快捷键",
+        ),
+    ] {
+        assert_eq!(ShortcutScope::Model.title(language), scope_title);
+        assert_eq!(ShortcutScope::Model.gate_label(language), gate_title);
+    }
+}
+
+#[test]
+fn hover_hide_copy_uses_the_same_mouse_hover_subject() {
+    for (language, switch_label, delay_label) in [
+        (
+            SettingsLanguage::EnglishUnitedStates,
+            "Hide on mouse hover",
+            "Mouse hover hide delay (seconds)",
+        ),
+        (
+            SettingsLanguage::ChineseSimplified,
+            "鼠标悬停时隐藏",
+            "鼠标悬停时隐藏延迟（秒）",
+        ),
+    ] {
+        let locale = language.catalog_locale();
+        assert_eq!(
+            bongocat_i18n::text(locale, "settings.overlay.hide_on_mouse_hover.label"),
+            switch_label
+        );
+        assert_eq!(
+            bongocat_i18n::text(locale, "settings.overlay.hide_on_mouse_hover_delay.label"),
+            delay_label
+        );
+    }
+}
+
+#[test]
+fn model_window_performance_title_names_the_window() {
+    assert_eq!(
+        bongocat_i18n::text("zh-CN", "settings.overlay.performance.title"),
+        "窗口性能"
+    );
+    assert_eq!(
+        bongocat_i18n::text("en-US", "settings.overlay.performance.title"),
+        "Window performance"
+    );
 }
 
 /// A shortcut target maps to exactly the scope whose switch gates its row:

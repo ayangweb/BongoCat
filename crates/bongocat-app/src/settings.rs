@@ -2970,7 +2970,7 @@ mod tests {
             resolved_language: SettingsLanguage::EnglishUnitedStates,
             status_icon_visible: true,
             taskbar_icon_visible: true,
-            check_for_updates_automatically: true,
+            check_for_updates_automatically: false,
             check_for_updates_interval_hours: 24,
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
@@ -3845,7 +3845,7 @@ mod tests {
         let client = service.client();
 
         let initial = client.read_snapshot_blocking().expect("initial snapshot");
-        assert!(initial.check_for_updates_automatically);
+        assert!(!initial.check_for_updates_automatically);
         assert_eq!(initial.check_for_updates_interval_hours, 24);
         let custom_interval = client
             .set_check_for_updates_interval_hours_blocking(
@@ -3853,13 +3853,23 @@ mod tests {
                 48,
             )
             .expect("set automatic update interval");
+        assert!(!custom_interval.check_for_updates_automatically);
         assert_eq!(custom_interval.check_for_updates_interval_hours, 48);
 
-        let disabled = client
+        let enabled = client
             .set_check_for_updates_automatically_blocking(
                 custom_interval
                     .config_revision
                     .expect("custom interval config revision"),
+                true,
+            )
+            .expect("enable automatic update checks");
+        assert!(enabled.check_for_updates_automatically);
+        assert_eq!(enabled.check_for_updates_interval_hours, 48);
+
+        let disabled = client
+            .set_check_for_updates_automatically_blocking(
+                enabled.config_revision.expect("enabled config revision"),
                 false,
             )
             .expect("disable automatic update checks");
@@ -3873,11 +3883,11 @@ mod tests {
             )
             .expect_err("reject stale automatic update preference");
         assert_eq!(stale_enabled.code(), SettingsErrorCode::SnapshotOutdated);
+        // Reverting the boolean restores the custom-interval content revision, so use
+        // the enabled snapshot's revision to exercise a genuinely stale interval command.
         let stale_interval = client
             .set_check_for_updates_interval_hours_blocking(
-                custom_interval
-                    .config_revision
-                    .expect("custom interval config revision"),
+                enabled.config_revision.expect("enabled config revision"),
                 72,
             )
             .expect_err("reject stale automatic update interval");

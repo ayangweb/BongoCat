@@ -1807,7 +1807,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     页面以本地化、只读文本显示该 build identity，不读取路径、设备信息或网络来源。renderer/runtime
     stable code、输入可靠性计数、macOS Input Monitoring 权限、模型目录诊断与匿名日志导出仍已各自接入；GPU
     细节、update 诊断、完整产品错误边界及双平台实机证据尚待完成，因此总项保持未勾选。
-  - 状态（2026-09-24）：日志设置已投影到 Application 页面；Diagnostics 的 typed export 读取当前
+  - 状态（2026-09-24）：日志设置已投影到 App & system 页面；Diagnostics 的 typed export 读取当前
     application/Core 匿名统计，并从严格解析的 `.log` 来源生成不含时间戳、message、context 或路径的
     `application-events.log` preview。Core 原始 message、历史 JSONL 和失败来源正文仍不进入包；Windows
     release 与 OS-level failure evidence 仍待完成，因此总项保持未勾选。
@@ -1825,7 +1825,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
   - 状态（2026-09-04）：当前 v1 先支持 `system`、`zh-CN`、`en-US` 三种 typed 偏好；跟随系统
     只解析简体中文或英文，其它 locale 回退英文。GPUI Kit Select、窗口标题/导航/Appearance/
     runtime status 的中英文案及对应辅助功能语义已接入；Rust 单元测试防止当前 key 空值和中文
-    整组英文 fallback。繁中、越南语、葡萄牙语以及 Models、Diagnostics、其余 General 动态/错误
+    整组英文 fallback。繁中、越南语、葡萄牙语以及 Models、Diagnostics、其余 Appearance 动态/错误
     文案和统一的全量 key 漂移门禁后续迁移，因此保持未勾选。
 - [ ] 表单全键盘可操作，焦点可见且顺序正确。
 - [ ] tooltip/dialog/menu 不被窗口边界错误裁剪。
@@ -3584,7 +3584,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       严格 Clippy、完整 Native workspace test、release check 和 macOS 隔离 release smoke 本机通过。
       CI run `33905710597` 的 Ubuntu/macOS/Windows Native jobs
       `101130018327`/`101130018508`/`101130018510` 全绿；macOS/Windows 日志均实际输出
-      `Chinese Models localization verified`，并继续通过 800x600 窗口重启恢复、shutdown 和剩余
+      `Chinese Model library localization verified`，并继续通过 800x600 窗口重启恢复、shutdown 和剩余
       平台 smoke。
 
 60. [x] `P5-DIAGNOSTICS-LOCALIZATION`：完成当前 Diagnostics 页面及辅助功能语义的中英本地化。- 依赖：`P5-APPLICATION-LANGUAGE`、`P5-GENERAL-LOCALIZATION`、`P5-MODELS-LOCALIZATION`、
@@ -3760,6 +3760,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       实现 commit `cdc2ec3` 已由后续 commit `1106807` 的 CI run `33938263954` 全量覆盖；Windows/
       macOS/Ubuntu workspace jobs `101230369276`/`101230369290`/`101230369343` 均通过完整 workspace
       门禁和对应产品 smoke。
+
+    - 当前契约（2026-09-25）：新 v1 配置的 `application.check_for_updates_automatically` 默认 `false`；
+      用户在设置页显式打开后才启动自动检查。默认间隔仍为 `24` 小时，关闭开关不会清空已保存的间隔。
 
 70. [x] `P7-AUTOMATIC-UPDATE-SCHEDULE`：冻结自动检查的单调 24 小时调度契约。
     - 依赖：`P7-AUTOMATIC-UPDATE-PREFERENCE`、runtime 单调时钟原则与旧版首发行为清单。
@@ -4096,7 +4099,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       上调为 `P0 首发`。不新增 ADR：该配置不改变架构边界，只是 overlay 窗口的呈现属性。三项首版
       契约决定经维护者确认：延迟上界收窄为 `0..=60000` 毫秒；淡入淡出复刻旧版 300ms 过渡；延迟
       输入控件始终显示（旧版只在开关开启时展开）。
-    - 决策记录（2026-09-16，单位修订）：维护者要求把悬停隐藏延迟从毫秒改成整秒，理由是秒更容易
+    - 决策记录（2026-09-16，单位修订）：维护者要求把鼠标悬停时隐藏延迟从毫秒改成整秒，理由是秒更容易
       操作。这推翻本项同日「延迟上界收窄为 `0..=60000` 毫秒」的契约决定，字段改名为
       `overlay.hide_on_pointer_hover_delay_seconds`，范围 `0..=60` 秒、步进 1 秒，与旧版 UI 的
       整秒单位一致；`60000` 毫秒的上界在数值上等于 `60` 秒，因此本次只改单位与名字，不改语义
@@ -5169,7 +5172,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `interaction_page`（`MousePointer2`）、`input_page`（`Gamepad2`）、`application_page`（`Cog`）；
       `general_page` 只保留外观（主题、语言）一个分组——配置恢复提示随后移出了该页，见下一条。
       逐项归属（2026-09-20 用脚本从两版 `render.rs` 重新数出，不是估的）：
-      General 外观 2；Overlay = 行为 6（可见性、置顶、点击穿透、保持在屏幕内、悬停隐藏、悬停隐藏延迟）
+      General 外观 2；Overlay = 行为 6（可见性、置顶、点击穿透、保持在屏幕内、悬停隐藏、鼠标悬停时隐藏延迟）
       + 外观 3（缩放、不透明度、圆角）+ 性能 1（最大帧率）= 10；Interaction = 模型 3（行为快捷键、
       镜像模型、动作音效）+ 鼠标 2（镜像鼠标跟随、忽略鼠标输入）= 5；Input = 键盘 1（按键释放超时）
       + 手柄 2（摇杆死区、扳机死区）= 3；Application = 运行状态 1 + 系统图标 2（状态图标、任务栏图标）
@@ -5350,7 +5353,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       **未验证**：该行确实从界面上消失（按约定由维护者人工观察）。
 
 95. [x] `P1-SHORTCUT-SCOPE-SUBPAGES`：快捷键页的两个作用域改为两个子级页面，移除 Tab 组件。
-    - 背景（2026-09-20，维护者反馈）：快捷键页用 `TabBar` 在"窗口快捷键 / 模型快捷键"之间切换。第 94 项
+    - 背景（2026-09-20，维护者反馈）：快捷键页用 `TabBar` 在"窗口快捷键 / 模型行为快捷键"之间切换。第 94 项
       建立"一级页面 + 带标题 group 充当二级"的导航结构之后，同一个页面里再放一层 Tab 就成了两套并列的
       二级导航：作用域与侧边栏二级入口是同一层级，用户要在 Tab 和侧边栏之间来回切。更实际的问题是
       可达性——设置窗口的 AccessKit adapter 由 `SettingsAccessibilityBridge` 独占（`main.rs` 以
@@ -5481,7 +5484,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       「标题 + 控件自身状态」就能读懂。
     - 判定标准（本次采用，可被复查）：删除一条描述后，用户从「标题 + 控件自身状态」得不到的
       信息是否丢失。丢失则该信息必须留下——要么保留描述，要么写进标题。据此保留的描述都承载
-      标题无法表达的内容：数值项的取值区间、悬停隐藏延迟及其中 0 的含义、「保持在屏幕内」可覆盖
+      标题无法表达的内容：数值项的取值区间、鼠标悬停时隐藏延迟及其中 0 的含义、「保持在屏幕内」可覆盖
       任务栏/程序坞等系统区域、悬停时淡出并移开后恢复、行为快捷键是全局快捷键且触发动作与表情、
       按键释放超时的失败语义与其 0 值、自动检查更新的可配置间隔、摇杆/扳机死区的定义，以及
       登录项的失效与缺失修复提示。
@@ -5553,8 +5556,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         Windows 125/150/200% 缩放下的截断风险未实机核对。
     - 未完成：Windows 实机设置窗口；润色后的标题与删除描述后的实际排版仍由人工查看背书。
 
-98. [x] `P1-HOVER-HIDE-DELAY-DEPENDENCY`：「鼠标悬停时隐藏」关闭时，悬停隐藏延迟不再可编辑。
-    - 背景（2026-09-21，维护者反馈）：设置窗口里「悬停隐藏延迟」一直可编辑，即使它所属的
+98. [x] `P1-HOVER-HIDE-DELAY-DEPENDENCY`：「鼠标悬停时隐藏」关闭时，鼠标悬停时隐藏延迟不再可编辑。
+    - 背景（2026-09-21，维护者反馈）：设置窗口里「鼠标悬停时隐藏延迟」一直可编辑，即使它所属的
       「鼠标悬停时隐藏」开关是关的。
     - 依据（来自既有事实，不是新增约定）：两个 overlay 后端都用
       `enabled: options.hide_on_pointer_hover && input_running` 装配该行为
@@ -5713,7 +5716,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         `window_shortcut_rows(..).len()`，与 `row_index_offset`、tab 序号、节点编号同一条行序。
         可见开关与无障碍节点读同一份 `gate_label`，不出现第二份措辞；节点不带 value，因为行没有描述。
       ⑤ 文案：新增 `shortcuts.switches.enable_window_shortcuts.label` 与
-        `shortcuts.switches.enable_model_shortcuts.label`（中英同步，只有 label），删除
+        `shortcuts.switches.enable_model_behavior_shortcuts.label`（中英同步，只有 label），删除
         `settings.model_interaction.behavior_shortcuts.{label,description}`；两个 locale 均为 290 键。
       ⑥ 配置契约：`config.schema.json` 的 `$defs.shortcuts` 增加必填 `commands_enabled`，14 个配置
         fixture 同步补字段（`spikes/config-store` 的配置副本也同步，否则它与共享 fixture 对拍的用例
@@ -5753,9 +5756,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       门禁实现点、命令通道全部不变，`is_disabled` 换成 `is_enabled`（不再取反）、`gate_copy` 收成
       `gate_label`。
     - 有意保留的用户可见不对称：两个开关的默认状态不同（`启用窗口快捷键` 默认打开、
-      `启用模型快捷键` 默认关闭）。模型侧保持默认关闭是第 91 项记下的刻意收窄，本项不改；窗口侧默认
+      `启用模型行为快捷键` 默认关闭）。模型侧保持默认关闭是第 91 项记下的刻意收窄，本项不改；窗口侧默认
       生效是因为关掉它等于产品失去唯一的快捷入口。改成"启用"方向后这一点读起来更自然：一个默认关闭
-      的"启用"开关就是模型快捷键的现状。若要反转模型侧默认值，那是独立的产品决策，只需改
+      的"启用"开关就是模型行为快捷键的现状。若要反转模型侧默认值，那是独立的产品决策，只需改
       `ModelConfig` 的默认值，UI 与门禁无需改动。
     - 未运行：Windows 侧全部路径（本机无法执行 `cfg(windows)` 测试与 smoke）；开关在分组标题下方的
       间距、`Enable window shortcuts` 在窄窗口下的换行、125/150/200% DPI 均无截图证据；"门禁关闭期间
@@ -5767,7 +5770,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 102. [x] `P1-SETTING-GATE-DISABLE-RULE`：「开关门禁」与被控设置项的统一禁用绑定规则；门禁关闭时
      快捷键行置灰且不可交互。
     - 背景（2026-09-21，维护者反馈）：快捷键页两个门禁开关关闭时应自动禁用各自作用域的设置项
-      （置灰且不可交互），参照"鼠标悬停隐藏延迟"开关关闭时禁用延迟行的实现；并要求把这类
+      （置灰且不可交互），参照"鼠标悬停时隐藏延迟"开关关闭时禁用延迟行的实现；并要求把这类
       "开关控制下属设置项"的场景收敛为一套统一标准，此后新增场景不再单独编写禁用逻辑。该要求
       推翻了第 101 项/ADR-0052「明确不做」里"不给行列表加禁用态样式"的条目（决策变更，ADR-0052
       已就地标注取代关系）。
@@ -5786,7 +5789,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         这是"不可交互"的必要一半）。
       ③ `render.rs`：`shortcuts_editing_blocked` 更名 `editing_blocked` 并供所有门禁共用；每作用域
         构造一个 `SettingGate`（`enabled` 取 `ShortcutScope::is_enabled(snapshot)`，正向不取反）；
-        悬停隐藏延迟行改读 `SettingGate::new(editing_blocked, hover_hide_delay_applies(..))
+        鼠标悬停时隐藏延迟行改读 `SettingGate::new(editing_blocked, hover_hide_delay_applies(..))
         .disables_controls()`（行为差异：结构性编辑阻塞期间该行现在也置灰，与其 mutator 守卫
         `set_overlay_hover_hide_delay_value` 的既有早退对齐）。
       ④ `shortcuts.rs`：`begin_shortcut_capture`、`begin_shortcut_capture_from_accessibility`、
@@ -6166,6 +6169,32 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
        禁止同时启用的 `storage-test-injection` 与 `production`，对应两组 feature-specific Clippy 均已通过。
      - 未运行：Windows/macOS 文件管理器真实拖放、双平台高 DPI/Retina 视觉检查和真实导入回包；因此本项
        保持未勾选，不能用 headless contract 代替平台 smoke。
+
+109. [ ] `P1-SETTINGS-INFORMATION-ARCHITECTURE`：将设置侧边栏收敛为任务导向的七个业务分类，并把 About 作为最后的工具入口。
+    - 依赖：ADR-0002、ADR-0019、ADR-0047、ADR-0052、ADR-0054、ADR-0056、ADR-0066。
+    - 退出条件：一级页面固定为 `Appearance & language`、`Model library`、`Model behavior`、
+      `Model window`、`Input & interaction`、`Shortcuts`、`App & system`、`About`；Model library
+      单独承载模型卡片，Model behavior 单独承载模型镜像、动作音效和随机行为；Input & interaction
+      分为 Mouse、Keyboard、Gamepad；App & system 分为 Startup & desktop、Updates、Logging；
+      Appearance 与 About 删除与页面标题重复的正文分组。模型行为快捷键仍只出现在 Shortcuts，
+      模型库仍只做选择与元数据编辑。
+    - 搜索：页面标题、分组标题和旧页面名作为显式关键词；模型库额外索引当前模型显示名。
+      不新增第三级导航、常用页、高级页或重复开关。
+    - 同步：Technical Design §9.3、ADR-0047、ADR-0056、ADR-0065、`docs/product-runtime.md`、
+      双语 CHANGELOG、locale key 与 settings smoke 文案；不修改 config/schema/runtime command。
+    - 当前实现：导航 contract 位于 `crates/bongocat-ui/src/window/navigation.rs`；GPUI Kit
+      `Settings` 仍按页面声明顺序渲染，Model library 与 Model behavior 各自拥有独立页面和正文，
+      About 位于同一菜单最后一项。当前上游公开 API 没有 sidebar footer，因此本项不复制私有导航
+      实现来强行固定 About。Updates / Logging 分组的行只保留标题与控件，描述 key 已从双语目录
+      和 smoke 契约删除。
+    - 验证：`bongocat-ui` 导航/页面 contract、双语 locale validator、`bongocat-i18n` 双向 key
+      守门、workspace 编译与 settings smoke；双平台高 DPI/Retina 目视仍按既有门禁执行。
+    - 自动化证据（2026-09-25，本机 macOS / aarch64）：`cargo fmt --all -- --check`、workspace
+      Clippy（`storage-test-injection` 与 `production` 分开）、`cargo test --locked --workspace`、
+      `cargo check --locked --workspace --release`、`python3 tools/validate-locales.py`（2 locales /
+      245 keys）、`tools/tests` 66 项，以及 settings window / model library page / state smoke 均通过。
+    - 未运行：Windows 对应 smoke、800×600 下 Windows 125/150/200% 与 macOS Retina 的最终目视
+      检查；因此本项保持未勾选，不能用本机自动化结果替代双平台 UI 门禁。
 
 ## 13. 待决策清单
 

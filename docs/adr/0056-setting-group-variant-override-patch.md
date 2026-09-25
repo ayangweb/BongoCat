@@ -1,10 +1,10 @@
 # ADR-0056: SettingGroup variant 与上游 GPUI Kit 固定 revision
 
-状态：已接受（2026-09-23；2026-09-24 修订）
+状态：已接受（2026-09-23；2026-09-24、2026-09-25 修订）
 
 ## 背景
 
-模型管理页的内容是自绘卡片网格。设置窗口的组容器使用官方
+模型库页面的内容是自绘卡片网格。设置窗口的组容器使用官方
 `Settings::with_group_variant(GroupBoxVariant::Outline)`，因此该页在外层多出一个卡片容器：
 边框、内边距与圆角包裹在自绘网格外面。`SettingGroup::variant(GroupBoxVariant::Normal)`
 可以在不改变其它页面的情况下移除这一层容器。
@@ -13,6 +13,10 @@
 `longbridge/gpui-kit` 提交 issue #3202 与 PR #3203；PR 已于 2026-09-23 合并，merge commit
 为 `500852f449c05dc01920ec82f3ae2656a61d0387`。同一上游 revision 还包含
 `Popover::arrow(bool)`，可供项目内 `PopConfirm` 转发。对应能力尚未发布到 crates.io。
+
+修订（2026-09-25）：ADR-0066 将模型对象拆为 Model library 与 Model behavior 两个独立页面。
+`SettingGroup::variant(GroupBoxVariant::Normal)` 只用于前者——它承载自绘卡片网格；后者是
+独立页面并使用窗口默认 Outline。这个 variant 边界不因模型行为独立成页而扩大。
 
 ## 决策
 
@@ -23,8 +27,8 @@
 - lockfile 中 `gpui-kit`、`gpui-component`、`gpui-base`、`gpui-component-macros` 与
   `gpui-kit-assets` 全部从上述同一 git commit 解析；GPUI 本身仍来自 crates.io
   `gpui-pre 0.3.6` 同步包，不引入第二套 GPUI 类型。
-- 模型管理页继续调用 `SettingGroup::variant(GroupBoxVariant::Normal)`，调用点与测试 harness
-  不因依赖来源切换而改变。
+- Model library 页面继续调用 `SettingGroup::variant(GroupBoxVariant::Normal)`；独立的
+  Model behavior 页面不覆盖 variant，调用点与测试 harness 不因依赖来源或页面拆分而改变。
 - `PopConfirm` 增加 `arrow(bool)` 转发，模型删除确认在按钮上方显示并启用 anchor-aligned arrow。上游 revision
   同时改为由 `Root` 自动挂载 dialog、sheet 与 notification layer，因此业务根视图删除旧的
   `Root::render_*_layer` 调用。

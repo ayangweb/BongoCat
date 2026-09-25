@@ -502,8 +502,8 @@ jobs:
           if ((status != 0)); then
             exit "$status"
           fi
-          grep -Fq 'bongocat-app: Chinese General localization verified' <<<"$output"
-          grep -Fq 'bongocat-app: Chinese Models localization verified' <<<"$output"
+          grep -Fq 'bongocat-app: Chinese Appearance and language localization verified' <<<"$output"
+          grep -Fq 'bongocat-app: Chinese Model library localization verified' <<<"$output"
           grep -Fq 'bongocat-app: settings window state restored after restart' <<<"$output"
       - name: Smoke macOS release panic diagnostics
         if: matrix.os == 'macos-latest'
@@ -616,10 +616,10 @@ jobs:
           if (-not $stateOutput.Contains("bongocat-app: settings window state restored after restart")) {
             throw "Windows settings window state smoke did not report restart restore"
           }
-          if (-not $stateOutput.Contains("bongocat-app: Chinese General localization verified")) {
-            throw "Windows settings window state smoke did not verify Chinese General localization"
+          if (-not $stateOutput.Contains("bongocat-app: Chinese Appearance and language localization verified")) {
+            throw "Windows settings window state smoke did not verify Chinese Appearance and language localization"
           }
-          if (-not $stateOutput.Contains("bongocat-app: Chinese Models localization verified")) {
+          if (-not $stateOutput.Contains("bongocat-app: Chinese Model library localization verified")) {
             throw "Windows settings window state smoke did not verify Chinese Models localization"
           }
       - name: Smoke Windows release panic diagnostics

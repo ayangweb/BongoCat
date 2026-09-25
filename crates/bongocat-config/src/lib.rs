@@ -391,7 +391,7 @@ pub struct ModelConfig {
     pub mirror_pointer_tracking: bool,
     /// Whether a motion that ships an audio clip is allowed to play it.
     ///
-    /// Defaults to `false`: the Interaction page renders this as the "play
+    /// Defaults to `false`: the Model behavior page renders this as the "play
     /// motion audio" opt-in, so a fresh v1 configuration stays silent until the
     /// user turns it on. This is a deliberate divergence from the legacy
     /// implementation, which recorded an enabled default; the reasoning lives
@@ -1280,7 +1280,7 @@ impl Default for NativeConfig {
             application: ApplicationConfig {
                 show_taskbar_icon: true,
                 show_status_icon: true,
-                check_for_updates_automatically: true,
+                check_for_updates_automatically: false,
                 check_for_updates_interval_hours: DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
             },
             appearance: AppearanceConfig {
@@ -3145,6 +3145,11 @@ mod tests {
 
     #[test]
     fn default_matches_the_shared_configuration_fixture() {
+        assert!(
+            !NativeConfig::default()
+                .application
+                .check_for_updates_automatically
+        );
         let fixture = include_str!("../../../shared/config/fixtures/default.json");
         let expected: NativeConfig = serde_json::from_str(fixture).expect("shared fixture");
         assert_eq!(NativeConfig::default(), expected);

@@ -239,9 +239,9 @@ the worker drains shutdown state and later actions are skipped. Runtime event se
 playback are separate from the `bongocat-audio` command sequence allocator; overflow recovery retains
 model-preparation commands so accepted audio preparation cannot leave a model commit pending. A
 hidden overlay's non-zero motion fade is considered settled from the injected clock even when no
-frame was delivered. The GPUI Interaction page exposes the switch and whole-second interval through the
-revision-checked settings service; the interval row is disabled while the switch is off but keeps
-its saved value.
+frame was delivered. The GPUI Model behavior page exposes the switch and whole-second interval
+through the revision-checked settings service; the interval row is disabled while the switch is
+off but keeps its saved value.
 
 `bongocat-live2d-playback` owns the SDK-independent motion3/exp3 byte parser and numeric
 curve/blend evaluation. `bongocat-live2d-render` prepares model-package `RenderResources` and
