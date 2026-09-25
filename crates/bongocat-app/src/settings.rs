@@ -877,6 +877,8 @@ fn run_service(
                 let runtime_settings = ModelSettings {
                     mirror: settings.mirror,
                     mirror_pointer_tracking: settings.mirror_pointer_tracking,
+                    ignore_keyboard: settings.ignore_keyboard,
+                    ignore_gamepad: settings.ignore_gamepad,
                     ignore_pointer: settings.ignore_pointer,
                 };
                 let result = check_revision(&application, expected_config_revision)
@@ -1426,6 +1428,8 @@ fn snapshot(
         model_settings: SettingsModelSettings {
             mirror: runtime.model_settings.mirror,
             mirror_pointer_tracking: runtime.model_settings.mirror_pointer_tracking,
+            ignore_keyboard: runtime.model_settings.ignore_keyboard,
+            ignore_gamepad: runtime.model_settings.ignore_gamepad,
             ignore_pointer: runtime.model_settings.ignore_pointer,
         },
         gamepad_axis_settings: SettingsGamepadAxisSettings {
@@ -1642,6 +1646,15 @@ fn settings_shortcut(command: ShortcutCommand) -> Option<SettingsApplicationShor
     Some(match command {
         ShortcutCommand::ToggleOverlay => SettingsApplicationShortcut::ToggleOverlay,
         ShortcutCommand::ToggleMirror => SettingsApplicationShortcut::ToggleMirror,
+        ShortcutCommand::ToggleIgnoreMouseInput => {
+            SettingsApplicationShortcut::ToggleIgnoreMouseInput
+        }
+        ShortcutCommand::ToggleIgnoreKeyboardInput => {
+            SettingsApplicationShortcut::ToggleIgnoreKeyboardInput
+        }
+        ShortcutCommand::ToggleIgnoreGamepadInput => {
+            SettingsApplicationShortcut::ToggleIgnoreGamepadInput
+        }
         ShortcutCommand::ToggleClickThrough => SettingsApplicationShortcut::ToggleClickThrough,
         ShortcutCommand::ToggleAlwaysOnTop => SettingsApplicationShortcut::ToggleAlwaysOnTop,
         ShortcutCommand::OpenSettings => SettingsApplicationShortcut::OpenSettings,
@@ -1662,6 +1675,27 @@ fn apply_application_shortcut(
             let settings = application.runtime_client().snapshot().model_settings;
             application.set_model_settings(ModelSettings {
                 mirror: !settings.mirror,
+                ..settings
+            })?;
+        }
+        SettingsApplicationShortcut::ToggleIgnoreMouseInput => {
+            let settings = application.runtime_client().snapshot().model_settings;
+            application.set_model_settings(ModelSettings {
+                ignore_pointer: !settings.ignore_pointer,
+                ..settings
+            })?;
+        }
+        SettingsApplicationShortcut::ToggleIgnoreKeyboardInput => {
+            let settings = application.runtime_client().snapshot().model_settings;
+            application.set_model_settings(ModelSettings {
+                ignore_keyboard: !settings.ignore_keyboard,
+                ..settings
+            })?;
+        }
+        SettingsApplicationShortcut::ToggleIgnoreGamepadInput => {
+            let settings = application.runtime_client().snapshot().model_settings;
+            application.set_model_settings(ModelSettings {
+                ignore_gamepad: !settings.ignore_gamepad,
                 ..settings
             })?;
         }
@@ -4361,6 +4395,73 @@ mod tests {
         service.join().expect("join service");
     }
 
+    #[test]
+    fn service_maps_ignore_input_shortcuts_to_model_settings() {
+        fn wait_for_snapshot<F>(client: &SettingsClient, mut predicate: F) -> SettingsSnapshot
+        where
+            F: FnMut(&SettingsSnapshot) -> bool,
+        {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let snapshot = client.read_snapshot_blocking().expect("settings snapshot");
+                if predicate(&snapshot) {
+                    return snapshot;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "ignore-input shortcut did not update the settings snapshot"
+                );
+                std::thread::yield_now();
+            }
+        }
+
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("start application");
+        let (sender, receiver) = std::sync::mpsc::sync_channel(8);
+        let service =
+            ApplicationSettingsService::start_with_shortcut_receiver(application, receiver)
+                .expect("start settings service");
+        let client = service.client();
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        let mut revision = initial.config_revision.expect("config revision");
+
+        for (command, field) in [
+            (ShortcutCommand::ToggleIgnoreMouseInput, "ignore_pointer"),
+            (
+                ShortcutCommand::ToggleIgnoreKeyboardInput,
+                "ignore_keyboard",
+            ),
+            (ShortcutCommand::ToggleIgnoreGamepadInput, "ignore_gamepad"),
+        ] {
+            sender.send(command).expect("queue ignore-input shortcut");
+            let updated = wait_for_snapshot(&client, |snapshot| {
+                snapshot.config_revision != Some(revision)
+                    && match field {
+                        "ignore_pointer" => snapshot.model_settings.ignore_pointer,
+                        "ignore_keyboard" => snapshot.model_settings.ignore_keyboard,
+                        "ignore_gamepad" => snapshot.model_settings.ignore_gamepad,
+                        _ => false,
+                    }
+            });
+            revision = updated.config_revision.expect("updated config revision");
+        }
+
+        let final_snapshot = client.read_snapshot_blocking().expect("final snapshot");
+        assert!(final_snapshot.model_settings.ignore_pointer);
+        assert!(final_snapshot.model_settings.ignore_keyboard);
+        assert!(final_snapshot.model_settings.ignore_gamepad);
+        let persisted = std::fs::read_to_string(&layout.config).expect("persisted config");
+        assert!(persisted.contains("\"ignore_pointer\": true"));
+        assert!(persisted.contains("\"ignore_keyboard\": true"));
+        assert!(persisted.contains("\"ignore_gamepad\": true"));
+
+        drop(sender);
+        client.shutdown_blocking().expect("shutdown service");
+        service.join().expect("join service");
+    }
+
     /// An import queues one cover capture per installed model for the GPUI thread,
     /// and the bytes that projection of the model produced land on the package
     /// cover the settings catalog reports.
@@ -4848,6 +4949,8 @@ mod tests {
         let model_settings = bongocat_ui_protocol::SettingsModelSettings {
             mirror: true,
             mirror_pointer_tracking: true,
+            ignore_keyboard: true,
+            ignore_gamepad: true,
             ignore_pointer: true,
         };
         let configured_model = client
@@ -4915,6 +5018,8 @@ mod tests {
         assert!(persisted.contains("\"keep_inside_screen\": false"));
         assert!(persisted.contains("\"mirror\": true"));
         assert!(persisted.contains("\"mirror_pointer_tracking\": true"));
+        assert!(persisted.contains("\"ignore_keyboard\": true"));
+        assert!(persisted.contains("\"ignore_gamepad\": true"));
         assert!(persisted.contains("\"ignore_pointer\": true"));
         assert!(persisted.contains("\"stick_dead_zone\": 0.2"));
         assert!(persisted.contains("\"trigger_dead_zone\": 0.1"));
@@ -4935,6 +5040,16 @@ mod tests {
                 .snapshot()
                 .release_fallback_timeout_ms,
             1_500
+        );
+        assert_eq!(
+            restarted.runtime_client().snapshot().model_settings,
+            ModelSettings {
+                mirror: true,
+                mirror_pointer_tracking: true,
+                ignore_keyboard: true,
+                ignore_gamepad: true,
+                ignore_pointer: true,
+            }
         );
         assert_eq!(
             restarted
@@ -5047,6 +5162,8 @@ mod tests {
                 bongocat_ui_protocol::SettingsModelSettings {
                     mirror: true,
                     mirror_pointer_tracking: true,
+                    ignore_keyboard: false,
+                    ignore_gamepad: false,
                     ignore_pointer: true,
                 },
             )

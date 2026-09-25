@@ -80,7 +80,7 @@
     "model": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["selected_model", "imported_models", "built_in_models", "mirror", "mirror_pointer_tracking", "play_motion_audio", "ignore_pointer", "random_behavior"],
+      "required": ["selected_model", "imported_models", "built_in_models", "mirror", "mirror_pointer_tracking", "play_motion_audio", "ignore_keyboard", "ignore_gamepad", "ignore_pointer", "random_behavior"],
       "properties": {
         "selected_model": {
           "oneOf": [{ "$ref": "#/$defs/model_identity" }, { "type": "null" }]
@@ -90,6 +90,8 @@
         "mirror": { "type": "boolean" },
         "mirror_pointer_tracking": { "type": "boolean" },
         "play_motion_audio": { "type": "boolean" },
+        "ignore_keyboard": { "type": "boolean" },
+        "ignore_gamepad": { "type": "boolean" },
         "ignore_pointer": { "type": "boolean" },
         "random_behavior": { "$ref": "#/$defs/random_behavior" }
       }

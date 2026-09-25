@@ -976,6 +976,8 @@ mod tests {
         renderer.set_model_settings(ModelSettings {
             mirror: true,
             mirror_pointer_tracking: true,
+            ignore_keyboard: false,
+            ignore_gamepad: false,
             ignore_pointer: false,
         });
         let token = renderer
@@ -1006,6 +1008,8 @@ mod tests {
         renderer.set_model_settings(ModelSettings {
             mirror: false,
             mirror_pointer_tracking: false,
+            ignore_keyboard: false,
+            ignore_gamepad: false,
             ignore_pointer: true,
         });
         renderer

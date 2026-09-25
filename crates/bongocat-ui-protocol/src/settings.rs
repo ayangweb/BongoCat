@@ -449,6 +449,8 @@ pub struct SettingsModelBehaviorBinding {
 pub struct SettingsModelSettings {
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
+    pub ignore_keyboard: bool,
+    pub ignore_gamepad: bool,
     pub ignore_pointer: bool,
 }
 
@@ -1344,6 +1346,9 @@ pub enum SettingsCommand {
 pub enum SettingsApplicationShortcut {
     ToggleOverlay,
     ToggleMirror,
+    ToggleIgnoreMouseInput,
+    ToggleIgnoreKeyboardInput,
+    ToggleIgnoreGamepadInput,
     ToggleClickThrough,
     ToggleAlwaysOnTop,
     OpenSettings,

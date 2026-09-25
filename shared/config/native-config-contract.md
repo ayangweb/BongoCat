@@ -56,6 +56,8 @@ updates
 | `model`       | `mirror`                              | 水平镜像模型                           |
 | `model`       | `mirror_pointer_tracking`             | 镜像指针跟随方向                       |
 | `model`       | `play_motion_audio`                   | 播放动作音效，默认 `false`             |
+| `model`       | `ignore_keyboard`                     | 模型求值忽略键盘输入                   |
+| `model`       | `ignore_gamepad`                      | 模型求值忽略手柄输入                   |
 | `model`       | `random_behavior.enabled`             | 是否按间隔随机播放动作或表情           |
 | `model`       | `random_behavior.interval_seconds`    | 随机播放间隔秒数，`[1, 3600]`          |
 | `model`       | `ignore_pointer`                      | 模型求值忽略指针位置                   |
@@ -63,6 +65,11 @@ updates
 | `shortcuts`   | `command_bindings`                    | 应用 command 到快捷键绑定              |
 | `shortcuts`   | `model_behaviors_enabled`             | 模型动作/表情绑定是否进入平台匹配表     |
 | `shortcuts`   | `model_behavior_bindings`             | 模型动作/表情绑定，模型身份为 `{ id, source }` |
+
+`model.ignore_keyboard` 和 `model.ignore_gamepad` 默认均为 `false`。它们只过滤输入到当前模型的
+投影：键盘门禁移除键盘键图和手部贡献，手柄门禁移除手柄按钮、手部、摇杆和扳机贡献；原始采集、
+pressed state、释放校正、设备生命周期 Reset、诊断以及独立快捷键注册不受影响。解除门禁后仍由
+同一可靠输入状态继续处理释放，不能通过过滤路径制造卡键。
 
 首次启动创建当前 v1 配置时，`overlay.click_through` 默认为 `false`。用户后续通过
 typed settings command 修改该值后，仍按配置 revision 原子提交并在重启时从当前环境恢复。
@@ -217,7 +224,10 @@ key 必须属于稳定的物理键闭合集合：`A`-`Z`、`0`-`9`、`F1`-`F12`�
 仍由后续平台 adapter 负责。
 
 应用 command 使用闭合集合：`toggle_overlay`、`open_settings`、`toggle_mirror`、
-`toggle_click_through` 和 `toggle_always_on_top`。未知 command 在配置提交前拒绝。
+`toggle_ignore_mouse_input`、`toggle_ignore_keyboard_input`、`toggle_ignore_gamepad_input`、
+`toggle_click_through` 和 `toggle_always_on_top`。三个 `toggle_ignore_*_input` command
+分别通过 settings service 切换对应的模型输入门禁；它们不停止平台采集，也不绕过现有的
+配置 revision、快捷键门禁和冲突校验。未知 command 在配置提交前拒绝。
 模型行为使用 `motion:<group>:<index>` 或 `expression:<name>` 形式；绑定携带完整模型身份
 `{ id, source }`，runtime 在动作进入队列前接收解析后的强类型 motion/expression identity。
 行为 ID 不接受旧版的复合模型路径或任意未定义 kind。

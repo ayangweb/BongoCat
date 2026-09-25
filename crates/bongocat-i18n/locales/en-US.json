@@ -262,6 +262,9 @@
       "toggle_model_window": "Show or hide the model window",
       "open_settings": "Show or hide settings window",
       "toggle_mirror": "Toggle horizontal model mirroring",
+      "toggle_ignore_mouse_input": "Toggle ignoring mouse input",
+      "toggle_ignore_keyboard_input": "Toggle ignoring keyboard input",
+      "toggle_ignore_gamepad_input": "Toggle ignoring gamepad input",
       "toggle_click_through": "Toggle mouse click-through",
       "toggle_always_on_top": "Toggle always on top"
     },
@@ -410,6 +413,9 @@
       },
       "keyboard": {
         "title": "Keyboard",
+        "ignore_keyboard_input": {
+          "label": "Ignore keyboard input"
+        },
         "key_release_timeout": {
           "label": "Key release timeout (milliseconds)",
           "description": "Release the key automatically when no key-up event arrives within this time, so it never stays stuck; 0 disables it."
@@ -417,6 +423,9 @@
       },
       "gamepad": {
         "title": "Gamepad",
+        "ignore_gamepad_input": {
+          "label": "Ignore gamepad input"
+        },
         "stick_dead_zone": {
           "label": "Gamepad stick dead zone",
           "description": "Ignore small analog stick movement."

@@ -417,6 +417,10 @@ pub struct ModelConfig {
     /// implementation, which recorded an enabled default; the reasoning lives
     /// in `shared/config/native-config-contract.md`.
     pub play_motion_audio: bool,
+    /// Whether keyboard input is excluded from the model's input projection.
+    pub ignore_keyboard: bool,
+    /// Whether gamepad input is excluded from the model's input projection.
+    pub ignore_gamepad: bool,
     pub ignore_pointer: bool,
     pub random_behavior: RandomBehaviorConfig,
 }
@@ -924,6 +928,9 @@ pub enum ShortcutCommand {
     ToggleOverlay,
     OpenSettings,
     ToggleMirror,
+    ToggleIgnoreMouseInput,
+    ToggleIgnoreKeyboardInput,
+    ToggleIgnoreGamepadInput,
     ToggleClickThrough,
     ToggleAlwaysOnTop,
 }
@@ -940,6 +947,9 @@ impl ShortcutCommand {
             "toggle_overlay" => Ok(Self::ToggleOverlay),
             "open_settings" => Ok(Self::OpenSettings),
             "toggle_mirror" => Ok(Self::ToggleMirror),
+            "toggle_ignore_mouse_input" => Ok(Self::ToggleIgnoreMouseInput),
+            "toggle_ignore_keyboard_input" => Ok(Self::ToggleIgnoreKeyboardInput),
+            "toggle_ignore_gamepad_input" => Ok(Self::ToggleIgnoreGamepadInput),
             "toggle_click_through" => Ok(Self::ToggleClickThrough),
             "toggle_always_on_top" => Ok(Self::ToggleAlwaysOnTop),
             "" => Err(ShortcutCommandParseError::Empty),
@@ -952,6 +962,9 @@ impl ShortcutCommand {
             Self::ToggleOverlay => "toggle_overlay",
             Self::OpenSettings => "open_settings",
             Self::ToggleMirror => "toggle_mirror",
+            Self::ToggleIgnoreMouseInput => "toggle_ignore_mouse_input",
+            Self::ToggleIgnoreKeyboardInput => "toggle_ignore_keyboard_input",
+            Self::ToggleIgnoreGamepadInput => "toggle_ignore_gamepad_input",
             Self::ToggleClickThrough => "toggle_click_through",
             Self::ToggleAlwaysOnTop => "toggle_always_on_top",
         }
@@ -1354,6 +1367,8 @@ impl Default for NativeConfig {
                 mirror: false,
                 mirror_pointer_tracking: false,
                 play_motion_audio: false,
+                ignore_keyboard: false,
+                ignore_gamepad: false,
                 ignore_pointer: false,
                 random_behavior: RandomBehaviorConfig::default(),
             },
@@ -3768,6 +3783,23 @@ mod tests {
             ShortcutCommand::parse("open_settings").expect("command"),
             ShortcutCommand::OpenSettings
         );
+        for (value, expected) in [
+            (
+                "toggle_ignore_mouse_input",
+                ShortcutCommand::ToggleIgnoreMouseInput,
+            ),
+            (
+                "toggle_ignore_keyboard_input",
+                ShortcutCommand::ToggleIgnoreKeyboardInput,
+            ),
+            (
+                "toggle_ignore_gamepad_input",
+                ShortcutCommand::ToggleIgnoreGamepadInput,
+            ),
+        ] {
+            assert_eq!(ShortcutCommand::parse(value).expect("command"), expected);
+            assert_eq!(expected.as_str(), value);
+        }
         assert_eq!(
             ShortcutCommand::ToggleAlwaysOnTop.as_str(),
             "toggle_always_on_top"

@@ -54,6 +54,12 @@ updates
    从可见状态启动，隐藏只持续到进程退出；runtime/settings snapshot 仍保留 `overlay_visible`。
 7. 随机行为使用 `model.random_behavior.enabled` 与
    `model.random_behavior.interval_seconds`，并保持原有范围与默认值。
+8. 模型响应来源门禁使用 `model.ignore_keyboard` 与 `model.ignore_gamepad`；它们属于模型
+   交互表现，不属于 `input` 的采集/死区配置。门禁只作用于模型输入投影，不能关闭可靠输入、
+   pressed-state 恢复、诊断或独立快捷键。三个模型输入忽略开关分别可由
+   `toggle_ignore_mouse_input`、`toggle_ignore_keyboard_input` 和 `toggle_ignore_gamepad_input`
+   application shortcut target 切换；这些 target 仍走 settings service 的 typed handoff 和
+   revision-checked 持久化。
 
 ## 结果与边界
 

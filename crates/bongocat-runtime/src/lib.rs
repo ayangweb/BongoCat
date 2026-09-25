@@ -35,7 +35,7 @@ pub use bongocat_input::{
     PlatformInputServiceStatus, SequencedInputEvent, is_stable_platform_input_error_code,
 };
 use bongocat_input::{CursorSmoother, DEFAULT_GAMEPAD_AXIS_CAPACITY};
-use input_state::{InputDisposition, InputState};
+use input_state::{InputDisposition, InputState, ModelInputFilter};
 pub use input_state::{InputSnapshot, ModelInputSnapshot};
 pub use random_behavior::{
     DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS, MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
@@ -329,6 +329,10 @@ impl OverlaySettings {
 pub struct ModelSettings {
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
+    /// Whether keyboard input is excluded from the model's input projection.
+    pub ignore_keyboard: bool,
+    /// Whether gamepad input is excluded from the model's input projection.
+    pub ignore_gamepad: bool,
     pub ignore_pointer: bool,
 }
 
@@ -1653,6 +1657,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     let mut overlay_visible = initial_overlay_visible;
     let mut maximum_fps = DEFAULT_MAXIMUM_FPS;
     let mut release_fallback_timeout_ms = DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS;
+    let mut model_settings = ModelSettings::default();
     let mut random_behavior_scheduler = RandomBehaviorScheduler::new(system_seed());
     let mut next_automatic_event_sequence = AUTOMATIC_SEQUENCE_START;
     let mut motion_audio_enabled = initial_motion_audio_enabled;
@@ -1672,6 +1677,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
             &input_state,
             &mut input_bindings,
             normalized_cursor,
+            &gamepad_axis_values,
+            gamepad_axis_settings,
+            model_settings,
             &mut active_model,
             &mut active_motion,
             &mut active_expression,
@@ -1741,8 +1749,11 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     &snapshot,
                     &input_state,
                     &input_bindings,
+                    &gamepad_axis_values,
+                    gamepad_axis_settings,
                     &mut cursor_smoother,
                     &mut normalized_cursor,
+                    model_settings,
                     clock.now(),
                 );
                 consume_gamepad_axes(
@@ -1753,6 +1764,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     &input_bindings,
                     normalized_cursor,
                     gamepad_axis_settings,
+                    model_settings,
                 );
                 if pending_model.is_some()
                     && !matches!(envelope.command, WorkerCommand::Shutdown)
@@ -1871,11 +1883,20 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         }
                     }
                     WorkerCommand::Product(RuntimeCommand::SetModelSettings(settings)) => {
+                        model_settings = settings;
                         if let Some(renderer) = &mut renderer {
                             renderer.set_model_settings(settings);
                         }
                         publish(&snapshot, |current| {
                             current.model_settings = settings;
+                            current.model_input = compose_model_input(
+                                &input_state,
+                                &input_bindings,
+                                normalized_cursor,
+                                &gamepad_axis_values,
+                                gamepad_axis_settings,
+                                model_settings,
+                            );
                             current.last_command_failure = None;
                             current.last_command_sequence = Some(sequence);
                         });
@@ -1909,6 +1930,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                 normalized_cursor,
                                 &gamepad_axis_values,
                                 gamepad_axis_settings,
+                                model_settings,
                             );
                             current.last_command_failure = None;
                             current.last_command_sequence = Some(sequence);
@@ -1924,6 +1946,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                 normalized_cursor,
                                 &gamepad_axis_values,
                                 gamepad_axis_settings,
+                                model_settings,
                             );
                             current.last_command_failure = None;
                             current.last_command_sequence = Some(sequence);
@@ -1940,6 +1963,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                 normalized_cursor,
                                 &gamepad_axis_values,
                                 gamepad_axis_settings,
+                                model_settings,
                             );
                             current.last_command_failure = None;
                             current.last_command_sequence = Some(sequence);
@@ -1982,6 +2006,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                 normalized_cursor,
                                 &gamepad_axis_values,
                                 gamepad_axis_settings,
+                                model_settings,
                             );
                             current.last_command_failure = None;
                             if !activation_pending {
@@ -2000,6 +2025,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                             &input_state,
                             &mut input_bindings,
                             normalized_cursor,
+                            &gamepad_axis_values,
+                            gamepad_axis_settings,
+                            model_settings,
                             &mut active_model,
                             &mut active_motion,
                             &mut active_expression,
@@ -2022,6 +2050,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                             &input_state,
                             &mut input_bindings,
                             normalized_cursor,
+                            &gamepad_axis_values,
+                            gamepad_axis_settings,
+                            model_settings,
                             &mut active_model,
                             &mut active_motion,
                             &mut active_expression,
@@ -2248,13 +2279,21 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     normalized_cursor,
                     &gamepad_axis_values,
                     gamepad_axis_settings,
+                    model_settings,
                     &snapshot,
                     clock.now(),
                 );
                 if evaluate_after_command && overlay_visible && pending_model.is_none() {
                     evaluate_renderer(
                         renderer.as_mut(),
-                        input_state.model_snapshot(&input_bindings, normalized_cursor),
+                        compose_model_input(
+                            &input_state,
+                            &input_bindings,
+                            normalized_cursor,
+                            &gamepad_axis_values,
+                            gamepad_axis_settings,
+                            model_settings,
+                        ),
                         &snapshot,
                         clock.now(),
                         &mut active_motion,
@@ -2274,6 +2313,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     normalized_cursor,
                     &gamepad_axis_values,
                     gamepad_axis_settings,
+                    model_settings,
                     &snapshot,
                     clock.now(),
                 );
@@ -2282,8 +2322,11 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     &snapshot,
                     &input_state,
                     &input_bindings,
+                    &gamepad_axis_values,
+                    gamepad_axis_settings,
                     &mut cursor_smoother,
                     &mut normalized_cursor,
+                    model_settings,
                     clock.now(),
                 );
                 consume_gamepad_axes(
@@ -2294,6 +2337,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     &input_bindings,
                     normalized_cursor,
                     gamepad_axis_settings,
+                    model_settings,
                 );
                 process_model_commit_feedback(
                     renderer.as_mut(),
@@ -2301,6 +2345,9 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     &input_state,
                     &mut input_bindings,
                     normalized_cursor,
+                    &gamepad_axis_values,
+                    gamepad_axis_settings,
+                    model_settings,
                     &mut active_model,
                     &mut active_motion,
                     &mut active_expression,
@@ -2329,7 +2376,14 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                 if overlay_visible && pending_model.is_none() {
                     evaluate_renderer(
                         renderer.as_mut(),
-                        input_state.model_snapshot(&input_bindings, normalized_cursor),
+                        compose_model_input(
+                            &input_state,
+                            &input_bindings,
+                            normalized_cursor,
+                            &gamepad_axis_values,
+                            gamepad_axis_settings,
+                            model_settings,
+                        ),
                         &snapshot,
                         clock.now(),
                         &mut active_motion,
@@ -2362,8 +2416,11 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         &snapshot,
         &input_state,
         &input_bindings,
+        &gamepad_axis_values,
+        gamepad_axis_settings,
         &mut cursor_smoother,
         &mut normalized_cursor,
+        model_settings,
         clock.now(),
     );
     consume_gamepad_axes(
@@ -2374,6 +2431,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
         &input_bindings,
         normalized_cursor,
         gamepad_axis_settings,
+        model_settings,
     );
     gamepad_axis_values.clear();
     gamepad_axis_producer.stop();
@@ -2507,6 +2565,7 @@ fn expire_keyboard_fallback(
     normalized_cursor: NormalizedCursorPosition,
     gamepad_axis_values: &GamepadAxisValues,
     gamepad_axis_settings: GamepadAxisSettings,
+    model_settings: ModelSettings,
     snapshot: &SnapshotCell,
     now: Duration,
 ) {
@@ -2521,6 +2580,7 @@ fn expire_keyboard_fallback(
             normalized_cursor,
             gamepad_axis_values,
             gamepad_axis_settings,
+            model_settings,
         );
     });
 }
@@ -2534,6 +2594,9 @@ fn begin_model_activation(
     input_state: &InputState,
     input_bindings: &mut InputBindings,
     normalized_cursor: NormalizedCursorPosition,
+    gamepad_axis_values: &GamepadAxisValues,
+    gamepad_axis_settings: GamepadAxisSettings,
+    model_settings: ModelSettings,
     active_model: &mut Option<Arc<CommittedModel>>,
     active_motion: &mut Option<ActiveMotionSnapshot>,
     active_expression: &mut Option<ActiveExpressionSnapshot>,
@@ -2543,7 +2606,14 @@ fn begin_model_activation(
     snapshot: &SnapshotCell,
 ) {
     let activation_bindings = proposed_bindings.as_deref().unwrap_or(input_bindings);
-    let model_input = input_state.model_snapshot(activation_bindings, normalized_cursor);
+    let model_input = compose_model_input(
+        input_state,
+        activation_bindings,
+        normalized_cursor,
+        gamepad_axis_values,
+        gamepad_axis_settings,
+        model_settings,
+    );
     let Some(renderer) = renderer else {
         if let Some(bindings) = proposed_bindings {
             *input_bindings = Arc::unwrap_or_clone(bindings);
@@ -2603,6 +2673,9 @@ fn process_model_commit_feedback(
     input_state: &InputState,
     input_bindings: &mut InputBindings,
     normalized_cursor: NormalizedCursorPosition,
+    gamepad_axis_values: &GamepadAxisValues,
+    gamepad_axis_settings: GamepadAxisSettings,
+    model_settings: ModelSettings,
     active_model: &mut Option<Arc<CommittedModel>>,
     active_motion: &mut Option<ActiveMotionSnapshot>,
     active_expression: &mut Option<ActiveExpressionSnapshot>,
@@ -2636,7 +2709,14 @@ fn process_model_commit_feedback(
                 if renderer.reject(feedback.token) =>
             {
                 let pending = pending_model.take().expect("checked pending model");
-                let model_input = input_state.model_snapshot(input_bindings, normalized_cursor);
+                let model_input = compose_model_input(
+                    input_state,
+                    input_bindings,
+                    normalized_cursor,
+                    gamepad_axis_values,
+                    gamepad_axis_settings,
+                    model_settings,
+                );
                 publish(snapshot, |current| {
                     current.pending_model = None;
                     current.model_input = model_input;
@@ -2680,7 +2760,14 @@ fn process_model_commit_feedback(
         if let Some(bindings) = pending.input_bindings {
             *input_bindings = Arc::unwrap_or_clone(bindings);
         }
-        let model_input = input_state.model_snapshot(input_bindings, normalized_cursor);
+        let model_input = compose_model_input(
+            input_state,
+            input_bindings,
+            normalized_cursor,
+            gamepad_axis_values,
+            gamepad_axis_settings,
+            model_settings,
+        );
         let model_snapshot = pending.model.snapshot();
         let model_origin = pending.model.origin();
         activate_model_audio(motion_audio, audio_paths);
@@ -2885,13 +2972,17 @@ fn stop_motion_audio(client: &MotionAudioClient, reason: MotionAudioStopReason) 
         client.try_publish_with_sequence(|sequence| MotionAudioCommand::Stop { sequence, reason });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn consume_cursor(
     cursor_producer: &CursorProducer,
     snapshot: &SnapshotCell,
     input_state: &InputState,
     input_bindings: &InputBindings,
+    gamepad_axis_values: &GamepadAxisValues,
+    gamepad_axis_settings: GamepadAxisSettings,
     smoother: &mut CursorSmoother,
     normalized_cursor: &mut NormalizedCursorPosition,
+    model_settings: ModelSettings,
     now: Duration,
 ) {
     let sample = cursor_producer.take();
@@ -2907,10 +2998,18 @@ fn consume_cursor(
         if let Some(sample) = sample {
             current.cursor.sample = Some(sample);
         }
-        current.model_input = input_state.model_snapshot(input_bindings, *normalized_cursor);
+        current.model_input = compose_model_input(
+            input_state,
+            input_bindings,
+            *normalized_cursor,
+            gamepad_axis_values,
+            gamepad_axis_settings,
+            model_settings,
+        );
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn consume_gamepad_axes(
     producer: &GamepadAxisProducer,
     snapshot: &SnapshotCell,
@@ -2919,6 +3018,7 @@ fn consume_gamepad_axes(
     input_bindings: &InputBindings,
     normalized_cursor: NormalizedCursorPosition,
     settings: GamepadAxisSettings,
+    model_settings: ModelSettings,
 ) {
     if !values.consume(producer) {
         return;
@@ -2930,6 +3030,7 @@ fn consume_gamepad_axes(
             normalized_cursor,
             values,
             settings,
+            model_settings,
         );
     });
 }
@@ -2940,9 +3041,21 @@ fn compose_model_input(
     normalized_cursor: NormalizedCursorPosition,
     gamepad_axis_values: &GamepadAxisValues,
     gamepad_axis_settings: GamepadAxisSettings,
+    model_settings: ModelSettings,
 ) -> ModelInputSnapshot {
-    let mut input = input_state.model_snapshot(input_bindings, normalized_cursor);
-    let axes = gamepad_axis_values.project(input_state, gamepad_axis_settings);
+    let mut input = input_state.model_snapshot_with_filter(
+        input_bindings,
+        normalized_cursor,
+        ModelInputFilter {
+            ignore_keyboard: model_settings.ignore_keyboard,
+            ignore_gamepad: model_settings.ignore_gamepad,
+        },
+    );
+    let axes = if model_settings.ignore_gamepad {
+        [0.0; 6]
+    } else {
+        gamepad_axis_values.project(input_state, gamepad_axis_settings)
+    };
     input.stick_left_x = axes[GamepadAxis::LeftStickX as usize];
     input.stick_left_y = axes[GamepadAxis::LeftStickY as usize];
     input.stick_right_x = axes[GamepadAxis::RightStickX as usize];
@@ -3652,6 +3765,8 @@ mod tests {
         let settings = ModelSettings {
             mirror: true,
             mirror_pointer_tracking: true,
+            ignore_keyboard: false,
+            ignore_gamepad: false,
             ignore_pointer: true,
         };
         let sequence = client
@@ -4079,6 +4194,147 @@ mod tests {
         let stopped = owner.shutdown(TIMEOUT).expect("clean shutdown");
         assert_eq!(stopped.model_input.stick_left_x, 0.0);
         assert_eq!(stopped.gamepad_axis_transport.pending, 0);
+    }
+
+    #[test]
+    fn model_input_filters_preserve_raw_pressed_state_and_recompose_immediately() {
+        let owner = RuntimeOwner::start(true, 16);
+        let client = owner.client();
+        client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        let bindings = Arc::new(InputBindings::with_gamepad_hands(
+            BTreeMap::from([(PhysicalKey::KEY_A, HandSide::Left)]),
+            BTreeMap::from([(GamepadButton::South, HandSide::Right)]),
+        ));
+        let configured = client
+            .send(RuntimeCommand::SetInputBindings(bindings))
+            .expect("bindings accepted");
+        client
+            .wait_for_command(configured, TIMEOUT)
+            .expect("bindings published");
+
+        let axis = owner.gamepad_axis_producer();
+        let connection = axis.connect(0).expect("gamepad connection allocated");
+        let input = owner.input_producer();
+        let connected = input
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            })
+            .expect("connection accepted");
+        client
+            .wait_for_input_sequence(connected, TIMEOUT)
+            .expect("connection consumed");
+        let key_down = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(1),
+            })
+            .expect("key down accepted");
+        client
+            .wait_for_input_sequence(key_down, TIMEOUT)
+            .expect("key down consumed");
+        let gamepad_down = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Gamepad(GamepadButtonKey {
+                    connection,
+                    button: GamepadButton::South,
+                }),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(2),
+            })
+            .expect("gamepad down accepted");
+        let before_filter = client
+            .wait_for_input_sequence(gamepad_down, TIMEOUT)
+            .expect("gamepad down consumed");
+        axis.publish(GamepadAxisSample {
+            key: GamepadAxisKey {
+                connection,
+                axis: GamepadAxis::LeftStickX,
+            },
+            value: 1.0,
+            at: MonotonicMillis::new(3),
+        })
+        .expect("axis accepted");
+        let tick = client.send(RuntimeCommand::Tick).expect("tick accepted");
+        let with_axis = client
+            .wait_for_command(tick, TIMEOUT)
+            .expect("axis consumed");
+        assert!(before_filter.model_input.left_hand_down);
+        assert!(before_filter.model_input.right_hand_down);
+        assert!((with_axis.model_input.stick_left_x - 1.0).abs() < 0.0001);
+
+        let keyboard_filter = client
+            .send(RuntimeCommand::SetModelSettings(ModelSettings {
+                mirror: false,
+                mirror_pointer_tracking: false,
+                ignore_keyboard: true,
+                ignore_gamepad: false,
+                ignore_pointer: false,
+            }))
+            .expect("keyboard filter accepted");
+        let keyboard_filtered = client
+            .wait_for_command(keyboard_filter, TIMEOUT)
+            .expect("keyboard filter published");
+        assert_eq!(keyboard_filtered.input.pressed_key_count, 1);
+        assert_eq!(keyboard_filtered.input.pressed_gamepad_button_count, 1);
+        assert!(!keyboard_filtered.model_input.left_hand_down);
+        assert!(keyboard_filtered.model_input.right_hand_down);
+        assert_eq!(keyboard_filtered.model_input.key_presses.iter().count(), 0);
+        assert!((keyboard_filtered.model_input.stick_left_x - 1.0).abs() < 0.0001);
+
+        let gamepad_filter = client
+            .send(RuntimeCommand::SetModelSettings(ModelSettings {
+                mirror: false,
+                mirror_pointer_tracking: false,
+                ignore_keyboard: false,
+                ignore_gamepad: true,
+                ignore_pointer: false,
+            }))
+            .expect("gamepad filter accepted");
+        let gamepad_filtered = client
+            .wait_for_command(gamepad_filter, TIMEOUT)
+            .expect("gamepad filter published");
+        assert_eq!(gamepad_filtered.input.pressed_key_count, 1);
+        assert_eq!(gamepad_filtered.input.pressed_gamepad_button_count, 1);
+        assert!(gamepad_filtered.model_input.left_hand_down);
+        assert!(!gamepad_filtered.model_input.right_hand_down);
+        assert_eq!(gamepad_filtered.model_input.key_presses.iter().count(), 1);
+        assert_eq!(gamepad_filtered.model_input.stick_left_x, 0.0);
+
+        let key_up = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Up,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(4),
+            })
+            .expect("key up accepted");
+        client
+            .wait_for_input_sequence(key_up, TIMEOUT)
+            .expect("key up consumed");
+        let gamepad_up = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Gamepad(GamepadButtonKey {
+                    connection,
+                    button: GamepadButton::South,
+                }),
+                edge: InputEdge::Up,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(5),
+            })
+            .expect("gamepad up accepted");
+        let released = client
+            .wait_for_input_sequence(gamepad_up, TIMEOUT)
+            .expect("gamepad up consumed");
+        assert_eq!(released.input.pressed_key_count, 0);
+        assert_eq!(released.input.pressed_gamepad_button_count, 0);
+        assert_eq!(released.model_input, ModelInputSnapshot::default());
+        owner.shutdown(TIMEOUT).expect("clean shutdown");
     }
 
     #[test]

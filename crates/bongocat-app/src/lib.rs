@@ -1191,6 +1191,8 @@ impl Application {
         let mut next_config = self.config.clone();
         next_config.model.mirror = settings.mirror;
         next_config.model.mirror_pointer_tracking = settings.mirror_pointer_tracking;
+        next_config.model.ignore_keyboard = settings.ignore_keyboard;
+        next_config.model.ignore_gamepad = settings.ignore_gamepad;
         next_config.model.ignore_pointer = settings.ignore_pointer;
         let next_revision = self
             .config_store
@@ -2641,6 +2643,8 @@ const fn model_settings_from_config(config: &NativeConfig) -> ModelSettings {
     ModelSettings {
         mirror: config.model.mirror,
         mirror_pointer_tracking: config.model.mirror_pointer_tracking,
+        ignore_keyboard: config.model.ignore_keyboard,
+        ignore_gamepad: config.model.ignore_gamepad,
         ignore_pointer: config.model.ignore_pointer,
     }
 }
@@ -4627,6 +4631,8 @@ mod tests {
         let mut config = store.load_or_default().expect("default config").config;
         config.model.mirror = true;
         config.model.mirror_pointer_tracking = true;
+        config.model.ignore_keyboard = true;
+        config.model.ignore_gamepad = true;
         config.model.ignore_pointer = true;
         config.model.random_behavior.enabled = true;
         config.model.random_behavior.interval_seconds = 17;
@@ -4639,6 +4645,8 @@ mod tests {
             ModelSettings {
                 mirror: true,
                 mirror_pointer_tracking: true,
+                ignore_keyboard: true,
+                ignore_gamepad: true,
                 ignore_pointer: true,
             }
         );

@@ -1,7 +1,7 @@
 # ADR-0044: 全局快捷键改用 global-hotkey 注册制后端
 
 状态：Accepted
-日期：2026-09-17
+日期：2026-09-17；2026-09-25 修订应用级输入门禁快捷键
 取代：无（首次为快捷键子系统建立 ADR）
 
 ## Context
@@ -45,7 +45,10 @@ Windows Raw Input / macOS CGEventTap 把按键边沿映射为 HID usage 后喂�
 - 注册失败不阻塞其他绑定：被其他应用占用或平台无 scancode（macOS 的
   ScrollLock/Pause 没有 Carbon scancode）的组合键记入
   `registration_failures` 诊断，其余正常注册。
-- 配置 schema、`ShortcutCommand` 目标集合、行为动作与 UI 录制流程均不变。
+- 配置 schema、行为动作与 UI 录制流程均不变。`ShortcutCommand` 的 application target
+  在原有集合上增加 `toggle_ignore_mouse_input`、`toggle_ignore_keyboard_input` 和
+  `toggle_ignore_gamepad_input`；三个 target 都经同一 settings-service typed handoff
+  切换并持久化对应的模型输入门禁，不直接修改 runtime 或平台输入状态。
 
 ## Consequences
 
@@ -56,3 +59,4 @@ Windows Raw Input / macOS CGEventTap 把按键边沿映射为 HID usage 后喂�
 - 快捷键不再随输入服务失败而失效；输入服务的恢复/重置路径与快捷键状态
   完全解耦，Issue #47 的 pressed-state 校正只服务动画输入。
 - 服务按 50ms 轮询感知改绑，录制 suspend/resume 的生效延迟 ≤ 100ms。
+- 三个输入门禁快捷键与普通应用快捷键共享同一录制、冲突和 `commands_enabled` 门禁；它们只切换模型输入投影，键盘/鼠标/手柄的可靠采集与 pressed-state 恢复不受影响。

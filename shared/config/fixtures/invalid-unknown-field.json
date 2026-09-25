@@ -33,6 +33,8 @@
     "mirror": false,
     "mirror_pointer_tracking": false,
     "play_motion_audio": true,
+    "ignore_keyboard": false,
+    "ignore_gamepad": false,
     "ignore_pointer": false,
     "selected_model": null,
     "imported_models": [],

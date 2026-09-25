@@ -700,35 +700,6 @@ impl Render for SettingsView {
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.input_interaction.mouse.mirror_mouse_tracking.label",
-                        ),
-                        SettingField::switch(
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .is_some_and(|s| s.model_settings.mirror_pointer_tracking)
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        if let Some(s) = view.snapshot.as_ref() {
-                                            let mut settings = s.model_settings;
-                                            settings.mirror_pointer_tracking = value;
-                                            view.set_model_settings(settings, cx);
-                                        }
-                                    });
-                                }
-                            },
-                        ),
-                    ),
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
                             "settings.input_interaction.mouse.ignore_mouse_input.label",
                         ),
                         SettingField::switch(
@@ -755,6 +726,35 @@ impl Render for SettingsView {
                             },
                         ),
                     ),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.input_interaction.mouse.mirror_mouse_tracking.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.model_settings.mirror_pointer_tracking)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.model_settings;
+                                            settings.mirror_pointer_tracking = value;
+                                            view.set_model_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    ),
                 ], &mouse_keywords)),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -762,6 +762,35 @@ impl Render for SettingsView {
                     "settings.input_interaction.keyboard.title",
                 ))
                 .items(with_search_keywords(vec![
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.input_interaction.keyboard.ignore_keyboard_input.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.model_settings.ignore_keyboard)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.model_settings;
+                                            settings.ignore_keyboard = value;
+                                            view.set_model_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    ),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -803,6 +832,35 @@ impl Render for SettingsView {
                     "settings.input_interaction.gamepad.title",
                 ))
                 .items(with_search_keywords(vec![
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.input_interaction.gamepad.ignore_gamepad_input.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.model_settings.ignore_gamepad)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.model_settings;
+                                            settings.ignore_gamepad = value;
+                                            view.set_model_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    ),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),

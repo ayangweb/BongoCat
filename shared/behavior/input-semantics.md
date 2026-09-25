@@ -99,6 +99,19 @@ macOS `FlagsChanged` 必须在 event-tap callback 中固定 down/up 方向，按
 
 decoder 状态只解决平台 packet 歧义，不是 runtime pressed state，并随任何 `reset` 清空；周期校正强制释放候选 key 时必须同步清除 decoder 中对应 key 的记录，使交替回退重新对齐。consumer 不得在稍后 drain 时查询当前全局状态来反推旧边沿，因为同一批次可能已经包含后续 release。无法识别方向的 modifier event 触发带计数的安全 `reset`；`CGEventSourceKeyState` 只用于候选 pressed set 的周期校正，且对右侧修饰键键码（54/60/61/62，实测按住时也返回 false）必须同时查询家族主键码（55/56/58/59）。
 
+## 模型输入门禁
+
+`model.ignore_keyboard` 和 `model.ignore_gamepad` 是模型输入投影的来源门禁，不是平台采集开关。
+`InputState` 仍完整拥有并校正所有 pressed key/button，设备断开、Reset、释放兜底和诊断也照常运行。
+只有生成 `ModelInputSnapshot` 时才应用门禁：
+
+- 忽略键盘时，不把键盘按键加入 `key_presses`，也不让键盘绑定贡献 `left_hand_down` 或 `right_hand_down`。
+- 忽略手柄时，不让手柄按钮贡献手部或摇杆按下状态，并把六个摇杆/扳机轴投影为零。
+- 手部状态按来源分别计算后再合并：`allowed_keyboard_hand || allowed_gamepad_hand`。因此忽略键盘不会误清除同时按下的手柄贡献，反之亦然。
+- 解除门禁只重新读取既有 pressed state，不重新制造边沿；后续正常释放仍由可靠输入队列处理。
+
+全局快捷键和行为快捷键是独立的 OS 注册与 typed command 链路，不经过这两个模型门禁。
+
 ## 手部状态
 
 模型资源可以把多个键映射到同一只手。兼容模式下，同一手只显示最后按下且仍有效的键资源；任意映射到该手的 pressed key 都令对应 hand-down 参数为 true。

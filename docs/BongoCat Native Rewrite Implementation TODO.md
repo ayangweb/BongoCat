@@ -1462,8 +1462,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     进入不可变 `RenderSnapshot::mirror_horizontal`，Windows D3D11 与 macOS Metal 共享同一
     中心变换规则；`mirror_pointer_tracking` 按旧行为反转 X/Z 指针参数，`ignore_pointer`
     跳过指针覆盖。启动配置投影、runtime/renderer 回归和 macOS 参数/变换测试已通过；Settings
-    service/client 已支持 revision-checked 原子持久化，General 页面已提供三个可键盘/无障碍操作的
-    toggle。平滑坐标策略、多显示器实机和完整 mirror fixture 仍未完成，checkbox 保持未勾选。
+    service/client 已支持 revision-checked 原子持久化，Input & interaction 页面已提供五个可键盘/无障碍操作的
+    toggle。2026-09-25 增加 `ignore_keyboard` / `ignore_gamepad` 两个同作用域模型输入门禁：配置、
+    UI、runtime 投影和来源独立回归已接通；门禁不停止采集、pressed-state 恢复、诊断或快捷键。
+    平滑坐标策略、多显示器实机和完整 mirror fixture 仍未完成，checkbox 保持未勾选。
   - 状态（2026-09-04）：光标 latest-value 进入 runtime 后按可注入单调时钟执行帧率无关的
     指数平滑，保持旧版 60 FPS 下每帧 `0.75` 衰减并在逻辑距离 `< 0.5` 时收敛；首个样本和
     viewport 变化直接对齐，周期 tick 在没有新 sample 时继续推进。纯 Rust 与 runtime 集成回归
@@ -1808,6 +1810,11 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     显隐/镜像/穿透/置顶会在唯一 Application owner 内按当前配置持久化切换；`open_settings` 经
     线程安全 signal 交给 GPUI frame source 重开设置窗口，服务关闭和队列满均有边界处理。注册/捕获 UI、
     GPUI 清除/恢复默认入口和 Windows/macOS 实机快捷键证据仍未完成。
+  - 状态（2026-09-25）：新增三个可选的 application shortcut target：`toggle_ignore_mouse_input`、
+    `toggle_ignore_keyboard_input` 和 `toggle_ignore_gamepad_input`。它们在快捷键页面可见，沿用同一
+    录制/冲突/门禁与 revision-checked 持久化路径，经 settings service 切换对应模型输入投影门禁；
+    `bongocat-config` closed-command 解析、UI 中英文文案和 service 端到端持久化测试已覆盖，Windows/macOS
+    实机注册与触发证据仍待完成。
 - [ ] 动作/表情：绑定、预览 command 和错误状态。
   - 状态（2026-09-18）：模型页不再列出或预览行为（表情列表已在快捷键页，属重复入口），
     `PreviewModelBehavior` command、对应 client 方法、服务端处理、
@@ -3393,7 +3400,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       编译边界拒绝。2026-09-01：产品 overlay 将同一 compiled table 和 runtime client 交给双平台
       input owner；边沿仍先进入可靠 `InputEvent`，随后在 worker 外匹配并将 active model 的
       motion/expression target 转成 typed runtime command，Reset 会清理 matcher transient state。
-      应用级 target 目前通过有界 typed handoff 交给 settings service；显隐、镜像、穿透和置顶
+      应用级 target 目前通过有界 typed handoff 交给 settings service；显隐、镜像、穿透、置顶和三个
+      模型输入忽略门禁
       在 service owner 内执行并持久化，`open_settings` 经 settings service signal 交给 GPUI frame source；
       配置提交后共享 `ShortcutTable` 会在下一条边沿前原子替换，运行中的 input owner 无需重启
       即可读取新 compiled bindings；旧 pressed set 会按 matcher 规则保留或由 Reset 清除。

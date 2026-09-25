@@ -45,6 +45,18 @@ pub struct InputSnapshot {
     pub transport: InputTransportDiagnostics,
 }
 
+/// Source gates applied while projecting captured input into the model view.
+///
+/// The pressed-state owner keeps the raw keyboard and gamepad edges intact for
+/// diagnostics and recovery. These gates only affect the immutable model input
+/// projection, so disabling one input family cannot strand a pressed key or
+/// remove its eventual release from the input pipeline.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ModelInputFilter {
+    pub(crate) ignore_keyboard: bool,
+    pub(crate) ignore_gamepad: bool,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ModelInputSnapshot {
     pub key_presses: KeyPressSet,
@@ -220,10 +232,20 @@ impl InputState {
         }
     }
 
+    #[cfg(test)]
     pub fn model_snapshot(
         &self,
         bindings: &InputBindings,
         cursor: NormalizedCursorPosition,
+    ) -> ModelInputSnapshot {
+        self.model_snapshot_with_filter(bindings, cursor, ModelInputFilter::default())
+    }
+
+    pub(crate) fn model_snapshot_with_filter(
+        &self,
+        bindings: &InputBindings,
+        cursor: NormalizedCursorPosition,
+        filter: ModelInputFilter,
     ) -> ModelInputSnapshot {
         let mut snapshot = ModelInputSnapshot {
             mouse_left_down: self
@@ -241,32 +263,34 @@ impl InputState {
         let mut latest_right_key: Option<(MonotonicMillis, KeyPress)> = None;
         for control in self.pressed.keys() {
             match control {
-                InputControl::Key(key) => match bindings.hand_for(*key) {
-                    Some(HandSide::Left) => {
-                        snapshot.left_hand_down = true;
-                        let press = KeyPress {
-                            hid_usage: key.hid_usage(),
-                            side: KeySide::Left,
-                        };
-                        let record = self.pressed.get(control).expect("pressed key record");
-                        if latest_left_key.is_none_or(|(at, _)| record.pressed_at >= at) {
-                            latest_left_key = Some((record.pressed_at, press));
+                InputControl::Key(key) if !filter.ignore_keyboard => {
+                    match bindings.hand_for(*key) {
+                        Some(HandSide::Left) => {
+                            snapshot.left_hand_down = true;
+                            let press = KeyPress {
+                                hid_usage: key.hid_usage(),
+                                side: KeySide::Left,
+                            };
+                            let record = self.pressed.get(control).expect("pressed key record");
+                            if latest_left_key.is_none_or(|(at, _)| record.pressed_at >= at) {
+                                latest_left_key = Some((record.pressed_at, press));
+                            }
                         }
-                    }
-                    Some(HandSide::Right) => {
-                        snapshot.right_hand_down = true;
-                        let press = KeyPress {
-                            hid_usage: key.hid_usage(),
-                            side: KeySide::Right,
-                        };
-                        let record = self.pressed.get(control).expect("pressed key record");
-                        if latest_right_key.is_none_or(|(at, _)| record.pressed_at >= at) {
-                            latest_right_key = Some((record.pressed_at, press));
+                        Some(HandSide::Right) => {
+                            snapshot.right_hand_down = true;
+                            let press = KeyPress {
+                                hid_usage: key.hid_usage(),
+                                side: KeySide::Right,
+                            };
+                            let record = self.pressed.get(control).expect("pressed key record");
+                            if latest_right_key.is_none_or(|(at, _)| record.pressed_at >= at) {
+                                latest_right_key = Some((record.pressed_at, press));
+                            }
                         }
+                        None => {}
                     }
-                    None => {}
-                },
-                InputControl::Gamepad(button) => match button.button {
+                }
+                InputControl::Gamepad(button) if !filter.ignore_gamepad => match button.button {
                     GamepadButton::LeftStick => snapshot.stick_left_down = true,
                     GamepadButton::RightStick => snapshot.stick_right_down = true,
                     button => match bindings.hand_for_gamepad(button) {
@@ -275,7 +299,7 @@ impl InputState {
                         None => {}
                     },
                 },
-                InputControl::Mouse(_) => {}
+                InputControl::Key(_) | InputControl::Gamepad(_) | InputControl::Mouse(_) => {}
             }
         }
         if let Some((_, press)) = latest_left_key {
@@ -728,6 +752,66 @@ mod tests {
             state.model_snapshot(&bindings, NormalizedCursorPosition::default()),
             ModelInputSnapshot::default()
         );
+    }
+
+    #[test]
+    fn source_filters_keep_keyboard_and_gamepad_model_input_independent() {
+        let connection = GamepadConnection {
+            device_id: 3,
+            generation: 1,
+        };
+        let gamepad = InputControl::Gamepad(GamepadButtonKey {
+            connection,
+            button: GamepadButton::South,
+        });
+        let bindings = InputBindings::with_gamepad_hands(
+            BTreeMap::from([(PhysicalKey::KEY_A, HandSide::Left)]),
+            BTreeMap::from([(GamepadButton::South, HandSide::Right)]),
+        );
+        let mut state = InputState::default();
+        state.apply(SequencedInputEvent {
+            sequence: 0,
+            event: InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            },
+        });
+        state.apply(edge(1, 1, A, InputEdge::Down));
+        state.apply(edge(2, 2, gamepad, InputEdge::Down));
+
+        let keyboard_ignored = state.model_snapshot_with_filter(
+            &bindings,
+            NormalizedCursorPosition::default(),
+            ModelInputFilter {
+                ignore_keyboard: true,
+                ignore_gamepad: false,
+            },
+        );
+        assert!(!keyboard_ignored.left_hand_down);
+        assert!(keyboard_ignored.right_hand_down);
+        assert_eq!(keyboard_ignored.key_presses.iter().count(), 0);
+
+        let gamepad_ignored = state.model_snapshot_with_filter(
+            &bindings,
+            NormalizedCursorPosition::default(),
+            ModelInputFilter {
+                ignore_keyboard: false,
+                ignore_gamepad: true,
+            },
+        );
+        assert!(gamepad_ignored.left_hand_down);
+        assert!(!gamepad_ignored.right_hand_down);
+        assert_eq!(gamepad_ignored.key_presses.iter().count(), 1);
+
+        let all_ignored = state.model_snapshot_with_filter(
+            &bindings,
+            NormalizedCursorPosition::default(),
+            ModelInputFilter {
+                ignore_keyboard: true,
+                ignore_gamepad: true,
+            },
+        );
+        assert_eq!(all_ignored, ModelInputSnapshot::default());
     }
 
     /// The globe key travels the same path as every other key.

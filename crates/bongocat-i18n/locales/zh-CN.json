@@ -262,6 +262,9 @@
       "toggle_model_window": "显示或隐藏模型窗口",
       "open_settings": "显示或隐藏设置窗口",
       "toggle_mirror": "切换模型水平镜像",
+      "toggle_ignore_mouse_input": "切换忽略鼠标输入",
+      "toggle_ignore_keyboard_input": "切换忽略键盘输入",
+      "toggle_ignore_gamepad_input": "切换忽略手柄输入",
       "toggle_click_through": "切换鼠标穿透",
       "toggle_always_on_top": "切换始终置顶"
     },
@@ -410,6 +413,9 @@
       },
       "keyboard": {
         "title": "键盘",
+        "ignore_keyboard_input": {
+          "label": "忽略键盘输入"
+        },
         "key_release_timeout": {
           "label": "按键释放超时（毫秒）",
           "description": "长时间收不到按键松开事件时自动松开，避免按键一直卡住；0 表示不自动松开。"
@@ -417,6 +423,9 @@
       },
       "gamepad": {
         "title": "手柄",
+        "ignore_gamepad_input": {
+          "label": "忽略手柄输入"
+        },
         "stick_dead_zone": {
           "label": "手柄摇杆死区",
           "description": "忽略轻微的摇杆移动。"

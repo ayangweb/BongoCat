@@ -171,9 +171,11 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   必须注销并从 owner 的记录中移除，否则同一组合键再次进入表时不会被重新注册。跨模型复用同一
   组合键是合法配置，模型切换正是靠这一步把共享 chord 从旧模型改指新模型，否则它们会被下游的
   active-model 判定当作非活动模型丢弃。应用级 target 通过有界
-  typed handoff 进入 settings service；显隐、镜像、穿透和置顶由唯一 Application owner
-  按当前配置 revision 持久化，`open_settings` 交给 GPUI coordinator，避免平台线程直接触碰
-  UI 生命周期。`open_settings` 通过线程安全的一次性请求位交给 GPUI frame source，后者在
+  typed handoff 进入 settings service；显隐、镜像、穿透、置顶以及三个模型输入忽略开关由唯一
+  Application owner 按当前配置 revision 持久化，后三个 target 分别切换 `model.ignore_pointer`、
+  `model.ignore_keyboard` 和 `model.ignore_gamepad`，不停止平台输入采集。`open_settings` 交给
+  GPUI coordinator，避免平台线程直接触碰 UI 生命周期。`open_settings` 通过线程安全的一次性请求位
+  交给 GPUI frame source，后者在
   owner 线程切换设置窗口可见性：窗口已显示时隐藏，两个平台都复用同一个预渲染窗口，窗口不存在
   时才创建并显示。forwarder 必须支持有界停止与 join。
 - 快捷键页面由两个带标题的 group 组成，每个 group 的第一行是它自己的门禁开关：`启用窗口快捷键`
@@ -192,7 +194,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   每个 motion 和 expression 自动分配一整层 `primary + [Shift/Alt] + 数字/字母` 组合键，用户没有
   拒绝的机会。Native 按维护者决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
   该开关只作用于 motion/expression 绑定，不得清空或改写配置中的绑定，也不得连带禁用
-  `open_settings`、overlay 显隐、镜像、穿透或置顶等应用级快捷键——应用级快捷键有它自己的开关。
+  `open_settings`、overlay 显隐、镜像、穿透、置顶以及三个模型输入忽略开关等应用级快捷键——应用级快捷键有它自己的开关。
 - 模型行为快捷键的自动分配与旧版同构：模型激活时（`prepare_model` / `select_model`）按声明顺序
   遍历该模型的 motion 与 expression，依次填入 `[primary]`、`[primary, Shift]`、`[primary, Alt]`、
   `[primary, Shift, Alt]` 四层、每层先数字后字母的组合键，共 144 个名额；`primary` 在 macOS 是
@@ -430,8 +432,11 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。
 - `ModelSettings` 是 runtime 的强类型模型交互设置：`mirror` 只影响不可变
   `RenderSnapshot::mirror_horizontal` 的水平变换，`mirror_pointer_tracking` 只反转
-  指针的 X/Z 产品参数，`ignore_pointer` 跳过所有指针参数覆盖；三者通过
-  `SetModelSettings` command 和 revisioned snapshot 传播，renderer 不读取配置。
+  指针的 X/Z 产品参数，`ignore_pointer` 跳过所有指针参数覆盖；`ignore_keyboard` 和
+  `ignore_gamepad` 只在模型输入投影中屏蔽对应来源的按键/按钮/手柄轴贡献，不停止可靠采集、
+  pressed-state 恢复、诊断或快捷键注册。五项通过 `SetModelSettings` command 和
+  revisioned snapshot 传播，renderer 不读取配置；三个输入门禁还可由对应的 application
+  shortcut target 经 settings service 切换，持久化后仍只改变模型输入投影。
 - GPUI 通过 command/snapshot 边界交互，不直接持有 runtime mutex。
 - GPUI 拥有平台主事件循环；应用 coordinator 在该主线程调度 overlay `tick`，GPUI
   `Entity` 不持有 renderer、render snapshot 或 frame-loop 状态。

@@ -245,6 +245,8 @@ pub struct ModelConfig {
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     pub play_motion_audio: bool,
+    pub ignore_keyboard: bool,
+    pub ignore_gamepad: bool,
     pub ignore_pointer: bool,
     pub random_behavior: RandomBehaviorConfig,
 }
@@ -379,6 +381,8 @@ impl Default for NativeConfig {
                 mirror: false,
                 mirror_pointer_tracking: false,
                 play_motion_audio: false,
+                ignore_keyboard: false,
+                ignore_gamepad: false,
                 ignore_pointer: false,
                 random_behavior: RandomBehaviorConfig::default(),
             },
