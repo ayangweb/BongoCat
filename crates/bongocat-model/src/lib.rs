@@ -4,7 +4,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt, fs,
+    fs,
     fs::File,
     io::Read,
     path::{Component, Path, PathBuf},
@@ -158,7 +158,8 @@ impl ModelDiagnostic {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("{message}", message = self.message())]
 pub struct ModelError {
     pub code: ModelDiagnostic,
     pub resource: Option<String>,
@@ -173,23 +174,16 @@ impl ModelError {
             detail: detail.into(),
         }
     }
-}
 
-impl fmt::Display for ModelError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn message(&self) -> String {
         match &self.resource {
-            Some(resource) => write!(
-                formatter,
-                "{} ({resource}): {}",
-                self.code.as_str(),
-                self.detail
-            ),
-            None => write!(formatter, "{}: {}", self.code.as_str(), self.detail),
+            Some(resource) => {
+                format!("{} ({resource}): {}", self.code.as_str(), self.detail)
+            }
+            None => format!("{}: {}", self.code.as_str(), self.detail),
         }
     }
 }
-
-impl std::error::Error for ModelError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ModelPackageIndex {

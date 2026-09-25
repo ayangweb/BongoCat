@@ -41,7 +41,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "windows")]
 use std::{cell::RefCell, rc::Rc};
 use std::{
-    env, fmt,
+    env,
     io::{self, Write},
     path::Path,
     path::PathBuf,
@@ -525,7 +525,8 @@ impl RunOptions {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+#[error("{message}", message = self.message())]
 struct RunOptionsError {
     message: String,
     help: bool,
@@ -545,19 +546,15 @@ impl RunOptionsError {
             help: true,
         }
     }
-}
 
-impl fmt::Display for RunOptionsError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn message(&self) -> String {
         if self.help {
-            formatter.write_str(&self.message)
+            self.message.clone()
         } else {
-            write!(formatter, "{}\n\n{}", self.message, usage())
+            format!("{}\n\n{}", self.message, usage())
         }
     }
 }
-
-impl std::error::Error for RunOptionsError {}
 
 fn usage() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
@@ -573,22 +570,11 @@ fn usage() -> &'static str {
     "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("product run failed: {}", .failures.join("; "))]
 struct ProductRunError {
     failures: Vec<String>,
 }
-
-impl fmt::Display for ProductRunError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "product run failed: {}",
-            self.failures.join("; ")
-        )
-    }
-}
-
-impl std::error::Error for ProductRunError {}
 
 struct ProductCoordinator {
     _core_log: CoreLogHandle,

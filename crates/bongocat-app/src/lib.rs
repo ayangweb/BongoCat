@@ -38,7 +38,7 @@ use bongocat_runtime::{
 use bongocat_update::{UpdateDiagnostics, UpdateDiagnosticsTracker};
 use std::{
     collections::{BTreeMap, VecDeque},
-    fmt, fs,
+    fs,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -173,82 +173,55 @@ pub fn update_check_available() -> bool {
     )
     .is_available()
 }
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ApplicationError {
+    #[error("storage setup failed: {0}")]
     PlatformStorage(PlatformStorageError),
+    #[error("configuration failed: {0}")]
     Config(ConfigError),
+    #[error("model preparation failed: {0}")]
     Model(ModelError),
+    #[error("model store failed: {0}")]
     ModelStore(ModelStoreError),
+    #[error("motion id failed: {0}")]
     MotionId(MotionIdError),
+    #[error("expression id failed: {0}")]
     ExpressionId(ExpressionIdError),
+    #[error("preset model cannot be deleted: {}", .0.as_str())]
     PresetModelDeletion(ModelId),
     /// The model a request names is not in its catalog or store.
     ///
     /// Both origins report this the same way: a preset a build no longer ships
     /// and an installed package the user removed by hand are the same fact to
     /// the request that named either one.
+    #[error("model was not found: {}", .0.as_str())]
     ModelNotFound(ModelId),
+    #[error("model title is not usable")]
     ModelTitleInvalid,
+    #[error("model cover must be a PNG image within the size limit")]
     ModelCoverInvalid,
+    #[error("runtime command failed: {0}")]
     RuntimeCommand(SendError),
+    #[error("runtime command {} failed: {:?}", .0.sequence, .0.code)]
     RuntimeCommandFailed(RuntimeCommandFailure),
+    #[error("runtime did not publish the requested revision")]
     RuntimeDidNotPublish,
+    #[error("runtime did not prepare the requested render model")]
     RuntimeDidNotPrepareModel,
+    #[error("application render consumer is unavailable")]
     RenderConsumerUnavailable,
+    #[error("shutdown failed: {0}")]
     Shutdown(ShutdownError),
+    #[error("motion audio shutdown failed: {0}")]
     MotionAudioShutdown(MotionAudioShutdownError),
+    #[error("shutdown failed: {0}")]
     ShutdownAggregate(ApplicationShutdownError),
+    #[error("application logging failed: {0}")]
     ApplicationLog(ApplicationLogError),
+    #[error("configuration rollback failed: {0}")]
     ConfigRollback(ConfigError),
+    #[error("window state failed: {0}")]
     WindowState(WindowStateError),
-}
-
-impl fmt::Display for ApplicationError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::PlatformStorage(error) => write!(formatter, "storage setup failed: {error}"),
-            Self::Config(error) => write!(formatter, "configuration failed: {error}"),
-            Self::Model(error) => write!(formatter, "model preparation failed: {error}"),
-            Self::ModelStore(error) => write!(formatter, "model store failed: {error}"),
-            Self::MotionId(error) => write!(formatter, "motion id failed: {error}"),
-            Self::ExpressionId(error) => write!(formatter, "expression id failed: {error}"),
-            Self::PresetModelDeletion(id) => {
-                write!(formatter, "preset model cannot be deleted: {}", id.as_str())
-            }
-            Self::ModelNotFound(id) => {
-                write!(formatter, "model was not found: {}", id.as_str())
-            }
-            Self::ModelTitleInvalid => formatter.write_str("model title is not usable"),
-            Self::ModelCoverInvalid => {
-                formatter.write_str("model cover must be a PNG image within the size limit")
-            }
-            Self::RuntimeCommand(error) => write!(formatter, "runtime command failed: {error}"),
-            Self::RuntimeCommandFailed(failure) => write!(
-                formatter,
-                "runtime command {} failed: {:?}",
-                failure.sequence, failure.code
-            ),
-            Self::RuntimeDidNotPublish => {
-                formatter.write_str("runtime did not publish the requested revision")
-            }
-            Self::RuntimeDidNotPrepareModel => {
-                formatter.write_str("runtime did not prepare the requested render model")
-            }
-            Self::RenderConsumerUnavailable => {
-                formatter.write_str("application render consumer is unavailable")
-            }
-            Self::Shutdown(error) => write!(formatter, "shutdown failed: {error}"),
-            Self::MotionAudioShutdown(error) => {
-                write!(formatter, "motion audio shutdown failed: {error}")
-            }
-            Self::ShutdownAggregate(error) => write!(formatter, "shutdown failed: {error}"),
-            Self::ApplicationLog(error) => write!(formatter, "application logging failed: {error}"),
-            Self::ConfigRollback(error) => {
-                write!(formatter, "configuration rollback failed: {error}")
-            }
-            Self::WindowState(error) => write!(formatter, "window state failed: {error}"),
-        }
-    }
 }
 
 impl ApplicationError {
@@ -277,8 +250,6 @@ impl ApplicationError {
         }
     }
 }
-
-impl std::error::Error for ApplicationError {}
 
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
 #[error("runtime: {runtime}; motion audio: {motion_audio}")]

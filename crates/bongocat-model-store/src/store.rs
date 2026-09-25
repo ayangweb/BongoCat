@@ -7,7 +7,7 @@ use bongocat_model::{
 use bongocat_storage::{set_private_directory, set_private_file};
 use std::{
     collections::BTreeSet,
-    fmt, fs,
+    fs,
     fs::{File, OpenOptions, TryLockError},
     io::{self, Read, Write},
     path::{Path, PathBuf},
@@ -141,11 +141,13 @@ pub struct ModelImportProgress {
     pub bytes_copied: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("{message}", message = self.message())]
 pub struct ModelStoreError {
     pub code: ModelStoreDiagnostic,
     pub resource: Option<String>,
     pub detail: String,
+    #[source]
     source: Option<ModelError>,
 }
 
@@ -175,22 +177,14 @@ impl ModelStoreError {
             source: Some(error),
         }
     }
-}
 
-impl fmt::Display for ModelStoreError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn message(&self) -> String {
         match &self.resource {
-            Some(resource) => write!(formatter, "{:?} ({resource}): {}", self.code, self.detail),
-            None => write!(formatter, "{:?}: {}", self.code, self.detail),
+            Some(resource) => {
+                format!("{:?} ({resource}): {}", self.code, self.detail)
+            }
+            None => format!("{:?}: {}", self.code, self.detail),
         }
-    }
-}
-
-impl std::error::Error for ModelStoreError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source
-            .as_ref()
-            .map(|source| source as &(dyn std::error::Error + 'static))
     }
 }
 

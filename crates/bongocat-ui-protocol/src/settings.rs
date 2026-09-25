@@ -1053,7 +1053,8 @@ impl SettingsErrorCode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("{message}", message = self.message())]
 pub struct SettingsError {
     code: SettingsErrorCode,
 }
@@ -1068,9 +1069,9 @@ impl SettingsError {
     }
 }
 
-impl fmt::Display for SettingsError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self.code {
+impl SettingsError {
+    fn message(&self) -> &'static str {
+        match self.code {
             SettingsErrorCode::ServiceUnavailable => "Settings service is unavailable",
             SettingsErrorCode::SnapshotOutdated => {
                 "Settings changed elsewhere. Review the latest settings and try again."
@@ -1097,7 +1098,9 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::ModelBehaviorPreviewUnavailable => {
                 "That action or expression belongs to a model that is no longer in use"
             }
-            SettingsErrorCode::ModelBehaviorPreviewFailed => "The action or expression could not be played",
+            SettingsErrorCode::ModelBehaviorPreviewFailed => {
+                "The action or expression could not be played"
+            }
             SettingsErrorCode::ModelTitleInvalid => "The model name is not usable",
             SettingsErrorCode::ModelCoverInvalid => "Cover image must be a PNG file",
             SettingsErrorCode::ModelCoverUpdateFailed => "Model cover could not be updated",
@@ -1108,10 +1111,10 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::InvalidModelId => "The model ID is invalid",
             SettingsErrorCode::ModelAlreadyInstalled => "This model is already installed",
             SettingsErrorCode::ModelImportInvalidPackage => "Model package is invalid",
-            SettingsErrorCode::ModelImportDropInvalid => {
-                "Drop one valid model folder at a time"
+            SettingsErrorCode::ModelImportDropInvalid => "Drop one valid model folder at a time",
+            SettingsErrorCode::ModelImportSourceInvalid => {
+                "The selected folder contains BongoCat's model storage. Choose an individual model folder instead."
             }
-            SettingsErrorCode::ModelImportSourceInvalid => "The selected folder contains BongoCat's model storage. Choose an individual model folder instead.",
             SettingsErrorCode::ModelImportSourceChanged => "Model source changed during import",
             SettingsErrorCode::ModelImportSourceUnsupported => {
                 "The model source contains an unsupported file"
@@ -1127,7 +1130,9 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::DiagnosticsExportFailed => "Diagnostics could not be exported",
             SettingsErrorCode::SoftwareInfoCopyFailed => "Software information could not be copied",
             SettingsErrorCode::ExternalLinkOpenFailed => "The link could not be opened",
-            SettingsErrorCode::LogLocationOpenFailed => "The application log folder could not be opened",
+            SettingsErrorCode::LogLocationOpenFailed => {
+                "The application log folder could not be opened"
+            }
             SettingsErrorCode::StartupItemUpdateFailed => {
                 "The login startup setting could not be updated"
             }
@@ -1136,11 +1141,9 @@ impl fmt::Display for SettingsError {
             SettingsErrorCode::WindowHideFailed => "Settings window could not be hidden",
             SettingsErrorCode::WindowStatePersistFailed => "The window layout could not be saved",
             SettingsErrorCode::ShutdownFailed => "BongoCat could not close completely",
-        })
+        }
     }
 }
-
-impl std::error::Error for SettingsError {}
 
 pub struct SettingsReply<T>(Sender<T>);
 
