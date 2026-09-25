@@ -26,6 +26,10 @@ preview model="standard" seconds="30":
 version:
     @cargo run --locked -q -p bongocat-packaging -- --print-version
 
+# Regenerate the checked-in configuration and window-state JSON Schemas.
+schema:
+    cargo run --locked -p bongocat-config --bin generate_json_schemas
+
 # Run the Native workspace tests.
 test:
     cargo test --locked --workspace

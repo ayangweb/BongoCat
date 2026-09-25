@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use bongocat_storage::{create_private_dir_all, set_private_file};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -12,7 +13,9 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+mod schema;
 mod window_state;
+pub use schema::write_json_schemas;
 pub use window_state::{
     OverlayWindowPlacement, WINDOW_STATE_SCHEMA_VERSION, WINDOW_STATE_WRITER_LOCK_FILE_NAME,
     WindowPlacement, WindowState, WindowStateError, WindowStateLoadOutcome, WindowStateLoadStatus,
@@ -156,9 +159,10 @@ pub fn platform_layout(
     Ok(StorageLayout::under_application_root(root, environment))
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NativeConfig {
+    #[schemars(range(min = 1, max = 1))]
     pub schema_version: u32,
     pub appearance: AppearanceConfig,
     pub overlay: OverlayConfig,
@@ -172,7 +176,7 @@ pub struct NativeConfig {
 
 /// Desktop integration preferences. These are system-owned surfaces rather
 /// than model or overlay state, so they have their own namespace.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SystemConfig {
     pub show_taskbar_icon: bool,
@@ -181,21 +185,23 @@ pub struct SystemConfig {
 
 /// Automatic update policy. The interval remains persisted when the switch is
 /// off, just like the other preference pairs in the configuration.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateConfig {
     pub check_automatically: bool,
     /// Whole hours to wait after an automatic update check before checking again.
+    #[schemars(range(min = 1, max = 8760))]
     pub check_interval_hours: u16,
 }
 
 /// User-controlled filtering and retention for the human-readable application
 /// and Cubism Core logs. Daily rollover and the per-file size guard are fixed
 /// safety policy and therefore intentionally do not appear in configuration.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LoggingConfig {
     pub level: LoggingLevel,
+    #[schemars(range(min = 1, max = 30))]
     pub retention_days: u8,
 }
 
@@ -208,7 +214,7 @@ impl Default for LoggingConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LoggingLevel {
     Error,
@@ -239,14 +245,14 @@ impl LoggingLevel {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AppearanceConfig {
     pub theme: Theme,
     pub language: Language,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
     System,
@@ -254,7 +260,7 @@ pub enum Theme {
     Dark,
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Language {
     #[default]
@@ -309,14 +315,17 @@ impl Language {
 /// Overlay window configuration. Every field is a property of the single
 /// product overlay window; the settings window and every other product window
 /// keep their own platform chrome and are not affected.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct OverlayConfig {
     pub click_through: bool,
     pub always_on_top: bool,
+    #[schemars(range(min = 25, max = 400))]
     pub scale_percent: u16,
+    #[schemars(range(min = 1, max = 100))]
     pub opacity_percent: u8,
     /// Maximum frame rate for the product overlay and its runtime scheduler.
+    #[schemars(range(min = 15, max = 240))]
     pub maximum_fps: u16,
     /// Corner radius of the overlay window box, as a percentage of the window
     /// width and height. The value keeps the legacy `border-radius: N%`
@@ -327,6 +336,7 @@ pub struct OverlayConfig {
     /// window content is clipped to the full inscribed ellipse; the legacy
     /// implementation scaled every radius above that point back down to the same
     /// ellipse, so `50` is the effective upper bound of the legacy behavior.
+    #[schemars(range(min = 0, max = 50))]
     pub corner_radius_percent: u8,
     /// Hide the overlay while the pointer rests on it, keeping the model out of
     /// the way of whatever the pointer is reaching for underneath.
@@ -348,6 +358,7 @@ pub struct OverlayConfig {
     /// frame loop still counts in milliseconds and converts once at its own
     /// boundary, because the hover state machine compares against the
     /// monotonic millisecond clock.
+    #[schemars(range(min = 0, max = 60))]
     pub hide_on_pointer_hover_delay_seconds: u32,
     /// Keep the overlay window fully on a display. `next` keeps the window on
     /// the union of the connected displays, so it may cover a taskbar, Dock or
@@ -363,29 +374,32 @@ pub struct OverlayConfig {
 /// implementation's unbounded second-valued input is capped here.
 pub const MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS: u32 = 60;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InputConfig {
     pub keyboard: KeyboardInputConfig,
     pub gamepad: GamepadInputConfig,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct KeyboardInputConfig {
     /// Final fallback for a captured keyboard key whose normal release,
     /// reconciliation and reset paths all failed to clear it.
+    #[schemars(range(min = 0, max = 60_000))]
     pub release_fallback_timeout_ms: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GamepadInputConfig {
+    #[schemars(range(min = 0.0, max = 1.0))]
     pub stick_dead_zone: f64,
+    #[schemars(range(min = 0.0, max = 1.0))]
     pub trigger_dead_zone: f64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ModelConfig {
     /// The selected model is one nullable identity object. Keeping `id` and
@@ -414,11 +428,12 @@ pub struct ModelConfig {
     pub random_behavior: RandomBehaviorConfig,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RandomBehaviorConfig {
     pub enabled: bool,
     /// Delay between automatic behavior selections, in whole seconds.
+    #[schemars(range(min = 1, max = 3600))]
     pub interval_seconds: u32,
 }
 
@@ -433,9 +448,10 @@ impl Default for RandomBehaviorConfig {
 
 /// The stable identity of a model as seen by the user-facing configuration.
 /// `source` distinguishes two catalog entries that happen to share an id.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ModelIdentity {
+    #[schemars(length(min = 1), regex(pattern = ".*\\S.*"))]
     pub id: String,
     pub source: ModelSource,
 }
@@ -443,7 +459,9 @@ pub struct ModelIdentity {
 /// The product-facing origin of a model entry. The model-store layer keeps its
 /// technical `Installed`/`Preset` ownership types; those are not serialized in
 /// `config.json` and describe storage mechanics rather than user-facing source.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelSource {
     Imported,
@@ -456,10 +474,12 @@ pub enum ModelSource {
 /// name that never participates in model identity. Which list holds the record
 /// is what carries its lifecycle: an import creates imported metadata and a
 /// delete removes it; nothing creates or removes a built-in record.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BuiltInModelMetadata {
+    #[schemars(length(min = 1, max = 64), regex(pattern = ".*\\S.*"))]
     pub id: String,
+    #[schemars(length(min = 1, max = 128), regex(pattern = ".*\\S.*"))]
     pub title: String,
 }
 
@@ -469,10 +489,12 @@ pub struct BuiltInModelMetadata {
 /// with the title. The Models page reads this value rather than rescanning the
 /// package on every render, so renaming a model, changing its artwork, or
 /// restarting the application cannot silently change its displayed mode.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ImportedModelMetadata {
+    #[schemars(length(min = 1, max = 64), regex(pattern = ".*\\S.*"))]
     pub id: String,
+    #[schemars(length(min = 1, max = 128), regex(pattern = ".*\\S.*"))]
     pub title: String,
     pub input_mode: ModelInputMode,
 }
@@ -484,7 +506,7 @@ pub struct ImportedModelMetadata {
 /// package resolves it from the key artwork before import commits. A package
 /// that cannot be classified is rejected by the model store rather than stored
 /// with a fourth, non-mode value.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelInputMode {
     Standard,
@@ -505,7 +527,7 @@ impl ModelInputMode {
 pub const MODEL_METADATA_MAXIMUM_ID_BYTES: usize = 64;
 pub const MODEL_METADATA_MAXIMUM_TITLE_CHARS: usize = 128;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ShortcutConfig {
     /// Whether the application command bindings may reach the platform table.
@@ -1203,20 +1225,24 @@ impl ShortcutChord {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ShortcutBinding {
+    #[schemars(length(min = 1), regex(pattern = ".*\\S.*"))]
     pub command: String,
+    #[schemars(length(min = 1), regex(pattern = ".*\\S.*"))]
     pub shortcut: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ModelBehaviorBinding {
     /// The complete model identity, including source. An id alone is not
     /// unique because built-in and imported catalogs may contain the same id.
     pub model: ModelIdentity,
+    #[schemars(length(min = 1), regex(pattern = ".*\\S.*"))]
     pub behavior_id: String,
+    #[schemars(length(min = 1), regex(pattern = ".*\\S.*"))]
     pub shortcut: String,
 }
 

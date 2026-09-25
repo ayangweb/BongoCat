@@ -2,6 +2,7 @@
 use super::BuildEnvironment;
 use super::{StorageLayout, WriterLock};
 use bongocat_storage::{create_private_dir_all, set_private_file, write_private_atomic};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -17,22 +18,30 @@ const MIN_OVERLAY_DIMENSION: u32 = 64;
 const MAX_WINDOW_DIMENSION: u32 = 16_384;
 const MAX_WINDOW_COORDINATE: i32 = 1_000_000;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WindowPlacement {
+    #[schemars(range(min = -1_000_000, max = 1_000_000))]
     pub x: i32,
+    #[schemars(range(min = -1_000_000, max = 1_000_000))]
     pub y: i32,
+    #[schemars(range(min = 640, max = 16_384))]
     pub width: u32,
+    #[schemars(range(min = 480, max = 16_384))]
     pub height: u32,
     pub maximized: bool,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct OverlayWindowPlacement {
+    #[schemars(range(min = -1_000_000, max = 1_000_000))]
     pub x: i32,
+    #[schemars(range(min = -1_000_000, max = 1_000_000))]
     pub y: i32,
+    #[schemars(range(min = 64, max = 16_384))]
     pub width: u32,
+    #[schemars(range(min = 64, max = 16_384))]
     pub height: u32,
 }
 
@@ -101,9 +110,10 @@ impl WindowPlacement {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WindowState {
+    #[schemars(range(min = 1, max = 1))]
     pub schema_version: u32,
     pub settings_window: Option<WindowPlacement>,
     pub overlay_window: Option<OverlayWindowPlacement>,

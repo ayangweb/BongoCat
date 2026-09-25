@@ -1,84 +1,115 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "OverlayWindowPlacement": {
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "format": "uint32",
+          "maximum": 16384,
+          "minimum": 64,
+          "type": "integer"
+        },
+        "width": {
+          "format": "uint32",
+          "maximum": 16384,
+          "minimum": 64,
+          "type": "integer"
+        },
+        "x": {
+          "format": "int32",
+          "maximum": 1000000,
+          "minimum": -1000000,
+          "type": "integer"
+        },
+        "y": {
+          "format": "int32",
+          "maximum": 1000000,
+          "minimum": -1000000,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "type": "object"
+    },
+    "WindowPlacement": {
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "format": "uint32",
+          "maximum": 16384,
+          "minimum": 480,
+          "type": "integer"
+        },
+        "maximized": {
+          "type": "boolean"
+        },
+        "width": {
+          "format": "uint32",
+          "maximum": 16384,
+          "minimum": 640,
+          "type": "integer"
+        },
+        "x": {
+          "format": "int32",
+          "maximum": 1000000,
+          "minimum": -1000000,
+          "type": "integer"
+        },
+        "y": {
+          "format": "int32",
+          "maximum": 1000000,
+          "minimum": -1000000,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height",
+        "maximized"
+      ],
+      "type": "object"
+    }
+  },
   "$id": "https://ayangweb.com/bongocat/native-window-state-v1.schema.json",
-  "title": "BongoCat Native Window State v1",
-  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "required": ["schema_version", "settings_window", "overlay_window"],
   "properties": {
+    "overlay_window": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OverlayWindowPlacement"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "schema_version": {
       "const": 1
     },
     "settings_window": {
-      "oneOf": [
+      "anyOf": [
         {
-          "type": "null"
+          "$ref": "#/$defs/WindowPlacement"
         },
         {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["x", "y", "width", "height", "maximized"],
-          "properties": {
-            "x": {
-              "type": "integer",
-              "minimum": -1000000,
-              "maximum": 1000000
-            },
-            "y": {
-              "type": "integer",
-              "minimum": -1000000,
-              "maximum": 1000000
-            },
-            "width": {
-              "type": "integer",
-              "minimum": 640,
-              "maximum": 16384
-            },
-            "height": {
-              "type": "integer",
-              "minimum": 480,
-              "maximum": 16384
-            },
-            "maximized": {
-              "type": "boolean"
-            }
-          }
-        }
-      ]
-    },
-    "overlay_window": {
-      "oneOf": [
-        {
           "type": "null"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["x", "y", "width", "height"],
-          "properties": {
-            "x": {
-              "type": "integer",
-              "minimum": -1000000,
-              "maximum": 1000000
-            },
-            "y": {
-              "type": "integer",
-              "minimum": -1000000,
-              "maximum": 1000000
-            },
-            "width": {
-              "type": "integer",
-              "minimum": 64,
-              "maximum": 16384
-            },
-            "height": {
-              "type": "integer",
-              "minimum": 64,
-              "maximum": 16384
-            }
-          }
         }
       ]
     }
-  }
+  },
+  "required": [
+    "schema_version",
+    "settings_window",
+    "overlay_window"
+  ],
+  "title": "BongoCat Native Window State v1",
+  "type": "object"
 }
