@@ -62,6 +62,7 @@ thiserror = "=2.0.21"
 time = { version = "=0.3.55", default-features = false, features = ["formatting", "macros", "parsing"] }
 tray-icon = { version = "=0.25.0", default-features = false }
 url = "=2.5.8"
+walkdir = "=2.5.0"
 zip = { version = "=8.6.0", default-features = false }
 
 bongocat-config = { path = "crates/bongocat-config" }

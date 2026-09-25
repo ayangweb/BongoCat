@@ -53,8 +53,9 @@ use std::{
     collections::BTreeSet,
     fs::{self, OpenOptions},
     io::Write,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
+use walkdir::WalkDir;
 
 /// Root config file of a legacy application folder.
 const LEGACY_CONFIG_FILE: &str = "config.json";
@@ -374,7 +375,7 @@ impl MverSource {
             return Ok(Vec::new());
         }
         let mut files = Vec::new();
-        collect_source_files(&directory, prefix, 0, limits, &mut files)?;
+        collect_source_files(&directory, prefix, limits, &mut files)?;
         files.sort();
         Ok(files)
     }
@@ -456,53 +457,68 @@ fn read_bounded(path: &Path, reference: &str, size: u64) -> Result<Vec<u8>, Mode
 fn collect_source_files(
     directory: &Path,
     prefix: &str,
-    depth: usize,
     limits: ModelPackageLimits,
     files: &mut Vec<String>,
 ) -> Result<(), ModelStoreError> {
-    if depth > limits.maximum_directory_depth {
-        return Err(conversion_error(
-            Some(prefix),
-            "legacy source is nested deeper than the package limit allows",
-        ));
-    }
-    let mut entries = fs::read_dir(directory)
-        .map_err(|error| {
+    for entry in WalkDir::new(directory)
+        .follow_links(false)
+        .min_depth(1)
+        .sort_by_file_name()
+    {
+        let entry = entry.map_err(|error| {
+            let detail = error
+                .io_error()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| error.to_string());
             conversion_error(
                 Some(prefix),
-                format!("legacy source directory cannot be listed: {error}"),
-            )
-        })?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| {
-            conversion_error(
-                Some(prefix),
-                format!("legacy source entry cannot be read: {error}"),
+                format!("legacy source directory cannot be listed: {detail}"),
             )
         })?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let name = entry
-            .file_name()
-            .into_string()
-            .map_err(|_| conversion_error(None, "legacy source contains a non-UTF-8 entry name"))?;
-        let reference = join_reference(prefix, &name);
-        let file_type = entry.file_type().map_err(|error| {
-            conversion_error(
-                Some(&reference),
-                format!("legacy source entry cannot be inspected: {error}"),
-            )
-        })?;
+        let reference = source_reference(prefix, directory, entry.path())?;
+        let file_type = entry.file_type();
         if file_type.is_symlink() {
             return Err(symlink_unsupported(&reference));
         }
         if file_type.is_dir() {
-            collect_source_files(&entry.path(), &reference, depth + 1, limits, files)?;
+            if entry.depth() > limits.maximum_directory_depth {
+                return Err(conversion_error(
+                    Some(&reference),
+                    "legacy source is nested deeper than the package limit allows",
+                ));
+            }
         } else if file_type.is_file() {
             files.push(reference);
         }
     }
     Ok(())
+}
+
+fn source_reference(
+    prefix: &str,
+    directory: &Path,
+    path: &Path,
+) -> Result<String, ModelStoreError> {
+    let relative = path.strip_prefix(directory).map_err(|_| {
+        conversion_error(
+            Some(prefix),
+            "legacy source directory traversal returned an entry outside its root",
+        )
+    })?;
+    let mut reference = prefix.to_owned();
+    for component in relative.components() {
+        let Component::Normal(name) = component else {
+            return Err(conversion_error(
+                Some(prefix),
+                "legacy source traversal returned a non-normal path component",
+            ));
+        };
+        let name = name.to_str().ok_or_else(|| {
+            conversion_error(None, "legacy source contains a non-UTF-8 entry name")
+        })?;
+        reference = join_reference(&reference, name);
+    }
+    Ok(reference)
 }
 
 /// Recognize a legacy source, or report that it is something else.
@@ -1375,6 +1391,26 @@ mod tests {
 
     fn plan_mode(plan: &MverPlan, mode: MverInputMode) -> MverModePlan {
         plan.mode(mode).expect("planned mode").clone()
+    }
+
+    #[test]
+    fn source_walk_enforces_the_existing_directory_depth_limit() {
+        let root = tempdir().expect("root");
+        fs::create_dir_all(root.path().join("one/two")).expect("nested source");
+        let limits = ModelPackageLimits {
+            maximum_directory_depth: 1,
+            ..ModelPackageLimits::default()
+        };
+        let mut files = Vec::new();
+
+        let error = collect_source_files(root.path(), "", limits, &mut files)
+            .expect_err("directory beyond the source limit");
+        assert_eq!(error.code, ModelStoreDiagnostic::SourceConversionFailed);
+        assert!(
+            error
+                .detail
+                .contains("legacy source is nested deeper than the package limit allows")
+        );
     }
 
     #[test]
