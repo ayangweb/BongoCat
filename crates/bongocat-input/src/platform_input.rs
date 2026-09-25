@@ -71,18 +71,11 @@ pub struct PlatformInputDiagnostics {
     pub clean_shutdown: bool,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum PlatformInputDiagnosticsPublishError {
+    #[error("runtime stopped before platform input diagnostics were published")]
     RuntimeStopped,
 }
-
-impl std::fmt::Display for PlatformInputDiagnosticsPublishError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("runtime stopped before platform input diagnostics were published")
-    }
-}
-
-impl std::error::Error for PlatformInputDiagnosticsPublishError {}
 
 #[derive(Default)]
 struct PlatformInputDiagnosticsState {

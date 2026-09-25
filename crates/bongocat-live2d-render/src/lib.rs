@@ -14,11 +14,12 @@ use bongocat_render::{
 use image::ImageReader;
 use std::{
     collections::BTreeSet,
-    fmt, fs,
+    fs,
     path::{Path, PathBuf},
 };
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("{detail}")]
 pub struct RenderResourceError {
     detail: String,
 }
@@ -30,14 +31,6 @@ impl RenderResourceError {
         }
     }
 }
-
-impl fmt::Display for RenderResourceError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.detail)
-    }
-}
-
-impl std::error::Error for RenderResourceError {}
 
 /// Prepare the immutable resources consumed by the native renderers.
 pub fn prepare_render_resources(

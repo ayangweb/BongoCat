@@ -24,7 +24,8 @@ impl fmt::Display for PlaybackErrorCode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("{code}: {detail}")]
 pub struct PlaybackError {
     pub code: PlaybackErrorCode,
     pub detail: String,
@@ -38,14 +39,6 @@ impl PlaybackError {
         }
     }
 }
-
-impl fmt::Display for PlaybackError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}: {}", self.code, self.detail)
-    }
-}
-
-impl std::error::Error for PlaybackError {}
 
 #[cfg(test)]
 mod tests {

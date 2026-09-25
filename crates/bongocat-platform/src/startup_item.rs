@@ -1,5 +1,3 @@
-use std::fmt;
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StartupItemEnvironment {
     Development,
@@ -29,13 +27,19 @@ impl StartupItemState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum StartupItemError {
+    #[error("startup_item_current_executable_unavailable")]
     CurrentExecutableUnavailable,
+    #[error("startup_item_invalid_executable_path")]
     InvalidExecutablePath,
+    #[error("startup_item_backend_unavailable")]
     BackendUnavailable,
+    #[error("startup_item_state_read_failed")]
     StateReadFailed,
+    #[error("startup_item_enable_failed")]
     EnableFailed,
+    #[error("startup_item_disable_failed")]
     DisableFailed,
 }
 
@@ -51,14 +55,6 @@ impl StartupItemError {
         }
     }
 }
-
-impl fmt::Display for StartupItemError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl std::error::Error for StartupItemError {}
 
 #[cfg(test)]
 mod tests {

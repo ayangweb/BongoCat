@@ -312,22 +312,13 @@ pub struct InputProducer {
     transport: std::sync::Arc<InputTransportCounters>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum InputPublishError {
+    #[error("runtime input queue is full")]
     QueueFull(InputEvent),
+    #[error("runtime is stopped")]
     RuntimeStopped(InputEvent),
 }
-
-impl std::fmt::Display for InputPublishError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::QueueFull(_) => formatter.write_str("runtime input queue is full"),
-            Self::RuntimeStopped(_) => formatter.write_str("runtime is stopped"),
-        }
-    }
-}
-
-impl std::error::Error for InputPublishError {}
 
 impl InputProducer {
     pub fn new(submitter: std::sync::Arc<dyn InputSubmitter>) -> Self {

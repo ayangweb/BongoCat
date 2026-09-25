@@ -24,7 +24,6 @@
 //! other rows follow the *system* theme, which [`init_native_theme`] opts the process into.
 //!
 use raw_window_handle::HasWindowHandle;
-use std::fmt;
 
 /// The appearance the product asks its native surfaces to use.
 ///
@@ -53,15 +52,18 @@ pub enum SystemAppearance {
 ///
 /// None of these are fatal: a surface that could not be themed keeps the system
 /// appearance, which is the documented fallback for every platform.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum NativeThemeError {
     /// The call has to run on the platform's UI thread and did not.
+    #[error("native_theme_wrong_thread")]
     WrongThread,
     /// The window did not expose a handle the platform can use.
+    #[error("native_theme_window_handle_unavailable")]
     WindowHandleUnavailable,
     /// The window's handle belongs to a platform this call does not implement.
+    #[error("native_theme_unsupported_window_handle")]
     UnsupportedWindowHandle,
-    /// The platform call itself failed, or the API is absent on this system.
+    #[error("native_theme_native_call_failed")]
     NativeCallFailed,
 }
 
@@ -82,14 +84,6 @@ impl NativeThemeError {
         }
     }
 }
-
-impl fmt::Display for NativeThemeError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl std::error::Error for NativeThemeError {}
 
 /// Applies the product's appearance choice to the process-wide native surfaces.
 ///

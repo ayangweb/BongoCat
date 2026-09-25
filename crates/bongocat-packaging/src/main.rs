@@ -64,7 +64,7 @@
 
 use std::{
     collections::BTreeMap,
-    env, fmt, fs,
+    env, fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -154,16 +154,9 @@ const RELEASE_REPOSITORY_URL: &str = "https://github.com/ayangweb/BongoCat";
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// A message-only failure with no wrapped source error.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
 struct Failure(String);
-
-impl fmt::Display for Failure {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for Failure {}
 
 fn failure<T>(message: impl Into<String>) -> Result<T> {
     Err(Box::new(Failure(message.into())))

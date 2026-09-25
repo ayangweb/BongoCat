@@ -46,7 +46,6 @@ use bongocat_ui_protocol::{
 use bongocat_update::UpdateDiagnostics;
 use serde::Serialize;
 use std::{
-    fmt,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -548,22 +547,13 @@ impl Drop for ApplicationSettingsService {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum SettingsServiceJoinError {
+    #[error("failed to start settings service: {0}")]
     Spawn(std::io::Error),
+    #[error("settings service panicked")]
     Panicked,
 }
-
-impl fmt::Display for SettingsServiceJoinError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Spawn(error) => write!(formatter, "failed to start settings service: {error}"),
-            Self::Panicked => formatter.write_str("settings service panicked"),
-        }
-    }
-}
-
-impl std::error::Error for SettingsServiceJoinError {}
 
 #[allow(clippy::too_many_arguments)]
 fn run_service(

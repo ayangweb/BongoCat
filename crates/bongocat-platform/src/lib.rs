@@ -1,4 +1,4 @@
-use std::{fmt, path::PathBuf};
+use std::path::PathBuf;
 
 pub use bongocat_input::{PlatformInputDiagnostics, PlatformInputServiceStatus};
 
@@ -175,20 +175,33 @@ pub enum InputPermission {
     Granted,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum PlatformInputError {
+    #[error("platform_input_backend_unavailable")]
     BackendUnavailable,
+    #[error("platform_input_permission_denied")]
     PermissionDenied,
+    #[error("platform_input_tap_create_failed")]
     TapCreateFailed,
+    #[error("platform_input_run_loop_source_failed")]
     RunLoopSourceFailed,
+    #[error("platform_input_window_class_registration_failed")]
     WindowClassRegistrationFailed,
+    #[error("platform_input_window_create_failed")]
     WindowCreateFailed,
+    #[error("platform_input_session_notification_failed")]
     SessionNotificationFailed,
+    #[error("platform_input_raw_input_registration_failed")]
     RawInputRegistrationFailed,
+    #[error("platform_input_timer_create_failed")]
     TimerCreateFailed,
+    #[error("platform_input_runtime_stopped")]
     RuntimeStopped,
+    #[error("platform_input_startup_timed_out")]
     StartupTimedOut,
+    #[error("platform_input_shutdown_timed_out")]
     ShutdownTimedOut,
+    #[error("platform_input_worker_panicked")]
     WorkerPanicked,
 }
 
@@ -229,14 +242,6 @@ impl PlatformInputError {
         }
     }
 }
-
-impl fmt::Display for PlatformInputError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl std::error::Error for PlatformInputError {}
 
 #[cfg(test)]
 mod platform_input_error_tests {

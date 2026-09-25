@@ -1373,16 +1373,9 @@ pub enum SettingsApplicationShortcut {
     OpenSettings,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("settings command channel is closed")]
 pub struct SettingsServiceClosed;
-
-impl fmt::Display for SettingsServiceClosed {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("settings command channel is closed")
-    }
-}
-
-impl std::error::Error for SettingsServiceClosed {}
 
 #[derive(Clone)]
 pub struct SettingsClient {

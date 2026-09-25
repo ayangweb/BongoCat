@@ -295,17 +295,27 @@ pub struct RenderResources {
 /// Both native backends consume the same immutable snapshot. Keeping its basic
 /// resource and geometry invariants here prevents a malformed model generation
 /// from being accepted by one backend and rejected by the other.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum RenderSnapshotValidationError {
+    #[error("model opacity is outside [0, 1]")]
     InvalidModelOpacity,
+    #[error("texture resource ids are not unique")]
     DuplicateTextureId,
+    #[error("drawable resource ids are not unique")]
     DuplicateDrawableId,
+    #[error("drawable references a missing texture")]
     MissingDrawableTexture,
+    #[error("drawable references a missing mask source")]
     MissingMaskSource,
+    #[error("drawable geometry is empty")]
     EmptyDrawableGeometry,
+    #[error("drawable triangle index is out of range")]
     DrawableIndexOutOfRange,
+    #[error("drawable vertex contains a non-finite value")]
     NonFiniteVertex,
+    #[error("drawable opacity is outside [0, 1]")]
     InvalidDrawableOpacity,
+    #[error("drawable blend color contains a non-finite value")]
     NonFiniteBlendColor,
 }
 
@@ -325,14 +335,6 @@ impl RenderSnapshotValidationError {
         }
     }
 }
-
-impl fmt::Display for RenderSnapshotValidationError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.message())
-    }
-}
-
-impl std::error::Error for RenderSnapshotValidationError {}
 
 pub fn validate_render_snapshot(
     resources: &RenderResources,
@@ -480,9 +482,11 @@ pub struct RenderTransportDiagnostics {
     pub feedback_pending: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum RenderPublishError {
+    #[error("render frame sequence moved backwards")]
     NonMonotonic(RenderFrame),
+    #[error("render transport is closed")]
     Closed(RenderFrame),
 }
 
@@ -494,20 +498,11 @@ impl RenderPublishError {
     }
 }
 
-impl fmt::Display for RenderPublishError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::NonMonotonic(_) => "render frame sequence moved backwards",
-            Self::Closed(_) => "render transport is closed",
-        })
-    }
-}
-
-impl std::error::Error for RenderPublishError {}
-
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ModelCommitFeedbackError {
+    #[error("a model commit result is already pending")]
     Occupied(ModelCommitFeedback),
+    #[error("render transport is closed")]
     Closed(ModelCommitFeedback),
 }
 
@@ -518,17 +513,6 @@ impl ModelCommitFeedbackError {
         }
     }
 }
-
-impl fmt::Display for ModelCommitFeedbackError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Occupied(_) => "a model commit result is already pending",
-            Self::Closed(_) => "render transport is closed",
-        })
-    }
-}
-
-impl std::error::Error for ModelCommitFeedbackError {}
 
 #[derive(Default)]
 struct LatestFrameState {

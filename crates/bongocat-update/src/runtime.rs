@@ -153,7 +153,8 @@ pub const GITHUB_PROXY_PREFIXES: &[&str] = &[
 ];
 
 /// A stable-coded update failure, tagged with the stage that produced it.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("{}", .code.as_str())]
 pub struct UpdateError {
     code: UpdateErrorCode,
     stage: UpdateStage,
@@ -252,14 +253,6 @@ impl UpdateError {
         Self::new(code)
     }
 }
-
-impl std::fmt::Display for UpdateError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.code.as_str())
-    }
-}
-
-impl std::error::Error for UpdateError {}
 
 /// A step of the install pipeline a caller can observe while it runs.
 ///

@@ -13,6 +13,7 @@ bongocat-config.workspace = true
 bongocat-input.workspace = true
 raw-window-handle.workspace = true
 url.workspace = true
+thiserror.workspace = true
 
 global-hotkey.workspace = true
 image.workspace = true

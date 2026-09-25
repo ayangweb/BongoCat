@@ -810,6 +810,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.21",
  "zip 8.6.0",
 ]
 
@@ -818,6 +819,7 @@ name = "bongocat-audio"
 version = "2.0.0"
 dependencies = [
  "rodio",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -829,6 +831,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -842,6 +845,9 @@ dependencies = [
 [[package]]
 name = "bongocat-input"
 version = "2.0.0"
+dependencies = [
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "bongocat-live2d"
@@ -857,6 +863,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -865,6 +872,7 @@ version = "2.0.0"
 dependencies = [
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -874,6 +882,7 @@ dependencies = [
  "bongocat-model",
  "bongocat-render",
  "image",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -928,6 +937,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-quartz-core 0.3.2",
  "raw-window-handle",
+ "thiserror 2.0.21",
  "windows 0.62.2",
 ]
 
@@ -941,6 +951,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tar",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -970,6 +981,7 @@ dependencies = [
  "rfd",
  "sys-locale",
  "tempfile",
+ "thiserror 2.0.21",
  "tray-icon",
  "url",
  "windows 0.62.2",
@@ -980,6 +992,7 @@ name = "bongocat-render"
 version = "2.0.0"
 dependencies = [
  "bongocat-input",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -996,6 +1009,7 @@ dependencies = [
  "bongocat-render",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1025,6 +1039,7 @@ name = "bongocat-ui-protocol"
 version = "2.0.0"
 dependencies = [
  "async-channel",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1037,6 +1052,7 @@ dependencies = [
  "flate2",
  "serde_json",
  "tar",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1288,9 +1304,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.4.7"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54413ede23c2daf518f35156dfde027feb2374004d63bd497f983c8db9c0e313"
+checksum = "207aedd8d29a0eb804986bc99eed0d43719fec84a9b7f9c8b70cf83b97cffcc1"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -2398,9 +2414,9 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.13"
+version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef25905e51abafe4dcea6c15fec58c57b601cdbd0ee53d22ea1d3016c587d39b"
+checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
 
 [[package]]
 name = "fixedbitset"

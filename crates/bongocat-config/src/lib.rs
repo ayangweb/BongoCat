@@ -3,7 +3,7 @@
 use bongocat_storage::{create_private_dir_all, set_private_file};
 use serde::{Deserialize, Serialize};
 use std::{
-    fmt, fs,
+    fs,
     fs::{File, OpenOptions, TryLockError},
     io::{self, ErrorKind, Write},
     path::{Path, PathBuf},
@@ -130,22 +130,11 @@ impl StorageLayout {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PlatformStorageError {
+    #[error("platform data directory is unavailable")]
     DataDirectoryUnavailable,
 }
-
-impl fmt::Display for PlatformStorageError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::DataDirectoryUnavailable => {
-                formatter.write_str("platform data directory is unavailable")
-            }
-        }
-    }
-}
-
-impl std::error::Error for PlatformStorageError {}
 
 #[cfg(target_os = "macos")]
 pub fn platform_layout(
@@ -935,9 +924,11 @@ pub enum ShortcutCommand {
     ToggleAlwaysOnTop,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ShortcutCommandParseError {
+    #[error("shortcut command must not be blank")]
     Empty,
+    #[error("shortcut command is not supported")]
     Unknown,
 }
 
@@ -970,17 +961,6 @@ impl ShortcutCommand {
         }
     }
 }
-
-impl fmt::Display for ShortcutCommandParseError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Empty => "shortcut command must not be blank",
-            Self::Unknown => "shortcut command is not supported",
-        })
-    }
-}
-
-impl std::error::Error for ShortcutCommandParseError {}
 
 /// A platform-neutral keyboard chord used to validate persisted shortcut
 /// bindings before a platform adapter attempts to capture or register them.
@@ -1133,29 +1113,19 @@ impl ShortcutModifiers {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ShortcutParseError {
+    #[error("shortcut must contain a key")]
     MissingKey,
+    #[error("shortcut contains an empty part")]
     EmptyPart,
+    #[error("shortcut contains a duplicate modifier")]
     DuplicateModifier,
+    #[error("shortcut must contain exactly one key")]
     MultipleKeys,
+    #[error("shortcut key is not a supported physical key token")]
     InvalidKey,
 }
-
-impl fmt::Display for ShortcutParseError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = match self {
-            Self::MissingKey => "shortcut must contain a key",
-            Self::EmptyPart => "shortcut contains an empty part",
-            Self::DuplicateModifier => "shortcut contains a duplicate modifier",
-            Self::MultipleKeys => "shortcut must contain exactly one key",
-            Self::InvalidKey => "shortcut key is not a supported physical key token",
-        };
-        formatter.write_str(message)
-    }
-}
-
-impl std::error::Error for ShortcutParseError {}
 
 impl ShortcutChord {
     pub fn parse(value: &str) -> Result<Self, ShortcutParseError> {
@@ -1271,11 +1241,15 @@ impl ModelBehaviorAction {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ModelBehaviorParseError {
+    #[error("model behavior must not be blank")]
     Empty,
+    #[error("model motion behavior must be motion:<group>:<index>")]
     InvalidMotion,
+    #[error("model expression behavior must be expression:<name>")]
     InvalidExpression,
+    #[error("model behavior kind is not supported")]
     UnknownKind,
 }
 
@@ -1317,19 +1291,6 @@ impl ModelBehaviorBinding {
         }
     }
 }
-
-impl fmt::Display for ModelBehaviorParseError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Empty => "model behavior must not be blank",
-            Self::InvalidMotion => "model motion behavior must be motion:<group>:<index>",
-            Self::InvalidExpression => "model expression behavior must be expression:<name>",
-            Self::UnknownKind => "model behavior kind is not supported",
-        })
-    }
-}
-
-impl std::error::Error for ModelBehaviorParseError {}
 
 impl Default for NativeConfig {
     fn default() -> Self {
@@ -1603,58 +1564,38 @@ pub struct ConfigLoadOutcome {
     pub interrupted_recovery: Option<InterruptedConfigRecovery>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
+    #[error("config I/O failed: {0}")]
     Io(io::Error),
+    #[error("config JSON failed: {0}")]
     Json(serde_json::Error),
+    #[error("config writer lock is unavailable")]
     LockUnavailable,
+    #[error(
+        "config revision conflict: expected {}, found {}",
+        .expected.value(),
+        .actual.value()
+    )]
     RevisionConflict {
         expected: ConfigRevision,
         actual: ConfigRevision,
     },
+    #[error("unsupported schema_version {0}")]
     UnsupportedSchema(u32),
+    #[error("invalid config value: {0}")]
     InvalidValue(&'static str),
+    #[error("config backup exceeds retention budget")]
     BackupTooLarge,
+    #[error("invalid config exceeds recovery archive budget")]
     RecoveryArchiveTooLarge,
+    #[error("interrupted config exceeds archive budget")]
     InterruptedArchiveTooLarge,
+    #[error("configuration write target is occupied")]
     WriteTargetOccupied,
+    #[error("restored configuration failed verification")]
     RecoveryVerificationFailed,
 }
-
-impl fmt::Display for ConfigError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Io(error) => write!(formatter, "config I/O failed: {error}"),
-            Self::Json(error) => write!(formatter, "config JSON failed: {error}"),
-            Self::LockUnavailable => formatter.write_str("config writer lock is unavailable"),
-            Self::RevisionConflict { expected, actual } => write!(
-                formatter,
-                "config revision conflict: expected {}, found {}",
-                expected.value(),
-                actual.value()
-            ),
-            Self::UnsupportedSchema(version) => {
-                write!(formatter, "unsupported schema_version {version}")
-            }
-            Self::InvalidValue(field) => write!(formatter, "invalid config value: {field}"),
-            Self::BackupTooLarge => formatter.write_str("config backup exceeds retention budget"),
-            Self::RecoveryArchiveTooLarge => {
-                formatter.write_str("invalid config exceeds recovery archive budget")
-            }
-            Self::InterruptedArchiveTooLarge => {
-                formatter.write_str("interrupted config exceeds archive budget")
-            }
-            Self::WriteTargetOccupied => {
-                formatter.write_str("configuration write target is occupied")
-            }
-            Self::RecoveryVerificationFailed => {
-                formatter.write_str("restored configuration failed verification")
-            }
-        }
-    }
-}
-
-impl std::error::Error for ConfigError {}
 
 impl From<io::Error> for ConfigError {
     fn from(error: io::Error) -> Self {

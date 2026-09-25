@@ -1,12 +1,12 @@
-use std::fmt;
-
 use url::Url;
 
 const MAX_EXTERNAL_URL_BYTES: usize = 2_048;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ExternalUrlOpenError {
+    #[error("external_url_open_invalid_url")]
     InvalidUrl,
+    #[error("external_url_open_launch_failed")]
     LaunchFailed,
 }
 
@@ -20,14 +20,6 @@ impl ExternalUrlOpenError {
         }
     }
 }
-
-impl fmt::Display for ExternalUrlOpenError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl std::error::Error for ExternalUrlOpenError {}
 
 pub fn open_external_url(value: &str) -> Result<(), ExternalUrlOpenError> {
     open_external_url_with(value, launch_url)

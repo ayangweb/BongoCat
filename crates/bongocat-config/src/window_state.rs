@@ -4,7 +4,7 @@ use super::{StorageLayout, WriterLock};
 use bongocat_storage::{create_private_dir_all, set_private_file, write_private_atomic};
 use serde::{Deserialize, Serialize};
 use std::{
-    fmt, fs,
+    fs,
     fs::{OpenOptions, TryLockError},
     io::{self, ErrorKind},
 };
@@ -169,39 +169,21 @@ pub struct WindowStateLoadOutcome {
     pub status: WindowStateLoadStatus,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum WindowStateError {
+    #[error("window state I/O failed: {0}")]
     Io(io::Error),
+    #[error("window state JSON failed: {0}")]
     Json(serde_json::Error),
+    #[error("window state writer lock is unavailable")]
     LockUnavailable,
+    #[error("unsupported window state schema_version {0}")]
     UnsupportedSchema(u64),
+    #[error("invalid window state value: {0}")]
     InvalidValue(&'static str),
+    #[error("window state commit failed verification")]
     VerificationFailed,
 }
-
-impl fmt::Display for WindowStateError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Io(error) => write!(formatter, "window state I/O failed: {error}"),
-            Self::Json(error) => write!(formatter, "window state JSON failed: {error}"),
-            Self::LockUnavailable => formatter.write_str("window state writer lock is unavailable"),
-            Self::UnsupportedSchema(version) => {
-                write!(
-                    formatter,
-                    "unsupported window state schema_version {version}"
-                )
-            }
-            Self::InvalidValue(field) => {
-                write!(formatter, "invalid window state value: {field}")
-            }
-            Self::VerificationFailed => {
-                formatter.write_str("window state commit failed verification")
-            }
-        }
-    }
-}
-
-impl std::error::Error for WindowStateError {}
 
 impl From<io::Error> for WindowStateError {
     fn from(error: io::Error) -> Self {

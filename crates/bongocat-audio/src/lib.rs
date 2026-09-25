@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::{
-    fmt, io,
+    io,
     path::{Path, PathBuf},
     sync::{
         Arc, Condvar, Mutex,
@@ -193,26 +193,15 @@ pub struct MotionAudioClient {
     shared: Arc<SharedState>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, thiserror::Error)]
 pub enum MotionAudioPublishError {
+    #[error("motion audio command queue is full")]
     QueueFull(MotionAudioCommand),
+    #[error("motion audio command recovery is pending")]
     RecoveryPending(MotionAudioCommand),
+    #[error("motion audio service is stopped")]
     ServiceStopped(MotionAudioCommand),
 }
-
-impl fmt::Display for MotionAudioPublishError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::QueueFull(_) => formatter.write_str("motion audio command queue is full"),
-            Self::RecoveryPending(_) => {
-                formatter.write_str("motion audio command recovery is pending")
-            }
-            Self::ServiceStopped(_) => formatter.write_str("motion audio service is stopped"),
-        }
-    }
-}
-
-impl std::error::Error for MotionAudioPublishError {}
 
 impl MotionAudioClient {
     pub fn unavailable() -> Self {
@@ -356,33 +345,17 @@ impl MotionAudioClient {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("cannot start motion audio worker: {0}")]
 pub struct MotionAudioStartError(io::Error);
 
-impl fmt::Display for MotionAudioStartError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "cannot start motion audio worker: {}", self.0)
-    }
-}
-
-impl std::error::Error for MotionAudioStartError {}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum MotionAudioShutdownError {
+    #[error("motion audio shutdown timed out")]
     TimedOut,
+    #[error("motion audio worker panicked")]
     WorkerPanicked,
 }
-
-impl fmt::Display for MotionAudioShutdownError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::TimedOut => formatter.write_str("motion audio shutdown timed out"),
-            Self::WorkerPanicked => formatter.write_str("motion audio worker panicked"),
-        }
-    }
-}
-
-impl std::error::Error for MotionAudioShutdownError {}
 
 pub struct MotionAudioService {
     client: MotionAudioClient,

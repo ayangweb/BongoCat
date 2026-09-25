@@ -15,6 +15,7 @@ bongocat-live2d-render.workspace = true
 bongocat-model.workspace = true
 bongocat-render.workspace = true
 bongocat-live2d.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 bongocat-model-store.workspace = true

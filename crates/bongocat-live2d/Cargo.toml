@@ -17,6 +17,7 @@ bongocat-log.workspace = true
 bongocat-storage.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 bongocat-model-store.workspace = true

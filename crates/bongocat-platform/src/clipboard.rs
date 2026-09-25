@@ -1,33 +1,22 @@
-use std::fmt;
-
 use arboard::Clipboard;
 #[cfg(target_os = "macos")]
 use objc2::{MainThreadMarker, rc::autoreleasepool};
 
 pub(crate) const MAX_CLIPBOARD_TEXT_BYTES: usize = 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ClipboardError {
+    #[error("clipboard_wrong_thread")]
     WrongThread,
+    #[error("clipboard_text_too_large")]
     TextTooLarge,
+    #[error("clipboard_text_invalid")]
     InvalidText,
+    #[error("clipboard_read_failed")]
     ReadFailed,
+    #[error("clipboard_write_failed")]
     WriteFailed,
 }
-
-impl fmt::Display for ClipboardError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::WrongThread => "clipboard_wrong_thread",
-            Self::TextTooLarge => "clipboard_text_too_large",
-            Self::InvalidText => "clipboard_text_invalid",
-            Self::ReadFailed => "clipboard_read_failed",
-            Self::WriteFailed => "clipboard_write_failed",
-        })
-    }
-}
-
-impl std::error::Error for ClipboardError {}
 
 pub fn read_clipboard_text() -> Result<Option<String>, ClipboardError> {
     #[cfg(target_os = "macos")]

@@ -14,7 +14,6 @@ use crate::app_log::{
     ApplicationLogCode, ApplicationLogContext, ApplicationLogEvent, ApplicationLogHandle,
 };
 use std::{
-    fmt,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -184,22 +183,13 @@ impl Drop for ApplicationUpdateService {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum UpdateServiceError {
+    #[error("failed to start update service: {0}")]
     Spawn(std::io::Error),
+    #[error("update service panicked")]
     Panicked,
 }
-
-impl fmt::Display for UpdateServiceError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Spawn(error) => write!(formatter, "failed to start update service: {error}"),
-            Self::Panicked => formatter.write_str("update service panicked"),
-        }
-    }
-}
-
-impl std::error::Error for UpdateServiceError {}
 
 fn run_worker(
     engine: Box<dyn UpdateEngine>,

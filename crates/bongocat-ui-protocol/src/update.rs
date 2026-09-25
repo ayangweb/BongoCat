@@ -346,16 +346,9 @@ pub enum UpdateCommand {
     Shutdown,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("update command channel is closed")]
 pub struct UpdateServiceClosed;
-
-impl fmt::Display for UpdateServiceClosed {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("update command channel is closed")
-    }
-}
-
-impl std::error::Error for UpdateServiceClosed {}
 
 /// The window's handle on the update worker.
 #[derive(Clone)]

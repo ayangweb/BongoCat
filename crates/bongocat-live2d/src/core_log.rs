@@ -24,26 +24,15 @@ const REDACTED_CORE_TOKEN: &str = "<redacted>";
 const CALLBACK_QUEUE_CAPACITY: usize = 128;
 const WORKER_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum CoreLogError {
+    #[error("cannot create Core log directory: {0}")]
     CreateDirectory(std::io::Error),
+    #[error("cannot open Core log file: {0}")]
     OpenFile(std::io::Error),
+    #[error("cannot start Core log worker: {0}")]
     StartWorker(std::io::Error),
 }
-
-impl std::fmt::Display for CoreLogError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::CreateDirectory(error) => {
-                write!(formatter, "cannot create Core log directory: {error}")
-            }
-            Self::OpenFile(error) => write!(formatter, "cannot open Core log file: {error}"),
-            Self::StartWorker(error) => write!(formatter, "cannot start Core log worker: {error}"),
-        }
-    }
-}
-
-impl std::error::Error for CoreLogError {}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct CoreLogStats {

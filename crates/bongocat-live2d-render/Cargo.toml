@@ -11,6 +11,7 @@ publish.workspace = true
 bongocat-model.workspace = true
 bongocat-render.workspace = true
 image.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

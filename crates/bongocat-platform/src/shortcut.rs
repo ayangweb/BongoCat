@@ -121,28 +121,15 @@ mod global {
     const TABLE_POLL_INTERVAL: Duration = Duration::from_millis(50);
     const STARTUP_TIMEOUT: Duration = Duration::from_secs(2);
 
-    #[derive(Debug, Clone, Eq, PartialEq)]
+    #[derive(Debug, Clone, Eq, PartialEq, thiserror::Error)]
     pub enum GlobalShortcutServiceError {
+        #[error("global hotkey manager unavailable: {0}")]
         ManagerUnavailable(String),
+        #[error("global shortcut service startup timed out")]
         StartupTimedOut,
+        #[error("global shortcut worker panicked")]
         WorkerPanicked,
     }
-
-    impl std::fmt::Display for GlobalShortcutServiceError {
-        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            match self {
-                Self::ManagerUnavailable(message) => {
-                    write!(formatter, "global hotkey manager unavailable: {message}")
-                }
-                Self::StartupTimedOut => {
-                    formatter.write_str("global shortcut service startup timed out")
-                }
-                Self::WorkerPanicked => formatter.write_str("global shortcut worker panicked"),
-            }
-        }
-    }
-
-    impl std::error::Error for GlobalShortcutServiceError {}
 
     /// Live counters for diagnostics consumers; the input pipeline no longer
     /// counts shortcut dispatch because it no longer performs matching.
@@ -578,16 +565,9 @@ mod global {
         Ok(HotKey::new(Some(modifiers), key))
     }
 
-    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+    #[derive(Debug, Clone, Copy, Eq, PartialEq, thiserror::Error)]
+    #[error("the key has no global hotkey mapping")]
     pub struct ShortcutHotkeyError;
-
-    impl std::fmt::Display for ShortcutHotkeyError {
-        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("the key has no global hotkey mapping")
-        }
-    }
-
-    impl std::error::Error for ShortcutHotkeyError {}
 
     fn shortcut_code(key: &str) -> Result<Code, ShortcutHotkeyError> {
         let bytes = key.as_bytes();

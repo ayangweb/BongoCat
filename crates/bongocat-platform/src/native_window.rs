@@ -10,31 +10,16 @@
 //! `CloseRequestFailed` and `TaskbarVisibilityUpdateFailed` are produced by the
 //! Windows calls that own those concepts.
 
-use std::fmt;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum NativeWindowError {
+    #[error("the native window handle is unavailable")]
     HandleUnavailable,
+    #[error("the native window handle is not a supported platform window")]
     UnsupportedHandle,
+    #[error("the native window call was made off the owner thread")]
     WrongThread,
+    #[error("the native window rejected the close request")]
     CloseRequestFailed,
+    #[error("the native window taskbar visibility did not update")]
     TaskbarVisibilityUpdateFailed,
 }
-
-impl fmt::Display for NativeWindowError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::HandleUnavailable => "the native window handle is unavailable",
-            Self::UnsupportedHandle => {
-                "the native window handle is not a supported platform window"
-            }
-            Self::WrongThread => "the native window call was made off the owner thread",
-            Self::CloseRequestFailed => "the native window rejected the close request",
-            Self::TaskbarVisibilityUpdateFailed => {
-                "the native window taskbar visibility did not update"
-            }
-        })
-    }
-}
-
-impl std::error::Error for NativeWindowError {}

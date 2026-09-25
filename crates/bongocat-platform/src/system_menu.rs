@@ -1,5 +1,3 @@
-use std::fmt;
-
 /// Localized text and revisioned state used by both native menu surfaces.
 ///
 /// The platform owns native menu handles only. The application supplies this
@@ -34,45 +32,30 @@ pub enum SystemMenuAction {
     Quit,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum SystemMenuError {
+    #[error("the system menu must be created on the platform UI thread")]
     WrongThread,
+    #[error("the system menu window class could not be registered")]
     WindowClassRegistrationFailed,
+    #[error("the system menu owner window could not be created")]
     WindowCreateFailed,
+    #[error("the context menu window handle is unavailable")]
     WindowHandleUnavailable,
+    #[error("the context menu window handle is not supported on this platform")]
     UnsupportedWindowHandle,
+    #[error("the system menu could not be created")]
     MenuCreateFailed,
+    #[error("a required system menu item could not be created")]
     MenuItemCreateFailed,
+    #[error("the platform status item could not be created")]
     StatusItemCreateFailed,
+    #[error("the platform status icon image could not be loaded")]
     StatusIconImageLoadFailed,
+    #[error("the platform status item visibility could not be changed")]
     StatusItemUpdateFailed,
+    #[error("the system menu event consumer is no longer available")]
     EventQueueClosed,
+    #[error("the system menu did not shut down cleanly")]
     ShutdownFailed,
 }
-
-impl fmt::Display for SystemMenuError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::WrongThread => "the system menu must be created on the platform UI thread",
-            Self::WindowClassRegistrationFailed => {
-                "the system menu window class could not be registered"
-            }
-            Self::WindowCreateFailed => "the system menu owner window could not be created",
-            Self::WindowHandleUnavailable => "the context menu window handle is unavailable",
-            Self::UnsupportedWindowHandle => {
-                "the context menu window handle is not supported on this platform"
-            }
-            Self::MenuCreateFailed => "the system menu could not be created",
-            Self::MenuItemCreateFailed => "a required system menu item could not be created",
-            Self::StatusItemCreateFailed => "the platform status item could not be created",
-            Self::StatusIconImageLoadFailed => "the platform status icon image could not be loaded",
-            Self::StatusItemUpdateFailed => {
-                "the platform status item visibility could not be changed"
-            }
-            Self::EventQueueClosed => "the system menu event consumer is no longer available",
-            Self::ShutdownFailed => "the system menu did not shut down cleanly",
-        })
-    }
-}
-
-impl std::error::Error for SystemMenuError {}

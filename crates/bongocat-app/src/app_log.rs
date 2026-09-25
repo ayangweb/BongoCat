@@ -506,35 +506,17 @@ pub struct CoreLogDiagnostics {
     pub retained_bytes: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ApplicationLogError {
+    #[error("cannot create application log directory: {0}")]
     CreateDirectory(io::Error),
+    #[error("cannot open application log file: {0}")]
     OpenFile(io::Error),
+    #[error("cannot write application run marker: {0}")]
     WriteRunMarker(io::Error),
+    #[error("cannot remove application run marker: {0}")]
     RemoveRunMarker(io::Error),
 }
-
-impl std::fmt::Display for ApplicationLogError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::CreateDirectory(error) => {
-                write!(
-                    formatter,
-                    "cannot create application log directory: {error}"
-                )
-            }
-            Self::OpenFile(error) => write!(formatter, "cannot open application log file: {error}"),
-            Self::WriteRunMarker(error) => {
-                write!(formatter, "cannot write application run marker: {error}")
-            }
-            Self::RemoveRunMarker(error) => {
-                write!(formatter, "cannot remove application run marker: {error}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for ApplicationLogError {}
 
 #[derive(Debug)]
 struct ApplicationLogState {

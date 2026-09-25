@@ -161,22 +161,13 @@ pub struct CursorSnapshot {
     pub transport: CursorTransportDiagnostics,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, thiserror::Error)]
 pub enum CursorPublishError {
+    #[error("cursor sample time moved backwards")]
     NonMonotonic(CursorSample),
+    #[error("runtime is stopped")]
     RuntimeStopped(CursorSample),
 }
-
-impl std::fmt::Display for CursorPublishError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::NonMonotonic(_) => "cursor sample time moved backwards",
-            Self::RuntimeStopped(_) => "runtime is stopped",
-        })
-    }
-}
-
-impl std::error::Error for CursorPublishError {}
 
 #[derive(Default)]
 struct CursorSlotState {

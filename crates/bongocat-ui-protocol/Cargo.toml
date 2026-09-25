@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 async-channel.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

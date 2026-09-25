@@ -360,16 +360,9 @@ impl MotionId {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("motion group must not be blank")]
 pub struct MotionIdError;
-
-impl fmt::Display for MotionIdError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("motion group must not be blank")
-    }
-}
-
-impl std::error::Error for MotionIdError {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExpressionId(String);
@@ -388,16 +381,9 @@ impl ExpressionId {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("expression name must not be blank")]
 pub struct ExpressionIdError;
-
-impl fmt::Display for ExpressionIdError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("expression name must not be blank")
-    }
-}
-
-impl std::error::Error for ExpressionIdError {}
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum MotionPriority {
@@ -630,39 +616,21 @@ enum WorkerCommand {
     Shutdown,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, thiserror::Error)]
 pub enum SendError {
+    #[error("runtime command queue is full")]
     QueueFull(RuntimeCommand),
+    #[error("runtime is stopped")]
     RuntimeStopped(RuntimeCommand),
 }
 
-impl fmt::Display for SendError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::QueueFull(_) => formatter.write_str("runtime command queue is full"),
-            Self::RuntimeStopped(_) => formatter.write_str("runtime is stopped"),
-        }
-    }
-}
-
-impl std::error::Error for SendError {}
-
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ShutdownError {
+    #[error("runtime shutdown timed out")]
     TimedOut,
+    #[error("runtime worker panicked")]
     WorkerPanicked,
 }
-
-impl fmt::Display for ShutdownError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::TimedOut => formatter.write_str("runtime shutdown timed out"),
-            Self::WorkerPanicked => formatter.write_str("runtime worker panicked"),
-        }
-    }
-}
-
-impl std::error::Error for ShutdownError {}
 
 struct SnapshotCell {
     value: Mutex<RuntimeSnapshot>,

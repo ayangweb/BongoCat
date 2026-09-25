@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 bongocat-config.workspace = true
 cargo-packager-updater.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 cargo-packager.workspace = true

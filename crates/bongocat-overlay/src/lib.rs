@@ -35,7 +35,7 @@ use bongocat_runtime::{OverlaySettings, RuntimeClient, hover_hide_delay_ms};
 use raw_window_handle::{HandleError, HasWindowHandle, WindowHandle};
 use std::collections::BTreeSet;
 use std::sync::Arc;
-use std::{fmt, path::Path, sync::mpsc::SyncSender, time::Duration};
+use std::{path::Path, sync::mpsc::SyncSender, time::Duration};
 
 pub const DEFAULT_OVERLAY_WINDOW_WIDTH: u32 = 350;
 pub(crate) const FRAME_SMOKE_GRID_DIMENSION: u64 = 17;
@@ -812,7 +812,8 @@ enum OverlayErrorKind {
     TemporaryPresentationUnavailable,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("{detail}")]
 pub struct OverlayError {
     kind: OverlayErrorKind,
     detail: String,
@@ -840,14 +841,6 @@ impl OverlayError {
         )
     }
 }
-
-impl fmt::Display for OverlayError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.detail)
-    }
-}
-
-impl std::error::Error for OverlayError {}
 
 /// Render one model into a window that is never shown and turn that frame into a
 /// cover image.

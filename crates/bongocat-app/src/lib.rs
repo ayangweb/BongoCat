@@ -280,23 +280,12 @@ impl ApplicationError {
 
 impl std::error::Error for ApplicationError {}
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+#[error("runtime: {runtime}; motion audio: {motion_audio}")]
 pub struct ApplicationShutdownError {
     pub runtime: ShutdownError,
     pub motion_audio: MotionAudioShutdownError,
 }
-
-impl fmt::Display for ApplicationShutdownError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "runtime: {}; motion audio: {}",
-            self.runtime, self.motion_audio
-        )
-    }
-}
-
-impl std::error::Error for ApplicationShutdownError {}
 
 fn combine_shutdown_results<T>(
     runtime_result: Result<T, ShutdownError>,

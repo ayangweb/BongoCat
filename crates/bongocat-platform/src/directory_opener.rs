@@ -1,9 +1,12 @@
-use std::{fmt, fs, path::Path};
+use std::{fs, path::Path};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum DirectoryOpenError {
+    #[error("directory_open_invalid_path")]
     InvalidPath,
+    #[error("directory_open_unavailable")]
     DirectoryUnavailable,
+    #[error("directory_open_launch_failed")]
     LaunchFailed,
 }
 
@@ -22,14 +25,6 @@ impl DirectoryOpenError {
         }
     }
 }
-
-impl fmt::Display for DirectoryOpenError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl std::error::Error for DirectoryOpenError {}
 
 pub fn open_directory(path: &Path) -> Result<(), DirectoryOpenError> {
     open_directory_with(path, launch_directory)

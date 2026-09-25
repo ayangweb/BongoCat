@@ -15,6 +15,7 @@ bongocat-platform.workspace = true
 bongocat-render.workspace = true
 bongocat-runtime.workspace = true
 raw-window-handle.workspace = true
+thiserror.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics-types = "=0.2.0"

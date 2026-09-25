@@ -86,47 +86,29 @@ impl GamepadAxisSample {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, thiserror::Error)]
 pub enum GamepadAxisPublishError {
+    #[error("gamepad axis value is not finite")]
     NonFinite(GamepadAxisSample),
+    #[error("gamepad axis value is outside its normalized range")]
     OutOfRange(GamepadAxisSample),
+    #[error("gamepad axis sample time moved backwards")]
     NonMonotonic(GamepadAxisSample),
+    #[error("gamepad axis key capacity is exhausted")]
     CapacityExceeded(GamepadAxisSample),
+    #[error("runtime is stopped")]
     RuntimeStopped(GamepadAxisSample),
+    #[error("gamepad axis sample belongs to a stale connection")]
     StaleGeneration(GamepadAxisSample),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum GamepadConnectionError {
+    #[error("runtime is stopped")]
     RuntimeStopped,
+    #[error("gamepad connection generation is exhausted")]
     GenerationExhausted,
 }
-
-impl std::fmt::Display for GamepadConnectionError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::RuntimeStopped => "runtime is stopped",
-            Self::GenerationExhausted => "gamepad connection generation is exhausted",
-        })
-    }
-}
-
-impl std::error::Error for GamepadConnectionError {}
-
-impl std::fmt::Display for GamepadAxisPublishError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::NonFinite(_) => "gamepad axis value is not finite",
-            Self::OutOfRange(_) => "gamepad axis value is outside its normalized range",
-            Self::NonMonotonic(_) => "gamepad axis sample time moved backwards",
-            Self::CapacityExceeded(_) => "gamepad axis key capacity is exhausted",
-            Self::RuntimeStopped(_) => "runtime is stopped",
-            Self::StaleGeneration(_) => "gamepad axis sample belongs to a stale connection",
-        })
-    }
-}
-
-impl std::error::Error for GamepadAxisPublishError {}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct GamepadAxisTransportDiagnostics {

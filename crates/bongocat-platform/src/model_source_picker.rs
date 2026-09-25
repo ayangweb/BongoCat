@@ -18,7 +18,7 @@
 //! PNG in the dialog as a convenience, and the settings service still validates
 //! the bytes before they replace an existing cover.
 
-use std::{fmt, path::PathBuf};
+use std::path::PathBuf;
 
 use std::fs;
 
@@ -37,11 +37,15 @@ pub enum ModelSourcePickerOutcome {
     Cancelled,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ModelSourcePickerError {
+    #[error("model_source_picker_wrong_thread")]
     WrongThread,
+    #[error("model_source_picker_backend_unavailable")]
     BackendUnavailable,
+    #[error("model_source_picker_selection_unavailable")]
     SelectionUnavailable,
+    #[error("model_source_picker_selection_invalid")]
     SelectionInvalid,
 }
 
@@ -62,14 +66,6 @@ impl ModelSourcePickerError {
         }
     }
 }
-
-impl fmt::Display for ModelSourcePickerError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl std::error::Error for ModelSourcePickerError {}
 
 #[cfg(target_os = "macos")]
 fn asynchronous_sheet_is_available(mtm: MainThreadMarker) -> bool {

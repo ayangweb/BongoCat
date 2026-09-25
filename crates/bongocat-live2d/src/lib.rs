@@ -197,7 +197,8 @@ impl fmt::Display for Live2dErrorCode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("{code}: {detail}")]
 pub struct Live2dError {
     pub code: Live2dErrorCode,
     pub detail: String,
@@ -211,14 +212,6 @@ impl Live2dError {
         }
     }
 }
-
-impl fmt::Display for Live2dError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}: {}", self.code, self.detail)
-    }
-}
-
-impl std::error::Error for Live2dError {}
 
 impl From<PlaybackError> for Live2dError {
     fn from(error: PlaybackError) -> Self {
