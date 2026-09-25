@@ -112,7 +112,7 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
 - 发布前必须在 Windows 10 1903+ 与受支持 macOS 实机验证 overlay 右键菜单的 cursor 定位、缩放/DPI、
   窗口层级、点击外部关闭、action 派发和 shutdown；Windows x64/ARM64 cross-check 只能证明编译与
   边界，不能证明 tray registration、右键菜单、左键打开设置、Explorer 重启恢复或资源管理器交互。
-- `native-workspace` 的 `Smoke Windows D3D11 product overlay` 在真实 Windows runner 上运行
+- `workspace` 的 `Smoke Windows D3D11 product overlay` 在真实 Windows runner 上运行
   `--settings-window-open-smoke` 与 `--settings-window-smoke --models-page-smoke`，是上述
   `set_tooltip` 缺陷的唯一回归来源：2026-09-14 的 job 日志显示 `set_presentation` 每 50ms 重试一次，
   在 30 秒内累计 380 条完全相同的 `StatusItemUpdateFailed`。该 job 和其中每个 smoke step 都必须

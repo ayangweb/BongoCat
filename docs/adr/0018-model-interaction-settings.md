@@ -4,7 +4,7 @@
 
 ## 背景
 
-Native Rewrite 的 Native 配置已经包含水平镜像、镜像指针跟随和忽略指针字段，但此前
+BongoCat 的 配置已经包含水平镜像、镜像指针跟随和忽略指针字段，但此前
 这些字段没有穿过 runtime 边界。直接让 renderer 读取配置会违反 renderer 只消费不可变
 `RenderSnapshot` 的所有权规则，也会让模型求值与显示变换在不同线程拥有不一致的设置。
 

@@ -5,10 +5,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_DIRECTORY = ROOT / ".github" / "workflows"
-NATIVE_WORKFLOW = WORKFLOW_DIRECTORY / "native-rewrite-phase0.yml"
+CI_WORKFLOW = WORKFLOW_DIRECTORY / "ci.yml"
 RELEASE_WORKFLOW = WORKFLOW_DIRECTORY / "release.yml"
 DENY = ROOT / "deny.toml"
-DEPENDENCY_POLICY = ROOT / "tools" / "check-native-dependencies.sh"
+DEPENDENCY_POLICY = ROOT / "tools" / "check-dependencies.sh"
 
 # The three shipped target/arch combinations. Windows ARM64 is not one of them:
 # Cubism Native R5 has no desktop ARM64 Core, and Windows runs the x64 build
@@ -20,7 +20,7 @@ SHIPPED_TARGETS = (
 )
 
 
-class NativeReleaseTargetMatrixTests(unittest.TestCase):
+class ReleaseTargetTests(unittest.TestCase):
     def test_no_active_workflow_targets_unsupported_windows_architectures(self):
         for workflow in sorted(WORKFLOW_DIRECTORY.glob("*.y*ml")):
             with self.subTest(workflow=workflow.name):
@@ -35,8 +35,8 @@ class NativeReleaseTargetMatrixTests(unittest.TestCase):
             with self.subTest(target=target):
                 self.assertIn(target, source)
 
-    def test_active_native_ci_still_builds_windows_x64(self):
-        source = NATIVE_WORKFLOW.read_text(encoding="utf-8")
+    def test_active_ci_still_builds_windows_x64(self):
+        source = CI_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("x86_64-pc-windows-msvc", source)
 
     def test_dependency_policy_audits_exactly_the_shipped_targets(self):

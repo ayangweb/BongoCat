@@ -69,5 +69,5 @@ MIT，活跃维护）统一双平台后端。
   注册项。
 - macOS `--startup-item-smoke` 产品 smoke 继续验证 Production 安装态
   lifecycle（现映射到 LaunchAgent plist）。
-- 双平台完整 Native 门禁（fmt、严格 Clippy、workspace test）通过；Windows
+- 双平台完整门禁（fmt、严格 Clippy、workspace test）通过；Windows
   实机回归由 CI 承担。

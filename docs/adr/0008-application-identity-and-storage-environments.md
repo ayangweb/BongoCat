@@ -5,13 +5,13 @@
 
 ## Context
 
-Native Rewrite 需要稳定的应用身份，同时开发构建不能读取、覆盖或锁住用户的生产数据。旧版配置字段和存储布局不再是新应用的兼容目标，因此新配置可以直接采用清晰、一致的 Rust 领域命名。
+BongoCat 需要稳定的应用身份，同时开发构建不能读取、覆盖或锁住用户的生产数据。旧版配置字段和存储布局不再是新应用的兼容目标，因此新配置可以直接采用清晰、一致的 Rust 领域命名。
 
 仅依赖 `debug_assertions` 或可变命令行参数选择数据目录会让错误构建访问生产数据。只隔离 `config.json` 也不充分：模型、备份、日志、锁和其他可变文件仍可能互相污染。
 
 ## Decision
 
-Native Rewrite 的 Bundle ID 固定为：
+BongoCat 的 Bundle ID 固定为：
 
 ```text
 com.ayangweb.bongo-cat
@@ -53,7 +53,7 @@ CLI/API，并且 Production 构建与该 feature 的组合在编译期失败。
 
 锁、单实例命名、诊断和更新 channel 也必须包含环境身份。任何环境都不得探测、读取或回退到另一个环境的目录。
 
-Native Rewrite 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一使用 `snake_case`，名称从当前产品领域语义定义，不保留旧字段 alias。
+BongoCat 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一使用 `snake_case`，名称从当前产品领域语义定义，不保留旧字段 alias。
 
 `next` 是全新的初始版本，当前完整 `config.json` 与 `window-state.json` 都以 `schema_version: 1`
 开始。在 `next` 首次正式发布前，新增字段直接修改当前 v1，不保留开发中间结构，也不实现迁移、
@@ -72,7 +72,7 @@ Native Rewrite 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一�
 
 ## Consequences
 
-- 首次启动 Native Rewrite 时生成当前环境的全新配置。
+- 首次启动 BongoCat 时生成当前环境的全新配置。
 - 开发构建可安全使用合成数据和自定义模型，不影响生产安装。
 - 旧配置目录和字段只保留为历史行为参考，不进入生产 dependency graph 或发布产物。
 - 用户模型仍可通过受验证的显式导入流程加入；不会根据旧配置路径自动发现或搬运。

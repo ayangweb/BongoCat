@@ -15,7 +15,7 @@
 `resources/left-keys/AltGr.png`，仓库内三个预置模型也是这个名字（`git log` 可见 141 张键位图
 的既有布局）。
 
-Native Rewrite 的输入层从 HID usage 出发，左右修饰键是可区分的 canonical 名
+BongoCat 的输入层从 HID usage 出发，左右修饰键是可区分的 canonical 名
 （`shared/behavior/input-semantics.md`：`AltLeft`/`AltRight`）。`bongocat-live2d` 因此按
 `AltLeft`、`AltRight` 去查资源，而预置模型里既没有 `AltLeft.png`，`AltGr.png` 也不在任何候选
 列表里，于是：

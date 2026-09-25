@@ -56,7 +56,7 @@
 兼容性选择；精确来源链、背景/按键上传语义和最终像素一致性仍由 TODO 的实机/readback 门禁
 确认。行为清单基线 `44f44bc` 的旧版 `src/pages/main/index.vue` 另直接确认窗口 opacity 施加于
 包含背景、Live2D canvas 和按键图的根容器；这属于 legacy 产品行为证据，不是固定 Mver C++ commit
-对 opacity 或 shader 的直接证明。Native Rewrite 的 Metal/D3D11 renderer、safe wrapper、runtime
+对 opacity 或 shader 的直接证明。BongoCat 的 Metal/D3D11 renderer、safe wrapper、runtime
 和资源 compositor 仍须按 Technical Design 的 Rust 边界实现，并遵守 ADR-0030 规定的现有方案复用顺序。
 
 ## 4. 动作与表情生命周期证据
@@ -67,7 +67,7 @@
   expression 是两个不同生命周期的层。
 - `SetExpression()` 以 force priority 启动目标 expression。固定 R5 expression manager 会在最新
   expression 淡入完成后删除旧层，但保留最新层；最新 expression 没有 duration，也不会自行
-  清除。因此 Native 的“最新表情淡入后持续应用，直到替换、模型切换或 shutdown”是既有参考语义，
+  清除。因此 BongoCat 的“最新表情淡入后持续应用，直到替换、模型切换或 shutdown”是既有参考语义，
   不是需要新增的定时播放行为。
 - 同一文件在 `_motionManager->IsFinished()` 为真时会启动 idle motion。因此“一次性 motion 播放
   完后保持最终姿态”不是该 C++ 文件逐字实现的行为，而是 2026-09-24 维护者明确要求并写入

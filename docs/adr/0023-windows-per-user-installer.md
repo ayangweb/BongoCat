@@ -17,7 +17,7 @@
 
 ## 背景
 
-Native Rewrite 已使用当前用户 HKCU Run 启动项、环境隔离的数据根和独立的签名更新 trust boundary。
+BongoCat 已使用当前用户 HKCU Run 启动项、环境隔离的数据根和独立的签名更新 trust boundary。
 Windows 首发仍需要固定安装格式，以便明确 installer 权限、卸载语义和未来 update helper 的交接。
 
 ## 决策

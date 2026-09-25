@@ -6,7 +6,7 @@
 
 ## 背景
 
-Native Rewrite 将自动/手动更新列为首发行为，但旧版 updater 使用 HTTP endpoint、前端固定凭据和
+BongoCat 将自动/手动更新列为首发行为，但旧版 updater 使用 HTTP endpoint、前端固定凭据和
 旧 payload，不能进入新架构。下载和安装前必须先建立独立、可离线验证的信任边界；否则网络 client、
 设置 UI 和高权限 installer 会各自解释版本、target、hash 或签名，形成不一致的安全判断。
 
@@ -62,7 +62,7 @@ manifest 绕过。
   target/arch 错配、重复 target、未知字段、HTTP URL、artifact 长度/hash 和读取失败。
 - Draft 2020-12 门禁验证共享 accept/reject fixtures；Rust 测试对同一 valid fixture 签名并解析，防止
   schema 与实现漂移。
-- 完整 Native workspace 在 macOS、Windows 和 Ubuntu 执行 format、严格 Clippy、测试与 release
+- 完整 workspace 在 macOS、Windows 和 Ubuntu 执行 format、严格 Clippy、测试与 release
   check；dependency policy 继续覆盖许可证和 registry source。
 
 ## 后续边界

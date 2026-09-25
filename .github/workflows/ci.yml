@@ -1,4 +1,4 @@
-name: Native Rewrite Phase 0
+name: CI
 
 on:
   pull_request:
@@ -7,31 +7,31 @@ permissions:
   contents: read
 
 jobs:
-  native-toolchain:
-    name: Verify Native Rust toolchains
+  toolchain:
+    name: Verify Rust toolchains
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
       - name: Check current stable toolchain
         uses: dtolnay/rust-toolchain@stable
-      - name: Build Native workspace with current stable
+      - name: Build workspace with current stable
         run: cargo check --manifest-path Cargo.toml --locked --workspace
       - name: Check declared minimum toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.1
           components: clippy, rustfmt
-      - name: Build Native workspace with declared minimum
+      - name: Build workspace with declared minimum
         run: cargo check --manifest-path Cargo.toml --locked --workspace
-      - name: Collect redacted Native failure evidence
+      - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-failure-evidence-toolchain
+          name: failure-evidence-toolchain
           path: ${{ runner.temp }}/bongocat-failure-evidence
           if-no-files-found: error
           retention-days: 7
@@ -42,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install pinned schema validator
-        run: python3 -m pip install --disable-pip-version-check --requirement tools/requirements-phase0.txt
+        run: python3 -m pip install --disable-pip-version-check --requirement tools/requirements.txt
       - name: Validate fixture structure and model cases
         run: python3 tools/validate-fixtures.py
       - name: Validate Draft 2020-12 schemas
@@ -51,27 +51,25 @@ jobs:
         run: python3 tools/validate-locales.py
       - name: Run deterministic input fixtures
         run: python3 tools/run-input-fixtures.py
-      - name: Test Cubism SDK offline inspector
+      - name: Run tool contract tests
         run: python3 -m unittest discover -s tools/tests -p 'test_*.py'
-      - name: Check Native release target matrix
-        run: python3 -m unittest tools.tests.test_native_release_target_matrix
       - name: Check whitespace
         run: git diff --check
-      - name: Collect redacted Native failure evidence
+      - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-failure-evidence-fixtures
+          name: failure-evidence-fixtures
           path: ${{ runner.temp }}/bongocat-failure-evidence
           if-no-files-found: error
           retention-days: 7
 
   dependency-policy:
-    name: Check Native dependency policy
+    name: Check dependency policy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -94,22 +92,22 @@ jobs:
             cargo install cargo-deny --version 0.20.2 --locked
           fi
       - name: Check licenses and dependency sources
-        run: ./tools/check-native-dependencies.sh
-      - name: Collect redacted Native failure evidence
+        run: ./tools/check-dependencies.sh
+      - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-failure-evidence-dependency-policy
+          name: failure-evidence-dependency-policy
           path: ${{ runner.temp }}/bongocat-failure-evidence
           if-no-files-found: error
           retention-days: 7
 
-  native-workspace:
-    name: Test Native workspace (${{ matrix.os }})
+  workspace:
+    name: Test workspace (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -130,9 +128,9 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             target/
-          key: ${{ runner.os }}-native-workspace-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
+          key: ${{ runner.os }}-workspace-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-native-workspace-
+            ${{ runner.os }}-workspace-
       - name: Check formatting
         run: cargo fmt --manifest-path Cargo.toml --all -- --check
       - name: Run Clippy
@@ -146,19 +144,19 @@ jobs:
         run: cargo check --manifest-path Cargo.toml --locked --workspace --release
       - name: Check production environment build
         run: cargo check --manifest-path Cargo.toml --locked -p bongocat-app --release --features production
-      - name: Record Native build provenance
+      - name: Record build provenance
         shell: bash
         run: |
-          python3 tools/record-native-provenance.py \
+          python3 tools/record-provenance.py \
             --workspace . \
             --output "target/provenance/${RUNNER_OS}.json" \
             --profile release \
             --features default \
             --environment development
-      - name: Upload Native build provenance
+      - name: Upload build provenance
         uses: actions/upload-artifact@v4
         with:
-          name: native-provenance-${{ matrix.os }}
+          name: provenance-${{ matrix.os }}
           path: target/provenance/${{ runner.os }}.json
           if-no-files-found: error
       - name: Smoke Windows model directory picker
@@ -924,15 +922,15 @@ jobs:
       - name: Smoke transactional Windows D3D11 model switching
         if: matrix.os == 'windows-latest'
         run: cargo run --manifest-path Cargo.toml --locked -p bongocat-overlay --release -- standard 0 --switch-cycles 3
-      - name: Collect redacted Native failure evidence
+      - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-failure-evidence-${{ matrix.os }}
+          name: failure-evidence-${{ matrix.os }}
           path: ${{ runner.temp }}/bongocat-failure-evidence
           if-no-files-found: error
           retention-days: 7
@@ -1008,15 +1006,15 @@ jobs:
           done
       - name: Check release build
         run: cargo check --manifest-path tools/cubism-bindgen/Cargo.toml --locked --release
-      - name: Collect redacted Native failure evidence
+      - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-failure-evidence-cubism-binding
+          name: failure-evidence-cubism-binding
           path: ${{ runner.temp }}/bongocat-failure-evidence
           if-no-files-found: error
           retention-days: 7
@@ -1090,15 +1088,15 @@ jobs:
         run: cargo clippy --manifest-path ${{ matrix.manifest }} --locked --all-targets -- -D warnings
       - name: Run tests
         run: cargo test --manifest-path ${{ matrix.manifest }} --locked
-      - name: Collect redacted Native failure evidence
+      - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-failure-evidence-contract-${{ matrix.name }}
+          name: failure-evidence-contract-${{ matrix.name }}
           path: ${{ runner.temp }}/bongocat-failure-evidence
           if-no-files-found: error
           retention-days: 7
@@ -1146,15 +1144,15 @@ jobs:
         run: cargo test --manifest-path spikes/model-package/Cargo.toml --locked
       - name: Check release build
         run: cargo check --manifest-path spikes/model-package/Cargo.toml --locked --release
-      - name: Collect redacted Native failure evidence
+      - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-failure-evidence-model-package-${{ matrix.os }}
+          name: failure-evidence-model-package-${{ matrix.os }}
           path: ${{ runner.temp }}/bongocat-failure-evidence
           if-no-files-found: error
           retention-days: 7
@@ -1415,15 +1413,15 @@ jobs:
           if non_empty_frames != 100 * measurement_batches:
               raise RuntimeError("overlay cycle smoke frame accounting did not balance")
           PY
-      - name: Collect redacted Native failure evidence
+      - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-failure-evidence-macos-spikes
+          name: failure-evidence-macos-spikes
           path: ${{ runner.temp }}/bongocat-failure-evidence
           if-no-files-found: error
           retention-days: 7
@@ -1486,15 +1484,15 @@ jobs:
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
       - name: Test Windows config storage layout
         run: cargo test --manifest-path spikes/config-store/Cargo.toml --locked
-      - name: Collect redacted Native failure evidence
+      - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-failure-evidence-windows-input
+          name: failure-evidence-windows-input
           path: ${{ runner.temp }}/bongocat-failure-evidence
           if-no-files-found: error
           retention-days: 7
@@ -1961,15 +1959,15 @@ jobs:
               throw "overlay cycle smoke did not report: $_"
             }
           }
-      - name: Collect redacted Native failure evidence
+      - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
-        run: python3 tools/collect-native-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
-      - name: Upload redacted Native failure evidence
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-failure-evidence-windows-gpui-${{ matrix.name }}
+          name: failure-evidence-windows-gpui-${{ matrix.name }}
           path: ${{ runner.temp }}/bongocat-failure-evidence
           if-no-files-found: error
           retention-days: 7

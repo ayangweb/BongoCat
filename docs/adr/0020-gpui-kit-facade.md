@@ -12,7 +12,7 @@ assets。应用必须手工保证四个 source 的类型一致，manifest、impo
 
 ## 决策
 
-- Native workspace 只直接依赖上游 `longbridge/gpui-kit` 的固定 revision
+- workspace 只直接依赖上游 `longbridge/gpui-kit` 的固定 revision
   `500852f449c05dc01920ec82f3ae2656a61d0387`，提交完整 `cargo update` 后的
   `Cargo.lock`。不再直接声明 `gpui`、`gpui_platform`、`gpui-component` 或独立 assets
   crate，也不使用其它 git source 混装 GPUI。

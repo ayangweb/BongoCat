@@ -1,12 +1,12 @@
 # Legacy Config Inventory (Reference Only)
 
-状态：历史考古记录；不属于 Native Rewrite 产品兼容范围
+状态：历史考古记录；不属于 BongoCat 产品兼容范围
 
 日期：2026-08-28
 
 ## Current Decision
 
-Native Rewrite 不探测、读取、转换或导入旧 Tauri/Pinia 配置。首次启动在当前 Development 或 Production 数据根中生成全新配置，字段使用 `shared/config/native-config-contract.md` 定义的自有 `snake_case` 命名。
+BongoCat 不探测、读取、转换或导入旧 Tauri/Pinia 配置。首次启动在当前 Development 或 Production 数据根中生成全新配置，字段使用 `shared/config/contract.md` 定义的自有 `snake_case` 命名。
 
 本文件只解释历史行为。它不能作为生产配置 mapping；完整旧实现保留在远端
 [`pre-refactor-tauri`](https://github.com/ayangweb/BongoCat/tree/pre-refactor-tauri) 分支，当前工作树不保留旧配置工具或 fixture。
@@ -27,7 +27,7 @@ macOS 旧版实机数据位于：
     meta.tauristore
 ```
 
-开发构建还可能生成 `*.dev.json` 和 `meta.dev.tauristore`。Native Rewrite 不访问这些位置，也不需要推断 Windows 上对应旧目录。
+开发构建还可能生成 `*.dev.json` 和 `meta.dev.tauristore`。BongoCat 不访问这些位置，也不需要推断 Windows 上对应旧目录。
 
 历史实现使用 `@tauri-store/pinia 3.7.1` 和 `tauri-plugin-pinia = "3"`：
 
@@ -40,7 +40,7 @@ macOS 旧版实机数据位于：
 
 ## Historical Field Groups
 
-| Store      | Observed historical content                                                                        | Native Rewrite treatment |
+| Store      | Observed historical content                                                                        | BongoCat treatment |
 | ---------- | -------------------------------------------------------------------------------------------------- | ------------------------ |
 | `app`      | app metadata and physical window coordinates                                                       | 不读取                   |
 | `general`  | autostart, taskbar/tray visibility, theme, derived dark state, locale and update preference        | 不读取                   |
@@ -48,9 +48,9 @@ macOS 旧版实机数据位于：
 | `model`    | model paths/ids, selection, shortcuts, pressed state, supported-key cache, motions and expressions | 不读取                   |
 | `shortcut` | serialized global shortcut strings                                                                 | 不读取                   |
 
-用户模型只能通过 Native Rewrite 的显式导入流程进入当前环境。导入器重新校验模型目录和资源，不信任旧配置保存的路径、ID 或能力缓存。
+用户模型只能通过 BongoCat 的显式导入流程进入当前环境。导入器重新校验模型目录和资源，不信任旧配置保存的路径、ID 或能力缓存。
 
 ## Historical Source
 
 本地旧配置考古资产已随 Vue/Tauri workspace 退役。需要复核旧 store 时，使用远端
-[`pre-refactor-tauri`](https://github.com/ayangweb/BongoCat/tree/pre-refactor-tauri) 分支；不得将其代码、配置或数据读取逻辑重新接入 Native 产品。
+[`pre-refactor-tauri`](https://github.com/ayangweb/BongoCat/tree/pre-refactor-tauri) 分支；不得将其代码、配置或数据读取逻辑重新接入 BongoCat。

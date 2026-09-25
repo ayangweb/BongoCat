@@ -6,7 +6,7 @@
 
 ## Context
 
-Native Rewrite 的快捷键（应用命令与模型行为）此前由输入管线内匹配实现：
+BongoCat 的快捷键（应用命令与模型行为）此前由输入管线内匹配实现：
 Windows Raw Input / macOS CGEventTap 把按键边沿映射为 HID usage 后喂给
 `ShortcutMatcher`，`ShortcutDispatcher` 在进程内解析目标并分发。该匹配是
 被动的：注册过的组合键仍会继续传递给前台应用，同时快捷键依赖输入服务的

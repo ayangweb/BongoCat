@@ -1,4 +1,4 @@
-# Rust Fixture Runner Spike
+# Fixture Runner Spike
 
 状态：Phase 0 共享输入 fixture 已由 Rust reducer 执行；产品 runtime 接入待 Phase 1/2
 日期：2026-08-29

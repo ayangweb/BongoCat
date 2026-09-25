@@ -4,7 +4,7 @@
 
 ## Context
 
-Native Rewrite 需要明确 Windows 发布架构，避免继续为不再支持的 target
+BongoCat 需要明确 Windows 发布架构，避免继续为不再支持的 target
 维护输入、renderer、安装和更新分支。当前固定的 Cubism 5 SDK for Native R5
 提供 desktop Windows x86/x64 Core，但没有 desktop Windows ARM64 Core；其
 experimental UWP ARM64 DLL 不能用于 Win32 desktop 应用。
@@ -15,7 +15,7 @@ Windows 产品目标只包括：
 
 - `x86_64-pc-windows-msvc`。
 
-`i686-pc-windows-msvc` 和 `aarch64-pc-windows-msvc` 都不属于 Native Rewrite
+`i686-pc-windows-msvc` 和 `aarch64-pc-windows-msvc` 都不属于 BongoCat
 的构建、CI、安装包、更新或测试目标。历史 x86 安装包只作为行为与发布考古证据
 保留，不形成兼容承诺。
 

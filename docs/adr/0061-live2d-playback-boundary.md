@@ -123,7 +123,7 @@ that this is not an optional model-specific effect: `myUserModel.cpp` always cre
 `ParamBodyAngleX`, and `ParamBreath` IDs, then loads and evaluates the declared `physics3` resource.
 The update order is motion/expression, product drag, breath, physics, and Core update.
 
-Native therefore applies the same five fixed breath targets with their reference offsets, peaks,
+BongoCat therefore applies the same five fixed breath targets with their reference offsets, peaks,
 cycles, and `0.5` contribution weight after typed product input. The contribution is additive
 (`current + value * 0.5`, followed by the Core range clamp), matching the reference
 `AddParameterValue` call; it is not a blend toward the breath target, which would weaken a

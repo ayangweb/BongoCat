@@ -52,7 +52,7 @@
 | `bongocat-config` | 7 | `AppearanceConfig` + `Theme` 枚举 + 默认值 |
 | `bongocat-i18n` | 7 | 两个 locale 里的 `settings.appearance.theme.*` 文案 |
 
-整个 Native workspace 的 crate 源码约 33k 行，主题相关约 350 行，占比约 1%。
+整个 workspace 的 crate 源码约 33k 行，主题相关约 350 行，占比约 1%。
 
 ### 3.2 关键事实
 

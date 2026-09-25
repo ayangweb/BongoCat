@@ -223,7 +223,7 @@ pub fn post_mouse_move(
         other => return Err(format!("expected Win32 window handle, found {other:?}")),
     };
     let packed_coordinates = (i32::from(y as u16) << 16) | i32::from(x as u16);
-    // Windows product targets are x64/ARM64, so widening the Win32 signed
+    // Windows targets are x64/ARM64, so widening the Win32 signed
     // coordinate payload to LPARAM preserves all 32 packed bits.
     let lparam = packed_coordinates as isize;
     // SAFETY: hwnd is owned by the live GPUI Window, WM_MOUSEMOVE takes no

@@ -2,10 +2,9 @@
 
 > **文档性质：规范性约定。** 本文只约束 `crates/bongocat-i18n/locales/*.json` 里的 UI 文案
 > 怎么写。目标架构、工作顺序与验收门槛仍以
-> `docs/BongoCat Native Rewrite Technical Design.md`、
-> `docs/BongoCat Native Rewrite Implementation TODO.md` 和 `docs/adr/` 为准；
+> `docs/technical-design.md`、`docs/implementation-todo.md` 和 `docs/adr/` 为准；
 > catalog 的结构、key 命名与占位符规则见
-> `docs/adr/0012-native-json-localization.md`。
+> `docs/adr/0012-json-localization.md`。
 
 适用范围：`crates/bongocat-i18n/locales/` 下的全部语言资源。**新增文案一律遵守**，
 不因语言而异。

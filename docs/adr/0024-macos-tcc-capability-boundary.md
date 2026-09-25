@@ -6,7 +6,7 @@
 
 ## 背景
 
-Native Rewrite 需要在应用失焦时监听键盘和鼠标边沿，以驱动 BongoCat overlay；同时设置窗口必须向
+BongoCat 需要在应用失焦时监听键盘和鼠标边沿，以驱动 BongoCat overlay；同时设置窗口必须向
 VoiceOver 等辅助技术公开自身的可访问语义。两种能力不能因为都被 macOS 归入隐私或辅助技术领域而
 混为同一项 TCC 请求。
 

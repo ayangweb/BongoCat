@@ -6,7 +6,7 @@
 # broken build pass. Unix keeps the default `sh -cu`.
 set windows-shell := ["cmd.exe", "/c"]
 
-# List the available Native Rewrite tasks.
+# List the available tasks.
 default:
     @just --list
 
@@ -30,11 +30,11 @@ version:
 schema:
     cargo run --locked -p bongocat-config --bin generate_json_schemas
 
-# Run the Native workspace tests.
+# Run the workspace tests.
 test:
     cargo test --locked --workspace
 
-# Run all default Native workspace quality gates.
+# Run all default workspace quality gates.
 check:
     cargo fmt --all -- --check
     cargo clippy --locked --workspace --all-targets --all-features --exclude bongocat-app -- -D warnings

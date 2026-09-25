@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write reproducible, path-free metadata for a Native workspace build."""
+"""Write reproducible, path-free metadata for a workspace build."""
 
 from __future__ import annotations
 

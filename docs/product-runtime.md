@@ -1,7 +1,8 @@
 # BongoCat Product Runtime
 
-The repository root is the formal Rust product workspace and the only product build entry. Historical
-Vue/Tauri code is retained only in the remote `master` and `pre-refactor-tauri` branches.
+The repository root is the formal workspace and the only product build entry. The previous
+implementation is retained only in the remote `pre-refactor-tauri` branch; `master` will receive
+`next` and carry the current code rather than a historical implementation.
 
 ## Build Environments
 
@@ -73,7 +74,7 @@ just version                                          # the resolved product ver
 ```
 
 The product version has one source of truth: `[workspace.package].version` in the root `Cargo.toml`.
-All Native workspace crates inherit it, including `bongocat-packaging`, so Cargo itself resolves the
+All workspace crates inherit it, including `bongocat-packaging`, so Cargo itself resolves the
 value before the packager runs; the settings window, system menu, and update runtime read the
 compiled `CARGO_PKG_VERSION`. `Cargo.lock` records the resolved workspace versions as generated
 metadata; a release changes the root manifest once and lets Cargo refresh the lockfile. The Windows
@@ -86,7 +87,7 @@ On macOS `just build` produces `target/package/BongoCat.app` and
 contains the signed bundle plus an `/Applications` drop link. On Windows it produces the x64 NSIS
 current-user installer at `target/package/BongoCat_<version>_x64.exe`.
 
-Native build provenance is written as path-free JSON with the source commit, `Cargo.lock` SHA-256,
+Build provenance is written as path-free JSON with the source commit, `Cargo.lock` SHA-256,
 Rust toolchain, target, profile, feature set, and build environment. The macOS package includes
 `Contents/Resources/build-provenance.json`; the Windows installer payload does too.
 

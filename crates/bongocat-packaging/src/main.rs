@@ -1,4 +1,4 @@
-//! The BongoCat project-level build, bundle and installer packaging entry point.
+//! The project-level build, bundle and installer packaging entry point.
 //!
 //! `just build` runs this crate. Local developers and CI execute the exact same
 //! code path, so there is a single place that decides how the product is
@@ -78,7 +78,7 @@ use serde::{Deserialize, Serialize};
 
 /// Product name. Determines `BongoCat.app` and the installer product name.
 const PRODUCT_NAME: &str = "BongoCat";
-/// The fixed Native Rewrite bundle identifier.
+/// The fixed product bundle identifier.
 const BUNDLE_IDENTIFIER: &str = "com.ayangweb.bongo-cat";
 /// The oldest macOS release the product supports.
 const MACOS_MINIMUM_SYSTEM_VERSION: &str = "12.0";
@@ -93,7 +93,7 @@ const MODEL_DIRECTORY: &str = "models";
 /// Repository-relative directory holding the macOS `Info.plist` overlay.
 const MACOS_INFO_PLIST: &str = "macos/Info.plist";
 /// Repository-relative build provenance generator.
-const PROVENANCE_GENERATOR: &str = "tools/record-native-provenance.py";
+const PROVENANCE_GENERATOR: &str = "tools/record-provenance.py";
 /// Build provenance file name inside the packaged resources.
 const PROVENANCE_FILE: &str = "build-provenance.json";
 /// Package output directory, relative to the workspace root.
@@ -634,7 +634,7 @@ fn workspace_root() -> Result<PathBuf> {
         .to_path_buf();
     if !root.join("Cargo.toml").is_file() {
         return failure(format!(
-            "{} does not look like the BongoCat workspace root",
+            "{} does not look like the workspace root",
             root.display()
         ));
     }

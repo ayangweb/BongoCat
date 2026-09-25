@@ -1,6 +1,6 @@
 # Phase 0 Dependency License Inventory
 
-状态：Native workspace 与 spike 依赖许可证/来源策略已自动化；GPUI Kit 与 gilrs 分别使用固定上游/维护者 git revision
+状态：workspace 与 spike 依赖许可证/来源策略已自动化；GPUI Kit 与 gilrs 分别使用固定上游/维护者 git revision
 日期：2026-09-25
 
 ## Scope
@@ -12,7 +12,7 @@
 - `x86_64-apple-darwin`
 - `x86_64-pc-windows-msvc`
 
-扫描 package 节点数由当前 lockfile 与 target filter 动态决定，不作为需要手工维护的 golden value。2026-08-29 已先完成所有 Native Rewrite 直接依赖的最新稳定版审计和 lockfile 更新；ADR-0056 的 `gpui-kit` 上游固定 revision 与 ADR-0066 的 `gilrs` 维护者 fork revision/source 在 `rust-dependency-versions.md` 中单独记录。
+扫描 package 节点数由当前 lockfile 与 target filter 动态决定，不作为需要手工维护的 golden value。2026-08-29 已先完成所有 BongoCat 直接依赖的最新稳定版审计和 lockfile 更新；ADR-0056 的 `gpui-kit` 上游固定 revision 与 ADR-0066 的 `gilrs` 维护者 fork revision/source 在 `rust-dependency-versions.md` 中单独记录。
 
 ## Direct dependencies
 
@@ -28,7 +28,7 @@
 | unicode-segmentation             | `1.13.3`                       | MIT OR Apache-2.0         | Grapheme-safe text editing               |
 | futures-lite                     | `2.6.1`                        | MIT OR Apache-2.0         | Test-only executor bridge                |
 | dirs                             | `6.0.0`                        | MIT OR Apache-2.0         | Config path spike                        |
-| atomic-write-file                | `0.3.1`                        | BSD-3-Clause              | Native config atomic replacement         |
+| atomic-write-file                | `0.3.1`                        | BSD-3-Clause              | configuration atomic replacement         |
 | serde / serde_json               | `1.0.229` / `1.0.151`          | MIT OR Apache-2.0         | Config, model and tool serialization     |
 | tempfile                         | `3.27.0`                       | MIT OR Apache-2.0         | Isolated config/model fixture tests      |
 | core-graphics2 / core-foundation | `0.6.1` / `0.10.1`             | MIT OR Apache-2.0         | macOS input boundary spike               |
@@ -74,21 +74,21 @@ fork `https://github.com/ayangweb/gilrs` rev `fb3cc4efa8d368e19ec9c465cf2d4d1a8d
 
 ```text
 cargo install cargo-deny --version 0.20.2 --locked
-./tools/check-native-dependencies.sh
+./tools/check-dependencies.sh
 ```
 
-检查脚本会拒绝其他 `cargo-deny` 版本，然后对每个独立 workspace 执行 locked license/source check。GitHub Actions 的 `Check Native dependency policy` job 使用同一命令。
+检查脚本会拒绝其他 `cargo-deny` 版本，然后对每个独立 workspace 执行 locked license/source check。GitHub Actions 的 `Check dependency policy` job 使用同一命令。
 
 ## Boundaries
 
-本结论覆盖当前 Native Rust spike 的 crate graph，不包括：
+本结论覆盖当前 Rust spike 的 crate graph，不包括：
 
 - 历史 Tauri/Vue 产品的发布依赖；
 - 官方 Cubism Core 二进制、SDK 资源和 attribution；
 - 未来的更新、打包或尚未加入 workspace 的新依赖；
 - 发布阶段的 SBOM 与 notice bundle 生成。
 
-Cubism 版本、来源、hash、再分发条款和 attribution 必须在 `P0-CUBISM` 单独形成书面结论；完成前不得制作可公开分发的 Native Rewrite 安装包。
+Cubism 版本、来源、hash、再分发条款和 attribution 必须在 `P0-CUBISM` 单独形成书面结论；完成前不得制作可公开分发的 BongoCat 安装包。
 
 `cargo-packager 0.11.8`（Apache-2.0 OR MIT）是打包、bundle、installer 与更新载荷签名的唯一实现，
 由 ADR-0033 引入、ADR-0034 扩展到签名。`cargo-packager-updater 0.2.3`（同一许可证）是它的消费端，

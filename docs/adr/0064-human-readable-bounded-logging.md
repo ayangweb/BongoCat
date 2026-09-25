@@ -4,7 +4,7 @@
 
 ## 背景
 
-Native Rewrite 已由 `bongocat-log`、`bongocat-app::ApplicationLogHandle` 和
+BongoCat 已由 `bongocat-log`、`bongocat-app::ApplicationLogHandle` 和
 `bongocat-live2d::CoreLogHandle` 提供环境隔离、固定事件字段、文件权限、按 UTC 日/文件大小轮转、
 目录级容量上限、Core callback 队列和 panic 脱敏。现有输出仍采用 application/Core JSONL；机器解析
 较严格，但普通用户难以直接阅读，现有事件目录也只覆盖少量生命周期与导出失败路径，不能充分支持

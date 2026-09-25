@@ -7,10 +7,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "tools" / "collect-native-failure-evidence.py"
+SCRIPT = ROOT / "tools" / "collect-failure-evidence.py"
 
 
-class NativeFailureEvidenceTests(unittest.TestCase):
+class FailureEvidenceTests(unittest.TestCase):
     def test_collects_only_bounded_redacted_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "runner-temp"

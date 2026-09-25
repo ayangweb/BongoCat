@@ -8,7 +8,7 @@ set of decisions only this repository can make:
 
 * which targets ship and which artifacts each target publishes,
 * that the Windows installer stays per-user,
-* that the Windows installer is published under the product release name,
+* that the Windows installer is published under the release name,
 * that the macOS bundle overlay and the runtime resource lookup agree,
 * that `just` stays a thin entry point and no self-built packaging script returns.
 

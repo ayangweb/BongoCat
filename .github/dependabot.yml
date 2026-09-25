@@ -26,6 +26,6 @@ updates:
       timezone: Asia/Shanghai
     open-pull-requests-limit: 5
     groups:
-      native-rust-dependencies:
+      cargo-dependencies:
         patterns:
           - '*'

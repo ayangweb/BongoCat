@@ -1,8 +1,8 @@
 # Legacy Release Asset Baseline: v1.1.0
 
-This record freezes the public legacy release metadata used by the Native
-Rewrite migration. It is historical evidence only; these assets are not Native
-Rewrite inputs, dependencies, or release candidates.
+This record freezes the public legacy release metadata used by the migration.
+It is historical evidence only; these assets are not current inputs,
+dependencies, or release candidates.
 
 ## Source
 
@@ -14,7 +14,7 @@ Rewrite inputs, dependencies, or release candidates.
 - API endpoint: `https://api.github.com/repos/ayangweb/BongoCat/releases/tags/v1.1.0`
 
 GitHub's release API supplied the SHA-256 values below. The assets were not
-downloaded or placed in the Native workspace.
+downloaded or placed in the workspace.
 
 ## Windows and macOS assets
 
@@ -30,15 +30,15 @@ downloaded or placed in the Native workspace.
 
 The release also contains detached `.sig` files and Linux RPM, AppImage, and
 Debian assets. They remain part of the historical release inventory but are not
-included in the Native Rewrite target matrix. In particular, the legacy x86
+included in the current target matrix. In particular, the legacy x86
 installer is evidence of the old product only and does not authorize an
 `i686-pc-windows-msvc` Native build.
 
-## Native boundary
+## Current boundary
 
-The Native Rewrite keeps its own Bundle ID, schema, storage roots, signing
+BongoCat keeps its own Bundle ID, schema, storage roots, signing
 keys, and artifact provenance. Legacy release signatures, updater metadata, and
-the legacy `com.ayangweb.BongoCat` bundle identity must not be reused. Native
-Windows native ARM64 has been retired by ADR-0033: Windows on ARM runs
+the legacy `com.ayangweb.BongoCat` bundle identity must not be reused. The former
+native Windows ARM64 target was retired by ADR-0033: Windows on ARM runs
 the x64 build through Windows emulation, and the historical ARM64 installer does
-not restore a final Native Rewrite target.
+not restore a supported target.

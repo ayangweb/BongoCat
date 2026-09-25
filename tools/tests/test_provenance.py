@@ -7,10 +7,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "tools" / "record-native-provenance.py"
+SCRIPT = ROOT / "tools" / "record-provenance.py"
 
 
-class NativeProvenanceTests(unittest.TestCase):
+class ProvenanceTests(unittest.TestCase):
     def test_writes_path_free_reproducible_metadata(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "provenance.json"

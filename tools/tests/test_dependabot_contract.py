@@ -3,7 +3,7 @@
 `.github/dependabot.yml` is the only place that decides which Cargo workspaces
 receive dependency updates, and nothing in the compiler or in CI notices when it
 drifts from the filesystem. It already did: `214d579 refactor: promote native
-workspace to root` moved the product workspace to the repository root and deleted
+workspace to root` moved the workspace to the repository root and deleted
 `native/Cargo.toml`, but left `/native` in the Dependabot configuration. As a
 result the root workspace — every `crates/*` member — was never scanned, while
 Dependabot was still pointed at a directory that no longer exists.

@@ -4,7 +4,7 @@
 
 ## 背景
 
-Native Rewrite 需要可诊断的应用生命周期记录，但不能把按键、路径、剪贴板、配置/模型正文、URL、密钥/凭据或用户文件
+BongoCat 需要可诊断的应用生命周期记录，但不能把按键、路径、剪贴板、配置/模型正文、URL、密钥/凭据或用户文件
 内容写入日志。Cubism Core callback 只覆盖厂商边界，不能替代应用级日志；无界文件增长也会破坏环境
 隔离和稳定性验收。早期实现使用 JSONL 与两个独立 writer，ADR-0064 已把输出改为普通文本，并让
 application/Core 共用一套 writer policy。

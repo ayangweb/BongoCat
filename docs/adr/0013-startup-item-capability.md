@@ -5,7 +5,7 @@
 
 ## Context
 
-Native Rewrite 支持 macOS 12+，但 `SMAppService.mainAppService` 只在 macOS 13+
+BongoCat 支持 macOS 12+，但 `SMAppService.mainAppService` 只在 macOS 13+
 可用。Development 与 Production 又固定使用相同 Bundle ID；若开发构建直接注册 main
 app login item，会覆盖同一用户的生产启动项系统状态。Windows 的当前用户启动项没有同样
 的 Bundle ID 限制，但仍必须按构建环境隔离名称与目标命令。
@@ -51,4 +51,4 @@ app login item，会覆盖同一用户的生产启动项系统状态。Windows �
   `/Applications` 的临时安装目录覆盖 status、register/unregister 和 requires-approval 映射，
   结束时恢复原状态并注销/删除临时 bundle。首次 `not-found` 注册后取消注册允许规范化为
   `not-registered`，因为两者都不留下启用的登录项。
-- 双平台 smoke 后运行完整 Native format、Clippy、workspace test 和 release check。
+- 双平台 smoke 后运行完整 format、Clippy、workspace test 和 release check。

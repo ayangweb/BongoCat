@@ -1,4 +1,4 @@
-# BongoCat Native Rewrite Implementation TODO
+# Implementation TODO
 
 状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
 最后更新：2026-09-25
@@ -110,7 +110,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据（2026-08-30）：`docs/migration/bongo-cat-mver-reference.md` 固定
     `MMmmmoko/Bongo-Cat-Mver` commit `4da0b9468ad3b6ffaa096eba3f080501d6ab0b5c`，
     记录模型装配、更新顺序、纹理/alpha、输入模式和窗口行为的查阅入口；该仓库
-    只作为行为证据，不进入 Native workspace 依赖图。
+    只作为行为证据，不进入 workspace 依赖图。
 - [x] 确认旧 Vue/Tauri 应用仍可构建和运行，保存命令与产物信息。
   - 验收证据（2026-09-06）：macOS 26.5.2 arm64 使用远端 `pre-refactor-tauri` 分支锁定的 `pnpm-lock.yaml` 运行
     `pnpm build` 与 `pnpm tauri build --debug --bundles app` 成功；Vite 完成 4,406 个模块的
@@ -119,17 +119,17 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `target/debug/bongo-cat` 触发 `applicationDidFinishLaunching` 并创建主窗口和偏好窗口。
     Bundle ID/version 与 SHA-256、旧应用固定 hide-on-close 行为及无法自动优雅退出的限制记录于
     `docs/migration/legacy-build-baseline.md`；未将旧 updater key 警告或 `block 0.1.6`
-    future-incompatibility 误记为 Native 问题。
+    future-incompatibility 误记为当前实现问题。
 - [x] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
-- [x] 建立依赖许可证清单，确认当前 Native spike crate graph 与项目 MIT 发布兼容。
+- [x] 建立依赖许可证清单，确认当前 spike crate graph 与项目 MIT 发布兼容。
   - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 13 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
-- [x] 审计 Native Rewrite 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
-  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 21 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1`、`sha2 0.11.0` 与 `libc 0.2.189` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 Native workspace 并向 `next` 提交分组更新。
+- [x] 审计 BongoCat 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
+  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 的 21 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1`、`sha2 0.11.0` 与 `libc 0.2.189` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 workspace 并向 `next` 提交分组更新。
 - [x] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
   - 状态（2026-08-29）：ADR-0010 已固定 Windows 仅支持 x64/ARM64，i686 不再构建或发布。官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 ARM64 当前是发布阻塞；macOS Intel 和最终安装包形式仍待实机与发布链验证。
-  - 状态（2026-09-07）：历史手动 release workflow 已移除 `i686-pc-windows-msvc` matrix entry，避免任何仓库发布入口继续构建 Native Rewrite 明确排除的 Windows x86 target；历史基线文档中的旧版 i686 产物记录仅保留为考古证据。
-  - 状态（2026-09-07）：`tools/tests/test_native_release_target_matrix.py` 已接入 Phase 0 fixtures job，持续断言 release workflow 仅保留当时冻结的 Windows 目标；该 contract 不替代 macOS Intel、Windows ARM64 Core、实机和签名门禁，因此本项当时仍保持未勾选。
-  - 状态（2026-09-14）：该 contract 现断言的是三个已发布 target（`x86_64-pc-windows-msvc`、`x86_64-apple-darwin`、`aarch64-apple-darwin`），并新增一项断言把 `tools/check-native-dependencies.sh` 的离线审计目标列表与 `deny.toml` 的 `[graph] targets` 钉在一起——该脚本此前仍在审计已删除的 `aarch64-pc-windows-msvc`。
+  - 状态（2026-09-07）：历史手动 release workflow 已移除 `i686-pc-windows-msvc` matrix entry，避免任何仓库发布入口继续构建 BongoCat 明确排除的 Windows x86 target；历史基线文档中的旧版 i686 产物记录仅保留为考古证据。
+  - 状态（2026-09-07）：`tools/tests/test_release_targets.py` 已接入 Phase 0 fixtures job，持续断言 release workflow 仅保留当时冻结的 Windows 目标；该 contract 不替代 macOS Intel、Windows ARM64 Core、实机和签名门禁，因此本项当时仍保持未勾选。
+  - 状态（2026-09-14）：该 contract 现断言的是三个已发布 target（`x86_64-pc-windows-msvc`、`x86_64-apple-darwin`、`aarch64-apple-darwin`），并新增一项断言把 `tools/check-dependencies.sh` 的离线审计目标列表与 `deny.toml` 的 `[graph] targets` 钉在一起——该脚本此前仍在审计已删除的 `aarch64-pc-windows-msvc`。
   - 状态（2026-09-14，**本条取代以上判断**）：矩阵冻结为 `x86_64-pc-windows-msvc`、`x86_64-apple-darwin`、`aarch64-apple-darwin`。Windows ARM64 不再是产品目标（ADR-0010 已更新，理由见 ADR-0033）：没有官方可授权 desktop ARM64 Core 就没有真实 ABI/模型证据，而 Windows on ARM 走 Windows 自身的 x64 仿真，因此维持一个无法端到端验证的原生目标只增加成本；后续版本可按需重新开启。macOS Intel 与 Apple Silicon 都发布 `.app` + `.dmg`，首发安装包形式由 ADR-0033 固定。`deny.toml`、`bongocat-update::UpdateTargetTriple` 与 `crates/bongocat-packaging` 三处声明一致，由 `tools/tests/test_packaging_contract.py` 强制；CI 已删除 Windows ARM64 的 clippy/check 步骤。因此本项转为已勾选，剩余的是各平台实机证据而不是架构决策。
 - [ ] 记录 Windows MSVC/SDK、macOS Xcode/SDK/Metal Toolchain 和 Rust toolchain 的最低可用组合。
 - [ ] 保存旧版最后可用安装包、资源清单、签名状态和 SHA-256，不只记录源码 commit。
@@ -155,7 +155,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.3 配置契约与资源考古
 
-- [x] 明确 Native Rewrite 不读取、不探测、不导入旧 Tauri/Pinia 配置。
+- [x] 明确 BongoCat 不读取、不探测、不导入旧 Tauri/Pinia 配置。
 - [x] 固定 JSON `snake_case` 命名规则和首版领域字段命名基线。
 - [x] 固定 Bundle ID `com.ayangweb.bongo-cat`。
 - [x] 定义 Development/Production 双存储根；schema 和内部相对结构保持一致。
@@ -165,7 +165,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 记录 model3、moc、texture、motion、expression、physics、pose、cdi 和音频用法。
 - [x] 记录 background、cover、left-keys、right-keys 的实际语义。
 
-状态（2026-08-28）：ADR-008 和 `shared/config/native-config-contract.md` 已冻结应用身份、环境隔离与新字段命名。旧配置兼容已移出产品范围，历史考古仅保留在远端 `pre-refactor-tauri` 分支。六类合成模型包已覆盖缺失 moc、损坏 JSON、非 ASCII/空格路径、超大纹理、路径穿越和多 model3 入口，并由临时目录 validator 检查稳定诊断；Cubism 与 renderer 兼容仍待独立 spike。
+状态（2026-08-28）：ADR-008 和 `shared/config/contract.md` 已冻结应用身份、环境隔离与新字段命名。旧配置兼容已移出产品范围，历史考古仅保留在远端 `pre-refactor-tauri` 分支。六类合成模型包已覆盖缺失 moc、损坏 JSON、非 ASCII/空格路径、超大纹理、路径穿越和多 model3 入口，并由临时目录 validator 检查稳定诊断；Cubism 与 renderer 兼容仍待独立 spike。
 
 ### 1.4 行为 fixture
 
@@ -180,14 +180,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 添加动作、表情、停止、模型切换和音效序列；优先级与切换清理规范见 `shared/behavior/animation-semantics.md`。
 - [x] 添加丢失 KeyUp、设备断开、锁屏、睡眠和服务重启序列。
 - [ ] 为 fixture 生成旧版观察结果并人工确认产品语义。
-- [x] 将 Draft 2020-12 schema 校验与 `tools/validate-fixtures.py` 接入 CI，固定 `jsonschema==4.25.1`；验证脚本和工具依赖位于 `tools/validate-json-schema.py`、`tools/requirements-phase0.txt`。
-- [x] 将跨文件 validator、固定版本 Draft 2020-12 validator 与确定性 input fixture runner 接入 `.github/workflows/native-rewrite-phase0.yml`。
+- [x] 将 Draft 2020-12 schema 校验与 `tools/validate-fixtures.py` 接入 CI，固定 `jsonschema==4.25.1`；验证脚本和工具依赖位于 `tools/validate-json-schema.py`、`tools/requirements.txt`。
+- [x] 将跨文件 validator、固定版本 Draft 2020-12 validator 与确定性 input fixture runner 接入 `.github/workflows/ci.yml`。
 - [x] fixture validator 拒绝逆序时间、重复 id、孤立 expected、未知事件和字段不匹配；`tools/run-input-fixtures.py` 执行确定性协议模型并比较 checkpoint。
 - [x] expected snapshot 记录来源：旧版观察、产品决策或新行为修复，禁止无法追溯的 golden update。
 
 ### 1.5 GPUI spike
 
-状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，历史 spike 精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；它只保留为 Phase 0 证据，正式 Native workspace 当时使用 `gpui-kit = "=0.6.1"`，后续升级至 `=0.6.6`，并于 2026-09-24 固定到含新增组件 API 的上游 revision。默认预编译 shader、release `.app`、原生 Application/Edit/Window 菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range；本机 WeType 拼音 2.2.3 进一步通过真实系统组合更新、候选提交和已有中文前缀后的再次组合。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip 已通过双平台原生合成 mouse-move -> GPUI 500ms delay -> build -> hover exit 链路，modal AlertDialog 的 Cancel 初始焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏也已验证。Windows UIA runner 已读取基础 role/name、selected/action、dialog，并通过 loading -> error -> retry/revision 2 恢复门禁；`busy=true` 因 runner 托管 UIA client 缺少属性标识而仍未验证。Apple 拼音、Windows IME、物理键盘/pointer 和目标 DPI 仍未验证；tooltip 朗读与真实辅助技术操作属于 ADR-0054 前的历史证据，不再是当前项目自有 gate，详见 `docs/phase-0/gpui-settings-spike.md`。
+状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，历史 spike 精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；它只保留为 Phase 0 证据，正式 workspace 当时使用 `gpui-kit = "=0.6.1"`，后续升级至 `=0.6.6`，并于 2026-09-24 固定到含新增组件 API 的上游 revision。默认预编译 shader、release `.app`、原生 Application/Edit/Window 菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range；本机 WeType 拼音 2.2.3 进一步通过真实系统组合更新、候选提交和已有中文前缀后的再次组合。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip 已通过双平台原生合成 mouse-move -> GPUI 500ms delay -> build -> hover exit 链路，modal AlertDialog 的 Cancel 初始焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏也已验证。Windows UIA runner 已读取基础 role/name、selected/action、dialog，并通过 loading -> error -> retry/revision 2 恢复门禁；`busy=true` 因 runner 托管 UIA client 缺少属性标识而仍未验证。Apple 拼音、Windows IME、物理键盘/pointer 和目标 DPI 仍未验证；tooltip 朗读与真实辅助技术操作属于 ADR-0054 前的历史证据，不再是当前项目自有 gate，详见 `docs/phase-0/gpui-settings-spike.md`。
 
 - [x] 建立最小 Rust workspace 和 GPUI hello/settings 窗口。
 - [x] 固定 `gpui = "=0.2.2"` 并提交 Cargo.lock。
@@ -201,12 +201,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 验证 GPUI async executor 与 runtime channel 可安全通信；bounded command/reply、revision 过滤、receiver close 和 shutdown acknowledgement 已通过 contract test 与 macOS release `.app` smoke。
 - [ ] 验证辅助功能树满足设置表单的基础要求（ADR-0009 历史 gate；ADR-0054 后项目自有 AccessKit contract 已退役）。
   - 状态（2026-08-30）：macOS 本机已验证 role/title/value、selected/focus、busy/error 属性与 radio action；commit `21ee8aa` 的 push run `33291750411`、job `99204478369` 与 pull request run `33291751558`、job `99204481348` 已通过 Windows UIA role/name、radio selection action、selected state、loading、注入错误与 retry/revision 2 恢复。runner 托管 UIA client 缺少 `AriaPropertiesProperty` 标识，故 `busy=true` 投影仍未验证；真实 VoiceOver/Narrator 操作和宣读仍待完成；ADR-0054 后这些只作为历史 ADR-0009 证据，不再是当前 visual-first 完成条件。
-  - 状态（2026-08-31，历史 backend 证据）：run `33407515845` 的 Windows Native 单测已通过
+  - 状态（2026-08-31，历史 backend 证据）：run `33407515845` 的 Windows 单测已通过
     旧 XInput trigger/shoulder 回归；该 backend 已于 2026-09-25 删除，不证明当前 gilrs/WGI
     映射。产品 smoke 在 settings snapshot 替换 AccessKit 节点期间对旧 UIA
     element 调用 `Toggle()` 得到瞬时 `Unrecognized error`。runner 现为两次 action 和状态轮询
     重新按 name 解析当前节点，并分别使用 2 秒 action/5 秒投影上限；action 未执行、状态未变化
-    或未恢复仍失败。commit `119ea66` 的 run `33408664176`、Windows Native job
+    或未恢复仍失败。commit `119ea66` 的 run `33408664176`、Windows CI job
     `99542490478` 已通过 role/value、两次 action、状态恢复和 focus；真实 Narrator 证据仍待
     完成；ADR-0054 后只作为历史 ADR-0009 证据。
 - [x] 记录首次打开、空闲 CPU、RSS 和二进制增量；`docs/benchmark/data/gpui-settings-macos-248a770-*.csv` 保存原始样本，方法、环境和限制见 `docs/phase-0/gpui-settings-spike.md`。
@@ -317,7 +317,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-30）：正式产品 crate 新增同等强度的 ignored Windows smoke，故意吞掉
     已由 `WM_INPUT` 捕获的 A-up，要求两次 `250 ms` 系统快照最终清除正式 runtime 的
     `left_hand_down`，并校验 callback/捕获队列/runtime 队列无 overflow 或 panic。该 smoke
-    已加入 Native workspace 的 Windows CI；PixPin 物理交互仍待用户实机验收。
+    已加入 workspace 的 Windows CI；PixPin 物理交互仍待用户实机验收。
 - [ ] 实测 Win+L、PrintScreen、UAC 和管理员/非管理员场景。
 - [ ] 进行 10 分钟高速鼠标 + 键盘压力测试，edge 丢失计数必须为 0。
   - 状态（2026-08-29）：3 秒有界 `SendInput` 压力 smoke 对 A、S、Space、左 Shift、左 Control 和 E0 右 Control 发送 128 轮、共 1536 个 down/up 边沿；commit `f68b46f` 的 push/PR Windows jobs 均已通过完整、有序、无 duplicate/unmatched/decode/panic/残留门禁。keyboard-under-pointer-flood 模式又在相同键盘边沿之间插入 3072 个不可合并的相对鼠标移动，commit `64dd9d3` 的 push/PR Windows jobs 均验证实际 mouse message 洪峰不阻塞可靠 release。两者都不能替代本项要求的 10 分钟物理键鼠与交互场景，因此保持未勾选。
@@ -510,13 +510,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 2.2 工程质量
 
 - [ ] 固定 stable Rust toolchain、target 和必要 components。
-  - 状态（2026-09-01）：`rust-toolchain.toml` 已固定 Rust `1.97.1`、`clippy` 和 `rustfmt`，`native-toolchain` job 也验证当前 stable 与该版本；Windows ARM64 desktop Core、macOS Intel 发布形式和完整 target 发布矩阵仍待外部证据，因此保持未勾选。
+  - 状态（2026-09-01）：`rust-toolchain.toml` 已固定 Rust `1.97.1`、`clippy` 和 `rustfmt`，`toolchain` job 也验证当前 stable 与该版本；Windows ARM64 desktop Core、macOS Intel 发布形式和完整 target 发布矩阵仍待外部证据，因此保持未勾选。
 - [x] 在 workspace manifest 声明 `rust-version`，CI 验证最低版本和当前 stable，不依赖开发机偶然安装的 nightly。
-  - 验收证据（2026-09-01）：`Cargo.toml` 的 workspace package 声明 `rust-version = "1.97"`，全部 Native crate 继承该字段；`native-toolchain` job 对当前 stable 和 `1.97.1` 均执行 `cargo check --locked --workspace`。
+  - 验收证据（2026-09-01）：`Cargo.toml` 的 workspace package 声明 `rust-version = "1.97"`，全部 crate 继承该字段；`toolchain` job 对当前 stable 和 `1.97.1` 均执行 `cargo check --locked --workspace`。
 - [x] 禁止应用依赖未固定 git branch，提交 Cargo.lock。
 - [x] 平台依赖使用 target-specific dependency，Windows feature 不进入 macOS，macOS framework 不进入 Windows。
   - 验收证据（2026-09-01）：`bongocat-platform`、`bongocat-overlay`、`bongocat-audio`、`bongocat-runtime`、
-    `bongocat-ui` 和 `bongocat-app` 的平台依赖均位于 target-specific manifest；三平台 Native workspace
+    `bongocat-ui` 和 `bongocat-app` 的平台依赖均位于 target-specific manifest；三平台 workspace
     CI 的 locked check/Clippy/test/release 组合验证了目标条件解析。
 - [x] 审查 Cargo feature union，禁止测试/诊断/运行时 shader feature 意外进入 release 产物。
   - 验收证据（2026-09-01）：正式 workspace 只有 Development-only `storage-test-injection`
@@ -526,18 +526,18 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 业务、配置、模型和 UI crate 使用 forbid unsafe_code。
   - 验收证据（2026-09-01）：runtime/config/model/UI/app/audio/render/live2d 源入口均声明
     `#![forbid(unsafe_code)]`；overlay 在非 Windows/macOS 共享编译路径增加同一门禁，平台 FFI 仅保留
-    target-specific wrapper，Native workspace Clippy/test/release check 通过。
+    target-specific wrapper，workspace Clippy/test/release check 通过。
 - [x] 平台 unsafe wrapper 写明线程、指针、所有权和析构不变量。
   - 验收证据（2026-09-01）：`bongocat-platform`、`bongocat-overlay` 和 `bongocat-live2d`
     的每个非平凡 `unsafe` block 都有紧邻的 `SAFETY:` 不变量说明，覆盖主线程/owner thread
     限定、裸指针与 slice 的有效范围、COM/AppKit/Metal/Cubism handle 所有权及析构顺序；
     共享业务 crate 继续使用 `#![forbid(unsafe_code)]`。静态扫描未发现缺少说明的 block，
-    Native 三平台 Clippy `-D warnings`、workspace tests 和 release check 通过。
+    三平台 Clippy `-D warnings`、workspace tests 和 release check 通过。
 - [x] 配置 rustfmt、Clippy -D warnings、cargo test 和许可证检查。
-  - 验收证据（2026-09-01）：Native 三平台 workflow 执行 locked format、workspace Clippy `-D warnings`、
+  - 验收证据（2026-09-01）：三平台 workflow 执行 locked format、workspace Clippy `-D warnings`、
     workspace tests、release check 和 pinned dependency policy；本机同命令通过。
 - [x] 配置 `cargo deny`/等价检查：license、advisory、banned source、重复高风险依赖和 unknown registry。
-  - 验收证据（2026-09-01）：`tools/check-native-dependencies.sh` 固定 `cargo-deny 0.20.2`，对 Native
+  - 验收证据（2026-09-01）：`tools/check-dependencies.sh` 固定 `cargo-deny 0.20.2`，对
     workspace 和独立工具执行 locked license/source policy，workflow `33480729115` 及后续 run 通过。
 - [x] 配置 panic hook 和 release 可诊断退出。
   - 状态（2026-09-01）：正式 `Application` 入口在完成日志 writer 初始化后安装可恢复的
@@ -559,14 +559,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     正式 app coordinator、runtime、overlay/platform adapter 与 settings worker 分别持有这些
     owner，跨线程只使用有界 typed channel/latest-value transport。Windows/macOS release
     lifecycle、overlay recovery、model switch、recovery window 和显式 Quit smoke 均验证
-    stop -> runtime/config -> audio/renderer/GPU/overlay 的 join 与析构顺序；Native 三平台
+    stop -> runtime/config -> audio/renderer/GPU/overlay 的 join 与析构顺序；三平台
     workspace format、Clippy、test 和 release check 通过。平台真实驱动、权限和长时 soak
     仍由对应 Phase 0/8 门禁跟踪，不扩大本项完成范围。
 - [x] 建立稳定文本日志字段和用户路径脱敏规则。
   - 验收证据（2026-09-24）：Application sink 只接受固定 component/level/code/message 与有界 context，
     Cubism Core callback 使用独立脱敏文本 sink；panic hook 不读取 payload，Diagnostics 导出只包含匿名统计与固定事件计数。
     app/Core 单元测试覆盖路径/URL/敏感标记脱敏、长度上限、callback panic boundary、日志轮转和导出无路径，
-    双平台 Native CI/发布 smoke 仍按各自门禁跟踪。
+    双平台 CI/发布 smoke 仍按各自门禁跟踪。
 - [x] 提供开发/测试所需 Cubism 二进制的可验证安装说明。
   - 验收证据（2026-09-01）：`docs/phase-0/cubism-sdk-source-and-license.md` 第 4 节提供
     维护者人工接受 Live2D 协议后下载固定 `5-r.5` ZIP、校验 archive/header/Core SHA-256、
@@ -579,19 +579,19 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     build environment、本地 vendor header 和已提交资源，不执行下载或网络命令；macOS packaging
     只调用本地 Cargo、provenance 和 bundle 工具。Cubism inspector、bindgen 与 Core probe
     均是离线 CLI，要求维护者先准备并校验 SDK，CI 不下载 Cubism、shader compiler 或生成器。
-    Native 三平台 locked format、Clippy、test、release/Production check 及依赖策略通过。
+    三平台 locked format、Clippy、test、release/Production check 及依赖策略通过。
 - [x] 定义 debug、release、profiling 三种 profile，profiling 产物不得误发布。
   - 验收证据（2026-09-01）：`Cargo.toml` 显式定义 dev（debug、incremental、unwind）、
     release（symbols stripped、LTO、abort）和 profiling（继承 release、保留完整 debug、关闭
     LTO）profile；CI 与打包入口只使用 release，provenance 记录 profile，profiling 不进入发布
-    workflow。三平台 Native workspace release check 通过。
+    workflow。三平台 workspace release check 通过。
 
 ### 2.3 CI
 
 - [x] Windows：format、Clippy、unit test、release check；GPUI settings/overlay spike 已由 GitHub `windows-latest` 执行。
   - 验收证据：commit `221f5483976b64b7cbf6c5818ee5714ad47de479`，push run `33182146480` 与 pull request run `33182148815` 均成功；不代表 Windows 字体、IME、DPI、辅助功能或图形实机验收完成。
 - [x] macOS：format、Clippy、unit test、release check；GPUI settings/overlay spike 均纳入 `macos-spikes` job。
-- 状态（2026-09-05）：run `33940224182` 的 Windows Native job `101236050267` 在隔离
+- 状态（2026-09-05）：run `33940224182` 的 Windows CI job `101236050267` 在隔离
   storage smoke 产物冷编译阶段耗尽原步骤 10 分钟时限，尚未启动恢复窗口。CI 现将两平台
   Development-only release 测试产物的构建拆为独立 30 分钟步骤，恢复、state 与 panic smoke
   直接执行该产物并各限制为 2 分钟；Windows 内部 10 秒窗口发现、15 秒退出和 20 秒 state
@@ -604,15 +604,15 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] CI 校验 fixture JSON Schema、跨文件一致性、本地化 key 和生成文件是否漂移。
   - [x] 已接入 Draft 2020-12 schema、fixture 跨文件一致性和五种历史 locale 的 key/类型/占位符校验。
   - [x] Cubism raw binding 工具已用自有合成 header 对三个当前可绑定 target 执行 deterministic golden 漂移检查；真实 R5 bindings 因许可门禁不进入 CI。
-  - [ ] 生成文件漂移校验仍待 Native 资源生成链建立后补齐。
+  - [ ] 生成文件漂移校验仍待 资源生成链建立后补齐。
 - [ ] 保存失败测试日志、截图和 renderer validation 输出，同时执行路径/按键隐私清理。
-  - 状态（2026-09-07）：新增 `tools/collect-native-failure-evidence.py`，原生 workspace、Cubism
+  - 状态（2026-09-07）：新增 `tools/collect-failure-evidence.py`，原生 workspace、Cubism
     binding、contract、model package、macOS、Windows input 和 Windows GPUI jobs 的失败路径均
     收集 runner 临时目录中的有限日志与明确命名的 renderer/validation 截图；拒绝符号链接，限制
     单文件 256 KiB、总量 2 MiB、最多 100 个文件，并对绝对路径、按键/scan code、剪贴板和 pressed
     字段脱敏。artifact 保留 7 日且只上传脱敏目录；测试覆盖路径/按键清理、非白名单图片和 symlink。
     尚未覆盖未产生临时日志的纯 contract job，也未将真实平台截图接入 smoke，故保持未勾选。
-  - 状态（2026-09-07）：新增 `test_native_failure_evidence_workflow.py` 静态 contract，持续检查
+  - 状态（2026-09-07）：新增 `test_failure_evidence_workflow.py` 静态 contract，持续检查
     失败 artifact 必须经收集器、使用 7 日保留且禁止直接 glob 上传 runner 原始日志。
   - 状态（2026-09-07）：修复收集器输入/输出同目录时的递归扫描边界，输出子树现在明确跳过；回归
     覆盖 workflow 实际 `$RUNNER_TEMP/bongocat-failure-evidence` 布局，避免 manifest 或已收集文件
@@ -621,7 +621,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     contract 测试锁定顺序，确保后置的 GPUI/Metal smoke 失败同样产生脱敏证据。
   - 状态（2026-09-07）：Windows GPUI matrix job 的收集步骤也已移至 settings、Win32/D3D11
     overlay 和 100-cycle smoke 之后；workflow contract 同时锁定 macOS/Windows spike 的后置顺序。
-  - 状态（2026-09-07）：`native-toolchain`、`fixtures` 和 `dependency-policy` 基础 job 也接入
+  - 状态（2026-09-07）：`toolchain`、`fixtures` 和 `dependency-policy` 基础 job 也接入
     同一失败证据收集/上传步骤，当前 Phase 0 workflow 共 10 个 job 仅上传受限脱敏目录；静态
     contract 固定收集器与上传步骤一一对应。
   - 状态（2026-09-07）：收集器进一步拒绝未命名 JSON，并按匿名状态前缀保留文本行；未知行统一
@@ -633,10 +633,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 状态（2026-09-07）：文本脱敏字段扩展至相对 `path/file` 及 `message/detail/error` 值，新增
     相对用户模型路径回归，避免错误详情或相对路径绕过绝对路径清理。
 - [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
-  - [x] `tools/record-native-provenance.py` 生成无绝对路径的 JSON；Native 三平台 CI 上传 runner
+  - [x] `tools/record-provenance.py` 生成无绝对路径的 JSON；三平台 CI 上传 runner
         provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证
         commit、锁文件 hash、toolchain、target、profile、feature set 和 environment 字段；签名安装包
-        与 Windows 最终发布 artifact 仍待发布 workflow 迁移后接入。commit `6c6120b` 的 Native
+        与 Windows 最终发布 artifact 仍待发布 workflow 迁移后接入。commit `6c6120b` 的
         workflow run `33479155904`（后续 `d6d27b3`/`33479624906`）三平台 provenance artifact 已成功上传。
 
 ### 2.4 Phase 1 退出门槛
@@ -648,7 +648,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 - [ ] CI 在干净环境复现构建。
 - [ ] 应用可正常退出，所有 worker 有明确 join 结果。
 - [ ] Windows/macOS release dependency tree 与批准清单一致，无意外 Tauri/WebView/JavaScript runtime。
-  - 状态（2026-09-06）：`tools/check-native-dependencies.sh` 现对
+  - 状态（2026-09-06）：`tools/check-dependencies.sh` 现对
     `x86_64-pc-windows-msvc`、`x86_64-apple-darwin` 与 `aarch64-apple-darwin` 分别执行
     `cargo tree --edges normal,build`，拒绝 Tauri、Wry/WebView、Node、Deno、QuickJS 和
     JavaScriptCore 包名。三个 target 当前均通过；`tauri-winrt-notification` 仅存在于
@@ -876,7 +876,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     fixture 校验通过。
   - 状态（2026-09-01）：正式 `bongocat-runtime` 新增 `shared_input_fixtures` 集成测试，真实驱动
     typed `InputEvent`、cursor/axis latest producer 和 `RuntimeCommand::Tick`，对 8 组纯输入 fixture
-    的 17 个 checkpoint 比较匿名计数、左右手/鼠标投影、Reset 原因和 cursor 样本；Native workspace
+    的 17 个 checkpoint 比较匿名计数、左右手/鼠标投影、Reset 原因和 cursor 样本；workspace
     CI 会随 `cargo test --workspace` 执行，且 `Gamepad*Down` 参数会映射到正式手柄/左右手投影并断言。
     状态（2026-09-01）：在 macOS/Windows 正式 runtime 集成测试中，使用三个预置模型中的
     `standard`/`keyboard` 包、真实 model commit feedback 和可注入单调时钟执行第 9 组
@@ -1035,7 +1035,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 - [x] 定义带 `schema_version` 的 Rust 配置结构和 JSON schema，JSON key 使用 `snake_case`。
   - 验收证据（2026-09-01）：`bongocat-config` 的 `NativeConfig`/`WindowState` 与
     `shared/config/config.schema.json`、`window-state.schema.json` 同步；serde 输出使用 `snake_case`，
-    Draft 2020-12 validator 和 Native config/window-state fixtures 已在 workspace tests 与 CI 校验。
+    Draft 2020-12 validator 和 configuration/window-state fixtures 已在 workspace tests 与 CI 校验。
 - [x] 区分用户配置、运行时状态和诊断数据。
   - 验收证据（2026-09-01）：用户配置写入 `config.json`，窗口状态写入独立 `window-state.json`，运行时
     snapshot/输入诊断只经 typed API 暴露，日志和匿名 diagnostics export 不复用用户配置结构。
@@ -1082,7 +1082,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 验收证据（2026-09-01）：`bongocat-config` 的 `StorageLayout` 创建 root、models、backups、logs、updates 和
     locks 目录时在 Unix 强制 `0700`；config/window state、备份、锁和原子替换结果统一为 `0600`，覆盖
     首次创建、恢复和 verification rollback。Windows 依赖 `%APPDATA%` 用户目录 ACL，不修改系统
-    ACL；Unix 权限回归测试验证目录/文件 mode，config crate 46 项测试和 Native workspace tests 通过。
+    ACL；Unix 权限回归测试验证目录/文件 mode，config crate 46 项测试和 workspace tests 通过。
     `bongocat-app` 的 application logs、轮转日志和运行标记，以及 `bongocat-model` 的 installed
     model、导入 staging 文件和 model writer lock 也在创建/重开时强制相同的 `0700`/`0600` 边界；
     app/model 权限回归测试覆盖首次创建、轮转和导入提交。Cubism Core 日志与 diagnostics
@@ -1705,7 +1705,7 @@ docs.rs/crates.io metadata 完成 gpui-kit 0.6.1 迁移评估；2026-09-19 升�
 最新稳定版 `gpui-kit = "=0.6.6"`。该 release 不含后来合并的 `SettingGroup::variant()` 与
 `Popover::arrow()`；2026-09-24 删除维护者 fork 的 `[patch.crates-io]`，改为直接固定上游
 `longbridge/gpui-kit` merge commit `500852f449c05dc01920ec82f3ae2656a61d0387`（package
-版本 `0.6.5`）。Native workspace 仍只有 `gpui-kit` 一个直接 GPUI 依赖，完整 `cargo update`
+版本 `0.6.5`）。workspace 仍只有 `gpui-kit` 一个直接 GPUI 依赖，完整 `cargo update`
 后 GPUI Kit suite 五个 package 统一从该 commit 解析，GPUI 仍为 crates.io `gpui-pre 0.3.6`
 同步包（Zed 快照 `bcf6582ce3500df93a8a39366640173e6786cea6`，`zed-version` 仍为 `0.2.2`）。
 设置窗口调用 `gpui_kit::init`，使用
@@ -1903,7 +1903,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 ### 7.1 Schema 与命名
 
 - [x] 发布 `shared/config/config.schema.json`，并用有效/拒绝样本验证 schema 边界。
-- [x] 实现 `shared/config/native-config-contract.md` 中的首版字段，调整时同步 contract 和测试。
+- [x] 实现 `shared/config/contract.md` 中的首版字段，调整时同步 contract 和测试。
   - 验收证据（2026-09-05）：完整 v1 的 `appearance`、`overlay`、`input`、`logging`、`model`、
     `shortcuts`、`system` 与 `updates` 字段均由 `NativeConfig` 的 strict Rust 类型、`config.schema.json`、default/invalid shared fixtures
     和产品 settings snapshot/typed command 共同覆盖；contract 表已补全两项 input gamepad dead-zone
@@ -1932,13 +1932,13 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     Rust 配置类型逐层使用 `deny_unknown_fields`；共享 `invalid-unknown-field.json` 在根对象注入
     `unexpected_field` 并由固定 Draft 2020-12 validator 拒绝，正式 crate 另有
     unknown/legacy 字段拒绝测试。
-- [x] `next` 的当前完整 Native Rewrite schema 固定为 `schema_version: 1`，不包含迁移链。
+- [x] `next` 的当前完整配置 schema 固定为 `schema_version: 1`，不包含迁移链。
   - 状态（2026-09-04）：正式 config、独立 config-store contract、JSON Schema 和全部 fixture
     已统一为完整 v1；模型来源、input dead-zone 与现有字段都直接属于首版结构。store 只接受 v1，
     非 v1 明确拒绝且不改写；迁移函数与迁移专用测试已删除。首次正式发布后的后续版本再以实际
     发布的 v1 为基线新增迁移，不在 `next` 预置兼容逻辑。
 - [x] 不包含旧 Pinia store key、旧字段 alias 或自动导入逻辑。
-  - 验收证据（2026-08-31）：Native schema/Rust 类型没有 serde alias 或 legacy 字段，严格未知
+  - 验收证据（2026-08-31）：configuration schema/Rust 类型没有 serde alias 或 legacy 字段，严格未知
     字段 fixture 与单元测试拒绝 `legacy_alias`/`old_pinia_field`；产品 `ConfigStore` 只解析当前
     环境的完整 v1 `config.json`，不执行迁移或兼容转换。
 - [ ] 独立 `window-state.json` v1 schema 只保存可恢复窗口布局，不进入用户配置事务。
@@ -1956,10 +1956,10 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 ### 7.2 环境与持久化事务
 
 - [x] 构建系统显式产生 Development/Production 元数据，发布构建拒绝默认值。
-  - 验收证据（2026-08-31）：正式 app build script 已删除隐式 Development fallback；当时的 Native
+  - 验收证据（2026-08-31）：正式 app build script 已删除隐式 Development fallback；当时的
     workspace Cargo config 与 CI 显式选择 Development，Production step 显式覆盖，macOS packaging
     在 Cargo 前拒绝缺失/空/未知值。commit `2810f4a` 的 pull request run `33383026191` 全绿；Windows/
-    macOS/Ubuntu Native jobs `99459402028`/`99459402083`/`99459402181` 通过完整 workspace、
+    macOS/Ubuntu CI jobs `99459402028`/`99459402083`/`99459402181` 通过完整 workspace、
     Development/release、显式 Production 和拒绝隐式环境门禁，Windows/macOS GPUI jobs
     `99459402171`/`99459401995`、Windows input/config job `99459402076` 和 config-store job
     `99459402352` 同时通过。2026-09-14 起环境选择由默认 Development 与显式 `production` Cargo
@@ -1974,12 +1974,12 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
   - 验收证据（2026-09-04）：正式 store 在单一 writer lock 内严格检查 schema version 并执行
     typed validate，再经固定 temp、flush、原子替换和重读 typed config/revision 验证。底层事务与
     替换后破坏注入最初由 commit `fd0f1d2` 建立；当前 v1 实现会在验证失败时逐字节恢复原文件并
-    清理 temp，不包含迁移步骤。本次重置已通过完整本地 Native workspace 与 config 定向测试。
-- [x] backup 包含 Native schema 版本和时间，并限制数量与总大小。
+    清理 temp，不包含迁移步骤。本次重置已通过完整本地 workspace 与 config 定向测试。
+- [x] backup 包含 configuration schema 版本和时间，并限制数量与总大小。
   - 验收证据（2026-08-31）：正式 `bongocat-config` 在替换前生成 v1 envelope，保存真实墙上
     时间、源 schema/revision 和原始配置；每环境仅管理固定命名空间，按不受时钟回退影响的
     排序键保留最新 8 份且总计不超过 8 MiB。单元测试覆盖 v1 原文备份、12 次提交收敛、
-    未知文件保留和时钟回退顺序；完整 Native workspace 门禁随当前队列提交验证。
+    未知文件保留和时钟回退顺序；完整 workspace 门禁随当前队列提交验证。
 - [x] spike 中途提交中断后可安全恢复或重试；失败不覆盖当前可用配置。
   - 状态（2026-08-29）：`ConfigStore::recover_interrupted_commit` 覆盖主配置有效/缺失/损坏与临时文件有效/无效组合，恢复在 OS writer lock 内执行并保留诊断副本；父进程强制终止已写入并 flush 临时配置的持锁子进程后，macOS 本机与 Windows runner 均验证 lock 自动释放、当前配置保留和 interrupted archive。
   - 状态（2026-08-31）：正式产品已实现固定 `config.json.tmp`、跨平台原子替换、current/temp
@@ -2077,7 +2077,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     回归验证 GPU 拒绝后旧配置选择与 active model 保持不变。配置与模型定向测试均通过，应用
     回滚测试已纳入既有 app test suite；失败路径不会跨环境读写。
 - [x] 发布依赖和运行日志中没有旧 Tauri/Pinia 配置探测。
-  - 验收证据（2026-09-06）：Native runtime、config、日志、打包脚本和 manifest 没有
+  - 验收证据（2026-09-06）：BongoCat runtime、config、日志、打包脚本和 manifest 没有
     Tauri/Pinia 配置路径、字段 alias 或导入逻辑；`cargo tree --target all` 仅显示
     `tauri-winrt-notification` 作为 GPUI Linux notification 的传递平台依赖，不提供
     Tauri 应用或配置 API。源码中出现的 `old_pinia_field` 仅用于 strict config 拒绝测试，
@@ -2554,7 +2554,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     Development product smoke 已通过隔离 owner-only
     storage 运行 typed command，并验证 private JSON/ZIP、固定 ZIP entries 与干净 shutdown。Windows
     release smoke 和 OS-level sync/replace failure injection 仍待实现，本项保持未勾选。
-  - 状态（2026-09-07）：Native Phase 0 workflow 的 macOS/Windows 隔离 storage job 均执行
+  - 状态（2026-09-07）：Phase 0 CI workflow 的 macOS/Windows 隔离 storage job 均执行
     `--diagnostics-export-smoke`，断言稳定成功消息、私有 diagnostics JSON/preview ZIP 和固定
     archive entries；Windows 平台不再只有单元测试覆盖。OS-level failure injection 仍待产品
     smoke 覆盖，本项保持未勾选。
@@ -2621,7 +2621,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 - [ ] 输入 fixture 和丢 release 恢复测试。
 - [ ] GPUI Kit component、command 和窗口重建测试。
 - [ ] Windows/macOS 安装、首次启动、升级和卸载 smoke test。
-- [ ] 公共 contract/schema 兼容性测试；支持窗口内的 Native config、UI snapshot 和更新 manifest 可读取。
+- [ ] 公共 contract/schema 兼容性测试；支持窗口内的 configuration、UI snapshot 和更新 manifest 可读取。
 - [ ] release 构建启用 panic/allocator/overflow 策略的真实测试，不只测试 debug 行为。
 
 ### 9.2 Windows 实机矩阵
@@ -2705,8 +2705,8 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 - [ ] alpha 收集 input reset、renderer reset、model load 和 config recovery 指标。
 - [ ] beta 扩大模型/显示器/权限组合并冻结 schema/command contract。
 - [ ] stable 前验证替换已安装旧版后二进制可正常启动，并明确提示新配置不会导入旧设置。
-- [ ] Development/Production 的配置、更新 channel 和数据目录不会互相污染，Native schema 降级行为有明确限制。
-- [ ] 验证失败更新可回滚，当前 Native 配置备份仍可用。
+- [ ] Development/Production 的配置、更新 channel 和数据目录不会互相污染，configuration schema 降级行为有明确限制。
+- [ ] 验证失败更新可回滚，当前 配置备份仍可用。
 - [ ] 发布依赖和产物始终不包含 legacy config inspector 或旧 store 读取器。
 
 ### 10.3 旧代码退役
@@ -2714,16 +2714,17 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 - [x] 删除 Tauri、Vue、Pinia、Pixi.js 和 easy-live2d 依赖。
 - [x] 删除 src/ Web 前端、src-tauri runtime 和旧 plugin。
 - [x] 删除 rdev 和旧 device emit/listen 路径。
-- [x] 删除旧 Tauri 手柄高频 IPC 路径；新 Native 产品只通过 ADR-0066 的精确 gilrs fork 和私有强类型 adapter 接入，不恢复旧 IPC。
+- [x] 删除旧 Tauri 手柄高频 IPC 路径；新 BongoCat 产品只通过 ADR-0066 的精确 gilrs fork 和私有强类型 adapter 接入，不恢复旧 IPC。
 - [x] 删除旧不安全 updater 配置和宽泛 asset scope。
-- [x] 删除旧模型复制代码前确认 Native 显式导入覆盖支持的模型格式。
+- [x] 删除旧模型复制代码前确认 显式导入覆盖支持的模型格式。
 - [x] 更新 README、开发环境、贡献指南和架构图。
-- [x] 保留远端 `master` 和不可覆盖的 `pre-refactor-tauri` 分支作为历史行为与模型资源参考，不重写历史。
+- [x] 保留不可覆盖的 `pre-refactor-tauri` 分支作为唯一历史行为与模型资源参考，不重写历史。
 
 状态（2026-09-10）：历史 Vue/Tauri workspace、Web 资源、Node manifests、旧 updater/release
-workflow、legacy config inspector 及其本地 fixture 已从当前工作树删除。Native 产品、测试与
-共享 preset fixture 统一使用 `resources/models`；`master` 与 `pre-refactor-tauri` 是
-唯一的历史源码参考。Phase 0、稳定性和发布验收门槛仍按各自未完成项跟踪，代码退役不代表 stable 发布就绪。
+workflow、legacy config inspector 及其本地 fixture 已从当前工作树删除。BongoCat、测试与
+共享 preset fixture 统一使用 `resources/models`；`pre-refactor-tauri` 是唯一的历史源码参考，
+`next` 合并进入 `master` 后，`master` 承载当前代码。Phase 0、稳定性和发布验收门槛仍按各自未完成项
+跟踪，代码退役不代表 stable 发布就绪。
 
 ### 10.4 最终完成定义
 
@@ -2732,7 +2733,7 @@ workflow、legacy config inspector 及其本地 fixture 已从当前工作树删
 - [ ] 关闭 GPUI 设置窗口不影响输入、动画、音效和 overlay。
 - [ ] issue #47 和输入生命周期回归矩阵通过。
 - [ ] 三个预置模型和支持范围内自定义模型通过兼容矩阵。
-- [ ] Native 配置写入与损坏恢复可靠，模型显式导入无已知数据丢失路径。
+- [ ] 配置写入与损坏恢复可靠，模型显式导入无已知数据丢失路径。
 - [ ] 性能、稳定性、安全和许可证门槛有可追溯证据。
 
 ## 11. Linux 后续 Backlog（不阻塞首发）
@@ -2755,11 +2756,11 @@ workflow、legacy config inspector 及其本地 fixture 已从当前工作树删
 4. [ ] `P0-DOC-CONSISTENCY`：维护 ADR-006/007/008，记录旧版 tag/安装包 hash、target triple 和工具链矩阵。
    - 状态（2026-08-28）：ADR 与仓库/发布基线已完成；target/toolchain 文档为 provisional，仍待 Windows 实机、GPUI 发布构建和 Cubism 架构证据后冻结。
    - 状态（2026-09-05）：已重新采集当前 macOS 26.5.2/Xcode 26.6/SDK 26.5/Rust 1.97.1/Metal
-     Toolchain v17.6.109.0 证据，并明确开发机额外安装的 i686 target 不进入 Native Rewrite
+     Toolchain v17.6.109.0 证据，并明确开发机额外安装的 i686 target 不进入 BongoCat
      矩阵。Windows 实机、发布产物保留与最终 target freeze 仍是本项未完成门禁。
    - 状态（2026-09-07）：新增 `docs/migration/legacy-release-assets-v1.1.0.md`，记录公开
      `v1.1.0` tag、发布时间、Windows/macOS 历史资产大小与 GitHub SHA-256，并明确旧 x86/ARM64
-     资产不能改变 Native 目标与 Cubism 发布门禁。Windows 实机、Native 发布产物保留、签名和
+     资产不能改变产品目标与 Cubism 发布门禁。Windows 实机、Native 发布产物保留、签名和
      最终 target/toolchain freeze 仍待完成。
 5. [x] `P0-ARCHAEOLOGY`：补齐完整功能优先级和模型异常 fixture。
    - 状态（2026-08-28）：旧配置兼容已从产品范围移除；47 项功能优先级、预置模型资源清单、自定义模型匿名统计和六类模型异常目录 fixture 已完成。实机行为确认继续由输入、overlay 与 Cubism spike 承担。
@@ -2833,12 +2834,12 @@ workflow、legacy config inspector 及其本地 fixture 已从当前工作树删
     - 退出条件：UserData 跨帧/loop 不重复且有界；accepted motion 才播放；抢占、无 sound、
       stop、disable、成功切模、故障、overflow 和 shutdown 行为有自动化证据。
     - 验收证据（2026-08-31）：`bongocat-audio`、runtime side-effect 接线、真实预置 FLAC
-      decoder 与 motion event/audio contract 已进入正式 workspace；完整 Native format、
+      decoder 与 motion event/audio contract 已进入正式 workspace；完整 format、
       Clippy、test、release check、双 Windows target check 和 CI 结果随对应提交记录。
 17. [x] `P1-SETTINGS-WINDOW-LIFECYCLE`：设置窗口关闭后保持后台产品运行，并可重显预渲染窗口。
         - 依赖：正式 GPUI 设置窗口、app coordinator、runtime/render owner。- 退出条件：window close 不触发 shutdown；窗口隐藏期间 frame source 继续推进；
         两个平台 reopen 都只重显保留的唯一 Entity 并从当前 revisioned snapshot 刷新；显式 Quit
-        仍按既定顺序 join 全部 owner；Windows/macOS release smoke 与完整 Native workspace 门禁通过。
+        仍按既定顺序 join 全部 owner；Windows/macOS release smoke 与完整 workspace 门禁通过。
         - 状态（2026-09-20）：实现统一为"预渲染窗口 + 隐藏/重开"：macOS platform adapter 新增
         `NSWindow.orderOut:`/`makeKeyAndOrderFront:`，与 Windows `SW_HIDE`/`SW_SHOW` 走同一条
         `hide_native_window`/`show_native_window` 路径；`on_window_should_close` 在双平台都只隐藏
@@ -2893,7 +2894,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 依赖：正式 `bongocat-model`、`bongocat-model-store` 的环境 `ModelStore`、只读预置资源和 typed settings snapshot。
     - 退出条件：应用持有 preset catalog；preset/installed 的 ready/invalid 条目都可见且确定
       排序；重复 ID 保留 `(origin, id)` 复合身份；snapshot 只暴露稳定诊断而不泄漏路径；
-      model/app/ui 单元测试、Clippy 与完整 Native workspace 门禁通过。
+      model/app/ui 单元测试、Clippy 与完整 workspace 门禁通过。
     - 验收证据（2026-08-31）：来源合并、无效条目、重复 ID、确定排序、路径脱敏与 typed
       snapshot 测试均进入 `next`；push run `33333789799` 的 Windows/macOS/Ubuntu workspace
       jobs `99316966532`/`99316966517`/`99316966591` 全部通过。
@@ -2901,7 +2902,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 依赖：`P4-MODEL-CATALOG`、runtime/renderer model commit、config expected revision。
     - 退出条件：typed command 不靠字符串推断来源；preset/installed 同 ID 可分别选择；当前 v1
       配置直接保存成对的 origin/id；CPU/GPU/配置失败保留当前模型，GPU 拒绝恢复旧配置；
-      重启重新加载所选来源；schema fixture、定向测试与完整 Native workspace 门禁通过。
+      重启重新加载所选来源；schema fixture、定向测试与完整 workspace 门禁通过。
     - 验收证据（2026-08-31）：复合身份选择、重启、CPU/GPU/config rollback 与 Windows/macOS
       renderer rejection 测试均进入 `next`；push run `33333789799` 的三平台 workspace jobs
       全部通过，Windows job 又通过 transactional D3D11 model switching smoke。2026-09-04 将当前
@@ -2911,10 +2912,10 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 退出条件：UI command 强类型携带 model ID/source root，文件 I/O 不在 UI executor；导入
       复制、复验并原子提交到当前环境且不隐式切换；成功 snapshot 刷新 installed 条目；非法
       ID、重复 ID、无效包、源变化/不支持项、store busy/I/O 映射为稳定且不泄漏路径的错误码；
-      ui/app 定向测试与完整 Native workspace 门禁通过。
+      ui/app 定向测试与完整 workspace 门禁通过。
     - 验收证据（2026-08-31）：typed request、settings worker 接线和稳定错误映射已实现；系统
       文件选择 wrapper 及模型页面 loading/error/retry 属于后续任务。
-      ui/app 定向测试与完整 Native format、Clippy、workspace test、release check、Linux shared
+      ui/app 定向测试与完整 format、Clippy、workspace test、release check、Linux shared
       contract check 本机通过；push run `33333789799` 的三平台 workspace jobs 全部通过。
 21. [x] `P4-MODEL-IMPORT-OPERATION`：为模型导入提供可观测、可取消的长操作契约。
     - 依赖：`P4-MODEL-IMPORT-COMMAND`、环境 `ModelStore` staging transaction、typed settings
@@ -2923,7 +2924,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       和字节数且三者单调；复制期间 cancellation 无需 settings worker 消费第二条 command；提交前
       取消清理 staging、不创建目标、不刷新 catalog revision；成功保持既有不隐式选模语义；
       final result 携带原 operation ID，service shutdown/join 确定完成；model/ui/app contract test
-      与完整 Native 本地门禁通过。
+      与完整本地门禁通过。
     - 验收证据（2026-08-31）：`ModelStore` 使用 64 KiB 有界分块复制并在准备、遍历、复制、复验
       和 rename 前检查取消；settings operation 以共享 atomic token 更新无路径 progress，并返回
       稳定 `ModelImportCancelled`。测试覆盖跨 clone ID、倒退 progress 拒绝、typed final result、
@@ -2937,7 +2938,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 退出条件：typed command 携带 `(origin, id)`；preset 和当前 runtime/config 所选 installed
       均拒绝；激活同 ID preset 不阻塞删除 installed 副本；成功刷新 catalog/revision 且不切模
       或改配置；非法 ID、未安装、store busy/I/O 返回稳定无路径错误；app/ui 定向测试与完整
-      Native workspace 门禁通过。
+      workspace 门禁通过。
     - 验收证据（2026-08-31）：核心来源判断、typed client/service、全部 store diagnostic
       的稳定错误映射及 app/ui 定向测试已进入 `next`；push run `33333789799` 的 Windows/macOS/
       Ubuntu workspace jobs `99316966532`/`99316966517`/`99316966591` 全部通过。
@@ -2946,29 +2947,29 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 退出条件：可收缩生成器覆盖畸形 JSON、数组位置、portable ID、平台路径和任意长度 PNG
       header/dimensions；接受路径保持包内相对且幂等，parser 不 panic/OOB；JSON/package/file/
       dimension 上限在无界解析或像素分配前失败；测试依赖版本/许可证/维护性/替换边界有记录；
-      完整 Native 本地门禁和 license/source policy 通过。
+      完整本地门禁和 license/source policy 通过。
     - 验收证据（2026-08-31）：6 组 property 每轮共执行 3,072 case，另有固定 limit/depth/
       symlink/oversized fixture；`proptest 1.11.0` 以最小 `std` feature 精确锁定，`cargo update`
       只新增其和两个缺失传递包。完整 format、Clippy、workspace test、release check 及
       `cargo deny --all-features check licenses sources` 本机通过；push run `33336116944` 的
-      Ubuntu/Windows/macOS Native workspace jobs `99323200807`/`99323200905`/`99323200915`
+      Ubuntu/Windows/macOS workspace jobs `99323200807`/`99323200905`/`99323200915`
       与 dependency policy job `99323200931` 全部通过。
 24. [x] `P4-MODEL-FIXTURE-CONTRACT`：将共享自定义模型 fixture 提升为正式产品导入契约。
     - 依赖：`shared/fixtures/model-fixtures/cases.json`、`PreparedModel`、transactional
       `ModelStore`。
     - 退出条件：manifest 严格反序列化且每个 case 目录唯一注册；所有 accept/reject case 在
       隔离物化后由产品 parser 与 store 同时执行；拒绝诊断精确匹配声明 stage，不写目标或
-      staging，不修改源；成功只提交一个来源感知 installed model；完整 Native 门禁通过。
+      staging，不修改源；成功只提交一个来源感知 installed model；完整门禁通过。
     - 验收证据（2026-08-31）：正式 crate 已覆盖 6 个共享合成 package；`bongocat-model`
-      33 项、旧 model-package spike 15 项与 Python fixture oracle 全部通过。完整 Native format、
+      33 项、旧 model-package spike 15 项与 Python fixture oracle 全部通过。完整 format、
       Clippy、workspace test 和 release check 本机通过；push run `33336496654` 与 PR run
-      `33336497984` 全绿，push 的 Windows/macOS/Ubuntu Native workspace jobs
+      `33336497984` 全绿，push 的 Windows/macOS/Ubuntu workspace jobs
       `99324223865`/`99324223945`/`99324223963` 全部通过。
 25. [x] `P7-MODEL-DIRECTORY-PICKER`：以原生最小权限目录选择器接入模型导入。
     - 依赖：`P4-MODEL-IMPORT-OPERATION`、双平台 `rfd`、macOS AppKit sheet、Windows STA。
     - 退出条件：共享 API 区分 selected/cancelled 和稳定无路径错误；macOS 强制 AppKit 主线程，
       Windows 使用专用 STA worker；Rust 重新验证并 canonicalize；GPUI Models 页面不阻塞执行
-      文件复制，可消费取消与选择结果；双平台真实选择/取消 smoke 和完整 Native 门禁通过。
+      文件复制，可消费取消与选择结果；双平台真实选择/取消 smoke 和完整门禁通过。
     - 状态（2026-08-31）：共享验证、双平台 adapter、macOS background-thread contract 和
       Windows x64/ARM64 platform cross-check 已通过。Models 页面现已接入真实导航、64-byte
       ASCII model ID 草稿、无路径 folder 状态、typed operation、100 ms progress、cancel、retry
@@ -2983,13 +2984,13 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       `Folder selected`/建议 ID `standard`，进程未崩溃且最终经产品 Quit 正常退出；未触发导入。
       Windows release smoke 用 PID 限定的 Win32 controller 驱动真实 dialog 标准取消/确认路径，
       并由 callback 超时及 Rust 目录复验保护。commit `5f88fb8` 的 push run `33348859607` 全绿，
-      Windows/macOS/Ubuntu Native jobs `99358134554`/`99358134575`/`99358134545` 均通过完整
+      Windows/macOS/Ubuntu CI jobs `99358134554`/`99358134575`/`99358134545` 均通过完整
       format、Clippy、workspace test、release/Production 和平台 smoke 门禁；commit `0e5072e`
       的 push run `33349095568`、Windows job `99358790654` 进一步通过真实 dialog cancel/select
       release smoke。结合本机 macOS 真实交互证据，双平台退出条件已满足。
       `block2 0.6.2`、`objc2 0.6.4`、AppKit/Foundation `0.3.2` 与 `windows 0.62.2` 均为当前
       最新稳定版并已在 workspace 锁定；最低 Rust 1.71/1.82、MIT/Zlib/Apache-2.0 许可证兼容
-      workspace，替换边界仅为对应 OS 原生 API binding。完整 Native format、Clippy、workspace
+      workspace，替换边界仅为对应 OS 原生 API binding。完整 format、Clippy、workspace
       test、release/Production check、license/source policy、Linux workspace Clippy 与双 Windows
       target platform Clippy 本机通过；macOS 可重复 callback smoke example 已同步更新。
     - 状态（2026-09-13）：按依赖审计结论将 macOS 私有 adapter 从手写 `NSOpenPanel` 迁移到
@@ -3017,7 +3018,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       模型可激活，invalid 模型不可激活并显示稳定无路径诊断；preset 与 active installed 不提供
       删除，其他 installed 删除前需显式确认且可取消；操作期间其他模型命令禁用，成功只接受
       不倒退的 revisioned snapshot，失败保留 catalog/active model 并显示可重试错误；所有动作
-      支持可见 Tab 焦点与 Enter/Space，定向 UI contract、完整 Native 门禁和双平台页面 smoke
+      支持可见 Tab 焦点与 Enter/Space，定向 UI contract、完整门禁和双平台页面 smoke
       通过。
     - 状态（2026-08-31）：页面已按 `(origin, model_id)` 渲染 active/ready/invalid 状态，接入
       typed activation 与 installed delete，提供 Cancel/Confirm 且保护 preset/active installed；
@@ -3034,7 +3035,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 当前退出条件：macOS/Windows 的 `tray-icon 0.25.0` 与 `muda 0.20.0` 菜单由明确 owner 管理；
       Open Settings 不创建重复窗口并恢复当前 revisioned snapshot；Quit 停止菜单事件后进入既定
       input/runtime/config/frame/renderer/overlay shutdown；callback 只发送强类型有序事件；双平台
-      release smoke、Windows x64/ARM64 source check 与完整 Native 门禁通过。
+      release smoke、Windows x64/ARM64 source check 与完整门禁通过。
     - 历史状态（2026-08-31）：初期实现以 macOS 主线程 target/action 与 Windows 隐藏 HWND
       callback 管理菜单和 status item cleanup。该实现已由 ADR-0031 的 `tray-icon` 托盘 owner
       与直接 `muda` 菜单 owner 替换；历史 macOS smoke 及既有 settings/Models release smoke
@@ -3042,7 +3043,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 验收证据（2026-08-31）：commit `9e97704` 的 PR run `33344287629` 全绿；Windows job
       `99345364734` 与 macOS job `99345364649` 均通过原生菜单 callback -> typed action -> settings
       恢复 -> 显式 Quit 的 release smoke，Ubuntu job `99345364707` 通过完整共享 workspace 门禁。
-      Windows x64/ARM64 platform Clippy、完整 Native format/Clippy/test/release check 本机通过；
+      Windows x64/ARM64 platform Clippy、完整 format/Clippy/test/release check 本机通过；
       callback 只入队，菜单 owner 在 input/runtime/config/frame/renderer/overlay 之前停止。
     - 状态（2026-09-13）：overlay 右键已改为通过 overlay session 的真实 Windows HWND / macOS
       content `NSView` 直接调用 `muda::ContextMenu`，不再借用托盘隐藏窗口；macOS 本机 release
@@ -3057,24 +3058,23 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       registered wake message；primary 在任何 config/model writer 前取得 owner，secondary 不启动
       配置/runtime/input/GPU，只通知 primary 后成功退出；primary 将消息转为强类型
       `OpenSettings`，不创建重复 Entity，恢复当前 snapshot；owner 在产品 shutdown 中显式释放；
-      双进程 release smoke、Windows x64/ARM64 source check 与完整 Native 门禁通过。
+      双进程 release smoke、Windows x64/ARM64 source check 与完整门禁通过。
     - 验收证据（2026-08-31）：commit `c889115` 的 push run `33345266089`、Windows job
       `99348057229` 与 PR run `33345268535`、Windows job `99348064645` 均通过真实双进程
       release smoke：secondary 只通知 primary 后成功退出，primary 保持 frame source、重显
       原 Entity、恢复当前 snapshot 并完成有序 shutdown。两次 run 的 macOS/Ubuntu workspace
-      门禁也通过；本机完整 Native 门禁及 Windows x64/ARM64 platform Clippy 通过。
+      门禁也通过；本机完整门禁及 Windows x64/ARM64 platform Clippy 通过。
 29. [x] `P7-MACOS-APPLICATION-REOPEN`：通过正式 `.app` 和 LaunchServices 唤醒后台产品。
     - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、GPUI `on_reopen`、ADR-0008、产品资源目录。
     - 退出条件：`.app` 固定 Bundle ID、最低系统和禁止多实例 metadata，内置三个预置模型且
       executable 从 `Contents/Resources` 加载；再次 `open` 只触发既有进程的 AppKit reopen，
       隐藏的预渲染设置窗口被重显并恢复当前 snapshot，后台 frame source 持续；退出仍进入
-      shutdown coordinator；ad-hoc strict codesign、release LaunchServices smoke 和完整 Native
-      门禁通过。Distribution signing、Hardened Runtime/notarization 继续由发布门禁跟踪。
+      shutdown coordinator；ad-hoc strict codesign、release LaunchServices smoke 和完整门禁通过。Distribution signing、Hardened Runtime/notarization 继续由发布门禁跟踪。
     - 验收证据（2026-08-31）：最小产品 `Info.plist`、可重复打包脚本、bundle resource resolver
       与 application-reopen smoke 已实现；本机 release `.app` 先销毁设置 Entity，再从外部执行
       第二次 `open`，验证进程数保持 1、新 Entity 恢复 revisioned snapshot、frame source 持续、
       ad-hoc strict codesign 和正常 shutdown。commit `2aba0e8` 的 push run `33347041829` 全绿，
-      macOS Native job `99353029349` 的正式 `.app` LaunchServices smoke 明确报告 primary ready、
+      macOS CI job `99353029349` 的正式 `.app` LaunchServices smoke 明确报告 primary ready、
       application reopen callback、设置窗口恢复和正常 quit；同一 job 的 format、Clippy、workspace
       test、release、Production build 与系统菜单 smoke 均通过。Distribution signing、Hardened
       Runtime/notarization 仍由发布门禁跟踪，不计入本项完成声明。
@@ -3088,7 +3088,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       Windows HKCU Run value 按环境分名、精确匹配当前 executable + `--run-seconds 0` 且无需管理员；
       macOS 13+ Production 使用 `SMAppService.mainAppService`，macOS 12 与 Development 明确
       unsupported 且不触及生产登录项；读取不改变系统状态，显式启用/禁用可恢复原状态；双平台
-      平台 smoke、Windows x64/ARM64 source check 与完整 Native 门禁通过。
+      平台 smoke、Windows x64/ARM64 source check 与完整门禁通过。
     - 状态（2026-08-31）：ADR-0013 已接受；共享 state/error、Windows UTF-16 HKCU Run
       adapter、macOS runtime class availability/Production-only `SMAppService` adapter 和恢复型
       双平台 smoke 已实现。`objc2-service-management 0.3.2` 为当前最新稳定 binding，许可证、
@@ -3107,12 +3107,12 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 退出条件：状态读取与启用/禁用不阻塞 GPUI executor；控件覆盖 loading、enabled、disabled、
       stale、requires-approval、unsupported 和 retry；Development/macOS 12 不允许 mutation；窗口重建
       从新 snapshot 恢复，错误不改变 runtime/config；键盘、accessibility、双平台页面 smoke 与完整
-      Native 门禁通过。
+      门禁通过。
     - 状态（2026-08-31）：UI 自有 startup state/error、typed enable command、settings worker
       平台映射和 revision observation 已接入；General 控件覆盖 loading、disabled、enabled、stale、
       requires-approval、not-found、unsupported 与 read-error retry，操作支持 Tab 和 Enter/Space。
       模拟服务测试证明外部状态/read error 会递增 revision，变更失败和成功都不改 config/runtime，
-      shutdown 保留最后状态；General product smoke 已进入双平台既有 settings lifecycle。完整 Native
+      shutdown 保留最后状态；General product smoke 已进入双平台既有 settings lifecycle。完整
       format/Clippy/test/release/Production、license/source policy 和 Windows x64/ARM64 platform Clippy
       本机通过；commit `62f8c8f` 的 push run `33354177622` 中 Windows/macOS jobs
       `99373058496`/`99373058428` 均通过 General 页面、窗口重建和 shutdown，macOS 同时通过安装态
@@ -3133,12 +3133,12 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 退出条件：UI 协议只包含 pressed 数量及 captured/reconciled/reset、sequence、overflow 的匿名
       聚合计数，不含具体键值、原始事件、路径或平台类型；transport-only 变化推进 settings revision；
       页面覆盖 loading、service error 和 retry，导航/刷新支持 Tab 与 Enter/Space；双平台 release
-      settings smoke 实际切换并渲染页面，定向 contract 与完整 Native 门禁通过。
+      settings smoke 实际切换并渲染页面，定向 contract 与完整门禁通过。
     - 状态（2026-08-31）：`SettingsInputDiagnostics` 已逐字段投影 19 项 runtime/transport 计数，
       settings clock 独立观察该投影；侧栏占位已替换为可键盘访问的双列 Diagnostics 页面，既有
       Refresh 提供 loading/error/retry，双平台 settings lifecycle smoke 会先验证 General 再切换
       Diagnostics。本机 800x600 Production `.app` 可视检查证明 19 项指标与底部操作无重叠；
-      Development release settings lifecycle、完整 Native format/Clippy/test/release/Production、
+      Development release settings lifecycle、完整 format/Clippy/test/release/Production、
       license/source policy、Linux app Clippy 与 Windows x64/ARM64 platform Clippy 均通过。
       commit `62f8c8f` 的 push run `33354177622` 全绿；Windows/macOS jobs
       `99373058496`/`99373058428` 均实际通过 General -> Diagnostics 页面切换、close/reopen 和有序
@@ -3150,41 +3150,41 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 依赖：正式 `ConfigStore`、当前 v1 schema 和环境 writer lock。
     - 退出条件：每份备份携带格式版本、墙上时间、源 schema/revision 和原始配置；按环境限制
       数量与总大小；系统时钟回退不误删新备份；不删除非自有文件；备份失败不替换当前配置；
-      config 定向测试、Clippy 和完整 Native workspace 门禁通过。
+      config 定向测试、Clippy 和完整 workspace 门禁通过。
     - 验收证据（2026-08-31）：backup envelope、12 次提交后的 8 份/8 MiB 收敛、未知文件保留、
       排序键时钟回退和 expected-revision 提交均有正式 crate 单元测试；commit `25d5030` 的
-      pull request run `33364970646` 全绿，Windows/macOS/Ubuntu Native jobs
+      pull request run `33364970646` 全绿，Windows/macOS/Ubuntu CI jobs
       `99403612087`/`99403611991`/`99403612068` 通过完整 format、Clippy、workspace test、
       release/Production 和平台 smoke，dependency policy、shared schema 与 config-store jobs
       同时通过。2026-09-04 重置为当前 v1 后，本地 config 与 workspace 测试继续覆盖这些契约。
 34. [x] `P6-CONFIG-INVALID-LOAD`：固定无效配置保留和当前 v1 重复读取契约。
-    - 依赖：正式 `ConfigStore` 和严格 Native v1 schema。
+    - 依赖：正式 `ConfigStore` 和严格 v1 schema。
     - 退出条件：损坏、截断、错误类型、越界值和未知字段均返回错误且不覆盖/备份当前文件；
       有效 v1 连续加载 10 次结果和 revision 不变且不产生重复备份；config 定向测试、Clippy 与
-      完整 Native workspace 门禁通过。
+      完整 workspace 门禁通过。
     - 状态（2026-09-04）：正式 crate 已加入五类无效输入逐字节保留测试和 10 次 v1 reload
       门禁；本机定向测试、Clippy 与完整 workspace 门禁通过。
-35. [x] `P6-CONFIG-BACKUP-RECOVERY`：从验证通过的 Native 备份恢复损坏的正式配置。
+35. [x] `P6-CONFIG-BACKUP-RECOVERY`：从验证通过的有效备份恢复损坏的正式配置。
     - 依赖：`P6-CONFIG-BACKUP-RETENTION`、`P6-CONFIG-INVALID-LOAD` 和正式 app 启动装配。
     - 退出条件：按新到旧验证格式/schema/revision/typed config，只提交首个有效候选；损坏 current
       逐字节进入有界环境内 quarantine；无有效候选或归档/验证失败时不默认覆盖；恢复重启幂等，
       Development/Production 隔离；app 暴露不含路径的恢复诊断；config/app 定向测试、Clippy 和
-      完整 Native workspace/三平台 CI 门禁通过。
+      完整 workspace/三平台 CI 门禁通过。
     - 验收证据（2026-08-31）：正式 store 从新到旧验证 backup format、源 schema/revision 与
       typed config，未来格式/schema 和 revision mismatch 均被跳过；损坏 current 逐字节进入每环境
       4 份/8 MiB quarantine，无候选、未来 current schema、重复启动和双环境隔离均有单元回归，
       app 集成测试确认恢复值进入 runtime 且只保留匿名诊断。commit `11f5509` 的 pull request run
-      `33367819458` 全绿；Windows/macOS/Ubuntu Native jobs `99412066607`/`99412066610`/
+      `33367819458` 全绿；Windows/macOS/Ubuntu CI jobs `99412066607`/`99412066610`/
       `99412066583` 通过完整 format、Clippy、workspace test、release/Production 与平台 smoke，
       Windows input/config job `99412066542` 也通过真实路径与存储测试。
 36. [x] `P6-CONFIG-RECOVERY-DIAGNOSTIC`：把成功配置恢复投影到正式 Diagnostics 页面。
     - 依赖：`P6-CONFIG-BACKUP-RECOVERY`、revisioned `SettingsSnapshot` 和正式 Diagnostics 页面。
     - 退出条件：settings 协议只公开源 schema 与跳过候选数，不包含路径、原始 JSON、时间戳或
       I/O 文本；正常加载与恢复成功均有明确状态；refresh、shutdown snapshot 和 800x600 页面
-      smoke 保持一致且无重叠；UI/app 定向测试、完整 Native 门禁和三平台 CI 通过。
+      smoke 保持一致且无重叠；UI/app 定向测试、完整门禁和三平台 CI 通过。
     - 验收证据（2026-08-31）：协议、service 投影、Diagnostics 状态行、正常/恢复 presentation
       测试和 service refresh/shutdown 回归已实现；本机 800x600 release `.app` 可视检查通过。
-      commit `260083d` 的 pull request run `33369531252` 全绿；Windows/macOS/Ubuntu Native jobs
+      commit `260083d` 的 pull request run `33369531252` 全绿；Windows/macOS/Ubuntu CI jobs
       `99417224388`/`99417224402`/`99417224398` 通过完整 format、Clippy、workspace test、
       release/Production 与平台 smoke，Windows input/config job `99417224387` 同时通过。
 37. [x] `P6-CONFIG-INTERRUPTED-COMMIT`：把强杀中断后的确定性配置恢复提升到正式产品 store。
@@ -3193,13 +3193,13 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       验证；有效/缺失/损坏 current 与有效/无效 temp 组合均保守恢复；非 v1 schema temp 原样保留；
       stale/invalid archive 每环境合计最多 4 份/8 MiB，未知文件与另一环境不受影响；强杀持锁
       子进程后 OS lock 释放且启动在 1 秒内有界重试；app 只公开匿名 action；config/app 定向测试、
-      完整 Native workspace、三平台 CI 和 Windows input/config job 通过。
+      完整 workspace、三平台 CI 和 Windows input/config job 通过。
     - 验收证据（2026-08-31）：正式 store、状态机、有界归档、未知 schema 保留、强杀子进程
-      回归和匿名 app action 已实现。commit `0b7b118` 的 pull request run `33371888571` 全绿；Windows/macOS/Ubuntu Native jobs
+      回归和匿名 app action 已实现。commit `0b7b118` 的 pull request run `33371888571` 全绿；Windows/macOS/Ubuntu CI jobs
       `99424654786`/`99424654816`/`99424654950` 通过完整 format、Clippy、workspace test、
       release/Production 与平台 smoke，Windows input/config job `99424654701` 实际通过 Windows
       原子替换、强杀 lock 释放、启动恢复和真实存储路径测试。2026-09-04 的 v1 重置将同一路径
-      收紧为拒绝全部非 v1 schema，并通过本地完整 Native workspace 与仓库策略门禁。
+      收紧为拒绝全部非 v1 schema，并通过本地完整 workspace 与仓库策略门禁。
     - 补充证据（2026-08-31）：workspace 并行测试在 `File` 析构后紧接重入时观察到瞬时
       `LockUnavailable`，commit `a760ce0` 为 writer lock RAII guard 增加显式 `unlock()`；本机
       32 测试线程重复运行与完整
@@ -3210,28 +3210,28 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 退出条件：无有效候选时不覆盖 current、不启动 overlay/GPU，Application 进入 recovery-only
       settings；snapshot 公开匿名状态与候选计数，所有业务写入/模型/启动项操作被拒；显式恢复默认
       在 writer lock 内二次确认、quarantine 原字节、原子写入并验证 v1 默认配置，恢复后要求重启；
-      非 v1 schema、归档/验证失败保留原文件并返回稳定错误；config/app/ui 定向测试、完整 Native
+      非 v1 schema、归档/验证失败保留原文件并返回稳定错误；config/app/ui 定向测试、完整
       workspace、三平台 CI 和 recovery window smoke 通过。
     - 状态（2026-08-31）：config/app/ui 定向测试已通过（config 23、app 29、ui 21）。commit
-      `e2ced51` 的 pull request run `33374202985` 全绿；Windows/macOS/Ubuntu Native jobs
+      `e2ced51` 的 pull request run `33374202985` 全绿；Windows/macOS/Ubuntu CI jobs
       `99431897523`/`99431897620`/`99431897612`、Windows input/config job `99431897588`、
       Windows GPUI jobs `99431897503`/`99431897512` 和 macOS GPUI job `99431897618` 均通过。
       显式 Development 测试产物另提供 `--configuration-recovery-smoke`，只在独立临时存储根
       写入损坏 current，验证匿名 recovery snapshot、真实 recovery-only GPUI 窗口、settings service
       有序停止与临时数据清理；本机 macOS smoke 通过。commit `175e7a4` 的 pull request run
       `33376471972` 全绿，
-      Windows/macOS/Ubuntu Native jobs `99438972370`/`99438972328`/`99438972320` 通过完整门禁，
-      Windows 与 macOS Native jobs 均实际通过新增 recovery window smoke；Windows input/config job
+      Windows/macOS/Ubuntu CI jobs `99438972370`/`99438972328`/`99438972320` 通过完整门禁，
+      Windows 与 macOS CI jobs 均实际通过新增 recovery window smoke；Windows input/config job
       `99438972066` 及双平台 GPUI spike jobs 同时通过，退出条件满足。
 39. [x] `P6-CONFIG-WRITE-FAILURES`：稳定分类并投影配置写入的可恢复存储失败。
     - 依赖：`P6-CONFIG-INTERRUPTED-COMMIT`、正式 settings error contract 和原子 writer。
     - 退出条件：权限/只读、空间/配额不足和固定 temp 目标占用具有稳定匿名原因与独立 settings
       error；temp 创建前权限失败、创建后磁盘满和真实文件/目录占用均可重复注入，失败逐字节保留
       current、不推进 snapshot/revision，只清理本次调用创建的 partial temp，绝不删除预先/并发占用
-      条目；config/app/ui 定向测试、完整 Native workspace、三平台 CI 和 Windows config job 通过。
+      条目；config/app/ui 定向测试、完整 workspace、三平台 CI 和 Windows config job 通过。
     - 验收证据（2026-08-31）：config 25、app 31、ui 22 项定向测试覆盖阶段注入、真实文件/目录
       占用、current/占用条目保留、partial temp 清理、snapshot revision 不变和匿名 settings error。
-      commit `0549f33` 的 pull request run `33378437342` 全绿；Windows/macOS/Ubuntu Native jobs
+      commit `0549f33` 的 pull request run `33378437342` 全绿；Windows/macOS/Ubuntu CI jobs
       `99445071780`/`99445071706`/`99445071635` 通过完整 format、Clippy、workspace test、release/
       Production 与平台 smoke，Windows input/config job `99445071726` 和 config-store job
       `99445071760` 同时通过，退出条件满足。
@@ -3242,11 +3242,11 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       snapshot 和 error 不包含路径或原始 OS 文本；platform adapter 验证/canonicalize 绝对目录并
       通过 `opener 0.8.5` 交给系统默认程序；成功不推进 revision，失败保留 snapshot 并返回
       稳定匿名错误，recovery-only 可用；Diagnostics 覆盖 pending、键盘和 accessibility 状态；
-      platform/app/ui 定向测试、完整 Native workspace、三平台 CI 和双平台 GPUI smoke 通过。
+      platform/app/ui 定向测试、完整 workspace、三平台 CI 和双平台 GPUI smoke 通过。
     - 验收证据（2026-08-31）：typed protocol、Application capability、Finder/Explorer adapter、
       Diagnostics 控件与匿名错误/不变 revision/recovery-only 回归已完成；本机 platform 17、ui 23、
       app 33 项定向测试、严格 Clippy、完整 workspace、release/Production 与真实 recovery window
-      smoke 通过。commit `6b41808` 的 run `33381198560` 全绿；Windows/macOS/Ubuntu Native jobs
+      smoke 通过。commit `6b41808` 的 run `33381198560` 全绿；Windows/macOS/Ubuntu CI jobs
       `99453718576`/`99453718477`/`99453718406` 通过完整门禁，Windows/macOS 分别执行 opener
       参数 contract；Windows input/config job `99453718404`、Windows/macOS GPUI jobs
       `99453718327`/`99453718079` 和 config-store job `99453718598` 同时通过，退出条件满足。
@@ -3256,10 +3256,10 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       settings 失败语义保持不变。依赖启用
       `reveal` feature，预留平台文件管理器的定位选中能力；当前没有 reveal 业务调用点，也未新增公共 API。
 41. [x] `P6-BUILD-ENV-METADATA`：让正式构建和打包入口显式固定 Development/Production。
-    - 依赖：ADR-0008、正式 app build script、Native workspace/CI 与 macOS packaging baseline。
+    - 依赖：ADR-0008、正式 app build script、workspace/CI 与 macOS packaging baseline。
     - 退出条件：默认 Development 无额外手工配置；Production check/package 显式启用 `production`；
       packaging 在调用 Cargo 前拒绝未知 `--environment` 值并映射 feature；运行时 CLI/env/settings
-      不能切换；feature 组合 contract、完整 Native workspace 与三平台 CI 通过。
+      不能切换；feature 组合 contract、完整 workspace 与三平台 CI 通过。
     - 验收证据（2026-09-14）：`bongocat-app` 以默认 Development、显式 `production` feature
       编译环境，Production 与 `storage-test-injection` 组合在编译期失败；packaging 校验
       `--environment` 后选择 feature，CI 覆盖默认、Production 和拒绝组合。直接
@@ -3276,12 +3276,12 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 退出条件：默认产品 API/CLI 不接受 `StorageLayout`、根目录或 recovery storage override；
       正式启动只以 immutable build environment 调用当前平台 resolver；临时根注入必须显式启用
       Development-only feature，Production 组合在编译期失败；恢复窗口 smoke 使用独立测试产物且
-      不覆盖默认 release binary；默认/feature 参数 contract、Production 拒绝、完整 Native workspace、
+      不覆盖默认 release binary；默认/feature 参数 contract、Production 拒绝、完整 workspace、
       三平台 CI、Windows input/config 与双平台 recovery window smoke 通过。
     - 验收证据（2026-08-31）：产品/测试 API、CLI feature gate、Production compile guard 和独立
       CI target 已实现；默认 release binary 不接受 recovery override，独立测试产物完成双平台窗口
       生命周期。commit `696319e` 的 pull request run `33386401135` 全绿；Windows/macOS/Ubuntu
-      Native jobs `99469897044`/`99469896758`/`99469896811` 通过完整 format、Clippy、workspace
+      CI jobs `99469897044`/`99469896758`/`99469896811` 通过完整 format、Clippy、workspace
       test、release/Production 与平台 smoke，Windows/macOS jobs 均实际通过 recovery window；
       Windows input/config job `99469896784`、config-store job `99469896999`、双平台 GPUI 和依赖
       策略 jobs 同时通过，退出条件满足。
@@ -3291,7 +3291,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
     - 退出条件：current 在 writer lock 内按 load -> schema v1 check -> typed validate 执行；提交经固定
       同目录 temp、flush 和原子替换，最终重读比较 typed config/revision；替换后验证破坏可受控注入，
       失败逐字节恢复原 v1 并清理 temp；有效 v1 不重写，无效/非 v1 schema 不被覆盖；config 定向测试、严格 Clippy、完整
-      Native workspace、三平台 CI、Windows input/config 和独立 config-store job 通过。
+      workspace、三平台 CI、Windows input/config 和独立 config-store job 通过。
     - 验收证据（2026-09-04）：正式成功路径、有效 v1 重复读取、无效/非 v1 schema 保留，以及替换后
       验证破坏注入、原 bytes 回滚、temp 清理和重启重试均有正式 crate 回归。底层事务与故障注入
       最初由 commit `fd0f1d2` 建立；本次无迁移的 v1 实现已通过本地 format、Clippy、workspace test、
@@ -3302,7 +3302,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
         不阻塞 config/runtime，当前版本不覆盖未知 window state；GPUI observer 合并变化后及时写入，overlay
         只在几何变化时写入，settings worker shutdown 强制 flush，配置更新、模型切换、macOS Entity
         重建与 Windows 隐藏/重显均保留最新几何，进程重启读回；config/ui/app 定向测试、严格
-        Clippy、完整 Native workspace、三平台 CI 和双平台隔离 storage smoke 通过。- 验收证据（2026-08-31）：typed store、UI tracker、Application/settings worker 接线、损坏隔离、
+        Clippy、完整 workspace、三平台 CI 和双平台隔离 storage smoke 通过。- 验收证据（2026-08-31）：typed store、UI tracker、Application/settings worker 接线、损坏隔离、
         双环境、并发 lock、验证失败回滚、shutdown/restart 单测和 Development-only 双平台 smoke
         已实现。`cargo fmt --all -- --check`、`cargo test --workspace`、
         `cargo clippy --workspace --all-targets --all-features -- -D warnings`、
@@ -3310,7 +3310,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
         macOS Development release smoke `cargo run --manifest-path
 Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 --target-dir target/storage-test-injection -- --settings-window-state-smoke` 输出
-        `settings window state restored after restart`。workflow `33395834870` 的 Native workspace
+        `settings window state restored after restart`。workflow `33395834870` 的 workspace
         jobs `99500010100`（Ubuntu）、`99500010122`（macOS）和 `99500010167`（Windows）以及
         Windows input/config job `99500010128` 全部通过；Windows 原生状态 smoke 输出与 macOS
         release smoke 一致。2026-09-02 增补运行中落盘、配置/模型更新不覆盖状态和 overlay 完整
@@ -3327,7 +3327,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：按钮边沿与连接代次进入可靠 runtime 队列，六轴/trigger 使用独立 latest-value
       通道并应用 dead-zone/范围归一化；断开、重连、overflow、Reset 和 shutdown 不残留 pressed
       或旧 axis；backend queue 有界且可观测，双平台 backend worker 有界 stop/join，物理手柄、
-      模型 Stick 参数回归和完整 Native 门禁通过。
+      模型 Stick 参数回归和完整门禁通过。
     - [x] 建立正式 runtime 的 generation-keyed axis latest-value transport。
       - 状态（2026-08-31）：`bongocat-runtime` 新增六轴/trigger 强类型 key/sample、固定 24 key
         容量、按 key 合并、非单调时间/非有限/越界/过期 generation 拒绝、重连淘汰旧 pending
@@ -3336,7 +3336,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       - 状态（2026-08-31）：`GamepadAxisSettings` 拒绝无效 dead-zone，stick 使用对称重映射、
         trigger 使用单侧重映射；`StickLeft/Right X/Y` 已进入 renderer 参数，Reset 会清空轴值。
     - [x] 将 stick/trigger dead-zone 纳入正式配置并接入 Application runtime 生命周期。
-      - 状态（2026-09-04）：Native config v1 直接包含 `[0, 1)` 的
+      - 状态（2026-09-04）：configuration v1 直接包含 `[0, 1)` 的
         `input.gamepad.stick_dead_zone`/`input.gamepad.trigger_dead_zone`，默认值为 `0.15`/`0.0`。
         Application 启动会在 runtime Ready 后发送强类型 settings，
         运行中更新先做 revision-checked 原子配置提交再重投影现有 axis；启动、更新、重启和 schema
@@ -3381,7 +3381,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         authoritative reset、callback ownership/close、bounded stop/join、compile guard 和 xinput
         extreme-axis 回归；这些代码证据不等于上述物理/系统门禁。
 46. [x] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。
-    - 依赖：Native config v1、`InputEvent`/`PhysicalKey` 语义和后续 GPUI 快捷键编辑页。
+    - 依赖：configuration v1、`InputEvent`/`PhysicalKey` 语义和后续 GPUI 快捷键编辑页。
     - 退出条件：字符串绑定在配置提交前解析为平台无关的单 key chord；别名/顺序规范化稳定，
       非法或重复绑定返回可重试错误；不把平台 keycode、窗口句柄或原始按键流带入 config；
       后续平台捕获、清除、恢复默认和动作触发必须复用该 canonical contract。
@@ -3390,7 +3390,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       解析、runtime typed shortcut dispatch、settings typed command、revision-checked 原子
       持久化、snapshot projection、重启恢复回归、`RestoreDefaultShortcuts` 清除/恢复默认
       command、canonicalization 回归、单元测试和
-      `shared/config/native-config-contract.md` 已进入 `next`。2026-09-01 又增加
+      `shared/config/contract.md` 已进入 `next`。2026-09-01 又增加
       `CompiledShortcuts` typed table 和 `Application::compiled_shortcuts()` 只读投影：配置提交
       后可一次性解析为闭合 command/model action。chord key 已冻结为 legacy 可录制键闭集并携带
       USB HID usage；平台 `ShortcutMatcher` 按左右 modifier 聚合 + HID identity 确定性匹配，拒绝
@@ -3443,7 +3443,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：60 FPS 单帧保持 `0.75` 剩余距离，不同 tick 切分产生相同结果，逻辑距离
       `< 0.5` 后精确收敛；首样本与 viewport 变化不产生跨屏漂移；无新 sample 时周期 tick
       继续推进，raw cursor diagnostics 与可靠 edge 队列语义不变；runtime 定向测试与完整
-      Native workspace 门禁通过。
+      workspace 门禁通过。
     - 验收证据（2026-09-04）：`CursorSmoother` 使用注入单调时间换算指数衰减，runtime worker
       在 command、timeout 和 shutdown 边界统一消费/推进；单元测试覆盖帧率独立、首样本与
       viewport 切换，集成测试使用 `ManualClock` 验证连续 tick 的 `0.25 -> 0.4375` 参数轨迹。
@@ -3451,7 +3451,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 依赖：runtime typed command/snapshot、settings revision transaction 和 app-owned frame source。
     - 退出条件：`15..=240` 有统一 runtime contract；设置 UI 可读写并保留 keyboard/AccessKit
       语义；runtime evaluation、GPUI 产品 frame source 与独立 overlay loop 都使用最新值；有效值
-      持久化并在重启后恢复，越界或 stale 请求不改变当前 runtime/config；完整 Native workspace
+      持久化并在重启后恢复，越界或 stale 请求不改变当前 runtime/config；完整 workspace
       门禁与 macOS release 产品 smoke 通过。
     - 验收证据（2026-09-04）：`SetMaximumFps`、`RuntimeSnapshot::maximum_fps` 和
       `SettingsCommand::SetMaximumFps` 形成强类型链路；GPUI Kit number field 提供 `15..=240`、步长
@@ -3481,7 +3481,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 49. [x] `P2-HIDDEN-FRAME-THROTTLE`：overlay 不可见时降低无效 runtime/frame-source 唤醒。
     - 依赖：runtime-owned overlay visibility、动态帧率间隔和 app-owned product frame source。
     - 退出条件：隐藏状态不再按用户目标 FPS 周期唤醒；runtime command queue 仍可立即响应；重新
-      显示与应用快捷键的轮询延迟有明确上限；可见状态恢复用户目标 FPS；定向测试、完整 Native
+      显示与应用快捷键的轮询延迟有明确上限；可见状态恢复用户目标 FPS；定向测试、完整
       workspace 门禁和 macOS release 产品 smoke 通过。
     - 验收证据（2026-09-04）：共享 `frame_interval_for_runtime` 对所有合法目标 FPS 在隐藏时返回
       固定 `100 ms`，可见时恢复目标间隔，非法值仍拒绝；runtime `recv_timeout` 与 GPUI 产品 frame
@@ -3492,7 +3492,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：隐藏 tick 只消费可靠模型提交，保留同 generation 的 ordinary latest frame 并
       淘汰已被候选 supersede 的旧 generation data frame；候选完成一次隐藏
       draw/present 验证后提交且窗口保持隐藏；失败保留旧 GPU owner；重显先同步 latest frame 并
-      present 后才显示；双平台产品 smoke、完整 Native workspace 门禁通过。
+      present 后才显示；双平台产品 smoke、完整 workspace 门禁通过。
     - 验收证据（2026-09-04）：`RenderConsumer::take_model_commit` 已隔离 control/data 消费，双平台
       product tick 已实现隐藏候选验证和可见前再次 present。本机 macOS release 产品 smoke 已
       完成隐藏切模、GPU generation 前进、保持不可见、重显及恢复原模型。Windows runner 随后
@@ -3506,7 +3506,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：先阻止新 tick 并停止 input producer；frame task 正常退出或被取消均发送 ack；
       未收到 ack 时产生稳定匿名失败而非静默继续；runtime/config/audio shutdown 及
       renderer/GPU/window 释放发生在 ack 等待之后；单元测试、双平台 release lifecycle smoke
-      与完整 Native workspace 门禁通过。
+      与完整 workspace 门禁通过。
     - 验收证据（2026-09-04）：共享 stop/ack 与 RAII run guard 已接入产品 coordinator 和 frame task；
       本机 format、严格 Clippy、workspace test、release check、macOS release settings/Models
       lifecycle 与隐藏切模 smoke 已通过。commit `99f0977` 随 commit `7082ff3` 和 CI race 修复进入
@@ -3516,9 +3516,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 依赖：双平台产品 lifecycle、系统菜单 Quit、shutdown coordinator 和有界 smoke CLI。
     - 退出条件：无参数解析为持续运行到显式 Quit；正数 `--run-seconds` 仍提供有界诊断且 `0`
       保持显式无界拼写；安装包/Finder/Explorer 启动不依赖额外参数；所有退出仍进入既有
-      shutdown coordinator；入口 contract test、完整 Native workspace 与双平台 release lifecycle
+      shutdown coordinator；入口 contract test、完整 workspace 与双平台 release lifecycle
       smoke 通过。
-    - 验收证据（2026-09-04）：入口默认值、usage、contract test、Native README 与 Technical
+    - 验收证据（2026-09-04）：入口默认值、usage、contract test、README 与 Technical
       Design 已同步；本机 format、严格 Clippy、workspace test、release check、app 入口 13 个
       contract test 和 macOS release lifecycle smoke 通过。commit `7f799f7` 的 run
       `33867921771` 全绿；Windows job `101006895636` 与 macOS job `101006895731` 均通过完整
@@ -3528,7 +3528,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：`system`、`light`、`dark` 通过强类型 snapshot/command 往返；Application owner
       原子提交且重启恢复，stale revision 不改配置；显式模式即时更新组件与原生窗口外观，system
       清除覆盖并继续响应系统变化；三种选项通过 Select 提供 ComboBox role、当前值、键盘和 action 语义；
-      定向测试、完整 Native workspace 与双平台 release settings smoke 通过。
+      定向测试、完整 workspace 与双平台 release settings smoke 通过。
     - 完成（2026-09-04）：代码、Technical Design 和 smoke contract 已实现；本机 format、严格
       Clippy、workspace test、release check、默认 system 主题 release 产品 smoke，以及临时环境
       dark 主题 release 设置窗口/state 恢复 smoke 均通过。commit `ac5dc70` 的 run
@@ -3541,12 +3541,12 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       panic 并非零退出；持久日志只含固定 `application/error/panicked` code，不含 payload 或路径；
       run marker 保留且 current config 字节不变；下一次启动记录一次 `previous_run_unclean`，正常
       shutdown 后清除 marker 并记录 `shutdown_completed`；默认产品 CLI 拒绝父/子测试参数；入口
-      定向测试、完整 Native workspace 与双平台 release smoke 通过。
+      定向测试、完整 workspace 与双平台 release smoke 通过。
     - 验收证据（2026-09-04）：commit `8284176` 实现、Technical Design、CI 步骤、feature 参数
       边界与本机 debug 子进程闭环；run `33873937760` 全绿，Windows job `101026266475` 与 macOS
       job `101026266252` 均以同一 release executable 通过 `panic=abort` 子进程、固定匿名日志、
       config 字节不变、unclean 重启分类、marker 清理和正常 shutdown 验证。默认产品 CLI 继续拒绝
-      两个私有测试参数，完整 Native workspace 门禁同时通过。
+      两个私有测试参数，完整 workspace 门禁同时通过。
 55. [x] `P5-STATUS-ICON-VISIBILITY`：让当前 v1 的菜单栏/托盘状态图标可即时隐藏和恢复。
     - 依赖：`P7-SYSTEM-MENU-LIFECYCLE`、当前 v1 `system.show_status_icon`、settings revision/CAS
       和 GPUI Kit switch。
@@ -3554,11 +3554,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       owner 再原子提交，平台失败不改配置，配置失败回滚平台状态；macOS/Windows 共用同一个长期存活的
       `tray-icon 0.25.0` 托盘 owner 与直接 `muda 0.20.0` 菜单，`set_visible` 后两平台仍保留唯一
       菜单事件 owner；启动恢复已保存值；General 控件具备 keyboard/AccessKit switch 语义；定向测试、
-      完整 Native workspace 与双平台 release system-menu smoke 通过。
+      完整 workspace 与双平台 release system-menu smoke 通过。
     - 验收证据（2026-09-04）：commit `8632ae5` 完成强类型 command/snapshot、主线程平台桥、
       config commit/rollback、双平台 status-item owner、启动恢复、GPUI Kit switch 与 AccessKit 语义；
       本机 app/platform/UI 定向测试、macOS release 产品 smoke、Windows x64/ARM64 platform source
-      check 和完整 Native 门禁通过。CI run `33877770376` 最终全绿；首次完整 macOS job
+      check 和完整门禁通过。CI run `33877770376` 最终全绿；首次完整 macOS job
       `101038752799` 与 Windows job `101038752918` 都通过增强后的 release
       `Smoke native system menu lifecycle`。独立 macOS GPUI spike 首次因 tooltip 延迟、第二次因无显示
       runner 的 Metal drawable-pool 测量抖动失败，第三次 job `101044187976` 全部通过；两次重跑均未
@@ -3569,28 +3569,28 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：Windows-only 配置值通过强类型 snapshot/command 往返；平台主线程先修改窗口扩展
       样式，Application owner 再原子提交，平台失败不改配置，配置失败回滚 HWND；启动和窗口重建
       恢复已保存值，隐藏任务栏按钮不隐藏/销毁设置窗口；General 控件具备 keyboard/UIA switch
-      语义；定向测试、完整 Native workspace 与 Windows release settings smoke 通过。
+      语义；定向测试、完整 workspace 与 Windows release settings smoke 通过。
     - 验收证据（2026-09-04）：commit `8ad5c49` 完成 Windows-only typed command/snapshot、GPUI
       owner request/reply bridge、HWND 扩展样式切换与回读、config commit/rollback、启动/重建恢复、
       GPUI Kit switch 和 UIA 语义；本机定向测试、完整 format/Clippy/workspace test/release check、
       x64/ARM64 platform source check、共享 fixture/schema 门禁和 macOS release system-menu smoke 通过。
-      CI run `33882985949` 全绿；Windows Native job `101055885362` 通过完整 workspace、release 产品
+      CI run `33882985949` 全绿；Windows CI job `101055885362` 通过完整 workspace、release 产品
       smoke 并输出 `taskbar icon toggled and restored`，macOS job `101055885548` 同时证明该 Windows
       控件未泄漏且原有 system-menu 生命周期无回归，退出条件满足。
-57. [x] `P5-APPLICATION-LANGUAGE`：建立当前 v1 应用语言设置和首批中英 Native 本地化闭环。
+57. [x] `P5-APPLICATION-LANGUAGE`：建立当前 v1 应用语言设置和首批中英 当前本地化闭环。
     - 依赖：当前 v1 `appearance.language`、settings revision/CAS、平台 locale API、GPUI Kit
       Select 和项目辅助功能桥。
     - 退出条件：`system`、`zh-CN`、`en-US` 使用闭合 enum 并拒绝未知持久化值；跟随系统仅解析
       简体中文或英文，其它 locale 回退英文且不覆写偏好；typed command 原子持久化且 stale revision
       不改配置；Select 从 snapshot 无回声同步；窗口标题、导航、Appearance、runtime status 和对应
-      AX/UIA 语义即时切换；定向测试、共享 schema/fixture、完整 Native workspace 与双平台 release
+      AX/UIA 语义即时切换；定向测试、共享 schema/fixture、完整 workspace 与双平台 release
       settings smoke 通过。其它三种历史语言和完整 Models/Diagnostics/General 文案仍由 UI 质量
       总项继续跟踪。
     - 验收证据（2026-09-05）：commit `74a9460` 完成当前 v1 闭合语言枚举、严格 schema/fixture、
       双平台系统首选 locale adapter、revision-checked typed command、原子持久化、GPUI Kit Select、
       窗口标题/导航/Appearance/runtime status 中英文切换和项目 AccessKit 语义；commit `9505fb2`
       同步修正隔离 config-store contract 的默认值。CI run `33893896502` 全绿；Windows/macOS/Ubuntu
-      Native jobs `101091871906`/`101091871884`/`101091871820` 均通过语言解析、持久化、重启、
+      CI jobs `101091871906`/`101091871884`/`101091871820` 均通过语言解析、持久化、重启、
       stale revision、UI contract、完整 workspace test、严格 Clippy 与 release check，Windows/macOS
       release settings smoke 同时通过。其它三种历史语言和剩余页面文案仍由 UI 质量总项跟踪。
 58. [x] `P5-GENERAL-LOCALIZATION`：完成当前 General 页面及辅助功能语义的中英本地化。
@@ -3598,11 +3598,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：Overlay、Model interaction、Input、Application 分组的当前可见标题、描述、动态
       启动项状态和 stepper action 均从同一闭合文案表读取；可见控件与 AX/UIA label/value 不漂移；
       中文 800x600 隔离 smoke 覆盖 General 页面、窗口状态恢复和有序 shutdown；删除未接入模块树的
-      旧 General renderer；UI 定向测试、严格 Clippy、完整 Native workspace 与双平台 CI 通过。
+      旧 General renderer；UI 定向测试、严格 Clippy、完整 workspace 与双平台 CI 通过。
     - 验收证据（2026-09-05）：实现提交 `f319556` 将主渲染、动态启动项状态和项目 AccessKit
       tree 收敛到同一中英文案表，删除未接入模块树的旧 `window/general.rs`；本机 UI 48 项测试、
-      严格 Clippy、完整 Native workspace test、release check 与 macOS 隔离 release smoke 通过。
-      CI run `33900420623` 的 macOS/Windows/Ubuntu Native jobs
+      严格 Clippy、完整 workspace test、release check 与 macOS 隔离 release smoke 通过。
+      CI run `33900420623` 的 macOS/Windows/Ubuntu CI jobs
       `101112924277`/`101112924307`/`101112924317` 全绿；Windows 与 macOS 日志均实际输出
       `Chinese General localization verified` 和 `settings window state restored after restart`，并继续
       通过配置恢复、shutdown 及各自剩余平台 smoke。
@@ -3612,11 +3612,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：页面、分组、导入控件、模型来源与资源计数、有效性诊断、空/错误/进度状态、
       激活与删除确认均从同一闭合文案表读取；Model ID placeholder 随语言更新；中文隔离 smoke
       覆盖预置模型 catalog、导入初态、800x600 窗口恢复和有序 shutdown；UI 定向测试、严格
-      Clippy、完整 Native workspace 与双平台 CI 通过。
+      Clippy、完整 workspace 与双平台 CI 通过。
     - 验收证据（2026-09-05）：实现提交 `8714740` 将 Models 页面、模型/导入动态状态、全部稳定
       settings error、Model ID placeholder 与 shell footer 接入同一中英文案源；UI 50 项测试、
-      严格 Clippy、完整 Native workspace test、release check 和 macOS 隔离 release smoke 本机通过。
-      CI run `33905710597` 的 Ubuntu/macOS/Windows Native jobs
+      严格 Clippy、完整 workspace test、release check 和 macOS 隔离 release smoke 本机通过。
+      CI run `33905710597` 的 Ubuntu/macOS/Windows CI jobs
       `101130018327`/`101130018508`/`101130018510` 全绿；macOS/Windows 日志均实际输出
       `Chinese Model library localization verified`，并继续通过 800x600 窗口重启恢复、shutdown 和剩余
       平台 smoke。
@@ -3625,26 +3625,26 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         GPUI Kit Diagnostics 页面和现有 input/runtime/config/shortcut typed contract。- 退出条件：页面、分组、26 个输入指标、input service、renderer/command failure、配置恢复、
         导出状态、快捷键动作/捕获/错误及备份操作均从同一闭合文案源读取；可见动作与 AX/UIA
         label/value 不漂移；中文 800x600 隔离 smoke 覆盖 Diagnostics 页面、窗口状态恢复和有序
-        shutdown；UI 定向测试、严格 Clippy、完整 Native workspace 与双平台 CI 通过。- 验收证据（2026-09-05）：中英文静态/动态文案、稳定快捷键捕获错误、用户可读 command 名称、
+        shutdown；UI 定向测试、严格 Clippy、完整 workspace 与双平台 CI 通过。- 验收证据（2026-09-05）：中英文静态/动态文案、稳定快捷键捕获错误、用户可读 command 名称、
         AccessKit 语义、中文隔离 smoke 标记和双平台 CI 断言均已实现。当时在 `BONGOCAT_BUILD_ENV=development`
-        下运行的 Native workspace `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets
+        下运行的 workspace `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets
 --all-features --locked -- -D warnings`、`cargo test --workspace --locked` 和
         `cargo check --workspace --release --locked` 全部通过（该变量入口已于 2026-09-14 改为默认
         Development 与显式 `production` Cargo feature）；UI 定向测试 51 项、Diagnostics
         presentation/localization 回归均通过。macOS Input Monitoring/Accessibility 相关 4 项
         集成测试按设计保持 ignored，真实权限矩阵仍属于平台实机门禁，不影响本项文案闭环。
 
-61. [ ] `P5-JSON-LOCALIZATION-CONSOLIDATION`：将 Native UI 文案统一迁移到 `rust-i18n` JSON 资源。
+61. [ ] `P5-JSON-LOCALIZATION-CONSOLIDATION`：将 BongoCat UI 文案统一迁移到 `rust-i18n` JSON 资源。
     - 依赖：`P5-APPLICATION-LANGUAGE`、`P5-GENERAL-LOCALIZATION`、`P5-MODELS-LOCALIZATION`、
       `P5-DIAGNOSTICS-LOCALIZATION`。
-    - 状态（2026-09-10）：已完成首批 Native locale 的信息架构重构：`en-US.json` 与 `zh-CN.json`
+    - 状态（2026-09-10）：已完成首批当前 locale 的信息架构重构：`en-US.json` 与 `zh-CN.json`
       使用 `_version: 1` 和 `navigation`、`settings`、`models`、`shortcuts`、`diagnostics`、
       `about`、`actions`、`status`、`errors` 领域层级；静态文案目前在实际 UI、可访问性和 smoke
       消费点直接引用稳定 snake_case 路径，不再维护 `UiText` enum 到 key 的集中映射。动态摘要、错误、
       快捷键冲突和输入指标也统一通过 JSON 占位符资源读取，并加入递归 key/占位符一致性测试。
       `bongocat-i18n` 继续是唯一的 rust-i18n catalog owner，因此保留显式 locale 查询而不在 UI
       crate 重复初始化 `t!`。三种历史前端语言仍不在
-      Native v1 支持范围；完整 UI 编译、双平台 smoke 和 CI 语言资源门禁尚未完成，因此不得勾选。
+      v1 支持范围；完整 UI 编译、双平台 smoke 和 CI 语言资源门禁尚未完成，因此不得勾选。
     - 本轮 catalog 审计（2026-09-24）：删除仅由 `#[cfg(test)]` helper 使用的
       `models.catalog.loading`、`models.catalog.unavailable`、`models.catalog.empty`，并删除重复的
       Mver 取消键；将 About 的版本信息从已移除的 Diagnostics 页面键域移回
@@ -3659,7 +3659,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复；禁用时仅从活动表移除
       motion/expression 绑定，保留配置中的绑定和所有应用级快捷键；重新启用无需重录即可恢复；
       stale revision 不改变配置或活动表；General 控件具备中英文本、keyboard/AccessKit switch
-      语义；定向测试、完整 Native workspace 门禁和 macOS release settings smoke 通过。
+      语义；定向测试、完整 workspace 门禁和 macOS release settings smoke 通过。
     - 验收证据（2026-09-05）：Application 活动表过滤、settings typed command/snapshot、原子
       持久化、GPUI Kit switch、中英文案和项目 AccessKit 语义已实现；测试覆盖应用级绑定保留、
       模型行为绑定禁用、重启恢复、无需重录的重新启用、stale revision 和配置字节持久化。本机
@@ -3676,7 +3676,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       runtime 观察时间到期；repeat down 刷新期限，`0` 禁用，鼠标/手柄不超时，平台事件时间戳不
       跨时钟原点比较；fallback release 有独立匿名诊断；typed command/snapshot、原子持久化、重启
       恢复、stale/越界拒绝、GPUI Kit 数字控件、中英文案与 AX/UIA stepper 语义完成；定向测试、
-      完整 Native workspace 门禁和双平台 CI 通过。
+      完整 workspace 门禁和双平台 CI 通过。
     - 验收证据（2026-09-05）：runtime、Application/settings、GPUI Kit 数字控件、中英文案、
       AccessKit stepper 和匿名 diagnostics 已接通；定向 release 测试、format、严格 release
       workspace Clippy、release check、共享 schema/fixture/input runner 与隔离 macOS release
@@ -3693,7 +3693,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：Rust config、JSON Schema、默认 fixture 与 config-store spike 不再序列化或接受
       `application.launch_at_login`；启动项仍只由平台 snapshot 读取并仅由显式 typed command
       修改，外部系统变更可观察；不增加 migration、alias 或旧数据 fallback；共享 schema/fixture、
-      config 定向测试、完整 Native workspace 门禁和双平台 CI 通过。
+      config 定向测试、完整 workspace 门禁和双平台 CI 通过。
     - 验收证据（2026-09-05）：正式 Rust config、共享 JSON Schema/default/reject fixture 与离线
       config-store spike 已移除该字段；serde 与 Draft 2020-12 两条入口均把旧键当作 unknown field
       拒绝。config release 测试 46 项（1 项 crash-probe child 按设计 ignored）、config-store spike
@@ -3706,7 +3706,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 依赖：Phase 0 行为清单的 `P1 首发后` 决策、`next` 首版 schema 边界。
     - 退出条件：Rust config、JSON Schema、默认 fixture 与 config-store spike 不再序列化或接受
       `overlay.corner_radius_percent`；该 P1 功能仍留在行为清单且不误报为首发实现；不增加 migration、
-      alias 或旧数据 fallback；共享 schema/fixture、config 定向测试、完整 Native workspace 门禁和
+      alias 或旧数据 fallback；共享 schema/fixture、config 定向测试、完整 workspace 门禁和
       双平台 CI 通过。
     - 验收证据（2026-09-05）：正式 Rust config、共享 JSON Schema/default fixture 与隔离 config-store
       已移除该字段；serde 和独立 Draft 2020-12 reject fixture 均明确拒绝旧键。config release 测试
@@ -3724,7 +3724,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：Rust config、JSON Schema、默认 fixture 与 config-store spike 不再序列化或接受
       `overlay.hide_on_pointer_hover` 和 `overlay.hide_on_pointer_hover_delay_ms`；两个旧键各有独立
       reject contract；该 P1 功能仍留在行为清单且不误报为首发实现；不增加 migration、alias 或
-      fallback；共享 schema/fixture、config 定向测试、完整 Native workspace 门禁和双平台 CI 通过。
+      fallback；共享 schema/fixture、config 定向测试、完整 workspace 门禁和双平台 CI 通过。
     - 验收证据（2026-09-05）：正式 Rust config、共享 JSON Schema/default fixture 与隔离 config-store
       已移除两个字段；serde 与两个独立 Draft 2020-12 reject fixture 分别拒绝旧开关和旧延迟键。
       config release 测试 46 项（1 项 crash-probe child 按设计 ignored）、config-store 22 项、10 个
@@ -3747,7 +3747,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       screen 的 `visibleFrame`，在启动、缩放/设置重建、模型重建和拖动后的 frame tick 收敛窗口
       原点；保留多显示器负坐标，窗口大于工作区时不改变用户尺寸；关闭时允许部分越界，完全离开
       显示器的 state 仍执行既有回退；General 开关具备中英文本、键盘和 AX/UIA switch 语义；纯几何、
-      runtime/app/UI 定向测试、完整 Native workspace 门禁和双平台 release 产品 smoke 通过。
+      runtime/app/UI 定向测试、完整 workspace 门禁和双平台 release 产品 smoke 通过。
     - 验收证据（2026-09-05）：强类型 config/Application/runtime/settings/overlay options、GPUI Kit 开关、
       中英文案和项目 AccessKit 语义已接通；双平台创建/重建/tick 工作区收敛、纯几何测试、产品
       shutdown smoke 断言与 Windows 实际 HWND 收敛测试已实现。format、严格 workspace Clippy、
@@ -3765,7 +3765,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：平台无关且禁止 unsafe 的 verifier 先验签再严格解析 v1 manifest；拒绝 HTTP、跨环境、
       未知字段、错误 target/arch、无效 SemVer、过大 manifest/artifact、未知或过期 key、sequence 降级；
       只返回项目自有 verified 类型，并对下载流校验精确长度和 SHA-256；共享 Draft 2020-12 schema、
-      accept/reject fixture、依赖许可证/来源检查、完整 Native workspace 门禁和三平台 CI 通过。
+      accept/reject fixture、依赖许可证/来源检查、完整 workspace 门禁和三平台 CI 通过。
     - 验收证据（2026-09-05，**已作废**）：`bongocat-update`、ADR-0021、共享 schema/fixture 和稳定错误码
       曾于 commit `a9371f6` 通过 12 项 release 测试与三平台门禁。该实现已于 2026-09-13 随 ADR-0029
       整体删除（`shared/update/`、manifest v1 schema、sequence store、verifier、staging 与下载/安装
@@ -3786,7 +3786,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       GPUI Kit switch 与 signed update manifest boundary。
     - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复，stale revision 不改变
       config 或 snapshot；General 开关具备中英文本、键盘焦点和 AX/UIA switch 语义；UI/Application
-      定向测试、完整 Native workspace 门禁和双平台 CI 通过。该任务不包含 endpoint、24 小时调度、
+      定向测试、完整 workspace 门禁和双平台 CI 通过。该任务不包含 endpoint、24 小时调度、
       下载、安装或回滚，这些仍由后续更新任务完成。
     - 验收证据（2026-09-05）：Application 持久化、settings snapshot/command/client、GPUI Kit 开关、
       中英文案和项目 AccessKit 语义已接通；typed command、stale revision 与重启恢复测试已完成。
@@ -3802,7 +3802,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 依赖：`P7-AUTOMATIC-UPDATE-PREFERENCE`、runtime 单调时钟原则与旧版首发行为清单。
     - 退出条件：启用时 startup 和重新启用各立即派发一次，之后从实际派发时间间隔 24 小时；
       关闭立即抑制待触发检查，重复 poll 不重复派发；时钟回退产生稳定匿名诊断并安全重建期限，
-      期限溢出时停止后续自动调度且不 panic；平台无关定向测试、完整 Native workspace 门禁和三平台
+      期限溢出时停止后续自动调度且不 panic；平台无关定向测试、完整 workspace 门禁和三平台
       CI 通过。
       endpoint、网络 worker、手动检查和下载/安装仍由后续任务接入。
     - 验收证据（2026-09-05）：`bongocat-update` 已新增无 I/O 的可注入单调 scheduler 与强类型触发原因；
@@ -3815,27 +3815,27 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
        （默认 `24`、范围 `1..=8760`）。当前 GPUI 调度器以实际派发为期限锚点，轻量轮询配置变化并
        重排期限；旧的自研 manifest scheduler 证据仍仅作为历史记录。
 
-71. [x] `P9-BLOCK-LEGACY-AUTO-RELEASE`：阻止 Native Rewrite 开发期间由 tag 自动发布历史 App。
-    - 依赖：Phase 0 发布门禁、历史源码保留规则与尚未完成的 Native 签名/安装流水线。
+71. [x] `P9-BLOCK-LEGACY-AUTO-RELEASE`：阻止 BongoCat 开发期间由 tag 自动发布历史 App。
+    - 依赖：Phase 0 发布门禁、历史源码保留规则与尚未完成的 当前签名/安装流水线。
     - 退出条件：历史 Tauri release workflow 保留用于考古和回滚，但只允许显式手动触发；任何
-      `v*` tag 都不再自动构建或发布旧 Tauri、Linux 或 i686 artifact；不得据此声称 Native App
+      `v*` tag 都不再自动构建或发布旧 Tauri、Linux 或 i686 artifact；不得据此声称 BongoCat App
       已可发布，新的双平台签名、安装和更新流水线仍由 Phase 9 跟踪。
     - 验收证据（2026-09-05）：`.github/workflows/release.yml` 已移除 `push.tags`，名称明确标注为
       `Legacy BongoCat Release (manual only)`；`.github/workflows/upgradelink.yml` 也已移除 release
       event，只允许显式手动上传旧 Tauri update metadata。历史 job/matrix 未删除；YAML 语法与 staged
-      whitespace 检查通过。Native release workflow 尚未建立，因此 Phase 9 发布准备保持未完成。
-    - 状态（2026-09-07）：`test_native_release_target_matrix.py` 现同时锁定 legacy workflow 的
+      whitespace 检查通过。release workflow 尚未建立，因此 Phase 9 发布准备保持未完成。
+    - 状态（2026-09-07）：`test_release_targets.py` 现同时锁定 legacy workflow 的
       `workflow_dispatch` 手动触发和无 `push`/`tags` 自动发布入口，并继续保留历史 Linux 矩阵供考古，
-      不将其误判为 Native 首发产物。
+      不将其误判为当前首发产物。
 
-72. [x] `P9-NATIVE-PRODUCT-ICON`：让双平台 Native 应用与 Windows 托盘使用正式产品图标。
+72. [x] `P9-NATIVE-PRODUCT-ICON`：让双平台 BongoCat 应用与 Windows 托盘使用正式产品图标。
     - 依赖：正式 `bongocat-app` build script、macOS `.app` 打包入口与 Windows system-menu owner。
-    - 退出条件：Native workspace 自有并校验 `.icns/.ico` 容器；macOS bundle 声明、复制并签名封装
+    - 退出条件：workspace 自有并校验 `.icns/.ico` 容器；macOS bundle 声明、复制并签名封装
       `BongoCat.icns`；Windows executable 编译至少一个 icon group，托盘从当前 module 加载同一固定
-      资源且不回退通用图标；完整 Native workspace、依赖策略、macOS Production package 与三平台
+      资源且不回退通用图标；完整 workspace、依赖策略、macOS Production package 与三平台
       CI 通过。
-    - 当前契约（2026-09-13）：Native product `.icns/.ico` 仍由 build script/测试验证并进入对应
-      bundle/executable；Windows tray 改用 Native 自有 `resources/icons/tray-windows.png`，其
+    - 当前契约（2026-09-13）：product `.icns/.ico` 仍由 build script/测试验证并进入对应
+      bundle/executable；Windows tray 改用 BongoCat 自有 `resources/icons/tray-windows.png`，其
       容器、尺寸、RGBA 由 `product_icon_contract` 测试和 build script 固定，字节 hash 与来源记录在
       ADR-0031，Windows RC 只保留 product icon，不再嵌入 tray ICO。macOS tray 继续使用
       `tray-macos.png`。
@@ -3854,7 +3854,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 当前契约（2026-09-15）：`ModelStore::allocate_unique_id` 以建议值 + `-2`/`-3` 后缀分配
       唯一可移植 ID（非法建议回退 `custom-model`），`import` 底层 `AlreadyExists` 防覆盖语义保留
       作为并发兜底；v1 配置新增 `model.imported_models`（`deny_unknown_fields`，id 唯一、title
-      非空 ≤128 字符），schema、default fixture、两个新 reject fixture 与 `native-config-contract.md`
+      非空 ≤128 字符），schema、default fixture、两个新 reject fixture 与 `contract.md`
       已同步；导入成功以来源文件夹名为默认 title 登记、超长/缺失降级为模型 ID，元数据提交失败按
       导入失败报告且已安装目录保留；`delete_model` 同步移除记录；`Application::restore_startup_model`
       在启动时激活配置选择、缺失/损坏时记录匿名 `model_selection_fallback` 事件并持久化
@@ -3865,7 +3865,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       改名创建，无创建/删除/裁剪路径，空列表表示全部沿用构建给的名字，模式由稳定 built-in id 派生）。两者各自判重，同一 id
       可以同时出现在两边。`StorageLayout` 增加 `model-overrides/` 根目录，用于预置模型的用户侧
       替换封面。schema、既有 fixture、imported-model mode 的 accept/reject fixtures、
-      `tools/validate-json-schema.py` 的语义检查与 `native-config-contract.md` 已同步。标题改名只更新 `title` 并保留 `input_mode`；删除随 metadata 一起移除。
+      `tools/validate-json-schema.py` 的语义检查与 `contract.md` 已同步。标题改名只更新 `title` 并保留 `input_mode`；删除随 metadata 一起移除。
     - 验收证据（2026-09-15）：`bongocat-config` 48 测试（含两个新 reject fixture 的 manifest 契约）、
       `bongocat-model` 46 测试（含 4 个 `allocate_unique_id` 测试：建议直用/占用后缀/非法回退/超长
       截断）、`bongocat-app` 118 测试（新增导入分配唯一 ID 并登记标题、启动回退持久化 standard、
@@ -3971,7 +3971,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       写进 store 自己的 staging 目录，仍共用同一个 `PreparedModel` 校验与原子 rename 提交；归档在
       **解压前**按中央目录校验条目名/条目类型/压缩方法/加密标志/条目数/深度/声明字节，容器另有
       独立字节上限；包装目录被剥离；解压计入既有 copy stage；任何拒绝都不留 staging 或目标；
-      文件夹与压缩包两个来源入口、状态文案与 AccessKit 节点齐备；完整 Native 门禁通过。
+      文件夹与压缩包两个来源入口、状态文案与 AccessKit 节点齐备；完整门禁通过。
     - 决策记录：ADR-0036。
     - 当时的契约（2026-09-16，代码已删除）：`ModelStore::import_with_observer` 先 `detect_source_kind`
       （目录 → 就地读取；常规文件且以 `PK\x03\x04`/`PK\x05\x06`/`PK\x07\x08` 开头 → 压缩包；其余
@@ -4107,7 +4107,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `tools/validate-locales.py` 输出 `validated 2 locale(s), 374 key(s) each`；
       `tools/validate-fixtures.py`（9 input fixture + 8 model package case）、
       `tools/run-input-fixtures.py`（9 input fixture）、`tools/tests` 契约测试 63 项与
-      `tools.tests.test_native_release_target_matrix` 4 项、`git diff --check` 均通过。
+      `tools.tests.test_release_targets` 4 项、`git diff --check` 均通过。
       Metal 着色器以 `xcrun -sdk macosx metal -std=metal3.0 -c` 离线编译通过（退出码 0）。
       **未运行**：Windows HLSL 编译与 Windows 实机渲染（本机无 Windows、无 `dxc`/`fxc`，且
       `naga` 不提供 HLSL frontend，离线校验路径不可用）；macOS 实机圆角视觉 smoke（需人工
@@ -4233,7 +4233,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `hover-hide-delay-out-of-range (reject)` 均符合预期；`tools/validate-locales.py` 输出
       `validated 2 locale(s), 380 key(s) each`；`tools/validate-fixtures.py`
       （9 input fixture + 8 model package case）、`tools/run-input-fixtures.py`（9 input fixture）、
-      `tools/tests` 契约测试 63 项与 `tools.tests.test_native_release_target_matrix` 4 项均通过。
+      `tools/tests` 契约测试 63 项与 `tools.tests.test_release_targets` 4 项均通过。
       Metal 着色器以 `xcrun -sdk macosx metal -std=metal3.0 -c` 离线编译通过（退出码 0，产物
       `/tmp/bongocat_overlay.air` 7568 字节）；本次未改动任何着色器源，该步骤只是回归确认。
       **未运行**：Windows HLSL 编译与 Windows 实机悬停（本机无 Windows、无 `dxc`/`fxc`，且 `naga`
@@ -4266,7 +4266,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `default_serialization_matches_shared_config_fixture`（:1031）拿它去比对会漂移的
       `shared/config/fixtures/default.json`；因此第 78 项（窗口圆角）与第 79 项（悬停隐藏）把字段
       写进共享 fixture 之后，这个用例就已经失败，而它在 CI 里由 `contract-spikes` job 的
-      config-store 矩阵项和 `windows-input-spike` job 执行（`.github/workflows/native-rewrite-phase0.yml:1051-1053`、:1489-1490），
+      config-store 矩阵项和 `windows-input-spike` job 执行（`.github/workflows/ci.yml:1051-1053`、:1489-1490），
       属于既有红项，不是本次改动引入。本次补齐 `corner_radius_percent`、
       `hide_on_pointer_hover`、`hide_on_pointer_hover_delay_seconds` 三个字段、默认值与
       `validate()` 上界；把 `serialized_keys_follow_native_snake_case_contract` 中这三个键的断言由
@@ -4319,7 +4319,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `tools/validate-json-schema.py`（14 config fixture）、`tools/validate-locales.py`
       （380 keys each）、`tools/validate-fixtures.py`（9 input + 8 model package case）、
       `tools/run-input-fixtures.py`（9 input fixture）、`tools/tests` 63 项与
-      `tools.tests.test_native_release_target_matrix` 4 项均通过。删除前用全仓搜索确认这 5 个名字
+      `tools.tests.test_release_targets` 4 项均通过。删除前用全仓搜索确认这 5 个名字
       只出现在 `window.rs` 的声明与 `view_state.rs` 的创建/回填/订阅/构造器，且
       `crates/` 下只有 `Input::new(&view.model_id_input)` 一处真实渲染输入框。
       **未运行**：Windows 与 macOS 实机设置页 smoke（需人工打开设置窗口逐项编辑 overlay 缩放、
@@ -4337,7 +4337,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `.model3.json`），缺任一条回退到普通包导入；一个源产出每种模式一个模型，各自独立 UUID 与
       元数据、独立原子提交；转换写进 store 自己的 staging 并与目录/归档来源共用校验与 rename
       尾部；归档来源不解压；输出键位图使用产品自己的名字词汇表；合成图做无损重编码；跨模型进度
-      单调；完整 Native 门禁通过。
+      单调；完整门禁通过。
     - 决策记录：ADR-0037（其决策 4「归档来源不解压」已随 ADR-0036 撤回，见 ADR-0037 文首修订）。
       **更新（2026-09-22）**：压缩包来源撤回后，本项只保留目录来源：`MverSource` 退化为持有已
       canonicalize 根路径的 struct，`detect_source_kind` 与 `ArchivePlan` 的按需读取路径都已删除；
@@ -4570,7 +4570,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       环境隔离保持（Development/Production 不同 `app_name`，macOS 为不同 plist Label、
       Windows 为不同 HKCU value name）；启动命令携带 `--run-seconds 0`；共享
       `StartupItemState`/`StartupItemError` contract 不变；Development 构建从此支持启动项；
-      完整 Native 门禁通过。
+      完整门禁通过。
     - 实现说明（2026-09-17）：`bongocat-platform` 新增 `startup_item_native.rs` 统一后端
       （macOS `MacOSLaunchMode::LaunchAgent` 写 `~/Library/LaunchAgents/{app_name}.plist`，
       Windows `WindowsEnableMode::CurrentUser` 写 HKCU Run 并同步 `StartupApproved\Run`），
@@ -4610,8 +4610,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       创建/缩放/资源设置重建/模型重建立即收敛，拖动后的收敛延迟 `PLACEMENT_SETTLE_DELAY`（1s）执行并在每次
       观测到位移时重新计时，因此不影响跨显示器拖拽；放置检查缓存不超过
       `PLACEMENT_INSPECTION_INTERVAL`（500ms），使显示器变化在静止窗口下仍被纠正；判定与倒计时为
-      平台无关可测代码；字段、中英文案、共享 schema/fixture、契约表与 AX/UIA 语义同步；完整 Native
-      门禁与双平台 CI 通过。
+      平台无关可测代码；字段、中英文案、共享 schema/fixture、契约表与 AX/UIA 语义同步；完整门禁与双平台 CI 通过。
     - 实现说明（2026-09-18）：新增 `bongocat-overlay/src/placement.rs`——`bounds_inside_screens`
       按显示器边界切片做并集覆盖判定（可处理 L 形排列、重叠显示器与负坐标），
       `correction_for_screens` 选出最大交叠（无交叠取最近）显示器并复用不改变尺寸的
@@ -4783,7 +4782,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       覆盖窗口框/弹框/菜单/面板，Windows 以 `DWMWA_USE_IMMERSIVE_DARK_MODE` 覆盖窗口框并在创建
       任何窗口前以 `SetPreferredAppMode(AllowDark)` 让弹框/菜单/文件框跟随系统主题；主题失败一律
       降级为系统外观且不阻止启动、不改配置；更新窗口携带应用外观而非硬编码 `System`；不新增第三方
-      依赖；定向测试、完整 Native workspace 与**双平台实机**主题切换（含托盘菜单、文件面板、
+      依赖；定向测试、完整 workspace 与**双平台实机**主题切换（含托盘菜单、文件面板、
       弹框、标题栏）通过。
     - 状态（2026-09-18，**未完成**）：代码、ADR-0048 与平台能力矩阵已落地。
       `crates/bongocat-platform/src/theme.rs` 新建（4 类型 + 2 函数 + macOS `system_appearance`，
@@ -4889,7 +4888,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       F 编号通配符，即 F1–F24 的共享回退图名（两个预置键盘模型都出厂了这张图）。地球键在旧版里
       叫 `Function`（`rdev` 的 `Key::Function`，macOS keycode 63），而且**可达**——旧版 model store
       的键集就是包自己的文件名主干，所以提供 `Function.png` 的模型能画出它，只是无已知模型这么做。
-      在 Native Rewrite 里地球键完全不可达：`map_key_code` 没有 keycode 63 的 arm，而
+      在 BongoCat 里地球键完全不可达：`map_key_code` 没有 keycode 63 的 arm，而
       `FlagsChanged` 分支先查表再解码，查不到即计入 `unmapped_keys` 丢弃。
     - 决策（ADR-0049）：地球键 = `Globe`（usage `0xff03`，即 Apple 厂商页 `0xFF` 的 usage `0x03`
       `KeyboardFn` 的折叠值）；**`Fn` 保持原义，`Fn.png` 不改名、不迁移**——若地球键取 `Fn`，旧包
@@ -4971,12 +4970,12 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `pre-refactor:src/composables/useModel.ts` 的 `getBehaviorShortcut`。
     - 背景（2026-09-19，维护者反馈）：第 62 项让开关生效后，快捷键页面在用户录制之前整页为空。旧版
       会在模型加载完成后无条件为每个 motion 和 expression 自动分配组合键，所以页面从打开起就有值；
-      Native 缺这一步，属于产品能力静默消失（`docs/phase-0/behavior-inventory.md` 该项因此由
+      BongoCat 缺少这一步，属于产品能力静默消失（`docs/phase-0/behavior-inventory.md` 该项因此由
       `P1 首发后` 上调为 `P0 首发`）。
     - 退出条件：模型激活时按旧版分层自动分配；已有绑定永不重写，每一项仍可单独修改；已占用的组合键
       （含应用级 command）跳过而非重用；超出容量的行为保持未绑定；"恢复默认"为当前已激活模型重新
       分配而不是清空；分配与选中模型同一次 commit 落盘；开关默认值仍为 `false`；定向测试、变异验证、
-      完整 Native workspace 门禁与手动 `tools/` 校验通过。
+      完整 workspace 门禁与手动 `tools/` 校验通过。
     - 实现：`bongocat-config` 新增 `default_behavior_shortcut()` / `assign_default_behavior_shortcuts()`
       / `BEHAVIOR_SHORTCUT_CAPACITY`（`4 × (10 + 26) = 144`）与 `ModelBehaviorAction::behavior_id()`
       （归一化与分配共用，杜绝两处命名漂移）；`bongocat-app` 在 `prepare_model`、`select_model`、
@@ -5020,8 +5019,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       变红，config 侧 `default_behavior_assignment_skips_taken_chords_and_keeps_existing_bindings`
       同时变红，按内容哈希校验还原后复绿。`restoring_…` 在接线完成前以 `left: 0 / right: 7` 变红，
       正是它暴露了 `active_model_id` 缺口。
-    - 有意差异（旧版 vs Native）：① 已占用组合键跳过而非按位置重用——旧版会让后续行为拿到已被占用
-      的组合键，而 Native 的 `shortcuts.conflict` 校验会因此判定整份配置无效；② 应用级 command 绑定
+    - 有意差异（旧版 vs BongoCat）：① 已占用组合键跳过而非按位置重用——旧版会让后续行为拿到已被占用
+      的组合键，而 BongoCat 的 `shortcuts.conflict` 校验会因此判定整份配置无效；② 应用级 command 绑定
       计入占用——旧版两个 store 分开注册但都是全局；③ 新增开关且默认关闭，旧版没有开关。
     - 未运行：Windows 侧同路径（本机无法执行 `cfg(windows)` 测试）；双平台实机确认自动分配的组合键
       确实能在系统层面触发动作。分配契约本身由 `bongocat-config` 的单元测试覆盖，与平台无关。
@@ -5049,7 +5048,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `PressEdges`：只有进入 held 状态的那次 `Pressed` 是按下边沿，匹配的 `Released` 重新武装；
       快捷键表变更时按新的注册集合清理 held 记录（离开表的绑定不会再收到释放事件，残留会吞掉它
       重新绑定后的第一次按下）。分发入口抽成 `resolve_trigger`，使"重复 pressed 必须被丢弃"可断言。
-      ③ 顺带修正 `docs/BongoCat Native Rewrite Technical Design.md` 的快捷键段落：它仍写着
+      ③ 顺带修正 `docs/technical-design.md` 的快捷键段落：它仍写着
       "平台 input owner 驱动短生命周期 matcher"，而 ADR-0044 已删除 `ShortcutMatcher` 并把注册交给
       操作系统，属于 ADR 之后的文档漂移。
     - 后续修订（2026-09-24）：本项的“只播一次”和按住只触发一次继续有效，但“自然结束后
@@ -5679,7 +5678,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 未运行：Windows 侧同路径（本机无法执行 `cfg(windows)` 测试）；双平台实机确认"切走即失效、
       切到即生效"的系统级注册/注销时序。分配与投影契约与平台无关，由上述单元测试覆盖；平台注册本身
       仍只有 macOS 的 `--ignored` 实机用例。
-    - 同步文档：Technical Design「模型行为快捷键」两条、`shared/config/native-config-contract.md`
+    - 同步文档：Technical Design「模型行为快捷键」两条、`shared/config/contract.md`
       的自动分配差异与 chord 命名空间段、`docs/phase-0/behavior-inventory.md` 修订记录，以及两份
       CHANGELOG 的"问题修复"。
 
@@ -5798,7 +5797,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 未运行：Windows 侧全部路径（本机无法执行 `cfg(windows)` 测试与 smoke）；开关在分组标题下方的
       间距、`Enable window shortcuts` 在窄窗口下的换行、125/150/200% DPI 均无截图证据；"门禁关闭期间
       录制新组合键"这条组合路径没有专门用例（现有用例覆盖关闭→表空→打开→恢复）。
-    - 同步文档：ADR-0052、Technical Design 的快捷键门禁两条、`shared/config/native-config-contract.md`
+    - 同步文档：ADR-0052、Technical Design 的快捷键门禁两条、`shared/config/contract.md`
       的字段表与门禁段、`docs/phase-0/behavior-inventory.md` 修订记录，以及两份 CHANGELOG 的
       "✨ 新功能"与"🎨 界面与体验"。
 
@@ -5862,7 +5861,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `b5027af4` 与本机均失败）；**变异验证**：把 `accessibility.rs` 捕获节点的 `row_disabled`
       退回 `disabled` → smoke 立刻以原句失败，还原后 EXIT=0；`just check` 六道门全过（34 目标 /
       0 failed）。
-    - CI 定位（2026-09-21）：`Test Native workspace (macos-latest)` 在 `d4f0155f`（08:37）全绿、
+    - CI 定位（2026-09-21）：`Test workspace (macos-latest)` 在 `d4f0155f`（08:37）全绿、
       在 `f64b995b`（09:16）转为本条失败，故回归由本项引入。settings-window smoke 是该 job 的第一
       个 smoke 步骤（workflow L478），不存在"被前面的 smoke 挡住"。同 job 的 `--system-menu-smoke`
       是**间歇性**失败（`86213e69`、`d4f0155f` 两轮通过，其余多轮失败于 "Open Settings did not
@@ -6109,7 +6108,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
          共用，写法必须与语言无关；`…` 只占一个码位、宽度稳定，中英文字体都能正确渲染。文档同时
          声明适用范围（`crates/bongocat-i18n/locales/` 下的全部资源）与例外（文档、源码注释、
          CHANGELOG、memory 属自然语言；但引用 UI 文案时照抄 catalog 写法）。
-      ② `docs/adr/0012-native-json-localization.md` 的「约束」新增一条指向该文档，并写明这条规则由
+      ② `docs/adr/0012-json-localization.md` 的「约束」新增一条指向该文档，并写明这条规则由
          `tools/validate-locales.py` 强制。
       ③ `tools/validate-locales.py` 新增 `check_ellipsis`：对每个 locale 的每个值检查 `\u2026{2,}` 与
          `\.{2,}`，命中即报出 key 与实际写法并以退出码 1 结束。

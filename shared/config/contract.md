@@ -1,6 +1,6 @@
-# Native Configuration Contract
+# Configuration Contract
 
-状态：Native schema v1；JSON schema、Rust 类型与 fixtures 同步维护
+状态：schema v1；JSON schema、Rust 类型与 fixtures 同步维护
 
 ## Naming
 
@@ -8,7 +8,7 @@
 - 名称描述当前产品语义，不沿用历史 UI 组件名、Pinia store 名或平台 API 名。
 - 单位写入字段名：毫秒使用 `_ms`，小时使用 `_hours`，百分比使用 `_percent`，帧率使用 `_fps`。
 - 布尔值使用可直接判断真假的语义名称，避免 `mode`、`behavior`、`enabled2` 等含糊字段。
-- 路径不直接作为资源身份；模型使用由 Native Rewrite 生成的稳定 ID，并在模型索引中解析。
+- 路径不直接作为资源身份；模型使用由 BongoCat 生成的稳定 ID，并在模型索引中解析。
 
 ## Initial Shape
 

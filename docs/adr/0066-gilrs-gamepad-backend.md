@@ -4,7 +4,7 @@
 
 ## 背景
 
-Native Rewrite 此前在 `bongocat-platform` 内分别维护 Windows XInput 轮询和 macOS
+BongoCat 此前在 `bongocat-platform` 内分别维护 Windows XInput 轮询和 macOS
 `GCExtendedGamepad` callback。两套代码重复承担设备发现、按钮映射、连接 generation、axis
 归一化和 callback 生命周期，且产品兼容面被 XInput 0–3 slot 与 Apple extended profile 限制。手柄兼容、
 驱动修复和平台 backend 问题应集中维护在第三方边界，而不是继续在 BongoCat 内扩展两套系统 API。

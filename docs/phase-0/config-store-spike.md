@@ -1,4 +1,4 @@
-# Native Configuration Store Spike
+# Configuration Store Spike
 
 状态：typed config、Development/Production 隔离、双平台 path resolver、schema validation、原子提交、expected revision、OS writer lock 和强制进程终止恢复 contract 已通过；正式产品已提升有界备份、损坏恢复和中断提交恢复
 日期：2026-08-28
@@ -7,7 +7,7 @@
 
 ## 已固定的行为
 
-`spikes/config-store/` 只实现 Native Rewrite 配置契约，不读取或转换旧 Tauri/Pinia 数据：
+`spikes/config-store/` 只实现 BongoCat 配置契约，不读取或转换旧 Tauri/Pinia 数据：
 
 - Bundle ID 为 `com.ayangweb.bongo-cat`；相同 base 下使用 `development/` 与 `production/` 两个互斥根目录；
 - 两个环境具有完全一致的相对结构：`config.json`、`window-state.json`、`models/`、`backups/`、`logs/`、`updates/`、`locks/`；
@@ -68,16 +68,16 @@ quarantine 也已各自具有独立有界保留策略。
 状态（2026-08-31）：正式 app/settings service 已增加无有效备份的 `RecoveryRequired` 安全模式、
 recovery-only GPUI 窗口和显式 typed 恢复默认 command；恢复前禁止业务写入，恢复后要求重启，原
 损坏字节继续进入有界 quarantine。commit `e2ced51` 的 run `33374202985` 已通过 Windows/macOS/
-Ubuntu Native workspace、双平台 GPUI smoke 和 Windows input/config job，但尚未专门启动损坏
+Ubuntu workspace、双平台 GPUI smoke 和 Windows input/config job，但尚未专门启动损坏
 current 且无备份的 recovery-only 产品窗口。显式 `storage-test-injection` Development 测试产物
 现提供只使用独立临时存储根的受控 `--configuration-recovery-smoke`，本机 macOS 已验证
 recovery snapshot、真实窗口、service join 和临时数据清理；commit `175e7a4` 的 run
-`33376471972` 随后在 Windows/macOS Native jobs
+`33376471972` 随后在 Windows/macOS CI jobs
 `99438972370`/`99438972328` 实际通过同一 recovery window smoke，`P6-CONFIG-SAFE-RECOVERY`
 退出条件满足。正式 config crate 随后增加权限/只读、空间/配额不足和目标占用的稳定匿名
 分类；单元测试在 temp 创建前后注入权限与磁盘满，并用真实文件/目录占用固定 temp，验证 current 与
 非自有占用条目保留。settings service 已投影独立可操作错误并验证失败不推进 snapshot；commit
-`0549f33` 的 run `33378437342` 已通过三平台 Native workspace、Windows input/config 和独立
+`0549f33` 的 run `33378437342` 已通过三平台 workspace、Windows input/config 和独立
 config-store jobs，`P6-CONFIG-WRITE-FAILURES` 退出条件满足。进程存活不通过 PID、时间戳
 或删除 lock file 猜测，异常退出后的释放由 OS file lock 生命周期保证。
 
@@ -87,18 +87,18 @@ command；Application 只把当前环境 `StorageLayout.backups` 交给 platform
 匿名 error、Tab 与 Enter/Space 以及 accessibility button 语义；成功不推进 snapshot revision，
 recovery-only 状态仍可调用。本机 platform/ui/app 定向测试和严格 Clippy 已通过，三平台完整门禁
 由 `P6-CONFIG-BACKUP-LOCATION` 当前提交的 CI 跟踪。commit `6b41808` 的 run `33381198560`
-随后全绿；Windows/macOS/Ubuntu Native jobs `99453718576`/`99453718477`/`99453718406`、Windows
+随后全绿；Windows/macOS/Ubuntu CI jobs `99453718576`/`99453718477`/`99453718406`、Windows
 input/config job `99453718404`、Windows/macOS GPUI jobs `99453718327`/`99453718079` 和独立
 config-store job `99453718598` 均通过，退出条件满足。
 
 状态（2026-08-31）：正式启动不再接受外部 `StorageLayout`；测试存储注入只编译进显式
 Development feature，Production 组合在编译期拒绝，默认 CLI/API 与 release binary 均无恢复
 存储覆盖入口。隔离 target 的 recovery 测试产物不会覆盖默认产品二进制。commit `696319e` 的
-run `33386401135` 全绿；Windows/macOS Native jobs `99469897044`/`99469896758` 实际打开并验证
+run `33386401135` 全绿；Windows/macOS CI jobs `99469897044`/`99469896758` 实际打开并验证
 recovery-only 窗口，Windows input/config job `99469896784` 同时通过真实平台路径测试，
 `P6-STORAGE-LAYOUT-BOUNDARY` 退出条件满足。
 
 状态（2026-09-04）：正式配置的 load/schema v1 check/typed validation/atomic commit/final verify
 已形成单一 writer-lock 事务。测试可在原子替换后破坏 current，证明最终验证失败会逐字节
 恢复原 v1 并清理固定 temp；当前实现不包含 schema upgrade。底层事务与故障注入最初由 commit
-`fd0f1d2` 建立；本次 v1 重置通过完整本地 Native workspace 和独立 config-store 门禁。
+`fd0f1d2` 建立；本次 v1 重置通过完整本地 workspace 和独立 config-store 门禁。

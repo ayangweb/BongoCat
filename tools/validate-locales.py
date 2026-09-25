@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the active Native localization catalogs."""
+"""Validate the active localization catalogs."""
 
 from __future__ import annotations
 

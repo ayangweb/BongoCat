@@ -8,7 +8,7 @@
 
 - `P0 首发`：Windows/macOS 首发必须具备；可以修复旧缺陷，但产品能力不能静默消失。
 - `P1 首发后`：首发后补齐，不阻塞最小可发布版本。
-- `不迁移`：只作为行为对照或反例，不进入 Native Rewrite 产品实现。
+- `不迁移`：只作为行为对照或反例，不进入 BongoCat 产品实现。
 
 优先级描述产品能力，不承诺复制旧实现。列为 `P0 首发` 的行为仍须通过 fixture、平台 spike 或实机验收后才能宣称兼容。
 
@@ -24,7 +24,7 @@
 修订记录（2026-09-19）：行为快捷键由 `P1 首发后` 上调为 `P0 首发`。维护者要求新版保留旧版"模型加载
 后即为每个 motion 和 expression 自动分配组合键"的行为，否则快捷键页面在用户录制之前整页为空，属于
 产品能力静默消失。自动分配的分层、顺序与容量与旧版一致；有意差异是已占用的组合键跳过而非重用（旧版
-按位置索引，用户改过一项后可能把已被占用的组合键再发一次，而 Native 配置会因重复组合键整份失效），
+按位置索引，用户改过一项后可能把已被占用的组合键再发一次，而 配置会因重复组合键整份失效），
 以及应用级 command 绑定同样计入占用。开关 `shortcuts.model_behaviors_enabled` 仍默认 `false`：分配
 照常写入配置并在页面上可见可改，但不在用户开启前进入平台匹配表。
 
@@ -43,7 +43,7 @@
 
 修订记录（2026-09-24）：行为清单基线 `44f44bc` 的 `src/pages/main/index.vue` 将
 `window.opacity / 100` 施加到包含背景、Live2D canvas 和按键图的根容器，而不是分别修改每个
-Live2D drawable。Native Rewrite 因此将窗口 presentation opacity 定义为最终 surface 的一次性
+Live2D drawable。BongoCat 因此将窗口 presentation opacity 定义为最终 surface 的一次性
 alpha；平台实现细节仍需实机 readback 验证。
 
 ## 功能矩阵
@@ -81,7 +81,7 @@ alpha；平台实现细节仍需实机 readback 验证。
 | 模型       | 删除、切换、预置保护和在文件管理器显示              | P0 首发   | 预置不可删除；自定义模型可删除                       | prepare/commit 与删除事务       |
 | 模型       | 删除失败后仍从模型列表移除                          | 不迁移    | `finally` 无条件更新列表，可能制造磁盘/配置不一致    | 失败必须保留原模型              |
 | 快捷键     | 显示猫、打开设置、镜像、穿透和置顶                  | P0 首发   | 只在 Pressed 执行；修改时旧版先解绑旧值              | 冲突检测和事务回滚              |
-| 行为快捷键 | motion/expression 自动分配和用户编辑组合键          | P0 首发   | 模型加载后按 primary + Shift/Alt 与数字/字母分层自动分配，旧版无开关 | 已闭合：稳定行为 id 与冲突策略（ADR-0041/0042）；分层与容量见 `shared/config/native-config-contract.md` |
+| 行为快捷键 | motion/expression 自动分配和用户编辑组合键          | P0 首发   | 模型加载后按 primary + Shift/Alt 与数字/字母分层自动分配，旧版无开关 | 已闭合：稳定行为 id 与冲突策略（ADR-0041/0042）；分层与容量见 `shared/config/contract.md` |
 | 托盘       | 可隐藏的托盘/菜单栏图标与动态状态菜单               | P0 首发   | 菜单包含设置、显隐、穿透、缩放、透明度、更新和退出   | 图标隐藏后的可恢复入口          |
 | 系统       | 任务栏图标与托盘/菜单栏图标分别显示或隐藏           | P0 首发   | 设置页分别保存 taskbar/tray visibility               | 双入口均隐藏时的恢复路径        |
 | 系统       | 登录启动、单实例、正常重启/退出和结构化日志         | P0 首发   | 旧版由 Tauri 插件提供                                | 原生失败状态和 shutdown         |
@@ -95,8 +95,8 @@ alpha；平台实现细节仍需实机 readback 验证。
 | 外观       | system/light/dark 与五种既有语言                    | P0 首发   | 首次语言从系统 locale 获取，不支持时回退英文         | GPUI 字体、输入法和布局         |
 | 错误       | 模型、更新、文件和快捷键失败具有用户可见反馈        | P0 首发   | 旧版多为未分类字符串 toast/dialog                    | 稳定 error code、重试和详情     |
 | 诊断       | 复制脱敏 app/platform 信息、打开日志目录和反馈链接  | P1 首发后 | About 页已有复制、日志和外部链接入口                 | 诊断包内容与隐私                |
-| 配置       | 读取、探测、导入或 alias 旧 Tauri/Pinia 配置        | 不迁移    | 仅保留只读考古 fixture                               | Native schema 从 v1 开始        |
-| 配置       | 原样恢复旧物理像素坐标和旧模型 id                   | 不迁移    | 旧状态不具备稳定显示器 id，且 Native 不导入旧配置    | 新状态使用逻辑坐标和自有 id     |
+| 配置       | 读取、探测、导入或 alias 旧 Tauri/Pinia 配置        | 不迁移    | 仅保留只读考古 fixture                               | configuration schema 从 v1 开始        |
+| 配置       | 原样恢复旧物理像素坐标和旧模型 id                   | 不迁移    | 旧状态不具备稳定显示器 id，且 BongoCat 不导入旧配置    | 新状态使用逻辑坐标和自有 id     |
 | 平台       | Linux 窗口、输入、托盘、安装包和旧条件分支          | 不迁移    | Linux 只属于首发后单独能力评估                       | 不进入 Windows/macOS 首发范围   |
 
 模式补充（2026-09-25）：模型卡片显示的模式来自强类型配置/构建事实。Mver 转换记录所选
@@ -137,7 +137,7 @@ runtime 输入绑定。
 4. 模型 mode 通过 right-keys 内容推断，属于启发式协议，需要显式验证与诊断。
 5. 当前窗口状态保存物理坐标，跨 DPI/显示器恢复需要新规范。
 6. 当前更新、模型和输入错误多以字符串传播，新 runtime 需要稳定 error code。
-7. 旧 updater 允许 HTTP endpoint，并把固定请求凭据放在前端源码；Native Rewrite 不得复制。
+7. 旧 updater 允许 HTTP endpoint，并把固定请求凭据放在前端源码；BongoCat 不得复制。
 8. 旧设置页面、Tauri plugin API 和 Pinia 字段名不是兼容面，只保留为功能入口证据。
 
 ## 尚需实机确认

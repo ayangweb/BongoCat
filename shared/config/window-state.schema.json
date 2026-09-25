@@ -77,7 +77,7 @@
       "type": "object"
     }
   },
-  "$id": "https://ayangweb.com/bongocat/native-window-state-v1.schema.json",
+  "$id": "https://ayangweb.com/bongocat/window-state-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -110,6 +110,6 @@
     "settings_window",
     "overlay_window"
   ],
-  "title": "BongoCat Native Window State v1",
+  "title": "BongoCat Window State v1",
   "type": "object"
 }

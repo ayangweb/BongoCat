@@ -5,7 +5,7 @@
 
 ## Context
 
-BongoCat Native Rewrite 的首发目标是 Windows 和 macOS。Linux 的透明窗口、窗口层级、全局输入、托盘和桌面集成能力会随 X11、Wayland、portal 与 compositor 改变，不能从 Windows/macOS backend 的结果推断等价支持。
+BongoCat 的首发目标是 Windows 和 macOS。Linux 的透明窗口、窗口层级、全局输入、托盘和桌面集成能力会随 X11、Wayland、portal 与 compositor 改变，不能从 Windows/macOS backend 的结果推断等价支持。
 
 同时，runtime、配置、模型、动画和行为 fixture 本身不需要依赖具体桌面系统。首发实现不应为了未验证的 Linux 能力统一平台 backend，也不应让共享业务类型依赖 Win32、AppKit 或 GPU handle。
 

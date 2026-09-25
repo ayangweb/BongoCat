@@ -50,7 +50,7 @@ the provenance as config revision `cubism-core-r5-v1`.
 | `x86_64-apple-darwin`    | `x86_64-apple-darwin`    | C calling convention |
 
 `i686-pc-windows-msvc` is deliberately rejected because ADR-0033 excludes Windows
-x86 from the Native Rewrite. `aarch64-pc-windows-msvc` is also outside the final
+x86 from BongoCat's supported targets. `aarch64-pc-windows-msvc` is also outside the final
 released target set: Windows on ARM runs the x64 build, and R5 has no desktop
 Windows ARM64 Core artifact. The generator therefore rejects that ABI until a future
 ADR reintroduces it; generating declarations alone would create a false impression

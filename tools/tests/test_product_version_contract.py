@@ -76,7 +76,7 @@ class ProductVersionContractTests(unittest.TestCase):
 
     def test_workspace_members_inherit_the_product_version(self):
         members = workspace_members()
-        self.assertTrue(members, "the Native workspace must contain product crates")
+        self.assertTrue(members, "the workspace must contain crates")
 
         for member in members:
             with self.subTest(member=member):

@@ -1,7 +1,7 @@
 # Legacy Vue/Tauri Build Baseline
 
 This record freezes the last independently reproducible legacy application
-build. It is behavior evidence only; the Native Rewrite does not depend on the
+build. It is behavior evidence only; BongoCat does not depend on the
 legacy workspace, its configuration, or its generated artifacts. The source and
 its build inputs are retained in the remote
 [`pre-refactor-tauri`](https://github.com/ayangweb/BongoCat/tree/pre-refactor-tauri) branch,
@@ -54,4 +54,4 @@ launch evidence rather than claiming an automated graceful-exit assertion.
 
 The build emits a pre-existing warning for `block 0.1.6`, and Tauri reports
 that the configured updater signing secret does not match its public key. Both
-are legacy release risks and are intentionally out of Native Rewrite scope.
+are legacy release risks and are intentionally out of BongoCat scope.

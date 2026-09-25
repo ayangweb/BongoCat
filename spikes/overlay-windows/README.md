@@ -15,7 +15,7 @@ destroying the window.
 The spike attempts a hardware D3D11 device first and falls back to WARP so CI
 can test ownership and composition APIs without claiming physical-GPU
 performance. Windows ARM64 is compile-checked only; Cubism R5 still blocks an
-ARM64 product release.
+ARM64 release.
 
 ## Boundaries
 

@@ -1,4 +1,4 @@
-# BongoCat Native Rewrite - AI Working Agreement
+# BongoCat AI Working Agreement
 
 适用于整个仓库；分析、修改或验证前先完整阅读本文件与更深层目录中的 `AGENTS.md`。
 
@@ -7,8 +7,8 @@
 按顺序阅读：
 
 1. `AGENTS.md`
-2. `docs/BongoCat Native Rewrite Technical Design.md`
-3. `docs/BongoCat Native Rewrite Implementation TODO.md`
+2. `docs/technical-design.md`
+3. `docs/implementation-todo.md`
 4. 当前任务相关的 ADR、fixture、schema 和源码
 
 - Technical Design 是目标架构的事实来源；Implementation TODO 是顺序、完成定义和验收门槛的事实来源。冲突时必须指出并修正文档或请求确认，不得自行选择。
@@ -124,7 +124,7 @@ Issue #47 的“按下后无释放”必须从架构处理，不能只增加动�
 - GPUI 使用 Technical Design 指定的精确版本并提交 `Cargo.lock`。新增或升级 crates.io 依赖前，用 `cargo search <crate> --limit 1`、`cargo info <crate>` 或 crates.io API 核对最新非 yanked 稳定版；默认精确 pin，不因少改 API 主动选旧版。
 - 最新稳定版若不支持既定 Rust toolchain、target、许可证或安全边界，在相关 Phase 文档记录阻塞版本、原因、上游 owner 和解除条件，不只写代码注释。
 - 修改 manifest 后对整个 workspace 执行 `cargo update`，同步 `Cargo.lock` 中可解析的传递依赖；受上游约束保留的旧版本须可由 `cargo tree --invert` 解释。
-- 依赖审计只覆盖 Native Rewrite workspace 和离线工具，不引入历史 Tauri workspace 依赖。禁止 `version = "*"` 和未固定 revision 的 git dependency。
+- 依赖审计只覆盖正式 workspace 和离线工具，不引入历史 Tauri workspace 依赖。禁止 `version = "*"` 和未固定 revision 的 git dependency。
 - 不依赖 Zed 应用内部 crate 或私有 GPUI renderer 接口。新依赖检查许可证、近期维护、平台支持、unsafe 面积和替换成本。
 - 系统能力先寻找满足边界的成熟 crate，再考虑 `windows-rs`、`objc2` 等基础 binding；第三方事件、错误、配置、平台类型不得进入项目公共 API。
 - Cubism artifact 必须来自已固定版本和 hash 的基线；升级、替换或新增时同步 provenance、目标 ABI 和模型验证。
@@ -143,7 +143,7 @@ Issue #47 的“按下后无释放”必须从架构处理，不能只增加动�
 
 ## 8. GPUI Kit UI
 
-Native GPUI 设置界面统一使用上游 `longbridge/gpui-kit` 的固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`（当前 package 版本 `0.6.5`），并作为唯一直接 GPUI 依赖；不得直接声明 `gpui`、`gpui_platform`、`gpui-component` 或单独 assets crate，也不得混入其它 GPUI git source。该 revision 是上游合并 `SettingGroup::variant()` 与 `Popover::arrow()`、但尚未发布对应 crates.io release 时的临时精确来源；上游 release 包含这两项能力后必须切回 crates.io 精确 pin 并删除 git source。GPUI Kit 通过 crates.io 的 `gpui-pre` 同步包提供 crate 名 `gpui`，元数据对应 Zed `gpui 0.2.2`。开发前必须查阅 [gpui-kit](https://github.com/longbridge/gpui-kit)、[组件文档](https://gpui-kit.com/docs/components) 和 [docs.rs](https://docs.rs/gpui-kit/)，不得凭记忆或猜测 API。
+GPUI 设置界面统一使用上游 `longbridge/gpui-kit` 的固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`（当前 package 版本 `0.6.5`），并作为唯一直接 GPUI 依赖；不得直接声明 `gpui`、`gpui_platform`、`gpui-component` 或单独 assets crate，也不得混入其它 GPUI git source。该 revision 是上游合并 `SettingGroup::variant()` 与 `Popover::arrow()`、但尚未发布对应 crates.io release 时的临时精确来源；上游 release 包含这两项能力后必须切回 crates.io 精确 pin 并删除 git source。GPUI Kit 通过 crates.io 的 `gpui-pre` 同步包提供 crate 名 `gpui`，元数据对应 Zed `gpui 0.2.2`。开发前必须查阅 [gpui-kit](https://github.com/longbridge/gpui-kit)、[组件文档](https://gpui-kit.com/docs/components) 和 [docs.rs](https://docs.rs/gpui-kit/)，不得凭记忆或猜测 API。
 
 - 类型从 `gpui_kit` 根导出，平台、组件、资源分别从 `gpui_kit::platform`、`gpui_kit::component`、`gpui_kit::assets` 使用；仅业务特殊行为或无等价 primitive 时保留薄封装。
 - 创建组件前调用 `gpui_kit::init(cx)`；窗口根视图使用 `gpui_kit::component::Root`；系统外观变化用 `Theme::sync_system_appearance(Some(window), cx)`。
@@ -210,6 +210,17 @@ just version                                             # 唯一产品版本号
 
 - 架构决策、约束变化和 go/no-go 结果写入 `docs/adr/`；Benchmark 方法和结果写入 `docs/benchmark/`；历史考古写入 `docs/migration/`。
 - Technical Design 只描述当前目标架构；不得把旧配置兼容重新纳入产品范围。
+- 面向用户或贡献者的根级文档同时维护英文与简体中文版本：`README.md` / `README.zh-CN.md`、
+  `CONTRIBUTING.md` / `CONTRIBUTING.zh-CN.md`，以及 `CHANGELOG.md` / `CHANGELOG.zh-CN.md`。
+  英文文件不带语言后缀；修改一份文档时必须同步另一份对应版本。
+- 公开文档只说明产品行为、用户流程和必要操作，不展示内部项目代号、迁移叙事、实现技术栈的重复
+  强调或不必要的源码文件名。开发背景和实现约束由 `AGENTS.md`、Technical Design、TODO 与 ADR
+  承载；公开文档仅保留受保护的 `pre-refactor-tauri` 分支链接，供历史参考。
+- `CHANGELOG.md` / `CHANGELOG.zh-CN.md` 是面向用户的版本通知，必须保留替换、迁移、重写、默认行为
+  变化和升级注意事项等事实，不得按公开文档的精简规则删除实现替换说明。
+- 仓库自有文件名以及用户、贡献和运维文档不使用历史重写阶段的名称、kebab-case 变体或同义的
+  内部项目限定词；文件名直接表达职责。普通文案中的 `native` 仅用于操作系统原生能力或 Cubism
+  Native 官方产品名；既有 Rust 类型与 API 边界不因文档清理顺带重命名。
 - TODO checkbox 仅在完成定义完整满足后改成 `[x]`；部分完成保持 `[ ]`，并在其下写明状态和剩余工作。
 - 新任务放入正确 phase，标明依赖和退出条件，不在文档末尾堆放无归属事项。
 
@@ -221,8 +232,9 @@ just version                                             # 唯一产品版本号
 
 ## 10. 历史源码、Git 与交付
 
-- 历史源码只作行为考古和模型兼容参考；TODO 10.3 后只保留在受保护的远端 `master` 与 `pre-refactor-tauri` 分支。
-- 不在远端历史实现上扩展 Native Rewrite，不重新接入当前工作树或产品依赖图；读取配置和模型样本不得原地修改；结论须由实际代码、配置或实机行为证明。
+- 历史源码只作行为考古和模型兼容参考；TODO 10.3 后只保留在受保护的远端
+  `pre-refactor-tauri` 分支。`next` 合并进入 `master` 后，`master` 承载当前代码，不作为旧实现参考。
+- 不在远端历史实现上扩展 BongoCat，不重新接入当前工作树或产品依赖图；读取配置和模型样本不得原地修改；结论须由实际代码、配置或实机行为证明。
 - 上游 [MMmmmoko/Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver) 是输入、模型装配、Live2D 更新顺序和产品行为的固定参考。先查阅 `docs/migration/bongo-cat-mver-reference.md` 的 commit 和关键文件，再结合 Technical Design 与 ADR-0030；不得直接复制 C++ 业务代码或让旧架构覆盖当前边界。
 - 当前目标分支是 `next`。未经用户要求不创建、删除、重命名或切换分支；不 reset、checkout、覆盖或格式化无关文件。
 - 未经用户明确要求，不 commit、push 或 release。要求 commit 时先检查分支：

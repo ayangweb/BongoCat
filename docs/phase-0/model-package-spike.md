@@ -1,4 +1,4 @@
-# Phase 0 Rust Model Package Spike
+# Model Package Spike
 
 状态：三个预置 model3/cdi3/motion3/exp3、历史 physics3 与合成 pose3/userdata3 静态解析通过；Cubism Core、行为求值和 renderer 未进入本 spike
 日期：2026-08-30；兼容性补充：2026-09-25

@@ -1,4 +1,4 @@
-# Native Rewrite Rust Dependency Version Audit
+# Rust Dependency Version Audit
 
 状态：所有直接依赖已使用 crates.io 最新稳定版、精确上游 revision 或已记录的 ABI/transition 例外；lockfile 已更新到上游约束允许的最新解析结果
 日期：2026-09-25（新增 `ayangweb/gilrs` 固定 commit `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c`；`gpui-kit` 固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`；上次全量审计 2026-09-13）
@@ -7,7 +7,7 @@ Rust：`cargo 1.97.1`、`rustc 1.97.1`
 ## Scope
 
 本次审计覆盖仓库根目录的正式 workspace，以及 `spikes/*` 和 `tools/*` 下列出的独立 workspace。
-历史 Vue/Tauri workspace 已退役至远端 `pre-refactor-tauri` 分支，不属于 Native Rewrite 的依赖图。
+历史 Vue/Tauri workspace 已退役至远端 `pre-refactor-tauri` 分支，不属于 BongoCat 的依赖图。
 
 版本来源使用 crates.io stable release：
 
@@ -103,7 +103,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 `rodio 0.22.2` 在审计日是 crates.io 最新非 yanked 稳定版（MIT OR Apache-2.0，
 Rust 1.87+），但其 playback feature 约束 `cpal 0.17.x`，因此完整 `cargo update` 合法解析
-为 `cpal 0.17.3`，而不是独立最新的 `0.18.2`。Native workspace 不直接依赖 CPAL；
+为 `cpal 0.17.3`，而不是独立最新的 `0.18.2`。workspace 不直接依赖 CPAL；
 rodio 仅在 Windows/macOS target 启用 `playback + flac`，录音及其它 codec feature 均关闭。
 替换边界完全位于 `bongocat-audio` 私有 backend，不把第三方类型暴露到 runtime contract。
 
@@ -229,7 +229,7 @@ stable 发布保持阻塞，详见 `future-incompatibility.md`。
 
 新增依赖时必须先核对当日最新稳定版并选用该版本。若最新版本与已确认 toolchain、target、许可证或安全边界冲突，提交必须同时记录实际选择、阻塞原因、上游解除条件和替换成本。新增或修改 manifest 后必须更新对应 lockfile，运行 license/source policy、format、Clippy、test 和目标平台 build。
 
-`.github/dependabot.yml` 每周扫描当前 Native 和独立 spike/tool workspace，并把更新目标固定为 `next`。自动 PR 仍必须通过双平台 CI 和人工 API/许可证评审，不能因版本号更新而自动合并。
+`.github/dependabot.yml` 每周扫描当前 workspace 和独立 spike/tool workspace，并把更新目标固定为 `next`。自动 PR 仍必须通过双平台 CI 和人工 API/许可证评审，不能因版本号更新而自动合并。
 
 版本最新不替代依赖审查。维护状态、许可证、unsafe 面积、平台覆盖和公共 API 泄漏仍按 `AGENTS.md` 的依赖规则独立验收。
 

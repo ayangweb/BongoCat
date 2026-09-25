@@ -23,7 +23,7 @@
 - 每组第一个 motion 引用 FLAC 音频，motion fade in/out 均为 0。
 - 预置 model3 没有引用 physics3 或 pose3。
 - EyeBlink group 使用 `ParamEyeLOpen` 和 `ParamEyeROpen`。
-- 内置模型的 Breath group 显式使用 `ParamBreath`；Native runtime 仍会在没有该组时按 Mver
+- 内置模型的 Breath group 显式使用 `ParamBreath`；BongoCat runtime 仍会在没有该组时按 Mver
   reference 驱动固定的 `ParamAngleX/Y/Z`、`ParamBodyAngleX` 和 `ParamBreath`，声明组只提供额外
   ID。导入模型若声明 physics3，会在自动层之后按声明的 v3 物理结构求值。
 

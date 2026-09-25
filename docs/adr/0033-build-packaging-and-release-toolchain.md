@@ -5,14 +5,14 @@
 
 ## 背景
 
-Native Rewrite 之前的构建体系是自己维护的：
+BongoCat 之前的构建体系是自己维护的：
 
 | 组件 | 之前的状态 |
 | --- | --- |
 | `justfile` | 通过 `os()` 分支调用两个平台脚本 |
 | `scripts/` | `build-macos.sh`、`package-macos.sh`、`build-windows.ps1`、`package-windows.ps1` |
 | `windows/installer/BongoCat.nsi` | 自维护的 56 行 NSIS 脚本 |
-| GitHub Actions | 只有 `native-rewrite-phase0.yml`（PR 触发）；**没有任何 release workflow** |
+| GitHub Actions | 只有 `ci.yml`（PR 触发）；**没有任何 release workflow** |
 | 版本号 | 只有 `[workspace.package].version` 一个来源，但 macOS / Windows 各自重新解析一次 |
 
 这套体系的问题不是"实现得不好"，而是它同时承担了三件事：编译、打包、发布。

@@ -316,7 +316,7 @@ pub struct ShortcutConfig {
     pub model_behavior_bindings: Vec<ModelBehaviorBinding>,
 }
 
-/// The spike mirrors the Native Rewrite contract, including its `Default`:
+/// The spike mirrors the product contract, including its `Default`:
 /// a derived one would leave `commands_enabled` at `false` and disagree with
 /// `shared/config/fixtures/default.json`.
 impl Default for ShortcutConfig {

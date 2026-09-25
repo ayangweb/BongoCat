@@ -1,6 +1,6 @@
 # Model Package Fixtures
 
-These fully synthetic fixtures define Native Rewrite model-import preflight
+These fully synthetic fixtures define BongoCat model-import preflight
 behavior. They contain no Cubism Core data and must not be presented as
 renderable Live2D models.
 

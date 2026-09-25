@@ -2,8 +2,8 @@
 
 > **文档性质：解释性说明，非规范性事实来源。**
 > 本文只用于讲解概念与记录调研结论，不定义目标架构。
-> 规范性事实仍以 `docs/BongoCat Native Rewrite Technical Design.md`、
-> `docs/BongoCat Native Rewrite Implementation TODO.md` 和 `docs/adr/` 为准。
+> 规范性事实仍以 `docs/technical-design.md`、`docs/implementation-todo.md` 和
+> `docs/adr/` 为准。
 > 如果本文的结论要变成项目约定，必须先写成 ADR（见 §6.3）。
 >
 > ---

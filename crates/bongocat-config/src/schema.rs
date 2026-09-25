@@ -29,8 +29,8 @@ fn configuration_schema() -> Value {
     let root = schema.as_object_mut().expect("root schema is an object");
     set_document_metadata(
         root,
-        "https://bongocat.dev/schemas/native-config-v1.json",
-        "BongoCat Native Rewrite configuration",
+        "https://bongocat.dev/schemas/config-v1.json",
+        "BongoCat configuration",
     );
     set_root_constant(root, "schema_version", 1);
     require_definition_property(root, "ModelConfig", "selected_model");
@@ -47,8 +47,8 @@ fn window_state_schema() -> Value {
     let root = schema.as_object_mut().expect("root schema is an object");
     set_document_metadata(
         root,
-        "https://ayangweb.com/bongocat/native-window-state-v1.schema.json",
-        "BongoCat Native Window State v1",
+        "https://ayangweb.com/bongocat/window-state-v1.schema.json",
+        "BongoCat Window State v1",
     );
     set_root_constant(root, "schema_version", 1);
     require_root_property(root, "settings_window");

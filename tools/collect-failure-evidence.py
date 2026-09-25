@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect bounded, redacted evidence from a failed Native CI job."""
+"""Collect bounded, redacted evidence from a failed CI job."""
 
 from __future__ import annotations
 

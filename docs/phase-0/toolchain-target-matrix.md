@@ -15,11 +15,11 @@ ADR-0033 已固定最终首发 target 为 Windows `x86_64-pc-windows-msvc` 与 m
 
 ## 2. Provisional Target Tiers
 
-| Target                    | Historical v1.1.0   | Native Rewrite status            | Required disposition                                                                                         |
+| Target                    | Historical v1.1.0   | BongoCat status            | Required disposition                                                                                         |
 | ------------------------- | ------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `x86_64-pc-windows-msvc`  | Installer published | Primary validation target        | 首发候选；需 Windows 实机完成 GPUI、Raw Input、D3D11、Cubism 和签名链                                        |
 | `aarch64-apple-darwin`    | DMG/app published   | Primary validation target        | 首发候选；GPUI/Metal overlay、真实 r.5 Core ABI 与三个预置 Moc 生命周期已通过，仍需完整 renderer/输入/签名链 |
-| `i686-pc-windows-msvc`    | Installer published | Out of scope                     | Native Rewrite 不构建、测试、打包或更新 x86；历史安装包只作考古输入                                          |
+| `i686-pc-windows-msvc`    | Installer published | Out of scope                     | BongoCat 不构建、测试、打包或更新 x86；历史安装包只作考古输入                                          |
 | `x86_64-apple-darwin`     | DMG/app published   | Release target / Intel validation pending | R5 Core 提供 x64 static library；仍需 Intel 实机验证 GPUI、Metal、输入、签名和发布形式                       |
 
 Linux target 不属于首发 tier。共享 crate 的 Linux `cargo check` 仅用于防止业务层绑定平台类型，遵循 ADR-0006。
@@ -41,7 +41,7 @@ Linux target 不属于首发 tier。共享 crate 的 Linux `cargo check` 仅用�
 
 本机已安装 Rust targets：`aarch64-apple-darwin`、`aarch64-pc-windows-msvc`、`i686-pc-windows-msvc`、
 `x86_64-apple-darwin`、`x86_64-pc-windows-msvc` 和 `x86_64-unknown-linux-gnu`。这些是开发机工具链
-状态，而不是项目 target 矩阵；Native Rewrite 不得构建、测试、打包或发布 i686 或 Windows 原生 ARM64。target 已安装只代表
+状态，而不是项目 target 矩阵；BongoCat 不得构建、测试、打包或发布 i686 或 Windows 原生 ARM64。target 已安装只代表
 标准库可用，不代表能在 macOS 链接 Windows MSVC 产物，也不代表目标运行测试通过。
 
 当前 GPUI spike 已移除公开 `runtime_shaders` feature，并使用 Metal Toolchain v17.6.109.0 通过默认预编译 shader 的 debug/release 构建和 `.app` smoke。最低 Xcode/SDK/Rust 组合仍未验证，不能由这台较新开发机反推 macOS 12 构建兼容性。

@@ -175,7 +175,7 @@ expression 淡出瞬间结束、motion UserData 跨过的每个时间戳仍按�
 
 ## 6. 采纳结果
 
-- **本轮已采纳**：`maximum_fps` 的配置契约补上值域与语义说明（`shared/config/native-config-contract.md`），
+- **本轮已采纳**：`maximum_fps` 的配置契约补上值域与语义说明（`shared/config/contract.md`），
   对齐参考实现把帧率的含义与代价写进随产品发布的配置文档这一做法。
 - **上一轮已等价**：差额睡眠 / 超时不追赶 / 单一节流语义 / 动画用绝对时间差，见
-  `bongocat_runtime::FramePacer` 与 `docs/BongoCat Native Rewrite Implementation TODO.md` 第 48 项。
+  `bongocat_runtime::FramePacer` 与 `docs/implementation-todo.md` 第 48 项。

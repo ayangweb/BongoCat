@@ -38,7 +38,7 @@ impl ReleaseChannel {
     }
 }
 
-/// The three release targets the Native Rewrite ships.
+/// The three release targets BongoCat ships.
 ///
 /// The list is closed on purpose: `AGENTS.md` §1 restricts the product to these
 /// combinations, so an unrecognized host must refuse to update rather than fall
@@ -104,7 +104,7 @@ pub const HOST_TARGET_TRIPLE: UpdateTargetTriple = UpdateTargetTriple::X86_64PcW
     all(target_os = "macos", target_arch = "x86_64"),
     all(target_os = "windows", target_arch = "x86_64")
 )))]
-compile_error!("BongoCat Native Rewrite builds only for macOS and x86_64 Windows");
+compile_error!("BongoCat builds only for macOS and x86_64 Windows");
 
 /// Immutable configuration for one update run.
 ///

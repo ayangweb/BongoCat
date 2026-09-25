@@ -1,11 +1,11 @@
-# BongoCat Native Rewrite Technical Design
+# Technical Design
 
 状态：架构决策稿，Phase 0 证据补齐与 Phase 1 渐进实现并行
 最后更新：2026-09-25
 首发平台：Windows 10 1903+、macOS 12+
 后续平台：Linux（首发后评估）
 
-> BongoCat Native Rewrite 采用单一 Rust 应用。GPUI 负责设置界面，Rust 平台模块直接负责输入、窗口、系统集成和 GPU 渲染。
+> BongoCat 采用单一 Rust 应用。GPUI 负责设置界面，Rust 平台模块直接负责输入、窗口、系统集成和 GPU 渲染。
 
 ## 1. 设计结论
 
@@ -56,7 +56,7 @@ Rust 2024 edition application
 
 - 使用 Rust 实现完整的桌面应用、设置 UI 和实时运行链路。
 - 使用一套 Rust 业务实现覆盖 Windows 和 macOS。
-- 保持现有模型、动作、表情和用户资源格式尽可能兼容；配置使用全新的 Native Rewrite schema 和命名。
+- 保持现有模型、动作、表情和用户资源格式尽可能兼容；配置使用全新的配置 schema 和命名。
 - 修复输入事件丢失导致的永久卡键，包括 issue #47 的截图快捷键场景。
 - 设置界面具备一致、清晰、可主题化的桌面体验。
 - 模型窗口具备低延迟、透明、置顶、穿透、多显示器和高 DPI/Retina 支持。
@@ -69,7 +69,7 @@ Rust 2024 edition application
 - 不提供进程内插件 ABI。
 - 不要求 Windows/macOS 像素完全一致。
 - 不把 GPUI fork、Zed 私有 UI crate 或第三方输入库变成业务 API。
-- 历史版本只作为行为与模型资源参考；Native Rewrite 不读取或导入旧 Tauri/Pinia 配置。
+- 历史版本只作为行为与模型资源参考；BongoCat 不读取或导入旧 Tauri/Pinia 配置。
 - 不在技术 spike 通过前完整迁移所有产品功能。
 
 ## 4. 设计原则
@@ -101,7 +101,7 @@ GPUI 用于设置窗口、模型管理、快捷键编辑、权限状态、更新
 
 GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 Live2D 纹理合成路径。因此：
 
-- 正式 Native workspace 只直接依赖上游 `longbridge/gpui-kit` 的固定 revision
+- 正式 workspace 只直接依赖上游 `longbridge/gpui-kit` 的固定 revision
   `500852f449c05dc01920ec82f3ae2656a61d0387`（package 版本 `0.6.5`）并提交
   `Cargo.lock`；GPUI Kit 是唯一直接 GPUI 依赖，其 suite 内五个 package 都从同一 git
   commit 解析。禁止另行声明或替换 `gpui`、platform、component 和 assets。
@@ -192,7 +192,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   收窄为“可见行与 mutator 同源”）的落地。
 - `shortcuts.model_behaviors_enabled` 默认关闭是对旧版行为的刻意收窄：旧版在模型加载完成后无条件为
   每个 motion 和 expression 自动分配一整层 `primary + [Shift/Alt] + 数字/字母` 组合键，用户没有
-  拒绝的机会。Native 按维护者决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
+  拒绝的机会。BongoCat 按维护者决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
   该开关只作用于 motion/expression 绑定，不得清空或改写配置中的绑定，也不得连带禁用
   `open_settings`、overlay 显隐、镜像、穿透、置顶以及三个模型输入忽略开关等应用级快捷键——应用级快捷键有它自己的开关。
 - 模型行为快捷键的自动分配与旧版同构：模型激活时（`prepare_model` / `select_model`）按声明顺序
@@ -313,10 +313,10 @@ ui protocol <------- app -------> runtime <------- platform adapters
 
 ```text
 BongoCat/
-  Cargo.toml                  正式 Native Rewrite workspace 根
+  Cargo.toml                  正式 workspace 根
   Cargo.lock
   rust-toolchain.toml
-  resources/                  随产品打包的模型与 Native 产品图标
+  resources/                  随产品打包的模型与产品图标
   crates/
     bongocat-app/             入口、装配和 shutdown
     bongocat-input/           平台无关输入协议、producer 和 latest-value transport
@@ -335,7 +335,7 @@ BongoCat/
     bongocat-update/          发布清单读取、版本/target 判定、载荷验签与安装策略
     bongocat-platform/        Windows/macOS 平台服务
   shared/
-    config/                   Native JSON schema、命名与存储契约
+    config/                   JSON 配置 schema、命名与存储契约
     behavior/                 输入、动画和快捷键规范
     fixtures/                 输入序列、预期状态和模型样本
     resources/                模型、图标和本地化
@@ -354,9 +354,9 @@ operation control、state handle 和 bounded client/endpoint。它不依赖 GPUI
 config/platform/update producer 映射为 protocol 类型。debounce、语言显示文案、更新窗口轮询节奏和
 文件选择后的展示判断留在 UI/适配器，不进入跨层 contract。
 
-正式 workspace 位于仓库根目录，是仓库中唯一的产品构建入口。历史 Vue/Tauri 实现仅在
-远端 `master` 和 `pre-refactor-tauri` 分支中保留，当前工作树不包含其源码、资源或构建入口；
-该路径安排不改变 crate 边界或产品架构。
+正式 workspace 位于仓库根目录，是仓库中唯一的产品构建入口。重构前实现仅在远端
+`pre-refactor-tauri` 分支中保留，当前工作树不包含其源码、资源或构建入口；`next` 合并进入
+`master` 后，`master` 承载当前代码，不作为旧实现参考。该路径安排不改变 crate 边界或产品架构。
 
 ## 8. Runtime 与并发
 
@@ -567,10 +567,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Renderer：D3D11 + DXGI + DirectComposition/DWM，预乘 alpha。
 - DPI：Per-Monitor-V2，处理 `WM_DPICHANGED`、显示器热插拔和负坐标。
 - 输入：Raw Input、状态校正、可选低级 hook、gilrs/WGI 手柄。
-- 产品图标：`bongocat-app` 在构建期把 Native 自有 `.ico` 编译进 Windows executable，用于窗口、
+- 产品图标：`bongocat-app` 在构建期把 BongoCat 自有 `.ico` 编译进 Windows executable，用于窗口、
   任务栏和文件身份；它不再是托盘图标来源，托盘也不会回退到系统通用应用图标。
 - 托盘：`tray-icon 0.25.0` 拥有 `TrayIcon` 和固定 GUID，直接依赖的 `muda 0.20.0` 拥有菜单与
-  右键弹出。Windows 状态图标从 Native 自有 `resources/icons/tray-windows.png` 解码，菜单、托盘
+  右键弹出。Windows 状态图标从 BongoCat 自有 `resources/icons/tray-windows.png` 解码，菜单、托盘
   隐藏点击恢复和 overlay 右键入口均由该唯一菜单 owner 管理；overlay 弹出使用自身 HWND，不借用
   托盘隐藏窗口。
 - 启动项：统一由 `auto-launch 0.6.0` 提供双平台后端。Windows 写当前用户 HKCU Run 并同步
@@ -589,7 +589,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 ### 10.2 macOS
 
 - 应用：GPUI/AppKit 主事件循环，平台 UI 操作固定在 main thread。
-- 产品图标：`.app` 的 `Info.plist` 以 `CFBundleIconFile` 指向随 bundle 签名封装的 Native 自有
+- 产品图标：`.app` 的 `Info.plist` 以 `CFBundleIconFile` 指向随 bundle 签名封装的 BongoCat 自有
   `.icns`；该键与 bundle 的其余生成键由打包工具写入，仓库只保留 `macos/Info.plist` overlay
   （`LSMultipleInstancesProhibited`、`NSPrincipalClass`），打包入口在签名前验证元数据与资源存在。
 - Overlay：通过 `objc2` 创建透明 nonactivating `NSPanel`；无已保存 bounds 时以
@@ -614,7 +614,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Spaces：按配置设置 collection behavior 和 full-screen auxiliary。
 - 输入：CGEventTap、状态校正、gilrs/IOHID 手柄。
 - 菜单栏：`tray-icon 0.25.0` 在 macOS 主线程拥有 `NSStatusItem`，同一份直接依赖的
-  `muda 0.20.0` 菜单拥有命令项；状态图标使用 Native 自有 `resources/icons/tray-macos.png` 并作为
+  `muda 0.20.0` 菜单拥有命令项；状态图标使用 BongoCat 自有 `resources/icons/tray-macos.png` 并作为
   template image。overlay 右键通过 content `NSView` 在同一主线程调用 `muda` 弹出。登录启动在
   macOS 13+ Production `.app` 使用 `SMAppService.mainAppService`。macOS 12 和 Development 构建
   明确报告 capability unsupported，不回退到废弃 API 或自行写 LaunchAgent。
@@ -886,7 +886,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 
 要求：
 
-- Native Rewrite 配置从全新 schema 开始，不读取、不探测、不导入旧 Tauri/Pinia store。
+- BongoCat 配置从全新 schema 开始，不读取、不探测、不导入旧 Tauri/Pinia store。
 - JSON key 使用 `snake_case`，字段按当前领域语义命名，不提供旧字段 alias。
 - `next` 是全新的初始版本，当前完整配置统一使用 `schema_version: 1`。v1 直接包含完整的
   `model.selected_model: { id, source }`、用户导入模型的元数据列表 `model.imported_models` 与内置
@@ -1204,7 +1204,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   原始时间戳/上下文的 `application-events.log`，与该摘要组成当前环境的私有 preview bundle；Core
   历史内容不属于该 bundle。
 
-初始字段命名和数据分类见 `shared/config/native-config-contract.md`，环境和 Bundle ID 决策见 ADR-0008。
+初始字段命名和数据分类见 `shared/config/contract.md`，环境和 Bundle ID 决策见 ADR-0008。
 
 继续兼容：
 
@@ -1313,7 +1313,7 @@ Windows 使用 D3D11，macOS 使用 Metal。模型窗口不嵌入 GPUI renderer�
 
 ### ADR-008：应用身份与存储环境隔离
 
-Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用相同数据结构和不同存储根，Native Rewrite 不读取旧配置。
+Bundle ID 固定为 `com.ayangweb.bongo-cat`。Development 与 Production 使用相同数据结构和不同存储根，BongoCat 不读取旧配置。
 
 ### ADR-011：渐进实现与发布门禁分离
 
@@ -1448,4 +1448,4 @@ About 仍是 Settings 中的普通页面，产品/软件信息、项目与反馈
 
 完成性能基线、异常恢复、8 小时 soak、安装/升级/回滚和发布清单。达到门槛后完成发布切换。
 
-详细任务和完成定义见 `BongoCat Native Rewrite Implementation TODO.md`。
+详细任务和完成定义见 `docs/implementation-todo.md`。

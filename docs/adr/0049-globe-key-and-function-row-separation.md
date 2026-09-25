@@ -29,7 +29,7 @@
    就是模型包自己的文件名主干（`pre-refactor:src/pages/main/index.vue:82`），所以一个提供
    `Function.png` 的模型在旧版里确实能画出地球键——只是已知的预置与社区模型都没有这张图。
 
-3. **地球键在 Native Rewrite 里完全不可达。** `bongocat-platform/src/macos.rs` 的 `map_key_code`
+3. **地球键在 BongoCat 里完全不可达。** `bongocat-platform/src/macos.rs` 的 `map_key_code`
    没有 keycode `63` 的 arm，而 `FlagsChanged` 分支先查表再解码（同文件 `1636-1641`），查不到就计入
    `unmapped_keys` 丢弃。缺的只是这一个 arm：`ModifierDecoder` 早就认识 63（`modifier_family_bit`
    里有 `63 => MaskSecondaryFn`）。

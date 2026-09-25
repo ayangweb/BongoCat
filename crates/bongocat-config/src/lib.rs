@@ -418,7 +418,7 @@ pub struct ModelConfig {
     /// motion audio" opt-in, so a fresh v1 configuration stays silent until the
     /// user turns it on. This is a deliberate divergence from the legacy
     /// implementation, which recorded an enabled default; the reasoning lives
-    /// in `shared/config/native-config-contract.md`.
+    /// in `shared/config/contract.md`.
     pub play_motion_audio: bool,
     /// Whether keyboard input is excluded from the model's input projection.
     pub ignore_keyboard: bool,
@@ -720,7 +720,7 @@ fn canonical_chord(value: &str) -> Option<String> {
 /// - A chord any binding already uses **in the same scope** is skipped instead
 ///   of reused. The legacy implementation indexed by position, so once a user
 ///   edited one binding the next behavior could be handed a chord that was
-///   already taken; the Native configuration rejects duplicate chords within a
+///   already taken; the configuration rejects duplicate chords within a
 ///   scope outright, which would make the whole configuration invalid rather
 ///   than merely ambiguous. The scope is the model being assigned plus the
 ///   application command bindings: another model's chords do not count,

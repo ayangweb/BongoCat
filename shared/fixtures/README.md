@@ -19,7 +19,7 @@ fixtures/
     preset-models.json
 ```
 
-Native 配置 schema 的有效/拒绝样本位于 `shared/config/fixtures/`，由同一标准 validator 检查；它们不代表用户数据，也不进入发布产物。
+配置 schema 的有效/拒绝样本位于 `shared/config/fixtures/`，由同一标准 validator 检查；它们不代表用户数据，也不进入发布产物。
 
 ## 约定
 
@@ -56,6 +56,6 @@ python3 tools/run-input-fixtures.py
 cargo run --manifest-path spikes/fixture-runner/Cargo.toml --locked
 ```
 
-`validate-fixtures.py` 检查 input/expected 配对、id、事件时间顺序和 checkpoint 对应关系；同时把合成模型包复制到临时目录，验证 package discovery、JSON 解析、引用路径和纹理头限制。`spikes/model-package` 使用 Rust 重跑同一异常包 contract，并把三个预置模型的强类型 model3/资源索引与 `preset-model3-index.json` 比较。`validate-json-schema.py` 使用 `tools/requirements-phase0.txt` 中固定版本的 `jsonschema`，先检查三份 schema 自身，再验证 input、expected 和 Native config fixture。
+`validate-fixtures.py` 检查 input/expected 配对、id、事件时间顺序和 checkpoint 对应关系；同时把合成模型包复制到临时目录，验证 package discovery、JSON 解析、引用路径和纹理头限制。`spikes/model-package` 使用 Rust 重跑同一异常包 contract，并把三个预置模型的强类型 model3/资源索引与 `preset-model3-index.json` 比较。`validate-json-schema.py` 使用 `tools/requirements.txt` 中固定版本的 `jsonschema`，先检查三份 schema 自身，再验证 input、expected 和配置 fixture。
 
 `run-input-fixtures.py` 保留为轻量独立 oracle；`spikes/fixture-runner` 使用 Rust 强类型事件和状态 reducer 执行同一 9 组序列，并逐 checkpoint 比较完整规范化 snapshot。Rust runner 还拒绝时间回退、重复/错误类型的 device 生命周期、未连接 gamepad 输入、非有限值、无初始边沿的 repeat 和未知 JSON 字段，并输出字段路径差异。两者都不是产品 runtime，也不能替代 Windows/macOS 平台采集测试。音效事件只验证为有序、非阻塞的协议输入，不会在 expected snapshot 中伪造音频设备结果。模型包索引验证静态资源边界，不调用 Cubism Core，也不替代 drawable、动作求值或 renderer 兼容测试。

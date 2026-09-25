@@ -124,7 +124,7 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
   测试覆盖 channel 门禁、签名密钥失败关闭、错误码稳定性与诊断计数；既有 `bongocat-app` 诊断
   测试保持通过。
 - `cargo check --locked --workspace --release` 通过。
-- `./tools/check-native-dependencies.sh` 通过：四个首发 target 的 release 依赖树均无
+- `./tools/check-dependencies.sh` 通过：四个首发 target 的 release 依赖树均无
   `tauri` / `wry` / `webview2` / `nodejs-sys` / `neon` / `deno_core` / `quickjs` /
   `javascriptcore`；14 个 manifest 全部 `licenses ok, sources ok`。新增的 `self_update` 及其
   传递依赖未触发任何许可证或来源违规，`deny.toml` 无需为它新增例外。
@@ -133,14 +133,14 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
 - 三平台 CI（run `34737269808`）首次运行暴露一个本机不可见的问题：Linux runner 不属于四个首发
   target，`ReleaseConfiguration::for_current_build` 在那里返回 `None`，导致两个直接用它构造
   runtime 的测试断言了错误的期望值（`left: None, right: Some("development")` 与
-  `left: NotConfigured, right: SignatureKeyMissing`），`Test Native workspace (ubuntu-latest)`
+  `left: NotConfigured, right: SignatureKeyMissing`），`Test workspace (ubuntu-latest)`
   因此失败 2 项。已把这两个测试改为从显式 `ReleaseConfiguration` 构造 runtime，使其在任意宿主上
   都真正执行 channel 与签名密钥门禁，而不是被静默跳过；并新增
   `a_host_outside_the_shipped_targets_has_no_release_configuration` 覆盖 `None` 配置路径。
   本地复检 14 项测试通过、workspace 498 passed / 0 failed。
 - 修复后三平台 CI（run `34738189816`，commit `b2b1f51`）**全绿：23/23 作业成功**，包括
-  `Test Native workspace (ubuntu-latest)` / `(macos-latest)` / `(windows-latest)`、
-  `Check Native dependency policy` 与全部平台 smoke。
+  `Test workspace (ubuntu-latest)` / `(macos-latest)` / `(windows-latest)`、
+  `Check dependency policy` 与全部平台 smoke。
 
 - `bongocat-config::StorageLayout` 的 `update_staging` 字段（`<env>/updates/staging/`）已移除：
   `staging` 模块删除后该字段无任何写入方，`create_directories`、环境形状断言与 0700 权限断言
@@ -222,8 +222,8 @@ feature 与 `signatures` feature、install 阶段的 stash 回滚覆盖这些点
      进行中替换的 `.__selfdelete__.exe`、(c) 不与并发更新争用同一暂存目录。
    - 附带约束：自有可执行文件**不得**以 `.__selfdelete__.exe` 结尾——`self-replace` 的删除胶水按该
      后缀判定，误命名会触发非预期行为。
-5. CI 覆盖面：`native-rewrite-phase0.yml` 的 `dependency-policy` 作业会运行
-   `./tools/check-native-dependencies.sh`，`native-workspace` 作业在 Windows/macOS/Ubuntu 三平台
+5. CI 覆盖面：`ci.yml` 的 `dependency-policy` 作业会运行
+   `./tools/check-dependencies.sh`，`workspace` 作业在 Windows/macOS/Ubuntu 三平台
    运行 fmt / Clippy / test / release check / production 环境构建。因此本 ADR 的门禁已在 CI 覆盖，
    但仍未在**真实发行流程**中验证：发行资产命名、签名与安装包产物未与本 ADR 的 target 匹配规则
    对齐（见待验证项 3）。

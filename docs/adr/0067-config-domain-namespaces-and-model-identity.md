@@ -6,7 +6,7 @@
 
 ## 背景
 
-初版 Native Rewrite 的配置把不同领域的状态放在过于宽泛的 `application` 和 `model`
+初版 BongoCat 的配置把不同领域的状态放在过于宽泛的 `application` 和 `model`
 section 中：系统集成与更新策略没有独立归属，输入和 overlay 性能字段被放在模型 section，
 模型来源使用 `preset`/`installed`，选中模型由两个可分别缺失的字段表示。这样会产生以下
 问题：

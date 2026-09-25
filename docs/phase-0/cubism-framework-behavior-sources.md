@@ -71,11 +71,11 @@ not change the R5 oracle, license, or the remaining authorized-fixture/black-box
 physics/pose evidence gates.
 
 2026-09-24 follow-up: the fixed Mver `CubismBreath` path calls
-`AddParameterValue`, so the Native reference-breath contribution is additive
+`AddParameterValue`, so the BongoCat reference-breath contribution is additive
 (`current + value * weight`) before Core clamping; it must not use the
 motion/expression-style target blend. The Mver source tree does not identify its
 linked Framework revision. Its update shape is consistent with the 4-r.x
-sample, while Native deliberately retains the pinned R5 fixed-step/interpolation
+sample, while BongoCat deliberately retains the pinned R5 fixed-step/interpolation
 contract. The Rust evaluator also converts sub-rig angles from degrees to radians exactly once; a
 second conversion would reduce a 30-degree input to roughly 0.52 degrees. The evaluator also
 skips root-particle outputs and clamps raw physics values before applying `Output.Weight`, matching

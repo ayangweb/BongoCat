@@ -6,12 +6,12 @@
 
 ## 背景
 
-Native 设置窗口需要与固定的 `gpui 0.2.2` 兼容的主题、输入和桌面控件。维护者决定将现有
+设置窗口需要与固定的 `gpui 0.2.2` 兼容的主题、输入和桌面控件。维护者决定将现有
 `guise-ui 1.5.3` 替换为 `gpui-component`，并指定其官方组件文档作为 API 事实来源。
 
 ## 决策
 
-- Native workspace 使用 GPUI Kit 官方开发版 `gpui-component 0.5.2` revision
+- workspace 使用 GPUI Kit 官方开发版 `gpui-component 0.5.2` revision
   `c0946e6acdc9e2f984f317ef7f998ee2c79f1a87`，关闭未使用的可选 feature；其许可证为
   Apache-2.0，依赖 GPUI `0.2.2`。GPUI Kit 的 manifest 使用官方 Zed git source，提交的
   `Cargo.lock` 固定当前解析到的 GPUI revision `55c0cc36d18cf06c6c54f640a87ce83d09413ae4`，

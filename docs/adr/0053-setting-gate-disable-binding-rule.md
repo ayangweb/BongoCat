@@ -116,4 +116,4 @@ ADR-0052「明确不做」中"不给行列表加禁用态样式"一条由本 ADR
 
 ## 验证
 
-见 `docs/BongoCat Native Rewrite Implementation TODO.md` 第 102 项。
+见 `docs/implementation-todo.md` 第 102 项。

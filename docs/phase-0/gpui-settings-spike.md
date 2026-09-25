@@ -199,7 +199,7 @@ Objective-C 对象。该版本例外的解除条件是 AccessKit macOS adapter �
 
 ## 本地化资源边界
 
-当前五种 locale（`en-US`、`pt-BR`、`vi-VN`、`zh-CN`、`zh-TW`）仍位于历史前端的 `src/locales/`，仅作为 Native Rewrite 的迁移输入。`tools/validate-locales.py` 在迁移前检查每个语言包的递归 key、叶子类型、非空文本和占位符集合，并由 Phase 0 CI 执行。迁移到 `shared/resources/localization/` 时必须保留相同 key 契约，再由 GPUI UI crate 显式加载；该检查不代表 Native 本地化迁移或 GPUI 辅助功能已经完成。
+当前五种 locale（`en-US`、`pt-BR`、`vi-VN`、`zh-CN`、`zh-TW`）仍位于历史前端的 `src/locales/`，仅作为 BongoCat 的迁移输入。`tools/validate-locales.py` 在迁移前检查每个语言包的递归 key、叶子类型、非空文本和占位符集合，并由 Phase 0 CI 执行。迁移到 `shared/resources/localization/` 时必须保留相同 key 契约，再由 GPUI UI crate 显式加载；该检查不代表 当前本地化迁移或 GPUI 辅助功能已经完成。
 
 ## 未完成
 

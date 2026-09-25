@@ -8,7 +8,7 @@ The committed fixture header and expected bindings are synthetic BongoCat test
 data. They verify the symbol allowlist, three R5 desktop target configurations,
 the C ABI, deterministic output, and generated-file drift. They are not copied
 from the Cubism SDK. Windows x86 and native Windows ARM64 are outside the
-final product target set; Windows on ARM runs the x64 build. R5 has no matching
+final target set; Windows on ARM runs the x64 build. R5 has no matching
 desktop Windows ARM64 Core to bind.
 
 ## Fixture check

@@ -569,7 +569,7 @@ struct PhysicsMeta {
     #[serde(rename = "VertexCount")]
     vertex_count: usize,
     /// Legacy SDK exports may omit this field; `0.0` represents frame-delta
-    /// evaluation in the bounded Native runtime.
+    /// evaluation in the bounded runtime.
     #[serde(default, rename = "Fps", deserialize_with = "deserialize_physics_fps")]
     fps: Option<f64>,
     #[serde(rename = "EffectiveForces")]
