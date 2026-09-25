@@ -1,7 +1,7 @@
 # Native Rewrite Rust Dependency Version Audit
 
-状态：所有直接依赖已使用 crates.io 最新稳定版或其已记录的 ABI/transition 例外；lockfile 已更新到上游约束允许的最新解析结果
-日期：2026-09-24（`gpui-kit` 切换到上游固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`；上次全量审计 2026-09-13）
+状态：所有直接依赖已使用 crates.io 最新稳定版、精确上游 revision 或已记录的 ABI/transition 例外；lockfile 已更新到上游约束允许的最新解析结果
+日期：2026-09-25（新增 `ayangweb/gilrs` 固定 commit `f43af45c3106e48ff131b77bf8c148d9bd5cbed2`；`gpui-kit` 固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`；上次全量审计 2026-09-13）
 Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
@@ -18,7 +18,7 @@ cargo update --manifest-path <workspace>/Cargo.toml --dry-run --verbose
 cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 ```
 
-预发布版本、yanked 版本和未固定 git branch 不属于“最新稳定版”。直接依赖精确 pin，传递依赖由 `Cargo.lock` 固定。`gpui-kit` 是唯一直接依赖例外：crates.io 最新稳定版尚不含本仓库需要的两项已合并 API，因此精确固定包含它们的完整上游 commit，待对应 release 发布后恢复 registry pin。
+预发布版本、yanked 版本和未固定 git branch 不属于“最新稳定版”。直接依赖精确 pin，传递依赖由 `Cargo.lock` 固定；`deny.toml` 的 `required-git-spec = "rev"` 进一步拒绝 branch/tag git source。两个直接依赖例外都固定完整 commit：`gpui-kit` 等待包含已合并 API 的 crates.io release；`gilrs` 使用维护者 fork 统一承接手柄兼容、backend queue 与平台生命周期修复，不能以浮动 branch 跟随。
 
 ## Direct Dependencies
 
@@ -38,6 +38,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级                                          |
 | `embed-resource`                      |       `3.0.11` | Windows 产品图标新增时最新                               |
 | `gpui-kit`                            | `0.6.5` @ `500852f` | 上游固定 revision；含 variant 与 Popover arrow                |
+| `gilrs`                               | `0.11.2` @ `f43af45` | 维护者 fork 固定 revision；WGI/IOHID 与后续手柄修复统一维护    |
 | `futures-lite`                        |        `2.6.1` | 已是最新                                                 |
 | `gpui`                                |        `0.2.2` | spike 直接依赖；正式 UI 经 `gpui-kit` suite 传递              |
 | `libc`                                |      `0.2.189` | 新增时即为最新稳定版                                     |
@@ -49,7 +50,6 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `objc2-core-graphics`                 |        `0.3.2` | 正式输入边界新增时最新                                   |
 | `objc2-foundation`                    |        `0.3.2` | 已是最新                                                 |
 | `objc2-foundation`（GPUI 原生 probe） |        `0.2.2` | 上游 ABI 类型兼容例外                                    |
-| `objc2-game-controller`               |        `0.3.2` | 新增时即为最新                                           |
 | `objc2-quartz-core`                   |        `0.3.2` | 已是最新                                                 |
 | `objc2-service-management`            |        `0.3.2` | 启动项 adapter 新增时最新                                |
 | `serde`                               |      `1.0.229` | 从 `1.0.228` 升级                                        |
@@ -113,13 +113,26 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
 
 当前 dependency-policy 脚本覆盖根 workspace、12 个 `spikes/*` workspace 与 `tools/cubism-bindgen`，共 14 个 manifest；它们均以 locked license/source check 为目标。正式根 workspace 还执行三个首发 target 的 release dependency tree check。无依赖的 contract workspace 同样重新生成/检查 lockfile。附加平台验证包括：
 
-- `windows 0.62.2` 同时封装 Raw Input、XInput 与原生 overlay 边界；输入和 overlay crate 均在 `x86_64-pc-windows-msvc` 完成 Check/Clippy；ADR-0033 前输入与 overlay 也曾对 `aarch64-pc-windows-msvc` 完成 Check，但该 ABI 已退役。XInput 仅增加同一 package 的 `Win32_UI_Input_XboxController` feature，真实 Windows 输入与 D3D11 生命周期 smoke 由 push CI 执行；
+- `windows 0.62.2` 同时封装 Raw Input、Win32 窗口与原生 overlay 边界；输入和 overlay crate 均在
+  `x86_64-pc-windows-msvc` 完成 Check/Clippy。Windows 手柄已迁入 gilrs WGI，旧
+  `Win32_UI_Input_XboxController` feature 与自维护 XInput DLL 加载已删除；
 - `core-graphics2 0.6.1` 在已授予 Input Monitoring 的 macOS 会话创建 listen-only tap，完成 lifecycle Reset 和正常 shutdown；
 - `objc2-core-graphics 0.3.2` 与 `objc2-core-foundation 0.3.2` 只存在于正式 macOS
   platform adapter，取代会为输入路径引入 `block 0.1.6` 的 `core-graphics2`；窄 wrapper
   管理 callback context、CFRunLoop source 和 tap 的统一析构，项目公共 API 仅暴露自有
   permission、diagnostics 和 error 类型。替换边界是 `MacInputService` 私有实现，不影响 runtime；
-- `objc2-game-controller 0.3.2` 只在 macOS 输入 spike 的窄平台边界枚举 `GCExtendedGamepad`、安装 value-change handler 并管理 background delivery；许可证为 Zlib OR Apache-2.0 OR MIT，项目公共协议只接收自有 snapshot/event 类型，停止使用 GameController 时可替换该 adapter 而不改变 producer contract；
+- `gilrs 0.11.2` / `gilrs-core 0.6.8` 固定 `ayangweb/gilrs` commit
+  `f43af45c3106e48ff131b77bf8c148d9bd5cbed2`，许可证 `Apache-2.0 OR MIT`，MSRV `1.84`。
+  Windows `wgi` backend、macOS IOHID backend 和 fork 内置 SDL mapping 都只存在于
+  `bongocat-platform` 私有 adapter；gilrs id/type/error 不进入 runtime/UI 公共 API，环境 mapping
+  与 force feedback 关闭。fork 的 SDL_GameControllerDB submodule 固定为
+  `15b5e9f4abfb1c5c691c468799816755a91a2e11`。当前 macOS backend 缺 stop/join，WGI join/错误
+  acknowledgement 也没有有界证明，WGI/IOHID event channel 无界，且 initial held-state snapshot
+  依赖 backend 是否已发出缓存事件；这些是 ADR-0066 阻塞，必须在 fork 修复后再宣称手柄完成。
+  workspace `gilrs` dependency 保持 featureless；`bongocat-platform` 的 Windows target table
+  启用 `wgi`。当前 fork 的 compile guard 未按 target 保护，macOS target table 也暂时启用 `wgi`
+  才能编译，但不编译 Windows backend 源；backend context 启动后服务最终诊断会明确标为
+  `clean_shutdown=false` / `service_status=Failed`，直到 bounded/error-aware stop/join acknowledgement 完成；
 - `objc2-service-management 0.3.2`（Zlib OR Apache-2.0 OR MIT，Rust 1.71+）来自持续维护
   `objc2` binding 集，只在 macOS platform adapter 以最小 `SMAppService`/Foundation feature
   调用 macOS 13+ main-app login item；运行时先检查 class availability，macOS 12 与 Development
@@ -207,7 +220,7 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   build 不链接 ALSA。真实预置 FLAC header/首样本、资源/解码失败、抢占、overflow 恢复和
   shutdown 均有 Rust 测试；默认设备热切换与长期资源测量留给后续平台验收；
 - `bindgen 0.72.1` 与 `sha2 0.11.0` 只存在于离线 Cubism raw binding 工具；三个当前可绑定 target 的合成 header golden、外部路径/hash/不可覆盖/provenance 测试和 release check 通过；
-- `cargo-deny 0.20.2` 驱动 14 个 manifest 的 locked license/source policy，目标矩阵为三个首发 target。ADR-0056 只在 `allow-git` 中放行固定上游 `https://github.com/longbridge/gpui-kit`，其它未知 git source 继续失败。
+- `cargo-deny 0.20.2` 驱动 14 个 manifest 的 locked license/source policy，目标矩阵为三个首发 target。`allow-git` 只放行固定上游 `https://github.com/longbridge/gpui-kit` 与固定维护者 fork `https://github.com/ayangweb/gilrs`，其它未知 git source 继续失败。
 
 GPUI 图继续报告已单独建档的 `block 0.1.6` 和 `proc-macro-error2 2.0.1`
 future-incompatibility。两者本身已是各自当前最新版，升级直接依赖没有解除上游约束；

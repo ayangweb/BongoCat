@@ -14,8 +14,8 @@ Rust 2024 edition application
 ├── GPUI                         设置、模型管理、快捷键和诊断 UI
 ├── Product Runtime              状态、输入语义、动画和配置协调
 ├── Live2D Runtime               模型、动作、表情、物理和音效
-├── Windows Backend              windows-rs、Raw Input、Win32、D3D11
-├── macOS Backend                objc2、CGEventTap、AppKit、Metal
+├── Windows Backend              windows-rs、Raw Input、gilrs/WGI、D3D11
+├── macOS Backend                objc2、CGEventTap、gilrs/IOHID、Metal
 └── Shared Assets / Fixtures     模型、schema、本地化和测试数据
 ```
 
@@ -31,6 +31,9 @@ Rust 2024 edition application
   从架构上避免 issue #47 的永久卡键。
 - macOS 输入优先评估成熟输入库；若没有方案能同时满足 listen-only CGEventTap、TCC 权限状态、
   tap 恢复和左右修饰键状态校正，则直接使用 `objc2` 封装最小适配层。
+- 双平台手柄 backend 固定使用 `ayangweb/gilrs` 精确 commit：Windows 为 WGI，macOS 为 IOHID；
+  `bongocat-platform` 只保留强类型事件/axis、连接 generation、Reset 重播和产品阈值适配，所有
+  驱动、mapping 与 backend 生命周期修复进入 fork（ADR-0066）。
 - 官方 Cubism Core 是预编译厂商二进制，是“应用代码纯 Rust”的唯一 FFI 例外；BongoCat 业务逻辑不得进入 SDK bridge。
 - Linux 不进入首发范围，但共享业务 crate 不得依赖 Win32/AppKit 类型，不得故意封死后续 backend。
 
@@ -374,8 +377,9 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   保留 `0.75` 的剩余距离，并在逻辑坐标距离小于 `0.5` 时收敛到目标。首个样本和显示器
   viewport 变化直接对齐目标，避免跨显示器插值使用错误坐标系；renderer 只消费平滑后的参数。
 - 手柄 axis latest-value 以 `{device_id, connection_generation, axis}` 为 key 并限制总 key 数；共享 runtime transport 为每个 device id 的每次连接分配单调 generation，平台将同一 connection 通过可靠 `GamepadConnected`/`GamepadDisconnected` 事件和 axis key 传递。断开只清理该 connection 的 pressed/axis，不重置其他输入；键鼠状态校正不扫描 gamepad pressed state。旧 generation 的迟到边沿和 axis 样本必须计数并拒绝。
-- Runtime 在 latest-value 消费后统一应用 `GamepadAxisSettings` 的 stick/trigger dead-zone；平台
-  adapter 只负责原始范围归一化和无效值诊断，不把设备默认 dead-zone 写入共享协议。轴值随后以
+- Runtime 在 latest-value 消费后统一应用 `GamepadAxisSettings` 的 stick/trigger dead-zone；gilrs
+  adapter 关闭默认 jitter/dead-zone filter 和环境 mapping，只负责 fork mapping 后的完整范围值、
+  trigger 连续值与无效值诊断，不把设备默认 dead-zone 写入共享协议。轴值随后以
   `ModelInputSnapshot` 的不可变字段投影给 renderer。
 - 平台 input worker 通过独立 latest diagnostics producer 发布项目稳定计数；该通道不占用可靠
   command/input edge 队列，Windows service tick 与 macOS run-loop slice 都刷新 live snapshot。
@@ -467,7 +471,12 @@ PixPin、Win+L 或其他系统级快捷键可能让应用收到按下边沿，�
 6. 会话锁定、桌面切换、睡眠、设备移除、服务重启和队列异常时发送 `Reset`；这些生命周期复位不等待确认阈值。
 7. 必要时用 `WH_KEYBOARD_LL` 补充合成事件，但 hook 不得覆盖 Raw Input 物理状态。
 8. `RegisterHotKey` 只处理应用快捷键；冲突必须反馈 UI 并保留旧绑定。
-9. XInput 固定轮询 0–3 号 slot；连接/断开和按钮使用可靠序列，摇杆/trigger 使用带 connection generation 的 latest-values。平台 adapter 仅从 System32 动态解析系统 `xinput1_4.dll`，不要求构建或部署环境提供 SDK import library；backend/export 缺失必须进入诊断且不能影响键鼠服务。平台层只归一化原始范围，产品 dead-zone 由 runtime 配置统一决定。
+9. 手柄由 `ayangweb/gilrs` 固定 commit 的 WGI backend 提供。adapter 将位置名、连接/断开和按钮
+   送入可靠序列，将 stick/trigger 送入带 connection generation 的 latest-values；每 tick 最多
+   drain 256 个 event，产品最多活动 4 个手柄。gilrs 默认 dead-zone、force feedback 和环境 mapping
+   关闭，D-pad 使用 gilrs 自带转换；backend 构造失败只禁用手柄并计数，不能停止键鼠服务。Windows
+   WGI 的 bounded join/错误 acknowledgement、hidden/unfocused Raw Input window 与 click-through
+   overlay 下的实机投递仍是发布门禁；初始 held-state snapshot 也必须由 backend 提供。
 
 Windows 的 `WM_QUERYENDSESSION` 与已确认的 `WM_ENDSESSION` 只记录系统终止请求并立即返回；
 GPUI owner 在下一帧进入既有 shutdown coordinator，Win32 callback 不阻塞或析构 runtime/GPU 资源。
@@ -519,7 +528,13 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - listen-only tap 必须创建在 `kCGHIDEventTap` 的 `kCGHeadInsertEventTap` 位置（与 rdev 的 listen 一致），不得使用 session 层 tail append。实测 macOS 26.5.2：session tail 位置收不到右 Shift 的释放 `FlagsChanged`，且重复按下事件 flags 逐字节相同；同一台机器的 HID head 位置能收到全部修饰键的完整 press/release 对。tap 是 listen-only，只观察不修改、不吞事件；HID 层事件流跨用户会话可见，锁屏/快速用户切换仍依赖既有 session 生命周期 Reset 清空 pressed state。
 - `FlagsChanged` 的 down/up 方向必须在 callback 中冻结，按优先级依次使用：事件 flags 相对上一个 `FlagsChanged` 事件的**设备位**跳变（flags 低 8 位中每个物理修饰键有独立 bit，左右天然区分，同侧兄弟键按住时家族 flag 不清零也不影响）、家族 flag 位跳变（rdev `LAST_FLAGS` 同思路）、按 callback 记录的前一边沿交替。HID head tap 下设备位跳变覆盖全部常规修饰键事件；CapsLock 的 `AlphaShift` 位反映锁存状态而非物理边沿，必须依赖交替回退；session tail 上观察到的右 Shift 事件缺失/不变序列也由交替回退兜底。decoder 状态不属于 runtime pressed state，并随任何 `Reset` 清空，周期校正强制释放候选时必须同步清除 decoder 记录。不得等到 consumer drain 时用较新的全局状态反推旧事件，无法识别的修饰键必须触发可观测 `Reset`。
 - 对键盘和鼠标 pressed set 分别使用 `CGEventSourceKeyState`、`CGEventSourceButtonState` 校正；右侧修饰键键码（54/60/61/62）在按住时也返回 false，必须同时查询其家族主键码（55/56/58/59）作为状态来源；保留 0–31 号 mouse button 身份，按统一的 `250 ms`/连续 `2` 次缺失策略确认释放，睡眠、锁屏、权限变化和 tap 重启时直接复位。
-- GameController owner 在服务期启用后台事件，连接分配新的 generation；按钮/连接边沿进入可靠队列，axis 进入固定容量 keyed latest-values，断开后旧 generation 的 callback 和待消费样本不得作用于重连设备。
+- 手柄由 `ayangweb/gilrs` 固定 commit 的 IOHID backend 提供；不再由 BongoCat 枚举
+  `GCExtendedGamepad` 或管理 GameController background policy。连接分配新的项目 generation，按钮/
+  连接边沿进入可靠队列，axis 进入固定容量 keyed latest-values；全局 Reset 后以相同 connection
+  重播 gilrs 已缓存的 current held state，断开后的旧 generation 不得作用于重连设备。backend
+  必须另外提供 authoritative initial snapshot、reset epoch 和 lossless release 证明后，才能把
+  held-state/replay contract 视为完成。当前 runtime 不对 gamepad 做键盘式 reconcile；若 backend
+  release 丢失，必须由 fork 提供 authoritative snapshot 或 health-triggered Reset。
 - callback 只做映射和入队，不执行模型、文件或 UI 工作。
 
 ## 10. 平台实现
@@ -544,7 +559,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   不执行该收敛，但完全离开现存显示器的持久化 bounds 仍按 state 恢复规则回退。
 - Renderer：D3D11 + DXGI + DirectComposition/DWM，预乘 alpha。
 - DPI：Per-Monitor-V2，处理 `WM_DPICHANGED`、显示器热插拔和负坐标。
-- 输入：Raw Input、状态校正、可选低级 hook、XInput 手柄。
+- 输入：Raw Input、状态校正、可选低级 hook、gilrs/WGI 手柄。
 - 产品图标：`bongocat-app` 在构建期把 Native 自有 `.ico` 编译进 Windows executable，用于窗口、
   任务栏和文件身份；它不再是托盘图标来源，托盘也不会回退到系统通用应用图标。
 - 托盘：`tray-icon 0.25.0` 拥有 `TrayIcon` 和固定 GUID，直接依赖的 `muda 0.20.0` 拥有菜单与
@@ -590,7 +605,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   完全离开现存显示器的持久化 bounds 仍按 state 恢复规则回退。
 - Renderer：Metal + `CAMetalLayer`，drawable size 跟随 backing scale。
 - Spaces：按配置设置 collection behavior 和 full-screen auxiliary。
-- 输入：CGEventTap、状态校正、GameController，必要时 IOHIDManager。
+- 输入：CGEventTap、状态校正、gilrs/IOHID 手柄。
 - 菜单栏：`tray-icon 0.25.0` 在 macOS 主线程拥有 `NSStatusItem`，同一份直接依赖的
   `muda 0.20.0` 菜单拥有命令项；状态图标使用 Native 自有 `resources/icons/tray-macos.png` 并作为
   template image。overlay 右键通过 content `NSView` 在同一主线程调用 `muda` 弹出。登录启动在
@@ -950,7 +965,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   的一层被裁切而非缩放；模式没有 `keyboard/` 图集时按字节安装 paw 图而不合成；某个绑定缺 paw
   或配套键帽时只跳过该绑定。输出文件名沿用产品自己的词汇表——键盘键是 `bongocat-live2d-render` 从
   HID usage 解析出的名字，手柄键是随包预置 gamepad 模型已经装载的名字（`gamepad` 的键位表用
-  XInput 序号，不是虚拟键码）；无法命名的控制码不产出图片也不报错。
+  历史 XInput 按钮序号（这是 Mver 资源词表，不是当前手柄 backend API）；无法命名的控制码不产出图片也不报错。
 - 合成图按 lossless 方式重编码（`oxipng`，只开库入口）：位深/颜色类型/调色板/灰度缩减保持解码
   后像素不变，`optimize_alpha` 只改写全透明像素的颜色通道。有损量化库因许可证（GPL）被排除；
   Zopfli 后端实测多 5% 体积换 15 倍时间，不采用。重编码失败写回普通编码结果，不让转换失败。
@@ -1219,6 +1234,11 @@ resources/background.png  resources/cover.png
 - 重复 KeyDown 不破坏按压状态或边沿动画。
 - 设备断开、锁屏和睡眠后 pressed set 为空。
 - 鼠标移动合并不能阻塞键盘释放。
+- gilrs adapter 的每 tick event 上限不能替代 backend 队列上界；在 fork 提供 bounded queue 与
+  overflow/reset 证据前，macOS stop/join、WGI bounded join/错误 acknowledgement、初始 held-state
+  snapshot、WGI 焦点和双平台手柄完成声明保持未完成。当前 backend context 启动后，最终诊断必须报告
+  `clean_shutdown=false` / `service_status=Failed`，不能因键鼠 callback 和 final Reset 成功而把
+  backend 生命周期问题标成 clean shutdown。
 
 ### 13.3 验收指标
 
@@ -1249,6 +1269,7 @@ Linux 是后续能力，不是隐藏的首发任务：
 | Rust Live2D 工作量过大       | Core/动作/物理/renderer spike    | 三个预置模型完成输入到绘制闭环    |
 | 透明合成不稳定               | D3D11/Metal 截图和压力测试       | alpha、置顶、穿透双平台通过       |
 | 输入仍卡键                   | Raw Input/CGEventTap + reconcile | #47 和生命周期矩阵无残留键        |
+| gilrs backend 生命周期/队列  | 固定 fork、窄 adapter、发布门禁 | stop/join、bounded overflow、双平台物理矩阵通过 |
 | Cubism 授权不明确            | 二进制/许可证清单                | 发布方式有书面结论                |
 | 后续 Linux 不等价            | 单独能力矩阵                     | 不影响 Windows/macOS 首发         |
 
@@ -1369,6 +1390,12 @@ macOS/Windows 托盘使用 `tray-icon 0.25.0`，菜单与右键弹出使用直�
 adapter 负责加载 PNG、映射强类型 action、调用 hide/show，并从 overlay session 的真实
 HWND/`NSView` 弹出菜单。第三方类型、句柄和错误不进入 runtime/UI 公共 API，Windows 固定 GUID
 与双平台唯一 owner 由 ADR-0031 约束。
+
+### ADR-0066：gilrs 手柄后端边界
+
+Windows/macOS 手柄统一使用 `ayangweb/gilrs` 固定 commit，平台只保留强类型输入与 generation/axis
+适配。BongoCat 不再维护 XInput/GameController backend；fork 的 macOS stop/join、bounded event queue
+和 Windows WGI 焦点矩阵是完成门禁，相关修复不在产品层增加 workaround。
 
 ### ADR-023：Windows Per-User Installer
 

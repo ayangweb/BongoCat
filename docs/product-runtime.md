@@ -163,7 +163,7 @@ warmed-up standard baselines.
 
 By default the preview applies deterministic, model-specific input through the product runtime so
 hand, pointer, head, and eye changes exercise per-frame Cubism evaluation and GPU buffer updates.
-To use the formal macOS listen-only CGEventTap and GameController producers for keyboard, mouse and
+To use the formal macOS listen-only CGEventTap and gilrs/IOHID producers for keyboard, mouse and
 gamepad input instead, grant Input Monitoring permission to the launching terminal and run:
 
 ```text
@@ -173,7 +173,11 @@ cargo run -p bongocat-overlay --release -- standard 30 --interactive
 The interactive path uses the same typed runtime input state as the deterministic preview and
 stops the platform producer before the runtime and Metal overlay. It seeds the current global
 cursor position at startup and then coalesces cursor movement through an independent latest-value
-transport; pointer, head, and eye parameters use the active display's logical viewport. The product
+transport; pointer, head, and eye parameters use the active display's logical viewport. On the
+currently pinned gilrs fork, final diagnostics intentionally remain `Failed` with
+`clean_shutdown=false` after a backend context starts because neither backend exposes the required
+bounded/error-aware stop/join acknowledgement; the keyboard/tap final Reset still completes, but this
+dependency gate is not a clean product shutdown. The product
 entry now owns this runtime/input/render lifecycle on both launch platforms. GPUI settings
 coexistence, installed-model selection, physical gamepad validation, and remaining lifecycle evidence are
 separate work items.

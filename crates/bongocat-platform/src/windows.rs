@@ -1,14 +1,13 @@
 use crate::{
     DisplayBounds, NativeWindowError, PlatformInputDiagnostics, PlatformInputError,
-    PlatformInputServiceStatus,
+    PlatformInputServiceStatus, gilrs_gamepad::GilrsGamepad,
 };
 use bongocat_config::Language;
 use bongocat_input::{
-    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport, GamepadAxis,
-    GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadButton,
-    GamepadButtonKey, GamepadConnection, GamepadConnectionError, InputControl, InputEdge,
-    InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource, MonotonicMillis,
-    MouseButton, PhysicalKey, PlatformInputDiagnosticsProducer,
+    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport,
+    GamepadAxisProducer, InputControl, InputEdge, InputEvent, InputProducer, InputPublishError,
+    InputResetReason, InputSource, MonotonicMillis, MouseButton, PhysicalKey,
+    PlatformInputDiagnosticsProducer,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
@@ -27,15 +26,13 @@ use std::{
 };
 use windows::{
     Win32::{
-        Foundation::{FreeLibrary, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
+        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
         Graphics::Gdi::{
             EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST,
             MONITORINFO, MonitorFromPoint,
         },
         System::{
-            LibraryLoader::{
-                GetModuleHandleW, GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW,
-            },
+            LibraryLoader::GetModuleHandleW,
             RemoteDesktop::{
                 NOTIFY_FOR_THIS_SESSION, WTSRegisterSessionNotification,
                 WTSUnRegisterSessionNotification,
@@ -66,7 +63,7 @@ use windows::{
             },
         },
     },
-    core::{BOOL, PCSTR, w},
+    core::{BOOL, w},
 };
 
 const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductRawInputWindow");
@@ -80,28 +77,11 @@ const SERVICE_TIMEOUT: Duration = Duration::from_secs(2);
 const FINAL_RESET_ATTEMPTS: usize = 20;
 const FINAL_RESET_RETRY: Duration = Duration::from_millis(5);
 
-const XINPUT_ERROR_SUCCESS: u32 = 0;
-const XINPUT_ERROR_DEVICE_NOT_CONNECTED: u32 = 1167;
-
 pub fn system_language() -> Language {
     sys_locale::get_locale().map_or_else(Language::default, |locale| {
         Language::from_system_locale(&locale)
     })
 }
-const XINPUT_GAMEPAD_DPAD_UP: u16 = 0x0001;
-const XINPUT_GAMEPAD_DPAD_DOWN: u16 = 0x0002;
-const XINPUT_GAMEPAD_DPAD_LEFT: u16 = 0x0004;
-const XINPUT_GAMEPAD_DPAD_RIGHT: u16 = 0x0008;
-const XINPUT_GAMEPAD_START: u16 = 0x0010;
-const XINPUT_GAMEPAD_BACK: u16 = 0x0020;
-const XINPUT_GAMEPAD_LEFT_THUMB: u16 = 0x0040;
-const XINPUT_GAMEPAD_RIGHT_THUMB: u16 = 0x0080;
-const XINPUT_GAMEPAD_LEFT_SHOULDER: u16 = 0x0100;
-const XINPUT_GAMEPAD_RIGHT_SHOULDER: u16 = 0x0200;
-const XINPUT_GAMEPAD_A: u16 = 0x1000;
-const XINPUT_GAMEPAD_B: u16 = 0x2000;
-const XINPUT_GAMEPAD_X: u16 = 0x4000;
-const XINPUT_GAMEPAD_Y: u16 = 0x8000;
 
 pub fn current_display_bounds() -> Option<DisplayBounds> {
     // SAFETY: every query receives initialized stack storage and the monitor
@@ -201,57 +181,6 @@ unsafe fn display_bounds(
         width: (info.rcMonitor.right - info.rcMonitor.left) as f32 / scale_x,
         height: (info.rcMonitor.bottom - info.rcMonitor.top) as f32 / scale_y,
     })
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-struct XInputGamepad {
-    buttons: u16,
-    left_trigger: u8,
-    right_trigger: u8,
-    left_thumb_x: i16,
-    left_thumb_y: i16,
-    right_thumb_x: i16,
-    right_thumb_y: i16,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-struct XInputState {
-    packet_number: u32,
-    gamepad: XInputGamepad,
-}
-
-type XInputGetState = unsafe extern "system" fn(user_index: u32, state: *mut XInputState) -> u32;
-
-struct XInputApi {
-    module: HMODULE,
-    get_state: XInputGetState,
-}
-
-impl XInputApi {
-    fn load() -> Option<Self> {
-        // SAFETY: the DLL name is a fixed system component and the restricted
-        // search flag prevents loading an untrusted copy from the current path.
-        let module = unsafe {
-            LoadLibraryExW(w!("xinput1_4.dll"), None, LOAD_LIBRARY_SEARCH_SYSTEM32).ok()?
-        };
-        // SAFETY: `XInputGetState` is the documented export with the ABI used
-        // by `XInputState`; the module is retained for the poller's lifetime.
-        let get_state = unsafe {
-            GetProcAddress(module, PCSTR(c"XInputGetState".as_ptr().cast()))
-                .map(|function| std::mem::transmute::<_, XInputGetState>(function))?
-        };
-        Some(Self { module, get_state })
-    }
-}
-
-impl Drop for XInputApi {
-    fn drop(&mut self) {
-        // SAFETY: this adapter owns the matching LoadLibraryExW reference and
-        // the poller cannot invoke `get_state` after dropping this field.
-        unsafe { FreeLibrary(self.module) }.ok();
-    }
 }
 
 pub fn hide_native_window(window: &impl HasWindowHandle) -> Result<(), NativeWindowError> {
@@ -396,257 +325,10 @@ struct WorkerOptions {
     drop_next_key_release: bool,
 }
 
-#[derive(Clone, Copy)]
-struct XInputSlot {
-    connection: GamepadConnection,
-    buttons: u32,
-}
-
-struct XInputPoller {
-    slots: [Option<XInputSlot>; 4],
-    api: Option<XInputApi>,
-}
-
-impl Default for XInputPoller {
-    fn default() -> Self {
-        Self {
-            slots: [None; 4],
-            api: XInputApi::load(),
-        }
-    }
-}
-
-impl XInputPoller {
-    fn reseed(
-        &self,
-        producer: &InputProducer,
-        at: MonotonicMillis,
-    ) -> Result<(), InputPublishError> {
-        for slot in self.slots.into_iter().flatten() {
-            producer.publish(InputEvent::GamepadConnected {
-                connection: slot.connection,
-                at,
-            })?;
-        }
-        Ok(())
-    }
-
-    fn disconnect_all(&mut self, axis_producer: &GamepadAxisProducer) -> u64 {
-        let mut disconnected = 0_u64;
-        for slot in &mut self.slots {
-            if let Some(previous) = slot.take() {
-                axis_producer.disconnect(previous.connection);
-                disconnected = disconnected.saturating_add(1);
-            }
-        }
-        disconnected
-    }
-
-    fn poll(
-        &mut self,
-        producer: &InputProducer,
-        axis_producer: &GamepadAxisProducer,
-        at: MonotonicMillis,
-        diagnostics: &mut PlatformInputDiagnostics,
-    ) -> Result<(), InputPublishError> {
-        let Some(api) = self.api.as_ref() else {
-            diagnostics.gamepad_backend_unavailable =
-                diagnostics.gamepad_backend_unavailable.saturating_add(1);
-            return Ok(());
-        };
-        let get_state = api.get_state;
-        self.poll_with(producer, axis_producer, at, diagnostics, |slot, state| {
-            // SAFETY: `state` is a valid writable pointer and slot is
-            // constrained by `poll_with` to the documented 0..4 range.
-            unsafe { get_state(slot, state) }
-        })
-    }
-
-    fn poll_with(
-        &mut self,
-        producer: &InputProducer,
-        axis_producer: &GamepadAxisProducer,
-        at: MonotonicMillis,
-        diagnostics: &mut PlatformInputDiagnostics,
-        mut query: impl FnMut(u32, *mut XInputState) -> u32,
-    ) -> Result<(), InputPublishError> {
-        for slot in 0..4_usize {
-            let mut state = XInputState::default();
-            let result = query(slot as u32, &mut state);
-            diagnostics.gamepad_polls = diagnostics.gamepad_polls.saturating_add(1);
-            if result == XINPUT_ERROR_DEVICE_NOT_CONNECTED {
-                if let Some(previous) = self.slots[slot].take() {
-                    axis_producer.disconnect(previous.connection);
-                    producer.publish(InputEvent::GamepadDisconnected {
-                        connection: previous.connection,
-                        at,
-                    })?;
-                    diagnostics.gamepad_disconnections =
-                        diagnostics.gamepad_disconnections.saturating_add(1);
-                }
-                continue;
-            }
-            if result != XINPUT_ERROR_SUCCESS {
-                diagnostics.gamepad_query_errors =
-                    diagnostics.gamepad_query_errors.saturating_add(1);
-                continue;
-            }
-            let existing = self.slots[slot];
-            let connection = if let Some(previous) = existing {
-                previous.connection
-            } else {
-                let connection = match axis_producer.connect(slot as u8) {
-                    Ok(connection) => connection,
-                    Err(GamepadConnectionError::RuntimeStopped) => {
-                        return Err(InputPublishError::RuntimeStopped(InputEvent::Reset {
-                            reason: InputResetReason::ServiceRestart,
-                            at,
-                        }));
-                    }
-                    Err(GamepadConnectionError::GenerationExhausted) => {
-                        diagnostics.gamepad_axis_publish_rejections = diagnostics
-                            .gamepad_axis_publish_rejections
-                            .saturating_add(1);
-                        continue;
-                    }
-                };
-                if let Err(error) =
-                    producer.publish(InputEvent::GamepadConnected { connection, at })
-                {
-                    axis_producer.disconnect(connection);
-                    return Err(error);
-                }
-                diagnostics.gamepad_connections = diagnostics.gamepad_connections.saturating_add(1);
-                connection
-            };
-            let old_buttons = existing.map_or(0, |value| value.buttons);
-            let new_buttons = u32::from(state.gamepad.buttons)
-                | (u32::from(state.gamepad.left_trigger >= 128) << 16)
-                | (u32::from(state.gamepad.right_trigger >= 128) << 17);
-            let publish_result = (|| {
-                for (button, bit) in XINPUT_BUTTON_BITS {
-                    let was_pressed = old_buttons & bit != 0;
-                    let is_pressed = new_buttons & bit != 0;
-                    if was_pressed == is_pressed {
-                        continue;
-                    }
-                    producer.publish(InputEvent::Edge {
-                        control: InputControl::Gamepad(GamepadButtonKey { connection, button }),
-                        edge: if is_pressed {
-                            InputEdge::Down
-                        } else {
-                            InputEdge::Up
-                        },
-                        source: InputSource::Capture,
-                        at,
-                    })?;
-                }
-                for (axis, value) in [
-                    (
-                        GamepadAxis::LeftStickX,
-                        normalize_thumb(state.gamepad.left_thumb_x),
-                    ),
-                    (
-                        GamepadAxis::LeftStickY,
-                        normalize_thumb(state.gamepad.left_thumb_y),
-                    ),
-                    (
-                        GamepadAxis::RightStickX,
-                        normalize_thumb(state.gamepad.right_thumb_x),
-                    ),
-                    (
-                        GamepadAxis::RightStickY,
-                        normalize_thumb(state.gamepad.right_thumb_y),
-                    ),
-                    (
-                        GamepadAxis::LeftTrigger,
-                        normalize_trigger(state.gamepad.left_trigger),
-                    ),
-                    (
-                        GamepadAxis::RightTrigger,
-                        normalize_trigger(state.gamepad.right_trigger),
-                    ),
-                ] {
-                    match axis_producer.publish(GamepadAxisSample {
-                        key: GamepadAxisKey { connection, axis },
-                        value,
-                        at,
-                    }) {
-                        Ok(()) => {
-                            diagnostics.gamepad_axis_samples =
-                                diagnostics.gamepad_axis_samples.saturating_add(1);
-                        }
-                        Err(GamepadAxisPublishError::RuntimeStopped(_)) => {
-                            return Err(InputPublishError::RuntimeStopped(InputEvent::Reset {
-                                reason: InputResetReason::ServiceRestart,
-                                at,
-                            }));
-                        }
-                        Err(_) => {
-                            diagnostics.gamepad_axis_publish_rejections = diagnostics
-                                .gamepad_axis_publish_rejections
-                                .saturating_add(1);
-                        }
-                    }
-                }
-                Ok(())
-            })();
-            if let Err(error) = publish_result {
-                axis_producer.disconnect(connection);
-                self.slots[slot] = None;
-                return Err(error);
-            }
-            self.slots[slot] = Some(XInputSlot {
-                connection,
-                buttons: new_buttons,
-            });
-        }
-        Ok(())
-    }
-}
-
-const XINPUT_BUTTON_BITS: [(GamepadButton, u32); 16] = [
-    (GamepadButton::DpadUp, XINPUT_GAMEPAD_DPAD_UP as u32),
-    (GamepadButton::DpadDown, XINPUT_GAMEPAD_DPAD_DOWN as u32),
-    (GamepadButton::DpadLeft, XINPUT_GAMEPAD_DPAD_LEFT as u32),
-    (GamepadButton::DpadRight, XINPUT_GAMEPAD_DPAD_RIGHT as u32),
-    (GamepadButton::Start, XINPUT_GAMEPAD_START as u32),
-    (GamepadButton::Select, XINPUT_GAMEPAD_BACK as u32),
-    (GamepadButton::LeftStick, XINPUT_GAMEPAD_LEFT_THUMB as u32),
-    (GamepadButton::RightStick, XINPUT_GAMEPAD_RIGHT_THUMB as u32),
-    (
-        GamepadButton::LeftShoulder,
-        XINPUT_GAMEPAD_LEFT_SHOULDER as u32,
-    ),
-    (
-        GamepadButton::RightShoulder,
-        XINPUT_GAMEPAD_RIGHT_SHOULDER as u32,
-    ),
-    (GamepadButton::South, XINPUT_GAMEPAD_A as u32),
-    (GamepadButton::East, XINPUT_GAMEPAD_B as u32),
-    (GamepadButton::West, XINPUT_GAMEPAD_X as u32),
-    (GamepadButton::North, XINPUT_GAMEPAD_Y as u32),
-    (GamepadButton::LeftTrigger, 1 << 16),
-    (GamepadButton::RightTrigger, 1 << 17),
-];
-
-fn normalize_thumb(value: i16) -> f32 {
-    if value < 0 {
-        f32::from(value) / 32_768.0
-    } else {
-        f32::from(value) / 32_767.0
-    }
-}
-
-fn normalize_trigger(value: u8) -> f32 {
-    f32::from(value) / 255.0
-}
-
 struct WindowState {
     producer: InputProducer,
     cursor_producer: CursorProducer,
-    _gamepad_axis_producer: GamepadAxisProducer,
-    gamepad_poller: XInputPoller,
+    gamepad: GilrsGamepad,
     stop: Arc<AtomicBool>,
     system_termination_requested: Arc<AtomicBool>,
     started: Instant,
@@ -676,11 +358,11 @@ impl WindowState {
         system_termination_requested: Arc<AtomicBool>,
         options: WorkerOptions,
     ) -> Self {
+        let gamepad = GilrsGamepad::new(producer.clone(), gamepad_axis_producer);
         Self {
             producer,
             cursor_producer,
-            _gamepad_axis_producer: gamepad_axis_producer,
-            gamepad_poller: XInputPoller::default(),
+            gamepad,
             stop,
             system_termination_requested,
             started: Instant::now(),
@@ -852,7 +534,7 @@ impl WindowState {
                 Ok(_) => {
                     self.candidates.clear();
                     self.missing_confirmations.clear();
-                    if let Err(error) = self.gamepad_poller.reseed(&self.producer, self.monotonic())
+                    if let Err(error) = self.gamepad.reseed(self.monotonic(), &mut self.diagnostics)
                     {
                         match error {
                             InputPublishError::QueueFull(_) => {
@@ -883,12 +565,7 @@ impl WindowState {
             }
         }
 
-        if let Err(error) = self.gamepad_poller.poll(
-            &self.producer,
-            &self._gamepad_axis_producer,
-            self.monotonic(),
-            &mut self.diagnostics,
-        ) {
+        if let Err(error) = self.gamepad.drain(self.monotonic(), &mut self.diagnostics) {
             match error {
                 InputPublishError::QueueFull(_) => self.request_recovery(),
                 InputPublishError::RuntimeStopped(_) => {
@@ -956,8 +633,8 @@ impl WindowState {
                 self.producer.recover(reason, self.monotonic())?;
                 self.candidates.clear();
                 self.missing_confirmations.clear();
-                self.gamepad_poller
-                    .reseed(&self.producer, self.monotonic())?;
+                self.gamepad
+                    .reseed(self.monotonic(), &mut self.diagnostics)?;
                 self.diagnostics.recovery_resets =
                     self.diagnostics.recovery_resets.saturating_add(1);
             }
@@ -972,8 +649,8 @@ impl WindowState {
                             .recover(InputResetReason::ServiceRestart, self.monotonic())?;
                         self.candidates.clear();
                         self.missing_confirmations.clear();
-                        self.gamepad_poller
-                            .reseed(&self.producer, self.monotonic())?;
+                        self.gamepad
+                            .reseed(self.monotonic(), &mut self.diagnostics)?;
                         self.diagnostics.recovery_resets =
                             self.diagnostics.recovery_resets.saturating_add(1);
                         return Ok(());
@@ -1347,16 +1024,16 @@ unsafe fn run_input_worker_inner(
         state.session_notifications_unregistered =
             unsafe { WTSUnRegisterSessionNotification(window) }.is_ok();
     }
-    state.diagnostics.gamepad_disconnections =
-        state.diagnostics.gamepad_disconnections.saturating_add(
-            state
-                .gamepad_poller
-                .disconnect_all(&state._gamepad_axis_producer),
-        );
+    let gamepad_shutdown = state.gamepad.shutdown();
+    state.diagnostics.gamepad_disconnections = state
+        .diagnostics
+        .gamepad_disconnections
+        .saturating_add(gamepad_shutdown.disconnected);
     let final_reset = state.publish_final_reset();
     state.diagnostics.clean_shutdown = !message_failed
         && raw_unregistered
         && state.session_notifications_unregistered
+        && gamepad_shutdown.backend_clean
         && final_reset;
     state.diagnostics.service_status =
         if !message_failed && state.terminal_error.is_none() && state.diagnostics.clean_shutdown {
@@ -2038,256 +1715,6 @@ mod tests {
     }
 
     #[test]
-    fn xinput_loader_resolves_the_system_api_without_an_import_library() {
-        assert!(XInputApi::load().is_some());
-    }
-
-    #[test]
-    fn xinput_poller_maps_initial_edges_multiple_slots_and_reconnect_generation() {
-        const TIMEOUT: Duration = Duration::from_secs(2);
-        let runtime = RuntimeOwner::start(true, 64);
-        let client = runtime.client();
-        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
-        let producer = runtime.input_producer();
-        let axis_producer = runtime.gamepad_axis_producer();
-        let mut poller = XInputPoller::default();
-        let mut diagnostics = PlatformInputDiagnostics::default();
-        let mut states = [None; 4];
-        states[0] = Some(XInputState {
-            gamepad: XInputGamepad {
-                buttons: XINPUT_GAMEPAD_A,
-                left_trigger: 128,
-                ..XInputGamepad::default()
-            },
-            ..XInputState::default()
-        });
-        states[2] = Some(XInputState {
-            gamepad: XInputGamepad {
-                buttons: XINPUT_GAMEPAD_B,
-                ..XInputGamepad::default()
-            },
-            ..XInputState::default()
-        });
-
-        poll_synthetic(
-            &mut poller,
-            &producer,
-            &axis_producer,
-            MonotonicMillis::new(1),
-            &mut diagnostics,
-            states,
-        )
-        .expect("initial poll");
-        wait_for_input_sequence(&client, 4, TIMEOUT);
-        let first = client.snapshot();
-        assert_eq!(first.input.pressed_gamepad_button_count, 3);
-        assert_eq!(diagnostics.gamepad_connections, 2);
-        assert_eq!(diagnostics.gamepad_axis_samples, 12);
-        let first_generation = poller.slots[0]
-            .expect("slot 0 connected")
-            .connection
-            .generation;
-        assert_eq!(
-            poller.slots[2]
-                .expect("slot 2 connected")
-                .connection
-                .generation,
-            1
-        );
-
-        states[0] = None;
-        poll_synthetic(
-            &mut poller,
-            &producer,
-            &axis_producer,
-            MonotonicMillis::new(2),
-            &mut diagnostics,
-            states,
-        )
-        .expect("disconnect poll");
-        states[0] = Some(XInputState {
-            gamepad: XInputGamepad {
-                left_trigger: 127,
-                ..XInputGamepad::default()
-            },
-            ..XInputState::default()
-        });
-        poll_synthetic(
-            &mut poller,
-            &producer,
-            &axis_producer,
-            MonotonicMillis::new(3),
-            &mut diagnostics,
-            states,
-        )
-        .expect("reconnect poll");
-        let reconnected = poller.slots[0].expect("slot 0 reconnected");
-        assert!(reconnected.connection.generation > first_generation);
-        assert_eq!(reconnected.buttons & (1 << 16), 0);
-        assert_eq!(diagnostics.gamepad_disconnections, 1);
-        assert_eq!(diagnostics.gamepad_connections, 3);
-        assert_eq!(diagnostics.gamepad_axis_publish_rejections, 0);
-
-        runtime.shutdown(TIMEOUT).expect("runtime stop");
-    }
-
-    #[test]
-    fn xinput_reseed_restores_runtime_connection_after_input_reset() {
-        const TIMEOUT: Duration = Duration::from_secs(2);
-        let runtime = RuntimeOwner::start(true, 64);
-        let client = runtime.client();
-        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
-        let producer = runtime.input_producer();
-        let axis_producer = runtime.gamepad_axis_producer();
-        let mut poller = XInputPoller::default();
-        let mut diagnostics = PlatformInputDiagnostics::default();
-        let mut states = [None; 4];
-        states[0] = Some(XInputState::default());
-
-        poll_synthetic(
-            &mut poller,
-            &producer,
-            &axis_producer,
-            MonotonicMillis::new(1),
-            &mut diagnostics,
-            states,
-        )
-        .expect("initial poll");
-        wait_for_input_sequence(&client, 0, TIMEOUT);
-        let connection = poller.slots[0].expect("connected slot").connection;
-        assert_eq!(client.snapshot().input.connected_gamepad_count, 1);
-
-        producer
-            .recover(InputResetReason::QueueOverflow, MonotonicMillis::new(2))
-            .expect("recovery reset");
-        poller
-            .reseed(&producer, MonotonicMillis::new(3))
-            .expect("reseed connected gamepad");
-        wait_for_input_sequence(&client, 2, TIMEOUT);
-
-        assert_eq!(client.snapshot().input.connected_gamepad_count, 1);
-        assert_eq!(
-            poller.slots[0].expect("preserved slot").connection,
-            connection
-        );
-        let axis = axis_producer.diagnostics();
-        assert_eq!(axis.connections, 1);
-        assert_eq!(axis.disconnections, 0);
-        runtime.shutdown(TIMEOUT).expect("runtime stop");
-    }
-
-    #[test]
-    fn windows_lifecycle_reset_reseeds_existing_gamepad_slots() {
-        const TIMEOUT: Duration = Duration::from_secs(2);
-        let runtime = RuntimeOwner::start(true, 64);
-        let client = runtime.client();
-        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
-        let producer = runtime.input_producer();
-        let axis_producer = runtime.gamepad_axis_producer();
-        let connection = axis_producer.connect(0).expect("gamepad connection");
-        let mut state = WindowState::new(
-            producer,
-            runtime.cursor_producer(),
-            axis_producer.clone(),
-            PlatformInputDiagnosticsProducer::default(),
-            Arc::new(AtomicBool::new(false)),
-            Arc::new(AtomicBool::new(false)),
-            WorkerOptions::default(),
-        );
-        state.gamepad_poller.slots[0] = Some(XInputSlot {
-            connection,
-            buttons: 0,
-        });
-        let initial_sequence = state
-            .producer
-            .publish(InputEvent::GamepadConnected {
-                connection,
-                at: state.monotonic(),
-            })
-            .expect("initial gamepad connection");
-        wait_for_input_sequence(&client, initial_sequence, TIMEOUT);
-
-        state
-            .publish(CapturedEvent::Reset(InputResetReason::SessionLock))
-            .expect("lifecycle reset");
-        wait_for_input_sequence(&client, initial_sequence + 2, TIMEOUT);
-
-        assert_eq!(client.snapshot().input.connected_gamepad_count, 1);
-        assert_eq!(axis_producer.diagnostics().connections, 1);
-        runtime.shutdown(TIMEOUT).expect("runtime stop");
-    }
-
-    #[test]
-    fn stopped_axis_transport_is_not_reported_as_reliable_queue_overflow() {
-        const TIMEOUT: Duration = Duration::from_secs(2);
-        let runtime = RuntimeOwner::start(true, 64);
-        let producer = runtime.input_producer();
-        let axis_producer = runtime.gamepad_axis_producer();
-        runtime.shutdown(TIMEOUT).expect("runtime stop");
-        let mut poller = XInputPoller::default();
-        let mut diagnostics = PlatformInputDiagnostics::default();
-        let mut states = [None; 4];
-        states[0] = Some(XInputState::default());
-
-        let error = poll_synthetic(
-            &mut poller,
-            &producer,
-            &axis_producer,
-            MonotonicMillis::new(1),
-            &mut diagnostics,
-            states,
-        )
-        .expect_err("stopped axis transport must fail");
-        assert!(matches!(error, InputPublishError::RuntimeStopped(_)));
-        assert_eq!(diagnostics.gamepad_axis_publish_rejections, 0);
-    }
-
-    fn poll_synthetic(
-        poller: &mut XInputPoller,
-        producer: &InputProducer,
-        axis_producer: &GamepadAxisProducer,
-        at: MonotonicMillis,
-        diagnostics: &mut PlatformInputDiagnostics,
-        states: [Option<XInputState>; 4],
-    ) -> Result<(), InputPublishError> {
-        poller.poll_with(
-            producer,
-            axis_producer,
-            at,
-            diagnostics,
-            |slot, output| match states[slot as usize] {
-                Some(state) => {
-                    // SAFETY: `poll_with` supplies a valid pointer to its
-                    // initialized stack state for the duration of this call.
-                    unsafe { output.write(state) };
-                    XINPUT_ERROR_SUCCESS
-                }
-                None => XINPUT_ERROR_DEVICE_NOT_CONNECTED,
-            },
-        )
-    }
-
-    fn wait_for_input_sequence(
-        client: &bongocat_runtime::RuntimeClient,
-        expected: u64,
-        timeout: Duration,
-    ) {
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            if client
-                .snapshot()
-                .input
-                .last_input_sequence
-                .is_some_and(|sequence| sequence >= expected)
-            {
-                return;
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-        panic!("input sequence {expected} did not reach runtime");
-    }
-
-    #[test]
     #[ignore = "requires a Windows interactive input desktop"]
     fn synthetic_missing_release_is_reconciled_in_formal_runtime() {
         const TIMEOUT: Duration = Duration::from_secs(3);
@@ -2345,7 +1772,9 @@ mod tests {
         assert_eq!(diagnostics.capture_queue_overflows, 0);
         assert_eq!(diagnostics.runtime_queue_overflows, 0);
         assert!(diagnostics.reconciliation_runs >= 2);
-        assert!(diagnostics.clean_shutdown);
+        // The pinned gilrs WGI backend has no bounded/error-aware stop/join
+        // acknowledgement yet; the final diagnostic must not claim otherwise.
+        assert!(!diagnostics.clean_shutdown);
         assert_eq!(client.snapshot().platform_input, diagnostics);
         let stopped = runtime.shutdown(TIMEOUT).expect("runtime stop");
         assert_eq!(stopped.input.pressed_key_count, 0);

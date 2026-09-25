@@ -19,7 +19,7 @@ fn post_key(key_code: u16, down: bool) {
 
 #[test]
 #[ignore = "requires macOS Input Monitoring and Accessibility permissions"]
-fn synthetic_shift_reaches_runtime_and_releases_cleanly() {
+fn synthetic_shift_reaches_runtime_and_releases_keyboard_state() {
     let runtime = RuntimeOwner::start(true, 64);
     let client = runtime.client();
     client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
@@ -73,14 +73,16 @@ fn synthetic_shift_reaches_runtime_and_releases_cleanly() {
     let diagnostics = service.stop().expect("input service stop");
     assert_eq!(
         diagnostics.service_status,
-        PlatformInputServiceStatus::Stopped
+        PlatformInputServiceStatus::Failed
     );
     assert_eq!(diagnostics.service_start_attempts, 1);
     assert_eq!(diagnostics.callback_panics, 0);
     assert_eq!(diagnostics.capture_queue_overflows, 0);
     assert_eq!(diagnostics.runtime_queue_overflows, 0);
     assert!(diagnostics.consumed_edges >= 2);
-    assert!(diagnostics.clean_shutdown);
+    // The pinned gilrs macOS backend has no stop/join path yet; diagnostics
+    // must not claim that the whole service shut down cleanly.
+    assert!(!diagnostics.clean_shutdown);
     assert_eq!(client.snapshot().platform_input, diagnostics);
     let stopped = runtime.shutdown(TIMEOUT).expect("runtime stop");
     assert!(!stopped.model_input.left_hand_down);
@@ -174,7 +176,9 @@ fn runtime_stop_cleans_up_tap_before_a_second_service_starts() {
     let diagnostics = replacement_service
         .stop()
         .expect("replacement input service stop");
-    assert!(diagnostics.clean_shutdown);
+    // The pinned gilrs macOS backend has no stop/join path yet; diagnostics
+    // must not claim that the whole service shut down cleanly.
+    assert!(!diagnostics.clean_shutdown);
     assert_eq!(replacement_client.snapshot().platform_input, diagnostics);
     replacement_runtime
         .shutdown(TIMEOUT)
@@ -255,6 +259,8 @@ fn workspace_lifecycle_resets_pressed_state_and_rebuilds_the_tap() {
     let diagnostics = service.stop().expect("input service stop");
     assert!(diagnostics.recovery_resets >= 1);
     assert!(diagnostics.tap_restarts >= 1);
-    assert!(diagnostics.clean_shutdown);
+    // The pinned gilrs macOS backend has no stop/join path yet; diagnostics
+    // must not claim that the whole service shut down cleanly.
+    assert!(!diagnostics.clean_shutdown);
     runtime.shutdown(TIMEOUT).expect("runtime stop");
 }

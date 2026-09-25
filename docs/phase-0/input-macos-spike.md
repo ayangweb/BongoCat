@@ -1,7 +1,7 @@
 # macOS Input Permission and Tap Lifecycle Spike
 
-状态：权限/tap 生命周期 contract、listen-only CGEventTap、可靠 callback 队列、cursor/gamepad axis latest-value 通道、键盘/鼠标按钮周期校正、GameController owner、真实 keyboard/modifier/mouse callback release 丢弃后的恢复、受控 disable 恢复、NSWorkspace 生命周期 Reset 和 callback shutdown smoke 已通过；权限矩阵、真实系统生命周期、系统自然 timeout 和物理键鼠/手柄矩阵仍待验证
-日期：2026-08-29
+状态：权限/tap 生命周期 contract、listen-only CGEventTap、可靠 callback 队列、cursor latest-value 通道、键盘/鼠标按钮周期校正、真实 callback release 丢弃后的恢复、受控 disable 恢复、NSWorkspace 生命周期 Reset 和 callback shutdown smoke 已通过；自维护 GameController 手柄 backend/probe 已于 2026-09-25 删除，正式产品改用 ADR-0066 的精确 gilrs/IOHID adapter。pinned fork 的 dangling IOHID callback context 是 P0 阻塞；权限矩阵、真实系统生命周期、系统自然 timeout、物理键鼠/手柄和 fork worker stop/join 仍待验证
+日期：2026-09-25
 
 ## Contract
 
@@ -15,9 +15,9 @@
 
 `MouseMoved` 和 left/right/other drag 不进入上述可靠队列。callback 把 `CGEventGetLocation` 的全局坐标转换成项目自有 `MacCursorSample`，覆盖独立 latest-value slot；run-loop owner 约每 `16 ms` 最多消费一个样本，shutdown 封住 producer 后 flush 最后一个 pending sample。匿名诊断强制满足 `cursor_captured = cursor_coalesced + cursor_consumed`，并拒绝 close 后发布。cursor flood 因而不会占用 key/button/Reset 的容量或 sequence。
 
-GameController 使用独立 owner 枚举 `GCExtendedGamepad`，不把 Objective-C 对象或 element 类型送入公共协议。每次连接分配项目内 slot 和单调 generation；按钮边沿、连接和断开进入可靠 FIFO，六个标准 axis 进入以 `{device_id, generation, axis}` 为 key 的固定容量 latest-values。断开先移除 value-change handler，再丢弃该 generation 的待消费 axis；复用 slot 必须获得新 generation，迟到 callback 只计数并拒绝。producer 按 `0.5` 生成按钮边沿，axis 钳制到 `[-1, 1]`，trigger 钳制到 `[0, 1]`，非有限值归零并进入匿名诊断。服务期显式启用 `shouldMonitorBackgroundEvents`，shutdown 在 handler 全部移除后恢复原进程值。
-
-`objc2-game-controller = 0.3.2` 是 2026-08-29 核对到的 crates.io 最新稳定版，许可证为 `Zlib OR Apache-2.0 OR MIT`，Rust 1.71+。仅启用 Controller/ExtendedGamepad 所需 feature，生成 binding 和 `unsafe` getter 集中在本文件对应的平台模块；纯 Rust producer 只依赖项目自有类型和 `input-queue` contract。若 objc2 binding 停止维护，可替换窄平台 getter/handler owner，不改变可靠事件或 axis key 协议。
+手柄不属于此 standalone tap spike 的实现范围；正式产品的 gilrs/IOHID 接线、mapping、
+generation、Reset 重播与已知 fork 阻塞见 ADR-0066 和 `bongocat-platform::gilrs_gamepad`。旧
+GameController framework owner 及其无设备 smoke 已从当前树删除。
 
 ## Probe
 
@@ -59,7 +59,6 @@ cargo run --manifest-path spikes/input-macos/Cargo.toml --locked --release -- --
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked --release -- --tap-ms 600 --cycles 20 --inject-release-loss
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked --release -- --tap-ms 600 --cycles 20 --summary-only --release-loss-kind modifier
 cargo run --manifest-path spikes/input-macos/Cargo.toml --locked --release -- --tap-ms 600 --cycles 20 --summary-only --release-loss-kind mouse
-cargo run --manifest-path spikes/input-macos/Cargo.toml --locked --release -- --gamepad-ms 1000
 MallocStackLogging=1 /usr/bin/leaks --atExit -- spikes/input-macos/target/release/bongocat-input-macos-spike --tap-ms 20 --cycles 100 --summary-only
 NSZombieEnabled=YES spikes/input-macos/target/release/bongocat-input-macos-spike --tap-ms 20 --cycles 100 --summary-only
 ```
@@ -84,12 +83,13 @@ NSZombieEnabled=YES spikes/input-macos/target/release/bongocat-input-macos-spike
 
 2026-08-29 在 commit `500a956` 上将 `MouseMoved` 与三类 drag 接入独立 cursor latest-value slot。23 项 library test 中的 10,000-sample flood 将 9,999 个中间位置合并、只消费最终样本，同时两项容量的可靠队列完整保留 MouseDown/MouseUp 且 overflow 为 0；关闭测试证明 pending sample 会 flush，迟到 publish 会被拒绝并计数。当前 Apple M1 Pro、macOS 26.5.2 上执行 `--tap-ms 600 --cycles 3`，三轮真实 tap 均 `started=true finished_enabled=true`，cursor accounting 为 `0 = 0 + 0`、close 后拒绝为 0；测试期间没有物理移动鼠标，因此该结果不冒充物理 cursor callback 证据。PR run `33258718745` 的原生 macOS job `99116842307` 已通过 input check、format、Clippy、23 项 library test、4 项报告 test 和 release build，独立 contract job `99116842405` 也通过。
 
-2026-08-29 当前 Apple M1 Pro、macOS 26.5.2 上新增 GameController producer 后，30 项 library test 与 5 项报告 test 通过。contract 覆盖连接/断开、按钮阈值、六轴合并、10,000 次 axis flood 不阻塞 release、可靠队列 overflow Reset + 原边沿重放、slot generation 复用、断开丢弃、非有限值、容量边界和 shutdown 迟到 callback。release `--gamepad-ms 1000` 完成 37 次真实 framework 枚举，`background_monitoring_enabled=true background_monitoring_restored=true callback_panics=0 clean_shutdown=true`；本机没有连接手柄，报告为 `observed_controllers=0`，因此它只证明 framework API、进程全局策略和 owner shutdown，不证明物理 controller profile、按钮、axis 或热插拔。
-
-实现 commit `a4fab65` 的 push run `33260175313`、job `99120641038` 与 PR run
-`33260176884`、job `99120645425` 均成功；两个原生 macOS job 均通过 dependency resolve、
-check、format、Clippy、30 项 library test、5 项报告 test 和 release build。CI 未连接物理
-controller，也未以无人值守 session 替代上述本机 framework smoke。
+2026-09-25 起，GameController producer、`objc2-game-controller` dependency、`--gamepad-ms`
+probe 和相关测试已从当前树删除；本文件其余 CGEventTap 证据继续有效。正式手柄 backend 固定
+`ayangweb/gilrs` commit `f43af45c3106e48ff131b77bf8c148d9bd5cbed2` 的 IOHID 实现。旧 framework
+smoke 只作为已退役实现的历史证据；当前 fork 的 IOHID run-loop worker 没有 stop/join，backend
+channel 也无界，因此这些旧结果不能证明当前 macOS 手柄 clean shutdown、100-cycle 或长期 backlog
+有界。正式服务在最终诊断中明确报告 `clean_shutdown=false` / `service_status=Failed`，直到 fork
+提供可验证的 stop/join；backend 初始 held-state snapshot 也仍需补齐。
 
 同一工作批次重跑 `--tap-ms 800 --inject-release-loss` 时，两项 TCC preflight 仍为 true 且投递计数为 2，但 session callback 收到 `0/2`；严格 validator 继续非零退出，并把错误精确区分为“未到达 event-tap callback”，未将其误报成校正失败或成功。sequence 变更后的 release-loss 实机回归仍需在可接收 synthetic callback 的交互式会话重跑。
 

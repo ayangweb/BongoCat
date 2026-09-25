@@ -1,7 +1,7 @@
 # Windows Raw Input Spike
 
-状态：平台无关 mapping contract、Windows Raw Input 注册/退出路径、可靠 callback queue、`GetAsyncKeyState` 周期校正、XInput producer 与生命周期 Reset 已实现；系统合成输入已覆盖丢 release 校正闭环和多键有序边沿压力 smoke，真实键盘/手柄、锁屏/睡眠和热插拔待验证
-日期：2026-08-29
+状态：平台无关 mapping contract、Windows Raw Input 注册/退出路径、可靠 callback queue、`GetAsyncKeyState` 周期校正与生命周期 Reset 已实现；自维护 XInput 手柄 backend/probe 已于 2026-09-25 删除，正式产品改用 ADR-0066 的精确 gilrs/WGI adapter。系统合成输入已覆盖丢 release 校正闭环和多键有序边沿压力 smoke，真实键盘/手柄、锁屏/睡眠和热插拔待验证
+日期：2026-09-25
 
 ## 范围
 
@@ -30,8 +30,8 @@
 - input desktop 查询失败或候选键不可查询时立即 Reset，不把不可信的全零 snapshot 当作正常释放。
 - 使用 `WTSRegisterSessionNotification`/`WTSUnRegisterSessionNotification` 成对管理当前会话通知；锁定、解锁、console/remote connect/disconnect 都立即 Reset。
 - 处理 `WM_POWERBROADCAST` 的 suspend/standby 和各类 resume 通知；进入和离开不可观测窗口都立即 Reset。
-- XInput owner 显式管理 `XInputEnable(true/false)` 服务期，并以固定 8ms 周期轮询 0–3 号 slot；连接/断开和按钮边沿进入可靠 FIFO，六个标准 axis 进入 `{device_id, connection_generation, axis}` 固定容量 latest-values。slot 断开会丢弃对应 generation 的待消费 axis，重连分配新 generation；轴值只做全范围归一化，不在 adapter 静默加入 dead-zone。
-- XInput A/B/X/Y 映射为 south/east/west/north，Back/Start、shoulder、thumb、D-pad 和两个 trigger 使用项目稳定类型；trigger 同时提供 `[0, 1]` axis，并按共享 `0.5` 阈值生成按钮边沿。
+- 手柄不属于此 standalone spike 的实现范围；正式产品的 gilrs/WGI 接线、mapping、generation 和
+  Reset contract 见 ADR-0066 与 `bongocat-platform::gilrs_gamepad`。
 
 安全 contract 可在 macOS/Linux 离线运行；Win32 wrapper 使用精确锁定的 `windows = 0.62.2`，只在 Windows target 编译。wrapper 当前只输出消息、edge、decode error 和 callback panic 计数，不记录真实按键值。
 
@@ -51,7 +51,6 @@ cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --queue-ov
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-edge-pressure-cycles 128
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked --release -- --synthetic-pointer-flood-cycles 128
 cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --lifecycle-smoke-ms 100
-cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --xinput-ms 250
 ```
 
 当前本地验证包括 macOS host 上的 format、27 项 contract test 和 Clippy，以及 `x86_64-pc-windows-msvc`、`aarch64-pc-windows-msvc` 的 check/Clippy。测试覆盖左右修饰键 virtual-key、只查询 pressed candidates、未知键触发 Reset、设备移除/服务停止/session/power Reset、Reset 释放数量、重复 down/无匹配 up 诊断、连续两次缺失释放、仍按下取消待确认、零确认阈值拒绝、RAWMOUSE 五个规范 button、相对/绝对/virtual-desktop movement 与截断拒绝，以及可靠队列的 FIFO overflow Reset、关闭 drain 和 sequence gap/duplicate 诊断。
@@ -168,12 +167,10 @@ contract test 和强化后的 pointer flood；同一 job 也重跑通过 release
 edge pressure、lifecycle 与 config 回归。该结果证明合成 RAWMOUSE 洪峰在 Windows runner 上
 确实发生合并且未阻塞 release，不替代 10 分钟物理键鼠压力测试。
 
-XInput producer 的 33 项 library contract test 覆盖 i16/u8 全范围归一化、连接/断开、标准按钮、六轴 latest-value、10,000 次 axis flood 不阻塞 release、可靠队列 overflow Reset + 原边沿重放、slot generation 复用、断开丢弃和 shutdown。`windows = 0.62.2` 只新增 `Win32_UI_Input_XboxController` feature，没有新增 package；唯一 `unsafe` 调用位于 binary platform wrapper，安全库继续 `forbid(unsafe_code)`。x64/ARM64 MSVC check 已通过。
-
-实现 commit `b6bbd73` 的 push run `33260707799`、job `99122041439` 与 PR run
-`33260709475`、job `99122046077` 均通过 33 项 Windows test 和
-`--xinput-ms 250` API smoke。push job 的报告为
-`service_enabled=true service_disabled=true api_calls=124 query_errors=0`
-`reliable_overflows=0 axis_overflows=0 clean_shutdown=true`。runner 未连接手柄，
-`peak_connected=0`，所以该结果只证明真实 `XInputEnable`/`XInputGetState` 调用、四 slot
-轮询和 owner shutdown，不证明物理 controller/profile、按钮、axis 或热插拔。
+2026-09-25 起，XInput producer、`Win32_UI_Input_XboxController` feature、`--xinput-ms` probe
+和对应 CI step 已从当前树删除；本文件其余 Raw Input 证据继续有效。正式手柄 backend 固定
+`ayangweb/gilrs` commit `f43af45c3106e48ff131b77bf8c148d9bd5cbed2` 的 WGI 实现；CI 另运行
+正式 `gilrs_gamepad_smoke` example 验证产品服务的无设备 context 初始化与 shutdown，但不证明
+bounded join、异常路径 acknowledgement 或物理投递。旧 XInput
+runner 的无设备结果只作为已退役实现的历史证据，不证明当前 WGI 在 hidden/unfocused window、
+overlay click-through、启动时已连接、重连和多手柄场景下的投递；这些仍是 Windows 物理门禁。

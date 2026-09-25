@@ -1,9 +1,5 @@
 #![forbid(unsafe_code)]
 
-mod xinput;
-
-pub use xinput::*;
-
 use bongocat_input_queue_spike::{QueueErrorKind, ReliableQueue};
 use std::collections::{BTreeMap, BTreeSet};
 

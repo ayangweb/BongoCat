@@ -1,7 +1,7 @@
 # Phase 0 Dependency License Inventory
 
-状态：Native workspace 与 spike 依赖许可证/来源策略已自动化；GPUI Kit 使用 ADR-0056 固定的上游 git revision
-日期：2026-09-24
+状态：Native workspace 与 spike 依赖许可证/来源策略已自动化；GPUI Kit 与 gilrs 分别使用固定上游/维护者 git revision
+日期：2026-09-25
 
 ## Scope
 
@@ -12,13 +12,14 @@
 - `x86_64-apple-darwin`
 - `x86_64-pc-windows-msvc`
 
-扫描 package 节点数由当前 lockfile 与 target filter 动态决定，不作为需要手工维护的 golden value。2026-08-29 已先完成所有 Native Rewrite 直接依赖的最新稳定版审计和 lockfile 更新；ADR-0056 的 `gpui-kit` 上游固定 revision 和 lockfile 来源在 `rust-dependency-versions.md` 中单独记录。
+扫描 package 节点数由当前 lockfile 与 target filter 动态决定，不作为需要手工维护的 golden value。2026-08-29 已先完成所有 Native Rewrite 直接依赖的最新稳定版审计和 lockfile 更新；ADR-0056 的 `gpui-kit` 上游固定 revision 与 ADR-0066 的 `gilrs` 维护者 fork revision/source 在 `rust-dependency-versions.md` 中单独记录。
 
 ## Direct dependencies
 
 | Dependency family                | Locked version                 | License                   | Role                                     |
 | -------------------------------- | ------------------------------ | ------------------------- | ---------------------------------------- |
 | GPUI Kit                         | `0.6.5` @ `500852f`            | Apache-2.0                | Formal settings UI facade and components; ADR-0056 exact upstream revision |
+| gilrs / gilrs-core              | `0.11.2` / `0.6.8` @ `f43af45` | Apache-2.0 OR MIT         | Formal WGI/IOHID gamepad backend; ADR-0066 exact maintainer fork revision |
 | AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | Direct in `spikes/gpui-settings`; formal UI receives `gpui-kit` transitive semantics after ADR-0054 |
 | arboard                          | `3.6.1`                        | MIT OR Apache-2.0         | Dual-platform private text clipboard     |
 | raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI/Win32 native window boundary        |
@@ -35,7 +36,7 @@
 | objc2 / block2 family            | `0.6.4` / `0.3.2`              | MIT OR Apache-2.0 / Zlib  | macOS overlay/input lifecycle            |
 | objc2 (GPUI AX compatibility)    | `0.5.2`                        | MIT                       | Historical spike input for AccessKit macOS adapter objects |
 | metal / core-graphics-types      | `0.33.0` / `0.2.0`             | MIT OR Apache-2.0         | macOS transparent present spike          |
-| windows                          | `0.62.2`                       | MIT OR Apache-2.0         | Windows Raw Input boundary spike         |
+| windows                          | `0.62.2`                       | MIT OR Apache-2.0         | Windows Raw Input/window/overlay boundary |
 | bindgen                          | `0.72.1`                       | BSD-3-Clause              | Offline Cubism raw binding generator     |
 | embed-resource                   | `3.0.11`                       | MIT                       | Windows executable product icon compiler |
 | sha2                             | `0.11.0`                       | MIT OR Apache-2.0         | Header/output provenance hashes          |
@@ -62,7 +63,12 @@ GPUI Kit 的 HTTP/TLS 传递图引入 `libbz2-rs-sys 0.2.5`（`bzip2-1.0.6`）�
 
 `cargo-deny list` 会为包含多选许可的 crate 展示所有标识。例如 `self_cell` 的表达式包含 `Apache-2.0 OR GPL-2.0`，`r-efi` 包含 `MIT OR Apache-2.0 OR LGPL-2.1-or-later`；策略通过允许的 Apache/MIT 分支满足表达式，没有全局允许 GPL/LGPL。
 
-依赖来源基线仍是 crates.io index；unknown registry 会使检查失败。ADR-0056 只额外放行固定上游 `https://github.com/longbridge/gpui-kit` rev `500852f449c05dc01920ec82f3ae2656a61d0387`，GPUI Kit suite 五个 package 均从该 commit 解析。其它 git source 继续失败；包含 `SettingGroup::variant()` 与 `Popover::arrow()` 的上游 release 发布后删除该例外并恢复纯 registry 来源。
+依赖来源基线仍是 crates.io index；unknown registry 会使检查失败。`allow-git` 只额外放行固定上游
+`https://github.com/longbridge/gpui-kit` rev `500852f449c05dc01920ec82f3ae2656a61d0387` 与固定维护者
+fork `https://github.com/ayangweb/gilrs` rev `f43af45c3106e48ff131b77bf8c148d9bd5cbed2`。GPUI Kit suite
+五个 package 与 gilrs/gilrs-core/固定 SDL mapping submodule 都从各自 commit 解析；其它 git source
+继续失败。`required-git-spec = "rev"` 强制所有 git source 必须精确锁定 commit。GPUI release
+门禁与 gilrs fork 生命周期/队列门禁分别由 ADR-0056/0066 管理。
 
 ## Reproduction
 

@@ -1,9 +1,5 @@
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
-mod gamepad;
-
-pub use gamepad::*;
-
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     sync::{Arc, Mutex},

@@ -1464,10 +1464,10 @@ jobs:
         run: cargo clippy --manifest-path spikes/input-windows/Cargo.toml --locked --all-targets -- -D warnings
       - name: Run Windows tests
         run: cargo test --manifest-path spikes/input-windows/Cargo.toml --locked
-      - name: Smoke Windows XInput polling and shutdown
-        run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --xinput-ms 250
       - name: Smoke Raw Input registration and shutdown
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --register-smoke-ms 100
+      - name: Smoke Windows gilrs gamepad context startup and shutdown (no-device)
+        run: cargo run --manifest-path Cargo.toml --locked -p bongocat-platform --example gilrs_gamepad_smoke
       - name: Smoke Windows key-state reconciliation query
         run: cargo run --manifest-path spikes/input-windows/Cargo.toml --locked -- --key-state-smoke
       - name: Smoke Windows mouse-button reconciliation query

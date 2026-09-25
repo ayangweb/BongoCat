@@ -37,4 +37,8 @@ ignore = true
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = ["https://github.com/longbridge/gpui-kit"]
+allow-git = [
+    "https://github.com/ayangweb/gilrs",
+    "https://github.com/longbridge/gpui-kit",
+]
+required-git-spec = "rev"

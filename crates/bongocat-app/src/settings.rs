@@ -1750,6 +1750,12 @@ fn settings_input_diagnostics(
         pressed_mouse_button_count: input.pressed_mouse_button_count,
         pressed_gamepad_button_count: input.pressed_gamepad_button_count,
         connected_gamepad_count: input.connected_gamepad_count,
+        platform_gamepad_backend_failures: platform.gamepad_backend_failures,
+        platform_gamepad_connection_rejections: platform.gamepad_connection_rejections,
+        platform_gamepad_button_edges: platform.gamepad_button_edges,
+        platform_gamepad_axis_samples: platform.gamepad_axis_samples,
+        platform_gamepad_axis_publish_rejections: platform.gamepad_axis_publish_rejections,
+        platform_gamepad_event_discards: platform.gamepad_event_discards,
         captured_down: input.diagnostics.captured_down,
         captured_up: input.diagnostics.captured_up,
         reconciled_release: input.diagnostics.reconciled_release,
@@ -2119,6 +2125,12 @@ struct DiagnosticsInput {
     pressed_mouse_button_count: usize,
     pressed_gamepad_button_count: usize,
     connected_gamepad_count: usize,
+    platform_gamepad_backend_failures: u64,
+    platform_gamepad_connection_rejections: u64,
+    platform_gamepad_button_edges: u64,
+    platform_gamepad_axis_samples: u64,
+    platform_gamepad_axis_publish_rejections: u64,
+    platform_gamepad_event_discards: u64,
     captured_down: u64,
     captured_up: u64,
     reconciled_release: u64,
@@ -2418,6 +2430,12 @@ const fn diagnostics_input(input: SettingsInputDiagnostics) -> DiagnosticsInput 
         pressed_mouse_button_count: input.pressed_mouse_button_count,
         pressed_gamepad_button_count: input.pressed_gamepad_button_count,
         connected_gamepad_count: input.connected_gamepad_count,
+        platform_gamepad_backend_failures: input.platform_gamepad_backend_failures,
+        platform_gamepad_connection_rejections: input.platform_gamepad_connection_rejections,
+        platform_gamepad_button_edges: input.platform_gamepad_button_edges,
+        platform_gamepad_axis_samples: input.platform_gamepad_axis_samples,
+        platform_gamepad_axis_publish_rejections: input.platform_gamepad_axis_publish_rejections,
+        platform_gamepad_event_discards: input.platform_gamepad_event_discards,
         captured_down: input.captured_down,
         captured_up: input.captured_up,
         reconciled_release: input.reconciled_release,
@@ -3235,6 +3253,12 @@ mod tests {
                 service_status: PlatformInputServiceStatus::PermissionDenied,
                 service_error_code: Some("platform_input_permission_denied"),
                 service_start_attempts: 1,
+                gamepad_backend_failures: 26,
+                gamepad_connection_rejections: 27,
+                gamepad_button_edges: 28,
+                gamepad_axis_samples: 29,
+                gamepad_axis_publish_rejections: 30,
+                gamepad_event_discards: 31,
                 ..PlatformInputDiagnostics::default()
             },
             SettingsInputMonitoringPermission::Granted,
@@ -3258,6 +3282,12 @@ mod tests {
         assert_eq!(projected.pressed_mouse_button_count, 2);
         assert_eq!(projected.pressed_gamepad_button_count, 20);
         assert_eq!(projected.connected_gamepad_count, 21);
+        assert_eq!(projected.platform_gamepad_backend_failures, 26);
+        assert_eq!(projected.platform_gamepad_connection_rejections, 27);
+        assert_eq!(projected.platform_gamepad_button_edges, 28);
+        assert_eq!(projected.platform_gamepad_axis_samples, 29);
+        assert_eq!(projected.platform_gamepad_axis_publish_rejections, 30);
+        assert_eq!(projected.platform_gamepad_event_discards, 31);
         assert_eq!(projected.captured_down, 3);
         assert_eq!(projected.captured_up, 4);
         assert_eq!(projected.reconciled_release, 5);
