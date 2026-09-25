@@ -5,12 +5,12 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
-    BuildEnvironment, CompiledShortcuts, ConfigError, ConfigRevision, ConfigStore,
-    InstalledModelMetadata, Language, LoggingConfig, LoggingLevel, ModelBehaviorAction,
-    ModelBehaviorBinding, ModelInputMode, ModelMetadata, NativeConfig, OverlayWindowPlacement,
-    PlatformStorageError, SelectedModelOrigin, ShortcutBinding, ShortcutConfig, ShortcutModifiers,
-    ShortcutTable, StorageLayout, Theme as ConfigTheme, WindowPlacement, WindowState,
-    WindowStateError, WindowStateLoadStatus, WindowStateStore, platform_layout,
+    BuildEnvironment, BuiltInModelMetadata, CompiledShortcuts, ConfigError, ConfigRevision,
+    ConfigStore, ImportedModelMetadata, Language, LoggingConfig, LoggingLevel, ModelBehaviorAction,
+    ModelBehaviorBinding, ModelIdentity, ModelInputMode, ModelSource, NativeConfig,
+    OverlayWindowPlacement, PlatformStorageError, ShortcutBinding, ShortcutConfig,
+    ShortcutModifiers, ShortcutTable, StorageLayout, Theme as ConfigTheme, WindowPlacement,
+    WindowState, WindowStateError, WindowStateLoadStatus, WindowStateStore, platform_layout,
 };
 use bongocat_input::{
     CursorProducer, GamepadAxisProducer, GamepadAxisSettings, GamepadButton, HandSide,
@@ -581,33 +581,10 @@ impl Application {
             );
         }
         application_log.replace_settings(runtime_log_settings(&loaded.config.logging));
-        let mut config = loaded.config;
-        let mut config_revision = Some(loaded.revision);
-        if !config.overlay.visible {
-            // The model window always starts visible: hiding it is a
-            // per-session choice, so a persisted hidden overlay is normalized
-            // back to visible instead of surviving a restart. The commit is
-            // best effort like other startup corrections — a storage failure
-            // still leaves this session visible.
-            config.overlay.visible = true;
-            match config_store.commit(&config) {
-                Ok(revision) => config_revision = Some(revision),
-                Err(_) => {
-                    application_log.record(
-                        ApplicationLogEvent::new(ApplicationLogCode::StatePersistFailed)
-                            .with_context(ApplicationLogContext::State("config"))
-                            .with_context(ApplicationLogContext::Operation(
-                                "normalize_overlay_visibility",
-                            ))
-                            .with_context(ApplicationLogContext::Reason("config_commit_failed")),
-                    );
-                }
-            }
-        }
-        let shortcut_table = ShortcutTable::new(active_shortcuts(
-            &config,
-            config.model.selected_model_id.as_deref(),
-        )?);
+        let config = loaded.config;
+        let config_revision = Some(loaded.revision);
+        let configured_model = config.model.selected_model.as_ref();
+        let shortcut_table = ShortcutTable::new(active_shortcuts(&config, configured_model)?);
         let (motion_audio, motion_audio_client) =
             match MotionAudioService::start(AUDIO_COMMAND_CAPACITY) {
                 Ok(service) => {
@@ -623,7 +600,7 @@ impl Application {
                     (None, bongocat_audio::MotionAudioClient::unavailable())
                 }
             };
-        let runtime_overlay_visible = config.overlay.visible;
+        let runtime_overlay_visible = true;
         let runtime_motion_audio_enabled = config.model.play_motion_audio;
         let (runtime, render_consumer) = if enable_rendering {
             let (runtime, consumer) = RuntimeOwner::start_with_rendering_and_audio(
@@ -658,14 +635,14 @@ impl Application {
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
         let sequence = client
-            .send(RuntimeCommand::SetMaximumFps(config.model.maximum_fps))
+            .send(RuntimeCommand::SetMaximumFps(config.overlay.maximum_fps))
             .map_err(ApplicationError::RuntimeCommand)?;
         client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
         let sequence = client
             .send(RuntimeCommand::SetReleaseFallbackTimeout(
-                config.model.release_fallback_timeout_ms,
+                config.input.keyboard.release_fallback_timeout_ms,
             ))
             .map_err(ApplicationError::RuntimeCommand)?;
         client
@@ -695,15 +672,10 @@ impl Application {
         client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
-        let active_model_origin = config
-            .model
-            .selected_model_origin
-            .map(model_origin_from_config);
-        let active_model_id = config
-            .model
-            .selected_model_id
-            .as_deref()
-            .and_then(|id| ModelId::parse(id).ok());
+        let active_model_origin =
+            configured_model.map(|selected| model_origin_from_config(selected.source));
+        let active_model_id =
+            configured_model.and_then(|selected| ModelId::parse(&selected.id).ok());
         let mut application = Self {
             config_store,
             window_state_store,
@@ -779,19 +751,19 @@ impl Application {
     /// Compile the currently committed shortcut bindings for a platform
     /// adapter. This is read-only and never performs registration or capture.
     pub fn compiled_shortcuts(&self) -> Result<CompiledShortcuts, ApplicationError> {
-        active_shortcuts(&self.config, self.live_model_id()).map_err(ApplicationError::Config)
+        active_shortcuts(&self.config, self.live_model_identity().as_ref())
+            .map_err(ApplicationError::Config)
     }
 
-    /// The model whose behavior bindings are live: the one the runtime is
-    /// showing.
-    ///
-    /// This is tracked on the application instead of being read from
-    /// `config.model.selected_model_id`, because a fresh configuration has no
-    /// recorded selection while `restore_startup_model` still activates the
-    /// standard preset — and a selection whose resources were deleted by hand
-    /// stays recorded until the fallback commit lands.
-    fn live_model_id(&self) -> Option<&str> {
-        self.active_model_id.as_ref().map(ModelId::as_str)
+    /// The model identity whose behavior bindings are live: the one the runtime
+    /// is showing. This is tracked on the application instead of being read from
+    /// the persisted selection, because startup may activate the default model
+    /// before a selection has been written.
+    fn live_model_identity(&self) -> Option<ModelIdentity> {
+        Some(ModelIdentity {
+            id: self.active_model_id.as_ref()?.as_str().to_owned(),
+            source: self.active_model_origin.map(config_source_from_model)?,
+        })
     }
 
     /// Rebuild the platform-facing shortcut table from the committed
@@ -802,8 +774,8 @@ impl Application {
     /// keeps what it already registered.
     fn refresh_shortcut_table(&mut self) {
         let compiled = {
-            let active_model = self.active_model_id.as_ref().map(ModelId::as_str);
-            active_shortcuts(&self.config, active_model)
+            let active_model = self.live_model_identity();
+            active_shortcuts(&self.config, active_model.as_ref())
         };
         if let Ok(compiled) = compiled {
             self.shortcut_table.replace(compiled);
@@ -932,7 +904,7 @@ impl Application {
 
     pub fn set_status_icon_visible(&mut self, visible: bool) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
-        next_config.application.show_status_icon = visible;
+        next_config.system.show_status_icon = visible;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -943,7 +915,7 @@ impl Application {
 
     pub fn set_taskbar_icon_visible(&mut self, visible: bool) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
-        next_config.application.show_taskbar_icon = visible;
+        next_config.system.show_taskbar_icon = visible;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -957,7 +929,7 @@ impl Application {
         enabled: bool,
     ) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
-        next_config.application.check_for_updates_automatically = enabled;
+        next_config.updates.check_automatically = enabled;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -971,7 +943,7 @@ impl Application {
         interval_hours: u16,
     ) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
-        next_config.application.check_for_updates_interval_hours = interval_hours;
+        next_config.updates.check_interval_hours = interval_hours;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -991,16 +963,17 @@ impl Application {
         Ok(())
     }
 
+    /// Change the overlay's visibility for this session only.
+    ///
+    /// Visibility is runtime state, not a user preference: a fresh process
+    /// always presents the overlay, while a shortcut or settings command can
+    /// hide it until shutdown. The settings worker still supplies the current
+    /// config revision as a stale-view guard, but this command never writes
+    /// `config.json`.
     pub fn set_overlay_visible(
         &mut self,
         visible: bool,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
-        let mut next_config = self.config.clone();
-        next_config.overlay.visible = visible;
-        let next_revision = self
-            .config_store
-            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
-
         let client = self.runtime.client();
         let sequence = client
             .send(RuntimeCommand::SetOverlayVisible(visible))
@@ -1008,8 +981,16 @@ impl Application {
         let snapshot = client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
-        self.config = next_config;
-        self.config_revision = Some(next_revision);
+        if snapshot
+            .last_command_failure
+            .is_some_and(|failure| failure.sequence == sequence)
+        {
+            return Err(ApplicationError::RuntimeCommandFailed(
+                snapshot
+                    .last_command_failure
+                    .expect("checked command failure"),
+            ));
+        }
         Ok(snapshot)
     }
 
@@ -1091,7 +1072,7 @@ impl Application {
             ));
         }
         let mut next_config = self.config.clone();
-        next_config.model.maximum_fps = maximum_fps;
+        next_config.overlay.maximum_fps = maximum_fps;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1127,7 +1108,7 @@ impl Application {
             ));
         }
         let mut next_config = self.config.clone();
-        next_config.model.release_fallback_timeout_ms = timeout_ms;
+        next_config.input.keyboard.release_fallback_timeout_ms = timeout_ms;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1163,8 +1144,8 @@ impl Application {
             ));
         }
         let mut next_config = self.config.clone();
-        next_config.model.random_behavior_enabled = settings.enabled;
-        next_config.model.random_behavior_interval_seconds = settings.interval_seconds;
+        next_config.model.random_behavior.enabled = settings.enabled;
+        next_config.model.random_behavior.interval_seconds = settings.interval_seconds;
         next_config.validate()?;
         let next_revision = self
             .config_store
@@ -1238,8 +1219,8 @@ impl Application {
         settings: GamepadAxisSettings,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let mut next_config = self.config.clone();
-        next_config.input.gamepad_stick_dead_zone = persistent_dead_zone(settings.stick_dead_zone);
-        next_config.input.gamepad_trigger_dead_zone =
+        next_config.input.gamepad.stick_dead_zone = persistent_dead_zone(settings.stick_dead_zone);
+        next_config.input.gamepad.trigger_dead_zone =
             persistent_dead_zone(settings.trigger_dead_zone);
         let next_revision = self
             .config_store
@@ -1280,10 +1261,12 @@ impl Application {
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let mut next_config = self.config.clone();
         let commands_enabled = next_config.shortcuts.commands_enabled;
-        next_config.shortcuts = shortcut_config_from_settings(shortcuts, commands_enabled);
+        let model_behaviors_enabled = next_config.shortcuts.model_behaviors_enabled;
+        next_config.shortcuts =
+            shortcut_config_from_settings(shortcuts, commands_enabled, model_behaviors_enabled);
         next_config.shortcuts = next_config.shortcuts.canonicalized()?;
         next_config.validate()?;
-        let compiled = active_shortcuts(&next_config, self.live_model_id())?;
+        let compiled = active_shortcuts(&next_config, self.live_model_identity().as_ref())?;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1303,11 +1286,15 @@ impl Application {
     ) -> Result<(), ApplicationError> {
         let mut temporary = self.config.clone();
         let commands_enabled = temporary.shortcuts.commands_enabled;
-        temporary.shortcuts =
-            shortcut_config_from_settings(shortcuts_without_capture_target, commands_enabled);
+        let model_behaviors_enabled = temporary.shortcuts.model_behaviors_enabled;
+        temporary.shortcuts = shortcut_config_from_settings(
+            shortcuts_without_capture_target,
+            commands_enabled,
+            model_behaviors_enabled,
+        );
         temporary.shortcuts = temporary.shortcuts.canonicalized()?;
         temporary.validate()?;
-        let compiled = active_shortcuts(&temporary, self.live_model_id())?;
+        let compiled = active_shortcuts(&temporary, self.live_model_identity().as_ref())?;
         self.shortcut_table.replace(compiled);
         self.shortcut_capture_suspended = true;
         Ok(())
@@ -1317,7 +1304,7 @@ impl Application {
     /// after shortcut recording is abandoned.
     pub fn resume_shortcut_capture(&mut self) -> Result<(), ApplicationError> {
         if self.shortcut_capture_suspended {
-            let compiled = active_shortcuts(&self.config, self.live_model_id())?;
+            let compiled = active_shortcuts(&self.config, self.live_model_identity().as_ref())?;
             self.shortcut_table.replace(compiled);
             self.shortcut_capture_suspended = false;
         }
@@ -1329,9 +1316,9 @@ impl Application {
         enabled: bool,
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let mut next_config = self.config.clone();
-        next_config.model.enable_behavior_shortcuts = enabled;
+        next_config.shortcuts.model_behaviors_enabled = enabled;
         next_config.validate()?;
-        let compiled = active_shortcuts(&next_config, self.live_model_id())?;
+        let compiled = active_shortcuts(&next_config, self.live_model_identity().as_ref())?;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1345,7 +1332,7 @@ impl Application {
     /// Switches the application command shortcuts on or off.
     ///
     /// The recorded bindings stay in the configuration: the gate only decides
-    /// whether [`ShortcutConfig::commands`] reaches the platform table, so
+    /// whether [`ShortcutConfig::command_bindings`] reaches the platform table, so
     /// turning it back on restores them without re-recording, exactly like the
     /// model behaviour gate next to it. The two gates are independent.
     pub fn set_command_shortcuts_enabled(
@@ -1355,7 +1342,7 @@ impl Application {
         let mut next_config = self.config.clone();
         next_config.shortcuts.commands_enabled = enabled;
         next_config.validate()?;
-        let compiled = active_shortcuts(&next_config, self.live_model_id())?;
+        let compiled = active_shortcuts(&next_config, self.live_model_identity().as_ref())?;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1390,7 +1377,7 @@ impl Application {
                 .cmp(&preset_model_order(right.id().as_str()))
                 .then_with(|| left.id().as_str().cmp(right.id().as_str()))
         });
-        let records = &self.config.model.installed_models;
+        let records = &self.config.model.imported_models;
         let mut installed = self.model_store.list()?.entries;
         installed.sort_by(|left, right| {
             installed_model_order(records, left.id().as_str())
@@ -1530,14 +1517,14 @@ impl Application {
             ModelOrigin::Preset => self
                 .config
                 .model
-                .preset_models
+                .built_in_models
                 .iter()
                 .find(|record| record.id == id)
                 .map(|record| record.title.as_str()),
             ModelOrigin::Installed => self
                 .config
                 .model
-                .installed_models
+                .imported_models
                 .iter()
                 .find(|record| record.id == id)
                 .map(|record| record.title.as_str()),
@@ -1556,7 +1543,7 @@ impl Application {
             ModelOrigin::Installed => self
                 .config
                 .model
-                .installed_models
+                .imported_models
                 .iter()
                 .find(|record| record.id == id)
                 .map(|record| record.input_mode)
@@ -1597,10 +1584,10 @@ impl Application {
     ) -> Result<(), ApplicationError> {
         match origin {
             ModelOrigin::Preset => {
-                let mut records = self.config.model.preset_models.clone();
+                let mut records = self.config.model.built_in_models.clone();
                 match records.iter_mut().find(|record| record.id == id.as_str()) {
                     Some(record) => record.title = title,
-                    None => records.push(ModelMetadata {
+                    None => records.push(BuiltInModelMetadata {
                         id: id.as_str().to_owned(),
                         title,
                     }),
@@ -1608,7 +1595,7 @@ impl Application {
                 self.commit_preset_model_metadata(records)
             }
             ModelOrigin::Installed => {
-                let mut records = self.config.model.installed_models.clone();
+                let mut records = self.config.model.imported_models.clone();
                 match records.iter_mut().find(|record| record.id == id.as_str()) {
                     Some(record) => record.title = title,
                     // A package copied into the store by hand can legitimately
@@ -1621,7 +1608,7 @@ impl Application {
                             .classify_installed_input_mode(id)
                             .map(model_input_mode_from_store)
                             .map_err(ApplicationError::ModelStore)?;
-                        records.push(InstalledModelMetadata {
+                        records.push(ImportedModelMetadata {
                             id: id.as_str().to_owned(),
                             title,
                             input_mode,
@@ -1638,10 +1625,10 @@ impl Application {
     /// values before anything is written.
     fn commit_preset_model_metadata(
         &mut self,
-        records: Vec<ModelMetadata>,
+        records: Vec<BuiltInModelMetadata>,
     ) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
-        next_config.model.preset_models = records;
+        next_config.model.built_in_models = records;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1654,10 +1641,10 @@ impl Application {
     /// as every other configuration write.
     fn commit_installed_model_metadata(
         &mut self,
-        records: Vec<InstalledModelMetadata>,
+        records: Vec<ImportedModelMetadata>,
     ) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
-        next_config.model.installed_models = records;
+        next_config.model.imported_models = records;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1770,8 +1757,10 @@ impl Application {
             let id = ModelId::parse(id)?;
             let committed = self.load_model(origin, &id)?;
             let mut next_config = self.config.clone();
-            next_config.model.selected_model_id = Some(id.as_str().to_owned());
-            next_config.model.selected_model_origin = Some(config_origin_from_model(origin));
+            next_config.model.selected_model = Some(ModelIdentity {
+                id: id.as_str().to_owned(),
+                source: config_source_from_model(origin),
+            });
             // Switching models is also when the new model's motions and
             // expressions receive the legacy default chords, so the assignment
             // rides on the same commit as the selection itself.
@@ -1872,7 +1861,7 @@ impl Application {
             self.model_store
                 .delete(&id)
                 .map_err(ApplicationError::ModelStore)?;
-            let mut installed_models = self.config.model.installed_models.clone();
+            let mut installed_models = self.config.model.imported_models.clone();
             let before = installed_models.len();
             installed_models.retain(|metadata| metadata.id != id.as_str());
             if installed_models.len() != before {
@@ -1912,9 +1901,14 @@ impl Application {
                 .active_model
                 .as_ref()
                 .is_some_and(|active| active.id.as_str() == id.as_str());
-        let configured = self.config.model.selected_model_origin
-            == Some(SelectedModelOrigin::Installed)
-            && self.config.model.selected_model_id.as_deref() == Some(id.as_str());
+        let configured = self
+            .config
+            .model
+            .selected_model
+            .as_ref()
+            .is_some_and(|selected| {
+                selected.source == ModelSource::Imported && selected.id == id.as_str()
+            });
         shown || configured
     }
 
@@ -2050,7 +2044,7 @@ impl Application {
             };
 
             let mut installed = Vec::new();
-            let mut installed_models = self.config.model.installed_models.clone();
+            let mut installed_models = self.config.model.imported_models.clone();
             let count = modes.as_ref().map_or(1, Vec::len);
             for index in 0..count {
                 let id = self
@@ -2090,7 +2084,7 @@ impl Application {
                         legacy_mode_label(language, modes[index]),
                     ),
                 };
-                installed_models.push(InstalledModelMetadata {
+                installed_models.push(ImportedModelMetadata {
                     id: model.id().as_str().to_owned(),
                     title,
                     input_mode,
@@ -2144,12 +2138,12 @@ impl Application {
         let kept = self
             .config
             .model
-            .installed_models
+            .imported_models
             .iter()
             .filter(|metadata| present.contains(&metadata.id))
             .cloned()
             .collect::<Vec<_>>();
-        if kept.len() == self.config.model.installed_models.len() {
+        if kept.len() == self.config.model.imported_models.len() {
             return;
         }
         if self.commit_installed_model_metadata(kept).is_err() {
@@ -2178,12 +2172,12 @@ impl Application {
     /// be pending.
     pub fn restore_startup_model(&mut self) -> Result<(), ApplicationError> {
         self.prune_missing_installed_metadata();
-        let configured = self.config.model.selected_model_id.clone().zip(
-            self.config
-                .model
-                .selected_model_origin
-                .map(model_origin_from_config),
-        );
+        let configured = self.config.model.selected_model.as_ref().map(|selected| {
+            (
+                selected.id.clone(),
+                model_origin_from_config(selected.source),
+            )
+        });
         let Some((id, origin)) = configured else {
             // No configured selection: the standard preset is the default model.
             return self
@@ -2228,8 +2222,10 @@ impl Application {
     /// simply retries the fallback.
     fn persist_model_selection(&mut self, origin: ModelOrigin, id: &ModelId) {
         let mut next_config = self.config.clone();
-        next_config.model.selected_model_id = Some(id.as_str().to_owned());
-        next_config.model.selected_model_origin = Some(config_origin_from_model(origin));
+        next_config.model.selected_model = Some(ModelIdentity {
+            id: id.as_str().to_owned(),
+            source: config_source_from_model(origin),
+        });
         let Ok(expected_revision) = self.ready_config_revision() else {
             return;
         };
@@ -2376,7 +2372,7 @@ fn preset_model_order(id: &str) -> usize {
 /// after every model the user actually imported. Ordering those by id keeps the
 /// page stable rather than dependent on the order the scan happened to walk the
 /// directory in.
-fn installed_model_order(records: &[InstalledModelMetadata], id: &str) -> usize {
+fn installed_model_order(records: &[ImportedModelMetadata], id: &str) -> usize {
     records
         .iter()
         .position(|record| record.id == id)
@@ -2430,17 +2426,17 @@ const fn settings_logging_from_config(
     }
 }
 
-const fn config_origin_from_model(origin: ModelOrigin) -> SelectedModelOrigin {
+const fn config_source_from_model(origin: ModelOrigin) -> ModelSource {
     match origin {
-        ModelOrigin::Preset => SelectedModelOrigin::Preset,
-        ModelOrigin::Installed => SelectedModelOrigin::Installed,
+        ModelOrigin::Preset => ModelSource::BuiltIn,
+        ModelOrigin::Installed => ModelSource::Imported,
     }
 }
 
-const fn model_origin_from_config(origin: SelectedModelOrigin) -> ModelOrigin {
+const fn model_origin_from_config(origin: ModelSource) -> ModelOrigin {
     match origin {
-        SelectedModelOrigin::Preset => ModelOrigin::Preset,
-        SelectedModelOrigin::Installed => ModelOrigin::Installed,
+        ModelSource::BuiltIn => ModelOrigin::Preset,
+        ModelSource::Imported => ModelOrigin::Installed,
     }
 }
 
@@ -2651,8 +2647,8 @@ const fn model_settings_from_config(config: &NativeConfig) -> ModelSettings {
 
 const fn random_behavior_settings_from_config(config: &NativeConfig) -> RandomBehaviorSettings {
     RandomBehaviorSettings {
-        enabled: config.model.random_behavior_enabled,
-        interval_seconds: config.model.random_behavior_interval_seconds,
+        enabled: config.model.random_behavior.enabled,
+        interval_seconds: config.model.random_behavior.interval_seconds,
     }
 }
 
@@ -2670,13 +2666,8 @@ const fn random_behavior_settings_from_config(config: &NativeConfig) -> RandomBe
 /// whichever model registered first.
 fn active_shortcuts(
     config: &NativeConfig,
-    active_model: Option<&str>,
+    active_model: Option<&ModelIdentity>,
 ) -> Result<CompiledShortcuts, ConfigError> {
-    let active_model = if config.model.enable_behavior_shortcuts {
-        active_model
-    } else {
-        None
-    };
     config.shortcuts.active_bindings(active_model).compile()
 }
 
@@ -2719,9 +2710,13 @@ fn behavior_ids(model: &CommittedModel) -> Vec<String> {
 /// leaving every binding the user already has untouched. Returns how many
 /// bindings were added.
 fn assign_default_behavior_shortcuts(config: &mut NativeConfig, model: &CommittedModel) -> usize {
+    let model_identity = ModelIdentity {
+        id: model.id().as_str().to_owned(),
+        source: config_source_from_model(model.origin()),
+    };
     bongocat_config::assign_default_behavior_shortcuts(
         &mut config.shortcuts,
-        model.id().as_str(),
+        &model_identity,
         &behavior_ids(model),
         behavior_shortcut_primary(),
     )
@@ -2735,10 +2730,12 @@ fn assign_default_behavior_shortcuts(config: &mut NativeConfig, model: &Committe
 fn shortcut_config_from_settings(
     shortcuts: bongocat_ui_protocol::SettingsShortcuts,
     commands_enabled: bool,
+    model_behaviors_enabled: bool,
 ) -> ShortcutConfig {
     ShortcutConfig {
         commands_enabled,
-        commands: shortcuts
+        model_behaviors_enabled,
+        command_bindings: shortcuts
             .commands
             .into_iter()
             .map(|binding| ShortcutBinding {
@@ -2746,11 +2743,19 @@ fn shortcut_config_from_settings(
                 shortcut: binding.shortcut,
             })
             .collect(),
-        model_behaviors: shortcuts
+        model_behavior_bindings: shortcuts
             .model_behaviors
             .into_iter()
             .map(|binding| ModelBehaviorBinding {
-                model_id: binding.model_id,
+                model: ModelIdentity {
+                    id: binding.model.id,
+                    source: match binding.model.origin {
+                        bongocat_ui_protocol::SettingsModelOrigin::BuiltIn => ModelSource::BuiltIn,
+                        bongocat_ui_protocol::SettingsModelOrigin::Imported => {
+                            ModelSource::Imported
+                        }
+                    },
+                },
                 behavior_id: binding.behavior_id,
                 shortcut: binding.shortcut,
             })
@@ -2762,15 +2767,15 @@ fn gamepad_axis_settings_from_config(
     config: &NativeConfig,
 ) -> Result<GamepadAxisSettings, ConfigError> {
     let stick_dead_zone = runtime_dead_zone(
-        config.input.gamepad_stick_dead_zone,
-        "input.gamepad_stick_dead_zone",
+        config.input.gamepad.stick_dead_zone,
+        "input.gamepad.stick_dead_zone",
     )?;
     let trigger_dead_zone = runtime_dead_zone(
-        config.input.gamepad_trigger_dead_zone,
-        "input.gamepad_trigger_dead_zone",
+        config.input.gamepad.trigger_dead_zone,
+        "input.gamepad.trigger_dead_zone",
     )?;
     GamepadAxisSettings::new(stick_dead_zone, trigger_dead_zone)
-        .ok_or(ConfigError::InvalidValue("input.gamepad_dead_zone"))
+        .ok_or(ConfigError::InvalidValue("input.gamepad"))
 }
 
 fn runtime_dead_zone(value: f64, field: &'static str) -> Result<f32, ConfigError> {
@@ -3078,7 +3083,7 @@ mod tests {
             application
                 .config()
                 .model
-                .installed_models
+                .imported_models
                 .iter()
                 .map(|metadata| metadata.title.as_str())
                 .collect::<Vec<_>>(),
@@ -3092,7 +3097,7 @@ mod tests {
             application
                 .config()
                 .model
-                .installed_models
+                .imported_models
                 .iter()
                 .map(|metadata| metadata.input_mode)
                 .collect::<Vec<_>>(),
@@ -3111,7 +3116,7 @@ mod tests {
             application
                 .config()
                 .model
-                .installed_models
+                .imported_models
                 .iter()
                 .find(|metadata| metadata.id == gamepad_id.as_str())
                 .expect("renamed gamepad metadata")
@@ -3200,7 +3205,7 @@ mod tests {
             restarted
                 .config()
                 .model
-                .installed_models
+                .imported_models
                 .iter()
                 .map(|metadata| (metadata.id.as_str(), Some(metadata.input_mode)))
                 .collect::<Vec<_>>(),
@@ -3248,7 +3253,7 @@ mod tests {
             application
                 .config()
                 .model
-                .installed_models
+                .imported_models
                 .iter()
                 .map(|metadata| metadata.title.as_str())
                 .collect::<Vec<_>>(),
@@ -3258,7 +3263,7 @@ mod tests {
             application
                 .config()
                 .model
-                .installed_models
+                .imported_models
                 .iter()
                 .map(|metadata| metadata.input_mode)
                 .collect::<Vec<_>>(),
@@ -3897,7 +3902,11 @@ mod tests {
         )
         .expect("start rendering application");
         assert!(
-            application.config().shortcuts.model_behaviors.is_empty(),
+            application
+                .config()
+                .shortcuts
+                .model_behavior_bindings
+                .is_empty(),
             "a fresh configuration binds no model behaviour"
         );
 
@@ -3922,12 +3931,16 @@ mod tests {
         // `standard` declares four motions in two groups and three
         // expressions. The legacy ordering walks motions before expressions,
         // so the seven behaviours land on the first seven digit slots.
-        let bindings = application.config().shortcuts.model_behaviors.clone();
+        let bindings = application
+            .config()
+            .shortcuts
+            .model_behavior_bindings
+            .clone();
         assert_eq!(bindings.len(), 7);
         assert!(
             bindings
                 .iter()
-                .all(|binding| binding.model_id == "standard")
+                .all(|binding| binding.model.id == "standard")
         );
         let primary = behavior_shortcut_primary_name();
         for (behavior_id, slot) in [
@@ -3953,7 +3966,7 @@ mod tests {
         // The chords are persisted, but the switch still gates whether the
         // platform adapters see them: a fresh v1 configuration leaves model
         // behaviour shortcuts off until the user opts in.
-        assert!(!application.config().model.enable_behavior_shortcuts);
+        assert!(!application.config().shortcuts.model_behaviors_enabled);
         let modifiers = behavior_shortcut_primary_modifiers();
         assert!(
             application
@@ -4008,7 +4021,7 @@ mod tests {
                 .is_some()
         };
         assert!(resolves(&application), "a recorded command is registered");
-        let behavior_gate = application.config().model.enable_behavior_shortcuts;
+        let behavior_gate = application.config().shortcuts.model_behaviors_enabled;
 
         application
             .set_command_shortcuts_enabled(false)
@@ -4017,10 +4030,10 @@ mod tests {
             !resolves(&application),
             "the gate must empty the platform table"
         );
-        assert_eq!(application.config().shortcuts.commands.len(), 1);
+        assert_eq!(application.config().shortcuts.command_bindings.len(), 1);
         assert!(!application.config().shortcuts.commands_enabled);
         assert_eq!(
-            application.config().model.enable_behavior_shortcuts,
+            application.config().shortcuts.model_behaviors_enabled,
             behavior_gate,
             "the model behaviour gate is a separate switch"
         );
@@ -4057,7 +4070,10 @@ mod tests {
                     shortcut: "Control+Alt+0".to_owned(),
                 }],
                 model_behaviors: vec![bongocat_ui_protocol::SettingsModelBehaviorBinding {
-                    model_id: "standard".to_owned(),
+                    model: bongocat_ui_protocol::SettingsModelKey {
+                        id: "standard".to_owned(),
+                        origin: bongocat_ui_protocol::SettingsModelOrigin::BuiltIn,
+                    },
                     behavior_id: "motion:CAT_motion:0".to_owned(),
                     shortcut: "Control+Alt+9".to_owned(),
                 }],
@@ -4069,7 +4085,11 @@ mod tests {
             .select_model(ModelOrigin::Preset, "standard")
             .expect("select standard model");
 
-        let bindings = application.config().shortcuts.model_behaviors.clone();
+        let bindings = application
+            .config()
+            .shortcuts
+            .model_behavior_bindings
+            .clone();
         assert_eq!(bindings.len(), 7);
         let chord = |behavior_id: &str| {
             bindings
@@ -4097,7 +4117,7 @@ mod tests {
             Some(format!("{primary}+6"))
         );
         assert_eq!(
-            application.config().shortcuts.commands.len(),
+            application.config().shortcuts.command_bindings.len(),
             1,
             "application commands are never rewritten"
         );
@@ -4128,22 +4148,31 @@ mod tests {
         application
             .select_model(ModelOrigin::Preset, "standard")
             .expect("select standard model");
-        assert_eq!(application.config().shortcuts.model_behaviors.len(), 7);
+        assert_eq!(
+            application.config().shortcuts.model_behavior_bindings.len(),
+            7
+        );
 
         // What the page's "Clear all shortcuts" button sends.
         application
             .set_shortcuts(bongocat_ui_protocol::SettingsShortcuts::default())
             .expect("clear all shortcuts");
-        assert!(application.config().shortcuts.commands.is_empty());
-        assert!(application.config().shortcuts.model_behaviors.is_empty());
+        assert!(application.config().shortcuts.command_bindings.is_empty());
+        assert!(
+            application
+                .config()
+                .shortcuts
+                .model_behavior_bindings
+                .is_empty()
+        );
 
         // Re-activating the model is what startup does on the next launch.
         application
             .select_model(ModelOrigin::Preset, "standard")
             .expect("re-activate standard model");
-        assert!(application.config().shortcuts.commands.is_empty());
+        assert!(application.config().shortcuts.command_bindings.is_empty());
         assert_eq!(
-            application.config().shortcuts.model_behaviors.len(),
+            application.config().shortcuts.model_behavior_bindings.len(),
             7,
             "the model behaviour defaults are re-assigned by activation"
         );
@@ -4173,7 +4202,10 @@ mod tests {
                 shortcut: "ctrl+shift+b".to_owned(),
             }],
             model_behaviors: vec![bongocat_ui_protocol::SettingsModelBehaviorBinding {
-                model_id: "standard".to_owned(),
+                model: bongocat_ui_protocol::SettingsModelKey {
+                    id: "standard".to_owned(),
+                    origin: bongocat_ui_protocol::SettingsModelOrigin::BuiltIn,
+                },
                 behavior_id: "expression:happy".to_owned(),
                 shortcut: "alt+m".to_owned(),
             }],
@@ -4199,7 +4231,7 @@ mod tests {
         let disabled = application.shortcut_table().load();
         assert!(disabled.resolve(modifiers, "B").is_some());
         assert!(disabled.resolve(alt, "M").is_none());
-        assert!(!application.config().model.enable_behavior_shortcuts);
+        assert!(!application.config().shortcuts.model_behaviors_enabled);
         application.shutdown().expect("clean shutdown");
 
         let mut restarted = Application::start_with_layout(layout).expect("restart application");
@@ -4243,7 +4275,10 @@ mod tests {
             .set_shortcuts(bongocat_ui_protocol::SettingsShortcuts {
                 commands: Vec::new(),
                 model_behaviors: vec![bongocat_ui_protocol::SettingsModelBehaviorBinding {
-                    model_id: "standard".to_owned(),
+                    model: bongocat_ui_protocol::SettingsModelKey {
+                        id: "standard".to_owned(),
+                        origin: bongocat_ui_protocol::SettingsModelOrigin::BuiltIn,
+                    },
                     behavior_id: "motion:CAT_motion:0".to_owned(),
                     shortcut: "Control+Alt+9".to_owned(),
                 }],
@@ -4262,9 +4297,9 @@ mod tests {
             let chords = application
                 .config()
                 .shortcuts
-                .model_behaviors
+                .model_behavior_bindings
                 .iter()
-                .filter(|binding| binding.model_id == model_id)
+                .filter(|binding| binding.model.id == model_id)
                 .map(|binding| binding.shortcut.as_str())
                 .collect::<Vec<_>>();
             assert!(
@@ -4277,8 +4312,8 @@ mod tests {
         let behavior_targets = compiled
             .iter()
             .filter_map(|shortcut| match shortcut.target() {
-                bongocat_config::ShortcutTarget::ModelBehavior { model_id, .. } => {
-                    Some(model_id.as_str())
+                bongocat_config::ShortcutTarget::ModelBehavior { model, .. } => {
+                    Some((model.id.as_str(), model.source))
                 }
                 bongocat_config::ShortcutTarget::Application(_) => None,
             })
@@ -4288,9 +4323,9 @@ mod tests {
             "the live model's behaviors are registered"
         );
         assert!(
-            behavior_targets
-                .iter()
-                .all(|model_id| *model_id == "keyboard"),
+            behavior_targets.iter().all(|(model_id, source)| {
+                *model_id == "keyboard" && *source == ModelSource::BuiltIn
+            }),
             "only the live model is registered, not the one being left: {behavior_targets:?}"
         );
 
@@ -4370,7 +4405,7 @@ mod tests {
         let config_path = layout.config.clone();
         let mut application =
             Application::start_with_layout(layout.clone()).expect("start application");
-        assert!(application.config().overlay.visible);
+        assert!(application.runtime_client().snapshot().overlay_visible);
         assert_eq!(application.config().appearance.theme, ConfigTheme::System);
         assert!(!application.config().overlay.click_through);
         assert!(
@@ -4385,7 +4420,12 @@ mod tests {
             .set_overlay_visible(false)
             .expect("update overlay visibility");
         assert!(!snapshot.overlay_visible);
-        assert!(!application.config().overlay.visible);
+        assert!(
+            std::fs::read_to_string(&config_path)
+                .expect("persisted config")
+                .find("\"visible\"")
+                .is_none()
+        );
 
         let overlay_settings = OverlaySettings {
             click_through: true,
@@ -4431,10 +4471,9 @@ mod tests {
             .set_maximum_fps(120)
             .expect("update maximum FPS");
         assert_eq!(frame_rate_snapshot.maximum_fps, 120);
-        assert_eq!(application.config().model.maximum_fps, 120);
+        assert_eq!(application.config().overlay.maximum_fps, 120);
 
         let persisted = std::fs::read_to_string(config_path).expect("persisted config");
-        assert!(persisted.contains("\"visible\": false"));
         assert!(persisted.contains("\"play_motion_audio\": true"));
         assert!(persisted.contains("\"scale_percent\": 150"));
         assert!(persisted.contains("\"click_through\": true"));
@@ -4454,31 +4493,31 @@ mod tests {
         );
         assert_eq!(restarted.runtime_client().snapshot().maximum_fps, 120);
         assert_eq!(restarted.config().appearance.theme, ConfigTheme::Dark);
-        assert!(restarted.config().overlay.visible);
+        assert!(restarted.runtime_client().snapshot().overlay_visible);
         restarted.shutdown().expect("clean restart shutdown");
     }
 
-    /// Hiding the model window is a per-session choice: the overlay always
-    /// starts visible and a persisted hidden overlay never survives a restart.
+    /// Overlay visibility is runtime-only: every fresh process starts visible,
+    /// and a session hide never adds a preference to `config.json`.
     #[test]
-    fn startup_forces_the_overlay_visible_like_the_legacy_window_state() {
+    fn startup_starts_the_overlay_visible_without_persisting_visibility() {
         let base = tempdir().expect("temp directory");
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
-        let store = ConfigStore::new(layout.clone()).expect("config store");
-        let mut config = store.load_or_default().expect("default config").config;
-        config.overlay.visible = false;
-        store.commit(&config).expect("hidden config commit");
-
-        let application =
+        let mut application =
             Application::start_with_layout(layout.clone()).expect("start application");
-        assert!(application.config().overlay.visible);
         assert!(application.runtime_client().snapshot().overlay_visible);
         let persisted = std::fs::read_to_string(&layout.config).expect("persisted config");
-        assert!(persisted.contains("\"visible\": true"));
+        assert!(!persisted.contains("\"visible\""));
+        application
+            .set_overlay_visible(false)
+            .expect("hide overlay for this session");
+        assert!(!application.runtime_client().snapshot().overlay_visible);
+        let persisted = std::fs::read_to_string(&layout.config).expect("persisted config");
+        assert!(!persisted.contains("\"visible\""));
         application.shutdown().expect("clean shutdown");
 
         let restarted = Application::start_with_layout(layout).expect("restart application");
-        assert!(restarted.config().overlay.visible);
+        assert!(restarted.runtime_client().snapshot().overlay_visible);
         restarted.shutdown().expect("clean restart shutdown");
     }
 
@@ -4524,8 +4563,8 @@ mod tests {
         config.model.mirror = true;
         config.model.mirror_pointer_tracking = true;
         config.model.ignore_pointer = true;
-        config.model.random_behavior_enabled = true;
-        config.model.random_behavior_interval_seconds = 17;
+        config.model.random_behavior.enabled = true;
+        config.model.random_behavior.interval_seconds = 17;
         store.commit(&config).expect("persist model settings");
         drop(store);
 
@@ -4557,8 +4596,8 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let store = ConfigStore::new(layout.clone()).expect("config store");
         let mut config = store.load_or_default().expect("default config").config;
-        config.input.gamepad_stick_dead_zone = 0.4;
-        config.input.gamepad_trigger_dead_zone = 0.2;
+        config.input.gamepad.stick_dead_zone = 0.4;
+        config.input.gamepad.trigger_dead_zone = 0.2;
         store.commit(&config).expect("custom input config");
         drop(store);
 
@@ -4609,13 +4648,13 @@ mod tests {
             .expect("update dead zones");
         assert!((updated.model_input.stick_left_x - (0.2 / 0.9)).abs() < 0.0001);
         assert!((updated.model_input.left_trigger - (0.05 / 0.95)).abs() < 0.0001);
-        assert_eq!(application.config().input.gamepad_stick_dead_zone, 0.1);
-        assert_eq!(application.config().input.gamepad_trigger_dead_zone, 0.05);
+        assert_eq!(application.config().input.gamepad.stick_dead_zone, 0.1);
+        assert_eq!(application.config().input.gamepad.trigger_dead_zone, 0.05);
         application.shutdown().expect("clean shutdown");
 
         let restarted = Application::start_with_layout(layout).expect("restart app");
-        assert_eq!(restarted.config().input.gamepad_stick_dead_zone, 0.1);
-        assert_eq!(restarted.config().input.gamepad_trigger_dead_zone, 0.05);
+        assert_eq!(restarted.config().input.gamepad.stick_dead_zone, 0.1);
+        assert_eq!(restarted.config().input.gamepad.trigger_dead_zone, 0.05);
         restarted.shutdown().expect("clean restart shutdown");
     }
 
@@ -4853,14 +4892,14 @@ mod tests {
         let installed = installed_catalog_ids(&application);
         assert_eq!(installed.len(), 2);
         assert_eq!(
-            application.config().model.installed_models,
+            application.config().model.imported_models,
             vec![
-                InstalledModelMetadata {
+                ImportedModelMetadata {
                     id: first.id().as_str().to_owned(),
                     title: "我的猫".to_owned(),
                     input_mode: ModelInputMode::Standard,
                 },
-                InstalledModelMetadata {
+                ImportedModelMetadata {
                     id: second.id().as_str().to_owned(),
                     title: "我的猫".to_owned(),
                     input_mode: ModelInputMode::Standard,
@@ -4872,8 +4911,8 @@ mod tests {
             .delete_model(ModelOrigin::Installed, first.id().as_str())
             .expect("delete first model");
         assert_eq!(
-            application.config().model.installed_models,
-            vec![InstalledModelMetadata {
+            application.config().model.imported_models,
+            vec![ImportedModelMetadata {
                 id: second.id().as_str().to_owned(),
                 title: "我的猫".to_owned(),
                 input_mode: ModelInputMode::Standard,
@@ -4888,9 +4927,11 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let store = ConfigStore::new(layout.clone()).expect("config store");
         let mut configured = store.load_or_default().expect("default config").config;
-        configured.model.selected_model_id = Some("ghost".to_owned());
-        configured.model.selected_model_origin = Some(SelectedModelOrigin::Installed);
-        configured.model.installed_models = vec![InstalledModelMetadata {
+        configured.model.selected_model = Some(ModelIdentity {
+            id: "ghost".to_owned(),
+            source: ModelSource::Imported,
+        });
+        configured.model.imported_models = vec![ImportedModelMetadata {
             id: "ghost".to_owned(),
             title: "幽灵模型".to_owned(),
             input_mode: ModelInputMode::Standard,
@@ -4906,12 +4947,11 @@ mod tests {
             Err(ApplicationError::RenderConsumerUnavailable)
         ));
         assert_eq!(
-            application.config().model.selected_model_id,
-            Some("standard".to_owned())
-        );
-        assert_eq!(
-            application.config().model.selected_model_origin,
-            Some(SelectedModelOrigin::Preset)
+            application.config().model.selected_model,
+            Some(ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            })
         );
         assert_eq!(
             application
@@ -4931,13 +4971,13 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let store = ConfigStore::new(layout.clone()).expect("config store");
         let mut configured = store.load_or_default().expect("default config").config;
-        configured.model.installed_models = vec![
-            InstalledModelMetadata {
+        configured.model.imported_models = vec![
+            ImportedModelMetadata {
                 id: "ghost".to_owned(),
                 title: "被手动删除".to_owned(),
                 input_mode: ModelInputMode::Standard,
             },
-            InstalledModelMetadata {
+            ImportedModelMetadata {
                 id: "still-there".to_owned(),
                 title: "目录仍在".to_owned(),
                 input_mode: ModelInputMode::Standard,
@@ -4949,8 +4989,8 @@ mod tests {
 
         let application = Application::start_with_layout(layout).expect("start application");
         assert_eq!(
-            application.config().model.installed_models,
-            vec![InstalledModelMetadata {
+            application.config().model.imported_models,
+            vec![ImportedModelMetadata {
                 id: "still-there".to_owned(),
                 title: "目录仍在".to_owned(),
                 input_mode: ModelInputMode::Standard,
@@ -4970,7 +5010,7 @@ mod tests {
         let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
         let store = ConfigStore::new(layout.clone()).expect("config store");
         let mut configured = store.load_or_default().expect("default config").config;
-        configured.model.installed_models = vec![InstalledModelMetadata {
+        configured.model.imported_models = vec![ImportedModelMetadata {
             id: "deleted-by-hand".to_owned(),
             title: "被手动删除".to_owned(),
             input_mode: ModelInputMode::Standard,
@@ -4985,7 +5025,7 @@ mod tests {
         assert!(catalog.iter().any(|entry| {
             entry.origin() == ModelOrigin::Preset && entry.id().as_str() == "standard"
         }));
-        assert!(application.config().model.installed_models.is_empty());
+        assert!(application.config().model.imported_models.is_empty());
         application.shutdown().expect("clean shutdown");
     }
 
@@ -5132,19 +5172,21 @@ mod tests {
             Some(ModelOrigin::Installed)
         );
         assert_eq!(
-            application.config().model.selected_model_origin,
-            Some(SelectedModelOrigin::Installed)
+            application.config().model.selected_model,
+            Some(ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::Imported,
+            })
         );
         application.shutdown().expect("clean shutdown");
 
         let mut restarted = Application::start_with_layout(layout).expect("restart application");
         assert_eq!(
-            restarted.config().model.selected_model_id.as_deref(),
-            Some("standard")
-        );
-        assert_eq!(
-            restarted.config().model.selected_model_origin,
-            Some(SelectedModelOrigin::Installed)
+            restarted.config().model.selected_model,
+            Some(ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::Imported,
+            })
         );
         restarted
             .select_model(ModelOrigin::Installed, "standard")
@@ -5175,12 +5217,11 @@ mod tests {
             .expect("selected model deletion switches away first");
         assert!(installed_catalog_ids(&application).is_empty());
         assert_eq!(
-            application.config().model.selected_model_id,
-            Some("standard".to_owned())
-        );
-        assert_eq!(
-            application.config().model.selected_model_origin,
-            Some(SelectedModelOrigin::Preset)
+            application.config().model.selected_model,
+            Some(ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            })
         );
         assert_eq!(application.active_model_origin(), Some(ModelOrigin::Preset));
         application.shutdown().expect("clean shutdown");
@@ -5236,12 +5277,11 @@ mod tests {
             .expect("configured model deletion switches away first");
         assert!(installed_catalog_ids(&restarted).is_empty());
         assert_eq!(
-            restarted.config().model.selected_model_id,
-            Some("standard".to_owned())
-        );
-        assert_eq!(
-            restarted.config().model.selected_model_origin,
-            Some(SelectedModelOrigin::Preset)
+            restarted.config().model.selected_model,
+            Some(ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            })
         );
         restarted.shutdown().expect("clean restart shutdown");
     }
@@ -5303,11 +5343,9 @@ mod tests {
                 .map(|model| model.id.as_str()),
             Some("standard")
         );
-        assert_eq!(application.config().model.selected_model_id, None);
-        assert_eq!(application.config().model.selected_model_origin, None);
+        assert_eq!(application.config().model.selected_model, None);
         let persisted = std::fs::read_to_string(config_path).expect("restored config");
-        assert!(persisted.contains("\"selected_model_id\": null"));
-        assert!(persisted.contains("\"selected_model_origin\": null"));
+        assert!(persisted.contains("\"selected_model\": null"));
         application.shutdown().expect("clean shutdown");
     }
 

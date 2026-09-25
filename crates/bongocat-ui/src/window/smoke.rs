@@ -218,7 +218,7 @@ impl SettingsView {
         let mut has_edit_target = false;
         for entry in &snapshot.model_catalog.entries {
             let actions = model_row_actions(entry, Some(active_model), false);
-            if entry.origin == SettingsModelOrigin::Preset && actions.can_delete {
+            if entry.origin == SettingsModelOrigin::BuiltIn && actions.can_delete {
                 return Err("model library page exposed deletion for a preset model".to_owned());
             }
             if matches!(
@@ -230,7 +230,7 @@ impl SettingsView {
             }
             has_activation_target |= actions.can_activate;
             has_location_target |= actions.can_open_location;
-            has_edit_target |= entry.origin == SettingsModelOrigin::Preset && actions.can_edit;
+            has_edit_target |= entry.origin == SettingsModelOrigin::BuiltIn && actions.can_edit;
         }
         if !has_activation_target {
             return Err("model library page has no ready inactive activation target".to_owned());
@@ -273,8 +273,8 @@ impl SettingsView {
             let expected_origin = bongocat_i18n::text(
                 language.catalog_locale(),
                 match entry.origin {
-                    SettingsModelOrigin::Preset => "models.identity.source.built_in",
-                    SettingsModelOrigin::Installed => "models.identity.source.imported",
+                    SettingsModelOrigin::BuiltIn => "models.identity.source.built_in",
+                    SettingsModelOrigin::Imported => "models.identity.source.imported",
                 },
             );
             if !status.contains(expected_origin) {

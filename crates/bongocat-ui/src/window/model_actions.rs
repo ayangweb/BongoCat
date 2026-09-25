@@ -907,7 +907,7 @@ impl SettingsView {
                     .model_catalog
                     .entries
                     .iter()
-                    .filter(|entry| entry.origin == SettingsModelOrigin::Installed)
+                    .filter(|entry| entry.origin == SettingsModelOrigin::Imported)
                     .map(|entry| ModelRowKey::new(entry.origin, &entry.id))
                     .filter(|key| !baseline.contains(key))
                     .collect::<BTreeSet<_>>()

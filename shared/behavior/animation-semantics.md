@@ -21,8 +21,8 @@
   Each evaluation restores every Core part opacity to the value captured from the fresh model before
   applying the active motion, so stop, replacement, and a motion that targets other parts cannot
   leave stale visibility behind. Missing IDs are skipped without invalidating the remaining motion.
-- When `model.random_behavior_enabled` is on, the runtime waits one complete
-  `random_behavior_interval_seconds` and then chooses uniformly from the active model's declared motions
+- When `model.random_behavior.enabled` is on, the runtime waits one complete
+  `model.random_behavior.interval_seconds` and then chooses uniformly from the active model's declared motions
   and expressions. A model switch, a settings change, and a clock rollback re-anchor or suppress the
   automatic schedule without replaying a missed tick. Automatic motions use `Idle` priority and cannot
   replace a live `Normal` or `Force` product motion; an empty behavior list is a no-op. The random selector

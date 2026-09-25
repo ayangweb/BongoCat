@@ -12,8 +12,9 @@ compare-and-swap，防止窗口中的旧编辑覆盖后台配置。若两者共�
 
 - `SettingsSnapshot.revision` 是 UI 可观察内容的单调版本，只用于丢弃过期异步结果和刷新视图。
 - `SettingsSnapshot.config_revision` 是当前环境持久化配置的版本；没有可编辑配置 snapshot 时为 `None`。ADR-0054 后，损坏配置按备份/默认值 fallback，恢复路径仍进入普通设置窗口，不再有 recovery-only 版本。
-- 所有已接入的配置/模型选择 command（overlay visible/settings、motion audio、model selection）携带
-  `expected_config_revision`，settings worker 在调用 Application 写入前比较它。
+- 所有已接入的配置/模型选择 command（overlay settings、motion audio、model selection）携带
+  `expected_config_revision`，settings worker 在调用 Application 写入前比较它。Overlay visibility
+  是 runtime-only command，不写配置；它仍携带当前 config revision 作为 stale-view guard。
 - 比较失败返回匿名 `SnapshotOutdated`，不改变 runtime、配置文件或任何 revision；UI 读取最新
   snapshot 并保留可操作错误。
 

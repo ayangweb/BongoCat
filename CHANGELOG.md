@@ -32,8 +32,9 @@ BongoCat 2.0.0 is the first release recorded in this changelog.
 
 ### ⚠️ Upgrade Notice
 
-- The Native v1 configuration now requires `application.check_for_updates_interval_hours`. Earlier v1 development builds did not write this field; their configurations are not migrated and follow the existing strict recovery path (latest valid backup, then defaults if needed).
-- Native v1 installed-model metadata now also requires `input_mode` (`standard`, `keyboard`, or `gamepad`). Earlier development configurations without this field are not migrated and follow the same strict recovery path.
+- The Native v1 configuration now uses the domain-specific `system` and `updates` sections, nested `input` groups, complete nullable `model.selected_model: { id, source }` identities, and `imported` / `built_in` model sources. It also moves frame-rate and input-reliability settings to `overlay.maximum_fps`, `input.keyboard.release_fallback_timeout_ms`, and `input.gamepad.stick_dead_zone` / `input.gamepad.trigger_dead_zone`, nests random behavior under `model.random_behavior`, renames the model lists to `model.imported_models` and `model.built_in_models`, and renames the shortcut lists to `shortcuts.command_bindings` and `shortcuts.model_behavior_bindings`. Earlier v1 development configurations are not migrated and follow the existing strict recovery path (latest valid backup, then defaults if needed).
+- Native v1 imported-model metadata now also requires `input_mode` (`standard`, `keyboard`, or `gamepad`). Earlier development configurations without this field are not migrated and follow the same strict recovery path.
+- `overlay.visible` is no longer persisted. Overlay visibility is a per-session runtime state; every new process starts with the overlay visible, while the settings snapshot still reports the current runtime visibility.
 - The persisted window layout file is now named `window-state.json` instead of the overly broad `state.json`. Its format and schema version are unchanged; pre-release data under the old name is not migrated.
 
 ### 🐛 Bug Fixes

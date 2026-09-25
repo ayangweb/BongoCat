@@ -69,9 +69,9 @@ def config_semantic_errors(value: object) -> list[str]:
     if not isinstance(model, dict):
         return []
     errors = []
-    # Each list is keyed by its own id space: the same id may name a preset and
-    # an installed model at once, so uniqueness is checked per list.
-    for field in ("installed_models", "preset_models"):
+    # Each metadata list is keyed by its own id space: the same id may name a
+    # built-in and an imported model at once, so uniqueness is checked per list.
+    for field in ("imported_models", "built_in_models"):
         records = model.get(field)
         if not isinstance(records, list):
             continue

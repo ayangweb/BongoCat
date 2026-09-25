@@ -163,7 +163,7 @@ pub(crate) mod tests {
             input_diagnostics: SettingsInputDiagnostics::default(),
             active_model: Some(SettingsModelKey {
                 id: "standard".to_owned(),
-                origin: SettingsModelOrigin::Preset,
+                origin: SettingsModelOrigin::BuiltIn,
             }),
             model_catalog: SettingsModelCatalog::default(),
         }

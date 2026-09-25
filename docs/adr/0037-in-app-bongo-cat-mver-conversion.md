@@ -56,7 +56,7 @@ ADR-0065（模型模式元数据与卡片 Badge）
 资源根优先取 `img/`（Mver 应用的实际布局），不存在时取源根本身，以容纳把模式文件夹直接摊在根上
 的模型包。
 
-修订（2026-09-25）：每个 Mver 转换条目现在在 `installed_models[].input_mode` 中持久化
+修订（2026-09-25）：每个 Mver 转换条目现在在 `imported_models[].input_mode` 中持久化
 实际选中的 `standard`/`keyboard`/`gamepad` source section；该字段是模式事实，标题后缀只保留
 既有显示兼容语义。普通模型包则由 ModelStore 在 staging 提交前按 `left-keys`/`right-keys` 资源
 判定模式，判定失败直接拒绝导入。详情见 ADR-0065。
@@ -64,7 +64,7 @@ ADR-0065（模型模式元数据与卡片 Badge）
 ### 2. 一个源产出多个模型，每个模型独立安装
 
 每个模式转换成一个 BongoCat 包，各自分配一个随机 UUID v4 存储键，各自写一条
-`installed_models` 元数据记录和对应的 `input_mode`，因此三种模式成为模型列表里三个可以独立
+`imported_models` 元数据记录和对应的 `input_mode`，因此三种模式成为模型列表里三个可以独立
 启用、改名、删除的普通条目。模式值来自本次导入选择的 legacy section，不从转换后目录形状
 或标题反推。
 

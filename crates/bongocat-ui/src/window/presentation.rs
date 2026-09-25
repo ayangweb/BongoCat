@@ -317,7 +317,7 @@ pub(super) fn shortcut_rows(
         let behavior_id = model_behavior_id(behavior);
         ShortcutRow {
             target: ShortcutCaptureTarget::ModelBehavior {
-                model_id: model.id.clone(),
+                model: model.clone(),
                 behavior_id: behavior_id.clone(),
             },
             behavior: Some(BehaviorOrdinal { kind, number }),
@@ -328,7 +328,7 @@ pub(super) fn shortcut_rows(
             shortcut: shortcuts
                 .model_behaviors
                 .iter()
-                .find(|binding| binding.model_id == model.id && binding.behavior_id == behavior_id)
+                .find(|binding| binding.model == *model && binding.behavior_id == behavior_id)
                 .map(|binding| binding.shortcut.clone()),
         }
     }));
@@ -426,19 +426,18 @@ pub(super) fn replace_shortcut(
                 });
             }
         }
-        ShortcutCaptureTarget::ModelBehavior {
-            model_id,
-            behavior_id,
-        } => {
-            if let Some(binding) = shortcuts.model_behaviors.iter_mut().find(|binding| {
-                binding.model_id == *model_id && binding.behavior_id == *behavior_id
-            }) {
+        ShortcutCaptureTarget::ModelBehavior { model, behavior_id } => {
+            if let Some(binding) = shortcuts
+                .model_behaviors
+                .iter_mut()
+                .find(|binding| binding.model == *model && binding.behavior_id == *behavior_id)
+            {
                 binding.shortcut = shortcut;
             } else {
                 shortcuts
                     .model_behaviors
                     .push(SettingsModelBehaviorBinding {
-                        model_id: model_id.clone(),
+                        model: model.clone(),
                         behavior_id: behavior_id.clone(),
                         shortcut,
                     });
@@ -460,14 +459,11 @@ pub(super) fn clear_shortcut(
                 .retain(|binding| binding.command != *command);
             shortcuts.commands.len() != original_len
         }
-        ShortcutCaptureTarget::ModelBehavior {
-            model_id,
-            behavior_id,
-        } => {
+        ShortcutCaptureTarget::ModelBehavior { model, behavior_id } => {
             let original_len = shortcuts.model_behaviors.len();
-            shortcuts.model_behaviors.retain(|binding| {
-                binding.model_id != *model_id || binding.behavior_id != *behavior_id
-            });
+            shortcuts
+                .model_behaviors
+                .retain(|binding| binding.model != *model || binding.behavior_id != *behavior_id);
             shortcuts.model_behaviors.len() != original_len
         }
     }
@@ -540,7 +536,7 @@ pub(super) fn conflicting_shortcut(shortcuts: &SettingsShortcuts) -> Option<Stri
             return Some(canonical);
         }
     }
-    let mut model_chords: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    let mut model_chords: BTreeMap<SettingsModelKey, BTreeSet<String>> = BTreeMap::new();
     for binding in &shortcuts.model_behaviors {
         let Some(chord) = ShortcutChord::parse(&binding.shortcut).ok() else {
             continue;
@@ -548,7 +544,7 @@ pub(super) fn conflicting_shortcut(shortcuts: &SettingsShortcuts) -> Option<Stri
         let canonical = chord.canonical();
         if command_chords.contains(&canonical)
             || !model_chords
-                .entry(binding.model_id.as_str())
+                .entry(binding.model.clone())
                 .or_default()
                 .insert(canonical.clone())
         {

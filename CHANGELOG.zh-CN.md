@@ -32,8 +32,9 @@ BongoCat 2.0.0 是本更新日志记录的首个版本。
 
 ### ⚠️ 升级说明
 
-- Native v1 配置现在要求包含 `application.check_for_updates_interval_hours`。较早的 v1 开发构建没有写入该字段；这些配置不会迁移，而会沿用现有严格恢复流程（先使用最新有效备份，没有时再使用默认配置）。
-- Native v1 的已安装模型元数据现在还要求包含 `input_mode`（`standard`、`keyboard` 或 `gamepad`）。较早的开发配置不会迁移，并沿用同一套严格恢复流程。
+- Native v1 配置现在使用按领域划分的 `system` 与 `updates` section、嵌套的 `input` 分组、完整且可为空的 `model.selected_model: { id, source }` 身份，以及 `imported` / `built_in` 模型来源；帧率和输入可靠性设置分别移动到 `overlay.maximum_fps`、`input.keyboard.release_fallback_timeout_ms` 和 `input.gamepad.stick_dead_zone` / `input.gamepad.trigger_dead_zone`，随机行为嵌套到 `model.random_behavior`，模型列表改名为 `model.imported_models` 和 `model.built_in_models`，快捷键列表改名为 `shortcuts.command_bindings` 和 `shortcuts.model_behavior_bindings`。较早的 v1 开发配置不会迁移，而会沿用现有严格恢复流程（先使用最新有效备份，没有时再使用默认配置）。
+- Native v1 的已导入模型元数据现在还要求包含 `input_mode`（`standard`、`keyboard` 或 `gamepad`）。较早的开发配置不会迁移，并沿用同一套严格恢复流程。
+- `overlay.visible` 不再持久化。Overlay 可见性现在是会话内的 runtime 状态；每个新进程都从可见状态开始，而 settings snapshot 仍会报告当前 runtime 可见性。
 - 持久化的窗口布局文件现在使用 `window-state.json`，不再使用含义过于宽泛的 `state.json`。文件格式和 schema 版本保持不变；发布前旧名称下的数据不会迁移。
 
 ### 🐛 问题修复

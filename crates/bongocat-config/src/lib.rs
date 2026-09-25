@@ -171,23 +171,33 @@ pub fn platform_layout(
 #[serde(deny_unknown_fields)]
 pub struct NativeConfig {
     pub schema_version: u32,
-    pub application: ApplicationConfig,
     pub appearance: AppearanceConfig,
     pub overlay: OverlayConfig,
     pub input: InputConfig,
     pub logging: LoggingConfig,
     pub model: ModelConfig,
     pub shortcuts: ShortcutConfig,
+    pub system: SystemConfig,
+    pub updates: UpdateConfig,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+/// Desktop integration preferences. These are system-owned surfaces rather
+/// than model or overlay state, so they have their own namespace.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct ApplicationConfig {
+pub struct SystemConfig {
     pub show_taskbar_icon: bool,
     pub show_status_icon: bool,
-    pub check_for_updates_automatically: bool,
+}
+
+/// Automatic update policy. The interval remains persisted when the switch is
+/// off, just like the other preference pairs in the configuration.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateConfig {
+    pub check_automatically: bool,
     /// Whole hours to wait after an automatic update check before checking again.
-    pub check_for_updates_interval_hours: u16,
+    pub check_interval_hours: u16,
 }
 
 /// User-controlled filtering and retention for the human-readable application
@@ -313,11 +323,12 @@ impl Language {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct OverlayConfig {
-    pub visible: bool,
     pub click_through: bool,
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
+    /// Maximum frame rate for the product overlay and its runtime scheduler.
+    pub maximum_fps: u16,
     /// Corner radius of the overlay window box, as a percentage of the window
     /// width and height. The value keeps the legacy `border-radius: N%`
     /// semantics: each corner arc is an ellipse with a horizontal semi-axis of
@@ -366,27 +377,36 @@ pub const MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS: u32 = 60;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct InputConfig {
-    pub gamepad_stick_dead_zone: f64,
-    pub gamepad_trigger_dead_zone: f64,
+    pub keyboard: KeyboardInputConfig,
+    pub gamepad: GamepadInputConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct KeyboardInputConfig {
+    /// Final fallback for a captured keyboard key whose normal release,
+    /// reconciliation and reset paths all failed to clear it.
+    pub release_fallback_timeout_ms: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct GamepadInputConfig {
+    pub stick_dead_zone: f64,
+    pub trigger_dead_zone: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ModelConfig {
-    pub selected_model_id: Option<String>,
-    pub selected_model_origin: Option<SelectedModelOrigin>,
+    /// The selected model is one nullable identity object. Keeping `id` and
+    /// `source` together makes an incomplete selection unrepresentable.
+    pub selected_model: Option<ModelIdentity>,
     /// User-imported model metadata, including the input mode resolved once at
     /// import time.
-    pub installed_models: Vec<InstalledModelMetadata>,
-    /// Editable metadata for the models the build ships.
-    ///
-    /// A preset's name is the id the build gave it until the user renames it,
-    /// which is why this list is empty on a fresh configuration and why it has
-    /// no import or delete path: nothing creates a preset and nothing removes
-    /// one. The record is a customisation of a model that is always there. Its
-    /// input mode is not duplicated here: the three current preset ids are the
-    /// authoritative mode identity owned by the build.
-    pub preset_models: Vec<ModelMetadata>,
+    pub imported_models: Vec<ImportedModelMetadata>,
+    /// Editable metadata for the models shipped by the build.
+    pub built_in_models: Vec<BuiltInModelMetadata>,
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     /// Whether a motion that ships an audio clip is allowed to play it.
@@ -397,38 +417,55 @@ pub struct ModelConfig {
     /// implementation, which recorded an enabled default; the reasoning lives
     /// in `shared/config/native-config-contract.md`.
     pub play_motion_audio: bool,
-    /// Whether motion/expression bindings reach the platform shortcut table.
-    ///
-    /// Defaults to `false`. The legacy implementation auto-assigned a whole
-    /// tier of `primary + [Shift/Alt] + digit/letter` chords to every motion and
-    /// expression as soon as a model finished loading, with no opt-in: a user
-    /// who never opened the behaviour list still ended up with dozens of global
-    /// shortcuts. The Native rewrite keeps this switch as the explicit opt-in
-    /// gate, so a fresh v1 configuration starts with no model behaviour
-    /// shortcut at all and every binding is one the user recorded on the
-    /// Shortcuts page.
-    pub enable_behavior_shortcuts: bool,
-    /// Whether the runtime periodically chooses one declared motion or
-    /// expression from the active model. The interval is measured between
-    /// selection events, so a long motion can still be replaced when the next
-    /// interval arrives.
-    pub random_behavior_enabled: bool,
-    /// Delay between automatic behavior selections, in whole seconds.
-    pub random_behavior_interval_seconds: u32,
-    pub maximum_fps: u16,
     pub ignore_pointer: bool,
-    pub release_fallback_timeout_ms: u32,
+    pub random_behavior: RandomBehaviorConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RandomBehaviorConfig {
+    pub enabled: bool,
+    /// Delay between automatic behavior selections, in whole seconds.
+    pub interval_seconds: u32,
+}
+
+impl Default for RandomBehaviorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_seconds: DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+        }
+    }
+}
+
+/// The stable identity of a model as seen by the user-facing configuration.
+/// `source` distinguishes two catalog entries that happen to share an id.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
+pub struct ModelIdentity {
+    pub id: String,
+    pub source: ModelSource,
+}
+
+/// The product-facing origin of a model entry. The model-store layer keeps its
+/// technical `Installed`/`Preset` ownership types; those are not serialized in
+/// `config.json` and describe storage mechanics rather than user-facing source.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelSource {
+    Imported,
+    BuiltIn,
 }
 
 /// User-facing metadata for one build-shipped model.
 ///
-/// The `id` is the preset directory name and `title` is an editable display name
-/// that never participates in model identity. Which list holds the record is
-/// what carries its lifecycle: an import creates installed metadata and a delete
-/// removes it; nothing creates or removes a preset record.
+/// The `id` is the built-in directory name and `title` is an editable display
+/// name that never participates in model identity. Which list holds the record
+/// is what carries its lifecycle: an import creates imported metadata and a
+/// delete removes it; nothing creates or removes a built-in record.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct ModelMetadata {
+pub struct BuiltInModelMetadata {
     pub id: String,
     pub title: String,
 }
@@ -441,7 +478,7 @@ pub struct ModelMetadata {
 /// restarting the application cannot silently change its displayed mode.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct InstalledModelMetadata {
+pub struct ImportedModelMetadata {
     pub id: String,
     pub title: String,
     pub input_mode: ModelInputMode,
@@ -450,10 +487,10 @@ pub struct InstalledModelMetadata {
 /// The input family a model belongs to.
 ///
 /// Mver conversion knows this from the selected source section, the build
-/// derives it from the stable ids of its three presets, and an ordinary package
-/// resolves it from the key artwork before import commits. A package that cannot
-/// be classified is rejected by the model store rather than stored with a
-/// fourth, non-mode value.
+/// derives it from the stable ids of its three built-in models, and an ordinary
+/// package resolves it from the key artwork before import commits. A package
+/// that cannot be classified is rejected by the model store rather than stored
+/// with a fourth, non-mode value.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelInputMode {
@@ -475,13 +512,6 @@ impl ModelInputMode {
 pub const MODEL_METADATA_MAXIMUM_ID_BYTES: usize = 64;
 pub const MODEL_METADATA_MAXIMUM_TITLE_CHARS: usize = 128;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum SelectedModelOrigin {
-    Preset,
-    Installed,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ShortcutConfig {
@@ -489,14 +519,14 @@ pub struct ShortcutConfig {
     ///
     /// Defaults to `true`: the shortcuts page renders this gate as "disable
     /// window shortcuts", so a fresh v1 configuration keeps every command
-    /// shortcut live. Turning it off excludes [`Self::commands`] from
+    /// shortcut live. Turning it off excludes [`Self::command_bindings`] from
     /// [`Self::active_bindings`] and never rewrites or clears the recorded
     /// bindings, so turning it back on restores them without re-recording.
-    /// Model behaviours have their own, independent gate
-    /// (`ModelConfig::enable_behavior_shortcuts`).
+    /// Model behaviours have their own, independent gate.
     pub commands_enabled: bool,
-    pub commands: Vec<ShortcutBinding>,
-    pub model_behaviors: Vec<ModelBehaviorBinding>,
+    pub model_behaviors_enabled: bool,
+    pub command_bindings: Vec<ShortcutBinding>,
+    pub model_behavior_bindings: Vec<ModelBehaviorBinding>,
 }
 
 impl Default for ShortcutConfig {
@@ -506,8 +536,9 @@ impl Default for ShortcutConfig {
     fn default() -> Self {
         Self {
             commands_enabled: true,
-            commands: Vec::new(),
-            model_behaviors: Vec::new(),
+            model_behaviors_enabled: false,
+            command_bindings: Vec::new(),
+            model_behavior_bindings: Vec::new(),
         }
     }
 }
@@ -517,8 +548,8 @@ impl ShortcutConfig {
     /// stable spelling. Validation remains a separate step so callers can
     /// choose whether to normalize before an atomic commit.
     pub fn canonicalized(&self) -> Result<Self, ConfigError> {
-        let commands = self
-            .commands
+        let command_bindings = self
+            .command_bindings
             .iter()
             .map(|binding| {
                 let command = ShortcutCommand::parse(&binding.command)
@@ -531,8 +562,8 @@ impl ShortcutConfig {
                 Ok(ShortcutBinding { command, shortcut })
             })
             .collect::<Result<Vec<_>, ConfigError>>()?;
-        let model_behaviors = self
-            .model_behaviors
+        let model_behavior_bindings = self
+            .model_behavior_bindings
             .iter()
             .map(|binding| {
                 let behavior_id = binding
@@ -543,7 +574,7 @@ impl ShortcutConfig {
                     .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?
                     .canonical();
                 Ok(ModelBehaviorBinding {
-                    model_id: binding.model_id.clone(),
+                    model: binding.model.clone(),
                     behavior_id,
                     shortcut,
                 })
@@ -551,8 +582,9 @@ impl ShortcutConfig {
             .collect::<Result<Vec<_>, ConfigError>>()?;
         Ok(Self {
             commands_enabled: self.commands_enabled,
-            commands,
-            model_behaviors,
+            model_behaviors_enabled: self.model_behaviors_enabled,
+            command_bindings,
+            model_behavior_bindings,
         })
     }
 
@@ -565,8 +597,8 @@ impl ShortcutConfig {
     /// behaviour chords are only unique *inside* their own model. The
     /// configuration keeps a binding for every model the user has activated,
     /// and exactly one of them is active at a time — the shortcuts page shows
-    /// that model's behaviors, and the dispatcher drops a target whose
-    /// `model_id` is not the active one. Two models may therefore carry the
+    /// that model's behaviors, and the dispatcher drops a target whose complete
+    /// `{ id, source }` identity is not the active one. Two models may therefore carry the
     /// same chord, which is what lets each model count its own defaults from
     /// the primary modifier's first digit.
     ///
@@ -575,20 +607,24 @@ impl ShortcutConfig {
     /// keeps the chords of every other model out of the platform's global
     /// hotkey registrations, where they would occupy chords they can never
     /// fire from.
-    pub fn active_bindings(&self, active_model_id: Option<&str>) -> Self {
+    pub fn active_bindings(&self, active_model: Option<&ModelIdentity>) -> Self {
         Self {
             commands_enabled: self.commands_enabled,
-            commands: if self.commands_enabled {
-                self.commands.clone()
+            model_behaviors_enabled: self.model_behaviors_enabled,
+            command_bindings: if self.commands_enabled {
+                self.command_bindings.clone()
             } else {
                 Vec::new()
             },
-            model_behaviors: self
-                .model_behaviors
-                .iter()
-                .filter(|binding| Some(binding.model_id.as_str()) == active_model_id)
-                .cloned()
-                .collect(),
+            model_behavior_bindings: if self.model_behaviors_enabled {
+                self.model_behavior_bindings
+                    .iter()
+                    .filter(|binding| active_model.is_some_and(|active| active == &binding.model))
+                    .cloned()
+                    .collect()
+            } else {
+                Vec::new()
+            },
         }
     }
 
@@ -687,19 +723,19 @@ fn canonical_chord(value: &str) -> Option<String> {
 /// previous model stopped.
 pub fn assign_default_behavior_shortcuts(
     shortcuts: &mut ShortcutConfig,
-    model_id: &str,
+    model: &ModelIdentity,
     behavior_ids: &[String],
     primary: u8,
 ) -> usize {
     let mut taken: std::collections::BTreeSet<String> = shortcuts
-        .commands
+        .command_bindings
         .iter()
         .filter_map(|binding| canonical_chord(&binding.shortcut))
         .chain(
             shortcuts
-                .model_behaviors
+                .model_behavior_bindings
                 .iter()
-                .filter(|binding| binding.model_id == model_id)
+                .filter(|binding| binding.model == *model)
                 .filter_map(|binding| canonical_chord(&binding.shortcut)),
         )
         .collect();
@@ -708,9 +744,9 @@ pub fn assign_default_behavior_shortcuts(
     let mut added = 0_usize;
     for behavior_id in behavior_ids {
         if shortcuts
-            .model_behaviors
+            .model_behavior_bindings
             .iter()
-            .any(|binding| binding.model_id == model_id && binding.behavior_id == *behavior_id)
+            .any(|binding| binding.model == *model && binding.behavior_id == *behavior_id)
         {
             continue;
         }
@@ -726,11 +762,13 @@ pub fn assign_default_behavior_shortcuts(
         let Some(shortcut) = assigned else {
             break;
         };
-        shortcuts.model_behaviors.push(ModelBehaviorBinding {
-            model_id: model_id.to_owned(),
-            behavior_id: behavior_id.clone(),
-            shortcut,
-        });
+        shortcuts
+            .model_behavior_bindings
+            .push(ModelBehaviorBinding {
+                model: model.clone(),
+                behavior_id: behavior_id.clone(),
+                shortcut,
+            });
         added += 1;
     }
     added
@@ -740,7 +778,7 @@ pub fn assign_default_behavior_shortcuts(
 pub enum ShortcutTarget {
     Application(ShortcutCommand),
     ModelBehavior {
-        model_id: String,
+        model: ModelIdentity,
         action: ModelBehaviorAction,
     },
 }
@@ -808,13 +846,13 @@ impl CompiledShortcuts {
     pub fn compile(config: &ShortcutConfig) -> Result<Self, ConfigError> {
         let mut bindings = Vec::with_capacity(
             config
-                .commands
+                .command_bindings
                 .len()
-                .saturating_add(config.model_behaviors.len()),
+                .saturating_add(config.model_behavior_bindings.len()),
         );
         let mut seen = std::collections::BTreeSet::new();
 
-        for binding in &config.commands {
+        for binding in &config.command_bindings {
             let chord = ShortcutChord::parse(&binding.shortcut)
                 .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?;
             if !seen.insert(chord.canonical()) {
@@ -828,9 +866,11 @@ impl CompiledShortcuts {
             });
         }
 
-        for binding in &config.model_behaviors {
-            if binding.model_id.trim().is_empty() {
-                return Err(ConfigError::InvalidValue("shortcuts.model_behaviors"));
+        for binding in &config.model_behavior_bindings {
+            if binding.model.id.trim().is_empty() {
+                return Err(ConfigError::InvalidValue(
+                    "shortcuts.model_behavior_bindings",
+                ));
             }
             let chord = ShortcutChord::parse(&binding.shortcut)
                 .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?;
@@ -843,7 +883,10 @@ impl CompiledShortcuts {
             bindings.push(CompiledShortcut {
                 chord,
                 target: ShortcutTarget::ModelBehavior {
-                    model_id: binding.model_id.trim().to_owned(),
+                    model: ModelIdentity {
+                        id: binding.model.id.trim().to_owned(),
+                        source: binding.model.source,
+                    },
                     action,
                 },
             });
@@ -1187,13 +1230,15 @@ pub struct ShortcutBinding {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ModelBehaviorBinding {
-    pub model_id: String,
+    /// The complete model identity, including source. An id alone is not
+    /// unique because built-in and imported catalogs may contain the same id.
+    pub model: ModelIdentity,
     pub behavior_id: String,
     pub shortcut: String,
 }
 
-/// A model action encoded by the Native shortcut contract. The model ID is
-/// kept on the binding so the application can scope the action to one model.
+/// A model action encoded by the Native shortcut contract. The model identity
+/// is kept on the binding so the application can scope the action to one model.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModelBehaviorAction {
     Motion { group: String, index: usize },
@@ -1277,48 +1322,50 @@ impl Default for NativeConfig {
     fn default() -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
-            application: ApplicationConfig {
-                show_taskbar_icon: true,
-                show_status_icon: true,
-                check_for_updates_automatically: false,
-                check_for_updates_interval_hours: DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
-            },
             appearance: AppearanceConfig {
                 theme: Theme::System,
                 language: Language::default(),
             },
             overlay: OverlayConfig {
-                visible: true,
                 click_through: false,
                 always_on_top: true,
                 scale_percent: 100,
                 opacity_percent: 100,
+                maximum_fps: 60,
                 corner_radius_percent: 0,
                 hide_on_pointer_hover: false,
                 hide_on_pointer_hover_delay_seconds: 0,
                 keep_inside_screen: true,
             },
             input: InputConfig {
-                gamepad_stick_dead_zone: 0.15,
-                gamepad_trigger_dead_zone: 0.0,
+                keyboard: KeyboardInputConfig {
+                    release_fallback_timeout_ms: 500,
+                },
+                gamepad: GamepadInputConfig {
+                    stick_dead_zone: 0.15,
+                    trigger_dead_zone: 0.0,
+                },
             },
             logging: LoggingConfig::default(),
             model: ModelConfig {
-                selected_model_id: None,
-                selected_model_origin: None,
-                installed_models: Vec::new(),
-                preset_models: Vec::new(),
+                selected_model: None,
+                imported_models: Vec::new(),
+                built_in_models: Vec::new(),
                 mirror: false,
                 mirror_pointer_tracking: false,
                 play_motion_audio: false,
-                enable_behavior_shortcuts: false,
-                random_behavior_enabled: false,
-                random_behavior_interval_seconds: DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
-                maximum_fps: 60,
                 ignore_pointer: false,
-                release_fallback_timeout_ms: 500,
+                random_behavior: RandomBehaviorConfig::default(),
             },
             shortcuts: ShortcutConfig::default(),
+            system: SystemConfig {
+                show_taskbar_icon: true,
+                show_status_icon: true,
+            },
+            updates: UpdateConfig {
+                check_automatically: false,
+                check_interval_hours: DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
+            },
         }
     }
 }
@@ -1329,17 +1376,18 @@ impl NativeConfig {
             return Err(ConfigError::UnsupportedSchema(self.schema_version));
         }
         if !(1..=MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS)
-            .contains(&self.application.check_for_updates_interval_hours)
+            .contains(&self.updates.check_interval_hours)
         {
-            return Err(ConfigError::InvalidValue(
-                "application.check_for_updates_interval_hours",
-            ));
+            return Err(ConfigError::InvalidValue("updates.check_interval_hours"));
         }
         if !(25..=400).contains(&self.overlay.scale_percent) {
             return Err(ConfigError::InvalidValue("overlay.scale_percent"));
         }
         if !(1..=100).contains(&self.overlay.opacity_percent) {
             return Err(ConfigError::InvalidValue("overlay.opacity_percent"));
+        }
+        if !(15..=240).contains(&self.overlay.maximum_fps) {
+            return Err(ConfigError::InvalidValue("overlay.maximum_fps"));
         }
         if !(0..=50).contains(&self.overlay.corner_radius_percent) {
             return Err(ConfigError::InvalidValue("overlay.corner_radius_percent"));
@@ -1351,81 +1399,82 @@ impl NativeConfig {
                 "overlay.hide_on_pointer_hover_delay_seconds",
             ));
         }
-        if !(0.0..1.0).contains(&self.input.gamepad_stick_dead_zone)
-            || !self.input.gamepad_stick_dead_zone.is_finite()
-        {
-            return Err(ConfigError::InvalidValue("input.gamepad_stick_dead_zone"));
+        if self.input.keyboard.release_fallback_timeout_ms > 60_000 {
+            return Err(ConfigError::InvalidValue(
+                "input.keyboard.release_fallback_timeout_ms",
+            ));
         }
-        if !(0.0..1.0).contains(&self.input.gamepad_trigger_dead_zone)
-            || !self.input.gamepad_trigger_dead_zone.is_finite()
+        if !(0.0..1.0).contains(&self.input.gamepad.stick_dead_zone)
+            || !self.input.gamepad.stick_dead_zone.is_finite()
         {
-            return Err(ConfigError::InvalidValue("input.gamepad_trigger_dead_zone"));
+            return Err(ConfigError::InvalidValue("input.gamepad.stick_dead_zone"));
+        }
+        if !(0.0..1.0).contains(&self.input.gamepad.trigger_dead_zone)
+            || !self.input.gamepad.trigger_dead_zone.is_finite()
+        {
+            return Err(ConfigError::InvalidValue("input.gamepad.trigger_dead_zone"));
         }
         if !(1..=MAXIMUM_LOG_RETENTION_DAYS).contains(&self.logging.retention_days) {
             return Err(ConfigError::InvalidValue("logging.retention_days"));
         }
-        if !(15..=240).contains(&self.model.maximum_fps) {
-            return Err(ConfigError::InvalidValue("model.maximum_fps"));
-        }
         if !(MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS..=MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS)
-            .contains(&self.model.random_behavior_interval_seconds)
+            .contains(&self.model.random_behavior.interval_seconds)
         {
             return Err(ConfigError::InvalidValue(
-                "model.random_behavior_interval_seconds",
-            ));
-        }
-        if self.model.release_fallback_timeout_ms > 60_000 {
-            return Err(ConfigError::InvalidValue(
-                "model.release_fallback_timeout_ms",
+                "model.random_behavior.interval_seconds",
             ));
         }
         if self
             .model
-            .selected_model_id
-            .as_deref()
-            .is_some_and(|value| value.trim().is_empty())
+            .selected_model
+            .as_ref()
+            .is_some_and(|selected| selected.id.trim().is_empty())
         {
-            return Err(ConfigError::InvalidValue("model.selected_model_id"));
-        }
-        if self.model.selected_model_id.is_some() != self.model.selected_model_origin.is_some() {
-            return Err(ConfigError::InvalidValue("model.selected_model_selection"));
+            return Err(ConfigError::InvalidValue("model.selected_model.id"));
         }
         validate_model_metadata(
-            "model.installed_models.id",
-            "model.installed_models.title",
+            "model.imported_models.id",
+            "model.imported_models.title",
             self.model
-                .installed_models
+                .imported_models
                 .iter()
                 .map(|record| (record.id.as_str(), record.title.as_str())),
         )?;
         validate_model_metadata(
-            "model.preset_models.id",
-            "model.preset_models.title",
+            "model.built_in_models.id",
+            "model.built_in_models.title",
             self.model
-                .preset_models
+                .built_in_models
                 .iter()
                 .map(|record| (record.id.as_str(), record.title.as_str())),
         )?;
         if self
             .shortcuts
-            .commands
+            .command_bindings
             .iter()
             .any(|binding| binding.command.trim().is_empty() || binding.shortcut.trim().is_empty())
         {
-            return Err(ConfigError::InvalidValue("shortcuts.commands"));
+            return Err(ConfigError::InvalidValue("shortcuts.command_bindings"));
         }
-        if self.shortcuts.model_behaviors.iter().any(|binding| {
-            binding.model_id.trim().is_empty()
-                || binding.behavior_id.trim().is_empty()
-                || binding.shortcut.trim().is_empty()
-        }) {
-            return Err(ConfigError::InvalidValue("shortcuts.model_behaviors"));
+        if self
+            .shortcuts
+            .model_behavior_bindings
+            .iter()
+            .any(|binding| {
+                binding.model.id.trim().is_empty()
+                    || binding.behavior_id.trim().is_empty()
+                    || binding.shortcut.trim().is_empty()
+            })
+        {
+            return Err(ConfigError::InvalidValue(
+                "shortcuts.model_behavior_bindings",
+            ));
         }
-        for binding in &self.shortcuts.commands {
+        for binding in &self.shortcuts.command_bindings {
             ShortcutCommand::parse(&binding.command)
                 .map_err(|_| ConfigError::InvalidValue("shortcuts.command"))?;
         }
-        for binding in &self.shortcuts.model_behaviors {
+        for binding in &self.shortcuts.model_behavior_bindings {
             binding
                 .parse_action()
                 .map_err(|_| ConfigError::InvalidValue("shortcuts.behavior"))?;
@@ -1438,7 +1487,7 @@ impl NativeConfig {
         let mut command_chords = std::collections::BTreeSet::new();
         for shortcut in self
             .shortcuts
-            .commands
+            .command_bindings
             .iter()
             .map(|binding| binding.shortcut.as_str())
         {
@@ -1448,15 +1497,17 @@ impl NativeConfig {
                 return Err(ConfigError::InvalidValue("shortcuts.conflict"));
             }
         }
-        let mut model_chords: std::collections::BTreeMap<&str, std::collections::BTreeSet<String>> =
-            std::collections::BTreeMap::new();
-        for binding in &self.shortcuts.model_behaviors {
+        let mut model_chords: std::collections::BTreeMap<
+            &ModelIdentity,
+            std::collections::BTreeSet<String>,
+        > = std::collections::BTreeMap::new();
+        for binding in &self.shortcuts.model_behavior_bindings {
             let chord = ShortcutChord::parse(&binding.shortcut)
                 .map_err(|_| ConfigError::InvalidValue("shortcuts.binding"))?;
             let canonical = chord.canonical();
             if command_chords.contains(&canonical)
                 || !model_chords
-                    .entry(binding.model_id.as_str())
+                    .entry(&binding.model)
                     .or_default()
                     .insert(canonical)
             {
@@ -2449,6 +2500,13 @@ mod tests {
     use std::process::{Command, Stdio};
     use tempfile::tempdir;
 
+    fn test_model_identity(id: &str) -> ModelIdentity {
+        ModelIdentity {
+            id: id.to_owned(),
+            source: ModelSource::BuiltIn,
+        }
+    }
+
     #[test]
     fn system_locale_resolves_to_simplified_chinese_or_english() {
         assert_eq!(
@@ -2569,7 +2627,7 @@ mod tests {
             .load_or_default()
             .expect("development default")
             .config;
-        development_config.overlay.visible = false;
+        development_config.appearance.theme = Theme::Dark;
         development
             .commit(&development_config)
             .expect("development commit");
@@ -2600,7 +2658,7 @@ mod tests {
         let initial_revision = loaded.revision;
         assert_eq!(config, NativeConfig::default());
 
-        config.overlay.visible = false;
+        config.appearance.theme = Theme::Dark;
         let next_revision = store
             .commit_if_revision(&config, initial_revision)
             .expect("revision checked commit");
@@ -2631,7 +2689,7 @@ mod tests {
             let loaded = store.load_or_default().expect("default config");
             let original = fs::read(&store.layout().config).expect("original config");
             let mut next = loaded.config;
-            next.overlay.visible = false;
+            next.appearance.theme = Theme::Dark;
             store.inject_write_failure(failure);
 
             let error = store
@@ -2657,7 +2715,7 @@ mod tests {
         let loaded = store.load_or_default().expect("default config");
         let original = fs::read(&store.layout().config).expect("original config");
         let mut next = loaded.config;
-        next.overlay.visible = false;
+        next.appearance.theme = Theme::Dark;
         store.inject_write_failure(InjectedConfigWriteFailure::VerificationCorruption);
 
         assert!(matches!(
@@ -2689,7 +2747,7 @@ mod tests {
                 fs::write(&occupied, b"unowned occupied target").expect("occupied temp file");
             }
             let mut next = loaded.config;
-            next.overlay.visible = false;
+            next.appearance.theme = Theme::Dark;
 
             let error = store
                 .commit_if_revision(&next, loaded.revision)
@@ -3029,9 +3087,9 @@ mod tests {
     #[test]
     fn random_behavior_settings_use_a_bounded_positive_interval() {
         let default = NativeConfig::default();
-        assert!(!default.model.random_behavior_enabled);
+        assert!(!default.model.random_behavior.enabled);
         assert_eq!(
-            default.model.random_behavior_interval_seconds,
+            default.model.random_behavior.interval_seconds,
             DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS
         );
         for accepted in [
@@ -3040,19 +3098,19 @@ mod tests {
             MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
         ] {
             let mut config = NativeConfig::default();
-            config.model.random_behavior_enabled = true;
-            config.model.random_behavior_interval_seconds = accepted;
+            config.model.random_behavior.enabled = true;
+            config.model.random_behavior.interval_seconds = accepted;
             config
                 .validate()
                 .expect("random behavior interval should be accepted");
         }
         for rejected in [0, MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS + 1, u32::MAX] {
             let mut config = NativeConfig::default();
-            config.model.random_behavior_interval_seconds = rejected;
+            config.model.random_behavior.interval_seconds = rejected;
             assert!(matches!(
                 config.validate(),
                 Err(ConfigError::InvalidValue(
-                    "model.random_behavior_interval_seconds"
+                    "model.random_behavior.interval_seconds"
                 ))
             ));
         }
@@ -3082,7 +3140,7 @@ mod tests {
     fn check_for_updates_interval_defaults_to_24_hours_and_accepts_whole_hours() {
         let default = NativeConfig::default();
         assert_eq!(
-            default.application.check_for_updates_interval_hours,
+            default.updates.check_interval_hours,
             DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS
         );
 
@@ -3093,7 +3151,7 @@ mod tests {
             MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS,
         ] {
             let mut config = NativeConfig::default();
-            config.application.check_for_updates_interval_hours = accepted;
+            config.updates.check_interval_hours = accepted;
             assert!(
                 config.validate().is_ok(),
                 "check interval {accepted} hours must be accepted"
@@ -3102,12 +3160,10 @@ mod tests {
 
         for rejected in [0, MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS + 1] {
             let mut config = NativeConfig::default();
-            config.application.check_for_updates_interval_hours = rejected;
+            config.updates.check_interval_hours = rejected;
             assert!(matches!(
                 config.validate(),
-                Err(ConfigError::InvalidValue(
-                    "application.check_for_updates_interval_hours"
-                ))
+                Err(ConfigError::InvalidValue("updates.check_interval_hours"))
             ));
         }
     }
@@ -3145,11 +3201,7 @@ mod tests {
 
     #[test]
     fn default_matches_the_shared_configuration_fixture() {
-        assert!(
-            !NativeConfig::default()
-                .application
-                .check_for_updates_automatically
-        );
+        assert!(!NativeConfig::default().updates.check_automatically);
         let fixture = include_str!("../../../shared/config/fixtures/default.json");
         let expected: NativeConfig = serde_json::from_str(fixture).expect("shared fixture");
         assert_eq!(NativeConfig::default(), expected);
@@ -3246,16 +3298,16 @@ mod tests {
     #[test]
     fn gamepad_dead_zones_must_be_finite_and_below_one() {
         for (stick, trigger, field) in [
-            (-0.01, 0.0, "input.gamepad_stick_dead_zone"),
-            (1.0, 0.0, "input.gamepad_stick_dead_zone"),
-            (f64::NAN, 0.0, "input.gamepad_stick_dead_zone"),
-            (0.15, -0.01, "input.gamepad_trigger_dead_zone"),
-            (0.15, 1.0, "input.gamepad_trigger_dead_zone"),
-            (0.15, f64::INFINITY, "input.gamepad_trigger_dead_zone"),
+            (-0.01, 0.0, "input.gamepad.stick_dead_zone"),
+            (1.0, 0.0, "input.gamepad.stick_dead_zone"),
+            (f64::NAN, 0.0, "input.gamepad.stick_dead_zone"),
+            (0.15, -0.01, "input.gamepad.trigger_dead_zone"),
+            (0.15, 1.0, "input.gamepad.trigger_dead_zone"),
+            (0.15, f64::INFINITY, "input.gamepad.trigger_dead_zone"),
         ] {
             let mut config = NativeConfig::default();
-            config.input.gamepad_stick_dead_zone = stick;
-            config.input.gamepad_trigger_dead_zone = trigger;
+            config.input.gamepad.stick_dead_zone = stick;
+            config.input.gamepad.trigger_dead_zone = trigger;
             assert!(matches!(
                 config.validate(),
                 Err(ConfigError::InvalidValue(actual)) if actual == field
@@ -3328,12 +3380,16 @@ mod tests {
     fn shortcut_config_canonicalized_stabilizes_commands_behaviors_and_chords() {
         let config = ShortcutConfig {
             commands_enabled: true,
-            commands: vec![ShortcutBinding {
+            model_behaviors_enabled: true,
+            command_bindings: vec![ShortcutBinding {
                 command: " toggle_overlay ".to_owned(),
                 shortcut: " shift + ctrl + b ".to_owned(),
             }],
-            model_behaviors: vec![ModelBehaviorBinding {
-                model_id: "standard".to_owned(),
+            model_behavior_bindings: vec![ModelBehaviorBinding {
+                model: ModelIdentity {
+                    id: "standard".to_owned(),
+                    source: ModelSource::BuiltIn,
+                },
                 behavior_id: " expression: happy ".to_owned(),
                 shortcut: "cmd+option+p".to_owned(),
             }],
@@ -3342,12 +3398,16 @@ mod tests {
             config.canonicalized().expect("canonical shortcuts"),
             ShortcutConfig {
                 commands_enabled: true,
-                commands: vec![ShortcutBinding {
+                model_behaviors_enabled: true,
+                command_bindings: vec![ShortcutBinding {
                     command: "toggle_overlay".to_owned(),
                     shortcut: "Control+Shift+B".to_owned(),
                 }],
-                model_behaviors: vec![ModelBehaviorBinding {
-                    model_id: "standard".to_owned(),
+                model_behavior_bindings: vec![ModelBehaviorBinding {
+                    model: ModelIdentity {
+                        id: "standard".to_owned(),
+                        source: ModelSource::BuiltIn
+                    },
                     behavior_id: "expression:happy".to_owned(),
                     shortcut: "Alt+Meta+P".to_owned(),
                 }],
@@ -3358,21 +3418,27 @@ mod tests {
     #[test]
     fn config_rejects_shortcut_parse_errors_and_cross_domain_conflicts() {
         let mut config = NativeConfig::default();
-        config.shortcuts.commands.push(ShortcutBinding {
+        config.shortcuts.command_bindings.push(ShortcutBinding {
             command: "open_settings".to_owned(),
             shortcut: "Control+Alt+B".to_owned(),
         });
-        config.shortcuts.model_behaviors.push(ModelBehaviorBinding {
-            model_id: "standard".to_owned(),
-            behavior_id: "motion:tap:0".to_owned(),
-            shortcut: "alt + ctrl + b".to_owned(),
-        });
+        config
+            .shortcuts
+            .model_behavior_bindings
+            .push(ModelBehaviorBinding {
+                model: ModelIdentity {
+                    id: "standard".to_owned(),
+                    source: ModelSource::BuiltIn,
+                },
+                behavior_id: "motion:tap:0".to_owned(),
+                shortcut: "alt + ctrl + b".to_owned(),
+            });
         assert!(matches!(
             config.validate(),
             Err(ConfigError::InvalidValue("shortcuts.conflict"))
         ));
 
-        config.shortcuts.model_behaviors[0].shortcut = "Control+".to_owned();
+        config.shortcuts.model_behavior_bindings[0].shortcut = "Control+".to_owned();
         assert!(matches!(
             config.validate(),
             Err(ConfigError::InvalidValue("shortcuts.binding"))
@@ -3432,37 +3498,51 @@ mod tests {
     fn default_behavior_assignment_skips_taken_chords_and_keeps_existing_bindings() {
         let control = ShortcutModifiers::CONTROL;
         let existing = ModelBehaviorBinding {
-            model_id: "standard".to_owned(),
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            },
             behavior_id: "motion:CAT_motion:1".to_owned(),
             shortcut: "Control+3".to_owned(),
         };
         let mut shortcuts = ShortcutConfig {
             commands_enabled: true,
-            commands: vec![ShortcutBinding {
+            model_behaviors_enabled: true,
+            command_bindings: vec![ShortcutBinding {
                 command: "toggle_overlay".to_owned(),
                 shortcut: "ctrl+1".to_owned(),
             }],
-            model_behaviors: vec![existing.clone()],
+            model_behavior_bindings: vec![existing.clone()],
         };
         let behaviors = [
             "motion:CAT_motion:0".to_owned(),
             "motion:CAT_motion:1".to_owned(),
             "motion:CAT_motion_lock:0".to_owned(),
         ];
-        let added =
-            assign_default_behavior_shortcuts(&mut shortcuts, "standard", &behaviors, control);
+        let added = assign_default_behavior_shortcuts(
+            &mut shortcuts,
+            &test_model_identity("standard"),
+            &behaviors,
+            control,
+        );
         assert_eq!(added, 2);
         assert_eq!(
-            shortcuts.model_behaviors,
+            shortcuts.model_behavior_bindings,
             vec![
                 existing,
                 ModelBehaviorBinding {
-                    model_id: "standard".to_owned(),
+                    model: ModelIdentity {
+                        id: "standard".to_owned(),
+                        source: ModelSource::BuiltIn
+                    },
                     behavior_id: "motion:CAT_motion:0".to_owned(),
                     shortcut: "Control+2".to_owned(),
                 },
                 ModelBehaviorBinding {
-                    model_id: "standard".to_owned(),
+                    model: ModelIdentity {
+                        id: "standard".to_owned(),
+                        source: ModelSource::BuiltIn
+                    },
                     behavior_id: "motion:CAT_motion_lock:0".to_owned(),
                     shortcut: "Control+4".to_owned(),
                 },
@@ -3475,7 +3555,12 @@ mod tests {
         // Running it again fills nothing in and rewrites nothing.
         let unchanged = shortcuts.clone();
         assert_eq!(
-            assign_default_behavior_shortcuts(&mut shortcuts, "standard", &behaviors, control),
+            assign_default_behavior_shortcuts(
+                &mut shortcuts,
+                &test_model_identity("standard"),
+                &behaviors,
+                control
+            ),
             0
         );
         assert_eq!(shortcuts, unchanged);
@@ -3486,12 +3571,17 @@ mod tests {
         // still counts, because commands are live whatever the active model is.
         let other = ["expression:happy".to_owned()];
         assert_eq!(
-            assign_default_behavior_shortcuts(&mut shortcuts, "keyboard", &other, control),
+            assign_default_behavior_shortcuts(
+                &mut shortcuts,
+                &test_model_identity("keyboard"),
+                &other,
+                control
+            ),
             1
         );
         assert_eq!(
             shortcuts
-                .model_behaviors
+                .model_behavior_bindings
                 .last()
                 .expect("assigned binding")
                 .shortcut,
@@ -3506,8 +3596,9 @@ mod tests {
             Err(ConfigError::InvalidValue("shortcuts.conflict"))
         ));
         for model_id in ["standard", "keyboard"] {
+            let identity = test_model_identity(model_id);
             shortcuts
-                .active_bindings(Some(model_id))
+                .active_bindings(Some(&identity))
                 .compile()
                 .unwrap_or_else(|error| panic!("{model_id} compiles on its own: {error:?}"));
         }
@@ -3529,19 +3620,29 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(
-            assign_default_behavior_shortcuts(&mut shortcuts, "standard", &first, control),
+            assign_default_behavior_shortcuts(
+                &mut shortcuts,
+                &test_model_identity("standard"),
+                &first,
+                control
+            ),
             7
         );
         assert_eq!(
-            assign_default_behavior_shortcuts(&mut shortcuts, "keyboard", &second, control),
+            assign_default_behavior_shortcuts(
+                &mut shortcuts,
+                &test_model_identity("keyboard"),
+                &second,
+                control
+            ),
             7
         );
 
         for model_id in ["standard", "keyboard"] {
             let chords = shortcuts
-                .model_behaviors
+                .model_behavior_bindings
                 .iter()
-                .filter(|binding| binding.model_id == model_id)
+                .filter(|binding| binding.model.id == *model_id)
                 .map(|binding| binding.shortcut.as_str())
                 .collect::<Vec<_>>();
             assert_eq!(
@@ -3557,14 +3658,17 @@ mod tests {
     #[test]
     fn config_allows_cross_model_chords_and_rejects_scope_conflicts() {
         let binding = |model_id: &str, behavior_id: &str, shortcut: &str| ModelBehaviorBinding {
-            model_id: model_id.to_owned(),
+            model: ModelIdentity {
+                id: model_id.to_owned(),
+                source: ModelSource::BuiltIn,
+            },
             behavior_id: behavior_id.to_owned(),
             shortcut: shortcut.to_owned(),
         };
 
         // The same chord in two models is what per-model numbering produces.
         let mut config = NativeConfig::default();
-        config.shortcuts.model_behaviors = vec![
+        config.shortcuts.model_behavior_bindings = vec![
             binding("standard", "motion:a:0", "Control+1"),
             binding("keyboard", "motion:b:0", "Control+1"),
         ];
@@ -3572,8 +3676,43 @@ mod tests {
             .validate()
             .expect("two models may share a chord, only one is live");
 
+        // The same id from different sources is still two distinct models.
+        config.shortcuts.model_behavior_bindings = vec![
+            ModelBehaviorBinding {
+                model: ModelIdentity {
+                    id: "duplicate".to_owned(),
+                    source: ModelSource::BuiltIn,
+                },
+                behavior_id: "motion:a:0".to_owned(),
+                shortcut: "Control+1".to_owned(),
+            },
+            ModelBehaviorBinding {
+                model: ModelIdentity {
+                    id: "duplicate".to_owned(),
+                    source: ModelSource::Imported,
+                },
+                behavior_id: "motion:a:0".to_owned(),
+                shortcut: "Control+1".to_owned(),
+            },
+        ];
+        config
+            .validate()
+            .expect("the same id in two sources may share a chord");
+        config.shortcuts.model_behaviors_enabled = true;
+        assert_eq!(
+            config
+                .shortcuts
+                .active_bindings(Some(&ModelIdentity {
+                    id: "duplicate".to_owned(),
+                    source: ModelSource::Imported,
+                }))
+                .model_behavior_bindings
+                .len(),
+            1
+        );
+
         // Twice inside one model is still a conflict.
-        config.shortcuts.model_behaviors = vec![
+        config.shortcuts.model_behavior_bindings = vec![
             binding("standard", "motion:a:0", "Control+1"),
             binding("standard", "motion:a:1", "Control+1"),
         ];
@@ -3584,11 +3723,12 @@ mod tests {
 
         // A command is live whatever the active model is, so a model behavior
         // may not shadow one.
-        config.shortcuts.commands = vec![ShortcutBinding {
+        config.shortcuts.command_bindings = vec![ShortcutBinding {
             command: "toggle_overlay".to_owned(),
             shortcut: "Control+1".to_owned(),
         }];
-        config.shortcuts.model_behaviors = vec![binding("standard", "motion:a:0", "Control+1")];
+        config.shortcuts.model_behavior_bindings =
+            vec![binding("standard", "motion:a:0", "Control+1")];
         assert!(matches!(
             config.validate(),
             Err(ConfigError::InvalidValue("shortcuts.conflict"))
@@ -3603,10 +3743,18 @@ mod tests {
             .map(|index| format!("motion:group:{index}"))
             .collect::<Vec<_>>();
         assert_eq!(
-            assign_default_behavior_shortcuts(&mut shortcuts, "standard", &behaviors, control),
+            assign_default_behavior_shortcuts(
+                &mut shortcuts,
+                &test_model_identity("standard"),
+                &behaviors,
+                control
+            ),
             BEHAVIOR_SHORTCUT_CAPACITY
         );
-        assert_eq!(shortcuts.model_behaviors.len(), BEHAVIOR_SHORTCUT_CAPACITY);
+        assert_eq!(
+            shortcuts.model_behavior_bindings.len(),
+            BEHAVIOR_SHORTCUT_CAPACITY
+        );
         shortcuts.compile().expect("no conflicts at capacity");
     }
 
@@ -3630,7 +3778,10 @@ mod tests {
         );
 
         let motion = ModelBehaviorBinding {
-            model_id: "standard".to_owned(),
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            },
             behavior_id: "motion:CAT_motion:12".to_owned(),
             shortcut: "Control+1".to_owned(),
         };
@@ -3642,7 +3793,10 @@ mod tests {
             }
         );
         let expression = ModelBehaviorBinding {
-            model_id: "standard".to_owned(),
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            },
             behavior_id: "expression:happy:variant".to_owned(),
             shortcut: "Control+2".to_owned(),
         };
@@ -3654,7 +3808,10 @@ mod tests {
         );
         for behavior_id in ["motion:group", "motion:group:nope", "unknown:name"] {
             let binding = ModelBehaviorBinding {
-                model_id: "standard".to_owned(),
+                model: ModelIdentity {
+                    id: "standard".to_owned(),
+                    source: ModelSource::BuiltIn,
+                },
                 behavior_id: behavior_id.to_owned(),
                 shortcut: "Control+3".to_owned(),
             };
@@ -3675,38 +3832,61 @@ mod tests {
             config.commands_enabled,
             "a fresh configuration keeps its command shortcuts live"
         );
-        config.commands.push(ShortcutBinding {
+        config.command_bindings.push(ShortcutBinding {
             command: "toggle_overlay".to_owned(),
             shortcut: "Control+Shift+B".to_owned(),
         });
-        config.model_behaviors.push(ModelBehaviorBinding {
-            model_id: "standard".to_owned(),
+        config.model_behavior_bindings.push(ModelBehaviorBinding {
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            },
             behavior_id: "expression:happy".to_owned(),
             shortcut: "Alt+M".to_owned(),
         });
-        assert_eq!(config.active_bindings(Some("standard")).commands.len(), 1);
+        config.model_behaviors_enabled = true;
+        assert_eq!(
+            config
+                .active_bindings(Some(&test_model_identity("standard")))
+                .command_bindings
+                .len(),
+            1
+        );
 
         config.commands_enabled = false;
-        let gated = config.active_bindings(Some("standard"));
-        assert!(gated.commands.is_empty());
-        assert_eq!(gated.model_behaviors, config.model_behaviors);
-        assert_eq!(config.commands.len(), 1);
+        let gated = config.active_bindings(Some(&test_model_identity("standard")));
+        assert!(gated.command_bindings.is_empty());
+        assert_eq!(
+            gated.model_behavior_bindings,
+            config.model_behavior_bindings
+        );
+        assert_eq!(config.command_bindings.len(), 1);
         assert!(gated.compile().is_ok());
 
         config.commands_enabled = true;
-        assert_eq!(config.active_bindings(Some("standard")).commands.len(), 1);
+        assert_eq!(
+            config
+                .active_bindings(Some(&test_model_identity("standard")))
+                .command_bindings
+                .len(),
+            1
+        );
     }
 
     #[test]
     fn compiled_shortcuts_match_mapped_tokens_and_preserve_typed_targets() {
         let config = ShortcutConfig {
             commands_enabled: true,
-            commands: vec![ShortcutBinding {
+            model_behaviors_enabled: true,
+            command_bindings: vec![ShortcutBinding {
                 command: "toggle_overlay".to_owned(),
                 shortcut: "ctrl+shift+b".to_owned(),
             }],
-            model_behaviors: vec![ModelBehaviorBinding {
-                model_id: "standard".to_owned(),
+            model_behavior_bindings: vec![ModelBehaviorBinding {
+                model: ModelIdentity {
+                    id: "standard".to_owned(),
+                    source: ModelSource::BuiltIn,
+                },
                 behavior_id: "motion:CAT_motion:2".to_owned(),
                 shortcut: "Alt+M".to_owned(),
             }],
@@ -3736,7 +3916,10 @@ mod tests {
                 .expect("behavior binding")
                 .target(),
             &ShortcutTarget::ModelBehavior {
-                model_id: "standard".to_owned(),
+                model: ModelIdentity {
+                    id: "standard".to_owned(),
+                    source: ModelSource::BuiltIn,
+                },
                 action: ModelBehaviorAction::Motion {
                     group: "CAT_motion".to_owned(),
                     index: 2,
@@ -3749,7 +3932,8 @@ mod tests {
     fn compiled_shortcuts_reject_invalid_and_conflicting_bindings() {
         let invalid = ShortcutConfig {
             commands_enabled: true,
-            commands: vec![ShortcutBinding {
+            model_behaviors_enabled: true,
+            command_bindings: vec![ShortcutBinding {
                 command: "unknown".to_owned(),
                 shortcut: "Control+A".to_owned(),
             }],
@@ -3762,12 +3946,16 @@ mod tests {
 
         let conflict = ShortcutConfig {
             commands_enabled: true,
-            commands: vec![ShortcutBinding {
+            model_behaviors_enabled: true,
+            command_bindings: vec![ShortcutBinding {
                 command: "open_settings".to_owned(),
                 shortcut: "Control+A".to_owned(),
             }],
-            model_behaviors: vec![ModelBehaviorBinding {
-                model_id: "standard".to_owned(),
+            model_behavior_bindings: vec![ModelBehaviorBinding {
+                model: ModelIdentity {
+                    id: "standard".to_owned(),
+                    source: ModelSource::BuiltIn,
+                },
                 behavior_id: "expression:happy".to_owned(),
                 shortcut: "ctrl+a".to_owned(),
             }],
@@ -3786,7 +3974,7 @@ mod tests {
     #[test]
     fn config_rejects_unknown_shortcut_actions_before_commit() {
         let mut config = NativeConfig::default();
-        config.shortcuts.commands.push(ShortcutBinding {
+        config.shortcuts.command_bindings.push(ShortcutBinding {
             command: "future_command".to_owned(),
             shortcut: "Control+1".to_owned(),
         });
@@ -3795,12 +3983,18 @@ mod tests {
             Err(ConfigError::InvalidValue("shortcuts.command"))
         ));
 
-        config.shortcuts.commands.clear();
-        config.shortcuts.model_behaviors.push(ModelBehaviorBinding {
-            model_id: "standard".to_owned(),
-            behavior_id: "motion:CAT_motion".to_owned(),
-            shortcut: "Control+1".to_owned(),
-        });
+        config.shortcuts.command_bindings.clear();
+        config
+            .shortcuts
+            .model_behavior_bindings
+            .push(ModelBehaviorBinding {
+                model: ModelIdentity {
+                    id: "standard".to_owned(),
+                    source: ModelSource::BuiltIn,
+                },
+                behavior_id: "motion:CAT_motion".to_owned(),
+                shortcut: "Control+1".to_owned(),
+            });
         assert!(matches!(
             config.validate(),
             Err(ConfigError::InvalidValue("shortcuts.behavior"))
@@ -3808,31 +4002,39 @@ mod tests {
     }
 
     #[test]
-    fn selected_model_id_and_origin_are_required_as_a_pair() {
+    fn selected_model_requires_a_complete_identity() {
         let mut config = NativeConfig::default();
-        config.model.selected_model_id = Some("standard".to_owned());
+        config.model.selected_model = Some(ModelIdentity {
+            id: "standard".to_owned(),
+            source: ModelSource::BuiltIn,
+        });
+        assert!(config.validate().is_ok());
+
+        let mut invalid_id = config.clone();
+        invalid_id
+            .model
+            .selected_model
+            .as_mut()
+            .expect("selection")
+            .id = "   ".to_owned();
         assert!(matches!(
-            config.validate(),
-            Err(ConfigError::InvalidValue("model.selected_model_selection"))
+            invalid_id.validate(),
+            Err(ConfigError::InvalidValue("model.selected_model.id"))
         ));
 
-        config.model.selected_model_origin = Some(SelectedModelOrigin::Preset);
-        assert!(config.validate().is_ok());
-        config.model.selected_model_id = None;
-        assert!(matches!(
-            config.validate(),
-            Err(ConfigError::InvalidValue("model.selected_model_selection"))
-        ));
+        let mut invalid_source = serde_json::to_value(&config).expect("config value");
+        invalid_source["model"]["selected_model"]["source"] = serde_json::json!("installed");
+        assert!(serde_json::from_value::<NativeConfig>(invalid_source).is_err());
     }
 
     #[test]
     fn invalid_v1_current_without_backup_is_replaced_with_defaults() {
         let mut wrong_type = serde_json::to_value(NativeConfig::default()).expect("config value");
-        wrong_type["overlay"]["visible"] = serde_json::Value::String("yes".to_owned());
+        wrong_type["overlay"]["scale_percent"] = serde_json::Value::String("yes".to_owned());
         let mut out_of_range = serde_json::to_value(NativeConfig::default()).expect("config value");
         out_of_range["overlay"]["opacity_percent"] = serde_json::Value::from(0);
         let mut unknown = serde_json::to_value(NativeConfig::default()).expect("config value");
-        unknown["application"]["launch_at_login"] = serde_json::Value::Bool(true);
+        unknown["unexpected_field"] = serde_json::Value::Bool(true);
         let cases = [
             b"not-json".to_vec(),
             serde_json::to_vec_pretty(&wrong_type).expect("wrong type bytes"),

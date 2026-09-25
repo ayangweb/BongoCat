@@ -50,7 +50,7 @@ canonicalize，再进入既有的来源检查、转换选择、导入和封面�
    `OUTPUT_RESOURCES`/`OUTPUT_COVER` 常量把旧版 `cat.png` 装成 `resources/cover.png`；如果设置页
    自行拼这条路径，两处一旦漂移就会出现「转换装好了但页面找不到」。
 4. **标题是可编辑元数据，且只有导入模型有记录。** 显示名来自
-   `config.model.installed_models[].title`；预设模型没有记录，显示名回落到稳定 id，而预置模型本身
+   `config.model.imported_models[].title`；预设模型没有记录，显示名回落到稳定 id，而预置模型本身
    位于随产品分发的 `resources/models/`。`Application::delete_model` 已经拒绝删除预设。
 5. **行为预览是当时模型页唯一的行为 UI，而快捷键页已经列出同一批行为。** 快捷键页的模型页签从
    当前激活且 Ready 的模型目录生成 motion/expression 行用于绑定；模型页的预览列表是同一批数据的
@@ -79,7 +79,7 @@ canonicalize，再进入既有的来源检查、转换选择、导入和封面�
 定制内容必须落在用户侧，因为预置包位于 app 包内（macOS `Contents/Resources/models`、Windows
 安装目录 `resources/models`），签名包与 Program Files 都不可写：
 
-- **标题**写进 `config.model.preset_models`，该列表只保存 `id` 与 `title`，但列表各自独立
+- **标题**写进 `config.model.built_in_models`，该列表只保存 `id` 与 `title`，但列表各自独立
   判重、各自独立生命周期：导入创建 installed 记录、删除移除它，预置记录只由改名创建、谁都不删。
   列表为空表示所有预置都还用构建给的名字。预置模式由稳定 id 派生，不写入用户配置。
 - **模式**由 `SettingsModelEntry.input_mode` 投影到封面上方的 GPUI Kit `Badge` + `Tag` 组合；
@@ -272,7 +272,7 @@ settings 服务通过 `ModelLocationCapability` 注入，与配置备份目录�
   文件为 `0o600`。
 - `bongocat-app` 改写 `service_renames_and_covers_a_model_of_either_origin`（原
   `service_renames_and_recovers_an_installed_models_title_and_cover`）：走完整服务链路断言
-  预置改名后快照标题变化、`config.model.preset_models` 恰好一条记录（installed 记录不受影响）、
+  预置改名后快照标题变化、`config.model.built_in_models` 恰好一条记录（installed 记录不受影响）、
   换封面后快照指向用户侧覆盖文件且字节一致，并断言**包内 `cover.png` 逐字节不变**。
 - `bongocat-ui`：`model_row_actions_preserve_origin_availability_and_active_identity` 断言预置
   `can_edit == true` 且 `can_delete == false`；新增
@@ -281,8 +281,8 @@ settings 服务通过 `ModelLocationCapability` 注入，与配置备份目录�
   这条用例覆盖了**两处编译器抓不到的 origin 守卫**（`begin_model_edit` 直接拒绝预置、
   `sync_model_row_focus` 在下次投影时丢弃非 installed 的草稿）；两处分别用变异验证：
   改回任一个即变红。smoke 的模型页检查由「预置不得暴露编辑」改为「必须至少有一个可编辑的预置」。
-- 配置契约：`shared/config/config.schema.json` 保留 `preset_models` 的 `id/title` 形状，
-  `installed_models` 使用含必填 `input_mode` 的专用定义；14 个既有 fixture 补 `"preset_models": []`，
+- 配置契约：`shared/config/config.schema.json` 保留 `built_in_models` 的 `id/title` 形状，
+  `imported_models` 使用含必填 `input_mode` 的专用定义；14 个既有 fixture 补 `"built_in_models": []`，
   另有 installed mode accept/reject fixtures，`tools/validate-json-schema.py` 的语义检查按列表
   各自判重并拒绝缺失/未知模式。
 - 错误口径：删除 `SettingsErrorCode::PresetModelMetadataImmutable`（`ALL` 36 → 35）与两个 locale

@@ -616,8 +616,8 @@ mod global {
     mod tests {
         use super::*;
         use bongocat_config::{
-            ModelBehaviorAction, ModelBehaviorBinding, ShortcutBinding, ShortcutCommand,
-            ShortcutConfig,
+            ModelBehaviorAction, ModelBehaviorBinding, ModelIdentity, ModelSource, ShortcutBinding,
+            ShortcutCommand, ShortcutConfig,
         };
 
         fn hotkey(chord: &str) -> HotKey {
@@ -626,12 +626,15 @@ mod global {
         }
 
         /// A model behavior binding of one model, with the expression name
-        /// shared by every model so that only the model id distinguishes them.
+        /// shared by every model so that only the model identity distinguishes them.
         fn behavior(chord: &str, model_id: &str) -> Registration {
             Registration {
                 hotkey: hotkey(chord),
                 target: ShortcutTarget::ModelBehavior {
-                    model_id: model_id.to_owned(),
+                    model: ModelIdentity {
+                        id: model_id.to_owned(),
+                        source: ModelSource::BuiltIn,
+                    },
                     action: ModelBehaviorAction::Expression {
                         name: "happy".to_owned(),
                     },
@@ -889,12 +892,16 @@ mod global {
         fn desired_registrations_preserve_targets_and_unique_ids() {
             let compiled = ShortcutConfig {
                 commands_enabled: true,
-                commands: vec![ShortcutBinding {
+                model_behaviors_enabled: true,
+                command_bindings: vec![ShortcutBinding {
                     command: "toggle_overlay".to_owned(),
                     shortcut: "Control+Shift+B".to_owned(),
                 }],
-                model_behaviors: vec![ModelBehaviorBinding {
-                    model_id: "standard".to_owned(),
+                model_behavior_bindings: vec![ModelBehaviorBinding {
+                    model: ModelIdentity {
+                        id: "standard".to_owned(),
+                        source: ModelSource::BuiltIn,
+                    },
                     behavior_id: "expression:happy".to_owned(),
                     shortcut: "Alt+M".to_owned(),
                 }],
@@ -927,11 +934,11 @@ mod global {
         fn owner_thread_registers_and_unregisters_real_hotkeys() {
             let compiled = ShortcutConfig {
                 commands_enabled: true,
-                commands: vec![ShortcutBinding {
+                command_bindings: vec![ShortcutBinding {
                     command: "toggle_overlay".to_owned(),
                     shortcut: "Control+Alt+0".to_owned(),
                 }],
-                model_behaviors: Vec::new(),
+                ..ShortcutConfig::default()
             }
             .compile()
             .expect("compiled shortcuts");

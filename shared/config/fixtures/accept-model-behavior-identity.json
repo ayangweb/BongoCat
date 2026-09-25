@@ -2,7 +2,7 @@
   "schema_version": 1,
   "logging": {
     "level": "info",
-    "retention_days": 31
+    "retention_days": 7
   },
   "appearance": {
     "theme": "system",
@@ -44,15 +44,24 @@
   "shortcuts": {
     "commands_enabled": true,
     "command_bindings": [],
-    "model_behavior_bindings": [],
-    "model_behaviors_enabled": false
+    "model_behavior_bindings": [
+      {
+        "model": {
+          "id": "standard",
+          "source": "built_in"
+        },
+        "behavior_id": "motion:CAT_motion:0",
+        "shortcut": "Control+Alt+1"
+      }
+    ],
+    "model_behaviors_enabled": true
   },
   "system": {
     "show_taskbar_icon": true,
     "show_status_icon": true
   },
   "updates": {
-    "check_automatically": true,
+    "check_automatically": false,
     "check_interval_hours": 24
   }
 }

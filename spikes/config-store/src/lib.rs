@@ -136,22 +136,28 @@ pub fn platform_layout(
 #[serde(deny_unknown_fields)]
 pub struct NativeConfig {
     pub schema_version: u32,
-    pub application: ApplicationConfig,
     pub appearance: AppearanceConfig,
     pub overlay: OverlayConfig,
     pub input: InputConfig,
     pub logging: LoggingConfig,
     pub model: ModelConfig,
     pub shortcuts: ShortcutConfig,
+    pub system: SystemConfig,
+    pub updates: UpdateConfig,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct ApplicationConfig {
+pub struct SystemConfig {
     pub show_taskbar_icon: bool,
     pub show_status_icon: bool,
-    pub check_for_updates_automatically: bool,
-    pub check_for_updates_interval_hours: u16,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateConfig {
+    pub check_automatically: bool,
+    pub check_interval_hours: u16,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -172,20 +178,13 @@ pub enum Theme {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct OverlayConfig {
-    pub visible: bool,
     pub click_through: bool,
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
-    /// Corner radius of the overlay window box as a percentage of its width and
-    /// height. `0` keeps square corners and `50` clips the content to the full
-    /// inscribed ellipse, which is the legacy ceiling.
+    pub maximum_fps: u16,
     pub corner_radius_percent: u8,
-    /// Hide the overlay content while the pointer rests on it, keeping the
-    /// model out of the way of whatever the pointer is reaching for.
     pub hide_on_pointer_hover: bool,
-    /// How long the pointer must stay inside the overlay box before the hover
-    /// hide starts, in whole seconds. `0` hides as soon as the pointer enters.
     pub hide_on_pointer_hover_delay_seconds: u32,
     pub keep_inside_screen: bool,
 }
@@ -193,8 +192,21 @@ pub struct OverlayConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct InputConfig {
-    pub gamepad_stick_dead_zone: f64,
-    pub gamepad_trigger_dead_zone: f64,
+    pub keyboard: KeyboardInputConfig,
+    pub gamepad: GamepadInputConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct KeyboardInputConfig {
+    pub release_fallback_timeout_ms: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct GamepadInputConfig {
+    pub stick_dead_zone: f64,
+    pub trigger_dead_zone: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -227,34 +239,56 @@ pub enum LoggingLevel {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ModelConfig {
-    pub selected_model_id: Option<String>,
-    pub selected_model_origin: Option<SelectedModelOrigin>,
-    pub installed_models: Vec<InstalledModelMetadata>,
-    pub preset_models: Vec<ModelMetadata>,
+    pub selected_model: Option<ModelIdentity>,
+    pub imported_models: Vec<ImportedModelMetadata>,
+    pub built_in_models: Vec<BuiltInModelMetadata>,
     pub mirror: bool,
     pub mirror_pointer_tracking: bool,
     pub play_motion_audio: bool,
-    pub enable_behavior_shortcuts: bool,
-    pub random_behavior_enabled: bool,
-    pub random_behavior_interval_seconds: u32,
-    pub maximum_fps: u16,
     pub ignore_pointer: bool,
-    pub release_fallback_timeout_ms: u32,
+    pub random_behavior: RandomBehaviorConfig,
 }
 
-/// User-facing metadata for one build-shipped model.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RandomBehaviorConfig {
+    pub enabled: bool,
+    pub interval_seconds: u32,
+}
+
+impl Default for RandomBehaviorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_seconds: DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct ModelMetadata {
+pub struct ModelIdentity {
+    pub id: String,
+    pub source: ModelSource,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelSource {
+    Imported,
+    BuiltIn,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BuiltInModelMetadata {
     pub id: String,
     pub title: String,
 }
 
-/// User-facing metadata for one imported model, including the mode resolved
-/// once at import time.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct InstalledModelMetadata {
+pub struct ImportedModelMetadata {
     pub id: String,
     pub title: String,
     pub input_mode: ModelInputMode,
@@ -271,19 +305,13 @@ pub enum ModelInputMode {
 pub const MODEL_METADATA_MAXIMUM_ID_BYTES: usize = 64;
 pub const MODEL_METADATA_MAXIMUM_TITLE_CHARS: usize = 128;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum SelectedModelOrigin {
-    Preset,
-    Installed,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ShortcutConfig {
     pub commands_enabled: bool,
-    pub commands: Vec<ShortcutBinding>,
-    pub model_behaviors: Vec<ModelBehaviorBinding>,
+    pub model_behaviors_enabled: bool,
+    pub command_bindings: Vec<ShortcutBinding>,
+    pub model_behavior_bindings: Vec<ModelBehaviorBinding>,
 }
 
 /// The spike mirrors the Native Rewrite contract, including its `Default`:
@@ -293,8 +321,9 @@ impl Default for ShortcutConfig {
     fn default() -> Self {
         Self {
             commands_enabled: true,
-            commands: Vec::new(),
-            model_behaviors: Vec::new(),
+            model_behaviors_enabled: false,
+            command_bindings: Vec::new(),
+            model_behavior_bindings: Vec::new(),
         }
     }
 }
@@ -309,7 +338,7 @@ pub struct ShortcutBinding {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ModelBehaviorBinding {
-    pub model_id: String,
+    pub model: ModelIdentity,
     pub behavior_id: String,
     pub shortcut: String,
 }
@@ -318,48 +347,50 @@ impl Default for NativeConfig {
     fn default() -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
-            application: ApplicationConfig {
-                show_taskbar_icon: true,
-                show_status_icon: true,
-                check_for_updates_automatically: false,
-                check_for_updates_interval_hours: DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
-            },
             appearance: AppearanceConfig {
                 theme: Theme::System,
                 language: "system".into(),
             },
             overlay: OverlayConfig {
-                visible: true,
                 click_through: false,
                 always_on_top: true,
                 scale_percent: 100,
                 opacity_percent: 100,
+                maximum_fps: 60,
                 corner_radius_percent: 0,
                 hide_on_pointer_hover: false,
                 hide_on_pointer_hover_delay_seconds: 0,
                 keep_inside_screen: true,
             },
             input: InputConfig {
-                gamepad_stick_dead_zone: 0.15,
-                gamepad_trigger_dead_zone: 0.0,
+                keyboard: KeyboardInputConfig {
+                    release_fallback_timeout_ms: 500,
+                },
+                gamepad: GamepadInputConfig {
+                    stick_dead_zone: 0.15,
+                    trigger_dead_zone: 0.0,
+                },
             },
             logging: LoggingConfig::default(),
             model: ModelConfig {
-                selected_model_id: None,
-                selected_model_origin: None,
-                installed_models: Vec::new(),
-                preset_models: Vec::new(),
+                selected_model: None,
+                imported_models: Vec::new(),
+                built_in_models: Vec::new(),
                 mirror: false,
                 mirror_pointer_tracking: false,
                 play_motion_audio: false,
-                enable_behavior_shortcuts: false,
-                random_behavior_enabled: false,
-                random_behavior_interval_seconds: DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
-                maximum_fps: 60,
                 ignore_pointer: false,
-                release_fallback_timeout_ms: 500,
+                random_behavior: RandomBehaviorConfig::default(),
             },
             shortcuts: ShortcutConfig::default(),
+            system: SystemConfig {
+                show_taskbar_icon: true,
+                show_status_icon: true,
+            },
+            updates: UpdateConfig {
+                check_automatically: false,
+                check_interval_hours: DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
+            },
         }
     }
 }
@@ -370,17 +401,15 @@ impl NativeConfig {
             return Err(ConfigError::UnsupportedSchema(self.schema_version));
         }
         if !(1..=MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS)
-            .contains(&self.application.check_for_updates_interval_hours)
+            .contains(&self.updates.check_interval_hours)
         {
-            return Err(ConfigError::InvalidValue(
-                "application.check_for_updates_interval_hours",
-            ));
+            return Err(ConfigError::InvalidValue("updates.check_interval_hours"));
         }
         if !(MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS..=MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS)
-            .contains(&self.model.random_behavior_interval_seconds)
+            .contains(&self.model.random_behavior.interval_seconds)
         {
             return Err(ConfigError::InvalidValue(
-                "model.random_behavior_interval_seconds",
+                "model.random_behavior.interval_seconds",
             ));
         }
         if !(25..=400).contains(&self.overlay.scale_percent) {
@@ -397,25 +426,25 @@ impl NativeConfig {
                 "overlay.hide_on_pointer_hover_delay_seconds",
             ));
         }
-        if !(0.0..1.0).contains(&self.input.gamepad_stick_dead_zone)
-            || !self.input.gamepad_stick_dead_zone.is_finite()
+        if !(0.0..1.0).contains(&self.input.gamepad.stick_dead_zone)
+            || !self.input.gamepad.stick_dead_zone.is_finite()
         {
-            return Err(ConfigError::InvalidValue("input.gamepad_stick_dead_zone"));
+            return Err(ConfigError::InvalidValue("input.gamepad.stick_dead_zone"));
         }
-        if !(0.0..1.0).contains(&self.input.gamepad_trigger_dead_zone)
-            || !self.input.gamepad_trigger_dead_zone.is_finite()
+        if !(0.0..1.0).contains(&self.input.gamepad.trigger_dead_zone)
+            || !self.input.gamepad.trigger_dead_zone.is_finite()
         {
-            return Err(ConfigError::InvalidValue("input.gamepad_trigger_dead_zone"));
+            return Err(ConfigError::InvalidValue("input.gamepad.trigger_dead_zone"));
         }
         if !(1..=MAXIMUM_LOG_RETENTION_DAYS).contains(&self.logging.retention_days) {
             return Err(ConfigError::InvalidValue("logging.retention_days"));
         }
-        if !(15..=240).contains(&self.model.maximum_fps) {
-            return Err(ConfigError::InvalidValue("model.maximum_fps"));
+        if !(15..=240).contains(&self.overlay.maximum_fps) {
+            return Err(ConfigError::InvalidValue("overlay.maximum_fps"));
         }
-        if self.model.release_fallback_timeout_ms > 60_000 {
+        if self.input.keyboard.release_fallback_timeout_ms > 60_000 {
             return Err(ConfigError::InvalidValue(
-                "model.release_fallback_timeout_ms",
+                "input.keyboard.release_fallback_timeout_ms",
             ));
         }
         if self.appearance.language.trim().is_empty() {
@@ -423,91 +452,101 @@ impl NativeConfig {
         }
         if self
             .model
-            .selected_model_id
-            .as_deref()
-            .is_some_and(|model_id| model_id.trim().is_empty())
+            .selected_model
+            .as_ref()
+            .is_some_and(|selected| selected.id.trim().is_empty())
         {
-            return Err(ConfigError::InvalidValue("model.selected_model_id"));
+            return Err(ConfigError::InvalidValue("model.selected_model.id"));
         }
-        if self.model.selected_model_id.is_some() != self.model.selected_model_origin.is_some() {
-            return Err(ConfigError::InvalidValue("model.selected_model_selection"));
-        }
-        let mut installed_ids = std::collections::BTreeSet::new();
-        for metadata in &self.model.installed_models {
+        let validate_metadata = |records: &[BuiltInModelMetadata], field: &'static str| {
+            let mut ids = std::collections::BTreeSet::new();
+            for metadata in records {
+                let id = metadata.id.trim();
+                if id.is_empty() || id.len() > MODEL_METADATA_MAXIMUM_ID_BYTES || !ids.insert(id) {
+                    return Err(ConfigError::InvalidValue(match field {
+                        "model.imported_models.id" => "model.imported_models.id",
+                        _ => "model.built_in_models.id",
+                    }));
+                }
+                let title = metadata.title.trim();
+                if title.is_empty()
+                    || title.chars().count() > MODEL_METADATA_MAXIMUM_TITLE_CHARS
+                    || metadata.title.chars().any(char::is_control)
+                {
+                    return Err(ConfigError::InvalidValue(match field {
+                        "model.imported_models.title" => "model.imported_models.title",
+                        _ => "model.built_in_models.title",
+                    }));
+                }
+            }
+            Ok(())
+        };
+        let mut imported_ids = std::collections::BTreeSet::new();
+        for metadata in &self.model.imported_models {
             let id = metadata.id.trim();
             if id.is_empty()
                 || id.len() > MODEL_METADATA_MAXIMUM_ID_BYTES
-                || !installed_ids.insert(id)
+                || !imported_ids.insert(id)
             {
-                return Err(ConfigError::InvalidValue("model.installed_models.id"));
+                return Err(ConfigError::InvalidValue("model.imported_models.id"));
             }
             let title = metadata.title.trim();
             if title.is_empty()
                 || title.chars().count() > MODEL_METADATA_MAXIMUM_TITLE_CHARS
                 || metadata.title.chars().any(char::is_control)
             {
-                return Err(ConfigError::InvalidValue("model.installed_models.title"));
+                return Err(ConfigError::InvalidValue("model.imported_models.title"));
             }
         }
-        let mut preset_ids = std::collections::BTreeSet::new();
-        for metadata in &self.model.preset_models {
-            let id = metadata.id.trim();
-            if id.is_empty() || id.len() > MODEL_METADATA_MAXIMUM_ID_BYTES || !preset_ids.insert(id)
-            {
-                return Err(ConfigError::InvalidValue("model.preset_models.id"));
-            }
-            let title = metadata.title.trim();
-            if title.is_empty()
-                || title.chars().count() > MODEL_METADATA_MAXIMUM_TITLE_CHARS
-                || metadata.title.chars().any(char::is_control)
-            {
-                return Err(ConfigError::InvalidValue("model.preset_models.title"));
-            }
-        }
+        validate_metadata(&self.model.built_in_models, "model.built_in_models.id")?;
         if self
             .shortcuts
-            .commands
+            .command_bindings
             .iter()
             .any(|binding| binding.command.trim().is_empty())
         {
-            return Err(ConfigError::InvalidValue("shortcuts.commands.command"));
-        }
-        if self
-            .shortcuts
-            .commands
-            .iter()
-            .any(|binding| binding.shortcut.trim().is_empty())
-        {
-            return Err(ConfigError::InvalidValue("shortcuts.commands.shortcut"));
-        }
-        if self
-            .shortcuts
-            .model_behaviors
-            .iter()
-            .any(|binding| binding.model_id.trim().is_empty())
-        {
             return Err(ConfigError::InvalidValue(
-                "shortcuts.model_behaviors.model_id",
+                "shortcuts.command_bindings.command",
             ));
         }
         if self
             .shortcuts
-            .model_behaviors
+            .command_bindings
+            .iter()
+            .any(|binding| binding.shortcut.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidValue(
+                "shortcuts.command_bindings.shortcut",
+            ));
+        }
+        if self
+            .shortcuts
+            .model_behavior_bindings
+            .iter()
+            .any(|binding| binding.model.id.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidValue(
+                "shortcuts.model_behavior_bindings.model.id",
+            ));
+        }
+        if self
+            .shortcuts
+            .model_behavior_bindings
             .iter()
             .any(|binding| binding.behavior_id.trim().is_empty())
         {
             return Err(ConfigError::InvalidValue(
-                "shortcuts.model_behaviors.behavior_id",
+                "shortcuts.model_behavior_bindings.behavior_id",
             ));
         }
         if self
             .shortcuts
-            .model_behaviors
+            .model_behavior_bindings
             .iter()
             .any(|binding| binding.shortcut.trim().is_empty())
         {
             return Err(ConfigError::InvalidValue(
-                "shortcuts.model_behaviors.shortcut",
+                "shortcuts.model_behavior_bindings.shortcut",
             ));
         }
         Ok(())
@@ -1101,12 +1140,14 @@ mod tests {
     fn serialized_keys_follow_native_snake_case_contract() {
         let value = serde_json::to_value(NativeConfig::default()).unwrap();
         assert!(value.get("schema_version").is_some());
-        assert!(value["application"].get("launch_at_login").is_none());
-        assert!(
-            value["appearance"]
-                .get("check_for_updates_automatically")
-                .is_none()
-        );
+        assert!(value.get("application").is_none());
+        assert!(value["overlay"].get("visible").is_none());
+        assert!(value["system"].get("show_taskbar_icon").is_some());
+        assert!(value["system"].get("show_status_icon").is_some());
+        assert!(value["updates"].get("check_automatically").is_some());
+        assert!(value["updates"].get("check_interval_hours").is_some());
+        assert!(value["updates"].get("check_for_updates_automatically").is_none());
+        assert!(value["updates"].get("check_for_updates_interval_hours").is_none());
         assert!(value["overlay"].get("corner_radius_percent").is_some());
         assert!(value["overlay"].get("hide_on_pointer_hover").is_some());
         assert!(
@@ -1119,58 +1160,69 @@ mod tests {
         // them.
         assert!(value["overlay"].get("hideOnHover").is_none());
         assert!(value["overlay"].get("hideOnHoverDelay").is_none());
-        assert!(value["input"].get("gamepad_stick_dead_zone").is_some());
-        assert!(value["input"].get("gamepad_trigger_dead_zone").is_some());
+        assert!(value["input"].get("gamepad_stick_dead_zone").is_none());
+        assert!(value["input"].get("gamepad_trigger_dead_zone").is_none());
+        assert!(value["input"]["gamepad"].get("stick_dead_zone").is_some());
+        assert!(value["input"]["gamepad"].get("trigger_dead_zone").is_some());
+        assert!(
+            value["input"]["keyboard"]
+                .get("release_fallback_timeout_ms")
+                .is_some()
+        );
         assert!(value["logging"].get("level").is_some());
         assert!(value["logging"].get("retention_days").is_some());
-        assert!(value["model"].get("release_fallback_timeout_ms").is_some());
-        assert!(value["model"].get("selected_model_origin").is_some());
-        assert_eq!(value["application"]["check_for_updates_interval_hours"], 24);
+        assert!(value["model"].get("selected_model").is_some());
+        assert!(value["model"].get("selected_model_id").is_none());
+        assert!(value["model"].get("selected_model_origin").is_none());
+        assert!(value["model"].get("imported_models").is_some());
+        assert!(value["model"].get("built_in_models").is_some());
+        assert!(value["model"].get("random_behavior").is_some());
+        assert!(value["model"].get("random_behavior_enabled").is_none());
+        assert!(value["shortcuts"].get("command_bindings").is_some());
+        assert!(value["shortcuts"].get("model_behavior_bindings").is_some());
+        assert_eq!(value["updates"]["check_interval_hours"], 24);
     }
 
     #[test]
     fn update_interval_uses_the_current_v1_bounds() {
         let mut config = NativeConfig::default();
         assert_eq!(
-            config.application.check_for_updates_interval_hours,
+            config.updates.check_interval_hours,
             DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS
         );
-        config.application.check_for_updates_interval_hours = 1;
+        config.updates.check_interval_hours = 1;
         assert!(config.validate().is_ok());
-        config.application.check_for_updates_interval_hours =
-            MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS;
+        config.updates.check_interval_hours = MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS;
         assert!(config.validate().is_ok());
-        config.application.check_for_updates_interval_hours = 0;
+        config.updates.check_interval_hours = 0;
         assert!(matches!(
             config.validate(),
-            Err(ConfigError::InvalidValue(
-                "application.check_for_updates_interval_hours"
-            ))
+            Err(ConfigError::InvalidValue("updates.check_interval_hours"))
         ));
     }
 
     #[test]
     fn random_behavior_settings_follow_the_current_v1_bounds() {
         let mut config = NativeConfig::default();
-        assert!(!config.model.random_behavior_enabled);
+        assert!(!config.model.random_behavior.enabled);
         assert_eq!(
-            config.model.random_behavior_interval_seconds,
+            config.model.random_behavior.interval_seconds,
             DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS
         );
         for accepted in [
             MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
             MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
         ] {
-            config.model.random_behavior_enabled = true;
-            config.model.random_behavior_interval_seconds = accepted;
+            config.model.random_behavior.enabled = true;
+            config.model.random_behavior.interval_seconds = accepted;
             assert!(config.validate().is_ok());
         }
         for rejected in [0, MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS + 1] {
-            config.model.random_behavior_interval_seconds = rejected;
+            config.model.random_behavior.interval_seconds = rejected;
             assert!(matches!(
                 config.validate(),
                 Err(ConfigError::InvalidValue(
-                    "model.random_behavior_interval_seconds"
+                    "model.random_behavior.interval_seconds"
                 ))
             ));
         }
@@ -1226,46 +1278,50 @@ mod tests {
     #[test]
     fn blank_binding_is_rejected_by_typed_validation() {
         let mut config = NativeConfig::default();
-        config.shortcuts.commands.push(ShortcutBinding {
+        config.shortcuts.command_bindings.push(ShortcutBinding {
             command: "  ".into(),
             shortcut: "Control+Alt+B".into(),
         });
         assert!(matches!(
             config.validate(),
-            Err(ConfigError::InvalidValue("shortcuts.commands.command"))
+            Err(ConfigError::InvalidValue(
+                "shortcuts.command_bindings.command"
+            ))
         ));
     }
 
     #[test]
-    fn selected_model_id_and_origin_are_required_as_a_pair() {
-        let mut id_only = NativeConfig::default();
-        id_only.model.selected_model_id = Some("standard".to_owned());
+    fn selected_model_identity_requires_a_nonblank_id() {
+        let mut config = NativeConfig::default();
+        config.model.selected_model = Some(ModelIdentity {
+            id: "   ".to_owned(),
+            source: ModelSource::BuiltIn,
+        });
         assert!(matches!(
-            id_only.validate(),
-            Err(ConfigError::InvalidValue("model.selected_model_selection"))
+            config.validate(),
+            Err(ConfigError::InvalidValue("model.selected_model.id"))
         ));
 
-        let mut origin_only = NativeConfig::default();
-        origin_only.model.selected_model_origin = Some(SelectedModelOrigin::Preset);
-        assert!(matches!(
-            origin_only.validate(),
-            Err(ConfigError::InvalidValue("model.selected_model_selection"))
-        ));
+        config.model.selected_model = Some(ModelIdentity {
+            id: "standard".to_owned(),
+            source: ModelSource::BuiltIn,
+        });
+        assert!(config.validate().is_ok());
     }
 
     #[test]
     fn gamepad_dead_zones_follow_the_shared_range_contract() {
         for (stick, trigger, field) in [
-            (-0.01, 0.0, "input.gamepad_stick_dead_zone"),
-            (1.0, 0.0, "input.gamepad_stick_dead_zone"),
-            (f64::NAN, 0.0, "input.gamepad_stick_dead_zone"),
-            (0.15, -0.01, "input.gamepad_trigger_dead_zone"),
-            (0.15, 1.0, "input.gamepad_trigger_dead_zone"),
-            (0.15, f64::INFINITY, "input.gamepad_trigger_dead_zone"),
+            (-0.01, 0.0, "input.gamepad.stick_dead_zone"),
+            (1.0, 0.0, "input.gamepad.stick_dead_zone"),
+            (f64::NAN, 0.0, "input.gamepad.stick_dead_zone"),
+            (0.15, -0.01, "input.gamepad.trigger_dead_zone"),
+            (0.15, 1.0, "input.gamepad.trigger_dead_zone"),
+            (0.15, f64::INFINITY, "input.gamepad.trigger_dead_zone"),
         ] {
             let mut config = NativeConfig::default();
-            config.input.gamepad_stick_dead_zone = stick;
-            config.input.gamepad_trigger_dead_zone = trigger;
+            config.input.gamepad.stick_dead_zone = stick;
+            config.input.gamepad.trigger_dead_zone = trigger;
             assert!(matches!(
                 config.validate(),
                 Err(ConfigError::InvalidValue(actual)) if actual == field

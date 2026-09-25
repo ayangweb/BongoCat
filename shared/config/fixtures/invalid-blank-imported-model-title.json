@@ -2,7 +2,7 @@
   "schema_version": 1,
   "logging": {
     "level": "info",
-    "retention_days": 31
+    "retention_days": 7
   },
   "appearance": {
     "theme": "system",
@@ -31,10 +31,16 @@
   "model": {
     "mirror": false,
     "mirror_pointer_tracking": false,
-    "play_motion_audio": false,
+    "play_motion_audio": true,
     "ignore_pointer": false,
     "selected_model": null,
-    "imported_models": [],
+    "imported_models": [
+      {
+        "id": "cat",
+        "title": "   ",
+        "input_mode": "standard"
+      }
+    ],
     "built_in_models": [],
     "random_behavior": {
       "enabled": false,

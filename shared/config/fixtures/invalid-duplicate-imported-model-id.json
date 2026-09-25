@@ -2,7 +2,7 @@
   "schema_version": 1,
   "logging": {
     "level": "info",
-    "retention_days": 31
+    "retention_days": 7
   },
   "appearance": {
     "theme": "system",
@@ -31,10 +31,21 @@
   "model": {
     "mirror": false,
     "mirror_pointer_tracking": false,
-    "play_motion_audio": false,
+    "play_motion_audio": true,
     "ignore_pointer": false,
     "selected_model": null,
-    "imported_models": [],
+    "imported_models": [
+      {
+        "id": "cat",
+        "title": "第一只",
+        "input_mode": "standard"
+      },
+      {
+        "id": "cat",
+        "title": "重复 ID",
+        "input_mode": "keyboard"
+      }
+    ],
     "built_in_models": [],
     "random_behavior": {
       "enabled": false,

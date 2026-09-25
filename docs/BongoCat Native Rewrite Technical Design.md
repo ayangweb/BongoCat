@@ -178,7 +178,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   时才创建并显示。forwarder 必须支持有界停止与 join。
 - 快捷键页面由两个带标题的 group 组成，每个 group 的第一行是它自己的门禁开关：`启用窗口快捷键`
   （`shortcuts.commands_enabled`，默认 `true`）与 `启用模型行为快捷键`
-  （`model.enable_behavior_shortcuts`，默认 `false`）。两个门禁彼此独立，各自只决定对应的一半是否
+  （`shortcuts.model_behaviors_enabled`，默认 `false`）。两个门禁彼此独立，各自只决定对应的一半是否
   进入活动的 `CompiledShortcuts`：都不清空、不改写配置中的绑定，因此重新打开时无需重录即可恢复
   全部已校验绑定。门禁的唯一实现点是 `ShortcutConfig::active_bindings`——"此刻生效的绑定"的唯一
   投影，模型侧的活动模型过滤也在同一处，应用层与平台层不得再判一次。门禁变更必须经
@@ -188,7 +188,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   门禁关闭时该作用域的行在 UI 上置灰且不可交互（捕获与清除都不再可用，tab 跳过），
   mutator 用同一谓词守卫；这是「开关门禁」统一禁用绑定规则（ADR-0053，并经 ADR-0054
   收窄为“可见行与 mutator 同源”）的落地。
-- `model.enable_behavior_shortcuts` 默认关闭是对旧版行为的刻意收窄：旧版在模型加载完成后无条件为
+- `shortcuts.model_behaviors_enabled` 默认关闭是对旧版行为的刻意收窄：旧版在模型加载完成后无条件为
   每个 motion 和 expression 自动分配一整层 `primary + [Shift/Alt] + 数字/字母` 组合键，用户没有
   拒绝的机会。Native 按维护者决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
   该开关只作用于 motion/expression 绑定，不得清空或改写配置中的绑定，也不得连带禁用
@@ -200,14 +200,14 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   + 该模型自身的绑定"，其它模型已占用的组合键不计入，因为同一时刻只有当前模型的绑定生效。已有绑定
   的行为永不重写，因此重复激活是幂等的，只有用户尚未录制的行为会被补上；同一作用域内已被占用的组合键
   跳过而非重用，否则 `shortcuts.conflict` 会让整份配置失效。分配结果随选中模型同一次 commit 落盘，
-  且不依赖 `model.enable_behavior_shortcuts`——绑定在快捷键页面始终可见，门禁关闭时该分组行置灰
+  且不依赖 `shortcuts.model_behaviors_enabled`——绑定在快捷键页面始终可见，门禁关闭时该分组行置灰
   不可改（ADR-0053），是否进入平台匹配表则由同一分组第一行的 `启用模型行为快捷键` 开关决定。
 - 只有当前模型的绑定进入平台编译表。配置按模型保存绑定且跨模型允许复用同一组合键，所以
   `shortcuts.conflict` 是作用域内的判定（命令内唯一、同一模型内唯一、模型绑定不得与命令冲突），
   整份配置本身不是一张无歧义的表：`active_shortcuts` 先按当前模型投影再编译。`prepare_model` 与
   `select_model` 都在激活成功后重建该表，因此被离开的模型立即停止触发它独占的组合键，被切到的模型
   无需重启即可用自己的组合键，非活动模型的绑定也不再占用全局热键。
-- `application.show_status_icon` 通过独立的 revision-checked settings command 修改。settings worker
+- `system.show_status_icon` 通过独立的 revision-checked settings command 修改。settings worker
   以有界 request/reply bridge 请求平台主线程隐藏或显示状态图标，平台成功后才由 Application owner
   原子提交配置；配置提交失败时必须把图标恢复为旧状态。macOS/Windows 共用 `tray-icon 0.25.0` 托盘
   owner 与直接依赖的 `muda 0.20.0` 菜单 owner：`TrayIcon`、菜单、菜单项 receiver 和强类型事件队列
@@ -216,7 +216,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   弹出同一菜单，不借用托盘隐藏窗口。
   正式启动不创建或显示设置窗口，设置窗口、单实例唤醒和 application reopen 仍提供恢复入口；
   平台失败只返回稳定匿名 settings error。
-- `application.show_taskbar_icon` 只控制 Windows GPUI 设置窗口的任务栏按钮，不改变窗口可见性，
+- `system.show_taskbar_icon` 只控制 Windows GPUI 设置窗口的任务栏按钮，不改变窗口可见性，
   也不映射为 macOS Dock 图标。settings worker 通过独立的有界 request/reply bridge 请求 GPUI 主线程
   切换 HWND 的 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW` 并回读结果，平台成功后才由 Application
   owner 按 expected revision 原子提交；配置提交失败时恢复旧样式。启动和窗口创建必须先应用当前
@@ -389,7 +389,7 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 - Runtime 可接收 typed `Tick` command，在使用注入单调时钟的 contract/fixture 或受控
   coordinator 场景显式驱动一次评估；生产环境仍由 runtime worker 的定时等待负责周期 tick，
   UI 和平台 adapter 不直接调用 renderer。
-- `maximum_fps` 是 `15..=240` 的 runtime-owned 强类型设置，通过 revision-checked settings
+- `overlay.maximum_fps` 是 `15..=240` 的 runtime-owned 强类型设置，通过 revision-checked settings
   command 持久化并进入 `RuntimeSnapshot`。它同时决定 runtime 周期评估、GPUI owner 调度的产品
   overlay frame source 和独立 overlay run loop 的下一帧间隔；变更无需重启。间隔是相对**帧截止
   时间**的等待，不是帧完成后的延时：一帧的开销由等待吸收，因此只要单帧工作在间隔内完成，实际
@@ -416,8 +416,8 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
   清理；重复 stop 不重启计时，零时长立即清理。不同 motion identity 的旧 stop 不影响新动作；
   同一 ID 重播后仍是当前 run，之后到达的同名 stop 有意停止该 run。
-- `model.random_behavior_enabled` 打开时，runtime 以可注入单调时钟按
-  `model.random_behavior_interval_seconds` 从当前模型声明的 motion 与 expression 合并列表中均匀选择
+- `model.random_behavior.enabled` 打开时，runtime 以可注入单调时钟按
+  `model.random_behavior.interval_seconds` 从当前模型声明的 motion 与 expression 合并列表中均匀选择
   一个行为（每个声明项等权）。第一次选择等待一个完整间隔；成功模型切换、设置变更和重新启用都会
   重锚定时器，长暂停只产生一次选择而不追赶补发。自动 motion 使用 `Idle` priority，不能替换正在进行
   的 `Normal`/`Force` 产品 motion；随机 expression 继续遵守最新 expression 替换语义，模型没有行为
@@ -482,7 +482,7 @@ Windows 的 `WM_QUERYENDSESSION` 与已确认的 `WM_ENDSESSION` 只记录系统
 GPUI owner 在下一帧进入既有 shutdown coordinator，Win32 callback 不阻塞或析构 runtime/GPU 资源。
 
 该方案不承诺安全桌面交付每个释放事件，而是保证丢事件不会产生永久卡键。
-`model.release_fallback_timeout_ms` 只对 captured keyboard control 生效：runtime 以自身可注入的
+`input.keyboard.release_fallback_timeout_ms` 只对 captured keyboard control 生效：runtime 以自身可注入的
 单调时钟记录 down/repeat 的观察时刻，repeat 刷新期限，不比较平台 input service 的事件时间戳；
 `0` 禁用，非零值到期时只释放键盘，不释放鼠标或手柄。该路径使用独立匿名计数，始终只是可靠
 `KeyUp`、状态校正和生命周期 `Reset` 之后的最后保险，不是正常输入语义。
@@ -788,7 +788,7 @@ presentation alpha，二者都不应因为设置变化替换 HWND/NSPanel。
 开启时，指针进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_seconds` 之后，owner 把
 窗口的呈现 alpha 淡到 `0` 并强制指针穿透；指针离开窗口矩形后按同样的时长延迟淡回
 `opacity_percent`，并把穿透恢复为 `overlay.click_through`。窗口本身既不隐藏也不销毁，
-`overlay.visible` 不受影响，frame source 继续按 `maximum_fps` 出帧，shutdown 顺序不变。隐藏期间
+runtime 的 overlay visibility 不受影响，frame source 继续按 `overlay.maximum_fps` 出帧，shutdown 顺序不变。隐藏期间
 穿透强制为开，因此不可见的 overlay 不会吞掉本该落到下层窗口的点击。
 
 淡入淡出复刻旧版 CSS `transition-opacity-300` 的 `300 ms`，但按「从过渡起点起算的绝对经过时间」
@@ -881,18 +881,18 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 
 - Native Rewrite 配置从全新 schema 开始，不读取、不探测、不导入旧 Tauri/Pinia store。
 - JSON key 使用 `snake_case`，字段按当前领域语义命名，不提供旧字段 alias。
-- `next` 是全新的初始版本，当前完整配置统一使用 `schema_version: 1`。v1 直接包含成对的
-  `selected_model_origin`/`selected_model_id`、用户导入模型的元数据列表
-  `model.installed_models` 与内置模型的同名列表 `model.preset_models`。installed 记录包含稳定唯一
-  的 `id`、可编辑 `title` 与必填的 `input_mode`（`standard`、`keyboard` 或 `gamepad`）；preset
-  记录只包含 `id` 与 `title`，其模式由构建拥有的稳定 id 派生。普通包在 staging 提交前通过
-  `left-keys`/`right-keys` 资源判定模式，判定失败直接拒绝导入；不从标题或路径生成模式。两个
-  元数据列表各自判重：列表内 `id` 不得重复，`title` 去除首尾空白后不得为空。`preset_models`
-  为空表示所有内置模型都还用构建给的名字，它没有任何导入、删除或裁剪路径；`input_mode` 不参与
-  `(origin, model_id)` 身份。以及 `input.gamepad_stick_dead_zone` 和
-  `input.gamepad_trigger_dead_zone`；两个 dead-zone 都必须是 `[0, 1)` 的有限数。模型随机播放由
-  `model.random_behavior_enabled` 与 `model.random_behavior_interval_seconds` 成对表达，后者为
-  `[1, 3600]` 秒且默认 `30`；两者直接进入当前 v1，不读取旧字段。
+- `next` 是全新的初始版本，当前完整配置统一使用 `schema_version: 1`。v1 直接包含完整的
+  `model.selected_model: { id, source }`、用户导入模型的元数据列表 `model.imported_models` 与内置
+  模型的列表 `model.built_in_models`。imported 记录包含稳定唯一的 `id`、可编辑 `title` 与必填的
+  `input_mode`（`standard`、`keyboard` 或 `gamepad`）；built-in 记录只包含 `id` 与 `title`，其模式
+  由构建拥有的稳定 id 派生。普通包在 staging 提交前通过 `left-keys`/`right-keys` 资源判定模式，
+  判定失败直接拒绝导入；不从标题或路径生成模式。两个元数据列表各自判重：列表内 `id` 不得重复，
+  `title` 去除首尾空白后不得为空。`built_in_models` 为空表示所有内置模型都还用构建给的名字，
+  它没有任何导入、删除或裁剪路径；`input_mode` 不参与 `{ id, source }` 身份。输入配置使用
+  `input.gamepad.stick_dead_zone` 和 `input.gamepad.trigger_dead_zone`；两个 dead-zone 都必须是
+  `[0, 1)` 的有限数。模型随机播放由 `model.random_behavior.enabled` 与
+  `model.random_behavior.interval_seconds` 成对表达，后者为 `[1, 3600]` 秒且默认 `30`；两者直接
+  进入当前 v1，不读取旧字段。overlay visibility 属于 runtime 会话状态，不写入 config。
 - `next` 开发期间不读取或转换任何早期中间结构，不实现 schema migration、字段 alias 或版本兼容
   分支。新增字段直接更新当前 v1 的 Rust 类型、JSON Schema、默认值和 fixture。解析入口保留显式
   版本检查并拒绝非 v1 数据；首次正式发布后的后续版本再以该发布版为基线单独设计迁移链。
@@ -956,7 +956,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   同一资源判定时才临时投影模式；无效目录不显示模式 Badge。
 - 一个 Mver 源产出**多个** BongoCat 模型：每种输入模式各自转换成一个包，各自分配随机 UUID
   v4 存储键与元数据记录，因此三种模式是模型列表里三个可独立启用/改名/删除的条目。每个转换
-  模型把所选 legacy source section 的模式写入 `installed_models[].input_mode`；模式事实来自
+  模型把所选 legacy source section 的模式写入 `model.imported_models[].input_mode`；模式事实来自
   source section，不从转换后目录形状或标题反推。每个模式独立提交——某个模式的键位图损坏不
   影响已转换成功的模式，与"这几种模式彼此独立"的事实一致。
 - 转换只把合成后的包写进 `ModelStore` 自己的 staging，并与目录复制共用同一个 `PreparedModel`
@@ -996,36 +996,36 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   碍输出，用户只看到可用的模型集合；符号链接始终不被跟随。
 - 标准预置模型 `standard` 是始终可用的默认回退：目录身份 `(origin, model_id)` 在数据结构
   上区分预置模型与用户导入的自定义模型，所有自定义模型不可用时仍能回退到 `standard`。
-- 应用启动时执行模型恢复：优先激活配置中成对记录的 `selected_model_origin`/
-  `selected_model_id`；该模型缺失或不可用时记录匿名回退事件、把 `standard` 预置持久化为
-  修正后的选择并激活它，恢复失败不阻塞启动。未配置选择时同样默认激活 `standard`。启动
-  还会在 operational 状态下清理指向已不存在模型目录的 `installed_models` 元数据记录；
+- 应用启动时执行模型恢复：优先激活配置中完整的 `model.selected_model: { id, source }`；该模型缺失或
+  不可用时记录匿名回退事件、把 `standard` 内置模型持久化为修正后的选择并激活它，恢复失败不阻塞启动。
+  未配置选择时同样默认激活 `standard`。启动还会在 operational 状态下清理指向已不存在模型目录的
+  `model.imported_models` 元数据记录；
   目录存在但内容无效的记录保留，由合并目录的稳定诊断码呈现。启动期清理失败的记录留待
   下次启动重试，不影响其他模型或应用整体。
 - 模型导入 command 携带标题与文件选择来源（文件夹选择器选中的目录，或设置窗口拖入的单个目录）；
   标题只是显示名称，不参与身份——settings service worker 在导入前用随机 UUID v4（`uuid 1.26.1`，
   精确 pin）生成当前 store 内唯一的可移植存储 ID，因此重复导入同一目录不会覆盖已有模型，
-  显示名称可以随时编辑，用户也无需发明任何 ID。导入成功后把标题和模式写入 `installed_models`
+  显示名称可以随时编辑，用户也无需发明任何 ID。导入成功后把标题和模式写入 `model.imported_models`
   元数据：Mver 写入实际选中的 source mode；普通包在 staging 通过 `left-keys`/`right-keys` 资源
   判定为 `standard`/`keyboard`/`gamepad`，判定失败直接拒绝导入，不写入 store 或 config。标题
   取导入 command 携带的值，页面在选中来源时按文件夹自身的名字预填，导入后可在模型卡片里
   改名；空白值依次降级为该名字和模型 ID，超长标题截断到元数据上限；元数据提交失败按导入
-  失败报告且已安装目录保留。改名只更新 `title`，保留 `input_mode`；删除模型在 store 删除成功
+  失败报告且已导入目录保留。改名只更新 `title`，保留 `input_mode`；删除模型在 store 删除成功
   后同步移除对应元数据记录。
-- 模型目录身份是 `(origin, model_id)`。同一 `model_id` 的 preset 与 installed 条目都保留，
-  后续选择 command 必须携带 origin，不得以静默覆盖解决冲突。Models 页面的顺序由
-  `Application::model_catalog` 一处决定，分两半：preset 在前，按 `MverInputMode::ALL` 的
+- 模型目录身份是 `{ id, source }`。同一 `id` 的 built-in 与 imported 条目都保留，
+  后续选择 command 必须携带 source，不得以静默覆盖解决冲突。Models 页面的顺序由
+  `Application::model_catalog` 一处决定，分两半：built-in 在前，按 `MverInputMode::ALL` 的
   模式顺序（标准 → 键盘 → 手柄，不是 id 字母序——三个 id 的字母序恰好是它的倒序）；
-  installed 在后，按 `config.model.installed_models` 的记录位置，也就是导入顺序，因此新导入的
+  imported 在后，按 `config.model.imported_models` 的记录位置，也就是导入顺序，因此新导入的
   模型落在页面末尾且此后不再移动。没有元数据记录、只存在于 store 根目录的包排在该半区末尾并
-  按 id 排序；`model_id` 在两半区都出现时 preset 一定在前，因为整个 preset 半区都排在前面。
-- 模型改名与换封面对两个 origin 完全一致（见 ADR-0047）。`installed_models[].title` 与
-  `preset_models[].title` 是可编辑显示名；installed 记录还保存导入时确定的 `input_mode`，
-  preset 模式由稳定 preset id 派生。封面在 installed origin 上是包内文件
-  `resources/cover.png`，在 preset origin 上是用户侧的
+  按 id 排序；`id` 在两半区都出现时 built-in 一定在前，因为整个 built-in 半区都排在前面。
+- 模型改名与换封面对两个 source 完全一致（见 ADR-0047）。`imported_models[].title` 与
+  `built_in_models[].title` 是可编辑显示名；imported 记录还保存导入时确定的 `input_mode`，
+  built-in 模式由稳定 built-in id 派生。封面在 imported source 上是包内文件
+  `resources/cover.png`，在 built-in source 上是用户侧的
   `<data>/model-overrides/<id>/resources/cover.png`（app 包不可写，见 ADR-0047 决策 2），两边都由
   `bongocat-model` 的 `package_cover_path` 推出布局，分别由 `bongocat-model-store` 的
-  `ModelStore::replace_cover` 与 `PresetCoverStore::replace_cover` 做同目录原子替换。导入成功后，每个新安装模型的封面会被换成
+  `ModelStore::replace_cover` 与 `PresetCoverStore::replace_cover` 做同目录原子替换。导入成功后，每个新导入模型的封面会被换成
   **该模型自己渲染的一帧**（见 ADR-0055）：settings worker 只把模型与它在协议里的身份排队，
   GPUI 线程在永不显示的原生窗口里渲染、读回、裁切并编码，再经 `ReplaceModelCover` 写回同一位置，
   因此转换输出的占位封面只在捕获失败时保留。预置模型只多一件事是禁止的：删除。它的包永远是
@@ -1155,8 +1155,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   文件（预设模型目录是惰性读盘的），因此安装成功后自动重启——先按 §5.3 的顺序完成产品 shutdown，
   再 `exec` 新构建；Windows 由安装器 `/R` 重启，`Installed` 在该平台不可观测。
 - 自动检查由 GPUI 侧调度（开关与间隔只有设置服务读得到）：新配置的
-  `application.check_for_updates_automatically` 默认为 `false`，不会在启动时主动检查；用户打开后，
-  启动后等 10 秒首次检查，之后按 `application.check_for_updates_interval_hours` 等待下一次检查；该整小时字段默认 `24`、范围为
+  `updates.check_automatically` 默认为 `false`，不会在启动时主动检查；用户打开后，
+  启动后等 10 秒首次检查，之后按 `updates.check_interval_hours` 等待下一次检查；该整小时字段默认 `24`、范围为
   `1..=8760`，并随当前 v1 配置持久化。调度器以最近一次实际派发为期限锚点，并以低成本设置轮询
   重新读取间隔，因此修改间隔会重排下一次期限（缩短后若已到期则立即检查）。发现可用更新且窗口未
   打开时打开更新窗口。关闭自动检查不会改写已保存间隔；手动检查不受该字段影响。

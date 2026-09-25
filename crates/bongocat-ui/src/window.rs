@@ -195,7 +195,7 @@ enum PendingOperation {
 enum ShortcutCaptureTarget {
     Command(String),
     ModelBehavior {
-        model_id: String,
+        model: SettingsModelKey,
         behavior_id: String,
     },
 }
@@ -398,8 +398,8 @@ impl ModelRowKey {
     fn new(origin: SettingsModelOrigin, id: &str) -> Self {
         Self {
             origin_rank: match origin {
-                SettingsModelOrigin::Preset => 0,
-                SettingsModelOrigin::Installed => 1,
+                SettingsModelOrigin::BuiltIn => 0,
+                SettingsModelOrigin::Imported => 1,
             },
             id: id.to_owned(),
         }
@@ -1991,7 +1991,7 @@ fn model_row_actions(
     };
     let active = active_model == Some(&model);
     let ready = matches!(&entry.availability, SettingsModelAvailability::Ready { .. });
-    let installed = entry.origin == SettingsModelOrigin::Installed;
+    let installed = entry.origin == SettingsModelOrigin::Imported;
     ModelRowActions {
         active,
         can_activate: ready && !active && !commands_blocked,

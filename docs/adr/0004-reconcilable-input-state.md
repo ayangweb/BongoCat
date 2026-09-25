@@ -21,7 +21,7 @@ Windows 以 Raw Input 为主路径，并用 `GetAsyncKeyState` 校正。macOS �
 
 平台 adapter 统一使用单调时钟调度校正：默认间隔为 `250 ms`，同一个本地 pressed key 必须连续 `2` 次系统快照缺失才生成释放。单次查询异常只增加该 key 的待确认次数；后续快照确认仍按下时清零待确认次数。正常 `KeyUp` 和生命周期 `Reset` 立即清理待确认状态，`Reset` 不等待确认阈值；时钟回退不得推进校正调度游标。该策略由平台无关状态 contract 固定，平台只负责提供候选 pressed-set。
 
-`model.release_fallback_timeout_ms` 是捕获键盘按键的最终保险，范围为 `0..=60000`，`0`
+`input.keyboard.release_fallback_timeout_ms` 是捕获键盘按键的最终保险，范围为 `0..=60000`，`0`
 明确禁用。runtime 只使用自己可注入的单调时钟记录收到 down/repeat 的时刻，不比较 Windows/macOS
 input service 各自原点的事件时间戳；repeat down 刷新期限。到期只移除键盘 control，不自动释放鼠标
 或手柄，并通过独立 `fallback_release` 聚合计数与 captured/reconciled/reset 路径区分。

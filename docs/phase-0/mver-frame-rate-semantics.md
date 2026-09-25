@@ -1,6 +1,6 @@
 # Bongo-Cat-Mver Frame Rate Semantics
 
-状态：参考实现的帧率语义已冻结；对照后 1 项采纳（`model.maximum_fps` 契约补值域与语义）、3 项明确不采纳
+状态：参考实现的帧率语义已冻结；对照后 1 项采纳（`overlay.maximum_fps` 契约补值域与语义）、3 项明确不采纳
 记录日期：2026-09-23
 审阅版本：tag `v1.6.0` = commit `4da0b9468ad3b6ffaa096eba3f080501d6ab0b5c`，即 `docs/migration/bongo-cat-mver-reference.md` 固定的基线；上游 `SFML 2.5.1` 与 `CubismNativeSamples`
 

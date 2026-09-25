@@ -14,6 +14,13 @@ use gpui_kit::{
 /// in this module is about identity, availability or actions, so those two stay
 /// unset unless the test is specifically about opening a location or showing a
 /// cover.
+fn settings_model_key(id: &str, origin: SettingsModelOrigin) -> SettingsModelKey {
+    SettingsModelKey {
+        id: id.to_owned(),
+        origin,
+    }
+}
+
 fn model_entry(
     id: &str,
     origin: SettingsModelOrigin,
@@ -539,7 +546,7 @@ fn shortcut_capture_conflict_preview_is_order_independent() {
 fn shortcut_capture_conflicts_are_scoped_to_one_model() {
     let binding =
         |model_id: &str, behavior_id: &str, shortcut: &str| SettingsModelBehaviorBinding {
-            model_id: model_id.to_owned(),
+            model: settings_model_key(model_id, SettingsModelOrigin::BuiltIn),
             behavior_id: behavior_id.to_owned(),
             shortcut: shortcut.to_owned(),
         };
@@ -582,7 +589,7 @@ fn shortcut_capture_conflicts_are_scoped_to_one_model() {
 fn shortcut_capture_targets_have_independent_tab_stops() {
     let active_model = SettingsModelKey {
         id: "standard".to_owned(),
-        origin: SettingsModelOrigin::Preset,
+        origin: SettingsModelOrigin::BuiltIn,
     };
     let shortcuts = SettingsShortcuts {
         commands: vec![
@@ -597,12 +604,12 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
         ],
         model_behaviors: vec![
             SettingsModelBehaviorBinding {
-                model_id: "standard".to_owned(),
+                model: settings_model_key("standard", SettingsModelOrigin::BuiltIn),
                 behavior_id: "motion:tap:0".to_owned(),
                 shortcut: "Control+M".to_owned(),
             },
             SettingsModelBehaviorBinding {
-                model_id: "keyboard".to_owned(),
+                model: settings_model_key("keyboard", SettingsModelOrigin::BuiltIn),
                 behavior_id: "expression:ignored".to_owned(),
                 shortcut: "Control+I".to_owned(),
             },
@@ -611,7 +618,7 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
     let entries = vec![
         model_entry(
             "standard",
-            SettingsModelOrigin::Preset,
+            SettingsModelOrigin::BuiltIn,
             SettingsModelAvailability::Ready {
                 behaviors: vec![
                     SettingsModelBehavior::Motion {
@@ -626,7 +633,7 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
         ),
         model_entry(
             "keyboard",
-            SettingsModelOrigin::Preset,
+            SettingsModelOrigin::BuiltIn,
             SettingsModelAvailability::Ready {
                 behaviors: vec![SettingsModelBehavior::Expression {
                     name: "ignored".to_owned(),
@@ -673,7 +680,7 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
 fn only_a_model_behavior_row_carries_a_playable_behavior() {
     let model = SettingsModelKey {
         id: "standard".to_owned(),
-        origin: SettingsModelOrigin::Preset,
+        origin: SettingsModelOrigin::BuiltIn,
     };
     let behavior = SettingsModelBehavior::Motion {
         group: "CAT_motion".to_owned(),
@@ -681,7 +688,7 @@ fn only_a_model_behavior_row_carries_a_playable_behavior() {
     };
     let entries = vec![model_entry(
         "standard",
-        SettingsModelOrigin::Preset,
+        SettingsModelOrigin::BuiltIn,
         SettingsModelAvailability::Ready {
             behaviors: vec![
                 behavior.clone(),
@@ -773,14 +780,14 @@ fn the_controls_inside_a_shortcut_row_act_without_recording(cx: &mut TestAppCont
     };
     seeded.model_catalog.entries = vec![model_entry(
         "standard",
-        SettingsModelOrigin::Preset,
+        SettingsModelOrigin::BuiltIn,
         SettingsModelAvailability::Ready {
             behaviors: vec![behavior.clone()],
         },
     )];
     let model = SettingsModelKey {
         id: "standard".to_owned(),
-        origin: SettingsModelOrigin::Preset,
+        origin: SettingsModelOrigin::BuiltIn,
     };
     // The model scope's rows are numbered after the window scope's, so this
     // row's controls are the ones the offset names.
@@ -927,7 +934,7 @@ fn a_shortcut_rows_frame_is_sized_by_its_chord_and_holds_its_controls(cx: &mut T
     let mut seeded = crate::tests::snapshot(1, false, true);
     seeded.model_catalog.entries = vec![model_entry(
         "standard",
-        SettingsModelOrigin::Preset,
+        SettingsModelOrigin::BuiltIn,
         SettingsModelAvailability::Ready {
             behaviors: vec![SettingsModelBehavior::Motion {
                 group: "CAT_motion".to_owned(),
@@ -1062,7 +1069,7 @@ fn captured_shortcut_updates_stable_identity_after_reordering() {
 #[test]
 fn behavior_shortcut_capture_creates_and_clear_removes_a_binding() {
     let target = ShortcutCaptureTarget::ModelBehavior {
-        model_id: "standard".to_owned(),
+        model: settings_model_key("standard", SettingsModelOrigin::BuiltIn),
         behavior_id: "expression:happy".to_owned(),
     };
     let mut shortcuts = SettingsShortcuts::default();
@@ -1151,7 +1158,7 @@ fn shortcut_presentations_follow_the_resolved_language() {
 fn model_behavior_rows_are_named_by_flattened_position() {
     let active = SettingsModelKey {
         id: "standard".to_owned(),
-        origin: SettingsModelOrigin::Preset,
+        origin: SettingsModelOrigin::BuiltIn,
     };
     let behaviors = [
         SettingsModelBehavior::Motion {
@@ -1182,7 +1189,7 @@ fn model_behavior_rows_are_named_by_flattened_position() {
     ];
     let entries = vec![model_entry(
         "standard",
-        SettingsModelOrigin::Preset,
+        SettingsModelOrigin::BuiltIn,
         SettingsModelAvailability::Ready {
             behaviors: behaviors.to_vec(),
         },
@@ -1222,8 +1229,8 @@ fn model_behavior_rows_are_named_by_flattened_position() {
     // identity, which is what the configuration stores.
     assert!(rows.iter().all(|row| matches!(
         &row.target,
-        ShortcutCaptureTarget::ModelBehavior { model_id, behavior_id }
-            if model_id == "standard" && !behavior_id.is_empty()
+        ShortcutCaptureTarget::ModelBehavior { model, behavior_id }
+            if model.id == "standard" && !behavior_id.is_empty()
     )));
     assert_eq!(
         rows.len(),
@@ -2052,11 +2059,11 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
     let ready = SettingsModelAvailability::Ready {
         behaviors: Vec::new(),
     };
-    let preset = model_entry("duplicate", SettingsModelOrigin::Preset, ready.clone());
-    let installed = model_entry("duplicate", SettingsModelOrigin::Installed, ready);
+    let preset = model_entry("duplicate", SettingsModelOrigin::BuiltIn, ready.clone());
+    let installed = model_entry("duplicate", SettingsModelOrigin::Imported, ready);
     let active_preset = SettingsModelKey {
         id: "duplicate".to_owned(),
-        origin: SettingsModelOrigin::Preset,
+        origin: SettingsModelOrigin::BuiltIn,
     };
 
     // A preset is app-bundled content: it can be activated and edited — its
@@ -2087,7 +2094,7 @@ fn model_row_actions_preserve_origin_availability_and_active_identity() {
     // control cannot disappear from a card the user imported.
     let active_installed = SettingsModelKey {
         id: "duplicate".to_owned(),
-        origin: SettingsModelOrigin::Installed,
+        origin: SettingsModelOrigin::Imported,
     };
     assert_eq!(
         model_row_actions(&installed, Some(&active_installed), false),
@@ -2156,15 +2163,15 @@ fn an_open_delete_question_lives_only_while_its_control_would() {
     let ready = SettingsModelAvailability::Ready {
         behaviors: Vec::new(),
     };
-    let preset = model_entry("duplicate", SettingsModelOrigin::Preset, ready.clone());
-    let installed = model_entry("duplicate", SettingsModelOrigin::Installed, ready);
+    let preset = model_entry("duplicate", SettingsModelOrigin::BuiltIn, ready.clone());
+    let installed = model_entry("duplicate", SettingsModelOrigin::Imported, ready);
     let active_preset = SettingsModelKey {
         id: "duplicate".to_owned(),
-        origin: SettingsModelOrigin::Preset,
+        origin: SettingsModelOrigin::BuiltIn,
     };
     let target = SettingsModelKey {
         id: "duplicate".to_owned(),
-        origin: SettingsModelOrigin::Installed,
+        origin: SettingsModelOrigin::Imported,
     };
     let catalog = [preset, installed.clone()];
 
@@ -2222,14 +2229,14 @@ fn behavior_targets_stay_scoped_to_model_and_behavior_identity() {
     let entries = vec![
         model_entry(
             "standard",
-            SettingsModelOrigin::Preset,
+            SettingsModelOrigin::BuiltIn,
             SettingsModelAvailability::Ready {
                 behaviors: vec![motion.clone(), expression],
             },
         ),
         model_entry(
             "keyboard",
-            SettingsModelOrigin::Preset,
+            SettingsModelOrigin::BuiltIn,
             SettingsModelAvailability::Ready {
                 behaviors: vec![motion],
             },
@@ -2243,7 +2250,7 @@ fn behavior_targets_stay_scoped_to_model_and_behavior_identity() {
             &SettingsShortcuts::default(),
             Some(&SettingsModelKey {
                 id: id.to_owned(),
-                origin: SettingsModelOrigin::Preset,
+                origin: SettingsModelOrigin::BuiltIn,
             }),
             &entries,
         )
@@ -2264,7 +2271,7 @@ fn behavior_targets_stay_scoped_to_model_and_behavior_identity() {
 fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
     let active = SettingsModelKey {
         id: "standard".to_owned(),
-        origin: SettingsModelOrigin::Preset,
+        origin: SettingsModelOrigin::BuiltIn,
     };
     let behavior = SettingsModelBehavior::Motion {
         group: "CAT_motion".to_owned(),
@@ -2273,14 +2280,14 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
     let entries = vec![
         model_entry(
             "standard",
-            SettingsModelOrigin::Preset,
+            SettingsModelOrigin::BuiltIn,
             SettingsModelAvailability::Ready {
                 behaviors: vec![behavior.clone()],
             },
         ),
         model_entry(
             "keyboard",
-            SettingsModelOrigin::Preset,
+            SettingsModelOrigin::BuiltIn,
             SettingsModelAvailability::Ready {
                 behaviors: vec![SettingsModelBehavior::Expression {
                     name: "inactive".to_owned(),
@@ -2305,11 +2312,11 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
 fn shortcut_scopes_split_the_combined_row_order_into_two_halves() {
     let active = SettingsModelKey {
         id: "standard".to_owned(),
-        origin: SettingsModelOrigin::Preset,
+        origin: SettingsModelOrigin::BuiltIn,
     };
     let entries = vec![model_entry(
         "standard",
-        SettingsModelOrigin::Preset,
+        SettingsModelOrigin::BuiltIn,
         SettingsModelAvailability::Ready {
             behaviors: vec![SettingsModelBehavior::Motion {
                 group: "CAT_motion".to_owned(),
@@ -2445,7 +2452,7 @@ fn model_window_performance_title_names_the_window() {
 fn shortcut_targets_map_to_the_scope_that_gates_them() {
     let command = ShortcutCaptureTarget::Command("toggle_overlay".to_owned());
     let behavior = ShortcutCaptureTarget::ModelBehavior {
-        model_id: "model".to_owned(),
+        model: settings_model_key("model", SettingsModelOrigin::BuiltIn),
         behavior_id: "motion:group:index".to_owned(),
     };
     assert!(matches!(
@@ -2462,7 +2469,7 @@ fn shortcut_targets_map_to_the_scope_that_gates_them() {
 fn invalid_model_status_is_stable_and_path_free() {
     let entry = model_entry(
         "private-model",
-        SettingsModelOrigin::Installed,
+        SettingsModelOrigin::Imported,
         SettingsModelAvailability::Invalid {
             diagnostic: SettingsModelDiagnostic::ModelReferenceSymlinkEscape,
         },
@@ -2481,7 +2488,7 @@ fn invalid_model_status_is_stable_and_path_free() {
 fn model_presentations_follow_the_resolved_language() {
     let ready = model_entry(
         "preset-model",
-        SettingsModelOrigin::Preset,
+        SettingsModelOrigin::BuiltIn,
         SettingsModelAvailability::Ready {
             behaviors: Vec::new(),
         },
@@ -2492,7 +2499,7 @@ fn model_presentations_follow_the_resolved_language() {
 
     let invalid = model_entry(
         "installed-model",
-        SettingsModelOrigin::Installed,
+        SettingsModelOrigin::Imported,
         SettingsModelAvailability::Invalid {
             diagnostic: SettingsModelDiagnostic::ModelTextureMissing,
         },
@@ -2781,7 +2788,7 @@ fn deleting_a_model_asks_the_service_only_after_the_confirmation(cx: &mut TestAp
     let (client, endpoint) = crate::SettingsClient::bounded(4);
     let installed = model_entry(
         "duplicate",
-        SettingsModelOrigin::Installed,
+        SettingsModelOrigin::Imported,
         SettingsModelAvailability::Ready {
             behaviors: Vec::new(),
         },
@@ -3004,7 +3011,7 @@ fn the_import_card_is_as_tall_as_the_model_cards_beside_it(cx: &mut TestAppConte
     // status line is what pushes a model card past the import card's floor.
     seeded.model_catalog.entries = vec![model_entry(
         "broken",
-        SettingsModelOrigin::Installed,
+        SettingsModelOrigin::Imported,
         SettingsModelAvailability::Invalid {
             diagnostic: SettingsModelDiagnostic::ModelTextureMissing,
         },
@@ -3080,8 +3087,8 @@ fn a_model_import_disables_the_other_cards_actions_until_it_finishes(cx: &mut Te
     let ready = SettingsModelAvailability::Ready {
         behaviors: Vec::new(),
     };
-    let preset = model_entry("standard", SettingsModelOrigin::Preset, ready.clone());
-    let installed = model_entry("editable", SettingsModelOrigin::Installed, ready);
+    let preset = model_entry("standard", SettingsModelOrigin::BuiltIn, ready.clone());
+    let installed = model_entry("editable", SettingsModelOrigin::Imported, ready);
     let mut seeded = crate::tests::snapshot(1, false, true);
     seeded.model_catalog.entries = vec![preset, installed];
     let entries = seeded.model_catalog.entries.clone();
@@ -3266,7 +3273,7 @@ fn opening_a_models_editor_does_not_change_the_card(cx: &mut TestAppContext) {
     // page ever draws, which is exactly the one an editor must not resize.
     seeded.model_catalog.entries = vec![model_entry(
         "editable",
-        SettingsModelOrigin::Installed,
+        SettingsModelOrigin::Imported,
         SettingsModelAvailability::Ready {
             behaviors: Vec::new(),
         },
@@ -3275,7 +3282,7 @@ fn opening_a_models_editor_does_not_change_the_card(cx: &mut TestAppContext) {
     let active = seeded.active_model.clone();
     let model = SettingsModelKey {
         id: "editable".to_owned(),
-        origin: SettingsModelOrigin::Installed,
+        origin: SettingsModelOrigin::Imported,
     };
     let page_snapshot = seeded.clone();
 
@@ -3406,14 +3413,14 @@ fn a_preset_models_card_opens_the_same_in_place_editor(cx: &mut TestAppContext) 
     seeded.model_catalog.entries = vec![
         model_entry(
             "standard",
-            SettingsModelOrigin::Preset,
+            SettingsModelOrigin::BuiltIn,
             SettingsModelAvailability::Ready {
                 behaviors: Vec::new(),
             },
         ),
         model_entry(
             "imported",
-            SettingsModelOrigin::Installed,
+            SettingsModelOrigin::Imported,
             SettingsModelAvailability::Ready {
                 behaviors: Vec::new(),
             },
@@ -3423,7 +3430,7 @@ fn a_preset_models_card_opens_the_same_in_place_editor(cx: &mut TestAppContext) 
     let active = seeded.active_model.clone();
     let model = SettingsModelKey {
         id: "standard".to_owned(),
-        origin: SettingsModelOrigin::Preset,
+        origin: SettingsModelOrigin::BuiltIn,
     };
     let page_snapshot = seeded.clone();
 
@@ -3523,7 +3530,7 @@ fn an_in_flight_command_never_flickers_the_models_page_gate(cx: &mut TestAppCont
     let (client, endpoint) = crate::SettingsClient::bounded(4);
     let installed = model_entry(
         "duplicate",
-        SettingsModelOrigin::Installed,
+        SettingsModelOrigin::Imported,
         SettingsModelAvailability::Ready {
             behaviors: Vec::new(),
         },
@@ -3675,11 +3682,11 @@ fn model_import_success_waits_for_every_queued_cover_capture(cx: &mut TestAppCon
     };
     let first = SettingsModelKey {
         id: "first-installed".to_owned(),
-        origin: SettingsModelOrigin::Installed,
+        origin: SettingsModelOrigin::Imported,
     };
     let second = SettingsModelKey {
         id: "second-installed".to_owned(),
-        origin: SettingsModelOrigin::Installed,
+        origin: SettingsModelOrigin::Imported,
     };
     let mut seeded = crate::tests::snapshot(1, false, true);
     seeded.model_catalog.entries = vec![
@@ -3722,7 +3729,7 @@ fn a_failed_cover_capture_abandons_the_import(cx: &mut TestAppContext) {
     let (view, visual) = settings_view(cx);
     let installed = SettingsModelKey {
         id: "unpreparable".to_owned(),
-        origin: SettingsModelOrigin::Installed,
+        origin: SettingsModelOrigin::Imported,
     };
     let mut seeded = crate::tests::snapshot(1, false, true);
     seeded.model_catalog.entries = vec![model_entry(
@@ -3765,7 +3772,7 @@ fn cover_capture_completed_before_import_reply_skips_capturing(cx: &mut TestAppC
     let (view, visual) = settings_view(cx);
     let installed = SettingsModelKey {
         id: "installed".to_owned(),
-        origin: SettingsModelOrigin::Installed,
+        origin: SettingsModelOrigin::Imported,
     };
     let mut seeded = crate::tests::snapshot(1, false, true);
     seeded.model_catalog.entries = vec![model_entry(

@@ -2178,7 +2178,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .hide_on_pointer_hover_delay_seconds,
         ),
         keep_inside_screen: application.config().overlay.keep_inside_screen,
-        maximum_fps: application.config().model.maximum_fps,
+        maximum_fps: application.config().overlay.maximum_fps,
         window_bounds: application.overlay_window_placement().map(|placement| {
             OverlayWindowBounds::new(placement.x, placement.y, placement.width, placement.height)
         }),
@@ -2199,7 +2199,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let status_icon = Arc::new(ProductStatusIcon {
         sender: status_icon_sender,
     });
-    let initial_status_icon_visible = application.config().application.show_status_icon;
+    let initial_status_icon_visible = application.config().system.show_status_icon;
     #[cfg(target_os = "windows")]
     let (taskbar_icon_sender, taskbar_icon_receiver) = std::sync::mpsc::sync_channel(4);
     #[cfg(target_os = "windows")]
@@ -2207,13 +2207,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sender: taskbar_icon_sender,
     });
     #[cfg(target_os = "windows")]
-    let initial_taskbar_icon_visible = application.config().application.show_taskbar_icon;
+    let initial_taskbar_icon_visible = application.config().system.show_taskbar_icon;
     let main_thread_signals = bongocat_app::ApplicationMainThreadSignals::default();
     let input_producer = application.input_producer();
     let cursor_producer = application.cursor_producer();
     let gamepad_axis_producer = application.gamepad_axis_producer();
     let render_consumer = application.take_render_consumer()?;
-    let expect_visible_frame = application.config().overlay.visible;
+    let expect_visible_frame = true;
     let frame_runtime_client = runtime_client.clone();
     let frame_source_shutdown = FrameSourceShutdown::default();
     let failures = Arc::new(Mutex::new(Vec::new()));
@@ -3205,7 +3205,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .entries
                         .iter()
                         .find(|entry| {
-                            entry.origin == SettingsModelOrigin::Preset
+                            entry.origin == SettingsModelOrigin::BuiltIn
                                 && (entry.id != initial_model.id
                                     || entry.origin != initial_model.origin)
                                 && matches!(

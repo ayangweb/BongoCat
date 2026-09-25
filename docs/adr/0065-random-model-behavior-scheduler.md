@@ -10,8 +10,8 @@ GPUI 或 renderer 自己决定业务行为的情况下启用周期性随机播�
 
 ## 决策
 
-- `model.random_behavior_enabled` 是唯一的启用门禁，默认 `false`；
-  `model.random_behavior_interval_seconds` 默认 `30`，持久化范围为 `1..=3600`。
+- `model.random_behavior.enabled` 是唯一的启用门禁，默认 `false`；
+  `model.random_behavior.interval_seconds` 默认 `30`，持久化范围为 `1..=3600`。
 - `bongocat-runtime::RandomBehaviorSettings` 是 runtime 的唯一设置类型。
   `SetRandomBehaviorSettings` 携带 expected config revision 对应的强类型 command，并在
   `RuntimeSnapshot` 中回显；非法间隔在 runtime 和 config 边界都拒绝。

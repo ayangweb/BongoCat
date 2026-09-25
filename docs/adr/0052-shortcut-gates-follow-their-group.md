@@ -11,8 +11,8 @@
 
 决定本 ADR 形态的事实：
 
-1. **开关与它控制的内容不在同一页。** `model.enable_behavior_shortcuts` 渲染在「交互」页「模型」
-   分组的第一项，而 `shortcuts.model_behaviors` 的行渲染在「快捷键」页「模型行为快捷键」分组里。模型
+1. **开关与它控制的内容不在同一页。** `shortcuts.model_behaviors_enabled` 渲染在「交互」页「模型」
+   分组的第一项，而 `shortcuts.model_behavior_bindings` 的行渲染在「快捷键」页「模型行为快捷键」分组里。模型
    默认关闭（`false`）加上自动分配会写满绑定，于是新安装的常态是"页面上一列组合键，按下去没有任何
    反应"，而解释这件事的开关在另一页。第 91 项当时把这一点记为"未决观察"，并说明"若维护者认为需要
    在快捷键页加一行提示，那属于独立的 UI 变更"——本 ADR 就是那次决策。
@@ -22,11 +22,11 @@
 3. **应用级快捷键此前没有门禁。** Technical Design 原文要求模型开关"不得禁用 `open_settings`、
    overlay 显隐、镜像、穿透或置顶等应用级快捷键"。维护者要求"两个模块分别单独自己去管理"，因此
    应用级快捷键需要它自己的开关，而不是被模型开关连坐——原约束因此只在模型开关上保留。
-4. **门禁的既有语义是"只过滤、不改写"。** `enable_behavior_shortcuts` 关闭时不删除绑定，只把它们
+4. **门禁的既有语义是"只过滤、不改写"。** `shortcuts.model_behaviors_enabled` 关闭时不删除绑定，只把它们
    排除在平台匹配表之外，重新打开无需重录。新门禁沿用同一语义，这也是"关掉不等于清空"能被用户接受的
    前提。
 5. **`ShortcutConfig` 的派生 `Default` 会成为陷阱。** 新字段若按"禁用"极性命名（`disable_commands`），
-   派生 `Default` 恰好给出正确结果，但与 `enable_behavior_shortcuts` 的正向命名分叉；若按"启用"极性
+   派生 `Default` 恰好给出正确结果，但与 `shortcuts.model_behaviors_enabled` 的正向命名分叉；若按"启用"极性
    命名，派生 `Default` 会把全新配置判成"窗口快捷键已关闭"。两者都必须显式处理。
 
 ## 决策
@@ -38,7 +38,7 @@
 - `gate_label(language) -> &'static str`：该作用域的开关标题。可见开关与辅助功能节点读同一个
   返回值，页面上不再出现第二份措辞。
 - `is_enabled(snapshot) -> bool`：该作用域在配置里的真值，直接来自 `commands_enabled` /
-  `enable_behavior_shortcuts`，不做任何取反。
+  `shortcuts.model_behaviors_enabled`，不做任何取反。
 
 `group()` 把 `gate_item()` 作为该分组的第一个 item，行列表仍是原来的自定义元素。开关标题是
 `启用窗口快捷键` / `启用模型行为快捷键`，**只带标题、不带描述**：第 97 项已经把"标题已能表达清楚的
@@ -47,7 +47,7 @@
 
 ### 2. 配置新增正向字段 `shortcuts.commands_enabled`，默认 `true`
 
-- 字段与 `shortcuts.commands` 同段，命名与数组对齐；`ShortcutConfig` 改为手写 `Default`，使全新
+- 字段与 `shortcuts.command_bindings` 同段，命名与数组对齐；`ShortcutConfig` 改为手写 `Default`，使全新
   v1 配置是"窗口快捷键生效、模型行为快捷键不生效"——与改动前逐字段一致。
 - `canonicalized()` 原样透传该字段：设置页面提交绑定表时不得顺手把它改回默认。
 - 应用层 `shortcut_config_from_settings` 多接一个 `commands_enabled` 参数，由调用方（`set_shortcuts`、

@@ -21,7 +21,7 @@ BongoCatMver 是例外：它有明确的 legacy `standard`、`keyboard`、`gamep
 
 ### 1. installed 模型元数据持久化 `input_mode`
 
-当前 v1 的 `model.installed_models[]` 每条记录包含：
+当前 v1 的 `model.imported_models[]` 每条记录包含：
 
 ```json
 {
@@ -33,9 +33,9 @@ BongoCatMver 是例外：它有明确的 legacy `standard`、`keyboard`、`gamep
 
 `input_mode` 是必填的 `standard`、`keyboard` 或 `gamepad`。它与标题一起在导入事务完成后写入 `config.json`，重启时从配置读取。模型改名只修改 `title`，必须保留原 `input_mode`；删除模型随整条元数据删除。
 
-`model.preset_models[]` 继续只保存 `id` 与 `title`。预置模式由构建拥有的稳定 id 派生，不在用户配置里重复保存。
+`model.built_in_models[]` 继续只保存 `id` 与 `title`。预置模式由构建拥有的稳定 id 派生，不在用户配置里重复保存。
 
-`input_mode` 不加入 `(origin, model_id)` 模型身份，不新增模式编辑 command，也不从显示标题反解析。
+`input_mode` 不加入 `{ id, source }` 模型身份，不新增模式编辑 command，也不从显示标题反解析。
 
 ### 2. 导入时判定普通包模式
 

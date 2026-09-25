@@ -229,7 +229,7 @@ expressions do not auto-clear to idle. An invalid request leaves the active expr
 per-frame order is parameter/part-opacity defaults, motion, expression, typed product input, then
 Cubism Core update.
 
-`model.random_behavior_enabled` and `model.random_behavior_interval_seconds` form one typed runtime
+`model.random_behavior.enabled` and `model.random_behavior.interval_seconds` form one typed runtime
 setting. When enabled, the worker waits one complete interval on its injected monotonic clock and
 uniformly selects from the active model's combined list of declared motions and expressions (each
 item has equal weight). A successful model

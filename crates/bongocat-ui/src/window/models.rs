@@ -673,7 +673,7 @@ fn model_card_actions(
     let delete_label = bongocat_i18n::text(language.catalog_locale(), "models.actions.delete");
     // Presets have no delete affordance; only user-installed models render the
     // confirmation trigger (and only those can still be disabled during import).
-    if model.origin == SettingsModelOrigin::Installed {
+    if model.origin == SettingsModelOrigin::Imported {
         row = row.child(
             PopConfirm::new(
                 ("delete-model-confirmation", index),

@@ -8,7 +8,7 @@ use bongocat_audio::{
     MotionAudioClient, MotionAudioCommand, MotionAudioDiagnostics, MotionAudioStopReason,
     MotionAudioVolume,
 };
-use bongocat_model::{CommittedModel, ModelSnapshot};
+use bongocat_model::{CommittedModel, ModelOrigin, ModelSnapshot};
 use bongocat_render::{ModelCommitErrorCode, ModelCommitOutcome, ModelCommitToken, RenderConsumer};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -554,6 +554,10 @@ pub struct RuntimeSnapshot {
     pub motion_audio_enabled: bool,
     pub motion_audio: MotionAudioDiagnostics,
     pub active_model: Option<ModelSnapshot>,
+    /// Storage origin of the model currently owned by the runtime. The model
+    /// id alone is not a complete identity because an imported package may use
+    /// the same id as a build-shipped model.
+    pub active_model_origin: Option<ModelOrigin>,
     pub pending_model: Option<PendingModelSnapshot>,
     pub active_motion: Option<ActiveMotionSnapshot>,
     pub active_expression: Option<ActiveExpressionSnapshot>,
@@ -590,6 +594,7 @@ impl RuntimeSnapshot {
             motion_audio_enabled,
             motion_audio,
             active_model: None,
+            active_model_origin: None,
             pending_model: None,
             active_motion: None,
             active_expression: None,
@@ -2536,6 +2541,7 @@ fn begin_model_activation(
             *input_bindings = Arc::unwrap_or_clone(bindings);
         }
         let model_snapshot = committed.snapshot();
+        let model_origin = committed.origin();
         *active_model = Some(committed);
         *active_motion = None;
         *active_expression = None;
@@ -2543,6 +2549,7 @@ fn begin_model_activation(
         publish(snapshot, |current| {
             current.state = RuntimeState::Ready;
             current.active_model = Some(model_snapshot);
+            current.active_model_origin = Some(model_origin);
             current.active_motion = None;
             current.active_expression = None;
             current.motion_events.last_event = None;
@@ -2667,6 +2674,7 @@ fn process_model_commit_feedback(
         }
         let model_input = input_state.model_snapshot(input_bindings, normalized_cursor);
         let model_snapshot = pending.model.snapshot();
+        let model_origin = pending.model.origin();
         activate_model_audio(motion_audio, audio_paths);
         *active_model = Some(pending.model);
         *active_motion = None;
@@ -2676,6 +2684,7 @@ fn process_model_commit_feedback(
         publish(snapshot, |current| {
             current.state = RuntimeState::Ready;
             current.active_model = Some(model_snapshot);
+            current.active_model_origin = Some(model_origin);
             current.pending_model = None;
             current.active_motion = None;
             current.active_expression = None;
@@ -5195,6 +5204,7 @@ mod tests {
                 .map(|model| model.id.as_str()),
             Some("standard")
         );
+        assert_eq!(first_active.active_model_origin, Some(ModelOrigin::Preset));
         let active_motion_id = MotionId::new("CAT_motion", 0).expect("motion id");
         let motion_sequence = client
             .send(RuntimeCommand::StartMotion {
@@ -5248,6 +5258,7 @@ mod tests {
                 .map(|model| model.id.as_str()),
             Some("standard")
         );
+        assert_eq!(rejected.active_model_origin, Some(ModelOrigin::Preset));
         let preserved = wait_for_render_frame(&consumer, |frame| {
             frame.model_generation == first.model_generation
                 && frame.frame_number > first.frame_number

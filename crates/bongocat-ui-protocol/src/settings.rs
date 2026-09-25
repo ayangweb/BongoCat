@@ -440,7 +440,7 @@ pub struct SettingsShortcutBinding {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsModelBehaviorBinding {
-    pub model_id: String,
+    pub model: SettingsModelKey,
     pub behavior_id: String,
     pub shortcut: String,
 }
@@ -557,7 +557,7 @@ pub enum SettingsStartupItemError {
     DisableFailed,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct SettingsModelKey {
     pub id: String,
     pub origin: SettingsModelOrigin,
@@ -830,10 +830,10 @@ pub struct SettingsModelEntry {
     pub cover: Option<PathBuf>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum SettingsModelOrigin {
-    Preset,
-    Installed,
+    BuiltIn,
+    Imported,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2779,7 +2779,10 @@ mod tests {
                 shortcut: "Control+Alt+B".to_owned(),
             }],
             model_behaviors: vec![SettingsModelBehaviorBinding {
-                model_id: "standard".to_owned(),
+                model: SettingsModelKey {
+                    id: "standard".to_owned(),
+                    origin: SettingsModelOrigin::BuiltIn,
+                },
                 behavior_id: "motion:TapBody:0".to_owned(),
                 shortcut: "Control+Alt+M".to_owned(),
             }],
@@ -3054,7 +3057,7 @@ mod tests {
         let (client, endpoint) = SettingsClient::bounded(1);
         let expected = SettingsModelKey {
             id: "custom-model".to_owned(),
-            origin: SettingsModelOrigin::Installed,
+            origin: SettingsModelOrigin::Imported,
         };
         let worker = thread::spawn({
             let expected = expected.clone();
@@ -3309,7 +3312,7 @@ mod tests {
             input_diagnostics: SettingsInputDiagnostics::default(),
             active_model: Some(SettingsModelKey {
                 id: "standard".to_owned(),
-                origin: SettingsModelOrigin::Preset,
+                origin: SettingsModelOrigin::BuiltIn,
             }),
             model_catalog: SettingsModelCatalog::default(),
         }

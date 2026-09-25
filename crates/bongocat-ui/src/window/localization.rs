@@ -154,8 +154,8 @@ pub(super) fn model_invalid_summary(
     let origin = bongocat_i18n::text(
         language.catalog_locale(),
         match origin {
-            SettingsModelOrigin::Preset => "models.identity.source.built_in",
-            SettingsModelOrigin::Installed => "models.identity.source.imported",
+            SettingsModelOrigin::BuiltIn => "models.identity.source.built_in",
+            SettingsModelOrigin::Imported => "models.identity.source.imported",
         },
     );
     bongocat_i18n::format_text(

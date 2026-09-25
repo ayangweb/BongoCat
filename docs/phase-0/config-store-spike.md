@@ -12,7 +12,7 @@
 - Bundle ID 为 `com.ayangweb.bongo-cat`；相同 base 下使用 `development/` 与 `production/` 两个互斥根目录；
 - 两个环境具有完全一致的相对结构：`config.json`、`window-state.json`、`models/`、`backups/`、`logs/`、`updates/`、`locks/`；
 - `NativeConfig` 是强类型结构，当前与共享默认 fixture 对齐为 `schema_version = 1`，模型选择
-  使用成对的 `selected_model_origin`/`selected_model_id`，JSON key 使用当前产品语义的
+  使用 nullable 的完整 `selected_model: { id, source }`，JSON key 使用当前产品语义的
   `snake_case`；`next` 不读取或迁移开发中间结构；
 - typed parser 与 JSON schema 都拒绝未知字段，避免拼写错误或旧配置字段被静默接受；
 - commit 流程为 validate -> serialize -> 同目录临时文件 -> `sync_all` -> 备份当前有效配置 -> rename -> 提交后重新打开验证；校验失败不会覆盖旧配置，成功提交会保留 `backups/config.previous.json`；

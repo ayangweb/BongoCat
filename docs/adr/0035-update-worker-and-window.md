@@ -10,7 +10,7 @@ ADR-0034 交付了更新链路与信任模型，并在「后续边界」中明�
 
 在此之前，产品里与更新相关的可见能力只有两处，且都不完整：
 
-- 设置页有一个「自动检查更新」开关，它只把 `check_for_updates_automatically` 写进配置，
+- 设置页有一个「自动检查更新」开关，它只把 `updates.check_automatically` 写进配置，
   **没有任何代码读取它**——打开它不会有任何行为。
 - 系统菜单有一个「检查更新」入口，由 `bongocat_app::update_check_available()` 决定是否显示，
   但它的处理分支是 `SystemMenuAction::CheckForUpdates => Ok(true)`，即**点下去什么都不发生**。

@@ -607,10 +607,10 @@ fn run_service(
                 let _ = reply.respond(clock.revision);
             }
             SettingsCommand::ReadAutomaticUpdateSettings { reply } => {
-                let application_config = &application.config().application;
+                let application_config = &application.config().updates;
                 let _ = reply.respond(Ok(AutomaticUpdateSettings {
-                    enabled: application_config.check_for_updates_automatically,
-                    interval_hours: application_config.check_for_updates_interval_hours,
+                    enabled: application_config.check_automatically,
+                    interval_hours: application_config.check_interval_hours,
                 }));
             }
             SettingsCommand::SetOverlayVisible {
@@ -678,7 +678,7 @@ fn run_service(
             } => {
                 let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        let previous = application.config().application.show_status_icon;
+                        let previous = application.config().system.show_status_icon;
                         if previous == visible {
                             return Ok(());
                         }
@@ -703,7 +703,7 @@ fn run_service(
             } => {
                 let result = check_revision(&application, expected_config_revision)
                     .and_then(|()| {
-                        let previous = application.config().application.show_taskbar_icon;
+                        let previous = application.config().system.show_taskbar_icon;
                         if previous == visible {
                             return Ok(());
                         }
@@ -1270,6 +1270,7 @@ struct SettingsSnapshotClock {
     observed_runtime_diagnostics: Option<SettingsRuntimeDiagnostics>,
     observed_input_diagnostics: Option<SettingsInputDiagnostics>,
     observed_startup_item: Option<SettingsStartupItemStatus>,
+    observed_overlay_visible: Option<bool>,
     diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
     input_monitoring_permission: InputMonitoringPermissionCache,
 }
@@ -1282,6 +1283,7 @@ impl SettingsSnapshotClock {
             observed_runtime_diagnostics: None,
             observed_input_diagnostics: None,
             observed_startup_item: None,
+            observed_overlay_visible: None,
             diagnostics_export: None,
             input_monitoring_permission: InputMonitoringPermissionCache {
                 checked_at: None,
@@ -1339,6 +1341,16 @@ impl SettingsSnapshotClock {
         previous
     }
 
+    fn observe_overlay_visible(&mut self, visible: bool) {
+        if self
+            .observed_overlay_visible
+            .is_some_and(|previous| previous != visible)
+        {
+            self.mark_changed();
+        }
+        self.observed_overlay_visible = Some(visible);
+    }
+
     fn observe_diagnostics_export(&mut self, status: SettingsDiagnosticsExportStatus) {
         if self.diagnostics_export != Some(status) {
             self.mark_changed();
@@ -1385,16 +1397,10 @@ fn snapshot(
         appearance_theme: settings_theme(application.config().appearance.theme),
         language: settings_language(application.config().appearance.language),
         resolved_language: settings_language(application.effective_language()),
-        status_icon_visible: application.config().application.show_status_icon,
-        taskbar_icon_visible: application.config().application.show_taskbar_icon,
-        check_for_updates_automatically: application
-            .config()
-            .application
-            .check_for_updates_automatically,
-        check_for_updates_interval_hours: application
-            .config()
-            .application
-            .check_for_updates_interval_hours,
+        status_icon_visible: application.config().system.show_status_icon,
+        taskbar_icon_visible: application.config().system.show_taskbar_icon,
+        check_for_updates_automatically: application.config().updates.check_automatically,
+        check_for_updates_interval_hours: application.config().updates.check_interval_hours,
         overlay_visible: runtime.overlay_visible,
         overlay: SettingsOverlay {
             click_through: runtime.overlay_settings.click_through,
@@ -1410,7 +1416,7 @@ fn snapshot(
         },
         motion_audio_enabled: runtime.motion_audio_enabled,
         command_shortcuts_enabled: application.config().shortcuts.commands_enabled,
-        behavior_shortcuts_enabled: application.config().model.enable_behavior_shortcuts,
+        behavior_shortcuts_enabled: application.config().shortcuts.model_behaviors_enabled,
         maximum_fps: runtime.maximum_fps,
         release_fallback_timeout_ms: runtime.release_fallback_timeout_ms,
         random_behavior: SettingsRandomBehavior {
@@ -1465,6 +1471,7 @@ fn observe_snapshot_state(
 ) -> (RuntimeSnapshot, SettingsInputDiagnostics) {
     let revision_before = clock.revision;
     let runtime = application.runtime_client().snapshot();
+    clock.observe_overlay_visible(runtime.overlay_visible);
     let input_diagnostics = settings_input_diagnostics(
         &runtime.input,
         runtime.platform_input,
@@ -1605,7 +1612,7 @@ fn settings_shortcuts(config: &NativeConfig) -> SettingsShortcuts {
     SettingsShortcuts {
         commands: config
             .shortcuts
-            .commands
+            .command_bindings
             .iter()
             .map(|binding| SettingsShortcutBinding {
                 command: binding.command.clone(),
@@ -1614,10 +1621,16 @@ fn settings_shortcuts(config: &NativeConfig) -> SettingsShortcuts {
             .collect(),
         model_behaviors: config
             .shortcuts
-            .model_behaviors
+            .model_behavior_bindings
             .iter()
             .map(|binding| SettingsModelBehaviorBinding {
-                model_id: binding.model_id.clone(),
+                model: SettingsModelKey {
+                    id: binding.model.id.clone(),
+                    origin: match binding.model.source {
+                        bongocat_config::ModelSource::BuiltIn => SettingsModelOrigin::BuiltIn,
+                        bongocat_config::ModelSource::Imported => SettingsModelOrigin::Imported,
+                    },
+                },
                 behavior_id: binding.behavior_id.clone(),
                 shortcut: binding.shortcut.clone(),
             })
@@ -1642,7 +1655,8 @@ fn apply_application_shortcut(
     match command {
         SettingsApplicationShortcut::OpenSettings => return Ok(()),
         SettingsApplicationShortcut::ToggleOverlay => {
-            application.set_overlay_visible(!application.config().overlay.visible)?;
+            let visible = application.runtime_client().snapshot().overlay_visible;
+            application.set_overlay_visible(!visible)?;
         }
         SettingsApplicationShortcut::ToggleMirror => {
             let settings = application.runtime_client().snapshot().model_settings;
@@ -1953,21 +1967,20 @@ fn settings_model_catalog(application: &Application) -> SettingsModelCatalog {
 }
 
 fn configured_model_key(application: &Application) -> Option<SettingsModelKey> {
-    let id = application.config().model.selected_model_id.clone()?;
-    let origin = application.config().model.selected_model_origin?;
+    let selected = application.config().model.selected_model.as_ref()?;
     Some(SettingsModelKey {
-        id,
-        origin: match origin {
-            bongocat_config::SelectedModelOrigin::Preset => SettingsModelOrigin::Preset,
-            bongocat_config::SelectedModelOrigin::Installed => SettingsModelOrigin::Installed,
+        id: selected.id.clone(),
+        origin: match selected.source {
+            bongocat_config::ModelSource::BuiltIn => SettingsModelOrigin::BuiltIn,
+            bongocat_config::ModelSource::Imported => SettingsModelOrigin::Imported,
         },
     })
 }
 
 const fn settings_model_origin(origin: ModelOrigin) -> SettingsModelOrigin {
     match origin {
-        ModelOrigin::Preset => SettingsModelOrigin::Preset,
-        ModelOrigin::Installed => SettingsModelOrigin::Installed,
+        ModelOrigin::Preset => SettingsModelOrigin::BuiltIn,
+        ModelOrigin::Installed => SettingsModelOrigin::Imported,
     }
 }
 
@@ -1981,8 +1994,8 @@ fn model_mver_input_mode(mode: bongocat_ui_protocol::SettingsMverMode) -> MverIn
 
 const fn model_origin(origin: SettingsModelOrigin) -> ModelOrigin {
     match origin {
-        SettingsModelOrigin::Preset => ModelOrigin::Preset,
-        SettingsModelOrigin::Installed => ModelOrigin::Installed,
+        SettingsModelOrigin::BuiltIn => ModelOrigin::Preset,
+        SettingsModelOrigin::Imported => ModelOrigin::Installed,
     }
 }
 
@@ -1998,8 +2011,8 @@ fn settings_model_entry(application: &Application, entry: ModelCatalogEntry) -> 
     let id = entry.id().as_str().to_owned();
     let model_origin = entry.origin();
     let origin = match model_origin {
-        ModelOrigin::Preset => SettingsModelOrigin::Preset,
-        ModelOrigin::Installed => SettingsModelOrigin::Installed,
+        ModelOrigin::Preset => SettingsModelOrigin::BuiltIn,
+        ModelOrigin::Installed => SettingsModelOrigin::Imported,
     };
     // The title is user-editable metadata; a model that was never renamed —
     // which is every preset the user has not customised — displays the stable
@@ -2273,7 +2286,7 @@ fn diagnostics_document(
     let mut invalid_preset = 0_u64;
     let mut invalid_installed = 0_u64;
     for entry in &snapshot.model_catalog.entries {
-        let is_preset = entry.origin == SettingsModelOrigin::Preset;
+        let is_preset = entry.origin == SettingsModelOrigin::BuiltIn;
         match &entry.availability {
             SettingsModelAvailability::Ready { .. } => {
                 if is_preset {
@@ -2345,8 +2358,8 @@ fn diagnostics_document(
                 .active_model
                 .as_ref()
                 .map(|model| match model.origin {
-                    SettingsModelOrigin::Preset => "preset",
-                    SettingsModelOrigin::Installed => "installed",
+                    SettingsModelOrigin::BuiltIn => "preset",
+                    SettingsModelOrigin::Imported => "installed",
                 }),
         },
         application_logs: DiagnosticsApplicationLogs {
@@ -3018,7 +3031,7 @@ mod tests {
             },
             active_model: Some(SettingsModelKey {
                 id: "private-model-name".to_owned(),
-                origin: SettingsModelOrigin::Installed,
+                origin: SettingsModelOrigin::Imported,
             }),
             model_catalog: SettingsModelCatalog {
                 entries: vec![
@@ -3026,7 +3039,7 @@ mod tests {
                         id: "private-model-name".to_owned(),
                         title: "我的猫".to_owned(),
                         input_mode: Some(SettingsModelMode::Keyboard),
-                        origin: SettingsModelOrigin::Installed,
+                        origin: SettingsModelOrigin::Imported,
                         availability: SettingsModelAvailability::Ready {
                             behaviors: Vec::new(),
                         },
@@ -3039,7 +3052,7 @@ mod tests {
                         id: "broken-private-model".to_owned(),
                         title: "broken-private-model".to_owned(),
                         input_mode: None,
-                        origin: SettingsModelOrigin::Installed,
+                        origin: SettingsModelOrigin::Imported,
                         availability: SettingsModelAvailability::Invalid {
                             diagnostic: SettingsModelDiagnostic::ModelJsonInvalid,
                         },
@@ -3548,14 +3561,12 @@ mod tests {
                 false,
             )
             .expect("business command remains available");
-        assert_ne!(updated.config_revision, snapshot.config_revision);
+        assert_eq!(updated.config_revision, snapshot.config_revision);
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
 
         let reloaded = store.load_or_default().expect("reloaded defaults").config;
-        let mut expected = bongocat_config::NativeConfig::default();
-        expected.overlay.visible = false;
-        assert_eq!(reloaded, expected);
+        assert_eq!(reloaded, bongocat_config::NativeConfig::default());
         assert!(
             std::fs::read_dir(&layout.backups)
                 .expect("backup directory")
@@ -3631,7 +3642,7 @@ mod tests {
             )
             .expect("toggle overlay visibility");
         assert_eq!(updated.revision, initial.revision.saturating_add(1));
-        assert_ne!(updated.config_revision, initial.config_revision);
+        assert_eq!(updated.config_revision, initial.config_revision);
 
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
@@ -3786,7 +3797,7 @@ mod tests {
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
         let restarted = Application::start_with_layout(layout).expect("restart application");
-        assert!(!restarted.config().application.show_status_icon);
+        assert!(!restarted.config().system.show_status_icon);
         restarted.shutdown().expect("restart shutdown");
     }
 
@@ -3861,7 +3872,7 @@ mod tests {
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
         let restarted = Application::start_with_layout(layout).expect("restart application");
-        assert!(!restarted.config().application.show_taskbar_icon);
+        assert!(!restarted.config().system.show_taskbar_icon);
         restarted.shutdown().expect("restart shutdown");
     }
 
@@ -3958,19 +3969,8 @@ mod tests {
         client.shutdown_blocking().expect("service shutdown");
         service.join().expect("service join");
         let restarted = Application::start_with_layout(layout).expect("restart application");
-        assert!(
-            !restarted
-                .config()
-                .application
-                .check_for_updates_automatically
-        );
-        assert_eq!(
-            restarted
-                .config()
-                .application
-                .check_for_updates_interval_hours,
-            48
-        );
+        assert!(!restarted.config().updates.check_automatically);
+        assert_eq!(restarted.config().updates.check_interval_hours, 48);
         restarted.shutdown().expect("restart shutdown");
     }
 
@@ -4212,7 +4212,10 @@ mod tests {
                 shortcut: command_shortcut.to_owned(),
             }],
             model_behaviors: vec![SettingsModelBehaviorBinding {
-                model_id: "standard".to_owned(),
+                model: SettingsModelKey {
+                    id: "standard".to_owned(),
+                    origin: SettingsModelOrigin::BuiltIn,
+                },
                 behavior_id: behavior_id.to_owned(),
                 shortcut: behavior_shortcut.to_owned(),
             }],
@@ -4222,7 +4225,7 @@ mod tests {
     #[test]
     fn shortcut_config_errors_map_to_a_stable_settings_code() {
         for field in [
-            "shortcuts.commands",
+            "shortcuts.command_bindings",
             "shortcuts.command",
             "shortcuts.behavior",
             "shortcuts.binding",
@@ -4352,7 +4355,7 @@ mod tests {
             std::thread::yield_now();
         };
         assert!(!updated.overlay_visible);
-        assert_ne!(updated.config_revision, initial.config_revision);
+        assert_eq!(updated.config_revision, initial.config_revision);
         drop(sender);
         client.shutdown_blocking().expect("shutdown service");
         service.join().expect("join service");
@@ -4388,7 +4391,7 @@ mod tests {
         let queued = signals.take_model_cover_captures();
         assert_eq!(queued.len(), 1);
         let key = queued[0].key().clone();
-        assert_eq!(key.origin, SettingsModelOrigin::Installed);
+        assert_eq!(key.origin, SettingsModelOrigin::Imported);
         assert_eq!(queued[0].model().id().as_str(), key.id);
         // Draining is what the GPUI loop does: a second poll has nothing left.
         assert!(signals.take_model_cover_captures().is_empty());
@@ -4491,7 +4494,10 @@ mod tests {
                 shortcut: " shift + ctrl + b ".to_owned(),
             }],
             model_behaviors: vec![SettingsModelBehaviorBinding {
-                model_id: "standard".to_owned(),
+                model: SettingsModelKey {
+                    id: "standard".to_owned(),
+                    origin: SettingsModelOrigin::BuiltIn,
+                },
                 behavior_id: " expression: happy ".to_owned(),
                 shortcut: "cmd+option+p".to_owned(),
             }],
@@ -4538,7 +4544,7 @@ mod tests {
         assert!(
             std::fs::read_to_string(&layout.config)
                 .expect("persisted config")
-                .contains("\"enable_behavior_shortcuts\": true")
+                .contains("\"model_behaviors_enabled\": true")
         );
 
         let error = client
@@ -4597,7 +4603,10 @@ mod tests {
             },
             SettingsShortcuts {
                 model_behaviors: vec![SettingsModelBehaviorBinding {
-                    model_id: "standard".to_owned(),
+                    model: SettingsModelKey {
+                        id: "standard".to_owned(),
+                        origin: SettingsModelOrigin::BuiltIn,
+                    },
                     behavior_id: "physics:0".to_owned(),
                     shortcut: "Control+Alt+M".to_owned(),
                 }],
@@ -4680,7 +4689,7 @@ mod tests {
                 initial.config_revision.expect("config revision"),
                 SettingsModelKey {
                     id: "standard".to_owned(),
-                    origin: SettingsModelOrigin::Preset,
+                    origin: SettingsModelOrigin::BuiltIn,
                 },
             )
             .expect("select standard model");
@@ -4703,7 +4712,7 @@ mod tests {
                 .iter()
                 .find(|binding| binding.behavior_id == behavior_id)
                 .unwrap_or_else(|| panic!("{behavior_id} has no default binding"));
-            assert_eq!(binding.model_id, "standard");
+            assert_eq!(binding.model.id, "standard");
             assert_eq!(
                 binding.shortcut,
                 format!("{primary}+{slot}"),
@@ -4747,7 +4756,7 @@ mod tests {
         assert_eq!(initial.model_catalog.entries.len(), 3);
         assert!(initial.model_catalog.error.is_none());
         assert!(initial.model_catalog.entries.iter().all(|entry| {
-            entry.origin == SettingsModelOrigin::Preset
+            entry.origin == SettingsModelOrigin::BuiltIn
                 && matches!(&entry.availability, SettingsModelAvailability::Ready { .. })
         }));
         assert_eq!(
@@ -4767,7 +4776,7 @@ mod tests {
             .model_catalog
             .entries
             .iter()
-            .find(|entry| entry.id == "standard" && entry.origin == SettingsModelOrigin::Preset)
+            .find(|entry| entry.id == "standard" && entry.origin == SettingsModelOrigin::BuiltIn)
             .expect("standard model entry");
         let SettingsModelAvailability::Ready { behaviors, .. } = &standard.availability else {
             panic!("standard model is ready");
@@ -4793,7 +4802,7 @@ mod tests {
                 initial_config_revision,
                 SettingsModelKey {
                     id: "keyboard".to_owned(),
-                    origin: SettingsModelOrigin::Preset,
+                    origin: SettingsModelOrigin::BuiltIn,
                 },
             )
             .expect("select preset model");
@@ -4802,7 +4811,7 @@ mod tests {
             selected.active_model,
             Some(SettingsModelKey {
                 id: "keyboard".to_owned(),
-                origin: SettingsModelOrigin::Preset,
+                origin: SettingsModelOrigin::BuiltIn,
             })
         );
         let overlay_settings = SettingsOverlay {
@@ -4896,22 +4905,24 @@ mod tests {
         assert!(audio_enabled.motion_audio_enabled);
 
         let persisted = std::fs::read_to_string(config_path).expect("persisted config");
-        assert!(persisted.contains("\"visible\": false"));
+        assert!(!persisted.contains("\"visible\""));
         assert!(persisted.contains("\"play_motion_audio\": true"));
-        assert!(persisted.contains("\"selected_model_id\": \"keyboard\""));
-        assert!(persisted.contains("\"selected_model_origin\": \"preset\""));
+        assert!(persisted.contains("\"selected_model\": {"));
+        assert!(persisted.contains("\"id\": \"keyboard\""));
+        assert!(persisted.contains("\"source\": \"built_in\""));
         assert!(persisted.contains("\"click_through\": true"));
         assert!(persisted.contains("\"opacity_percent\": 80"));
         assert!(persisted.contains("\"keep_inside_screen\": false"));
         assert!(persisted.contains("\"mirror\": true"));
         assert!(persisted.contains("\"mirror_pointer_tracking\": true"));
         assert!(persisted.contains("\"ignore_pointer\": true"));
-        assert!(persisted.contains("\"gamepad_stick_dead_zone\": 0.2"));
-        assert!(persisted.contains("\"gamepad_trigger_dead_zone\": 0.1"));
+        assert!(persisted.contains("\"stick_dead_zone\": 0.2"));
+        assert!(persisted.contains("\"trigger_dead_zone\": 0.1"));
         assert!(persisted.contains("\"maximum_fps\": 120"));
         assert!(persisted.contains("\"release_fallback_timeout_ms\": 1500"));
-        assert!(persisted.contains("\"random_behavior_enabled\": true"));
-        assert!(persisted.contains("\"random_behavior_interval_seconds\": 9"));
+        assert!(persisted.contains("\"random_behavior\": {"));
+        assert!(persisted.contains("\"enabled\": true"));
+        assert!(persisted.contains("\"interval_seconds\": 9"));
 
         let stopped = client.shutdown_blocking().expect("service shutdown");
         assert_eq!(stopped.runtime_health, RuntimeHealth::Stopped);
@@ -5017,10 +5028,10 @@ mod tests {
         let initial = client.read_snapshot_blocking().expect("initial snapshot");
         let initial_config_revision = initial.config_revision.expect("config revision");
         let initial_active_model = initial.active_model.clone();
-        let hidden = client
-            .set_overlay_visible_blocking(initial_config_revision, false)
-            .expect("hide overlay");
-        let hidden_config = std::fs::read(&config_path).expect("hidden config");
+        let committed = client
+            .set_appearance_theme_blocking(initial_config_revision, SettingsTheme::Dark)
+            .expect("commit a persistent setting");
+        let committed_config = std::fs::read(&config_path).expect("committed config");
 
         let stale_theme_error = client
             .set_appearance_theme_blocking(initial_config_revision, SettingsTheme::Dark)
@@ -5047,14 +5058,14 @@ mod tests {
         let after_stale_model_settings = client
             .read_snapshot_blocking()
             .expect("snapshot after stale model settings");
-        assert_eq!(after_stale_model_settings.revision, hidden.revision);
+        assert_eq!(after_stale_model_settings.revision, committed.revision);
         assert_eq!(
             after_stale_model_settings.model_settings,
             bongocat_ui_protocol::SettingsModelSettings::default()
         );
         assert_eq!(
-            std::fs::read(&config_path).expect("preserved hidden config"),
-            hidden_config
+            std::fs::read(&config_path).expect("preserved committed config"),
+            committed_config
         );
 
         let stale_gamepad_error = client
@@ -5091,7 +5102,7 @@ mod tests {
                 initial_config_revision,
                 SettingsModelKey {
                     id: "keyboard".to_owned(),
-                    origin: SettingsModelOrigin::Preset,
+                    origin: SettingsModelOrigin::BuiltIn,
                 },
             )
             .expect_err("stale model selection");
@@ -5102,11 +5113,11 @@ mod tests {
         let after_stale_model = client
             .read_snapshot_blocking()
             .expect("snapshot after stale model");
-        assert_eq!(after_stale_model.revision, hidden.revision);
+        assert_eq!(after_stale_model.revision, committed.revision);
         assert_eq!(after_stale_model.active_model, initial_active_model);
         assert_eq!(
-            std::fs::read(&config_path).expect("preserved hidden config"),
-            hidden_config
+            std::fs::read(&config_path).expect("preserved committed config"),
+            committed_config
         );
 
         // The fresh v1 configuration is silent (`play_motion_audio: false`), so
@@ -5123,23 +5134,23 @@ mod tests {
         let after_stale_audio = client
             .read_snapshot_blocking()
             .expect("snapshot after stale audio");
-        assert_eq!(after_stale_audio.revision, hidden.revision);
-        assert!(!after_stale_audio.overlay_visible);
+        assert_eq!(after_stale_audio.revision, committed.revision);
+        assert!(after_stale_audio.overlay_visible);
         assert!(!after_stale_audio.motion_audio_enabled);
         assert_eq!(
-            std::fs::read(&config_path).expect("preserved hidden config"),
-            hidden_config
+            std::fs::read(&config_path).expect("preserved committed config"),
+            committed_config
         );
 
         let enabled = client
             .set_motion_audio_enabled_blocking(
-                hidden.config_revision.expect("config revision"),
+                committed.config_revision.expect("config revision"),
                 true,
             )
             .expect("enable motion audio");
         let enabled_config = std::fs::read(&config_path).expect("enabled config");
         let stale_visibility_error = client
-            .set_overlay_visible_blocking(hidden.config_revision.expect("config revision"), true)
+            .set_overlay_visible_blocking(committed.config_revision.expect("config revision"), true)
             .expect_err("stale overlay visibility update");
         assert_eq!(
             stale_visibility_error.code(),
@@ -5147,7 +5158,7 @@ mod tests {
         );
         let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
         assert_eq!(unchanged.revision, enabled.revision);
-        assert!(!unchanged.overlay_visible);
+        assert!(unchanged.overlay_visible);
         assert!(unchanged.motion_audio_enabled);
         assert_eq!(
             std::fs::read(&config_path).expect("preserved enabled config"),
@@ -5173,7 +5184,7 @@ mod tests {
 
         let initial_config_revision = initial.config_revision.expect("config revision");
         let error = client
-            .set_overlay_visible_blocking(initial_config_revision, !initial.overlay_visible)
+            .set_appearance_theme_blocking(initial_config_revision, SettingsTheme::Dark)
             .expect_err("occupied target error");
         assert_eq!(error.code(), SettingsErrorCode::ConfigTargetOccupied);
         let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
@@ -5352,12 +5363,12 @@ mod tests {
             .model_catalog
             .entries
             .iter()
-            .find(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .find(|entry| entry.origin == SettingsModelOrigin::Imported)
             .expect("installed entry")
             .clone();
         let key = SettingsModelKey {
             id: entry.id.clone(),
-            origin: SettingsModelOrigin::Installed,
+            origin: SettingsModelOrigin::Imported,
         };
         // The page needs the package directory and, since this fixture ships no
         // cover, must be told there is none rather than guessing a path.
@@ -5433,7 +5444,7 @@ mod tests {
         // being written into the bundle.
         let preset = SettingsModelKey {
             id: "standard".to_owned(),
-            origin: SettingsModelOrigin::Preset,
+            origin: SettingsModelOrigin::BuiltIn,
         };
         let bundled_cover = crate::repository_preset_root()
             .join(&preset.id)
@@ -5469,7 +5480,7 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&config_path).expect("persisted config"))
                 .expect("config json");
         assert_eq!(
-            document["model"]["preset_models"],
+            document["model"]["built_in_models"],
             serde_json::json!([{ "id": "standard", "title": "我的预设" }])
         );
 
@@ -5531,11 +5542,11 @@ mod tests {
             .model_catalog
             .entries
             .iter()
-            .find(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .find(|entry| entry.origin == SettingsModelOrigin::Imported)
             .expect("installed entry");
         let key = SettingsModelKey {
             id: entry.id.clone(),
-            origin: SettingsModelOrigin::Installed,
+            origin: SettingsModelOrigin::Imported,
         };
 
         let opened = client
@@ -5601,7 +5612,7 @@ mod tests {
             .model_catalog
             .entries
             .iter()
-            .find(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .find(|entry| entry.origin == SettingsModelOrigin::Imported)
             .expect("installed entry");
         assert_eq!(first.title, "送葬人 · 标准模式");
         assert_eq!(
@@ -5633,7 +5644,7 @@ mod tests {
             .model_catalog
             .entries
             .iter()
-            .filter(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .filter(|entry| entry.origin == SettingsModelOrigin::Imported)
             .collect();
         assert_eq!(
             installed.len(),
@@ -5892,14 +5903,14 @@ mod tests {
                 current.config_revision.expect("config revision"),
                 SettingsModelKey {
                     id: "standard".to_owned(),
-                    origin: SettingsModelOrigin::Preset,
+                    origin: SettingsModelOrigin::BuiltIn,
                 },
             )
             .expect("select preset duplicate");
         let deleted = client
             .delete_model_blocking(SettingsModelKey {
                 id: "standard".to_owned(),
-                origin: SettingsModelOrigin::Installed,
+                origin: SettingsModelOrigin::Imported,
             })
             .expect("delete installed duplicate");
         assert!(selected.revision > current.revision);
@@ -5908,20 +5919,20 @@ mod tests {
             deleted.active_model,
             Some(SettingsModelKey {
                 id: "standard".to_owned(),
-                origin: SettingsModelOrigin::Preset,
+                origin: SettingsModelOrigin::BuiltIn,
             })
         );
         assert!(!deleted.model_catalog.entries.iter().any(|entry| {
-            entry.id == "standard" && entry.origin == SettingsModelOrigin::Installed
+            entry.id == "standard" && entry.origin == SettingsModelOrigin::Imported
         }));
         assert!(deleted.model_catalog.entries.iter().any(|entry| {
-            entry.id == "standard" && entry.origin == SettingsModelOrigin::Preset
+            entry.id == "standard" && entry.origin == SettingsModelOrigin::BuiltIn
         }));
 
         let preset_error = client
             .delete_model_blocking(SettingsModelKey {
                 id: "standard".to_owned(),
-                origin: SettingsModelOrigin::Preset,
+                origin: SettingsModelOrigin::BuiltIn,
             })
             .expect_err("preset deletion");
         assert_eq!(
@@ -5931,7 +5942,7 @@ mod tests {
         let missing_error = client
             .delete_model_blocking(SettingsModelKey {
                 id: "missing".to_owned(),
-                origin: SettingsModelOrigin::Installed,
+                origin: SettingsModelOrigin::Imported,
             })
             .expect_err("missing installed model");
         assert_eq!(missing_error.code(), SettingsErrorCode::ModelNotFound);
@@ -5958,7 +5969,7 @@ mod tests {
             .model_catalog
             .entries
             .iter()
-            .find(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .find(|entry| entry.origin == SettingsModelOrigin::Imported)
             .expect("installed entry")
             .id
             .clone();
@@ -5967,7 +5978,7 @@ mod tests {
                 imported.config_revision.expect("config revision"),
                 SettingsModelKey {
                     id: installed_id.clone(),
-                    origin: SettingsModelOrigin::Installed,
+                    origin: SettingsModelOrigin::Imported,
                 },
             )
             .expect("select installed model");
@@ -5975,18 +5986,18 @@ mod tests {
         let deleted = client
             .delete_model_blocking(SettingsModelKey {
                 id: installed_id.clone(),
-                origin: SettingsModelOrigin::Installed,
+                origin: SettingsModelOrigin::Imported,
             })
             .expect("selected model deletion switches away first");
         // One snapshot carries both halves: the package is gone from the
         // catalog, and the model that replaced it is the standard preset.
         assert!(deleted.revision >= selected.revision);
         assert!(!deleted.model_catalog.entries.iter().any(|entry| {
-            entry.id == installed_id && entry.origin == SettingsModelOrigin::Installed
+            entry.id == installed_id && entry.origin == SettingsModelOrigin::Imported
         }));
         assert_eq!(
             deleted.active_model.as_ref().map(|model| model.origin),
-            Some(SettingsModelOrigin::Preset)
+            Some(SettingsModelOrigin::BuiltIn)
         );
 
         client.shutdown_blocking().expect("service shutdown");
@@ -6015,7 +6026,7 @@ mod tests {
             .model_catalog
             .entries
             .iter()
-            .find(|entry| entry.origin == SettingsModelOrigin::Installed)
+            .find(|entry| entry.origin == SettingsModelOrigin::Imported)
             .expect("installed entry");
         assert_eq!(imported_entry.title, "../escape");
         assert!(bongocat_model::ModelId::parse(&imported_entry.id).is_ok());
@@ -6023,7 +6034,7 @@ mod tests {
         let invalid_delete_id = client
             .delete_model_blocking(SettingsModelKey {
                 id: "../escape".to_owned(),
-                origin: SettingsModelOrigin::Installed,
+                origin: SettingsModelOrigin::Imported,
             })
             .expect_err("invalid delete model id");
         assert_eq!(invalid_delete_id.code(), SettingsErrorCode::InvalidModelId);
@@ -6127,7 +6138,7 @@ mod tests {
                 initial.config_revision.expect("config revision"),
                 SettingsModelKey {
                     id: "keyboard".to_owned(),
-                    origin: SettingsModelOrigin::Preset,
+                    origin: SettingsModelOrigin::BuiltIn,
                 },
             )
             .expect("select model");

@@ -4,43 +4,19 @@
   "title": "BongoCat Native Rewrite configuration",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "application", "appearance", "overlay", "input", "logging", "model", "shortcuts"],
+  "required": ["schema_version", "appearance", "overlay", "input", "logging", "model", "shortcuts", "system", "updates"],
   "properties": {
     "schema_version": { "const": 1 },
-    "application": {
-      "$ref": "#/$defs/application"
-    },
-    "appearance": {
-      "$ref": "#/$defs/appearance"
-    },
-    "overlay": {
-      "$ref": "#/$defs/overlay"
-    },
-    "input": {
-      "$ref": "#/$defs/input"
-    },
-    "logging": {
-      "$ref": "#/$defs/logging"
-    },
-    "model": {
-      "$ref": "#/$defs/model"
-    },
-    "shortcuts": {
-      "$ref": "#/$defs/shortcuts"
-    }
+    "appearance": { "$ref": "#/$defs/appearance" },
+    "overlay": { "$ref": "#/$defs/overlay" },
+    "input": { "$ref": "#/$defs/input" },
+    "logging": { "$ref": "#/$defs/logging" },
+    "model": { "$ref": "#/$defs/model" },
+    "shortcuts": { "$ref": "#/$defs/shortcuts" },
+    "system": { "$ref": "#/$defs/system" },
+    "updates": { "$ref": "#/$defs/updates" }
   },
   "$defs": {
-    "application": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["show_taskbar_icon", "show_status_icon", "check_for_updates_automatically", "check_for_updates_interval_hours"],
-      "properties": {
-        "show_taskbar_icon": { "type": "boolean" },
-        "show_status_icon": { "type": "boolean" },
-        "check_for_updates_automatically": { "type": "boolean" },
-        "check_for_updates_interval_hours": { "type": "integer", "minimum": 1, "maximum": 8760 }
-      }
-    },
     "appearance": {
       "type": "object",
       "additionalProperties": false,
@@ -53,13 +29,13 @@
     "overlay": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["visible", "click_through", "always_on_top", "scale_percent", "opacity_percent", "corner_radius_percent", "hide_on_pointer_hover", "hide_on_pointer_hover_delay_seconds", "keep_inside_screen"],
+      "required": ["click_through", "always_on_top", "scale_percent", "opacity_percent", "maximum_fps", "corner_radius_percent", "hide_on_pointer_hover", "hide_on_pointer_hover_delay_seconds", "keep_inside_screen"],
       "properties": {
-        "visible": { "type": "boolean" },
         "click_through": { "type": "boolean" },
         "always_on_top": { "type": "boolean" },
         "scale_percent": { "type": "integer", "minimum": 25, "maximum": 400 },
         "opacity_percent": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "maximum_fps": { "type": "integer", "minimum": 15, "maximum": 240 },
         "corner_radius_percent": { "type": "integer", "minimum": 0, "maximum": 50 },
         "hide_on_pointer_hover": { "type": "boolean" },
         "hide_on_pointer_hover_delay_seconds": { "type": "integer", "minimum": 0, "maximum": 60 },
@@ -69,10 +45,27 @@
     "input": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["gamepad_stick_dead_zone", "gamepad_trigger_dead_zone"],
+      "required": ["keyboard", "gamepad"],
       "properties": {
-        "gamepad_stick_dead_zone": { "type": "number", "minimum": 0, "exclusiveMaximum": 1 },
-        "gamepad_trigger_dead_zone": { "type": "number", "minimum": 0, "exclusiveMaximum": 1 }
+        "keyboard": { "$ref": "#/$defs/keyboard_input" },
+        "gamepad": { "$ref": "#/$defs/gamepad_input" }
+      }
+    },
+    "keyboard_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release_fallback_timeout_ms"],
+      "properties": {
+        "release_fallback_timeout_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }
+      }
+    },
+    "gamepad_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stick_dead_zone", "trigger_dead_zone"],
+      "properties": {
+        "stick_dead_zone": { "type": "number", "minimum": 0, "exclusiveMaximum": 1 },
+        "trigger_dead_zone": { "type": "number", "minimum": 0, "exclusiveMaximum": 1 }
       }
     },
     "logging": {
@@ -87,38 +80,66 @@
     "model": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["selected_model_id", "selected_model_origin", "installed_models", "preset_models", "mirror", "mirror_pointer_tracking", "play_motion_audio", "enable_behavior_shortcuts", "random_behavior_enabled", "random_behavior_interval_seconds", "maximum_fps", "ignore_pointer", "release_fallback_timeout_ms"],
+      "required": ["selected_model", "imported_models", "built_in_models", "mirror", "mirror_pointer_tracking", "play_motion_audio", "ignore_pointer", "random_behavior"],
       "properties": {
-        "selected_model_id": { "type": ["string", "null"], "minLength": 1 },
-        "selected_model_origin": { "type": ["string", "null"], "enum": ["preset", "installed", null] },
-        "installed_models": { "type": "array", "items": { "$ref": "#/$defs/installed_model_metadata" }, "uniqueItems": true },
-        "preset_models": { "type": "array", "items": { "$ref": "#/$defs/model_metadata" }, "uniqueItems": true },
+        "selected_model": {
+          "oneOf": [{ "$ref": "#/$defs/model_identity" }, { "type": "null" }]
+        },
+        "imported_models": { "type": "array", "items": { "$ref": "#/$defs/imported_model_metadata" }, "uniqueItems": true },
+        "built_in_models": { "type": "array", "items": { "$ref": "#/$defs/built_in_model_metadata" }, "uniqueItems": true },
         "mirror": { "type": "boolean" },
         "mirror_pointer_tracking": { "type": "boolean" },
         "play_motion_audio": { "type": "boolean" },
-        "enable_behavior_shortcuts": { "type": "boolean" },
-        "random_behavior_enabled": { "type": "boolean" },
-        "random_behavior_interval_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
-        "maximum_fps": { "type": "integer", "minimum": 15, "maximum": 240 },
         "ignore_pointer": { "type": "boolean" },
-        "release_fallback_timeout_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }
-      },
-      "allOf": [
-        {
-          "if": { "properties": { "selected_model_id": { "type": "null" } } },
-          "then": { "properties": { "selected_model_origin": { "type": "null" } } },
-          "else": { "properties": { "selected_model_origin": { "enum": ["preset", "installed"] } } }
-        }
-      ]
+        "random_behavior": { "$ref": "#/$defs/random_behavior" }
+      }
+    },
+    "model_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" },
+        "source": { "enum": ["imported", "built_in"] }
+      }
+    },
+    "random_behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "interval_seconds"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "interval_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+      }
+    },
+    "built_in_model_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": ".*\\S.*" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": ".*\\S.*" }
+      }
+    },
+    "imported_model_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "input_mode"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": ".*\\S.*" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": ".*\\S.*" },
+        "input_mode": { "enum": ["standard", "keyboard", "gamepad"] }
+      }
     },
     "shortcuts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["commands_enabled", "commands", "model_behaviors"],
+      "required": ["commands_enabled", "model_behaviors_enabled", "command_bindings", "model_behavior_bindings"],
       "properties": {
         "commands_enabled": { "type": "boolean" },
-        "commands": { "type": "array", "items": { "$ref": "#/$defs/shortcut_binding" } },
-        "model_behaviors": { "type": "array", "items": { "$ref": "#/$defs/model_behavior_binding" } }
+        "model_behaviors_enabled": { "type": "boolean" },
+        "command_bindings": { "type": "array", "items": { "$ref": "#/$defs/shortcut_binding" } },
+        "model_behavior_bindings": { "type": "array", "items": { "$ref": "#/$defs/model_behavior_binding" } }
       }
     },
     "shortcut_binding": {
@@ -130,33 +151,32 @@
         "shortcut": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" }
       }
     },
-    "model_metadata": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "title"],
-      "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": ".*\\S.*" },
-        "title": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": ".*\\S.*" }
-      }
-    },
-    "installed_model_metadata": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "title", "input_mode"],
-      "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": ".*\\S.*" },
-        "title": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": ".*\\S.*" },
-        "input_mode": { "enum": ["standard", "keyboard", "gamepad"] }
-      }
-    },
     "model_behavior_binding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["model_id", "behavior_id", "shortcut"],
+      "required": ["model", "behavior_id", "shortcut"],
       "properties": {
-        "model_id": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" },
+        "model": { "$ref": "#/$defs/model_identity" },
         "behavior_id": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" },
         "shortcut": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" }
+      }
+    },
+    "system": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["show_taskbar_icon", "show_status_icon"],
+      "properties": {
+        "show_taskbar_icon": { "type": "boolean" },
+        "show_status_icon": { "type": "boolean" }
+      }
+    },
+    "updates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_automatically", "check_interval_hours"],
+      "properties": {
+        "check_automatically": { "type": "boolean" },
+        "check_interval_hours": { "type": "integer", "minimum": 1, "maximum": 8760 }
       }
     }
   }

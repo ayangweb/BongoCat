@@ -1182,7 +1182,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     普通 latest 数据帧即使连续 coalesce 也不会覆盖待确认的模型提交；7 项 render contract
     与 Windows 失败回归均通过，双槽 pending accounting 保持守恒。
 - [ ] 支持目标 FPS、不可见暂停/降频和刷新率变化。
-  - 状态（2026-09-04）：目标 FPS 与不可见降频子能力已闭环。`model.maximum_fps` 通过 settings typed command
+  - 状态（2026-09-04）：目标 FPS 与不可见降频子能力已闭环。`overlay.maximum_fps` 通过 settings typed command
     和 expected config revision 在 `15..=240` 内校验、持久化并进入 runtime snapshot；runtime
     周期评估、GPUI 产品 frame source 及双平台独立 overlay run loop 都按最新值计算下一帧间隔，
     修改无需重启。overlay 隐藏时 runtime 与产品 frame source 统一降至 `100 ms`，可靠 command
@@ -1876,8 +1876,8 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 ### 6.6 Phase 5 退出门槛
 
 - [x] 所有 P0 设置可通过 GPUI 修改并由 Rust 原子持久化。
-  - 验收证据（2026-09-07）：当前 v1 schema 的 application、appearance、overlay、input、model 与
-    shortcuts 字段均由 GPUI Settings 控件覆盖；模型选择/导入、行为预览、快捷键 capture/clear/restore
+  - 验收证据（2026-09-07）：当前 v1 schema 的 `appearance`、`overlay`、`input`、`logging`、`model`、`shortcuts`、`system` 与
+    `updates` 字段均由 GPUI Settings 控件覆盖；模型选择/导入、行为预览、快捷键 capture/clear/restore
     与其余 General 控件均通过 revision-checked typed command 进入 Application owner。settings service
     以同一 config writer 完成原子持久化，CAS、错误回滚、restart 恢复和 shutdown flush 均有回归；
     `cargo test -p bongocat-ui --lib --locked`（68 passed）与
@@ -1897,18 +1897,33 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 
 - [x] 发布 `shared/config/config.schema.json`，并用有效/拒绝样本验证 schema 边界。
 - [x] 实现 `shared/config/native-config-contract.md` 中的首版字段，调整时同步 contract 和测试。
-  - 验收证据（2026-09-05）：完整 v1 的 application、appearance、overlay、input、model 与 shortcuts
-    字段均由 `NativeConfig` 的 strict Rust 类型、`config.schema.json`、default/invalid shared fixtures
+  - 验收证据（2026-09-05）：完整 v1 的 `appearance`、`overlay`、`input`、`logging`、`model`、
+    `shortcuts`、`system` 与 `updates` 字段均由 `NativeConfig` 的 strict Rust 类型、`config.schema.json`、default/invalid shared fixtures
     和产品 settings snapshot/typed command 共同覆盖；contract 表已补全两项 input gamepad dead-zone
     字段及 `[0, 1)` 边界。`bongocat-config` contract 测试验证默认 fixture 与 Rust 默认值一致、schema
     拒绝未知或越界字段。后续新增首版字段仍必须同时更新本 contract、schema、fixture 与实现。
   - 状态（2026-09-07）：`bongocat-config` 测试读取共享 fixture manifest，并按 manifest 逐项执行
     Rust parser accept/reject 断言；新增或删除 config fixture 时若未同步 manifest，contract 测试会明确失败。
 - [x] 每个字段记录默认值、范围、单位和跨字段约束；schema、typed validation 与边界 fixture 已对齐，后续新增字段必须同步三者。
+- [x] 完成 ADR-0067 的当前 v1 配置领域命名空间与模型完整身份重构，并在提交前保留完整验证证据。
+  - 状态（2026-09-25）：`system`/`updates`、嵌套 `input`、`model.selected_model: { id, source }`、
+    `imported`/`built_in`、`imported_models`/`built_in_models`、`command_bindings`/
+    `model_behavior_bindings` 已同步到 Rust、settings protocol、Application、runtime shortcut
+    dispatcher、JSON Schema、fixtures、独立 config-store spike 与共享 contract；`overlay.visible`
+    已从持久化配置移除并改为 runtime 会话状态。旧字段、旧来源值和旧父子层级没有 alias、迁移或
+    fallback。
+  - 验证（2026-09-25）：`cargo test --workspace --no-fail-fast`、默认 workspace Clippy、
+    `storage-test-injection` 组合 Clippy、`cargo check --workspace --release`、`cargo fmt --all -- --check`、
+    `git diff --check`、Draft 2020-12 schema（31 个 config fixture）、locale/fixture validator、66 项
+    `tools/tests` 以及独立 config-store check/Clippy/test 均通过；文档旧 key 扫描仅保留 ADR/TODO
+    中明确标注的历史对照。
+  - 退出条件（2026-09-25）：workspace 全量测试、Clippy、release check 和文档审计均已完成。本条不把旧开发配置
+    转换为新结构，旧结构按当前严格 v1 恢复边界处理。Windows 原生实机验证未执行；macOS Input
+    Monitoring smoke 因当前权限条件保持 ignored，均不改变本条配置 contract 的结论。
 - [x] 未知字段采用明确的拒绝、忽略或诊断策略。
   - 验收证据（2026-08-31）：JSON Schema 的所有对象使用 `additionalProperties: false`，正式
-    Rust 配置类型逐层使用 `deny_unknown_fields`；共享 `invalid-unknown-field.json` 在嵌套
-    application 域注入 `legacy_alias` 并由固定 Draft 2020-12 validator 拒绝，正式 crate 另有
+    Rust 配置类型逐层使用 `deny_unknown_fields`；共享 `invalid-unknown-field.json` 在根对象注入
+    `unexpected_field` 并由固定 Draft 2020-12 validator 拒绝，正式 crate 另有
     unknown/legacy 字段拒绝测试。
 - [x] `next` 的当前完整 Native Rewrite schema 固定为 `schema_version: 1`，不包含迁移链。
   - 状态（2026-09-04）：正式 config、独立 config-store contract、JSON Schema 和全部 fixture
@@ -1925,7 +1940,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     未知文件防覆盖已实现；settings worker 接收合并后的 GPUI bounds 更新和 overlay 几何变化并及时
     落盘，shutdown 仍强制 flush。更新后的双平台实机多显示器恢复证据尚未完成，因此保持未勾选，
     由 `P6-WINDOW-STATE-LAYOUT` 跟踪。
-  - 状态（2026-09-06）：新增 shared reject fixture 在合法窗口布局旁注入 `overlay.visible` 配置
+  - 状态（2026-09-06）：新增 shared reject fixture 在合法窗口布局旁注入已不属于 config 的 `overlay.visible` 配置
     字段；`window-state.schema.json` 与 `WindowStateStore` parser 均拒绝它，固定 window state 不得承载用户配置。该
     fixture 不影响 config.json 事务，双平台多显示器恢复证据仍是本项剩余门槛。
   - 状态（2026-09-07）：window-state contract 测试改为读取共享 `window-state-fixtures/manifest.json`，逐项执行
@@ -2262,10 +2277,10 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     窗口的「立即重启」只缩短这个等待，两条路径共用同一标志因此只重启一次。**本机无法验证 Windows
     路径**，见 ADR-0035 待验证项 2。`cargo fmt`、两种 feature 组合的严格 Clippy 与 workspace 测试通过。
 - [x] 自动检查更新开关真正生效。
-  - 验收证据（2026-09-15）：`check_for_updates_automatically` 此前只被写入配置、**没有任何代码读取**。
+  - 验收证据（2026-09-15）：`updates.check_automatically` 此前只被写入配置、**没有任何代码读取**。
     现在由 GPUI 侧调度（开关值只有设置服务读得到）：启动后等 10 秒开始首次检查，发现可用更新且窗口未打开时打开更新窗口。
     - 补充（2026-09-25）：固定 24 小时间隔已改为当前 v1 的
-      `application.check_for_updates_interval_hours`，默认 `24`、范围 `1..=8760`。该值经
+      `updates.check_interval_hours`，默认 `24`、范围 `1..=8760`。该值经
       revision-checked typed command 原子持久化，设置页以带单位的整数输入修改，重启后恢复；GPUI
       调度器以最近一次实际派发为期限锚点，并通过只读取自动更新设置的轻量轮询重新安排下一次检查，
       间隔变短后若已到期会立即检查。设置服务瞬时不可用时按有界间隔重试，不结束调度。关闭自动检查不会
@@ -3315,10 +3330,15 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         trigger 使用单侧重映射；`StickLeft/Right X/Y` 已进入 renderer 参数，Reset 会清空轴值。
     - [x] 将 stick/trigger dead-zone 纳入正式配置并接入 Application runtime 生命周期。
       - 状态（2026-09-04）：Native config v1 直接包含 `[0, 1)` 的
-        `input.gamepad_stick_dead_zone`/`gamepad_trigger_dead_zone`，默认值为 `0.15`/`0.0`。
-        Application 启动会在 runtime Ready 后发送强类型 settings，运行中更新先做
-        revision-checked 原子配置提交再重投影现有 axis；启动、更新、重启和 schema accept/reject
-        回归已覆盖。
+        `input.gamepad.stick_dead_zone`/`input.gamepad.trigger_dead_zone`，默认值为 `0.15`/`0.0`。
+        Application 启动会在 runtime Ready 后发送强类型 settings，
+        运行中更新先做 revision-checked 原子配置提交再重投影现有 axis；启动、更新、重启和 schema
+        accept/reject 回归已覆盖。
+      - 验收证据（2026-09-01）：正式 config 与独立 config-store spike 使用 `f64` 保存 JSON 数值，
+        Application 在 runtime 边界受检转换为 `f32`，运行时更新按最短十进制表示写回；共享默认
+        fixture 的 value-level 序列化回归覆盖 `0.15`，并校验当前 schema v1 contract。
+        commit `c388cf2` 的 run `33414582196` 全绿，config-store job `99562067963` 与 Windows
+        input/config job `99562067572` 均通过当时的 contract；当前已统一为 v1。
     - [x] 将同一 `GamepadAxisProducer` 从 Application 传递到独立 overlay/input service owner。
       - 状态（2026-09-25）：Windows/macOS 正式服务均持有 runtime producer；gilrs 构造失败只
         记录一次匿名 backend failure 并禁用手柄，Raw Input/CGEventTap 键鼠服务继续运行。
@@ -3533,7 +3553,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       config 字节不变、unclean 重启分类、marker 清理和正常 shutdown 验证。默认产品 CLI 继续拒绝
       两个私有测试参数，完整 Native workspace 门禁同时通过。
 55. [x] `P5-STATUS-ICON-VISIBILITY`：让当前 v1 的菜单栏/托盘状态图标可即时隐藏和恢复。
-    - 依赖：`P7-SYSTEM-MENU-LIFECYCLE`、当前 v1 `application.show_status_icon`、settings revision/CAS
+    - 依赖：`P7-SYSTEM-MENU-LIFECYCLE`、当前 v1 `system.show_status_icon`、settings revision/CAS
       和 GPUI Kit switch。
     - 当前退出条件：配置值通过强类型 snapshot/command 往返；平台主线程先应用显隐，Application
       owner 再原子提交，平台失败不改配置，配置失败回滚平台状态；macOS/Windows 共用同一个长期存活的
@@ -3549,7 +3569,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       runner 的 Metal drawable-pool 测量抖动失败，第三次 job `101044187976` 全部通过；两次重跑均未
       掩盖产品 job，且最终 run 保留完整成功证据。
 56. [x] `P5-TASKBAR-ICON-VISIBILITY`：让当前 v1 的 Windows 设置窗口任务栏按钮可即时隐藏和恢复。
-    - 依赖：当前 v1 `application.show_taskbar_icon`、GPUI 设置窗口 HWND、settings revision/CAS、
+    - 依赖：当前 v1 `system.show_taskbar_icon`、GPUI 设置窗口 HWND、settings revision/CAS、
       platform main-thread adapter 和 GPUI Kit switch；macOS 不把该字段映射为 Dock 图标。
     - 退出条件：Windows-only 配置值通过强类型 snapshot/command 往返；平台主线程先修改窗口扩展
       样式，Application owner 再原子提交，平台失败不改配置，配置失败回滚 HWND；启动和窗口重建
@@ -3639,7 +3659,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       当前两份 locale 各 246 个叶子。
 
 62. [x] `P5-BEHAVIOR-SHORTCUT-TOGGLE`：让当前 v1 的模型行为快捷键开关作用于正式输入链路。
-    - 依赖：`P5-SHORTCUT-CONTRACT`、当前 v1 `model.enable_behavior_shortcuts`、settings
+    - 依赖：`P5-SHORTCUT-CONTRACT`、当前 v1 `shortcuts.model_behaviors_enabled`、settings
       revision/CAS、共享 `ShortcutTable` 和 GPUI Kit switch。
     - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复；禁用时仅从活动表移除
       motion/expression 绑定，保留配置中的绑定和所有应用级快捷键；重新启用无需重录即可恢复；
@@ -3656,7 +3676,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 
 63. [x] `P2-KEY-RELEASE-FALLBACK`：让当前 v1 的按键释放兜底超时作用于正式 runtime。
     - 依赖：ADR-0004、可注入 runtime 单调时钟、可靠 input queue、平台 reconcile/reset、当前 v1
-      `model.release_fallback_timeout_ms` 和 settings revision/CAS。
+      `input.keyboard.release_fallback_timeout_ms` 和 settings revision/CAS。
     - 退出条件：仅 captured keyboard control 在 normal release、reconcile 与 Reset 均未清理时按
       runtime 观察时间到期；repeat down 刷新期限，`0` 禁用，鼠标/手柄不超时，平台事件时间戳不
       跨时钟原点比较；fallback release 有独立匿名诊断；typed command/snapshot、原子持久化、重启
@@ -3767,7 +3787,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       均无替代，对应错误码已无产出路径；公钥轮换能力比 ADR-0029 时更弱（单公钥，无 any-of）。
 
 69. [x] `P7-AUTOMATIC-UPDATE-PREFERENCE`：让当前 v1 自动检查更新偏好进入正式设置链路。
-    - 依赖：当前 v1 `application.check_for_updates_automatically`、settings typed command/snapshot、
+    - 依赖：当前 v1 `updates.check_automatically`、settings typed command/snapshot、
       GPUI Kit switch 与 signed update manifest boundary。
     - 退出条件：配置值通过强类型 snapshot/command 往返并在重启后恢复，stale revision 不改变
       config 或 snapshot；General 开关具备中英文本、键盘焦点和 AX/UIA switch 语义；UI/Application
@@ -3780,7 +3800,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       macOS/Ubuntu workspace jobs `101230369276`/`101230369290`/`101230369343` 均通过完整 workspace
       门禁和对应产品 smoke。
 
-    - 当前契约（2026-09-25）：新 v1 配置的 `application.check_for_updates_automatically` 默认 `false`；
+    - 当前契约（2026-09-25）：新 v1 配置的 `updates.check_automatically` 默认 `false`；
       用户在设置页显式打开后才启动自动检查。默认间隔仍为 `24` 小时，关闭开关不会清空已保存的间隔。
 
 70. [x] `P7-AUTOMATIC-UPDATE-SCHEDULE`：冻结自动检查的单调 24 小时调度契约。
@@ -3796,7 +3816,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       实现 commit `1106807` 的 CI run `33938263954` 全绿；Windows/macOS/Ubuntu workspace jobs
       `101230369276`/`101230369290`/`101230369343` 均通过完整 workspace 门禁和对应产品 smoke。
 
-     - 当前契约（2026-09-25）：固定 `24 h` 已扩展为 v1 `application.check_for_updates_interval_hours`
+     - 当前契约（2026-09-25）：固定 `24 h` 已扩展为 v1 `updates.check_interval_hours`
        （默认 `24`、范围 `1..=8760`）。当前 GPUI 调度器以实际派发为期限锚点，轻量轮询配置变化并
        重排期限；旧的自研 manifest scheduler 证据仍仅作为历史记录。
 
@@ -3838,18 +3858,18 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `standard` 预置并持久化修正；全部失败路径不阻塞启动。
     - 当前契约（2026-09-15）：`ModelStore::allocate_unique_id` 以建议值 + `-2`/`-3` 后缀分配
       唯一可移植 ID（非法建议回退 `custom-model`），`import` 底层 `AlreadyExists` 防覆盖语义保留
-      作为并发兜底；v1 配置新增 `model.installed_models`（`deny_unknown_fields`，id 唯一、title
+      作为并发兜底；v1 配置新增 `model.imported_models`（`deny_unknown_fields`，id 唯一、title
       非空 ≤128 字符），schema、default fixture、两个新 reject fixture 与 `native-config-contract.md`
       已同步；导入成功以来源文件夹名为默认 title 登记、超长/缺失降级为模型 ID，元数据提交失败按
       导入失败报告且已安装目录保留；`delete_model` 同步移除记录；`Application::restore_startup_model`
       在启动时激活配置选择、缺失/损坏时记录匿名 `model_selection_fallback` 事件并持久化
       `(Preset, standard)`，未配置选择默认激活 standard，operational 启动还清理指向不存在目录的
       元数据记录；`SettingsModelEntry.title` 投影到 Models 页，无记录条目回退显示 ID。
-    - 当前契约（2026-09-25）：v1 配置的模型元数据仍是两个独立列表，但形状按 origin 分化：
-      `model.installed_models` 保存 `id + title + input_mode`（导入创建、删除移除、启动裁剪；`input_mode` 必填且不参与身份），`model.preset_models` 只保存 `id + title`（只由
-      改名创建，无创建/删除/裁剪路径，空列表表示全部沿用构建给的名字，模式由稳定 preset id 派生）。两者各自判重，同一 id
+    - 当前契约（2026-09-25）：v1 配置的模型元数据仍是两个独立列表，但形状按 source 分化：
+      `model.imported_models` 保存 `id + title + input_mode`（导入创建、删除移除、启动裁剪；`input_mode` 必填且不参与身份），`model.built_in_models` 只保存 `id + title`（只由
+      改名创建，无创建/删除/裁剪路径，空列表表示全部沿用构建给的名字，模式由稳定 built-in id 派生）。两者各自判重，同一 id
       可以同时出现在两边。`StorageLayout` 增加 `model-overrides/` 根目录，用于预置模型的用户侧
-      替换封面。schema、既有 fixture、installed mode 的 accept/reject fixtures、
+      替换封面。schema、既有 fixture、imported-model mode 的 accept/reject fixtures、
       `tools/validate-json-schema.py` 的语义检查与 `native-config-contract.md` 已同步。标题改名只更新 `title` 并保留 `input_mode`；删除随 metadata 一起移除。
     - 验收证据（2026-09-15）：`bongocat-config` 48 测试（含两个新 reject fixture 的 manifest 契约）、
       `bongocat-model` 46 测试（含 4 个 `allocate_unique_id` 测试：建议直用/占用后缀/非法回退/超长
@@ -3912,7 +3932,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       页面整表显示「模型列表不可用」。`ModelStore::list` 对任何非目录条目（Finder 在 store
       根目录留下的 `.DS_Store`）返回 `StoreEntryUnsupported`，`Application::model_catalog`
       以 `?` 上抛，`settings_model_catalog` 于是清空全部条目并把整个 catalog 标为不可用。
-      同一早退还让 `prune_missing_installed_metadata` 直接返回，被删模型的 `installed_models`
+      同一早退还让 `prune_missing_installed_metadata` 直接返回，被删模型当时的 `model.installed_models`
       元数据记录永远无法清理。
     - 当前契约（2026-09-15）：`ModelStore::list` 返回 `InstalledModelCatalog { entries,
       skipped_entries }`，只在 store 根目录不可读或 writer lock 竞争时失败；`.DS_Store`、
@@ -3934,7 +3954,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       真机门禁：对用户真实 Development 数据目录运行 `--run-seconds 6 --models-page-smoke`
       （该 smoke 断言 `model_catalog.error.is_none()`、条目非空、active 模型在 catalog 中、
       行操作权限与本地化），退出码 0 且无 `product run failed` 输出；同一次运行后
-      `config.json` 中已手动删除模型的 `installed_models` 记录被裁剪，只剩存活模型记录。
+      `config.json` 中已手动删除模型当时的 `model.installed_models` 记录被裁剪，只剩存活模型记录。
       反向对照：以 `flock` 持有 `models.writer.lock` 后同一 smoke 以
       `ModelStoreError { code: StoreBusy }` 退出码 1 失败，证明真正的 store 失败仍然失败关闭、
       smoke 结果非空转。后续按用户要求把跳过条目改为纯内部过滤，移除 Models 页面状态行、无障碍
@@ -4109,7 +4129,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `0..=60` 秒、默认 `0`，开关默认 `false`，越界在 config `validate()`、runtime `is_valid()`、
       JSON Schema 与两个平台的 options 校验四处都失败关闭；两值经强类型 command/snapshot 往返并在
       重启后恢复；开启后指针停留满延迟即淡出并强制穿透，离开后按同样时长淡回并恢复
-      `overlay.click_through`，窗口本身不隐藏、不销毁，`overlay.visible` 不受影响；开关与延迟在
+      `overlay.click_through`，窗口本身不隐藏、不销毁，runtime 的 overlay visibility 不受影响；开关与延迟在
       frame tick 内原地生效，不触发原生窗口重建；指针采样缺失或平台输入服务未运行时按「不在窗口
       内」处理；GPUI overlay 设置页有可编辑开关与数字输入、中英文案与 AX/UIA 语义；不引入旧版
       兼容、migration、alias 或 fallback。
@@ -4645,7 +4665,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 
 84. [x] `P0-MODELS-PAGE-CARDS`：模型管理页按旧版交互重做为封面卡片，并统一元数据编辑与错误呈现。
     - 依赖：ADR-0047、ADR-0036（导入边界）、ADR-0037（Mver 转换写入的 `cover.png`）、
-      当前 v1 `model.installed_models[].title`/`input_mode`、`bongocat-model` 包布局、`bongocat-platform` 的
+      当前 v1 `model.imported_models[].title`/`input_mode`、`bongocat-model` 包布局、`bongocat-platform` 的
       `open_directory` 与 `opener`、GPUI 的 `img(PathBuf)` 本地文件加载。
     - 退出条件：模型页展示每个模型的 `cover.png`、模式 Badge 与标题并提供「打开所在文件夹」；表情入口移除；
       页面只支持切换/选择模型与编辑标题/封面；错误提示统一走通用 Notification 组件。
@@ -4718,7 +4738,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       一并收口，见第 102 项的统一谓词条目。
     - 状态（2026-09-22，预置模型同样可编辑）：ADR-0047 决策 2 由「预置只读」改为「名字与封面与
       installed 完全一致，只有删除仍保留给用户安装的模型」。`ModelRowActions::can_edit` 去掉
-      origin 判断；`config.model.preset_models` 保存预置改名（与 `installed_models` 同记录形状、
+      origin 判断；`config.model.built_in_models` 保存预置改名（与 `imported_models` 同记录形状、
       各自独立判重、无导入/删除/裁剪路径）；替换封面写到用户侧 `StorageLayout::model_overrides`
       （`<data>/model-overrides/<id>/resources/cover.png`），由新增的
       `bongocat-model-store::PresetCoverStore` 提供原子写入口，快照投影优先取它、回退包内封面。
@@ -4952,7 +4972,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 
 91. [x] `P5-BEHAVIOR-SHORTCUT-AUTO-ASSIGN`：移植旧版"模型加载后自动分配行为快捷键"。
     - 依赖：ADR-0041/0042、第 62 项 `P5-BEHAVIOR-SHORTCUT-TOGGLE`、当前 v1
-      `shortcuts.model_behaviors` 与 `model.enable_behavior_shortcuts`、
+      `shortcuts.model_behavior_bindings` 与 `shortcuts.model_behaviors_enabled`、
       `pre-refactor:src/composables/useModel.ts` 的 `getBehaviorShortcut`。
     - 背景（2026-09-19，维护者反馈）：第 62 项让开关生效后，快捷键页面在用户录制之前整页为空。旧版
       会在模型加载完成后无条件为每个 motion 和 expression 自动分配组合键，所以页面从打开起就有值；
@@ -4966,7 +4986,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       / `BEHAVIOR_SHORTCUT_CAPACITY`（`4 × (10 + 26) = 144`）与 `ModelBehaviorAction::behavior_id()`
       （归一化与分配共用，杜绝两处命名漂移）；`bongocat-app` 在 `prepare_model`、`select_model`、
       `restore_default_shortcuts` 三处接线，并新增 `active_model_id`——"已激活模型"不再从
-      `config.model.selected_model_id` 推断，因为全新配置没有选中项而 `restore_startup_model` 仍会
+      `config.model.selected_model` 推断，因为全新配置没有选中项而 `restore_startup_model` 仍会
       激活 standard 预置。
     - 顺带消除一处同类漂移风险：`bongocat-ui` 的 `window::presentation::model_behavior_id()` 原本
       自己拼一遍 `motion:{group}:{index}` / `expression:{name}`，而快捷键页的行正是拿这个字符串去和
@@ -4978,10 +4998,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `rows[5].2 == shortcut_display("Control+M")`，走 accessibility 投影，与视觉行共用
       `shortcut_rows` 内核。
     - 记录一处用户可见的不对称（已核实并钉住）：快捷键页的"清除全部快捷键"送出
-      `SettingsShortcuts::default()`，对 `shortcuts.commands` 持久、对
-      `shortcuts.model_behaviors` **不**持久——下次模型激活（重启 / 切模型 / 再激活同一模型）会把
+      `SettingsShortcuts::default()`，对 `shortcuts.command_bindings` 持久、对
+      `shortcuts.model_behavior_bindings` **不**持久——下次模型激活（重启 / 切模型 / 再激活同一模型）会把
       未绑定的行为重新补上默认组合键。这是旧版行为的直接结果（旧版每次模型加载都无条件重分配且
-      没有开关），也是为什么"让这些组合键不生效"应该用 `model.enable_behavior_shortcuts` 开关而
+      没有开关），也是为什么"让这些组合键不生效"应该用 `shortcuts.model_behaviors_enabled` 开关而
       不是靠清空。新增 `clearing_all_shortcuts_does_not_survive_the_next_activation` 把这个不对称
       钉住，改动任一侧都必须是显式决定。**如果维护者希望"清除全部"对模型行为也持久，这是一个需要
       单独决策的行为变更，不是本项的实现缺陷。**
@@ -5624,24 +5644,24 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       再切 `gamepad` 落到 `primary+15..21`。旧测试
       `default_behavior_assignment_skips_taken_chords_and_keeps_existing_bindings` 把"第二个模型
       从 `Control+5` 开始"写成了预期。
-    - 同一根因的两个相邻缺陷：① `active_shortcuts` 只按 `enable_behavior_shortcuts` 过滤、不按当前
+    - 同一根因的两个相邻缺陷：① `active_shortcuts` 只按 `shortcuts.model_behaviors_enabled` 过滤、不按当前
       模型过滤，`desired_registrations` 把整张表逐个 `register`，于是 21 个全局热键里只有 7 个可能
       触发，另外 14 个既抢占其它应用的组合键又永远只返回 `IgnoredInactiveModel`；②
       `Application::select_model` 只提交配置、不重建 shortcut table（全仓库 `shortcut_table.replace`
       原本只有 5 处，都不在 `select_model`），因此切换模型后新模型的快捷键要等重启或拨动开关才生效。
     - 决策（维护者选定"允许跨模型复用同一组合键"）：`shortcuts.conflict` 从"全局唯一"收窄为
-      **作用域内**判定——命令内唯一、同一 `model_id` 内唯一、模型绑定不得与命令冲突。命令必须留在这个
+      **作用域内**判定——命令内唯一、同一完整模型身份 `{ id, source }` 内唯一、模型绑定不得与命令冲突。命令必须留在这个
       作用域里，因为命令与当前模型无关，始终处于注册状态。
     - 实现：
       ① `bongocat-config`：`assign_default_behavior_shortcuts` 的 `taken` 只并入"命令绑定 + 该模型
-        自身绑定"；新增 `ShortcutConfig::active_bindings(active_model_id)` 做投影；`NativeConfig::validate`
+        自身绑定"；新增 `ShortcutConfig::active_bindings(active_model)` 做投影；`NativeConfig::validate`
         按作用域判定冲突。`CompiledShortcuts::compile` 保持严格（拒绝任何重复 chord），因为一张已编译
         的表必须无歧义——投影是它的前置条件，这一点写进了它的文档。
       ② `bongocat-app`：`active_shortcuts(config, active_model)` 先投影再编译；新增
-        `refresh_shortcut_table()`（best effort）与 `live_model_id()`；`prepare_model`、`select_model`
+        `refresh_shortcut_table()`（best effort）与 `live_model_identity()`；`prepare_model`、`select_model`
         在激活成功后重建表，`persist_default_behavior_shortcuts` 不再自己改表（否则激活失败会把
         上一个模型的组合键提前撤下）。`active_model_id` 由死状态变为承载语义——不读
-        `config.model.selected_model_id`，因为全新配置没有选中项而 `restore_startup_model` 仍会激活
+        `config.model.selected_model`，因为全新配置没有选中项而 `restore_startup_model` 仍会激活
         standard 预置。
       ③ `bongocat-ui`：`conflicting_shortcut` 与配置校验同规则，录制时不再因为别的模型占了同一组合键
         而报冲突。
@@ -6116,7 +6136,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 当前契约（2026-09-23）：`model_catalog` 返回顺序 = preset 半区 + installed 半区。
       ① preset 顺序读 `MverInputMode::ALL`（标准 → 键盘 → 手柄，其文档已声明该顺序属于 settings
          契约），不另起一份写死 id 的常量；非模式名的预置排在所有模式之后。
-      ② installed 顺序读 `config.model.installed_models` 的记录位置。该列表只追加（导入 push、
+      ② installed 顺序读 `config.model.imported_models` 的记录位置。该列表只追加（导入 push、
          删除 retain），`validate_model_metadata` 只查唯一性不重排，所以位置就是导入顺序且跨重启
          稳定；无记录的 store 条目排在最后并按 id 排序（避免依赖目录遍历顺序）。
       ③ 原 `model_origin_order` 随旧排序一并删除，不留死代码。
