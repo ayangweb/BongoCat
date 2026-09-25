@@ -50,8 +50,9 @@ pub const MAXIMUM_FPS: u16 = 240;
 pub const DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS: u32 = 500;
 pub const MAX_RELEASE_FALLBACK_TIMEOUT_MS: u32 = 60_000;
 pub const HIDDEN_OVERLAY_FRAME_INTERVAL: Duration = Duration::from_millis(100);
-// Automatic playback uses a separate high sequence domain so it cannot be
-// mistaken for a product command sequence by command waiters or diagnostics.
+// Automatic playback uses the upper half of the runtime event sequence space.
+// Audio commands use their own client-allocated sequence domain, so automatic
+// playback can never collide with a product command or an audio waiter.
 const AUTOMATIC_SEQUENCE_START: u64 = 1_u64 << 63;
 
 pub const fn maximum_fps_is_valid(maximum_fps: u16) -> bool {
@@ -1164,6 +1165,22 @@ impl ShutdownSignal {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
+
+    /// Runs an admitted automatic side effect while holding the shutdown gate.
+    ///
+    /// The request path takes the same mutex. This gives the worker a real
+    /// ordering barrier: either the automatic action finishes before shutdown
+    /// is requested, or shutdown wins and the action is skipped. A separate
+    /// check followed by an unlocked action would leave a TOCTOU window.
+    fn run_if_not_shutdown(&self, action: impl FnOnce()) {
+        let sequence = self
+            .sequence
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if sequence.is_none() {
+            action();
+        }
+    }
 }
 
 impl RuntimeOwner {
@@ -1606,7 +1623,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     let mut maximum_fps = DEFAULT_MAXIMUM_FPS;
     let mut release_fallback_timeout_ms = DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS;
     let mut random_behavior_scheduler = RandomBehaviorScheduler::new(system_seed());
-    let mut next_automatic_behavior_sequence = AUTOMATIC_SEQUENCE_START;
+    let mut next_automatic_event_sequence = AUTOMATIC_SEQUENCE_START;
     let mut motion_audio_enabled = initial_motion_audio_enabled;
     let mut pending_model = None;
     let mut deferred_commands = VecDeque::new();
@@ -1634,18 +1651,19 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
             &snapshot,
             clock.now(),
         );
-        if pending_model.is_none() && shutdown.sequence().is_none() {
+        if pending_model.is_none() {
             maybe_trigger_random_behavior(
                 renderer.as_mut(),
                 active_model.as_deref(),
                 &mut active_motion,
                 &mut active_expression,
                 &mut random_behavior_scheduler,
-                &mut next_automatic_behavior_sequence,
+                &mut next_automatic_event_sequence,
                 &motion_audio,
                 motion_audio_enabled,
                 &snapshot,
                 clock.now(),
+                &shutdown,
             );
         }
         let frame_interval = runtime_frame_interval(maximum_fps, overlay_visible);
@@ -1835,11 +1853,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         let disabling_audio = motion_audio_enabled && !enabled;
                         motion_audio_enabled = enabled;
                         if disabling_audio {
-                            stop_motion_audio(
-                                &motion_audio,
-                                sequence,
-                                MotionAudioStopReason::Disabled,
-                            );
+                            stop_motion_audio(&motion_audio, MotionAudioStopReason::Disabled);
                         }
                         publish(&snapshot, |current| {
                             current.motion_audio_enabled = enabled;
@@ -2047,7 +2061,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                     {
                                         let _ =
                                             motion_audio.try_publish(MotionAudioCommand::Play {
-                                                sequence,
+                                                sequence: motion_audio.next_sequence(),
                                                 path,
                                                 volume: MotionAudioVolume::FULL,
                                             });
@@ -2064,7 +2078,6 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                                     } else {
                                         stop_motion_audio(
                                             &motion_audio,
-                                            sequence,
                                             MotionAudioStopReason::MotionReplaced,
                                         );
                                         start_motion(
@@ -2102,11 +2115,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                             .as_ref()
                             .is_some_and(|active| active.stop_command_sequence.is_some());
                         if matching && !already_stopping {
-                            stop_motion_audio(
-                                &motion_audio,
-                                sequence,
-                                MotionAudioStopReason::MotionStopped,
-                            );
+                            stop_motion_audio(&motion_audio, MotionAudioStopReason::MotionStopped);
                             let stop_status = renderer
                                 .as_mut()
                                 .map_or(MotionStopStatus::Finished, |renderer| {
@@ -2172,7 +2181,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                         if !shutdown_delay.is_zero() {
                             thread::sleep(shutdown_delay);
                         }
-                        stop_motion_audio(&motion_audio, sequence, MotionAudioStopReason::Shutdown);
+                        stop_motion_audio(&motion_audio, MotionAudioStopReason::Shutdown);
                         publish(&snapshot, |current| {
                             current.state = RuntimeState::Stopping;
                             current.pending_model = None;
@@ -2261,18 +2270,19 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
                     &snapshot,
                     clock.now(),
                 );
-                if pending_model.is_none() && shutdown.sequence().is_none() {
+                if pending_model.is_none() {
                     maybe_trigger_random_behavior(
                         renderer.as_mut(),
                         active_model.as_deref(),
                         &mut active_motion,
                         &mut active_expression,
                         &mut random_behavior_scheduler,
-                        &mut next_automatic_behavior_sequence,
+                        &mut next_automatic_event_sequence,
                         &motion_audio,
                         motion_audio_enabled,
                         &snapshot,
                         clock.now(),
+                        &shutdown,
                     );
                 }
                 if overlay_visible && pending_model.is_none() {
@@ -2329,7 +2339,7 @@ fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: RuntimeWorkerBoots
     if let Some(renderer) = &renderer {
         renderer.close();
     }
-    stop_motion_audio(&motion_audio, u64::MAX, MotionAudioStopReason::Shutdown);
+    stop_motion_audio(&motion_audio, MotionAudioStopReason::Shutdown);
     publish(&snapshot, |current| current.state = RuntimeState::Stopped);
     if panic_after_stopped {
         panic!("runtime worker panic injection");
@@ -2343,7 +2353,37 @@ fn maybe_trigger_random_behavior(
     active_motion: &mut Option<ActiveMotionSnapshot>,
     active_expression: &mut Option<ActiveExpressionSnapshot>,
     scheduler: &mut RandomBehaviorScheduler,
-    next_automatic_sequence: &mut u64,
+    next_automatic_event_sequence: &mut u64,
+    motion_audio: &MotionAudioClient,
+    motion_audio_enabled: bool,
+    snapshot: &SnapshotCell,
+    now: Duration,
+    shutdown: &ShutdownSignal,
+) {
+    shutdown.run_if_not_shutdown(|| {
+        maybe_trigger_random_behavior_locked(
+            renderer,
+            active_model,
+            active_motion,
+            active_expression,
+            scheduler,
+            next_automatic_event_sequence,
+            motion_audio,
+            motion_audio_enabled,
+            snapshot,
+            now,
+        );
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn maybe_trigger_random_behavior_locked(
+    renderer: Option<&mut RuntimeRenderer>,
+    active_model: Option<&CommittedModel>,
+    active_motion: &mut Option<ActiveMotionSnapshot>,
+    active_expression: &mut Option<ActiveExpressionSnapshot>,
+    scheduler: &mut RandomBehaviorScheduler,
+    next_automatic_event_sequence: &mut u64,
     motion_audio: &MotionAudioClient,
     motion_audio_enabled: bool,
     snapshot: &SnapshotCell,
@@ -2358,8 +2398,8 @@ fn maybe_trigger_random_behavior(
     let Some(behavior) = scheduler.poll(now, || model.snapshot().behaviors) else {
         return;
     };
-    let automatic_sequence = *next_automatic_sequence;
-    *next_automatic_sequence = next_automatic_sequence.wrapping_sub(1);
+    let automatic_sequence = *next_automatic_event_sequence;
+    *next_automatic_event_sequence = next_automatic_event_sequence.wrapping_sub(1);
     match behavior {
         bongocat_model::ModelBehaviorSnapshot::Motion { group, index } => {
             let Ok(motion) = MotionId::new(group, index) else {
@@ -2379,16 +2419,12 @@ fn maybe_trigger_random_behavior(
             if motion_audio_enabled {
                 if let Some(path) = motion_audio_path(Some(model), &motion) {
                     let _ = motion_audio.try_publish(MotionAudioCommand::Play {
-                        sequence: automatic_sequence,
+                        sequence: motion_audio.next_sequence(),
                         path,
                         volume: MotionAudioVolume::FULL,
                     });
                 } else {
-                    stop_motion_audio(
-                        motion_audio,
-                        automatic_sequence,
-                        MotionAudioStopReason::MotionReplaced,
-                    );
+                    stop_motion_audio(motion_audio, MotionAudioStopReason::MotionReplaced);
                 }
             }
             if renderer.start_motion(&motion, now, false).is_err() {
@@ -2473,7 +2509,7 @@ fn begin_model_activation(
         *active_model = Some(committed);
         *active_motion = None;
         *active_expression = None;
-        stop_motion_audio(motion_audio, sequence, MotionAudioStopReason::ModelSwitched);
+        stop_motion_audio(motion_audio, MotionAudioStopReason::ModelSwitched);
         publish(snapshot, |current| {
             current.state = RuntimeState::Ready;
             current.active_model = Some(model_snapshot);
@@ -2491,7 +2527,7 @@ fn begin_model_activation(
         Ok(token) => {
             let model_snapshot = committed.snapshot();
             let audio_prepare_sequence = motion_audio_enabled
-                .then(|| prepare_model_audio(motion_audio, sequence, &committed))
+                .then(|| prepare_model_audio(motion_audio, &committed))
                 .flatten();
             *pending_model = Some(PendingModelActivation {
                 token,
@@ -2601,16 +2637,12 @@ fn process_model_commit_feedback(
         }
         let model_input = input_state.model_snapshot(input_bindings, normalized_cursor);
         let model_snapshot = pending.model.snapshot();
-        activate_model_audio(motion_audio, command_sequence, audio_paths);
+        activate_model_audio(motion_audio, audio_paths);
         *active_model = Some(pending.model);
         *active_motion = None;
         *active_expression = None;
         random_behavior_scheduler.reset(now);
-        stop_motion_audio(
-            motion_audio,
-            command_sequence,
-            MotionAudioStopReason::ModelSwitched,
-        );
+        stop_motion_audio(motion_audio, MotionAudioStopReason::ModelSwitched);
         publish(snapshot, |current| {
             current.state = RuntimeState::Ready;
             current.active_model = Some(model_snapshot);
@@ -2636,20 +2668,23 @@ fn process_model_commit_feedback(
     }
 }
 
-fn prepare_model_audio(
-    client: &MotionAudioClient,
-    sequence: u64,
-    model: &CommittedModel,
-) -> Option<u64> {
+fn prepare_model_audio(client: &MotionAudioClient, model: &CommittedModel) -> Option<u64> {
     let paths = model_audio_paths(model);
-    (!paths.is_empty())
-        .then(|| client.try_publish(MotionAudioCommand::Prepare { sequence, paths }))
-        .and_then(Result::ok)
+    if paths.is_empty() {
+        return None;
+    }
+    let sequence = client.next_sequence();
+    client
+        .try_publish(MotionAudioCommand::Prepare { sequence, paths })
+        .ok()
         .map(|()| sequence)
 }
 
-fn activate_model_audio(client: &MotionAudioClient, sequence: u64, paths: Vec<std::path::PathBuf>) {
-    let _ = client.try_publish(MotionAudioCommand::ActivatePrepared { sequence, paths });
+fn activate_model_audio(client: &MotionAudioClient, paths: Vec<std::path::PathBuf>) {
+    let _ = client.try_publish(MotionAudioCommand::ActivatePrepared {
+        sequence: client.next_sequence(),
+        paths,
+    });
 }
 
 fn model_audio_paths(model: &CommittedModel) -> Vec<std::path::PathBuf> {
@@ -2800,8 +2835,11 @@ fn motion_audio_path(
     Some(model.root().join(sound))
 }
 
-fn stop_motion_audio(client: &MotionAudioClient, sequence: u64, reason: MotionAudioStopReason) {
-    let _ = client.try_publish(MotionAudioCommand::Stop { sequence, reason });
+fn stop_motion_audio(client: &MotionAudioClient, reason: MotionAudioStopReason) {
+    let _ = client.try_publish(MotionAudioCommand::Stop {
+        sequence: client.next_sequence(),
+        reason,
+    });
 }
 
 fn consume_cursor(
@@ -3368,6 +3406,46 @@ mod tests {
         );
         assert_eq!(diagnostics.budget_exceeded, u64::MAX);
         assert_eq!(diagnostics.last_over_budget_ms, 30);
+    }
+
+    #[test]
+    fn shutdown_barrier_orders_automatic_side_effects_before_request() {
+        let signal = Arc::new(ShutdownSignal::default());
+        let action_signal = Arc::clone(&signal);
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let action = thread::spawn(move || {
+            action_signal.run_if_not_shutdown(|| {
+                entered_tx.send(()).expect("enter automatic side effect");
+                release_rx.recv().expect("release automatic side effect");
+            });
+        });
+        entered_rx
+            .recv_timeout(TIMEOUT)
+            .expect("automatic side effect entered shutdown gate");
+
+        let request_signal = Arc::clone(&signal);
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let request = thread::spawn(move || {
+            started_tx.send(()).expect("start shutdown request");
+            request_signal.request(7);
+            done_tx.send(()).expect("finish shutdown request");
+        });
+        started_rx
+            .recv_timeout(TIMEOUT)
+            .expect("shutdown request thread started");
+        assert!(
+            done_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+            "shutdown must wait for an already-admitted automatic side effect"
+        );
+
+        release_tx.send(()).expect("release automatic side effect");
+        action.join().expect("automatic side effect thread");
+        done_rx
+            .recv_timeout(TIMEOUT)
+            .expect("shutdown request completed after side effect");
+        request.join().expect("shutdown request thread");
     }
 
     #[test]

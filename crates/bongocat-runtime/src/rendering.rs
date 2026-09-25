@@ -214,14 +214,18 @@ impl RuntimeRenderer {
     /// longer reserves priority. Derive completion from the injected clock as
     /// well as the last delivered frame so a hidden or sleeping overlay cannot
     /// swallow a command sent after the clip duration. An explicit stop in
-    /// progress is still stopping, not settled, until its fade removes the layer.
+    /// progress is still stopping, not settled, until its fade duration has
+    /// elapsed, even when no hidden frame was delivered to remove the layer.
     pub(crate) fn motion_is_settled(&self, now: Duration) -> bool {
         self.active.as_ref().is_some_and(|active| {
             active.motion.as_ref().is_some_and(|playback| {
                 let completed = playback.completed
                     || (!playback.looping
                         && now.saturating_sub(playback.started_at) >= playback.clip.duration());
-                completed && playback.fade_out_started_at.is_none()
+                let fade_finished = playback.fade_out_started_at.is_some_and(|started_at| {
+                    now.saturating_sub(started_at) >= playback.clip.fade_out_duration()
+                });
+                (completed && playback.fade_out_started_at.is_none()) || fade_finished
             })
         })
     }
@@ -923,6 +927,46 @@ mod tests {
                 > 0.99,
             "stopping a motion must restore Core part opacity before the next layer"
         );
+    }
+
+    #[test]
+    fn hidden_motion_fade_becomes_settled_without_frame_evaluation() {
+        let (bootstrap, _consumer) = RuntimeRenderer::channel();
+        let mut renderer = RuntimeRenderer::start(bootstrap);
+        let token = renderer
+            .prepare(1, &preset_model("standard"), ModelInputSnapshot::default())
+            .expect("prepare model");
+        assert!(renderer.commit(token));
+
+        let motion = MotionClip::from_slice(
+            br#"{
+              "Version":3,
+              "Meta":{"Duration":10.0,"Fps":30.0,"Loop":false,
+                "AreBeziersRestricted":true,"CurveCount":1,"TotalSegmentCount":1,
+                "TotalPointCount":2,"UserDataCount":0,"TotalUserDataSize":0},
+              "Curves":[
+                {"Target":"Parameter","Id":"Param","Segments":[0,0,0,1,1]}
+              ]
+            }"#,
+            0.0,
+            1.0,
+        )
+        .expect("motion");
+        renderer.active.as_mut().expect("active model").motion = Some(MotionPlayback {
+            clip: motion,
+            looping: false,
+            started_at: Duration::ZERO,
+            completed: false,
+            fade_out_started_at: None,
+            last_event_elapsed: None,
+        });
+
+        assert_eq!(
+            renderer.stop_motion(Duration::from_secs(1)),
+            MotionStopStatus::Fading
+        );
+        assert!(!renderer.motion_is_settled(Duration::from_secs(1)));
+        assert!(renderer.motion_is_settled(Duration::from_secs(2)));
     }
 
     #[test]

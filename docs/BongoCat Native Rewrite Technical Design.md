@@ -405,7 +405,8 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   保留位，下一次请求可替换或重新播放它；显式 `motion_stop` 仍可让最终姿态按资源 fade 退出。
   同一动作在同一 priority 上仍在播放时，重复请求被忽略（R5 motion queue 的 equal-priority
   规则），因此按键重复和连按既不会重启 clip 也不会重放 motion 音效。预览播放同样只播放一个
-  循环并保持最终姿态，但每次请求都重新开始。
+  循环并保持最终姿态，但每次请求都重新开始。显式停止的非零 fade 即使在 overlay 隐藏、没有
+  下一帧时，也会按注入单调时钟在 fade duration 结束后视为 settled，避免过期 motion 阻塞随机行为。
 - `motion_stop` 只作用于匹配的当前动作，包括已完成并保持最终姿态的 motion。非零
   `FadeOutTime` 在 runtime snapshot 中保留
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
@@ -416,8 +417,11 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   一个行为（每个声明项等权）。第一次选择等待一个完整间隔；成功模型切换、设置变更和重新启用都会
   重锚定时器，长暂停只产生一次选择而不追赶补发。自动 motion 使用 `Idle` priority，不能替换正在进行
   的 `Normal`/`Force` 产品 motion；随机 expression 继续遵守最新 expression 替换语义，模型没有行为
-  时保持无操作。待处理模型 commit 或 shutdown 时不选择新行为。随机选择器使用 runtime 内部 seed，
-  测试可以通过固定 seed 和单调时间得到同一序列。
+  时保持无操作。待处理模型 commit 或 shutdown 时不选择新行为；自动行为与 shutdown request
+  通过同一 gate 排序，已被接纳的动作在 shutdown 请求前完成，后续请求不会插入新的自动副作用。
+  自动行为的 runtime event sequence 与 audio command sequence 分离，所有生产 audio command 使用
+  `MotionAudioClient` 的独立序号分配器。随机选择器使用 runtime 内部 seed，测试可以通过固定 seed
+  和单调时间得到同一序列。
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。
 - `ModelSettings` 是 runtime 的强类型模型交互设置：`mirror` 只影响不可变
   `RenderSnapshot::mirror_horizontal` 的水平变换，`mirror_pointer_tracking` 只反转

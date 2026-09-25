@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Condvar, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError},
     },
     thread::{self, JoinHandle},
@@ -18,6 +18,18 @@ use std::collections::HashMap;
 // that state reasonably fresh without waking an idle worker at 100 Hz.
 const WORKER_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const PREFERRED_OUTPUT_BUFFER_FRAMES: u32 = 512;
+
+/// Returns whether an observed audio sequence has reached a target in the
+/// forward direction, including across the `u64::MAX -> 0` boundary.
+///
+/// Runtime command sequences and automatic playback use separate domains;
+/// production audio commands allocate their own sequence from the audio
+/// client. A raw `>=` comparison is still unsafe when that dedicated audio
+/// sequence wraps, so all audio waiters use the same half-range ordering rule
+/// as the runtime command tracker.
+fn sequence_reached(observed: u64, target: u64) -> bool {
+    observed.wrapping_sub(target) <= u64::MAX / 2
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MotionAudioState {
@@ -153,6 +165,7 @@ struct SharedState {
     changed: Condvar,
     shutdown_requested: AtomicBool,
     overflow_recovery_requested: AtomicBool,
+    next_sequence: AtomicU64,
 }
 
 impl SharedState {
@@ -207,6 +220,7 @@ impl MotionAudioClient {
                 changed: Condvar::new(),
                 shutdown_requested: AtomicBool::new(true),
                 overflow_recovery_requested: AtomicBool::new(false),
+                next_sequence: AtomicU64::new(0),
             }),
         }
     }
@@ -249,6 +263,15 @@ impl MotionAudioClient {
         self.shared.snapshot()
     }
 
+    /// Allocates the next sequence in the audio command domain.
+    ///
+    /// Audio ordering is independent from runtime product-command ordering;
+    /// callers should use this allocator for every production audio command
+    /// instead of reusing a runtime command sequence.
+    pub fn next_sequence(&self) -> u64 {
+        self.shared.next_sequence.fetch_add(1, Ordering::Relaxed)
+    }
+
     pub fn wait_for_sequence(
         &self,
         sequence: u64,
@@ -263,7 +286,7 @@ impl MotionAudioClient {
         loop {
             if diagnostics
                 .last_processed_sequence
-                .is_some_and(|processed| processed >= sequence)
+                .is_some_and(|processed| sequence_reached(processed, sequence))
             {
                 return Some(diagnostics.clone());
             }
@@ -283,7 +306,7 @@ impl MotionAudioClient {
             if result.timed_out()
                 && !diagnostics
                     .last_processed_sequence
-                    .is_some_and(|processed| processed >= sequence)
+                    .is_some_and(|processed| sequence_reached(processed, sequence))
             {
                 return None;
             }
@@ -359,6 +382,7 @@ impl MotionAudioService {
             changed: Condvar::new(),
             shutdown_requested: AtomicBool::new(false),
             overflow_recovery_requested: AtomicBool::new(false),
+            next_sequence: AtomicU64::new(0),
         });
         let client = MotionAudioClient {
             sender,
@@ -849,6 +873,30 @@ mod tests {
         assert_eq!(MotionAudioVolume::new(-0.1), None);
         assert_eq!(MotionAudioVolume::new(1.1), None);
         assert_eq!(MotionAudioVolume::new(f32::NAN), None);
+    }
+
+    #[test]
+    fn sequence_ordering_handles_audio_sequence_wraparound() {
+        assert!(sequence_reached(0, u64::MAX));
+        assert!(sequence_reached(6, 5));
+        assert!(!sequence_reached(5, 6));
+        assert!(!sequence_reached(u64::MAX - 1, 1));
+    }
+
+    #[test]
+    fn allocated_audio_sequences_are_independent_from_runtime_sequences() {
+        let service = MotionAudioService::start_with_backend(
+            4,
+            Box::new(RecordingBackend {
+                events: Arc::new(Mutex::new(Vec::new())),
+                failures: VecDeque::new(),
+                playing: false,
+            }),
+        )
+        .expect("audio service");
+        let client = service.client();
+        assert_eq!(client.next_sequence(), 0);
+        assert_eq!(client.next_sequence(), 1);
     }
 
     #[test]
