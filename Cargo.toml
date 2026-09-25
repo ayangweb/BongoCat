@@ -43,7 +43,7 @@ embed-resource = "=3.0.11"
 flate2 = "=1.1.10"
 global-hotkey = "=0.8.0"
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", rev = "500852f449c05dc01920ec82f3ae2656a61d0387" }
-gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "f43af45c3106e48ff131b77bf8c148d9bd5cbed2", default-features = false }
+gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "429a84ca2a10dca03864b2bf26f385a7ed0e657a", default-features = false }
 rust-i18n = "=4.2.2"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 muda = { version = "=0.20.0", default-features = false }

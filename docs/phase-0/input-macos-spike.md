@@ -1,6 +1,6 @@
 # macOS Input Permission and Tap Lifecycle Spike
 
-状态：权限/tap 生命周期 contract、listen-only CGEventTap、可靠 callback 队列、cursor latest-value 通道、键盘/鼠标按钮周期校正、真实 callback release 丢弃后的恢复、受控 disable 恢复、NSWorkspace 生命周期 Reset 和 callback shutdown smoke 已通过；自维护 GameController 手柄 backend/probe 已于 2026-09-25 删除，正式产品改用 ADR-0066 的精确 gilrs/IOHID adapter。pinned fork 的 dangling IOHID callback context 是 P0 阻塞；权限矩阵、真实系统生命周期、系统自然 timeout、物理键鼠/手柄和 fork worker stop/join 仍待验证
+状态：权限/tap 生命周期 contract、listen-only CGEventTap、可靠 callback 队列、cursor latest-value 通道、键盘/鼠标按钮周期校正、真实 callback release 丢弃后的恢复、受控 disable 恢复、NSWorkspace 生命周期 Reset 和 callback shutdown smoke 已通过；自维护 GameController 手柄 backend/probe 已于 2026-09-25 删除，正式产品改用 ADR-0066 的精确 gilrs/IOHID adapter。pinned fork 已补齐 IOHID callback ownership、bounded stop/join、queue/reset epoch 和 authoritative snapshot；TCC 矩阵、真实系统生命周期、系统自然 timeout、物理键鼠/手柄和长期 profile 仍待验证
 日期：2026-09-25
 
 ## Contract
@@ -85,11 +85,11 @@ NSZombieEnabled=YES spikes/input-macos/target/release/bongocat-input-macos-spike
 
 2026-09-25 起，GameController producer、`objc2-game-controller` dependency、`--gamepad-ms`
 probe 和相关测试已从当前树删除；本文件其余 CGEventTap 证据继续有效。正式手柄 backend 固定
-`ayangweb/gilrs` commit `f43af45c3106e48ff131b77bf8c148d9bd5cbed2` 的 IOHID 实现。旧 framework
-smoke 只作为已退役实现的历史证据；当前 fork 的 IOHID run-loop worker 没有 stop/join，backend
-channel 也无界，因此这些旧结果不能证明当前 macOS 手柄 clean shutdown、100-cycle 或长期 backlog
-有界。正式服务在最终诊断中明确报告 `clean_shutdown=false` / `service_status=Failed`，直到 fork
-提供可验证的 stop/join；backend 初始 held-state snapshot 也仍需补齐。
+`ayangweb/gilrs` commit `429a84ca2a10dca03864b2bf26f385a7ed0e657a` 的 IOHID 实现。旧 framework
+smoke 只作为已退役实现的历史证据；该 fork commit 已提供持久 callback context、run-loop stop/join、
+bounded queue/reset epoch 和 `IOHIDDeviceGetValue` authoritative snapshot，BongoCat macOS target
+不再启用临时 `wgi` feature。上述代码证据不能替代 TCC deny/grant/revoke、真实设备、100-cycle、
+lost-release 和长期资源增长矩阵。
 
 同一工作批次重跑 `--tap-ms 800 --inject-release-loss` 时，两项 TCC preflight 仍为 true 且投递计数为 2，但 session callback 收到 `0/2`；严格 validator 继续非零退出，并把错误精确区分为“未到达 event-tap callback”，未将其误报成校正失败或成功。sequence 变更后的 release-loss 实机回归仍需在可接收 synthetic callback 的交互式会话重跑。
 

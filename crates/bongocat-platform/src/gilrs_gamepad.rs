@@ -23,6 +23,7 @@ const AXIS_TO_BUTTON_RELEASED: f32 = 0.5;
 pub(crate) struct GilrsGamepad {
     gilrs: Option<Gilrs>,
     backend_failure_reported: bool,
+    recovery_requested: bool,
     producer: InputProducer,
     axis_producer: GamepadAxisProducer,
     connections: ConnectionTable,
@@ -55,6 +56,7 @@ impl GilrsGamepad {
         Self {
             gilrs,
             backend_failure_reported: false,
+            recovery_requested: false,
             producer,
             axis_producer,
             connections: ConnectionTable::new(),
@@ -102,7 +104,12 @@ impl GilrsGamepad {
                 return Err(error);
             }
         }
-        self.reconcile_connected(at, diagnostics)
+        self.reconcile_connected(at, diagnostics)?;
+        if self.recovery_requested {
+            self.recovery_requested = false;
+            self.reseed_internal(false, at, diagnostics)?;
+        }
+        Ok(())
     }
 
     fn process_event(
@@ -131,6 +138,12 @@ impl GilrsGamepad {
                 };
                 self.publish_axis(gamepad_id, axis, value, at, diagnostics)
             }
+            EventType::BackendOverflow { dropped } => {
+                diagnostics.gamepad_event_discards =
+                    diagnostics.gamepad_event_discards.saturating_add(dropped);
+                self.recovery_requested = true;
+                Ok(())
+            }
             EventType::ButtonRepeated(..)
             | EventType::Dropped
             | EventType::ForceFeedbackEffectCompleted => Ok(()),
@@ -143,6 +156,30 @@ impl GilrsGamepad {
         at: MonotonicMillis,
         diagnostics: &mut PlatformInputDiagnostics,
     ) -> Result<(), InputPublishError> {
+        self.reseed_internal(true, at, diagnostics)
+    }
+
+    fn reseed_internal(
+        &mut self,
+        reset_backend: bool,
+        at: MonotonicMillis,
+        diagnostics: &mut PlatformInputDiagnostics,
+    ) -> Result<(), InputPublishError> {
+        if reset_backend {
+            let reset_failed = match self.gilrs.as_mut() {
+                Some(gilrs) => gilrs.reset().is_err(),
+                None => false,
+            };
+            if reset_failed {
+                diagnostics.gamepad_backend_failures =
+                    diagnostics.gamepad_backend_failures.saturating_add(1);
+                self.gilrs = None;
+                self.backend_failure_reported = true;
+                self.disconnect_all();
+                return Ok(());
+            }
+        }
+
         // Reset clears runtime pressed state; do not let a cached trigger set
         // suppress the first valid held-state edge during the replay.
         self.pressed_triggers.clear();
@@ -162,20 +199,16 @@ impl GilrsGamepad {
 
     pub(crate) fn shutdown(&mut self) -> GilrsShutdown {
         let disconnected = self.disconnect_all();
-        // WGI's gilrs-core Drop performs the backend stop/join. Taking the
-        // optional context here makes that ordering explicit before the
-        // platform owner publishes its final Reset. The macOS fork currently
-        // has no stop/join implementation; that limitation is tracked by
-        // ADR-0066 and must be fixed in the fork rather than hidden here.
-        let backend_was_running = self.gilrs.is_some();
-        self.gilrs.take();
+        let backend_clean = match self.gilrs.take() {
+            Some(gilrs) => catch_unwind(AssertUnwindSafe(|| gilrs.shutdown()))
+                .ok()
+                .and_then(|result| result.ok())
+                .is_some(),
+            None => true,
+        };
         GilrsShutdown {
             disconnected,
-            // Neither current backend exposes a bounded, error-aware stop/join
-            // acknowledgement. Once a context exists, keep the final service
-            // diagnostic explicitly incomplete until the fork provides that
-            // contract; a backend that never started has no worker to verify.
-            backend_clean: !backend_was_running,
+            backend_clean,
         }
     }
 

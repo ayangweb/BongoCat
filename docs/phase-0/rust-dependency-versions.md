@@ -1,7 +1,7 @@
 # Native Rewrite Rust Dependency Version Audit
 
 状态：所有直接依赖已使用 crates.io 最新稳定版、精确上游 revision 或已记录的 ABI/transition 例外；lockfile 已更新到上游约束允许的最新解析结果
-日期：2026-09-25（新增 `ayangweb/gilrs` 固定 commit `f43af45c3106e48ff131b77bf8c148d9bd5cbed2`；`gpui-kit` 固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`；上次全量审计 2026-09-13）
+日期：2026-09-25（新增 `ayangweb/gilrs` 固定 commit `429a84ca2a10dca03864b2bf26f385a7ed0e657a`；`gpui-kit` 固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`；上次全量审计 2026-09-13）
 Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
@@ -38,7 +38,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级                                          |
 | `embed-resource`                      |       `3.0.11` | Windows 产品图标新增时最新                               |
 | `gpui-kit`                            | `0.6.5` @ `500852f` | 上游固定 revision；含 variant 与 Popover arrow                |
-| `gilrs`                               | `0.11.2` @ `f43af45` | 维护者 fork 固定 revision；WGI/IOHID 与后续手柄修复统一维护    |
+| `gilrs`                               | `0.11.2` @ `429a84c` | 维护者 fork 固定 revision；WGI/IOHID 与后续手柄修复统一维护    |
 | `futures-lite`                        |        `2.6.1` | 已是最新                                                 |
 | `gpui`                                |        `0.2.2` | spike 直接依赖；正式 UI 经 `gpui-kit` suite 传递              |
 | `libc`                                |      `0.2.189` | 新增时即为最新稳定版                                     |
@@ -122,17 +122,15 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   管理 callback context、CFRunLoop source 和 tap 的统一析构，项目公共 API 仅暴露自有
   permission、diagnostics 和 error 类型。替换边界是 `MacInputService` 私有实现，不影响 runtime；
 - `gilrs 0.11.2` / `gilrs-core 0.6.8` 固定 `ayangweb/gilrs` commit
-  `f43af45c3106e48ff131b77bf8c148d9bd5cbed2`，许可证 `Apache-2.0 OR MIT`，MSRV `1.84`。
+  `429a84ca2a10dca03864b2bf26f385a7ed0e657a`，许可证 `Apache-2.0 OR MIT`，MSRV `1.84`。
   Windows `wgi` backend、macOS IOHID backend 和 fork 内置 SDL mapping 都只存在于
   `bongocat-platform` 私有 adapter；gilrs id/type/error 不进入 runtime/UI 公共 API，环境 mapping
   与 force feedback 关闭。fork 的 SDL_GameControllerDB submodule 固定为
-  `15b5e9f4abfb1c5c691c468799816755a91a2e11`。当前 macOS backend 缺 stop/join，WGI join/错误
-  acknowledgement 也没有有界证明，WGI/IOHID event channel 无界，且 initial held-state snapshot
-  依赖 backend 是否已发出缓存事件；这些是 ADR-0066 阻塞，必须在 fork 修复后再宣称手柄完成。
-  workspace `gilrs` dependency 保持 featureless；`bongocat-platform` 的 Windows target table
-  启用 `wgi`。当前 fork 的 compile guard 未按 target 保护，macOS target table 也暂时启用 `wgi`
-  才能编译，但不编译 Windows backend 源；backend context 启动后服务最终诊断会明确标为
-  `clean_shutdown=false` / `service_status=Failed`，直到 bounded/error-aware stop/join acknowledgement 完成；
+  `15b5e9f4abfb1c5c691c468799816755a91a2e11`。该 commit 已提供 bounded queue/epoch、authoritative
+  reset、WGI/XInput bounded shutdown acknowledgement、macOS callback ownership/close 和 xinput
+  extreme-axis regression 修复；workspace `gilrs` dependency 保持 featureless，只有 Windows target table
+  启用 `wgi`，macOS target 不再启用临时 `wgi`。BongoCat adapter 将 gilrs overflow/reset/shutdown
+  结果映射为项目自有诊断；物理设备、焦点和长期生命周期证据仍是 ADR-0066 发布门禁。
 - `objc2-service-management 0.3.2`（Zlib OR Apache-2.0 OR MIT，Rust 1.71+）来自持续维护
   `objc2` binding 集，只在 macOS platform adapter 以最小 `SMAppService`/Foundation feature
   调用 macOS 13+ main-app login item；运行时先检查 class availability，macOS 12 与 Development

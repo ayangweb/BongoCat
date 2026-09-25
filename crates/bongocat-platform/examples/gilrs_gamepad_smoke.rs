@@ -20,11 +20,11 @@ fn main() {
     .expect("Windows input service with gilrs gamepad adapter");
     std::thread::sleep(Duration::from_millis(250));
     let diagnostics = service.stop().expect("Windows input service shutdown");
-    assert!(!diagnostics.clean_shutdown);
+    assert!(diagnostics.clean_shutdown);
     assert_eq!(diagnostics.gamepad_backend_failures, 0);
     assert_eq!(diagnostics.capture_queue_overflows, 0);
     println!(
-        "gilrs-gamepad-smoke: windows started=true stopped=true backend_failures=0 capture_queue_overflows=0 clean_shutdown=false (no-device context only; bounded/error acknowledgement remains a fork gate)"
+        "gilrs-gamepad-smoke: windows started=true stopped=true backend_failures=0 capture_queue_overflows=0 clean_shutdown=true (no-device context only; physical WGI coverage remains a release gate)"
     );
     runtime.shutdown(TIMEOUT).expect("runtime shutdown");
 }

@@ -1772,9 +1772,9 @@ mod tests {
         assert_eq!(diagnostics.capture_queue_overflows, 0);
         assert_eq!(diagnostics.runtime_queue_overflows, 0);
         assert!(diagnostics.reconciliation_runs >= 2);
-        // The pinned gilrs WGI backend has no bounded/error-aware stop/join
-        // acknowledgement yet; the final diagnostic must not claim otherwise.
-        assert!(!diagnostics.clean_shutdown);
+        // The fork's explicit shutdown acknowledgement is part of the final
+        // service diagnostic.
+        assert!(diagnostics.clean_shutdown);
         assert_eq!(client.snapshot().platform_input, diagnostics);
         let stopped = runtime.shutdown(TIMEOUT).expect("runtime stop");
         assert_eq!(stopped.input.pressed_key_count, 0);

@@ -173,14 +173,12 @@ cargo run -p bongocat-overlay --release -- standard 30 --interactive
 The interactive path uses the same typed runtime input state as the deterministic preview and
 stops the platform producer before the runtime and Metal overlay. It seeds the current global
 cursor position at startup and then coalesces cursor movement through an independent latest-value
-transport; pointer, head, and eye parameters use the active display's logical viewport. On the
-currently pinned gilrs fork, final diagnostics intentionally remain `Failed` with
-`clean_shutdown=false` after a backend context starts because neither backend exposes the required
-bounded/error-aware stop/join acknowledgement; the keyboard/tap final Reset still completes, but this
-dependency gate is not a clean product shutdown. The product
-entry now owns this runtime/input/render lifecycle on both launch platforms. GPUI settings
-coexistence, installed-model selection, physical gamepad validation, and remaining lifecycle evidence are
-separate work items.
+transport; pointer, head, and eye parameters use the active display's logical viewport. The pinned
+gilrs fork now exposes bounded backend queue/epoch recovery and an explicit bounded shutdown
+acknowledgement; BongoCat maps those results into its own diagnostics, while physical gamepad
+focus, device, and long-lifecycle evidence remains a release gate. The product entry now owns this
+runtime/input/render lifecycle on both launch platforms. GPUI settings coexistence, installed-model
+selection, physical gamepad validation, and remaining lifecycle evidence are separate work items.
 
 Cubism model evaluation and Metal GPU ownership are separated by the platform-independent
 `bongocat-render` contract. The single runtime worker owns the mutable Cubism model and publishes

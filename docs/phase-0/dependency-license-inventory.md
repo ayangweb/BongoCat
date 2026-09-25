@@ -19,7 +19,7 @@
 | Dependency family                | Locked version                 | License                   | Role                                     |
 | -------------------------------- | ------------------------------ | ------------------------- | ---------------------------------------- |
 | GPUI Kit                         | `0.6.5` @ `500852f`            | Apache-2.0                | Formal settings UI facade and components; ADR-0056 exact upstream revision |
-| gilrs / gilrs-core              | `0.11.2` / `0.6.8` @ `f43af45` | Apache-2.0 OR MIT         | Formal WGI/IOHID gamepad backend; ADR-0066 exact maintainer fork revision |
+| gilrs / gilrs-core              | `0.11.2` / `0.6.8` @ `429a84c` | Apache-2.0 OR MIT         | Formal WGI/IOHID gamepad backend; ADR-0066 exact maintainer fork revision |
 | AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | Direct in `spikes/gpui-settings`; formal UI receives `gpui-kit` transitive semantics after ADR-0054 |
 | arboard                          | `3.6.1`                        | MIT OR Apache-2.0         | Dual-platform private text clipboard     |
 | raw-window-handle                | `0.6.2`                        | MIT OR Apache-2.0 OR Zlib | GPUI/Win32 native window boundary        |
@@ -65,7 +65,7 @@ GPUI Kit 的 HTTP/TLS 传递图引入 `libbz2-rs-sys 0.2.5`（`bzip2-1.0.6`）�
 
 依赖来源基线仍是 crates.io index；unknown registry 会使检查失败。`allow-git` 只额外放行固定上游
 `https://github.com/longbridge/gpui-kit` rev `500852f449c05dc01920ec82f3ae2656a61d0387` 与固定维护者
-fork `https://github.com/ayangweb/gilrs` rev `f43af45c3106e48ff131b77bf8c148d9bd5cbed2`。GPUI Kit suite
+fork `https://github.com/ayangweb/gilrs` rev `429a84ca2a10dca03864b2bf26f385a7ed0e657a`。GPUI Kit suite
 五个 package 与 gilrs/gilrs-core/固定 SDL mapping submodule 都从各自 commit 解析；其它 git source
 继续失败。`required-git-spec = "rev"` 强制所有 git source 必须精确锁定 commit。GPUI release
 门禁与 gilrs fork 生命周期/队列门禁分别由 ADR-0056/0066 管理。

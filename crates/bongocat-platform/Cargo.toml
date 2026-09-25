@@ -26,8 +26,7 @@ sys-locale = "=0.3.2"
 auto-launch = "=0.6.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-# The pinned fork's compile guard currently requires a backend feature on every target.
-gilrs = { workspace = true, features = ["wgi"] }
+gilrs = { workspace = true }
 async-io.workspace = true
 block2 = "=0.6.2"
 dispatch2 = "=0.3.1"

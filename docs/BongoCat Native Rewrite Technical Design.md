@@ -1234,11 +1234,10 @@ resources/background.png  resources/cover.png
 - 重复 KeyDown 不破坏按压状态或边沿动画。
 - 设备断开、锁屏和睡眠后 pressed set 为空。
 - 鼠标移动合并不能阻塞键盘释放。
-- gilrs adapter 的每 tick event 上限不能替代 backend 队列上界；在 fork 提供 bounded queue 与
-  overflow/reset 证据前，macOS stop/join、WGI bounded join/错误 acknowledgement、初始 held-state
-  snapshot、WGI 焦点和双平台手柄完成声明保持未完成。当前 backend context 启动后，最终诊断必须报告
-  `clean_shutdown=false` / `service_status=Failed`，不能因键鼠 callback 和 final Reset 成功而把
-  backend 生命周期问题标成 clean shutdown。
+- gilrs adapter 的每 tick event 上限不能替代 backend 队列上界；fork 的 bounded queue/epoch、overflow
+  marker、authoritative reset 和 bounded stop/join acknowledgement 已有代码证据，但 WGI 焦点矩阵和双平台
+  物理设备/长期证据仍未完成。backend context 启动后的最终诊断必须真实反映 gilrs shutdown 结果；不得
+  因键鼠 callback 和 final Reset 成功而伪造 clean shutdown。
 
 ### 13.3 验收指标
 
@@ -1269,7 +1268,7 @@ Linux 是后续能力，不是隐藏的首发任务：
 | Rust Live2D 工作量过大       | Core/动作/物理/renderer spike    | 三个预置模型完成输入到绘制闭环    |
 | 透明合成不稳定               | D3D11/Metal 截图和压力测试       | alpha、置顶、穿透双平台通过       |
 | 输入仍卡键                   | Raw Input/CGEventTap + reconcile | #47 和生命周期矩阵无残留键        |
-| gilrs backend 生命周期/队列  | 固定 fork、窄 adapter、发布门禁 | stop/join、bounded overflow、双平台物理矩阵通过 |
+| gilrs backend 生命周期/队列  | 固定 fork、窄 adapter、发布门禁 | bounded overflow/reset、bounded stop/join、双平台物理矩阵通过 |
 | Cubism 授权不明确            | 二进制/许可证清单                | 发布方式有书面结论                |
 | 后续 Linux 不等价            | 单独能力矩阵                     | 不影响 Windows/macOS 首发         |
 
@@ -1394,8 +1393,9 @@ HWND/`NSView` 弹出菜单。第三方类型、句柄和错误不进入 runtime/
 ### ADR-0066：gilrs 手柄后端边界
 
 Windows/macOS 手柄统一使用 `ayangweb/gilrs` 固定 commit，平台只保留强类型输入与 generation/axis
-适配。BongoCat 不再维护 XInput/GameController backend；fork 的 macOS stop/join、bounded event queue
-和 Windows WGI 焦点矩阵是完成门禁，相关修复不在产品层增加 workaround。
+适配。BongoCat 不再维护 XInput/GameController backend；fork 已提供 bounded queue/epoch、authoritative
+reset、macOS/WGI bounded stop/join 和 target-scoped compile guard，Windows WGI 焦点矩阵与双平台物理/
+长期证据仍是完成门禁，相关修复不在产品层增加 workaround。
 
 ### ADR-023：Windows Per-User Installer
 

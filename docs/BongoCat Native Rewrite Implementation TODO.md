@@ -502,7 +502,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     Windows 还处理设备移除、WTS session、电源、队列溢出和 shutdown Reset。平台类型没有
     泄漏到 runtime。双平台手柄已按 ADR-0066 迁入 `ayangweb/gilrs` 固定 commit 的私有窄
     adapter，自维护 XInput 与 GameController backend 已删除；gilrs 类型不进入 runtime。当前
-    fork 的 macOS stop/join、backend 事件队列上界和 Windows WGI 焦点矩阵仍阻塞手柄完成，
+    fork 已提供 bounded queue/epoch、authoritative reset、macOS/WGI bounded stop/join 和 compile guard 修复；Windows WGI 焦点矩阵、双平台物理设备和长期证据仍阻塞手柄完成，
     其余系统服务也未全部迁入，因此总项保持未完成。
 - [ ] 创建 shared/config、behavior、fixtures、resources。
 - [x] 避免空 crate；首批建立 app/runtime/config，随后仅在真实依赖和测试隔离需要时增加 input、ui-protocol、model-store 等边界 crate。
@@ -678,7 +678,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     app/platform 暴露 recovery API。macOS/Windows 正式 producer 均已接入；command 与
     input 共用容量 64 的产品 FIFO，gamepad producer 已在双平台平台层接入，产品实机闭环仍待完成。
 - [ ] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
-  - 状态（2026-08-28，历史基线）：`spikes/input-queue/` 已验证固定容量 FIFO、满载返回原事件、关闭 drain 和 latest-value 槽位；`spikes/runtime-contract/` 进一步验证固定容量 command queue、Condvar 唤醒、溢出 Reset、worker drain 和 join 报告。正式 runtime 已采用容量 64 的共享 command/input FIFO；backend 自身事件队列上界仍待 fork 修复。
+  - 状态（2026-08-28，历史基线）：`spikes/input-queue/` 已验证固定容量 FIFO、满载返回原事件、关闭 drain 和 latest-value 槽位；`spikes/runtime-contract/` 进一步验证固定容量 command queue、Condvar 唤醒、溢出 Reset、worker drain 和 join 报告。正式 runtime 已采用容量 64 的共享 command/input FIFO；backend 自身事件队列上界、overflow/reset epoch 和 bounded stop/join 已由 fork 提供；backend 长期 backlog 与实机证据仍待完成。
   - 状态（2026-08-30）：正式 app 当前使用容量 64 的共享 command/input FIFO，唯一
     runtime worker 消费，owner shutdown 使用可靠控制消息并 join；cursor 已使用独立单槽
     latest-value transport，停止后拒绝新 sample 并在 shutdown 消费 pending sample。
@@ -724,14 +724,14 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     只证明已删除实现，不再作为当前 backend 证据；WGI 焦点/click-through 投递和物理设备矩阵
     仍待完成。
   - 状态（2026-09-25）：共享 `gilrs_gamepad` adapter 固定 fork commit
-    `f43af45c3106e48ff131b77bf8c148d9bd5cbed2`，关闭默认 dead-zone/jitter、环境 mapping 和 force
+    `429a84ca2a10dca03864b2bf26f385a7ed0e657a`，关闭默认 dead-zone/jitter、环境 mapping 和 force
     feedback，保留内置 SDL mapping 与 D-pad filter；每 tick 最多 drain 256 event，位置名、
     trigger 连续值、Reset 后 held-state 重播和四设备 generation 已有 Rust contract。backend 构造失败
-    只禁用手柄。当前 fork 的 macOS IOHID thread 无 stop/join，WGI/IOHID backend 事件 channel
-    无界；WGI join/worker failure 没有有界 acknowledgement，且 WGI 无焦点窗口投递未实测；
-    gilrs 初始 held-state snapshot 也没有 authoritative backend read。backend context 启动后最终
-    诊断会明确报告 `clean_shutdown=false` / `service_status=Failed`，不把键鼠 callback 和 final Reset
-    的成功伪装成整个 input service clean。这些由 fork 修复并继续阻塞总项。
+    只禁用手柄。当前 fork 的 macOS/WGI backend 已提供 bounded queue/epoch、authoritative reset、bounded stop/join acknowledgement 和 callback ownership/close；
+    WGI 无焦点窗口投递、物理设备与长期 backlog 仍未实测；
+    backend overflow 会通过强类型事件进入 adapter 并触发 reset/reseed，最终诊断消费 gilrs shutdown acknowledgement；
+    最终诊断消费 gilrs shutdown acknowledgement，不再把键鼠 callback 和 final Reset
+    的成功伪装成整个 input service clean。
   - 状态（2026-09-01）：正式 runtime 已增加独立 cursor latest-value 单槽，每 `16 ms` 或
     可靠 command 到达时消费；10,000 sample flood 满足
     `published = coalesced + consumed + pending`，且不会延迟可靠 KeyUp。正式 macOS producer
@@ -749,11 +749,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     计数完整且 active connection 的轴值仍投影到 model input。新增 shutdown flush 回归通过；
     平台实机手柄和跨平台产品证据仍待完成，因此总项保持未勾选。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。
-  - 状态（2026-08-28，历史基线）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断。正式 runtime 已采用容量 64 的共享 command/input FIFO；gilrs backend 自身 queue 上界仍待 fork 修复。
+  - 状态（2026-08-28，历史基线）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断。正式 runtime 已采用容量 64 的共享 command/input FIFO；gilrs backend 自身 queue 上界、overflow/reset epoch 和 bounded stop/join 已由 fork 提供，长期 backlog 仍待实机验证。
   - 状态（2026-08-30，历史基线）：产品 `InputProducer` 已聚合 enqueued、queue full、overflow 后
     recovery 和 stopped 数量，所有 clone 共用 sequence；被拒事件消耗 sequence，使下一次
     成功 publish 在 runtime 触发 gap Reset，显式 recovery Reset 保留 `QueueOverflow`
-    原因且只计一次。macOS 正式 callback 已改用该 producer；Windows 正式 producer 已接入；backend event queue 的上界仍是未完成门禁。
+    原因且只计一次。macOS 正式 callback 已改用该 producer；Windows 正式 producer 已接入；backend event queue 的上界、overflow marker、reset epoch 和 bounded stop/join 已由 fork 提供；长期 backlog 与异常路径仍待物理/系统验证。
 - [x] 动画、长按和延迟统一使用可注入的单调时钟。
   - 验收证据（2026-09-06）：`bongocat-runtime` 以 `MonotonicClock` 作为唯一业务时间源，
     生产默认实现基于 `Instant`，所有动画求值、motion/expression fade、breath/blink、cursor
@@ -853,8 +853,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 状态（2026-08-31）：正式 runtime 已接入带 device generation 的 16 个标准手柄按钮、可靠
     pressed edge、匿名计数和 Reset；六轴/trigger 的 generation-keyed latest-value、dead-zone
     与 Stick 参数投影已完成；Settings service/client 与 Input 页面现可 revision-checked
-    持久化 stick/trigger dead-zone。平台采集已迁入 gilrs 私有 adapter，fork 生命周期、
-    bounded queue 和实机验证仍待完成。
+    持久化 stick/trigger dead-zone。平台采集已迁入 gilrs 私有 adapter，fork 生命周期、bounded queue/epoch、authoritative reset 与 shutdown acknowledgement 已通过代码验证，
+    实机验证仍待完成。
 - [x] 每个 pressed key 记录来源、按下时间和最后校正时间。
   - 验收证据（2026-09-05）：runtime owner 的私有 `PressedRecord` 保存 `InputSource`、
     `MonotonicMillis pressed_at`、最近一次仍按下校正时间与 runtime 单调时钟观察时间；单元测试固定
@@ -973,7 +973,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 状态（2026-09-25）：fork 内置 SDL mapping、IOHID device discovery、D-pad filter 和项目
     adapter 已把标准位置、trigger 连续值、连接 generation、可靠 edge 与六轴 latest-value 接入
     正式 `InputEvent`/axis producer；旧 `GCExtendedGamepad` 专用 backend 与诊断已删除。物理
-    controller/profile、热插拔和 fork stop/join 尚未取得设备证据，因此保持未勾选。
+    controller/profile、热插拔、lost-release、100-cycle 与长期资源证据尚未取得，因此保持未勾选。
 - [x] event tap callback 使用 autorelease pool/panic boundary，run loop 停止后不再触达已释放 producer。
   - 验收证据（2026-09-01，保留键鼠范围）：event tap 使用 autorelease/panic boundary；受控
     panic 被匿名计数、关闭 capture 并请求可靠恢复，不会穿越 FFI。callback context 使用稳定 Box，
@@ -2637,9 +2637,9 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 - [ ] Retina/非 Retina、外接显示器、Spaces 和全屏辅助。
 - [ ] 锁屏、睡眠、快速用户切换和权限变化。
 - [ ] gilrs/IOHID 连接、断开和不同 profile。
-  - 状态（2026-09-25）：旧 GameController spike 已删除；当前 fork revision 的 IOHID run-loop
-    worker 仍没有 stop/join，100-cycle restart 和物理 Xbox/DualSense/Switch/HID profile
-    热插拔矩阵均待 fork 修复后执行。
+  - 状态（2026-09-25）：旧 GameController spike 已删除；当前 fork revision 已提供 IOHID callback
+    ownership、bounded stop/join、queue/reset epoch 和 authoritative snapshot。100-cycle restart、
+    TCC/系统生命周期和物理 Xbox/DualSense/Switch/HID profile 热插拔矩阵仍待目标 macOS 实机执行。
 - [ ] 签名、notarization 和 Gatekeeper 首次启动。
 
 ### 9.4 性能基线
@@ -3344,7 +3344,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         记录一次匿名 backend failure 并禁用手柄，Raw Input/CGEventTap 键鼠服务继续运行。
     - [x] 用 gilrs 替换自维护 XInput/GameController backend。
       - 状态（2026-09-25）：根 workspace 精确固定 `ayangweb/gilrs` commit
-        `f43af45c3106e48ff131b77bf8c148d9bd5cbed2`；Windows 使用 WGI，macOS 使用 IOHID。
+        `429a84ca2a10dca03864b2bf26f385a7ed0e657a`；Windows 使用 WGI，macOS 使用 IOHID。
         `gilrs_gamepad` 是唯一私有 adapter，gilrs 类型不进入 runtime/UI。默认 jitter/dead-zone、
         环境 mapping 和 force feedback 关闭，保留内置 SDL mapping 与 D-pad filter；每 tick
         最多消费 256 event、最多四设备。Windows XInput 与 macOS GameController producer、
@@ -3361,31 +3361,18 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - [x] 迁移 Reset 后的 connection/held-state 重播。
       - 状态（2026-09-25）：Windows queue/lifecycle Reset、macOS tap/session/callback Reset 和
         adapter runtime-stop recovery 均以相同 connection 重播 `GamepadConnected`，随后从
-        gilrs 已缓存的 state 发布当前 held button 与六轴，不分配新 generation；初始 authoritative
-        held-state 仍需 fork backend 补齐。
+        gilrs reset epoch 重新读取并发布 authoritative held button 与六轴，不分配新 generation；overflow marker 会触发同一 reset/reseed 恢复。
+
     - 未完成门禁（2026-09-25）：
-      - P0：pinned gilrs macOS IOHID callback context 仍指向已销毁的临时 tuple；必须先在 fork
-        修复 owned context、unregister/quiescence 和 callback panic boundary。
-      - 当前 fork 的 macOS IOHID run-loop thread 没有 stop channel、run-loop stop 或 join handle；
-        每次 service restart 会留下线程，100-cycle 和 clean-shutdown 不能通过。修复必须在 fork。
-      - WGI/IOHID 使用 unbounded channel，gilrs 还有内部 event deque；BongoCat 的 256-event
-        drain 只限制单 tick 工作量，不能证明长期无 backlog。fork 必须提供 bounded queue、
-        reset epoch/purge acknowledgement 与 overflow/reset 证据，不能让 Reset 前的旧 edge 在
-        Reset 后以当前时间进入 runtime。
-      - runtime 当前不把 gamepad 纳入键盘 reconcile；若 gilrs release 丢失，必须由 fork 提供
-        authoritative snapshot/health-triggered Reset，否则手柄 release 可靠性门禁不能通过。
-      - WGI 现有 Drop join 没有有界 deadline，worker failure/join failure 也没有稳定
-        acknowledgement；无设备 smoke 不能替代异常路径和 2 秒 shutdown contract。
-      - gilrs 初始 high-level state 可能为空，当前 snapshot 不能保证进程启动/重连时立即得到
-        authoritative held button/axis；必须在 fork 增加初始读取或完整 snapshot。
-      - gilrs 文档提示 WGI 可能需要 focused window；BongoCat Raw Input window 为 hidden，
-        overlay 默认为 click-through。必须实机覆盖 settings 开关、焦点/失焦、启动已连接、
-        click-through、重连与多手柄。
-      - workspace `gilrs` dependency 保持 featureless；Windows target table 启用 `wgi`。当前
-        fork 的 compile guard 未按 target 保护，macOS target table 也暂时启用 `wgi` 才能编译，
-        但不编译 Windows backend 源；修复 fork guard 后删除该临时 feature。
-      - 物理 Xbox/DualSense/Switch/非 extended HID profile、热插拔、睡眠/锁屏/快速用户切换、
-        30 分钟压力、100-cycle restart 与 8 小时 soak 尚未完成，因此总项保持未勾选。
+      - Windows WGI 仍需在 hidden/unfocused window、click-through、启动已连接、重连和多手柄
+        状态下完成 Windows 10/11 实机矩阵；无设备 smoke 不能替代。
+      - macOS IOHID 仍需 TCC deny/grant/revoke、自然 timeout、锁屏/睡眠/快速用户切换、真实
+        设备和 callback in-flight 静止/恢复证据。
+      - 物理 Xbox/DualSense/Switch/非 extended HID profile、lost-release、30 分钟压力、100-cycle
+        restart 与 8 小时 soak 尚未完成，因此总项保持未勾选。
+      - fork commit `429a84ca2a10dca03864b2bf26f385a7ed0e657a` 已通过 bounded queue/epoch、
+        authoritative reset、callback ownership/close、bounded stop/join、compile guard 和 xinput
+        extreme-axis 回归；这些代码证据不等于上述物理/系统门禁。
 46. [x] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。
     - 依赖：Native config v1、`InputEvent`/`PhysicalKey` 语义和后续 GPUI 快捷键编辑页。
     - 退出条件：字符串绑定在配置提交前解析为平台无关的单 key chord；别名/顺序规范化稳定，
