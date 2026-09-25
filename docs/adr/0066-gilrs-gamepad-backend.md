@@ -16,7 +16,7 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
 ## 决策
 
 - 根 workspace 精确固定 `https://github.com/ayangweb/gilrs` 的 commit
-  `429a84ca2a10dca03864b2bf26f385a7ed0e657a`，package 版本为 `gilrs 0.11.2` /
+  `035a1cac7a784ec0447d9baba0de02efa6937d22`，package 版本为 `gilrs 0.11.2` /
   `gilrs-core 0.6.8`。该 commit 包含 callback context ownership、bounded queue/epoch、authoritative
   reset、WGI/XInput bounded shutdown、macOS IOHID stop/join、target-scoped compile guard 与 xinput
   extreme-axis regression 修复；后续修复仍必须形成可审计的 patch series 并再次精确固定 commit。
@@ -35,8 +35,9 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
   `SDL_GAMECONTROLLERCONFIG` 环境映射，保留 fork 内置 SDL mapping，并关闭自动 state update 后由
   adapter 显式更新。D-pad axis 使用 gilrs 自带 `axis_dpad_to_button`，BongoCat 不复制 hat 解码。
   产品 dead-zone 仍只由 runtime 的 `GamepadAxisSettings` 决定。
-- 一次 drain 最多消费 `256` 个 gilrs event，剩余 backlog 留在 gilrs 队列，不能让手柄洪峰阻塞
-  Raw Input/CGEventTap。最大活动设备数仍为 `4`，与现有 24-key axis transport 容量一致；gilrs
+- 一次 drain 最多消费 `256` 个 gilrs event，剩余 backlog 留在 gilrs 的 bounded backend/high-level pending
+  queue，不能让手柄洪峰阻塞 Raw Input/CGEventTap。最大活动设备数仍为 `4`，与现有 24-key axis transport
+  容量一致；gilrs
   backend id 不进入项目 API，adapter 分配 `0..3` 项目 slot，每次连接只通过
   `GamepadAxisProducer::connect` 分配新 generation。
 - gilrs 的位置名与项目词表并非逐字相同：left/right trigger 逻辑按钮映射为项目 shoulder，

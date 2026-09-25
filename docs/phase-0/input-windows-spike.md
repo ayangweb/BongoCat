@@ -169,7 +169,7 @@ edge pressure、lifecycle 与 config 回归。该结果证明合成 RAWMOUSE 洪
 
 2026-09-25 起，XInput producer、`Win32_UI_Input_XboxController` feature、`--xinput-ms` probe
 和对应 CI step 已从当前树删除；本文件其余 Raw Input 证据继续有效。正式手柄 backend 固定
-`ayangweb/gilrs` commit `429a84ca2a10dca03864b2bf26f385a7ed0e657a` 的 WGI 实现；CI 另运行
+`ayangweb/gilrs` commit `035a1cac7a784ec0447d9baba0de02efa6937d22` 的 WGI 实现；CI 另运行
 正式 `gilrs_gamepad_smoke` example 验证产品服务的无设备 context 初始化、bounded shutdown
 acknowledgement 与 reset/queue recovery；这些代码证据不证明异常系统状态或物理投递。旧 XInput
 runner 的无设备结果只作为已退役实现的历史证据，不证明当前 WGI 在 hidden/unfocused window、

@@ -1234,8 +1234,8 @@ resources/background.png  resources/cover.png
 - 重复 KeyDown 不破坏按压状态或边沿动画。
 - 设备断开、锁屏和睡眠后 pressed set 为空。
 - 鼠标移动合并不能阻塞键盘释放。
-- gilrs adapter 的每 tick event 上限不能替代 backend 队列上界；fork 的 bounded queue/epoch、overflow
-  marker、authoritative reset 和 bounded stop/join acknowledgement 已有代码证据，但 WGI 焦点矩阵和双平台
+- gilrs adapter 的每 tick event 上限不能替代 backend 与高层 pending queue 上界；fork 的 bounded
+  queue/epoch、overflow marker、authoritative reset 和 bounded stop/join acknowledgement 已有代码证据，但 WGI 焦点矩阵和双平台
   物理设备/长期证据仍未完成。backend context 启动后的最终诊断必须真实反映 gilrs shutdown 结果；不得
   因键鼠 callback 和 final Reset 成功而伪造 clean shutdown。
 

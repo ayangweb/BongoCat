@@ -724,7 +724,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     只证明已删除实现，不再作为当前 backend 证据；WGI 焦点/click-through 投递和物理设备矩阵
     仍待完成。
   - 状态（2026-09-25）：共享 `gilrs_gamepad` adapter 固定 fork commit
-    `429a84ca2a10dca03864b2bf26f385a7ed0e657a`，关闭默认 dead-zone/jitter、环境 mapping 和 force
+    `035a1cac7a784ec0447d9baba0de02efa6937d22`，关闭默认 dead-zone/jitter、环境 mapping 和 force
     feedback，保留内置 SDL mapping 与 D-pad filter；每 tick 最多 drain 256 event，位置名、
     trigger 连续值、Reset 后 held-state 重播和四设备 generation 已有 Rust contract。backend 构造失败
     只禁用手柄。当前 fork 的 macOS/WGI backend 已提供 bounded queue/epoch、authoritative reset、bounded stop/join acknowledgement 和 callback ownership/close；
@@ -749,7 +749,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     计数完整且 active connection 的轴值仍投影到 model input。新增 shutdown flush 回归通过；
     平台实机手柄和跨平台产品证据仍待完成，因此总项保持未勾选。
 - [ ] 队列溢出必须计数、记录并触发安全恢复。
-  - 状态（2026-08-28，历史基线）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断。正式 runtime 已采用容量 64 的共享 command/input FIFO；gilrs backend 自身 queue 上界、overflow/reset epoch 和 bounded stop/join 已由 fork 提供，长期 backlog 仍待实机验证。
+  - 状态（2026-08-28，历史基线）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断。正式 runtime 已采用容量 64 的共享 command/input FIFO；gilrs backend/high-level pending queue 上界、overflow/reset epoch 和 bounded stop/join 已由 fork 提供，长期 backlog 仍待实机验证。
   - 状态（2026-08-30，历史基线）：产品 `InputProducer` 已聚合 enqueued、queue full、overflow 后
     recovery 和 stopped 数量，所有 clone 共用 sequence；被拒事件消耗 sequence，使下一次
     成功 publish 在 runtime 触发 gap Reset，显式 recovery Reset 保留 `QueueOverflow`
@@ -3344,7 +3344,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         记录一次匿名 backend failure 并禁用手柄，Raw Input/CGEventTap 键鼠服务继续运行。
     - [x] 用 gilrs 替换自维护 XInput/GameController backend。
       - 状态（2026-09-25）：根 workspace 精确固定 `ayangweb/gilrs` commit
-        `429a84ca2a10dca03864b2bf26f385a7ed0e657a`；Windows 使用 WGI，macOS 使用 IOHID。
+        `035a1cac7a784ec0447d9baba0de02efa6937d22`；Windows 使用 WGI，macOS 使用 IOHID。
         `gilrs_gamepad` 是唯一私有 adapter，gilrs 类型不进入 runtime/UI。默认 jitter/dead-zone、
         环境 mapping 和 force feedback 关闭，保留内置 SDL mapping 与 D-pad filter；每 tick
         最多消费 256 event、最多四设备。Windows XInput 与 macOS GameController producer、
@@ -3370,7 +3370,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         设备和 callback in-flight 静止/恢复证据。
       - 物理 Xbox/DualSense/Switch/非 extended HID profile、lost-release、30 分钟压力、100-cycle
         restart 与 8 小时 soak 尚未完成，因此总项保持未勾选。
-      - fork commit `429a84ca2a10dca03864b2bf26f385a7ed0e657a` 已通过 bounded queue/epoch、
+      - fork commit `035a1cac7a784ec0447d9baba0de02efa6937d22` 已通过 bounded queue/epoch、
         authoritative reset、callback ownership/close、bounded stop/join、compile guard 和 xinput
         extreme-axis 回归；这些代码证据不等于上述物理/系统门禁。
 46. [x] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。

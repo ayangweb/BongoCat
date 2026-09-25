@@ -1,7 +1,7 @@
 # Native Rewrite Rust Dependency Version Audit
 
 状态：所有直接依赖已使用 crates.io 最新稳定版、精确上游 revision 或已记录的 ABI/transition 例外；lockfile 已更新到上游约束允许的最新解析结果
-日期：2026-09-25（新增 `ayangweb/gilrs` 固定 commit `429a84ca2a10dca03864b2bf26f385a7ed0e657a`；`gpui-kit` 固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`；上次全量审计 2026-09-13）
+日期：2026-09-25（新增 `ayangweb/gilrs` 固定 commit `035a1cac7a784ec0447d9baba0de02efa6937d22`；`gpui-kit` 固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`；上次全量审计 2026-09-13）
 Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
@@ -122,11 +122,11 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   管理 callback context、CFRunLoop source 和 tap 的统一析构，项目公共 API 仅暴露自有
   permission、diagnostics 和 error 类型。替换边界是 `MacInputService` 私有实现，不影响 runtime；
 - `gilrs 0.11.2` / `gilrs-core 0.6.8` 固定 `ayangweb/gilrs` commit
-  `429a84ca2a10dca03864b2bf26f385a7ed0e657a`，许可证 `Apache-2.0 OR MIT`，MSRV `1.84`。
+  `035a1cac7a784ec0447d9baba0de02efa6937d22`，许可证 `Apache-2.0 OR MIT`，MSRV `1.84`。
   Windows `wgi` backend、macOS IOHID backend 和 fork 内置 SDL mapping 都只存在于
   `bongocat-platform` 私有 adapter；gilrs id/type/error 不进入 runtime/UI 公共 API，环境 mapping
   与 force feedback 关闭。fork 的 SDL_GameControllerDB submodule 固定为
-  `15b5e9f4abfb1c5c691c468799816755a91a2e11`。该 commit 已提供 bounded queue/epoch、authoritative
+  `15b5e9f4abfb1c5c691c468799816755a91a2e11`。该 commit 已提供 backend/high-level pending bounded queue/epoch、authoritative
   reset、WGI/XInput bounded shutdown acknowledgement、macOS callback ownership/close 和 xinput
   extreme-axis regression 修复；workspace `gilrs` dependency 保持 featureless，只有 Windows target table
   启用 `wgi`，macOS target 不再启用临时 `wgi`。BongoCat adapter 将 gilrs overflow/reset/shutdown

@@ -1,6 +1,6 @@
 # Input Queue Contract Spike
 
-状态：平台无关 bounded reliable queue、溢出恢复、单槽与 keyed latest-value channel contract 已通过；正式 runtime 与双平台 gilrs adapter 已接入，fork backend queue/epoch、authoritative reset 和 bounded stop/join 已通过代码验证，物理设备与长期 backlog 仍待验证
+状态：平台无关 bounded reliable queue、溢出恢复、单槽与 keyed latest-value channel contract 已通过；正式 runtime 与双平台 gilrs adapter 已接入，fork backend/high-level pending queue/epoch、authoritative reset 和 bounded stop/join 已通过代码验证，物理设备与长期 backlog 仍待验证
 日期：2026-09-25
 
 ## Contract
@@ -30,6 +30,6 @@ cargo check --manifest-path spikes/input-queue/Cargo.toml --locked --release
 该 spike 证明的是容器与 generation 契约。2026-09-25 起，双平台正式手柄 producer 已按 ADR-0066
 迁入精确 gilrs fork 的私有 adapter，旧 macOS GameController 与 Windows XInput backend/probe 已删除；
 连接/断开/按钮边沿与 keyed axis channel 仍使用同一协议。fork backend queue 上界、overflow marker、
-reset epoch、authoritative state 和 bounded stop/join 已由 `429a84ca2a10dca03864b2bf26f385a7ed0e657a`
+reset epoch、authoritative state 和 bounded stop/join 已由 `035a1cac7a784ec0447d9baba0de02efa6937d22`
 代码验证；物理手柄、Windows WGI 焦点、macOS TCC/IOHID 设备和长期退出仍未验证，产品 adapter 必须
 继续按该协议接入并把匿名诊断送入 runtime snapshot。
