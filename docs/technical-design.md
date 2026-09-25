@@ -1153,6 +1153,23 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `Installing` 三段可观测靠拆分库调用实现**：runtime 用 `download_extended` + `install` 两次调用，
   因为库的 `download_and_install` 把验签与安装合成一次调用。失败带明确的 stage，下载阶段的错误
   再按 code 区分为传输失败与验签失败。
+- **更新窗口按内容定高，下限 `WINDOW_MIN_HEIGHT`、上限 `WINDOW_MAX_HEIGHT`（与改版前同一高度）**：
+  十个状态里有一半只渲染一行文字，固定 460px 会让窗口大半是空的。测量的间距与内边距都取自该帧
+  自身的 bounds，不写死常量，调整 `p_4` 或 gap 不会让窗口高度与内容脱钩。**窗口测量在窗口过矮时
+  仍然准确**：内容列 `flex_shrink_0` 不收缩、空隙塌成 0，所以两处 gap 都还是那两处 gap，于是
+  「先跳到上限再回落」的两步收敛变成一步到位。**说明区（`notes`）按内容取高、以常量封顶**，
+  这是测量能收敛的前提：若让它跟着窗口长，窗口变高 → 说明区变高 → 窗口再变高会互相喂给。
+  平台会把内容高度取整到整像素，所以「已经在目标高度」允许半像素误差，否则窗口会每帧重问一个
+  平台给不出的高度。
+- **更新窗口不允许拖拽边缘改变尺寸**（`is_resizable: false`，macOS 去掉
+  `NSWindowStyleMaskResizable`、Windows 去掉 `WS_THICKFRAME`/`WS_MAXIMIZEBOX`）：窗口高度就是
+  内容高度，允许拖拽等于让用户选一个下一次状态变化就会撤销的高度。窗口没有 resize 手柄，因此
+  也不需要「用户拖过就接管高度」这条分支。
+- **开窗时先按内容定高并画完，再显示**：内容定高只能在布局后才知道，而窗口未显示时拿不到帧
+  （macOS 只为「遮挡状态判定为在屏幕上」的窗口跑 display link，也就是只发帧给它），所以等待
+  「已经画对了再显示」会死等。做法是隐藏状态下手动布局一次测出目标高度，`resize` 之后再排一个
+  foreground executor 任务把新高度同步回来、重画并 `activate_window`。应用 resize 本身也是同一
+  个 executor 上的任务，因此后排的任务一定排在它后面——靠顺序保证，不轮询也不超时。
 - 更新内容（`notes`）来自 manifest，是不可信输入，由 `bongocat-ui::update_markdown` 用
   `pulldown-cmark`（CommonMark + 删除线/任务列表，`default-features = false`）解析为不含 GPUI
   类型的中间表示后渲染，不存在可注入的 markup 层；原始 HTML 按字面文本显示，图片只渲染 alt 文本、
