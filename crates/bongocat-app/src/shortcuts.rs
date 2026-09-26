@@ -1,5 +1,5 @@
-use bongocat_config::{ModelBehaviorAction, ModelSource, ShortcutCommand, ShortcutTarget};
-use bongocat_model::ModelOrigin;
+use crate::model_identity::model_origin_from_config;
+use bongocat_config::{ModelBehaviorAction, ShortcutCommand, ShortcutTarget};
 use bongocat_platform::{ShortcutDispatch, ShortcutDispatchError, ShortcutDispatcher};
 use bongocat_runtime::{
     ExpressionId, MotionId, MotionPriority, RuntimeClient, SendError, ShortcutAction,
@@ -11,13 +11,6 @@ use std::sync::mpsc::SyncSender;
 /// The platform crate only owns OS registration and invokes this typed
 /// callback. Runtime action construction and the application command sink stay
 /// here so `bongocat-platform` does not depend on the business runtime.
-fn model_origin(source: ModelSource) -> ModelOrigin {
-    match source {
-        ModelSource::BuiltIn => ModelOrigin::Preset,
-        ModelSource::Imported => ModelOrigin::Installed,
-    }
-}
-
 pub fn application_shortcut_dispatcher(
     runtime: RuntimeClient,
     application_sink: SyncSender<ShortcutCommand>,
@@ -33,7 +26,7 @@ pub fn application_shortcut_dispatcher(
                 return Ok(ShortcutDispatch::IgnoredInactiveModel);
             };
             if active.id.as_str() != model.id
-                || snapshot.active_model_origin != Some(model_origin(model.source))
+                || snapshot.active_model_origin != Some(model_origin_from_config(model.source))
             {
                 return Ok(ShortcutDispatch::IgnoredInactiveModel);
             }

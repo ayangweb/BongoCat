@@ -14,6 +14,19 @@
 //! `NSAlert` on the main thread, which follows the application appearance (ADR-0048), Windows an
 //! `rfd` message dialog, which maps to a Task Dialog. No product UI is built for this.
 
+/// Whether the operating system currently grants the input capability the
+/// product needs before global input works.
+///
+/// The answer comes from the platform's own query: the macOS Input Monitoring
+/// TCC grant, which the product also re-reads while a settings window is open
+/// so the diagnostics page can show the current state. It is a read-only fact
+/// about the machine, never a prompt result and never persisted.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InputPermission {
+    Denied,
+    Granted,
+}
+
 /// Localized text for the startup prompt.
 ///
 /// The application layer builds this from the translation catalog and hands it to the platform

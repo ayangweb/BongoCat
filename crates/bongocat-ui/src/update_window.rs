@@ -1320,7 +1320,7 @@ mod tests {
 #[cfg(test)]
 mod render_tests {
     use super::*;
-    use crate::update::every_renderable_phase;
+    use crate::tests::every_renderable_phase;
     use crate::{
         SettingsClient, SettingsLanguage, SettingsServiceEndpoint, UpdateClient, UpdateErrorCode,
         UpdateFailureStage, UpdatePhase, UpdateReleaseInfo, UpdateServiceEndpoint, UpdateSnapshot,

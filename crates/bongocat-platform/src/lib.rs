@@ -2,6 +2,12 @@ use std::path::PathBuf;
 
 pub use bongocat_input::{PlatformInputDiagnostics, PlatformInputServiceStatus};
 
+mod display;
+pub use display::DisplayBounds;
+
+mod input_error;
+pub use input_error::PlatformInputError;
+
 mod installation;
 pub use installation::InstallationLayout;
 
@@ -51,8 +57,8 @@ mod startup_item_native;
 
 mod startup_permission;
 pub use startup_permission::{
-    STARTUP_PERMISSION_CAPABILITY, StartupPermissionPrompt, StartupPermissionStatus,
-    check_startup_permission, startup_permission_available,
+    InputPermission, STARTUP_PERMISSION_CAPABILITY, StartupPermissionPrompt,
+    StartupPermissionStatus, check_startup_permission, startup_permission_available,
 };
 
 mod native_window;
@@ -81,44 +87,6 @@ pub use windows::{
     local_window_origin, request_native_window_close, set_taskbar_icon_visible, show_native_window,
     system_language, taskbar_icon_is_visible, terminate_after_product_shutdown,
 };
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct DisplayBounds {
-    pub display_id: Option<u32>,
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
-}
-
-impl DisplayBounds {
-    fn intersects_window(self, x: f32, y: f32, width: f32, height: f32) -> bool {
-        x < self.x + self.width
-            && x + width > self.x
-            && y < self.y + self.height
-            && y + height > self.y
-    }
-}
-
-#[cfg(test)]
-mod display_bounds_tests {
-    use super::DisplayBounds;
-
-    #[test]
-    fn window_visibility_handles_negative_and_edge_touching_displays() {
-        let secondary = DisplayBounds {
-            display_id: Some(1),
-            x: -1920.0,
-            y: -240.0,
-            width: 1920.0,
-            height: 1080.0,
-        };
-        assert!(secondary.intersects_window(-1200.0, 100.0, 800.0, 600.0));
-        assert!(secondary.intersects_window(-10.0, 100.0, 800.0, 600.0));
-        assert!(!secondary.intersects_window(0.0, 100.0, 800.0, 600.0));
-        assert!(!secondary.intersects_window(-1200.0, 840.0, 800.0, 600.0));
-    }
-}
 
 /// Let the user choose the model folder to import.
 ///
@@ -167,104 +135,4 @@ pub fn set_startup_item_enabled(
     enabled: bool,
 ) -> Result<StartupItemState, StartupItemError> {
     startup_item_native::set_enabled(environment, enabled)
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InputPermission {
-    Denied,
-    Granted,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
-pub enum PlatformInputError {
-    #[error("{}", Self::BackendUnavailable.as_str())]
-    BackendUnavailable,
-    #[error("{}", Self::PermissionDenied.as_str())]
-    PermissionDenied,
-    #[error("{}", Self::TapCreateFailed.as_str())]
-    TapCreateFailed,
-    #[error("{}", Self::RunLoopSourceFailed.as_str())]
-    RunLoopSourceFailed,
-    #[error("{}", Self::WindowClassRegistrationFailed.as_str())]
-    WindowClassRegistrationFailed,
-    #[error("{}", Self::WindowCreateFailed.as_str())]
-    WindowCreateFailed,
-    #[error("{}", Self::SessionNotificationFailed.as_str())]
-    SessionNotificationFailed,
-    #[error("{}", Self::RawInputRegistrationFailed.as_str())]
-    RawInputRegistrationFailed,
-    #[error("{}", Self::TimerCreateFailed.as_str())]
-    TimerCreateFailed,
-    #[error("{}", Self::RuntimeStopped.as_str())]
-    RuntimeStopped,
-    #[error("{}", Self::StartupTimedOut.as_str())]
-    StartupTimedOut,
-    #[error("{}", Self::ShutdownTimedOut.as_str())]
-    ShutdownTimedOut,
-    #[error("{}", Self::WorkerPanicked.as_str())]
-    WorkerPanicked,
-}
-
-impl PlatformInputError {
-    pub const ALL: [Self; 13] = [
-        Self::BackendUnavailable,
-        Self::PermissionDenied,
-        Self::TapCreateFailed,
-        Self::RunLoopSourceFailed,
-        Self::WindowClassRegistrationFailed,
-        Self::WindowCreateFailed,
-        Self::SessionNotificationFailed,
-        Self::RawInputRegistrationFailed,
-        Self::TimerCreateFailed,
-        Self::RuntimeStopped,
-        Self::StartupTimedOut,
-        Self::ShutdownTimedOut,
-        Self::WorkerPanicked,
-    ];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::BackendUnavailable => "platform_input_backend_unavailable",
-            Self::PermissionDenied => "platform_input_permission_denied",
-            Self::TapCreateFailed => "platform_input_tap_create_failed",
-            Self::RunLoopSourceFailed => "platform_input_run_loop_source_failed",
-            Self::WindowClassRegistrationFailed => {
-                "platform_input_window_class_registration_failed"
-            }
-            Self::WindowCreateFailed => "platform_input_window_create_failed",
-            Self::SessionNotificationFailed => "platform_input_session_notification_failed",
-            Self::RawInputRegistrationFailed => "platform_input_raw_input_registration_failed",
-            Self::TimerCreateFailed => "platform_input_timer_create_failed",
-            Self::RuntimeStopped => "platform_input_runtime_stopped",
-            Self::StartupTimedOut => "platform_input_startup_timed_out",
-            Self::ShutdownTimedOut => "platform_input_shutdown_timed_out",
-            Self::WorkerPanicked => "platform_input_worker_panicked",
-        }
-    }
-}
-
-#[cfg(test)]
-mod platform_input_error_tests {
-    use super::PlatformInputError;
-
-    #[test]
-    fn platform_input_error_codes_are_stable_and_unique() {
-        let mut codes = PlatformInputError::ALL
-            .iter()
-            .map(|code| code.as_str())
-            .collect::<Vec<_>>();
-        assert!(codes.iter().all(|code| code.starts_with("platform_input_")));
-        codes.sort_unstable();
-        codes.dedup();
-        assert_eq!(codes.len(), PlatformInputError::ALL.len());
-        assert_eq!(
-            PlatformInputError::PermissionDenied.to_string(),
-            "platform_input_permission_denied"
-        );
-        assert!(
-            PlatformInputError::ALL
-                .iter()
-                .all(|code| bongocat_input::is_stable_platform_input_error_code(code.as_str()))
-        );
-    }
 }

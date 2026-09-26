@@ -48,7 +48,8 @@ use std::{
 };
 
 mod app_log;
-mod diagnostics_bundle;
+mod diagnostics_export;
+mod model_identity;
 #[cfg(test)]
 mod product_icon_contract;
 mod settings;
@@ -61,6 +62,7 @@ pub use app_log::{
     ApplicationLogError, ApplicationLogEvent, ApplicationLogEventCounts, ApplicationLogHandle,
     ApplicationLogLevel, ApplicationPanicHook, CoreLogDiagnostics,
 };
+use model_identity::{config_source_from_model, model_origin_from_config};
 pub use settings::{
     ApplicationSettingsService, SettingsServiceJoinError, StatusIconCapability,
     TaskbarIconCapability,
@@ -2388,20 +2390,6 @@ const fn settings_logging_from_config(
     }
 }
 
-const fn config_source_from_model(origin: ModelOrigin) -> ModelSource {
-    match origin {
-        ModelOrigin::Preset => ModelSource::BuiltIn,
-        ModelOrigin::Installed => ModelSource::Imported,
-    }
-}
-
-const fn model_origin_from_config(origin: ModelSource) -> ModelOrigin {
-    match origin {
-        ModelSource::BuiltIn => ModelOrigin::Preset,
-        ModelSource::Imported => ModelOrigin::Installed,
-    }
-}
-
 /// Fold the per-model import progress of one import action into one sequence.
 ///
 /// The store reports one model at a time and starts every one of them at
@@ -2506,7 +2494,7 @@ fn legacy_mode_label(language: Language, mode: MverInputMode) -> &'static str {
         MverInputMode::Keyboard => "models.mver.mode.keyboard",
         MverInputMode::Gamepad => "models.mver.mode.gamepad",
     };
-    bongocat_i18n::text(locale_code(language), key)
+    bongocat_i18n::text(bongocat_i18n::locale_code(language.code()), key)
 }
 
 /// Project one model-crate source description onto the settings boundary enum.
@@ -2532,18 +2520,6 @@ fn settings_model_source_content(
                     .collect(),
             }
         }
-    }
-}
-
-/// The locale the embedded catalog knows for a resolved application language.
-///
-/// `system` never reaches this point: the application resolves it against the
-/// platform language before anything reads it, so the fallback arm mirrors the
-/// UI's own English default rather than a second resolution rule.
-const fn locale_code(language: Language) -> &'static str {
-    match language {
-        Language::ChineseSimplified => "zh-CN",
-        Language::System | Language::EnglishUnitedStates => bongocat_i18n::DEFAULT_LOCALE,
     }
 }
 
@@ -2713,12 +2689,7 @@ fn shortcut_config_from_settings(
             .map(|binding| ModelBehaviorBinding {
                 model: ModelIdentity {
                     id: binding.model.id,
-                    source: match binding.model.origin {
-                        bongocat_ui_protocol::SettingsModelOrigin::BuiltIn => ModelSource::BuiltIn,
-                        bongocat_ui_protocol::SettingsModelOrigin::Imported => {
-                            ModelSource::Imported
-                        }
-                    },
+                    source: model_identity::config_source_from_settings(binding.model.origin),
                 },
                 behavior_id: binding.behavior_id,
                 shortcut: binding.shortcut,

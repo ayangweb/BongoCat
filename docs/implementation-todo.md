@@ -5419,7 +5419,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `shortcuts_page.rs`、`window.rs`）——那句话依赖的显示位正是被删的这一行，留着会误导，
       已改成不带状态指示器的表述。
       **协议层不动**：`SettingsSnapshot.runtime_health` 与 `RuntimeHealth` 保留——它们还被
-      `bongocat-app/src/settings.rs` 的 `runtime_health_code`（匿名诊断报告导出）与快照构建使用，
+      `bongocat-app/src/diagnostics_export.rs` 的 `runtime_health_code`（匿名诊断报告导出）与快照构建使用，
       不是"这一项"的实现，删掉会连带改诊断导出格式。
       **行为后果（如实记录）**：`pending` 的"正在保存更改…"/"正在刷新状态…"文案随之失去唯一显示位，
       设置窗口现在没有任何"保存中"反馈；`pending` 仍只作命令守卫，ADR-0053 决策 5 的门禁口径不变。

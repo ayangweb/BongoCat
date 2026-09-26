@@ -1,4 +1,9 @@
-#![forbid(unsafe_code)]
+//! The private preview bundle that carries an exported diagnostics document.
+//!
+//! [`super`] writes `diagnostics.json` and hands these bytes over; this module
+//! packages the same document together with a fixed, re-serialized set of
+//! application log codes, so a user can share one archive that answers "what
+//! happened" without exposing a single log message, path or key sequence.
 
 use crate::ApplicationLogCode;
 use atomic_write_file::AtomicWriteFile;
@@ -20,8 +25,8 @@ const MANIFEST_ENTRY: &str = "manifest.json";
 const PREVIEW_BUNDLE_ENTRIES: [&str; 3] =
     [MANIFEST_ENTRY, DIAGNOSTICS_ENTRY, APPLICATION_EVENTS_ENTRY];
 const PREVIEW_BUNDLE_NAME: &str = "diagnostics-preview.zip";
-pub(crate) const PREVIEW_BUNDLE_FORMAT_VERSION: u32 = 1;
-pub(crate) const PREVIEW_BUNDLE_ENTRY_COUNT: u32 = PREVIEW_BUNDLE_ENTRIES.len() as u32;
+const PREVIEW_BUNDLE_FORMAT_VERSION: u32 = 1;
+const PREVIEW_BUNDLE_ENTRY_COUNT: u32 = PREVIEW_BUNDLE_ENTRIES.len() as u32;
 const MAX_APPLICATION_LOG_FILES: usize = 8;
 const MAX_APPLICATION_LOG_BYTES: u64 = MAX_LOG_FILE_BYTES;
 const MAX_APPLICATION_EVENTS_BYTES: u64 =
@@ -79,7 +84,7 @@ fn fail_atomic_write_at(point: WriteFailurePoint) -> WriteFailureGuard {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct PreviewBundleStatus {
+pub(super) struct PreviewBundleStatus {
     pub format_version: u32,
     pub bytes_written: u64,
     pub entry_count: u32,
@@ -88,7 +93,7 @@ pub(crate) struct PreviewBundleStatus {
 }
 
 #[derive(Debug)]
-pub(crate) struct PreviewBundleError;
+pub(super) struct PreviewBundleError;
 
 struct SourceEvent {
     level: LogLevel,
@@ -116,7 +121,7 @@ struct VerifiedPreviewManifest {
     _skipped_source_files: u64,
 }
 
-pub(crate) fn write_preview_bundle(
+pub(super) fn write_preview_bundle(
     directory: &Path,
     diagnostics_json: &[u8],
 ) -> Result<PreviewBundleStatus, PreviewBundleError> {
