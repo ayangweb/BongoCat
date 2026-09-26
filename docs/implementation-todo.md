@@ -4296,7 +4296,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `%` 节点一致；增减按钮的步进为 1 秒（:1211/:1214）。
       app 侧映射：`overlay_settings_from_config`（`crates/bongocat-app/src/lib.rs:1464-1465`）、
       `set_overlay_settings` 回写（:749-751）、启动 `OverlaySessionOptions` 字面量经
-      `bongocat_runtime::hover_hide_delay_ms` 换算（`crates/bongocat-app/src/main.rs:2187-2189`）、
+      `bongocat_runtime::hover_hide_delay_ms` 换算（`crates/bongocat-app/src/main.rs`）、
       `SettingsCommand::SetOverlaySettings` 映射与快照投影
       （`crates/bongocat-app/src/settings.rs:632-633`、:1196-1197）。
       共享 fixture：`accept-hover-hide.json`（开关开、延迟 0，accept）、`accept-hover-hide-delay.json`
@@ -5329,8 +5329,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       **覆盖情况要说清**：`--configuration-recovery-smoke` 断言的是无障碍恢复节点与
       `config_recovery_presentation` 的字段（都还在），**没有任何断言验证"横幅渲染在组件之上"**——
       本仓库的 smoke 不做布局/截图断言，这一点与既有限制一致，靠人工与后续 harness 补。
-    - 无障碍侧缺口（**同日补齐**，2026-09-20）：先查清了根因——`crates/bongocat-app/src/main.rs:276`
-      的注释与 `GpuiApplication::new_inaccessible(...)` 表明 GPUI 是**以不可访问模式**构造的、
+    - 无障碍侧缺口（**同日补齐**，2026-09-20）：先查清了根因——`crates/bongocat-app/src/main.rs`
+      里 `gpui_application` 的注释与 `GpuiApplication::new_inaccessible(...)` 表明 GPUI 是
+      **以不可访问模式**构造的、
       由 `SettingsAccessibilityBridge` 独占该窗口的 AccessKit adapter，所以设置窗口的无障碍树
       **完全**由手写的 `accessibility_tree` 决定，GPUI 不会为组件元素自动补节点。原先该树只为恢复
       动作建了 `ACCESSIBILITY_RESTORE_DEFAULTS` 一个节点，**提示的标题与说明文字从来不在树里**，
