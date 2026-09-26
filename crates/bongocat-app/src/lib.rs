@@ -6,11 +6,12 @@ compile_error!("storage-test-injection cannot be enabled for Production builds")
 use bongocat_audio::{MotionAudioService, MotionAudioShutdownError};
 use bongocat_config::{
     BuildEnvironment, BuiltInModelMetadata, CompiledShortcuts, ConfigError, ConfigRevision,
-    ConfigStore, ImportedModelMetadata, Language, LoggingConfig, LoggingLevel, ModelBehaviorAction,
-    ModelBehaviorBinding, ModelIdentity, ModelInputMode, ModelSource, NativeConfig,
-    OverlayWindowPlacement, PlatformStorageError, ShortcutBinding, ShortcutConfig,
-    ShortcutModifiers, ShortcutTable, StorageLayout, Theme as ConfigTheme, WindowPlacement,
-    WindowState, WindowStateError, WindowStateLoadStatus, WindowStateStore, platform_layout,
+    ConfigStore, GamepadAutoSwitchConfig, ImportedModelMetadata, Language, LoggingConfig,
+    LoggingLevel, ModelBehaviorAction, ModelBehaviorBinding, ModelIdentity, ModelInputMode,
+    ModelSource, NativeConfig, OverlayWindowPlacement, PlatformStorageError, ShortcutBinding,
+    ShortcutConfig, ShortcutModifiers, ShortcutTable, StorageLayout, Theme as ConfigTheme,
+    WindowPlacement, WindowState, WindowStateError, WindowStateLoadStatus, WindowStateStore,
+    platform_layout,
 };
 use bongocat_input::{
     CursorProducer, GamepadAxisProducer, GamepadAxisSettings, GamepadButton, HandSide,
@@ -64,7 +65,9 @@ pub use app_log::{
     ApplicationLogError, ApplicationLogEvent, ApplicationLogEventCounts, ApplicationLogHandle,
     ApplicationLogLevel, ApplicationPanicHook, CoreLogDiagnostics,
 };
-use model_identity::{config_source_from_model, model_origin_from_config};
+use model_identity::{
+    config_identity_from_settings, config_source_from_model, model_origin_from_config,
+};
 pub use settings::{
     ApplicationSettingsService, SettingsServiceJoinError, StatusIconCapability,
     TaskbarIconCapability,
@@ -345,6 +348,12 @@ pub struct Application {
     /// configured selection: a fresh configuration has no selection at all and
     /// startup still activates the standard preset.
     active_model_id: Option<ModelId>,
+    /// The last model activated from the gamepad-mode catalog, and the last one
+    /// activated from any other mode. This is what `gamepad_auto_switch` means by
+    /// "the last model used": session memory rather than configuration, because it
+    /// is a fact about what happened, not a preference the user has to maintain.
+    last_gamepad_model: Option<ModelIdentity>,
+    last_other_model: Option<ModelIdentity>,
     runtime: RuntimeOwner,
     motion_audio: Option<MotionAudioService>,
     render_consumer: Option<RenderConsumer>,
@@ -652,6 +661,8 @@ impl Application {
             preset_covers,
             active_model_origin,
             active_model_id,
+            last_gamepad_model: None,
+            last_other_model: None,
             runtime,
             motion_audio,
             render_consumer,
@@ -728,6 +739,31 @@ impl Application {
             id: self.active_model_id.as_ref()?.as_str().to_owned(),
             source: self.active_model_origin.map(config_source_from_model)?,
         })
+    }
+
+    /// Record the model that has just become live for the input family it
+    /// belongs to, which is what the gamepad auto switch's "last model used"
+    /// targets read.
+    ///
+    /// A model the user picked by hand counts exactly like one an automatic
+    /// switch chose: the memory is about what was on screen, not about who asked
+    /// for it. A model whose mode cannot be resolved is not recorded, because
+    /// there is no family to file it under.
+    fn remember_live_model(&mut self) {
+        let Some(identity) = self.live_model_identity() else {
+            return;
+        };
+        let (Some(origin), Some(id)) = (
+            self.active_model_origin,
+            self.active_model_id.as_ref().map(ModelId::as_str),
+        ) else {
+            return;
+        };
+        match self.model_input_mode(origin, id) {
+            Some(ModelInputMode::Gamepad) => self.last_gamepad_model = Some(identity),
+            Some(_) => self.last_other_model = Some(identity),
+            None => {}
+        }
     }
 
     /// Rebuild the platform-facing shortcut table from the committed
@@ -1609,8 +1645,23 @@ impl Application {
         &mut self,
         records: Vec<ImportedModelMetadata>,
     ) -> Result<(), ApplicationError> {
+        let gamepad_auto_switch = self.config.model.gamepad_auto_switch.clone();
+        self.commit_model_metadata(records, gamepad_auto_switch)
+    }
+
+    /// Persist imported model metadata and the gamepad auto switch in one commit.
+    ///
+    /// A model that has just been removed must not stay configured as an
+    /// automatic target, and splitting the two writes would leave a window where
+    /// the configuration names a model the store no longer has.
+    fn commit_model_metadata(
+        &mut self,
+        records: Vec<ImportedModelMetadata>,
+        gamepad_auto_switch: GamepadAutoSwitchConfig,
+    ) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.model.imported_models = records;
+        next_config.model.gamepad_auto_switch = gamepad_auto_switch;
         let next_revision = self
             .config_store
             .commit_if_revision(&next_config, self.ready_config_revision()?)?;
@@ -1694,6 +1745,7 @@ impl Application {
                 .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
             self.active_model_origin = Some(origin);
             self.active_model_id = Some(id);
+            self.remember_live_model();
             // The model that just became live owns the behavior half of the
             // platform table. Rebuilding here swaps the previous model's chords
             // out and registers the incoming model's own chords.
@@ -1746,6 +1798,7 @@ impl Application {
                     self.config_revision = Some(next_revision);
                     self.active_model_origin = Some(origin);
                     self.active_model_id = Some(id);
+                    self.remember_live_model();
                     self.refresh_shortcut_table();
                     Ok(snapshot)
                 }
@@ -1772,6 +1825,96 @@ impl Application {
             );
         }
         result
+    }
+
+    /// Persist the gamepad-connection model switch as one atomic change.
+    ///
+    /// This is a preference, not runtime state: the product acts on it from the
+    /// settings worker whenever gamepad connectivity changes, so the gate and
+    /// both targets move together and no runtime command is involved.
+    pub fn set_gamepad_auto_switch(
+        &mut self,
+        settings: bongocat_ui_protocol::SettingsGamepadAutoSwitch,
+    ) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.model.gamepad_auto_switch = GamepadAutoSwitchConfig {
+            enabled: settings.enabled,
+            connected_model: settings
+                .connected_model
+                .as_ref()
+                .map(config_identity_from_settings),
+            disconnected_model: settings
+                .disconnected_model
+                .as_ref()
+                .map(config_identity_from_settings),
+        };
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    /// Bring the shown model in line with gamepad connectivity, if the user
+    /// asked for that.
+    ///
+    /// The runtime owns the connected set, so this reads the runtime's own
+    /// answer instead of an observation carried by the caller. Reconciling
+    /// rather than switching on a remembered transition is what makes repeated
+    /// notices, a notice that arrives late and a notice the caller could not
+    /// deliver all land on the same result.
+    ///
+    /// A `None` target is the default and means "the last model activated for
+    /// this input family", which is a session fact rather than configuration.
+    /// Until the user has activated a model of that family there is nothing to
+    /// switch to and the current model stays.
+    ///
+    /// Nothing happens when the switch is off, when the direction resolves to no
+    /// model, or when the resolved model is already live. A failure leaves the
+    /// current model on screen, and the caller records it with the same anonymous
+    /// codes a user-driven selection uses.
+    pub fn apply_gamepad_auto_switch(&mut self) -> Result<Option<ModelIdentity>, ApplicationError> {
+        let switch = self.config.model.gamepad_auto_switch.clone();
+        if !switch.enabled {
+            return Ok(None);
+        }
+        let connected = self
+            .runtime
+            .client()
+            .snapshot()
+            .input
+            .connected_gamepad_count
+            > 0;
+        let target = if connected {
+            match &switch.connected_model {
+                Some(configured) => Some(configured.clone()),
+                None => self.last_gamepad_model.clone(),
+            }
+        } else {
+            match &switch.disconnected_model {
+                Some(configured) => Some(configured.clone()),
+                None => self.last_other_model.clone(),
+            }
+        };
+        let Some(target) = target else {
+            return Ok(None);
+        };
+        if self.live_model_identity().as_ref() == Some(&target) {
+            return Ok(None);
+        }
+        self.application_log.record(
+            ApplicationLogEvent::new(ApplicationLogCode::ModelPrepareStarted)
+                .with_context(ApplicationLogContext::Operation("gamepad_auto_switch"))
+                .with_context(ApplicationLogContext::State(if connected {
+                    "gamepad_connected"
+                } else {
+                    "gamepad_disconnected"
+                })),
+        );
+        self.select_model(model_origin_from_config(target.source), target.id.as_str())?;
+        Ok(Some(target))
     }
 
     fn load_model(
@@ -1827,11 +1970,24 @@ impl Application {
             self.model_store
                 .delete(&id)
                 .map_err(ApplicationError::ModelStore)?;
+            // The "last model used" memory is session state, so a removed model
+            // only has to be forgotten here: keeping it would make the next
+            // gamepad transition ask for files that no longer exist.
+            for remembered in [&mut self.last_gamepad_model, &mut self.last_other_model] {
+                if remembered
+                    .as_ref()
+                    .is_some_and(|live| live.id == id.as_str())
+                {
+                    *remembered = None;
+                }
+            }
+            let (auto_switch, targets_changed) =
+                without_removed_model_targets(&self.config.model.gamepad_auto_switch, &id);
             let mut installed_models = self.config.model.imported_models.clone();
             let before = installed_models.len();
             installed_models.retain(|metadata| metadata.id != id.as_str());
-            if installed_models.len() != before {
-                self.commit_installed_model_metadata(installed_models)?;
+            if installed_models.len() != before || targets_changed {
+                self.commit_model_metadata(installed_models, auto_switch)?;
             }
             Ok(())
         })();
@@ -2611,6 +2767,30 @@ fn active_shortcuts(
     active_model: Option<&ModelIdentity>,
 ) -> Result<CompiledShortcuts, ConfigError> {
     config.shortcuts.active_bindings(active_model).compile()
+}
+
+/// Drop every gamepad auto switch target that names a model which no longer
+/// exists, and report whether anything changed.
+///
+/// Only an imported model can be removed, so a build-shipped target that happens
+/// to share the id names a different model and is kept. The gate and the
+/// surviving target are left exactly as they were: removing a model must not
+/// switch the feature off.
+fn without_removed_model_targets(
+    switch: &GamepadAutoSwitchConfig,
+    removed: &ModelId,
+) -> (GamepadAutoSwitchConfig, bool) {
+    let mut next = switch.clone();
+    let mut changed = false;
+    for target in [&mut next.connected_model, &mut next.disconnected_model] {
+        if target.as_ref().is_some_and(|target| {
+            target.source == ModelSource::Imported && target.id == removed.as_str()
+        }) {
+            *target = None;
+            changed = true;
+        }
+    }
+    (next, changed)
 }
 
 /// The platform's command modifier, which the legacy auto-assignment used as the
@@ -4912,6 +5092,176 @@ mod tests {
             }
         );
         application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn the_gamepad_auto_switch_follows_the_last_used_model_of_each_family() {
+        /// Wait until the runtime has applied an input event, so the connected
+        /// count the reconcile reads is the one the test published.
+        fn wait_for_input(application: &Application, sequence: u64) {
+            application
+                .runtime_client()
+                .wait_for_input_sequence(sequence, RUNTIME_TIMEOUT)
+                .expect("runtime applied the gamepad connection event");
+        }
+
+        fn identity(id: &str, source: ModelSource) -> ModelIdentity {
+            ModelIdentity {
+                id: id.to_owned(),
+                source,
+            }
+        }
+
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout(layout.clone()).expect("start app");
+        let axis = application.gamepad_axis_producer();
+        let input = application.input_producer();
+
+        // A fresh configuration is off and remembers nothing: the switch must
+        // not touch the model while it is off.
+        assert!(!application.config().model.gamepad_auto_switch.enabled);
+        assert_eq!(
+            application.config().model.gamepad_auto_switch,
+            GamepadAutoSwitchConfig::default()
+        );
+        application
+            .select_model(ModelOrigin::Preset, "standard")
+            .expect("select the standard model");
+        let connection = axis.connect(0).expect("gamepad connection");
+        let connected = input
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            })
+            .expect("connection event");
+        wait_for_input(&application, connected);
+        assert_eq!(
+            application.apply_gamepad_auto_switch().expect("reconcile"),
+            None,
+            "a switched-off auto switch must not change the model"
+        );
+
+        // Turning it on keeps both targets at "the last model used", so the
+        // switch follows what the user actually activated.
+        application
+            .set_gamepad_auto_switch(bongocat_ui_protocol::SettingsGamepadAutoSwitch {
+                enabled: true,
+                ..Default::default()
+            })
+            .expect("enable the auto switch");
+        assert_eq!(
+            application
+                .config()
+                .model
+                .gamepad_auto_switch
+                .connected_model,
+            None
+        );
+        application
+            .select_model(ModelOrigin::Preset, "gamepad")
+            .expect("select the gamepad model");
+        application
+            .select_model(ModelOrigin::Preset, "standard")
+            .expect("return to the standard model");
+
+        let switched = application
+            .apply_gamepad_auto_switch()
+            .expect("reconcile after connecting");
+        assert_eq!(switched, Some(identity("gamepad", ModelSource::BuiltIn)));
+        assert_eq!(
+            application.live_model_identity(),
+            Some(identity("gamepad", ModelSource::BuiltIn))
+        );
+        // The model it replaced is still the remembered non-gamepad model, so a
+        // second notice while the pad is attached changes nothing.
+        assert_eq!(
+            application
+                .apply_gamepad_auto_switch()
+                .expect("reconcile again"),
+            None
+        );
+
+        let disconnected = input
+            .publish(InputEvent::GamepadDisconnected {
+                connection,
+                at: MonotonicMillis::new(1),
+            })
+            .expect("disconnection event");
+        wait_for_input(&application, disconnected);
+        let switched = application
+            .apply_gamepad_auto_switch()
+            .expect("reconcile after disconnecting");
+        assert_eq!(switched, Some(identity("standard", ModelSource::BuiltIn)));
+        assert_eq!(
+            application.live_model_identity(),
+            Some(identity("standard", ModelSource::BuiltIn))
+        );
+
+        // An explicit target wins over the memory in its own direction.
+        application
+            .set_gamepad_auto_switch(bongocat_ui_protocol::SettingsGamepadAutoSwitch {
+                enabled: true,
+                connected_model: Some(bongocat_ui_protocol::SettingsModelKey {
+                    id: "keyboard".to_owned(),
+                    origin: bongocat_ui_protocol::SettingsModelOrigin::BuiltIn,
+                }),
+                disconnected_model: None,
+            })
+            .expect("pin the connected target");
+        let reconnected = input
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(2),
+            })
+            .expect("reconnection event");
+        wait_for_input(&application, reconnected);
+        assert_eq!(
+            application.apply_gamepad_auto_switch().expect("reconcile"),
+            Some(identity("keyboard", ModelSource::BuiltIn))
+        );
+
+        // The chosen target is persisted like any other selection, so a restart
+        // restores the model the user was last shown.
+        let persisted = std::fs::read_to_string(&layout.config).expect("persisted config");
+        assert!(persisted.contains("\"gamepad_auto_switch\""));
+        assert!(persisted.contains("\"id\": \"keyboard\""));
+        assert_eq!(
+            application.config().model.selected_model,
+            Some(identity("keyboard", ModelSource::BuiltIn))
+        );
+        application.shutdown().expect("clean shutdown");
+    }
+
+    #[test]
+    fn deleting_a_model_forgets_it_as_a_gamepad_auto_switch_target() {
+        let removed = ModelId::parse("imported-pad").expect("portable model id");
+        let kept = ModelId::parse("other-pad").expect("portable model id");
+        let target = |id: &ModelId, source: ModelSource| ModelIdentity {
+            id: id.as_str().to_owned(),
+            source,
+        };
+        let switch = GamepadAutoSwitchConfig {
+            enabled: true,
+            connected_model: Some(target(&removed, ModelSource::Imported)),
+            disconnected_model: Some(target(&removed, ModelSource::Imported)),
+        };
+
+        // Only an imported model can be deleted, so a build-shipped target with
+        // the same id is a different model and stays.
+        let (cleared, changed) = without_removed_model_targets(&switch, &removed);
+        assert!(changed);
+        assert_eq!(cleared.connected_model, None);
+        assert_eq!(cleared.disconnected_model, None);
+
+        let preset_switch = GamepadAutoSwitchConfig {
+            enabled: true,
+            connected_model: Some(target(&removed, ModelSource::BuiltIn)),
+            disconnected_model: Some(target(&kept, ModelSource::Imported)),
+        };
+        let (kept_switch, changed) = without_removed_model_targets(&preset_switch, &removed);
+        assert!(!changed, "a build-shipped model cannot be the removed one");
+        assert_eq!(kept_switch, preset_switch);
     }
 
     #[test]

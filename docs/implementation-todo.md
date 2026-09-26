@@ -6375,6 +6375,35 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
        profile/热插拔/生命周期矩阵与长时间压力仍是 ADR-0066 的完成门禁，本次修复不提供任何实机
        证据，也不因此宣称双平台手柄完成。
 
+112. [ ] `P4-GAMEPAD-MODEL-AUTO-SWITCH`：按手柄连接状态自动切换模型。
+     - 依赖：ADR-0071、`P2-GAMEPAD-RUNTIME` 的可靠连接事件与 connection generation、
+       `P4-MODEL-LIBRARY-METADATA` 的模型目录与 `input_mode`、现有 `select_model`
+       revision-checked 路径、ADR-0053 统一门禁规则。
+     - 退出条件：当前 v1 配置直接包含 `model.gamepad_auto_switch`（`enabled` 默认 `false`，
+       `connected_model`/`disconnected_model` 为完整 `ModelIdentity` 或 `null`，`null` = 上次使用）；
+       设置页 Gamepad 分组末尾的开关与两个模型下拉只列该状态真正可用的模式；连接状态的事实
+       来源只有 runtime `connected_gamepad_count`；frame source 发送无载荷通知、settings service
+       重读 runtime 答案后复用 `select_model` 完成切换；失败保留当前模型并形成稳定匿名错误；
+       删除导入模型时目标与会话记忆一起清除；fixture、JSON Schema、双语 locale、settings
+       smoke 与双平台实机热插拔矩阵覆盖。
+     - 当前实现（2026-09-26）：`bongocat-config` 的 `GamepadAutoSwitchConfig` 与 id 校验、
+       `bongocat-ui-protocol` 的 `SettingsGamepadAutoSwitch` + `SetGamepadAutoSwitch` +
+       `GamepadConnectionChanged`、`bongocat-app` 的 `set_gamepad_auto_switch` 与
+       `apply_gamepad_auto_switch`（会话按输入族记忆 + 复用 `select_model`）、
+       `bongocat-app/src/main.rs` 的 `GamepadConnectionObserver`（跨帧过渡检测 + 失败重试）、
+       `bongocat-ui` 的 `GamepadModelChoice`/`gamepad_auto_switch_options` 与 Gamepad 分组三行。
+       Gamepad 分组的门禁开关按维护者要求放在分组末尾、紧邻它控制的两个下拉。
+     - 验证（2026-09-26，本机 Windows / x86_64）：`cargo fmt --all -- --check`、三组 workspace
+       clippy（`--all-targets --all-features --exclude bongocat-app`，`bongocat-app` 的
+       `storage-test-injection` 与 `production`）、`cargo test --locked --workspace`、
+       `just schema`、`python tools/validate-json-schema.py`、`python tools/validate-locales.py`。
+       契约测试包括配置默认值/id 校验与两个 fixture、`bongocat-app` 的「按族记忆切换」与
+       「通知→切换→持久化」端到端、frame source 过渡检测与重试、删除后目标清除、
+       `bongocat-ui` 的两下拉模式过滤与悬空目标可见性。
+     - 未运行：Windows 10 1903+ 与 macOS 12+ 实机手柄热插拔、反复插拔压力、锁屏/睡眠中的
+       连接变化，以及 800×600 下 Windows 125/150/200% 与 macOS Retina 的目视检查。因此本项
+       保持未勾选；ADR-0066 的双平台手柄完成门禁不受本次自动化证据影响。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

@@ -11,6 +11,7 @@
 ### ✨ Features
 
 - You can ignore mouse, keyboard, or gamepad input separately, set global shortcuts for them, and adjust gamepad dead zones.
+- BongoCat can now switch models when a gamepad connects or disconnects. The switch is off by default; when you turn it on, each direction starts from “the last model you used” and can be pinned to a specific model. The connected list only offers gamepad models and the disconnected list only offers the others.
 - Model import checks the folder, shows progress, lets you cancel, and creates a cover from the model itself. If the cover cannot be created, the import is rolled back.
 - You can rename built-in and imported models and give them new covers. BongoCatMver folders can also be converted during import, with selectable input modes shown on each card.
 - Models can play a random motion or expression on a schedule. Motion audio starts off and can be turned on without a restart.

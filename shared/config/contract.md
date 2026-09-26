@@ -70,6 +70,9 @@ updates
 | `model`       | `ignore_gamepad`                      | 模型求值忽略手柄输入                   |
 | `model`       | `random_behavior.enabled`             | 是否按间隔随机播放动作或表情           |
 | `model`       | `random_behavior.interval_seconds`    | 随机播放间隔秒数，`[1, 3600]`          |
+| `model`       | `gamepad_auto_switch.enabled`         | 手柄连接状态变化时是否自动切换模型，默认 `false` |
+| `model`       | `gamepad_auto_switch.connected_model` | 连接手柄时自动切换的模型，`null` 表示上次使用的手柄模型 |
+| `model`       | `gamepad_auto_switch.disconnected_model` | 断开手柄时自动切换的模型，`null` 表示上次使用的非手柄模型 |
 | `model`       | `ignore_pointer`                      | 模型求值忽略指针位置                   |
 | `shortcuts`   | `commands_enabled`                    | 应用快捷键是否进入平台匹配表，默认 `true` |
 | `shortcuts`   | `command_bindings`                    | 应用 command 到快捷键绑定              |
@@ -141,6 +144,15 @@ typed platform snapshot，并仅在显式用户 command 时调用平台 adapter�
 motion 使用 `Idle` 优先级，不会替换正在进行的手动 `Normal`/`Force` 动作；模型没有可声明行为时保持
 无操作，不把空选择当成错误。`model.random_behavior.interval_seconds` 接受 `1..=3600`，默认 `30`，即使
 开关关闭也必须是合法值。该功能与 `shortcuts.model_behaviors_enabled` 独立，后者只控制全局快捷键门禁。
+
+`model.gamepad_auto_switch.enabled` 默认 `false`。打开后，连接手柄时切换到
+`connected_model`，断开最后一个手柄时切换到 `disconnected_model`；两个目标都是完整
+`{ id, source }` 或 `null`，`null` 是默认值，含义是「上次在该输入族上使用过的模型」。
+「上次使用」是会话内的事实而不是配置字段：每次模型成功激活后按其 `input_mode` 记入
+对应族，手工选择与自动切换一视同仁；某一族还没有使用记录时该方向无目标，切换不发生。
+自动切换与手工选择写同一处 `model.selected_model`，因此重启后恢复用户最后看到的模型，
+不存在第二份「当前模型」事实。目标 id 与 `model.selected_model.id` 使用同一套可移植
+model id 规则；删除导入模型时两个目标会在同一次提交中一起清除。完整通路见 ADR-0071。
 
 `overlay.maximum_fps` 是 `15..=240` 的 overlay 目标帧率。它决定 runtime 周期求值、GPUI 产品 frame
 source 与独立 overlay run loop 的下一帧间隔，间隔按**帧截止时间**计算（单帧工作耗时由等待吸收），

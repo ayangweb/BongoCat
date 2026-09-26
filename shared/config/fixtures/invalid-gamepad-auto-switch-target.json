@@ -6,7 +6,7 @@
   },
   "appearance": {
     "theme": "system",
-    "language": "de-DE"
+    "language": "system"
   },
   "overlay": {
     "click_through": false,
@@ -31,7 +31,7 @@
   "model": {
     "mirror": false,
     "mirror_pointer_tracking": false,
-    "play_motion_audio": true,
+    "play_motion_audio": false,
     "ignore_keyboard": false,
     "ignore_gamepad": false,
     "ignore_pointer": false,
@@ -43,8 +43,11 @@
       "interval_seconds": 30
     },
     "gamepad_auto_switch": {
-      "enabled": false,
-      "connected_model": null,
+      "enabled": true,
+      "connected_model": {
+        "id": "../escape",
+        "source": "built_in"
+      },
       "disconnected_model": null
     }
   },
@@ -59,7 +62,7 @@
     "show_status_icon": true
   },
   "updates": {
-    "check_automatically": true,
+    "check_automatically": false,
     "check_interval_hours": 24
   }
 }

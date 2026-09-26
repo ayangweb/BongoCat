@@ -422,6 +422,21 @@
       },
       "gamepad": {
         "title": "Gamepad",
+        "auto_switch": {
+          "label": "Switch model when a gamepad connects or disconnects"
+        },
+        "connected_model": {
+          "label": "Model used when a gamepad connects",
+          "options": {
+            "last_used": "Last gamepad model used"
+          }
+        },
+        "disconnected_model": {
+          "label": "Model used when no gamepad is connected",
+          "options": {
+            "last_used": "Last non-gamepad model used"
+          }
+        },
         "ignore_gamepad_input": {
           "label": "Ignore gamepad input"
         },

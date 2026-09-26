@@ -1,7 +1,8 @@
 use crate::app_log::ApplicationLogContext;
 use crate::diagnostics_export::{export_diagnostics_file, input_service_status_code};
 use crate::model_identity::{
-    model_origin_from_settings, settings_origin_from_config, settings_origin_from_model,
+    model_origin_from_settings, settings_key_from_config, settings_origin_from_config,
+    settings_origin_from_model,
 };
 use crate::{
     Application, ApplicationError, ApplicationLogCode, ApplicationLogDiagnostics,
@@ -9,8 +10,9 @@ use crate::{
     PRODUCT_VERSION, settings_logging_from_config,
 };
 use bongocat_config::{
-    BuildEnvironment, ConfigError, ConfigWriteFailureReason, ModelInputMode, NativeConfig,
-    OverlayWindowPlacement, ShortcutCommand, WindowPlacement, WindowStateError,
+    BuildEnvironment, ConfigError, ConfigWriteFailureReason, GamepadAutoSwitchConfig,
+    ModelInputMode, NativeConfig, OverlayWindowPlacement, ShortcutCommand, WindowPlacement,
+    WindowStateError,
 };
 use bongocat_input::{PlatformInputDiagnostics, PlatformInputServiceStatus};
 use bongocat_model::{
@@ -32,12 +34,13 @@ use bongocat_runtime::{
 use bongocat_ui_protocol::{
     AutomaticUpdateSettings, RuntimeHealth, SettingsApplicationShortcut, SettingsBuildEnvironment,
     SettingsBuildInfo, SettingsClient, SettingsCommand, SettingsDiagnosticsExportStatus,
-    SettingsError, SettingsErrorCode, SettingsGamepadAxisSettings, SettingsInputDiagnostics,
-    SettingsInputMonitoringPermission, SettingsInputServiceStatus, SettingsLanguage,
-    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
-    SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelMode,
-    SettingsModelSettings, SettingsOverlay, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
+    SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings,
+    SettingsInputDiagnostics, SettingsInputMonitoringPermission, SettingsInputServiceStatus,
+    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
+    SettingsModelImportStage, SettingsModelKey, SettingsModelMode, SettingsModelSettings,
+    SettingsOverlay, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
     SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
     SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
     SettingsSnapshot, SettingsStartupItemError, SettingsStartupItemState,
@@ -967,6 +970,31 @@ fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetGamepadAutoSwitch {
+                expected_config_revision,
+                settings,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_gamepad_auto_switch(settings)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::GamepadConnectionChanged => {
+                if let Err(error) = application.apply_gamepad_auto_switch() {
+                    // The current model stays on screen and the reason is
+                    // anonymous, exactly as it is for a selection the user made.
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::ModelActivationFailed)
+                            .with_context(ApplicationLogContext::Operation("gamepad_auto_switch"))
+                            .with_context(ApplicationLogContext::Reason(error.stable_code())),
+                    );
+                }
+            }
             SettingsCommand::SetLoggingSettings {
                 expected_config_revision,
                 settings,
@@ -1507,6 +1535,9 @@ fn snapshot(
                 .round()
                 .clamp(0.0, 99.0) as u8,
         },
+        gamepad_auto_switch: settings_gamepad_auto_switch(
+            &application.config().model.gamepad_auto_switch,
+        ),
         logging: settings_logging_from_config(&application.config().logging),
         shortcuts: settings_shortcuts(application.config()),
         startup_item,
@@ -2072,6 +2103,26 @@ fn configured_model_key(application: &Application) -> Option<SettingsModelKey> {
     })
 }
 
+/// The configured gamepad-connection model switch.
+///
+/// A `None` target is the default and stays `None` in the snapshot: it means "the
+/// last model activated for this input family", which the product resolves from
+/// what happened rather than from configuration. The settings window therefore
+/// shows it as its own choice instead of an empty control.
+fn settings_gamepad_auto_switch(switch: &GamepadAutoSwitchConfig) -> SettingsGamepadAutoSwitch {
+    SettingsGamepadAutoSwitch {
+        enabled: switch.enabled,
+        connected_model: switch
+            .connected_model
+            .as_ref()
+            .map(settings_key_from_config),
+        disconnected_model: switch
+            .disconnected_model
+            .as_ref()
+            .map(settings_key_from_config),
+    }
+}
+
 fn model_mver_input_mode(mode: bongocat_ui_protocol::SettingsMverMode) -> MverInputMode {
     match mode {
         bongocat_ui_protocol::SettingsMverMode::Standard => MverInputMode::Standard,
@@ -2385,7 +2436,9 @@ mod tests {
         ConfigStore, OverlayWindowPlacement, StorageLayout, WINDOW_STATE_WRITER_LOCK_FILE_NAME,
         WindowStateStore,
     };
-    use bongocat_input::{InputDiagnostics, InputTransportDiagnostics};
+    use bongocat_input::{
+        InputDiagnostics, InputEvent, InputTransportDiagnostics, MonotonicMillis,
+    };
     use bongocat_runtime::{RuntimeOwner, RuntimeWorkDiagnostics};
     use bongocat_ui_protocol::{
         DIAGNOSTICS_EXPORT_FORMAT_VERSION, SettingsModelImportRequest, SettingsModelOrigin,
@@ -3905,6 +3958,135 @@ mod tests {
         assert!(persisted.contains("\"ignore_gamepad\": true"));
 
         drop(sender);
+        client.shutdown_blocking().expect("shutdown service");
+        service.join().expect("join service");
+    }
+
+    /// The whole chain a gamepad plug travels: the frame source's notice, the
+    /// settings service reading the runtime's own answer, and the model that ends
+    /// up on screen.
+    #[test]
+    fn a_gamepad_connection_notice_switches_the_model_the_settings_service_owns() {
+        fn wait_for_snapshot<F>(client: &SettingsClient, mut predicate: F) -> SettingsSnapshot
+        where
+            F: FnMut(&SettingsSnapshot) -> bool,
+        {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let snapshot = client.read_snapshot_blocking().expect("settings snapshot");
+                if predicate(&snapshot) {
+                    return snapshot;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "the gamepad connection never reached the active model"
+                );
+                std::thread::yield_now();
+            }
+        }
+
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+        let application =
+            Application::start_with_layout(layout.clone()).expect("start application");
+        // The producers are handles into the runtime the application owns, so
+        // they are taken before the service takes ownership of it.
+        let input = application.input_producer();
+        let axis = application.gamepad_axis_producer();
+        let service =
+            ApplicationSettingsService::start(application).expect("start settings service");
+        let client = service.client();
+
+        let initial = client.read_snapshot_blocking().expect("initial snapshot");
+        assert!(!initial.gamepad_auto_switch.enabled);
+        assert_eq!(initial.gamepad_auto_switch.connected_model, None);
+        // Startup activates a model before anything else runs, and the "last
+        // model used" targets are exactly that history.
+        let standard = SettingsModelKey {
+            id: "standard".to_owned(),
+            origin: SettingsModelOrigin::BuiltIn,
+        };
+        let started = client
+            .select_model_blocking(
+                initial.config_revision.expect("config revision"),
+                standard.clone(),
+            )
+            .expect("activate the startup model");
+        let gamepad_model = SettingsModelKey {
+            id: "gamepad".to_owned(),
+            origin: SettingsModelOrigin::BuiltIn,
+        };
+        let configured = client
+            .set_gamepad_auto_switch_blocking(
+                started.config_revision.expect("config revision"),
+                SettingsGamepadAutoSwitch {
+                    enabled: true,
+                    connected_model: Some(gamepad_model.clone()),
+                    disconnected_model: None,
+                },
+            )
+            .expect("enable the auto switch");
+        assert!(configured.gamepad_auto_switch.enabled);
+        assert_eq!(
+            configured.gamepad_auto_switch.connected_model,
+            Some(gamepad_model.clone())
+        );
+        let revision = configured.config_revision.expect("config revision");
+
+        // A notice with no gamepad attached is a no-op: the model that matches
+        // the current state is already the one on screen.
+        client
+            .notify_gamepad_connection_changed()
+            .expect("queue the notice");
+        let untouched = client
+            .read_snapshot_blocking()
+            .expect("snapshot after notice");
+        assert_eq!(untouched.active_model, Some(standard.clone()));
+
+        let connection = axis.connect(0).expect("gamepad connection");
+        input
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            })
+            .expect("connection event");
+        // The frame source only notices the transition after the runtime has
+        // applied it, so the notice is queued against an observed state.
+        wait_for_snapshot(&client, |snapshot| {
+            snapshot.input_diagnostics.connected_gamepad_count == 1
+        });
+        client
+            .notify_gamepad_connection_changed()
+            .expect("queue the notice");
+        let connected = wait_for_snapshot(&client, |snapshot| {
+            snapshot.active_model.as_ref() == Some(&gamepad_model)
+        });
+        assert_ne!(
+            connected.config_revision,
+            Some(revision),
+            "the automatic switch is an ordinary model selection and is persisted"
+        );
+
+        input
+            .publish(InputEvent::GamepadDisconnected {
+                connection,
+                at: MonotonicMillis::new(1),
+            })
+            .expect("disconnection event");
+        wait_for_snapshot(&client, |snapshot| {
+            snapshot.input_diagnostics.connected_gamepad_count == 0
+        });
+        client
+            .notify_gamepad_connection_changed()
+            .expect("queue the notice");
+        let disconnected = wait_for_snapshot(&client, |snapshot| {
+            snapshot.active_model.as_ref() == Some(&standard)
+        });
+        assert_eq!(disconnected.input_diagnostics.connected_gamepad_count, 0);
+        let persisted = std::fs::read_to_string(&layout.config).expect("persisted config");
+        assert!(persisted.contains("\"gamepad_auto_switch\""));
+        assert!(persisted.contains("\"id\": \"gamepad\""));
+
         client.shutdown_blocking().expect("shutdown service");
         service.join().expect("join service");
     }

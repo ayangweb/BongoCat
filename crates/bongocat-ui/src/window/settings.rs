@@ -351,6 +351,69 @@ impl SettingsView {
         }
     }
 
+    /// Turn the gamepad-connection model switch on or off.
+    ///
+    /// Only the gate moves. Both targets are kept exactly as the user left them,
+    /// which is the unified gate rule: switching a feature off never rewrites what
+    /// it controls.
+    pub(super) fn set_gamepad_auto_switch_enabled(
+        &mut self,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.gamepad_auto_switch.enabled == enabled {
+            return;
+        }
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::GamepadAutoSwitch,
+            Some(SettingValue::GamepadAutoSwitch {
+                expected_config_revision,
+                settings: SettingsGamepadAutoSwitch {
+                    enabled,
+                    ..snapshot.gamepad_auto_switch.clone()
+                },
+            }),
+            cx,
+        );
+    }
+
+    /// Point one connection state at a model, or back at "the last model used".
+    pub(super) fn set_gamepad_auto_switch_model(
+        &mut self,
+        state: GamepadConnectionState,
+        model: Option<SettingsModelKey>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if *state.target(&snapshot.gamepad_auto_switch) == model {
+            return;
+        }
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            return;
+        };
+        let mut settings = snapshot.gamepad_auto_switch.clone();
+        match state {
+            GamepadConnectionState::Connected => settings.connected_model = model,
+            GamepadConnectionState::Disconnected => settings.disconnected_model = model,
+        }
+        self.start_request(
+            PendingOperation::GamepadAutoSwitch,
+            Some(SettingValue::GamepadAutoSwitch {
+                expected_config_revision,
+                settings,
+            }),
+            cx,
+        );
+    }
+
     pub(super) fn set_overlay_settings(
         &mut self,
         settings: SettingsOverlay,

@@ -417,6 +417,9 @@ pub struct SettingsSnapshot {
     pub random_behavior: SettingsRandomBehavior,
     pub model_settings: SettingsModelSettings,
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,
+    /// The configured gamepad-connection model switch. The settings service is
+    /// what acts on it, so the view only reads the gate and the two targets.
+    pub gamepad_auto_switch: SettingsGamepadAutoSwitch,
     pub logging: SettingsLogging,
     pub shortcuts: SettingsShortcuts,
     pub startup_item: SettingsStartupItemStatus,
@@ -473,6 +476,19 @@ impl Default for SettingsRandomBehavior {
 pub struct SettingsGamepadAxisSettings {
     pub stick_dead_zone_percent: u8,
     pub trigger_dead_zone_percent: u8,
+}
+
+/// Choosing the shown model from gamepad connection state.
+///
+/// `connected_model` is the model the product shows while at least one gamepad
+/// is connected and `disconnected_model` the one it shows while none is; `None`
+/// leaves the shown model alone in that direction. The two are complete model
+/// identities, so a target survives a restart and a rename.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SettingsGamepadAutoSwitch {
+    pub enabled: bool,
+    pub connected_model: Option<SettingsModelKey>,
+    pub disconnected_model: Option<SettingsModelKey>,
 }
 
 impl Default for SettingsGamepadAxisSettings {
@@ -1259,6 +1275,21 @@ pub enum SettingsCommand {
         settings: SettingsGamepadAxisSettings,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Persist the gamepad-connection model switch as one atomic change.
+    SetGamepadAutoSwitch {
+        expected_config_revision: u64,
+        settings: SettingsGamepadAutoSwitch,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// The number of connected gamepads changed; the settings service
+    /// reconciles the configured switch against the runtime's own answer.
+    ///
+    /// This carries no state on purpose. The runtime owns the connected set, so
+    /// the service reads that answer while it handles the notice instead of
+    /// trusting an observation that may already be stale: a notice the service
+    /// could not queue is retried by the next frame, and a late notice still
+    /// switches on the state that holds when it is handled.
+    GamepadConnectionChanged,
     SetLoggingSettings {
         expected_config_revision: u64,
         settings: SettingsLogging,
@@ -1671,6 +1702,31 @@ impl SettingsClient {
             reply,
         })
         .await
+    }
+
+    pub async fn set_gamepad_auto_switch(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsGamepadAutoSwitch,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetGamepadAutoSwitch {
+            expected_config_revision,
+            settings,
+            reply,
+        })
+        .await
+    }
+
+    /// Tell the settings service that gamepad connectivity changed.
+    ///
+    /// The caller is the product frame source, which observes the runtime's
+    /// connected count without doing any work for it. A closed channel is the
+    /// only failure: the caller retries on its next frame, and a service that
+    /// never hears the notice simply has nothing to reconcile.
+    pub fn notify_gamepad_connection_changed(&self) -> Result<(), SettingsServiceClosed> {
+        self.commands
+            .try_send(SettingsCommand::GamepadConnectionChanged)
+            .map_err(|_| SettingsServiceClosed)
     }
 
     pub async fn set_logging_settings(
@@ -2091,6 +2147,18 @@ impl SettingsClient {
         settings: SettingsGamepadAxisSettings,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetGamepadAxisSettings {
+            expected_config_revision,
+            settings,
+            reply,
+        })
+    }
+
+    pub fn set_gamepad_auto_switch_blocking(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsGamepadAutoSwitch,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetGamepadAutoSwitch {
             expected_config_revision,
             settings,
             reply,
@@ -3355,6 +3423,7 @@ mod tests {
             random_behavior: SettingsRandomBehavior::default(),
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
+            gamepad_auto_switch: SettingsGamepadAutoSwitch::default(),
             logging: SettingsLogging::default(),
             shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),

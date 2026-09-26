@@ -279,6 +279,45 @@ impl OverlayPlacementDebouncer {
     }
 }
 
+/// Tell the settings service when gamepad connectivity changes.
+///
+/// The frame source already reads the runtime snapshot every frame, and the
+/// runtime owns the connected set, so this is where the product learns about a
+/// plug or an unplug without a second input transport. It only notices a
+/// *transition*: the first frame only seeds the last observed value, and a
+/// change between two frames is queued at most once.
+///
+/// A notice the service could not accept stays pending and is retried on the next
+/// frame instead of being dropped, because the next transition is not something
+/// the product can afford to miss. Nothing is queued while the service is gone:
+/// the frame source is stopped before it during shutdown.
+#[derive(Default)]
+struct GamepadConnectionObserver {
+    connected: Option<bool>,
+    pending: bool,
+}
+
+impl GamepadConnectionObserver {
+    /// Queue a notice when the connected count crossed between "none" and "at
+    /// least one" since the previous frame, and retry one the service could not
+    /// take.
+    fn observe(&mut self, connected_gamepad_count: usize, client: &SettingsClient) {
+        let connected = connected_gamepad_count > 0;
+        if self.connected != Some(connected) {
+            // The first frame only establishes the baseline. A gamepad that is
+            // already attached is announced by the input service after startup,
+            // which is a real transition against that baseline.
+            if self.connected.is_some() {
+                self.pending = true;
+            }
+            self.connected = Some(connected);
+        }
+        if self.pending && client.notify_gamepad_connection_changed().is_ok() {
+            self.pending = false;
+        }
+    }
+}
+
 /// Bring the stored overlay scale to the one a right-button resize drag settled
 /// on.
 ///
@@ -2248,6 +2287,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut shutdown_flush_started = false;
             let mut last_overlay_bounds = None;
             let mut overlay_placement_debouncer = OverlayPlacementDebouncer::default();
+            let mut gamepad_connections = GamepadConnectionObserver::default();
             let mut retry_delay = None;
             let mut frame_pacer: Option<bongocat_runtime::FramePacer> = None;
             loop {
@@ -2529,6 +2569,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // the stored configuration to the same number.
                 if let Some(outcome) = resize_outcome {
                     publish_overlay_scale(&frame_settings_client, outcome.scale_percent).await;
+                }
+                // Gamepad connectivity is a product behaviour the settings
+                // service owns, so the frame source only reports the transition.
+                // The count is read in place: cloning the whole snapshot per
+                // frame for one counter is exactly what the pacing read above
+                // stopped doing. A frame that is already shutting down reports
+                // nothing, because the automatic switch would write
+                // configuration against the flush the shutdown is about to run.
+                if keep_running {
+                    gamepad_connections.observe(
+                        frame_runtime_client.connected_gamepad_count(),
+                        &frame_settings_client,
+                    );
                 }
                 if let Some(pacer) = frame_pacer.as_mut() {
                     pacer.frame_produced(Instant::now(), frame_interval);
@@ -3580,6 +3633,7 @@ fn executable_relative_preset_root(executable: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bongocat_ui_protocol::SettingsCommand;
 
     #[test]
     fn automatic_update_check_interval_uses_the_configured_whole_hours() {
@@ -3736,6 +3790,58 @@ mod tests {
         );
         debouncer.mark_sent(latest);
         assert_eq!(debouncer.flush(origin + Duration::from_millis(32)), None);
+    }
+
+    #[test]
+    fn the_frame_source_queues_a_gamepad_notice_once_per_transition() {
+        // A live service is the only way to tell "queued" from "still owed", so
+        // the test drives a real bounded endpoint and counts the commands.
+        let (client, endpoint) = SettingsClient::bounded(8);
+        let mut observer = GamepadConnectionObserver::default();
+
+        // The first frame only establishes the baseline: a gamepad that is
+        // already attached is announced by the input service afterwards.
+        observer.observe(0, &client);
+        assert!(endpoint.try_recv().is_err());
+        observer.observe(1, &client);
+        assert!(matches!(
+            endpoint.try_recv(),
+            Ok(SettingsCommand::GamepadConnectionChanged)
+        ));
+        // Staying connected is not a transition.
+        observer.observe(3, &client);
+        assert!(endpoint.try_recv().is_err());
+        observer.observe(0, &client);
+        assert!(matches!(
+            endpoint.try_recv(),
+            Ok(SettingsCommand::GamepadConnectionChanged)
+        ));
+    }
+
+    #[test]
+    fn a_gamepad_notice_the_service_could_not_take_is_retried() {
+        // One slot, so the transition that matters lands on a full queue.
+        let (client, endpoint) = SettingsClient::bounded(1);
+        let mut observer = GamepadConnectionObserver::default();
+        observer.observe(0, &client);
+        observer.observe(1, &client);
+        // The next transition arrives while the first notice still occupies the
+        // single slot, which is the one failure the producer can see.
+        observer.observe(0, &client);
+        assert!(matches!(
+            endpoint.try_recv(),
+            Ok(SettingsCommand::GamepadConnectionChanged)
+        ));
+        // The service took the earlier notice; the refused transition is retried
+        // even though nothing about the observed state has changed since.
+        observer.observe(0, &client);
+        assert!(matches!(
+            endpoint.try_recv(),
+            Ok(SettingsCommand::GamepadConnectionChanged)
+        ));
+        // A closed service ends the retries instead of spinning on them.
+        drop(endpoint);
+        observer.observe(1, &client);
     }
 
     #[test]

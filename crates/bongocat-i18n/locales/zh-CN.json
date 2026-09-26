@@ -422,6 +422,21 @@
       },
       "gamepad": {
         "title": "手柄",
+        "auto_switch": {
+          "label": "连接或断开手柄时自动切换模型"
+        },
+        "connected_model": {
+          "label": "连接手柄时自动切换的模型",
+          "options": {
+            "last_used": "上次使用的手柄模型"
+          }
+        },
+        "disconnected_model": {
+          "label": "断开手柄时自动切换的模型",
+          "options": {
+            "last_used": "上次使用的非手柄模型"
+          }
+        },
         "ignore_gamepad_input": {
           "label": "忽略手柄输入"
         },

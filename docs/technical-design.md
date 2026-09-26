@@ -383,6 +383,14 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   adapter 关闭默认 jitter/dead-zone filter 和环境 mapping，只负责 fork mapping 后的完整范围值、
   trigger 连续值与无效值诊断，不把设备默认 dead-zone 写入共享协议。轴值随后以
   `ModelInputSnapshot` 的不可变字段投影给 renderer。
+- 手柄连接状态的事实来源只有 runtime 的 `InputState`：`RuntimeSnapshot::input` 的
+  `connected_gamepad_count` 是上层唯一可读的形式（ADR-0071）。产品 frame source 每帧已经读取
+  该 snapshot，因此在「无手柄 ↔ 至少一个手柄」跨帧变化时向 settings service 发送一次无载荷
+  `GamepadConnectionChanged`；第一帧只建立基线，发送失败保留待发状态并在下帧重试。
+  settings service 处理时重新读取 runtime 计数，重复、迟到与补发的通知因此落在同一结果上。
+  它是产品行为，因此走 `Application::select_model` 的同一条路径（配置 revision-checked 提交、
+  行为快捷键分配、失败回滚、`selected_model` 持久化与两阶段 commit），不新增第二条切换路径，
+  也不在 platform callback、UI executor 或 GPUI Entity 内加载模型。
 - 平台 input worker 通过独立 latest diagnostics producer 发布项目稳定计数；该通道不占用可靠
   command/input edge 队列，Windows service tick 与 macOS run-loop slice 都刷新 live snapshot。
   callback 原子计数、worker 恢复计数和 cursor latest 统计在平台 owner 内合并后进入
@@ -511,7 +519,8 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   Appearance & language、Model library、Model behavior、Model window、Input & interaction、
   Shortcuts、App & system 七个业务分类，About 作为设置菜单中的最后一个普通页面。Appearance & language
   直接展示主题与语言，不再重复同名分组；Model library 单独展示模型卡片，Model behavior 单独展示模型镜像、动作音效和随机行为，模型行为快捷键仍留在 Shortcuts；Input & interaction 按 Mouse、Keyboard、
-  Gamepad 分组；App & system 按 Startup & desktop、Updates、Logging 分组。Updates 与 Logging 的设置项只保留标题和控件，
+  Gamepad 分组；Gamepad 分组末尾是「连接或断开手柄时自动切换模型」门禁开关及其
+  连接/断开两个模型下拉（ADR-0071）；App & system 按 Startup & desktop、Updates、Logging 分组。Updates 与 Logging 的设置项只保留标题和控件，
   不显示重复描述。Model window 继续按 Window behavior、Window appearance、Window performance 分组。About 的
   操作行使用标准设置项：产品信息/手动检查更新、隐私安全的软件信息复制、项目主页、问题反馈和打开
   application-owned 日志目录；日志路径不进入 SettingsSnapshot，由 settings service 持有并校验。
@@ -917,7 +926,11 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `input.gamepad.stick_dead_zone` 和 `input.gamepad.trigger_dead_zone`；两个 dead-zone 都必须是
   `[0, 1)` 的有限数。模型随机播放由 `model.random_behavior.enabled` 与
   `model.random_behavior.interval_seconds` 成对表达，后者为 `[1, 3600]` 秒且默认 `30`；两者直接
-  进入当前 v1，不读取旧字段。overlay visibility 属于 runtime 会话状态，不写入 config；设置页使用
+  进入当前 v1，不读取旧字段。`model.gamepad_auto_switch` 直接包含当前 v1：门禁
+  `enabled` 默认 `false`，`connected_model` 与 `disconnected_model` 是完整 `ModelIdentity` 或
+  `null`，`null` 是默认值并表示「上次在该输入族上使用过的模型」；该「上次使用」是
+  Application 的会话状态而不是配置字段（ADR-0071）。overlay visibility 属于 runtime 会话状态，
+  不写入 config；设置页使用
   `settings.overlay.hide_model_window.label` 将其投影为“隐藏模型窗口”开关，开关选中表示已隐藏，默认未选中。
 - `next` 开发期间不读取或转换任何早期中间结构，不实现 schema migration、字段 alias 或版本兼容
   分支。新增字段直接更新当前 v1 的 Rust 类型、JSON Schema、默认值和 fixture。解析入口保留显式

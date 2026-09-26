@@ -1,14 +1,14 @@
 use crate::{
     SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsError, SettingsErrorCode,
-    SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel, SettingsLogging,
-    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
-    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelKey, SettingsModelMode,
-    SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode,
-    SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsShortcutBinding,
-    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
-    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
-    SettingsWindowState,
+    SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel,
+    SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
+    SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
+    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
+    SettingsRandomBehavior, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -23,6 +23,7 @@ use gpui_kit::component::{
     group_box::GroupBoxVariant,
     input::{Input, InputEvent, InputState},
     notification::{Notification, NotificationType},
+    searchable_list::SearchableListItem,
     select::{SearchableVec, Select, SelectEvent, SelectState},
     setting::{
         NumberFieldOptions, RenderOptions, SelectIndex, SettingField, SettingGroup, SettingItem,
@@ -129,6 +130,7 @@ pub(crate) type SettingsWindowRequest = Rc<dyn Fn(&mut App)>;
 type LanguageSelectState = SelectState<SearchableVec<&'static str>>;
 type ThemeSelectState = SelectState<SearchableVec<&'static str>>;
 type LoggingLevelSelectState = SelectState<SearchableVec<&'static str>>;
+type GamepadModelSelectState = SelectState<SearchableVec<GamepadModelChoice>>;
 
 #[derive(Clone, Copy)]
 pub(crate) struct Tokens {
@@ -184,6 +186,7 @@ enum PendingOperation {
     ReleaseFallbackTimeout,
     ModelSettings,
     GamepadAxisSettings,
+    GamepadAutoSwitch,
     StartupItem,
     ModelSelection,
     ModelDeletion,
@@ -658,6 +661,10 @@ pub struct SettingsView {
     language_select: Entity<LanguageSelectState>,
     theme_select: Entity<ThemeSelectState>,
     logging_level_select: Entity<LoggingLevelSelectState>,
+    /// The model each gamepad connection state switches to. Their option lists
+    /// come from the model catalog, so they are rebuilt on every snapshot.
+    gamepad_connected_model_select: Entity<GamepadModelSelectState>,
+    gamepad_disconnected_model_select: Entity<GamepadModelSelectState>,
     request_quit: Rc<dyn Fn(&mut App)>,
     /// Opens the update window and starts a check.
     request_update: SettingsWindowRequest,
@@ -1517,6 +1524,14 @@ impl SettingsView {
                         .set_gamepad_axis_settings(expected_config_revision, settings)
                         .await
                 }
+                Some(SettingValue::GamepadAutoSwitch {
+                    expected_config_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_gamepad_auto_switch(expected_config_revision, settings)
+                        .await
+                }
                 Some(SettingValue::StartupItemEnabled(enabled)) => {
                     client.set_startup_item_enabled(enabled).await
                 }
@@ -1821,6 +1836,10 @@ enum SettingValue {
     GamepadAxisSettings {
         expected_config_revision: u64,
         settings: SettingsGamepadAxisSettings,
+    },
+    GamepadAutoSwitch {
+        expected_config_revision: u64,
+        settings: SettingsGamepadAutoSwitch,
     },
     StartupItemEnabled(bool),
     Shortcuts {

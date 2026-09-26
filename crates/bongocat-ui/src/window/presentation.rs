@@ -30,6 +30,137 @@ pub(super) fn logging_level_options(
     SettingsLogLevel::ALL.map(|level| logging_level_display_name(level, display_language))
 }
 
+/// Which gamepad connection state one of the two model targets answers.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum GamepadConnectionState {
+    /// At least one gamepad is connected.
+    Connected,
+    /// No gamepad is connected.
+    Disconnected,
+}
+
+impl GamepadConnectionState {
+    /// Whether the target is meant to name a gamepad-mode model.
+    fn offers_gamepad_models(self) -> bool {
+        matches!(self, Self::Connected)
+    }
+
+    fn last_used_key(self) -> &'static str {
+        match self {
+            Self::Connected => {
+                "settings.input_interaction.gamepad.connected_model.options.last_used"
+            }
+            Self::Disconnected => {
+                "settings.input_interaction.gamepad.disconnected_model.options.last_used"
+            }
+        }
+    }
+
+    /// The configured target for this state.
+    pub(super) fn target(self, settings: &SettingsGamepadAutoSwitch) -> &Option<SettingsModelKey> {
+        match self {
+            Self::Connected => &settings.connected_model,
+            Self::Disconnected => &settings.disconnected_model,
+        }
+    }
+}
+
+/// One row of a gamepad auto switch model dropdown.
+///
+/// `None` is the first choice of both dropdowns and the configured default: it
+/// means "the last model used in this state", which the product resolves from
+/// what the user actually activated. `Some` pins that state to one model.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GamepadModelChoice {
+    pub(super) target: Option<SettingsModelKey>,
+    /// The row's text, resolved when the option list is built. It is not part of
+    /// the identity: renaming a model changes the label, not the target.
+    label: SharedString,
+}
+
+impl GamepadModelChoice {
+    fn last_used(language: SettingsLanguage, state: GamepadConnectionState) -> Self {
+        Self {
+            target: None,
+            label: bongocat_i18n::text(language.catalog_locale(), state.last_used_key()).into(),
+        }
+    }
+}
+
+impl SearchableListItem for GamepadModelChoice {
+    type Value = Self;
+
+    fn title(&self) -> SharedString {
+        self.label.clone()
+    }
+
+    fn value(&self) -> &Self::Value {
+        self
+    }
+}
+
+/// The models one gamepad auto switch dropdown offers, in page order.
+///
+/// The list is the "last used" choice followed by the ready models whose
+/// recorded input mode fits the state, which is what makes the two dropdowns
+/// answer different questions: a gamepad-mode model is the one that can be used
+/// while a gamepad is connected, and the other modes are the ones that cannot.
+///
+/// A configured target that is no longer offered — its model was deleted or has
+/// become invalid — is appended with the model's own display name. Dropping it
+/// would leave the control showing nothing at all, so the user could not see
+/// what the setting points at or change it back.
+pub(super) fn gamepad_auto_switch_options(
+    entries: &[SettingsModelEntry],
+    state: GamepadConnectionState,
+    configured: Option<&SettingsModelKey>,
+    language: SettingsLanguage,
+) -> Vec<GamepadModelChoice> {
+    let mut options = vec![GamepadModelChoice::last_used(language, state)];
+    options.extend(
+        entries
+            .iter()
+            .filter(|entry| {
+                matches!(entry.availability, SettingsModelAvailability::Ready { .. })
+                    && entry
+                        .input_mode
+                        .is_some_and(|mode| mode == SettingsModelMode::Gamepad)
+                        == state.offers_gamepad_models()
+            })
+            .map(|entry| GamepadModelChoice {
+                target: Some(SettingsModelKey {
+                    id: entry.id.clone(),
+                    origin: entry.origin,
+                }),
+                label: entry.title.clone().into(),
+            }),
+    );
+    if let Some(configured) = configured
+        && !options
+            .iter()
+            .any(|option| option.target.as_ref() == Some(configured))
+    {
+        options.push(GamepadModelChoice {
+            target: Some(configured.clone()),
+            label: gamepad_model_label(entries, configured),
+        });
+    }
+    options
+}
+
+/// The text one model row shows: the editable title when the catalog still knows
+/// the model, and the stable id when it does not — the same fallback the model
+/// library page uses for a model that was never renamed.
+fn gamepad_model_label(entries: &[SettingsModelEntry], model: &SettingsModelKey) -> SharedString {
+    entries
+        .iter()
+        .find(|entry| entry.id == model.id && entry.origin == model.origin)
+        .map_or_else(
+            || SharedString::from(model.id.clone()),
+            |entry| SharedString::from(entry.title.clone()),
+        )
+}
+
 pub(super) fn logging_retention_number_field_options() -> NumberFieldOptions {
     NumberFieldOptions {
         min: 1.0,

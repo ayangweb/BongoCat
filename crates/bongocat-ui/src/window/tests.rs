@@ -37,6 +37,18 @@ fn model_entry(
     }
 }
 
+fn model_entry_in_mode(
+    id: &str,
+    origin: SettingsModelOrigin,
+    mode: SettingsModelMode,
+    availability: SettingsModelAvailability,
+) -> SettingsModelEntry {
+    SettingsModelEntry {
+        input_mode: Some(mode),
+        ..model_entry(id, origin, availability)
+    }
+}
+
 #[test]
 fn settings_error_display_matches_the_english_catalog_copy() {
     for code in SettingsErrorCode::ALL {
@@ -1381,6 +1393,129 @@ fn logging_level_options_use_the_complete_reversible_localized_catalog() {
         logging_level_from_display_name("not a log level", SettingsLanguage::EnglishUnitedStates),
         None
     );
+}
+
+#[test]
+fn the_two_gamepad_auto_switch_dropdowns_offer_disjoint_model_families() {
+    let ready = SettingsModelAvailability::Ready {
+        behaviors: Vec::new(),
+    };
+    let entries = vec![
+        model_entry_in_mode(
+            "standard",
+            SettingsModelOrigin::BuiltIn,
+            SettingsModelMode::Standard,
+            ready.clone(),
+        ),
+        model_entry_in_mode(
+            "keyboard",
+            SettingsModelOrigin::BuiltIn,
+            SettingsModelMode::Keyboard,
+            ready.clone(),
+        ),
+        model_entry_in_mode(
+            "gamepad",
+            SettingsModelOrigin::BuiltIn,
+            SettingsModelMode::Gamepad,
+            ready.clone(),
+        ),
+        // A second gamepad model from the store, and an unusable one: neither may
+        // reach the connected dropdown, and the invalid one must not reach
+        // either.
+        model_entry_in_mode(
+            "imported-pad",
+            SettingsModelOrigin::Imported,
+            SettingsModelMode::Gamepad,
+            ready.clone(),
+        ),
+        model_entry_in_mode(
+            "broken-pad",
+            SettingsModelOrigin::Imported,
+            SettingsModelMode::Gamepad,
+            SettingsModelAvailability::Invalid {
+                diagnostic: SettingsModelDiagnostic::ModelJsonInvalid,
+            },
+        ),
+    ];
+    let language = SettingsLanguage::EnglishUnitedStates;
+
+    let connected =
+        gamepad_auto_switch_options(&entries, GamepadConnectionState::Connected, None, language);
+    let connected_targets = connected
+        .iter()
+        .map(|option| option.target.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        connected_targets,
+        vec![
+            None,
+            Some(settings_model_key("gamepad", SettingsModelOrigin::BuiltIn)),
+            Some(settings_model_key(
+                "imported-pad",
+                SettingsModelOrigin::Imported
+            )),
+        ],
+        "the connected dropdown is the last-used choice plus the gamepad-mode models"
+    );
+    assert_eq!(connected[0].title(), "Last gamepad model used");
+
+    let disconnected = gamepad_auto_switch_options(
+        &entries,
+        GamepadConnectionState::Disconnected,
+        None,
+        language,
+    );
+    assert_eq!(
+        disconnected
+            .iter()
+            .map(|option| option.target.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            None,
+            Some(settings_model_key("standard", SettingsModelOrigin::BuiltIn)),
+            Some(settings_model_key("keyboard", SettingsModelOrigin::BuiltIn)),
+        ],
+        "the disconnected dropdown is the last-used choice plus the other modes"
+    );
+    assert_eq!(disconnected[0].title(), "Last non-gamepad model used");
+
+    // A configured target that is no longer offered still has to be visible, or
+    // the control would show nothing and the user could not change it back.
+    let dangling = settings_model_key("deleted-pad", SettingsModelOrigin::Imported);
+    let options = gamepad_auto_switch_options(
+        &entries,
+        GamepadConnectionState::Connected,
+        Some(&dangling),
+        language,
+    );
+    assert_eq!(
+        options.last().map(|option| option.target.clone()),
+        Some(Some(dangling))
+    );
+    assert_eq!(
+        options.last().map(|option| option.title().to_string()),
+        Some("deleted-pad".to_owned())
+    );
+    // A target that *is* offered is not duplicated.
+    let offered = settings_model_key("gamepad", SettingsModelOrigin::BuiltIn);
+    let options = gamepad_auto_switch_options(
+        &entries,
+        GamepadConnectionState::Connected,
+        Some(&offered),
+        language,
+    );
+    assert_eq!(options.len(), connected.len());
+
+    // With no catalog at all, both dropdowns still offer the default choice.
+    for state in [
+        GamepadConnectionState::Connected,
+        GamepadConnectionState::Disconnected,
+    ] {
+        let options = gamepad_auto_switch_options(&[], state, None, language);
+        assert_eq!(options.len(), 1);
+        assert_eq!(options[0].target, None);
+        assert!(!options[0].title().is_empty());
+    }
 }
 
 #[test]

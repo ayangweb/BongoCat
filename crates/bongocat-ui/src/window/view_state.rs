@@ -99,6 +99,36 @@ impl SettingsView {
                 cx,
             )
         });
+        for (state, select) in [
+            (
+                GamepadConnectionState::Connected,
+                &self.gamepad_connected_model_select,
+            ),
+            (
+                GamepadConnectionState::Disconnected,
+                &self.gamepad_disconnected_model_select,
+            ),
+        ] {
+            let configured = state.target(&snapshot.gamepad_auto_switch);
+            let options = gamepad_auto_switch_options(
+                &snapshot.model_catalog.entries,
+                state,
+                configured.as_ref(),
+                snapshot.resolved_language,
+            );
+            // The list is rebuilt from the catalog, so the committed value has to
+            // be looked up in the new list rather than carried over by position.
+            let selected = options
+                .iter()
+                .find(|option| option.target == *configured)
+                .cloned();
+            select.update(cx, |select, cx| {
+                select.set_items(SearchableVec::new(options), window, cx);
+                if let Some(selected) = selected {
+                    select.set_selected_value(&selected, window, cx);
+                }
+            });
+        }
         self.syncing_component_inputs = false;
     }
 
@@ -140,6 +170,35 @@ impl SettingsView {
         let logging_level_select = cx.new(|cx| {
             SelectState::new(
                 SearchableVec::new(logging_level_options(seed.language)),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
+        // Both gamepad auto switch dropdowns open on their "last used" choice,
+        // which is the configured default: the first frame already shows the
+        // state a fresh configuration is in.
+        let gamepad_connected_model_select = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(gamepad_auto_switch_options(
+                    &[],
+                    GamepadConnectionState::Connected,
+                    None,
+                    seed.language,
+                )),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
+        let gamepad_disconnected_model_select = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(gamepad_auto_switch_options(
+                    &[],
+                    GamepadConnectionState::Disconnected,
+                    None,
+                    seed.language,
+                )),
                 Some(IndexPath::new(0)),
                 window,
                 cx,
@@ -191,6 +250,29 @@ impl SettingsView {
             },
         )
         .detach();
+        for (state, select) in [
+            (
+                GamepadConnectionState::Connected,
+                &gamepad_connected_model_select,
+            ),
+            (
+                GamepadConnectionState::Disconnected,
+                &gamepad_disconnected_model_select,
+            ),
+        ] {
+            cx.subscribe(
+                select,
+                move |view, _, event: &SelectEvent<SearchableVec<GamepadModelChoice>>, cx| {
+                    if view.syncing_component_inputs {
+                        return;
+                    }
+                    if let SelectEvent::Confirm(Some(choice)) = event {
+                        view.set_gamepad_auto_switch_model(state, choice.target.clone(), cx);
+                    }
+                },
+            )
+            .detach();
+        }
         Self {
             client,
             seed,
@@ -239,6 +321,8 @@ impl SettingsView {
             language_select,
             theme_select,
             logging_level_select,
+            gamepad_connected_model_select,
+            gamepad_disconnected_model_select,
             request_quit,
             request_update,
             overlay_focus: cx.focus_handle().tab_index(10).tab_stop(true),

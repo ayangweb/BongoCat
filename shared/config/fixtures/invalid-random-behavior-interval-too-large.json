@@ -41,6 +41,11 @@
     "random_behavior": {
       "enabled": true,
       "interval_seconds": 3601
+    },
+    "gamepad_auto_switch": {
+      "enabled": false,
+      "connected_model": null,
+      "disconnected_model": null
     }
   },
   "shortcuts": {

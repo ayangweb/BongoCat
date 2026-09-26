@@ -10,6 +10,32 @@ where
         .map(move |item| item.keywords(keywords.iter().cloned()))
 }
 
+/// One model dropdown of the gamepad auto switch.
+///
+/// The row is a custom element because the option list is the model catalog, so
+/// it cannot be a static field. The gate still reaches the control itself: the
+/// component forwards the row's disabled state to the renderer, and the select
+/// reads it instead of recomputing the condition.
+fn gamepad_auto_switch_model_row(
+    label_key: &'static str,
+    language: SettingsLanguage,
+    select: &Entity<GamepadModelSelectState>,
+    gate: SettingGate,
+) -> SettingItem {
+    let select = select.clone();
+    SettingItem::new(
+        bongocat_i18n::text(language.catalog_locale(), label_key),
+        SettingField::element(
+            move |options: &RenderOptions, _: &mut Window, _: &mut App| {
+                Select::new(&select)
+                    .disabled(options.is_disabled())
+                    .into_any_element()
+            },
+        ),
+    )
+    .disabled(gate.disables_controls())
+}
+
 /// `gpui-kit` owns the sidebar selection in window-keyed state. The empty title
 /// suffix is the component's public per-page render hook, so it lets the process
 /// owner observe the active page without taking over the component's navigation.
@@ -91,6 +117,15 @@ impl Render for SettingsView {
                 .as_ref()
                 .is_some_and(|snapshot| snapshot.random_behavior.enabled),
         );
+        // The gamepad group closes with the switch that owns the two model
+        // dropdowns below it: the same gate rule the hover-hide delay and the
+        // shortcut scopes use.
+        let gamepad_auto_switch_gate = SettingGate::new(
+            editing_blocked,
+            snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.gamepad_auto_switch.enabled),
+        );
         // One gate per shortcut scope: the switch that owns the group plus the
         // shared structural editing state. Each scope's rows read their own
         // gate; the gate switches themselves stay operable while off.
@@ -118,6 +153,10 @@ impl Render for SettingsView {
             .map(|snapshot| snapshot.model_catalog.entries.as_slice())
             .unwrap_or_default();
         let language = self.display_language();
+        // The two model dropdowns are view state, not render state, so the page
+        // reads the very entities the view syncs and subscribes to.
+        let gamepad_connected_model_select = self.gamepad_connected_model_select.clone();
+        let gamepad_disconnected_model_select = self.gamepad_disconnected_model_select.clone();
         self.sync_mver_mode_dialog(window, cx);
         if let Some(error) = self.pending_notification.take() {
             window.push_notification(
@@ -970,6 +1009,48 @@ impl Render for SettingsView {
                         language.catalog_locale(),
                         "settings.input_interaction.gamepad.trigger_dead_zone.description",
                     )),
+                    // The switch that owns the two dropdowns sits directly above
+                    // them and after the group's other rows: it is an addition to
+                    // the group's everyday controls, and the two values it gates
+                    // are its own subject.
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.input_interaction.gamepad.auto_switch.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.gamepad_auto_switch.enabled)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_gamepad_auto_switch_enabled(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .disabled(gamepad_auto_switch_gate.disables_switch()),
+                    gamepad_auto_switch_model_row(
+                        "settings.input_interaction.gamepad.connected_model.label",
+                        language,
+                        &gamepad_connected_model_select,
+                        gamepad_auto_switch_gate,
+                    ),
+                    gamepad_auto_switch_model_row(
+                        "settings.input_interaction.gamepad.disconnected_model.label",
+                        language,
+                        &gamepad_disconnected_model_select,
+                        gamepad_auto_switch_gate,
+                    ),
                 ], &gamepad_keywords)),
         ]);
 

@@ -13,9 +13,9 @@
 //! touches the filesystem or holds state: the mapping is total, so a caller only
 //! has to choose the direction it needs.
 
-use bongocat_config::ModelSource;
+use bongocat_config::{ModelIdentity, ModelSource};
 use bongocat_model::ModelOrigin;
-use bongocat_ui_protocol::SettingsModelOrigin;
+use bongocat_ui_protocol::{SettingsModelKey, SettingsModelOrigin};
 
 /// The persisted identity of a model the runtime or the model store owns.
 pub(crate) const fn config_source_from_model(origin: ModelOrigin) -> ModelSource {
@@ -62,6 +62,26 @@ pub(crate) const fn settings_origin_from_config(source: ModelSource) -> Settings
     match source {
         ModelSource::BuiltIn => SettingsModelOrigin::BuiltIn,
         ModelSource::Imported => SettingsModelOrigin::Imported,
+    }
+}
+
+/// The persisted identity a settings-window key names.
+///
+/// Used by the fields that store an optional model identity, so a target the
+/// settings window shows and the target the configuration keeps can never be
+/// spelled two different ways.
+pub(crate) fn config_identity_from_settings(model: &SettingsModelKey) -> ModelIdentity {
+    ModelIdentity {
+        id: model.id.clone(),
+        source: config_source_from_settings(model.origin),
+    }
+}
+
+/// The settings-window key a persisted identity names.
+pub(crate) fn settings_key_from_config(identity: &ModelIdentity) -> SettingsModelKey {
+    SettingsModelKey {
+        id: identity.id.clone(),
+        origin: settings_origin_from_config(identity.source),
     }
 }
 

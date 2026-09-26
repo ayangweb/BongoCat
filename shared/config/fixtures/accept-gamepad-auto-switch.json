@@ -6,7 +6,7 @@
   },
   "appearance": {
     "theme": "system",
-    "language": "de-DE"
+    "language": "system"
   },
   "overlay": {
     "click_through": false,
@@ -31,11 +31,14 @@
   "model": {
     "mirror": false,
     "mirror_pointer_tracking": false,
-    "play_motion_audio": true,
+    "play_motion_audio": false,
     "ignore_keyboard": false,
     "ignore_gamepad": false,
     "ignore_pointer": false,
-    "selected_model": null,
+    "selected_model": {
+      "id": "standard",
+      "source": "built_in"
+    },
     "imported_models": [],
     "built_in_models": [],
     "random_behavior": {
@@ -43,9 +46,15 @@
       "interval_seconds": 30
     },
     "gamepad_auto_switch": {
-      "enabled": false,
-      "connected_model": null,
-      "disconnected_model": null
+      "enabled": true,
+      "connected_model": {
+        "id": "gamepad",
+        "source": "built_in"
+      },
+      "disconnected_model": {
+        "id": "standard",
+        "source": "built_in"
+      }
     }
   },
   "shortcuts": {
@@ -59,7 +68,7 @@
     "show_status_icon": true
   },
   "updates": {
-    "check_automatically": true,
+    "check_automatically": false,
     "check_interval_hours": 24
   }
 }

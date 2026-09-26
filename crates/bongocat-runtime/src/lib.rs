@@ -900,6 +900,25 @@ impl RuntimeClient {
         }
     }
 
+    /// How many gamepads the runtime currently considers connected.
+    ///
+    /// The frame source polls this once per frame to notice a plug or an unplug,
+    /// and the whole [`RuntimeSnapshot`] is copied for the overlay session moments
+    /// later. One counter is read in place under the same lock for the same
+    /// reason [`Self::frame_scheduling`] exists, so a per-frame poll cannot bring
+    /// back the per-frame copy the frame source stopped making.
+    ///
+    /// The runtime owns the connected set, so this is the only place a product
+    /// behaviour learns whether a gamepad is attached (ADR-0071).
+    pub fn connected_gamepad_count(&self) -> usize {
+        self.snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .input
+            .connected_gamepad_count
+    }
+
     pub fn wait_for_revision(
         &self,
         minimum_revision: u64,

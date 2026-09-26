@@ -475,6 +475,8 @@ pub struct ModelConfig {
     pub ignore_gamepad: bool,
     pub ignore_pointer: bool,
     pub random_behavior: RandomBehaviorConfig,
+    /// Switching the selected model when gamepads connect or disconnect.
+    pub gamepad_auto_switch: GamepadAutoSwitchConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -497,6 +499,35 @@ impl Default for RandomBehaviorConfig {
             interval_seconds: DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
         }
     }
+}
+
+/// Choosing the shown model from gamepad connection state.
+///
+/// `enabled` is the only gate and defaults to `false`: a fresh v1 configuration
+/// keeps the user's own selection until they ask for the switch. Each target is
+/// a complete [`ModelIdentity`] or `null`, and `null` is the default meaning —
+/// "the last model the user activated for this input family". The product
+/// remembers that per family, so the switch follows the user's own habits
+/// instead of a second pair of settings to keep in step.
+///
+/// The two fields describe *when* a model is used, not *which* models qualify.
+/// The settings page offers a model whose recorded input mode matches the
+/// direction, but a target is honoured exactly as configured: the stored
+/// identity is the only thing this schema constrains, so a hand-edited value
+/// never silently becomes a different model.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct GamepadAutoSwitchConfig {
+    pub enabled: bool,
+    /// The model to show while at least one gamepad is connected. `None` means
+    /// the last activated gamepad-mode model, and there is nothing to switch to
+    /// until the user has activated one.
+    pub connected_model: Option<ModelIdentity>,
+    /// The model to show while no gamepad is connected. `None` means the last
+    /// activated model of any other mode, and there is nothing to switch to
+    /// until the user has activated one.
+    pub disconnected_model: Option<ModelIdentity>,
 }
 
 /// The stable identity of a model as seen by the user-facing configuration.
@@ -1481,6 +1512,7 @@ impl Default for NativeConfig {
                 ignore_gamepad: false,
                 ignore_pointer: false,
                 random_behavior: RandomBehaviorConfig::default(),
+                gamepad_auto_switch: GamepadAutoSwitchConfig::default(),
             },
             shortcuts: ShortcutConfig::default(),
             system: SystemConfig {
@@ -1556,6 +1588,20 @@ impl NativeConfig {
             .is_some_and(|selected| !is_portable_model_id(&selected.id))
         {
             return Err(ConfigError::InvalidValue("model.selected_model.id"));
+        }
+        for (field, target) in [
+            (
+                "model.gamepad_auto_switch.connected_model.id",
+                self.model.gamepad_auto_switch.connected_model.as_ref(),
+            ),
+            (
+                "model.gamepad_auto_switch.disconnected_model.id",
+                self.model.gamepad_auto_switch.disconnected_model.as_ref(),
+            ),
+        ] {
+            if target.is_some_and(|target| !is_portable_model_id(&target.id)) {
+                return Err(ConfigError::InvalidValue(field));
+            }
         }
         validate_model_metadata(
             "model.imported_models.id",
@@ -3224,6 +3270,58 @@ mod tests {
                     "model.random_behavior.interval_seconds"
                 ))
             ));
+        }
+    }
+
+    #[test]
+    fn gamepad_auto_switch_defaults_to_off_without_targets_and_validates_target_ids() {
+        let default = NativeConfig::default();
+        assert!(!default.model.gamepad_auto_switch.enabled);
+        // Both targets default to `None`, which is "the last model activated for
+        // this input family" rather than "no target".
+        assert_eq!(default.model.gamepad_auto_switch.connected_model, None);
+        assert_eq!(default.model.gamepad_auto_switch.disconnected_model, None);
+        default
+            .validate()
+            .expect("an unconfigured gamepad auto switch is valid");
+
+        for accepted in ["gamepad", "my-cat_1.2", "A"] {
+            let mut config = NativeConfig::default();
+            config.model.gamepad_auto_switch.enabled = true;
+            config.model.gamepad_auto_switch.connected_model = Some(ModelIdentity {
+                id: accepted.to_owned(),
+                source: ModelSource::BuiltIn,
+            });
+            config.model.gamepad_auto_switch.disconnected_model = Some(ModelIdentity {
+                id: accepted.to_owned(),
+                source: ModelSource::Imported,
+            });
+            config
+                .validate()
+                .expect("a portable gamepad auto switch target is accepted");
+            let encoded = serde_json::to_string(&config).expect("serialize the auto switch");
+            let decoded: NativeConfig =
+                serde_json::from_str(&encoded).expect("deserialize the auto switch");
+            assert_eq!(decoded, config);
+        }
+
+        // A target is a complete identity: the same rules that guard
+        // `model.selected_model.id` guard both directions here.
+        for rejected in ["", "..", "nested/model", "CON", "nul.json"] {
+            let mut config = NativeConfig::default();
+            config.model.gamepad_auto_switch.disconnected_model = Some(ModelIdentity {
+                id: rejected.to_owned(),
+                source: ModelSource::Imported,
+            });
+            assert!(
+                matches!(
+                    config.validate(),
+                    Err(ConfigError::InvalidValue(
+                        "model.gamepad_auto_switch.disconnected_model.id"
+                    ))
+                ),
+                "gamepad auto switch target {rejected:?} must be rejected"
+            );
         }
     }
 

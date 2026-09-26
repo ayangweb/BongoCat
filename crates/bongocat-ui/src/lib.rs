@@ -156,6 +156,7 @@ pub(crate) mod tests {
             random_behavior: SettingsRandomBehavior::default(),
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
+            gamepad_auto_switch: SettingsGamepadAutoSwitch::default(),
             logging: SettingsLogging::default(),
             shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),

@@ -38,6 +38,38 @@
       ],
       "type": "object"
     },
+    "GamepadAutoSwitchConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "connected_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disconnected_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "type": "object"
+    },
     "GamepadInputConfig": {
       "additionalProperties": false,
       "properties": {
@@ -188,6 +220,9 @@
           "type": "array",
           "uniqueItems": true
         },
+        "gamepad_auto_switch": {
+          "$ref": "#/$defs/GamepadAutoSwitchConfig"
+        },
         "ignore_gamepad": {
           "type": "boolean"
         },
@@ -237,6 +272,7 @@
         "ignore_gamepad",
         "ignore_pointer",
         "random_behavior",
+        "gamepad_auto_switch",
         "selected_model"
       ],
       "type": "object"
