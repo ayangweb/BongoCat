@@ -15,14 +15,17 @@ use bongocat_config::Language;
 /// Translation keys for the prompt this platform shows. The keys are resolved at compile time, so
 /// exactly one platform prompt is built.
 mod keys {
+    /// Shared dismiss button. Both prompts offer the same choice, so one key names it instead of
+    /// repeating the copy per platform: the user keeps using the product and sets the missing
+    /// capability up later.
+    pub(super) const SECONDARY: &str = "startup_permission.later";
+
     #[cfg(target_os = "macos")]
     pub(super) const TITLE: &str = "startup_permission.input_monitoring.title";
     #[cfg(target_os = "macos")]
     pub(super) const DESCRIPTION: &str = "startup_permission.input_monitoring.description";
     #[cfg(target_os = "macos")]
     pub(super) const PRIMARY: &str = "startup_permission.input_monitoring.open_settings";
-    #[cfg(target_os = "macos")]
-    pub(super) const SECONDARY: &str = "startup_permission.input_monitoring.later";
 
     #[cfg(target_os = "windows")]
     pub(super) const TITLE: &str = "startup_permission.administrator.title";
@@ -30,8 +33,6 @@ mod keys {
     pub(super) const DESCRIPTION: &str = "startup_permission.administrator.description";
     #[cfg(target_os = "windows")]
     pub(super) const PRIMARY: &str = "startup_permission.administrator.open_program_folder";
-    #[cfg(target_os = "windows")]
-    pub(super) const SECONDARY: &str = "startup_permission.administrator.keep_running";
 }
 
 /// Runs the startup permission check for this platform.

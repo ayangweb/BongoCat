@@ -1032,8 +1032,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     不触碰 AppKit）+ `async_io::block_on`；无点击验证：请求弹框但不等待答复时产品正常启动并干净退出
     （exit 0），且采样确认对话框线程阻塞在 `CFUserNotificationReceiveResponse`。已确认
     `NSWorkspace` 与只读 preflight 不创建共享 `NSApplication`；新增 macOS contract 测试禁止该模块
-    出现 `rfd::MessageDialog::new`（含反向自检）。两条按钮路径（打开设置 / 稍后再说）、授权后不再
-    提示，以及「稍后再说」后产品继续启动，仍需要人工实机点击，因此总项保持未勾选。
+    出现 `rfd::MessageDialog::new`（含反向自检）。两条按钮路径（打开设置 / 稍后设置）、授权后不再
+    提示，以及「稍后设置」后产品继续启动，仍需要人工实机点击，因此总项保持未勾选。
   - 修正（2026-09-18）：ADR-0048 落地后实机发现权限提示在应用深色下仍显示系统浅色——macOS 的
     `rfd` 无父窗口消息框是 `CFUserNotification`，不继承 `NSApplication.appearance`（ADR-0048
     修的正是这条继承链，而该提示不在链上）。按 ADR-0032「主题外观修正」改为主线程 `NSAlert`：

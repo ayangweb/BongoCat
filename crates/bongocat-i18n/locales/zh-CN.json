@@ -35,17 +35,16 @@
     "quit": "退出 BongoCat"
   },
   "startup_permission": {
+    "later": "稍后设置",
     "input_monitoring": {
       "title": "需要「输入监控」权限",
       "description": "BongoCat 需要「输入监控」权限，才能正常接收键盘和鼠标输入。\n\n注意事项：如果列表中已有 BongoCat，请先选中并点击「−」移除，再点击「＋」重新添加。授权完成后，请重启 BongoCat。",
-      "open_settings": "打开系统设置",
-      "later": "稍后再说"
+      "open_settings": "打开系统设置"
     },
     "administrator": {
-      "title": "建议授予管理员权限",
+      "title": "建议以管理员权限运行",
       "description": "BongoCat 需要管理员权限，才能在其他应用以管理员权限运行时继续接收键盘和鼠标输入。\n\n设置方法：右键 BongoCat → 属性 → 兼容性 → 勾选「以管理员身份运行此程序」。",
-      "open_program_folder": "退出并打开程序文件夹",
-      "keep_running": "继续运行"
+      "open_program_folder": "退出并前往设置"
     }
   },
   "about": {

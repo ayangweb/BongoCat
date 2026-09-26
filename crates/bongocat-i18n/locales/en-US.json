@@ -35,17 +35,16 @@
     "quit": "Quit BongoCat"
   },
   "startup_permission": {
+    "later": "Set Up Later",
     "input_monitoring": {
       "title": "Input Monitoring Permission Required",
       "description": "BongoCat needs Input Monitoring permission to receive keyboard and mouse input.\n\nNote: if BongoCat is already in the list, select it and click \"−\" to remove it, then click \"+\" to add it again. Restart BongoCat after granting the permission.",
-      "open_settings": "Open System Settings",
-      "later": "Not Now"
+      "open_settings": "Open System Settings"
     },
     "administrator": {
-      "title": "Administrator access recommended",
+      "title": "Recommend running with administrator access",
       "description": "BongoCat needs administrator access to keep receiving keyboard and mouse input when another app is running with administrator privileges.\n\nTo set it up: right-click BongoCat → Properties → Compatibility → turn on \"Run this program as an administrator\".",
-      "open_program_folder": "Exit and open the program folder",
-      "keep_running": "Continue for now"
+      "open_program_folder": "Exit and open Settings"
     }
   },
   "about": {
