@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "default",
+      "file": "default.json",
+      "expected": "accept"
+    },
+    {
+      "id": "check-for-updates-interval",
+      "file": "accept-check-for-updates-interval.json",
+      "expected": "accept"
+    },
+    {
+      "id": "check-for-updates-interval-zero",
+      "file": "invalid-check-for-updates-interval-zero.json",
+      "expected": "reject"
+    },
+    {
+      "id": "check-for-updates-interval-out-of-range",
+      "file": "invalid-check-for-updates-interval.json",
+      "expected": "reject"
+    },
+    {
+      "id": "corner-radius",
+      "file": "accept-corner-radius.json",
+      "expected": "accept"
+    },
+    {
+      "id": "unknown-field",
+      "file": "invalid-unknown-field.json",
+      "expected": "reject"
+    },
+    {
+      "id": "corner-radius-out-of-range",
+      "file": "invalid-corner-radius.json",
+      "expected": "reject"
+    },
+    {
+      "id": "hover-hide",
+      "file": "accept-hover-hide.json",
+      "expected": "accept"
+    },
+    {
+      "id": "hover-hide-delay",
+      "file": "accept-hover-hide-delay.json",
+      "expected": "accept"
+    },
+    {
+      "id": "hover-hide-delay-out-of-range",
+      "file": "invalid-hover-hide-delay.json",
+      "expected": "reject"
+    },
+    {
+      "id": "incomplete-model-identity",
+      "file": "invalid-incomplete-model-identity.json",
+      "expected": "reject"
+    },
+    {
+      "id": "out-of-range",
+      "file": "invalid-out-of-range.json",
+      "expected": "reject"
+    },
+    {
+      "id": "gamepad-dead-zone",
+      "file": "invalid-gamepad-dead-zone.json",
+      "expected": "reject"
+    },
+    {
+      "id": "unsupported-language",
+      "file": "invalid-unsupported-language.json",
+      "expected": "reject"
+    },
+    {
+      "id": "blank-binding",
+      "file": "invalid-blank-binding.json",
+      "expected": "reject"
+    },
+    {
+      "id": "model-behavior-identity",
+      "file": "accept-model-behavior-identity.json",
+      "expected": "accept"
+    },
+    {
+      "id": "imported-model-metadata",
+      "file": "accept-imported-model-metadata.json",
+      "expected": "accept"
+    },
+    {
+      "id": "missing-imported-model-input-mode",
+      "file": "invalid-missing-imported-model-input-mode.json",
+      "expected": "reject"
+    },
+    {
+      "id": "imported-model-input-mode",
+      "file": "invalid-imported-model-input-mode.json",
+      "expected": "reject"
+    },
+    {
+      "id": "duplicate-imported-model-id",
+      "file": "invalid-duplicate-imported-model-id.json",
+      "expected": "reject"
+    },
+    {
+      "id": "blank-imported-model-title",
+      "file": "invalid-blank-imported-model-title.json",
+      "expected": "reject"
+    },
+    {
+      "id": "built-in-model-metadata",
+      "file": "accept-built-in-model-metadata.json",
+      "expected": "accept"
+    },
+    {
+      "id": "duplicate-built-in-model-id",
+      "file": "invalid-duplicate-built-in-model-id.json",
+      "expected": "reject"
+    },
+    {
+      "id": "blank-built-in-model-title",
+      "file": "invalid-blank-built-in-model-title.json",
+      "expected": "reject"
+    },
+    {
+      "id": "logging-boundary",
+      "file": "accept-logging-boundary.json",
+      "expected": "accept"
+    },
+    {
+      "id": "log-retention-zero",
+      "file": "invalid-log-retention-zero.json",
+      "expected": "reject"
+    },
+    {
+      "id": "log-retention-too-large",
+      "file": "invalid-log-retention-too-large.json",
+      "expected": "reject"
+    },
+    {
+      "id": "unknown-log-level",
+      "file": "invalid-log-level.json",
+      "expected": "reject"
+    },
+    {
+      "id": "random-behavior",
+      "file": "accept-random-behavior.json",
+      "expected": "accept"
+    },
+    {
+      "id": "random-behavior-interval",
+      "file": "invalid-random-behavior-interval.json",
+      "expected": "reject"
+    },
+    {
+      "id": "random-behavior-interval-too-large",
+      "file": "invalid-random-behavior-interval-too-large.json",
+      "expected": "reject"
+    },
+    {
+      "id": "missing-selected-model",
+      "file": "invalid-missing-selected-model.json",
+      "expected": "reject"
+    },
+    {
+      "id": "path-like-model-id",
+      "file": "invalid-model-id-path.json",
+      "expected": "reject"
+    },
+    {
+      "id": "reserved-model-id",
+      "file": "invalid-model-id-reserved.json",
+      "expected": "reject"
+    },
+    {
+      "id": "gamepad-auto-switch",
+      "file": "accept-gamepad-auto-switch.json",
+      "expected": "accept"
+    },
+    {
+      "id": "gamepad-auto-switch-target",
+      "file": "invalid-gamepad-auto-switch-target.json",
+      "expected": "reject"
+    }
+  ]
+}

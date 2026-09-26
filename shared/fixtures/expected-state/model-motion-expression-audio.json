@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "sequenceId": "model-motion-expression-audio",
+  "provenance": "product_decision",
+  "checkpoints": [
+    {
+      "atMs": 0,
+      "input": { "pressedKeys": [], "pressedMouseButtons": [], "connectedDevices": [], "lastResetReason": null },
+      "model": { "selectedModelId": "fixture-model-a", "leftHandDown": false, "rightHandDown": false, "parameters": {}, "activeMotion": null, "activeExpression": null }
+    },
+    {
+      "atMs": 20,
+      "input": { "pressedKeys": [], "pressedMouseButtons": [], "connectedDevices": [], "lastResetReason": null },
+      "model": { "selectedModelId": "fixture-model-a", "leftHandDown": false, "rightHandDown": false, "parameters": {}, "activeMotion": "walk", "activeExpression": null }
+    },
+    {
+      "atMs": 40,
+      "input": { "pressedKeys": [], "pressedMouseButtons": [], "connectedDevices": [], "lastResetReason": null },
+      "model": { "selectedModelId": "fixture-model-a", "leftHandDown": false, "rightHandDown": false, "parameters": {}, "activeMotion": "walk", "activeExpression": "smile" }
+    },
+    {
+      "atMs": 60,
+      "input": { "pressedKeys": [], "pressedMouseButtons": [], "connectedDevices": [], "lastResetReason": null },
+      "model": { "selectedModelId": "fixture-model-a", "leftHandDown": false, "rightHandDown": false, "parameters": {}, "activeMotion": null, "activeExpression": "smile" }
+    },
+    {
+      "atMs": 70,
+      "input": { "pressedKeys": [], "pressedMouseButtons": [], "connectedDevices": [], "lastResetReason": null },
+      "model": { "selectedModelId": "fixture-model-b", "leftHandDown": false, "rightHandDown": false, "parameters": {}, "activeMotion": null, "activeExpression": null }
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "sequenceId": "keyboard-reconciled-release",
+  "provenance": "bug_fix",
+  "checkpoints": [
+    {
+      "atMs": 0,
+      "input": {
+        "pressedKeys": ["KeyA"],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": null
+      },
+      "model": {
+        "leftHandDown": true,
+        "rightHandDown": false,
+        "activeKeyOverlays": [{ "key": "KeyA", "side": "left" }],
+        "parameters": { "CatParamLeftHandDown": 1.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    },
+    {
+      "atMs": 500,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": [],
+        "connectedDevices": [],
+        "lastResetReason": null
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": false,
+        "activeKeyOverlays": [],
+        "parameters": { "CatParamLeftHandDown": 0.0 },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+[package]
+name = "bongocat-model-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+bongocat-model.workspace = true
+bongocat-storage.workspace = true
+image.workspace = true
+oxipng.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid = { version = "=1.26.1", default-features = false, features = ["std", "v4"] }
+walkdir.workspace = true
+
+[dev-dependencies]
+bongocat-render.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

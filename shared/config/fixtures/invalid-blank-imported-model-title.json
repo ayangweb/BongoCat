@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "logging": {
+    "level": "info",
+    "retention_days": 7
+  },
+  "appearance": {
+    "theme": "system",
+    "language": "system"
+  },
+  "overlay": {
+    "click_through": false,
+    "always_on_top": true,
+    "scale_percent": 100,
+    "opacity_percent": 100,
+    "corner_radius_percent": 0,
+    "hide_on_pointer_hover": false,
+    "hide_on_pointer_hover_delay_seconds": 0,
+    "keep_inside_screen": true,
+    "maximum_fps": 60
+  },
+  "input": {
+    "keyboard": {
+      "release_fallback_timeout_ms": 500
+    },
+    "gamepad": {
+      "stick_dead_zone": 0.15,
+      "trigger_dead_zone": 0.0
+    }
+  },
+  "model": {
+    "mirror": false,
+    "mirror_pointer_tracking": false,
+    "play_motion_audio": true,
+    "ignore_keyboard": false,
+    "ignore_gamepad": false,
+    "ignore_pointer": false,
+    "selected_model": null,
+    "imported_models": [
+      {
+        "id": "cat",
+        "title": "   ",
+        "input_mode": "standard"
+      }
+    ],
+    "built_in_models": [],
+    "random_behavior": {
+      "enabled": false,
+      "interval_seconds": 30
+    },
+    "gamepad_auto_switch": {
+      "enabled": false,
+      "connected_model": null,
+      "disconnected_model": null
+    }
+  },
+  "shortcuts": {
+    "commands_enabled": true,
+    "command_bindings": [],
+    "model_behavior_bindings": [],
+    "model_behaviors_enabled": false
+  },
+  "system": {
+    "show_taskbar_icon": true,
+    "show_status_icon": true
+  },
+  "updates": {
+    "check_automatically": true,
+    "check_interval_hours": 24
+  }
+}

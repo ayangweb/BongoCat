@@ -1,0 +1,531 @@
+{
+  "$defs": {
+    "AppearanceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "language": {
+          "$ref": "#/$defs/Language"
+        },
+        "theme": {
+          "$ref": "#/$defs/Theme"
+        }
+      },
+      "required": [
+        "theme",
+        "language"
+      ],
+      "type": "object"
+    },
+    "BuiltInModelMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9_-])?$",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "type": "object"
+    },
+    "GamepadAutoSwitchConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "connected_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disconnected_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "GamepadInputConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "stick_dead_zone": {
+          "exclusiveMaximum": 1.0,
+          "format": "double",
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "trigger_dead_zone": {
+          "exclusiveMaximum": 1.0,
+          "format": "double",
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "stick_dead_zone",
+        "trigger_dead_zone"
+      ],
+      "type": "object"
+    },
+    "ImportedModelMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9_-])?$",
+          "type": "string"
+        },
+        "input_mode": {
+          "$ref": "#/$defs/ModelInputMode"
+        },
+        "title": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "input_mode"
+      ],
+      "type": "object"
+    },
+    "InputConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "gamepad": {
+          "$ref": "#/$defs/GamepadInputConfig"
+        },
+        "keyboard": {
+          "$ref": "#/$defs/KeyboardInputConfig"
+        }
+      },
+      "required": [
+        "keyboard",
+        "gamepad"
+      ],
+      "type": "object"
+    },
+    "KeyboardInputConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "release_fallback_timeout_ms": {
+          "format": "uint32",
+          "maximum": 60000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "release_fallback_timeout_ms"
+      ],
+      "type": "object"
+    },
+    "Language": {
+      "enum": [
+        "system",
+        "zh-CN",
+        "en-US"
+      ],
+      "type": "string"
+    },
+    "LoggingConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/LoggingLevel"
+        },
+        "retention_days": {
+          "format": "uint8",
+          "maximum": 30,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "level",
+        "retention_days"
+      ],
+      "type": "object"
+    },
+    "LoggingLevel": {
+      "enum": [
+        "error",
+        "warn",
+        "info",
+        "debug",
+        "trace"
+      ],
+      "type": "string"
+    },
+    "ModelBehaviorBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "behavior_id": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelIdentity"
+        },
+        "shortcut": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "behavior_id",
+        "shortcut"
+      ],
+      "type": "object"
+    },
+    "ModelConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "built_in_models": {
+          "items": {
+            "$ref": "#/$defs/BuiltInModelMetadata"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "gamepad_auto_switch": {
+          "$ref": "#/$defs/GamepadAutoSwitchConfig"
+        },
+        "ignore_gamepad": {
+          "type": "boolean"
+        },
+        "ignore_keyboard": {
+          "type": "boolean"
+        },
+        "ignore_pointer": {
+          "type": "boolean"
+        },
+        "imported_models": {
+          "items": {
+            "$ref": "#/$defs/ImportedModelMetadata"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "mirror": {
+          "type": "boolean"
+        },
+        "mirror_pointer_tracking": {
+          "type": "boolean"
+        },
+        "play_motion_audio": {
+          "type": "boolean"
+        },
+        "random_behavior": {
+          "$ref": "#/$defs/RandomBehaviorConfig"
+        },
+        "selected_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "imported_models",
+        "built_in_models",
+        "mirror",
+        "mirror_pointer_tracking",
+        "play_motion_audio",
+        "ignore_keyboard",
+        "ignore_gamepad",
+        "ignore_pointer",
+        "random_behavior",
+        "gamepad_auto_switch",
+        "selected_model"
+      ],
+      "type": "object"
+    },
+    "ModelIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9_-])?$",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/ModelSource"
+        }
+      },
+      "required": [
+        "id",
+        "source"
+      ],
+      "type": "object"
+    },
+    "ModelInputMode": {
+      "enum": [
+        "standard",
+        "keyboard",
+        "gamepad"
+      ],
+      "type": "string"
+    },
+    "ModelSource": {
+      "enum": [
+        "imported",
+        "built_in"
+      ],
+      "type": "string"
+    },
+    "OverlayConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "always_on_top": {
+          "type": "boolean"
+        },
+        "click_through": {
+          "type": "boolean"
+        },
+        "corner_radius_percent": {
+          "format": "uint8",
+          "maximum": 50,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "hide_on_pointer_hover": {
+          "type": "boolean"
+        },
+        "hide_on_pointer_hover_delay_seconds": {
+          "format": "uint32",
+          "maximum": 60,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "keep_inside_screen": {
+          "type": "boolean"
+        },
+        "maximum_fps": {
+          "format": "uint16",
+          "maximum": 240,
+          "minimum": 15,
+          "type": "integer"
+        },
+        "opacity_percent": {
+          "format": "uint8",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "scale_percent": {
+          "format": "uint16",
+          "maximum": 400,
+          "minimum": 25,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "click_through",
+        "always_on_top",
+        "scale_percent",
+        "opacity_percent",
+        "maximum_fps",
+        "corner_radius_percent",
+        "hide_on_pointer_hover",
+        "hide_on_pointer_hover_delay_seconds",
+        "keep_inside_screen"
+      ],
+      "type": "object"
+    },
+    "RandomBehaviorConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "interval_seconds": {
+          "format": "uint32",
+          "maximum": 3600,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "enabled",
+        "interval_seconds"
+      ],
+      "type": "object"
+    },
+    "ShortcutBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        },
+        "shortcut": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        }
+      },
+      "required": [
+        "command",
+        "shortcut"
+      ],
+      "type": "object"
+    },
+    "ShortcutConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "command_bindings": {
+          "items": {
+            "$ref": "#/$defs/ShortcutBinding"
+          },
+          "type": "array"
+        },
+        "commands_enabled": {
+          "type": "boolean"
+        },
+        "model_behavior_bindings": {
+          "items": {
+            "$ref": "#/$defs/ModelBehaviorBinding"
+          },
+          "type": "array"
+        },
+        "model_behaviors_enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "commands_enabled",
+        "model_behaviors_enabled",
+        "command_bindings",
+        "model_behavior_bindings"
+      ],
+      "type": "object"
+    },
+    "SystemConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "show_status_icon": {
+          "type": "boolean"
+        },
+        "show_taskbar_icon": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "show_taskbar_icon",
+        "show_status_icon"
+      ],
+      "type": "object"
+    },
+    "Theme": {
+      "enum": [
+        "system",
+        "light",
+        "dark"
+      ],
+      "type": "string"
+    },
+    "UpdateConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "check_automatically": {
+          "type": "boolean"
+        },
+        "check_interval_hours": {
+          "format": "uint16",
+          "maximum": 8760,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "check_automatically",
+        "check_interval_hours"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://bongocat.dev/schemas/config-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "appearance": {
+      "$ref": "#/$defs/AppearanceConfig"
+    },
+    "input": {
+      "$ref": "#/$defs/InputConfig"
+    },
+    "logging": {
+      "$ref": "#/$defs/LoggingConfig"
+    },
+    "model": {
+      "$ref": "#/$defs/ModelConfig"
+    },
+    "overlay": {
+      "$ref": "#/$defs/OverlayConfig"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "shortcuts": {
+      "$ref": "#/$defs/ShortcutConfig"
+    },
+    "system": {
+      "$ref": "#/$defs/SystemConfig"
+    },
+    "updates": {
+      "$ref": "#/$defs/UpdateConfig"
+    }
+  },
+  "required": [
+    "schema_version",
+    "appearance",
+    "overlay",
+    "input",
+    "logging",
+    "model",
+    "shortcuts",
+    "system",
+    "updates"
+  ],
+  "title": "BongoCat configuration",
+  "type": "object"
+}

@@ -1,0 +1,505 @@
+{
+  "_version": 1,
+  "navigation": {
+    "settings": {
+      "title": "BongoCat Settings"
+    },
+    "appearance": {
+      "title": "Appearance & language"
+    },
+    "model_library": {
+      "title": "Model library"
+    },
+    "model_behavior": {
+      "title": "Model behavior"
+    },
+    "model_window": {
+      "title": "Model window"
+    },
+    "input_interaction": {
+      "title": "Input & interaction"
+    },
+    "shortcuts": {
+      "title": "Shortcuts"
+    },
+    "app_system": {
+      "title": "App & system"
+    },
+    "about": {
+      "title": "About"
+    }
+  },
+  "system_menu": {
+    "title": "BongoCat",
+    "open_settings": "Settings",
+    "quit": "Quit BongoCat"
+  },
+  "startup_permission": {
+    "later": "Set Up Later",
+    "input_monitoring": {
+      "title": "Input Monitoring Permission Required",
+      "description": "BongoCat needs Input Monitoring permission to receive keyboard and mouse input.\n\nNote: if BongoCat is already in the list, select it and click \"−\" to remove it, then click \"+\" to add it again. Restart BongoCat after granting the permission.",
+      "open_settings": "Open System Settings"
+    },
+    "administrator": {
+      "title": "Recommend running with administrator access",
+      "description": "BongoCat needs administrator access to keep receiving keyboard and mouse input when another app is running with administrator privileges.\n\nTo set it up: right-click BongoCat → Properties → Compatibility → turn on \"Run this program as an administrator\".",
+      "open_program_folder": "Exit and open Settings"
+    }
+  },
+  "about": {
+    "product_information": {
+      "version": {
+        "title": "Version Information",
+        "label": "Version",
+        "environment": {
+          "development": "Development build",
+          "release": "Release build"
+        }
+      }
+    },
+    "software_information": {
+      "title": "Software information",
+      "description": "Copy version, platform, and architecture details for a bug report.",
+      "copy": "Copy",
+      "copy_success": "Software information copied",
+      "platform": "Platform",
+      "architecture": "Architecture"
+    },
+    "project": {
+      "title": "Project home",
+      "description": "View BongoCat's source, releases, and development progress.",
+      "action": "Open project home"
+    },
+    "feedback": {
+      "title": "Problem feedback",
+      "description": "Copy the software information before opening an issue.",
+      "action": "Report an issue"
+    },
+    "logs": {
+      "title": "Application logs",
+      "description": "Logs stay in the current environment and are size- and retention-limited.",
+      "action": "Open log folder"
+    }
+  },
+  "models": {
+    "catalog": {
+      "load_failed": "Model catalog could not be loaded"
+    },
+    "identity": {
+      "title": "Model name",
+      "source": {
+        "built_in": "Built-in",
+        "imported": "Imported"
+      },
+      "status": {
+        "active": "In use",
+        "unavailable": "Unavailable"
+      }
+    },
+    "card": {
+      "cover_missing": "No cover"
+    },
+    "edit": {
+      "cover": {
+        "label": "Choose cover"
+      }
+    },
+    "actions": {
+      "use": "Use",
+      "edit": "Edit",
+      "open_folder": "Open model folder",
+      "save": "Save",
+      "delete": "Delete"
+    },
+    "validation": {
+      "package_layout_invalid": "Package layout is invalid",
+      "package_safety_limits_exceeded": "Package exceeds safety limits",
+      "model_format_invalid_or_unsupported": "The model format is invalid or unsupported",
+      "texture_invalid": "Texture is invalid",
+      "files_unavailable": "Model files are unavailable",
+      "resource_invalid": "Model resource is invalid"
+    },
+    "import": {
+      "success": "Model import completed",
+      "failed": "Model import failed",
+      "mver_dialog": {
+        "title": "Choose modes to convert",
+        "description": "Select the BongoCat Mver modes to import.",
+        "import": "Import"
+      },
+      "step": {
+        "choosing": "Opening the file picker…",
+        "validating_source": "Reading the model folder…",
+        "importing": "Importing model files…",
+        "capturing": "Capturing model cover…"
+      },
+      "drop": {
+        "ready": {
+          "title": "Release to import this model folder"
+        },
+        "busy": {
+          "title": "Another model operation is in progress"
+        },
+        "invalid": {
+          "title": "Please drop one model folder at a time"
+        }
+      },
+      "title": "Import model",
+      "hint": "Click to choose or drag a model folder"
+    },
+    "mode": {
+      "standard": "Standard",
+      "keyboard": "Keyboard",
+      "gamepad": "Gamepad"
+    },
+    "mver": {
+      "mode": {
+        "standard": "Standard mode",
+        "keyboard": "Keyboard mode",
+        "gamepad": "Gamepad mode"
+      }
+    },
+    "behaviors": {
+      "empty": "No motions or expressions available"
+    },
+    "invalid_summary": "%{origin} · %{diagnostic}",
+    "delete_confirmation": "Are you sure you want to delete this model?"
+  },
+  "update": {
+    "window": {
+      "title": "BongoCat Update"
+    },
+    "heading": {
+      "title": "Update BongoCat"
+    },
+    "current_version": "Current version %{version}",
+    "status": {
+      "idle": "Check for a newer version of BongoCat.",
+      "checking": "Checking for updates…",
+      "up_to_date": "BongoCat %{version} is the latest version.",
+      "available": "BongoCat %{version} can be installed.",
+      "downloading": "Downloading… %{percent}%",
+      "downloading_unknown": "Downloading…",
+      "downloading_detail": "BongoCat %{version} · %{downloaded} of %{total}",
+      "verifying": "Verifying the downloaded BongoCat %{version}…",
+      "installing": "Installing BongoCat %{version}…",
+      "installed_restarting": "BongoCat %{version} was installed. Restarting…",
+      "installed_relaunching": "BongoCat %{version} was installed. The installer restarts it now."
+    },
+    "notes": {
+      "title": "What's New"
+    },
+    "action": {
+      "check": "Check for Updates",
+      "recheck": "Check Again",
+      "install": "Download and Install",
+      "restart": "Restart Now",
+      "view_on_github": "View on GitHub"
+    },
+    "error": {
+      "stage": {
+        "check": "Could not check for a new version of BongoCat %{version}.",
+        "download": "Could not download BongoCat %{version}.",
+        "verify": "Could not verify the downloaded BongoCat %{version}.",
+        "install": "Could not install BongoCat %{version}."
+      },
+      "not_configured": "Updates are not enabled in this version.",
+      "environment_disabled": "This version cannot install updates.",
+      "signature_key_missing": "This version cannot verify updates, so none were installed.",
+      "release_fetch_failed": "No release information was found. Try again later.",
+      "release_manifest_invalid": "The update information is invalid or incompatible with this version. Try again later.",
+      "no_matching_asset": "This release has no installer for this computer.",
+      "download_transport_failed": "The download did not finish. Check the connection and try again.",
+      "checksum_mismatch": "The downloaded update is damaged or incomplete.",
+      "signature_invalid": "The update could not be verified and was not installed.",
+      "archive_invalid": "The downloaded update could not be read.",
+      "install_path_not_writable": "BongoCat cannot be updated in its current location.",
+      "install_failed": "BongoCat could not be updated.",
+      "restart_failed": "BongoCat could not restart. Start it again to use the new version.",
+      "internal": "The update failed for an unexpected reason."
+    },
+    "unavailable": {
+      "development_build": "Development builds cannot install release updates.",
+      "signing_key_missing": "This version cannot verify updates, so updating is disabled."
+    },
+    "about": {
+      "label": "Check for Updates"
+    }
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "close": "Close"
+  },
+  "shortcuts": {
+    "scopes": {
+      "window": "Window shortcuts",
+      "model": "Model behavior shortcuts"
+    },
+    "switches": {
+      "enable_window_shortcuts": {
+        "label": "Enable window shortcuts"
+      },
+      "enable_model_behavior_shortcuts": {
+        "label": "Enable model behavior shortcuts"
+      }
+    },
+    "actions": {
+      "clear": "Clear",
+      "play": "Play"
+    },
+    "capture": {
+      "press_to_record": "Press to record a shortcut",
+      "click_to_record": "Click to record a shortcut"
+    },
+    "command_names": {
+      "toggle_model_window": "Show or hide the model window",
+      "open_settings": "Show or hide settings window",
+      "toggle_mirror": "Toggle horizontal model mirroring",
+      "toggle_ignore_mouse_input": "Toggle ignoring mouse input",
+      "toggle_ignore_keyboard_input": "Toggle ignoring keyboard input",
+      "toggle_ignore_gamepad_input": "Toggle ignoring gamepad input",
+      "toggle_click_through": "Toggle mouse click-through",
+      "toggle_always_on_top": "Toggle always on top"
+    },
+    "behavior_names": {
+      "motion": "Motion %{index}",
+      "expression": "Expression %{index}"
+    },
+    "errors": {
+      "conflict": "%{shortcut} is already assigned to another shortcut"
+    }
+  },
+  "errors": {
+    "settings": {
+      "service_unavailable": "Settings service is unavailable",
+      "snapshot_outdated": "Settings changed elsewhere. Review the latest settings and try again.",
+      "setting_not_applied": "The setting did not take effect",
+      "invalid_shortcut_bindings": "Shortcut bindings are invalid or conflict",
+      "setting_save_failed": "The setting could not be saved",
+      "config_permission_denied": "The configuration file cannot be written; check permissions and retry",
+      "config_storage_full": "The disk holding the configuration is full; free space and retry",
+      "config_target_occupied": "The configuration location is in use; close the program using it and retry",
+      "configuration_backup_open_failed": "The configuration backup folder could not be opened",
+      "model_unavailable": "Selected model is unavailable",
+      "model_activation_failed": "The selected model could not be activated",
+      "model_behavior_unavailable": "That action or expression belongs to a model that is no longer in use",
+      "model_behavior_play_failed": "The action or expression could not be played",
+      "model_name_invalid": "The model name is not usable",
+      "model_not_found": "The model was not found",
+      "model_cover_invalid": "Cover image must be a PNG file",
+      "model_cover_update_failed": "Model cover could not be updated",
+      "model_file_picker_unavailable": "The file dialog could not be completed. Try again.",
+      "model_folder_open_failed": "The model folder could not be opened",
+      "model_id_invalid": "The model ID is invalid",
+      "model_already_installed": "This model is already installed",
+      "model_import_invalid_package": "Model package is invalid",
+      "model_import_drop_invalid": "Drop one valid model folder at a time",
+      "model_import_source_invalid": "The selected folder contains BongoCat's model storage. Choose an individual model folder instead.",
+      "model_import_source_changed": "Model source changed during import",
+      "model_import_source_unsupported": "The model source contains an unsupported file",
+      "model_import_cancelled": "Model import was cancelled",
+      "model_operations_busy": "Another model operation is in progress. Try again in a moment.",
+      "model_import_failed": "Model could not be imported",
+      "built_in_model_cannot_be_deleted": "Built-in models cannot be deleted",
+      "model_delete_failed": "The imported model could not be deleted",
+      "diagnostics_export_failed": "Diagnostics could not be exported",
+      "software_info_copy_failed": "Software information could not be copied",
+      "external_link_open_failed": "The link could not be opened",
+      "log_location_open_failed": "The application log folder could not be opened",
+      "login_startup_update_failed": "The login startup setting could not be updated",
+      "system_icon_update_failed": "Could not update the system icon.",
+      "taskbar_icon_update_failed": "Could not update the taskbar icon.",
+      "window_hide_failed": "Settings window could not be hidden",
+      "window_layout_save_failed": "The window layout could not be saved",
+      "application_shutdown_failed": "BongoCat could not close completely"
+    }
+  },
+  "settings": {
+    "appearance": {
+      "theme": {
+        "label": "Theme",
+        "options": {
+          "system": "System",
+          "light": "Light",
+          "dark": "Dark"
+        }
+      },
+      "language": {
+        "label": "Language",
+        "options": {
+          "system": "System",
+          "chinese_simplified": "简体中文",
+          "english_united_states": "English"
+        }
+      }
+    },
+    "overlay": {
+      "behavior": {
+        "title": "Window behavior"
+      },
+      "appearance": {
+        "title": "Window appearance"
+      },
+      "performance": {
+        "title": "Window performance"
+      },
+      "hide_model_window": {
+        "label": "Hide model window"
+      },
+      "always_on_top": {
+        "label": "Always on top"
+      },
+      "click_through": {
+        "label": "Mouse click-through"
+      },
+      "keep_inside_screen": {
+        "label": "Keep on screen",
+        "description": "Keep the model window fully on screen, even where it covers the taskbar, Dock or menu bar."
+      },
+      "hide_on_mouse_hover": {
+        "label": "Hide on mouse hover",
+        "description": "Fade the model window out while the mouse rests on it, and restore it when the mouse leaves."
+      },
+      "hide_on_mouse_hover_delay": {
+        "label": "Mouse hover hide delay (seconds)",
+        "description": "Delay before the model window hides while the mouse rests on it, from 0 to 60 seconds; 0 hides it on entry."
+      },
+      "scale": {
+        "label": "Window scale",
+        "description": "Resize the model window from 25% to 400%."
+      },
+      "opacity": {
+        "label": "Window opacity",
+        "description": "Adjust the model window opacity from 1% to 100%."
+      },
+      "corner_radius": {
+        "label": "Window corner radius",
+        "description": "Round the model window corners from 0% to 50% of its width and height."
+      },
+      "maximum_fps": {
+        "label": "Maximum FPS",
+        "description": "Limit animation and model window updates to 15 to 240 frames per second."
+      }
+    },
+    "models": {
+      "behavior": {
+        "mirror_model": {
+          "label": "Mirror model horizontally"
+        },
+        "motion_audio": {
+          "label": "Play motion sounds"
+        },
+        "random_behavior_enabled": {
+          "label": "Randomly play motions or expressions"
+        },
+        "random_behavior_interval": {
+          "label": "Random motion or expression interval (seconds)"
+        }
+      }
+    },
+    "input_interaction": {
+      "mouse": {
+        "title": "Mouse",
+        "mirror_mouse_tracking": {
+          "label": "Mirror mouse tracking"
+        },
+        "ignore_mouse_input": {
+          "label": "Ignore mouse input"
+        }
+      },
+      "keyboard": {
+        "title": "Keyboard",
+        "ignore_keyboard_input": {
+          "label": "Ignore keyboard input"
+        },
+        "key_release_timeout": {
+          "label": "Key release timeout (milliseconds)",
+          "description": "Release the key automatically when no key-up event arrives within this time, so it never stays stuck; 0 disables it."
+        }
+      },
+      "gamepad": {
+        "title": "Gamepad",
+        "auto_switch": {
+          "label": "Switch model when a gamepad connects or disconnects"
+        },
+        "connected_model": {
+          "label": "Model used when a gamepad connects",
+          "options": {
+            "last_used": "Last gamepad model used"
+          }
+        },
+        "disconnected_model": {
+          "label": "Model used when no gamepad is connected",
+          "options": {
+            "last_used": "Last non-gamepad model used"
+          }
+        },
+        "ignore_gamepad_input": {
+          "label": "Ignore gamepad input"
+        },
+        "stick_dead_zone": {
+          "label": "Gamepad stick dead zone",
+          "description": "Ignore small analog stick movement."
+        },
+        "trigger_dead_zone": {
+          "label": "Gamepad trigger dead zone",
+          "description": "Ignore small trigger movement."
+        }
+      }
+    },
+    "app_system": {
+      "desktop": {
+        "title": "Startup & desktop"
+      },
+      "updates": {
+        "title": "Updates"
+      },
+      "logging": {
+        "title": "Logging",
+        "level": {
+          "label": "Log level",
+          "options": {
+            "error": "Errors only",
+            "warn": "Errors and warnings",
+            "info": "Standard details",
+            "debug": "Diagnostic details",
+            "trace": "All details"
+          }
+        },
+        "retention_days": {
+          "label": "Keep logs (days)"
+        }
+      },
+      "status_icon": {
+        "label": {
+          "macos": "Show menu bar icon",
+          "windows": "Show system tray icon"
+        }
+      },
+      "taskbar_icon": {
+        "label": "Show taskbar icon"
+      },
+      "auto_update": {
+        "label": "Check for updates automatically",
+        "interval": {
+          "label": "Automatic update check interval (hours)"
+        }
+      },
+      "open_at_login": {
+        "label": "Open at login"
+      },
+      "startup": {
+        "checking": "Checking the login item…",
+        "unavailable": "Status unavailable; click the switch to retry",
+        "stale": "The saved app location changed; turn the switch off and on to repair",
+        "requires_approval": "Approve BongoCat in System Settings",
+        "not_found": "The login item is missing; turn the switch off and on to repair",
+        "unsupported_platform": "Login startup is unavailable on this system",
+        "unsupported_os": "Login startup is unavailable on this operating system",
+        "unsupported_build": "Login startup is unavailable in development builds"
+      }
+    }
+  }
+}

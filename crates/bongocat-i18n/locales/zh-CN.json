@@ -1,0 +1,505 @@
+{
+  "_version": 1,
+  "navigation": {
+    "settings": {
+      "title": "BongoCat 设置"
+    },
+    "appearance": {
+      "title": "外观与语言"
+    },
+    "model_library": {
+      "title": "模型库"
+    },
+    "model_behavior": {
+      "title": "模型行为"
+    },
+    "model_window": {
+      "title": "模型窗口"
+    },
+    "input_interaction": {
+      "title": "输入与交互"
+    },
+    "shortcuts": {
+      "title": "快捷键"
+    },
+    "app_system": {
+      "title": "应用与系统"
+    },
+    "about": {
+      "title": "关于"
+    }
+  },
+  "system_menu": {
+    "title": "BongoCat",
+    "open_settings": "设置",
+    "quit": "退出 BongoCat"
+  },
+  "startup_permission": {
+    "later": "稍后设置",
+    "input_monitoring": {
+      "title": "需要「输入监控」权限",
+      "description": "BongoCat 需要「输入监控」权限，才能正常接收键盘和鼠标输入。\n\n注意事项：如果列表中已有 BongoCat，请先选中并点击「−」移除，再点击「＋」重新添加。授权完成后，请重启 BongoCat。",
+      "open_settings": "打开系统设置"
+    },
+    "administrator": {
+      "title": "建议以管理员权限运行",
+      "description": "BongoCat 需要管理员权限，才能在其他应用以管理员权限运行时继续接收键盘和鼠标输入。\n\n设置方法：右键 BongoCat → 属性 → 兼容性 → 勾选「以管理员身份运行此程序」。",
+      "open_program_folder": "退出并前往设置"
+    }
+  },
+  "about": {
+    "product_information": {
+      "version": {
+        "title": "版本信息",
+        "label": "版本",
+        "environment": {
+          "development": "开发版",
+          "release": "正式版"
+        }
+      }
+    },
+    "software_information": {
+      "title": "软件信息",
+      "description": "复制版本、平台和架构信息，反馈问题时使用。",
+      "copy": "复制",
+      "copy_success": "软件信息已复制",
+      "platform": "平台",
+      "architecture": "架构"
+    },
+    "project": {
+      "title": "项目主页",
+      "description": "查看 BongoCat 的源代码、发布说明和开发进展。",
+      "action": "打开项目主页"
+    },
+    "feedback": {
+      "title": "问题反馈",
+      "description": "提交问题前先复制软件信息。",
+      "action": "反馈问题"
+    },
+    "logs": {
+      "title": "软件日志",
+      "description": "本机日志，自动限制大小与保留天数。",
+      "action": "打开日志目录"
+    }
+  },
+  "models": {
+    "catalog": {
+      "load_failed": "无法加载模型列表"
+    },
+    "identity": {
+      "title": "模型名称",
+      "source": {
+        "built_in": "内置",
+        "imported": "已导入"
+      },
+      "status": {
+        "active": "当前使用",
+        "unavailable": "不可用"
+      }
+    },
+    "card": {
+      "cover_missing": "暂无封面"
+    },
+    "edit": {
+      "cover": {
+        "label": "选择封面"
+      }
+    },
+    "actions": {
+      "use": "使用",
+      "edit": "编辑",
+      "open_folder": "打开模型文件夹",
+      "save": "保存",
+      "delete": "删除"
+    },
+    "validation": {
+      "package_layout_invalid": "模型包结构无效",
+      "package_safety_limits_exceeded": "模型包超出安全限制",
+      "model_format_invalid_or_unsupported": "模型格式无效或不受支持",
+      "texture_invalid": "模型纹理无效",
+      "files_unavailable": "模型文件不可用",
+      "resource_invalid": "模型资源无效"
+    },
+    "import": {
+      "success": "模型导入完成",
+      "failed": "模型导入失败",
+      "mver_dialog": {
+        "title": "选择要转换的模式",
+        "description": "请选择需要导入的 BongoCat Mver 模式。",
+        "import": "导入"
+      },
+      "step": {
+        "choosing": "正在打开文件选择器…",
+        "validating_source": "正在读取模型文件夹…",
+        "importing": "正在导入模型…",
+        "capturing": "正在截取模型封面…"
+      },
+      "drop": {
+        "ready": {
+          "title": "松开鼠标即可导入"
+        },
+        "busy": {
+          "title": "正在处理另一个模型操作，请稍候"
+        },
+        "invalid": {
+          "title": "请一次拖入一个模型文件夹"
+        }
+      },
+      "title": "导入模型",
+      "hint": "点击选择或拖入模型文件夹"
+    },
+    "mode": {
+      "standard": "标准",
+      "keyboard": "键盘",
+      "gamepad": "手柄"
+    },
+    "mver": {
+      "mode": {
+        "standard": "标准模式",
+        "keyboard": "键盘模式",
+        "gamepad": "手柄模式"
+      }
+    },
+    "behaviors": {
+      "empty": "没有可用的动作或表情"
+    },
+    "invalid_summary": "%{origin} · %{diagnostic}",
+    "delete_confirmation": "你确定要删除这个模型吗？"
+  },
+  "update": {
+    "window": {
+      "title": "BongoCat 更新"
+    },
+    "heading": {
+      "title": "更新 BongoCat"
+    },
+    "current_version": "当前版本 %{version}",
+    "status": {
+      "idle": "检查 BongoCat 是否有新版本。",
+      "checking": "正在检查更新…",
+      "up_to_date": "BongoCat %{version} 已是最新版本。",
+      "available": "BongoCat %{version} 可以安装。",
+      "downloading": "正在下载… %{percent}%",
+      "downloading_unknown": "正在下载…",
+      "downloading_detail": "BongoCat %{version} · %{downloaded} / %{total}",
+      "verifying": "正在校验已下载的 BongoCat %{version}…",
+      "installing": "正在安装 BongoCat %{version}…",
+      "installed_restarting": "BongoCat %{version} 已安装，正在重启…",
+      "installed_relaunching": "BongoCat %{version} 已安装，安装程序将立即重启它。"
+    },
+    "notes": {
+      "title": "更新内容"
+    },
+    "action": {
+      "check": "检查更新",
+      "recheck": "重新检查",
+      "install": "下载并安装",
+      "restart": "立即重启",
+      "view_on_github": "在 GitHub 上查看"
+    },
+    "error": {
+      "stage": {
+        "check": "无法检查 BongoCat %{version} 是否有新版本。",
+        "download": "无法下载 BongoCat %{version}。",
+        "verify": "无法校验已下载的 BongoCat %{version}。",
+        "install": "无法安装 BongoCat %{version}。"
+      },
+      "not_configured": "当前版本未开启更新功能。",
+      "environment_disabled": "当前版本无法安装更新。",
+      "signature_key_missing": "当前版本无法验证更新包，因此没有安装更新。",
+      "release_fetch_failed": "找不到发布信息，请稍后重试。",
+      "release_manifest_invalid": "更新信息无效或与当前版本不兼容，请稍后重试。",
+      "no_matching_asset": "该版本没有提供适用于这台电脑的安装包。",
+      "download_transport_failed": "下载未完成，请检查网络后重试。",
+      "checksum_mismatch": "下载的更新包已损坏或不完整。",
+      "signature_invalid": "无法验证该更新包，已放弃安装。",
+      "archive_invalid": "无法读取已下载的更新包。",
+      "install_path_not_writable": "无法在当前位置更新 BongoCat。",
+      "install_failed": "无法更新 BongoCat。",
+      "restart_failed": "无法重启 BongoCat，请手动启动以使用新版本。",
+      "internal": "更新因未预期原因失败。"
+    },
+    "unavailable": {
+      "development_build": "开发版本不会安装正式版更新。",
+      "signing_key_missing": "当前版本无法验证更新，因此更新功能已关闭。"
+    },
+    "about": {
+      "label": "检查更新"
+    }
+  },
+  "actions": {
+    "cancel": "取消",
+    "confirm": "确认",
+    "close": "关闭"
+  },
+  "shortcuts": {
+    "scopes": {
+      "window": "窗口快捷键",
+      "model": "模型行为快捷键"
+    },
+    "switches": {
+      "enable_window_shortcuts": {
+        "label": "启用窗口快捷键"
+      },
+      "enable_model_behavior_shortcuts": {
+        "label": "启用模型行为快捷键"
+      }
+    },
+    "actions": {
+      "clear": "清除",
+      "play": "播放"
+    },
+    "capture": {
+      "press_to_record": "按下组合键以录制",
+      "click_to_record": "点击以录制快捷键"
+    },
+    "command_names": {
+      "toggle_model_window": "显示或隐藏模型窗口",
+      "open_settings": "显示或隐藏设置窗口",
+      "toggle_mirror": "切换模型水平镜像",
+      "toggle_ignore_mouse_input": "切换忽略鼠标输入",
+      "toggle_ignore_keyboard_input": "切换忽略键盘输入",
+      "toggle_ignore_gamepad_input": "切换忽略手柄输入",
+      "toggle_click_through": "切换鼠标穿透",
+      "toggle_always_on_top": "切换始终置顶"
+    },
+    "behavior_names": {
+      "motion": "动作 %{index}",
+      "expression": "表情 %{index}"
+    },
+    "errors": {
+      "conflict": "%{shortcut} 已被其他快捷键占用"
+    }
+  },
+  "errors": {
+    "settings": {
+      "service_unavailable": "设置服务不可用",
+      "snapshot_outdated": "设置已在别处更改，请查看最新设置后重试。",
+      "setting_not_applied": "设置未能生效",
+      "invalid_shortcut_bindings": "快捷键绑定无效或存在冲突",
+      "setting_save_failed": "无法保存设置",
+      "config_permission_denied": "无法写入配置文件；请检查权限后重试",
+      "config_storage_full": "存放配置的磁盘已满；请清理空间后重试",
+      "config_target_occupied": "配置位置被占用；请关闭占用它的程序后重试",
+      "configuration_backup_open_failed": "无法打开配置备份文件夹",
+      "model_unavailable": "所选模型不可用",
+      "model_activation_failed": "无法启用所选模型",
+      "model_behavior_unavailable": "该动作或表情属于已不再使用的模型",
+      "model_behavior_play_failed": "无法播放该动作或表情",
+      "model_name_invalid": "模型名称不可用",
+      "model_not_found": "找不到该模型",
+      "model_cover_invalid": "封面图必须是 PNG 文件",
+      "model_cover_update_failed": "模型封面更新失败",
+      "model_file_picker_unavailable": "无法完成文件选择，请重试。",
+      "model_folder_open_failed": "无法打开模型文件夹",
+      "model_id_invalid": "模型 ID 无效",
+      "model_already_installed": "该模型已安装",
+      "model_import_invalid_package": "模型包无效",
+      "model_import_drop_invalid": "请一次拖入一个有效的模型文件夹",
+      "model_import_source_invalid": "所选文件夹包含 BongoCat 的模型存储位置；请改选单个模型文件夹。",
+      "model_import_source_changed": "模型来源在导入期间发生变化",
+      "model_import_source_unsupported": "模型来源中包含不支持的文件",
+      "model_import_cancelled": "模型导入已取消",
+      "model_operations_busy": "另一个模型操作正在进行，请稍后重试。",
+      "model_import_failed": "无法导入模型",
+      "built_in_model_cannot_be_deleted": "无法删除内置模型",
+      "model_delete_failed": "无法删除已导入模型",
+      "diagnostics_export_failed": "无法导出诊断信息",
+      "software_info_copy_failed": "无法复制软件信息",
+      "external_link_open_failed": "无法打开链接",
+      "log_location_open_failed": "无法打开软件日志文件夹",
+      "login_startup_update_failed": "无法更新登录时启动设置",
+      "system_icon_update_failed": "无法更新系统图标。",
+      "taskbar_icon_update_failed": "无法更新任务栏图标。",
+      "window_hide_failed": "无法隐藏设置窗口",
+      "window_layout_save_failed": "无法保存窗口布局",
+      "application_shutdown_failed": "BongoCat 未能完全关闭"
+    }
+  },
+  "settings": {
+    "appearance": {
+      "theme": {
+        "label": "主题",
+        "options": {
+          "system": "跟随系统",
+          "light": "浅色",
+          "dark": "深色"
+        }
+      },
+      "language": {
+        "label": "语言",
+        "options": {
+          "system": "跟随系统",
+          "chinese_simplified": "简体中文",
+          "english_united_states": "English"
+        }
+      }
+    },
+    "overlay": {
+      "behavior": {
+        "title": "窗口行为"
+      },
+      "appearance": {
+        "title": "窗口外观"
+      },
+      "performance": {
+        "title": "窗口性能"
+      },
+      "hide_model_window": {
+        "label": "隐藏模型窗口"
+      },
+      "always_on_top": {
+        "label": "始终置顶"
+      },
+      "click_through": {
+        "label": "鼠标穿透"
+      },
+      "keep_inside_screen": {
+        "label": "保持在屏幕内",
+        "description": "让模型窗口始终完整显示在屏幕上，可覆盖任务栏、程序坞或菜单栏等系统区域。"
+      },
+      "hide_on_mouse_hover": {
+        "label": "鼠标悬停时隐藏",
+        "description": "鼠标停在模型窗口上时淡出，移开后恢复。"
+      },
+      "hide_on_mouse_hover_delay": {
+        "label": "鼠标悬停时隐藏延迟（秒）",
+        "description": "鼠标停留在模型窗口上多久后隐藏，范围 0 至 60 秒；0 表示立即隐藏。"
+      },
+      "scale": {
+        "label": "窗口缩放",
+        "description": "将模型窗口缩放调整为 25% 至 400%。"
+      },
+      "opacity": {
+        "label": "窗口不透明度",
+        "description": "将模型窗口不透明度调整为 1% 至 100%。"
+      },
+      "corner_radius": {
+        "label": "窗口圆角",
+        "description": "将模型窗口圆角调整为窗口宽高的 0% 至 50%。"
+      },
+      "maximum_fps": {
+        "label": "最大帧率",
+        "description": "将动画和模型窗口的刷新率限制为每秒 15 至 240 帧。"
+      }
+    },
+    "models": {
+      "behavior": {
+        "mirror_model": {
+          "label": "水平镜像模型"
+        },
+        "motion_audio": {
+          "label": "播放动作音效"
+        },
+        "random_behavior_enabled": {
+          "label": "随机播放动作或表情"
+        },
+        "random_behavior_interval": {
+          "label": "随机播放动作或表情间隔（秒）"
+        }
+      }
+    },
+    "input_interaction": {
+      "mouse": {
+        "title": "鼠标",
+        "mirror_mouse_tracking": {
+          "label": "镜像鼠标跟随"
+        },
+        "ignore_mouse_input": {
+          "label": "忽略鼠标输入"
+        }
+      },
+      "keyboard": {
+        "title": "键盘",
+        "ignore_keyboard_input": {
+          "label": "忽略键盘输入"
+        },
+        "key_release_timeout": {
+          "label": "按键释放超时（毫秒）",
+          "description": "长时间收不到按键松开事件时自动松开，避免按键一直卡住；0 表示不自动松开。"
+        }
+      },
+      "gamepad": {
+        "title": "手柄",
+        "auto_switch": {
+          "label": "连接或断开手柄时自动切换模型"
+        },
+        "connected_model": {
+          "label": "连接手柄时自动切换的模型",
+          "options": {
+            "last_used": "上次使用的手柄模型"
+          }
+        },
+        "disconnected_model": {
+          "label": "断开手柄时自动切换的模型",
+          "options": {
+            "last_used": "上次使用的非手柄模型"
+          }
+        },
+        "ignore_gamepad_input": {
+          "label": "忽略手柄输入"
+        },
+        "stick_dead_zone": {
+          "label": "手柄摇杆死区",
+          "description": "忽略轻微的摇杆移动。"
+        },
+        "trigger_dead_zone": {
+          "label": "手柄扳机死区",
+          "description": "忽略轻微的扳机移动。"
+        }
+      }
+    },
+    "app_system": {
+      "desktop": {
+        "title": "启动与桌面"
+      },
+      "updates": {
+        "title": "更新"
+      },
+      "logging": {
+        "title": "日志",
+        "level": {
+          "label": "日志级别",
+          "options": {
+            "error": "仅错误",
+            "warn": "错误和警告",
+            "info": "常规信息",
+            "debug": "诊断信息",
+            "trace": "全部细节"
+          }
+        },
+        "retention_days": {
+          "label": "日志保留天数"
+        }
+      },
+      "status_icon": {
+        "label": {
+          "macos": "显示菜单栏图标",
+          "windows": "显示系统托盘图标"
+        }
+      },
+      "taskbar_icon": {
+        "label": "显示任务栏图标"
+      },
+      "auto_update": {
+        "label": "自动检查更新",
+        "interval": {
+          "label": "自动检查更新间隔（小时）"
+        }
+      },
+      "open_at_login": {
+        "label": "登录时启动"
+      },
+      "startup": {
+        "checking": "正在检查登录项…",
+        "unavailable": "暂时无法获取状态；点击开关重试",
+        "stale": "应用位置已变化；重新开关一次即可修复",
+        "requires_approval": "请在系统设置中批准 BongoCat",
+        "not_found": "登录项缺失；重新开关一次即可修复",
+        "unsupported_platform": "当前系统不支持登录时启动",
+        "unsupported_os": "当前操作系统不支持登录时启动",
+        "unsupported_build": "开发版本不支持登录时启动"
+      }
+    }
+  }
+}

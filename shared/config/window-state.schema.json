@@ -1,0 +1,115 @@
+{
+  "$defs": {
+    "OverlayWindowPlacement": {
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "format": "uint32",
+          "maximum": 16384,
+          "minimum": 64,
+          "type": "integer"
+        },
+        "width": {
+          "format": "uint32",
+          "maximum": 16384,
+          "minimum": 64,
+          "type": "integer"
+        },
+        "x": {
+          "format": "int32",
+          "maximum": 1000000,
+          "minimum": -1000000,
+          "type": "integer"
+        },
+        "y": {
+          "format": "int32",
+          "maximum": 1000000,
+          "minimum": -1000000,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "type": "object"
+    },
+    "WindowPlacement": {
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "format": "uint32",
+          "maximum": 16384,
+          "minimum": 480,
+          "type": "integer"
+        },
+        "maximized": {
+          "type": "boolean"
+        },
+        "width": {
+          "format": "uint32",
+          "maximum": 16384,
+          "minimum": 640,
+          "type": "integer"
+        },
+        "x": {
+          "format": "int32",
+          "maximum": 1000000,
+          "minimum": -1000000,
+          "type": "integer"
+        },
+        "y": {
+          "format": "int32",
+          "maximum": 1000000,
+          "minimum": -1000000,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height",
+        "maximized"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://ayangweb.com/bongocat/window-state-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "overlay_window": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OverlayWindowPlacement"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "settings_window": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WindowPlacement"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "settings_window",
+    "overlay_window"
+  ],
+  "title": "BongoCat Window State v1",
+  "type": "object"
+}

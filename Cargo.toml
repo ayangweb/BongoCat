@@ -1,23 +1,117 @@
 [workspace]
-resolver = "2"
-members = [ "src-tauri" ]
+resolver = "3"
+members = [
+    "crates/bongocat-app",
+    "crates/bongocat-audio",
+    "crates/bongocat-i18n",
+    "crates/bongocat-input",
+    "crates/bongocat-ui-protocol",
+    "crates/bongocat-live2d-playback",
+    "crates/bongocat-live2d-render",
+    "crates/bongocat-model-store",
+    "crates/bongocat-config",
+    "crates/bongocat-live2d",
+    "crates/bongocat-log",
+    "crates/bongocat-model",
+    "crates/bongocat-overlay",
+    "crates/bongocat-packaging",
+    "crates/bongocat-platform",
+    "crates/bongocat-render",
+    "crates/bongocat-runtime",
+    "crates/bongocat-storage",
+    "crates/bongocat-ui",
+    "crates/bongocat-update",
+]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT"
+repository = "https://github.com/ayangweb/BongoCat"
+publish = false
+
+[workspace.dependencies]
+arboard = { version = "=3.6.1", default-features = false }
+async-io = "=2.6.0"
+atomic-write-file = "=0.3.1"
+async-channel = "=2.5.0"
+cargo-packager = { version = "=0.11.8", default-features = false, features = ["rustls-tls"] }
+cargo-packager-updater = { version = "=0.2.3", default-features = false, features = ["rustls-tls"] }
+clap = { version = "=4.6.7", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
+dirs = "=6.0.0"
+embed-resource = "=3.0.11"
+flate2 = "=1.1.10"
+global-hotkey = "=0.8.0"
+gpui-kit = { git = "https://github.com/longbridge/gpui-kit", rev = "500852f449c05dc01920ec82f3ae2656a61d0387" }
+gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "e69f1083d1a13a234513cb360c3d9d8abe5ea025", default-features = false }
+rust-i18n = "=4.2.2"
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
+muda = { version = "=0.20.0", default-features = false }
+opener = { version = "=0.8.5", features = ["reveal"] }
+oxipng = { version = "=10.2.1", default-features = false }
+proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
+raw-window-handle = "=0.6.2"
+rfd = { version = "=0.17.2", default-features = false, features = ["common-controls-v6"] }
+rodio = { version = "=0.22.2", default-features = false, features = ["playback", "flac"] }
+schemars = { version = "=1.2.2", features = ["derive"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+tar = "=0.4.46"
+tempfile = "=3.27.0"
+thiserror = "=2.0.21"
+time = { version = "=0.3.55", default-features = false, features = ["formatting", "macros", "parsing"] }
+tray-icon = { version = "=0.25.0", default-features = false }
+url = "=2.5.8"
+walkdir = "=2.5.0"
+zip = { version = "=8.6.0", default-features = false }
+
+bongocat-config = { path = "crates/bongocat-config" }
+bongocat-input = { path = "crates/bongocat-input" }
+bongocat-ui-protocol = { path = "crates/bongocat-ui-protocol" }
+bongocat-live2d-playback = { path = "crates/bongocat-live2d-playback" }
+bongocat-live2d-render = { path = "crates/bongocat-live2d-render" }
+bongocat-model-store = { path = "crates/bongocat-model-store" }
+bongocat-audio = { path = "crates/bongocat-audio" }
+bongocat-i18n = { path = "crates/bongocat-i18n" }
+bongocat-live2d = { path = "crates/bongocat-live2d" }
+bongocat-log = { path = "crates/bongocat-log" }
+bongocat-model = { path = "crates/bongocat-model" }
+bongocat-overlay = { path = "crates/bongocat-overlay" }
+bongocat-platform = { path = "crates/bongocat-platform" }
+bongocat-render = { path = "crates/bongocat-render" }
+bongocat-runtime = { path = "crates/bongocat-runtime" }
+bongocat-storage = { path = "crates/bongocat-storage" }
+bongocat-ui = { path = "crates/bongocat-ui" }
+bongocat-update = { path = "crates/bongocat-update" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+print_stderr = "deny"
+print_stdout = "deny"
+
+[profile.dev]
+debug = true
+incremental = true
+panic = "unwind"
 
 [profile.release]
-strip = true
+lto = "fat"
 opt-level = 3
 codegen-units = 1
 panic = "abort"
+strip = "symbols"
+debug = 0
 debug-assertions = false
 overflow-checks = false
-lto = true
+incremental = false
+rpath = false
 
-[workspace.dependencies]
-tauri = "2"
-serde = "1"
-serde_json = "1"
-fs_extra = "1"
-tauri-plugin = { version = "2", features = [ "build" ] }
-tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
-tauri-plugin-custom-window = { path = "./src-tauri/src/plugins/window" }
-tauri-plugin-admin-status = { path = "./src-tauri/src/plugins/admin-status" }
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+[profile.profiling]
+inherits = "release"
+strip = "none"
+debug = "full"
+lto = false

@@ -1,0 +1,95 @@
+# GPUI Settings Spike
+
+This is an isolated Phase 0 probe for `gpui = 0.2.2`. It intentionally does not
+belong to the legacy Tauri workspace and does not implement product state,
+Live2D, input capture, or the native overlay.
+
+Run it from this directory:
+
+```text
+cargo run
+```
+
+For a repeatable lifecycle smoke test:
+
+```text
+BONGOCAT_SPIKE_AUTO_QUIT_MS=1500 cargo run --locked
+```
+
+Successful output includes an accessibility tree marker, `window opened`, a
+first-frame line with a positive platform `scale_factor`, an applied semantic
+action, `runtime snapshot revision=1`, `runtime stopped`, and `stopped`. Window
+or accessibility initialization failure exits non-zero after the runtime
+shutdown hook completes, so automated smoke tests cannot pass on an error log
+alone.
+
+The synthetic runtime bridge uses a bounded typed command channel. The UI reads
+revisioned snapshots through a GPUI task, while application shutdown waits for
+the runtime acknowledgement. Run its contract test with:
+
+```text
+cargo test --locked
+```
+
+Launch with `--runtime-error-probe` to exercise non-blocking loading, typed
+failure, retry, and revision recovery. The first refresh resolves to revision
+1, the second reports `runtime probe failed`, and the retry resolves to revision
+2; each read waits three seconds on the GPUI background executor rather than blocking the UI
+thread.
+
+The Reset command exercises GPUI's public tooltip API and a project-owned modal
+dialog. The dialog traps Tab/Shift-Tab between Cancel and Reset, supports
+Enter/Space activation and Escape dismissal, and replaces the background
+AccessKit subtree while it is open. It remains a Phase 0 interaction probe, not
+a product settings reset implementation.
+
+On macOS, launch with `--menu-probe` to verify the native Application, Edit,
+and Window menu structure. The probe dispatches Select All, Cut, and Paste via
+the installed `NSMenu` items on later AppKit run-loop turns, then checks the
+focused GPUI text input and clipboard without logging their contents. This does
+not validate the later `NSStatusItem` menu-bar service.
+
+Launch with `--tooltip-probe` to send synthetic native mouse-move messages
+through the platform window and GPUI input path. The probe finds the Reset
+hitbox, waits for GPUI's 500 ms tooltip delay, verifies that the tooltip is
+built, then moves out and verifies hover cleanup. It does not replace a physical
+pointer or screen-reader announcement test.
+
+Build the release binary and collect the macOS Phase 0 performance probe with:
+
+```text
+./scripts/package-macos.sh
+./scripts/benchmark-macos.sh
+```
+
+Raw CSV files and a summary are written below `target/benchmark/`. First-frame
+time starts at Rust `main`, so it excludes dyld and process creation. Idle CPU
+is the lifetime average reported by macOS `ps`; RSS is sampled in KiB after a
+five-second warmup. The binary increment compares the unsigned release
+executable with an empty Rust executable built by the same toolchain using
+`opt-level=2` and thin LTO.
+
+Build an ad-hoc-signed macOS application bundle and launch it through
+LaunchServices:
+
+```text
+./scripts/package-macos.sh
+open -W "target/package/BongoCat GPUI Spike.app" --args --auto-quit-ms 6000 --menu-probe --tooltip-probe
+```
+
+The ad-hoc signature only validates local bundle integrity. It is not a
+Developer ID signature or notarization result.
+
+The spike is successful only when the window opens, renders text without
+clipping, and closes cleanly on the target machine. It is not evidence that the
+production runtime, UI, or overlay lifecycle is complete.
+
+This probe uses GPUI's default precompiled shader path. On macOS, install the
+optional Metal Toolchain before building:
+
+```text
+xcodebuild -downloadComponent MetalToolchain
+```
+
+The validated component version is recorded in
+`docs/phase-0/gpui-settings-spike.md`.
