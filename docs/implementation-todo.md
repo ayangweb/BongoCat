@@ -4167,8 +4167,10 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `texture_color.a * opacity * mask` 路径。background、mesh（Live2D）与 key 三处绘制使用真实
       圆角，clipping mask pass 显式传 `[0.0; 4]`，避免圆角削弱 mask 覆盖。
       macOS 侧 `crates/bongocat-overlay/src/macos.rs`（shader :93-147、uniform 计算 :1493、
-      绘制 :1527/:1560/:1602/:1646），Windows 侧 `crates/bongocat-overlay/src/windows.rs`
-      （shader :235-281、:752、:879/:904/:964/:985）；Windows 的 `Renderer::create`/`create_inner`
+      绘制 :1527/:1560/:1602/:1646），Windows 侧
+      `crates/bongocat-overlay/src/windows/renderer.rs`（绘制 `Renderer::draw`）与
+      `crates/bongocat-overlay/src/windows/pipelines.rs`（shader `SHADER_SOURCE`）；
+      Windows 的 `Renderer::create`/`create_inner`
       签名由 `opacity_percent: u8` 改为 `options: OverlaySessionOptions`。
       UI：`SettingsOverlay::corner_radius_percent`（`bongocat-ui`）、
       `SettingValue::OverlayCornerRadius` 与 `PendingOperation::OverlayCornerRadius`、
@@ -4270,8 +4272,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `the_fade_is_a_function_of_elapsed_time_and_never_overshoots` 断言）。
       两个平台 owner 对称实现：`apply_presentation(alpha, click_through)`（macOS
       `crates/bongocat-overlay/src/macos.rs:1504` 写 `panel.setAlphaValue`，Windows
-      `crates/bongocat-overlay/src/windows.rs:1173` 写 `renderer.opacity`），
-      `update_hover_presentation`（macOS :667、Windows :1514）在 frame tick 内每帧应用，
+      `crates/bongocat-overlay/src/windows/session.rs` 的 `apply_presentation` 写
+      `renderer.opacity`），
+      `update_hover_presentation`（macOS :667、Windows 同文件）在 frame tick 内每帧应用，
       `create_overlay`（macOS :697、Windows :1542）在窗口替换时预置当前淡出值以免闪一帧全不透明；
       macOS 额外用 `appkit_cursor_position`（:922）把 `CursorSample` 的 CoreGraphics 坐标镜像到
       AppKit 屏幕坐标（以 AppKit frame 原点为 `(0,0)` 的主显示器高度为轴，找不到主显示器时返回

@@ -107,8 +107,8 @@ Raw Input 从不报告它，没有可映射的码。
 4. **`Fn` 这个名字仍然容易误读**：它读起来像 Fn 键。本 ADR 选择不动它（改名会回归现存模型），代价是
    文档必须反复强调；`bongocat-live2d::key_name_candidates` 的文档注释已写明这一点。
 5. **地球键归左手**：与其余键盘区一致，但爪部落点没有实机观感确认。
-6. **`bongocat-overlay` 的预览工具不认地球键**（`preview_input_bindings`，`macos.rs:2220` /
-   `windows.rs:2013`）。该表停留在 ADR-0041 之前的形态，连 F1–F12 都没有，也不感知键位图，
+6. **`bongocat-overlay` 的预览工具不认地球键**（`preview_input_bindings`，`macos.rs` /
+   `windows/switch_preview.rs`）。该表停留在 ADR-0041 之前的形态，连 F1–F12 都没有，也不感知键位图，
    ADR-0042 残余风险 4 已记录它是人工诊断工具、本次未收敛。`just preview` 因此不覆盖地球键。
 
 ## 验证

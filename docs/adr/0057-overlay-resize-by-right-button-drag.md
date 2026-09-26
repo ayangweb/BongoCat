@@ -29,7 +29,7 @@ catStore.window.scale = round(clamp(scale + delta, 10, 500))
 应用的 `muda` 菜单。任何新的右键交互都必须先解决这个冲突。
 
 两个平台都没有窗口 resize 通路：渲染尺寸在窗口创建时固化进 swapchain/RTV/mask 纹理
-（Windows）或 `CAMetalLayer` 的 drawable size（macOS），`overlay/src/windows.rs` 与
+（Windows）或 `CAMetalLayer` 的 drawable size（macOS），`overlay/src/windows/` 与
 `overlay/src/macos.rs` 里此前不存在任何 resize 代码。
 
 ## Decision
