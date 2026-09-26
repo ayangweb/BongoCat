@@ -14,6 +14,7 @@
       "model": {
         "leftHandDown": true,
         "rightHandDown": false,
+        "activeKeyOverlays": [{ "key": "KeyA", "side": "left" }],
         "parameters": {
           "CatParamLeftHandDown": 1.0,
           "ParamMouseLeftDown": 1.0
@@ -33,6 +34,7 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
+        "activeKeyOverlays": [],
         "parameters": {
           "CatParamLeftHandDown": 0.0,
           "ParamMouseLeftDown": 0.0

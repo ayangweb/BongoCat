@@ -980,13 +980,12 @@ fn conversion_error(resource: Option<&str>, detail: impl Into<String>) -> ModelS
 /// The BongoCat key-image name for one legacy control code.
 ///
 /// The two pointer modes address keys with a Windows virtual key, and the
-/// gamepad mode addresses buttons with an XInput button index — the same code
-/// space the shipped gamepad model's images are named in. Both are translated
-/// here into the vocabulary the product already uses: the names a keyboard key
-/// resolves to are exactly the ones `bongocat-live2d` derives from its HID
-/// usage, and the gamepad names are exactly the ones the bundled gamepad model
-/// ships, so a converted model is reachable by the runtime instead of being a
-/// parallel naming scheme nothing looks up.
+/// gamepad mode addresses buttons with an XInput button index. Both are
+/// translated here into the vocabulary the product already uses: the names a
+/// keyboard key resolves to are exactly the ones `bongocat-live2d-render`
+/// derives from its HID usage, and the gamepad names are exactly the ones
+/// `GamepadButton::key_image_name` defines, so a converted model is reachable by
+/// the runtime instead of being a parallel naming scheme nothing looks up.
 ///
 /// `0x08` is the one name the legacy key table spells differently (`BackSpace`);
 /// the product's runtime and its shipped preset models both use `Backspace`, so
@@ -1058,11 +1057,12 @@ fn legacy_key_names(mode: MverInputMode, control_code: i64) -> Vec<&'static str>
 /// `Backslash` had drifted from the product's `BackSlash` for exactly that
 /// reason (ADR-0050).
 ///
-/// Gamepad button names are deliberately absent: they are the bundled gamepad
-/// model's artwork stems, not key images, and the key-image resolver has no
-/// vocabulary for them (ADR-0037). The globe key is absent for a different
-/// reason: the legacy code space has no code for it at all, so the conversion
-/// can never emit `Globe.png`.
+/// Gamepad button names are absent from this list only because it answers the
+/// *keyboard* modes; the gamepad mode's own sixteen names are published by
+/// [`legacy_gamepad_key_image_names`] and are checked against
+/// `GamepadButton::key_image_name` the same way. The globe key is absent for a
+/// different reason: the legacy code space has no code for it at all, so the
+/// conversion can never emit `Globe.png`.
 pub fn legacy_keyboard_key_image_names() -> Vec<&'static str> {
     let mut names = Vec::new();
     for mode in [MverInputMode::Standard, MverInputMode::Keyboard] {
@@ -1075,6 +1075,18 @@ pub fn legacy_keyboard_key_image_names() -> Vec<&'static str> {
     names.sort_unstable();
     names.dedup();
     names
+}
+
+/// Every key-image name the gamepad conversion can install, in XInput button
+/// index order.
+///
+/// Traversed for the same reason as [`legacy_keyboard_key_image_names`]: a name
+/// the conversion writes that the resolver has no vocabulary for is an image the
+/// conversion installs and the runtime can never draw. The check compares these
+/// against `GamepadButton::key_image_name`, so the converter cannot drift away
+/// from the button vocabulary again.
+pub fn legacy_gamepad_key_image_names() -> Vec<&'static str> {
+    (0..16).filter_map(legacy_gamepad_button_name).collect()
 }
 
 const fn legacy_virtual_key_name(virtual_key: i64) -> Option<&'static str> {
@@ -1210,24 +1222,41 @@ const fn legacy_virtual_key_name(virtual_key: i64) -> Option<&'static str> {
     }
 }
 
+/// The BongoCat key-image name for one legacy gamepad button index.
+///
+/// The legacy gamepad section addresses buttons with a Windows XInput button
+/// index — the standard ordering every XInput device reports: face buttons
+/// first, then the two shoulders, the two analog triggers, the two menu buttons,
+/// the two stick clicks, then the D-pad in up/down/left/right order. The names
+/// are the product's own button names (`GamepadButton::key_image_name`), which
+/// the runtime resolves for a press of that button.
+///
+/// The two pairs this table used to get wrong are the reason it is written out
+/// rather than derived: XInput `8`/`9` are the menu buttons and `10`/`11` are
+/// the stick clicks — not the sticks and not the D-pad — and `14`/`15` are
+/// D-pad left/right — not the menu buttons. The previous table read them from
+/// the third-party backend's own control names, which is where a shoulder's
+/// `LeftTrigger` and an analog trigger's `LeftTrigger2` came from, and a
+/// converted gamepad model therefore installed the right artwork under the wrong
+/// button's name.
 const fn legacy_gamepad_button_name(button: i64) -> Option<&'static str> {
     match button {
         0 => Some("South"),
         1 => Some("East"),
         2 => Some("West"),
         3 => Some("North"),
-        4 => Some("LeftTrigger"),
-        5 => Some("RightTrigger"),
-        6 => Some("LeftTrigger2"),
-        7 => Some("RightTrigger2"),
-        8 => Some("LeftThumb"),
-        9 => Some("RightThumb"),
-        10 => Some("DPadLeft"),
-        11 => Some("DPadRight"),
-        12 => Some("DPadUp"),
-        13 => Some("DPadDown"),
-        14 => Some("Start"),
-        15 => Some("Select"),
+        4 => Some("LeftShoulder"),
+        5 => Some("RightShoulder"),
+        6 => Some("LeftTrigger"),
+        7 => Some("RightTrigger"),
+        8 => Some("Select"),
+        9 => Some("Start"),
+        10 => Some("LeftStick"),
+        11 => Some("RightStick"),
+        12 => Some("DpadUp"),
+        13 => Some("DpadDown"),
+        14 => Some("DpadLeft"),
+        15 => Some("DpadRight"),
         _ => None,
     }
 }
@@ -1280,9 +1309,9 @@ pub(crate) mod fixture {
 
     /// The config sections of a source that carries all three modes.
     ///
-    /// The gamepad section addresses buttons with XInput button indices, the
-    /// way the legacy application does, so its overlays land on
-    /// `DPadLeft` / `LeftTrigger` / `South` / `RightTrigger`.
+    /// The gamepad section addresses buttons with XInput button indices, so its
+    /// overlays land on `LeftShoulder` / `LeftTrigger` / `South` /
+    /// `RightShoulder`.
     pub(crate) fn all_modes() -> Vec<(MverInputMode, &'static str)> {
         vec![
             (
@@ -1295,7 +1324,7 @@ pub(crate) mod fixture {
             ),
             (
                 MverInputMode::Gamepad,
-                r#"{"lefthand":[[10],[4]],"righthand":[[0],[5]],"keyboard":[[10],[4],[0],[5]]}"#,
+                r#"{"lefthand":[[4],[6]],"righthand":[[0],[5]],"keyboard":[[4],[6],[0],[5]]}"#,
             ),
         ]
     }
@@ -1372,6 +1401,7 @@ pub(crate) mod fixture {
 mod tests {
     use super::fixture::*;
     use super::*;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs::File;
     use tempfile::tempdir;
 
@@ -1972,11 +2002,14 @@ mod tests {
             (Standard, 0x0D, "Enter"),
             // The gamepad mode addresses buttons, not virtual keys: index 13 is
             // the D-pad down button, while virtual key 0x0D is the Enter keys.
-            (Gamepad, 13, "DPadDown"),
-            (Gamepad, 10, "DPadLeft"),
-            (Gamepad, 4, "LeftTrigger"),
+            // The whole XInput order is walked separately, so a handful of
+            // spot checks is all this table needs.
+            (Gamepad, 13, "DpadDown"),
+            (Gamepad, 14, "DpadLeft"),
+            (Gamepad, 4, "LeftShoulder"),
+            (Gamepad, 6, "LeftTrigger"),
             (Gamepad, 0, "South"),
-            (Gamepad, 5, "RightTrigger"),
+            (Gamepad, 9, "Start"),
         ] {
             assert_eq!(
                 legacy_key_name(mode, code),
@@ -2088,7 +2121,7 @@ mod tests {
         assert_eq!(legacy_key_names(Keyboard, 0x0D), vec!["Enter", "KpEnter"]);
         // Every other code still names exactly one image.
         assert_eq!(legacy_key_names(Standard, 0x41), vec!["KeyA"]);
-        assert_eq!(legacy_key_names(Gamepad, 10), vec!["DPadLeft"]);
+        assert_eq!(legacy_key_names(Gamepad, 14), vec!["DpadLeft"]);
         assert!(legacy_key_names(Standard, 1).is_empty());
         assert!(
             legacy_key_names(Gamepad, 0x12).is_empty(),
@@ -2096,9 +2129,62 @@ mod tests {
         );
         assert_eq!(
             legacy_key_names(Gamepad, 0x0D),
-            vec!["DPadDown"],
+            vec!["DpadDown"],
             "gamepad control code 13 is the D-pad down button, not a virtual key"
         );
+    }
+
+    /// The whole XInput button order, walked index by index.
+    ///
+    /// This is the table the reported bug turned on. Six of the sixteen entries
+    /// used to name the wrong button — the two menu buttons and the two stick
+    /// clicks were read off the D-pad and the stick rows, and the two D-pad
+    /// horizontal directions were read off the menu row — so a converted gamepad
+    /// model installed the right artwork under a name no button press resolves.
+    /// The expected column is the physical layout every XInput device reports,
+    /// and the names are the product's own (`GamepadButton::key_image_name`).
+    #[test]
+    fn every_xinput_button_index_names_the_button_that_index_reports() {
+        use MverInputMode::Gamepad;
+        let expected = [
+            "South",
+            "East",
+            "West",
+            "North",
+            "LeftShoulder",
+            "RightShoulder",
+            "LeftTrigger",
+            "RightTrigger",
+            "Select",
+            "Start",
+            "LeftStick",
+            "RightStick",
+            "DpadUp",
+            "DpadDown",
+            "DpadLeft",
+            "DpadRight",
+        ];
+        assert_eq!(
+            legacy_gamepad_key_image_names(),
+            expected,
+            "XInput button order: face, shoulders, triggers, menu, sticks, D-pad"
+        );
+        for (index, name) in expected.iter().enumerate() {
+            assert_eq!(
+                legacy_key_name(Gamepad, index as i64),
+                Some(*name),
+                "XInput button {index}"
+            );
+        }
+        // And every name is a real product button name, so the conversion can
+        // only emit an image the renderer is able to resolve.
+        let product = bongocat_render::GamepadButton::ALL
+            .iter()
+            .map(|button| button.key_image_name())
+            .collect::<BTreeSet<_>>();
+        for name in legacy_gamepad_key_image_names() {
+            assert!(product.contains(name), "{name} is not a button name");
+        }
     }
 
     /// The planned output for one ambiguous Alt binding: both sides are
@@ -2199,14 +2285,64 @@ mod tests {
         );
     }
 
+    /// Every XInput button index, in the order a pad reports them, paired with
+    /// the product button it is and the hand its key table would put it on.
+    ///
+    /// The order is XInput's own: face buttons, then the shoulders, then the two
+    /// analog triggers, then the two menu buttons, then the two stick clicks, then
+    /// the D-pad. `legacy_gamepad_button_name` is written against this column
+    /// order, and this is the one place the whole order is stated, so the table
+    /// and the layout it claims to describe cannot disagree.
+    const XINPUT_BUTTONS: [(i64, &str, bool); 16] = [
+        (0, "South", false),
+        (1, "East", false),
+        (2, "West", false),
+        (3, "North", false),
+        (4, "LeftShoulder", true),
+        (5, "RightShoulder", false),
+        (6, "LeftTrigger", true),
+        (7, "RightTrigger", false),
+        (8, "Select", false),
+        (9, "Start", false),
+        (10, "LeftStick", true),
+        (11, "RightStick", false),
+        (12, "DpadUp", true),
+        (13, "DpadDown", true),
+        (14, "DpadLeft", true),
+        (15, "DpadRight", true),
+    ];
+
+    /// The XInput order, split into the two hand lists a real key table uses.
+    ///
+    /// The left list is the D-pad, the left shoulder, the left analog trigger and
+    /// the left stick click; the right list is the face buttons, the right
+    /// shoulder, the right analog trigger, both menu buttons and the right stick
+    /// click. `Select` is the one genuinely centred button and lands on the right
+    /// here purely so the two lists differ in length, which is what exercises the
+    /// shared keyboard atlas's hand offset.
+    const XINPUT_LEFT_HAND: [i64; 7] = [12, 13, 14, 15, 4, 6, 10];
+    const XINPUT_RIGHT_HAND: [i64; 9] = [0, 1, 2, 3, 5, 7, 11, 8, 9];
+
+    /// The composed gamepad key images must land on the product's own button
+    /// names, in the directory the hand list chose, with that button's own
+    /// artwork.
+    ///
+    /// This is the assertion that the bundled `gamepad` preset's rename and the
+    /// Mver conversion agree: the preset ships `LeftShoulder`, `LeftTrigger`,
+    /// `Dpad*`, `South`… and so must a converted model, or a converted model is a
+    /// parallel naming scheme the runtime resolves nothing from. It also pins the
+    /// *pairing*, not just the names — each legacy hand image is a distinct
+    /// opaque colour, so a table that named the right file with the wrong
+    /// artwork, or paired one button's index with another's name, fails here
+    /// rather than producing a model that looks right in a file listing.
     #[test]
-    fn the_gamepad_mode_produces_the_shipped_gamepad_vocabulary() {
+    fn the_gamepad_mode_produces_the_product_button_vocabulary() {
         let root = tempdir().expect("root");
         legacy_source(
             root.path(),
             &[(
                 MverInputMode::Gamepad,
-                r#"{"lefthand":[[10],[4]],"righthand":[[0],[5]],"keyboard":[[10],[4],[0],[5]]}"#,
+                r#"{"lefthand":[[4],[6]],"righthand":[[0],[9]],"keyboard":[[4],[6],[0],[9]]}"#,
             )],
             true,
         );
@@ -2218,11 +2354,254 @@ mod tests {
                 .map(|slot| slot.reference.as_str())
                 .collect::<Vec<_>>(),
             vec![
-                "left-keys/DPadLeft.png",
+                "left-keys/LeftShoulder.png",
                 "left-keys/LeftTrigger.png",
                 "right-keys/South.png",
-                "right-keys/RightTrigger.png",
+                "right-keys/Start.png",
             ]
         );
+    }
+
+    /// A per-button opaque colour, so a composed image identifies the button it
+    /// was composed for.
+    ///
+    /// The composite is `hand` drawn over `keyboard`, and an opaque source
+    /// replaces the destination outright, so an opaque hand layer makes the
+    /// result the hand's colour and nothing else. That is what lets this test
+    /// check *which* legacy binding produced *which* installed file.
+    fn button_colour(button: i64) -> [u8; 4] {
+        let value = u8::try_from(button).expect("button index");
+        [value, 255 - value, value / 2, 255]
+    }
+
+    /// Write a legacy gamepad source that binds all sixteen XInput buttons, with
+    /// one opaque hand image per hand-list entry.
+    ///
+    /// The keyboard atlas is shared by both hands (ADR-0037 §3: the right hand's
+    /// indices continue from the left hand's length), so it needs one image per
+    /// binding in total, and each hand directory needs one per entry in its own
+    /// list.
+    fn full_gamepad_source(root: &Path) {
+        let section = format!(
+            r#"{{"lefthand":[{}],"righthand":[{}],"keyboard":[{}]}}"#,
+            XINPUT_LEFT_HAND
+                .iter()
+                .map(|button| format!("[{button}]"))
+                .collect::<Vec<_>>()
+                .join(","),
+            XINPUT_RIGHT_HAND
+                .iter()
+                .map(|button| format!("[{button}]"))
+                .collect::<Vec<_>>()
+                .join(","),
+            // The shared atlas is read positionally, left hand first, so the
+            // keyboard list repeats the two hand lists in that order.
+            XINPUT_LEFT_HAND
+                .iter()
+                .chain(XINPUT_RIGHT_HAND.iter())
+                .map(|button| format!("[{button}]"))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        write(
+            root,
+            LEGACY_CONFIG_FILE,
+            &legacy_config(&[(MverInputMode::Gamepad, Box::leak(section.into_boxed_str()))]),
+        );
+        let base = "img/gamepad";
+        write(
+            root,
+            &format!("{base}/{LEGACY_MODEL_DIRECTORY}/cat.model3.json"),
+            br#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[]}}"#,
+        );
+        write(
+            root,
+            &format!("{base}/{LEGACY_MODEL_DIRECTORY}/model.moc3"),
+            b"moc",
+        );
+        write(root, &format!("{base}/bg.png"), &flat([10, 20, 30, 255]));
+        write(root, &format!("{base}/cat.png"), &flat([40, 50, 60, 255]));
+
+        // The shared keyboard atlas: one image per *binding*, in the keyboard
+        // list's own order. That order is the left hand's buttons followed by the
+        // right hand's, which is the order the section below writes, and it is
+        // what makes the right hand's offset land on the right key cap.
+        let keyboard_order = XINPUT_LEFT_HAND
+            .iter()
+            .chain(XINPUT_RIGHT_HAND.iter())
+            .copied()
+            .collect::<Vec<_>>();
+        assert_eq!(keyboard_order.len(), XINPUT_BUTTONS.len());
+        for (index, button) in keyboard_order.iter().enumerate() {
+            write(
+                root,
+                &format!("{base}/{LEGACY_KEYBOARD_DIRECTORY}/{index}.png"),
+                // Neutral, so a composed image shows the hand layer's colour.
+                &flat([1, 1, 1, 255]),
+            );
+            assert!(
+                XINPUT_BUTTONS.iter().any(|(other, ..)| other == button),
+                "the keyboard list may only address real XInput buttons, got {button}"
+            );
+        }
+        for (hand, buttons) in [
+            (LEGACY_LEFT_HAND_DIRECTORY, &XINPUT_LEFT_HAND[..]),
+            (LEGACY_RIGHT_HAND_DIRECTORY, &XINPUT_RIGHT_HAND[..]),
+        ] {
+            for (index, button) in buttons.iter().enumerate() {
+                write(
+                    root,
+                    &format!("{base}/{hand}/{index}.png"),
+                    &flat(button_colour(*button)),
+                );
+            }
+        }
+    }
+
+    /// All sixteen XInput buttons, through the real conversion, land on sixteen
+    /// distinct product-named files that carry their own button's artwork.
+    ///
+    /// This is the exhaustive form of the pairing assertion: the previous test
+    /// covers the four buttons whose names the old table got wrong, and this one
+    /// covers the whole vocabulary, the two hand directories, and the fact that
+    /// no two buttons collide on one file name — the failure mode the old
+    /// `LeftTrigger`/`LeftTrigger2` pair had.
+    #[test]
+    fn every_xinput_button_converts_to_its_own_product_named_image() {
+        let root = tempdir().expect("root");
+        full_gamepad_source(root.path());
+        let plan = inspect_directory(root.path()).expect("legacy plan");
+        let mode = plan_mode(&plan, MverInputMode::Gamepad);
+
+        // The whole point: every button lands in the directory its own hand list
+        // chose, so the runtime's hand binding (which reads the directory) and
+        // the button's name agree. A slot in the wrong directory is a model that
+        // draws the button on the wrong paw, so both are collected here.
+        let mut installed = BTreeMap::new();
+        for slot in &mode.slots {
+            let reference = slot.reference.as_str();
+            let (directory, name) = reference
+                .split_once('/')
+                .expect("converted reference has a directory");
+            assert!(
+                matches!(directory, OUTPUT_LEFT_KEYS | OUTPUT_RIGHT_KEYS),
+                "{reference} installs outside the key directories"
+            );
+            let stem = name.trim_end_matches(".png");
+            assert!(
+                installed.insert(stem.to_owned(), ()).is_none(),
+                "two XInput buttons resolved to {stem}.png"
+            );
+        }
+
+        for (button, expected, left_hand) in XINPUT_BUTTONS {
+            let directory = if left_hand {
+                OUTPUT_LEFT_KEYS
+            } else {
+                OUTPUT_RIGHT_KEYS
+            };
+            let reference = format!("{directory}/{expected}.png");
+            assert!(
+                installed.contains_key(expected),
+                "XInput button {button} did not convert to {reference}; the plan installed {:?}",
+                installed.keys().collect::<Vec<_>>()
+            );
+            assert!(
+                mode.slots.iter().any(|slot| slot.reference == reference),
+                "{reference} must be installed in the {directory} the hand list chose"
+            );
+            let slot = mode
+                .slots
+                .iter()
+                .find(|slot| slot.reference == reference)
+                .expect("planned slot");
+            let MverSlotImage::Composite { hand, keyboard } = &slot.image else {
+                panic!("{reference} is not a composed overlay");
+            };
+            // The hand layer names the hand directory the legacy table chose, and
+            // its own colour, so the composition is that button's artwork.
+            let hand_directory = if left_hand {
+                LEGACY_LEFT_HAND_DIRECTORY
+            } else {
+                LEGACY_RIGHT_HAND_DIRECTORY
+            };
+            let position = if left_hand {
+                XINPUT_LEFT_HAND
+                    .iter()
+                    .position(|candidate| *candidate == button)
+                    .expect("button is in the left hand list")
+            } else {
+                XINPUT_RIGHT_HAND
+                    .iter()
+                    .position(|candidate| *candidate == button)
+                    .expect("button is in the right hand list")
+            };
+            assert_eq!(
+                hand.as_str(),
+                format!("img/gamepad/{hand_directory}/{position}.png"),
+                "{reference} must draw the {hand_directory} image at {position}"
+            );
+            // The keyboard atlas is shared and indexed by *position in the
+            // keyboard list*, not by the button's XInput index. The left hand
+            // starts at 0; the right hand continues from the left hand's length
+            // (ADR-0037 §3). So the expected index is the button's position in
+            // the keyboard list I wrote, which is exactly what the offset
+            // arithmetic has to reproduce.
+            let keyboard_index = if left_hand {
+                XINPUT_LEFT_HAND
+                    .iter()
+                    .position(|candidate| *candidate == button)
+                    .expect("button is in the left hand list")
+            } else {
+                XINPUT_LEFT_HAND.len()
+                    + XINPUT_RIGHT_HAND
+                        .iter()
+                        .position(|candidate| *candidate == button)
+                        .expect("button is in the right hand list")
+            };
+            assert!(
+                keyboard_index < XINPUT_BUTTONS.len(),
+                "the shared atlas must have an image at {keyboard_index}"
+            );
+            assert_eq!(
+                keyboard.as_str(),
+                format!("img/gamepad/{LEGACY_KEYBOARD_DIRECTORY}/{keyboard_index}.png"),
+                "{reference} must composite the shared key cap at {keyboard_index}"
+            );
+        }
+        assert_eq!(installed.len(), XINPUT_BUTTONS.len());
+    }
+
+    /// The composed bytes are the button's own: a name that resolves is not
+    /// enough, the artwork under it has to be the one that button's legacy
+    /// binding composes.
+    #[test]
+    fn a_converted_gamepad_image_carries_its_own_buttons_artwork() {
+        let root = tempdir().expect("root");
+        full_gamepad_source(root.path());
+        let plan = inspect_directory(root.path()).expect("legacy plan");
+        let mode = plan_mode(&plan, MverInputMode::Gamepad);
+        let staging = tempdir().expect("staging");
+        convert(root.path(), &mode, staging.path()).expect("convert");
+
+        for (button, expected, left_hand) in XINPUT_BUTTONS {
+            let directory = if left_hand {
+                OUTPUT_LEFT_KEYS
+            } else {
+                OUTPUT_RIGHT_KEYS
+            };
+            let path = staging
+                .path()
+                .join("resources")
+                .join(directory)
+                .join(format!("{expected}.png"));
+            let image = image::open(&path).expect("composed overlay").to_rgba8();
+            // The hand layer is opaque, so the composite is exactly its colour.
+            assert_eq!(
+                *image.get_pixel(0, 0),
+                image::Rgba(button_colour(button)),
+                "{expected}.png must hold XInput button {button}'s own artwork"
+            );
+        }
     }
 }

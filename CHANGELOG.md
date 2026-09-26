@@ -27,6 +27,7 @@
 ### 🐛 User-visible Fixes
 
 - Held keys and buttons are now cleared after device changes, lock, sleep, and permission changes. Right Shift, Right Option, and Caps Lock are more reliable on macOS. The old Windows-only seconds-based timeout is now a configurable millisecond fallback.
+- Pressing a gamepad button now shows that button's key image on the model and moves the matching paw, instead of only moving the paw. Which hand draws a button is decided by the model itself, so a converted BongoCatMver gamepad model draws its buttons on the paws its own key lists asked for. The bundled gamepad model's key image files were renamed to the product's own button names (`LeftShoulder`/`RightShoulder` for the shoulder buttons, `LeftTrigger`/`RightTrigger` for the analog triggers, `LeftStick`/`RightStick` for the stick clicks, `DpadUp`…`DpadDown` for the D-pad); importing an older gamepad model renames them for you, and converted gamepad models no longer put the right artwork under the wrong button's name. `Select`, `Start` and the two stick clicks still show nothing, because the bundled model ships no artwork for them.
 - Keyboard artwork now resolves left/right Alt, Enter, keypad Enter, and converted-model key names consistently.
 - Switching models or changing size and opacity no longer briefly blanks or makes the model window fully transparent.
 - A triggered motion plays once and holds its final pose until another motion replaces it or you stop it.

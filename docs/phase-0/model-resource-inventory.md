@@ -43,7 +43,11 @@
 
 ### gamepad
 
-- left-keys 包含 D-pad 和左 trigger；right-keys 包含面键和右 trigger。
+- left-keys 包含 D-pad（`DpadUp`/`DpadDown`/`DpadLeft`/`DpadRight`）、左肩键 `LeftShoulder` 和左模拟
+  扳机 `LeftTrigger`；right-keys 包含四个面键（`South`/`East`/`West`/`North`）、右肩键
+  `RightShoulder` 和右模拟扳机 `RightTrigger`。图片名等于 `GamepadButton` 变体名（ADR-0070），
+  手归属由所在目录决定。模型不提供 `Select`、`Start` 与两个摇杆键的图片，这四个按钮因此保持惰性，
+  两个摇杆键另外驱动 `CatParamStickLeftDown`/`CatParamStickRightDown`。
 - 包含左右手和 `CatParamStickLX/LY/RX/RY`。
 - 包含左右摇杆显示与按下参数。
 
@@ -67,7 +71,7 @@ model-root/
     right-keys/*.png
 ```
 
-目录可以只含 left-keys。right-keys 存在时，当前导入逻辑用文件名判断 keyboard/gamepad：包含 `East` 视为 gamepad，否则为 keyboard。该启发式必须在新 validator 中显式报告，不能静默误分类。
+目录可以只含 left-keys。right-keys 存在时，模式由该包键位图里是否出现手柄专用名字判定：出现任一手柄按钮名（两套词表都接受，见 ADR-0070）判 gamepad；否则有 right-keys 判 keyboard；否则有 left-keys 判 standard；两类都没有则以 `InvalidPackage` 拒绝。判定在 staging 复制与键名归一化之后、原子 rename 之前完成，结果写入 config。
 
 ## 自定义模型样本策略
 

@@ -325,6 +325,7 @@ fn assert_checkpoint(
     snapshot: &bongocat_runtime::RuntimeSnapshot,
     checkpoint: &Value,
     gamepad_bindings: &BTreeMap<GamepadButton, HandSide>,
+    key_names: &BTreeMap<PhysicalKey, String>,
 ) {
     let expected_input = &checkpoint["input"];
     assert_eq!(
@@ -383,6 +384,15 @@ fn assert_checkpoint(
     );
     assert!(expected_model["activeMotion"].is_null());
     assert!(expected_model["activeExpression"].is_null());
+    assert_overlays(
+        model.key_presses,
+        expected_model
+            .get("activeKeyOverlays")
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice),
+        key_names,
+        checkpoint["atMs"].as_u64().expect("checkpoint time"),
+    );
     let parameters = expected_model["parameters"]
         .as_object()
         .expect("parameters");
@@ -414,6 +424,55 @@ fn assert_checkpoint(
             checkpoint["atMs"]
         );
     }
+}
+
+/// The key overlays the runtime asks the model to draw, against the fixture's
+/// declared ones.
+///
+/// This is the last mile of the reported bug: a gamepad press used to reach the
+/// renderer as a bare HID usage, which no gamepad button can be, so the paw moved
+/// and the button's own image never appeared. The runtime projection is the only
+/// place both input families become drawable, so it is the only place a fixture
+/// can pin that a gamepad button is drawable at all.
+///
+/// A checkpoint that presses anything and declares no overlay therefore fails,
+/// rather than passing because the field was left out.
+fn assert_overlays(
+    presses: bongocat_render::KeyPressSet,
+    expected: &[Value],
+    key_names: &BTreeMap<PhysicalKey, String>,
+    at_ms: u64,
+) {
+    let actual = presses
+        .iter()
+        .map(|press| {
+            let name = match press.key {
+                bongocat_render::KeyIdentity::Keyboard(hid_usage) => {
+                    let key = PhysicalKey::from_hid_usage(hid_usage);
+                    key_names
+                        .get(&key)
+                        .cloned()
+                        .unwrap_or_else(|| panic!("0x{hid_usage:04x} is not a fixture control"))
+                }
+                bongocat_render::KeyIdentity::Gamepad(button) => format!("Gamepad{button:?}"),
+            };
+            let side = match press.side {
+                bongocat_render::KeySide::Left => "left",
+                bongocat_render::KeySide::Right => "right",
+            };
+            (name, side.to_owned())
+        })
+        .collect::<BTreeSet<_>>();
+    let expected = expected
+        .iter()
+        .map(|overlay| {
+            (
+                overlay["key"].as_str().expect("overlay key").to_owned(),
+                overlay["side"].as_str().expect("overlay side").to_owned(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(actual, expected, "active key overlays at {at_ms}ms");
 }
 
 #[derive(Default)]
@@ -657,6 +716,7 @@ fn shared_input_fixtures_match_product_runtime_projection() {
         let sequence = load(input_dir.join(&input_file));
         let expected = load(expected_dir.join(format!("{name}.json")));
         let mut key_bindings = BTreeMap::new();
+        let mut key_names = BTreeMap::new();
         let mut gamepad_bindings = BTreeMap::new();
         for (name, side) in sequence["context"]["keySides"]
             .as_object()
@@ -670,7 +730,9 @@ fn shared_input_fixtures_match_product_runtime_projection() {
             if name.starts_with("Gamepad") {
                 gamepad_bindings.insert(gamepad_button_key(name), hand);
             } else {
-                key_bindings.insert(key(name), hand);
+                let key = key(name);
+                key_names.insert(key, name.clone());
+                key_bindings.insert(key, hand);
             }
         }
         let owner = RuntimeOwner::start(true, 64);
@@ -702,7 +764,7 @@ fn shared_input_fixtures_match_product_runtime_projection() {
             let snapshot = client
                 .wait_for_command(tick, TIMEOUT)
                 .expect("tick snapshot");
-            assert_checkpoint(&snapshot, checkpoint, &gamepad_bindings);
+            assert_checkpoint(&snapshot, checkpoint, &gamepad_bindings, &key_names);
         }
         owner.shutdown(TIMEOUT).expect("fixture runtime shutdown");
     }

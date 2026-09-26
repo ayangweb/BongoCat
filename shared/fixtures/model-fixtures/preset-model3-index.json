@@ -1252,33 +1252,41 @@
       },
       "left_keys": [
         {
-          "id": "DPadDown",
+          "id": "DpadDown",
           "image": {
-            "file": "resources/left-keys/DPadDown.png",
+            "file": "resources/left-keys/DpadDown.png",
             "width": 612,
             "height": 354
           }
         },
         {
-          "id": "DPadLeft",
+          "id": "DpadLeft",
           "image": {
-            "file": "resources/left-keys/DPadLeft.png",
+            "file": "resources/left-keys/DpadLeft.png",
             "width": 612,
             "height": 354
           }
         },
         {
-          "id": "DPadRight",
+          "id": "DpadRight",
           "image": {
-            "file": "resources/left-keys/DPadRight.png",
+            "file": "resources/left-keys/DpadRight.png",
             "width": 612,
             "height": 354
           }
         },
         {
-          "id": "DPadUp",
+          "id": "DpadUp",
           "image": {
-            "file": "resources/left-keys/DPadUp.png",
+            "file": "resources/left-keys/DpadUp.png",
+            "width": 612,
+            "height": 354
+          }
+        },
+        {
+          "id": "LeftShoulder",
+          "image": {
+            "file": "resources/left-keys/LeftShoulder.png",
             "width": 612,
             "height": 354
           }
@@ -1287,14 +1295,6 @@
           "id": "LeftTrigger",
           "image": {
             "file": "resources/left-keys/LeftTrigger.png",
-            "width": 612,
-            "height": 354
-          }
-        },
-        {
-          "id": "LeftTrigger2",
-          "image": {
-            "file": "resources/left-keys/LeftTrigger2.png",
             "width": 612,
             "height": 354
           }
@@ -1318,17 +1318,17 @@
           }
         },
         {
-          "id": "RightTrigger",
+          "id": "RightShoulder",
           "image": {
-            "file": "resources/right-keys/RightTrigger.png",
+            "file": "resources/right-keys/RightShoulder.png",
             "width": 612,
             "height": 354
           }
         },
         {
-          "id": "RightTrigger2",
+          "id": "RightTrigger",
           "image": {
-            "file": "resources/right-keys/RightTrigger2.png",
+            "file": "resources/right-keys/RightTrigger.png",
             "width": 612,
             "height": 354
           }

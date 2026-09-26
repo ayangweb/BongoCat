@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-pub use bongocat_input::GLOBE_KEY_USAGE;
+pub use bongocat_input::{GLOBE_KEY_USAGE, GamepadButton};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct DrawableId(usize);
@@ -73,8 +73,51 @@ pub enum KeySide {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct KeyPress {
-    pub hid_usage: u16,
+    pub key: KeyIdentity,
     pub side: KeySide,
+}
+
+/// What a press is: a keyboard key or a gamepad button.
+///
+/// The two input families are drawn by the same overlay layer and live in the
+/// same two per-hand image directories, but they are not the same kind of
+/// control and must not be folded into one numeric space. A gamepad button has
+/// no HID Keyboard/Keypad usage, so before this type existed a gamepad press
+/// could not be expressed at all and the whole family reached the renderer as a
+/// paw movement with no key image. The identity is therefore tagged and typed:
+/// the renderer resolves a name from it, and there is no encoding in which one
+/// family's identity can be mistaken for the other's.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum KeyIdentity {
+    /// A keyboard key, addressed by its HID usage. The Apple Fn / globe key
+    /// folds Apple's vendor page into the same `u16`; see [`GLOBE_KEY_USAGE`].
+    Keyboard(u16),
+    /// A gamepad button, in the product's own sixteen-button vocabulary.
+    Gamepad(GamepadButton),
+}
+
+impl Default for KeyIdentity {
+    /// The zeroed keyboard usage, which is not a key any adapter reports. Only
+    /// the empty slots of a [`KeyPressSet`] ever hold it.
+    fn default() -> Self {
+        Self::Keyboard(0)
+    }
+}
+
+impl KeyPress {
+    pub const fn keyboard(hid_usage: u16, side: KeySide) -> Self {
+        Self {
+            key: KeyIdentity::Keyboard(hid_usage),
+            side,
+        }
+    }
+
+    pub const fn gamepad(button: GamepadButton, side: KeySide) -> Self {
+        Self {
+            key: KeyIdentity::Gamepad(button),
+            side,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -966,20 +1009,27 @@ mod tests {
     #[test]
     fn key_press_set_deduplicates_and_has_bounded_capacity() {
         let mut presses = KeyPressSet::default();
-        let press = KeyPress {
-            hid_usage: 0x04,
-            side: KeySide::Left,
-        };
+        let press = KeyPress::keyboard(0x04, KeySide::Left);
         presses.push(press);
         presses.push(press);
         for usage in 0x05..=0x50 {
-            presses.push(KeyPress {
-                hid_usage: usage,
-                side: KeySide::Left,
-            });
+            presses.push(KeyPress::keyboard(usage, KeySide::Left));
         }
         assert_eq!(presses.iter().count(), 64);
         assert_eq!(presses.iter().filter(|entry| *entry == press).count(), 1);
+    }
+
+    /// A gamepad press and a keyboard press are different identities even when
+    /// they name the same side, and no gamepad button can be folded into the
+    /// HID usage space: that is what keeps a button from being resolved as a key.
+    #[test]
+    fn a_gamepad_press_is_never_the_same_identity_as_a_key_press() {
+        for button in GamepadButton::ALL {
+            let press = KeyPress::gamepad(button, KeySide::Left);
+            assert_eq!(press.key, KeyIdentity::Gamepad(button));
+            assert_ne!(press, KeyPress::keyboard(0x04, KeySide::Left));
+        }
+        assert_eq!(KeyPress::default().key, KeyIdentity::Keyboard(0));
     }
 
     #[test]

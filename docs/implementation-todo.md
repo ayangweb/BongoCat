@@ -4444,6 +4444,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `LeftTrigger2`} + `right-keys`{`East`,`North`,`RightTrigger`,`RightTrigger2`,`South`,`West`}、
       28 文件 / 1 082 753 字节 / 0.74 s。gamepad 的两个集合与仓库内
       `resources/models/gamepad/{left-keys,right-keys}` 的文件名**逐字符一致**，源目录未被修改。
+      （该一致性的基准名已于 2026-09-26 随第 111 项改为产品词表：两套名字同时重命名，
+      "逐字符一致"这一条仍然成立。）
       压缩取舍实测（15 张 612×354 合成图，release）：仅 `image` 编码 160 641 字节 →
       oxipng/libdeflate 91 470 字节（−43%，0.68 s）→ 再加 Zopfli 86 605 字节（0.68 → 10.25 s）。
       `cargo fmt --all --check`、三组 clippy（workspace `--all-targets --all-features` 与
@@ -4454,8 +4456,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       **未运行**：Windows 编译与实机导入（`libdeflater` 的 C 工具链未在 Windows/交叉编译下验证）、
       UI 实机点击（本次未改动 Models 页面的控件集合，只改了说明文案）。
       **已知缺口（既有，不由本项引入）**：①`bongocat-runtime` 只对键盘按键产生 `KeyPress`，手柄
-      按键仅置 hand-down/stick 标志，因此 gamepad 键位图与预置 gamepad 模型一样目前不可达；
-      ②`standard.mouse_left/right/side` 与 `mouse*.png` 没有可映射的 overlay 通道，与参考实现
+      按键仅置 hand-down/stick 标志，因此 gamepad 键位图与预置 gamepad 模型一样目前不可达
+      （**① 已于 2026-09-26 闭合，见第 111 项与 ADR-0070**：`KeyPress` 改为携带带标签的
+      `KeyIdentity`，手柄按钮现在也产生 `KeyPress`，图片词表改用产品自己的 16 个按钮名，
+      预置模型与 Mver 转换的 gamepad 键位图已同步重命名）；②`standard.mouse_left/right/side` 与
+      `mouse*.png` 没有可映射的 overlay 通道，与参考实现
       一致地不转换；③转换按 `F1`…`F12` 命名以保留模型区分度，但
       `bongocat-live2d::key_name_candidates` 当时把功能键统一回退到 `Fn`，逐键 F 图不可达
       （预置模型只有 `Fn.png`、真实样本键位表也不含功能键，当时缺少可验证数据）。
@@ -6281,6 +6286,54 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
      - 当前实现（2026-09-25）：`bongocat-platform::SystemMenu` 持有一个由托盘和 overlay 右键共用的 `Menu` 根、模型窗口 `Submenu` 和一套 item 实例；模型窗口子菜单提供显隐、穿透、置顶和鼠标移入隐藏四个 check item，显隐使用偏好设置共用的 `settings.overlay.hide_model_window.label`，偏好设置开关和菜单 check item 都以“已隐藏”为选中值，默认未选中；其它模型窗口属性直接复用 `settings.overlay.click_through.label`、`settings.overlay.always_on_top.label` 与 `settings.overlay.hide_on_mouse_hover.label`，检查更新复用 About 的 `update.about.label`，通过 revision-checked `SettingsOverlay` command 更新，command 失败会回写 snapshot 恢复 check 状态；`OpenSource`/`Restart`/版本字段和 action 已删除，更新入口按构建/channel 可用性在构造期决定是否创建。`bongocat-platform` layout/action 单测、`bongocat-i18n` 双向 key 守门和 locale validator 已通过。
      - 验证（2026-09-25，本机 macOS / arm64）：`cargo test --locked -p bongocat-platform`、`cargo test --locked -p bongocat-ui`、`cargo test --locked -p bongocat-i18n`、`python3 tools/validate-locales.py`（2 locales / 254 keys）、`cargo clippy --locked --workspace --all-targets -- -D warnings`、`cargo check --locked --workspace --release` 与 Windows target 的 `bongocat-platform` check/clippy 通过；设置页显隐开关已改为共享“隐藏模型窗口”文案并以未选中为默认，`--settings-window-smoke` 与 system-menu smoke 均通过。完整 workspace 测试以 `cargo test --locked --workspace -- --test-threads=1` 通过；并行默认运行曾受既有时序敏感测试影响。
      - 未运行：Windows 10 1903+ 与受支持 macOS 实机托盘与 overlay 右键的共用菜单展开、cursor/DPI/Retina、点击外部关闭、action 派发、Explorer/菜单栏恢复和 shutdown 清理；因此本项保持未勾选。
+
+111. [x] `P1-GAMEPAD-KEY-IMAGE`：手柄按键必须画出模型自己的按键图片，图片词表改用产品自己的按钮名。
+     - 依赖：ADR-0042、ADR-0066、ADR-0070、`shared/behavior/input-semantics.md` 的按键图片词表段。
+     - 退出条件：绑定的 `GamepadButton` 与绑定的键盘键走同一条按键层通道；每个按钮的图片名等于
+       `GamepadButton` 变体名且 16 个名字互不重名；预置 `gamepad` 模型、导入归一化、Mver 转换、
+       模式判定与手绑定全部使用同一套产品名；无图的按钮保持惰性；契约测试遍历全部 16 个按钮、
+       预置模型的每个有图按钮、真实 XInput 序号表和旧主干的归一化。
+     - 背景（2026-09-26，用户报告"按下手柄按键后模型没有显示对应按键图片"）：根因不止一处。
+       ① `bongocat_render::KeyPress` 只携带 `hid_usage`，手柄按钮没有 HID usage，
+       `InputState::model_snapshot_with_filter` 因此**从不**为手柄产生 `KeyPress`——爪子动了，
+       任何按键都不画图（已知缺口 ① 一直未闭合）。② 预置模型的手柄图片名是旧 Tauri 输入层从
+       第三方 backend 派生的 `Debug` 名（`DPad*`、`LeftTrigger`=肩键、`LeftTrigger2`=扳机、
+       `LeftThumb`/`RightThumb`=摇杆键），与项目 `GamepadButton` 词表不一致，且同一个主干在两套
+       词表里指两个按钮。③ 手绑定写死 `South→Left`、`East→Right`，与预置模型把面部键放在
+       `right-keys` 相反（旧实现从图片所在目录推手）。④ Mver 的 XInput 序号表六个条目按错位置
+       （8/9 写成摇杆键、10/11 写成方向键、14/15 写成菜单键），转换出的模型把图装到错的按钮名下。
+       ⑤ 预置模型没有 `Select`/`Start`/两个摇杆键的图。
+     - 决策（ADR-0070）：`KeyPress` 改为携带带标签的 `KeyIdentity`
+       （`Keyboard(hid_usage)` | `Gamepad(GamepadButton)`）；图片名等于变体名；预置模型按产品名
+       重命名（目录归属不变）；导入归一化把旧主干改写为产品名并对只改大小写的条目走两步改名；
+       **手柄词表不提供运行时旧名候选**（旧词表里 `LeftTrigger` 已是肩键名，别名表会让其中一个
+       按钮解析成另一个的图）；一个包按目录整体判定为旧或新词表，判定读真实条目名而不探测路径
+       （大小写不敏感的文件系统上探测会误判）；Mver 序号表按真实 XInput 顺序重写；手绑定由模型
+       目录得出；缺图按钮惰性，摇杆键保留自己的参数；两个来源门禁各自带走自己的按键层。
+     - 自动化证据（2026-09-26，本机 Windows / x86_64）：`cargo fmt --all -- --check`、
+       三组 clippy（workspace `--all-targets --all-features --exclude bongocat-app` 与
+       `bongocat-app` 的 `storage-test-injection`/`production`）、`cargo test --locked --workspace`、
+       `cargo check --locked --workspace --release`、`spikes/model-package`、
+       `python tools/validate-fixtures.py`、`python tools/validate-json-schema.py`、
+       `tools/tests/test_packaging_contract.py` 全部通过。新增/调整的契约测试：
+       `bongocat-input` 16 按钮词表不变量、`bongocat-render` 身份不可混同、
+       `bongocat-live2d-render` 预置 gamepad 模型逐按钮解析与无图按钮不解析、
+       `bongocat-runtime` 手柄按键同时产生爪子与按键层/未绑定按钮惰性/摇杆参数独立/来源门禁、
+       `bongocat-app` 手绑定由模型目录得出（端到端断言见下）、`bongocat-model-store` 旧主干归一化
+       （含两个扳机/肩键
+       图不互换、已用产品名的包不被改写、只改大小写的条目真改名、XInput 序号表逐条断言）、
+       共享 fixture 逐 checkpoint 断言 `activeKeyOverlays`。端到端断言是
+       `bongocat-app::gamepad_button_presses_reach_the_render_frame_as_key_overlays`：在真实激活的
+       预置模型上按下面板键、肩键、扳机和方向键，逐个断言 runtime 快照的按键层、爪子方向，以及
+       renderer 收到的帧确实从模型自己的文件解析出该按键图。变异验证：手绑定改成永远 `None` 与
+       `key_image_name` 的 `LeftTrigger` 改成 `LeftTrigger2`，各自让上述六层测试全部变红。
+       Mver 转换侧另有 `every_xinput_button_converts_to_its_own_product_named_image` 与
+       `a_converted_gamepad_image_carries_its_own_buttons_artwork`：16 个 XInput 按钮各产出一个产品名
+       文件、目录按手列表、合成图是该按钮自己的颜色、共享图集偏移正确；把序号表改回旧错位或把
+       `9` 从 `Start` 改成 `Select` 都会让 `bongocat-model-store` 与 `bongocat-app` 的导入测试变红。
+     - 未运行：Windows 10 1903+ 与 macOS 12+ 实机手柄。Windows WGI 焦点矩阵、双平台物理设备/
+       profile/热插拔/生命周期矩阵与长时间压力仍是 ADR-0066 的完成门禁，本次修复不提供任何实机
+       证据，也不因此宣称双平台手柄完成。
 
 ## 13. 待决策清单
 

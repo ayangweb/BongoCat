@@ -10,7 +10,7 @@ use bongocat_input::{
 };
 #[cfg(test)]
 use bongocat_input::{GamepadButtonKey, PhysicalKey};
-use bongocat_render::{KeyPress, KeyPressSet, KeySide};
+use bongocat_render::{KeyIdentity, KeyPress, KeyPressSet, KeySide};
 
 const DEFAULT_MISSING_CONFIRMATIONS: u8 = 2;
 
@@ -262,44 +262,55 @@ impl InputState {
         let mut latest_left_key: Option<(MonotonicMillis, KeyPress)> = None;
         let mut latest_right_key: Option<(MonotonicMillis, KeyPress)> = None;
         for control in self.pressed.keys() {
-            match control {
-                InputControl::Key(key) if !filter.ignore_keyboard => {
-                    match bindings.hand_for(*key) {
-                        Some(HandSide::Left) => {
-                            snapshot.left_hand_down = true;
-                            let press = KeyPress {
-                                hid_usage: key.hid_usage(),
-                                side: KeySide::Left,
-                            };
-                            let record = self.pressed.get(control).expect("pressed key record");
-                            if latest_left_key.is_none_or(|(at, _)| record.pressed_at >= at) {
-                                latest_left_key = Some((record.pressed_at, press));
-                            }
-                        }
-                        Some(HandSide::Right) => {
-                            snapshot.right_hand_down = true;
-                            let press = KeyPress {
-                                hid_usage: key.hid_usage(),
-                                side: KeySide::Right,
-                            };
-                            let record = self.pressed.get(control).expect("pressed key record");
-                            if latest_right_key.is_none_or(|(at, _)| record.pressed_at >= at) {
-                                latest_right_key = Some((record.pressed_at, press));
-                            }
-                        }
-                        None => {}
+            let (hand, key) = match control {
+                InputControl::Key(key) if !filter.ignore_keyboard => (
+                    bindings.hand_for(*key),
+                    KeyIdentity::Keyboard(key.hid_usage()),
+                ),
+                // The stick buttons keep their own parameters: `StickLeftDown` /
+                // `StickRightDown` drive the stick artwork of the model and are
+                // not the same thing as a paw. A model that also ships a
+                // `LeftStick.png` overlay still gets it, because the press is
+                // projected exactly like every other button.
+                InputControl::Gamepad(button) if !filter.ignore_gamepad => {
+                    if matches!(button.button, GamepadButton::LeftStick) {
+                        snapshot.stick_left_down = true;
+                    } else if matches!(button.button, GamepadButton::RightStick) {
+                        snapshot.stick_right_down = true;
                     }
+                    (
+                        bindings.hand_for_gamepad(button.button),
+                        KeyIdentity::Gamepad(button.button),
+                    )
                 }
-                InputControl::Gamepad(button) if !filter.ignore_gamepad => match button.button {
-                    GamepadButton::LeftStick => snapshot.stick_left_down = true,
-                    GamepadButton::RightStick => snapshot.stick_right_down = true,
-                    button => match bindings.hand_for_gamepad(button) {
-                        Some(HandSide::Left) => snapshot.left_hand_down = true,
-                        Some(HandSide::Right) => snapshot.right_hand_down = true,
-                        None => {}
-                    },
-                },
-                InputControl::Key(_) | InputControl::Gamepad(_) | InputControl::Mouse(_) => {}
+                InputControl::Key(_) | InputControl::Gamepad(_) | InputControl::Mouse(_) => {
+                    continue;
+                }
+            };
+            let Some(hand) = hand else {
+                // No hand assignment means the model ships no artwork that draws
+                // this control, so the press is dropped before it can reach the
+                // renderer: a paw pressing down for an image that can never
+                // appear is feedback for something the user cannot see
+                // (ADR-0042). `bongocat-app::input_bindings_for_model` owns that
+                // decision, and it asks the same `can_draw` the renderer draws
+                // with.
+                continue;
+            };
+            let (side, latest) = match hand {
+                HandSide::Left => {
+                    snapshot.left_hand_down = true;
+                    (KeySide::Left, &mut latest_left_key)
+                }
+                HandSide::Right => {
+                    snapshot.right_hand_down = true;
+                    (KeySide::Right, &mut latest_right_key)
+                }
+            };
+            let record = self.pressed.get(control).expect("pressed control record");
+            let press = KeyPress { key, side };
+            if latest.is_none_or(|(at, _)| record.pressed_at >= at) {
+                *latest = Some((record.pressed_at, press));
             }
         }
         if let Some((_, press)) = latest_left_key {
@@ -730,14 +741,11 @@ mod tests {
             ModelInputSnapshot {
                 key_presses: {
                     let mut presses = KeyPressSet::default();
-                    presses.push(KeyPress {
-                        hid_usage: PhysicalKey::KEY_A.hid_usage(),
-                        side: KeySide::Left,
-                    });
-                    presses.push(KeyPress {
-                        hid_usage: right.hid_usage(),
-                        side: KeySide::Right,
-                    });
+                    presses.push(KeyPress::keyboard(
+                        PhysicalKey::KEY_A.hid_usage(),
+                        KeySide::Left,
+                    ));
+                    presses.push(KeyPress::keyboard(right.hid_usage(), KeySide::Right));
                     presses
                 },
                 left_hand_down: true,
@@ -789,7 +797,15 @@ mod tests {
         );
         assert!(!keyboard_ignored.left_hand_down);
         assert!(keyboard_ignored.right_hand_down);
-        assert_eq!(keyboard_ignored.key_presses.iter().count(), 0);
+        assert_eq!(
+            keyboard_ignored
+                .key_presses
+                .iter()
+                .map(|press| (press.key, press.side))
+                .collect::<Vec<_>>(),
+            vec![(KeyIdentity::Gamepad(GamepadButton::South), KeySide::Right)],
+            "the surviving source's own overlay, and only that one"
+        );
 
         let gamepad_ignored = state.model_snapshot_with_filter(
             &bindings,
@@ -801,7 +817,18 @@ mod tests {
         );
         assert!(gamepad_ignored.left_hand_down);
         assert!(!gamepad_ignored.right_hand_down);
-        assert_eq!(gamepad_ignored.key_presses.iter().count(), 1);
+        assert_eq!(
+            gamepad_ignored
+                .key_presses
+                .iter()
+                .map(|press| (press.key, press.side))
+                .collect::<Vec<_>>(),
+            vec![(
+                KeyIdentity::Keyboard(PhysicalKey::KEY_A.hid_usage()),
+                KeySide::Left
+            )],
+            "the ignored source contributes no overlay of its own"
+        );
 
         let all_ignored = state.model_snapshot_with_filter(
             &bindings,
@@ -844,10 +871,10 @@ mod tests {
             ModelInputSnapshot {
                 key_presses: {
                     let mut presses = KeyPressSet::default();
-                    presses.push(KeyPress {
-                        hid_usage: PhysicalKey::GLOBE.hid_usage(),
-                        side: KeySide::Left,
-                    });
+                    presses.push(KeyPress::keyboard(
+                        PhysicalKey::GLOBE.hid_usage(),
+                        KeySide::Left,
+                    ));
                     presses
                 },
                 left_hand_down: true,
@@ -970,8 +997,13 @@ mod tests {
         assert_eq!(state.snapshot().pressed_gamepad_button_count, 1);
     }
 
+    /// A bound gamepad button projects both halves of the reaction the keyboard
+    /// path already had: the paw and the button's own overlay. The overlay is
+    /// the half that was missing — a gamepad press used to reach the renderer as
+    /// a bare HID usage, which no gamepad button can be, so the model moved a paw
+    /// for every button and showed the pressed button for none of them.
     #[test]
-    fn configured_gamepad_buttons_project_to_the_bound_hand() {
+    fn configured_gamepad_buttons_project_to_the_bound_hand_and_its_overlay() {
         let connection = GamepadConnection {
             device_id: 4,
             generation: 2,
@@ -991,6 +1023,14 @@ mod tests {
                 (GamepadButton::East, HandSide::Right),
             ]),
         );
+        let overlays = |state: &InputState| {
+            state
+                .model_snapshot(&bindings, NormalizedCursorPosition::default())
+                .key_presses
+                .iter()
+                .map(|press| (press.key, press.side))
+                .collect::<Vec<_>>()
+        };
         let mut state = InputState::default();
         state.apply(SequencedInputEvent {
             sequence: 0,
@@ -1003,6 +1043,11 @@ mod tests {
         assert_eq!(
             state.model_snapshot(&bindings, NormalizedCursorPosition::default()),
             ModelInputSnapshot {
+                key_presses: {
+                    let mut presses = KeyPressSet::default();
+                    presses.push(KeyPress::gamepad(GamepadButton::South, KeySide::Left));
+                    presses
+                },
                 left_hand_down: true,
                 ..ModelInputSnapshot::default()
             }
@@ -1013,10 +1058,77 @@ mod tests {
                 .model_snapshot(&bindings, NormalizedCursorPosition::default())
                 .right_hand_down
         );
+        assert_eq!(
+            overlays(&state),
+            vec![
+                (KeyIdentity::Gamepad(GamepadButton::South), KeySide::Left),
+                (KeyIdentity::Gamepad(GamepadButton::East), KeySide::Right),
+            ],
+            "one overlay per hand, each the button that hand last saw pressed"
+        );
         state.apply(edge(3, 3, south, InputEdge::Up));
         let after_release = state.model_snapshot(&bindings, NormalizedCursorPosition::default());
         assert!(!after_release.left_hand_down);
         assert!(after_release.right_hand_down);
+        assert_eq!(
+            overlays(&state),
+            vec![(KeyIdentity::Gamepad(GamepadButton::East), KeySide::Right)],
+            "releasing one button leaves the other hand's overlay alone"
+        );
+    }
+
+    /// A gamepad button the model has no artwork for must be inert, exactly like
+    /// an unbound key (ADR-0042), and the two stick buttons must keep their own
+    /// parameters whether or not they are bound.
+    #[test]
+    fn an_unbound_gamepad_button_is_inert_and_the_sticks_keep_their_parameters() {
+        let connection = GamepadConnection {
+            device_id: 5,
+            generation: 1,
+        };
+        let control = |button| InputControl::Gamepad(GamepadButtonKey { connection, button });
+        let bindings = InputBindings::with_gamepad_hands(
+            BTreeMap::new(),
+            BTreeMap::from([(GamepadButton::Start, HandSide::Right)]),
+        );
+        let mut state = InputState::default();
+        state.apply(SequencedInputEvent {
+            sequence: 0,
+            event: InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            },
+        });
+        state.apply(edge(1, 1, control(GamepadButton::Select), InputEdge::Down));
+        let unbound = state.model_snapshot(&bindings, NormalizedCursorPosition::default());
+        assert!(!unbound.left_hand_down);
+        assert!(!unbound.right_hand_down);
+        assert_eq!(unbound.key_presses.iter().count(), 0);
+
+        state.apply(edge(
+            2,
+            2,
+            control(GamepadButton::LeftStick),
+            InputEdge::Down,
+        ));
+        let stick = state.model_snapshot(&bindings, NormalizedCursorPosition::default());
+        assert!(
+            stick.stick_left_down,
+            "a stick press drives the stick artwork, not a paw"
+        );
+        assert_eq!(stick.key_presses.iter().count(), 0);
+
+        state.apply(edge(3, 3, control(GamepadButton::Start), InputEdge::Down));
+        let bound = state.model_snapshot(&bindings, NormalizedCursorPosition::default());
+        assert!(bound.right_hand_down);
+        assert_eq!(
+            bound
+                .key_presses
+                .iter()
+                .map(|press| (press.key, press.side))
+                .collect::<Vec<_>>(),
+            vec![(KeyIdentity::Gamepad(GamepadButton::Start), KeySide::Right)]
+        );
     }
 
     #[test]

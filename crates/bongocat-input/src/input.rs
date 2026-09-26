@@ -100,6 +100,46 @@ impl GamepadButton {
         Self::DpadLeft,
         Self::DpadRight,
     ];
+
+    /// The key-image name this button is drawn with: the file stem of
+    /// `resources/left-keys/<name>.png` or `resources/right-keys/<name>.png`.
+    ///
+    /// The name **is** the variant name, on purpose. A backend that names its
+    /// own controls cannot leak into a model package, and the type and the
+    /// artwork vocabulary cannot drift apart: renaming a variant breaks every
+    /// model that ships the old stem, and adding a variant has no name to draw
+    /// with until it is given one here.
+    ///
+    /// These are the product's names, not a backend's. The pre-rewrite Tauri
+    /// input layer derived model image names from `format!("{:?}", Button)` of
+    /// the third-party gamepad library, and the bundled `gamepad` model still
+    /// carried those spellings, which made the shoulder buttons `LeftTrigger`
+    /// and `RightTrigger` and the analog triggers `LeftTrigger2` and
+    /// `RightTrigger2` — a button and a different button sharing one stem's
+    /// meaning. Nothing in the current architecture needs a backend name:
+    /// `bongocat-platform` maps every backend control onto this enum, and the
+    /// model store rewrites a package's legacy stems on import
+    /// (`bongocat-model-store::key_names`).
+    pub const fn key_image_name(self) -> &'static str {
+        match self {
+            Self::South => "South",
+            Self::East => "East",
+            Self::West => "West",
+            Self::North => "North",
+            Self::LeftShoulder => "LeftShoulder",
+            Self::RightShoulder => "RightShoulder",
+            Self::LeftTrigger => "LeftTrigger",
+            Self::RightTrigger => "RightTrigger",
+            Self::Select => "Select",
+            Self::Start => "Start",
+            Self::LeftStick => "LeftStick",
+            Self::RightStick => "RightStick",
+            Self::DpadUp => "DpadUp",
+            Self::DpadDown => "DpadDown",
+            Self::DpadLeft => "DpadLeft",
+            Self::DpadRight => "DpadRight",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -406,6 +446,69 @@ impl InputTransportCounters {
             queue_full: self.queue_full.load(Ordering::Relaxed),
             recovered_after_overflow: self.recovered_after_overflow.load(Ordering::Relaxed),
             runtime_stopped: self.runtime_stopped.load(Ordering::Relaxed),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    /// The key-image vocabulary is a contract with model authors, so it has to
+    /// satisfy the same rules the keyboard table does: every button named
+    /// exactly once, no name carrying two meanings, and the name spelled the
+    /// same way as the variant it belongs to.
+    #[test]
+    fn every_gamepad_button_has_exactly_one_canonical_image_name() {
+        let mut names = BTreeSet::new();
+        for button in GamepadButton::ALL {
+            let name = button.key_image_name();
+            assert_eq!(
+                name,
+                format!("{button:?}"),
+                "the image stem must be the variant name"
+            );
+            assert!(
+                names.insert(name),
+                "{name} is claimed by more than one button"
+            );
+            assert!(
+                name.bytes().all(|byte| byte.is_ascii_alphanumeric()),
+                "{name} is not a portable file stem"
+            );
+        }
+        assert_eq!(names.len(), GamepadButton::ALL.len());
+    }
+
+    /// `GamepadButton::ALL` is what the model store's vocabulary table, the
+    /// binding table and the renderer's candidate list are all written against,
+    /// so a button that is missing from it is a button the product cannot draw.
+    #[test]
+    fn all_is_exhaustive_against_the_public_vocabulary() {
+        assert_eq!(GamepadButton::ALL.len(), 16);
+        for button in [
+            GamepadButton::South,
+            GamepadButton::East,
+            GamepadButton::West,
+            GamepadButton::North,
+            GamepadButton::LeftShoulder,
+            GamepadButton::RightShoulder,
+            GamepadButton::LeftTrigger,
+            GamepadButton::RightTrigger,
+            GamepadButton::Select,
+            GamepadButton::Start,
+            GamepadButton::LeftStick,
+            GamepadButton::RightStick,
+            GamepadButton::DpadUp,
+            GamepadButton::DpadDown,
+            GamepadButton::DpadLeft,
+            GamepadButton::DpadRight,
+        ] {
+            assert!(
+                GamepadButton::ALL.contains(&button),
+                "{button:?} is missing from GamepadButton::ALL"
+            );
         }
     }
 }

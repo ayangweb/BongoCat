@@ -912,6 +912,7 @@ name = "bongocat-model-store"
 version = "2.0.0"
 dependencies = [
  "bongocat-model",
+ "bongocat-render",
  "bongocat-storage",
  "image",
  "oxipng",

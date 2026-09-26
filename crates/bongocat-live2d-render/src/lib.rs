@@ -8,8 +8,8 @@
 
 use bongocat_model::CommittedModel;
 use bongocat_render::{
-    BackgroundAsset, KeyAsset, KeyAssetId, KeyOverlay, KeyPressSet, KeySide, RenderResources,
-    TextureAsset, TextureId,
+    BackgroundAsset, GamepadButton, KeyAsset, KeyAssetId, KeyIdentity, KeyOverlay, KeyPressSet,
+    KeySide, RenderResources, TextureAsset, TextureId,
 };
 use image::ImageReader;
 use std::{
@@ -66,7 +66,7 @@ pub fn resolve_key_overlays(resources: &RenderResources, presses: KeyPressSet) -
         // the slot before resolving so an unavailable current key never
         // reuses an older overlay from that side.
         selected[side_index] = None;
-        let candidates = key_name_candidates(press.hid_usage);
+        let candidates = key_image_name_candidates(press.key);
         let Some(asset) = candidates.iter().find_map(|candidate| {
             resources
                 .key_assets
@@ -129,7 +129,16 @@ impl KeyImageInventory {
     /// lookup `resolve_key_overlays` performs, so "can draw" and "draws" cannot
     /// disagree.
     pub fn can_draw(&self, side: KeySide, hid_usage: u16) -> bool {
-        key_name_candidates(hid_usage)
+        self.can_draw_key(side, KeyIdentity::Keyboard(hid_usage))
+    }
+
+    /// Whether the model can draw `key` on `side`, for either input family.
+    ///
+    /// This is the single answer the binding table and the renderer share, so a
+    /// control that is bound here is exactly a control that draws, and a control
+    /// the model has no artwork for is inert end to end.
+    pub fn can_draw_key(&self, side: KeySide, key: KeyIdentity) -> bool {
+        key_image_name_candidates(key)
             .iter()
             .any(|name| self.provides(side, name))
     }
@@ -262,6 +271,38 @@ pub fn load_key_assets(root: &Path) -> Result<Vec<KeyAsset>, RenderResourceError
 /// keypad is the left hand's cluster for the same reason — `left-keys` is the
 /// directory the shared digit, Enter and Slash artwork lives in, and the runtime
 /// resolves an overlay against the pressed side only.
+/// Return the ordered artwork names that can satisfy a press of `key`, for
+/// either input family.
+///
+/// The two families are named from two different sources and are deliberately
+/// kept apart: a keyboard key is named from its HID usage by
+/// [`key_name_candidates`], and a gamepad button is named by
+/// [`GamepadButton::key_image_name`]. A gamepad button is a single name with no
+/// fallbacks, because it has no counterpart to fall back to and no family image
+/// a model could plausibly share: showing the D-pad's artwork for a button the
+/// model drew separately is worse than drawing nothing.
+pub fn key_image_name_candidates(key: KeyIdentity) -> Vec<&'static str> {
+    match key {
+        KeyIdentity::Keyboard(hid_usage) => key_name_candidates(hid_usage),
+        KeyIdentity::Gamepad(button) => gamepad_key_name_candidates(button),
+    }
+}
+
+/// The artwork names that can satisfy a press of `button`.
+///
+/// The legacy `gilrs`-derived spellings the pre-rewrite input layer produced
+/// (`DPadUp`, `LeftTrigger2`, `LeftThumb`, and a `LeftTrigger` that meant the
+/// shoulder button) are **not** candidates. They cannot be: the shoulder and
+/// the analog trigger are two different buttons, and under the legacy spelling
+/// the shoulder already owned the stem `LeftTrigger`. An alias list would
+/// therefore resolve one of the two buttons to the other's artwork. The model
+/// store rewrites those stems on import instead
+/// (`bongocat-model-store::key_names`), which is the only place a package's own
+/// files may be changed.
+pub fn gamepad_key_name_candidates(button: GamepadButton) -> Vec<&'static str> {
+    vec![button.key_image_name()]
+}
+
 /// Return the ordered artwork names that can satisfy a HID key press.
 pub fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
     let function_key = bongocat_render::function_key_name(hid_usage);
@@ -500,14 +541,8 @@ mod tests {
             background: None,
         };
         let mut presses = KeyPressSet::default();
-        presses.push(bongocat_render::KeyPress {
-            hid_usage: 0x04,
-            side: KeySide::Left,
-        });
-        presses.push(bongocat_render::KeyPress {
-            hid_usage: 0xe7,
-            side: KeySide::Right,
-        });
+        presses.push(bongocat_render::KeyPress::keyboard(0x04, KeySide::Left));
+        presses.push(bongocat_render::KeyPress::keyboard(0xe7, KeySide::Right));
         assert_eq!(
             resolve_key_overlays(&resources, presses),
             vec![
@@ -529,5 +564,71 @@ mod tests {
         let inventory = KeyImageInventory::read(&root);
         assert!(inventory.can_draw(KeySide::Left, 0x04));
         assert!(!inventory.can_draw(KeySide::Left, 0x2d));
+    }
+
+    /// Every button the bundled gamepad model ships is reachable from exactly
+    /// the button whose name its file stem spells, on the side the model keeps
+    /// it in. This is the end-to-end form of the reported bug: a press used to
+    /// reach the renderer as a bare HID usage, which no gamepad button can be, so
+    /// no button could ever produce an overlay.
+    #[test]
+    fn the_shipped_gamepad_model_draws_each_button_it_ships() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/models/gamepad");
+        let resources = RenderResources {
+            textures: Vec::new(),
+            key_assets: load_key_assets(&root).expect("gamepad key assets"),
+            background: None,
+        };
+        let inventory = KeyImageInventory::read(&root);
+        for (button, side) in [
+            (GamepadButton::DpadUp, KeySide::Left),
+            (GamepadButton::DpadDown, KeySide::Left),
+            (GamepadButton::DpadLeft, KeySide::Left),
+            (GamepadButton::DpadRight, KeySide::Left),
+            (GamepadButton::LeftShoulder, KeySide::Left),
+            (GamepadButton::LeftTrigger, KeySide::Left),
+            (GamepadButton::South, KeySide::Right),
+            (GamepadButton::East, KeySide::Right),
+            (GamepadButton::West, KeySide::Right),
+            (GamepadButton::North, KeySide::Right),
+            (GamepadButton::RightShoulder, KeySide::Right),
+            (GamepadButton::RightTrigger, KeySide::Right),
+        ] {
+            let key = KeyIdentity::Gamepad(button);
+            assert!(inventory.can_draw_key(side, key), "{button:?} can draw");
+            let mut presses = KeyPressSet::default();
+            presses.push(bongocat_render::KeyPress::gamepad(button, side));
+            let overlays = resolve_key_overlays(&resources, presses);
+            assert_eq!(overlays.len(), 1, "{button:?} resolves to one overlay");
+            let asset = &resources.key_assets[overlays[0].asset_id.index()];
+            assert_eq!(asset.name, button.key_image_name(), "{button:?}");
+            assert_eq!(asset.side, side, "{button:?}");
+        }
+    }
+
+    /// The model ships no `Select.png`, `Start.png` or stick artwork, and a
+    /// button with no image must be inert rather than borrowing another button's
+    /// (ADR-0042). The legacy `gilrs` spellings are not candidates either, so a
+    /// package still carrying them resolves nothing at all for those buttons.
+    #[test]
+    fn a_gamepad_button_with_no_artwork_draws_nothing() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/models/gamepad");
+        let resources = RenderResources {
+            textures: Vec::new(),
+            key_assets: load_key_assets(&root).expect("gamepad key assets"),
+            background: None,
+        };
+        for button in [
+            GamepadButton::Select,
+            GamepadButton::Start,
+            GamepadButton::LeftStick,
+            GamepadButton::RightStick,
+        ] {
+            for side in [KeySide::Left, KeySide::Right] {
+                let mut presses = KeyPressSet::default();
+                presses.push(bongocat_render::KeyPress::gamepad(button, side));
+                assert!(resolve_key_overlays(&resources, presses).is_empty());
+            }
+        }
     }
 }

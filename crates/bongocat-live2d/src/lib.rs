@@ -867,10 +867,7 @@ mod tests {
         };
 
         let mut presses = KeyPressSet::default();
-        presses.push(KeyPress {
-            hid_usage: 0x04,
-            side: KeySide::Left,
-        });
+        presses.push(KeyPress::keyboard(0x04, KeySide::Left));
         assert_eq!(
             resolve_key_overlays(&resources, presses)
                 .into_iter()
@@ -880,10 +877,7 @@ mod tests {
         );
 
         let mut presses = KeyPressSet::default();
-        presses.push(KeyPress {
-            hid_usage: 0x3a,
-            side: KeySide::Left,
-        });
+        presses.push(KeyPress::keyboard(0x3a, KeySide::Left));
         assert_eq!(
             resolve_key_overlays(&resources, presses)[0]
                 .asset_id
@@ -892,10 +886,7 @@ mod tests {
         );
 
         let mut presses = KeyPressSet::default();
-        presses.push(KeyPress {
-            hid_usage: 0xe1,
-            side: KeySide::Left,
-        });
+        presses.push(KeyPress::keyboard(0xe1, KeySide::Left));
         assert_eq!(
             resolve_key_overlays(&resources, presses)[0]
                 .asset_id
@@ -904,10 +895,7 @@ mod tests {
         );
 
         let mut presses = KeyPressSet::default();
-        presses.push(KeyPress {
-            hid_usage: 0x52,
-            side: KeySide::Left,
-        });
+        presses.push(KeyPress::keyboard(0x52, KeySide::Left));
         assert!(resolve_key_overlays(&resources, presses).is_empty());
     }
 
@@ -962,10 +950,7 @@ mod tests {
         };
         let resolve = |name: &str, hid_usage: u16| {
             let mut presses = KeyPressSet::default();
-            presses.push(KeyPress {
-                hid_usage,
-                side: KeySide::Left,
-            });
+            presses.push(KeyPress::keyboard(hid_usage, KeySide::Left));
             resolve_key_overlays(&resources(name), presses)
                 .first()
                 .map(|overlay| overlay.asset_id.index())
@@ -1033,10 +1018,7 @@ mod tests {
         };
         let resolve = |resources: &RenderResources, hid_usage: u16| {
             let mut presses = KeyPressSet::default();
-            presses.push(KeyPress {
-                hid_usage,
-                side: KeySide::Left,
-            });
+            presses.push(KeyPress::keyboard(hid_usage, KeySide::Left));
             resolve_key_overlays(resources, presses)
                 .first()
                 .map(|overlay| overlay.asset_id.index())
@@ -1135,10 +1117,7 @@ mod tests {
         };
         let resolve = |model: &RenderResources, hid_usage: u16| {
             let mut presses = KeyPressSet::default();
-            presses.push(KeyPress {
-                hid_usage,
-                side: KeySide::Left,
-            });
+            presses.push(KeyPress::keyboard(hid_usage, KeySide::Left));
             resolve_key_overlays(model, presses)
                 .first()
                 .map(|overlay| model.key_assets[overlay.asset_id.index()].name.clone())
@@ -1204,10 +1183,7 @@ mod tests {
         };
         let resolve = |model: &RenderResources, hid_usage: u16| {
             let mut presses = KeyPressSet::default();
-            presses.push(KeyPress {
-                hid_usage,
-                side: KeySide::Left,
-            });
+            presses.push(KeyPress::keyboard(hid_usage, KeySide::Left));
             resolve_key_overlays(model, presses)
                 .first()
                 .map(|overlay| model.key_assets[overlay.asset_id.index()].name.clone())
@@ -1268,10 +1244,7 @@ mod tests {
 
             let resolve = |hid_usage: u16| {
                 let mut presses = KeyPressSet::default();
-                presses.push(KeyPress {
-                    hid_usage,
-                    side: KeySide::Left,
-                });
+                presses.push(KeyPress::keyboard(hid_usage, KeySide::Left));
                 let overlays = resolve_key_overlays(&resources, presses);
                 let asset = &resources.key_assets[overlays[0].asset_id.index()];
                 (asset.name.clone(), asset.path.clone())
@@ -1351,10 +1324,7 @@ mod tests {
 
             let resolve = |hid_usage: u16| {
                 let mut presses = KeyPressSet::default();
-                presses.push(KeyPress {
-                    hid_usage,
-                    side: KeySide::Left,
-                });
+                presses.push(KeyPress::keyboard(hid_usage, KeySide::Left));
                 resolve_key_overlays(&resources, presses)
                     .first()
                     .map(|overlay| resources.key_assets[overlay.asset_id.index()].name.clone())
@@ -1534,10 +1504,7 @@ mod tests {
         };
         let resolve = |model: &RenderResources, hid_usage: u16| {
             let mut presses = KeyPressSet::default();
-            presses.push(KeyPress {
-                hid_usage,
-                side: KeySide::Left,
-            });
+            presses.push(KeyPress::keyboard(hid_usage, KeySide::Left));
             resolve_key_overlays(model, presses)
                 .first()
                 .map(|overlay| model.key_assets[overlay.asset_id.index()].name.clone())
@@ -1784,10 +1751,7 @@ mod tests {
 
             let resolve = |hid_usage: u16| {
                 let mut presses = KeyPressSet::default();
-                presses.push(KeyPress {
-                    hid_usage,
-                    side: KeySide::Left,
-                });
+                presses.push(KeyPress::keyboard(hid_usage, KeySide::Left));
                 let overlays = resolve_key_overlays(&resources, presses);
                 let asset = &resources.key_assets[overlays[0].asset_id.index()];
                 (asset.name.clone(), asset.path.clone())
@@ -1834,10 +1798,7 @@ mod tests {
             );
             for hid_usage in (0x3a..=0x45u16).chain(0x68..=0x73) {
                 let mut presses = KeyPressSet::default();
-                presses.push(KeyPress {
-                    hid_usage,
-                    side: KeySide::Left,
-                });
+                presses.push(KeyPress::keyboard(hid_usage, KeySide::Left));
                 let overlays = resolve_key_overlays(&resources, presses);
                 let asset = &resources.key_assets[overlays[0].asset_id.index()];
                 assert_eq!(asset.name, "Fn", "{id} 0x{hid_usage:02x}");
@@ -1879,10 +1840,7 @@ mod tests {
         };
         let resolve = |hid_usage: u16| {
             let mut presses = KeyPressSet::default();
-            presses.push(KeyPress {
-                hid_usage,
-                side: KeySide::Left,
-            });
+            presses.push(KeyPress::keyboard(hid_usage, KeySide::Left));
             let overlays = resolve_key_overlays(&resources, presses);
             resources.key_assets[overlays[0].asset_id.index()]
                 .path

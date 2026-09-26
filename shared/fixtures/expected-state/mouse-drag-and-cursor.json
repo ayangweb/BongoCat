@@ -15,6 +15,7 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
+        "activeKeyOverlays": [],
         "parameters": { "ParamMouseLeftDown": 1.0 },
         "activeMotion": null,
         "activeExpression": null
@@ -32,6 +33,7 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
+        "activeKeyOverlays": [],
         "parameters": { "ParamMouseLeftDown": 0.0 },
         "activeMotion": null,
         "activeExpression": null

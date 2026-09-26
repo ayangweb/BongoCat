@@ -107,23 +107,40 @@ impl ModelStoreInputMode {
     }
 }
 
+/// Key-image stems that identify an ordinary package as a gamepad model.
+///
+/// Both vocabularies are accepted. The canonical half is
+/// `GamepadButton::key_image_name`, and a package that still carries the
+/// third-party stems the old Tauri input layer produced keeps being recognized:
+/// the import normalizer rewrites those stems on the way in
+/// (`crate::key_names`), but a directory copied into the store by hand bypasses
+/// it, and classifying it as a keyboard model would be a worse answer than
+/// recognizing the family while leaving its unreachable artwork alone.
 const GAMEPAD_MODE_KEY_IMAGES: &[&str] = &[
     "South",
     "East",
     "West",
     "North",
+    "Select",
+    "Start",
+    "LeftStick",
+    "RightStick",
+    "LeftShoulder",
+    "RightShoulder",
     "LeftTrigger",
     "RightTrigger",
-    "LeftTrigger2",
-    "RightTrigger2",
-    "LeftThumb",
-    "RightThumb",
-    "DPadLeft",
-    "DPadRight",
+    "DpadUp",
+    "DpadDown",
+    "DpadLeft",
+    "DpadRight",
     "DPadUp",
     "DPadDown",
-    "Start",
-    "Select",
+    "DPadLeft",
+    "DPadRight",
+    "LeftThumb",
+    "RightThumb",
+    "LeftTrigger2",
+    "RightTrigger2",
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -2391,7 +2408,9 @@ mod tests {
     fn left_key_name(mode: MverInputMode) -> &'static str {
         match mode {
             MverInputMode::Standard | MverInputMode::Keyboard => "KeyA",
-            MverInputMode::Gamepad => "DPadLeft",
+            // The first left-hand gamepad binding of `fixture::all_modes` is
+            // XInput button 4, the left shoulder button.
+            MverInputMode::Gamepad => "LeftShoulder",
         }
     }
 

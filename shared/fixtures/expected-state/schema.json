@@ -63,6 +63,19 @@
             "selectedModelId": { "type": ["string", "null"] },
             "leftHandDown": { "type": "boolean" },
             "rightHandDown": { "type": "boolean" },
+            "activeKeyOverlays": {
+              "type": "array",
+              "description": "The key overlays the model is asked to draw at this checkpoint: one per hand, each the control that hand most recently saw pressed. A keyboard key is named by the fixture's `keySides` key; a gamepad button by its `Gamepad<Button>` form.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["key", "side"],
+                "properties": {
+                  "key": { "type": "string" },
+                  "side": { "enum": ["left", "right"] }
+                }
+              }
+            },
             "parameters": {
               "type": "object",
               "description": "Complete normalized parameter projection for every keyboard side, gamepad button, and mouse button mapped or touched by the input sequence.",

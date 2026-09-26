@@ -15,6 +15,7 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
+        "activeKeyOverlays": [],
         "parameters": { "CatParamLeftHandDown": 0.0 },
         "activeMotion": null,
         "activeExpression": null

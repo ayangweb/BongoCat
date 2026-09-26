@@ -4252,7 +4252,16 @@ mod tests {
         assert_eq!(keyboard_filtered.input.pressed_gamepad_button_count, 1);
         assert!(!keyboard_filtered.model_input.left_hand_down);
         assert!(keyboard_filtered.model_input.right_hand_down);
-        assert_eq!(keyboard_filtered.model_input.key_presses.iter().count(), 0);
+        assert_eq!(
+            keyboard_filtered
+                .model_input
+                .key_presses
+                .iter()
+                .map(|press| press.key)
+                .collect::<Vec<_>>(),
+            vec![bongocat_render::KeyIdentity::Gamepad(GamepadButton::South)],
+            "the ignored keyboard source takes its own overlay with it"
+        );
         assert!((keyboard_filtered.model_input.stick_left_x - 1.0).abs() < 0.0001);
 
         let gamepad_filter = client
@@ -4271,7 +4280,18 @@ mod tests {
         assert_eq!(gamepad_filtered.input.pressed_gamepad_button_count, 1);
         assert!(gamepad_filtered.model_input.left_hand_down);
         assert!(!gamepad_filtered.model_input.right_hand_down);
-        assert_eq!(gamepad_filtered.model_input.key_presses.iter().count(), 1);
+        assert_eq!(
+            gamepad_filtered
+                .model_input
+                .key_presses
+                .iter()
+                .map(|press| press.key)
+                .collect::<Vec<_>>(),
+            vec![bongocat_render::KeyIdentity::Keyboard(
+                PhysicalKey::KEY_A.hid_usage()
+            )],
+            "the ignored gamepad source takes its own overlay with it"
+        );
         assert_eq!(gamepad_filtered.model_input.stick_left_x, 0.0);
 
         let key_up = input

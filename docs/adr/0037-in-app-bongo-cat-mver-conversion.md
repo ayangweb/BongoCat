@@ -128,13 +128,20 @@ Zopfli 多 5% 换 15 倍时间，对一次交互式导入不划算，因此只�
 
 ### 7. 键位名必须落在产品自己的词汇表里
 
-转换输出的文件名是 `bongocat-live2d` 从 HID usage 解析出的名字（`KeyA`、`Return`、
-`BackQuote`、`ControlLeft`/`Control`……），不是第二套命名。两处刻意偏离参考实现的写法：
+转换输出的文件名是 `bongocat-live2d-render` 从 HID usage 解析出的名字（`KeyA`、`Return`、
+`BackQuote`、`ControlLeft`/`Control`……），不是第二套命名。一处刻意偏离参考实现的写法：
 
 * `0x08`：参考表写作 `BackSpace`，产品运行时与预置模型都写作 `Backspace`，采用产品写法。
-* `gamepad` 使用 XInput 序号 → 产品预置 gamepad 模型已经装载的名字
-  （`DPadDown`/`LeftTrigger`/`LeftTrigger2`/`South`/`RightTrigger`…）。转换结果与
-  `resources/models/gamepad/{left-keys,right-keys}` 的现有文件集合**逐个同名**。
+
+`gamepad` 使用 XInput 按钮序号映射到产品自己的十六个按钮名（`GamepadButton::key_image_name`），
+不是映射到任何 backend 的控制名。XInput 顺序是 0–3 面部键、4/5 肩键、6/7 模拟扳机、8/9 菜单键、
+10/11 摇杆键、12–15 方向键（上/下/左/右）。
+
+> **修订（ADR-0070）**：本节原先把 `gamepad` 的输出名定义为"预置 gamepad 模型已经装载的名字"，
+> 那套名字是旧 Tauri 输入层从第三方 backend 派生的（`DPad*`、`LeftTrigger` = 肩键、
+> `LeftTrigger2` = 模拟扳机、`LeftThumb`/`RightThumb` = 摇杆键），并且当时的序号表有六个条目按错
+> 位置。预置模型已按产品词表重命名，序号表已按真实按钮顺序重写，转换结果与
+> `resources/models/gamepad/{left-keys,right-keys}` 的文件集合**逐个同名**这一条仍然成立。
 
 无法命名的控制码（鼠标按键、产品没有 overlay 的键）不产出图片，也不报错：它本来就没有可显示的
 键位图，产出 `undefined.png` 之类的东西比不产出更糟。

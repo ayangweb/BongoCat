@@ -28,7 +28,9 @@ use bongocat_model_store::{
     ModelImportProgress, ModelImportStage, ModelSourceContent, ModelStore, ModelStoreError,
     ModelStoreInputMode, MverInputMode, PresetCoverStore, preset_cover_exists,
 };
-use bongocat_render::{FUNCTION_KEY_USAGES, KeySide, ModelCommitToken, RenderConsumer};
+use bongocat_render::{
+    FUNCTION_KEY_USAGES, KeyIdentity, KeySide, ModelCommitToken, RenderConsumer,
+};
 use bongocat_runtime::{
     ExpressionId, ExpressionIdError, ModelSettings, MotionId, MotionIdError, MotionPriority,
     OverlaySettings, RandomBehaviorSettings, RuntimeClient, RuntimeCommand, RuntimeCommandFailure,
@@ -2844,15 +2846,50 @@ fn input_bindings_for_model(
             bind_drawable_key(&mut key_hands, usage, HandSide::Right, key_images);
         }
     }
-    let gamepad_hands = if model_id == "gamepad" {
-        BTreeMap::from([
-            (GamepadButton::South, HandSide::Left),
-            (GamepadButton::East, HandSide::Right),
-        ])
-    } else {
-        BTreeMap::new()
-    };
-    InputBindings::with_gamepad_hands(key_hands, gamepad_hands)
+    InputBindings::with_gamepad_hands(key_hands, gamepad_hands_for_model(key_images))
+}
+
+/// The hand each gamepad button is drawn with, decided by the model's own
+/// artwork.
+///
+/// The hand is not a product constant. The pre-rewrite application derived it
+/// from the directory a pressed key's image lived in, and so does this: the
+/// image a model keeps in `left-keys` is drawn by its left paw, the one in
+/// `right-keys` by its right paw. That is the only rule that works for both the
+/// bundled `gamepad` model (D-pad, left shoulder and left trigger on the left;
+/// face buttons, right shoulder and right trigger on the right, which is the
+/// physical layout) and for a converted BongoCatMver model, whose `lefthand`
+/// and `righthand` lists decide the output directory of every overlay it
+/// installs.
+///
+/// A button the model ships no artwork for is left unbound and therefore inert,
+/// exactly like a keyboard key without its image (ADR-0042): the stick buttons
+/// of the bundled model have no `LeftStick.png` / `RightStick.png`, so pressing
+/// L3 or R3 moves the stick artwork and nothing else. The two sticks also keep
+/// their own `StickLeftDown` / `StickRightDown` parameters, which
+/// `InputState::model_snapshot_with_filter` sets independently of any hand.
+///
+/// A button whose artwork a model keeps in **both** directories is bound to the
+/// left hand, the same side the keyboard path binds the whole main block to. The
+/// product projects one hand per control, so a button cannot be resolved against
+/// both of its images at once; no shipped model does this.
+fn gamepad_hands_for_model(key_images: &KeyImageInventory) -> BTreeMap<GamepadButton, HandSide> {
+    let mut hands = BTreeMap::new();
+    for button in GamepadButton::ALL {
+        let drawable = [HandSide::Left, HandSide::Right].into_iter().find(|side| {
+            key_images.can_draw_key(
+                match side {
+                    HandSide::Left => KeySide::Left,
+                    HandSide::Right => KeySide::Right,
+                },
+                KeyIdentity::Gamepad(button),
+            )
+        });
+        if let Some(side) = drawable {
+            hands.insert(button, side);
+        }
+    }
+    hands
 }
 
 /// Bind one key to one hand, but only when the model ships an image that draws
@@ -2956,7 +2993,9 @@ mod tests {
             ),
             (
                 "gamepad",
-                r#"{"lefthand":[[10]],"righthand":[[0]],"keyboard":[[10],[0]]}"#,
+                // XInput button indices: 12 is D-pad up, 6 the left analog
+                // trigger, 0 the face button the chart calls A and 9 Start.
+                r#"{"lefthand":[[12],[6]],"righthand":[[0],[9]],"keyboard":[[12],[6],[0],[9]]}"#,
             ),
         ] {
             config.insert(
@@ -2978,12 +3017,21 @@ mod tests {
                 br#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[]}}"#,
             );
             write_fixture_file(root, &format!("{base}/cat_model/model.moc3"), b"moc");
-            write_fixture_file(root, &format!("{base}/keyboard/0.png"), LEGACY_KEY_CAP_PNG);
-            write_fixture_file(
-                root,
-                &format!("{base}/keyboard/1.png"),
+            // Four key caps, because the two split modes read one shared atlas
+            // whose right-hand half continues where the left-hand half stopped:
+            // two left-hand bindings plus two right-hand bindings need indices
+            // 0 … 3.
+            for (index, key_cap) in [
+                LEGACY_KEY_CAP_PNG,
                 LEGACY_SECOND_KEY_CAP_PNG,
-            );
+                LEGACY_SECOND_KEY_CAP_PNG,
+                LEGACY_KEY_CAP_PNG,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                write_fixture_file(root, &format!("{base}/keyboard/{index}.png"), key_cap);
+            }
             for hand in ["hand", "lefthand", "righthand"] {
                 write_fixture_file(root, &format!("{base}/{hand}/0.png"), LEGACY_PAW_PNG);
                 write_fixture_file(root, &format!("{base}/{hand}/1.png"), LEGACY_PAW_PNG);
@@ -3093,18 +3141,63 @@ mod tests {
                 .join("resources/right-keys/LeftArrow.png")
                 .is_file()
         );
-        assert!(
-            installed[2]
-                .root()
-                .join("resources/left-keys/DPadLeft.png")
-                .is_file()
+        // The converted gamepad model's key images must land on the product's own
+        // button names, because those are the only names the runtime's binding
+        // table and the renderer's key-image resolver know. This is the check
+        // that the bundled preset's rename and the Mver conversion agree: if the
+        // conversion emitted a parallel vocabulary, an imported gamepad model
+        // would install successfully and then show no key image for any button.
+        let gamepad_root = installed[2].root().to_path_buf();
+        let mut converted = std::collections::BTreeSet::new();
+        for directory in ["left-keys", "right-keys"] {
+            for entry in fs::read_dir(gamepad_root.join("resources").join(directory))
+                .expect("converted key directory")
+                .filter_map(Result::ok)
+            {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                converted.insert(name);
+            }
+        }
+        assert_eq!(
+            converted,
+            std::collections::BTreeSet::from([
+                "DpadUp.png".to_owned(),
+                "LeftTrigger.png".to_owned(),
+                "South.png".to_owned(),
+                "Start.png".to_owned(),
+            ]),
+            "the converted gamepad model must ship the product's button names"
         );
-        assert!(
-            installed[2]
-                .root()
-                .join("resources/right-keys/South.png")
-                .is_file()
+        for name in &converted {
+            let stem = name.trim_end_matches(".png");
+            assert!(
+                bongocat_input::GamepadButton::ALL
+                    .iter()
+                    .any(|button| button.key_image_name() == stem),
+                "{name} is not a gamepad button's image name"
+            );
+        }
+        // And every converted name is one the binding table can actually use, so
+        // the model is not just correctly named but correctly bound. The binding
+        // is read straight off the installed package's key images, which is
+        // exactly what model activation does.
+        let bindings = input_bindings_for_model(
+            ModelOrigin::Installed,
+            installed[2].id().as_str(),
+            &KeyImageInventory::read(&gamepad_root),
         );
+        for (button, expected) in [
+            (GamepadButton::DpadUp, HandSide::Left),
+            (GamepadButton::LeftTrigger, HandSide::Left),
+            (GamepadButton::South, HandSide::Right),
+            (GamepadButton::Start, HandSide::Right),
+        ] {
+            assert_eq!(
+                bindings.hand_for_gamepad(button),
+                Some(expected),
+                "{button:?} must bind to the hand its own directory chose"
+            );
+        }
         for model in &installed {
             assert!(model.root().join("resources/background.png").is_file());
             assert!(model.root().join("resources/cover.png").is_file());
@@ -3213,7 +3306,7 @@ mod tests {
         assert!(
             installed[1]
                 .root()
-                .join("resources/left-keys/DPadLeft.png")
+                .join("resources/left-keys/DpadUp.png")
                 .is_file()
         );
         assert_eq!(
@@ -3411,14 +3504,22 @@ mod tests {
         );
         assert_eq!(gamepad.hand_for(PhysicalKey::KEY_A), None);
         assert_eq!(gamepad.hand_for(PhysicalKey::from_hid_usage(0x4f)), None);
-        assert_eq!(
-            gamepad.hand_for_gamepad(GamepadButton::South),
-            Some(HandSide::Left)
-        );
-        assert_eq!(
-            gamepad.hand_for_gamepad(GamepadButton::East),
-            Some(HandSide::Right)
-        );
+        // The bundled gamepad model keeps the face buttons in `right-keys`, so
+        // they are the right hand's — the hand follows the model's artwork, not
+        // a hardcoded table (see `gamepad_hands_for_model`).
+        for button in [
+            GamepadButton::South,
+            GamepadButton::East,
+            GamepadButton::West,
+            GamepadButton::North,
+        ] {
+            assert_eq!(
+                gamepad.hand_for_gamepad(button),
+                Some(HandSide::Right),
+                "{button:?} is a right-keys image"
+            );
+        }
+        assert_eq!(gamepad.hand_for_gamepad(GamepadButton::Select), None);
     }
 
     /// `InputState::model_snapshot` drops any press without a hand assignment, so
@@ -3673,7 +3774,7 @@ mod tests {
                         .model_input
                         .key_presses
                         .iter()
-                        .any(|press| press.hid_usage == hid_usage),
+                        .any(|press| press.key == KeyIdentity::Keyboard(hid_usage)),
                     pressed && drawable,
                     "{reason} key overlay"
                 );
@@ -3682,6 +3783,223 @@ mod tests {
         application.shutdown().expect("clean shutdown");
     }
 
+    /// The whole reported bug, end to end and on the real product: a gamepad
+    /// button press on the model that is actually active has to end up as a
+    /// resolved key overlay in the frame the renderer consumes.
+    ///
+    /// Every earlier layer has its own test; this one is what would have caught
+    /// the original report. Before the fix the press produced a paw and no
+    /// overlay, for **every** button, because `KeyPress` could not express a
+    /// gamepad button at all. It also pins the two naming facts the fix rests
+    /// on: the bundled model's stems are the product's button names, and the
+    /// hand a button is drawn with comes from the directory it lives in.
+    #[test]
+    fn gamepad_button_presses_reach_the_render_frame_as_key_overlays() {
+        let base = tempdir().expect("temp directory");
+        let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+        let mut application = Application::start_with_layout_internal(
+            layout,
+            repository_preset_root().as_path(),
+            true,
+            Language::EnglishUnitedStates,
+        )
+        .expect("start rendering application");
+        let token = application
+            .prepare_model(ModelOrigin::Preset, "gamepad")
+            .expect("prepare gamepad model");
+        let consumer = application
+            .take_render_consumer()
+            .expect("take render consumer");
+        let frame = wait_for_model_commit_frame(&consumer, token);
+        consumer
+            .report_model_commit(ModelCommitFeedback {
+                token: frame.model_commit.expect("commit token"),
+                outcome: ModelCommitOutcome::Prepared,
+            })
+            .expect("commit gamepad model");
+        application
+            .runtime_client()
+            .wait_for_command(token.command_sequence, RUNTIME_TIMEOUT)
+            .expect("gamepad model activation");
+
+        let axis = application.gamepad_axis_producer();
+        let connection = axis.connect(0).expect("gamepad connection");
+        let input = application.input_producer();
+        input
+            .publish(InputEvent::GamepadConnected {
+                connection,
+                at: MonotonicMillis::new(0),
+            })
+            .expect("connection event");
+        let mut sequence = 1;
+        // Every button the bundled model ships artwork for, on the side its own
+        // directory puts it. The side is part of the contract, not a detail: a
+        // `South` press resolves against `right-keys`, because that is where
+        // `South.png` is, and the right paw is what draws it.
+        for (button, side, stem) in [
+            (
+                GamepadButton::South,
+                bongocat_render::KeySide::Right,
+                "South",
+            ),
+            (GamepadButton::East, bongocat_render::KeySide::Right, "East"),
+            (GamepadButton::West, bongocat_render::KeySide::Right, "West"),
+            (
+                GamepadButton::North,
+                bongocat_render::KeySide::Right,
+                "North",
+            ),
+            (
+                GamepadButton::RightShoulder,
+                bongocat_render::KeySide::Right,
+                "RightShoulder",
+            ),
+            (
+                GamepadButton::RightTrigger,
+                bongocat_render::KeySide::Right,
+                "RightTrigger",
+            ),
+            (
+                GamepadButton::DpadUp,
+                bongocat_render::KeySide::Left,
+                "DpadUp",
+            ),
+            (
+                GamepadButton::DpadDown,
+                bongocat_render::KeySide::Left,
+                "DpadDown",
+            ),
+            (
+                GamepadButton::DpadLeft,
+                bongocat_render::KeySide::Left,
+                "DpadLeft",
+            ),
+            (
+                GamepadButton::DpadRight,
+                bongocat_render::KeySide::Left,
+                "DpadRight",
+            ),
+            (
+                GamepadButton::LeftShoulder,
+                bongocat_render::KeySide::Left,
+                "LeftShoulder",
+            ),
+            (
+                GamepadButton::LeftTrigger,
+                bongocat_render::KeySide::Left,
+                "LeftTrigger",
+            ),
+        ] {
+            sequence += 1;
+            let published = input
+                .publish(InputEvent::Edge {
+                    control: InputControl::Gamepad(GamepadButtonKey { connection, button }),
+                    edge: InputEdge::Down,
+                    source: InputSource::Capture,
+                    at: MonotonicMillis::new(sequence),
+                })
+                .expect("button press");
+            let snapshot = application
+                .runtime_client()
+                .wait_for_input_sequence(published, RUNTIME_TIMEOUT)
+                .expect("button projection");
+            assert_eq!(
+                snapshot.model_input.key_presses.iter().count(),
+                1,
+                "{button:?} must produce exactly one overlay"
+            );
+            let press = snapshot
+                .model_input
+                .key_presses
+                .iter()
+                .next()
+                .unwrap_or_else(|| panic!("{button:?} never reached the model snapshot"));
+            assert_eq!(press.key, KeyIdentity::Gamepad(button));
+            assert_eq!(press.side, side, "{button:?} is a {side:?} image");
+            assert_eq!(
+                side == bongocat_render::KeySide::Left,
+                snapshot.model_input.left_hand_down,
+                "{button:?} left paw"
+            );
+            assert_eq!(
+                side == bongocat_render::KeySide::Right,
+                snapshot.model_input.right_hand_down,
+                "{button:?} right paw"
+            );
+
+            // And the frame the renderer is handed must actually draw it, from
+            // the model's own file. This is the step that was never reachable.
+            let frame =
+                wait_for_render_frame(&consumer, |snapshot| snapshot.active_keys.len() == 1);
+            let overlay = frame.snapshot.active_keys[0];
+            assert_eq!(overlay.side, side, "{button:?}");
+            let resources = Arc::clone(&frame.resources);
+            let asset = &resources.key_assets[overlay.asset_id.index()];
+            assert_eq!(asset.name, stem, "{button:?}");
+            assert_eq!(
+                asset.name,
+                button.key_image_name(),
+                "the model's stem must be the product's button name"
+            );
+            assert_eq!(
+                asset.path.file_stem().and_then(|stem| stem.to_str()),
+                Some(stem),
+                "{button:?} resolved to {}",
+                asset.path.display()
+            );
+
+            sequence += 1;
+            let released = input
+                .publish(InputEvent::Edge {
+                    control: InputControl::Gamepad(GamepadButtonKey { connection, button }),
+                    edge: InputEdge::Up,
+                    source: InputSource::Capture,
+                    at: MonotonicMillis::new(sequence),
+                })
+                .expect("button release");
+            let snapshot = application
+                .runtime_client()
+                .wait_for_input_sequence(released, RUNTIME_TIMEOUT)
+                .expect("button release projection");
+            assert_eq!(snapshot.model_input.key_presses.iter().count(), 0);
+            assert!(!snapshot.model_input.left_hand_down);
+            assert!(!snapshot.model_input.right_hand_down);
+        }
+
+        // The bundled model ships no `Select.png`, `Start.png` or stick artwork,
+        // so those four buttons stay inert rather than borrowing another
+        // button's image (ADR-0042).
+        for button in [
+            GamepadButton::Select,
+            GamepadButton::Start,
+            GamepadButton::LeftStick,
+            GamepadButton::RightStick,
+        ] {
+            sequence += 1;
+            let published = input
+                .publish(InputEvent::Edge {
+                    control: InputControl::Gamepad(GamepadButtonKey { connection, button }),
+                    edge: InputEdge::Down,
+                    source: InputSource::Capture,
+                    at: MonotonicMillis::new(sequence),
+                })
+                .expect("button press");
+            let snapshot = application
+                .runtime_client()
+                .wait_for_input_sequence(published, RUNTIME_TIMEOUT)
+                .expect("button projection");
+            assert_eq!(
+                snapshot.model_input.key_presses.iter().count(),
+                0,
+                "{button:?} has no artwork and must be inert"
+            );
+            assert!(!snapshot.model_input.left_hand_down);
+            assert!(!snapshot.model_input.right_hand_down);
+        }
+
+        let _ = consumer.take_latest();
+        application.shutdown().expect("clean shutdown");
+    }
     /// The binding test above proves the Map; this proves the press actually
     /// survives the whole path for the model that is active at runtime. F1 and
     /// F13 bracket the two HID function-key ranges.
@@ -3736,14 +4054,16 @@ mod tests {
                     assert!(snapshot.model_input.left_hand_down, "0x{hid_usage:02x}");
                     let press = presses
                         .iter()
-                        .find(|press| press.hid_usage == hid_usage)
+                        .find(|press| press.key == KeyIdentity::Keyboard(hid_usage))
                         .unwrap_or_else(|| {
                             panic!("0x{hid_usage:02x} never reached the model snapshot")
                         });
                     assert_eq!(press.side, bongocat_render::KeySide::Left);
                 } else {
                     assert!(
-                        !presses.iter().any(|press| press.hid_usage == hid_usage),
+                        !presses
+                            .iter()
+                            .any(|press| press.key == KeyIdentity::Keyboard(hid_usage)),
                         "0x{hid_usage:02x} must be released"
                     );
                 }
@@ -5421,6 +5741,23 @@ mod tests {
                 return frame;
             }
             assert!(Instant::now() < deadline, "model frame timed out");
+            std::thread::yield_now();
+        }
+    }
+
+    /// The next frame whose overlays satisfy `predicate`.
+    fn wait_for_render_frame(
+        consumer: &RenderConsumer,
+        predicate: impl Fn(&bongocat_render::RenderSnapshot) -> bool,
+    ) -> bongocat_render::RenderFrame {
+        let deadline = Instant::now() + RUNTIME_TIMEOUT;
+        loop {
+            if let Some(frame) = consumer.take_latest()
+                && predicate(&frame.snapshot)
+            {
+                return frame;
+            }
+            assert!(Instant::now() < deadline, "render frame timed out");
             std::thread::yield_now();
         }
     }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "sequenceId": "gamepad-reconnect-reset",
-  "provenance": "product_decision",
+  "provenance": "bug_fix",
   "checkpoints": [
     {
       "atMs": 10,
@@ -14,6 +14,7 @@
       "model": {
         "leftHandDown": true,
         "rightHandDown": false,
+        "activeKeyOverlays": [{ "key": "GamepadSouth", "side": "left" }],
         "parameters": {
           "GamepadEastDown": 0.0,
           "GamepadSouthDown": 1.0
@@ -33,8 +34,29 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
+        "activeKeyOverlays": [],
         "parameters": {
           "GamepadEastDown": 0.0,
+          "GamepadSouthDown": 0.0
+        },
+        "activeMotion": null,
+        "activeExpression": null
+      }
+    },
+    {
+      "atMs": 65,
+      "input": {
+        "pressedKeys": [],
+        "pressedMouseButtons": [],
+        "connectedDevices": ["fixture-pad-2"],
+        "lastResetReason": null
+      },
+      "model": {
+        "leftHandDown": false,
+        "rightHandDown": true,
+        "activeKeyOverlays": [{ "key": "GamepadEast", "side": "right" }],
+        "parameters": {
+          "GamepadEastDown": 1.0,
           "GamepadSouthDown": 0.0
         },
         "activeMotion": null,
@@ -52,6 +74,7 @@
       "model": {
         "leftHandDown": false,
         "rightHandDown": false,
+        "activeKeyOverlays": [],
         "parameters": {
           "GamepadEastDown": 0.0,
           "GamepadSouthDown": 0.0

@@ -19,6 +19,7 @@ uuid = { version = "=1.26.1", default-features = false, features = ["std", "v4"]
 walkdir.workspace = true
 
 [dev-dependencies]
+bongocat-render.workspace = true
 tempfile.workspace = true
 
 [lints]

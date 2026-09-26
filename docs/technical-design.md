@@ -666,9 +666,25 @@ CGEvent keycode `63`（`kVK_Function`）以 `FlagsChanged` + `MaskSecondaryFn` �
 "静态 hand 表 ∩ 该模型的键位图"：缺图的按键不进入 `InputState::model_snapshot`，既不驱动
 `CatParamLeftHandDown`/`CatParamRightHandDown`，也不产生按键层，所以按键层与爪部反馈永远一致。
 判断在 runtime 之前完成，renderer 仍只消费不可变 `RenderSnapshot`，不决定动作；该规则只覆盖键位图，
-鼠标指针/按键与手柄按钮不属于键位图资源。功能键的范围、名字和左右手归属由
+鼠标指针/按键不属于键位图资源。功能键的范围、名字和左右手归属由
 `bongocat-render` 的同一张 HID 表给出（`0x3a..=0x45` 与 `0x68..=0x73` 两段，中间是 PrintScreen
 至方向键和数字键盘），避免按键图片解析和 runtime 绑定各自定义；没有 hand 归属的按键不产生按键层。
+
+**手柄按键走同一条通道，词表是产品自己的**（见 ADR-0070）。`bongocat_render::KeyPress` 携带的是
+带标签的 `KeyIdentity`（`Keyboard(hid_usage)` 或 `Gamepad(GamepadButton)`），不是裸 usage：手柄按钮
+没有 HID Keyboard/Keypad usage，两族共用一个数字空间会让一类按键被当成另一类解析。每个按钮的图片名
+就是 `GamepadButton` 变体名本身（`GamepadButton::key_image_name`），16 个按钮一一对应、互不重名，
+因此类型和美术词表不会漂移。名字是产品词汇，不是 backend 词汇：旧 Tauri 输入层用
+`format!("{:?}", Button)` 派生文件名，产物里 LB/RB 叫 `LeftTrigger`/`RightTrigger`、LT/RT 叫
+`LeftTrigger2`/`RightTrigger2`、摇杆键叫 `LeftThumb`/`RightThumb`、方向键叫 `DPad*`；预置 `gamepad`
+模型已按产品名重命名（`LeftShoulder`/`RightShoulder`、`LeftTrigger`/`RightTrigger`、
+`LeftStick`/`RightStick`、`Dpad*`），导入路径在模型 store 把旧名改写为产品名
+（`bongocat-model-store::key_names`）。手柄词表**没有**运行时旧名候选：`LeftTrigger` 在旧词表里已经是
+肩键的名字，任何别名表都会把肩键或扳机键解析成对方的图。左右手归属同样由模型自己的目录决定——
+`left-keys` 里的图画在左爪上、`right-keys` 里的画在右爪上，这与旧实现的判定一致，也让 Mver 转换按
+`lefthand`/`righthand` 落盘的结果直接可用。缺图的按钮保持惰性（ADR-0042）；两个摇杆键另外驱动
+`StickLeftDown`/`StickRightDown`，与爪部状态互相独立。
+
 
 ### 11.1 Cubism 边界
 
@@ -974,8 +990,10 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 键位图合成是"最小画布上的 Porter-Duff over"：画布取两层较小的宽高、两层锚在原点，因此过大
   的一层被裁切而非缩放；模式没有 `keyboard/` 图集时按字节安装 paw 图而不合成；某个绑定缺 paw
   或配套键帽时只跳过该绑定。输出文件名沿用产品自己的词汇表——键盘键是 `bongocat-live2d-render` 从
-  HID usage 解析出的名字，手柄键是随包预置 gamepad 模型已经装载的名字（`gamepad` 的键位表用
-  历史 XInput 按钮序号（这是 Mver 资源词表，不是当前手柄 backend API）；无法命名的控制码不产出图片也不报错。
+  HID usage 解析出的名字，手柄键是 `GamepadButton::key_image_name`（ADR-0070）；`gamepad` 的键位表用
+  历史 XInput 按钮序号（这是 Mver 资源词表，不是当前手柄 backend API），映射到产品自己的十六个按钮
+  名：0–3 面部键、4/5 肩键、6/7 模拟扳机、8/9 菜单键、10/11 摇杆键、12–15 方向键；无法命名的控制码
+  不产出图片也不报错。
 - 合成图按 lossless 方式重编码（`oxipng`，只开库入口）：位深/颜色类型/调色板/灰度缩减保持解码
   后像素不变，`optimize_alpha` 只改写全透明像素的颜色通道。有损量化库因许可证（GPL）被排除；
   Zopfli 后端实测多 5% 体积换 15 倍时间，不采用。重编码失败写回普通编码结果，不让转换失败。
@@ -1435,6 +1453,15 @@ Windows/macOS 手柄统一使用 `ayangweb/gilrs` 固定 commit，平台只保�
 适配。BongoCat 不再维护 XInput/GameController backend；fork 已提供 bounded queue/epoch、authoritative
 reset、macOS/WGI bounded stop/join 和 target-scoped compile guard，Windows WGI 焦点矩阵与双平台物理/
 长期证据仍是完成门禁，相关修复不在产品层增加 workaround。
+
+### ADR-0070：手柄按键图片词表与解析通道
+
+手柄按钮与键盘键共用按键层通道，`KeyPress` 改为携带带标签的 `KeyIdentity`
+（`Keyboard(hid_usage)` | `Gamepad(GamepadButton)`）。每个按钮的图片名等于 `GamepadButton` 变体名，
+16 个按钮互不重名；预置 `gamepad` 模型已按该词表重命名，导入时由模型 store 把旧 backend 词表名
+（`LeftTrigger2`/`LeftThumb`/`DPad*` 等）改写为产品名。手柄词表不提供运行时旧名候选，因为旧词表里
+`LeftTrigger` 已经是肩键的名字；按钮左右手由模型自身的 `left-keys`/`right-keys` 目录决定，缺图按钮
+保持惰性。
 
 ### ADR-023：Windows Per-User Installer
 

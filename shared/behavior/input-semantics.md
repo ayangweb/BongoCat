@@ -89,6 +89,25 @@ Runtime 使用布局无关的稳定物理键名。左右修饰键必须区分，
 
 双平台手柄 adapter 固定使用 `ayangweb/gilrs`：Windows 为 WGI，macOS 为 IOHID。adapter 关闭 gilrs 默认 jitter/dead-zone filter、force feedback 和环境 mapping，保留 fork 内置 SDL mapping，并使用 gilrs 自带 D-pad axis-to-button 转换。gilrs 的 `LeftTrigger`/`RightTrigger` 位置映射为项目 shoulder，`LeftTrigger2`/`RightTrigger2` 的连续值同时产生项目 trigger button edge 与 trigger axis；后者按产品 `>= 0.5` 判定，不使用 gilrs 默认阈值代替。非有限或越界 trigger 值在改变 pressed state 前拒绝并计数。backend device id 不进入项目协议；adapter 分配最多四个 `device_id`，每次连接/重连通过 axis producer 获得新 generation。全局 Reset 成功后以同一 generation 重播 connection、gilrs 已缓存的当前 held button 和六轴，不重新分配连接；进程启动/重连时的 authoritative initial state 仍需 gilrs backend 提供。
 
+## 按键图片词表
+
+键盘键与手柄按钮共用同一个按键层：写入 render snapshot 的 `KeyPress` 携带带标签的身份
+（`Keyboard(hid_usage)` 或 `Gamepad(GamepadButton)`），不是裸 usage。手柄按钮没有 HID usage，两族
+不折叠进一个数字空间。
+
+- 键盘键的图片名由 HID usage 解析（`bongocat-live2d-render::key_name_candidates`），键盘旧名
+  （`AltGr`、`Return`、`Function`、`Backslash`）作为末位候选。
+- 手柄按钮的图片名等于 `GamepadButton` 变体名本身（`GamepadButton::key_image_name`）：`South`、
+  `East`、`West`、`North`、`LeftShoulder`、`RightShoulder`、`LeftTrigger`、`RightTrigger`、
+  `Select`、`Start`、`LeftStick`、`RightStick`、`DpadUp`、`DpadDown`、`DpadLeft`、`DpadRight`，
+  16 个名字两两不同。**手柄词表没有旧名候选**：旧 backend 词表里 `LeftTrigger` 已经是肩键的
+  名字（`LeftTrigger2` 才是模拟扳机），任何别名表都会把其中一个按钮解析成另一个按钮的图；旧名
+  由导入归一化改写。
+- 按钮的左右手由模型自身提供图片的目录决定：`left-keys` 是左爪，`right-keys` 是右爪。模型没有
+  该按钮的图片时按钮保持惰性，不产生爪子动作也不产生按键层。
+- `left_stick`/`right_stick` 额外驱动摇杆参数，与爪子状态互相独立。
+
+
 macOS listen-only tap 必须创建在 HID 层 head 位置（`kCGHIDEventTap` + `kCGHeadInsertEventTap`，与 rdev 的 listen 一致）；实测 macOS 26 的 session tail 位置收不到右 Shift 的释放 `FlagsChanged`，HID head 位置能收到全部修饰键的完整事件对。
 
 macOS `FlagsChanged` 必须在 event-tap callback 中固定 down/up 方向，按优先级依次判定：
@@ -106,7 +125,7 @@ decoder 状态只解决平台 packet 歧义，不是 runtime pressed state，并
 只有生成 `ModelInputSnapshot` 时才应用门禁：
 
 - 忽略键盘时，不把键盘按键加入 `key_presses`，也不让键盘绑定贡献 `left_hand_down` 或 `right_hand_down`。
-- 忽略手柄时，不让手柄按钮贡献手部或摇杆按下状态，并把六个摇杆/扳机轴投影为零。
+- 忽略手柄时，不把手柄按钮加入 `key_presses`，不让手柄按钮贡献手部或摇杆按下状态，并把六个摇杆/扳机轴投影为零。
 - 手部状态按来源分别计算后再合并：`allowed_keyboard_hand || allowed_gamepad_hand`。因此忽略键盘不会误清除同时按下的手柄贡献，反之亦然。
 - 解除门禁只重新读取既有 pressed state，不重新制造边沿；后续正常释放仍由可靠输入队列处理。
 
