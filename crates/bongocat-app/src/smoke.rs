@@ -56,6 +56,9 @@ pub(crate) fn run_startup_item_smoke() -> Result<(), Box<dyn std::error::Error>>
     use bongocat_platform::{
         StartupItemEnvironment, StartupItemState, set_startup_item_enabled, startup_item_state,
     };
+    // This mode is gated on the platform, not on `storage-test-injection`, so it
+    // cannot rely on the module's feature-gated `std` import block.
+    use std::io;
 
     if bongocat_app::BUILD_ENVIRONMENT != bongocat_config::BuildEnvironment::Production {
         return Err("startup-item mutation smoke requires a Production build".into());
