@@ -416,15 +416,27 @@ impl UpdateView {
     /// The window opens on the values the application cached, and this poll is what
     /// makes a change made while it is open take effect: the display language and the
     /// appearance, which the update window used to read as a constant.
+    ///
+    /// The revision is probed before the snapshot is read. This window only cares
+    /// about two fields, and building a snapshot walks the model store on disk, so
+    /// asking for a whole snapshot every second spent a directory scan per second on
+    /// a window that almost never had anything new to show.
     fn start_settings_polling(&self, cx: &mut Context<Self>) {
         let executor = cx.background_executor().clone();
         cx.spawn(async move |this, cx| {
+            let mut last_revision: Option<u64> = None;
             loop {
                 executor.timer(SETTINGS_POLL_INTERVAL).await;
                 let client = match this.update(cx, |view, _| view.settings_client.clone()) {
                     Ok(client) => client,
                     Err(_) => break,
                 };
+                let Ok(revision) = client.read_snapshot_revision().await else {
+                    continue;
+                };
+                if last_revision == Some(revision) {
+                    continue;
+                }
                 let Ok(snapshot) = client.read_snapshot().await else {
                     continue;
                 };
@@ -442,6 +454,7 @@ impl UpdateView {
                 {
                     break;
                 }
+                last_revision = Some(snapshot.revision);
             }
         })
         .detach();

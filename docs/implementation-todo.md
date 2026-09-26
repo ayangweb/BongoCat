@@ -725,7 +725,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     只证明已删除实现，不再作为当前 backend 证据；WGI 焦点/click-through 投递和物理设备矩阵
     仍待完成。
   - 状态（2026-09-25）：共享 `gilrs_gamepad` adapter 固定 fork commit
-    `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c`，关闭默认 dead-zone/jitter、环境 mapping 和 force
+    `e69f1083d1a13a234513cb360c3d9d8abe5ea025`，关闭默认 dead-zone/jitter、环境 mapping 和 force
     feedback，保留内置 SDL mapping 与 D-pad filter；每 tick 最多 drain 256 event，位置名、
     trigger 连续值、Reset 后 held-state 重播和四设备 generation 已有 Rust contract。backend 构造失败
     只禁用手柄。当前 fork 的 macOS/WGI backend 已提供 bounded queue/epoch、authoritative reset、bounded stop/join acknowledgement 和 callback ownership/close；
@@ -733,6 +733,20 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     backend overflow 会通过强类型事件进入 adapter 并触发 reset/reseed，最终诊断消费 gilrs shutdown acknowledgement；
     最终诊断消费 gilrs shutdown acknowledgement，不再把键鼠 callback 和 final Reset
     的成功伪装成整个 input service clean。
+  - 状态（2026-09-26，已解除）：此前的阻塞项是 macOS IOHID backend 在**没有连接任何手柄**时
+    让 `gilrs` worker 线程持续占满一个 CPU 核（同一 release 二进制 `--run-seconds 40` 连续两次
+    约 `104%` 单核；只跳过 `GilrsBuilder` 构造后降到 `6%` 与 `8%`）。根因是 worker 以 null
+    mode 调用 `CFRunLoopRunInMode`：该函数把 mode 当作裸 `CFStringRef`，null mode 让
+    CoreFoundation 打印 `invalid mode '(null)'` 并立即返回而不等待，外层循环因此变成自旋。
+    已在 `ayangweb/gilrs` `master` 修复（commit `e69f1083d1a13a234513cb360c3d9d8abe5ea025`，
+    直接推送到 master），改为传入真实 run-loop mode，并新增
+    `gilrs-core` 的 `idle_backend_does_not_spin` 回归测试（旧的 null mode 实测
+    1.5s wall 消耗 0.83s CPU，测试会失败）。BongoCat 侧已重新精确固定该 commit 并同步
+    `Cargo.lock`；复测结果：gilrs 独立 harness 空闲 CPU 由 `98%` 降到 `0%`，
+    BongoCat `--run-seconds 40` 连续两次为 `6%` 与 `7%` 单核，`reset` 仍在约 `8ms` 内 ack、
+    `shutdown` 约 `105ms` join（均在既有 2s `SHUTDOWN_TIMEOUT` 内），六个平台 smoke 与
+    980 项 workspace 测试通过。`deny.toml` 的精确 git source 检查通过。
+    Windows WGI 焦点矩阵、双平台物理设备与长期 backlog 仍未实测，因此总项保持未勾选。
   - 状态（2026-09-01）：正式 runtime 已增加独立 cursor latest-value 单槽，每 `16 ms` 或
     可靠 command 到达时消费；10,000 sample flood 满足
     `published = coalesced + consumed + pending`，且不会延迟可靠 KeyUp。正式 macOS producer
@@ -1159,6 +1173,17 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 状态（2026-08-29）：Phase 0 wrapper 已在每帧从 content view backing 坐标同步 `drawableSize`，并通过受控陈旧尺寸恢复与 programmatic resize；产品 platform/renderer 尚未建立，因此保持未勾选。
 - [ ] 处理 display change、Retina 切换、睡眠和 drawable unavailable。
   - 状态（2026-08-29）：受控 drawable unavailable 与逐帧 backing-size 恢复已通过；真实 display/Retina 热切换、display removal 和睡眠仍待实机。
+- [ ] 帧资源回收不得用忙等占用 frame source。
+  - 状态（2026-09-26）：共享 per-drawable buffer 的 GPU 回收 fence 原先在
+    `draw_in_autorelease_pool` 内用 `command_buffer.status()` + `thread::sleep(1ms)`
+    轮询，每帧把主线程 AppKit 事件泵挡在等待之外，并按 GPU 实际耗时产生数百次
+    每秒的唤醒。现改为在 `commit()` 之前注册 Metal completion handler，用
+    `Condvar::wait_timeout` 在内核中挂起，`METAL_COMPLETION_TIMEOUT` 语义与「未完成
+    即报错」的判定保持不变。同一 release 配置的 overlay smoke（897 帧、
+    `verify_frame` 通过）对比：`draw_p50_us` 由 `1294/1438` 降到 `952/931`，
+    `draw_p95_us` 由 `3555/3618` 降到 `1688/1754`，`draw_p99_us` 由
+    `5647/5990` 降到 `2730/2803`（本机同时段负载较高，个别样本为离群值）。
+    多 in-flight frame resource 仍是后续 renderer revision 的工作。
 - [ ] 设置窗口激活不破坏 overlay 层级和鼠标行为。
 - [ ] Metal validation 无资源/生命周期错误。
 
@@ -1699,6 +1724,21 @@ presentation alpha，不再触发窗口替换，因此避免设置更新时短�
 - [ ] UI executor 不持有 runtime 写锁或执行阻塞文件操作。
   - 状态（2026-08-31）：当前最小窗口仅 await `SettingsClient`，独立有界 worker 独占
     `Application`、配置 I/O 和 runtime 等待；后续页面仍须持续遵守该边界。
+  - 状态（2026-09-26）：设置窗口与更新窗口的轮询原先每秒直接 `ReadSnapshot`，
+    而该命令会走一遍 model store 目录扫描（`settings_model_catalog` →
+    `Application::model_catalog`）。两处轮询改为先 `ReadSnapshotRevision` 探测，
+    revision 未推进就不取 snapshot，与系统菜单轮询一直使用的
+    `observe_snapshot_state` 口径一致；`observe_snapshot_state` 的文档已保证
+    「所有推进 revision 的观察都在这里」，因此不会漏掉更新。revision 只在真正
+    发出 refresh 时消费，窗口隐藏、refresh 已被占用或模型导入进行中时保留，
+    以免抑制掉恢复后的那一次刷新。
+- [ ] 空闲时后台不得持续做与可见结果无关的工作。
+  - 状态（2026-09-26）：frame source 原先每帧调用 `RuntimeClient::snapshot()` 只为
+    读取 `maximum_fps` 与 `overlay_visible`，随后 overlay session 在同一帧再取一次
+    完整 snapshot。`RuntimeSnapshot` 为 1688 字节且含 `active_model` 的
+    `String`/`Vec<ModelBehaviorSnapshot>`，即每次 clone 都重新分配模型名与行为列表。
+    现新增 `RuntimeClient::frame_scheduling()`，在同一把锁内只读这两个标量，
+    frame source 不再产生第二份完整 snapshot。
 
 ### 6.3 Design System
 
@@ -3396,7 +3436,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         记录一次匿名 backend failure 并禁用手柄，Raw Input/CGEventTap 键鼠服务继续运行。
     - [x] 用 gilrs 替换自维护 XInput/GameController backend。
       - 状态（2026-09-25）：根 workspace 精确固定 `ayangweb/gilrs` commit
-        `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c`；Windows 使用 WGI，macOS 使用 IOHID。
+        `e69f1083d1a13a234513cb360c3d9d8abe5ea025`；Windows 使用 WGI，macOS 使用 IOHID。
         `gilrs_gamepad` 是唯一私有 adapter，gilrs 类型不进入 runtime/UI。默认 jitter/dead-zone、
         环境 mapping 和 force feedback 关闭，保留内置 SDL mapping 与 D-pad filter；每 tick
         最多消费 256 event、最多四设备。Windows XInput 与 macOS GameController producer、
@@ -3422,9 +3462,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
         设备和 callback in-flight 静止/恢复证据。
       - 物理 Xbox/DualSense/Switch/非 extended HID profile、lost-release、30 分钟压力、100-cycle
         restart 与 8 小时 soak 尚未完成，因此总项保持未勾选。
-      - fork commit `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c` 已通过 bounded queue/epoch、
-        authoritative reset、callback ownership/close、bounded stop/join、compile guard 和 xinput
-        extreme-axis 回归；这些代码证据不等于上述物理/系统门禁。
+      - fork commit `e69f1083d1a13a234513cb360c3d9d8abe5ea025` 已通过 bounded queue/epoch、
+        authoritative reset、callback ownership/close、bounded stop/join、compile guard、xinput
+        extreme-axis 回归和 macOS IOHID 空闲 CPU 回归；这些代码证据不等于上述物理/系统门禁。
 46. [x] `P5-SHORTCUT-CONTRACT`：冻结快捷键 chord 的规范化与冲突校验前置契约。
     - 依赖：configuration v1、`InputEvent`/`PhysicalKey` 语义和后续 GPUI 快捷键编辑页。
     - 退出条件：字符串绑定在配置提交前解析为平台无关的单 key chord；别名/顺序规范化稳定，

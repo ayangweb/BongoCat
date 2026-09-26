@@ -128,6 +128,31 @@ Issue #47 的“按下后无释放”必须从架构处理，不能只增加动�
 - 不依赖 Zed 应用内部 crate 或私有 GPUI renderer 接口。新依赖检查许可证、近期维护、平台支持、unsafe 面积和替换成本。
 - 系统能力先寻找满足边界的成熟 crate，再考虑 `windows-rs`、`objc2` 等基础 binding；第三方事件、错误、配置、平台类型不得进入项目公共 API。
 - Cubism artifact 必须来自已固定版本和 hash 的基线；升级、替换或新增时同步 provenance、目标 ABI 和模型验证。
+- 双平台手柄 backend 固定 `ayangweb/gilrs` 的 `master`，当前精确 commit 为
+  `e69f1083d1a13a234513cb360c3d9d8abe5ea025`（ADR-0066）。手柄 driver、mapping 与
+  backend 生命周期修复**直接推送到该仓库 `master`**，不在本仓库长期维护 workaround：
+  `bongocat-platform` 只保留强类型 adapter。完整流程：
+  1. `git clone https://github.com/ayangweb/gilrs.git` 克隆到项目目录内的临时路径，
+     按需 `git submodule update --init --recursive`（`gilrs` crate 的 build script 需要
+     `SDL_GameControllerDB`），确认 HEAD 是当前固定 commit 或其后代；
+  2. 在克隆内改代码、补回归测试并验证，**不要**用 `[patch]` 或 path 依赖长期改本仓库；
+  3. 以可审计的 commit 直接 push 到 `master`（默认线性历史，用 `--ff-only` 合入）；
+  4. **删除克隆目录**，不把它留在工作树或仓库里；
+  5. 本仓库把 `Cargo.toml` 重新固定到新的完整 commit、同步 `Cargo.lock`，再复测验收。
+- 上述修复的完成定义：fork 侧已推送、此处已重新精确固定、`Cargo.lock` 已同步、
+  `cargo deny check sources` 通过，并在本机复测**空闲 CPU** 与**控制路径延迟**
+  （`reset` ack、`shutdown` join 是否仍在既有超时预算内）。只看事件是否到达不算完成。
+- gilrs 的 macOS IOHID worker 曾把 null mode 传给 `CFRunLoopRunInMode`，CoreFoundation 会
+  立即返回而不等待，使空闲 backend 持续占满一个 CPU 核。修复方式是传入真实 run-loop
+  mode；`gilrs-core` 的 `idle_backend_does_not_spin` 是该问题的回归测试。评估手柄相关改动
+  时必须包含空闲 CPU 复测，不能只看事件是否到达。
+- `gilrs-core` 的 `windows` 依赖范围是 `>=0.44, <=0.62`。更新固定 commit 后若
+  `cargo update` 让它落到 lock 中已存在的旧版本（当前被 gpui-kit 的 `sysinfo` 间接钉住
+  `0.57.0`），Windows target 会多编译一整套 `windows` crate。必须核对
+  `cargo tree --target x86_64-pc-windows-msvc -p bongocat-platform` 只出现 `windows v0.62.2`，
+  必要时在 `Cargo.lock` 中把 `gilrs-core` 的依赖指回 `windows 0.62.2`，并用
+  `cargo metadata --locked` 确认 lock 无需重解析。
+- `~/Downloads` 受 macOS TCC 保护，非交互 shell 通常无权进入；需要临时克隆时不要放在那里。
 
 ## 7. 配置、文件安全与更新
 

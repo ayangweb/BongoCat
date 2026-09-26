@@ -530,6 +530,16 @@ impl ShortcutAction {
     }
 }
 
+/// What a frame source needs to choose its frame interval.
+///
+/// Read through [`RuntimeClient::frame_scheduling`] instead of cloning a whole
+/// [`RuntimeSnapshot`] per frame.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FrameScheduling {
+    pub maximum_fps: u16,
+    pub overlay_visible: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct RuntimeSnapshot {
     pub revision: u64,
@@ -868,6 +878,26 @@ impl RuntimeClient {
 
     pub fn platform_input_diagnostics_producer(&self) -> PlatformInputDiagnosticsProducer {
         self.platform_input_diagnostics.clone()
+    }
+
+    /// The two fields a frame source needs to pace itself.
+    ///
+    /// A frame source asks for these once per frame, and the overlay session asks
+    /// for the whole [`RuntimeSnapshot`] right after. Cloning the full snapshot to
+    /// read two scalars copied a 1.6 KB struct and reallocated the active model's
+    /// name and behavior list on every frame, for a value the overlay was about to
+    /// read anyway. These two are the only fields a revision-checked, transport-
+    /// free read has to copy, so they are read in place under the same lock.
+    pub fn frame_scheduling(&self) -> FrameScheduling {
+        let snapshot = self
+            .snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        FrameScheduling {
+            maximum_fps: snapshot.maximum_fps,
+            overlay_visible: snapshot.overlay_visible,
+        }
     }
 
     pub fn wait_for_revision(
@@ -3330,6 +3360,41 @@ mod tests {
         client
             .wait_for_command(token.command_sequence, TIMEOUT)
             .expect("model committed")
+    }
+
+    #[test]
+    fn frame_scheduling_agrees_with_the_published_snapshot() {
+        // A frame source paces itself from `frame_scheduling()` while the overlay
+        // session reads the full snapshot. The two must never disagree, or the
+        // frame loop would pace against a different cadence than the one the
+        // runtime stored.
+        let owner = RuntimeOwner::start(true, 8);
+        let client = owner.client();
+        let ready = client
+            .wait_for_revision(1, TIMEOUT)
+            .expect("ready snapshot");
+        assert_eq!(
+            client.frame_scheduling(),
+            FrameScheduling {
+                maximum_fps: ready.maximum_fps,
+                overlay_visible: ready.overlay_visible,
+            }
+        );
+
+        client
+            .send(RuntimeCommand::SetOverlayVisible(false))
+            .expect("command accepted");
+        let changed = client
+            .wait_for_revision(ready.revision + 1, TIMEOUT)
+            .expect("updated snapshot");
+        let scheduling = client.frame_scheduling();
+        assert_eq!(scheduling.overlay_visible, changed.overlay_visible);
+        assert!(!scheduling.overlay_visible);
+        assert_eq!(scheduling.maximum_fps, changed.maximum_fps);
+        assert_eq!(
+            frame_interval_for_runtime(scheduling.maximum_fps, scheduling.overlay_visible),
+            frame_interval_for_runtime(changed.maximum_fps, changed.overlay_visible)
+        );
     }
 
     #[test]

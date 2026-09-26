@@ -1,6 +1,6 @@
 # ADR-0066: gilrs 手柄后端与平台窄适配边界
 
-状态：已接受（2026-09-25）；fork 已补齐 callback lifetime、bounded queue/epoch、authoritative reset、bounded shutdown、compile guard 与 xinput 回归修复；Windows WGI 焦点矩阵、双平台物理设备与长期证据仍阻塞完成声明
+状态：已接受（2026-09-25）；fork 已补齐 callback lifetime、bounded queue/epoch、authoritative reset、bounded shutdown、compile guard 与 xinput 回归修复；2026-09-26 追加 macOS IOHID worker run-loop 空转修复（空闲 CPU 98% → 0%）；Windows WGI 焦点矩阵、双平台物理设备与长期证据仍阻塞完成声明
 
 ## 背景
 
@@ -16,10 +16,14 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
 ## 决策
 
 - 根 workspace 精确固定 `https://github.com/ayangweb/gilrs` 的 commit
-  `fb3cc4efa8d368e19ec9c465cf2d4d1a8d9bbb4c`，package 版本为 `gilrs 0.11.2` /
+  `e69f1083d1a13a234513cb360c3d9d8abe5ea025`，package 版本为 `gilrs 0.11.2` /
   `gilrs-core 0.6.8`。该 commit 包含 callback context ownership、bounded queue/epoch、authoritative
   reset、WGI/XInput bounded shutdown、macOS IOHID stop/join、target-scoped compile guard 与 xinput
-  extreme-axis regression 修复；后续修复仍必须形成可审计的 patch series 并再次精确固定 commit。
+  extreme-axis regression 修复，并追加 macOS IOHID worker 的 run-loop 空转修复：worker 曾以 null
+  mode 调用 `CFRunLoopRunInMode`，CoreFoundation 会立即返回而不等待，使无条件创建的空闲
+  backend 持续占满一个 CPU 核；修复传入真实 run-loop mode，空闲 CPU 由 98% 降到 0%，
+  `reset` 仍在约 8ms 内 ack、`shutdown` 约 105ms join，并新增 `idle_backend_does_not_spin`
+  回归测试。后续修复仍必须形成可审计的 patch series、推送到 fork `master` 并再次精确固定 commit。
   `deny.toml` 只放行该精确 git source；fork 的 SDL mapping submodule 由该 commit 固定为
   `15b5e9f4abfb1c5c691c468799816755a91a2e11`。`deny.toml` 通过 `required-git-spec = "rev"` 拒绝
   branch/tag git source。workspace dependency 不启用平台 feature；`bongocat-platform` 的 Windows target

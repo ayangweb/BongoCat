@@ -2251,10 +2251,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut retry_delay = None;
             let mut frame_pacer: Option<bongocat_runtime::FramePacer> = None;
             loop {
-                let runtime_snapshot = frame_runtime_client.snapshot();
+                // Only the pacing inputs are read here. The overlay session reads
+                // the full snapshot inside `tick`, so asking for a second copy per
+                // frame just to learn the frame rate reallocated the active model's
+                // name and behavior list once more for nothing.
+                let scheduling = frame_runtime_client.frame_scheduling();
                 let frame_interval = bongocat_runtime::frame_interval_for_runtime(
-                    runtime_snapshot.maximum_fps,
-                    runtime_snapshot.overlay_visible,
+                    scheduling.maximum_fps,
+                    scheduling.overlay_visible,
                 )
                 .expect("runtime stores validated frame scheduling state");
                 // The wait is measured against the next frame deadline instead of

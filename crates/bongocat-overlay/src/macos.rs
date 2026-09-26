@@ -38,10 +38,10 @@ use metal::{
     MTLPrimitiveType, MTLRegion, MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerMinMagFilter,
     MTLSize, MTLStorageMode, MTLStoreAction, MTLTextureType, MTLTextureUsage, MTLWinding,
     MetalLayer, RenderPassDescriptor, RenderPipelineDescriptor, RenderPipelineState,
-    SamplerDescriptor, SamplerState, Texture, TextureDescriptor,
+    SamplerDescriptor, SamplerState, Texture, TextureDescriptor, foreign_types::ForeignTypeRef,
 };
 use objc2::{
-    MainThreadMarker, MainThreadOnly,
+    MainThreadMarker, MainThreadOnly, msg_send,
     rc::{Retained, autoreleasepool},
     runtime::AnyObject,
 };
@@ -60,7 +60,7 @@ use std::{
     path::Path,
     ptr::NonNull,
     rc::Rc,
-    sync::{Arc, mpsc::SyncSender},
+    sync::{Arc, Condvar, Mutex, mpsc::SyncSender},
     thread,
     time::{Duration, Instant},
 };
@@ -2286,17 +2286,60 @@ impl NativeOverlay {
             );
         }
         encoder.end_encoding();
-        command_buffer.present_drawable(drawable);
-        command_buffer.commit();
         // Shared per-drawable buffers cannot be rewritten until this frame
         // retires. A later renderer revision will replace this correctness
         // fence with multiple in-flight frame resources.
-        let completion_deadline = Instant::now() + METAL_COMPLETION_TIMEOUT;
-        loop {
-            match command_buffer.status() {
-                MTLCommandBufferStatus::Completed | MTLCommandBufferStatus::Error => break,
-                _ if Instant::now() >= completion_deadline => break,
-                _ => thread::sleep(Duration::from_millis(1)),
+        //
+        // The fence parks this thread in the kernel on a Metal completion
+        // handler rather than polling `status()`. Polling on a sleep loop woke
+        // the frame thread about a thousand times a second for a wait that
+        // usually lasts a few milliseconds, and it held the AppKit event pump
+        // out of the loop for the whole wait. The handler is registered before
+        // `commit()` so a buffer that retires immediately still signals, and
+        // the `Arc` keeps the flag alive if the deadline is ever reached first
+        // and the handler fires later.
+        let retired = Arc::new((Mutex::new(false), Condvar::new()));
+        let signal = Arc::clone(&retired);
+        // The handler is declared over the object pointer Metal actually passes
+        // (`id<MTLCommandBuffer>`) rather than the `metal` crate's reference
+        // wrapper, which `objc2` cannot encode. The block ABI is the same: one
+        // pointer argument, no return.
+        let handler: RcBlock<dyn Fn(NonNull<AnyObject>)> =
+            RcBlock::new(move |_command_buffer: NonNull<AnyObject>| {
+                let (retired, ready) = &*signal;
+                *retired
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+                ready.notify_all();
+            });
+        // SAFETY: `addCompletedHandler:` takes a `void (^)(id<MTLCommandBuffer>)`
+        // block, which is exactly the block `handler` is. The `metal` crate's
+        // wrapper is typed against the deprecated `block` crate rather than
+        // `block2`, so the message is sent through `objc2` over the same
+        // object pointer with the same block-pointer ABI. Metal retains the
+        // block, and the block owns the `Arc` it signals through, so the flag
+        // outlives this frame even when the wait below gives up first.
+        let command_buffer_object: NonNull<AnyObject> =
+            NonNull::new(command_buffer.as_ptr() as *mut AnyObject)
+                .ok_or_else(|| OverlayError::new("Metal returned a null command buffer"))?;
+        unsafe {
+            let () = msg_send![command_buffer_object, addCompletedHandler: &*handler];
+        }
+        command_buffer.present_drawable(drawable);
+        command_buffer.commit();
+        {
+            let (retired, ready) = &*retired;
+            let mut done = retired
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            while !*done {
+                let (guard, timeout) = ready
+                    .wait_timeout(done, METAL_COMPLETION_TIMEOUT)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                done = guard;
+                if timeout.timed_out() {
+                    break;
+                }
             }
         }
         if command_buffer.status() != MTLCommandBufferStatus::Completed {

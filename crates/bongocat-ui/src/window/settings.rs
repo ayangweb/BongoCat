@@ -18,20 +18,49 @@ impl SettingsView {
     /// the runtime keeps running, and a newly created window refreshes before it is
     /// shown. Without this a window waiting for its first snapshot could ask the
     /// service for a full snapshot — model catalog scan included — while invisible.
+    ///
+    /// The poll probes the revision before it asks for a snapshot. Building a
+    /// snapshot walks the model store on disk, so a window left open would
+    /// otherwise pay a directory scan every second to render a value that did not
+    /// move. Everything that advances the revision is observed by the probe
+    /// itself, so a snapshot is requested exactly when one would have changed.
     pub(super) fn start_snapshot_polling(&self, cx: &mut Context<Self>) {
         let executor = cx.background_executor().clone();
+        let client = self.client.clone();
         cx.spawn(async move |this, cx| {
+            let mut last_revision: Option<u64> = None;
             loop {
                 executor.timer(Duration::from_secs(1)).await;
-                if this
-                    .update(cx, |view, cx| {
-                        if !view.window_hidden() {
-                            view.refresh(cx);
-                        }
-                    })
-                    .is_err()
-                {
-                    break;
+                let visible = match this.update(cx, |view, _| !view.window_hidden()) {
+                    Ok(visible) => visible,
+                    Err(_) => break,
+                };
+                // A revision observed while the window cannot render it is not
+                // consumed: the next visible tick still has to fetch it.
+                if !visible {
+                    continue;
+                }
+                let Ok(revision) = client.read_snapshot_revision().await else {
+                    continue;
+                };
+                if last_revision == Some(revision) {
+                    continue;
+                }
+                // Only a refresh that was actually issued consumes the revision,
+                // so a poll suppressed by an in-flight operation or a model
+                // import still refreshes once that operation finishes.
+                let issued = match this.update(cx, |view, cx| {
+                    if view.window_hidden() || view.refresh_is_disabled() {
+                        return false;
+                    }
+                    view.refresh(cx);
+                    true
+                }) {
+                    Ok(issued) => issued,
+                    Err(_) => break,
+                };
+                if issued {
+                    last_revision = Some(revision);
                 }
             }
         })
