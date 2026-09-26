@@ -22,6 +22,7 @@
 - Window and model-behavior shortcuts have separate switches. Model shortcuts are opt-in, and holding a shortcut triggers its action only once.
 - Closing Settings now destroys its window; reopening it in the same app process restores the last top-level sidebar page. Update windows keep their existing close-and-destroy behavior.
 - The update window is now only as tall as the step it is showing, so “Checking…” and “You are up to date” are no longer a mostly-empty dialog. A release with a changelog gets the room it needs, up to the size the window already used, and scrolls past that. It opens and changes height at the size its content actually needs, instead of briefly appearing at its tallest and shrinking down, and asking it to check shows “Checking…” with its progress bar right away instead of the result of the previous check. It no longer has a resize handle — its height is its content's height.
+- The changelog in the update window now renders tables and task lists, and follows the light or dark theme. Images and raw HTML in a changelog are shown as written and never downloaded, so a release note can no longer make the app fetch anything or embed remote content.
 
 ### 🐛 User-visible Fixes
 

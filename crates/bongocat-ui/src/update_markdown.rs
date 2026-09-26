@@ -1,148 +1,348 @@
 //! Markdown rendering for the update window's release notes.
 //!
-//! The changelog comes from the release manifest, so it is **untrusted input**: it
-//! travels over the network and whoever can replace the manifest controls every byte of
-//! it. It is also the only place the product renders text it did not author. The
-//! renderer is therefore split in two on purpose:
+//! The changelog comes from the release manifest, so it is **untrusted input**: it travels
+//! over the network, and whoever can replace the manifest controls every byte of it. It is
+//! also the only place the product renders text it did not author.
 //!
-//! 1. [`blocks`] parses the Markdown into a small intermediate representation. It is a
-//!    pure function with no GPUI types, so every syntax decision and every safety rule
-//!    is unit-testable.
-//! 2. [`render`] turns that representation into GPUI elements. It never sees Markdown,
-//!    so it cannot accidentally interpret it.
+//! [`gpui_kit`]'s `TextView` does the parsing, the inline layout and the scrolling. What
+//! this module owns is the policy that makes handing a manifest to it safe, and it is
+//! deliberately three rules rather than a renderer:
 //!
-//! Nothing here produces markup of any kind — GPUI has no HTML engine, and raw HTML in
-//! the notes is rendered as the literal text the author wrote. There is no escaping
-//! step to get wrong because there is no markup layer to escape into.
+//! 1. **Bound the input before anything parses it.** [`prepare`] caps the notes by size and
+//!    by how many block containers they may open. The size cap bounds the work; the marker
+//!    cap bounds the *depth* of the tree `TextView` builds, because it walks that tree with
+//!    one Rust call per level of nesting and the main thread's stack is not large enough to
+//!    follow a document written to exhaust it.
+//! 2. **Never fetch anything the manifest names.** [`NoRemoteImage`] claims every image
+//!    node, so `gpui-kit` never builds an `ImageSource` and there is no URL to hand to
+//!    GPUI's resource loader. The refusal happens before the URL is looked at, not after.
+//! 3. **Never present a target this product will not open as a control.**
+//!    [`RejectedLink`] claims a link whose target [`clickable_link`] refuses and renders
+//!    its label as plain text. Accepted links are left to `TextView`, whose click handler
+//!    still routes through the platform opener —which re-checks the scheme.
 //!
-//! # What is deliberately not supported
+//! Raw HTML is inert for the same reason: left alone, `gpui-kit` parses a Markdown HTML
+//! node with its HTML parser and lays the result out, which is how a `<strong>` in a
+//! manifest becomes bold text and an `<img src>` becomes a fetch. [`LiteralHtml`] claims
+//! those nodes in both the inline and the block position and shows the source instead.
 //!
-//! - **Tables.** A GFM table degrades to the pipe-separated paragraphs CommonMark sees,
-//!   which is ugly but honest. Rendering one properly needs column measurement, and
-//!   release notes essentially never contain one.
-//! - **Images.** `![alt](url)` renders its alt text. The URL is never fetched: an
-//!   update manifest must not be able to make the application issue a request of its
-//!   choosing.
-//! - **Raw HTML.** Shown as literal text. It cannot execute, and silently dropping it
-//!   would hide content the author wrote.
+//! # What the manifest therefore cannot do
+//!
+//! - Make the application issue a request. No image node is ever built, from either the
+//!   inline `![alt](url)` form or the `[alt][ref]` form, and no raw HTML is interpreted.
+//! - Offer a `javascript:`, `file:`, `data:` or whitespace-smuggled target as something
+//!   that looks pressable.
+//! - Choose how much stack the renderer spends, or how many elements the window is asked
+//!   to lay out.
+//!
+//! # Why the plugins and not a hand-written renderer
+//!
+//! `gpui-kit` consults its Markdown plugins *before* its built-in node handling, in both
+//! the inline and the block dispatcher, so a plugin that claims a node prevents the
+//! built-in path from ever seeing it. That is what makes rules 2 and 3 enforceable here
+//! rather than only describable. What is left for this module is the text each refusal
+//! shows, and each of those is a plain function over the parsed node so it can be tested
+//! without a window.
 
-use gpui_kit::base::TestSupportExt;
-use gpui_kit::component::ActiveTheme;
-use gpui_kit::{
-    AnyElement, App, Div, FontWeight, SharedString, StatefulInteractiveElement, div, prelude::*, px,
+use gpui_kit::base::{
+    MarkdownExtensions, MarkdownNode, MarkdownParseContext, MarkdownPlugin, TextView, markdown_ast,
 };
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use gpui_kit::component::ActiveTheme;
+use gpui_kit::{App, IntoElement, Window, div, prelude::*};
+use std::sync::OnceLock;
 
-use crate::window::Tokens;
-
-/// Upper bound on the changelog this module will parse.
+/// The element id `TextView` keys its parsed document under.
 ///
-/// `crates/bongocat-packaging` already bounds the announced notes, but that is the
-/// publisher's promise, not this process's guarantee: the manifest arrives over the
-/// network, and an oversized notes field would otherwise become an unbounded number of
-/// GPUI elements and hang the window. Truncation happens at a character boundary, so
-/// the worst case is a changelog that stops mid-sentence with a visible marker.
+/// It has to be stable across frames: `TextView` caches the parse against this id, so a
+/// changing id would re-parse the whole changelog on every frame.
+const NOTES_VIEW_ID: &str = "update-release-notes";
+
+/// A fixed parser revision, so rebuilding the plugin handles each frame is not mistaken
+/// for a changed parser configuration.
+const PARSER_REVISION: u64 = 1;
+
+/// Upper bound on the changelog this module will hand to the parser.
+///
+/// `bongocat-packaging` already bounds the announced notes, but that is the publisher's
+/// promise, not this process's guarantee: the manifest arrives over the network, and an
+/// oversized notes field would otherwise become an unbounded number of elements to lay
+/// out. Truncation happens at a character boundary, so the worst case is a changelog that
+/// stops mid-sentence with a visible marker.
 const MAXIMUM_MARKDOWN_BYTES: usize = 32 * 1024;
-const TRUNCATION_MARKER: &str = "\n\n…";
 
-/// How deep block nesting is rendered before it is flattened.
+/// Upper bound on the block containers a changelog may open.
 ///
-/// Deeply nested quotes and lists are legal Markdown and would otherwise let a manifest
-/// dictate an arbitrarily deep layout. Past this depth the content is kept and the
-/// nesting is dropped.
-const MAXIMUM_BLOCK_DEPTH: usize = 8;
+/// Every level of CommonMark block nesting is opened by at least one container marker in
+/// the source, so a document with at most this many markers cannot nest deeper than this
+/// many levels. That is what makes the bound sound rather than a guess about how deeply
+/// the source *looks* nested. A real changelog spends a handful; a document written to
+/// exhaust the stack spends two bytes per level and runs into this within a kilobyte.
+const MAXIMUM_BLOCK_MARKERS: usize = 512;
+
+/// What a cut changelog ends with, so a truncated document never reads as complete.
+const TRUNCATION_MARKER: &str = "\n\n…";
 
 /// Longest link this module will turn into a control.
 const MAXIMUM_LINK_BYTES: usize = 2048;
 
-/// The inline styles a span can carry.
+/// Plugin names, which are also how a claimed node is told apart from another one.
+const NO_REMOTE_IMAGE: &str = "bongocat-notes-image-alt-text";
+const REFUSED_LINK: &str = "bongocat-notes-refused-link";
+const LITERAL_HTML_INLINE: &str = "bongocat-notes-literal-html-inline";
+const LITERAL_HTML_BLOCK: &str = "bongocat-notes-literal-html-block";
+
+/// Render the changelog.
 ///
-/// A link span keeps the URL only when [`clickable_link`] accepted it; a rejected URL
-/// leaves `link` as `None` and the span renders as plain text, so a `javascript:` or
-/// `file:` target can never become an interactive control.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct SpanStyle {
-    pub(crate) bold: bool,
-    pub(crate) italic: bool,
-    pub(crate) strikethrough: bool,
-    pub(crate) code: bool,
-    pub(crate) link: Option<String>,
-}
-
-/// One piece of inline content.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum Inline {
-    Text {
-        text: String,
-        style: SpanStyle,
-    },
-    /// A line break. Rendered as a full-width element so the next content starts on a
-    /// new line without ending the block.
-    Break,
-}
-
-/// One block of content.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum Block {
-    Heading {
-        level: u8,
-        spans: Vec<Inline>,
-    },
-    Paragraph {
-        spans: Vec<Inline>,
-    },
-    /// A fenced or indented code block. Its text is kept verbatim.
-    Code {
-        text: String,
-    },
-    List {
-        ordered: bool,
-        /// The number the first item is labelled with.
-        start: u64,
-        items: Vec<Vec<Block>>,
-    },
-    Quote {
-        blocks: Vec<Block>,
-    },
-    Rule,
-}
-
-/// Parse Markdown into blocks.
+/// `TextView` keys its parsed document on [`NOTES_VIEW_ID`] and compares the text it is
+/// handed, so the notes are parsed once and re-parsed only when they change. The copy made
+/// here per frame is a string copy, not a re-parse.
 ///
-/// Pure: no GPUI types, no theme, no I/O. Every rule this module promises — which
-/// syntax is recognised, what happens to raw HTML, which links become clickable, how
-/// deep nesting is handled — is decided here and testable without a window.
-pub(crate) fn blocks(markdown: &str) -> Vec<Block> {
-    let text = truncate(markdown);
-    let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
-    let events: Vec<Event<'_>> = Parser::new_ext(&text, options).collect();
-    let mut reader = Reader {
-        events,
-        index: 0,
-        pending_marker: None,
+/// The scroll box around this is sized by its content up to a constant and no further;
+/// `TextView` is therefore left unscrollable so that the two do not fight over the
+/// height.
+pub(crate) fn render(notes: &str) -> TextView {
+    TextView::markdown(NOTES_VIEW_ID, prepare(notes))
+        .markdown_extensions(extensions())
+        .scrollable(false)
+        .text_xs()
+        .on_link_click(|url, _, _, _| {
+            // The URL that reaches here is the one `gpui-kit` resolved, which for a link
+            // *reference* is only knowable at this point. The opener re-checks the scheme
+            // regardless, so this is the second of two independent refusals rather than
+            // the only one.
+            let _ = bongocat_platform::open_external_url(url.as_ref());
+        })
+}
+
+/// The Markdown extensions that keep a release manifest inert.
+///
+/// Built once. `MarkdownExtensions` stamps every registration with a process-wide
+/// revision, so rebuilding this per frame would hand `TextView` a new configuration on
+/// every frame and leave it one change of that comparison away from re-parsing the whole
+/// changelog sixty times a second. A single registry makes the configuration provably
+/// stable instead.
+fn extensions() -> MarkdownExtensions {
+    static EXTENSIONS: OnceLock<MarkdownExtensions> = OnceLock::new();
+    EXTENSIONS
+        .get_or_init(|| {
+            MarkdownExtensions::default()
+                // A fixed parser revision as well, so the registry reads as the same
+                // parser even if a future `gpui-kit` starts comparing it.
+                .parser_revision(PARSER_REVISION)
+                .plugin(NoRemoteImage)
+                .plugin(RefusedLink)
+                .plugin(LiteralHtml::<false>)
+                .plugin(LiteralHtml::<true>)
+        })
+        .clone()
+}
+
+// --- The input bounds, applied before anything parses it ---
+
+/// The changelog, bounded, ready for the parser.
+///
+/// Both bounds are applied to the raw text. The parser builds its tree with an explicit
+/// stack, so it is not the parsing that has to be bounded —it is the shape of the tree
+/// that comes out, because the renderer walks that by recursion.
+pub(crate) fn prepare(notes: &str) -> String {
+    let Some(cut) = cut_offset(notes) else {
+        return notes.to_owned();
     };
-    reader.blocks(0).0
-}
-
-/// Shorten the input at a character boundary.
-fn truncate(markdown: &str) -> String {
-    if markdown.len() <= MAXIMUM_MARKDOWN_BYTES {
-        return markdown.to_owned();
-    }
-    let mut boundary = MAXIMUM_MARKDOWN_BYTES;
-    while boundary > 0 && !markdown.is_char_boundary(boundary) {
+    let mut boundary = cut;
+    while boundary > 0 && !notes.is_char_boundary(boundary) {
         boundary -= 1;
     }
-    format!("{}{TRUNCATION_MARKER}", &markdown[..boundary])
+    format!("{}{TRUNCATION_MARKER}", &notes[..boundary])
 }
+
+/// Where the notes have to stop being rendered, if anywhere.
+fn cut_offset(notes: &str) -> Option<usize> {
+    let bytes = notes.as_bytes();
+    let mut markers = 0usize;
+    for (index, byte) in bytes.iter().enumerate() {
+        if index >= MAXIMUM_MARKDOWN_BYTES {
+            return Some(index);
+        }
+        if *byte == b'>' || is_list_marker_start(bytes, index) {
+            markers += 1;
+            if markers > MAXIMUM_BLOCK_MARKERS {
+                return Some(index);
+            }
+        }
+    }
+    None
+}
+
+/// Whether a list marker starts at `index`.
+///
+/// Deliberately over-eager: a bullet counts wherever it follows whitespace or starts the
+/// text, and so does a digit run closed by `.` or `)`. Over-counting only makes the bound
+/// trip earlier, which is the direction a guard has to fail in —the alternative is a
+/// document that nests deeper than its marker count suggests.
+fn is_list_marker_start(bytes: &[u8], index: usize) -> bool {
+    if index > 0 && !bytes[index - 1].is_ascii_whitespace() {
+        return false;
+    }
+    if matches!(bytes[index], b'-' | b'*' | b'+') {
+        return true;
+    }
+    let digits = bytes[index..]
+        .iter()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    digits > 0
+        && bytes
+            .get(index + digits)
+            .is_some_and(|byte| matches!(byte, b'.' | b')'))
+}
+
+// --- What a refused image shows ---
+
+/// The alt text to show in place of an image, or `None` to leave the node alone.
+///
+/// An image with no alt text shows nothing at all, which is the same as what a reader
+/// would get from a failed image and does not advertise that one was there.
+fn image_alt_text(node: &markdown_ast::Node) -> Option<String> {
+    match node {
+        markdown_ast::Node::Image(image) => Some(image.alt.clone()),
+        // `[alt][ref]` resolves to the same fetch, so it gets the same answer.
+        markdown_ast::Node::ImageReference(image) => Some(image.alt.clone()),
+        _ => None,
+    }
+}
+
+/// Claims every image node so its URL is never turned into a request.
+///
+/// `gpui-kit` renders `![alt](url)` by handing `url` to GPUI's resource loader, which
+/// fetches it. A manifest must not be able to make the application issue a request of its
+/// choosing, so the node is claimed before the built-in handler builds an `ImageSource`
+/// and there is nothing left to fetch.
+struct NoRemoteImage;
+
+impl MarkdownPlugin for NoRemoteImage {
+    fn name(&self) -> &str {
+        NO_REMOTE_IMAGE
+    }
+
+    fn parse(
+        &self,
+        node: &markdown_ast::Node,
+        _context: &MarkdownParseContext<'_>,
+    ) -> Option<MarkdownNode> {
+        // An image with empty alt text still resolves to `Some("")` and is still claimed:
+        // declining it would hand the node, and its URL, back to the built-in renderer.
+        // A node that is not an image at all has to fall through to the next resolver, so
+        // this cannot be written as `unwrap_or_default` —that would swallow the rest of
+        // the document's inline content.
+        let alt = image_alt_text(node)?;
+        Some(MarkdownNode::new(NO_REMOTE_IMAGE, ()).text(alt))
+    }
+}
+
+// --- What a refused link shows ---
+
+/// The text to show in place of a link this product will not open, or `None` to let
+/// `gpui-kit` render the link itself.
+fn refused_link_text(node: &markdown_ast::Node) -> Option<String> {
+    let markdown_ast::Node::Link(link) = node else {
+        return None;
+    };
+    if clickable_link(&link.url).is_some() {
+        // An accepted target is declined here, on purpose: the built-in renderer is
+        // better at links than this module is, and it routes clicks through the handler
+        // in `render`.
+        return None;
+    }
+    Some(plain_text(node))
+}
+
+/// Claims a link whose target [`clickable_link`] refuses, and shows its label as text.
+///
+/// The point is presentational as much as protective: a `javascript:` or `file:` target
+/// must not arrive underlined and accent-coloured, because that is what tells a reader it
+/// is something to press. The refusal that matters is still the opener's.
+struct RefusedLink;
+
+impl MarkdownPlugin for RefusedLink {
+    fn name(&self) -> &str {
+        REFUSED_LINK
+    }
+
+    fn parse(
+        &self,
+        node: &markdown_ast::Node,
+        _context: &MarkdownParseContext<'_>,
+    ) -> Option<MarkdownNode> {
+        let text = refused_link_text(node)?;
+        Some(MarkdownNode::new(REFUSED_LINK, ()).text(text))
+    }
+}
+
+// --- What raw HTML shows ---
+
+/// The source to show in place of a raw HTML node, or `None` to leave the node alone.
+fn literal_html_text(node: &markdown_ast::Node) -> Option<String> {
+    let markdown_ast::Node::Html(html) = node else {
+        return None;
+    };
+    Some(html.value.clone())
+}
+
+/// Claims raw HTML and shows the source the author wrote.
+///
+/// Left alone, `gpui-kit` parses a Markdown HTML node with its HTML parser and lays the
+/// result out, which is how a `<strong>` in a manifest becomes bold text and an
+/// `<img src>` becomes a request. Claiming the node keeps the markup inert and visible as
+/// written: it cannot execute, and dropping it would hide content the author wrote.
+///
+/// `BLOCK` selects which of the two dispatchers registers the plugin. `gpui-kit` has one
+/// for inline content and one for block content, and a plugin belongs to exactly one of
+/// them, so a raw HTML node has to be claimed in both positions —a block-level
+/// `<div>…</div>` never reaches the inline one.
+struct LiteralHtml<const BLOCK: bool>;
+
+impl<const BLOCK: bool> MarkdownPlugin for LiteralHtml<BLOCK> {
+    fn name(&self) -> &str {
+        if BLOCK {
+            LITERAL_HTML_BLOCK
+        } else {
+            LITERAL_HTML_INLINE
+        }
+    }
+
+    fn is_block(&self) -> bool {
+        BLOCK
+    }
+
+    fn parse(
+        &self,
+        node: &markdown_ast::Node,
+        _context: &MarkdownParseContext<'_>,
+    ) -> Option<MarkdownNode> {
+        let name = self.name();
+        let text = literal_html_text(node)?;
+        Some(MarkdownNode::new(name, ()).text(text))
+    }
+
+    fn render(&self, node: &MarkdownNode, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        // Monospace marks it as "this was literal", which is the whole difference between
+        // showing the source and quietly honouring it.
+        let mono = cx.theme().mono_font_family.clone();
+        div()
+            .font_family(mono)
+            .text_xs()
+            .child(node.as_text().to_string())
+    }
+}
+
+// --- The shared decisions ---
 
 /// The URL to make clickable, or `None` to render the link as plain text.
 ///
-/// HTTPS only, matching the update transport's own policy (`AGENTS.md` §10): the
-/// platform opener refuses anything else, and a release manifest must not be able to
-/// hand the user a control that opens a `javascript:`, `file:` or `data:` target. The
-/// whitespace check matters because a URL with a newline in it is how a scheme can be
-/// smuggled past a naive prefix test.
+/// HTTPS only, matching the update transport's own policy: the platform opener refuses
+/// anything else, and a release manifest must not be able to hand the user a control that
+/// opens a `javascript:`, `file:` or `data:` target. The whitespace check matters because a
+/// URL with a newline in it is how a scheme can be smuggled past a naive prefix test.
 fn clickable_link(url: &str) -> Option<String> {
     let trimmed = url.trim();
     let acceptable = trimmed.len() <= MAXIMUM_LINK_BYTES
@@ -153,985 +353,510 @@ fn clickable_link(url: &str) -> Option<String> {
     acceptable.then(|| trimmed.to_owned())
 }
 
-/// Append text, merging into the previous span when the style is unchanged.
+/// The text a node contributes, with every bit of markup resolved away.
 ///
-/// The parser emits a `Text` event per run rather than per paragraph, so merging keeps
-/// the rendered element count proportional to the number of style changes instead of
-/// the number of parser events.
-fn push_text(spans: &mut Vec<Inline>, text: &str, style: &SpanStyle) {
-    if text.is_empty() {
-        return;
-    }
-    if let Some(Inline::Text {
-        text: previous,
-        style: previous_style,
-    }) = spans.last_mut()
-        && previous_style == style
-    {
-        previous.push_str(text);
-        return;
-    }
-    spans.push(Inline::Text {
-        text: text.to_owned(),
-        style: style.clone(),
-    });
-}
-
-/// A cursor over the parser's events.
-///
-/// The event stream is a flat sequence of start/end tags; a cursor with recursion is far
-/// easier to keep correct than a hand-rolled container stack, and the recursion depth is
-/// bounded by [`MAXIMUM_BLOCK_DEPTH`].
-struct Reader<'a> {
-    events: Vec<Event<'a>>,
-    index: usize,
-    /// A task-list marker seen before the paragraph it labels.
-    ///
-    /// The parser emits `TaskListMarker` directly inside the item, ahead of the item's
-    /// paragraph, so it cannot be handled while reading inline content.
-    pending_marker: Option<bool>,
-}
-
-impl<'a> Reader<'a> {
-    fn next(&mut self) -> Option<Event<'a>> {
-        let event = self.events.get(self.index).cloned();
-        if event.is_some() {
-            self.index += 1;
+/// Used to keep the label of a refused link. The label is what the author wrote, and
+/// dropping it because the *target* was refused would lose content over a target the
+/// product was never going to open anyway.
+fn plain_text(node: &markdown_ast::Node) -> String {
+    match node {
+        markdown_ast::Node::Text(text) => text.value.clone(),
+        markdown_ast::Node::InlineCode(code) => code.value.clone(),
+        markdown_ast::Node::InlineMath(math) => math.value.clone(),
+        markdown_ast::Node::Math(math) => math.value.clone(),
+        // CommonMark calls the break inside a paragraph a space, and a link label is a
+        // paragraph.
+        markdown_ast::Node::Break(_) => " ".to_owned(),
+        markdown_ast::Node::Image(image) => image.alt.clone(),
+        markdown_ast::Node::ImageReference(image) => image.alt.clone(),
+        markdown_ast::Node::FootnoteReference(footnote) => {
+            format!(
+                "[^{}]",
+                footnote.label.as_deref().unwrap_or(&footnote.identifier)
+            )
         }
-        event
-    }
-
-    /// Read blocks until the stream ends or the block this call started in closes.
-    ///
-    /// Returns the blocks and the tag that ended them, so the caller can tell "my
-    /// container closed" from "input ended".
-    ///
-    /// Inline content is buffered rather than turned into a paragraph as it arrives,
-    /// because a **tight** list item is not wrapped in a `Paragraph` by the parser: its
-    /// text, emphasis and links arrive loose inside the item. Buffering them means they
-    /// keep their styles and end up in one paragraph instead of one per run.
-    fn blocks(&mut self, depth: usize) -> (Vec<Block>, Option<TagEnd>) {
-        let mut blocks = Vec::new();
-        let mut pending: Vec<Inline> = Vec::new();
-        // Past the depth cap the containers are transparent: their content is kept, the
-        // nesting is not, so nothing a manifest writes disappears.
-        let flatten = depth > MAXIMUM_BLOCK_DEPTH;
-        while let Some(event) = self.next() {
-            match event {
-                Event::Start(tag) => {
-                    if is_inline_tag(&tag) {
-                        let (inner, _) = self.inline(inline_style(&tag, &SpanStyle::default()));
-                        pending.extend(inner);
-                    } else {
-                        self.flush_paragraph(&mut pending, &mut blocks);
-                        self.block(tag, depth, flatten, &mut blocks, &mut pending);
-                    }
-                }
-                Event::End(tag) => {
-                    self.flush_paragraph(&mut pending, &mut blocks);
-                    return (blocks, Some(tag));
-                }
-                Event::Text(text) => push_text(&mut pending, &text, &SpanStyle::default()),
-                Event::Code(text) => {
-                    let style = SpanStyle {
-                        code: true,
-                        ..SpanStyle::default()
-                    };
-                    push_text(&mut pending, &text, &style);
-                }
-                // Raw HTML is content the author wrote, so it is shown as text. It is
-                // never parsed, never fetched and never interpreted.
-                Event::Html(html) | Event::InlineHtml(html) => {
-                    push_text(&mut pending, &html, &literal_style());
-                }
-                Event::SoftBreak | Event::HardBreak => pending.push(Inline::Break),
-                Event::TaskListMarker(checked) => self.pending_marker = Some(checked),
-                Event::Rule => {
-                    self.flush_paragraph(&mut pending, &mut blocks);
-                    blocks.push(Block::Rule);
-                }
-                Event::FootnoteReference(name) => {
-                    push_text(&mut pending, &format!("[^{name}]"), &SpanStyle::default());
-                }
-                Event::InlineMath(text) | Event::DisplayMath(text) => {
-                    let style = SpanStyle {
-                        code: true,
-                        ..SpanStyle::default()
-                    };
-                    push_text(&mut pending, &text, &style);
-                }
-            }
-        }
-        self.flush_paragraph(&mut pending, &mut blocks);
-        (blocks, None)
-    }
-
-    /// Turn buffered inline content into a paragraph.
-    fn flush_paragraph(&mut self, pending: &mut Vec<Inline>, blocks: &mut Vec<Block>) {
-        if pending.is_empty() {
-            // A task-list marker with no paragraph yet belongs to the next one.
-            return;
-        }
-        let spans = std::mem::take(pending);
-        self.paragraph(spans, blocks);
-    }
-
-    fn block(
-        &mut self,
-        tag: Tag<'a>,
-        depth: usize,
-        flatten: bool,
-        blocks: &mut Vec<Block>,
-        pending: &mut Vec<Inline>,
-    ) {
-        match tag {
-            Tag::Paragraph => {
-                let (spans, _) = self.inline(SpanStyle::default());
-                self.paragraph(spans, blocks);
-            }
-            // Inline tags cannot open a block; if one appears here the content is still
-            // worth keeping, so it joins whatever paragraph is being built.
-            Tag::Emphasis
-            | Tag::Strong
-            | Tag::Strikethrough
-            | Tag::Superscript
-            | Tag::Subscript
-            | Tag::Link { .. }
-            | Tag::Image { .. } => {
-                let (inner, _) = self.inline(inline_style(&tag, &SpanStyle::default()));
-                pending.extend(inner);
-            }
-            Tag::Heading { level, .. } => {
-                let (spans, _) = self.inline(SpanStyle::default());
-                blocks.push(Block::Heading {
-                    level: heading_level(level),
-                    spans,
-                });
-            }
-            Tag::CodeBlock(_) => blocks.push(Block::Code {
-                text: self.code_block(),
-            }),
-            Tag::List(start) => {
-                let (items, _) = self.list_items(depth, flatten);
-                if flatten {
-                    // Past the depth cap the items are kept and the nesting is dropped,
-                    // so a manifest cannot dictate an arbitrarily deep layout.
-                    blocks.extend(items.into_iter().flatten());
-                } else {
-                    blocks.push(Block::List {
-                        ordered: start.is_some(),
-                        start: start.unwrap_or(1),
-                        items,
-                    });
-                }
-            }
-            Tag::BlockQuote(_) => {
-                let (quoted, _) = self.blocks(depth + 1);
-                if flatten {
-                    blocks.extend(quoted);
-                } else {
-                    blocks.push(Block::Quote { blocks: quoted });
-                }
-            }
-            // Raw HTML is content the author wrote, so it is shown as text. It is never
-            // parsed, never fetched and never interpreted.
-            Tag::HtmlBlock => {
-                let spans = vec![Inline::Text {
-                    text: self.html_block(),
-                    style: literal_style(),
-                }];
-                self.paragraph(spans, blocks);
-            }
-            // Containers this module does not enable or does not model: descend so their
-            // content still renders, without adding a block of its own.
-            Tag::FootnoteDefinition(_)
-            | Tag::DefinitionList
-            | Tag::DefinitionListTitle
-            | Tag::DefinitionListDefinition
-            | Tag::Table(_)
-            | Tag::TableHead
-            | Tag::TableRow
-            | Tag::TableCell
-            | Tag::MetadataBlock(_)
-            | Tag::Item => {
-                let (nested, _) = self.blocks(depth + 1);
-                blocks.extend(nested);
-            }
-        }
-    }
-
-    /// Push a paragraph, applying a task-list marker the item declared.
-    ///
-    /// A tight list item is not wrapped in a `Paragraph` by the parser, so the marker
-    /// can arrive before loose text rather than before a paragraph tag. Applying it here
-    /// covers both shapes.
-    fn paragraph(&mut self, mut spans: Vec<Inline>, blocks: &mut Vec<Block>) {
-        if let Some(checked) = self.pending_marker.take() {
-            spans.insert(
-                0,
-                Inline::Text {
-                    text: if checked { "☑ " } else { "☐ " }.to_owned(),
-                    style: SpanStyle::default(),
-                },
-            );
-        }
-        blocks.push(Block::Paragraph { spans });
-    }
-
-    /// Read one list's items.
-    fn list_items(&mut self, depth: usize, flatten: bool) -> (Vec<Vec<Block>>, Option<TagEnd>) {
-        let mut items = Vec::new();
-        while let Some(event) = self.next() {
-            match event {
-                Event::Start(Tag::Item) => {
-                    let (item, _) = self.blocks(depth + 1);
-                    items.push(item);
-                }
-                Event::End(tag) => return (items, Some(tag)),
-                Event::Start(tag) => {
-                    // A list containing anything but items is malformed; keep the content.
-                    let mut stray = Vec::new();
-                    let mut stray_pending = Vec::new();
-                    self.block(tag, depth, flatten, &mut stray, &mut stray_pending);
-                    self.flush_paragraph(&mut stray_pending, &mut stray);
-                    items.push(stray);
-                }
-                _ => {}
-            }
-        }
-        (items, None)
-    }
-
-    /// Read a code block's text verbatim.
-    fn code_block(&mut self) -> String {
-        let mut text = String::new();
-        while let Some(event) = self.next() {
-            match event {
-                Event::Text(part) => text.push_str(&part),
-                Event::Code(part) => text.push_str(&part),
-                Event::SoftBreak | Event::HardBreak => text.push('\n'),
-                Event::End(TagEnd::CodeBlock) => break,
-                _ => {}
-            }
-        }
-        text
-    }
-
-    /// Read an HTML block's text verbatim.
-    fn html_block(&mut self) -> String {
-        let mut text = String::new();
-        while let Some(event) = self.next() {
-            match event {
-                Event::Html(part) | Event::Text(part) | Event::InlineHtml(part) => {
-                    text.push_str(&part);
-                }
-                Event::End(TagEnd::HtmlBlock) => break,
-                _ => {}
-            }
-        }
-        text.trim_end_matches('\n').to_owned()
-    }
-
-    /// Read inline content until the current inline container closes.
-    fn inline(&mut self, style: SpanStyle) -> (Vec<Inline>, Option<TagEnd>) {
-        let mut spans = Vec::new();
-        while let Some(event) = self.next() {
-            match event {
-                Event::Start(tag) => self.inline_tag(tag, &style, &mut spans),
-                Event::End(tag) => return (spans, Some(tag)),
-                Event::Text(text) => push_text(&mut spans, &text, &style),
-                Event::Code(text) => {
-                    let mut code_style = style.clone();
-                    code_style.code = true;
-                    push_text(&mut spans, &text, &code_style);
-                }
-                // A line break inside a paragraph. CommonMark calls a soft break a
-                // space, but release notes are written with intentional line breaks and
-                // GitHub's own comment rendering keeps them, so they are kept here.
-                Event::SoftBreak | Event::HardBreak => spans.push(Inline::Break),
-                Event::InlineHtml(html) | Event::Html(html) => {
-                    push_text(&mut spans, &html, &literal_style());
-                }
-                Event::FootnoteReference(name) => {
-                    push_text(&mut spans, &format!("[^{name}]"), &style);
-                }
-                Event::InlineMath(text) | Event::DisplayMath(text) => {
-                    let mut math_style = style.clone();
-                    math_style.code = true;
-                    push_text(&mut spans, &text, &math_style);
-                }
-                Event::TaskListMarker(checked) => {
-                    push_text(&mut spans, if checked { "☑ " } else { "☐ " }, &style);
-                }
-                Event::Rule => {}
-            }
-        }
-        (spans, None)
-    }
-
-    fn inline_tag(&mut self, tag: Tag<'a>, style: &SpanStyle, spans: &mut Vec<Inline>) {
-        let (inner, _) = self.inline(inline_style(&tag, style));
-        spans.extend(inner);
-    }
-}
-
-/// Whether a tag contributes inline styling rather than opening a block.
-fn is_inline_tag(tag: &Tag<'_>) -> bool {
-    matches!(
-        tag,
-        Tag::Emphasis
-            | Tag::Strong
-            | Tag::Strikethrough
-            | Tag::Superscript
-            | Tag::Subscript
-            | Tag::Link { .. }
-            | Tag::Image { .. }
-    )
-}
-
-/// The style an inline tag adds on top of `base`.
-fn inline_style(tag: &Tag<'_>, base: &SpanStyle) -> SpanStyle {
-    match tag {
-        Tag::Strong => SpanStyle {
-            bold: true,
-            ..base.clone()
-        },
-        Tag::Emphasis => SpanStyle {
-            italic: true,
-            ..base.clone()
-        },
-        Tag::Strikethrough => SpanStyle {
-            strikethrough: true,
-            ..base.clone()
-        },
-        // An image's alt text renders; its URL does not.
-        Tag::Link { dest_url, .. } => SpanStyle {
-            link: clickable_link(dest_url),
-            ..base.clone()
-        },
-        _ => base.clone(),
-    }
-}
-
-/// The style for text that is shown as-is because it is not Markdown this module
-/// renders — raw HTML, for instance. Monospace marks it as "this was literal".
-fn literal_style() -> SpanStyle {
-    SpanStyle {
-        code: true,
-        ..SpanStyle::default()
-    }
-}
-
-fn heading_level(level: HeadingLevel) -> u8 {
-    match level {
-        HeadingLevel::H1 => 1,
-        HeadingLevel::H2 => 2,
-        HeadingLevel::H3 => 3,
-        HeadingLevel::H4 => 4,
-        HeadingLevel::H5 => 5,
-        HeadingLevel::H6 => 6,
-    }
-}
-
-/// What the renderer needs beyond the parsed blocks.
-struct RenderState {
-    tokens: Tokens,
-    mono: SharedString,
-    /// Counts links so each gets a distinct element id.
-    ///
-    /// A link needs an id to be clickable, and two identical URLs in one changelog would
-    /// otherwise share one. The index follows render order, so it is stable for as long
-    /// as the content is.
-    link_index: usize,
-}
-
-impl RenderState {
-    fn link_id(&mut self, url: &str) -> SharedString {
-        let id = SharedString::from(format!("update-notes-link:{}:{url}", self.link_index));
-        self.link_index += 1;
-        id
-    }
-}
-
-/// Render parsed blocks into a column.
-pub(crate) fn render(blocks: &[Block], tokens: Tokens, cx: &App) -> Div {
-    let mut state = RenderState {
-        tokens,
-        mono: cx.theme().mono_font_family.clone(),
-        link_index: 0,
-    };
-    let mut column = div().flex().flex_col().gap_2().w_full().min_w_0();
-    for block in blocks {
-        column = column.child(render_block(block, &mut state));
-    }
-    column
-}
-
-fn render_block(block: &Block, state: &mut RenderState) -> Div {
-    let tokens = state.tokens;
-    match block {
-        Block::Heading { level, spans } => {
-            let row = inline_row(spans, state);
-            let row = match level {
-                1 => row.text_lg(),
-                2 => row.text_base(),
-                _ => row.text_sm(),
-            };
-            row.font_weight(FontWeight::BOLD).text_color(tokens.text)
-        }
-        Block::Paragraph { spans } => inline_row(spans, state).text_xs(),
-        Block::Code { text } => code_block(text, tokens, &state.mono),
-        Block::List {
-            ordered,
-            start,
-            items,
-        } => {
-            let mut column = div().flex().flex_col().gap_1().w_full().min_w_0();
-            for (index, item) in items.iter().enumerate() {
-                let marker = if *ordered {
-                    format!("{}.", start + index as u64)
-                } else {
-                    "•".to_owned()
-                };
-                let mut content = div().flex().flex_col().gap_1().flex_1().min_w_0();
-                for nested in item {
-                    content = content.child(render_block(nested, state));
-                }
-                column = column.child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .gap_2()
-                        .w_full()
-                        .min_w_0()
-                        .child(
-                            // A fixed marker column keeps the content edges aligned
-                            // across items regardless of the marker's own width.
-                            div()
-                                .w(px(16.0))
-                                .flex_shrink_0()
-                                .text_xs()
-                                .text_color(tokens.muted)
-                                .child(marker),
-                        )
-                        .child(content),
-                );
-            }
-            column
-        }
-        Block::Quote { blocks } => div()
-            .flex()
-            .flex_row()
-            .gap_2()
-            .w_full()
-            .min_w_0()
-            .child(div().w(px(2.0)).flex_shrink_0().bg(tokens.border))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .flex_1()
-                    .min_w_0()
-                    .text_color(tokens.muted)
-                    .children(blocks.iter().map(|block| render_block(block, state))),
-            ),
-        Block::Rule => div().w_full().h(px(1.0)).bg(tokens.border),
-    }
-}
-
-/// A fenced or indented code block.
-///
-/// Long lines wrap rather than scroll. A horizontal scroll container needs a stable
-/// element identity, and several code blocks in one changelog would collide on a single
-/// id; wrapping loses the alignment of a wrapped line but never hides content, which is
-/// the better failure for release notes.
-fn code_block(text: &str, tokens: Tokens, mono: &SharedString) -> Div {
-    div()
-        .w_full()
-        .min_w_0()
-        .p_2()
-        .rounded_md()
-        .bg(tokens.border.opacity(0.35))
-        .font_family(mono.clone())
-        .text_xs()
-        .text_color(tokens.text)
-        .child(text.trim_end_matches('\n').to_owned())
-}
-
-/// Lay inline content out as a wrapping row of styled chunks.
-///
-/// GPUI has no inline layout, so mixed styling inside one paragraph is expressed as a
-/// flex row of chunks. Text wraps inside a chunk and between chunks, which means a
-/// sentence can wrap at a style boundary rather than strictly at a space — the price of
-/// making links clickable, which a single styled text run cannot do. For release notes
-/// (short lines, mostly one style per line) the difference does not show.
-fn inline_row(spans: &[Inline], state: &mut RenderState) -> Div {
-    let mut row = div().flex().flex_wrap().w_full().min_w_0();
-    for span in spans {
-        row = match span {
-            Inline::Text { text, style } => row.child(inline_chunk(text, style, state)),
-            // A full-width element forces the following content onto a new line.
-            Inline::Break => row.child(div().w_full()),
-        };
-    }
-    row
-}
-
-fn inline_chunk(text: &str, style: &SpanStyle, state: &mut RenderState) -> AnyElement {
-    let tokens = state.tokens;
-    let mut chunk = div().min_w_0().text_xs();
-    if style.code {
-        chunk = chunk
-            .font_family(state.mono.clone())
-            .px_1()
-            .rounded_md()
-            .bg(tokens.border.opacity(0.35));
-    }
-    if style.bold {
-        chunk = chunk.font_weight(FontWeight::BOLD);
-    }
-    if style.italic {
-        chunk = chunk.italic();
-    }
-    if style.strikethrough {
-        chunk = chunk.line_through();
-    }
-    match &style.link {
-        Some(url) => chunk
-            .text_color(tokens.accent)
-            .underline()
-            .id(state.link_id(url))
-            .on_click({
-                let url = url.clone();
-                move |_, _, _| {
-                    // The URL was already restricted to HTTPS when it was parsed, and
-                    // the platform opener re-checks the scheme.
-                    let _ = bongocat_platform::open_external_url(&url);
-                }
-            })
-            .child(text.to_owned())
-            // Registers the link for the headless window tests; the trait's method is
-            // the identity function when `gpui-kit`'s `test-support` feature is off.
-            .test_support()
-            .into_any_element(),
-        None => chunk
-            .text_color(tokens.text)
-            .child(text.to_owned())
-            .into_any_element(),
+        // Reached only if a caller declined the HTML node; showing the source keeps the
+        // text complete either way.
+        markdown_ast::Node::Html(html) => html.value.clone(),
+        _ => node
+            .children()
+            .map(|children| children.iter().map(plain_text).collect())
+            .unwrap_or_default(),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Block, Inline, SpanStyle, blocks, clickable_link, truncate};
-    use super::{MAXIMUM_MARKDOWN_BYTES, TRUNCATION_MARKER};
+    use super::{
+        LITERAL_HTML_BLOCK, LITERAL_HTML_INLINE, MAXIMUM_BLOCK_MARKERS, MAXIMUM_LINK_BYTES,
+        MAXIMUM_MARKDOWN_BYTES, NO_REMOTE_IMAGE, REFUSED_LINK, TRUNCATION_MARKER, clickable_link,
+        cut_offset, image_alt_text, is_list_marker_start, literal_html_text, plain_text, prepare,
+        refused_link_text,
+    };
+    use gpui_kit::base::markdown_ast;
+    use gpui_kit::{TestAppContext, Window};
 
-    fn text_of(spans: &[Inline]) -> String {
-        spans
-            .iter()
-            .map(|span| match span {
-                Inline::Text { text, .. } => text.clone(),
-                Inline::Break => "\n".to_owned(),
-            })
-            .collect()
+    fn image(alt: &str, url: &str) -> markdown_ast::Node {
+        markdown_ast::Node::Image(markdown_ast::Image {
+            position: None,
+            alt: alt.to_owned(),
+            url: url.to_owned(),
+            title: None,
+        })
     }
 
-    fn only_paragraph(blocks: &[Block]) -> &[Inline] {
-        assert_eq!(blocks.len(), 1, "expected one block, got {blocks:?}");
-        match &blocks[0] {
-            Block::Paragraph { spans } => spans,
-            other => panic!("expected a paragraph, got {other:?}"),
-        }
+    fn image_reference(alt: &str) -> markdown_ast::Node {
+        markdown_ast::Node::ImageReference(markdown_ast::ImageReference {
+            position: None,
+            alt: alt.to_owned(),
+            reference_kind: markdown_ast::ReferenceKind::Full,
+            identifier: "shared".to_owned(),
+            label: None,
+        })
+    }
+
+    fn link(url: &str, label: &str) -> markdown_ast::Node {
+        markdown_ast::Node::Link(markdown_ast::Link {
+            children: vec![markdown_ast::Node::Text(markdown_ast::Text {
+                value: label.to_owned(),
+                position: None,
+            })],
+            position: None,
+            url: url.to_owned(),
+            title: None,
+        })
+    }
+
+    fn html(value: &str) -> markdown_ast::Node {
+        markdown_ast::Node::Html(markdown_ast::Html {
+            value: value.to_owned(),
+            position: None,
+        })
+    }
+
+    fn emphasis(text: &str) -> markdown_ast::Node {
+        markdown_ast::Node::Emphasis(markdown_ast::Emphasis {
+            children: vec![markdown_ast::Node::Text(markdown_ast::Text {
+                value: text.to_owned(),
+                position: None,
+            })],
+            position: None,
+        })
+    }
+
+    // --- The input bounds ---
+
+    #[test]
+    fn an_ordinary_changelog_is_not_cut() {
+        let notes = "# BongoCat 2.0.0\n\n## Added\n\n- the overlay stays up\n- `just build` works\n\n> thanks\n";
+        assert_eq!(prepare(notes), notes);
+        assert_eq!(cut_offset(notes), None);
     }
 
     #[test]
-    fn headings_carry_their_level() {
-        let parsed = blocks("# One\n\n### Three\n");
+    fn an_oversized_changelog_is_cut_with_a_visible_marker() {
+        let notes = "a".repeat(MAXIMUM_MARKDOWN_BYTES + 1);
+        let prepared = prepare(&notes);
+        assert!(prepared.ends_with(TRUNCATION_MARKER), "{prepared:?}");
         assert_eq!(
-            parsed,
-            vec![
-                Block::Heading {
-                    level: 1,
-                    spans: vec![Inline::Text {
-                        text: "One".to_owned(),
-                        style: SpanStyle::default()
-                    }]
-                },
-                Block::Heading {
-                    level: 3,
-                    spans: vec![Inline::Text {
-                        text: "Three".to_owned(),
-                        style: SpanStyle::default()
-                    }]
-                },
-            ]
+            prepared.len(),
+            MAXIMUM_MARKDOWN_BYTES + TRUNCATION_MARKER.len(),
+            "the cut has to land exactly on the byte budget"
         );
     }
 
     #[test]
-    fn emphasis_strong_and_strikethrough_nest() {
-        let parsed = blocks("plain **bold _both_** ~~gone~~\n");
-        let spans = only_paragraph(&parsed);
-        assert_eq!(text_of(spans), "plain bold both gone");
-        let styles: Vec<&SpanStyle> = spans
-            .iter()
-            .filter_map(|span| match span {
-                Inline::Text { style, .. } => Some(style),
-                Inline::Break => None,
-            })
+    fn a_cut_lands_on_a_character_boundary() {
+        // Each `é` is two bytes, so a budget that lands mid-character would panic on a
+        // slice if the boundary were not walked back.
+        let notes = "é".repeat(MAXIMUM_MARKDOWN_BYTES);
+        let prepared = prepare(&notes);
+        assert!(prepared.ends_with(TRUNCATION_MARKER), "{prepared:?}");
+        assert!(prepared.starts_with('é'));
+    }
+
+    /// Deeply nested quotes are the cheapest way to make a renderer recurse.
+    ///
+    /// Two bytes buy one level, so a document that nests thousands deep fits in a
+    /// kilobyte. The bound is on the number of containers rather than on the apparent
+    /// depth, which is what makes it hold for a document written to look shallow.
+    #[test]
+    fn nesting_deeper_than_the_stack_allows_is_cut() {
+        let notes = format!("{}deep\n", "> ".repeat(MAXIMUM_BLOCK_MARKERS + 1));
+        let prepared = prepare(&notes);
+        assert!(prepared.ends_with(TRUNCATION_MARKER), "{prepared:?}");
+        assert!(
+            prepared.len() < notes.len(),
+            "a document this nested must be cut, not rendered"
+        );
+    }
+
+    /// A real changelog has a long list in it, and none of that is nesting.
+    #[test]
+    fn a_long_list_is_not_mistaken_for_nesting() {
+        let notes = (0..MAXIMUM_BLOCK_MARKERS)
+            .map(|index| format!("- entry {index}\n"))
+            .collect::<String>();
+        assert_eq!(cut_offset(&notes), None);
+    }
+
+    #[test]
+    fn a_bullet_is_recognised_wherever_one_could_start() {
+        let bytes = b"- a * b 1. c 2) d";
+        let found: Vec<usize> = (0..bytes.len())
+            .filter(|index| is_list_marker_start(bytes, *index))
             .collect();
-        assert!(
-            styles
-                .iter()
-                .any(|style| !style.bold && !style.italic && !style.strikethrough),
-            "the plain run must stay plain: {styles:?}"
-        );
-        assert!(
-            styles.iter().any(|style| style.bold && !style.italic),
-            "the bold run must be bold: {styles:?}"
-        );
-        assert!(
-            styles.iter().any(|style| style.bold && style.italic),
-            "emphasis inside strong must carry both: {styles:?}"
-        );
-        assert!(
-            styles.iter().any(|style| style.strikethrough),
-            "strikethrough must be marked: {styles:?}"
-        );
+        // `-`, `*`, `1.`, `2)`. A `-` or `*` mid-word is not a marker.
+        assert_eq!(found, vec![0, 4, 8, 13]);
     }
 
-    /// Adjacent runs with the same style have to merge, or a long paragraph becomes one
-    /// element per parser event.
-    #[test]
-    fn adjacent_runs_merge_into_one_span() {
-        let parsed = blocks("**bold**\n");
-        let spans = only_paragraph(&parsed);
-        assert_eq!(spans.len(), 1, "got {spans:?}");
-    }
+    // --- Images ---
 
+    /// The refusal has to cover both spellings, because both fetch.
     #[test]
-    fn bullet_and_ordered_lists_keep_their_shape() {
-        let parsed = blocks("- a\n- b\n\n1. one\n2. two\n");
-        let [
-            Block::List {
-                ordered: false,
-                items: bullets,
-                ..
-            },
-            Block::List {
-                ordered: true,
-                start: 1,
-                items: numbers,
-            },
-        ] = parsed.as_slice()
-        else {
-            panic!("expected two lists, got {parsed:?}");
-        };
-        assert_eq!(bullets.len(), 2);
-        assert_eq!(numbers.len(), 2);
-    }
-
-    /// An ordered list starting at a number other than one keeps that number.
-    #[test]
-    fn an_ordered_list_keeps_its_start() {
-        let parsed = blocks("3. third\n4. fourth\n");
-        let [
-            Block::List {
-                ordered: true,
-                start: 3,
-                items,
-            },
-        ] = parsed.as_slice()
-        else {
-            panic!("expected one ordered list, got {parsed:?}");
-        };
-        assert_eq!(items.len(), 2);
-    }
-
-    #[test]
-    fn nested_lists_stay_nested() {
-        let parsed = blocks("- outer\n  - inner\n");
-        let [Block::List { items, .. }] = parsed.as_slice() else {
-            panic!("expected a list, got {parsed:?}");
-        };
-        assert_eq!(items.len(), 1);
-        assert!(
-            items[0]
-                .iter()
-                .any(|block| matches!(block, Block::List { .. })),
-            "the inner list must survive: {items:?}"
-        );
-    }
-
-    #[test]
-    fn fenced_and_indented_code_blocks_keep_their_text() {
-        let fenced = blocks("```rust\nlet x = 1;\n```\n");
-        let [Block::Code { text }] = fenced.as_slice() else {
-            panic!("expected a code block, got {fenced:?}");
-        };
-        assert_eq!(text, "let x = 1;\n");
-
-        let indented = blocks("    indented\n");
-        let [Block::Code { text }] = indented.as_slice() else {
-            panic!("expected a code block, got {indented:?}");
-        };
-        assert_eq!(text, "indented\n");
-    }
-
-    /// Code block content is not Markdown: markers inside it must survive verbatim.
-    #[test]
-    fn code_block_content_is_not_reparsed() {
-        let parsed = blocks("```\n**not bold** [not a link](https://x)\n```\n");
-        let [Block::Code { text }] = parsed.as_slice() else {
-            panic!("expected a code block, got {parsed:?}");
-        };
-        assert_eq!(text, "**not bold** [not a link](https://x)\n");
-    }
-
-    #[test]
-    fn inline_code_is_marked_as_code() {
-        let parsed = blocks("run `bongocat` now\n");
-        let spans = only_paragraph(&parsed);
-        let code = spans
-            .iter()
-            .find_map(|span| match span {
-                Inline::Text { text, style } if style.code => Some(text.clone()),
-                _ => None,
-            })
-            .expect("the code span must be marked");
-        assert_eq!(code, "bongocat");
-    }
-
-    #[test]
-    fn block_quotes_and_rules_are_their_own_blocks() {
-        let parsed = blocks("> quoted\n\n---\n");
-        let [Block::Quote { blocks: quoted }, Block::Rule] = parsed.as_slice() else {
-            panic!("expected a quote and a rule, got {parsed:?}");
-        };
-        assert_eq!(text_of(only_paragraph(quoted)), "quoted");
-    }
-
-    /// A soft break is kept, because release notes are written with intentional lines.
-    #[test]
-    fn line_breaks_are_kept() {
-        let parsed = blocks("first\nsecond\n");
-        let spans = only_paragraph(&parsed);
-        assert_eq!(text_of(spans), "first\nsecond");
-    }
-
-    #[test]
-    fn a_hard_break_is_kept_too() {
-        let parsed = blocks("first  \nsecond\n");
-        let spans = only_paragraph(&parsed);
-        assert_eq!(text_of(spans), "first\nsecond");
-    }
-
-    #[test]
-    fn task_list_markers_survive_as_text() {
-        let parsed = blocks("- [x] done\n- [ ] todo\n");
-        let [Block::List { items, .. }] = parsed.as_slice() else {
-            panic!("expected a list, got {parsed:?}");
-        };
-        let rendered: Vec<String> = items
-            .iter()
-            .map(|item| text_of(only_paragraph(item)))
-            .collect();
-        assert_eq!(rendered, vec!["☑ done".to_owned(), "☐ todo".to_owned()]);
-    }
-
-    /// Only HTTPS links become controls; anything else renders as plain text with the
-    /// destination still visible.
-    #[test]
-    fn only_https_links_are_clickable() {
-        assert_eq!(
-            clickable_link("https://example.com/a"),
-            Some("https://example.com/a".to_owned())
-        );
-        for rejected in [
-            "http://example.com",
-            "javascript:alert(1)",
-            "file:///etc/passwd",
-            "data:text/html,<script>",
-            "HTTPS://example.com",
-            "https://",
-            "https://exa mple.com",
-            "https://example.com/\n<script>",
+    fn every_image_spelling_yields_its_alt_text_and_nothing_else() {
+        for node in [
+            image("a diagram", "https://example.com/tracker.gif"),
+            image_reference("a diagram"),
         ] {
             assert_eq!(
-                clickable_link(rejected),
-                None,
-                "{rejected} must not be clickable"
+                image_alt_text(&node),
+                Some("a diagram".to_owned()),
+                "{node:?}"
             );
         }
     }
 
+    /// An image with no alt text is still an image, and still must not be fetched.
     #[test]
-    fn a_link_span_carries_the_validated_url() {
-        let parsed = blocks("see [docs](https://example.com/x)\n");
-        let spans = only_paragraph(&parsed);
-        let link = spans
-            .iter()
-            .find_map(|span| match span {
-                Inline::Text { style, .. } => style.link.clone(),
-                Inline::Break => None,
-            })
-            .expect("the link must be marked");
-        assert_eq!(link, "https://example.com/x");
-    }
-
-    /// A link inside a list item must be parsed like any other link.
-    #[test]
-    fn a_link_inside_a_list_item_is_marked() {
-        let parsed = blocks("## Fixes\n\n- fixed [the issue](https://example.com/issues/47)\n");
-        let rendered = format!("{parsed:?}");
-        assert!(
-            rendered.contains("https://example.com/issues/47"),
-            "the link URL must survive list parsing: {rendered}"
+    fn an_image_without_alt_text_is_still_claimed() {
+        assert_eq!(
+            image_alt_text(&image("", "https://example.com/x.png")),
+            Some(String::new())
         );
     }
 
     #[test]
-    fn a_rejected_link_still_renders_its_text() {
-        let parsed = blocks("[click](javascript:alert(1))\n");
-        let spans = only_paragraph(&parsed);
-        assert_eq!(text_of(spans), "click");
-        assert!(
-            spans.iter().all(|span| match span {
-                Inline::Text { style, .. } => style.link.is_none(),
-                Inline::Break => true,
-            }),
-            "a rejected link must not be marked clickable: {spans:?}"
-        );
-    }
-
-    /// Raw HTML is shown, never interpreted. There is no markup layer for it to reach.
-    #[test]
-    fn raw_html_renders_as_literal_text() {
-        let parsed = blocks("<script>alert(1)</script>\n");
-        let spans = only_paragraph(&parsed);
-        assert_eq!(text_of(spans), "<script>alert(1)</script>");
-        assert!(
-            spans.iter().all(|span| match span {
-                Inline::Text { style, .. } => style.link.is_none(),
-                Inline::Break => true,
-            }),
-            "raw HTML must not produce a link"
-        );
-
-        let block = blocks("<div>\nblock html\n</div>\n");
-        assert!(
-            text_of(only_paragraph(&block)).contains("block html"),
-            "an HTML block's content must survive: {block:?}"
-        );
-    }
-
-    #[test]
-    fn an_image_renders_its_alt_text_and_no_url() {
-        let parsed = blocks("![a diagram](https://example.com/x.png)\n");
-        let spans = only_paragraph(&parsed);
-        assert_eq!(text_of(spans), "a diagram");
-        assert!(
-            spans.iter().all(|span| match span {
-                Inline::Text { style, .. } => style.link.is_none(),
-                Inline::Break => true,
-            }),
-            "an image must not become a link: {spans:?}"
-        );
-    }
-
-    /// Character references are decoded by the parser, so what reaches the renderer is
-    /// the character the author meant — not an entity that a later layer could
-    /// re-interpret.
-    #[test]
-    fn character_references_are_decoded_once() {
-        let parsed = blocks("a &amp; b &lt;tag&gt; &#35;\n");
-        let spans = only_paragraph(&parsed);
-        assert_eq!(text_of(spans), "a & b <tag> #");
-    }
-
-    /// Deep nesting is legal input, so it has to be handled rather than trusted.
-    #[test]
-    fn deep_nesting_is_flattened_without_losing_text() {
-        let mut markdown = String::new();
-        for depth in 0..40 {
-            markdown.push_str(&"  ".repeat(depth));
-            markdown.push_str("- item\n");
-        }
-        let parsed = blocks(&markdown);
-        let rendered = format!("{parsed:?}");
-        assert!(
-            rendered.contains("item"),
-            "the content must survive deep nesting"
-        );
-        assert!(
-            rendered.matches("List").count() <= super::MAXIMUM_BLOCK_DEPTH + 2,
-            "nesting must be capped, got {} lists",
-            rendered.matches("List").count()
-        );
-    }
-
-    #[test]
-    fn an_over_long_changelog_is_truncated_at_a_character_boundary() {
-        let markdown = "é".repeat(MAXIMUM_MARKDOWN_BYTES);
-        let truncated = truncate(&markdown);
-        assert!(truncated.len() <= MAXIMUM_MARKDOWN_BYTES + TRUNCATION_MARKER.len());
-        assert!(truncated.ends_with(TRUNCATION_MARKER));
-        assert!(std::str::from_utf8(truncated.as_bytes()).is_ok());
-
-        let short = "# fine";
-        assert_eq!(truncate(short), short);
-    }
-
-    /// Arbitrary bytes must not panic the parser or the renderer's input stage.
-    #[test]
-    fn malformed_markdown_does_not_panic() {
-        for input in [
-            "",
-            "#",
-            "- ",
-            "> > > unbalanced",
-            "```\nunterminated",
-            "[link](",
-            "**",
-            "***",
-            "|a|b|\n|-|-|",
-            "\u{0}\u{1}\u{7f}",
-            "a\tb\rc\nd",
-            "🎉 **粗体** 🎉",
+    fn a_node_that_is_not_an_image_is_left_to_the_built_in_renderer() {
+        for node in [
+            link("https://example.com", "x"),
+            html("<b>x</b>"),
+            emphasis("x"),
         ] {
-            let _ = blocks(input);
+            assert_eq!(image_alt_text(&node), None, "{node:?}");
         }
     }
 
-    /// The renderer must cope with every block shape the parser can produce.
+    // --- Links ---
+
+    /// HTTPS, and only HTTPS, becomes a control.
     #[test]
-    fn every_block_shape_parses_from_real_markdown() {
-        let markdown = "\
-# Title
-## Section
-Paragraph with **bold**, _italic_, `code` and [a link](https://example.com).
+    fn only_https_links_are_clickable() {
+        assert_eq!(
+            clickable_link("https://example.com/issues/47"),
+            Some("https://example.com/issues/47".to_owned())
+        );
+        for refused in [
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+            "data:text/html,<script>",
+            "http://example.com",
+            // A newline is how a scheme gets smuggled past a naive prefix test.
+            "https://example.com/\njavascript:alert(1)",
+            "https://example.com/ with a space",
+            "https://",
+            "",
+        ] {
+            assert_eq!(clickable_link(refused), None, "{refused:?}");
+        }
+    }
 
-- bullet
-- bullet
+    #[test]
+    fn an_over_long_link_target_is_refused() {
+        let refused = format!("https://example.com/{}", "a".repeat(MAXIMUM_LINK_BYTES));
+        assert_eq!(clickable_link(&refused), None);
+    }
 
-1. one
-2. two
+    /// The plugin declines an accepted link, so `gpui-kit` renders it.
+    #[test]
+    fn an_accepted_link_is_left_to_the_built_in_renderer() {
+        assert_eq!(
+            refused_link_text(&link("https://example.com", "the issue")),
+            None
+        );
+    }
 
-> quote
+    #[test]
+    fn a_refused_link_keeps_its_label() {
+        assert_eq!(
+            refused_link_text(&link("javascript:alert(1)", "click me")),
+            Some("click me".to_owned())
+        );
+    }
 
-```sh
-echo hi
-```
+    #[test]
+    fn a_refused_links_label_keeps_its_own_markup_resolved_away() {
+        let node = markdown_ast::Node::Link(markdown_ast::Link {
+            children: vec![
+                markdown_ast::Node::Text(markdown_ast::Text {
+                    value: "see ".to_owned(),
+                    position: None,
+                }),
+                emphasis("the issue"),
+                markdown_ast::Node::InlineCode(markdown_ast::InlineCode {
+                    value: "#47".to_owned(),
+                    position: None,
+                }),
+            ],
+            position: None,
+            url: "javascript:alert(1)".to_owned(),
+            title: None,
+        });
+        assert_eq!(
+            refused_link_text(&node),
+            Some("see the issue#47".to_owned())
+        );
+    }
 
----
+    #[test]
+    fn a_link_reference_is_left_to_the_built_in_renderer() {
+        // A reference resolves to its target inside `gpui-kit`, so this module cannot judge
+        // it here. What still holds is that the click goes through the opener, which
+        // re-checks the scheme.
+        let node = markdown_ast::Node::LinkReference(markdown_ast::LinkReference {
+            children: vec![markdown_ast::Node::Text(markdown_ast::Text {
+                value: "x".to_owned(),
+                position: None,
+            })],
+            position: None,
+            reference_kind: markdown_ast::ReferenceKind::Full,
+            identifier: "shared".to_owned(),
+            label: None,
+        });
+        assert_eq!(refused_link_text(&node), None);
+    }
+
+    #[test]
+    fn plain_text_keeps_a_footnotes_label_and_an_images_alt() {
+        let footnote = markdown_ast::Node::FootnoteReference(markdown_ast::FootnoteReference {
+            position: None,
+            identifier: "note".to_owned(),
+            label: Some("Note".to_owned()),
+        });
+        assert_eq!(plain_text(&footnote), "[^Note]");
+        assert_eq!(
+            plain_text(&image("alt", "https://example.com/x.png")),
+            "alt"
+        );
+    }
+
+    // --- Raw HTML ---
+
+    #[test]
+    fn raw_html_yields_its_source() {
+        assert_eq!(
+            literal_html_text(&html("<script>alert(1)</script>")),
+            Some("<script>alert(1)</script>".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_node_that_is_not_html_is_left_alone() {
+        for node in [
+            image("a", "b"),
+            link("https://example.com", "x"),
+            emphasis("x"),
+        ] {
+            assert_eq!(literal_html_text(&node), None, "{node:?}");
+        }
+    }
+
+    /// Both positions need a plugin, and a plugin belongs to exactly one of them.
+    ///
+    /// A block-level `<div>…</div>` never reaches the inline dispatcher, so registering
+    /// only one of the two would leave the other reading raw HTML as markup.
+    #[test]
+    fn the_two_html_plugins_hold_the_two_positions_apart() {
+        use gpui_kit::base::MarkdownPlugin;
+
+        assert!(!super::LiteralHtml::<false>.is_block());
+        assert!(super::LiteralHtml::<true>.is_block());
+        assert_eq!(super::LiteralHtml::<false>.name(), LITERAL_HTML_INLINE);
+        assert_eq!(super::LiteralHtml::<true>.name(), LITERAL_HTML_BLOCK);
+        assert_ne!(LITERAL_HTML_INLINE, LITERAL_HTML_BLOCK);
+        // Every plugin claims its nodes under its own name, so a claimed node can never be
+        // rendered by the wrong plugin's renderer.
+        assert_eq!(super::NoRemoteImage.name(), NO_REMOTE_IMAGE);
+        assert_eq!(super::RefusedLink.name(), REFUSED_LINK);
+    }
+
+    // --- The claim the whole module rests on ---
+
+    /// A refusal has to refuse *only* the thing it names.
+    ///
+    /// Two things are checked here, and the second is the one that catches the mistake
+    /// this test was written after. A plugin that claims a node it was not meant to claim
+    /// —by treating "not an image" as "an image with no alt text" —replaces the whole
+    /// document's inline content with a single empty string, and the changelog window
+    /// still lays out, still has height, and still passes a test that only asks whether
+    /// anything rendered. So the rendered text is read back and compared.
+    ///
+    /// The three properties are: every URL the manifest named is gone from the rendered
+    /// text, the alt text and link labels that replace them are still there, and a probe
+    /// registered after the production plugins never saw an image or an HTML node —which
+    /// is what shows they were claimed rather than merely not-rendered.
+    #[gpui_kit::test]
+    fn the_refusals_claim_their_nodes_before_the_built_in_renderer(cx: &mut TestAppContext) {
+        use gpui_kit::base::{
+            MarkdownExtensions, MarkdownNode, MarkdownParseContext, MarkdownPlugin, TextView,
+            TextViewState,
+        };
+        use gpui_kit::test::TestWindowExt;
+        use gpui_kit::{AppContext, Context, Entity, IntoElement, Render, px, size};
+        use std::sync::{Arc, Mutex};
+
+        /// Records the kind of every node `gpui-kit` still offers, claiming nothing.
+        struct Probe<const BLOCK: bool>(Arc<Mutex<Vec<String>>>);
+
+        impl<const BLOCK: bool> MarkdownPlugin for Probe<BLOCK> {
+            fn name(&self) -> &str {
+                "bongocat-notes-probe"
+            }
+
+            fn is_block(&self) -> bool {
+                BLOCK
+            }
+
+            fn parse(
+                &self,
+                node: &markdown_ast::Node,
+                _context: &MarkdownParseContext<'_>,
+            ) -> Option<MarkdownNode> {
+                self.0
+                    .lock()
+                    .expect("the probe recorder is not poisoned")
+                    .push(format!(
+                        "{}:{}",
+                        if BLOCK { "BLOCK" } else { "INLINE" },
+                        kind_of(node)
+                    ));
+                // Never claims: letting the next resolver have it is what makes this a
+                // record of what the refusals left behind.
+                None
+            }
+        }
+
+        fn kind_of(node: &markdown_ast::Node) -> String {
+            match node {
+                markdown_ast::Node::Image(_) => "image".to_owned(),
+                markdown_ast::Node::ImageReference(_) => "image-reference".to_owned(),
+                markdown_ast::Node::Link(_) => "link".to_owned(),
+                markdown_ast::Node::Html(_) => "html".to_owned(),
+                markdown_ast::Node::Text(_) => "text".to_owned(),
+                other => {
+                    let rendered = format!("{other:?}");
+                    format!("other:{}", &rendered[..rendered.len().min(48)])
+                }
+            }
+        }
+
+        struct Notes {
+            state: Entity<TextViewState>,
+            extensions: MarkdownExtensions,
+        }
+
+        impl Render for Notes {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                TextView::new(&self.state).markdown_extensions(self.extensions.clone())
+            }
+        }
+
+        let source = "\
+![a diagram](https://example.com/tracker.gif)
+
+![a referenced diagram][shared]
+
+<div><img src=\"https://example.com/pixel.png\"></div>
+
+an [ok link](https://example.com/page) and a [bad one](javascript:alert(1))
+
+[shared]: https://example.com/shared.png
 ";
-        let parsed = blocks(markdown);
-        assert!(parsed.iter().any(|b| matches!(b, Block::Heading { .. })));
-        assert!(parsed.iter().any(|b| matches!(b, Block::Paragraph { .. })));
-        assert!(parsed.iter().any(|b| matches!(b, Block::List { .. })));
-        assert!(parsed.iter().any(|b| matches!(b, Block::Quote { .. })));
-        assert!(parsed.iter().any(|b| matches!(b, Block::Code { .. })));
-        assert!(parsed.iter().any(|b| matches!(b, Block::Rule)));
+        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let extensions = super::extensions()
+            .plugin(Probe::<false>(Arc::clone(&seen)))
+            .plugin(Probe::<true>(Arc::clone(&seen)));
+
+        cx.update(gpui_kit::init);
+        let state = cx.new(|cx| TextViewState::markdown(source, cx));
+        let mounted = state.clone();
+        let handle = cx.open_window(size(px(560.0), px(460.0)), move |_, _cx| Notes {
+            state: mounted.clone(),
+            extensions: extensions.clone(),
+        });
+        for _ in 0..2 {
+            cx.update_window(handle.into(), |_, window, cx| {
+                window.render_frame(cx);
+            })
+            .expect("the notes window stays open");
+            cx.run_until_parked();
+        }
+
+        let offered = seen
+            .lock()
+            .expect("the probe recorder is not poisoned")
+            .clone();
+        // The control: the probe ran at all, and it ran inline as well as block.
+        assert!(
+            offered.iter().any(|kind| kind == "INLINE:text"),
+            "the probe never saw inline content, so it proves nothing: {offered:?}"
+        );
+        assert!(
+            offered.iter().any(|kind| kind == "INLINE:link"),
+            "the probe never saw a link, so it proves nothing: {offered:?}"
+        );
+        for claimed in ["image", "image-reference", "html"] {
+            assert!(
+                !offered.iter().any(|kind| kind.ends_with(claimed)),
+                "a {claimed} node reached the renderer behind the refusal that exists to \
+                 stop it: {offered:?}"
+            );
+        }
+
+        // What the window ended up showing. A refusal that also ate the surrounding
+        // content would pass every check above.
+        let rendered = cx
+            .update_window(handle.into(), |_, _window, cx| {
+                cx.update_entity(&state, |state, cx| state.select_all(cx));
+                state.read_with(cx, |state, _| state.selected_text())
+            })
+            .expect("the notes window stays open");
+        for shown in [
+            "a diagram",
+            "a referenced diagram",
+            // Raw HTML is shown as written, which is what keeps it inert and visible.
+            "<div><img src=\"https://example.com/pixel.png\"></div>",
+            "ok link",
+            "bad one",
+        ] {
+            assert!(
+                rendered.contains(shown),
+                "{shown:?} is missing from the rendered changelog: {rendered:?}"
+            );
+        }
+        for gone in ["tracker.gif", "shared.png", "example.com/page"] {
+            assert!(
+                !rendered.contains(gone),
+                "{gone:?} reached the rendered changelog: {rendered:?}"
+            );
+        }
+        // A URL inside raw HTML is the one that legitimately survives, as text: showing
+        // the author what they wrote is the whole point of refusing to interpret it. It is
+        // inert either way —a string in the changelog is not a request —and the
+        // assertion above is about the *image* URLs, which are dropped rather than shown.
+        assert!(
+            rendered.contains("<div><img src=\"https://example.com/pixel.png\"></div>"),
+            "raw HTML must be shown as written: {rendered:?}"
+        );
     }
 }

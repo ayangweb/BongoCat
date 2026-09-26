@@ -823,9 +823,9 @@ fn hint_line(message: impl Into<SharedString>, tokens: Tokens) -> Div {
 
 /// The changelog, rendered from the Markdown the release manifest announced.
 ///
-/// The notes are untrusted input, so they are parsed into
-/// [`crate::update_markdown`]'s representation and rendered from that — never
-/// interpreted as markup.
+/// The notes are untrusted input. [`crate::update_markdown`] bounds them and hands them to
+/// `gpui-kit` with the plugins that keep a manifest from making this application fetch
+/// anything or offer a target it will not open.
 ///
 /// The scroll box is sized by its content up to [`NOTES_MAX_HEIGHT`] and no
 /// further, which is what makes the window's own height measurable: the height the
@@ -833,14 +833,13 @@ fn hint_line(message: impl Into<SharedString>, tokens: Tokens) -> Div {
 /// not depend on how tall the window happens to be this frame. Past the cap the box
 /// holds its height and scrolls. Sizing it to the window instead is what would make
 /// the two feed each other and never settle.
-fn notes_section(locale: &str, notes: Option<String>, tokens: Tokens, cx: &App) -> Div {
+fn notes_section(locale: &str, notes: Option<String>, tokens: Tokens, _cx: &App) -> Div {
     let Some(notes) = notes else {
         return div();
     };
     if notes.trim().is_empty() {
         return div();
     }
-    let blocks = crate::update_markdown::blocks(&notes);
     div()
         .flex()
         .flex_col()
@@ -855,12 +854,12 @@ fn notes_section(locale: &str, notes: Option<String>, tokens: Tokens, cx: &App) 
             div()
                 .id("update-release-notes-body")
                 .test_support()
+                .w_full()
                 .h_auto()
                 .min_h_0()
                 .max_h(px(NOTES_MAX_HEIGHT))
                 .overflow_y_scroll()
-                .text_xs()
-                .child(crate::update_markdown::render(&blocks, tokens, cx)),
+                .child(crate::update_markdown::render(&notes)),
         )
 }
 
@@ -1694,17 +1693,18 @@ mod render_tests {
         });
     }
 
-    /// A Markdown changelog renders, and its `https` links become real controls.
+    /// A Markdown changelog reaches the painted window, links and all.
     ///
-    /// The parser has its own tests for what each syntax produces; this one proves the
-    /// other half — that Markdown written by the release reaches the painted window and
-    /// that a link ends up as a registered element a user can click.
+    /// Which targets become controls, and what a refused one shows instead, is
+    /// `update_markdown`'s business and is tested there against the parsed node and the
+    /// text the window ends up showing. This is the half a document-level test cannot
+    /// see: that a release's Markdown reaches this window at all.
     ///
     /// The changelog is deliberately short: the notes area scrolls, and an element
     /// scrolled out of view is not registered, so a long document would make this test
     /// depend on how much of it happens to fit.
     #[gpui_kit::test]
-    fn a_markdown_changelog_renders_with_clickable_links(cx: &mut TestAppContext) {
+    fn a_markdown_changelog_renders(cx: &mut TestAppContext) {
         let markdown = "## Fixes\n\n- fixed [the issue](https://example.com/issues/47)\n";
         let mut harness = harness(cx, UpdatePhase::Idle);
         harness.set_phase(
@@ -1714,14 +1714,10 @@ mod render_tests {
             },
         );
         harness.paint(cx, |window, _| {
-            assert!(
-                window.try_find("update-release-notes-body").is_some(),
-                "the changelog area must render"
-            );
-            let link = window
-                .try_find("update-notes-link:0:https://example.com/issues/47")
-                .expect("an https link must render as a registered, clickable element");
-            assert!(link.visible(), "the link must be on screen");
+            let notes = window
+                .try_find("update-release-notes-body")
+                .expect("the changelog area must render");
+            assert!(notes.visible(), "the changelog must be on screen");
         });
     }
 
@@ -1765,13 +1761,30 @@ bongocat --version
         });
     }
 
-    /// A link this product will not open must not become a control.
+    /// A changelog built out of every shape a manifest can use still reaches the window.
     ///
-    /// The parser rejects it; this pins that the rejection survives all the way to the
-    /// rendered window, which is where it would actually matter.
+    /// What each shape *becomes* is `update_markdown`'s business, and it is tested there
+    /// against the parsed node and against the text the window ends up showing. What only
+    /// this window can show is that such a document survives the trip: it lays out, it
+    /// stays inside the height budget rather than pushing the actions off the bottom, and
+    /// the phase's own controls are still reachable afterwards.
     #[gpui_kit::test]
-    fn a_non_https_link_does_not_become_a_control(cx: &mut TestAppContext) {
-        let markdown = "[click me](javascript:alert(1))\n";
+    fn a_changelog_of_every_refused_shape_still_reaches_the_window(cx: &mut TestAppContext) {
+        let markdown = "\
+![a diagram](https://example.com/tracker.gif)
+
+![a referenced diagram][shared]
+
+<div><img src=\"https://example.com/pixel.png\"></div>
+
+[click me](javascript:alert(1)) and [this](https://example.com/ok)
+
+## Fixes
+
+- fixed **shortcut** releases
+
+[shared]: https://example.com/shared.png
+";
         let mut harness = harness(cx, UpdatePhase::Idle);
         harness.set_phase(
             cx,
@@ -1780,15 +1793,23 @@ bongocat --version
             },
         );
         harness.paint(cx, |window, _| {
+            let notes = window
+                .try_find("update-release-notes-body")
+                .expect("the changelog area must render");
+            assert!(notes.visible(), "the changelog must be on screen");
             assert!(
-                window.try_find("update-release-notes-body").is_some(),
-                "the text must still render"
+                notes.bounds().size.height <= px(NOTES_MAX_HEIGHT),
+                "a changelog this dense must hold its budget and scroll"
             );
+        });
+        assert!(
+            harness.settled_height(cx) <= WINDOW_MAX_HEIGHT,
+            "a changelog of every refused shape pushed the window past its ceiling"
+        );
+        harness.paint(cx, |window, _| {
             assert!(
-                window
-                    .try_find("update-notes-link:0:javascript:alert(1)")
-                    .is_none(),
-                "a javascript: target must not be rendered as a link"
+                window.try_find("update-install").is_some(),
+                "the phase's own actions must survive the changelog"
             );
         });
     }

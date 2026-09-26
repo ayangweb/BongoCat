@@ -51,7 +51,6 @@ muda = { version = "=0.20.0", default-features = false }
 opener = { version = "=0.8.5", features = ["reveal"] }
 oxipng = { version = "=10.2.1", default-features = false }
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
-pulldown-cmark = { version = "=0.13.4", default-features = false }
 raw-window-handle = "=0.6.2"
 rfd = { version = "=0.17.2", default-features = false, features = ["common-controls-v6"] }
 rodio = { version = "=0.22.2", default-features = false, features = ["playback", "flac"] }
