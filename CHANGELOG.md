@@ -21,7 +21,7 @@
 - The tray and model-window context menus now share one menu set with grouped model-window controls, including always-on-top and hide-on-mouse-hover checks; the visibility preference uses the same “Hide model window” label and is unchecked by default, so source, version, restart, and duplicate size/opacity rows are no longer cluttering the menus.
 - Window and model-behavior shortcuts have separate switches. Model shortcuts are opt-in, and holding a shortcut triggers its action only once.
 - Closing Settings now destroys its window; reopening it in the same app process restores the last top-level sidebar page. Update windows keep their existing close-and-destroy behavior.
-- The update window is now only as tall as the step it is showing, so “Checking…” and “You are up to date” are no longer a mostly-empty dialog. A release with a changelog gets the room it needs, up to the size the window already used, and scrolls past that. It opens and changes height at the size its content actually needs, instead of briefly appearing at its tallest and shrinking down, and it no longer has a resize handle — its height is its content's height.
+- The update window is now only as tall as the step it is showing, so “Checking…” and “You are up to date” are no longer a mostly-empty dialog. A release with a changelog gets the room it needs, up to the size the window already used, and scrolls past that. It opens and changes height at the size its content actually needs, instead of briefly appearing at its tallest and shrinking down, and asking it to check shows “Checking…” with its progress bar right away instead of the result of the previous check. It no longer has a resize handle — its height is its content's height.
 
 ### 🐛 User-visible Fixes
 

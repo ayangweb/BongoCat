@@ -1068,7 +1068,14 @@ fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> 
 /// The window is a singleton like the settings window: the system menu, the About
 /// page and an automatic check all route through here, so a second request focuses
 /// the existing window instead of stacking another one.
-fn ensure_update_window(cx: &mut App) -> Result<bongocat_ui::UpdateWindowHandle, String> {
+///
+/// `start` only applies to a window that has to be opened. An already-open window is
+/// left showing what it is showing, and the caller decides afterwards whether to ask
+/// it for something.
+fn ensure_update_window(
+    cx: &mut App,
+    start: bongocat_ui::UpdateWindowStart,
+) -> Result<bongocat_ui::UpdateWindowHandle, String> {
     let (existing, update_client, settings_client, language, appearance_theme) = {
         let coordinator = cx
             .try_global::<ProductCoordinator>()
@@ -1101,6 +1108,7 @@ fn ensure_update_window(cx: &mut App) -> Result<bongocat_ui::UpdateWindowHandle,
         settings_client,
         language,
         appearance_theme,
+        start,
         cx,
     )?;
     cx.global_mut::<ProductCoordinator>().update_window = Some(window_handle.clone());
@@ -1108,8 +1116,14 @@ fn ensure_update_window(cx: &mut App) -> Result<bongocat_ui::UpdateWindowHandle,
 }
 
 /// Open the update window and start a check in it.
+///
+/// A window created for this request asked for the check while it was being built, so
+/// it opens onto that check rather than onto the result of the last one. The call below
+/// is what asks a window that was already open, and it is a no-op for the one just
+/// created: a view does not have two checks in flight.
 fn open_update_window_and_check(cx: &mut App) {
-    let result = ensure_update_window(cx).and_then(|window_handle| {
+    let start = bongocat_ui::UpdateWindowStart::Check;
+    let result = ensure_update_window(cx, start).and_then(|window_handle| {
         window_handle
             .update(cx, |view, _, cx| view.check(cx))
             .map_err(|error| error.to_string())
@@ -1124,7 +1138,7 @@ fn open_update_window_and_check(cx: &mut App) {
 /// The automatic check already ran, so opening the window here only surfaces its
 /// result; asking for another check would repeat the request the user did not make.
 fn show_update_window(cx: &mut App) {
-    if let Err(error) = ensure_update_window(cx) {
+    if let Err(error) = ensure_update_window(cx, bongocat_ui::UpdateWindowStart::Current) {
         record_update_window_failure(cx, error);
     }
 }

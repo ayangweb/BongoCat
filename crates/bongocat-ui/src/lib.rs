@@ -18,7 +18,7 @@ pub use window::{
 mod update;
 mod update_markdown;
 mod update_window;
-pub use update_window::{UpdateView, UpdateWindowHandle, open_update_window};
+pub use update_window::{UpdateView, UpdateWindowHandle, UpdateWindowStart, open_update_window};
 
 pub(crate) use bongocat_ui_protocol::*;
 

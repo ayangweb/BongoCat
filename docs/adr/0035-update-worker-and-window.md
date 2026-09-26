@@ -483,3 +483,72 @@ trace 里平台把请求的 410.5 变成 411，下一帧量到 410.5、又问一
 - **未验证**：Windows 上的开窗时序。`resize` 在 Windows 上是否同样异步、隐藏窗口是否同样拿不到帧，
   本机无法验证；上面两处都写了 macOS 的具体原因，若 Windows 行为不同则需要按平台分支。
 - **未验证**：800x600 与 125/150/200% 缩放下的高度。
+
+## 补充：开窗即显示正在检查（2026-09-26）
+
+### 现象
+
+用户报告：打开更新窗口时先显示上次检查的结果（“已是最新”、上一次的更新内容或失败原因），
+过一会儿才开始显示“正在检查”和进度条。
+
+### 原因不是“慢”，是“请求发得太晚”
+
+系统菜单与 About 页的「检查更新」都走 `open_update_window_and_check`，而它当时的顺序是
+**先开窗并显示，再请求检查**。两件事叠起来才是这一次闪烁：
+
+1. 窗口在 `open_window` 闭包里构造时读的是 `client.snapshot()`，此刻 worker 发布的仍然是上一次
+   检查的阶段。窗口的第一帧——也就是用户看到的那一帧——因此画的是上一次的答案。
+2. `view.check()` 随后才把 `Check` 命令发出去。命令是发给 worker 线程的消息，worker 取到它之后
+   才发布 `Checking`；而窗口按 `UPDATE_STATE_POLL_INTERVAL`（250 ms）轮询共享状态。所以从点击到
+   进度条出现之间，屏幕上一直画着旧阶段。
+
+只把请求提前并不能消除它：即使开窗前就把命令发出去，worker 仍是另一个线程，窗口构造那一刻
+`Checking` 未必已经发布。第一帧要显示这次检查，就得由窗口自己渲染它。
+
+### 改了什么
+
+- **窗口带着“开窗要做什么”打开**：`UpdateWindowStart::{Current, Check}`。`Check` 在 view 构造期间
+  （即第一帧被绘制之前）就发出请求，`Current` 保持原语义，供自动检查“只展示结果”那条路径使用。
+- **请求之后由窗口渲染这次检查**：view 记下请求发出时的 revision（`PendingCheck`）并把阶段渲染成
+  `Checking`；`poll_state` 在 revision 还没有前进时**不**采用共享状态里那个仍属于上一次检查的阶段。
+  revision 一旦前进就说明 worker 回答了，此时以 worker 发布的阶段为准。命令发不出去（通道满或已关闭）
+  时不渲染进度条——没有 worker 在跑的检查不能画成正在跑的检查。
+- **这个 revision 是发请求那一刻从共享状态读的**，不是复用窗口上次轮询到的那一个。worker 按自己的
+  节奏发布，一个结果完全可能落在两次轮询之间；若用旧 revision 作锚，下一次轮询会因为「revision 已经
+  前进」而把那个还没被窗口看到的结果当成对本次请求的回答——同一次闪烁，只是晚了一轮询。
+- **`asks_for_a_new_check` 收口三个条件**：没有未完成的请求、当前阶段不忙、当前构建不是
+  `Unavailable`。最后一条不是防御性代码而是必需条件：这类构建的 worker 只会重新发布它已有的阶段，
+  revision 不前进，照旧渲染的话进度条会永远转下去。同一条件也让「开窗即检查」对已经打开的窗口是
+  空操作，因此一个 view 不会有两次在途检查。
+- **调用点不需要区分新旧窗口**：`open_update_window_and_check` 末尾那次 `view.check` 仍用于**已经打开**
+  的窗口（用户在窗口空闲时再次点击「检查更新」），对刚创建的窗口是空操作。
+
+### 与既有决定的关系
+
+§2「worker 只发布状态，不推送事件」不变：worker 仍是共享状态的唯一写者，窗口仍然按 250 ms 轮询。
+变化的是窗口对**自己刚发出的请求**的本地渲染，它有一个明确且可验证的终止条件（revision 前进），
+而不是一个超时或猜测。窗口关闭不取消任何操作也不变：这次渲染的检查在窗口关掉后照常由 worker 完成。
+
+### 验证（2026-09-26，本机 Windows）
+
+- `bongocat-ui::update_window` 新增 5 个测试：2 个纯函数（`a_requested_check_renders_instead_of_the_previous_result`
+  固定 revision 语义、`a_check_is_only_asked_for_when_one_would_start` 固定三个准入条件），3 个无头
+  渲染（`a_window_opened_for_a_check_paints_that_check_from_its_first_frame` 固定第一帧与轮询都不把
+  上一次结果放回来，`a_check_asked_over_an_unpolled_result_is_not_overwritten_by_it` 固定锚点取的是
+  请求那一刻的 revision 而非上次轮询的，`a_window_opened_onto_the_published_state_offers_to_check`
+  固定 `Current` 语义未被这次改动带偏）。渲染测试总数 20 -> 23，`bongocat-ui` 170 项通过。
+- 反向验证：新渲染测试在去掉「构造期发请求」时失败（报 `a window opened for a check opened onto the
+  result of the last one`），在去掉「轮询不采用未前进的 revision」时失败（报 `the result of the last
+  check came back over the check being asked for`），在把锚点改回窗口上次轮询的 revision 时也失败（报
+  `a result this window had not polled replaced the check it just asked for`）——三块改动各自承重，
+  不是空转。
+- `cargo fmt --all -- --check`、`cargo clippy`（workspace 去 `bongocat-app`，另加 `bongocat-app` 的
+  `storage-test-injection` 与 `production` 两种 feature）、`cargo test --workspace`（44 个 target）、
+  `cargo check --workspace --release` 通过。`tools/tests` 中 symlink 权限与路径分隔符两项为既有
+  Windows 环境失败，与本改动无关。
+
+### 边界
+
+- **未验证**：实机上第一帧的观感。逻辑由无头渲染测试固定，但「打开时立刻看到进度条」这一眼仍然
+  需要人看；本次没有启动产品做人工核对。
+

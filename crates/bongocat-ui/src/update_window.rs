@@ -148,6 +148,72 @@ impl PartialEq for UpdateWindowHandle {
 
 impl Eq for UpdateWindowHandle {}
 
+/// What a freshly opened update window opens onto.
+///
+/// The system menu and the About page ask for a check, and the check they ask for is
+/// what that window shows: opening onto whatever the worker last published would put
+/// the previous answer on screen for as long as the new one took to arrive, which is
+/// the one thing a person who just asked for an answer is not waiting for.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UpdateWindowStart {
+    /// Show the state the worker has published.
+    Current,
+    /// Ask the worker for a check and show it from the window's first frame.
+    Check,
+}
+
+/// A check this view asked for, and the published revision it asked from.
+///
+/// The worker is the only writer of the published state, and it publishes `Checking`
+/// when it takes the command. The command is a message to another thread, so from the
+/// request until that publish the published state still describes the *previous*
+/// check. Rendering that is what made a window opened for a new check show the last
+/// result for a moment before its progress bar appeared.
+///
+/// The revision the request was made at is what makes the locally rendered phase
+/// safe rather than a guess. A worker that has not answered has not moved the
+/// revision, so the stale phase is not adopted; a worker that answers answers with a
+/// revision that differs, so the answer always wins. A build that cannot update is
+/// excluded before this is ever set — see [`asks_for_a_new_check`].
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct PendingCheck {
+    asked_at: Option<u64>,
+}
+
+impl PendingCheck {
+    /// Whether a check has been asked for and not answered yet.
+    fn is_pending(&self) -> bool {
+        self.asked_at.is_some()
+    }
+
+    /// Render the check this view asked for instead of the last one's result.
+    fn begin(&mut self, snapshot: &mut UpdateSnapshot) {
+        self.asked_at = Some(snapshot.revision);
+        snapshot.phase = UpdatePhase::Checking;
+    }
+
+    /// Whether a published revision is the worker answering.
+    fn answers(&self, revision: u64) -> bool {
+        self.asked_at != Some(revision)
+    }
+
+    /// The worker answered; what is published is the current fact again.
+    fn settle(&mut self) {
+        self.asked_at = None;
+    }
+}
+
+/// Whether a check asked for now would start one.
+///
+/// Pure because it is a decision about two facts rather than about a window. It is
+/// what keeps a second request from being sent while one is outstanding, and it is
+/// what keeps a build that cannot update out of a progress bar that would never
+/// resolve: such a build's worker republishes the phase it already had, which advances
+/// no revision and therefore would never answer.
+const fn asks_for_a_new_check(phase: &UpdatePhase, pending: bool) -> bool {
+    !pending && !phase.is_busy() && !matches!(phase, UpdatePhase::Unavailable { .. })
+}
+
 /// The height the rendered content needs, read off one laid-out frame.
 ///
 /// The window's root has three children: the content column, which is sized by its
@@ -229,6 +295,7 @@ pub struct UpdateView {
     snapshot: UpdateSnapshot,
     applied_theme: Option<SettingsTheme>,
     observed_revision: Option<u64>,
+    pending_check: PendingCheck,
     content_height: Rc<ContentHeight>,
     primary_focus: FocusHandle,
     close_focus: FocusHandle,
@@ -247,22 +314,31 @@ impl UpdateView {
         settings_client: SettingsClient,
         language: SettingsLanguage,
         appearance_theme: SettingsTheme,
+        start: UpdateWindowStart,
         cx: &mut Context<Self>,
     ) -> Self {
         let snapshot = client.snapshot();
-        Self {
+        let mut view = Self {
             client,
             settings_client,
             language,
             appearance_theme,
             observed_revision: Some(snapshot.revision),
+            pending_check: PendingCheck::default(),
             snapshot,
             applied_theme: None,
             content_height: Rc::new(ContentHeight::default()),
             primary_focus: cx.focus_handle().tab_index(1).tab_stop(true),
             close_focus: cx.focus_handle().tab_index(2).tab_stop(true),
             link_focus: cx.focus_handle().tab_index(3).tab_stop(true),
+        };
+        // The request is made here, while the window is still being built. A window
+        // that asked for its check after the first frame had been painted is a window
+        // whose first frame shows the answer to the previous question.
+        if start == UpdateWindowStart::Check {
+            view.check(cx);
         }
+        view
     }
 
     /// The state currently rendered.
@@ -278,12 +354,29 @@ impl UpdateView {
         self.language
     }
 
-    /// Start a check from outside the window (the system menu and the About page).
+    /// Start a check from outside the window (the system menu and the About page), or
+    /// from the window's own action.
+    ///
+    /// Asking does not wait for the worker, and it does not have to: the view renders
+    /// the check it asked for until the worker publishes a newer revision, so the
+    /// progress is there from the next frame rather than a poll later.
     pub fn check(&mut self, cx: &mut Context<Self>) {
-        if self.snapshot.phase.is_busy() {
+        if !asks_for_a_new_check(&self.snapshot.phase, self.pending_check.is_pending()) {
             return;
         }
-        let _ = self.client.request_check();
+        if self.client.request_check().is_err() {
+            // The worker cannot take the command, so there is no check to show, and a
+            // check nobody is running must not be rendered as one that is.
+            return;
+        }
+        // The revision this request is keyed on is read from the shared state now, not
+        // reused from the snapshot this view last polled. The worker may have published
+        // something in between, and a request keyed on a revision it has already moved
+        // past would be answered by that stale result instead of by its own.
+        let mut snapshot = self.client.snapshot();
+        self.pending_check.begin(&mut snapshot);
+        self.observed_revision = Some(snapshot.revision);
+        self.snapshot = snapshot;
         cx.notify();
     }
 
@@ -356,7 +449,15 @@ impl UpdateView {
 
     fn poll_state(&mut self, cx: &mut Context<Self>) {
         let snapshot = self.client.snapshot();
-        if self.observed_revision == Some(snapshot.revision) {
+        if self.pending_check.is_pending() {
+            // A check this view asked for is the newer fact, so the result of the
+            // previous one is not adopted until the worker answers. The worker has not
+            // answered while the revision is the one it was asked from.
+            if !self.pending_check.answers(snapshot.revision) {
+                return;
+            }
+            self.pending_check.settle();
+        } else if self.observed_revision == Some(snapshot.revision) {
             return;
         }
         self.observed_revision = Some(snapshot.revision);
@@ -839,11 +940,16 @@ fn human_bytes(bytes: u64) -> String {
 /// `language` and `appearance_theme` are the display language and the appearance at open
 /// time; the window keeps itself in sync with the settings snapshot afterwards, so
 /// neither a language nor a theme change needs the caller to reopen it.
+///
+/// `start` is what the window opens onto. [`UpdateWindowStart::Check`] asks for a check
+/// here, before the window is painted for the first time, so the first frame on screen
+/// is the check that was asked for rather than the answer to the previous one.
 pub fn open_update_window(
     client: UpdateClient,
     settings_client: SettingsClient,
     language: SettingsLanguage,
     appearance_theme: SettingsTheme,
+    start: UpdateWindowStart,
     cx: &mut App,
 ) -> Result<UpdateWindowHandle, String> {
     let bounds = WindowBounds::Windowed(gpui_kit::Bounds::centered(
@@ -878,8 +984,14 @@ pub fn open_update_window(
                 Theme::global_mut(cx).notification.placement = Anchor::BottomRight;
                 apply_component_theme(appearance_theme, window, cx);
                 let view = cx.new(|cx| {
-                    let view =
-                        UpdateView::new(client, settings_client, language, appearance_theme, cx);
+                    let view = UpdateView::new(
+                        client,
+                        settings_client,
+                        language,
+                        appearance_theme,
+                        start,
+                        cx,
+                    );
                     view.start_polling(cx);
                     view.start_settings_polling(cx);
                     view
@@ -988,10 +1100,13 @@ fn finish_sizing(window: &mut Window, cx: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::{
-        ContentHeight, WINDOW_MAX_HEIGHT, WINDOW_MIN_HEIGHT, human_bytes, required_height,
-        stage_message_key, update_error_message_key,
+        ContentHeight, PendingCheck, WINDOW_MAX_HEIGHT, WINDOW_MIN_HEIGHT, asks_for_a_new_check,
+        human_bytes, required_height, stage_message_key, update_error_message_key,
     };
-    use crate::{UpdateErrorCode, UpdateFailureStage, UpdateWindowHandle};
+    use crate::{
+        UpdateErrorCode, UpdateFailureStage, UpdatePhase, UpdateSnapshot, UpdateUnavailableReason,
+        UpdateWindowHandle,
+    };
     use gpui_kit::{Bounds, point, px, size};
 
     #[test]
@@ -1121,6 +1236,77 @@ mod tests {
             "a window that has not been laid out yet is left alone"
         );
     }
+
+    /// A check the view asked for is rendered instead of the result of the last one.
+    ///
+    /// This is the whole point of [`PendingCheck`]: the window shows the check it is
+    /// waiting on rather than the answer it is not.
+    #[test]
+    fn a_requested_check_renders_instead_of_the_previous_result() {
+        let mut snapshot = UpdateSnapshot::new("1.0.0", UpdatePhase::UpToDate);
+        let mut pending = PendingCheck::default();
+        assert!(!pending.is_pending());
+        assert!(pending.answers(snapshot.revision));
+
+        pending.begin(&mut snapshot);
+        assert!(pending.is_pending());
+        assert_eq!(
+            snapshot.phase,
+            UpdatePhase::Checking,
+            "a view that asked for a check must not still be rendering the last result"
+        );
+        // The published state has not moved: the worker is another thread and has not
+        // taken the command yet. Adopting this revision is what put the previous
+        // result back on screen.
+        assert!(!pending.answers(snapshot.revision));
+        // Any other revision is the worker answering, and the answer wins.
+        assert!(pending.answers(snapshot.revision + 1));
+
+        pending.settle();
+        assert!(!pending.is_pending());
+        assert!(pending.answers(snapshot.revision));
+    }
+
+    /// A second check is not asked for while one is outstanding, and a build that
+    /// cannot update never asks at all.
+    ///
+    /// The unavailable case is the one that would hang: its worker republishes the
+    /// phase it already has, which advances no revision, so a rendered progress bar
+    /// would have nothing to end it.
+    #[test]
+    fn a_check_is_only_asked_for_when_one_would_start() {
+        assert!(asks_for_a_new_check(&UpdatePhase::Idle, false));
+        assert!(asks_for_a_new_check(&UpdatePhase::UpToDate, false));
+        assert!(
+            !asks_for_a_new_check(&UpdatePhase::Idle, true),
+            "a check this view already asked for must not be asked for twice"
+        );
+        for busy in [
+            UpdatePhase::Checking,
+            UpdatePhase::Downloading {
+                release: crate::UpdateReleaseInfo {
+                    version: "9.9.9".to_owned(),
+                    notes: None,
+                    release_page_url: None,
+                },
+                progress: crate::UpdateProgressInfo::default(),
+            },
+        ] {
+            assert!(
+                !asks_for_a_new_check(&busy, false),
+                "{busy:?} is the worker describing something it is already doing"
+            );
+        }
+        assert!(
+            !asks_for_a_new_check(
+                &UpdatePhase::Unavailable {
+                    reason: UpdateUnavailableReason::DevelopmentBuild,
+                },
+                false
+            ),
+            "a build that cannot update has no check to start, so it must not be shown one"
+        );
+    }
 }
 
 /// Headless rendering tests.
@@ -1137,7 +1323,8 @@ mod render_tests {
     use crate::update::every_renderable_phase;
     use crate::{
         SettingsClient, SettingsLanguage, SettingsServiceEndpoint, UpdateClient, UpdateErrorCode,
-        UpdateFailureStage, UpdatePhase, UpdateReleaseInfo, UpdateSnapshot, UpdateStateHandle,
+        UpdateFailureStage, UpdatePhase, UpdateReleaseInfo, UpdateServiceEndpoint, UpdateSnapshot,
+        UpdateStateHandle,
     };
     use gpui_kit::test::{TestAppContextExt, TestWindowExt};
     use gpui_kit::{AppContext, Entity, Pixels, Size, TestAppContext, px, size};
@@ -1176,6 +1363,9 @@ mod render_tests {
         state: UpdateStateHandle,
         /// Kept alive so the window's language poll sees a live channel.
         _settings: SettingsServiceEndpoint,
+        /// Kept alive so asking for a check finds a worker that can take it. A window
+        /// that cannot ask is not the window these tests are about.
+        _update: UpdateServiceEndpoint,
     }
 
     impl Harness {
@@ -1234,8 +1424,24 @@ mod render_tests {
 
     /// The same window, opened at a height other than the default.
     fn harness_sized(cx: &mut TestAppContext, phase: UpdatePhase, size: Size<Pixels>) -> Harness {
+        harness_started(cx, phase, UpdateWindowStart::Current, size)
+    }
+
+    /// The same window, opened onto a check it asks for rather than onto what the
+    /// worker has published.
+    fn harness_opened_for_a_check(cx: &mut TestAppContext, phase: UpdatePhase) -> Harness {
+        harness_started(cx, phase, UpdateWindowStart::Check, test_window_size())
+    }
+
+    /// One builder for both openings, so the window under test is the same window.
+    fn harness_started(
+        cx: &mut TestAppContext,
+        phase: UpdatePhase,
+        start: UpdateWindowStart,
+        size: Size<Pixels>,
+    ) -> Harness {
         cx.update(gpui_kit::init);
-        let (raw_client, _update_endpoint) = UpdateClient::bounded(8);
+        let (raw_client, update_endpoint) = UpdateClient::bounded(8);
         let state = UpdateStateHandle::new(UpdateSnapshot::new("1.0.0", phase));
         let client = raw_client.track_state(state.clone());
         let (settings_client, settings_endpoint) = SettingsClient::bounded(4);
@@ -1248,6 +1454,7 @@ mod render_tests {
                     settings_client,
                     SettingsLanguage::EnglishUnitedStates,
                     SettingsTheme::System,
+                    start,
                     cx,
                 )
             });
@@ -1263,6 +1470,7 @@ mod render_tests {
             view,
             state,
             _settings: settings_endpoint,
+            _update: update_endpoint,
         }
     }
 
@@ -1383,6 +1591,107 @@ mod render_tests {
             |window, _| window.try_find("update-install").is_some(),
         )
         .await;
+    }
+
+    /// A window opened for a check opens onto that check, not onto the last result.
+    ///
+    /// A check is asked for from outside the window, by the system menu and the About
+    /// page, and the answer to the *previous* one is what the worker has published at
+    /// that moment. Painting that first is the flash this test exists for: the person
+    /// who just asked for an answer is shown the last one, and only a poll later sees
+    /// the progress bar.
+    ///
+    /// `update-check` is the signal, and it is the honest one: a window showing
+    /// `UpToDate` offers to check again, and a window showing `Checking` does not. The
+    /// first frame is painted before anything has polled, so nothing but the request
+    /// this view made could be on screen.
+    #[gpui_kit::test]
+    async fn a_window_opened_for_a_check_paints_that_check_from_its_first_frame(
+        cx: &mut TestAppContext,
+    ) {
+        let harness = harness_opened_for_a_check(cx, UpdatePhase::UpToDate);
+        cx.update_entity(&harness.view, |view, cx| view.start_polling(cx));
+
+        harness.paint(cx, |window, _| {
+            assert!(
+                window.try_find("update-check").is_none(),
+                "a window opened for a check opened onto the result of the last one"
+            );
+        });
+        // A poll that adopted the unchanged revision would put the last result back for
+        // as long as the check takes.
+        cx.update_entity(&harness.view, |view, cx| view.poll_state(cx));
+        harness.paint(cx, |window, _| {
+            assert!(
+                window.try_find("update-check").is_none(),
+                "the result of the last check came back over the check being asked for"
+            );
+        });
+
+        // The worker's answer is what replaces it.
+        harness.state.publish(UpdatePhase::Available {
+            release: release(None),
+        });
+        cx.wait_for(
+            harness.handle.into(),
+            Duration::from_secs(5),
+            |window, _| window.try_find("update-install").is_some(),
+        )
+        .await;
+    }
+
+    /// A window opened onto what the worker has published is not a check request.
+    ///
+    /// The automatic check opens the window to surface its result. Asking again there
+    /// would repeat a request the user did not make.
+    #[gpui_kit::test]
+    fn a_window_opened_onto_the_published_state_offers_to_check(cx: &mut TestAppContext) {
+        let harness = harness(cx, UpdatePhase::UpToDate);
+        harness.paint(cx, |window, _| {
+            assert!(
+                window.try_find("update-check").is_some(),
+                "a window opened onto a published result must be able to check again"
+            );
+        });
+    }
+
+    /// A check asked for over a result this window has not polled yet still wins.
+    ///
+    /// The worker publishes on its own schedule, so a result can land between one poll
+    /// and the next. The request is therefore keyed on the revision read at the moment
+    /// it is made: keyed on the revision the window last polled, the very next poll
+    /// would find a revision that had already moved — that unpolled result — and adopt
+    /// it, which is the same flash, arriving one poll later instead of on the first
+    /// frame.
+    #[gpui_kit::test]
+    fn a_check_asked_over_an_unpolled_result_is_not_overwritten_by_it(cx: &mut TestAppContext) {
+        let harness = harness(cx, UpdatePhase::UpToDate);
+        // The worker publishes while the window is between polls.
+        harness.state.publish(UpdatePhase::Available {
+            release: release(None),
+        });
+
+        cx.update_entity(&harness.view, |view, cx| view.check(cx));
+        harness.paint(cx, |window, _| {
+            assert!(
+                window.try_find("update-check").is_none(),
+                "a window that just asked for a check cannot still be offering one"
+            );
+        });
+
+        // The next poll finds that result, which is not the answer to the request just
+        // made, and must not become what the window shows.
+        cx.update_entity(&harness.view, |view, cx| view.poll_state(cx));
+        harness.paint(cx, |window, _| {
+            assert!(
+                window.try_find("update-check").is_none(),
+                "a result this window had not polled replaced the check it just asked for"
+            );
+            assert!(
+                window.try_find("update-install").is_none(),
+                "a result this window had not polled replaced the check it just asked for"
+            );
+        });
     }
 
     /// A Markdown changelog renders, and its `https` links become real controls.
