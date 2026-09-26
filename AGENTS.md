@@ -269,6 +269,18 @@ just schema                                              # 从 Rust 类型生成
   - 其他分支：用户未明确当前分支或新分支时，先询问；得到答复前不得 commit。用户已指定时照做，不重复询问。
 - Commit message 必须依据实际 staged diff，遵循 Conventional Commits 的 `<type>: <summary>`；只有 scope 有明确区分价值时使用 `<type>(<scope>): <summary>`。
 - 常用 type：`feat`、`fix`、`docs`、`test`、`refactor`、`perf`、`build`、`ci`、`chore`；不得使用 `update`、`changes`、`misc`。summary 用简洁英文祈使句、不加句号、建议不超过 72 字符；不兼容变更加 `!`，正文写 `BREAKING CHANGE:`。提交前核对 staged diff，排除未暂存或无关改动。
+- **推送顺序固定为「先拉取上游 → 解决冲突 → 再提交推送」。** 动手写代码前先
+  `git fetch`（必要时 `git pull --ff-only`）把 `origin/next` 同步到最新，在最新上游之上工作；
+  提交前若发现远端已有新 commit，必须先把上游改动拉进来并解决冲突，再提交自己的改动。
+  禁止先 commit 自己的改动、再 merge 远端：那样会留下
+  `Merge remote-tracking branch 'origin/next' into next` 这类 merge commit，污染线性历史。
+- 因此推送前的固定顺序是：fetch → 把上游改动合入当前工作树并解决冲突 → 在合并后的树上跑完整
+  验证（`fmt`/`clippy`/`test`/`--release` check 加平台 smoke）→ 提交 → push。上游已合入后要重新
+  验证，不能沿用合入前的结论，因为上游可能改动同一文件或同一行为。
+- 合并冲突必须逐个按实际语义解决，不得只求编译通过就提交，也不得用 `checkout --ours/--theirs`
+  覆盖掉对方的实质改动。解决后确认本任务的改动仍然存在（关键符号、测试、常量逐项核对）。
+- 若合并后发现失败测试，先判断它是否由本次改动引入：在纯上游 commit 上单独复跑同一测试。
+  上游自身失败时不得顺手代为修复，那属于另一个任务；应如实报告并让用户决定是否单独处理。
 - 执行 `git push` 前必须先完成 CHANGELOG 检查。判断范围为待推送 commit（`git log @{u}..HEAD`；无上游时用新增 commit）及其 diff：存在用户可见的新增、移除、默认值/行为/性能/UI/平台/本地化/配置格式变化、不兼容或升级注意事项时，同步更新 `CHANGELOG.md` 和 `CHANGELOG.zh-CN.md`，沿用现有 section 和文案风格；纯内部重构、测试、CI、格式化、注释、构建、依赖调整和未落地实现跳过，不新增临时 section，不为每次 push 强行添加。
 - CHANGELOG 判断结论必须写入最终报告：说明更新内容，或明确“本次跳过 CHANGELOG”及理由。CHANGELOG 修改必须先提交，再 push。
 - 不修改无关 lockfile、生成文件或资产 metadata。删除用户数据、历史源码、大型资源或构建产物前，确认任务明确授权并核对精确目标。
