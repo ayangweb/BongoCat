@@ -107,6 +107,10 @@ const STAGING_DIRECTORY: &str = "provenance";
 /// workspace's `-D warnings` gate rejects.
 #[cfg(unix)]
 const DISK_IMAGE_STAGING_DIRECTORY: &str = "dmg-stage";
+/// Staging directory for the cleaned preset models, relative to the output directory.
+///
+/// See [`stage_model_resources`].
+const RESOURCE_STAGING_DIRECTORY: &str = "resource-stage";
 /// Ad-hoc signature used when no distribution identity is provisioned.
 ///
 /// It keeps the bundle and disk image integrity verifiable locally and in CI.
@@ -568,11 +572,13 @@ fn package(options: Options) -> Result<Vec<PathBuf>> {
         &options.environment,
         environment_features(&options.environment),
     )?;
+    let models = stage_model_resources(&workspace)?;
 
     let config = packaging_config(
         &workspace,
         target,
         &provenance,
+        &models,
         &packager_formats(&requested),
     )?;
     let packages = cargo_packager::package(&config)?;
@@ -741,6 +747,7 @@ fn packaging_config(
     workspace: &Path,
     target: ReleaseTarget,
     provenance: &Path,
+    models: &Path,
     formats: &[PackageFormat],
 ) -> Result<Config> {
     let mut config = Config::default();
@@ -778,7 +785,7 @@ fn packaging_config(
     config.out_dir = workspace.join(OUTPUT_DIRECTORY);
     config.target_triple = Some(target.triple().to_owned());
     config.formats = Some(formats.to_vec());
-    config.resources = Some(resources(workspace, target, provenance));
+    config.resources = Some(resources(target, models, provenance));
 
     if target.is_apple() {
         let mut macos = MacOsConfig::new();
@@ -807,7 +814,10 @@ fn packaging_config(
 /// `resources/` directory beside the executable. The prefixes differ because
 /// `cargo-packager` resolves resource targets relative to each platform's own
 /// resource root, which is exactly the layout `bongocat-app::preset_root` expects.
-fn resources(workspace: &Path, target: ReleaseTarget, provenance: &Path) -> Vec<Resource> {
+///
+/// `models` is the staged copy from [`stage_model_resources`], not the working
+/// tree's `resources/models`.
+fn resources(target: ReleaseTarget, models: &Path, provenance: &Path) -> Vec<Resource> {
     let prefix = if target.is_apple() {
         String::new()
     } else {
@@ -815,11 +825,7 @@ fn resources(workspace: &Path, target: ReleaseTarget, provenance: &Path) -> Vec<
     };
     vec![
         Resource::Mapped {
-            src: workspace
-                .join(RESOURCE_DIRECTORY)
-                .join(MODEL_DIRECTORY)
-                .display()
-                .to_string(),
+            src: models.display().to_string(),
             target: PathBuf::from(format!("{prefix}{MODEL_DIRECTORY}")),
         },
         Resource::Mapped {
@@ -827,6 +833,77 @@ fn resources(workspace: &Path, target: ReleaseTarget, provenance: &Path) -> Vec<
             target: PathBuf::from(format!("{prefix}{PROVENANCE_FILE}")),
         },
     ]
+}
+
+/// Copies the preset models into the staging area the packager maps from.
+///
+/// The models are the one packaged tree that is also a working directory, so
+/// whatever a developer's Finder, Explorer or editor leaves inside it would
+/// otherwise be copied into every bundle, disk image and installer this crate
+/// produces, and the shipped contents would depend on the state of the checkout
+/// rather than on the repository. Staging also makes the artifact reproducible:
+/// the same models always produce the same package.
+///
+/// Returns the staged model directory.
+fn stage_model_resources(workspace: &Path) -> Result<PathBuf> {
+    let source = workspace.join(RESOURCE_DIRECTORY).join(MODEL_DIRECTORY);
+    if !source.is_dir() {
+        return failure(format!("missing preset models at {}", source.display()));
+    }
+    let staged = workspace
+        .join(OUTPUT_DIRECTORY)
+        .join(RESOURCE_STAGING_DIRECTORY)
+        .join(MODEL_DIRECTORY);
+    if staged.exists() {
+        fs::remove_dir_all(&staged)?;
+    }
+    copy_resource_tree(&source, &staged)?;
+    for model in PRESET_MODELS {
+        if !staged.join(model).is_dir() {
+            return failure(format!(
+                "preset model {model} is missing from {}",
+                source.display()
+            ));
+        }
+    }
+    Ok(staged)
+}
+
+/// File and directory names that must never reach a packaged artifact.
+///
+/// No Live2D model file starts with a dot and none carries one of these names,
+/// so skipping them cannot drop a file the runtime reads — which is what makes
+/// this a safe filter rather than a guess. `._` and the other dot names are
+/// what macOS writes next to files it has copied, `.DS_Store` is what Finder
+/// leaves in every directory it visits, and the last two are what Windows
+/// Explorer leaves behind.
+fn is_packaging_junk(name: &str) -> bool {
+    name.starts_with('.') || matches!(name, "__MACOSX" | "Thumbs.db" | "desktop.ini")
+}
+
+/// Recursively copies a resource tree, leaving [`is_packaging_junk`] behind.
+///
+/// A name that is not valid UTF-8 is skipped for the same reason: a model
+/// manifest is UTF-8 JSON that names its files, so such a file cannot be
+/// referenced by one and is dead weight in the package.
+fn copy_resource_tree(source: &Path, destination: &Path) -> Result<()> {
+    fs::create_dir_all(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let Some(name) = entry.file_name().into_string().ok() else {
+            continue;
+        };
+        if is_packaging_junk(&name) {
+            continue;
+        }
+        let target = destination.join(&name);
+        if entry.file_type()?.is_dir() {
+            copy_resource_tree(&entry.path(), &target)?;
+        } else {
+            fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// The identity used to sign the macOS bundle, preferring an injected credential.
@@ -1540,11 +1617,22 @@ fn build_disk_image(
     if image.exists() {
         fs::remove_file(&image)?;
     }
+    // LZFSE rather than zlib or bzip2. The `UDZO` and `UDBZ` formats compress
+    // the image in fixed 64 KB blocks, so they cannot see the repeated preset
+    // model assets the bundle carries, while `ULMO` compresses the image as one
+    // stream. Measured on one arm64 bundle, with every format mounted and the
+    // binary plus all three models read back out: `UDZO` 13,795,779 B, `UDBZ`
+    // 13,462,431 B, `ULFO` 13,082,584 B, `ULMO` 10,380,216 B — 24.8% below
+    // `UDZO`. Mounting and reading the whole image averages 0.68 s against
+    // `UDZO`'s 0.92 s, so the smaller image is also the faster one to install
+    // from; `UDBZ` reads faster still (0.45 s) but is 23% larger. `ULMO` is an
+    // Apple read-only compressed format supported well before the macOS 12
+    // minimum this product declares.
     let mut create = Command::new("hdiutil");
     create
         .args(["create", "-volname", PRODUCT_NAME, "-srcfolder"])
         .arg(&staging)
-        .args(["-ov", "-format", "UDZO"])
+        .args(["-ov", "-format", "ULMO"])
         .arg(&image);
     run_command("hdiutil", &mut create)?;
 
@@ -1638,7 +1726,63 @@ fn report(summary: &str, artifacts: &[PathBuf]) {
 
 #[cfg(test)]
 mod tests {
-    use super::ReleaseTarget;
+    use super::{PRESET_MODELS, ReleaseTarget, is_packaging_junk};
+
+    /// The preset models are the one packaged tree that is also a working
+    /// directory, so the filter has to catch what Finder, Explorer and the
+    /// macOS copy machinery leave behind — including the dot files macOS writes
+    /// *next to* the resources it copies.
+    #[test]
+    fn packaging_junk_is_recognised() {
+        for junk in [
+            ".DS_Store",
+            "._texture_00.png",
+            ".Spotlight-V100",
+            ".Trashes",
+            "__MACOSX",
+            "Thumbs.db",
+            "desktop.ini",
+        ] {
+            assert!(is_packaging_junk(junk), "{junk} must not be packaged");
+        }
+    }
+
+    /// The filter is only safe because nothing a model actually contains looks
+    /// like junk, so this is the half of the contract that protects the runtime:
+    /// every real Live2D asset, manifest and sub-resource directory has to
+    /// survive the filter, including names that merely contain a dot.
+    #[test]
+    fn model_assets_are_never_mistaken_for_junk() {
+        for asset in [
+            "demomodel.moc3",
+            "cat.model3.json",
+            "live2d_motion1.motion3.json",
+            "live2d_expression0.exp3.json",
+            "demomodel.cdi3.json",
+            "live2d_motion1.flac",
+            "demomodel.1024",
+            "resources",
+            "left-keys",
+            "KeyT.png",
+            "DPadUp.png",
+            "background.png",
+        ] {
+            assert!(!is_packaging_junk(asset), "{asset} must be packaged");
+        }
+    }
+
+    /// Every preset model the product promises has to be staged, so a model
+    /// directory that was renamed or removed fails the build here instead of
+    /// shipping a bundle that cannot load it.
+    #[test]
+    fn every_promised_preset_model_is_staged() {
+        for model in PRESET_MODELS {
+            assert!(
+                !model.starts_with('.'),
+                "a preset model name would be filtered as packaging junk: {model}"
+            );
+        }
+    }
 
     /// The published name is product name, resolved version and architecture token,
     /// with no packaging suffix. The updater takes its payload from the release

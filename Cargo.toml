@@ -99,11 +99,16 @@ incremental = true
 panic = "unwind"
 
 [profile.release]
-strip = "symbols"
+lto = "fat"
 opt-level = 3
 codegen-units = 1
 panic = "abort"
-lto = "thin"
+strip = "symbols"
+debug = 0
+debug-assertions = false
+overflow-checks = false
+incremental = false
+rpath = false
 
 [profile.profiling]
 inherits = "release"

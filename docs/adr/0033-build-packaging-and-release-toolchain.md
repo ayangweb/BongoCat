@@ -100,8 +100,16 @@ hdiutil attach ... | grep -E '^/dev/' | sed 1q | awk '{print $1}'
 
 最终做法：`.app` 仍然由 `cargo-packager` 产出（bundle 布局、`Info.plist`、资源、
 图标、签名全部不变），随后由 `bongocat-packaging` 用 macOS 自带工具把它封装成
-DMG：`ditto` 暂存 bundle、加入 `/Applications` 拖放入口、`hdiutil create -format UDZO`
+DMG：`ditto` 暂存 bundle、加入 `/Applications` 拖放入口、`hdiutil create -format ULMO`
 压缩、`codesign` 签名。这恰好是 `create-dmg` 自己封装的东西，只少了它的脚本层。
+
+DMG 压缩格式选 `ULMO`（LZFSE）而不是默认的 `UDZO`（zlib）。`UDZO`/`UDBZ` 按固定
+64 KB 分块压缩，看不到 bundle 里重复的预置模型资源；`ULMO` 对整条流做压缩。同一个
+2.0.0 arm64 bundle 实测，每种格式都实际挂载并整读校验（可执行文件与三个预置模型
+齐全）：`UDZO` 13,795,779 B、`UDBZ` 13,462,431 B、`ULFO` 13,082,584 B、
+`ULMO` 10,380,216 B，比 `UDZO` 小 24.8%。挂载并整读镜像平均 0.68 s，`UDZO` 为
+0.92 s，更小的镜像同时装得更快；`UDBZ` 读得更快（0.45 s）但大 23%。
+`ULMO` 是 Apple 的只读压缩格式，支持版本远早于产品声明的 macOS 12 下限。
 
 **退出条件**：`cargo-packager` 换用可在当前 macOS 工作的 `create-dmg` revision 后，
 改回 `PackageFormat::Dmg` 并删除这段代码。
