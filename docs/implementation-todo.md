@@ -2377,6 +2377,12 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     覆盖 26 个解析单测与 4 个无头渲染测试；`cargo fmt`、严格 Clippy 与 `bongocat-ui` 120 个测试通过
     （临时模拟面板删除后 `bongocat-ui` 为 112 个）。
     不支持 GFM 表格（按 CommonMark 退化为普通段落）——release notes 实际不会包含表格，如需要再评估。
+    - 修订（2026-09-26）：渲染改由 `gpui-kit` 的 `TextView` 承担，`bongocat-ui` 不再直接依赖
+      `pulldown-cmark`，该中间表示与手写 inline 布局已删除。不可信输入的策略改为**插件认领**：
+      `NoRemoteImage` / `LiteralHtml`（inline 与 block 各一次）/ `RefusedLink` 在 `gpui-kit` 自己的
+      节点处理之前认领节点，因此图片与 HTML 里的 URL 不会成为请求。块深度上限（8 层压平）换成
+      解析前的容器标记数上限（512），因为树深即渲染栈深而标记数可证明地限定树深。GFM 表格现在
+      会渲染。取舍与上游顺序依赖见 **ADR-0069**。
 - [ ] 只允许 HTTPS，固定公钥来源和轮换流程。
   - 状态（2026-09-13，历史）：当时 `self_update` 方案的 `RELEASE_SIGNING_KEY` 为 `None`，
     因此 runtime 在发出任何请求前失败关闭并返回 `update_signature_key_missing`；公钥轮换窗

@@ -1170,11 +1170,17 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   「已经画对了再显示」会死等。做法是隐藏状态下手动布局一次测出目标高度，`resize` 之后再排一个
   foreground executor 任务把新高度同步回来、重画并 `activate_window`。应用 resize 本身也是同一
   个 executor 上的任务，因此后排的任务一定排在它后面——靠顺序保证，不轮询也不超时。
-- 更新内容（`notes`）来自 manifest，是不可信输入，由 `bongocat-ui::update_markdown` 用
-  `pulldown-cmark`（CommonMark + 删除线/任务列表，`default-features = false`）解析为不含 GPUI
-  类型的中间表示后渲染，不存在可注入的 markup 层；原始 HTML 按字面文本显示，图片只渲染 alt 文本、
-  不发起请求，链接仅 HTTPS 且无空白/控制字符才可点击。输入截断至 32 KiB，块嵌套超过 8 层压平但
-  不丢内容；GFM 表格不渲染（按 CommonMark 退化为段落）。
+- 更新内容（`notes`）来自 manifest，是不可信输入。渲染交给 `gpui-kit` 的 `TextView`
+  （CommonMark + GFM，含删除线、任务列表与表格），`bongocat-ui::update_markdown` 只持有策略，
+  通过 `MarkdownExtensions` 插件在 `gpui-kit` 自己的节点处理之前**认领**（claim）节点：
+  `NoRemoteImage` 认领 `Node::Image` 与 `Node::ImageReference` 并只显示 alt 文本，
+  `LiteralHtml` 在 inline 与 block 两个位置各注册一次、认领 `Node::Html` 并按字面文本显示，
+  `RefusedLink` 认领目标未通过 HTTPS 检查的 `Node::Link` 并把标签降为普通文本。不存在可注入的
+  markup 层；图片与 HTML 里的 URL 都不会成为请求。输入在解析前截断至 32 KiB，并把块容器标记数
+  限在 512——每层 CommonMark 嵌套至少对应一个容器标记，因此该上限同时限定了树深，而 `TextView`
+  按层递归遍历，树深即渲染栈深。链接引用（`[a][ref]`）的目标在 `gpui-kit` 内部才解析，
+  `RefusedLink` 无法在此判定，仍由只接受 HTTPS 的平台 opener 兜底。ADR-0069 记录了这条依赖：
+  插件先于内建处理被询问，一旦上游改变顺序，认领就不再是拒绝。
 - 更新协议由 `bongocat-ui-protocol` 拥有，`bongocat-ui` 只负责窗口与展示策略；两者不依赖
   `bongocat-update`。`bongocat-app` 做穷尽映射（stage 与 14 个错误码），新增一项会让映射编译失败，
   直到它被赋予用户可见含义。
