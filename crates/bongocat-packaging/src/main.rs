@@ -582,6 +582,10 @@ fn package(options: Options) -> Result<Vec<PathBuf>> {
         &packager_formats(&requested),
     )?;
     let packages = cargo_packager::package(&config)?;
+    // The packager has copied from the staging area by now, and nothing after
+    // this point reads it, so it goes before the disk image and the update
+    // payload are built rather than being left in the output directory.
+    discard_staged_resources(&workspace);
     let mut artifacts = collect_artifacts(&packages);
     rename_windows_installer(target, &mut artifacts)?;
 
@@ -835,6 +839,36 @@ fn resources(target: ReleaseTarget, models: &Path, provenance: &Path) -> Vec<Res
     ]
 }
 
+/// The staging root for packaged resources, under the output directory.
+///
+/// [`stage_model_resources`] writes the cleaned models below it and
+/// [`discard_staged_resources`] removes it again, so the one location is
+/// derived here rather than spelled out twice.
+fn resource_staging_directory(workspace: &Path) -> PathBuf {
+    workspace
+        .join(OUTPUT_DIRECTORY)
+        .join(RESOURCE_STAGING_DIRECTORY)
+}
+
+/// Removes the resource staging area once the packager has copied from it.
+///
+/// The staged models exist only as an input to `cargo-packager`, which copies
+/// them into the bundle or the installer, so keeping a second full copy of the
+/// models in the output directory has no purpose. A staging area that is
+/// already gone is the normal state of a run that cleaned up, so that is not an
+/// error, and neither is a removal that fails: the directory is rebuilt from the
+/// repository on the next build either way, and a leftover temporary directory
+/// must not fail a package that is otherwise complete.
+fn discard_staged_resources(workspace: &Path) {
+    let staging = resource_staging_directory(workspace);
+    if let Err(error) = fs::remove_dir_all(&staging) {
+        println!(
+            "warning: could not remove the resource staging area {}: {error}",
+            staging.display()
+        );
+    }
+}
+
 /// Copies the preset models into the staging area the packager maps from.
 ///
 /// The models are the one packaged tree that is also a working directory, so
@@ -844,16 +878,14 @@ fn resources(target: ReleaseTarget, models: &Path, provenance: &Path) -> Vec<Res
 /// rather than on the repository. Staging also makes the artifact reproducible:
 /// the same models always produce the same package.
 ///
-/// Returns the staged model directory.
+/// Returns the staged model directory, which [`discard_staged_resources`] then
+/// removes.
 fn stage_model_resources(workspace: &Path) -> Result<PathBuf> {
     let source = workspace.join(RESOURCE_DIRECTORY).join(MODEL_DIRECTORY);
     if !source.is_dir() {
         return failure(format!("missing preset models at {}", source.display()));
     }
-    let staged = workspace
-        .join(OUTPUT_DIRECTORY)
-        .join(RESOURCE_STAGING_DIRECTORY)
-        .join(MODEL_DIRECTORY);
+    let staged = resource_staging_directory(workspace).join(MODEL_DIRECTORY);
     if staged.exists() {
         fs::remove_dir_all(&staged)?;
     }
@@ -1726,7 +1758,46 @@ fn report(summary: &str, artifacts: &[PathBuf]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{PRESET_MODELS, ReleaseTarget, is_packaging_junk};
+    use super::{
+        MODEL_DIRECTORY, OUTPUT_DIRECTORY, PRESET_MODELS, ReleaseTarget, is_packaging_junk,
+    };
+
+    /// The staged models are only an input to the packager, so packaging must not
+    /// leave a second copy of them in the output directory — and cleaning up a
+    /// run that never got as far as creating one must stay a no-op rather than an
+    /// error, because that is the state every run ends in.
+    #[test]
+    fn the_resource_staging_area_does_not_survive_packaging() {
+        let root = std::env::temp_dir().join("bongocat-packaging-staging-cleanup");
+        let _ = std::fs::remove_dir_all(&root);
+        let staging = super::resource_staging_directory(&root);
+        let models = staging.join(MODEL_DIRECTORY).join(PRESET_MODELS[0]);
+
+        // Nothing staged yet: this is the state of a run that already cleaned up.
+        super::discard_staged_resources(&root);
+        assert!(
+            !staging.exists(),
+            "cleaning up an absent staging area must succeed and leave nothing behind"
+        );
+
+        std::fs::create_dir_all(&models).expect("staged models");
+        std::fs::write(models.join("cat.model3.json"), b"{}").expect("staged file");
+        super::discard_staged_resources(&root);
+        assert!(
+            !staging.exists(),
+            "the staging area must be gone once the packager has copied from it"
+        );
+
+        // The staging root is where cleanup looks, so it has to be the directory
+        // staging writes into rather than the models inside it.
+        assert_eq!(
+            staging,
+            root.join(OUTPUT_DIRECTORY)
+                .join(super::RESOURCE_STAGING_DIRECTORY)
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     /// The preset models are the one packaged tree that is also a working
     /// directory, so the filter has to catch what Finder, Explorer and the
