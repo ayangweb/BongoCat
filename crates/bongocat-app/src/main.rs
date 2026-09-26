@@ -347,8 +347,6 @@ impl bongocat_app::TaskbarIconCapability for ProductTaskbarIcon {
     }
 }
 
-const DEFAULT_RUN_SECONDS: u64 = 0;
-
 fn gpui_application() -> GpuiApplication {
     // Quitting is owned by the product shutdown paths (tray menu, smoke recipes,
     // update restart), not by window bookkeeping: the product stays alive behind
@@ -357,186 +355,205 @@ fn gpui_application() -> GpuiApplication {
     GpuiApplication::new_inaccessible(current_platform(false)).with_quit_mode(QuitMode::Explicit)
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// The name `clap` puts in its own diagnostics and usage line.
+const PROGRAM_NAME: &str = "bongocat-app";
+
+/// How this process was asked to run.
+///
+/// Every flag is declared exactly once, here. The parser, the `--help` text and the
+/// `#[cfg]`-gated availability of a harness all read this one declaration, so a flag
+/// cannot be accepted but undocumented, documented but rejected, or advertised in help
+/// for a build that does not accept it.
+///
+/// Most flags select a smoke or diagnostic harness that scripts and CI launch. Only
+/// `--run-seconds` and the help flag are ever passed to a packaged build, the second one
+/// by the login item.
+#[derive(Clone, Debug, Eq, PartialEq, clap::Parser)]
+#[command(
+    name = "bongocat-app",
+    about = "BongoCat",
+    long_about = "The application runs until it is explicitly quit by default. A positive \
+                  --run-seconds value enables a bounded diagnostic run."
+)]
 struct RunOptions {
-    run_duration: Duration,
-    /// Set for every accepted argument except `--run-seconds` and the help flag.
+    /// Run for this many seconds instead of until the product is quit.
     ///
-    /// Smoke and diagnostic harnesses are launched by scripts and CI on machines where nobody can
-    /// answer a native dialog, so the startup permission prompt is skipped for them. A product
-    /// start (`--run-seconds 0`, including the login item) and a plain `cargo run` always check,
-    /// exactly like a packaged Production build.
-    automated_verification: bool,
+    /// Zero is the default and means the same unbounded lifetime as passing nothing.
+    #[arg(long, value_name = "SECONDS", default_value_t = 0)]
+    run_seconds: u64,
+
+    /// Paint the settings window and exit once the run guard fires.
+    #[arg(long)]
     settings_window_smoke: bool,
+
+    /// Open the settings window without instrumenting the run.
+    #[arg(long)]
     settings_window_open_smoke: bool,
+
+    /// Open the model library page.
+    ///
+    /// Implies `--settings-window-smoke`: there is no way to paint a page without the
+    /// window smoke that owns the run guard.
+    #[arg(long)]
     models_page_smoke: bool,
+
+    /// Switch models without the overlay or the status icon being visible.
+    #[arg(long)]
     hidden_model_switch_smoke: bool,
+
+    /// Rewrite the stored window layout and report what it wrote.
     #[cfg(feature = "storage-test-injection")]
+    #[arg(long)]
     settings_window_state_smoke: bool,
+
+    /// Crash on purpose and report the diagnostics the panic produced.
     #[cfg(feature = "storage-test-injection")]
+    #[arg(long)]
     panic_diagnostics_smoke: bool,
+
+    /// The re-executed child of `--panic-diagnostics-smoke`.
+    ///
+    /// Hidden because it is spawned by its parent harness and never typed by a person;
+    /// showing it would only invite someone to run half a diagnostic by hand.
     #[cfg(feature = "storage-test-injection")]
+    #[arg(long, hide = true)]
     panic_diagnostics_smoke_child: bool,
+
+    /// Write a diagnostics preview bundle and report where it landed.
     #[cfg(feature = "storage-test-injection")]
+    #[arg(long)]
     diagnostics_export_smoke: bool,
+
+    /// Fail the diagnostics export partway and report how that surfaces.
     #[cfg(feature = "storage-test-injection")]
+    #[arg(long)]
     diagnostics_export_failure_smoke: bool,
+
+    /// Paint the system menu and report the actions it offers.
+    #[arg(long)]
     system_menu_smoke: bool,
+
+    /// Report what the startup permission check would decide.
+    #[arg(long)]
     startup_permission_smoke: bool,
+
+    /// Report how the application answers a second launch.
     #[cfg(target_os = "macos")]
+    #[arg(long)]
     application_reopen_smoke: bool,
+
+    /// Report the login item state and leave it as it was found.
     #[cfg(target_os = "macos")]
+    #[arg(long)]
     startup_item_smoke: bool,
+
+    /// Report how a second launch is turned away.
     #[cfg(target_os = "windows")]
+    #[arg(long)]
     single_instance_smoke: bool,
+
+    /// The file the primary instance writes once it is ready to be notified.
+    ///
+    /// Hidden for the same reason as `--panic-diagnostics-smoke-child`: CI plumbing
+    /// that only means anything next to `--single-instance-smoke`.
     #[cfg(target_os = "windows")]
+    #[arg(
+        long,
+        value_name = "PATH",
+        hide = true,
+        requires = "single_instance_smoke",
+        value_parser = non_empty_path
+    )]
     single_instance_ready_file: Option<PathBuf>,
+
+    /// The file a secondary instance writes to report what the primary did.
     #[cfg(target_os = "windows")]
+    #[arg(
+        long,
+        value_name = "PATH",
+        hide = true,
+        requires = "single_instance_smoke",
+        value_parser = non_empty_path
+    )]
     single_instance_result_file: Option<PathBuf>,
+}
+
+/// A path argument that rejects an empty value.
+///
+/// `clap` accepts `--flag ""` as a present value, and an empty marker file path would
+/// name the process's working directory rather than nothing at all.
+#[cfg(target_os = "windows")]
+fn non_empty_path(value: &str) -> Result<PathBuf, String> {
+    if value.is_empty() {
+        return Err("a non-empty file path is required".to_owned());
+    }
+    Ok(PathBuf::from(value))
 }
 
 impl RunOptions {
     fn parse(arguments: impl IntoIterator<Item = String>) -> Result<Self, RunOptionsError> {
-        let mut arguments = arguments.into_iter();
-        let mut run_seconds = DEFAULT_RUN_SECONDS;
-        let mut automated_verification = false;
-        let mut settings_window_smoke = false;
-        let mut settings_window_open_smoke = false;
-        let mut models_page_smoke = false;
-        let mut hidden_model_switch_smoke = false;
-        #[cfg(feature = "storage-test-injection")]
-        let mut settings_window_state_smoke = false;
-        #[cfg(feature = "storage-test-injection")]
-        let mut panic_diagnostics_smoke = false;
-        #[cfg(feature = "storage-test-injection")]
-        let mut panic_diagnostics_smoke_child = false;
-        #[cfg(feature = "storage-test-injection")]
-        let mut diagnostics_export_smoke = false;
-        #[cfg(feature = "storage-test-injection")]
-        let mut diagnostics_export_failure_smoke = false;
-        let mut system_menu_smoke = false;
-        let mut startup_permission_smoke = false;
-        #[cfg(target_os = "macos")]
-        let mut application_reopen_smoke = false;
-        #[cfg(target_os = "macos")]
-        let mut startup_item_smoke = false;
-        #[cfg(target_os = "windows")]
-        let mut single_instance_smoke = false;
-        #[cfg(target_os = "windows")]
-        let mut single_instance_ready_file = None;
-        #[cfg(target_os = "windows")]
-        let mut single_instance_result_file = None;
-        while let Some(argument) = arguments.next() {
-            // Every accepted argument except the bounded run duration and the help flag selects a
-            // smoke or diagnostic harness; see `RunOptions::automated_verification`. An unknown
-            // argument still fails below, so the flag never turns a real start into a harness run.
-            if !matches!(argument.as_str(), "--run-seconds" | "--help" | "-h") {
-                automated_verification = true;
-            }
-            match argument.as_str() {
-                "--run-seconds" => {
-                    let value = arguments.next().ok_or_else(|| {
-                        RunOptionsError::new("--run-seconds requires an integer value")
-                    })?;
-                    run_seconds = value.parse().map_err(|_| {
-                        RunOptionsError::new("--run-seconds must be a non-negative integer")
-                    })?;
-                }
-                "--settings-window-smoke" => settings_window_smoke = true,
-                "--settings-window-open-smoke" => settings_window_open_smoke = true,
-                "--models-page-smoke" => {
-                    models_page_smoke = true;
-                    settings_window_smoke = true;
-                }
-                "--hidden-model-switch-smoke" => hidden_model_switch_smoke = true,
-                #[cfg(feature = "storage-test-injection")]
-                "--settings-window-state-smoke" => settings_window_state_smoke = true,
-                #[cfg(feature = "storage-test-injection")]
-                "--panic-diagnostics-smoke" => panic_diagnostics_smoke = true,
-                #[cfg(feature = "storage-test-injection")]
-                "--panic-diagnostics-smoke-child" => panic_diagnostics_smoke_child = true,
-                #[cfg(feature = "storage-test-injection")]
-                "--diagnostics-export-smoke" => diagnostics_export_smoke = true,
-                #[cfg(feature = "storage-test-injection")]
-                "--diagnostics-export-failure-smoke" => diagnostics_export_failure_smoke = true,
-                "--system-menu-smoke" => system_menu_smoke = true,
-                "--startup-permission-smoke" => startup_permission_smoke = true,
-                #[cfg(target_os = "macos")]
-                "--application-reopen-smoke" => application_reopen_smoke = true,
-                #[cfg(target_os = "macos")]
-                "--startup-item-smoke" => startup_item_smoke = true,
-                #[cfg(target_os = "windows")]
-                "--single-instance-smoke" => single_instance_smoke = true,
-                #[cfg(target_os = "windows")]
-                "--single-instance-ready-file" => {
-                    let value = arguments.next().ok_or_else(|| {
-                        RunOptionsError::new("--single-instance-ready-file requires a file path")
-                    })?;
-                    if value.is_empty() {
-                        return Err(RunOptionsError::new(
-                            "--single-instance-ready-file requires a non-empty file path",
-                        ));
-                    }
-                    single_instance_ready_file = Some(PathBuf::from(value));
-                }
-                #[cfg(target_os = "windows")]
-                "--single-instance-result-file" => {
-                    let value = arguments.next().ok_or_else(|| {
-                        RunOptionsError::new("--single-instance-result-file requires a file path")
-                    })?;
-                    if value.is_empty() {
-                        return Err(RunOptionsError::new(
-                            "--single-instance-result-file requires a non-empty file path",
-                        ));
-                    }
-                    single_instance_result_file = Some(PathBuf::from(value));
-                }
-                "--help" | "-h" => return Err(RunOptionsError::help()),
-                _ => {
-                    return Err(RunOptionsError::new(format!(
-                        "unknown argument {argument:?}"
-                    )));
-                }
-            }
+        // `clap` reads the first element as the binary name, so the caller's arguments —
+        // which already skip `argv[0]` — are prefixed with a fixed one rather than with
+        // whatever the process was launched as. The name only appears in diagnostics.
+        let arguments = std::iter::once(PROGRAM_NAME.to_owned()).chain(arguments);
+        let mut options = <Self as clap::Parser>::try_parse_from(arguments)?;
+        // `--models-page-smoke` names a page, and painting a page needs the window smoke
+        // that owns the run guard. Deriving it keeps the two flags from being able to
+        // disagree at runtime.
+        if options.models_page_smoke {
+            options.settings_window_smoke = true;
         }
-        #[cfg(target_os = "windows")]
-        if (!single_instance_smoke)
-            && (single_instance_ready_file.is_some() || single_instance_result_file.is_some())
-        {
-            return Err(RunOptionsError::new(
-                "single-instance marker arguments require --single-instance-smoke",
-            ));
-        }
-        Ok(Self {
-            run_duration: Duration::from_secs(run_seconds),
-            automated_verification,
-            settings_window_smoke,
-            settings_window_open_smoke,
-            models_page_smoke,
-            hidden_model_switch_smoke,
-            #[cfg(feature = "storage-test-injection")]
-            settings_window_state_smoke,
-            #[cfg(feature = "storage-test-injection")]
-            panic_diagnostics_smoke,
-            #[cfg(feature = "storage-test-injection")]
-            panic_diagnostics_smoke_child,
-            #[cfg(feature = "storage-test-injection")]
-            diagnostics_export_smoke,
-            #[cfg(feature = "storage-test-injection")]
-            diagnostics_export_failure_smoke,
-            system_menu_smoke,
-            startup_permission_smoke,
-            #[cfg(target_os = "macos")]
-            application_reopen_smoke,
-            #[cfg(target_os = "macos")]
-            startup_item_smoke,
-            #[cfg(target_os = "windows")]
-            single_instance_smoke,
-            #[cfg(target_os = "windows")]
-            single_instance_ready_file,
-            #[cfg(target_os = "windows")]
-            single_instance_result_file,
-        })
+        Ok(options)
+    }
+
+    /// How long the run is bounded for, or [`Duration::ZERO`] for an unbounded one.
+    fn run_duration(&self) -> Duration {
+        Duration::from_secs(self.run_seconds)
+    }
+
+    /// Whether this run is a harness rather than a product start.
+    ///
+    /// Every accepted argument except `--run-seconds` selects a harness, so this is true
+    /// exactly when one of the harness flags is present. The startup permission prompt
+    /// hangs on it: a harness is launched by a script on a machine where nobody can
+    /// answer a native dialog.
+    fn automated_verification(&self) -> bool {
+        self.settings_window_smoke
+            || self.settings_window_open_smoke
+            || self.models_page_smoke
+            || self.hidden_model_switch_smoke
+            || self.system_menu_smoke
+            || self.startup_permission_smoke
+            || self.single_instance_arguments_present()
+            || self.storage_test_injection_arguments_present()
+    }
+
+    /// Whether a single-instance flag or marker file was named.
+    #[cfg(target_os = "windows")]
+    fn single_instance_arguments_present(&self) -> bool {
+        self.single_instance_smoke
+            || self.single_instance_ready_file.is_some()
+            || self.single_instance_result_file.is_some()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn single_instance_arguments_present(&self) -> bool {
+        false
+    }
+
+    /// Whether a storage-test-injection harness was named.
+    #[cfg(feature = "storage-test-injection")]
+    fn storage_test_injection_arguments_present(&self) -> bool {
+        self.settings_window_state_smoke
+            || self.panic_diagnostics_smoke
+            || self.panic_diagnostics_smoke_child
+            || self.diagnostics_export_smoke
+            || self.diagnostics_export_failure_smoke
+    }
+
+    #[cfg(not(feature = "storage-test-injection"))]
+    fn storage_test_injection_arguments_present(&self) -> bool {
+        false
     }
 
     fn opens_settings_window_on_start(&self) -> bool {
@@ -554,49 +571,51 @@ impl RunOptions {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, thiserror::Error)]
-#[error("{message}", message = self.message())]
+#[derive(Eq, PartialEq, thiserror::Error)]
+#[error("{message}")]
 struct RunOptionsError {
+    /// The rendered `clap` diagnostic: the full help for `--help`, and the offending
+    /// argument plus the usage line for anything else.
     message: String,
+    /// Whether this was a request for help rather than a bad command line.
     help: bool,
 }
 
-impl RunOptionsError {
-    fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            help: false,
-        }
+/// `Debug` is the rendered message rather than the derived struct form.
+///
+/// `main` hands this back as a boxed error, and `Result`'s `Termination` prints the
+/// `Debug` form — so the derived one would wrap a multi-line diagnostic in the struct's
+/// braces and escape its newlines. These flags exist to be read by a person or a CI log
+/// fixing a command line, so what gets printed is what a reader can act on.
+impl std::fmt::Debug for RunOptionsError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
     }
+}
 
-    fn help() -> Self {
+impl From<clap::Error> for RunOptionsError {
+    fn from(error: clap::Error) -> Self {
         Self {
-            message: usage().to_owned(),
-            help: true,
-        }
-    }
-
-    fn message(&self) -> String {
-        if self.help {
-            self.message.clone()
-        } else {
-            format!("{}\n\n{}", self.message, usage())
+            help: matches!(
+                error.kind(),
+                clap::error::ErrorKind::DisplayHelp
+                    | clap::error::ErrorKind::DisplayVersion
+                    | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+            ),
+            message: error.render().to_string(),
         }
     }
 }
 
-fn usage() -> &'static str {
-    #[cfg(all(target_os = "windows", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke] [--single-instance-ready-file <path>] [--single-instance-result-file <path>]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
-
-    #[cfg(all(target_os = "windows", not(feature = "storage-test-injection")))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--single-instance-smoke] [--single-instance-ready-file <path>] [--single-instance-result-file <path>]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
-
-    #[cfg(all(target_os = "macos", feature = "storage-test-injection"))]
-    return "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--settings-window-state-smoke] [--panic-diagnostics-smoke] [--diagnostics-export-smoke] [--diagnostics-export-failure-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run.";
-
-    #[cfg(all(target_os = "macos", not(feature = "storage-test-injection")))]
-    "Usage: bongocat-app [--run-seconds <seconds>] [--settings-window-smoke] [--settings-window-open-smoke] [--models-page-smoke] [--hidden-model-switch-smoke] [--system-menu-smoke] [--startup-permission-smoke] [--application-reopen-smoke] [--startup-item-smoke]\n\nThe application runs until it is explicitly quit by default. A positive value enables a bounded diagnostic run."
+/// The command line as `--help` prints it.
+///
+/// The flags come from the one declaration above, so this is also what a test reads to
+/// confirm that a harness this build does not contain is absent from the help text too.
+#[cfg(test)]
+fn usage() -> String {
+    <RunOptions as clap::CommandFactory>::command()
+        .render_help()
+        .to_string()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -1418,7 +1437,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_options = match RunOptions::parse(env::args().skip(1)) {
         Ok(options) => options,
         Err(error) if error.help => {
-            writeln!(io::stdout().lock(), "{error}")?;
+            // `clap` already rendered the help with its own trailing newline, and it is
+            // the only thing this process should print on the way out.
+            io::stdout().lock().write_all(error.message.as_bytes())?;
             return Ok(());
         }
         Err(error) => return Err(Box::new(error)),
@@ -1508,7 +1529,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // product windows exist, inside the GPUI run loop. The status is not persisted or
     // logged, exactly as before.
     let permission_language = application.effective_language();
-    let permission_check_enabled = !run_options.automated_verification;
+    let permission_check_enabled = !run_options.automated_verification();
 
     let overlay_options = OverlaySessionOptions {
         click_through: application.config().overlay.click_through,
@@ -1992,7 +2013,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .detach();
 
         #[cfg(target_os = "macos")]
-        let fail_on_smoke_failure = run_options.automated_verification;
+        let fail_on_smoke_failure = run_options.automated_verification();
         cx.on_app_quit(move |cx| {
             #[cfg(target_os = "macos")]
             if run_options.application_reopen_smoke
@@ -3478,11 +3499,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .detach();
         }
 
-        if !run_options.run_duration.is_zero() {
+        if !run_options.run_duration().is_zero() {
             #[cfg(target_os = "windows")]
             let quit_shutdown_requested = Arc::clone(&shutdown_requested);
             cx.spawn(async move |_cx| {
-                Timer::after(run_options.run_duration).await;
+                Timer::after(run_options.run_duration()).await;
                 #[cfg(target_os = "macos")]
                 _cx.update(request_product_quit);
                 #[cfg(target_os = "windows")]
@@ -3719,8 +3740,7 @@ mod tests {
         assert_eq!(
             options,
             RunOptions {
-                run_duration: Duration::ZERO,
-                automated_verification: false,
+                run_seconds: 0,
                 #[cfg(target_os = "windows")]
                 single_instance_ready_file: None,
                 #[cfg(target_os = "windows")]
@@ -3749,7 +3769,9 @@ mod tests {
                 single_instance_smoke: false,
             }
         );
+        assert_eq!(options.run_duration(), Duration::ZERO);
         assert!(!options.opens_settings_window_on_start());
+        assert!(!options.automated_verification());
     }
 
     #[test]
@@ -3757,7 +3779,7 @@ mod tests {
         assert_eq!(
             RunOptions::parse(["--run-seconds".to_owned(), "30".to_owned()])
                 .expect("bounded options")
-                .run_duration,
+                .run_duration(),
             Duration::from_secs(30)
         );
     }
@@ -3767,8 +3789,22 @@ mod tests {
         assert_eq!(
             RunOptions::parse(["--run-seconds".to_owned(), "0".to_owned()])
                 .expect("explicit unbounded options")
-                .run_duration,
+                .run_duration(),
             Duration::ZERO
+        );
+    }
+
+    /// `--flag=value` is the other spelling of the same command line.
+    ///
+    /// It costs nothing to accept and it is what every other command-line tool accepts,
+    /// so a script that reaches for it should not be told the flag does not exist.
+    #[test]
+    fn a_run_duration_can_be_attached_to_its_flag() {
+        assert_eq!(
+            RunOptions::parse(["--run-seconds=30".to_owned()])
+                .expect("attached value options")
+                .run_duration(),
+            Duration::from_secs(30)
         );
     }
 
@@ -3783,7 +3819,7 @@ mod tests {
         assert!(options.settings_window_smoke);
         assert!(!options.models_page_smoke);
         assert!(!options.hidden_model_switch_smoke);
-        assert_eq!(options.run_duration, Duration::from_secs(4));
+        assert_eq!(options.run_duration(), Duration::from_secs(4));
         assert!(options.opens_settings_window_on_start());
     }
 
@@ -3853,6 +3889,7 @@ mod tests {
         assert!(options.panic_diagnostics_smoke);
         assert!(!options.panic_diagnostics_smoke_child);
         assert!(usage().contains("panic-diagnostics-smoke"));
+        // The child is spawned by its parent, so it stays out of the help text.
         assert!(!usage().contains("panic-diagnostics-smoke-child"));
 
         let child = RunOptions::parse(["--panic-diagnostics-smoke-child".to_owned()])
@@ -3889,55 +3926,151 @@ mod tests {
         assert!(options.startup_permission_smoke);
         assert!(!options.settings_window_smoke);
         assert!(!options.opens_settings_window_on_start());
-        assert!(options.automated_verification);
+        assert!(options.automated_verification());
         assert!(usage().contains("startup-permission-smoke"));
     }
 
+    /// A harness run is exactly a run that named a flag other than `--run-seconds`.
+    ///
+    /// This is the rule the permission prompt hangs on, and it is now derived from the
+    /// flag declaration rather than from a hand-written argument scan. The two checks
+    /// below keep it honest: the declared flags and the flags this test calls harnesses
+    /// have to be the same set, and every one of them has to flip the derived value. A
+    /// flag added above without being wired into `automated_verification` fails here
+    /// instead of quietly skipping the permission prompt in CI.
     #[test]
     fn only_the_bounded_run_duration_keeps_a_start_interactive() {
+        use std::collections::BTreeSet;
+
         let product = RunOptions::parse(["--run-seconds".to_owned(), "0".to_owned()])
             .expect("product run options");
-        assert!(!product.automated_verification);
+        assert!(!product.automated_verification());
         assert!(!product.settings_window_smoke);
 
-        // Every other accepted argument selects a harness, so the startup permission prompt stays
-        // out of automated runs.
-        for arguments in [
-            vec!["--settings-window-smoke".to_owned()],
-            vec!["--system-menu-smoke".to_owned()],
-            vec![
+        let harness: BTreeSet<&str> = [
+            "--settings-window-smoke",
+            "--settings-window-open-smoke",
+            "--models-page-smoke",
+            "--hidden-model-switch-smoke",
+            "--system-menu-smoke",
+            "--startup-permission-smoke",
+            #[cfg(feature = "storage-test-injection")]
+            "--settings-window-state-smoke",
+            #[cfg(feature = "storage-test-injection")]
+            "--panic-diagnostics-smoke",
+            #[cfg(feature = "storage-test-injection")]
+            "--panic-diagnostics-smoke-child",
+            #[cfg(feature = "storage-test-injection")]
+            "--diagnostics-export-smoke",
+            #[cfg(feature = "storage-test-injection")]
+            "--diagnostics-export-failure-smoke",
+            #[cfg(target_os = "macos")]
+            "--application-reopen-smoke",
+            #[cfg(target_os = "macos")]
+            "--startup-item-smoke",
+            #[cfg(target_os = "windows")]
+            "--single-instance-smoke",
+            #[cfg(target_os = "windows")]
+            "--single-instance-ready-file",
+            #[cfg(target_os = "windows")]
+            "--single-instance-result-file",
+        ]
+        .into_iter()
+        .collect();
+        let declared: BTreeSet<String> = <RunOptions as clap::CommandFactory>::command()
+            .get_arguments()
+            .filter_map(|argument| argument.get_long())
+            .filter(|flag| *flag != "run-seconds")
+            .map(str::to_owned)
+            .collect();
+        assert_eq!(
+            declared,
+            harness
+                .iter()
+                .map(|flag| flag.trim_start_matches("--").to_owned())
+                .collect::<BTreeSet<String>>(),
+            "the declared flags and the flags this test treats as harnesses are different sets"
+        );
+
+        for flag in &harness {
+            // The single-instance markers need a value and a companion flag, so parsing
+            // one on its own would only prove `clap` rejects it. They are covered by the
+            // dedicated tests below instead.
+            if flag.starts_with("--single-instance-") {
+                continue;
+            }
+            assert!(
+                RunOptions::parse([(*flag).to_owned()])
+                    .unwrap_or_else(|error| panic!("{flag} was rejected: {error}"))
+                    .automated_verification(),
+                "{flag} did not mark the run as a harness"
+            );
+        }
+        assert!(
+            RunOptions::parse([
                 "--run-seconds".to_owned(),
                 "4".to_owned(),
                 "--settings-window-smoke".to_owned(),
-            ],
-        ] {
-            assert!(
-                RunOptions::parse(arguments.clone())
-                    .expect("harness run options")
-                    .automated_verification,
-                "{arguments:?}"
-            );
-        }
+            ])
+            .expect("harness run options")
+            .automated_verification()
+        );
+    }
+
+    /// `--help` is not a harness run; it prints and exits.
+    ///
+    /// A help request used to travel the same error path as a bad command line, and this
+    /// is what keeps the two apart: the help text goes to stdout and the process leaves
+    /// normally, while a bad flag is an error.
+    #[test]
+    fn help_is_rendered_on_stdout_and_is_not_a_harness_run() {
+        let error = RunOptions::parse(["--help".to_owned()]).expect_err("help is not options");
+        assert!(error.help, "--help must not read as a bad command line");
+        assert!(
+            error.message.contains("--run-seconds"),
+            "--help did not render the flag list: {}",
+            error.message
+        );
+        assert!(
+            !error.message.contains("error:"),
+            "--help must not be rendered as a diagnostic: {}",
+            error.message
+        );
+
+        let bad = RunOptions::parse(["--not-a-flag".to_owned()]).expect_err("unknown flag");
+        assert!(!bad.help, "an unknown flag must not read as a help request");
+        assert!(
+            bad.message.contains("--not-a-flag"),
+            "the diagnostic does not name the offending flag: {}",
+            bad.message
+        );
     }
 
     #[cfg(not(feature = "storage-test-injection"))]
     #[test]
     fn product_options_reject_storage_test_injection() {
-        let state_error = RunOptions::parse(["--settings-window-state-smoke".to_owned()])
-            .expect_err("default product options must reject state storage injection");
-        assert!(state_error.message.contains("unknown argument"));
-        assert!(!usage().contains("settings-window-state-smoke"));
-        let panic_error = RunOptions::parse(["--panic-diagnostics-smoke".to_owned()])
-            .expect_err("default product options must reject panic storage injection");
-        assert!(panic_error.message.contains("unknown argument"));
-        assert!(!usage().contains("panic-diagnostics-smoke"));
-        let diagnostics_error = RunOptions::parse(["--diagnostics-export-smoke".to_owned()])
-            .expect_err("default product options must reject diagnostics storage injection");
-        assert!(diagnostics_error.message.contains("unknown argument"));
-        assert!(!usage().contains("diagnostics-export-smoke"));
-        let child_error = RunOptions::parse(["--panic-diagnostics-smoke-child".to_owned()])
-            .expect_err("default product options must reject panic child injection");
-        assert!(child_error.message.contains("unknown argument"));
+        for (flag, harness) in [
+            ("--settings-window-state-smoke", "state storage injection"),
+            ("--panic-diagnostics-smoke", "panic storage injection"),
+            (
+                "--diagnostics-export-smoke",
+                "diagnostics storage injection",
+            ),
+            ("--panic-diagnostics-smoke-child", "panic child injection"),
+        ] {
+            let error = RunOptions::parse([flag.to_owned()])
+                .expect_err("default product options must reject this harness");
+            assert!(
+                error.message.contains(flag),
+                "rejecting {harness} did not name the flag: {}",
+                error.message
+            );
+            assert!(!error.help);
+            assert!(
+                !usage().contains(flag),
+                "{harness} is advertised in the help of a build that rejects it"
+            );
+        }
     }
 
     #[test]
@@ -4001,8 +4134,26 @@ mod tests {
         assert!(options.single_instance_smoke);
         assert!(!options.settings_window_smoke);
         assert!(options.opens_settings_window_on_start());
+        assert!(options.automated_verification());
         assert_eq!(options.single_instance_ready_file, None);
         assert_eq!(options.single_instance_result_file, None);
+    }
+
+    /// Naming a marker file is a harness run even though no smoke flag is set.
+    ///
+    /// `clap` requires the companion flag, so the marker arrives alongside it; what
+    /// matters here is that the marker itself is part of the harness set rather than a
+    /// separate case.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_single_instance_marker_file_also_marks_a_harness_run() {
+        let options = RunOptions::parse([
+            "--single-instance-smoke".to_owned(),
+            "--single-instance-ready-file".to_owned(),
+            r"C:\runner\primary.ready".to_owned(),
+        ])
+        .expect("single-instance marker options");
+        assert!(options.automated_verification());
     }
 
     #[cfg(target_os = "windows")]
