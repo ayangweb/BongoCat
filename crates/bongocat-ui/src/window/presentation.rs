@@ -71,7 +71,7 @@ impl GamepadConnectionState {
 /// means "the last model used in this state", which the product resolves from
 /// what the user actually activated. `Some` pins that state to one model.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct GamepadModelChoice {
+pub(crate) struct GamepadModelChoice {
     pub(super) target: Option<SettingsModelKey>,
     /// The row's text, resolved when the option list is built. It is not part of
     /// the identity: renaming a model changes the label, not the target.

@@ -7,7 +7,7 @@ use gpui_kit::component::{Sizable as _, Size};
 
 /// What the drop overlay can currently offer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ModelDragOverlayState {
+pub(crate) enum ModelDragOverlayState {
     /// One path was dropped over the window and import may start.
     Ready,
     /// Another source operation owns the model import flow.

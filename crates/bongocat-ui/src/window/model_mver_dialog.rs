@@ -150,3 +150,149 @@ fn mver_mode_checkbox_id(mode: SettingsMverMode) -> gpui_kit::ElementId {
         SettingsMverMode::Gamepad => "mver-mode-gamepad".into(),
     }
 }
+
+// The conversion-mode dialog's own state.
+//
+// A `.mver` model converts through more than one mode, so the import cannot
+// start until the user has picked one. The state is a value the view owns rather
+// than something the dialog's rendering decides, because the page has to know
+// which mode is preselected before it opens the layer at all.
+
+/// The BongoCat Mver conversion-mode dialog's own state.
+///
+/// The dialog only exists after inspection reported the modes a source actually
+/// carries, so `available` is exactly what the checkboxes show. `checked` is
+/// the user's selection and reaches a request in `available` order; the set has
+/// no default of the whole list, only the single priority mode
+/// [`default_checked_mver_mode`] names.
+pub(crate) struct MverModeDialog {
+    /// The conversions inspection reported, in the store's report order.
+    pub(crate) available: Vec<SettingsMverMode>,
+    /// The conversions the user has checked; always a subset of `available`.
+    pub(crate) checked: BTreeSet<SettingsMverMode>,
+    /// Set when the dialog is built during render; the window's dialog system
+    /// owns the surface itself, and this records what the view put into it.
+    pub(crate) open: bool,
+}
+
+impl MverModeDialog {
+    pub(crate) fn from_available(available: Vec<SettingsMverMode>) -> Self {
+        let checked = default_checked_mver_mode(&available).into_iter().collect();
+        Self {
+            available,
+            checked,
+            open: false,
+        }
+    }
+
+    /// The checked modes in the order inspection reported them.
+    ///
+    /// The request is built from this rather than `checked` itself so the
+    /// selection reads top to bottom and the checkbox order decides, not
+    /// [`SettingsMverMode`]'s declaration order.
+    #[cfg(test)]
+    pub(crate) fn checked_in_order(&self) -> Vec<SettingsMverMode> {
+        self.available
+            .iter()
+            .copied()
+            .filter(|mode| self.checked.contains(mode))
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn can_confirm(&self) -> bool {
+        !self.checked.is_empty()
+    }
+
+    pub(crate) fn toggle(&mut self, mode: SettingsMverMode, checked: bool) {
+        if !self.available.contains(&mode) {
+            return;
+        }
+        if checked {
+            self.checked.insert(mode);
+        } else {
+            self.checked.remove(&mode);
+        }
+    }
+}
+
+/// A render-safe copy of one Mver conversion dialog.
+///
+/// A dialog builder runs while `SettingsView` is borrowed for rendering, so it
+/// must not read the entity back through `App`. This snapshot carries exactly the
+/// state the pane needs: the options to draw, the current checks, and whether
+/// confirmation is available.
+#[derive(Clone)]
+pub(super) struct MverDialogSnapshot {
+    pub(crate) available: Vec<SettingsMverMode>,
+    pub(crate) checked: BTreeSet<SettingsMverMode>,
+}
+
+impl MverDialogSnapshot {
+    pub(crate) fn from_dialog(dialog: &MverModeDialog) -> Self {
+        Self {
+            available: dialog.available.clone(),
+            checked: dialog.checked.clone(),
+        }
+    }
+
+    pub(super) fn available(&self) -> &[SettingsMverMode] {
+        &self.available
+    }
+
+    pub(super) fn is_checked(&self, mode: SettingsMverMode) -> bool {
+        self.checked.contains(&mode)
+    }
+
+    pub(super) fn set(&mut self, mode: SettingsMverMode, checked: bool) {
+        if !self.available.contains(&mode) {
+            return;
+        }
+        if checked {
+            self.checked.insert(mode);
+        } else {
+            self.checked.remove(&mode);
+        }
+    }
+
+    pub(super) fn checked_in_order(&self) -> Vec<SettingsMverMode> {
+        self.available
+            .iter()
+            .copied()
+            .filter(|mode| self.checked.contains(mode))
+            .collect()
+    }
+
+    pub(super) fn can_confirm(&self) -> bool {
+        !self.checked.is_empty()
+    }
+}
+
+/// The one mode checked when the conversion dialog first opens.
+///
+/// The order here is the user's priority, not the enum's: standard first, then
+/// keyboard, then gamepad, and `None` only when the source has no convertible
+/// mode at all (which inspection never reports, but the page does not assume it).
+pub(crate) fn default_checked_mver_mode(
+    available: &[SettingsMverMode],
+) -> Option<SettingsMverMode> {
+    [
+        SettingsMverMode::Standard,
+        SettingsMverMode::Keyboard,
+        SettingsMverMode::Gamepad,
+    ]
+    .into_iter()
+    .find(|mode| available.contains(mode))
+}
+
+/// The catalog key naming one BongoCat Mver conversion mode.
+///
+/// The mode keys are shared with the legacy model list, so the dialog says
+/// "Keyboard mode" in the same words the card for a converted model will.
+pub(crate) fn mver_mode_label_key(mode: SettingsMverMode) -> &'static str {
+    match mode {
+        SettingsMverMode::Standard => "models.mver.mode.standard",
+        SettingsMverMode::Keyboard => "models.mver.mode.keyboard",
+        SettingsMverMode::Gamepad => "models.mver.mode.gamepad",
+    }
+}
