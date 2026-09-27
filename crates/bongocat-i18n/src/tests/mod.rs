@@ -34,8 +34,8 @@ fn flatten(value: &serde_json::Value, prefix: &str, out: &mut BTreeMap<String, S
 
 fn messages(locale: &str) -> BTreeMap<String, String> {
     let value: serde_json::Value = serde_json::from_str(match locale {
-        "en-US" => include_str!("../locales/en-US.json"),
-        "zh-CN" => include_str!("../locales/zh-CN.json"),
+        "en-US" => include_str!("../../locales/en-US.json"),
+        "zh-CN" => include_str!("../../locales/zh-CN.json"),
         _ => panic!("unsupported test locale"),
     })
     .expect("valid locale JSON");
