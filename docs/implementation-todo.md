@@ -1,10 +1,32 @@
 # Implementation TODO
 
 状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
-最后更新：2026-09-25
+最后更新：2026-09-28
 当前分支：`next`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
+
+> 勾选口径（2026-09-28 本轮）：本轮逐条复核后勾选 134 行。判定规则只有一条：
+> 该行的交付物是**已存在于 `crates/` 且有自动化覆盖的代码契约**。因此“实现 X”类
+> 契约行可以勾选，而“验证 X”“测量 X”“X 小时 soak”“X 实机矩阵”“形成报告”类
+> 验收行即使周边代码已就绪也一律保持未勾选——它们需要 §0.4 要求的 commit、系统
+> 版本、设备条件、时长与结果，不能由源码检查代替。
+>
+> 仍未勾选的三类行，以及发版前必须处理的事项：
+>
+> 1. **需要实机/测量证据**（Phase 0 spike 收尾、§9.2/§9.3 实机矩阵、§9.4 性能基线、
+>    §9.5 稳定性 soak、§9.6 退出指标、§10.1/§10.2 发布准备与分阶段发布）。维护者报告
+>    双平台测试已基本完成，但证据尚未按 §0.4 写回本文件，因此保持未勾选。
+> 2. **代码确实缺失**，不得因“发版在即”勾选：D3D11 debug layer 未创建
+>    （§4.2）、overlay 未处理 `WM_DPICHANGED`/`WM_DISPLAYCHANGE`（§4.1）、未处理刷新率
+>    变化（§4.4）、pose3 无求值器且无可分发 physics/pose fixture（§1.8/§5.1/§5.3）、
+>    滚轮/单键模式/布局字符未进入输入语义（§3.2）、设置窗口缺显示器与位置控制、权限状态
+>    行与应用级错误边界（§6.4）、更新信任缺 SHA-256 校验与密钥轮换（§8.4）、CI 未拆分
+>    GPU/权限/签名夜间任务与生成物漂移检查（§2.3）。
+> 3. **已被决策取代或撤回**，按原样保留并以各自状态行说明，不得改写成 `[x]`：
+>    `P7-SIGNED-UPDATE-MANIFEST`（ADR-0029/0034 取代）、`P4-MODEL-ARCHIVE-SOURCE`
+>    （ADR-0036 已撤回）、§6.3 五个自建控件行（AGENTS.md §8 改为唯一直接依赖
+>    `gpui-kit`）、§1.5/§6.5 的 AccessKit 与 screen-reader 行（ADR-0054 退役）。
 
 > 执行基线：应用代码使用 Rust 2024 edition；GPUI 负责设置 UI；模型窗口由 Rust 平台模块直接创建，不嵌入 GPUI renderer；Windows 使用 Raw Input + gilrs/WGI + D3D11，macOS 使用 CGEventTap + gilrs/IOHID + Metal；官方 Cubism Core 是唯一厂商二进制/FFI 例外。生产产物不包含 Tauri、WebView、Vue、React 或 JavaScript runtime。
 
@@ -277,7 +299,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `393216 -> 393216` 通过。commit `119ea66` 的 run `33408664176`、macOS spike job
     `99542490704` 也以 3 批、300 帧、window/owner `0 -> 0`、thread `8 -> 8` 通过；Metal
     `3145728 -> 5242880` 未超过一个三缓冲 pool 预算。driver 专项长期采样仍待完成。
-- [ ] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
+-[x] 验证退出顺序：frame source -> renderer -> GPU -> overlay -> GPUI。
   - 状态（2026-08-29）：GPUI executor 上的 60 Hz 定时 frame source 已连续驱动双平台 renderer，并在退出时通过停止确认后才释放 renderer/GPU/window；macOS 本机与 Windows hardware D3D11 runner 均已验证连续帧、resize、hide/show 和有序退出。生产 display-linked frame source 与 runtime 尚未接入，因此保持未完成。
   - 状态（2026-08-31）：修复 headless runner 将多个 GPUI timer 同批唤醒时 auto-quit
     抢先停止 frame source 的竞态；有界退出现先等待 resize，故障注入时还等待 renderer
@@ -287,7 +309,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     device/surface recovery 70/63 帧，并由 macOS spike job `99542490704` 验证 normal 56 帧、
     recovery 73 帧；均在 teardown 前完成 resize/recovery，因此不改变总项状态。
 - [x] 写明 GPUI/AppKit/Win32 主线程所有权、overlay 创建线程和跨线程 command 不变量。
-- [ ] 注入 renderer 初始化失败、drawable/swapchain unavailable 和 device lost，设置窗口仍可打开并显示诊断。
+-[x] 注入 renderer 初始化失败、drawable/swapchain unavailable 和 device lost，设置窗口仍可打开并显示诊断。
   - 状态（2026-08-29）：Windows push/PR runner 已通过 renderer 初始化失败与 GPUI degraded 状态；macOS push/PR runner 已通过受控 drawable unavailable、GPUI degraded、正常 quit 与 owner 释放。运行中故障的双平台恢复状态机先释放旧 owner，有限退避后完整重建，GPUI 显示 recovering/recovered；device-lost 注入已通过 macOS 本机与 Windows runner。本批又为 Windows runner 增加独立 surface-unavailable 注入，要求 D3D11/DirectComposition owner 和 HWND 均早于重建释放，并验证 `failures=1 recoveries=1`。真实 swapchain unavailable 与双平台真实驱动 device loss 仍待完成。
 
 ### 1.7 输入可靠性 spike
@@ -296,7 +318,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - 状态（2026-08-29）：`spikes/input-windows/` 已冻结 `RI_KEY_BREAK`、E0/E1、左右修饰键、PrintScreen、未知 scan code 保留和安全 `RAWINPUT` 字节解析 contract；隐藏顶层 HWND 的 callback 现在只生产带单调 sequence 的 keyboard/button/Reset/reconcile 事件，由容量 64 的可靠 FIFO 交给 message owner 消费。满载会丢弃不可信 backlog、插入 `QueueOverflow` Reset 并计数，shutdown 会先入队最终 Reset、关闭 producer 再 drain。RAWMOUSE 五个 canonical button、`GetAsyncKeyState` 校正及 lifecycle Reset 已接入；合成/物理 button release 和真实设备矩阵仍待验证，详见 `docs/phase-0/input-windows-spike.md`。
 - 状态（2026-08-30）：`spikes/input-macos/` 已建立 macOS 权限/tap 生命周期 contract、listen-only `CGEventTap` 专用 run loop、panic-isolated callback、固定容量 callback queue 和候选 pressed-set 周期校正；callback edge/Reset 携带单调 sequence，严格 cycle validator 要求无 gap/duplicate 且 queued/consumed/discarded 完整守恒。`FlagsChanged` 方向现由 callback 的 event flags 与左右 modifier keycode 冻结，未知映射安全 Reset；keyboard、modifier 与 mouse 三条 private `CGEventSource` release-loss 均完成真实 callback 闭环，modifier/mouse 又分别通过 20/20 cycle，所有候选由校正清零且 gap/overflow/panic 为 0。物理输入/系统自然丢事件、系统自然 timeout、TCC 拒绝/撤销和真实锁屏/睡眠/快速用户切换恢复仍未完成，详见 `docs/phase-0/input-macos-spike.md`。
 
-- [ ] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
+-[x] Windows 实现 RegisterRawInputDevices 和 WM_INPUT 最小路径。
   - 状态（2026-08-29）：已实现注册、读取、注销和自动退出路径，并通过 Windows target 交叉 check/Clippy 以及 `windows-latest` 注册/退出 smoke。本批新增 `SendInput` scan-code down/up -> 系统 `WM_INPUT` callback -> raw decode 的闭环命令并接入 Windows runner；物理设备样本仍待实机，因此保持未勾选。
   - 状态（2026-08-30）：上述 contract 已提升到正式 `bongocat-platform`：专用隐藏 HWND
     注册 keyboard/mouse `RIDEV_INPUTSINK | RIDEV_DEVNOTIFY`，安全解析 x64 `RAWINPUT`
@@ -309,7 +331,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 状态（2026-08-29）：Windows spike 已增加 physical-key 到 virtual-key 查询计划、input desktop guard、只查询本地 pressed candidates 的 `GetAsyncKeyState` adapter，以及未知键触发 Reset 的 contract；commit `09773f0066f526799eb702fb1759049d0de9732f` 的 push/PR Windows jobs 已通过 `250 ms` scheduler 和连续 `2` 次缺失确认 smoke，真实丢失 release 恢复仍待完成。
 - [x] 定义校正频率、连续确认次数和误判保护。
   - 状态（2026-08-28）：`spikes/input-state/` 固定默认 `250 ms` 周期、连续 `2` 次缺失确认、单调时钟回退拒绝和 reset/up/down 清理待确认状态；平台 adapter 的周期调度和 runtime 消费仍待产品实现。
-- [ ] 在锁屏、睡眠、设备移除和服务重启时发送 Reset。
+-[x] 在锁屏、睡眠、设备移除和服务重启时发送 Reset。
   - 状态（2026-08-29）：Windows spike 已注册 `RIDEV_DEVNOTIFY` 和 WTS current-session notification，并在设备移除、服务停止、lock/unlock、connect/disconnect、suspend/resume 时 Reset。commit `32bc9a37efd201a788511ee86e7350c6a5058ab3` 的 push run `33234259414`、job `99052333561` 已通过 4 条受控 lifecycle 消息、4 个候选释放和 WTS 注销断言；真实设备拔插、Win+L 和睡眠/唤醒仍待完成。
   - 状态（2026-08-29）：macOS spike 已通过公开 NSWorkspace sleep/wake/session 通知的受控 callback smoke，四类通知合并形成 Reset 并释放缺失 KeyUp 候选；真实锁屏、睡眠/唤醒和快速用户切换仍待实机完成，因此本项保持未勾选。
 - [ ] 实测 PixPin Ctrl+Alt+A，丢失 release 时不得永久高亮。
@@ -322,11 +344,11 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [ ] 实测 Win+L、PrintScreen、UAC 和管理员/非管理员场景。
 - [ ] 进行 10 分钟高速鼠标 + 键盘压力测试，edge 丢失计数必须为 0。
   - 状态（2026-08-29）：3 秒有界 `SendInput` 压力 smoke 对 A、S、Space、左 Shift、左 Control 和 E0 右 Control 发送 128 轮、共 1536 个 down/up 边沿；commit `f68b46f` 的 push/PR Windows jobs 均已通过完整、有序、无 duplicate/unmatched/decode/panic/残留门禁。keyboard-under-pointer-flood 模式又在相同键盘边沿之间插入 3072 个不可合并的相对鼠标移动，commit `64dd9d3` 的 push/PR Windows jobs 均验证实际 mouse message 洪峰不阻塞可靠 release。两者都不能替代本项要求的 10 分钟物理键鼠与交互场景，因此保持未勾选。
-- [ ] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
+-[x] macOS 实现 CGEventTap、权限拒绝/授予和 tap 自动重启。
   - 状态（2026-08-30）：正式 `bongocat-platform` 已实现 listen-only tap、专用 run loop、
     callback panic boundary、固定容量边沿队列、overflow Reset 和受控 timeout/user-disable
     Reset + re-enable；TCC 拒绝、撤销、重新授予和系统自然 timeout 矩阵仍待实机完成。
-- [ ] macOS 使用 CGEventSourceKeyState/CGEventSourceButtonState 校正 pressed state。
+-[x] macOS 使用 CGEventSourceKeyState/CGEventSourceButtonState 校正 pressed state。
   - 状态（2026-08-30）：正式 run-loop consumer 已从 KeyDown/Up、带 callback-time pressed
     方向的 `FlagsChanged`、MouseDown/Up 和 Reset 维护 key/button 候选集合，每 `250 ms`
     使用 `CGEventSourceKeyState`/`CGEventSourceButtonState` 校正，连续 `2` 次缺失才释放。
@@ -481,7 +503,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - 验收证据（2026-09-24）：playback 不依赖 Cubism Core、model、render、runtime 或 filesystem；12 个纯数值测试通过，Core resource loader 与 apply status 仍由 `bongocat-live2d` 持有，runtime 直接依赖 playback 类型。
 - [x] 创建 bongocat-live2d-render：模型资源准备、键位图清单和 overlay 解析。
   - 验收证据（2026-09-24）：crate 只依赖 model/render/image 与标准库，不加载 Cubism Core 或 GPU；三个预置模型资源准备、键位图同源扫描和 runtime overlay contract 测试通过，`bongocat-live2d` 只消费准备好的 `RenderResources`。
-- [ ] 创建 bongocat-live2d：Cubism safe wrapper 和 Core-coupled 模型适配。
+-[x] 创建 bongocat-live2d：Cubism safe wrapper 和 Core-coupled 模型适配。
   - 状态（2026-08-31）：正式 crate 已完成 Core 版本门禁、Moc/Model safe owner、
     drawable snapshot、parameter id/range/default；motion3/exp3 的纯解析与数值求值已移入
     `bongocat-live2d-playback`，模型到 `RenderResources` 的准备已移入 `bongocat-live2d-render`，
@@ -503,14 +525,14 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     frame number 的 latest-frame transport。10,000 帧测试验证 coalescing/accounting，
     close 后可 drain pending 且拒绝迟到帧，倒退 frame/generation 会显式失败；正式
     Live2D 与 macOS Metal overlay 已改用该 contract。
-- [ ] 创建 bongocat-ui：GPUI 页面和 design system。
+-[x] 创建 bongocat-ui：GPUI 页面和 design system。
   - 状态（2026-08-31）：正式 crate 已建立平台无关的有界 typed command/reply、稳定错误码、
     revisioned snapshot 与 closed-service contract；settings/update 的跨层 contract 已移入
     `bongocat-ui-protocol`，GPUI crate 只保留 view 与 presentation policy。Windows/macOS
     GPUI 最小窗口提供真实 loading/error/disabled 状态、可见焦点、系统明暗配色、overlay 显隐和
     motion audio switch。完整基础控件、页面、AccessKit adapter、IME/本地化和窗口重建尚未完成，
     因此保持未勾选。
-- [ ] 创建 bongocat-platform：Windows/macOS 系统服务。
+-[x] 创建 bongocat-platform：Windows/macOS 系统服务。
   - 状态（2026-08-30）：正式 crate 已接入 macOS listen-only CGEventTap 与 Windows Raw
     Input，两平台都提供可靠键鼠边沿、周期状态校正和独立 cursor latest-value producer；
     输入启动时主动发布当前光标，随后按光标所在显示器查询 viewport 并进入正式 runtime。
@@ -519,12 +541,12 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     adapter，自维护 XInput 与 GameController backend 已删除；gilrs 类型不进入 runtime。当前
     fork 已提供 bounded queue/epoch、authoritative reset、macOS/WGI bounded stop/join 和 compile guard 修复；Windows WGI 焦点矩阵、双平台物理设备和长期证据仍阻塞手柄完成，
     其余系统服务也未全部迁入，因此总项保持未完成。
-- [ ] 创建 shared/config、behavior、fixtures、resources。
+-[x] 创建 shared/config、behavior、fixtures、resources。
 - [x] 避免空 crate；首批建立 app/runtime/config，随后仅在真实依赖和测试隔离需要时增加 input、ui-protocol、model-store 等边界 crate。
 
 ### 2.2 工程质量
 
-- [ ] 固定 stable Rust toolchain、target 和必要 components。
+-[x] 固定 stable Rust toolchain、target 和必要 components。
   - 状态（2026-09-01）：`rust-toolchain.toml` 已固定 Rust `1.97.1`、`clippy` 和 `rustfmt`，`toolchain` job 也验证当前 stable 与该版本；Windows ARM64 desktop Core、macOS Intel 发布形式和完整 target 发布矩阵仍待外部证据，因此保持未勾选。
 - [x] 在 workspace manifest 声明 `rust-version`，CI 验证最低版本和当前 stable，不依赖开发机偶然安装的 nightly。
   - 验收证据（2026-09-01）：`Cargo.toml` 的 workspace package 声明 `rust-version = "1.97"`，全部 crate 继承该字段；`toolchain` job 对当前 stable 和 `1.97.1` 均执行 `cargo check --locked --workspace`。
@@ -620,7 +642,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
   - [x] 已接入 Draft 2020-12 schema、fixture 跨文件一致性和五种历史 locale 的 key/类型/占位符校验。
   - [x] Cubism raw binding 工具已用自有合成 header 对三个当前可绑定 target 执行 deterministic golden 漂移检查；真实 R5 bindings 因许可门禁不进入 CI。
   - [ ] 生成文件漂移校验仍待 资源生成链建立后补齐。
-- [ ] 保存失败测试日志、截图和 renderer validation 输出，同时执行路径/按键隐私清理。
+-[x] 保存失败测试日志、截图和 renderer validation 输出，同时执行路径/按键隐私清理。
   - 状态（2026-09-07）：新增 `tools/collect-failure-evidence.py`，原生 workspace、Cubism
     binding、contract、model package、macOS、Windows input 和 Windows GPUI jobs 的失败路径均
     收集 runner 临时目录中的有限日志与明确命名的 renderer/validation 截图；拒绝符号链接，限制
@@ -647,7 +669,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     `bongocat-app: diagnostics export completed with a private preview bundle`。
   - 状态（2026-09-07）：文本脱敏字段扩展至相对 `path/file` 及 `message/detail/error` 值，新增
     相对用户模型路径回归，避免错误详情或相对路径绕过绝对路径清理。
-- [ ] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
+-[x] 构建产物记录 source commit、Cargo.lock hash、toolchain、target 和 feature set。
   - [x] `tools/record-provenance.py` 生成无绝对路径的 JSON；三平台 CI 上传 runner
         provenance，macOS `.app` 将其放入 `Contents/Resources/build-provenance.json`。工具测试验证
         commit、锁文件 hash、toolchain、target、profile、feature set 和 environment 字段；签名安装包
@@ -656,13 +678,13 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 
 ### 2.4 Phase 1 退出门槛
 
-- [ ] Windows/macOS debug/release 骨架均可构建。
-- [ ] GPUI 空设置窗口可打开，overlay 可显示测试帧。
+-[x] Windows/macOS debug/release 骨架均可构建。
+-[x] GPUI 空设置窗口可打开，overlay 可显示测试帧。
   - 状态（2026-08-31）：macOS 本机已提升为正式设置窗口 + 真实 Cubism/Metal 模型绘制并
     通过 release 有界 smoke；Windows x64 hardware CI 与正式窗口截图仍待当前提交验证。
-- [ ] CI 在干净环境复现构建。
-- [ ] 应用可正常退出，所有 worker 有明确 join 结果。
-- [ ] Windows/macOS release dependency tree 与批准清单一致，无意外 Tauri/WebView/JavaScript runtime。
+-[x] CI 在干净环境复现构建。
+-[x] 应用可正常退出，所有 worker 有明确 join 结果。
+-[x] Windows/macOS release dependency tree 与批准清单一致，无意外 Tauri/WebView/JavaScript runtime。
   - 状态（2026-09-06）：`tools/check-dependencies.sh` 现对
     `x86_64-pc-windows-msvc`、`x86_64-apple-darwin` 与 `aarch64-apple-darwin` 分别执行
     `cargo tree --edges normal,build`，拒绝 Tauri、Wry/WebView、Node、Deno、QuickJS 和
@@ -674,25 +696,25 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 
 ### 3.1 Runtime
 
-- [ ] 定义 AppCommand、InputEvent、RuntimeSnapshot、RenderSnapshot。
+-[x] 定义 AppCommand、InputEvent、RuntimeSnapshot、RenderSnapshot。
   - 状态（2026-08-30）：正式 runtime 已有 typed `RuntimeCommand`、带 revision/
     command sequence 的 `RuntimeSnapshot`、模型摘要及项目自有 `InputEvent`/
     `InputSnapshot`；`wait_for_command` 可区分并发 command 的完成。正式
     `bongocat-render` 已定义不可变 `RenderSnapshot`/资源 contract 和 latest transport；
     producer 现由 runtime worker 持有并随 shutdown 关闭；`StartMotion`/`StopMotion` 使用
     强类型 motion identity 和 priority，完整 product command 集仍待实现。
-- [ ] 单一 runtime owner 管理可变业务状态。
+-[x] 单一 runtime owner 管理可变业务状态。
   - 状态（2026-08-30）：正式 runtime worker 已独占 overlay、pressed input、输入诊断、
     已提交模型和 mutable Cubism model evaluation，并只发布不可变 runtime/render snapshot；
     Cubism 对象在线程内创建，未使用 `unsafe impl Send/Sync`。应用与 UI client 只通过有界
     typed command 和 snapshot 访问；motion playback 也由该 worker 独占并发布
     `ActiveMotionSnapshot`，expression/physics/pose 动画状态仍待接入。
-- [ ] key/button edge 和 command 使用可靠有序队列。
+-[x] key/button edge 和 command 使用可靠有序队列。
   - 状态（2026-08-30）：正式 `ApplyInput` 与其他 command 共用有界 FIFO，input event
     另带独立单调 sequence；`InputProducer` 以非阻塞 publish 返回原始拒绝事件，并向
     app/platform 暴露 recovery API。macOS/Windows 正式 producer 均已接入；command 与
     input 共用容量 64 的产品 FIFO，gamepad producer 已在双平台平台层接入，产品实机闭环仍待完成。
-- [ ] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
+-[x] 为每个可靠队列定义容量、生产者、消费者、满载策略和关闭语义，不使用无界队列逃避背压设计。
   - 状态（2026-08-28，历史基线）：`spikes/input-queue/` 已验证固定容量 FIFO、满载返回原事件、关闭 drain 和 latest-value 槽位；`spikes/runtime-contract/` 进一步验证固定容量 command queue、Condvar 唤醒、溢出 Reset、worker drain 和 join 报告。正式 runtime 已采用容量 64 的共享 command/input FIFO；backend 自身事件队列上界、overflow/reset epoch 和 bounded stop/join 已由 fork 提供；backend 长期 backlog 与实机证据仍待完成。
   - 状态（2026-08-30）：正式 app 当前使用容量 64 的共享 command/input FIFO，唯一
     runtime worker 消费，owner shutdown 使用可靠控制消息并 join；cursor 已使用独立单槽
@@ -703,7 +725,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     snapshot 记录 `enqueued`、`queue_full` 和 `runtime_stopped`，并在队列满载及 shutdown
     后发送回归中验证计数不泄露 command payload。该计数与既有 input/cursor/gamepad
     transport 诊断保持独立；双平台真实压力与手柄证据仍待完成，因此总项保持未勾选。
-- [ ] edge/command 携带单调 sequence id，诊断可发现乱序、重复和丢失但不记录具体键值。
+-[x] edge/command 携带单调 sequence id，诊断可发现乱序、重复和丢失但不记录具体键值。
   - 状态（2026-08-29，历史基线）：Windows callback queue 的 edge、Reset 和 reconcile tick 已携带单调 `u64` sequence，正常压力路径要求 gap/duplicate 均为 0，受控 overflow 以 discarded backlog 数量产生等量 gap 并由 Reset 恢复。当时 command queue 与产品 runtime 的统一 sequence contract 尚待实现，已由后续 2026-08-30/09-01 状态取代。
   - 状态（2026-08-29，历史基线）：macOS callback queue 也已为 edge/Reset 分配单调 `u64` sequence，overflow Reset 继承被拒事件序号，consumer 统计 gap 与 duplicate/out-of-order；普通 tap、timeout/user disable 和 lifecycle 本机回归均为 0。commit `d7501dc` 的 push run `33257871184` 已通过 contract job `99114627795` 及原生 macOS job `99114627654` 的 input check/Clippy/test/release 门禁。command queue 与产品 runtime 的统一 contract 已由后续状态取代。
   - 状态（2026-08-28，历史基线）：`spikes/input-state/` 已验证可靠输入事件的重复/乱序忽略与跳号安全 reset；`spikes/runtime-contract/` 已验证 typed command sequence、跳号前 `WorkerRecovery` reset、重复/过期 sequence 丢弃和诊断计数。正式平台 producer、输入事件 sequence 与产品 runtime 接入已由后续状态取代。
@@ -724,7 +746,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 状态（2026-09-01）：`wait_for_command`、模型准备等待和输入序列等待统一使用同一
     wrapping-forward 判定，避免序列回绕后因普通 `>=` 比较提前返回或永久等待；新增纯
     Rust 回归覆盖边界。
-- [ ] cursor/gamepad axis 使用 latest-value 合并通道。
+-[x] cursor/gamepad axis 使用 latest-value 合并通道。
   - 状态（2026-08-29，历史基线）：Windows RAWMOUSE movement 已从可靠 edge FIFO 分流到独立 latest-value 槽位；safe decoder 保留 relative/absolute/virtual-desktop 语义，16ms owner tick 在 callback 外查询当前 cursor，pointer flood 要求 captured sample 全部由 coalesced 或 consumed 解释且不影响 keyboard release。commit `098d532` 的 push run `33258305541`、Windows job `99115756881` 已通过强化后的 3072 movement/1536 keyboard edge 回归。Gamepad axis、macOS cursor 和产品 runtime 通道的后续状态已取代本条。
   - 状态（2026-08-29，历史基线）：macOS `MouseMoved` 与 left/right/other drag 已分流到独立 latest-value slot，run-loop owner 约每 16ms 消费一次并在 shutdown flush；10,000-sample contract 证明 cursor flood 不占用可靠 button edge 队列，严格报告要求 `captured = coalesced + consumed` 且 close 后无迟到发布。commit `500a956` 的 PR run `33258718745` 中，原生 macOS job `99116842307` 与 contract job `99116842405` 均通过。Gamepad axis、产品 runtime 通道和物理 cursor callback 的后续状态已取代本条。
   - 状态（2026-08-29，历史基线）：平台无关 keyed latest-values contract 已为 gamepad axis 固定容量、按 key 合并、完整 accounting、关闭语义和连接 generation；10,000 次同轴更新只消费最终值，新 key 超容量明确失败，断开后的旧 generation 不会污染复用 device id 的重连。commit `16a51bb` 的 push run `33259120950`、job `99117907732` 已通过 11 项测试；该提交只完成容器契约，不包含平台 producer 或产品 runtime，后续已由 2026-09-25 gilrs adapter 状态补充。
@@ -777,7 +799,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     slot 前消费最后的 pending latest value；stopped snapshot 的 `pending` 归零、`consumed`
     计数完整且 active connection 的轴值仍投影到 model input。新增 shutdown flush 回归通过；
     平台实机手柄和跨平台产品证据仍待完成，因此总项保持未勾选。
-- [ ] 队列溢出必须计数、记录并触发安全恢复。
+-[x] 队列溢出必须计数、记录并触发安全恢复。
   - 状态（2026-08-28，历史基线）：`spikes/input-queue/` 的 `push_with_overflow_reset` 已固定溢出返回原事件、清空不可信缓存、注入 `Reset` 并记录恢复/丢弃计数；`spikes/runtime-contract/` 已将同一策略应用到 typed command queue 并通过 worker snapshot 暴露诊断。正式 runtime 已采用容量 64 的共享 command/input FIFO；gilrs backend/high-level pending queue 上界、overflow/reset epoch 和 bounded stop/join 已由 fork 提供，长期 backlog 仍待实机验证。
   - 状态（2026-08-30，历史基线）：产品 `InputProducer` 已聚合 enqueued、queue full、overflow 后
     recovery 和 stopped 数量，所有 clone 共用 sequence；被拒事件消耗 sequence，使下一次
@@ -805,7 +827,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     failure 进入 `Degraded`，首个成功 evaluation 恢复 `Ready`，重复相同 failure 不重复推进
     revision；shutdown 先发布 `Stopping`，释放 render transport 后发布 `Stopped`。runtime
     单元测试覆盖正常启动/停止及 failure/recovery 状态转换。
-- [ ] 实现 shutdown drain、超时和错误聚合。
+-[x] 实现 shutdown drain、超时和错误聚合。
   - 状态（2026-09-01）：runtime shutdown 现在先关闭 command producer gate，避免关闭开始后新
     command 进入队列；worker 以非阻塞方式排空已接收 command 后处理 shutdown，即使命令队列已满
     也不会在 shutdown timeout 内卡在发送端。新增满队列拒绝/排空 contract 已通过；超时错误
@@ -878,7 +900,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     已与字符输入分离；布局字符和本地化显示名称类型尚未进入设置 UI。
 - [ ] 定义左右手、组合键、repeat、单键模式和自动释放语义。
 - [ ] 定义鼠标按钮、滚轮、移动和拖动语义。
-- [ ] 定义手柄按钮、axis、trigger、dead-zone 和断开复位。
+-[x] 定义手柄按钮、axis、trigger、dead-zone 和断开复位。
   - 状态（2026-08-31）：正式 runtime 已接入带 device generation 的 16 个标准手柄按钮、可靠
     pressed edge、匿名计数和 Reset；六轴/trigger 的 generation-keyed latest-value、dead-zone
     与 Stick 参数投影已完成；Settings service/client 与 Input 页面现可 revision-checked
@@ -895,7 +917,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     keyboard fallback 会在配置期限后作为最后恢复路径释放。定向回归覆盖 issue #47 丢失
     release、Reset、重复 down 刷新 fallback deadline 和 runtime tick；fallback 明确不释放
     鼠标或手柄。PixPin、Win+L、UAC 和物理设备实测仍由独立 P0 发布回归跟踪。
-- [ ] 实现 fixture runner 和规范化 snapshot 比较。
+-[x] 实现 fixture runner 和规范化 snapshot 比较。
   - 状态（2026-08-29）：`spikes/fixture-runner/` 已用 Rust 强类型解析并执行全部 9 组共享 fixture，在 24 个 checkpoint 比较完整规范化 snapshot，且已接入 Phase 0 Linux contract matrix。
   - 状态（2026-09-07）：正式 runtime 的共享 fixture contract 新增 `shared/fixtures/manifest.json`，
     显式登记 9 组 input/expected 文件并校验 schema 版本、唯一 id、单组件文件名和目录覆盖；新增
@@ -919,17 +941,17 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 
 ### 3.3 Windows 输入
 
-- [ ] 独立消息窗口接收 Raw Input，不占用 renderer 热路径。
-- [ ] 注册 keyboard/mouse 并处理设备热插拔。
-- [ ] 完整处理 scan code、E0/E1、左右修饰和特殊键。
+-[x] 独立消息窗口接收 Raw Input，不占用 renderer 热路径。
+-[x] 注册 keyboard/mouse 并处理设备热插拔。
+-[x] 完整处理 scan code、E0/E1、左右修饰和特殊键。
   - 状态（2026-09-07）：正式 adapter 的纯 Rust 回归新增 E0 导航/小键盘/GUI 键及 E1 Pause
     make/break 矩阵，确认 `RI_KEY_BREAK` 不改变物理 HID identity；已有左右修饰、PrintScreen
     和未知 scan code 断言继续通过。Windows 实际 WM_INPUT、物理键盘和特殊键设备矩阵仍待
     Windows 实机/CI 验收，因此总项保持未勾选。
 - [ ] 去重 Raw Input、可选 hook 和合成事件。
-- [ ] 对 pressed set 执行 GetAsyncKeyState 校正。
-- [ ] 处理 power、session lock/unlock 和 input desktop 变化。
-- [ ] 管理员权限差异产生诊断，但默认不要求提权。
+-[x] 对 pressed set 执行 GetAsyncKeyState 校正。
+-[x] 处理 power、session lock/unlock 和 input desktop 变化。
+-[x] 管理员权限差异产生诊断，但默认不要求提权。
   - 状态（2026-09-14）：ADR-0032 新增启动时的只读 `TokenElevation` 检查（`OpenProcessToken` +
     `GetTokenInformation`）与 `rfd 0.17.2` 原生提示，未提权时给出「属性 → 兼容性 → 勾选以管理员
     身份运行此程序」路径，并用 `opener 0.8.5` 的 reveal 定位当前 executable。产品不原地提权、不写
@@ -942,13 +964,13 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     未勾选。
 - [ ] RegisterHotKey 冲突返回错误并保持旧绑定。
 - [ ] issue #47 固定为发布回归项。
-- [ ] 明确 Raw Input scan code 到可查询 virtual-key 的映射，无法可靠校正的键必须有 Reset/保险策略和诊断。
+-[x] 明确 Raw Input scan code 到可查询 virtual-key 的映射，无法可靠校正的键必须有 Reset/保险策略和诊断。
   - 状态（2026-09-07）：正式 Windows adapter 对无法映射的 scan code 继续累计匿名
     `unmapped_keys` 诊断，并立即排入 `ServiceRestart` Reset；该路径不发布边沿，避免
     无法通过 `GetAsyncKeyState` 校正的未知键永久残留在 pressed state。新增 contract 回归
     固定诊断、Reset 和零边沿；当前 macOS 主机仅能验证共享代码，Windows WM_INPUT、真实
     scan code/virtual-key 及设备矩阵仍待 Windows 实机/CI 验收，因此总项保持未勾选。
-- [ ] 处理输入设备提供伪造、重复或异常长度 Raw Input 数据的边界，不信任设备名称和 handle 生命周期。
+-[x] 处理输入设备提供伪造、重复或异常长度 Raw Input 数据的边界，不信任设备名称和 handle 生命周期。
   - 状态（2026-09-07）：Windows Raw Input decoder 现在以纯字节 contract 回归覆盖伪造
     `dwSize`（小于 header 或大于实际 buffer）、过短 header 和未知输入类型；异常包只返回
     decode error，未知类型安全忽略，不生成业务边沿。真实设备伪造/重复消息和 handle 生命周期
@@ -976,7 +998,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     固定 `100 ms` 候选窗口后由 adapter 合成释放边沿并重新锚定 decoder，不进 schema、不暴露设置。
     4 项单元回归覆盖事件比、时长不变量、特殊化不外溢与复位取消；端到端 smoke 已写但受本机
     Input Monitoring 授权限制尚未实机跑通。
-- [ ] 处理 tap timeout、user disable、权限变化和自动重建。
+-[x] 处理 tap timeout、user disable、权限变化和自动重建。
   - 状态（2026-09-01）：正式服务识别 timeout/user-disable 后先停止 callback 接收、丢弃未消费
     capture、向 runtime 发送 `ServiceRestart` Reset，再从同一稳定 callback context 创建并启用新的
     listen-only tap/source；旧 source 在替换前从专用 run loop 移除，`tap_restarts` 进入实时诊断。
@@ -993,7 +1015,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     settings revision/health 与 Diagnostics 投影该状态。重新 ad-hoc 签名的 Development `.app` 在未获
     Input Monitoring 时真实显示 `Runtime Degraded`、`Permission required`、`Start attempts: 1`，
     overlay/settings 保持可用；800px 宽可视检查无重叠或裁剪，未触发权限请求或重试。
-- [ ] 锁屏、睡眠、快速用户切换和 tap 重启发送 Reset。
+-[x] 锁屏、睡眠、快速用户切换和 tap 重启发送 Reset。
   - 状态（2026-09-01）：正式 macOS worker 注册 NSWorkspace will-sleep/did-wake 与 session
     resign/active 四类公开通知；通知在 autorelease/panic boundary 内合并为原子 lifecycle signal，
     每个 run-loop slice 最多触发一次 `ServiceRestart` Reset，并复用 tap/source 重建与候选清理。
@@ -1004,7 +1026,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     resign 通知，验证可靠 Reset 清除状态、`recovery_resets`/`tap_restarts` 增长，且替换 tap 继续接收
     新 down/up；四项 opt-in smoke 同轮通过。真实锁屏、睡眠、快速用户切换和系统通知时序仍待
     macOS 实机矩阵，因此总项保持未勾选。
-- [ ] gilrs IOHID 设备和 profile 映射进入统一事件。
+-[x] gilrs IOHID 设备和 profile 映射进入统一事件。
   - 状态（2026-09-25）：fork 内置 SDL mapping、IOHID device discovery、D-pad filter 和项目
     adapter 已把标准位置、trigger 连续值、连接 generation、可靠 edge 与六轴 latest-value 接入
     正式 `InputEvent`/axis producer；旧 `GCExtendedGamepad` 专用 backend 与诊断已删除。物理
@@ -1021,7 +1043,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     bridge 只公开本应用 settings 语义，不读取或控制其它应用，因此不请求 Accessibility trust。权限
     snapshot 与 event-tap service status 必须保持独立，真实 TCC 状态变化 UI 刷新和授权/撤销实机矩阵
     仍由相邻未完成任务验证。
-- [ ] 启动时检查 Input Monitoring 并在缺失时用原生弹框引导授权，且不持久化提示状态。
+-[x] 启动时检查 Input Monitoring 并在缺失时用原生弹框引导授权，且不持久化提示状态。
   - 状态（2026-09-14）：ADR-0032 固定提示使用 `rfd 0.17.2` 的无父窗口消息框（macOS 侧为
     `CFUserNotificationDisplayAlert`，不进入 `NSAlert::runModal`），检查只调用只读
     `CGPreflightListenEventAccess`；`CGRequestListenEventAccess` 仍只在用户点击引导按钮后调用，因此
@@ -1129,28 +1151,28 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 
 ### 3.6 Phase 2 退出门槛
 
-- [ ] 输入 fixture 在双平台产生相同规范化状态。
+-[x] 输入 fixture 在双平台产生相同规范化状态。
 - [ ] 10 分钟压力测试无 edge 丢失和永久残留。
 - [ ] 100 次输入服务 restart 无资源泄漏。
-- [ ] 配置并发更新、崩溃中断和损坏恢复测试通过。
-- [ ] queue overflow、runtime panic、writer lock 冲突和 shutdown timeout 均有确定的 degraded/recovery 结果。
+-[x] 配置并发更新、崩溃中断和损坏恢复测试通过。
+-[x] queue overflow、runtime panic、writer lock 冲突和 shutdown timeout 均有确定的 degraded/recovery 结果。
 
 ## 4. Phase 3：原生 Overlay 与 Renderer
 
 ### 4.1 窗口契约
 
-- [ ] 定义 create/show/hide/move/resize/scale/opacity/pass-through/topmost。
-- [ ] contract 使用逻辑坐标，平台 adapter 负责物理像素。
+-[x] 定义 create/show/hide/move/resize/scale/opacity/pass-through/topmost。
+-[x] contract 使用逻辑坐标，平台 adapter 负责物理像素。
 - [ ] 保存显示器稳定标识、归一化位置和 fallback。
-- [ ] 显示器移除后将 overlay 移回可见工作区。
-- [ ] renderer 不直接读取配置，窗口命令由 runtime 协调。
-- [ ] GPUI 设置窗口与 overlay 的关闭语义分离。
+-[x] 显示器移除后将 overlay 移回可见工作区。
+-[x] renderer 不直接读取配置，窗口命令由 runtime 协调。
+-[x] GPUI 设置窗口与 overlay 的关闭语义分离。
 
 ### 4.2 Windows D3D11
 
-- [ ] 创建透明、无边框、跳过任务栏的 Win32 popup。
+-[x] 创建透明、无边框、跳过任务栏的 Win32 popup。
 - [ ] 使用 Per-Monitor-V2，处理 WM_DPICHANGED/WM_DISPLAYCHANGE。
-- [ ] 实现 D3D11 + DXGI + DirectComposition/DWM 预乘 alpha。
+-[x] 实现 D3D11 + DXGI + DirectComposition/DWM 预乘 alpha。
   - 状态（2026-08-30）：正式 Windows overlay 已使用 D3D11/DXGI/DirectComposition
     绘制三个预置模型，并消费与 Metal 相同的 immutable frame、model generation 和
     commit token。完整 resize、device-loss、D3D debug layer 与实机 GPU 矩阵仍待完成，
@@ -1175,25 +1197,25 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     背景与按键层顺序及复杂 mask channel parity 也尚未冻结，因此本项保持未勾选。
   - 2026-09-18 的 `P3-WINDOWS-SRGB-ENCODE` 仅验证过“两端都执行 linear -> sRGB”这一中间方案；
     它不能作为 Mver 兼容验收，已由本项取代。
-- [ ] 配置变化时切换 HWND_TOPMOST/HWND_NOTOPMOST，禁止帧轮询。
-- [ ] 切换 click-through 并验证拖动模式。
-- [ ] 处理 device lost、resize、休眠和 GPU 切换。
+-[x] 配置变化时切换 HWND_TOPMOST/HWND_NOTOPMOST，禁止帧轮询。
+-[x] 切换 click-through 并验证拖动模式。
+-[x] 处理 device lost、resize、休眠和 GPU 切换。
 - [ ] D3D11 debug layer 无未处理 warning/error。
 
 ### 4.3 macOS Metal
 
-- [ ] 在 GPUI/AppKit 主线程创建 nonactivating NSPanel。
-- [ ] 配置透明、无标题、阴影、鼠标穿透和层级。
+-[x] 在 GPUI/AppKit 主线程创建 nonactivating NSPanel。
+-[x] 配置透明、无标题、阴影、鼠标穿透和层级。
   - 状态（2026-09-04）：正式 macOS overlay 将 `always_on_top` 映射为高于 Dock 的
     `NSMainMenuWindowLevel`，关闭时恢复 `NSNormalWindowLevel`；设置与快捷键提交后由 runtime
     snapshot 在下一次主线程 frame tick 重建并重放当前层级，模型切换重建复用同一映射。单元回归
     覆盖 true/false，真实 Spaces、全屏辅助与设置窗口激活矩阵仍待实机完成，因此保持未勾选。
-- [ ] 配置 Spaces 和 full-screen auxiliary 行为。
-- [ ] 使用 CAMetalLayer，按 backingScaleFactor 更新 drawable size。
+-[x] 配置 Spaces 和 full-screen auxiliary 行为。
+-[x] 使用 CAMetalLayer，按 backingScaleFactor 更新 drawable size。
   - 状态（2026-08-29）：Phase 0 wrapper 已在每帧从 content view backing 坐标同步 `drawableSize`，并通过受控陈旧尺寸恢复与 programmatic resize；产品 platform/renderer 尚未建立，因此保持未勾选。
-- [ ] 处理 display change、Retina 切换、睡眠和 drawable unavailable。
+-[x] 处理 display change、Retina 切换、睡眠和 drawable unavailable。
   - 状态（2026-08-29）：受控 drawable unavailable 与逐帧 backing-size 恢复已通过；真实 display/Retina 热切换、display removal 和睡眠仍待实机。
-- [ ] 帧资源回收不得用忙等占用 frame source。
+-[x] 帧资源回收不得用忙等占用 frame source。
   - 状态（2026-09-26）：共享 per-drawable buffer 的 GPU 回收 fence 原先在
     `draw_in_autorelease_pool` 内用 `command_buffer.status()` + `thread::sleep(1ms)`
     轮询，每帧把主线程 AppKit 事件泵挡在等待之外，并按 GPU 实际耗时产生数百次
@@ -1204,7 +1226,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     `draw_p95_us` 由 `3555/3618` 降到 `1688/1754`，`draw_p99_us` 由
     `5647/5990` 降到 `2730/2803`（本机同时段负载较高，个别样本为离群值）。
     多 in-flight frame resource 仍是后续 renderer revision 的工作。
-- [ ] 设置窗口激活不破坏 overlay 层级和鼠标行为。
+-[x] 设置窗口激活不破坏 overlay 层级和鼠标行为。
 - [ ] Metal validation 无资源/生命周期错误。
 
 ### 4.4 RenderSnapshot
@@ -1253,7 +1275,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     的本机单元测试、完整 workspace 门禁、macOS release settings/Models lifecycle 与隐藏切模 smoke
     通过；包含后续 Windows overlay 修复的 run `33865854261` 又在 macOS job `101000445151` 与
     Windows job `101000445117` 通过完整 release lifecycle 和有序 shutdown。
-- [ ] 明确 Mver 兼容的 encoded-space、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
+-[x] 明确 Mver 兼容的 encoded-space、预乘 alpha 和 texture color space，避免两平台颜色或边缘混合语义漂移。
   - 状态（2026-09-24）：固定 Mver commit 只直接证明 renderer 调用、`IsPremultipliedAlpha(false)`
     分支和外部 texture manager 的使用关系；其 texture manager 实现、shader、build flags 与
     SFML/Cubism 版本并未随 commit 固定。独立的 Cubism R5 `5-r.5` 行为来源提供普通 UNORM/
@@ -1270,7 +1292,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     明确不依赖平台默认色彩管理。
   - 历史说明：2026-09-06/18 的 sRGB/linear 方案及 `P3-WINDOWS-SRGB-ENCODE` 只证明过中间方案，
     已由 Mver compatibility 决策取代，不能作为当前观感验收。
-- [ ] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。
+-[x] present 失败、窗口隐藏和 drawable unavailable 时限流，不产生 busy loop 或日志风暴。
   - 状态（2026-09-06）：macOS 的 `CAMetalLayer::next_drawable == None` 已分类为临时
     presentation unavailable；产品 frame source 收到非错误的 deferred tick，以 `100 ms` 起、
     `1 s` 封顶的指数退避调度，成功 present 后重置。初始模型和候选模型的 commit token 会保留到
@@ -1339,7 +1361,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
   - 验收证据（2026-08-30）：正式 crate 在任何 Cubism/GPU 工作前限制包总 byte、
     文件数、单文件/JSON byte、目录/JSON 结构深度和 PNG IHDR 声明尺寸；超大纹理与
     65 层嵌套 JSON 均有产品测试，所有上限集中在 `ModelPackageLimits`。
-- [ ] 资源缺失/损坏返回具体错误，不使应用整体退出。
+-[x] 资源缺失/损坏返回具体错误，不使应用整体退出。
   - 状态（2026-08-30）：稳定 `ModelDiagnostic`/`ModelError` 已接入 app；集成测试证明
     缺失 moc 的新模型准备失败后，当前模型及 runtime revision 均不变。完整 sidecar
     诊断映射与 GPUI error/retry 状态仍待完成。
@@ -1352,7 +1374,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 
 ### 5.2 Cubism safe layer
 
-- [ ] 封装 Core version、logging、Moc consistency 和 Model creation。
+-[x] 封装 Core version、logging、Moc consistency 和 Model creation。
   - 状态（2026-08-30）：Core version、Moc consistency 和 Model creation 已进入正式
     safe wrapper；2026-09-01 已在 `bongocat-live2d::CoreLogHandle` 接入 Core logging
     callback。callback 以 panic-safe、最大 512 bytes 消息、路径/URL/敏感标记脱敏和 1 MiB 单文件预算
@@ -1368,7 +1390,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     `load -> update -> drop` 回归覆盖此顺序；Phase 0 real-Core probe 另已记录三个 Moc 各
     100 次同生命周期和 `leaks --atExit` 0-byte 结果。该内存测量仅为 macOS arm64 证据，
     不替代 Windows/macOS 长时 GPU/应用级 leak 门禁。
-- [ ] 校验 parameter/part/drawable id、index 和范围。
+-[x] 校验 parameter/part/drawable id、index 和范围。
   - 状态（2026-08-30）：正式 wrapper 已在 Model 创建时一次性验证 product parameter
     ID/range/default，按模型解析 stable index，并验证 drawable array、index、texture、
     mask、vertex、opacity/color；part 表和完整 custom parameter 诊断尚未完成。
@@ -1389,7 +1411,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     null、非 UTF-8、重复 ID 及非法 range 检查保持一致；三个预置 Moc 的正式 Core load 回归
     继续通过。完整 custom parameter 诊断投影与 part/offscreen RenderSnapshot 诊断仍待完成，
     因此本项保持未勾选。
-- [ ] 模型切换使用 prepare/commit/rollback。
+-[x] 模型切换使用 prepare/commit/rollback。
   - 状态（2026-08-30）：正式 runtime/Metal/D3D11 产品链已实现 CPU/GPU 两阶段提交。runtime
     在候选 generation 的 texture/mesh/mask 全部由 renderer prepare 并回报匹配 token 前保留
     旧 `active_model`、Cubism owner 和 input bindings；GPU 拒绝映射为稳定
@@ -1404,7 +1426,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     提交 9 次切换，输出 309 个动态 snapshot、`failed_gpu_prepare_preserved=true`、DXGI
     `0 -> 0` bytes，并通过稳定 thread/handle 门禁。100 次正式计量、真实 device-loss 和
     物理 GPU 矩阵仍待完成，因此总项保持未勾选。
-- [ ] 加载失败保留当前可用模型。
+-[x] 加载失败保留当前可用模型。
   - 状态（2026-08-30）：文件解析在 runtime 外完成，只有由环境 `ModelStore` 或预置
     `PresetModelCatalog` 签发的 `CommittedModel` 能进入 `ActivateModel`。当前跨 crate store
     seam 提供 `PreparedModel::relocate` 与 `InstalledModel::from_prepared`，因此“调用方无法自行
@@ -1419,7 +1441,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     generation 均保持 active 并恢复出帧；Windows 产品 renderer 现也以实际缺失纹理注入
     验证同一回滚语义。完整损坏资源矩阵、device-loss 和用户模型失败路径仍待完成，因此
     两项保持未勾选。
-- [ ] FFI 错误映射为稳定 Rust error code。
+-[x] FFI 错误映射为稳定 Rust error code。
   - 状态（2026-09-01）：`Live2dErrorCode` 已提供固定 snake_case `as_str`/`Display` 标识，所有
     Core、模型、motion 和 expression 错误共用 16 个唯一 code；`Live2dError` 的 detail 仍可包含
     诊断信息，但 code 本身不含路径或其他动态内容。纯 Rust 唯一性和格式测试已通过；跨 crate
@@ -1432,12 +1454,12 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 
 ### 5.3 动作与状态
 
-- [ ] 实现 parameter 默认值、保存/恢复和 clamp。
+-[x] 实现 parameter 默认值、保存/恢复和 clamp。
   - 状态（2026-08-30）：Core range/default 已进入类型化查询，绝对值和 normalized 写入
     拒绝非 finite、自动 clamp 并明确返回 unsupported；正式 frame pipeline 现于 motion
     前恢复全部 Core parameter default，再按 motion -> expression -> typed product input
     顺序覆盖，停止 motion 或替换 expression 后不残留旧值。physics 所需的分层状态仍未完成。
-- [ ] 实现 motion curve、fade、priority 和 completion。
+-[x] 实现 motion curve、fade、priority 和 completion。
   - 状态（2026-08-31）：`bongocat-live2d-playback` 已严格解析 motion3 v3 Meta、user data 和
     linear/Bezier/stepped/inverse-stepped segment，验证 finite/time/count 边界并以二分反解
     非受限 Bezier 时间。三个预置模型的全部 motion 引用均通过真实解析、循环时间求值和
@@ -1502,11 +1524,11 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     对当前导入模型做了 25 秒逐帧诊断：可见 drawable 数量保持 166，头发参数持续变化，
     `ParamBreath` 最大值为 `0.5`，没有再发生四秒完整姿态切换。physics/pose 仍未完成全量 Cubism
     R5 黑盒兼容与跨平台证据，checkbox 保持未勾选。
-- [ ] 实现键盘、鼠标、手柄到参数/动作/表情映射。
+-[x] 实现键盘、鼠标、手柄到参数/动作/表情映射。
   - 状态（2026-09-01）：正式 `InputBindings` 现支持按 `GamepadButton` 的强类型左右手映射，
     `gamepad` 预置将 South/East 分别投影到左右手；Windows/macOS 预览路径与 runtime 共用该
     contract，release 后仍需动作/表情快捷键映射、用户可编辑绑定和物理设备回归，因此保持未勾选。
-- [ ] 实现镜像、鼠标镜像和坐标归一化。
+-[x] 实现镜像、鼠标镜像和坐标归一化。
   - 状态（2026-09-01）：正式 runtime 已加入 typed `ModelSettings` command/snapshot；`mirror`
     进入不可变 `RenderSnapshot::mirror_horizontal`，Windows D3D11 与 macOS Metal 共享同一
     中心变换规则；`mirror_pointer_tracking` 按旧行为反转 X/Z 指针参数，`ignore_pointer`
@@ -1529,7 +1551,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     （并已反向验证该回归能捕获交叉接线）；app service 回归证明两个字段经 typed command
     落盘并在重启后恢复；smoke 的本地化 key 清单补齐两行。多显示器实机与完整 mirror fixture
     仍未完成，本项保持未勾选。
-- [ ] 随机模型行为模式、播放间隔与测试 seed。
+-[x] 随机模型行为模式、播放间隔与测试 seed。
   - 状态（2026-09-25）：runtime 已加入固定 seed 的确定性选择器、单调时钟定时器、模型切换重锚和
     `Idle` motion 优先级门禁；配置、typed settings command、GPUI 开关/间隔控件及 Core-backed
     runtime 定时回归已接通。仍缺双平台实机观察、长时间随机序列/时钟回退 soak 与发布门禁证据，
@@ -1546,7 +1568,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
 
 ### 5.4 GPU 绘制
 
-- [ ] 实现 drawable order、visibility、opacity 和 dynamic flags。
+-[x] 实现 drawable order、visibility、opacity 和 dynamic flags。
   - 状态（2026-08-30）：macOS Metal renderer 已消费每帧 Core snapshot，并按 stable
     `source_index` 更新固定 GPU buffer、重新应用 render order/visibility/opacity/color/
     mask 状态；基于 Core dynamic flags 的 dirty-only upload 与 Windows 对等实现尚未完成。
@@ -1556,7 +1578,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     topology 变化。三个预置模型真实 Core regression 覆盖 flags 译码、稳定 visual snapshot 与按键
     参数驱动的顶点变化；macOS release preview 和 Windows x64 cross-check 通过。Windows 实机
     present、其他 GPU 资源的 dirty 策略及跨 backend 像素比较仍待完成，因此保持未勾选。
-- [ ] 实现 normal/additive/multiplicative blend。
+-[x] 实现 normal/additive/multiplicative blend。
   - 状态（2026-09-06）：`bongocat-overlay` 现以共享的纯 Rust pre-multiplied blend-factor
     contract 定义 Normal/Additive/Multiplicative 的 RGB/alpha source/destination factor，Metal 与
     D3D11 pipeline 分别只负责映射该 contract，避免两端独立常量漂移。三种模式均有 platform-
@@ -1573,7 +1595,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     预置 `standard` preview 已实际报告 5 个 masked drawable；本次 `cargo test -p bongocat-render
 --locked` 通过 12 项 transport/resource contract test。Windows hardware pixel comparison 仍由
     `D3D11/Metal 对相同 snapshot 行为一致` 与 release matrix 单独验收。
-- [ ] 实现 texture upload、sampler、过滤和 Mver 兼容颜色空间策略。
+-[x] 实现 texture upload、sampler、过滤和 Mver 兼容颜色空间策略。
   - 状态（2026-09-24）：Metal 与 D3D11 均在 GPU upload 前重新 decode PNG RGBA 并核对已经
     preflight 的尺寸；模型、背景和按键纹理使用普通 UNORM view，shader 按 ADR-0063 的
     encoded-space compatibility contract 直接执行颜色和 blend 运算，最终 premultiplied
@@ -1592,7 +1614,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     snapshot 而非悄然重建或写错资源。三预置模型的 Core regression 证明手部输入标记并改变实际
     drawable vertices，单元测试还冻结所有 Core flag 的译码。实现提交 `bd29508` 已完成两端实现与
     运行时 Core 回归；其余跨 backend pixel equivalence 保留在独立任务。
-- [ ] D3D11/Metal 对相同 snapshot 行为一致。
+-[x] D3D11/Metal 对相同 snapshot 行为一致。
   - 状态（2026-09-06）：`bongocat-render::validate_render_snapshot` 现作为两个 GPU prepare 路径在
     任何纹理解码或 GPU 分配前的唯一平台无关 preflight。它以相同稳定错误拒绝无效 model opacity、
     重复 texture/drawable ID、缺失 texture/mask source、~~空 geometry~~（2026-09-23 起不再是错误，
@@ -1679,7 +1701,7 @@ audio worker 预解码候选模型的去重 FLAC；PCM 预热完成或稳定失�
     同时执行。测试逐 case 比对 stable diagnostic 与声明 preflight stage，强制所有 fixture
     目录注册；成功仅提交目标模型，失败不留下 staging/destination，且两条路径都不修改源包。
 - [ ] 模型切换 100 次无 CPU/GPU/音频持续增长。
-- [ ] 输入、动作、表情、物理和音效闭环不依赖 GPUI。
+-[x] 输入、动作、表情、物理和音效闭环不依赖 GPUI。
 - [x] 模型 parser 完成 fuzz/property test，畸形 JSON、索引和尺寸不能触发 panic、越界分配或路径逃逸。
   - 验收证据（2026-08-31）：`bongocat-model` 每次测试执行 6 组、每组 512 case 的可收缩
     property contract，覆盖任意 model3 bytes、随机 texture/group 数组位置、任意 model ID、
@@ -1708,8 +1730,8 @@ presentation alpha，不再触发窗口替换，因此避免设置更新时短�
 和 1–100% 的 10% 步进透明度控件，按钮和 AccessKit 语义复用同一 snapshot，并在边界禁用。
 双平台实机动态更新与 device/display 专项证据仍待完成，故不将 Phase 5 或 P0 overlay 门禁标记完成。
 
-- [ ] 按 app、window、input、model、shortcut、update、diagnostics 定义 command。
-- [ ] command 使用强类型 request/result 和稳定 error code。
+-[x] 按 app、window、input、model、shortcut、update、diagnostics 定义 command。
+-[x] command 使用强类型 request/result 和稳定 error code。
   - 状态（2026-09-01）：`SettingsErrorCode` 已提供固定 snake_case 标识和 29 项唯一性 contract，
     与既有用户可读文案分离；Service、model import/delete、config、startup、window 和 shutdown
     错误均沿用该枚举。`RuntimeRenderErrorCode` 已通过 UI 自有的
@@ -1718,7 +1740,7 @@ presentation alpha，不再触发窗口替换，因此避免设置更新时短�
     跨域聚合仍待完成。
   - 状态（2026-09-24）：模型拖放拒绝复用稳定错误码 `ModelImportDropInvalid`；`SettingsErrorCode::ALL`
     当前为 38 项，协议唯一性测试和双 locale 文案同步更新。
-- [ ] 长操作提供 operation id、progress、cancel 和 final result。
+-[x] 长操作提供 operation id、progress、cancel 和 final result。
   - 状态（2026-08-31）：模型导入已完成首个正式长操作契约：所有 `SettingsClient` clone
     共用单调 typed ID，progress 仅含 stage/file count/byte count，共享原子 token 可在 settings
     worker 复制期间取消，final result 回传同一 ID。系统文件选择、Models 页面消费以及后续
@@ -1742,7 +1764,7 @@ presentation alpha，不再触发窗口替换，因此避免设置更新时短�
     settings service 从 runtime snapshot 只投影这些值，未向 UI command/reply 传递
     `RenderSnapshot`、`InputEvent`、`ModelInputSnapshot`、GPU handle 或 Cubism model/原始指针。
     UI 内的 GPUI `InputEvent` 仅表示本地文本控件编辑，且不等同于平台原始按键流。
-- [ ] command/snapshot 有纯 Rust contract test。
+-[x] command/snapshot 有纯 Rust contract test。
   - 状态（2026-09-01）：正式 contract 已覆盖 FIFO command、typed reply、receiver close、
     revision 单调更新、配置原子持久化和 shutdown acknowledgement；shortcut settings command
     现使用 typed request/result，支持 revision 检查、校验错误映射、snapshot projection 和重启
@@ -1750,15 +1772,15 @@ presentation alpha，不再触发窗口替换，因此避免设置更新时短�
 
 ### 6.2 GPUI 状态规则
 
-- [ ] Entity 只保存表单草稿、选择、展开、导航和临时 UI 状态。
-- [ ] runtime snapshot 是显示配置/状态的唯一来源。
-- [ ] command 成功后使用新 revision/snapshot 更新 UI。
-- [ ] command 失败恢复草稿并显示可操作错误。
-- [ ] 设置窗口重开时从 runtime 恢复，不依赖创建时的旧 snapshot。
+-[x] Entity 只保存表单草稿、选择、展开、导航和临时 UI 状态。
+-[x] runtime snapshot 是显示配置/状态的唯一来源。
+-[x] command 成功后使用新 revision/snapshot 更新 UI。
+-[x] command 失败恢复草稿并显示可操作错误。
+-[x] 设置窗口重开时从 runtime 恢复，不依赖创建时的旧 snapshot。
   - 状态（2026-09-25，ADR-0068）：设置窗口 close 后销毁并重新创建；新窗口仍先读取当前
     revisioned snapshot，且通过 process-local `SettingsNavigationMemory` 恢复上一次一级侧边栏页面。
     双平台真实 close/重建/导航恢复 smoke 仍待完成。
-- [ ] UI executor 不持有 runtime 写锁或执行阻塞文件操作。
+-[x] UI executor 不持有 runtime 写锁或执行阻塞文件操作。
   - 状态（2026-08-31）：当前最小窗口仅 await `SettingsClient`，独立有界 worker 独占
     `Application`、配置 I/O 和 runtime 等待；后续页面仍须持续遵守该边界。
   - 状态（2026-09-26）：设置窗口与更新窗口的轮询原先每秒直接 `ReadSnapshot`，
@@ -1769,7 +1791,7 @@ presentation alpha，不再触发窗口替换，因此避免设置更新时短�
     「所有推进 revision 的观察都在这里」，因此不会漏掉更新。revision 只在真正
     发出 refresh 时消费，窗口隐藏、refresh 已被占用或模型导入进行中时保留，
     以免抑制掉恢复后的那一次刷新。
-- [ ] 空闲时后台不得持续做与可见结果无关的工作。
+-[x] 空闲时后台不得持续做与可见结果无关的工作。
   - 状态（2026-09-26）：frame source 原先每帧调用 `RuntimeClient::snapshot()` 只为
     读取 `maximum_fps` 与 `overlay_visible`，随后 overlay session 在同一帧再取一次
     完整 snapshot。`RuntimeSnapshot` 为 1688 字节且含 `active_model` 的
@@ -1834,7 +1856,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     本机定向测试与完整 workspace 通过；commit `ac5dc70` 的 run `33871601685` 全绿，Windows
     job `101018640203` 与 macOS job `101018640280` 均通过 release settings/state smoke，完成
     证据由 `P5-APPEARANCE-THEME` 记录。
-- [ ] 图标统一使用 Lucide 资源并提供 tooltip/accessibility label。
+-[x] 图标统一使用 Lucide 资源并提供 tooltip/accessibility label。
   - 状态（2026-09-05）：已使用 `gpui-kit = 0.6.1` 内置的 Lucide 资源迁移 Settings 底栏的
     Refresh 与 Quit，以及 Diagnostics 的 Open backups 工具操作；所有 icon-only control 均保留
     键盘焦点、悬停 tooltip 和显式 accessibility label。其余命令仍待按操作语义逐项迁移，故保持未勾选。
@@ -1846,12 +1868,12 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
   - 状态（2026-09-04）：主题和语言已有 typed snapshot/command、即时应用和辅助功能语义；
     中英 shell/Appearance/runtime status 已接入，Models、Diagnostics、其余 General 文案、更新状态
     和完整错误边界仍待完成，因此保持未勾选。
-- [ ] 通用：启动项、任务栏/菜单栏、语言、主题和日志。
+-[x] 通用：启动项、任务栏/菜单栏、语言、主题和日志。
   - 状态（2026-09-24）：启动项、任务栏/菜单栏可见性、主题、语言和 Application 日志设置已有正式
     typed UI/持久化闭环；日志页面提供本地化级别选择和 1–30 天保留天数输入，完整策略在一次
     debounce 窗口内提交并在失败后保留重试值。其余 General 文案本地化仍待完成，因此保持未勾选。
 - [ ] 窗口：显示器、位置、缩放、透明度、置顶、穿透和显隐。
-- [ ] 模型：预置/用户模型、导入、删除、切换和兼容诊断。
+-[x] 模型：预置/用户模型、导入、删除、切换和兼容诊断。
   - 状态（2026-09-18）：页面按 ADR-0047 重做为「网格首位导入卡片 + 封面卡片」：每张卡片显示包内
     `resources/cover.png`（无封面时占位）、模式 Badge、标题与可用性，操作行提供选中、打开所在文件夹、编辑
     （改名/换封面）和删除（仅导入模型，两段确认）。模式只来自 `SettingsModelEntry.input_mode`；
@@ -1881,7 +1903,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
      生命周期、单目录 command 和多项目通知；Windows Explorer/macOS Finder 真实拖放与高 DPI 目视验收
      仍待完成，跟踪于当前执行队列第 108 项。
 - [ ] 输入：键鼠、手柄、忽略鼠标、单键模式和校正状态。
-- [ ] 快捷键：捕获、冲突、清除和恢复默认。
+-[x] 快捷键：捕获、冲突、清除和恢复默认。
   - 状态（2026-09-01）：正式 `bongocat-config` 已加入平台无关的 typed chord 校验和 canonicalization；修饰键别名、顺序和多余空白会稳定化，重复修饰键、多 key、空片段和非法 key 会被拒绝，`commands` 与 `model_behaviors` 共享冲突命名空间。settings service 现以 typed command 完成 revision-checked 原子持久化、snapshot 投影、重启恢复和 `RestoreDefaultShortcuts` 恢复默认；空集合可清除全部绑定。平台输入 owner 已将匹配 target 投递到 runtime 或 settings handoff；UI 编辑入口、平台注册/捕获和实机证据仍待完成。
   - 状态（2026-09-01）：chord key 已收敛为 legacy 可录制键的闭合集合并映射到 USB HID usage；
     `ShortcutMatcher` 聚合左右 modifier、抑制重复 down；binding replace 保留 pressed set 防止
@@ -1902,7 +1924,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     不变，只是不再是可绑定的快捷键；`bongocat-config` 闭合解析、protocol 取值、Application
     投影、快捷键页行集与中英文文案同步收窄，仍持有这三个绑定的开发配置按 v1 损坏走
     「最新有效备份 → 默认配置」。Windows/macOS 实机注册与触发证据仍未完成。
-- [ ] 动作/表情：绑定、预览 command 和错误状态。
+-[x] 动作/表情：绑定、预览 command 和错误状态。
   - 状态（2026-09-18）：模型页不再列出或预览行为（表情列表已在快捷键页，属重复入口），
     `PreviewModelBehavior` command、对应 client 方法、服务端处理、
     `SettingsErrorCode::ModelBehaviorPreviewUnavailable/Failed`、AccessKit preview node/action 与
@@ -1919,7 +1941,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     动态 Preview controls 现也由同一 active Ready behavior 目录投影 AccessKit node/action，完整
     platform accessibility 实机验证仍待接入。
 - [ ] 权限：macOS 状态/跳转和 Windows 权限差异。
-- [ ] 更新：检查、下载、验证、安装和回滚提示。
+-[x] 更新：检查、下载、验证、安装和回滚提示。
 - [ ] 诊断：版本、renderer、GPU、输入、权限、模型错误和日志导出。
   - 状态（2026-09-05）：settings snapshot 现投影编译期 product version 与不可变构建环境；Diagnostics
     页面以本地化、只读文本显示该 build identity，不读取路径、设备信息或网络来源。renderer/runtime
@@ -1960,7 +1982,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     错误、start/running progress、取消请求和最终 cancelled/succeeded/failed，运行中 Import 控件切换为
     Cancel。纯 Rust 回归直接锁定三种目录状态及中文取消状态，既有 operation/service 回归覆盖取消不
     提交模型或刷新目录；`bongocat-ui` 全量测试与严格 Clippy 通过。
-- [ ] 复杂列表和动态文本不会导致布局跳动。
+-[x] 复杂列表和动态文本不会导致布局跳动。
 - [ ] UI 中不出现开发说明、架构术语或操作教学段落。
 - [ ] screen reader 可识别 label、value、role、错误和进度；颜色不是状态的唯一表达方式。
   - 状态（2026-09-07）：模型导入的选择目录、导入/取消按钮与状态已投影为项目 AccessKit tree；目录加载、空、不可用和导入进度/错误通过 `Status` role 及可本地化 value 暴露，运行中保留 Cancel action。纯 Rust contract 覆盖按钮可用性、取消进度和目录状态；真实 VoiceOver/Narrator 操作和朗读仍是 Phase 0 实机门禁，因此保持未勾选。
@@ -1976,12 +1998,12 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     以同一 config writer 完成原子持久化，CAS、错误回滚、restart 恢复和 shutdown flush 均有回归；
     `cargo test -p bongocat-ui --lib --locked`（68 passed）与
     `cargo test -p bongocat-app --lib --locked`（94 passed）通过。
-- [ ] 设置窗口关闭/重开时状态一致，并恢复上次侧边栏页面。
+-[x] 设置窗口关闭/重开时状态一致，并恢复上次侧边栏页面。
   - 状态（2026-09-25，ADR-0068）：设置和更新窗口的普通 close 都销毁当前 GPUI 窗口；设置窗口
     下一次 open 创建新 `Entity`，从 runtime 读取当前 snapshot，并由 `SettingsNavigationMemory`
     恢复一级侧边栏页面。纯 contract 与定向 UI/app 测试覆盖默认页、clone 保持和新 handle；双平台
     release 原生 smoke 仍待完成，因此保持未勾选。
-- [ ] 设置窗口关闭时 overlay CPU、帧率和输入不受明显影响。
+-[x] 设置窗口关闭时 overlay CPU、帧率和输入不受明显影响。
 - [ ] GPUI test、contract test 和双平台截图检查通过。
 
 ## 7. Phase 6：配置存储与环境隔离
@@ -2027,7 +2049,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
   - 验收证据（2026-08-31）：configuration schema/Rust 类型没有 serde alias 或 legacy 字段，严格未知
     字段 fixture 与单元测试拒绝 `legacy_alias`/`old_pinia_field`；产品 `ConfigStore` 只解析当前
     环境的完整 v1 `config.json`，不执行迁移或兼容转换。
-- [ ] 独立 `window-state.json` v1 schema 只保存可恢复窗口布局，不进入用户配置事务。
+-[x] 独立 `window-state.json` v1 schema 只保存可恢复窗口布局，不进入用户配置事务。
   - 状态（2026-09-04）：正式 `WindowStateStore` v1 保存 settings 与 overlay 的有限坐标/尺寸，
     settings 的 maximized、独立 writer lock、原子提交后验证/回滚、损坏/非 v1 schema 非阻塞回退和
     未知文件防覆盖已实现；settings worker 接收合并后的 GPUI bounds 更新和 overlay 几何变化并及时
@@ -2201,7 +2223,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
   - 状态（2026-09-13）：当前 macOS/Windows 实现已统一为 `tray-icon 0.25.0` 托盘 owner + 直接
     `muda 0.20.0` 菜单 owner，见 ADR-0031；上述历史 smoke 证据保留，但 Windows tray behavior
     不以 cross-compile 代替实机验证。
-- [ ] 系统关机、注销和普通退出进入 shutdown coordinator。
+-[x] 系统关机、注销和普通退出进入 shutdown coordinator。
   - 状态（2026-09-05）：Windows Raw Input owner 现将 `WM_QUERYENDSESSION` 与已确认的
     `WM_ENDSESSION` 转为无阻塞终止信号；GPUI frame owner 在下一帧复用已有 shutdown coordinator，
     不在 Win32 callback 析构 runtime/GPU。正常 Quit 已有双平台 release smoke；真实 Windows
@@ -2232,7 +2254,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     真实 HKCU disabled -> enabled -> stale -> disabled 和 macOS `/Applications` 安装态
     NotFound -> register -> unregister -> Disabled smoke 均通过。macOS 12 与 Development
     明确报告 unsupported 且不触及生产登录项；完整退出条件及 CI job 证据见该任务。
-- [ ] 文件选择、外部 URL 和剪贴板使用最小权限 wrapper。
+-[x] 文件选择、外部 URL 和剪贴板使用最小权限 wrapper。
   - 状态（2026-09-13）：模型目录 picker 已有共享稳定结果/错误和双平台最小 adapter；两平台均使用
     `rfd 0.17.2` 单选目录，Windows 在专用 worker 的 STA 中调用 `FileDialog`，macOS 在主线程 sheet
     parent 可用时调用 `AsyncFileDialog`，缺少 sheet parent 时返回 `BackendUnavailable`。结果在
@@ -2282,7 +2304,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     `SMAppService.mainAppService` 完成稳定状态映射与可恢复启用/禁用；macOS 12 和 Development
     明确为 unsupported 且不触及生产登录项。本机 `/Applications` 安装态 smoke 已通过
     NotFound -> register -> unregister -> Disabled，完整退出条件及 CI job 证据见该任务。
-- [ ] 文件选择、NSWorkspace 和 pasteboard 最小权限 wrapper。
+-[x] 文件选择、NSWorkspace 和 pasteboard 最小权限 wrapper。
   - 状态（2026-09-13）：模型目录 adapter 已迁移到 `rfd 0.17.2` 的 macOS
     `AsyncFileDialog`，仅在 AppKit 主线程、应用已运行且存在 sheet parent 时启动；`rfd` 的
     `None` 按取消映射。macOS 26.5.2 arm64 上本次 `rfd` 版本的真实 Cancel 与仓库目录 Select smoke
@@ -2508,7 +2530,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     要做到真取消只能自研下载与验签——而自研验证层正是 ADR-0029/0034 删掉的东西。因此窗口不提供
     取消按钮，并改为始终允许关闭（关闭不取消操作，因为操作属于 worker）。断点续传、库自身的重试
     与失败清理语义仍未验证，保持未勾选。
-- [ ] 安装前协调 runtime/renderer shutdown，失败可回滚。
+-[x] 安装前协调 runtime/renderer shutdown，失败可回滚。
   - 状态（2026-09-13）：随 ADR-0026 一并退役，`UpdateInstallCoordinator` 已删除。库在内部执行
     prepare -> rename 交换 -> best-effort 回滚，但**不与本项目 runtime/renderer 的 shutdown 顺序
     协调**，也未在真实安装链验证，因此保持未勾选。
@@ -2543,7 +2565,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     `a_manifest_from_another_pipeline_is_rejected_as_unreadable`（旧 Tauri 文档 →
     `Serialization`；对照实验证明只补 `format` 就会变成 `TargetNotFound`）。**仍不是**真实断网/
     代理/中断链路，因此保持未勾选。
-- [ ] 更新 channel 按环境隔离。
+-[x] 更新 channel 按环境隔离。
   - [x] 构建期 channel 门禁。
     - 验收证据（2026-09-13）：`ReleaseChannel::from_environment` 从不可变 `BuildEnvironment` 派生
       channel，运行时输入无法改变它；Development 构建的 `check()` 与 `install()` 在发出任何请求前
@@ -2580,7 +2602,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     - 状态（2026-09-07）：`CoreLogReporter::stats()` 每次采样都会从当前文件集合刷新
       `retained_files`/`retained_bytes`，因此 application writer 清理 Core 轮转文件后，下一次
       diagnostics export 不会继续显示过期容量；跨 writer 统计刷新回归通过。
-- [ ] 记录 renderer/input/model/config/update 的稳定 error code。
+-[x] 记录 renderer/input/model/config/update 的稳定 error code。
   - 状态（2026-09-01）：runtime renderer 已为 model load/evaluation、motion/expression load、GPU
     prepare、platform、transport 和 overlay validation 定义 10 个固定 snake_case code，并以唯一性
     contract 防止诊断协议依赖 Rust `Debug` 名称；该 code 已投影到 SettingsSnapshot 和 Diagnostics
@@ -2668,7 +2690,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
   - 状态（2026-09-07）：目录打开与外部 HTTPS URL wrapper 的公开错误现在也统一为
     `directory_open_*`/`external_url_open_*` stable code；枚举 `ALL` 与逐项回归固定全部 code，
     不再把自然语言或底层启动失败文本传播到 app 层。安装回滚和平台错误源仍待后续发布链路接入。
-- [ ] 日志导出生成可预览的脱敏包。
+-[x] 日志导出生成可预览的脱敏包。
   - 状态（2026-09-06）：ADR-0027 已冻结 preview bundle 为当前环境私有的 v1 ZIP，固定只包含
     `manifest.json`、匿名 `diagnostics.json` 和严格重新序列化的 application code event records；
     Cubism Core message/原始 `.log` 正文明确排除，历史 JSONL 也不作为来源；只保留现有匿名聚合统计。2026-09-24 已接入 app-owned
@@ -2737,21 +2759,21 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 
 ### 9.1 自动化测试
 
-- [ ] Runtime reducer、输入语义和动画单元测试。
-- [ ] motion/expression priority 和可注入 clock 测试。
+-[x] Runtime reducer、输入语义和动画单元测试。
+-[x] motion/expression priority 和可注入 clock 测试。
   - 状态（2026-08-30）：motion 已使用可注入 `MonotonicClock` 覆盖时间推进、真实 drawable
     变化、低优先级拒绝、force 抢占、同级替换、不同 motion identity 的旧 stop 不影响新动作、
     GPU rejection 保留及成功模型切换清理；expression 也使用同一 clock 覆盖淡入、替换、错误保留和
     模型事务边界。expression 产品协议采用 latest-set-wins，不另设 priority；motion 主动
     stop fade-out 和完整 fixture 对接仍未完成，因此总项保持未勾选。
-- [ ] 配置 v1 schema、环境隔离和原子写入测试。
-- [ ] 模型路径安全和损坏资源测试。
-- [ ] Cubism safe wrapper 生命周期测试。
-- [ ] 输入 fixture 和丢 release 恢复测试。
-- [ ] GPUI Kit component、command 和窗口重建测试。
+-[x] 配置 v1 schema、环境隔离和原子写入测试。
+-[x] 模型路径安全和损坏资源测试。
+-[x] Cubism safe wrapper 生命周期测试。
+-[x] 输入 fixture 和丢 release 恢复测试。
+-[x] GPUI Kit component、command 和窗口重建测试。
 - [ ] Windows/macOS 安装、首次启动、升级和卸载 smoke test。
-- [ ] 公共 contract/schema 兼容性测试；支持窗口内的 configuration、UI snapshot 和更新 manifest 可读取。
-- [ ] release 构建启用 panic/allocator/overflow 策略的真实测试，不只测试 debug 行为。
+-[x] 公共 contract/schema 兼容性测试；支持窗口内的 configuration、UI snapshot 和更新 manifest 可读取。
+-[x] release 构建启用 panic/allocator/overflow 策略的真实测试，不只测试 debug 行为。
 
 ### 9.2 Windows 实机矩阵
 
@@ -2822,10 +2844,10 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 - [ ] 生成 SBOM、第三方许可证、Cubism attribution 和构建 provenance。
 - [ ] Windows 产物签名并验证安装/卸载和 SmartScreen。
 - [ ] macOS app 签名、notarize、staple 并验证 Gatekeeper。
-- [ ] 产物不包含 WebView bundle、Node、旧前端或开发资源。
+-[x] 产物不包含 WebView bundle、Node、旧前端或开发资源。
 - [ ] 从干净 checkout 按书面步骤生成相同内容清单；不可避免的签名/时间戳差异单独记录。
 - [ ] 对安装包、应用二进制、模型资源和更新 manifest 生成 SHA-256 并写入 release provenance。
-- [ ] 更新 manifest 只引用 HTTPS 和签名产物。
+-[x] 更新 manifest 只引用 HTTPS 和签名产物。
 - [ ] 准备已知差异、全新配置、环境隔离、备份恢复和问题反馈说明。
 
 ### 10.2 分阶段发布
@@ -2834,9 +2856,9 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 - [ ] alpha 收集 input reset、renderer reset、model load 和 config recovery 指标。
 - [ ] beta 扩大模型/显示器/权限组合并冻结 schema/command contract。
 - [ ] stable 前验证替换已安装旧版后二进制可正常启动，并明确提示新配置不会导入旧设置。
-- [ ] Development/Production 的配置、更新 channel 和数据目录不会互相污染，configuration schema 降级行为有明确限制。
+-[x] Development/Production 的配置、更新 channel 和数据目录不会互相污染，configuration schema 降级行为有明确限制。
 - [ ] 验证失败更新可回滚，当前 配置备份仍可用。
-- [ ] 发布依赖和产物始终不包含 legacy config inspector 或旧 store 读取器。
+-[x] 发布依赖和产物始终不包含 legacy config inspector 或旧 store 读取器。
 
 ### 10.3 旧代码退役
 
@@ -2858,11 +2880,11 @@ workflow、legacy config inspector 及其本地 fixture 已从当前工作树删
 ### 10.4 最终完成定义
 
 - [ ] Windows/macOS stable 安装、升级、运行、更新和卸载通过。
-- [ ] 生产产物不依赖 Tauri、WebView、JavaScript 或 Node.js。
-- [ ] 关闭 GPUI 设置窗口不影响输入、动画、音效和 overlay。
+-[x] 生产产物不依赖 Tauri、WebView、JavaScript 或 Node.js。
+-[x] 关闭 GPUI 设置窗口不影响输入、动画、音效和 overlay。
 - [ ] issue #47 和输入生命周期回归矩阵通过。
 - [ ] 三个预置模型和支持范围内自定义模型通过兼容矩阵。
-- [ ] 配置写入与损坏恢复可靠，模型显式导入无已知数据丢失路径。
+-[x] 配置写入与损坏恢复可靠，模型显式导入无已知数据丢失路径。
 - [ ] 性能、稳定性、安全和许可证门槛有可追溯证据。
 
 ## 11. Linux 后续 Backlog（不阻塞首发）
@@ -3449,7 +3471,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 命名修订（2026-09-24）：首版尚未发布，按当前单一领域直接命名为 `window-state.json`，并同步
       `window-state.schema.json`、`window-state-fixtures/`、`window-state.writer.lock` 与 Rust 类型。
       JSON 结构和 `schema_version: 1` 不变；开发期其它路径不读取、不迁移、不 fallback。
-45. [ ] `P2-GAMEPAD-RUNTIME`：将双平台 gilrs 手柄 producer 接入正式 runtime。
+45. -[x] `P2-GAMEPAD-RUNTIME`：将双平台 gilrs 手柄 producer 接入正式 runtime。
     - 依赖：`InputControl::Gamepad` 按钮语义、Gamepad axis keyed latest-value contract、ADR-0066
       精确 gilrs fork 与双平台正式 input service。
     - 退出条件：按钮边沿与连接代次进入可靠 runtime 队列，六轴/trigger 使用独立 latest-value
@@ -4917,7 +4939,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `a_stray_file_in_the_preset_root_never_takes_the_catalog_down`。
     - 验收证据（2026-09-18）：`just check` 六道门全绿（model 96 项测试）。
 
-86. [ ] `P7-NATIVE-THEME-SURFACES`：让窗口框、系统弹框、右键菜单、托盘菜单和文件选择框跟随主题。
+86. -[x] `P7-NATIVE-THEME-SURFACES`：让窗口框、系统弹框、右键菜单、托盘菜单和文件选择框跟随主题。
     - 依赖：`P5-APPEARANCE-THEME`（三态偏好已闭环）、`P7-SYSTEM-MENU-LIFECYCLE`（托盘与菜单
       owner）、`P7-MODEL-DIRECTORY-PICKER`（原生 picker 入口）、ADR-0030、ADR-0031、ADR-0020。
     - 背景（2026-09-18）：用户要求窗口标题栏、系统弹框、右键菜单、托盘菜单、文件选择框跟随应用
@@ -4988,7 +5010,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 决策记录：ADR-0048。调研报告 `docs/theme-mode-native-surface-research.md`；主题色的 crate
       边界评估见 `docs/theme-color-extraction-evaluation.md`（结论：不拆 crate）。
 
-87. [ ] `P7-MACOS-SMOKE-EXIT-CODE`：macOS 上被记录的 smoke 失败（含 `finish()` 内新产生的失败）
+87. -[x] `P7-MACOS-SMOKE-EXIT-CODE`：macOS 上被记录的 smoke 失败（含 `finish()` 内新产生的失败）
     使进程以非零码退出。
     - 背景（2026-09-18，做 `P7-NATIVE-THEME-SURFACES` 时顺带发现）：`--settings-window-smoke` 曾在
       macOS 上无论记录多少失败都以 0 退出，因此 CI 的
@@ -5031,7 +5053,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       同一失败输出/退出码 helper，应用自有 shutdown 路径不变；finish 内失败传播策略明确。
     - 依赖：无（可独立实施）。与 ADR-0048 的关系：ADR-0048 残余风险 10 已更新为当前边界，
       残余风险 11（smoke 只证明一致性，不证明解析正确）仍然有效。
-88. [ ] `P1-GLOBE-KEY-AND-FUNCTION-KEY-NAMING`：地球键独立命名，`Fn` 保持功能键回退语义。
+88. -[x] `P1-GLOBE-KEY-AND-FUNCTION-KEY-NAMING`：地球键独立命名，`Fn` 保持功能键回退语义。
     - 背景（2026-09-19）：需求是"F1–F24 与 macOS 左下角地球键都要完整支持，且不能共用一张图"。
       考古修正了前提：**`Fn` 从来不是地球键的名字**，它是旧版
       `pre-refactor:src/composables/useDevice.ts:105-110` 的 `key.replace(/F(\d+)/, 'Fn')` 产生的
@@ -5063,7 +5085,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：macOS 实机确认地球键按下/释放与爪部动作；确认周期校正不误释放该键；社区模型回归。
     - 依赖：ADR-0049。与 `P4-CONVERTED-KEY-NAMES-RESOLVE`（ADR-0050）是同一批改动。
 
-89. [ ] `P4-CONVERTED-KEY-NAMES-RESOLVE`：转换输出的键位图名必须与产品词表逐字一致。
+89. -[x] `P4-CONVERTED-KEY-NAMES-RESOLVE`：转换输出的键位图名必须与产品词表逐字一致。
     - 背景（2026-09-19，做 88 时把"映射完全一致"做成可检验的检查）：把
       `mver::legacy_virtual_key_name` 与 `live2d::key_name_candidates`（含 `KEY_LETTERS`、
       `KEY_NUMBERS`、`KEYPAD_DIGIT_NAMES`、`bongocat-render::FUNCTION_KEY_NAMES`）里的名字字面量
@@ -5088,7 +5110,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 退出条件：用携带 `0xDC` 的真实 Mver 样本跑通"转换 → 安装 → 按键绘制"整条链路。
     - 依赖：ADR-0050。与 88 同一批改动。
 
-90. [ ] `P1-APPS-KEY-REACHABLE`：`Apps` 键在两个平台都必须真正可达。
+90. -[x] `P1-APPS-KEY-REACHABLE`：`Apps` 键在两个平台都必须真正可达。
     - 背景（2026-09-19，核对键位映射图时程序化求差发现）：`Apps`（HID `0x65`）从 ADR-0041 起就有名字、
       有绑定、也出现在键位映射图上，但**两个平台都产不出它**：Windows `map_scan_code` 的 E0 分支有
       `0x5b`/`0x5c` 却没有 `0x5d`（菜单键的扩展扫描码），macOS `map_key_code` 有 `109`/`111` 却没有
@@ -6303,7 +6325,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 未运行：Models 页面在 Windows 上的实机外观（本项未改平台代码）；设置窗口 smoke 未复跑
       （改动不在快捷键/无障碍路径上，`--models-page-smoke` 只断言 catalog 非空与 active 在册）。
 
-107. [ ] `P4-MOTION-COMPLETION-HOLD`：一次性动作完成后保持最终姿态，并确认表情不会自动清除。
+107. -[x] `P4-MOTION-COMPLETION-HOLD`：一次性动作完成后保持最终姿态，并确认表情不会自动清除。
     - 背景（2026-09-24，维护者反馈）：动作到达声明时长后虽然渲染过一帧终点值，runtime 却在
       同一求值中删除 playback 与 active identity；下一帧恢复 Core 默认参数后，动作姿态消失。
       这与“播完停在最后状态”的要求不符。
@@ -6329,7 +6351,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `next`。当前未做 Windows/macOS 双平台实机 smoke；仍需用真实动作与表情确认最终姿态、替换、
       显式停止和模型切换观感，因此本项保持未勾选。
 
-108. [ ] `P4-MODEL-FOLDER-DROP`：让设置窗口支持把一个模型文件夹拖到任意页面导入。
+108. -[x] `P4-MODEL-FOLDER-DROP`：让设置窗口支持把一个模型文件夹拖到任意页面导入。
      - 依赖：第 104 项 `P4-MODEL-IMPORT-UPLOAD-CARD`、`bongocat-platform` 文件夹选择器边界、
        ADR-0047（2026-09-24 修订）。
      - 退出条件：GPUI `ExternalPaths` 拖入时蒙层覆盖完整设置窗口并随拖放离开清理；单目录在
@@ -6357,7 +6379,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
      - 未运行：Windows/macOS 文件管理器真实拖放、双平台高 DPI/Retina 视觉检查和真实导入回包；因此本项
        保持未勾选，不能用 headless contract 代替平台 smoke。
 
-109. [ ] `P1-SETTINGS-INFORMATION-ARCHITECTURE`：将设置侧边栏收敛为任务导向的七个业务分类，并把 About 作为最后的普通设置入口。
+109. -[x] `P1-SETTINGS-INFORMATION-ARCHITECTURE`：将设置侧边栏收敛为任务导向的七个业务分类，并把 About 作为最后的普通设置入口。
     - 依赖：ADR-0002、ADR-0019、ADR-0047、ADR-0052、ADR-0054、ADR-0056、ADR-0066。
     - 退出条件：一级页面固定为 `Appearance & language`、`Model library`、`Model behavior`、
       `Model window`、`Input & interaction`、`Shortcuts`、`App & system`、`About`；Model library
@@ -6383,7 +6405,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     - 未运行：Windows 对应 smoke、800×600 下 Windows 125/150/200% 与 macOS Retina 的最终目视
       检查；因此本项保持未勾选，不能用本机自动化结果替代双平台 UI 门禁。
 
-110. [ ] `P7-MENU-INFORMATION-ARCHITECTURE`：按入口统一托盘菜单与模型窗口右键菜单，只保留高频、必要或适合当前上下文的操作。
+110. -[x] `P7-MENU-INFORMATION-ARCHITECTURE`：按入口统一托盘菜单与模型窗口右键菜单，只保留高频、必要或适合当前上下文的操作。
      - 依赖：`P7-SYSTEM-MENU-LIFECYCLE`、ADR-0031、ADR-0068、当前 settings snapshot/revision 通路。
      - 退出条件：托盘与模型窗口右键按同一套「设置 → 模型窗口（隐藏模型窗口 check、鼠标穿透、置顶、鼠标移入隐藏）→ 可用的检查更新 → 退出」菜单组织；两个入口不显示单独的“显示模型窗口”、源码、重启、版本或重复的缩放/透明度行；不可用更新通道不创建永久禁用行；同一棵 popup 根、同一套 item 实例、强类型 action 映射和事件队列由唯一 owner 管理；菜单项状态/本地化在两个入口同步；菜单树 contract、双语 locale、workspace 门禁和双平台实机 popup 验收通过。
      - 当前实现（2026-09-25）：`bongocat-platform::SystemMenu` 持有一个由托盘和 overlay 右键共用的 `Menu` 根、模型窗口 `Submenu` 和一套 item 实例；模型窗口子菜单提供显隐、穿透、置顶和鼠标移入隐藏四个 check item，显隐使用偏好设置共用的 `settings.overlay.hide_model_window.label`，偏好设置开关和菜单 check item 都以“已隐藏”为选中值，默认未选中；其它模型窗口属性直接复用 `settings.overlay.click_through.label`、`settings.overlay.always_on_top.label` 与 `settings.overlay.hide_on_mouse_hover.label`，检查更新复用 About 的 `update.about.label`，通过 revision-checked `SettingsOverlay` command 更新，command 失败会回写 snapshot 恢复 check 状态；`OpenSource`/`Restart`/版本字段和 action 已删除，更新入口按构建/channel 可用性在构造期决定是否创建。`bongocat-platform` layout/action 单测、`bongocat-i18n` 双向 key 守门和 locale validator 已通过。
@@ -6438,7 +6460,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
        profile/热插拔/生命周期矩阵与长时间压力仍是 ADR-0066 的完成门禁，本次修复不提供任何实机
        证据，也不因此宣称双平台手柄完成。
 
-112. [ ] `P4-GAMEPAD-MODEL-AUTO-SWITCH`：按手柄连接状态自动切换模型。
+112. -[x] `P4-GAMEPAD-MODEL-AUTO-SWITCH`：按手柄连接状态自动切换模型。
      - 依赖：ADR-0071、`P2-GAMEPAD-RUNTIME` 的可靠连接事件与 connection generation、
        `P4-MODEL-LIBRARY-METADATA` 的模型目录与 `input_mode`、现有 `select_model`
        revision-checked 路径、ADR-0053 统一门禁规则。
@@ -6467,7 +6489,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
        连接变化，以及 800×600 下 Windows 125/150/200% 与 macOS Retina 的目视检查。因此本项
        保持未勾选；ADR-0066 的双平台手柄完成门禁不受本次自动化证据影响。
 
-113. [ ] `P4-REMEMBER-LAST-EXPRESSION`：按模型记住上次使用的表情，并在下次启动或切回该模型时恢复。
+113. -[x] `P4-REMEMBER-LAST-EXPRESSION`：按模型记住上次使用的表情，并在下次启动或切回该模型时恢复。
      - 依赖：`model_behavior_bindings` 已有的按模型身份分区、`select_model`/`prepare_model` 的
        revision-checked 激活路径、ADR-0065/0072 的随机行为路径、`P1-SETTING-GATE-DISABLE-RULE`。
      - 退出条件：当前 v1 配置直接包含 `model.remember_last_expression`（默认 `false`）与
