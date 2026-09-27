@@ -96,6 +96,7 @@ impl Application {
             // platform table. Rebuilding here swaps the previous model's chords
             // out and registers the incoming model's own chords.
             self.refresh_shortcut_table();
+            self.restore_remembered_expression();
             Ok(token)
         })();
         if let Err(error) = &result {
@@ -146,6 +147,7 @@ impl Application {
                     self.active_model_id = Some(id);
                     self.remember_live_model();
                     self.refresh_shortcut_table();
+                    self.restore_remembered_expression();
                     Ok(snapshot)
                 }
                 Err(error) => {

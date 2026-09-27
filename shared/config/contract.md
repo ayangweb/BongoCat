@@ -73,6 +73,8 @@ updates
 | `model`       | `gamepad_auto_switch.enabled`         | 手柄连接状态变化时是否自动切换模型，默认 `false` |
 | `model`       | `gamepad_auto_switch.connected_model` | 连接手柄时自动切换的模型，`null` 表示上次使用的手柄模型 |
 | `model`       | `gamepad_auto_switch.disconnected_model` | 断开手柄时自动切换的模型，`null` 表示上次使用的非手柄模型 |
+| `model`       | `remember_last_expression`          | 模型是否回到该模型上次使用的表情，默认 `false` |
+| `model`       | `last_expressions`                  | 每个模型各自记住的表情，模型身份为 `{ id, source }`，默认 `[]` |
 | `model`       | `ignore_pointer`                      | 模型求值忽略指针位置                   |
 | `shortcuts`   | `commands_enabled`                    | 应用快捷键是否进入平台匹配表，默认 `true` |
 | `shortcuts`   | `command_bindings`                    | 应用 command 到快捷键绑定              |
@@ -156,6 +158,20 @@ typed platform snapshot，并仅在显式用户 command 时调用平台 adapter�
 自动切换与手工选择写同一处 `model.selected_model`，因此重启后恢复用户最后看到的模型，
 不存在第二份「当前模型」事实。目标 id 与 `model.selected_model.id` 使用同一套可移植
 model id 规则；删除导入模型时两个目标会在同一次提交中一起清除。完整通路见 ADR-0071。
+
+`model.remember_last_expression` 默认 `false`，`model.last_expressions` 默认 `[]`。表情是每个模型
+自己的资源，同一个名字在不同模型里指向不同文件，因此「上次使用的表情」永远是关于某一个模型的
+问题，记录也按模型身份分别保存：列表中每个元素是 `{ model: { id, source }, expression }`，同一个
+模型最多一条。打开开关后，模型在启动或被切换为当前模型时播放自己那条记录里的表情，因此切回一个
+模型会回到它上次离开时的样子。没有记录、或记录里的表情已不在模型包中时，模型保持自己的默认表情，
+不报错也不影响当前模型。
+
+记录与开关是分开的：记录只由用户主动触发的表情产生——快捷键页面「播放」按钮，以及绑定到某个
+`expression:<name>` 的全局快捷键。`model.random_behavior` 自动播放的表情不写入记录，否则下一次
+启动恢复的会是一个随机表情而不是用户选过的那个。开关只决定是否播放，不决定是否记录：关掉开关会
+停止恢复但保留已记住的内容，重新打开时恢复用户原本选过的表情，而不是从空白开始。删除导入模型时
+该模型自己的记录会在同一次提交中一起清除；同 id 的内置记录指向另一个模型，因此保留。
+`model` 语义见 `docs/technical-design.md` 的模型行为小节。
 
 `overlay.maximum_fps` 是 `15..=240` 的 overlay 目标帧率。它决定 runtime 周期求值、GPUI 产品 frame
 source 与独立 overlay run loop 的下一帧间隔，间隔按**帧截止时间**计算（单帧工作耗时由等待吸收），

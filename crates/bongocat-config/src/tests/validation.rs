@@ -1,6 +1,10 @@
 //! The schema, its defaults, its bounds and its version gate.
 
 use super::*;
+use crate::{
+    MAXIMUM_MODEL_EXPRESSION_MEMORIES, MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES,
+    ModelExpressionMemory,
+};
 
 #[test]
 fn system_locale_resolves_to_simplified_chinese_or_english() {
@@ -228,6 +232,124 @@ fn gamepad_auto_switch_defaults_to_off_without_targets_and_validates_target_ids(
             "gamepad auto switch target {rejected:?} must be rejected"
         );
     }
+}
+
+#[test]
+fn remembered_expressions_default_to_off_and_hold_one_record_per_model() {
+    let default = NativeConfig::default();
+    assert!(!default.model.remember_last_expression);
+    assert!(default.model.last_expressions.is_empty());
+    default
+        .validate()
+        .expect("an unconfigured expression memory is valid");
+
+    let mut config = NativeConfig::default();
+    config.model.remember_last_expression = true;
+    config.model.last_expressions = vec![
+        ModelExpressionMemory {
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            },
+            expression: "live2d_expression0.exp3.json".to_owned(),
+        },
+        // The same id from the other catalog is a different model, so it is a
+        // second record rather than a duplicate.
+        ModelExpressionMemory {
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::Imported,
+            },
+            expression: "cat_exp0.exp3.json".to_owned(),
+        },
+    ];
+    config
+        .validate()
+        .expect("one expression per model is valid");
+    let encoded = serde_json::to_string(&config).expect("serialize the remembered expressions");
+    let decoded: NativeConfig =
+        serde_json::from_str(&encoded).expect("deserialize the remembered expressions");
+    assert_eq!(decoded, config);
+
+    // Two records for one model would leave the restored face up to which of
+    // them the parser saw last, so the list has to reject the second.
+    let mut duplicated = config.clone();
+    duplicated
+        .model
+        .last_expressions
+        .push(ModelExpressionMemory {
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            },
+            expression: "live2d_expression1.exp3.json".to_owned(),
+        });
+    assert!(matches!(
+        duplicated.validate(),
+        Err(ConfigError::InvalidValue("model.last_expressions.model.id"))
+    ));
+
+    for rejected in ["", " ", "\t", "\n"] {
+        let mut blank = config.clone();
+        blank.model.last_expressions[0].expression = rejected.to_owned();
+        assert!(
+            matches!(
+                blank.validate(),
+                Err(ConfigError::InvalidValue(
+                    "model.last_expressions.expression"
+                ))
+            ),
+            "expression name {rejected:?} must be rejected"
+        );
+    }
+
+    let mut control = config.clone();
+    control.model.last_expressions[0].expression = "live2d_expression0\n.exp3.json".to_owned();
+    assert!(matches!(
+        control.validate(),
+        Err(ConfigError::InvalidValue(
+            "model.last_expressions.expression"
+        ))
+    ));
+
+    let mut overlong = config.clone();
+    overlong.model.last_expressions[0].expression =
+        "e".repeat(MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES + 1);
+    assert!(matches!(
+        overlong.validate(),
+        Err(ConfigError::InvalidValue(
+            "model.last_expressions.expression"
+        ))
+    ));
+
+    for rejected in ["", "..", "nested/model", "CON"] {
+        let mut path_like = config.clone();
+        path_like.model.last_expressions[0].model.id = rejected.to_owned();
+        assert!(
+            matches!(
+                path_like.validate(),
+                Err(ConfigError::InvalidValue("model.last_expressions.model.id"))
+            ),
+            "remembered model id {rejected:?} must be rejected"
+        );
+    }
+
+    // The list is bounded, so a document cannot grow it without limit however
+    // many distinct models it names.
+    let mut oversized = config.clone();
+    oversized.model.last_expressions = (0..=MAXIMUM_MODEL_EXPRESSION_MEMORIES)
+        .map(|index| ModelExpressionMemory {
+            model: ModelIdentity {
+                id: format!("model-{index}"),
+                source: ModelSource::Imported,
+            },
+            expression: "live2d_expression0.exp3.json".to_owned(),
+        })
+        .collect();
+    assert!(matches!(
+        oversized.validate(),
+        Err(ConfigError::InvalidValue("model.last_expressions"))
+    ));
 }
 
 #[test]

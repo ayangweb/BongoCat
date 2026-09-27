@@ -125,6 +125,16 @@ pub enum SettingsCommand {
         settings: SettingsGamepadAutoSwitch,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Whether a model returns to the expression the user last chose for it.
+    ///
+    /// The switch alone: the remembered expressions themselves are never shown or
+    /// edited, and turning the restore off keeps them so turning it back on
+    /// restores what the user had rather than nothing.
+    SetRememberLastExpression {
+        expected_config_revision: u64,
+        enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     /// The number of connected gamepads changed; the settings service
     /// reconciles the configured switch against the runtime's own answer.
     ///

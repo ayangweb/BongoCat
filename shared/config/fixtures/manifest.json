@@ -185,6 +185,26 @@
       "id": "gamepad-auto-switch-target",
       "file": "invalid-gamepad-auto-switch-target.json",
       "expected": "reject"
+    },
+    {
+      "id": "last-expressions",
+      "file": "accept-last-expressions.json",
+      "expected": "accept"
+    },
+    {
+      "id": "duplicate-last-expression",
+      "file": "invalid-duplicate-last-expression.json",
+      "expected": "reject"
+    },
+    {
+      "id": "last-expression-name",
+      "file": "invalid-last-expression-name.json",
+      "expected": "reject"
+    },
+    {
+      "id": "last-expression-model-id",
+      "file": "invalid-last-expression-model-id.json",
+      "expected": "reject"
     }
   ]
 }

@@ -127,6 +127,30 @@ def config_semantic_errors(value: object) -> list[str]:
         if len(ids) != len(set(ids)):
             errors.append(f"{field} ids must be unique")
 
+    # A remembered expression belongs to one model, so the list holds at most one
+    # record per identity. `uniqueItems` cannot express that: two records for the
+    # same model with different expressions are two distinct array items.
+    memories = model.get("last_expressions")
+    if isinstance(memories, list):
+        identities = []
+        for memory in memories:
+            if not isinstance(memory, dict):
+                continue
+            identity = memory.get("model")
+            if not isinstance(identity, dict):
+                continue
+            identifier = identity.get("id")
+            if isinstance(identifier, str) and not is_portable_model_id(identifier):
+                errors.append("remembered expression model id must be a portable store key")
+            expression = memory.get("expression")
+            if isinstance(expression, str) and has_control_character(expression):
+                errors.append(
+                    "remembered expression name must not contain control characters"
+                )
+            identities.append((identifier, identity.get("source")))
+        if len(identities) != len(set(identities)):
+            errors.append("last_expressions must hold one record per model")
+
     shortcuts = value.get("shortcuts")
     if isinstance(shortcuts, dict):
         bindings = shortcuts.get("model_behavior_bindings")

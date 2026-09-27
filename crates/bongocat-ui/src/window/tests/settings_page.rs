@@ -689,6 +689,55 @@ fn turning_random_behavior_on_and_off_queues_the_latest_mode(cx: &mut TestAppCon
 }
 
 #[gpui_kit::test]
+fn the_remembered_expression_switch_sends_the_revision_it_was_rendered_from(
+    cx: &mut TestAppContext,
+) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(4, true, true);
+    initial.config_revision = Some(4);
+    assert!(
+        !initial.remember_last_expression,
+        "a fresh configuration restores nothing"
+    );
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+
+    view.update(visual, |view, cx| {
+        view.set_remember_last_expression(true, cx);
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetRememberLastExpression {
+        expected_config_revision,
+        enabled,
+        reply,
+    } = endpoint
+        .try_recv()
+        .expect("the switch must reach the service as its own typed command")
+    else {
+        panic!("the switch must use the typed remembered-expression command");
+    };
+    assert_eq!(expected_config_revision, 4);
+    assert!(enabled);
+
+    // The switch is one click per write, so the confirmation is what releases the
+    // next one rather than a debounce.
+    let mut confirmed = crate::tests::snapshot(5, true, true);
+    confirmed.config_revision = Some(5);
+    confirmed.remember_last_expression = true;
+    reply.respond(Ok(confirmed)).expect("switch reply");
+    visual.run_until_parked();
+    view.update(visual, |view, _| {
+        assert_eq!(
+            view.snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.remember_last_expression),
+            Some(true),
+            "the confirmed snapshot is what the switch then renders"
+        );
+    });
+    assert!(endpoint.try_recv().is_err());
+}
+
+#[gpui_kit::test]
 fn the_random_behavior_interval_is_inert_while_the_mode_is_off(cx: &mut TestAppContext) {
     let (view, visual, endpoint) = settings_view_with_endpoint(cx);
     let mut initial = crate::tests::snapshot(7, true, true);

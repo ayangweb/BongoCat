@@ -17,8 +17,8 @@ pub(crate) use crate::model_titles::legacy_model_title;
 pub(crate) use crate::shortcut_config::without_removed_model_targets;
 
 pub(crate) use bongocat_config::{
-    ConfigStore, GamepadAutoSwitchConfig, ImportedModelMetadata, Language, ModelIdentity,
-    ModelInputMode, ModelSource, NativeConfig, RandomBehaviorMode, StorageLayout,
+    ConfigStore, GamepadAutoSwitchConfig, ImportedModelMetadata, Language, ModelExpressionMemory,
+    ModelIdentity, ModelInputMode, ModelSource, NativeConfig, RandomBehaviorMode, StorageLayout,
     Theme as ConfigTheme,
 };
 pub(crate) use bongocat_input::{GamepadAxisSettings, GamepadButton, HandSide, PhysicalKey};
@@ -40,6 +40,7 @@ pub(crate) use std::{fs, path::Path, time::Instant};
 pub(crate) use tempfile::tempdir;
 
 mod diagnostics;
+mod expression_memory;
 mod gamepad;
 mod model_catalog;
 mod model_import;

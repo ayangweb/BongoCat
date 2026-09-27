@@ -6417,6 +6417,39 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
        连接变化，以及 800×600 下 Windows 125/150/200% 与 macOS Retina 的目视检查。因此本项
        保持未勾选；ADR-0066 的双平台手柄完成门禁不受本次自动化证据影响。
 
+113. [ ] `P4-REMEMBER-LAST-EXPRESSION`：按模型记住上次使用的表情，并在下次启动或切回该模型时恢复。
+     - 依赖：`model_behavior_bindings` 已有的按模型身份分区、`select_model`/`prepare_model` 的
+       revision-checked 激活路径、ADR-0065/0072 的随机行为路径、`P1-SETTING-GATE-DISABLE-RULE`。
+     - 退出条件：当前 v1 配置直接包含 `model.remember_last_expression`（默认 `false`）与
+       `model.last_expressions`（每模型一条 `{ model, expression }`）；只有用户主动触发的
+       expression 写入记录，随机行为不写入；门禁只决定模型成为当前模型时是否播放自己那条记录，
+       不决定是否记录，关闭再打开恢复原本选过的表情；无记录或表情已不在模型包内时保持默认
+       表情且不影响当前模型；删除导入模型时其记录在同一次提交中清除；设置页 Model behavior
+       分组提供该开关；fixture、JSON Schema、双语 locale 与 settings smoke 覆盖。
+     - 当前实现（2026-09-27）：`bongocat-config` 的 `ModelExpressionMemory` 与 id/名称/条数校验；
+       `bongocat-runtime` 的 `UserExpressionMemory`，由 `SetExpression` command 分支写入且不随
+       模型切换清除，随机行为路径不经过该分支；`bongocat-app` 的
+       `application/expression_memory.rs`（按模型身份并入配置 + 激活时恢复），
+       `Application::persist_user_expression_memory` 由 settings service 既有的 20 Hz
+       `ReadSnapshotRevision` 轮询驱动（常见情况只是一次 sequence 比较）；
+       `bongocat-ui-protocol` 的 `SettingsSnapshot::remember_last_expression` +
+       `SetRememberLastExpression`；`bongocat-ui` 的 Model behavior 分组开关。
+     - 验证（2026-09-27，本机 macOS）：`cargo fmt --all -- --check`、
+       `cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、
+       `cargo check --workspace --release`、`just schema`、
+       `python tools/validate-json-schema.py`、`python tools/validate-locales.py`、
+       `python tools/validate-fixtures.py`、`python tools/tests/test_supported_platform_cfg.py`。
+       契约测试包括配置默认值/同名重复/空名/超长名/越界 id/条数上限与四个 fixture、
+       runtime 的「仅 command 记录且记录跨模型切换存活」与「自动表情不被记录」、
+       `bongocat-app` 的「按模型分别恢复 + 跨重启恢复」「开关只门禁恢复不门禁记录」
+       「删除模型清除其记录」，以及 `bongocat-ui` 的开关命令与 revision 回归。
+     - 未运行：Windows 10 1903+ 与 macOS 12+ 实机目视确认恢复后的表情与交叉淡入、
+       800×600 下 Windows 125/150/200% 与 macOS Retina 的设置页排版检查，以及长时间
+       多模型切换 soak。因此本项保持未勾选。
+     - 已知取舍：翻转开关本身不立即恢复当前模型的表情——恢复只发生在模型成为当前模型时，
+       避免出现第二条恢复触发规则。随机行为包含表情时照常恢复，随后可能被随机表情覆盖，
+       两个设置彼此独立。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

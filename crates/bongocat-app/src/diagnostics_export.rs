@@ -496,6 +496,7 @@ mod tests {
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
             gamepad_auto_switch: SettingsGamepadAutoSwitch::default(),
+            remember_last_expression: false,
             logging: SettingsLogging::default(),
             shortcuts: SettingsShortcuts::default(),
             startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),

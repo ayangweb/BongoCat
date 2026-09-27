@@ -55,7 +55,9 @@
         "id": "standard",
         "source": "built_in"
       }
-    }
+    },
+    "remember_last_expression": false,
+    "last_expressions": []
   },
   "shortcuts": {
     "commands_enabled": true,

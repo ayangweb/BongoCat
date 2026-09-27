@@ -391,6 +391,9 @@
         "motion_audio": {
           "label": "Play motion sounds"
         },
+        "remember_last_expression": {
+          "label": "Remember the last expression of each model"
+        },
         "random_behavior_mode": {
           "label": "Randomly play motions or expressions",
           "options": {

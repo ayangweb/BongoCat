@@ -699,6 +699,31 @@ impl Render for SettingsView {
                 SettingItem::new(
                     bongocat_i18n::text(
                         language.catalog_locale(),
+                        "settings.models.behavior.remember_last_expression.label",
+                    ),
+                    SettingField::switch(
+                        {
+                            let view = view_entity.clone();
+                            move |app| {
+                                view.read(app)
+                                    .snapshot
+                                    .as_ref()
+                                    .is_some_and(|s| s.remember_last_expression)
+                            }
+                        },
+                        {
+                            let view = view_entity.clone();
+                            move |value, app| {
+                                view.update(app, |view, cx| {
+                                    view.set_remember_last_expression(value, cx)
+                                });
+                            }
+                        },
+                    ),
+                ),
+                SettingItem::new(
+                    bongocat_i18n::text(
+                        language.catalog_locale(),
                         "settings.models.behavior.random_behavior_mode.label",
                     ),
                     SettingField::element({

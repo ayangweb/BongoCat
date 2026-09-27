@@ -239,6 +239,12 @@
           "type": "array",
           "uniqueItems": true
         },
+        "last_expressions": {
+          "items": {
+            "$ref": "#/$defs/ModelExpressionMemory"
+          },
+          "type": "array"
+        },
         "mirror": {
           "type": "boolean"
         },
@@ -250,6 +256,9 @@
         },
         "random_behavior": {
           "$ref": "#/$defs/RandomBehaviorConfig"
+        },
+        "remember_last_expression": {
+          "type": "boolean"
         },
         "selected_model": {
           "anyOf": [
@@ -273,7 +282,28 @@
         "ignore_pointer",
         "random_behavior",
         "gamepad_auto_switch",
+        "remember_last_expression",
+        "last_expressions",
         "selected_model"
+      ],
+      "type": "object"
+    },
+    "ModelExpressionMemory": {
+      "additionalProperties": false,
+      "properties": {
+        "expression": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelIdentity"
+        }
+      },
+      "required": [
+        "model",
+        "expression"
       ],
       "type": "object"
     },

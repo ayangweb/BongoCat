@@ -329,6 +329,10 @@ impl Application {
             active_model_id,
             last_gamepad_model: None,
             last_other_model: None,
+            // The remembered expressions are already in the configuration; this is
+            // only the marker for what the runtime has produced since, and the
+            // runtime produces nothing until the user asks for an expression.
+            recorded_expression_sequence: None,
             runtime,
             motion_audio,
             render_consumer,

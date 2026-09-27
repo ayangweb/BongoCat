@@ -686,3 +686,162 @@ fn expression_commands_crossfade_and_preserve_the_active_expression_on_error() {
     let stopped = owner.shutdown(TIMEOUT).expect("runtime shutdown");
     assert!(stopped.active_expression.is_none());
 }
+
+/// A remembered expression is a fact about what the user chose, so it has to
+/// outlive the model switch that clears the expression actually on screen — and
+/// only a command may produce one, because the idle scheduler plays expressions
+/// through the renderer rather than through the command queue.
+#[test]
+fn only_an_expression_command_is_remembered_and_the_record_outlives_the_model() {
+    let clock = Arc::new(ManualClock::default());
+    let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+        true,
+        8,
+        Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+    );
+    let client = owner.client();
+    client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+
+    let activation_sequence = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+            "standard",
+        ))))
+        .expect("activation command");
+    let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+    report_model_prepared(&client, &consumer, &candidate);
+
+    // Nothing has been chosen yet, so there is nothing for a reader to collect.
+    assert_eq!(client.unrecorded_user_expression(None), None);
+    assert_eq!(client.snapshot().user_expression_memory, None);
+
+    // A name the model does not declare is a failed request, so it is not a
+    // choice and must not become the face the model is restored to.
+    let rejected_sequence = client
+        .send(RuntimeCommand::SetExpression(
+            ExpressionId::new("not-declared.exp3.json").expect("syntactically valid name"),
+        ))
+        .expect("undeclared expression request");
+    let rejected = client
+        .wait_for_command(rejected_sequence, TIMEOUT)
+        .expect("undeclared expression result");
+    assert_eq!(
+        rejected.last_command_failure,
+        Some(RuntimeCommandFailure {
+            sequence: rejected_sequence,
+            code: RuntimeRenderErrorCode::ExpressionLoadFailed,
+        })
+    );
+    assert_eq!(rejected.user_expression_memory, None);
+
+    let chosen = ExpressionId::new("live2d_expression1.exp3.json").expect("expression id");
+    let chosen_sequence = client
+        .send(RuntimeCommand::SetExpression(chosen.clone()))
+        .expect("choose expression");
+    let remembered = client
+        .wait_for_command(chosen_sequence, TIMEOUT)
+        .expect("chosen expression active")
+        .user_expression_memory
+        .expect("a command records the choice");
+    assert_eq!(remembered.expression, chosen);
+    assert_eq!(remembered.model.as_str(), "standard");
+    assert_eq!(remembered.model_origin, ModelOrigin::Preset);
+    assert_eq!(remembered.command_sequence, chosen_sequence);
+
+    // The reader collects a record once. Passing back the sequence it already
+    // has is how the common case stays a comparison rather than a copy.
+    assert_eq!(
+        client.unrecorded_user_expression(None),
+        Some(remembered.clone())
+    );
+    assert_eq!(
+        client.unrecorded_user_expression(Some(chosen_sequence)),
+        None
+    );
+    assert_eq!(
+        client.unrecorded_user_expression(Some(chosen_sequence - 1)),
+        Some(remembered.clone())
+    );
+
+    // Switching models clears what is displayed, and the choice that produced it
+    // still has to reach the configuration that remembers it per model.
+    let second_sequence = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+            "keyboard",
+        ))))
+        .expect("second activation command");
+    let second = wait_for_prepared_model(&client, &consumer, second_sequence);
+    let switched = report_model_prepared(&client, &consumer, &second);
+    assert_eq!(switched.active_expression, None);
+    assert_eq!(
+        switched.user_expression_memory,
+        Some(remembered.clone()),
+        "the first model's choice survives the switch that cleared the display"
+    );
+    assert_eq!(
+        client.unrecorded_user_expression(Some(chosen_sequence)),
+        None,
+        "a record already collected is not offered again"
+    );
+
+    owner.shutdown(TIMEOUT).expect("runtime shutdown");
+}
+
+/// The idle scheduler picks expressions on its own. A pick the user never made
+/// must not be recorded, or the next launch would restore a random face and call
+/// it the one the user chose.
+#[test]
+fn an_automatic_expression_is_never_remembered() {
+    let clock = Arc::new(ManualClock::default());
+    let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+        true,
+        8,
+        Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+    );
+    let client = owner.client();
+    client
+        .wait_for_revision(1, TIMEOUT)
+        .expect("ready snapshot");
+    let settings_sequence = client
+        .send(RuntimeCommand::SetRandomBehaviorSettings(
+            RandomBehaviorSettings {
+                mode: RandomBehaviorMode::Expressions,
+                interval_seconds: 1,
+            },
+        ))
+        .expect("random behavior setting accepted");
+    client
+        .wait_for_command(settings_sequence, TIMEOUT)
+        .expect("random behavior setting published");
+
+    let activation_sequence = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+            "standard",
+        ))))
+        .expect("model activation accepted");
+    let frame = wait_for_prepared_model(&client, &consumer, activation_sequence);
+    report_model_prepared(&client, &consumer, &frame);
+
+    clock.set(Duration::from_secs(1));
+    let tick = client
+        .send(RuntimeCommand::Tick)
+        .expect("random tick accepted");
+    let mut snapshot = client
+        .wait_for_command(tick, TIMEOUT)
+        .expect("random behavior tick published");
+    let deadline = Instant::now() + TIMEOUT;
+    while snapshot.active_expression.is_none() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(2));
+        snapshot = client.snapshot();
+    }
+    assert!(
+        snapshot.active_expression.is_some(),
+        "the due scheduler must select a declared expression"
+    );
+    assert_eq!(
+        snapshot.user_expression_memory, None,
+        "an automatic pick is not a choice the user made"
+    );
+    assert_eq!(client.unrecorded_user_expression(None), None);
+
+    owner.shutdown(TIMEOUT).expect("clean shutdown");
+}

@@ -39,6 +39,37 @@ pub struct ModelConfig {
     pub random_behavior: RandomBehaviorConfig,
     /// Switching the selected model when gamepads connect or disconnect.
     pub gamepad_auto_switch: GamepadAutoSwitchConfig,
+    /// Whether a model returns to the expression the user last chose for it.
+    ///
+    /// Defaults to `false`: a fresh configuration has never been told to restore
+    /// anything, and an expression a user only previewed once is not a standing
+    /// preference. The recorded expressions themselves are kept either way, so
+    /// turning this off stops the restore without discarding what is remembered.
+    pub remember_last_expression: bool,
+    /// The expression each model was last showing, one record per model.
+    ///
+    /// Expressions are per-model assets, so a name recorded for one model is
+    /// meaningless to another; recording them separately is what lets switching
+    /// back to a model return to the face it was left wearing.
+    pub last_expressions: Vec<ModelExpressionMemory>,
+}
+
+/// One model's remembered expression.
+///
+/// The model is a complete [`ModelIdentity`] rather than a bare id because two
+/// catalog entries may share an id, and an expression name only means anything
+/// inside the package it came from.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct ModelExpressionMemory {
+    pub model: ModelIdentity,
+    /// The expression file name, exactly as the model declares it.
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(length(min = 1, max = 255), regex(pattern = ".*\\S.*"))
+    )]
+    pub expression: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -246,6 +277,18 @@ pub const MODEL_METADATA_MAXIMUM_ID_BYTES: usize = 64;
 
 pub const MODEL_METADATA_MAXIMUM_TITLE_CHARS: usize = 128;
 
+/// One remembered expression is recorded per model, so the list is bounded by how
+/// many models a catalog can hold rather than by how often the user plays an
+/// expression. Imported models can be added and removed freely, so the ceiling is
+/// generous enough that no real installation reaches it and small enough that a
+/// hand-edited document cannot turn the list into an unbounded array.
+pub const MAXIMUM_MODEL_EXPRESSION_MEMORIES: usize = 256;
+
+/// An expression name is a package-relative file name such as
+/// `live2d_expression0.exp3.json`. The longest plausible asset name is far below
+/// this; the bound exists so a stored name can never be an arbitrary blob.
+pub const MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES: usize = 255;
+
 // Keep this platform-neutral validator aligned with `bongocat_model::ModelId`;
 // config intentionally does not depend on the model crate just for this check.
 pub(crate) fn is_portable_model_id(value: &str) -> bool {
@@ -272,6 +315,38 @@ pub(crate) fn is_windows_reserved_model_id(value: &str) -> bool {
         && bytes.is_ascii()
         && (stem[..3].eq_ignore_ascii_case("COM") || stem[..3].eq_ignore_ascii_case("LPT"))
         && matches!(bytes[3], b'1'..=b'9')
+}
+
+/// Validate the remembered-expression list.
+///
+/// A record is only useful if it names exactly one model and one of that model's
+/// own expressions, so the list holds no duplicate model: two records for one
+/// model would leave the restored face up to which of them the parser saw last.
+/// The name itself is bounded but otherwise left alone, because whether an
+/// expression still exists is a property of the model package rather than of the
+/// configuration document — a model that no longer ships it simply restores
+/// nothing.
+pub(crate) fn validate_model_expression_memories(
+    memories: &[ModelExpressionMemory],
+) -> Result<(), ConfigError> {
+    if memories.len() > MAXIMUM_MODEL_EXPRESSION_MEMORIES {
+        return Err(ConfigError::InvalidValue("model.last_expressions"));
+    }
+    let mut models = std::collections::BTreeSet::new();
+    for memory in memories {
+        if !is_portable_model_id(&memory.model.id) || !models.insert(&memory.model) {
+            return Err(ConfigError::InvalidValue("model.last_expressions.model.id"));
+        }
+        if memory.expression.trim().is_empty()
+            || memory.expression.len() > MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES
+            || memory.expression.chars().any(char::is_control)
+        {
+            return Err(ConfigError::InvalidValue(
+                "model.last_expressions.expression",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Validate one list of user-facing model metadata.

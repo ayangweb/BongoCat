@@ -24,7 +24,7 @@ use bongocat_audio::{
     MotionAudioClient, MotionAudioCommand, MotionAudioDiagnostics, MotionAudioStopReason,
     MotionAudioVolume,
 };
-use bongocat_model::{CommittedModel, ModelOrigin, ModelSnapshot};
+use bongocat_model::{CommittedModel, ModelId, ModelOrigin, ModelSnapshot};
 use bongocat_render::{ModelCommitErrorCode, ModelCommitOutcome, ModelCommitToken, RenderConsumer};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -326,6 +326,27 @@ pub struct ActiveExpressionSnapshot {
     pub command_sequence: u64,
 }
 
+/// The newest expression a command asked for, kept after the model moves on.
+///
+/// This is a record of what the user chose rather than of what is on screen, so
+/// it deliberately outlives both the active expression and the model it belonged
+/// to: switching away clears what is displayed, and the choice that produced it
+/// still has to reach the configuration that remembers it per model.
+///
+/// Only [`RuntimeCommand::SetExpression`] writes one. The idle scheduler plays
+/// expressions through the renderer instead, so an automatic pick never becomes
+/// the expression a model is restored to.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserExpressionMemory {
+    /// The model that was live when the expression was requested.
+    pub model: ModelId,
+    pub model_origin: ModelOrigin,
+    pub expression: ExpressionId,
+    /// The command that requested it, so a reader can tell a record it has
+    /// already persisted from one that arrived since.
+    pub command_sequence: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MotionUserDataSnapshot {
     pub event_sequence: u64,
@@ -463,6 +484,9 @@ pub struct RuntimeSnapshot {
     pub pending_model: Option<PendingModelSnapshot>,
     pub active_motion: Option<ActiveMotionSnapshot>,
     pub active_expression: Option<ActiveExpressionSnapshot>,
+    /// The last expression a command asked for, whether or not it is still the
+    /// one in effect. See [`UserExpressionMemory`].
+    pub user_expression_memory: Option<UserExpressionMemory>,
     pub motion_events: MotionEventDiagnostics,
     pub input: InputSnapshot,
     pub cursor: CursorSnapshot,
@@ -500,6 +524,7 @@ impl RuntimeSnapshot {
             pending_model: None,
             active_motion: None,
             active_expression: None,
+            user_expression_memory: None,
             motion_events: MotionEventDiagnostics::default(),
             input: InputSnapshot::default(),
             cursor: CursorSnapshot::default(),

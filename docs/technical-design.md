@@ -439,6 +439,14 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   event sequence 与 audio command sequence 分离，所有生产 audio command 使用
   `MotionAudioClient` 的独立序号分配器，并在同一 publish lock 下完成分配与入队。随机选择器使用
   runtime 内部 seed，测试可以通过固定 seed 和单调时间得到同一序列。
+- 用户主动触发的 expression command 除了更新当前 `active_expression`，还写入 runtime snapshot 的
+  `user_expression_memory`：该次选择时的模型身份、表情名与 command sequence。随机行为走
+  renderer 而不是 command 队列，因此不会产生这条记录。该记录描述「用户选过什么」而不是
+  「屏幕上是什么」，所以它不随模型切换清除——切换会清掉 `active_expression`，而做出这次选择的
+  模型仍需要把记录写进配置。Application 按模型身份把它并入
+  `model.last_expressions`；模型成为当前模型时，若 `model.remember_last_expression` 打开且该模型
+  有记录，Application 发送一次 `SetExpression`，runtime 在该模型 commit 后应用。记录只由
+  `SetExpression` 产生，因此它是「用户主动」的唯一判据，不需要额外的来源标记。
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。
 - `ModelSettings` 是 runtime 的强类型模型交互设置：`mirror` 只影响不可变
   `RenderSnapshot::mirror_horizontal` 的水平变换，`mirror_pointer_tracking` 只反转
@@ -932,7 +940,14 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `[1, 3600]` 秒且默认 `30`。两者直接进入当前 v1，不读取旧字段。`model.gamepad_auto_switch` 直接包含当前 v1：门禁
   `enabled` 默认 `false`，`connected_model` 与 `disconnected_model` 是完整 `ModelIdentity` 或
   `null`，`null` 是默认值并表示「上次在该输入族上使用过的模型」；该「上次使用」是
-  Application 的会话状态而不是配置字段（ADR-0071）。overlay visibility 属于 runtime 会话状态，
+  Application 的会话状态而不是配置字段（ADR-0071）。`model.remember_last_expression` 与
+  `model.last_expressions` 直接包含当前 v1：门禁默认 `false`，列表每个元素是一个
+  `{ model: ModelIdentity, expression }` 记录且同一模型最多一条，列表默认为 `[]`。
+  记录与门禁分离：记录只由用户主动触发的 expression command 产生，随机行为播放的
+  expression 不写入；门禁只决定模型成为当前模型时是否播放自己那条记录，不决定是否记录，
+  因此关闭再打开恢复的是用户原本选过的表情。没有记录、或记录中的表情已不在模型包内时
+  模型保持自己的默认表情。删除导入模型时该模型自己的记录在同一次提交中清除，
+  `model` 语义详见 `shared/config/contract.md`。overlay visibility 属于 runtime 会话状态，
   不写入 config；设置页使用
   `settings.overlay.hide_model_window.label` 将其投影为“隐藏模型窗口”开关，开关选中表示已隐藏，默认未选中。
 - `next` 开发期间不读取或转换任何早期中间结构，不实现 schema migration、字段 alias 或版本兼容

@@ -226,6 +226,7 @@ pub(super) fn snapshot(
         gamepad_auto_switch: settings_gamepad_auto_switch(
             &application.config().model.gamepad_auto_switch,
         ),
+        remember_last_expression: application.config().model.remember_last_expression,
         logging: settings_logging_from_config(&application.config().logging),
         shortcuts: settings_shortcuts(application.config()),
         startup_item,

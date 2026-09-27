@@ -34,6 +34,7 @@ pub(crate) enum PendingOperation {
     ModelSettings,
     GamepadAxisSettings,
     GamepadAutoSwitch,
+    RememberLastExpression,
     StartupItem,
     ModelSelection,
     ModelDeletion,
@@ -139,6 +140,10 @@ pub(crate) enum SettingValue {
     GamepadAutoSwitch {
         expected_config_revision: u64,
         settings: SettingsGamepadAutoSwitch,
+    },
+    RememberLastExpression {
+        expected_config_revision: u64,
+        enabled: bool,
     },
     StartupItemEnabled(bool),
     Shortcuts {

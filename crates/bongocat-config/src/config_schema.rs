@@ -31,8 +31,10 @@ pub use input::{GamepadInputConfig, InputConfig, KeyboardInputConfig};
 pub use logging::{LoggingConfig, LoggingLevel};
 pub use model::{
     BuiltInModelMetadata, GamepadAutoSwitchConfig, ImportedModelMetadata,
+    MAXIMUM_MODEL_EXPRESSION_MEMORIES, MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES,
     MODEL_METADATA_MAXIMUM_ID_BYTES, MODEL_METADATA_MAXIMUM_TITLE_CHARS, ModelConfig,
-    ModelIdentity, ModelInputMode, ModelSource, RandomBehaviorConfig, RandomBehaviorMode,
+    ModelExpressionMemory, ModelIdentity, ModelInputMode, ModelSource, RandomBehaviorConfig,
+    RandomBehaviorMode,
 };
 pub use overlay::{MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS, OverlayConfig};
 pub use system::SystemConfig;
@@ -98,6 +100,8 @@ impl Default for NativeConfig {
                 ignore_pointer: false,
                 random_behavior: RandomBehaviorConfig::default(),
                 gamepad_auto_switch: GamepadAutoSwitchConfig::default(),
+                remember_last_expression: false,
+                last_expressions: Vec::new(),
             },
             shortcuts: ShortcutConfig::default(),
             system: SystemConfig {
@@ -204,6 +208,7 @@ impl NativeConfig {
                 .iter()
                 .map(|record| (record.id.as_str(), record.title.as_str())),
         )?;
+        validate_model_expression_memories(&self.model.last_expressions)?;
         if self
             .shortcuts
             .command_bindings

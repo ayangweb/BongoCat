@@ -50,6 +50,12 @@ pub struct SettingsSnapshot {
     /// The configured gamepad-connection model switch. The settings service is
     /// what acts on it, so the view only reads the gate and the two targets.
     pub gamepad_auto_switch: SettingsGamepadAutoSwitch,
+    /// Whether a model returns to the expression the user last chose for it.
+    ///
+    /// The remembered expressions are not shown: the switch is the whole of the
+    /// decision a user makes, and which expression each model happens to be
+    /// holding is a fact about what they used rather than a setting.
+    pub remember_last_expression: bool,
     pub logging: SettingsLogging,
     pub shortcuts: SettingsShortcuts,
     pub startup_item: SettingsStartupItemStatus,

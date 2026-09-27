@@ -261,6 +261,14 @@ impl SettingsView {
                         .set_gamepad_auto_switch(expected_config_revision, settings)
                         .await
                 }
+                Some(SettingValue::RememberLastExpression {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_remember_last_expression(expected_config_revision, enabled)
+                        .await
+                }
                 Some(SettingValue::StartupItemEnabled(enabled)) => {
                     client.set_startup_item_enabled(enabled).await
                 }

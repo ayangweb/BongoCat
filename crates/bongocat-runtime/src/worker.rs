@@ -637,12 +637,28 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             match renderer.set_expression(&expression, clock.now()) {
                                 Ok(()) => {
                                     let active = ActiveExpressionSnapshot {
-                                        expression,
+                                        expression: expression.clone(),
                                         command_sequence: sequence,
                                     };
                                     active_expression = Some(active.clone());
+                                    // A command is the user asking for a face, so
+                                    // this is the one path that records the choice
+                                    // for that model. The idle scheduler plays
+                                    // expressions through the renderer directly and
+                                    // never lands here, which is what keeps an
+                                    // automatic pick out of the remembered set.
+                                    let memory =
+                                        active_model.as_ref().map(|model| UserExpressionMemory {
+                                            model: model.id().clone(),
+                                            model_origin: model.origin(),
+                                            expression,
+                                            command_sequence: sequence,
+                                        });
                                     publish(&snapshot, |current| {
                                         current.active_expression = Some(active);
+                                        if let Some(memory) = memory {
+                                            current.user_expression_memory = Some(memory);
+                                        }
                                         current.last_command_failure = None;
                                         current.last_command_sequence = Some(sequence);
                                     });

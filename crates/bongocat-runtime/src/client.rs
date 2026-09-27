@@ -93,6 +93,31 @@ impl RuntimeClient {
             .connected_gamepad_count
     }
 
+    /// The remembered expression a reader has not persisted yet, if it changed
+    /// since `recorded`.
+    ///
+    /// The poller that carries this into the configuration runs on a timer, not on
+    /// a command, so the common answer is "nothing new" and must cost nothing: the
+    /// sequence is compared in place, and the record's strings are only copied once
+    /// a command really has produced a new one. Cloning the whole
+    /// [`RuntimeSnapshot`] for the same answer would reallocate the active model's
+    /// name and behavior list on every tick.
+    pub fn unrecorded_user_expression(
+        &self,
+        recorded: Option<u64>,
+    ) -> Option<UserExpressionMemory> {
+        let snapshot = self
+            .snapshot
+            .value
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let memory = snapshot.user_expression_memory.as_ref()?;
+        if recorded.is_some_and(|recorded| recorded == memory.command_sequence) {
+            return None;
+        }
+        Some(memory.clone())
+    }
+
     pub fn wait_for_revision(
         &self,
         minimum_revision: u64,

@@ -261,6 +261,24 @@ impl Application {
         Ok(snapshot)
     }
 
+    /// Persist whether a model returns to the expression the user last chose.
+    ///
+    /// Configuration only, with no runtime command: the restore is driven by the
+    /// model becoming live, and the remembered expressions are kept either way, so
+    /// nothing about the running product changes at the moment the switch moves.
+    /// Turning it back on therefore restores what the user had chosen rather than
+    /// starting from nothing.
+    pub fn set_remember_last_expression(&mut self, enabled: bool) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.model.remember_last_expression = enabled;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
     pub fn set_random_behavior_settings(
         &mut self,
         settings: RandomBehaviorSettings,

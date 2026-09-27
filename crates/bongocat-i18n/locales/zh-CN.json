@@ -391,6 +391,9 @@
         "motion_audio": {
           "label": "播放动作音效"
         },
+        "remember_last_expression": {
+          "label": "记住每个模型上次使用的表情"
+        },
         "random_behavior_mode": {
           "label": "随机播放动作或表情",
           "options": {

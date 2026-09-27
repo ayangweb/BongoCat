@@ -632,6 +632,29 @@ impl SettingsView {
         );
     }
 
+    /// Whether a model returns to the expression the user last chose for it.
+    ///
+    /// Sent without a debounce, like the other switches: one click is one write.
+    /// The remembered expressions themselves are never edited here, so there is
+    /// nothing to keep in step with the switch.
+    pub(super) fn set_remember_last_expression(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::RememberLastExpression,
+            Some(SettingValue::RememberLastExpression {
+                expected_config_revision,
+                enabled,
+            }),
+            cx,
+        );
+    }
+
     /// Whether the application command bindings reach the platform table.
     ///
     /// The Shortcuts page renders this gate as "disable window shortcuts", so

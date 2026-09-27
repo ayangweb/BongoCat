@@ -28,6 +28,7 @@ use bongocat_update::UpdateDiagnostics;
 use std::sync::Arc;
 
 mod diagnostics;
+mod expression_memory;
 mod model_activation;
 mod model_catalog;
 mod model_import;
@@ -61,6 +62,11 @@ pub struct Application {
     /// is a fact about what happened, not a preference the user has to maintain.
     last_gamepad_model: Option<ModelIdentity>,
     last_other_model: Option<ModelIdentity>,
+    /// The command sequence of the expression choice already written into
+    /// `config.model.last_expressions`. The runtime keeps one record of the newest
+    /// choice and this is how the application knows it has already copied it, so
+    /// the timer that copies it stays a comparison in the common case.
+    recorded_expression_sequence: Option<u64>,
     runtime: RuntimeOwner,
     motion_audio: Option<MotionAudioService>,
     render_consumer: Option<RenderConsumer>,

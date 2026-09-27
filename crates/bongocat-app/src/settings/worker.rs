@@ -117,7 +117,14 @@ pub(super) fn run_service(
             // change?" and stops there on purpose: building the snapshot also scans the model
             // catalog, so polling the whole thing twenty times a second spends milliseconds of
             // filesystem work per tick on a value the poller only compares for equality.
+            //
+            // It is also the one thing that runs for the whole product lifetime without
+            // the user having done anything, which is what the remembered per-model
+            // expression needs: a shortcut reaches the runtime directly, so nothing the
+            // user does in the settings window announces it. The common answer is a
+            // sequence comparison and no write.
             SettingsCommand::ReadSnapshotRevision { reply } => {
+                application.persist_user_expression_memory();
                 let _ =
                     observe_snapshot_state(&application, &mut clock, startup_item.state(), false);
                 let _ = reply.respond(clock.revision);
@@ -468,6 +475,29 @@ pub(super) fn run_service(
                     application.record_log_once(
                         ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
                             .with_context(ApplicationLogContext::Operation("logging_settings"))
+                            .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+                    );
+                }
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetRememberLastExpression {
+                expected_config_revision,
+                enabled,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_remember_last_expression(enabled)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                if let Err(error) = &result {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
+                            .with_context(ApplicationLogContext::Operation(
+                                "remember_last_expression",
+                            ))
                             .with_context(ApplicationLogContext::Reason(error.code().as_str())),
                     );
                 }
