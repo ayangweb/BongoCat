@@ -10,7 +10,6 @@ use crate::overlay_placement::*;
 use crate::preset_root::*;
 use crate::product_options::*;
 use crate::product_shutdown::*;
-use crate::product_windows::*;
 use crate::update_schedule::*;
 use bongocat_ui_protocol::SettingsCommand;
 
