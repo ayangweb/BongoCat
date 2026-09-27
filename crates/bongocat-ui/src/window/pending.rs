@@ -32,7 +32,6 @@ pub(crate) enum PendingOperation {
     BehaviorShortcuts,
     RandomBehavior,
     MaximumFps,
-    ReleaseFallbackTimeout,
     ModelSettings,
     GamepadAxisSettings,
     GamepadAutoSwitch,
@@ -131,10 +130,6 @@ pub(crate) enum SettingValue {
     MaximumFps {
         expected_config_revision: u64,
         maximum_fps: u16,
-    },
-    ReleaseFallbackTimeout {
-        expected_config_revision: u64,
-        timeout_ms: u32,
     },
     ModelSettings {
         expected_config_revision: u64,

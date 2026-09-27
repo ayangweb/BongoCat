@@ -62,10 +62,6 @@ impl SettingsView {
             Some(SettingValue::MaximumFps { maximum_fps, .. }) => Some(*maximum_fps),
             _ => None,
         };
-        let sent_release_fallback_timeout = match value.as_ref() {
-            Some(SettingValue::ReleaseFallbackTimeout { timeout_ms, .. }) => Some(*timeout_ms),
-            _ => None,
-        };
         let sent_random_behavior = match value.as_ref() {
             Some(SettingValue::RandomBehaviorSettings { settings, .. }) => Some(*settings),
             _ => None,
@@ -238,14 +234,6 @@ impl SettingsView {
                         .set_maximum_fps(expected_config_revision, maximum_fps)
                         .await
                 }
-                Some(SettingValue::ReleaseFallbackTimeout {
-                    expected_config_revision,
-                    timeout_ms,
-                }) => {
-                    client
-                        .set_release_fallback_timeout(expected_config_revision, timeout_ms)
-                        .await
-                }
                 Some(SettingValue::ModelSettings {
                     expected_config_revision,
                     settings,
@@ -363,15 +351,6 @@ impl SettingsView {
                     }
                 }
                 if result.is_ok()
-                    && let Some(timeout_ms) = sent_release_fallback_timeout
-                {
-                    view.release_fallback_timeout_debouncer
-                        .mark_sent(&timeout_ms);
-                    if view.release_fallback_timeout_debouncer.is_pending() {
-                        view.schedule_release_fallback_timeout_flush(cx);
-                    }
-                }
-                if result.is_ok()
                     && let Some(settings) = sent_random_behavior
                 {
                     view.random_behavior_debouncer.mark_sent(&settings);
@@ -413,9 +392,6 @@ impl SettingsView {
                     }
                     if sent_maximum_fps.is_some() {
                         view.schedule_maximum_fps_flush(cx);
-                    }
-                    if sent_release_fallback_timeout.is_some() {
-                        view.schedule_release_fallback_timeout_flush(cx);
                     }
                     if sent_random_behavior.is_some() {
                         view.schedule_random_behavior_flush(cx);

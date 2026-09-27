@@ -37,7 +37,6 @@ fn input_diagnostics_projection_is_complete_and_advances_its_own_revision() {
             captured_down: 3,
             captured_up: 4,
             reconciled_release: 5,
-            fallback_release: 26,
             released_by_reset: 6,
             duplicate_down: 7,
             unmatched_release: 8,
@@ -105,7 +104,6 @@ fn input_diagnostics_projection_is_complete_and_advances_its_own_revision() {
     assert_eq!(projected.captured_down, 3);
     assert_eq!(projected.captured_up, 4);
     assert_eq!(projected.reconciled_release, 5);
-    assert_eq!(projected.fallback_release, 26);
     assert_eq!(projected.released_by_reset, 6);
     assert_eq!(projected.duplicate_down, 7);
     assert_eq!(projected.unmatched_release, 8);

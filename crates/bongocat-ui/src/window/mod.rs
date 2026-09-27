@@ -237,8 +237,6 @@ pub struct SettingsView {
     pub(crate) gamepad_dead_zone_timer_generation: u64,
     pub(crate) maximum_fps_debouncer: crate::SettingsPatchDebouncer<u16>,
     pub(crate) maximum_fps_timer_generation: u64,
-    pub(crate) release_fallback_timeout_debouncer: crate::SettingsPatchDebouncer<u32>,
-    pub(crate) release_fallback_timeout_timer_generation: u64,
     pub(crate) random_behavior_debouncer: crate::SettingsPatchDebouncer<SettingsRandomBehavior>,
     pub(crate) random_behavior_timer_generation: u64,
     pub(crate) logging_settings_debouncer: crate::SettingsPatchDebouncer<SettingsLogging>,

@@ -475,22 +475,13 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
         )
         .expect("update maximum FPS");
     assert_eq!(configured_frame_rate.maximum_fps, 120);
-    let configured_fallback = client
-        .set_release_fallback_timeout_blocking(
-            configured_frame_rate
-                .config_revision
-                .expect("config revision"),
-            1_500,
-        )
-        .expect("update release fallback timeout");
-    assert_eq!(configured_fallback.release_fallback_timeout_ms, 1_500);
     let gamepad_settings = bongocat_ui_protocol::SettingsGamepadAxisSettings {
         stick_dead_zone_percent: 20,
         trigger_dead_zone_percent: 10,
     };
     let configured_gamepad = client
         .set_gamepad_axis_settings_blocking(
-            configured_fallback
+            configured_frame_rate
                 .config_revision
                 .expect("config revision"),
             gamepad_settings,
@@ -520,7 +511,6 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
     assert!(persisted.contains("\"stick_dead_zone\": 0.2"));
     assert!(persisted.contains("\"trigger_dead_zone\": 0.1"));
     assert!(persisted.contains("\"maximum_fps\": 120"));
-    assert!(persisted.contains("\"release_fallback_timeout_ms\": 1500"));
     assert!(persisted.contains("\"random_behavior\": {"));
     assert!(persisted.contains("\"mode\": \"motions\""));
     assert!(persisted.contains("\"interval_seconds\": 9"));
@@ -530,13 +520,6 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
     service.join().expect("service join");
 
     let restarted = Application::start_with_layout(layout).expect("application restart");
-    assert_eq!(
-        restarted
-            .runtime_client()
-            .snapshot()
-            .release_fallback_timeout_ms,
-        1_500
-    );
     assert_eq!(
         restarted.runtime_client().snapshot().model_settings,
         ModelSettings {
@@ -704,14 +687,6 @@ fn service_rejects_stale_direct_settings_without_mutating_runtime_or_config() {
         stale_frame_rate_error.code(),
         SettingsErrorCode::SnapshotOutdated
     );
-    let stale_fallback_error = client
-        .set_release_fallback_timeout_blocking(initial_config_revision, 1_500)
-        .expect_err("stale release fallback timeout update");
-    assert_eq!(
-        stale_fallback_error.code(),
-        SettingsErrorCode::SnapshotOutdated
-    );
-
     let stale_model_error = client
         .select_model_blocking(
             initial_config_revision,

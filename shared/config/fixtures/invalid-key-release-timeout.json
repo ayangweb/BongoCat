@@ -6,7 +6,7 @@
   },
   "appearance": {
     "theme": "system",
-    "language": "system"
+    "language": "en-US"
   },
   "overlay": {
     "click_through": false,
@@ -14,12 +14,15 @@
     "scale_percent": 100,
     "opacity_percent": 100,
     "corner_radius_percent": 0,
-    "hide_on_pointer_hover": true,
-    "hide_on_pointer_hover_delay_seconds": 3,
+    "hide_on_pointer_hover": false,
+    "hide_on_pointer_hover_delay_seconds": 0,
     "keep_inside_screen": true,
     "maximum_fps": 60
   },
   "input": {
+    "keyboard": {
+      "release_fallback_timeout_ms": 500
+    },
     "gamepad": {
       "stick_dead_zone": 0.15,
       "trigger_dead_zone": 0.0

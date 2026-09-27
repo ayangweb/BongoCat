@@ -114,7 +114,6 @@ fn pressed_record_retains_source_and_monotonic_times() {
             source: InputSource::Capture,
             pressed_at: MonotonicMillis::new(10),
             last_reconciled_at: Some(MonotonicMillis::new(250)),
-            runtime_observed_at: Duration::from_millis(10),
         })
     );
 }

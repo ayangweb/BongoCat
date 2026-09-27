@@ -29,5 +29,4 @@ pub(crate) struct PressedRecord {
     pub(crate) source: InputSource,
     pub(crate) pressed_at: MonotonicMillis,
     pub(crate) last_reconciled_at: Option<MonotonicMillis>,
-    pub(crate) runtime_observed_at: Duration,
 }

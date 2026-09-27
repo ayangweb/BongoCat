@@ -284,48 +284,6 @@ impl SettingsView {
 }
 
 impl SettingsView {
-    pub(crate) fn schedule_release_fallback_timeout_flush(&mut self, cx: &mut Context<Self>) {
-        self.release_fallback_timeout_timer_generation = self
-            .release_fallback_timeout_timer_generation
-            .saturating_add(1);
-        let generation = self.release_fallback_timeout_timer_generation;
-        let executor = cx.background_executor().clone();
-        cx.spawn(async move |this, cx| {
-            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
-            let _ = this.update(cx, |view, cx| {
-                if view.release_fallback_timeout_timer_generation != generation
-                    || view.pending.is_some()
-                {
-                    return;
-                }
-                let Some(timeout_ms) = view
-                    .release_fallback_timeout_debouncer
-                    .ready(Instant::now())
-                else {
-                    return;
-                };
-                let Some(expected_config_revision) = view
-                    .snapshot
-                    .as_ref()
-                    .and_then(|snapshot| snapshot.config_revision)
-                else {
-                    return;
-                };
-                view.start_request(
-                    PendingOperation::ReleaseFallbackTimeout,
-                    Some(SettingValue::ReleaseFallbackTimeout {
-                        expected_config_revision,
-                        timeout_ms,
-                    }),
-                    cx,
-                );
-            });
-        })
-        .detach();
-    }
-}
-
-impl SettingsView {
     pub(crate) fn schedule_random_behavior_flush(&mut self, cx: &mut Context<Self>) {
         self.random_behavior_timer_generation =
             self.random_behavior_timer_generation.saturating_add(1);
@@ -496,15 +454,6 @@ impl SettingsView {
                 Some(SettingValue::MaximumFps {
                     expected_config_revision,
                     maximum_fps,
-                }),
-                cx,
-            );
-        } else if let Some(timeout_ms) = self.release_fallback_timeout_debouncer.flush(now) {
-            self.start_request(
-                PendingOperation::ReleaseFallbackTimeout,
-                Some(SettingValue::ReleaseFallbackTimeout {
-                    expected_config_revision,
-                    timeout_ms,
                 }),
                 cx,
             );

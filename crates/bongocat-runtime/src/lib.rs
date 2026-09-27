@@ -69,8 +69,6 @@ use transport::{SnapshotCell, publish};
 pub const DEFAULT_MAXIMUM_FPS: u16 = 60;
 pub const MINIMUM_FPS: u16 = 15;
 pub const MAXIMUM_FPS: u16 = 240;
-pub const DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS: u32 = 500;
-pub const MAX_RELEASE_FALLBACK_TIMEOUT_MS: u32 = 60_000;
 pub const HIDDEN_OVERLAY_FRAME_INTERVAL: Duration = Duration::from_millis(100);
 // Automatic playback uses the upper half of the runtime event sequence space.
 // Audio commands use their own client-allocated sequence domain, so automatic
@@ -79,10 +77,6 @@ const AUTOMATIC_SEQUENCE_START: u64 = 1_u64 << 63;
 
 pub const fn maximum_fps_is_valid(maximum_fps: u16) -> bool {
     maximum_fps >= MINIMUM_FPS && maximum_fps <= MAXIMUM_FPS
-}
-
-pub const fn release_fallback_timeout_is_valid(timeout_ms: u32) -> bool {
-    timeout_ms <= MAX_RELEASE_FALLBACK_TIMEOUT_MS
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -104,12 +98,11 @@ pub enum RuntimeRenderErrorCode {
     TransportClosed,
     OverlaySettingsInvalid,
     MaximumFpsInvalid,
-    ReleaseFallbackTimeoutInvalid,
     RandomBehaviorSettingsInvalid,
 }
 
 impl RuntimeRenderErrorCode {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 9] = [
         Self::ModelLoadFailed,
         Self::ModelEvaluationFailed,
         Self::MotionLoadFailed,
@@ -118,7 +111,6 @@ impl RuntimeRenderErrorCode {
         Self::TransportClosed,
         Self::OverlaySettingsInvalid,
         Self::MaximumFpsInvalid,
-        Self::ReleaseFallbackTimeoutInvalid,
         Self::RandomBehaviorSettingsInvalid,
     ];
 
@@ -132,7 +124,6 @@ impl RuntimeRenderErrorCode {
             Self::TransportClosed => "transport_closed",
             Self::OverlaySettingsInvalid => "overlay_settings_invalid",
             Self::MaximumFpsInvalid => "maximum_fps_invalid",
-            Self::ReleaseFallbackTimeoutInvalid => "release_fallback_timeout_invalid",
             Self::RandomBehaviorSettingsInvalid => "random_behavior_settings_invalid",
         }
     }
@@ -412,7 +403,6 @@ pub enum RuntimeCommand {
     SetOverlayVisible(bool),
     SetOverlaySettings(OverlaySettings),
     SetMaximumFps(u16),
-    SetReleaseFallbackTimeout(u32),
     SetRandomBehaviorSettings(RandomBehaviorSettings),
     SetModelSettings(ModelSettings),
     SetMotionAudioEnabled(bool),
@@ -473,7 +463,6 @@ pub struct RuntimeSnapshot {
     pub overlay_visible: bool,
     pub overlay_settings: OverlaySettings,
     pub maximum_fps: u16,
-    pub release_fallback_timeout_ms: u32,
     pub random_behavior_settings: RandomBehaviorSettings,
     pub model_settings: ModelSettings,
     pub gamepad_axis_settings: GamepadAxisSettings,
@@ -516,7 +505,6 @@ impl RuntimeSnapshot {
             overlay_visible,
             overlay_settings: OverlaySettings::default(),
             maximum_fps: DEFAULT_MAXIMUM_FPS,
-            release_fallback_timeout_ms: DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS,
             random_behavior_settings: RandomBehaviorSettings::default(),
             model_settings: ModelSettings::default(),
             gamepad_axis_settings: GamepadAxisSettings::default(),

@@ -383,21 +383,6 @@ pub(super) fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
-            SettingsCommand::SetReleaseFallbackTimeout {
-                expected_config_revision,
-                timeout_ms,
-                reply,
-            } => {
-                let result = check_revision(&application, expected_config_revision)
-                    .and_then(|()| {
-                        application
-                            .set_release_fallback_timeout(timeout_ms)
-                            .map(|_| ())
-                            .map_err(map_application_error)
-                    })
-                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
-                let _ = reply.respond(result);
-            }
             SettingsCommand::SetRandomBehaviorSettings {
                 expected_config_revision,
                 settings,

@@ -192,14 +192,7 @@ pub struct OverlayConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct InputConfig {
-    pub keyboard: KeyboardInputConfig,
     pub gamepad: GamepadInputConfig,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct KeyboardInputConfig {
-    pub release_fallback_timeout_ms: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -365,9 +358,6 @@ impl Default for NativeConfig {
                 keep_inside_screen: true,
             },
             input: InputConfig {
-                keyboard: KeyboardInputConfig {
-                    release_fallback_timeout_ms: 500,
-                },
                 gamepad: GamepadInputConfig {
                     stick_dead_zone: 0.15,
                     trigger_dead_zone: 0.0,
@@ -445,11 +435,6 @@ impl NativeConfig {
         }
         if !(15..=240).contains(&self.overlay.maximum_fps) {
             return Err(ConfigError::InvalidValue("overlay.maximum_fps"));
-        }
-        if self.input.keyboard.release_fallback_timeout_ms > 60_000 {
-            return Err(ConfigError::InvalidValue(
-                "input.keyboard.release_fallback_timeout_ms",
-            ));
         }
         if self.appearance.language.trim().is_empty() {
             return Err(ConfigError::InvalidValue("appearance.language"));
@@ -1168,11 +1153,7 @@ mod tests {
         assert!(value["input"].get("gamepad_trigger_dead_zone").is_none());
         assert!(value["input"]["gamepad"].get("stick_dead_zone").is_some());
         assert!(value["input"]["gamepad"].get("trigger_dead_zone").is_some());
-        assert!(
-            value["input"]["keyboard"]
-                .get("release_fallback_timeout_ms")
-                .is_some()
-        );
+        assert!(value["input"].get("keyboard").is_none());
         assert!(value["logging"].get("level").is_some());
         assert!(value["logging"].get("retention_days").is_some());
         assert!(value["model"].get("selected_model").is_some());

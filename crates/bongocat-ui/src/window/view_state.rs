@@ -340,8 +340,6 @@ impl SettingsView {
             gamepad_dead_zone_timer_generation: 0,
             maximum_fps_debouncer: crate::SettingsPatchDebouncer::default(),
             maximum_fps_timer_generation: 0,
-            release_fallback_timeout_debouncer: crate::SettingsPatchDebouncer::default(),
-            release_fallback_timeout_timer_generation: 0,
             random_behavior_debouncer: crate::SettingsPatchDebouncer::default(),
             random_behavior_timer_generation: 0,
             logging_settings_debouncer: crate::SettingsPatchDebouncer::default(),

@@ -23,7 +23,7 @@ pub(crate) mod renderer;
 
 use audio::{motion_audio_path, prepare_model_audio, stop_motion_audio};
 use axes::GamepadAxisValues;
-use input::{compose_model_input, consume_cursor, consume_gamepad_axes, expire_keyboard_fallback};
+use input::{compose_model_input, consume_cursor, consume_gamepad_axes};
 use model::{begin_model_activation, process_model_commit_feedback};
 use random_behavior::maybe_trigger_random_behavior;
 use renderer::{evaluate_renderer, start_motion};
@@ -70,7 +70,6 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
     let mut gamepad_axis_settings = GamepadAxisSettings::default();
     let mut overlay_visible = initial_overlay_visible;
     let mut maximum_fps = DEFAULT_MAXIMUM_FPS;
-    let mut release_fallback_timeout_ms = DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS;
     let mut model_settings = ModelSettings::default();
     let mut random_behavior_scheduler = RandomBehaviorScheduler::new(system_seed());
     let mut next_automatic_event_sequence = AUTOMATIC_SEQUENCE_START;
@@ -260,24 +259,6 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             });
                         }
                     }
-                    WorkerCommand::Product(RuntimeCommand::SetReleaseFallbackTimeout(value)) => {
-                        if !release_fallback_timeout_is_valid(value) {
-                            publish(&snapshot, |current| {
-                                current.last_command_failure = Some(RuntimeCommandFailure {
-                                    sequence,
-                                    code: RuntimeRenderErrorCode::ReleaseFallbackTimeoutInvalid,
-                                });
-                                current.last_command_sequence = Some(sequence);
-                            });
-                        } else {
-                            release_fallback_timeout_ms = value;
-                            publish(&snapshot, |current| {
-                                current.release_fallback_timeout_ms = value;
-                                current.last_command_failure = None;
-                                current.last_command_sequence = Some(sequence);
-                            });
-                        }
-                    }
                     WorkerCommand::Product(RuntimeCommand::SetRandomBehaviorSettings(settings)) => {
                         if !settings.is_valid() {
                             publish(&snapshot, |current| {
@@ -396,7 +377,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             InputEvent::GamepadDisconnected { connection, .. } => Some(*connection),
                             _ => None,
                         };
-                        let disposition = input_state.apply_observed(envelope, clock.now());
+                        let disposition = input_state.apply(envelope);
                         if input_reset {
                             gamepad_axis_values.clear();
                         } else if let Some(connection) = disconnected {
@@ -702,17 +683,6 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                         return;
                     }
                 }
-                expire_keyboard_fallback(
-                    &mut input_state,
-                    release_fallback_timeout_ms,
-                    &input_bindings,
-                    normalized_cursor,
-                    &gamepad_axis_values,
-                    gamepad_axis_settings,
-                    model_settings,
-                    &snapshot,
-                    clock.now(),
-                );
                 if evaluate_after_command && overlay_visible && pending_model.is_none() {
                     evaluate_renderer(
                         renderer.as_mut(),
@@ -736,17 +706,6 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
-                expire_keyboard_fallback(
-                    &mut input_state,
-                    release_fallback_timeout_ms,
-                    &input_bindings,
-                    normalized_cursor,
-                    &gamepad_axis_values,
-                    gamepad_axis_settings,
-                    model_settings,
-                    &snapshot,
-                    clock.now(),
-                );
                 consume_cursor(
                     &cursor_producer,
                     &snapshot,

@@ -423,10 +423,6 @@
         "title": "Keyboard",
         "ignore_keyboard_input": {
           "label": "Ignore keyboard input"
-        },
-        "key_release_timeout": {
-          "label": "Key release timeout (milliseconds)",
-          "description": "Release the key automatically when no key-up event arrives within this time, so it never stays stuck; 0 disables it."
         }
       },
       "gamepad": {

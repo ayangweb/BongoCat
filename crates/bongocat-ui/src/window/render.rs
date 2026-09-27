@@ -924,40 +924,6 @@ impl Render for SettingsView {
                             },
                         ),
                     ),
-                    SettingItem::new(
-                        bongocat_i18n::text(
-                            language.catalog_locale(),
-                            "settings.input_interaction.keyboard.key_release_timeout.label",
-                        ),
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 0.0,
-                                max: 60_000.0,
-                                step: 250.0,
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |app| {
-                                    view.read(app)
-                                        .snapshot
-                                        .as_ref()
-                                        .map_or(500.0, |s| f64::from(s.release_fallback_timeout_ms))
-                                }
-                            },
-                            {
-                                let view = view_entity.clone();
-                                move |value, app| {
-                                    view.update(app, |view, cx| {
-                                        view.set_release_fallback_timeout_value(value, cx)
-                                    });
-                                }
-                            },
-                        ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.input_interaction.keyboard.key_release_timeout.description",
-                    )),
                 ], &keyboard_keywords)),
             SettingGroup::new()
                 .title(bongocat_i18n::text(

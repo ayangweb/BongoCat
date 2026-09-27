@@ -23,7 +23,7 @@ fn edge(sequence: u64, at: u64, control: InputControl, edge: InputEdge) -> Seque
     }
 }
 
-mod fallback;
 mod reconcile;
+mod repeat;
 mod reset;
 mod snapshot_of;

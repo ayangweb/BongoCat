@@ -860,40 +860,6 @@ impl SettingsView {
         }
     }
 
-    pub(super) fn set_release_fallback_timeout_value(&mut self, raw: f64, cx: &mut Context<Self>) {
-        if self.model_import.is_running() {
-            return;
-        }
-        let value = raw.round().clamp(0.0, 60_000.0) as u32;
-        let Some(snapshot) = self.snapshot.as_ref() else {
-            return;
-        };
-        if snapshot.release_fallback_timeout_ms == value {
-            return;
-        }
-        let expected_config_revision = snapshot.config_revision;
-        let should_send = self
-            .release_fallback_timeout_debouncer
-            .observe(value, Instant::now())
-            .filter(|_| self.pending.is_none())
-            .and_then(|timeout_ms| {
-                expected_config_revision.map(|expected_config_revision| {
-                    self.start_request(
-                        PendingOperation::ReleaseFallbackTimeout,
-                        Some(SettingValue::ReleaseFallbackTimeout {
-                            expected_config_revision,
-                            timeout_ms,
-                        }),
-                        cx,
-                    );
-                })
-            })
-            .is_some();
-        if !should_send {
-            self.schedule_release_fallback_timeout_flush(cx);
-        }
-    }
-
     pub(super) fn set_model_settings(
         &mut self,
         settings: SettingsModelSettings,

@@ -56,7 +56,6 @@ updates
 | `overlay`     | `hide_on_pointer_hover`               | 指针悬停在窗口上时隐藏内容并临时穿透   |
 | `overlay`     | `hide_on_pointer_hover_delay_seconds` | 悬停隐藏前的等待秒数，`[0, 60]`        |
 | `overlay`     | `keep_inside_screen`                  | 保持在所有屏幕范围内，允许覆盖任务栏等区域 |
-| `input`       | `keyboard.release_fallback_timeout_ms` | 捕获键盘按键的最终释放保险，`[0, 60000]` |
 | `input`       | `gamepad.stick_dead_zone`             | 左/右摇杆死区，`[0, 1)`                |
 | `input`       | `gamepad.trigger_dead_zone`           | 扳机死区，`[0, 1)`                     |
 | `logging`     | `level`                               | 写入阈值：`error`、`warn`、`info`、`debug`、`trace` |
@@ -256,11 +255,10 @@ locale：简体中文 locale 映射为 `zh-CN`，英语和所有其它 locale �
 `zh-Hant` 与 `TW`/`HK`/`MO` 不属于当前支持的简体中文，按统一规则回退英文。系统解析结果只决定
 实际显示语言，不覆写持久化偏好；显式选择 `zh-CN` 或 `en-US` 时不受系统 locale 影响。
 
-`input.keyboard.release_fallback_timeout_ms` 接受 `0..=60000`，默认 `500`；`0` 明确禁用。该值只控制
-runtime 对 captured keyboard control 的最终保险，不替代可靠 KeyUp、平台 pressed-set 校正或
-生命周期 Reset，也不作用于鼠标和手柄。runtime 以自己的可注入单调时钟记录 down/repeat 的观察
-时刻，repeat 刷新期限；不得把 Windows/macOS input producer 的事件时间戳跨时钟原点比较。
-设置通过携带 `expected_config_revision` 的 typed command 原子持久化并即时更新 runtime。
+捕获的键盘按键没有超时配置，`input` 因此只有 `gamepad` 一个命名空间。清除一个已按下
+control 的路径是且只有三条：可靠的 KeyUp、平台 pressed-set 校正触发的 reconciliation，
+以及生命周期 Reset。经过的时间不构成释放：一个用户仍按住的按键和一个丢失的松开事件
+在时长上无法区分，用时长区分就是把一帧变慢变成一只猫不再相信的按键。
 
 ## Shortcut Chords
 

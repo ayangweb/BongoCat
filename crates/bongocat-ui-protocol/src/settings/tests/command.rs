@@ -342,35 +342,6 @@ fn maximum_fps_command_preserves_typed_value() {
 }
 
 #[test]
-fn release_fallback_timeout_command_preserves_typed_value() {
-    let (client, endpoint) = SettingsClient::bounded(1);
-    let worker = thread::spawn(move || {
-        let SettingsCommand::SetReleaseFallbackTimeout {
-            expected_config_revision,
-            timeout_ms,
-            reply,
-        } = endpoint
-            .recv_blocking()
-            .expect("release fallback timeout command")
-        else {
-            panic!("unexpected command");
-        };
-        assert_eq!(expected_config_revision, 7);
-        assert_eq!(timeout_ms, 1_500);
-        let mut result = snapshot(8, true, true);
-        result.release_fallback_timeout_ms = timeout_ms;
-        reply
-            .respond(Ok(result))
-            .expect("release fallback timeout reply");
-    });
-    let result = client
-        .set_release_fallback_timeout_blocking(7, 1_500)
-        .expect("release fallback timeout snapshot");
-    assert_eq!(result.release_fallback_timeout_ms, 1_500);
-    worker.join().expect("worker join");
-}
-
-#[test]
 fn shortcut_command_preserves_typed_bindings() {
     let (client, endpoint) = SettingsClient::bounded(1);
     let shortcuts = SettingsShortcuts {

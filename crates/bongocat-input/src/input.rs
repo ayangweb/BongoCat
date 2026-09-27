@@ -296,7 +296,6 @@ pub struct InputDiagnostics {
     pub captured_down: u64,
     pub captured_up: u64,
     pub reconciled_release: u64,
-    pub fallback_release: u64,
     pub released_by_reset: u64,
     pub duplicate_down: u64,
     pub unmatched_release: u64,

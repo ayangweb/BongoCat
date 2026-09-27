@@ -252,19 +252,6 @@ impl SettingsClient {
         .await
     }
 
-    pub async fn set_release_fallback_timeout(
-        &self,
-        expected_config_revision: u64,
-        timeout_ms: u32,
-    ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::SetReleaseFallbackTimeout {
-            expected_config_revision,
-            timeout_ms,
-            reply,
-        })
-        .await
-    }
-
     pub async fn set_random_behavior_settings(
         &self,
         expected_config_revision: u64,
@@ -727,18 +714,6 @@ impl SettingsClient {
         self.request_blocking(|reply| SettingsCommand::SetMaximumFps {
             expected_config_revision,
             maximum_fps,
-            reply,
-        })
-    }
-
-    pub fn set_release_fallback_timeout_blocking(
-        &self,
-        expected_config_revision: u64,
-        timeout_ms: u32,
-    ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request_blocking(|reply| SettingsCommand::SetReleaseFallbackTimeout {
-            expected_config_revision,
-            timeout_ms,
             reply,
         })
     }

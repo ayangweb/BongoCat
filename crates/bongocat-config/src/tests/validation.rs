@@ -77,6 +77,16 @@ fn unknown_and_legacy_fields_are_rejected() {
     let error = serde_json::from_value::<NativeConfig>(value)
         .expect_err("legacy store spelling must not enter the initial v1 config");
     assert!(error.to_string().contains("unknown field"));
+
+    // A key release timeout was a fallback that released a still-held key once
+    // a deadline passed. It is gone, and elapsed time is not a release, so the
+    // whole keyboard namespace is unknown rather than ignored.
+    let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    value["input"]["keyboard"] = serde_json::json!({ "release_fallback_timeout_ms": 500 });
+    let error = serde_json::from_value::<NativeConfig>(value)
+        .expect_err("the keyboard input namespace must not re-enter the config");
+    assert!(error.to_string().contains("unknown field"));
+    assert!(error.to_string().contains("keyboard"));
 }
 
 #[test]

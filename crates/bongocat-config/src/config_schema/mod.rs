@@ -27,7 +27,7 @@ use model::*;
 // glob would also carry the crate-private helpers, and a `pub` glob cannot
 // widen them.
 pub use appearance::{AppearanceConfig, Language, Theme};
-pub use input::{GamepadInputConfig, InputConfig, KeyboardInputConfig};
+pub use input::{GamepadInputConfig, InputConfig};
 pub use logging::{LoggingConfig, LoggingLevel};
 pub use model::{
     BuiltInModelMetadata, GamepadAutoSwitchConfig, ImportedModelMetadata,
@@ -79,9 +79,6 @@ impl Default for NativeConfig {
                 keep_inside_screen: true,
             },
             input: InputConfig {
-                keyboard: KeyboardInputConfig {
-                    release_fallback_timeout_ms: 500,
-                },
                 gamepad: GamepadInputConfig {
                     stick_dead_zone: 0.15,
                     trigger_dead_zone: 0.0,
@@ -145,11 +142,6 @@ impl NativeConfig {
         {
             return Err(ConfigError::InvalidValue(
                 "overlay.hide_on_pointer_hover_delay_seconds",
-            ));
-        }
-        if self.input.keyboard.release_fallback_timeout_ms > 60_000 {
-            return Err(ConfigError::InvalidValue(
-                "input.keyboard.release_fallback_timeout_ms",
             ));
         }
         if !(0.0..1.0).contains(&self.input.gamepad.stick_dead_zone)

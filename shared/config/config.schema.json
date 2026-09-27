@@ -123,29 +123,10 @@
       "properties": {
         "gamepad": {
           "$ref": "#/$defs/GamepadInputConfig"
-        },
-        "keyboard": {
-          "$ref": "#/$defs/KeyboardInputConfig"
         }
       },
       "required": [
-        "keyboard",
         "gamepad"
-      ],
-      "type": "object"
-    },
-    "KeyboardInputConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "release_fallback_timeout_ms": {
-          "format": "uint32",
-          "maximum": 60000,
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "release_fallback_timeout_ms"
       ],
       "type": "object"
     },

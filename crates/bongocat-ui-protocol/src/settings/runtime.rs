@@ -25,12 +25,11 @@ pub enum SettingsRuntimeErrorCode {
     TransportClosed,
     OverlaySettingsInvalid,
     MaximumFpsInvalid,
-    ReleaseFallbackTimeoutInvalid,
     RandomBehaviorSettingsInvalid,
 }
 
 impl SettingsRuntimeErrorCode {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 9] = [
         Self::ModelLoadFailed,
         Self::ModelEvaluationFailed,
         Self::MotionLoadFailed,
@@ -39,7 +38,6 @@ impl SettingsRuntimeErrorCode {
         Self::TransportClosed,
         Self::OverlaySettingsInvalid,
         Self::MaximumFpsInvalid,
-        Self::ReleaseFallbackTimeoutInvalid,
         Self::RandomBehaviorSettingsInvalid,
     ];
 
@@ -53,7 +51,6 @@ impl SettingsRuntimeErrorCode {
             Self::TransportClosed => "transport_closed",
             Self::OverlaySettingsInvalid => "overlay_settings_invalid",
             Self::MaximumFpsInvalid => "maximum_fps_invalid",
-            Self::ReleaseFallbackTimeoutInvalid => "release_fallback_timeout_invalid",
             Self::RandomBehaviorSettingsInvalid => "random_behavior_settings_invalid",
         }
     }

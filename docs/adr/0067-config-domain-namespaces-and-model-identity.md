@@ -26,7 +26,7 @@ section 中：系统集成与更新策略没有独立归属，输入和 overlay 
 schema_version
 appearance
 overlay
-input { keyboard, gamepad }
+input { gamepad }
 logging
 model
 shortcuts
@@ -38,9 +38,10 @@ updates
 
 1. 系统入口可见性放在 `system.show_taskbar_icon` / `system.show_status_icon`；自动更新策略放在
    `updates.check_automatically` / `updates.check_interval_hours`。
-2. `overlay.maximum_fps` 属于 overlay/runtime；键盘释放保险属于
-   `input.keyboard.release_fallback_timeout_ms`；手柄死区属于
-   `input.gamepad.stick_dead_zone` / `input.gamepad.trigger_dead_zone`。
+2. `overlay.maximum_fps` 属于 overlay/runtime；手柄死区属于
+   `input.gamepad.stick_dead_zone` / `input.gamepad.trigger_dead_zone`。`input` 没有 `keyboard`
+   命名空间：捕获键盘按键的释放由可靠 `KeyUp`、状态校正和生命周期 `Reset` 决定，没有可配置的
+   超时需要归属（ADR-0004）。
 3. 模型来源统一为 `imported` / `built_in`。配置字段为 `model.imported_models` 与
    `model.built_in_models`；model-store 内部的 `InstalledModel`、`ModelOrigin::Installed` 和
    `ModelOrigin::Preset` 仍是技术层词汇，不直接序列化到配置。

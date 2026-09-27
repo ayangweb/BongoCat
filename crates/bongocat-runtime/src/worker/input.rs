@@ -10,34 +10,6 @@ use crate::input_state::{InputState, ModelInputFilter};
 use crate::*;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn expire_keyboard_fallback(
-    input_state: &mut InputState,
-    timeout_ms: u32,
-    input_bindings: &InputBindings,
-    normalized_cursor: NormalizedCursorPosition,
-    gamepad_axis_values: &GamepadAxisValues,
-    gamepad_axis_settings: GamepadAxisSettings,
-    model_settings: ModelSettings,
-    snapshot: &SnapshotCell,
-    now: Duration,
-) {
-    if input_state.expire_keyboard_fallback(now, timeout_ms) == 0 {
-        return;
-    }
-    publish(snapshot, |current| {
-        current.input = input_state.snapshot();
-        current.model_input = compose_model_input(
-            input_state,
-            input_bindings,
-            normalized_cursor,
-            gamepad_axis_values,
-            gamepad_axis_settings,
-            model_settings,
-        );
-    });
-}
-
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn consume_cursor(
     cursor_producer: &CursorProducer,
     snapshot: &SnapshotCell,

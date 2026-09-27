@@ -104,11 +104,6 @@ pub enum SettingsCommand {
         maximum_fps: u16,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
-    SetReleaseFallbackTimeout {
-        expected_config_revision: u64,
-        timeout_ms: u32,
-        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
-    },
     SetRandomBehaviorSettings {
         expected_config_revision: u64,
         settings: SettingsRandomBehavior,

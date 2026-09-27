@@ -139,9 +139,6 @@ pub(super) const fn settings_runtime_error_code(
             SettingsRuntimeErrorCode::OverlaySettingsInvalid
         }
         RuntimeRenderErrorCode::MaximumFpsInvalid => SettingsRuntimeErrorCode::MaximumFpsInvalid,
-        RuntimeRenderErrorCode::ReleaseFallbackTimeoutInvalid => {
-            SettingsRuntimeErrorCode::ReleaseFallbackTimeoutInvalid
-        }
         RuntimeRenderErrorCode::RandomBehaviorSettingsInvalid => {
             SettingsRuntimeErrorCode::RandomBehaviorSettingsInvalid
         }
@@ -211,7 +208,6 @@ pub(super) fn settings_input_diagnostics(
         captured_down: input.diagnostics.captured_down,
         captured_up: input.diagnostics.captured_up,
         reconciled_release: input.diagnostics.reconciled_release,
-        fallback_release: input.diagnostics.fallback_release,
         released_by_reset: input.diagnostics.released_by_reset,
         duplicate_down: input.diagnostics.duplicate_down,
         unmatched_release: input.diagnostics.unmatched_release,

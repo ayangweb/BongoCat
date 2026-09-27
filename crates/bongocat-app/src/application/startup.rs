@@ -280,14 +280,6 @@ impl Application {
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
             .ok_or(ApplicationError::RuntimeDidNotPublish)?;
         let sequence = client
-            .send(RuntimeCommand::SetReleaseFallbackTimeout(
-                config.input.keyboard.release_fallback_timeout_ms,
-            ))
-            .map_err(ApplicationError::RuntimeCommand)?;
-        client
-            .wait_for_command(sequence, RUNTIME_TIMEOUT)
-            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
-        let sequence = client
             .send(RuntimeCommand::SetRandomBehaviorSettings(
                 random_behavior_settings_from_config(&config),
             ))

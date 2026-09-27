@@ -67,6 +67,11 @@
       "expected": "reject"
     },
     {
+      "id": "key-release-timeout",
+      "file": "invalid-key-release-timeout.json",
+      "expected": "reject"
+    },
+    {
       "id": "unsupported-language",
       "file": "invalid-unsupported-language.json",
       "expected": "reject"

@@ -103,22 +103,21 @@ fn runtime_applies_reliable_input_and_reconciled_release() {
     owner.shutdown(TIMEOUT).expect("clean shutdown");
 }
 
+/// No amount of runtime time releases a held key.
+///
+/// The pressed set is cleared by exactly three things: a captured release, a
+/// reconciliation that stops seeing the control, and a reset. Elapsed wall time
+/// is not one of them, because a key the user is still holding looks identical
+/// to a lost release only if the elapsed time is the tie-breaker — and that is
+/// the guess that turns a slow frame into a key the cat stops believing in.
 #[test]
-fn runtime_tick_publishes_keyboard_fallback_release_from_runtime_clock() {
+fn a_held_key_survives_any_amount_of_runtime_time() {
     let clock = Arc::new(ManualClock::default());
     let (owner, _consumer) = RuntimeOwner::start_with_rendering_and_clock(false, 8, clock.clone());
     let client = owner.client();
     client
         .wait_for_revision(1, TIMEOUT)
         .expect("ready snapshot");
-    let configured = client
-        .send(RuntimeCommand::SetReleaseFallbackTimeout(1_000))
-        .expect("fallback setting accepted");
-    let configured = client
-        .wait_for_command(configured, TIMEOUT)
-        .expect("fallback setting published");
-    assert_eq!(configured.release_fallback_timeout_ms, 1_000);
-
     let down = client
         .send(RuntimeCommand::ApplyInput(Arc::new(SequencedInputEvent {
             sequence: 0,
@@ -135,54 +134,36 @@ fn runtime_tick_publishes_keyboard_fallback_release_from_runtime_clock() {
         .expect("key down published");
     assert_eq!(pressed.input.pressed_key_count, 1);
 
-    clock.set(Duration::from_millis(999));
-    let before_deadline = client.send(RuntimeCommand::Tick).expect("tick accepted");
-    let before_deadline = client
-        .wait_for_command(before_deadline, TIMEOUT)
-        .expect("tick published");
-    assert_eq!(before_deadline.input.pressed_key_count, 1);
+    clock.set(Duration::from_secs(3_600));
+    for _ in 0..8 {
+        let tick = client.send(RuntimeCommand::Tick).expect("tick accepted");
+        let ticked = client
+            .wait_for_command(tick, TIMEOUT)
+            .expect("tick published");
+        assert_eq!(
+            ticked.input.pressed_key_count, 1,
+            "an hour of runtime time is not a release"
+        );
+    }
 
-    clock.set(Duration::from_millis(1_000));
-    client.send(RuntimeCommand::Tick).expect("tick accepted");
-    let deadline = Instant::now() + TIMEOUT;
-    let released = loop {
-        let current = client.snapshot();
-        if current.input.diagnostics.fallback_release == 1 {
-            break current;
-        }
-        assert!(Instant::now() < deadline, "fallback release timed out");
-        thread::sleep(Duration::from_millis(2));
-    };
+    let release = client
+        .send(RuntimeCommand::ApplyInput(Arc::new(SequencedInputEvent {
+            sequence: 1,
+            event: InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Up,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(50_001),
+            },
+        })))
+        .expect("key up accepted");
+    let released = client
+        .wait_for_command(release, TIMEOUT)
+        .expect("key up published");
     assert_eq!(released.input.pressed_key_count, 0);
+    assert_eq!(released.input.diagnostics.captured_up, 1);
     assert_eq!(released.input.diagnostics.reconciled_release, 0);
     assert_eq!(released.input.diagnostics.released_by_reset, 0);
-    owner.shutdown(TIMEOUT).expect("clean shutdown");
-}
-
-#[test]
-fn release_fallback_timeout_command_rejects_values_above_v1_limit() {
-    let owner = RuntimeOwner::start(false, 4);
-    let client = owner.client();
-    client
-        .wait_for_revision(1, TIMEOUT)
-        .expect("ready snapshot");
-    let sequence = client
-        .send(RuntimeCommand::SetReleaseFallbackTimeout(60_001))
-        .expect("invalid command accepted for typed failure");
-    let rejected = client
-        .wait_for_command(sequence, TIMEOUT)
-        .expect("invalid command result published");
-    assert_eq!(
-        rejected.release_fallback_timeout_ms,
-        DEFAULT_RELEASE_FALLBACK_TIMEOUT_MS
-    );
-    assert_eq!(
-        rejected.last_command_failure,
-        Some(RuntimeCommandFailure {
-            sequence,
-            code: RuntimeRenderErrorCode::ReleaseFallbackTimeoutInvalid,
-        })
-    );
     owner.shutdown(TIMEOUT).expect("clean shutdown");
 }
 

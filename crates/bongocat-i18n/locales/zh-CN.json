@@ -423,10 +423,6 @@
         "title": "键盘",
         "ignore_keyboard_input": {
           "label": "忽略键盘输入"
-        },
-        "key_release_timeout": {
-          "label": "按键释放超时（毫秒）",
-          "description": "长时间收不到按键松开事件时自动松开，避免按键一直卡住；0 表示不自动松开。"
         }
       },
       "gamepad": {

@@ -9,19 +9,7 @@
 use super::*;
 
 impl InputState {
-    #[cfg(test)]
     pub fn apply(&mut self, envelope: SequencedInputEvent) -> InputDisposition {
-        let observed_at = Duration::from_millis(envelope.event.at().value());
-        self.apply_observed(envelope, observed_at)
-    }
-}
-
-impl InputState {
-    pub fn apply_observed(
-        &mut self,
-        envelope: SequencedInputEvent,
-        observed_at: Duration,
-    ) -> InputDisposition {
         let gap = if let Some(last_sequence) = self.last_sequence {
             let distance = envelope.sequence.wrapping_sub(last_sequence);
             match distance {
@@ -65,44 +53,15 @@ impl InputState {
 
         if gap > 0 {
             if matches!(envelope.event, InputEvent::Reset { .. }) {
-                self.apply_event(envelope.event, observed_at);
+                self.apply_event(envelope.event);
             } else {
                 self.reset(InputResetReason::SequenceGap);
-                self.apply_event(envelope.event, observed_at);
+                self.apply_event(envelope.event);
             }
             return InputDisposition::AppliedAfterSequenceGap { missing: gap };
         }
-        self.apply_event(envelope.event, observed_at);
+        self.apply_event(envelope.event);
         InputDisposition::Applied
-    }
-}
-
-impl InputState {
-    pub fn expire_keyboard_fallback(&mut self, now: Duration, timeout_ms: u32) -> usize {
-        if timeout_ms == 0 {
-            return 0;
-        }
-        let timeout = Duration::from_millis(u64::from(timeout_ms));
-        let expired = self
-            .pressed
-            .iter()
-            .filter_map(|(control, record)| {
-                matches!(control, InputControl::Key(_))
-                    .then_some(())
-                    .and_then(|()| now.checked_sub(record.runtime_observed_at))
-                    .is_some_and(|elapsed| elapsed >= timeout)
-                    .then_some(*control)
-            })
-            .collect::<Vec<_>>();
-        for control in &expired {
-            self.pressed.remove(control);
-            self.missing_confirmations.remove(control);
-        }
-        self.diagnostics.fallback_release = self
-            .diagnostics
-            .fallback_release
-            .saturating_add(expired.len() as u64);
-        expired.len()
     }
 }
 
@@ -114,7 +73,7 @@ impl InputState {
 }
 
 impl InputState {
-    pub(crate) fn apply_event(&mut self, event: InputEvent, observed_at: Duration) {
+    pub(crate) fn apply_event(&mut self, event: InputEvent) {
         match event {
             InputEvent::GamepadConnected { connection, .. } => {
                 if self.active_gamepads.iter().any(|active| {
@@ -175,16 +134,11 @@ impl InputState {
                                     source,
                                     pressed_at: at,
                                     last_reconciled_at: None,
-                                    runtime_observed_at: observed_at,
                                 });
                                 self.diagnostics.captured_down =
                                     self.diagnostics.captured_down.saturating_add(1);
                             }
-                            std::collections::btree_map::Entry::Occupied(mut entry) => {
-                                if matches!(control, InputControl::Key(_)) {
-                                    entry.get_mut().runtime_observed_at =
-                                        entry.get().runtime_observed_at.max(observed_at);
-                                }
+                            std::collections::btree_map::Entry::Occupied(_) => {
                                 self.diagnostics.duplicate_down =
                                     self.diagnostics.duplicate_down.saturating_add(1);
                             }

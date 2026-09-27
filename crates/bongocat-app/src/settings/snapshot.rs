@@ -204,7 +204,6 @@ pub(super) fn snapshot(
         command_shortcuts_enabled: application.config().shortcuts.commands_enabled,
         behavior_shortcuts_enabled: application.config().shortcuts.model_behaviors_enabled,
         maximum_fps: runtime.maximum_fps,
-        release_fallback_timeout_ms: runtime.release_fallback_timeout_ms,
         random_behavior: SettingsRandomBehavior {
             mode: random_behavior_mode_from_runtime(runtime.random_behavior_settings.mode),
             interval_seconds: runtime.random_behavior_settings.interval_seconds,

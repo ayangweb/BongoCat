@@ -20,9 +20,6 @@
     "maximum_fps": 60
   },
   "input": {
-    "keyboard": {
-      "release_fallback_timeout_ms": 500
-    },
     "gamepad": {
       "stick_dead_zone": 0.15,
       "trigger_dead_zone": 0.0

@@ -1,9 +1,6 @@
 //! The pressed-key set the runtime keeps, and the policy that keeps it honest.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    time::Duration,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use bongocat_input::{
     GamepadButton, GamepadConnection, HandSide, InputBindings, InputControl, InputDiagnostics,

@@ -48,7 +48,6 @@ pub struct SettingsSnapshot {
     pub command_shortcuts_enabled: bool,
     pub behavior_shortcuts_enabled: bool,
     pub maximum_fps: u16,
-    pub release_fallback_timeout_ms: u32,
     pub random_behavior: SettingsRandomBehavior,
     pub model_settings: SettingsModelSettings,
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,

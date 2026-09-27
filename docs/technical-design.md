@@ -513,10 +513,10 @@ Windows 的 `WM_QUERYENDSESSION` 与已确认的 `WM_ENDSESSION` 只记录系统
 GPUI owner 在下一帧进入既有 shutdown coordinator，Win32 callback 不阻塞或析构 runtime/GPU 资源。
 
 该方案不承诺安全桌面交付每个释放事件，而是保证丢事件不会产生永久卡键。
-`input.keyboard.release_fallback_timeout_ms` 只对 captured keyboard control 生效：runtime 以自身可注入的
-单调时钟记录 down/repeat 的观察时刻，repeat 刷新期限，不比较平台 input service 的事件时间戳；
-`0` 禁用，非零值到期时只释放键盘，不释放鼠标或手柄。该路径使用独立匿名计数，始终只是可靠
-`KeyUp`、状态校正和生命周期 `Reset` 之后的最后保险，不是正常输入语义。
+清除一个已按下 control 的路径是且只有三条：可靠 `KeyUp`、系统状态校正和生命周期 `Reset`。
+经过的时间不构成释放：用户仍按住的按键与丢失的松开事件在时长上无法区分，用时长区分会把一帧
+变慢变成一个猫不再相信的按键。因此没有按键释放超时配置，runtime 也不维护基于单调时钟的按键
+期限或与之相关的匿名计数。
 
 Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员/非管理员进程、睡眠唤醒、多键连按和队列压力。
 

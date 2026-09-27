@@ -3795,6 +3795,9 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       job 通过；Windows workspace job `101203309507` 与 macOS job `101203309682` 均通过完整
       workspace、release 产品 lifecycle 和设置窗口 AX/UIA smoke，Windows formal missing-release
       recovery 也以独立 reconcile 路径通过。
+    - 状态（2026-09-27，历史）：该决策已被第 115 项 `P2-REMOVE-KEY-RELEASE-FALLBACK` 推翻。
+      维护者要求去掉按键释放超时配置项及全部兜底释放路径；经过的时间不构成释放，捕获按键的
+      清除只由可靠 `KeyUp`、状态校正和生命周期 `Reset` 决定。此行只保留当时状态。
 
 64. [x] `P6-REMOVE-STARTUP-CONFIG-FIELD`：从当前 v1 配置移除未被产品消费的登录启动布尔值。
     - 依赖：ADR-0013、正式 startup-item platform snapshot/command、`next` 首版 schema 边界。
@@ -5333,6 +5336,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       分组标题**——它只有一个设置项，标题会和项标签重复）；`settings.overlay.motion_audio.label`
       从"模型窗口"组移入 Interaction 页的"模型"分组。`settings.overlay.release_fallback_timeout.label`
       的**分组没动**（本来就在输入组里），只把键命名空间改成 `settings.input.*`。
+      （按键释放超时这一项已被第 115 项 `P2-REMOVE-KEY-RELEASE-FALLBACK` 移除，「键盘」分组现在
+      只剩「忽略键盘输入」，上面的计数只描述当时状态。）
       另外**两处"同一个键被用两遍以上"的清理**（2026-09-20，维护者决定"去掉分组标题"）：
       ① Application 页第一个分组——组标题与它唯一那个设置项的标签都是 `settings.runtime.title`；
       ② Shortcuts 页——页面标题、分组标题、设置项标签**三处**都是 `navigation.shortcuts.title`。
@@ -6488,6 +6493,37 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
        800×600 下 macOS Retina 的设置页排版目视检查，以及长时间切换 soak。
      - 已知取舍：Dock 图标是进程级激活策略，不存在逐窗口状态，所以没有「窗口不存在时保留
        期望值」的分支——`ProductCoordinator` 仍记录最后一次成功应用的值，供诊断读取。
+
+115. [x] `P2-REMOVE-KEY-RELEASE-FALLBACK`：从当前 v1 配置移除按键释放兜底超时及其全部路径。
+     - 依赖：ADR-0004、ADR-0067、当前 v1 `input.keyboard.release_fallback_timeout_ms` 边界和
+       issue #47 的输入可靠性结论。
+     - 退出条件：Rust config、JSON Schema、全部共享 fixture 与 config-store spike 不再序列化或
+       接受 `input.keyboard.release_fallback_timeout_ms`，`input` 只剩 `gamepad`；runtime 不再
+       有按键期限、到期释放、单键观察时刻或 `fallback_release` 计数；`RuntimeCommand` /
+       `RuntimeSnapshot` / `RuntimeRenderErrorCode`、settings command/snapshot/protocol、Application
+       命令与启动恢复、GPUI Kit 数字控件、debouncer、双语文案和诊断导出字段同步移除；不增加
+       migration、alias 或旧数据 fallback；共享 schema/fixture、定向测试和完整 workspace 门禁通过。
+     - 当前实现（2026-09-27）：删除 `KeyboardInputConfig` 与 `InputState::expire_keyboard_fallback`，
+       `PressedRecord::runtime_observed_at` 与 `apply_observed` 的时钟入参随之消失，`apply` 成为
+       唯一入口；`InputDiagnostics::fallback_release` 及其在 settings 投影和诊断导出中的两个下游
+       字段一并删除。runtime 的两个 `expire_keyboard_fallback` 调用点、worker 的发布 shim 与
+       `SetReleaseFallbackTimeout` 端到端链路移除。中英文案与 `key_release_timeout.*` 删除后
+       「键盘」分组只保留「忽略键盘输入」开关，37 份共享 fixture 与 JSON Schema、contract、
+       Technical Design、ADR-0004 与 ADR-0067 同步。
+     - 验证（2026-09-27，本机 macOS）：`cargo fmt --all -- --check`、
+       `cargo clippy --workspace --all-targets -- -D warnings`（排除既有失败的 bin test 目标）、
+       `cargo test --workspace --exclude bongocat-app` 加 `cargo test -p bongocat-app --lib`、
+       `cargo check --workspace --release`、`just schema`、`tools/validate-fixtures.py` 与
+       `tools/validate-locales.py` 均通过。runtime 新增 `a_held_key_survives_any_amount_of_runtime_time`
+       用可注入时钟钉住新契约：经过的时间不释放按键；`repeat.rs` 保留重复 down 边沿计数与
+       unmatched release 的覆盖。
+     - 未运行：双平台实机 smoke 与 Windows `x86_64-pc-windows-msvc` CI（本次只删除一条释放路径，
+       剩余三条路径的实机行为未变）、macOS Input Monitoring 权限恢复实机确认。
+     - 已知风险：若平台在某条路径上确实永远不交付释放事件，纠正只能来自状态校正或生命周期
+       `Reset`，不再有时间兜底；实机锁屏、睡眠、权限变化与设备拔插仍必须按 ADR-0004 的
+       Verification 逐项确认。
+     - 状态（2026-09-27，历史）：本项推翻了第 63 项 `P2-KEY-RELEASE-FALLBACK` 的决策。
+       维护者要求去掉该项及其兜底释放路径；该行只保留当时状态。
 
 ## 13. 待决策清单
 

@@ -17,7 +17,6 @@ use bongocat_input::GamepadAxisSettings;
 use bongocat_runtime::{
     ModelSettings, OverlaySettings, RandomBehaviorSettings, RuntimeCommand, RuntimeCommandFailure,
     RuntimeRenderErrorCode, RuntimeSnapshot, maximum_fps_is_valid,
-    release_fallback_timeout_is_valid,
 };
 
 impl Application {
@@ -221,42 +220,6 @@ impl Application {
         let client = self.runtime.client();
         let sequence = client
             .send(RuntimeCommand::SetMaximumFps(maximum_fps))
-            .map_err(ApplicationError::RuntimeCommand)?;
-        let snapshot = client
-            .wait_for_command(sequence, RUNTIME_TIMEOUT)
-            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
-        if let Some(failure) = snapshot
-            .last_command_failure
-            .filter(|failure| failure.sequence == sequence)
-        {
-            return Err(ApplicationError::RuntimeCommandFailed(failure));
-        }
-        self.config = next_config;
-        self.config_revision = Some(next_revision);
-        Ok(snapshot)
-    }
-
-    pub fn set_release_fallback_timeout(
-        &mut self,
-        timeout_ms: u32,
-    ) -> Result<RuntimeSnapshot, ApplicationError> {
-        if !release_fallback_timeout_is_valid(timeout_ms) {
-            return Err(ApplicationError::RuntimeCommandFailed(
-                RuntimeCommandFailure {
-                    sequence: 0,
-                    code: RuntimeRenderErrorCode::ReleaseFallbackTimeoutInvalid,
-                },
-            ));
-        }
-        let mut next_config = self.config.clone();
-        next_config.input.keyboard.release_fallback_timeout_ms = timeout_ms;
-        let next_revision = self
-            .config_store
-            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
-
-        let client = self.runtime.client();
-        let sequence = client
-            .send(RuntimeCommand::SetReleaseFallbackTimeout(timeout_ms))
             .map_err(ApplicationError::RuntimeCommand)?;
         let snapshot = client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)
