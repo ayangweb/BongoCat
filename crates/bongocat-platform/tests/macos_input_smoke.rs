@@ -139,6 +139,82 @@ fn synthetic_cursor_reaches_runtime_latest_value_snapshot() {
     assert_eq!(stopped.cursor.transport.pending, 0);
 }
 
+/// Caps Lock is a latch, so the platform delivers one `FlagsChanged` per
+/// physical tap and nothing at all for the release. This posts a press and
+/// deliberately never posts a matching release: the runtime must still end up
+/// released, because the adapter synthesizes the one key-up edge macOS will
+/// not send. This is the regression that a press/release pair test could not
+/// express, and the one that previously let a stuck Caps Lock ship.
+#[test]
+#[ignore = "requires macOS Input Monitoring and Accessibility permissions"]
+fn caps_lock_releases_itself_because_the_platform_never_sends_a_key_up() {
+    let runtime = RuntimeOwner::start(true, 64);
+    let client = runtime.client();
+    client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+    // HID usage 0x39 is Caps Lock; bind it to the right hand so the model
+    // snapshot is the observable signal.
+    let caps_lock = PhysicalKey::from_hid_usage(0x39);
+    let bindings = InputBindings::new(BTreeMap::from([(caps_lock, HandSide::Right)]));
+    let binding_sequence = client
+        .send(RuntimeCommand::SetInputBindings(Arc::new(bindings)))
+        .expect("binding command");
+    client
+        .wait_for_command(binding_sequence, TIMEOUT)
+        .expect("bindings applied");
+
+    let service = MacInputService::start_with_diagnostics(
+        runtime.input_producer(),
+        runtime.cursor_producer(),
+        runtime.gamepad_axis_producer(),
+        runtime.platform_input_diagnostics_producer(),
+    )
+    .expect("input service");
+
+    let source = CGEventSource::new(CGEventSourceStateID::Private).expect("event source");
+    let press = CGEvent::new_keyboard_event(Some(&source), 57, true).expect("caps lock press");
+    CGEvent::set_type(Some(&press), CGEventType::FlagsChanged);
+    CGEvent::set_flags(Some(&press), CGEventFlags::MaskAlphaShift);
+
+    let press_sequence = client
+        .snapshot()
+        .input
+        .last_input_sequence
+        .unwrap_or(0)
+        .saturating_add(1);
+    // One event only. No release is ever posted, exactly like the real device.
+    CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&press));
+
+    let pressed = client
+        .wait_for_input_sequence(press_sequence, TIMEOUT)
+        .expect("caps lock press reached runtime");
+    assert!(
+        pressed.model_input.right_hand_down,
+        "the latch toggle must register as a press"
+    );
+
+    // The next input the runtime sees can only be the adapter's synthesized
+    // release, because the platform has nothing else left to send.
+    let release_sequence = pressed
+        .input
+        .last_input_sequence
+        .expect("press input sequence")
+        .saturating_add(1);
+    let released = client
+        .wait_for_input_sequence(release_sequence, TIMEOUT)
+        .expect("caps lock was released without a platform key up");
+    assert!(
+        !released.model_input.right_hand_down,
+        "caps lock must not stay pressed on a latch the platform never reports released"
+    );
+
+    let diagnostics = service.stop().expect("input service stop");
+    assert_eq!(diagnostics.callback_panics, 0);
+    assert_eq!(diagnostics.capture_queue_overflows, 0);
+    assert_eq!(diagnostics.runtime_queue_overflows, 0);
+    let stopped = runtime.shutdown(TIMEOUT).expect("runtime stop");
+    assert!(!stopped.model_input.right_hand_down);
+}
+
 #[test]
 #[ignore = "requires macOS Input Monitoring and Accessibility permissions"]
 fn runtime_stop_cleans_up_tap_before_a_second_service_starts() {

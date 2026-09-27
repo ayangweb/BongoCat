@@ -340,10 +340,24 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     按住时也返回 false，导致周期校正误杀 ShiftRight/AltRight。对照 rdev 确认其能正确捕获
     右 Shift 释放的根因是 tap 创建在 `kCGHIDEventTap` + `kCGHeadInsertEventTap`：同机 HID
     head 位置实测收到全部修饰键的完整 press/release 对。tap 位置已切换为 HID head，
-    `FlagsChanged` 方向采用设备位跳变 → 家族位跳变 → 前一边沿交替的 decoder（CapsLock 固定
-    走交替）；周期校正对右侧键码追加家族主键码（55/56/58/59）查询，强制释放时同步清除
-    decoder 记录；冒烟测试合成事件改投 HID 层。单元测试覆盖实测序列；修复后的物理键盘
-    全键矩阵仍待实机验证。
+    `FlagsChanged` 方向采用设备位跳变 → 家族位跳变 → 前一边沿交替的 decoder；周期校正对右侧键码
+    追加家族主键码（55/56/58/59）查询，强制释放时同步清除 decoder 记录；冒烟测试合成事件改投
+    HID 层。单元测试覆盖实测序列；修复后的物理键盘全键矩阵仍待实机验证。
+  - 状态（2026-09-28）：实机探针（macOS 27.0 / arm64，与生产同款 `kCGHIDEventTap` head
+    listen-only tap）推翻了上一条里「CapsLock 固定走交替」的前提。实测 **N 次物理点按恰好投递
+    N 个 `FlagsChanged`，物理松开不投递任何事件**；`AlphaShift` 是驱动在按下时翻转的锁存位，
+    Apple 的无状态 Caps Lock 掩码 `0x01000000` / `0x00000080` 在事件 flags 中恒为 0。锁存键没有
+    `kCGEventKeyUp`，交替回退没有第二个事件可交替，decoder 会把每次点按都判成按下且永不释放；
+    `CGEventSourceKeyState(57)` 读的也是锁存，周期校正同样无法替代。已修复：CapsLock 单独处理，
+    `FlagsChanged` 到达即成为按下候选，候选存活固定 `100 ms` 后由 adapter 合成释放边沿，并用
+    `set_pressed(57, false)` 重新锚定 decoder 使下一次点按重新解码为按下。该时长是按键行为本身，
+    不是可配置项，也不是已移除的 `release_fallback_timeout_ms`；其余修饰键一律不纳入。
+    原 `caps_lock_decodes_by_alternation_even_when_the_latch_hides_the_edge` 单元测试断言的是
+    每点按一 press/release 对，该序列在 macOS 27.0 不存在（测试全绿而线上卡键），已按实测改写并
+    补 4 项回归（1:1 事件比、时长不变量、特殊化不外溢、复位取消待释放）。端到端回归
+    `caps_lock_releases_itself_because_the_platform_never_sends_a_key_up` 已加入
+    `macos_input_smoke.rs`，只投递按下、断言 runtime 自行释放；本机 cargo test 二进制未获
+    Input Monitoring 授权（既有 shift smoke 同样无法运行），**该实机闭环仍待补**。
 - [x] 连续 start/stop/restart 输入服务 100 次，无资源泄漏。
   - 验收证据（2026-08-29）：release probe 现在严格校验每个 cycle 的 enabled 恢复、callback panic、queue overflow/closed event 和 NSWorkspace observer 成对注销，任一失败均非零退出。`leaks --atExit` 的 100-cycle 报告 `0 leaks for 0 total leaked bytes`、physical footprint `5232K`，`NSZombieEnabled=YES` 另完成 100/100；两次均为 `queue_overflows=0 callback_panics=0 clean_shutdown=true`，且每个 tap worker 都已 join。timeout/user-disable 各 20 次恢复已另行通过；权限故障循环留在 TCC 矩阵，不阻塞本 restart owner 子项。
 - [x] 记录 monio 对照结果，但不引入生产依赖；`docs/phase-0/monio-comparison.md` 基于 commit `d1766e0dcd20dea0435be16cd80adaa749b86e30` 记录 Raw Input、channel、reconciliation、Reset、callback 和许可证差异。
@@ -956,6 +970,12 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     决定性差异，tap 切换到 HID head 后右 Shift 释放事件完整到达；decoder 改为设备位跳变 →
     家族位跳变 → 前一边沿交替，校正追加家族主键码查询，新增 7 项 decoder 单元测试
     覆盖实测序列，platform 测试通过。
+  - 验收证据（2026-09-28）：后续实机探针（macOS 27.0 / arm64）确认上一条的 CapsLock 修复方向
+    选错：该键是锁存键，N 次点按只有 N 个 `FlagsChanged`、松开无事件，交替回退无从交替，
+    `CGEventSourceKeyState` 读的也是锁存，因此「靠交替 + 周期校正」不可能收敛。现改为单独处理：
+    固定 `100 ms` 候选窗口后由 adapter 合成释放边沿并重新锚定 decoder，不进 schema、不暴露设置。
+    4 项单元回归覆盖事件比、时长不变量、特殊化不外溢与复位取消；端到端 smoke 已写但受本机
+    Input Monitoring 授权限制尚未实机跑通。
 - [ ] 处理 tap timeout、user disable、权限变化和自动重建。
   - 状态（2026-09-01）：正式服务识别 timeout/user-disable 后先停止 callback 接收、丢弃未消费
     capture、向 runtime 发送 `ServiceRestart` Reset，再从同一稳定 callback context 创建并启用新的

@@ -177,6 +177,27 @@ const CAPTURE_QUEUE_CAPACITY: usize = 256;
 const RUN_LOOP_SLICE: Duration = Duration::from_millis(10);
 const RECONCILIATION_INTERVAL: Duration = Duration::from_millis(250);
 
+/// How long the Caps Lock trigger stays down before the platform releases it.
+///
+/// Caps Lock is the one control whose physical key-up this platform cannot
+/// observe. Measured on macOS 27.0 arm64 with a listen-only tap at
+/// `kCGHIDEventTap` + `kCGHeadInsertEventTap`: N physical taps deliver exactly N
+/// `FlagsChanged` events, and the release delivers nothing at all — the
+/// `AlphaShift` bit is the *latch*, which the driver flips on the press, and
+/// Apple's stateless caps masks (`0x01000000` / `0x00000080`) are never set in
+/// the event flags. There is no `kCGEventKeyUp` for a latch, so no amount of
+/// decoding recovers a physical release.
+///
+/// The product's documented behavior for this key is a brief trigger
+/// (`docs/phase-0/behavior-inventory.md`), so the candidate is released on this
+/// fixed window instead of inventing an edge the platform never sent. This is
+/// deliberately not configurable and is deliberately *not* the retired
+/// `input.keyboard.release_fallback_timeout_ms`: that setting timed out keys
+/// the user was still holding, which is a real release question. This key has
+/// no hold to preserve — its own release is unreportable — so the window is a
+/// fixed part of the Caps Lock behavior, matching the pre-refactor product.
+const CAPS_LOCK_AUTO_RELEASE: Duration = Duration::from_millis(100);
+
 /// Returns the vertical chrome AppKit adds above a standard titled content rectangle.
 pub fn window_content_top_inset() -> f32 {
     let Some(marker) = MainThreadMarker::new() else {
@@ -679,6 +700,9 @@ fn run_input_worker(
     let mut candidates = BTreeMap::<InputControl, SystemControl>::new();
     let mut missing_confirmations = BTreeMap::<InputControl, u8>::new();
     let mut next_reconciliation = Instant::now() + RECONCILIATION_INTERVAL;
+    // Armed when a Caps Lock press becomes a candidate, cleared once the
+    // candidate is gone for any reason.
+    let mut caps_lock_trigger = CapsLockTrigger::default();
     let mut recovery_pending = false;
     let mut tap_restart_pending = false;
 
@@ -842,6 +866,30 @@ fn run_input_worker(
             forward_latest_cursor(&latest_cursor, &cursor_producer, started, &mut diagnostics)
         {
             break 'service Err(error);
+        }
+
+        // Arm or disarm the Caps Lock brief-trigger window from the candidate
+        // set, the single source of truth for whether the key is down now.
+        caps_lock_trigger.sync(&candidates, Instant::now());
+
+        if caps_lock_trigger.take_due(Instant::now()) {
+            match release_caps_lock_trigger(
+                &producer,
+                &mut candidates,
+                &mut missing_confirmations,
+                &modifier_decoder,
+                monotonic(started),
+            ) {
+                Ok(()) => {}
+                Err(InputPublishError::QueueFull(_)) => {
+                    diagnostics.runtime_queue_overflows =
+                        diagnostics.runtime_queue_overflows.saturating_add(1);
+                    recovery_pending = true;
+                }
+                Err(InputPublishError::RuntimeStopped(_)) => {
+                    break 'service Err(PlatformInputError::RuntimeStopped);
+                }
+            }
         }
 
         if Instant::now() >= next_reconciliation && !candidates.is_empty() {
@@ -1294,6 +1342,82 @@ fn publish_final_reset(
     false
 }
 
+/// Schedules the single release edge macOS will not send for Caps Lock.
+///
+/// The window is always re-derived from the candidate set, which is the one
+/// source of truth for "is this key down right now". That makes two failure
+/// modes unrepresentable: a deadline cannot outlive its key (so a stale timer
+/// can never release something else), and a key that is down cannot go
+/// unarmed (so the trigger cannot leak). `take_due` consumes the deadline, so
+/// one deadline yields at most one release.
+#[derive(Default)]
+struct CapsLockTrigger {
+    due: Option<Instant>,
+}
+
+impl CapsLockTrigger {
+    /// Arms the window on the first observation of a Caps Lock candidate and
+    /// disarms it the moment the candidate is gone for any reason.
+    fn sync(&mut self, candidates: &BTreeMap<InputControl, SystemControl>, now: Instant) {
+        let held = caps_lock_control().is_some_and(|control| candidates.contains_key(&control));
+        if !held {
+            self.due = None;
+        } else {
+            self.due.get_or_insert(now + CAPS_LOCK_AUTO_RELEASE);
+        }
+    }
+
+    fn take_due(&mut self, now: Instant) -> bool {
+        if self.due.is_some_and(|due| now >= due) {
+            self.due = None;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// Releases the Caps Lock candidate once its brief-trigger window has elapsed.
+///
+/// This is the one key-up edge the platform cannot deliver, so the adapter
+/// synthesizes it here rather than leaving the candidate down forever. The
+/// decoder is re-anchored to "not pressed" as part of the same step, so the
+/// next latch toggle decodes as a fresh press instead of continuing the
+/// alternation from a state the platform never reported.
+///
+/// `InputSource::Capture` is used because the edge travels the capture
+/// channel, in order, immediately after the `Down` that armed it — the runtime
+/// needs no new source to accept it. It does mean this one release is counted
+/// as a captured release in the runtime diagnostics, which is a known and
+/// accepted imprecision; the platform-side counters do not claim it.
+fn release_caps_lock_trigger(
+    producer: &InputProducer,
+    candidates: &mut BTreeMap<InputControl, SystemControl>,
+    missing_confirmations: &mut BTreeMap<InputControl, u8>,
+    modifier_decoder: &Mutex<ModifierDecoder>,
+    at: MonotonicMillis,
+) -> Result<(), InputPublishError> {
+    let Some(control) = caps_lock_control() else {
+        return Ok(());
+    };
+    if !candidates.contains_key(&control) {
+        return Ok(());
+    }
+    producer.publish(InputEvent::Edge {
+        control,
+        edge: InputEdge::Up,
+        source: InputSource::Capture,
+        at,
+    })?;
+    candidates.remove(&control);
+    missing_confirmations.remove(&control);
+    modifier_decoder
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .set_pressed(CAPS_LOCK_KEY_CODE, false);
+    Ok(())
+}
+
 fn drain_capture_queue(receiver: &Receiver<CapturedEvent>) -> u64 {
     let mut discarded = 0_u64;
     loop {
@@ -1360,6 +1484,13 @@ mod modifier_device_flags {
 
 const CAPS_LOCK_KEY_CODE: u16 = 57;
 
+/// The `InputControl` for Caps Lock — the one control this platform must
+/// release on a timer because the event stream cannot express its key-up.
+/// See [`CAPS_LOCK_AUTO_RELEASE`].
+fn caps_lock_control() -> Option<InputControl> {
+    map_key_code(CAPS_LOCK_KEY_CODE).map(InputControl::Key)
+}
+
 fn modifier_device_bit(key_code: u16) -> u64 {
     match key_code {
         59 => modifier_device_flags::LEFT_CONTROL,
@@ -1400,6 +1531,14 @@ fn modifier_family_bit(key_code: u16) -> u64 {
 ///    Right Shift release events and re-delivers presses with identical
 ///    flags, and CapsLock toggles a latch instead of reporting the physical
 ///    edge, so no flag transition is available for those events.
+///
+/// Rule 3 is sound for Right Shift because that key does deliver a release
+/// event. It is *not* sound for Caps Lock: measured on macOS 27.0 arm64 at the
+/// HID head, N physical taps deliver exactly N `FlagsChanged` events and the
+/// release delivers nothing, so there is no second event for the alternation
+/// to alternate with. The decoder is therefore only the "this latch moved"
+/// detector for Caps Lock, and the platform releases that candidate on
+/// [`CAPS_LOCK_AUTO_RELEASE`] and re-anchors the decoder with `set_pressed`.
 #[derive(Default)]
 struct ModifierDecoder {
     last_flags: u64,
@@ -1894,16 +2033,107 @@ mod tests {
         }
     }
 
+    /// Caps Lock is a latch, so the measured stream is one `FlagsChanged` per
+    /// physical tap and nothing at all for the release. The alternation
+    /// fallback therefore decodes *every* tap as a press, which is exactly why
+    /// the platform releases the candidate on [`CAPS_LOCK_AUTO_RELEASE`]
+    /// instead of waiting for an edge that never arrives.
+    ///
+    /// The previous version of this test asserted a press/release pair per tap.
+    /// That sequence does not exist on macOS 27.0, so the test passed while the
+    /// product stayed stuck. Keep it aligned with the measurement.
     #[test]
-    fn caps_lock_decodes_by_alternation_even_when_the_latch_hides_the_edge() {
+    fn caps_lock_decodes_one_press_per_tap_and_no_release_event_exists() {
         let mut decoder = ModifierDecoder::default();
-        // Latch off: press sets AlphaShift, release clears it.
+        // Latch off: the tap sets AlphaShift.
+        assert_eq!(decoder.decode(57, 0x0001_0100), Some(InputEdge::Down));
+        // Latch on: the next tap clears it. No event was delivered in between.
+        assert_eq!(decoder.decode(57, 0x0000_0100), Some(InputEdge::Up));
+        // Latch off again.
         assert_eq!(decoder.decode(57, 0x0001_0100), Some(InputEdge::Down));
         assert_eq!(decoder.decode(57, 0x0000_0100), Some(InputEdge::Up));
-        // Latch on: both events carry a cleared AlphaShift bit, yet the press
-        // must still decode as Down.
-        assert_eq!(decoder.decode(57, 0x0000_0100), Some(InputEdge::Down));
-        assert_eq!(decoder.decode(57, 0x0000_0100), Some(InputEdge::Up));
+
+        // The platform's timed release re-anchors the decoder, so the next tap
+        // is a press again even though the alternation state was left mid-pair.
+        decoder.set_pressed(57, false);
+        assert_eq!(decoder.decode(57, 0x0001_0100), Some(InputEdge::Down));
+    }
+
+    #[test]
+    fn caps_lock_auto_release_window_is_a_brief_trigger_not_a_hold() {
+        // The window is part of the Caps Lock behavior, matching the documented
+        // pre-refactor product, and must stay far below any plausible hold so
+        // a held Caps Lock still reads as a brief trigger. It is also not the
+        // retired per-key release fallback, which had to be generous.
+        assert_eq!(CAPS_LOCK_AUTO_RELEASE, Duration::from_millis(100));
+        assert!(CAPS_LOCK_AUTO_RELEASE < RECONCILIATION_INTERVAL);
+    }
+
+    #[test]
+    fn only_caps_lock_needs_the_timed_release() {
+        // Every other modifier resolves its own direction from a device bit, so
+        // the special case must not widen to the rest of the modifier family.
+        let caps_lock = caps_lock_control().expect("caps lock control");
+        for key_code in [54, 55, 56, 58, 59, 60, 61, 62, 63] {
+            let control = map_key_code(key_code)
+                .map(InputControl::Key)
+                .expect("mapped modifier");
+            assert_ne!(
+                control, caps_lock,
+                "key code {key_code} must not be special-cased"
+            );
+        }
+        assert_eq!(caps_lock_control(), map_key_code(57).map(InputControl::Key));
+    }
+
+    #[test]
+    fn the_trigger_window_arms_once_and_releases_exactly_once() {
+        let control = caps_lock_control().expect("caps lock control");
+        let start = Instant::now();
+        let mut trigger = CapsLockTrigger::default();
+
+        // Nothing is held, so nothing is armed and nothing can fire.
+        trigger.sync(&BTreeMap::new(), start);
+        assert!(!trigger.take_due(start + CAPS_LOCK_AUTO_RELEASE + Duration::from_secs(1)));
+
+        // The press arms the window. Repeated syncs must not extend it, or a
+        // busy loop would postpone the release forever.
+        let mut candidates = BTreeMap::from([(control, SystemControl::Key(CAPS_LOCK_KEY_CODE))]);
+        trigger.sync(&candidates, start);
+        assert!(!trigger.take_due(start + CAPS_LOCK_AUTO_RELEASE - Duration::from_millis(1)));
+        trigger.sync(&candidates, start + CAPS_LOCK_AUTO_RELEASE / 2);
+        assert!(!trigger.take_due(start + CAPS_LOCK_AUTO_RELEASE - Duration::from_millis(1)));
+
+        // The window elapses exactly once.
+        assert!(trigger.take_due(start + CAPS_LOCK_AUTO_RELEASE));
+        assert!(!trigger.take_due(start + CAPS_LOCK_AUTO_RELEASE));
+
+        // A second tap arms a fresh window.
+        trigger.sync(&candidates, start + Duration::from_secs(1));
+        assert!(trigger.take_due(start + Duration::from_secs(1) + CAPS_LOCK_AUTO_RELEASE));
+
+        // A key released by any other route disarms the window, so a stale
+        // deadline can never release a key that is no longer down.
+        candidates.clear();
+        trigger.sync(&candidates, start + Duration::from_secs(2));
+        assert!(!trigger.take_due(start + Duration::from_secs(3)));
+    }
+
+    #[test]
+    fn a_reset_clearing_the_candidate_cancels_the_pending_release() {
+        // The recovery paths clear `candidates` without publishing an edge, so
+        // the trigger has to disarm from the candidate set alone.
+        let control = caps_lock_control().expect("caps lock control");
+        let start = Instant::now();
+        let mut trigger = CapsLockTrigger::default();
+        let candidates = BTreeMap::from([(control, SystemControl::Key(CAPS_LOCK_KEY_CODE))]);
+
+        trigger.sync(&candidates, start);
+        trigger.sync(&BTreeMap::new(), start + Duration::from_millis(1));
+        assert!(
+            !trigger.take_due(start + CAPS_LOCK_AUTO_RELEASE),
+            "a reset must not leave a release armed for a key it already cleared"
+        );
     }
 
     #[test]
