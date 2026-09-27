@@ -517,10 +517,10 @@ fn behavior_shortcuts_command_preserves_typed_state() {
 }
 
 #[test]
-fn random_behavior_command_preserves_switch_and_interval() {
+fn random_behavior_command_preserves_mode_and_interval() {
     let (client, endpoint) = SettingsClient::bounded(1);
     let expected = SettingsRandomBehavior {
-        enabled: true,
+        mode: SettingsRandomBehaviorMode::Motions,
         interval_seconds: 12,
     };
     let worker = thread::spawn(move || {

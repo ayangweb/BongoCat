@@ -77,7 +77,11 @@ impl SettingsView {
         for key in [
             "settings.models.behavior.mirror_model.label",
             "settings.models.behavior.motion_audio.label",
-            "settings.models.behavior.random_behavior_enabled.label",
+            "settings.models.behavior.random_behavior_mode.label",
+            "settings.models.behavior.random_behavior_mode.options.off",
+            "settings.models.behavior.random_behavior_mode.options.expressions",
+            "settings.models.behavior.random_behavior_mode.options.motions",
+            "settings.models.behavior.random_behavior_mode.options.motions_and_expressions",
             "settings.models.behavior.random_behavior_interval.label",
             "settings.input_interaction.mouse.title",
             "settings.input_interaction.mouse.ignore_mouse_input.label",

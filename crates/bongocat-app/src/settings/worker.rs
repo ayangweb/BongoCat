@@ -372,7 +372,7 @@ pub(super) fn run_service(
                 reply,
             } => {
                 let runtime_settings = RandomBehaviorSettings {
-                    enabled: settings.enabled,
+                    mode: random_behavior_mode_to_runtime_settings(settings.mode),
                     interval_seconds: settings.interval_seconds,
                 };
                 let result = check_revision(&application, expected_config_revision)

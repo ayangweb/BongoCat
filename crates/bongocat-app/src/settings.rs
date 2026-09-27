@@ -18,7 +18,8 @@ use crate::model_identity::{
 use crate::{
     Application, ApplicationError, ApplicationLogCode, ApplicationLogDiagnostics,
     ApplicationLogEvent, ApplicationMainThreadSignals, BUILD_ENVIRONMENT, CoreLogDiagnostics,
-    PRODUCT_VERSION, settings_logging_from_config,
+    PRODUCT_VERSION, random_behavior_mode_from_runtime, random_behavior_mode_to_runtime_settings,
+    settings_logging_from_config,
 };
 use bongocat_config::{
     BuildEnvironment, ConfigError, ConfigWriteFailureReason, GamepadAutoSwitchConfig,

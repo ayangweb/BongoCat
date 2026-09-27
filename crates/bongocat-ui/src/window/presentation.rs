@@ -30,6 +30,43 @@ pub(super) fn logging_level_options(
     SettingsLogLevel::ALL.map(|level| logging_level_display_name(level, display_language))
 }
 
+pub(super) fn random_behavior_mode_display_name(
+    mode: SettingsRandomBehaviorMode,
+    display_language: SettingsLanguage,
+) -> &'static str {
+    let key = match mode {
+        SettingsRandomBehaviorMode::Off => {
+            "settings.models.behavior.random_behavior_mode.options.off"
+        }
+        SettingsRandomBehaviorMode::Expressions => {
+            "settings.models.behavior.random_behavior_mode.options.expressions"
+        }
+        SettingsRandomBehaviorMode::Motions => {
+            "settings.models.behavior.random_behavior_mode.options.motions"
+        }
+        SettingsRandomBehaviorMode::MotionsAndExpressions => {
+            "settings.models.behavior.random_behavior_mode.options.motions_and_expressions"
+        }
+    };
+    bongocat_i18n::text(display_language.catalog_locale(), key)
+}
+
+pub(super) fn random_behavior_mode_from_display_name(
+    name: &str,
+    display_language: SettingsLanguage,
+) -> Option<SettingsRandomBehaviorMode> {
+    SettingsRandomBehaviorMode::ALL
+        .into_iter()
+        .find(|mode| random_behavior_mode_display_name(*mode, display_language) == name)
+}
+
+pub(super) fn random_behavior_mode_options(
+    display_language: SettingsLanguage,
+) -> [&'static str; SettingsRandomBehaviorMode::ALL.len()] {
+    SettingsRandomBehaviorMode::ALL
+        .map(|mode| random_behavior_mode_display_name(mode, display_language))
+}
+
 /// Which gamepad connection state one of the two model targets answers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum GamepadConnectionState {

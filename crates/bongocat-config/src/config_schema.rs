@@ -32,7 +32,7 @@ pub use logging::{LoggingConfig, LoggingLevel};
 pub use model::{
     BuiltInModelMetadata, GamepadAutoSwitchConfig, ImportedModelMetadata,
     MODEL_METADATA_MAXIMUM_ID_BYTES, MODEL_METADATA_MAXIMUM_TITLE_CHARS, ModelConfig,
-    ModelIdentity, ModelInputMode, ModelSource, RandomBehaviorConfig,
+    ModelIdentity, ModelInputMode, ModelSource, RandomBehaviorConfig, RandomBehaviorMode,
 };
 pub use overlay::{MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS, OverlayConfig};
 pub use system::SystemConfig;

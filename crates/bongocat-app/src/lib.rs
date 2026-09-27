@@ -42,7 +42,10 @@ pub use app_log::{
     ApplicationLogLevel, ApplicationPanicHook, CoreLogDiagnostics,
 };
 pub use application::Application;
-pub(crate) use config_projection::settings_logging_from_config;
+pub(crate) use config_projection::{
+    random_behavior_mode_from_runtime, random_behavior_mode_to_runtime_settings,
+    settings_logging_from_config,
+};
 pub use settings::{
     ApplicationSettingsService, SettingsServiceJoinError, StatusIconCapability,
     TaskbarIconCapability,

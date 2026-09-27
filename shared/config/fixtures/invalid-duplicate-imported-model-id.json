@@ -50,7 +50,7 @@
     ],
     "built_in_models": [],
     "random_behavior": {
-      "enabled": false,
+      "mode": "off",
       "interval_seconds": 30
     },
     "gamepad_auto_switch": {

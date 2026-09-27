@@ -18,7 +18,8 @@ pub(crate) use crate::shortcut_config::without_removed_model_targets;
 
 pub(crate) use bongocat_config::{
     ConfigStore, GamepadAutoSwitchConfig, ImportedModelMetadata, Language, ModelIdentity,
-    ModelInputMode, ModelSource, NativeConfig, StorageLayout, Theme as ConfigTheme,
+    ModelInputMode, ModelSource, NativeConfig, RandomBehaviorMode, StorageLayout,
+    Theme as ConfigTheme,
 };
 pub(crate) use bongocat_input::{GamepadAxisSettings, GamepadButton, HandSide, PhysicalKey};
 pub(crate) use bongocat_live2d_render::KeyImageInventory;
@@ -33,7 +34,7 @@ pub(crate) use bongocat_render::{
 pub(crate) use bongocat_runtime::{
     GamepadAxis, GamepadAxisKey, GamepadAxisSample, GamepadButtonKey, InputControl, InputEdge,
     InputEvent, InputSource, ModelSettings, MonotonicMillis, OverlaySettings,
-    RandomBehaviorSettings, RuntimeState,
+    RandomBehaviorMode as RuntimeRandomBehaviorMode, RandomBehaviorSettings, RuntimeState,
 };
 pub(crate) use std::{fs, path::Path, time::Instant};
 pub(crate) use tempfile::tempdir;

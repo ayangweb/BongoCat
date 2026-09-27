@@ -31,21 +31,15 @@
   "model": {
     "mirror": false,
     "mirror_pointer_tracking": false,
-    "play_motion_audio": true,
+    "play_motion_audio": false,
     "ignore_keyboard": false,
     "ignore_gamepad": false,
     "ignore_pointer": false,
     "selected_model": null,
-    "imported_models": [
-      {
-        "id": "cat",
-        "title": "未知模式",
-        "input_mode": "unclassified"
-      }
-    ],
+    "imported_models": [],
     "built_in_models": [],
     "random_behavior": {
-      "mode": "off",
+      "mode": "everything",
       "interval_seconds": 30
     },
     "gamepad_auto_switch": {

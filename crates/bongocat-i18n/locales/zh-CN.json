@@ -391,8 +391,14 @@
         "motion_audio": {
           "label": "播放动作音效"
         },
-        "random_behavior_enabled": {
-          "label": "随机播放动作或表情"
+        "random_behavior_mode": {
+          "label": "随机播放动作或表情",
+          "options": {
+            "off": "关闭",
+            "expressions": "仅表情",
+            "motions": "仅动作",
+            "motions_and_expressions": "表情和动作"
+          }
         },
         "random_behavior_interval": {
           "label": "随机播放动作或表情间隔（秒）"

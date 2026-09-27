@@ -39,7 +39,7 @@
     "imported_models": [],
     "built_in_models": [],
     "random_behavior": {
-      "enabled": true,
+      "mode": "motions_and_expressions",
       "interval_seconds": 3601
     },
     "gamepad_auto_switch": {

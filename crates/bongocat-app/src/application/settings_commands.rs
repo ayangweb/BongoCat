@@ -7,7 +7,8 @@
 
 use super::Application;
 use crate::config_projection::{
-    logging_config_from_settings, persistent_dead_zone, runtime_log_settings,
+    logging_config_from_settings, persistent_dead_zone, random_behavior_mode_to_config,
+    runtime_log_settings,
 };
 use crate::shortcut_config::{active_shortcuts, shortcut_config_from_settings};
 use crate::{ApplicationError, RUNTIME_TIMEOUT};
@@ -273,7 +274,7 @@ impl Application {
             ));
         }
         let mut next_config = self.config.clone();
-        next_config.model.random_behavior.enabled = settings.enabled;
+        next_config.model.random_behavior.mode = random_behavior_mode_to_config(settings.mode);
         next_config.model.random_behavior.interval_seconds = settings.interval_seconds;
         next_config.validate()?;
         let next_revision = self

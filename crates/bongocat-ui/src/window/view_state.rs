@@ -99,6 +99,21 @@ impl SettingsView {
                 cx,
             )
         });
+        self.random_behavior_mode_select.update(cx, |select, cx| {
+            select.set_items(
+                SearchableVec::new(random_behavior_mode_options(snapshot.resolved_language)),
+                window,
+                cx,
+            );
+            select.set_selected_value(
+                &random_behavior_mode_display_name(
+                    snapshot.random_behavior.mode,
+                    snapshot.resolved_language,
+                ),
+                window,
+                cx,
+            )
+        });
         for (state, select) in [
             (
                 GamepadConnectionState::Connected,
@@ -170,6 +185,17 @@ impl SettingsView {
         let logging_level_select = cx.new(|cx| {
             SelectState::new(
                 SearchableVec::new(logging_level_options(seed.language)),
+                Some(IndexPath::new(0)),
+                window,
+                cx,
+            )
+        });
+        // The mode dropdown opens on the first catalogue entry, which is the
+        // product default: a fresh configuration has never had its mode chosen,
+        // so the first frame already shows the state the configuration is in.
+        let random_behavior_mode_select = cx.new(|cx| {
+            SelectState::new(
+                SearchableVec::new(random_behavior_mode_options(seed.language)),
                 Some(IndexPath::new(0)),
                 window,
                 cx,
@@ -250,6 +276,22 @@ impl SettingsView {
             },
         )
         .detach();
+        cx.subscribe(
+            &random_behavior_mode_select,
+            |view, _, event: &SelectEvent<SearchableVec<&'static str>>, cx| {
+                if view.syncing_component_inputs {
+                    return;
+                }
+                let display_language = view.display_language();
+                if let SelectEvent::Confirm(Some(name)) = event
+                    && let Some(mode) =
+                        random_behavior_mode_from_display_name(name, display_language)
+                {
+                    view.set_random_behavior_mode(mode, cx);
+                }
+            },
+        )
+        .detach();
         for (state, select) in [
             (
                 GamepadConnectionState::Connected,
@@ -321,6 +363,7 @@ impl SettingsView {
             language_select,
             theme_select,
             logging_level_select,
+            random_behavior_mode_select,
             gamepad_connected_model_select,
             gamepad_disconnected_model_select,
             request_quit,

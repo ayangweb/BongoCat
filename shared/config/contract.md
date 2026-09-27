@@ -68,7 +68,7 @@ updates
 | `model`       | `play_motion_audio`                   | 播放动作音效，默认 `false`             |
 | `model`       | `ignore_keyboard`                     | 模型求值忽略键盘输入                   |
 | `model`       | `ignore_gamepad`                      | 模型求值忽略手柄输入                   |
-| `model`       | `random_behavior.enabled`             | 是否按间隔随机播放动作或表情           |
+| `model`       | `random_behavior.mode`                | 无人操作时自动播放什么：`off`（默认）、`expressions`、`motions` 或 `motions_and_expressions` |
 | `model`       | `random_behavior.interval_seconds`    | 随机播放间隔秒数，`[1, 3600]`          |
 | `model`       | `gamepad_auto_switch.enabled`         | 手柄连接状态变化时是否自动切换模型，默认 `false` |
 | `model`       | `gamepad_auto_switch.connected_model` | 连接手柄时自动切换的模型，`null` 表示上次使用的手柄模型 |
@@ -136,14 +136,17 @@ typed platform snapshot，并仅在显式用户 command 时调用平台 adapter�
 只把它们排除在平台匹配表之外，`shortcuts.command_bindings` 里的应用级快捷键不受影响；重新打开时无需
 重录即可恢复全部已校验绑定。
 
-`model.random_behavior.enabled` 默认 `false`。打开后，runtime 以可注入的单调时钟按
-`model.random_behavior.interval_seconds` 周期性从当前模型声明的 motion 和 expression 合并列表中均匀选择一个
-（每个声明项等权，不是 motion 与 expression 各占 50%）；第一次
-选择在一个完整间隔后发生，模型成功切换、重新打开开关或修改间隔都会重新开始计时。间隔表示相邻选择
-事件之间的最短周期，不等待前一个动作自然结束；因此较长动作可能在下一个周期被新的随机选择替换。自动
-motion 使用 `Idle` 优先级，不会替换正在进行的手动 `Normal`/`Force` 动作；模型没有可声明行为时保持
-无操作，不把空选择当成错误。`model.random_behavior.interval_seconds` 接受 `1..=3600`，默认 `30`，即使
-开关关闭也必须是合法值。该功能与 `shortcuts.model_behaviors_enabled` 独立，后者只控制全局快捷键门禁。
+`model.random_behavior.mode` 决定模型在无人操作时自己播放什么，取值 `off`（默认）、`expressions`、
+`motions` 或 `motions_and_expressions`。`off` 之外的三种模式下，runtime 以可注入的单调时钟按
+`model.random_behavior.interval_seconds` 周期性从当前模型声明的对应类别列表中均匀选择一个
+（每个声明项等权；`motions_and_expressions` 不是 motion 与 expression 各占 50%，而是两类声明项
+在同一个池子里等权）。mode 先收窄候选集合再抽取，所以选中项一定属于用户允许的类别。模型没有声明
+所选类别的行为时保持无操作，不退回另一类，也不把空选择当成错误。改选 `off` 或重新打开会清除待触发
+的截止时间。第一次选择在一个完整间隔后发生，模型成功切换、修改 mode 或修改间隔都会重新开始计时。间隔
+表示相邻选择事件之间的最短周期，不等待前一个动作自然结束；因此较长动作可能在下一个周期被新的随机选择
+替换。自动 motion 使用 `Idle` 优先级，不会替换正在进行的手动 `Normal`/`Force` 动作。
+`model.random_behavior.interval_seconds` 接受 `1..=3600`，默认 `30`，即使 mode 为 `off` 也必须是
+合法值。该功能与 `shortcuts.model_behaviors_enabled` 独立，后者只控制全局快捷键门禁。
 
 `model.gamepad_auto_switch.enabled` 默认 `false`。打开后，连接手柄时切换到
 `connected_model`，断开最后一个手柄时切换到 `disconnected_model`；两个目标都是完整

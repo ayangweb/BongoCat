@@ -45,7 +45,8 @@ pub struct ModelConfig {
 #[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct RandomBehaviorConfig {
-    pub enabled: bool,
+    /// What the model plays on its own, or that it plays nothing on its own.
+    pub mode: RandomBehaviorMode,
     /// Delay between automatic behavior selections, in whole seconds.
     #[cfg_attr(
         any(test, feature = "schema-generation"),
@@ -57,8 +58,52 @@ pub struct RandomBehaviorConfig {
 impl Default for RandomBehaviorConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            mode: RandomBehaviorMode::default(),
             interval_seconds: DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+        }
+    }
+}
+
+/// What the idle scheduler is allowed to pick on its own.
+///
+/// A model declares motions and expressions as two different things a user can
+/// also bind by hand, so "play something at random" was never one decision: some
+/// users want the model to look alive without it walking around or interrupting
+/// the pose they bound, and some want the opposite.
+///
+/// Turning it off is a fourth choice rather than a separate `enabled` flag. A
+/// switch next to a mode dropdown has to be read as two questions before it means
+/// anything, and it admits a state no user asked for: on, with nothing to play.
+/// One enumeration has exactly one answer per configuration, and it is the answer
+/// the settings page shows as a single dropdown.
+///
+/// `Off` is the default because a fresh configuration has never been told to
+/// animate itself, and that is the behavior the v1 document already described.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RandomBehaviorMode {
+    #[default]
+    Off,
+    Expressions,
+    Motions,
+    MotionsAndExpressions,
+}
+
+impl RandomBehaviorMode {
+    pub const ALL: [Self; 4] = [
+        Self::Off,
+        Self::Expressions,
+        Self::Motions,
+        Self::MotionsAndExpressions,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Expressions => "expressions",
+            Self::Motions => "motions",
+            Self::MotionsAndExpressions => "motions_and_expressions",
         }
     }
 }

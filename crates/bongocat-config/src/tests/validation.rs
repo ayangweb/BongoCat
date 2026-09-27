@@ -116,7 +116,12 @@ fn overlay_hover_hide_switch_defaults_to_off_and_round_trips() {
 #[test]
 fn random_behavior_settings_use_a_bounded_positive_interval() {
     let default = NativeConfig::default();
-    assert!(!default.model.random_behavior.enabled);
+    assert_eq!(
+        default.model.random_behavior.mode,
+        RandomBehaviorMode::default(),
+        "a configuration that never chose a mode must stay inert"
+    );
+    assert_eq!(default.model.random_behavior.mode, RandomBehaviorMode::Off);
     assert_eq!(
         default.model.random_behavior.interval_seconds,
         DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS
@@ -126,12 +131,14 @@ fn random_behavior_settings_use_a_bounded_positive_interval() {
         30,
         MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
     ] {
-        let mut config = NativeConfig::default();
-        config.model.random_behavior.enabled = true;
-        config.model.random_behavior.interval_seconds = accepted;
-        config
-            .validate()
-            .expect("random behavior interval should be accepted");
+        for mode in RandomBehaviorMode::ALL {
+            let mut config = NativeConfig::default();
+            config.model.random_behavior.mode = mode;
+            config.model.random_behavior.interval_seconds = accepted;
+            config
+                .validate()
+                .expect("random behavior interval should be accepted");
+        }
     }
     for rejected in [0, MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS + 1, u32::MAX] {
         let mut config = NativeConfig::default();
@@ -143,6 +150,32 @@ fn random_behavior_settings_use_a_bounded_positive_interval() {
             ))
         ));
     }
+}
+
+#[test]
+fn every_random_behavior_mode_round_trips_through_the_document() {
+    for mode in RandomBehaviorMode::ALL {
+        let mut config = NativeConfig::default();
+        config.model.random_behavior.mode = mode;
+        let bytes = serde_json::to_vec(&config).expect("serialize random behavior mode");
+        let text = String::from_utf8(bytes).expect("utf-8 document");
+        let decoded: NativeConfig =
+            serde_json::from_str(&text).expect("decode random behavior mode");
+        assert_eq!(decoded.model.random_behavior.mode, mode);
+        // The persisted spelling is the one the document documents, not a Rust
+        // variant name, so a hand-edited file stays readable.
+        assert!(text.contains(&format!("\"mode\":\"{}\"", mode.as_str())));
+    }
+}
+
+#[test]
+fn an_unknown_random_behavior_mode_is_rejected_rather_than_ignored() {
+    let fixture =
+        include_str!("../../../../shared/config/fixtures/invalid-random-behavior-mode.json");
+    assert!(
+        serde_json::from_str::<NativeConfig>(fixture).is_err(),
+        "a mode outside the catalogue must not decode"
+    );
 }
 
 #[test]

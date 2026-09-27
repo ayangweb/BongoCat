@@ -67,7 +67,7 @@ fn lifecycle_publishes_typed_snapshots_and_stops_cleanly() {
     );
 
     let random_behavior = RandomBehaviorSettings {
-        enabled: true,
+        mode: RandomBehaviorMode::MotionsAndExpressions,
         interval_seconds: 30,
     };
     let sequence = client
@@ -82,7 +82,7 @@ fn lifecycle_publishes_typed_snapshots_and_stops_cleanly() {
     let sequence = client
         .send(RuntimeCommand::SetRandomBehaviorSettings(
             RandomBehaviorSettings {
-                enabled: true,
+                mode: RandomBehaviorMode::MotionsAndExpressions,
                 interval_seconds: 0,
             },
         ))
@@ -360,7 +360,7 @@ fn random_behavior_setting_starts_a_model_behavior_after_one_interval() {
         .wait_for_revision(1, TIMEOUT)
         .expect("ready snapshot");
     let settings = RandomBehaviorSettings {
-        enabled: true,
+        mode: RandomBehaviorMode::MotionsAndExpressions,
         interval_seconds: 1,
     };
     let sequence = client
@@ -411,7 +411,9 @@ fn random_behavior_does_not_replace_a_live_normal_product_motion() {
     let settings_sequence = client
         .send(RuntimeCommand::SetRandomBehaviorSettings(
             RandomBehaviorSettings {
-                enabled: true,
+                // The model below declares motions and no expressions, so the
+                // selection this test needs is a motion.
+                mode: RandomBehaviorMode::Motions,
                 interval_seconds: 1,
             },
         ))

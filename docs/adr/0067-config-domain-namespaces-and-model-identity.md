@@ -52,8 +52,9 @@ updates
    `shortcuts.model_behaviors_enabled`。活动模型投影和冲突检测以完整模型身份为作用域。
 6. `overlay.visible` 从 `config.json` 移除。可见性是 runtime snapshot 的会话状态：每个新进程
    从可见状态启动，隐藏只持续到进程退出；runtime/settings snapshot 仍保留 `overlay_visible`。
-7. 随机行为使用 `model.random_behavior.enabled` 与
-   `model.random_behavior.interval_seconds`，并保持原有范围与默认值。
+7. 随机行为使用 `model.random_behavior.mode` 与
+   `model.random_behavior.interval_seconds`，并保持原有范围与默认值；门禁字段已由
+   ADR-0072 改为 mode 枚举的 `off` 取值。
 8. 模型响应来源门禁使用 `model.ignore_keyboard` 与 `model.ignore_gamepad`；它们属于模型
    交互表现，不属于 `input` 的采集/死区配置。门禁只作用于模型输入投影，不能关闭可靠输入、
    pressed-state 恢复、诊断或独立快捷键。三个模型输入忽略开关分别可由

@@ -5,10 +5,14 @@
 //! added on one side and forgotten on the other is a compile error here rather
 //! than a setting that quietly stops doing anything.
 
-use bongocat_config::{ConfigError, LoggingConfig, LoggingLevel, NativeConfig};
+use bongocat_config::{ConfigError, LoggingConfig, LoggingLevel, NativeConfig, RandomBehaviorMode};
 use bongocat_input::GamepadAxisSettings;
 use bongocat_log::{LogLevel as RuntimeLogLevel, LogSettings as RuntimeLogSettings};
-use bongocat_runtime::{ModelSettings, OverlaySettings, RandomBehaviorSettings};
+use bongocat_runtime::{
+    ModelSettings, OverlaySettings, RandomBehaviorMode as RuntimeRandomBehaviorMode,
+    RandomBehaviorSettings,
+};
+use bongocat_ui_protocol::SettingsRandomBehaviorMode;
 
 pub(crate) const fn runtime_log_level(level: LoggingLevel) -> RuntimeLogLevel {
     match level {
@@ -80,11 +84,71 @@ pub(crate) const fn model_settings_from_config(config: &NativeConfig) -> ModelSe
     }
 }
 
+// The random-behavior mode exists in three vocabularies, the same way the log
+// level does. Each is owned by the layer that has a reason for it: the document
+// persists it, the runtime filters candidates with it, and the window needs a
+// catalogue it can render as a dropdown without importing either. The four
+// conversions below are the only places the three meet, so a variant added on one
+// side and forgotten on another is a compile error here rather than a mode the
+// user can pick and the product ignores.
+
+pub(crate) const fn random_behavior_mode_to_runtime(
+    mode: RandomBehaviorMode,
+) -> RuntimeRandomBehaviorMode {
+    match mode {
+        RandomBehaviorMode::Off => RuntimeRandomBehaviorMode::Off,
+        RandomBehaviorMode::Expressions => RuntimeRandomBehaviorMode::Expressions,
+        RandomBehaviorMode::Motions => RuntimeRandomBehaviorMode::Motions,
+        RandomBehaviorMode::MotionsAndExpressions => {
+            RuntimeRandomBehaviorMode::MotionsAndExpressions
+        }
+    }
+}
+
+pub(crate) const fn random_behavior_mode_to_config(
+    mode: RuntimeRandomBehaviorMode,
+) -> RandomBehaviorMode {
+    match mode {
+        RuntimeRandomBehaviorMode::Off => RandomBehaviorMode::Off,
+        RuntimeRandomBehaviorMode::Expressions => RandomBehaviorMode::Expressions,
+        RuntimeRandomBehaviorMode::Motions => RandomBehaviorMode::Motions,
+        RuntimeRandomBehaviorMode::MotionsAndExpressions => {
+            RandomBehaviorMode::MotionsAndExpressions
+        }
+    }
+}
+
+pub(crate) const fn random_behavior_mode_to_runtime_settings(
+    mode: SettingsRandomBehaviorMode,
+) -> RuntimeRandomBehaviorMode {
+    match mode {
+        SettingsRandomBehaviorMode::Off => RuntimeRandomBehaviorMode::Off,
+        SettingsRandomBehaviorMode::Expressions => RuntimeRandomBehaviorMode::Expressions,
+        SettingsRandomBehaviorMode::Motions => RuntimeRandomBehaviorMode::Motions,
+        SettingsRandomBehaviorMode::MotionsAndExpressions => {
+            RuntimeRandomBehaviorMode::MotionsAndExpressions
+        }
+    }
+}
+
+pub(crate) const fn random_behavior_mode_from_runtime(
+    mode: RuntimeRandomBehaviorMode,
+) -> SettingsRandomBehaviorMode {
+    match mode {
+        RuntimeRandomBehaviorMode::Off => SettingsRandomBehaviorMode::Off,
+        RuntimeRandomBehaviorMode::Expressions => SettingsRandomBehaviorMode::Expressions,
+        RuntimeRandomBehaviorMode::Motions => SettingsRandomBehaviorMode::Motions,
+        RuntimeRandomBehaviorMode::MotionsAndExpressions => {
+            SettingsRandomBehaviorMode::MotionsAndExpressions
+        }
+    }
+}
+
 pub(crate) const fn random_behavior_settings_from_config(
     config: &NativeConfig,
 ) -> RandomBehaviorSettings {
     RandomBehaviorSettings {
-        enabled: config.model.random_behavior.enabled,
+        mode: random_behavior_mode_to_runtime(config.model.random_behavior.mode),
         interval_seconds: config.model.random_behavior.interval_seconds,
     }
 }

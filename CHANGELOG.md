@@ -14,7 +14,7 @@
 - BongoCat can now switch models when a gamepad connects or disconnects. The switch is off by default; when you turn it on, each direction starts from “the last model you used” and can be pinned to a specific model. The connected list only offers gamepad models and the disconnected list only offers the others.
 - Model import checks the folder, shows progress, lets you cancel, and creates a cover from the model itself. If the cover cannot be created, the import is rolled back.
 - You can rename built-in and imported models and give them new covers. BongoCatMver folders can also be converted during import, with selectable input modes shown on each card.
-- Models can play a random motion or expression on a schedule. Motion audio starts off and can be turned on without a restart.
+- Models can play random motions or expressions on a schedule, and you can choose expressions only, motions only, or both. Random playback is off by default. Motion audio starts off and can be turned on without a restart.
 - The model window supports right-drag resizing, 25–400% scale, 1–100% opacity, and smoother placement when moving between displays.
 - Automatic update checks can run every 1–8,760 hours. The update window shows download, verification, installation, retry, and restart status.
 - Logs are readable dated files with adjustable levels, retention, and automatic cleanup.

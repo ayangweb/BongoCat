@@ -426,10 +426,12 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
   清理；重复 stop 不重启计时，零时长立即清理。不同 motion identity 的旧 stop 不影响新动作；
   同一 ID 重播后仍是当前 run，之后到达的同名 stop 有意停止该 run。
-- `model.random_behavior.enabled` 打开时，runtime 以可注入单调时钟按
-  `model.random_behavior.interval_seconds` 从当前模型声明的 motion 与 expression 合并列表中均匀选择
-  一个行为（每个声明项等权）。第一次选择等待一个完整间隔；成功模型切换、设置变更和重新启用都会
-  重锚定时器，长暂停只产生一次选择而不追赶补发。自动 motion 使用 `Idle` priority，不能替换正在进行
+- `model.random_behavior.mode` 不为 `off` 时，runtime 以可注入单调时钟按
+  `model.random_behavior.interval_seconds` 从当前模型声明的对应类别列表中均匀选择
+  一个行为（每个声明项等权）。mode 先收窄候选集合再抽取，因此选中项一定属于用户允许的类别；
+  模型没有声明所选类别的行为时保持无操作，不退回另一类。第一次选择等待一个完整间隔；成功模型切换、
+  设置变更和重新启用都会重锚定时器，长暂停只产生一次选择而不追赶补发。自动 motion 使用 `Idle`
+  priority，不能替换正在进行
   的 `Normal`/`Force` 产品 motion；随机 expression 继续遵守最新 expression 替换语义，模型没有行为
   时保持无操作。待处理模型 commit 或 shutdown 时不选择新行为；自动行为与 shutdown request
   通过同一 admission gate 排序。shutdown request 只记录状态并立即开始有界等待，已被接纳的动作
@@ -518,7 +520,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - 设置窗口只展示用户可操作的设置，导航分两级（ADR-0066）。一级页面按用户任务固定为
   Appearance & language、Model library、Model behavior、Model window、Input & interaction、
   Shortcuts、App & system 七个业务分类，About 作为设置菜单中的最后一个普通页面。Appearance & language
-  直接展示主题与语言，不再重复同名分组；Model library 单独展示模型卡片，Model behavior 单独展示模型镜像、动作音效和随机行为，模型行为快捷键仍留在 Shortcuts；Input & interaction 按 Mouse、Keyboard、
+  直接展示主题与语言，不再重复同名分组；Model library 单独展示模型卡片，Model behavior 单独展示模型镜像、动作音效，以及随机播放内容的模式下拉（关闭 / 仅表情 / 仅动作 / 表情和动作，ADR-0072）和它控制的间隔，模型行为快捷键仍留在 Shortcuts；Input & interaction 按 Mouse、Keyboard、
   Gamepad 分组；Gamepad 分组末尾是「连接或断开手柄时自动切换模型」门禁开关及其
   连接/断开两个模型下拉（ADR-0071）；App & system 按 Startup & desktop、Updates、Logging 分组。Updates 与 Logging 的设置项只保留标题和控件，
   不显示重复描述。Model window 继续按 Window behavior、Window appearance、Window performance 分组。About 的
@@ -924,9 +926,10 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `title` 去除首尾空白后不得为空。`built_in_models` 为空表示所有内置模型都还用构建给的名字，
   它没有任何导入、删除或裁剪路径；`input_mode` 不参与 `{ id, source }` 身份。输入配置使用
   `input.gamepad.stick_dead_zone` 和 `input.gamepad.trigger_dead_zone`；两个 dead-zone 都必须是
-  `[0, 1)` 的有限数。模型随机播放由 `model.random_behavior.enabled` 与
-  `model.random_behavior.interval_seconds` 成对表达，后者为 `[1, 3600]` 秒且默认 `30`；两者直接
-  进入当前 v1，不读取旧字段。`model.gamepad_auto_switch` 直接包含当前 v1：门禁
+  `[0, 1)` 的有限数。模型随机播放由 `model.random_behavior.mode` 与
+  `model.random_behavior.interval_seconds` 成对表达：mode 是 `off`（默认）、`expressions`、
+  `motions` 或 `motions_and_expressions` 的单一枚举，关闭是它的一个取值而不是独立布尔门禁；后者为
+  `[1, 3600]` 秒且默认 `30`。两者直接进入当前 v1，不读取旧字段。`model.gamepad_auto_switch` 直接包含当前 v1：门禁
   `enabled` 默认 `false`，`connected_model` 与 `disconnected_model` 是完整 `ModelIdentity` 或
   `null`，`null` 是默认值并表示「上次在该输入族上使用过的模型」；该「上次使用」是
   Application 的会话状态而不是配置字段（ADR-0071）。overlay visibility 属于 runtime 会话状态，

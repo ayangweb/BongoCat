@@ -528,65 +528,123 @@ fn the_hover_hide_delay_only_applies_while_the_switch_is_on() {
 }
 
 #[test]
-fn random_behavior_toggle_keeps_a_pending_interval_in_the_same_patch() {
+fn random_behavior_mode_change_keeps_a_pending_interval_in_the_same_patch() {
     let persisted = SettingsRandomBehavior {
-        enabled: false,
+        mode: SettingsRandomBehaviorMode::Off,
         interval_seconds: 30,
     };
     let pending = SettingsRandomBehavior {
-        enabled: false,
+        mode: SettingsRandomBehaviorMode::Off,
         interval_seconds: 12,
     };
     assert_eq!(
-        super::settings::random_behavior_settings_after_toggle(persisted, Some(pending), true),
+        super::settings::random_behavior_settings_after_mode_change(
+            persisted,
+            Some(pending),
+            SettingsRandomBehaviorMode::MotionsAndExpressions,
+        ),
         SettingsRandomBehavior {
-            enabled: true,
+            mode: SettingsRandomBehaviorMode::MotionsAndExpressions,
             interval_seconds: 12,
         }
     );
 }
 
+#[test]
+fn random_behavior_mode_change_without_a_pending_value_keeps_the_persisted_interval() {
+    let persisted = SettingsRandomBehavior {
+        mode: SettingsRandomBehaviorMode::Motions,
+        interval_seconds: 45,
+    };
+    assert_eq!(
+        super::settings::random_behavior_settings_after_mode_change(
+            persisted,
+            None,
+            SettingsRandomBehaviorMode::Off,
+        ),
+        SettingsRandomBehavior {
+            mode: SettingsRandomBehaviorMode::Off,
+            interval_seconds: 45,
+        },
+        "turning the mode off must keep the interval the user already chose"
+    );
+}
+
+#[test]
+fn the_random_behavior_mode_catalogue_is_reversible_in_every_language() {
+    for language in SettingsLanguage::ALL {
+        let options = random_behavior_mode_options(language);
+        assert_eq!(options.len(), SettingsRandomBehaviorMode::ALL.len());
+        assert!(options.iter().all(|option| !option.is_empty()));
+        assert_eq!(
+            options.iter().copied().collect::<BTreeSet<_>>().len(),
+            options.len(),
+            "{language:?} repeats a random behavior mode label"
+        );
+        for mode in SettingsRandomBehaviorMode::ALL {
+            let label = random_behavior_mode_display_name(mode, language);
+            assert_eq!(
+                random_behavior_mode_from_display_name(label, language),
+                Some(mode),
+                "{language:?} labels are not reversible"
+            );
+        }
+        assert_eq!(
+            random_behavior_mode_from_display_name("not a random behavior mode", language),
+            None
+        );
+    }
+    // The order the catalogue is rendered in is the order the window offers, and
+    // the first entry is the one a fresh configuration is on.
+    assert_eq!(
+        SettingsRandomBehaviorMode::ALL[0],
+        SettingsRandomBehaviorMode::Off
+    );
+}
+
 #[gpui_kit::test]
-fn rapid_random_behavior_toggle_queues_the_latest_value(cx: &mut TestAppContext) {
+fn turning_random_behavior_on_and_off_queues_the_latest_mode(cx: &mut TestAppContext) {
     let (view, visual, endpoint) = settings_view_with_endpoint(cx);
     let mut initial = crate::tests::snapshot(7, true, true);
     initial.config_revision = Some(7);
     initial.random_behavior = SettingsRandomBehavior {
-        enabled: false,
+        mode: SettingsRandomBehaviorMode::Off,
         interval_seconds: 30,
     };
     view.update(visual, |view, _| view.snapshot = Some(initial));
 
     view.update(visual, |view, cx| {
-        view.set_random_behavior_enabled(true, cx);
+        view.set_random_behavior_mode(SettingsRandomBehaviorMode::Motions, cx);
     });
     visual.run_until_parked();
-    let first_command = endpoint.try_recv().expect("first random behavior toggle");
+    let first_command = endpoint
+        .try_recv()
+        .expect("first random behavior mode change");
     let crate::SettingsCommand::SetRandomBehaviorSettings {
         expected_config_revision,
         settings: first_settings,
         reply: first_reply,
     } = first_command
     else {
-        panic!("the first toggle must use the typed random behavior command");
+        panic!("the mode change must use the typed random behavior command");
     };
     assert_eq!(expected_config_revision, 7);
     assert_eq!(
         first_settings,
         SettingsRandomBehavior {
-            enabled: true,
+            mode: SettingsRandomBehaviorMode::Motions,
             interval_seconds: 30,
         }
     );
 
     view.update(visual, |view, cx| {
-        view.set_random_behavior_enabled(false, cx);
+        view.set_random_behavior_mode(SettingsRandomBehaviorMode::Off, cx);
         view.flush_pending_settings(cx);
     });
     visual.run_until_parked();
     assert!(
         endpoint.try_recv().is_err(),
-        "the reversal must wait for the in-flight toggle"
+        "the reversal must wait for the in-flight change"
     );
 
     let mut confirmed = crate::tests::snapshot(8, true, true);
@@ -594,7 +652,7 @@ fn rapid_random_behavior_toggle_queues_the_latest_value(cx: &mut TestAppContext)
     confirmed.random_behavior = first_settings;
     first_reply
         .respond(Ok(confirmed))
-        .expect("first toggle reply");
+        .expect("first mode change reply");
     view.update(visual, |view, cx| {
         view.flush_pending_settings(cx);
     });
@@ -602,7 +660,7 @@ fn rapid_random_behavior_toggle_queues_the_latest_value(cx: &mut TestAppContext)
 
     let second_command = endpoint
         .try_recv()
-        .expect("reversal random behavior toggle");
+        .expect("reversal random behavior mode change");
     let crate::SettingsCommand::SetRandomBehaviorSettings {
         expected_config_revision,
         settings: second_settings,
@@ -615,7 +673,7 @@ fn rapid_random_behavior_toggle_queues_the_latest_value(cx: &mut TestAppContext)
     assert_eq!(
         second_settings,
         SettingsRandomBehavior {
-            enabled: false,
+            mode: SettingsRandomBehaviorMode::Off,
             interval_seconds: 30,
         }
     );
@@ -625,7 +683,28 @@ fn rapid_random_behavior_toggle_queues_the_latest_value(cx: &mut TestAppContext)
     completed.random_behavior = second_settings;
     second_reply
         .respond(Ok(completed))
-        .expect("reversal toggle reply");
+        .expect("reversal mode change reply");
     visual.run_until_parked();
     assert!(endpoint.try_recv().is_err());
+}
+
+#[gpui_kit::test]
+fn the_random_behavior_interval_is_inert_while_the_mode_is_off(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(7, true, true);
+    initial.config_revision = Some(7);
+    initial.random_behavior = SettingsRandomBehavior {
+        mode: SettingsRandomBehaviorMode::Off,
+        interval_seconds: 30,
+    };
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+
+    view.update(visual, |view, cx| {
+        view.set_random_behavior_interval_value(12.0, cx);
+    });
+    visual.run_until_parked();
+    assert!(
+        endpoint.try_recv().is_err(),
+        "an interval nothing reads must not reach the service"
+    );
 }

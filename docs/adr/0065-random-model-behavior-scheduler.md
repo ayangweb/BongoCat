@@ -2,6 +2,11 @@
 
 状态：已接受（2026-09-25）
 
+> 部分被 ADR-0072 取代：`model.random_behavior.enabled` 已改为
+> `model.random_behavior.mode`（`off` 为其中一个取值），候选集合不再是固定的
+> motion 与 expression 合并列表。间隔字段、`RandomBehaviorSettings`、
+> `Idle` priority、seed 注入与 admission gate 的决策不变，仍然有效。
+
 ## 背景
 
 模型同时声明 motion 和 expression。设置页需要一个正交的开关和时间间隔，让用户在不让

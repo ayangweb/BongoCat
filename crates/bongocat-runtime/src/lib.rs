@@ -60,7 +60,7 @@ pub use pacing::{
 };
 pub use random_behavior::{
     DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS, MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
-    MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS, RandomBehaviorSettings,
+    MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS, RandomBehaviorMode, RandomBehaviorSettings,
 };
 use random_behavior::{RandomBehaviorScheduler, system_seed};
 use rendering::{MotionStopStatus, RuntimeRenderBootstrap, RuntimeRenderer};

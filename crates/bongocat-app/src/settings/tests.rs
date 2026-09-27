@@ -15,10 +15,10 @@ use bongocat_config::{
     WindowStateStore,
 };
 use bongocat_input::{InputDiagnostics, InputEvent, InputTransportDiagnostics, MonotonicMillis};
-use bongocat_runtime::{RuntimeOwner, RuntimeWorkDiagnostics};
+use bongocat_runtime::{RandomBehaviorMode, RuntimeOwner, RuntimeWorkDiagnostics};
 use bongocat_ui_protocol::{
     DIAGNOSTICS_EXPORT_FORMAT_VERSION, SettingsModelImportRequest, SettingsModelOrigin,
-    SettingsStartupItemError,
+    SettingsRandomBehaviorMode, SettingsStartupItemError,
 };
 use std::{
     fs, io,

@@ -1,12 +1,21 @@
 use super::*;
 
-pub(super) fn random_behavior_settings_after_toggle(
+/// The random-behavior patch both of its controls edit.
+///
+/// The mode and the interval are one persisted object, so a change to one of them
+/// has to travel in the same typed command as a change to the other: two separate
+/// commands would let a rapid mode-then-interval click commit the second write
+/// from a snapshot the first write had already moved past, and the user's first
+/// choice would be silently reverted. The control therefore starts from the value
+/// still in flight when there is one, and the debouncer collapses the rest into a
+/// single follow-up.
+pub(super) fn random_behavior_settings_after_mode_change(
     persisted: SettingsRandomBehavior,
     pending: Option<SettingsRandomBehavior>,
-    enabled: bool,
+    mode: SettingsRandomBehaviorMode,
 ) -> SettingsRandomBehavior {
     let mut settings = pending.unwrap_or(persisted);
-    settings.enabled = enabled;
+    settings.mode = mode;
     settings
 }
 
@@ -678,42 +687,28 @@ impl SettingsView {
         );
     }
 
-    pub(super) fn set_random_behavior_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+    /// Change what the model plays on its own, including turning it off.
+    ///
+    /// This is the row that owns the gate, so unlike the interval below it the
+    /// mutator stays reachable while the current mode is `Off` — otherwise the
+    /// user could never turn the behavior back on.
+    pub(super) fn set_random_behavior_mode(
+        &mut self,
+        mode: SettingsRandomBehaviorMode,
+        cx: &mut Context<Self>,
+    ) {
         if self.editing_blocked(self.snapshot.as_ref()) {
             return;
         }
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        let settings = random_behavior_settings_after_toggle(
+        let settings = random_behavior_settings_after_mode_change(
             snapshot.random_behavior,
             self.random_behavior_debouncer.pending_value().copied(),
-            enabled,
+            mode,
         );
-        if settings == snapshot.random_behavior && self.pending.is_none() {
-            self.random_behavior_debouncer.discard_pending();
-            return;
-        }
-        let Some(expected_config_revision) = snapshot.config_revision else {
-            return;
-        };
-        let should_send = self
-            .random_behavior_debouncer
-            .observe(settings, Instant::now())
-            .filter(|_| self.pending.is_none())
-            .is_some();
-        if should_send {
-            self.start_request(
-                PendingOperation::RandomBehavior,
-                Some(SettingValue::RandomBehaviorSettings {
-                    expected_config_revision,
-                    settings,
-                }),
-                cx,
-            );
-        } else {
-            self.schedule_random_behavior_flush(cx);
-        }
+        self.patch_random_behavior(settings, cx);
     }
 
     pub(super) fn set_random_behavior_interval_value(&mut self, raw: f64, cx: &mut Context<Self>) {
@@ -727,7 +722,10 @@ impl SettingsView {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        if !snapshot.random_behavior.enabled {
+        // The interval is inert while the mode is off, so the mutator refuses it
+        // then — the reason the row renders disabled rather than accepting a value
+        // nothing reads.
+        if !snapshot.random_behavior.mode.is_active() {
             return;
         }
         let mut settings = self
@@ -739,6 +737,24 @@ impl SettingsView {
             return;
         }
         settings.interval_seconds = value;
+        self.patch_random_behavior(settings, cx);
+    }
+
+    /// Hand one whole random-behavior patch to the service, or hold it for the
+    /// debounce window.
+    ///
+    /// Both controls above end here so the in-flight guard, the debounce and the
+    /// typed command are written once. A patch that matches what the snapshot
+    /// already shows is dropped: the control has been re-confirmed, and re-sending
+    /// it would move the configuration revision for no reason.
+    fn patch_random_behavior(&mut self, settings: SettingsRandomBehavior, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if settings == snapshot.random_behavior && self.pending.is_none() {
+            self.random_behavior_debouncer.discard_pending();
+            return;
+        }
         let Some(expected_config_revision) = snapshot.config_revision else {
             return;
         };

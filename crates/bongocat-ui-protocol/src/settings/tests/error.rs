@@ -23,7 +23,11 @@ fn settings_error_codes_are_stable_and_unique() {
     runtime_codes.sort_unstable();
     runtime_codes.dedup();
     assert_eq!(runtime_codes.len(), SettingsRuntimeErrorCode::ALL.len());
-    assert!(!SettingsRandomBehavior::default().enabled);
+    assert_eq!(
+        SettingsRandomBehavior::default().mode,
+        SettingsRandomBehaviorMode::Off,
+        "a configuration that never chose a mode must start inert"
+    );
     assert_eq!(SettingsRandomBehavior::default().interval_seconds, 30);
     assert_eq!(
         SettingsError::new(SettingsErrorCode::ModelSwitchFailed).code(),

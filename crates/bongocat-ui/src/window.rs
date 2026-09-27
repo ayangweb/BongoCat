@@ -12,9 +12,10 @@ use crate::{
     SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
     SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
     SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
-    SettingsRandomBehavior, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
-    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
+    SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsShortcutBinding, SettingsShortcuts,
+    SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -179,6 +180,8 @@ pub(crate) type ThemeSelectState = SelectState<SearchableVec<&'static str>>;
 
 pub(crate) type LoggingLevelSelectState = SelectState<SearchableVec<&'static str>>;
 
+pub(crate) type RandomBehaviorModeSelectState = SelectState<SearchableVec<&'static str>>;
+
 pub(crate) type GamepadModelSelectState = SelectState<SearchableVec<GamepadModelChoice>>;
 
 /// The appearance a settings window paints its first frame with.
@@ -265,6 +268,10 @@ pub struct SettingsView {
     pub(crate) language_select: Entity<LanguageSelectState>,
     pub(crate) theme_select: Entity<ThemeSelectState>,
     pub(crate) logging_level_select: Entity<LoggingLevelSelectState>,
+    /// Which behaviors the idle scheduler is allowed to pick. The option list is
+    /// the fixed mode catalogue, so it is rebuilt on every snapshot only to
+    /// follow a language change, exactly like the theme and level dropdowns.
+    pub(crate) random_behavior_mode_select: Entity<RandomBehaviorModeSelectState>,
     /// The model each gamepad connection state switches to. Their option lists
     /// come from the model catalog, so they are rebuilt on every snapshot.
     pub(crate) gamepad_connected_model_select: Entity<GamepadModelSelectState>,

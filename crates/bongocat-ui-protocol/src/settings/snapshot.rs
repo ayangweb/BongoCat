@@ -87,16 +87,49 @@ pub struct SettingsModelSettings {
     pub ignore_pointer: bool,
 }
 
+/// What the idle scheduler may pick on its own, or that it does nothing.
+///
+/// The catalogue lives in the protocol rather than in the window, the same reason
+/// [`SettingsLogLevel`] does: the application is the one that has to obey the
+/// choice, so a mode the window could render but the application did not know
+/// would be a control that appears to work and does nothing.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SettingsRandomBehaviorMode {
+    #[default]
+    Off,
+    Expressions,
+    Motions,
+    MotionsAndExpressions,
+}
+
+impl SettingsRandomBehaviorMode {
+    pub const ALL: [Self; 4] = [
+        Self::Off,
+        Self::Expressions,
+        Self::Motions,
+        Self::MotionsAndExpressions,
+    ];
+
+    /// Whether this mode schedules anything at all.
+    ///
+    /// The window uses it to decide whether the interval row below the dropdown
+    /// is live, so the rule that a gated control is inert when its gate is off is
+    /// written once here rather than as a `!= Off` comparison at each use.
+    pub const fn is_active(self) -> bool {
+        !matches!(self, Self::Off)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SettingsRandomBehavior {
-    pub enabled: bool,
+    pub mode: SettingsRandomBehaviorMode,
     pub interval_seconds: u32,
 }
 
 impl Default for SettingsRandomBehavior {
     fn default() -> Self {
         Self {
-            enabled: false,
+            mode: SettingsRandomBehaviorMode::default(),
             interval_seconds: 30,
         }
     }

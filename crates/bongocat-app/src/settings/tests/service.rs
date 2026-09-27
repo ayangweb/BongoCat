@@ -455,7 +455,7 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
         .expect("update model settings");
     assert_eq!(configured_model.model_settings, model_settings);
     let random_behavior = SettingsRandomBehavior {
-        enabled: true,
+        mode: SettingsRandomBehaviorMode::Motions,
         interval_seconds: 9,
     };
     let configured_random_behavior = client
@@ -520,7 +520,7 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
     assert!(persisted.contains("\"maximum_fps\": 120"));
     assert!(persisted.contains("\"release_fallback_timeout_ms\": 1500"));
     assert!(persisted.contains("\"random_behavior\": {"));
-    assert!(persisted.contains("\"enabled\": true"));
+    assert!(persisted.contains("\"mode\": \"motions\""));
     assert!(persisted.contains("\"interval_seconds\": 9"));
 
     let stopped = client.shutdown_blocking().expect("service shutdown");
@@ -551,7 +551,7 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
             .snapshot()
             .random_behavior_settings,
         RandomBehaviorSettings {
-            enabled: true,
+            mode: RandomBehaviorMode::Motions,
             interval_seconds: 9,
         }
     );
@@ -829,7 +829,7 @@ fn invalid_random_behavior_settings_leave_config_and_runtime_unchanged() {
             .set_random_behavior_settings_blocking(
                 initial_config_revision,
                 SettingsRandomBehavior {
-                    enabled: true,
+                    mode: SettingsRandomBehaviorMode::Motions,
                     interval_seconds,
                 },
             )

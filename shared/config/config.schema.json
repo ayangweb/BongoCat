@@ -373,21 +373,30 @@
     "RandomBehaviorConfig": {
       "additionalProperties": false,
       "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
         "interval_seconds": {
           "format": "uint32",
           "maximum": 3600,
           "minimum": 1,
           "type": "integer"
+        },
+        "mode": {
+          "$ref": "#/$defs/RandomBehaviorMode"
         }
       },
       "required": [
-        "enabled",
+        "mode",
         "interval_seconds"
       ],
       "type": "object"
+    },
+    "RandomBehaviorMode": {
+      "enum": [
+        "off",
+        "expressions",
+        "motions",
+        "motions_and_expressions"
+      ],
+      "type": "string"
     },
     "ShortcutBinding": {
       "additionalProperties": false,

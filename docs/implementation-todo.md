@@ -1500,11 +1500,19 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     viewport 变化直接对齐，周期 tick 在没有新 sample 时继续推进。纯 Rust 与 runtime 集成回归
     覆盖单帧/半帧等价、跨显示器保护和连续模型参数投影；多显示器物理光标与完整 mirror
     实机证据仍待完成，因此总项保持未勾选。
-- [ ] 随机模型行为开关、播放间隔与测试 seed。
+- [ ] 随机模型行为模式、播放间隔与测试 seed。
   - 状态（2026-09-25）：runtime 已加入固定 seed 的确定性选择器、单调时钟定时器、模型切换重锚和
     `Idle` motion 优先级门禁；配置、typed settings command、GPUI 开关/间隔控件及 Core-backed
     runtime 定时回归已接通。仍缺双平台实机观察、长时间随机序列/时钟回退 soak 与发布门禁证据，
     因此本项保持未勾选。
+  - 状态（2026-09-27）：原 `enabled` 布尔门禁改为 `model.random_behavior.mode` 单一枚举
+    （`off` / `expressions` / `motions` / `motions_and_expressions`，默认 `off`），设置页对应改为
+    一行 Select 下拉，间隔行在下拉为 `off` 时置灰但保留已选值，下拉本身保持可操作（ADR-0072）。
+    mode 先收窄候选集合再抽取，模型未声明所选类别时保持无操作而不退回另一类。默认值仍是关闭，
+    因此不改变现有配置的实际行为。已补：config 四取值文档往返与目录外取值拒绝、runtime 三种
+    模式的越界/空集合回归（24 个 seed）、mode 经 config → runtime → settings 全链持久化与重启恢复、
+    UI 选项在全部语言下非空唯一可逆、mode 与在途间隔合成同一次 typed command、`off` 下改间隔不触达
+    服务。仍缺双平台实机目视确认下拉排版、长时间随机序列 soak 与发布门禁证据，本项保持未勾选。
 - [ ] 逐项记录与旧版的可接受差异。
 
 ### 5.4 GPU 绘制

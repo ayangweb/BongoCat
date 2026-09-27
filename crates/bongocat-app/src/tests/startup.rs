@@ -242,7 +242,7 @@ fn application_projects_model_interaction_settings_at_startup() {
     config.model.ignore_keyboard = true;
     config.model.ignore_gamepad = true;
     config.model.ignore_pointer = true;
-    config.model.random_behavior.enabled = true;
+    config.model.random_behavior.mode = RandomBehaviorMode::MotionsAndExpressions;
     config.model.random_behavior.interval_seconds = 17;
     store.commit(&config).expect("persist model settings");
     drop(store);
@@ -264,7 +264,7 @@ fn application_projects_model_interaction_settings_at_startup() {
             .snapshot()
             .random_behavior_settings,
         RandomBehaviorSettings {
-            enabled: true,
+            mode: RuntimeRandomBehaviorMode::MotionsAndExpressions,
             interval_seconds: 17,
         }
     );

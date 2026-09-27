@@ -147,6 +147,11 @@
       "expected": "accept"
     },
     {
+      "id": "random-behavior-mode",
+      "file": "invalid-random-behavior-mode.json",
+      "expected": "reject"
+    },
+    {
       "id": "random-behavior-interval",
       "file": "invalid-random-behavior-interval.json",
       "expected": "reject"

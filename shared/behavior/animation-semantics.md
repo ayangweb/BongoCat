@@ -21,11 +21,15 @@
   Each evaluation restores every Core part opacity to the value captured from the fresh model before
   applying the active motion, so stop, replacement, and a motion that targets other parts cannot
   leave stale visibility behind. Missing IDs are skipped without invalidating the remaining motion.
-- When `model.random_behavior.enabled` is on, the runtime waits one complete
-  `model.random_behavior.interval_seconds` and then chooses uniformly from the active model's declared motions
-  and expressions. A model switch, a settings change, and a clock rollback re-anchor or suppress the
-  automatic schedule without replaying a missed tick. Automatic motions use `Idle` priority and cannot
-  replace a live `Normal` or `Force` product motion; an empty behavior list is a no-op. The random selector
+- When `model.random_behavior.mode` is not `off`, the runtime waits one complete
+  `model.random_behavior.interval_seconds` and then chooses uniformly from the active model's declared
+  behaviors of the selected kind — `expressions` draws only from expressions, `motions` only from motions,
+  and `motions_and_expressions` draws from both in one equally weighted pool. The mode narrows the
+  candidate set before the draw, so a selection is always of a kind the user allowed. A model switch, a
+  settings change, and a clock rollback re-anchor or suppress the automatic schedule without replaying a
+  missed tick. Automatic motions use `Idle` priority and cannot
+  replace a live `Normal` or `Force` product motion; a model that declares no behavior of the selected kind
+  is a no-op rather than a fallback to the other kind. The random selector
   is seeded independently in tests so the same seed and monotonic timeline produce the same sequence.
   A due automatic motion blocked by a live `Normal`/`Force` product motion consumes that interval rather
   than retrying immediately; random expressions use the normal latest-expression replacement rule, and

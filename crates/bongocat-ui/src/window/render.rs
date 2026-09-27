@@ -111,11 +111,14 @@ impl Render for SettingsView {
                 .as_ref()
                 .is_some_and(|snapshot| snapshot.check_for_updates_automatically),
         );
+        // The mode dropdown owns the gate, so it stays operable while the mode is
+        // off — otherwise nothing could turn the behavior back on — and the
+        // interval below it follows the dropdown's own state.
         let random_behavior_gate = SettingGate::new(
             editing_blocked,
             snapshot
                 .as_ref()
-                .is_some_and(|snapshot| snapshot.random_behavior.enabled),
+                .is_some_and(|snapshot| snapshot.random_behavior.mode.is_active()),
         );
         // The gamepad group closes with the switch that owns the two model
         // dropdowns below it: the same gate rule the hover-hide delay and the
@@ -696,27 +699,17 @@ impl Render for SettingsView {
                 SettingItem::new(
                     bongocat_i18n::text(
                         language.catalog_locale(),
-                        "settings.models.behavior.random_behavior_enabled.label",
+                        "settings.models.behavior.random_behavior_mode.label",
                     ),
-                    SettingField::switch(
-                        {
-                            let view = view_entity.clone();
-                            move |app| {
-                                view.read(app)
-                                    .snapshot
-                                    .as_ref()
-                                    .is_some_and(|s| s.random_behavior.enabled)
-                            }
-                        },
-                        {
-                            let view = view_entity.clone();
-                            move |value, app| {
-                                view.update(app, |view, cx| {
-                                    view.set_random_behavior_enabled(value, cx)
-                                });
-                            }
-                        },
-                    ),
+                    SettingField::element({
+                        let view = view_entity.clone();
+                        move |options: &RenderOptions, _: &mut Window, app: &mut App| {
+                            let state = view.read(app).random_behavior_mode_select.clone();
+                            Select::new(&state)
+                                .disabled(options.is_disabled())
+                                .into_any_element()
+                        }
+                    }),
                 )
                 .disabled(random_behavior_gate.disables_switch()),
                 SettingItem::new(
