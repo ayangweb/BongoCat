@@ -80,24 +80,32 @@ use gamepad_observer::GamepadConnectionObserver;
 use model_cover::{COVER_CAPTURE_POLL_INTERVAL_MS, capture_model_cover_without_blocking};
 use overlay_placement::OverlayPlacementDebouncer;
 use preset_root::preset_root;
-use product_icons::{ProductStatusIcon, ProductTaskbarIcon};
+use product_icons::ProductStatusIcon;
+#[cfg(target_os = "windows")]
+use product_icons::ProductTaskbarIcon;
 use product_options::RunOptions;
 #[cfg(target_os = "macos")]
 use product_shutdown::exit_after_automated_smoke;
 use product_shutdown::{
     FrameSourceShutdown, ProductRunError, begin_product_shutdown, native_theme_for_startup,
-    quit_after_startup_failure, record_failure, request_product_quit, request_windows_product_quit,
-    start_windows_product_shutdown,
+    quit_after_startup_failure, record_failure, request_product_quit,
+};
+#[cfg(target_os = "windows")]
+use product_shutdown::{request_windows_product_quit, start_windows_product_shutdown};
+#[cfg(target_os = "macos")]
+use product_windows::poll_update_restart;
+#[cfg(target_os = "windows")]
+use product_windows::{
+    apply_taskbar_icon_visibility, product_taskbar_icon_state, take_update_restart_request,
 };
 use product_windows::{
-    apply_taskbar_icon_visibility, ensure_settings_window, handle_shortcut_toggle_settings,
-    open_update_window_and_check, product_overlay_state, product_taskbar_icon_state,
-    publish_overlay_scale, published_update_phase, request_update_check, show_update_window,
-    take_update_restart_request, update_settings_window, update_window_is_open,
+    ensure_settings_window, handle_shortcut_toggle_settings, open_update_window_and_check,
+    product_overlay_state, publish_overlay_scale, published_update_phase, request_update_check,
+    show_update_window, update_settings_window, update_window_is_open,
 };
-#[cfg(target_os = "macos")]
-use product_windows::{poll_update_restart, restart_after_update, restart_delay_elapsed};
-use smoke_status::{SMOKE_FIRST_FRAME_WAIT_TICKS, write_smoke_marker, write_smoke_status};
+#[cfg(target_os = "windows")]
+use smoke_status::write_smoke_marker;
+use smoke_status::{SMOKE_FIRST_FRAME_WAIT_TICKS, write_smoke_status};
 use system_menu::{
     apply_system_menu_overlay_action, refresh_system_menu_presentation, system_menu_presentation,
 };

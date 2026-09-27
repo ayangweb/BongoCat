@@ -180,6 +180,7 @@ impl RunOptions {
             || self.system_menu_smoke
             || self.startup_permission_smoke
             || self.single_instance_arguments_present()
+            || self.macos_smoke_arguments_present()
             || self.storage_test_injection_arguments_present()
     }
 
@@ -193,6 +194,20 @@ impl RunOptions {
 
     #[cfg(not(target_os = "windows"))]
     pub(crate) fn single_instance_arguments_present(&self) -> bool {
+        false
+    }
+
+    /// Whether one of the macOS-only harness flags was named.
+    ///
+    /// Both report something a script cannot answer, and both would otherwise leave
+    /// the startup permission prompt on screen in front of the harness.
+    #[cfg(target_os = "macos")]
+    pub(crate) fn macos_smoke_arguments_present(&self) -> bool {
+        self.application_reopen_smoke || self.startup_item_smoke
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub(crate) fn macos_smoke_arguments_present(&self) -> bool {
         false
     }
 
