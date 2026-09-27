@@ -209,6 +209,31 @@ fn taskbar_icon_command_preserves_typed_visibility() {
 }
 
 #[test]
+fn dock_icon_command_preserves_typed_visibility() {
+    let (client, endpoint) = SettingsClient::bounded(1);
+    let worker = thread::spawn(move || {
+        let SettingsCommand::SetDockIconVisible {
+            expected_config_revision,
+            visible,
+            reply,
+        } = endpoint.recv_blocking().expect("dock icon command")
+        else {
+            panic!("unexpected command");
+        };
+        assert_eq!(expected_config_revision, 7);
+        assert!(visible);
+        let mut result = snapshot(8, true, true);
+        result.dock_icon_visible = visible;
+        reply.respond(Ok(result)).expect("dock icon reply");
+    });
+    let result = client
+        .set_dock_icon_visible_blocking(7, true)
+        .expect("dock icon snapshot");
+    assert!(result.dock_icon_visible);
+    worker.join().expect("worker join");
+}
+
+#[test]
 fn automatic_update_check_command_preserves_typed_preference() {
     let (client, endpoint) = SettingsClient::bounded(1);
     let worker = thread::spawn(move || {

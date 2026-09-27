@@ -184,6 +184,7 @@ pub(super) fn snapshot(
         resolved_language: settings_language(application.effective_language()),
         status_icon_visible: application.config().system.show_status_icon,
         taskbar_icon_visible: application.config().system.show_taskbar_icon,
+        dock_icon_visible: application.config().system.show_dock_icon,
         check_for_updates_automatically: application.config().updates.check_automatically,
         check_for_updates_interval_hours: application.config().updates.check_interval_hours,
         overlay_visible: runtime.overlay_visible,

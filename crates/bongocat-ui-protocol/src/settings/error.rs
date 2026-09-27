@@ -44,13 +44,14 @@ pub enum SettingsErrorCode {
     StartupItemUpdateFailed,
     StatusIconUpdateFailed,
     TaskbarIconUpdateFailed,
+    DockIconUpdateFailed,
     WindowHideFailed,
     WindowStatePersistFailed,
     ShutdownFailed,
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 41] = [
+    pub const ALL: [Self; 42] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -89,6 +90,7 @@ impl SettingsErrorCode {
         Self::StartupItemUpdateFailed,
         Self::StatusIconUpdateFailed,
         Self::TaskbarIconUpdateFailed,
+        Self::DockIconUpdateFailed,
         Self::WindowHideFailed,
         Self::WindowStatePersistFailed,
         Self::ShutdownFailed,
@@ -134,6 +136,7 @@ impl SettingsErrorCode {
             Self::StartupItemUpdateFailed => "startup_item_update_failed",
             Self::StatusIconUpdateFailed => "status_icon_update_failed",
             Self::TaskbarIconUpdateFailed => "taskbar_icon_update_failed",
+            Self::DockIconUpdateFailed => "dock_icon_update_failed",
             Self::WindowHideFailed => "window_hide_failed",
             Self::WindowStatePersistFailed => "window_state_persist_failed",
             Self::ShutdownFailed => "shutdown_failed",
@@ -226,6 +229,7 @@ impl SettingsError {
             }
             SettingsErrorCode::StatusIconUpdateFailed => "Could not update the system icon.",
             SettingsErrorCode::TaskbarIconUpdateFailed => "Could not update the taskbar icon.",
+            SettingsErrorCode::DockIconUpdateFailed => "Could not update the Dock icon.",
             SettingsErrorCode::WindowHideFailed => "Settings window could not be hidden",
             SettingsErrorCode::WindowStatePersistFailed => "The window layout could not be saved",
             SettingsErrorCode::ShutdownFailed => "BongoCat could not close completely",

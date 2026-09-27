@@ -6450,6 +6450,30 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
        避免出现第二条恢复触发规则。随机行为包含表情时照常恢复，随后可能被随机表情覆盖，
        两个设置彼此独立。
 
+114. [x] `P5-DOCK-ICON-VISIBILITY`：让当前 v1 的 macOS 程序坞图标可即时隐藏和恢复。
+     - 依赖：当前 v1 `system.show_dock_icon`、settings revision/CAS、platform main-thread
+       adapter 与 GPUI Kit switch；与 `P5-TASKBAR-ICON-VISIBILITY` 平行，但不复用其字段。
+     - 退出条件：macOS-only 配置值通过强类型 snapshot/command 往返；平台主线程先改进程激活
+       策略并回读 `activationPolicy`，Application owner 再原子提交，平台失败不改配置，配置失败
+       恢复旧策略；启动在 overlay 会话建立之后恢复已保存值，因此默认 `false` 与 overlay 的
+       `Accessory` 起始状态一致；该值不依赖设置窗口是否存在；General 控件具备 keyboard switch
+       语义；定向测试、完整 workspace 与 macOS release system-menu smoke 通过。
+     - 当前实现（2026-09-27）：新增 `system.show_dock_icon`（默认 `false`）、`DockIconCapability`
+       seam、`SettingsCommand::SetDockIconVisible` / `SettingsErrorCode::DockIconUpdateFailed`、
+       macOS `set_dock_icon_visible` / `dock_icon_is_visible`、`bongocat-app` 的
+       `ProductDockIcon` 与启动恢复、App & system 的 Dock 图标开关和中英文案、37 份共享
+       fixture 与 JSON Schema、contract 与 Technical Design 同步。
+     - 验证（2026-09-27，本机 macOS）：`cargo fmt --all -- --check`、
+       `cargo clippy --workspace --all-targets --all-features -- -D warnings`、
+       `cargo test --workspace`、`cargo check --workspace --release`、`just schema` 与三个
+       `tools/validate-*.py`。契约测试覆盖 settings service 的「应用→提交→回滚→跨重启」
+       事务语义与 protocol 的 typed command 往返。
+     - 未运行：Windows 10 1903+ 实机确认（只由 `x86_64-pc-windows-msvc` 上的
+       `bongocat-platform` 交叉检查和 cfg 边界保证 Dock 控件不泄漏到 Windows）、
+       800×600 下 macOS Retina 的设置页排版目视检查，以及长时间切换 soak。
+     - 已知取舍：Dock 图标是进程级激活策略，不存在逐窗口状态，所以没有「窗口不存在时保留
+       期望值」的分支——`ProductCoordinator` 仍记录最后一次成功应用的值，供诊断读取。
+
 ## 13. 待决策清单
 
 | 决策                                                          | 最迟完成              | 阻塞内容                           |

@@ -135,6 +135,7 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::StartupItemUpdateFailed => "errors.settings.login_startup_update_failed",
         SettingsErrorCode::StatusIconUpdateFailed => "errors.settings.system_icon_update_failed",
         SettingsErrorCode::TaskbarIconUpdateFailed => "errors.settings.taskbar_icon_update_failed",
+        SettingsErrorCode::DockIconUpdateFailed => "errors.settings.dock_icon_update_failed",
         SettingsErrorCode::WindowHideFailed => "errors.settings.window_hide_failed",
         SettingsErrorCode::WindowStatePersistFailed => "errors.settings.window_layout_save_failed",
         SettingsErrorCode::ShutdownFailed => "errors.settings.application_shutdown_failed",

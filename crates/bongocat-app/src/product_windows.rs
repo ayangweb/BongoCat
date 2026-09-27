@@ -411,6 +411,35 @@ pub(crate) fn product_taskbar_icon_state(cx: &mut App) -> Result<(bool, bool), S
         .map_err(|error| error.to_string())?
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) fn apply_dock_icon_visibility(cx: &mut App, visible: bool) -> Result<(), SettingsError> {
+    if !cx.has_global::<ProductCoordinator>() {
+        return Err(SettingsError::new(SettingsErrorCode::DockIconUpdateFailed));
+    }
+    // Unlike the taskbar button, the Dock icon belongs to the process rather than
+    // to the settings window, so this runs whether or not a window exists. The
+    // coordinator's record is only written once the adapter has read the policy
+    // back, and the platform error stays anonymous on the way to the settings page.
+    bongocat_platform::set_dock_icon_visible(visible)
+        .map_err(|_| SettingsError::new(SettingsErrorCode::DockIconUpdateFailed))?;
+    cx.global_mut::<ProductCoordinator>().dock_icon_visible = visible;
+    Ok(())
+}
+
+/// What the process activation policy actually says, and what this thread last
+/// applied. Reading it needs no window, so the smoke can compare the shell and
+/// the coordinator's own record against the snapshot even with Settings closed.
+#[cfg(target_os = "macos")]
+pub(crate) fn product_dock_icon_state(cx: &mut App) -> Result<(bool, bool), String> {
+    let applied = cx
+        .try_global::<ProductCoordinator>()
+        .map(|coordinator| coordinator.dock_icon_visible)
+        .ok_or_else(|| "product coordinator is unavailable".to_owned())?;
+    bongocat_platform::dock_icon_is_visible()
+        .map(|visible| (visible, applied))
+        .map_err(|error| error.to_string())
+}
+
 pub(crate) fn product_overlay_state(cx: &mut App) -> Result<(u64, bool), String> {
     let coordinator = cx
         .try_global::<ProductCoordinator>()

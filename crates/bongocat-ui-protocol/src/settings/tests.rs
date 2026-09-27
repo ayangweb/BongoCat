@@ -30,6 +30,7 @@ pub(crate) fn snapshot(
         resolved_language: SettingsLanguage::EnglishUnitedStates,
         status_icon_visible: true,
         taskbar_icon_visible: true,
+        dock_icon_visible: false,
         check_for_updates_automatically: false,
         check_for_updates_interval_hours: 24,
         overlay_visible,

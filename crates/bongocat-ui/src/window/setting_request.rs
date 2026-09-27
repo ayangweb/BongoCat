@@ -110,6 +110,15 @@ impl SettingsView {
                         .set_taskbar_icon_visible(expected_config_revision, visible)
                         .await
                 }
+                #[cfg(target_os = "macos")]
+                Some(SettingValue::DockIconVisible {
+                    expected_config_revision,
+                    visible,
+                }) => {
+                    client
+                        .set_dock_icon_visible(expected_config_revision, visible)
+                        .await
+                }
                 Some(SettingValue::CheckForUpdatesAutomatically {
                     expected_config_revision,
                     enabled,

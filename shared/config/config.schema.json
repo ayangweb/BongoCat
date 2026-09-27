@@ -481,6 +481,9 @@
     "SystemConfig": {
       "additionalProperties": false,
       "properties": {
+        "show_dock_icon": {
+          "type": "boolean"
+        },
         "show_status_icon": {
           "type": "boolean"
         },
@@ -490,6 +493,7 @@
       },
       "required": [
         "show_taskbar_icon",
+        "show_dock_icon",
         "show_status_icon"
       ],
       "type": "object"

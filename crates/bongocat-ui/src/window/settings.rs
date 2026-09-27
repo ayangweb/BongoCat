@@ -210,6 +210,32 @@ impl SettingsView {
         );
     }
 
+    #[cfg(target_os = "macos")]
+    pub(super) fn set_dock_icon_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        if self
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.dock_icon_visible == visible)
+        {
+            return;
+        }
+        self.start_request(
+            PendingOperation::DockIconVisibility,
+            Some(SettingValue::DockIconVisible {
+                expected_config_revision,
+                visible,
+            }),
+            cx,
+        );
+    }
+
     pub(super) fn set_check_for_updates_automatically(
         &mut self,
         enabled: bool,

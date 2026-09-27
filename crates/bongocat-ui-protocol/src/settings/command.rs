@@ -64,6 +64,11 @@ pub enum SettingsCommand {
         visible: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetDockIconVisible {
+        expected_config_revision: u64,
+        visible: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetCheckForUpdatesAutomatically {
         expected_config_revision: u64,
         enabled: bool,

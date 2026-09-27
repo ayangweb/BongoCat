@@ -311,6 +311,7 @@
       "login_startup_update_failed": "无法更新登录时启动设置",
       "system_icon_update_failed": "无法更新系统图标。",
       "taskbar_icon_update_failed": "无法更新任务栏图标。",
+      "dock_icon_update_failed": "无法更新程序坞图标。",
       "window_hide_failed": "无法隐藏设置窗口",
       "window_layout_save_failed": "无法保存窗口布局",
       "application_shutdown_failed": "BongoCat 未能完全关闭"
@@ -489,6 +490,9 @@
       },
       "taskbar_icon": {
         "label": "显示任务栏图标"
+      },
+      "dock_icon": {
+        "label": "显示程序坞图标"
       },
       "auto_update": {
         "label": "自动检查更新",

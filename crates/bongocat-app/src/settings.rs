@@ -83,10 +83,10 @@ mod worker;
 use capabilities::{
     BackupLocationCapability, DiagnosticsExportCapability, LogLocationCapability,
     ModelLocationCapability, StartupItemCapability, SystemBackupLocation, SystemDiagnosticsExport,
-    SystemLogLocation, SystemModelLocation, SystemStartupItem, UnavailableStatusIcon,
-    UnavailableTaskbarIcon, VisibilityCapabilities,
+    SystemLogLocation, SystemModelLocation, SystemStartupItem, UnavailableDockIcon,
+    UnavailableStatusIcon, UnavailableTaskbarIcon, VisibilityCapabilities,
 };
-pub use capabilities::{StatusIconCapability, TaskbarIconCapability};
+pub use capabilities::{DockIconCapability, StatusIconCapability, TaskbarIconCapability};
 #[cfg(test)]
 use capabilities::{UnavailableLogLocation, UnavailableModelLocation};
 use projection::settings_shortcut;
@@ -109,6 +109,7 @@ impl ApplicationSettingsService {
             Arc::new(SystemStartupItem),
             Arc::new(UnavailableStatusIcon),
             Arc::new(UnavailableTaskbarIcon),
+            Arc::new(UnavailableDockIcon),
             None,
             None,
         )
@@ -123,6 +124,7 @@ impl ApplicationSettingsService {
             Arc::new(SystemStartupItem),
             Arc::new(UnavailableStatusIcon),
             Arc::new(UnavailableTaskbarIcon),
+            Arc::new(UnavailableDockIcon),
             Some(receiver),
             None,
         )
@@ -138,6 +140,7 @@ impl ApplicationSettingsService {
             Arc::new(SystemStartupItem),
             Arc::new(UnavailableStatusIcon),
             Arc::new(UnavailableTaskbarIcon),
+            Arc::new(UnavailableDockIcon),
             Some(receiver),
             Some(signals),
         )
@@ -149,14 +152,18 @@ impl ApplicationSettingsService {
         signals: ApplicationMainThreadSignals,
         status_icon: Arc<dyn StatusIconCapability>,
         #[cfg(target_os = "windows")] taskbar_icon: Arc<dyn TaskbarIconCapability>,
+        #[cfg(target_os = "macos")] dock_icon: Arc<dyn DockIconCapability>,
     ) -> Result<Self, SettingsServiceJoinError> {
         #[cfg(not(target_os = "windows"))]
         let taskbar_icon = Arc::new(UnavailableTaskbarIcon);
+        #[cfg(not(target_os = "macos"))]
+        let dock_icon = Arc::new(UnavailableDockIcon);
         Self::start_with_startup_item_and_shortcuts(
             application,
             Arc::new(SystemStartupItem),
             status_icon,
             taskbar_icon,
+            dock_icon,
             Some(receiver),
             Some(signals),
         )
@@ -172,6 +179,7 @@ impl ApplicationSettingsService {
             startup_item,
             Arc::new(UnavailableStatusIcon),
             Arc::new(UnavailableTaskbarIcon),
+            Arc::new(UnavailableDockIcon),
             None,
             None,
         )
@@ -187,6 +195,7 @@ impl ApplicationSettingsService {
             Arc::new(SystemStartupItem),
             status_icon,
             Arc::new(UnavailableTaskbarIcon),
+            Arc::new(UnavailableDockIcon),
             None,
             None,
         )
@@ -202,16 +211,35 @@ impl ApplicationSettingsService {
             Arc::new(SystemStartupItem),
             Arc::new(UnavailableStatusIcon),
             taskbar_icon,
+            Arc::new(UnavailableDockIcon),
             None,
             None,
         )
     }
 
+    #[cfg(test)]
+    fn start_with_dock_icon(
+        application: Application,
+        dock_icon: Arc<dyn DockIconCapability>,
+    ) -> Result<Self, SettingsServiceJoinError> {
+        Self::start_with_startup_item_and_shortcuts(
+            application,
+            Arc::new(SystemStartupItem),
+            Arc::new(UnavailableStatusIcon),
+            Arc::new(UnavailableTaskbarIcon),
+            dock_icon,
+            None,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn start_with_startup_item_and_shortcuts(
         application: Application,
         startup_item: Arc<dyn StartupItemCapability>,
         status_icon: Arc<dyn StatusIconCapability>,
         taskbar_icon: Arc<dyn TaskbarIconCapability>,
+        dock_icon: Arc<dyn DockIconCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
         signals: Option<ApplicationMainThreadSignals>,
     ) -> Result<Self, SettingsServiceJoinError> {
@@ -230,6 +258,7 @@ impl ApplicationSettingsService {
             VisibilityCapabilities {
                 status_icon,
                 taskbar_icon,
+                dock_icon,
             },
             backup_location,
             diagnostics_export,
@@ -253,6 +282,7 @@ impl ApplicationSettingsService {
             VisibilityCapabilities {
                 status_icon: Arc::new(UnavailableStatusIcon),
                 taskbar_icon: Arc::new(UnavailableTaskbarIcon),
+                dock_icon: Arc::new(UnavailableDockIcon),
             },
             backup_location,
             diagnostics_export,
@@ -277,6 +307,7 @@ impl ApplicationSettingsService {
             VisibilityCapabilities {
                 status_icon: Arc::new(UnavailableStatusIcon),
                 taskbar_icon: Arc::new(UnavailableTaskbarIcon),
+                dock_icon: Arc::new(UnavailableDockIcon),
             },
             Arc::new(SystemBackupLocation {
                 path: PathBuf::new(),
@@ -305,6 +336,7 @@ impl ApplicationSettingsService {
             VisibilityCapabilities {
                 status_icon: Arc::new(UnavailableStatusIcon),
                 taskbar_icon: Arc::new(UnavailableTaskbarIcon),
+                dock_icon: Arc::new(UnavailableDockIcon),
             },
             Arc::new(SystemBackupLocation {
                 path: PathBuf::new(),

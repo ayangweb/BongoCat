@@ -156,6 +156,19 @@ impl SettingsClient {
         .await
     }
 
+    pub async fn set_dock_icon_visible(
+        &self,
+        expected_config_revision: u64,
+        visible: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetDockIconVisible {
+            expected_config_revision,
+            visible,
+            reply,
+        })
+        .await
+    }
+
     pub async fn set_check_for_updates_automatically(
         &self,
         expected_config_revision: u64,
@@ -628,6 +641,18 @@ impl SettingsClient {
         visible: bool,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetTaskbarIconVisible {
+            expected_config_revision,
+            visible,
+            reply,
+        })
+    }
+
+    pub fn set_dock_icon_visible_blocking(
+        &self,
+        expected_config_revision: u64,
+        visible: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetDockIconVisible {
             expected_config_revision,
             visible,
             reply,

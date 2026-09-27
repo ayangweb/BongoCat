@@ -41,6 +41,7 @@ updates
 | Section       | Field                                 | Meaning                                |
 | ------------- | ------------------------------------- | -------------------------------------- |
 | `system`      | `show_taskbar_icon`                   | Windows 任务栏可见性                   |
+| `system`      | `show_dock_icon`                      | macOS 程序坞图标可见性，默认 `false`    |
 | `system`      | `show_status_icon`                    | 托盘/菜单栏入口可见性                  |
 | `updates`     | `check_automatically`                 | 自动检查更新，默认 `false`              |
 | `updates`     | `check_interval_hours`                | 自动检查间隔小时数，`[1, 8760]`         |
@@ -117,6 +118,14 @@ expected revision 原子提交配置；平台失败不提交，配置失败则�
 影响 overlay；macOS 不把该字段解释为 Dock 图标。修改时先在 GPUI owner 线程切换并回读 HWND
 扩展样式，成功后才按 expected revision 原子提交配置；平台失败不提交，配置失败恢复旧样式。
 启动和设置窗口创建都在窗口显示前应用当前 v1 值；窗口之后只隐藏/重显，不重建。
+
+`system.show_dock_icon` 是 macOS 程序坞图标的唯一来源，默认 `false`。默认关闭是刻意的：产品
+启动时以 `NSApplicationActivationPolicyAccessory` 运行，本来就没有程序坞图标，菜单栏状态图标
+才是入口，字段加入前后行为一致。它是进程级激活策略而不是窗口样式，所以与
+`show_taskbar_icon` 分列两个字段、互不解释：开关打开切到 `Regular`，关闭切回 `Accessory`。
+overlay 启动时才设置该策略，因此启动恢复必须在 overlay 会话建立之后应用，否则会被覆盖。
+该值与设置窗口是否存在无关：没有窗口时也要生效。修改时先在主线程改策略并回读 `activationPolicy`，
+成功后才按 expected revision 原子提交配置；平台失败不提交，配置失败把策略恢复为旧值。
 
 登录启动不属于配置字段。它是可被系统设置或其它进程改变的平台能力，settings service 只读取
 typed platform snapshot，并仅在显式用户 command 时调用平台 adapter；不得持久化第二份布尔值。

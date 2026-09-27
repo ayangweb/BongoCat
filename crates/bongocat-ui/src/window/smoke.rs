@@ -132,6 +132,16 @@ impl SettingsView {
         {
             return Err("app & system is missing the platform status-icon label".to_owned());
         }
+        // Each shell-icon row is rendered on exactly one platform, so the smoke
+        // asserts the label for the one it can actually paint.
+        #[cfg(target_os = "windows")]
+        if bongocat_i18n::text(locale, "settings.app_system.taskbar_icon.label").is_empty() {
+            return Err("app & system is missing the taskbar-icon label".to_owned());
+        }
+        #[cfg(target_os = "macos")]
+        if bongocat_i18n::text(locale, "settings.app_system.dock_icon.label").is_empty() {
+            return Err("app & system is missing the Dock-icon label".to_owned());
+        }
         let options = logging_level_options(snapshot.resolved_language);
         if options.len() != SettingsLogLevel::ALL.len()
             || options.iter().any(|option| option.is_empty())

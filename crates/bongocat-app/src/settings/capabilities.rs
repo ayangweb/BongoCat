@@ -26,9 +26,17 @@ pub trait TaskbarIconCapability: Send + Sync + 'static {
     fn set_visible(&self, visible: bool) -> Result<(), SettingsError>;
 }
 
+/// The macOS Dock icon. Like the tray/taskbar entry it is a system-owned shell
+/// surface the settings worker cannot assert on its own thread, so it sits behind
+/// the same kind of seam and is applied on the main thread first.
+pub trait DockIconCapability: Send + Sync + 'static {
+    fn set_visible(&self, visible: bool) -> Result<(), SettingsError>;
+}
+
 pub(super) struct VisibilityCapabilities {
     pub(super) status_icon: Arc<dyn StatusIconCapability>,
     pub(super) taskbar_icon: Arc<dyn TaskbarIconCapability>,
+    pub(super) dock_icon: Arc<dyn DockIconCapability>,
 }
 
 pub(super) trait BackupLocationCapability: Send + Sync + 'static {
@@ -59,6 +67,8 @@ pub(super) struct SystemStartupItem;
 pub(super) struct UnavailableStatusIcon;
 
 pub(super) struct UnavailableTaskbarIcon;
+
+pub(super) struct UnavailableDockIcon;
 
 pub(super) struct SystemBackupLocation {
     pub(super) path: PathBuf,
@@ -113,6 +123,12 @@ impl TaskbarIconCapability for UnavailableTaskbarIcon {
         Err(SettingsError::new(
             SettingsErrorCode::TaskbarIconUpdateFailed,
         ))
+    }
+}
+
+impl DockIconCapability for UnavailableDockIcon {
+    fn set_visible(&self, _visible: bool) -> Result<(), SettingsError> {
+        Err(SettingsError::new(SettingsErrorCode::DockIconUpdateFailed))
     }
 }
 

@@ -225,6 +225,13 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   切换 HWND 的 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW` 并回读结果，平台成功后才由 Application
   owner 按 expected revision 原子提交；配置提交失败时恢复旧样式。启动和窗口创建必须先应用当前
   v1 值再显示窗口，平台失败只返回稳定匿名 settings error。
+- `system.show_dock_icon` 是 macOS 程序坞图标的对应项，默认 `false`，因为 overlay 会话把进程
+  启动为 `NSApplicationActivationPolicyAccessory`，产品本来就是没有 Dock 图标的菜单栏应用。
+  它是进程激活策略而非窗口样式，因此是独立字段，不复用 `show_taskbar_icon`：打开切到
+  `Regular`，关闭切回 `Accessory`。该策略由 overlay 在会话启动时写入，所以启动恢复必须排在
+  overlay 之后；应用与设置窗口是否存在无关。修改同样先在主线程改策略并回读 `activationPolicy`，
+  平台成功后才由 Application owner 原子提交，配置失败把策略恢复为旧值，只返回稳定匿名
+  settings error。
 - 关闭设置窗口不影响 runtime、输入、音频、frame source 和 overlay，它们继续由 app
   coordinator 持有。设置和更新窗口的普通 close 都销毁各自的 GPUI 窗口；设置窗口下次打开时创建新的
   `Entity`，更新窗口也按原有行为重新创建。两个平台共用 GPUI close 路径，平台差异不改变窗口生命周期。

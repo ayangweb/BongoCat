@@ -54,6 +54,17 @@ impl Application {
         Ok(())
     }
 
+    pub fn set_dock_icon_visible(&mut self, visible: bool) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.system.show_dock_icon = visible;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
     pub fn set_check_for_updates_automatically(
         &mut self,
         enabled: bool,

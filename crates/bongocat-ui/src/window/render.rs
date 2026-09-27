@@ -1166,6 +1166,36 @@ impl Render for SettingsView {
                             },
                         ),
                     ));
+                    // The macOS counterpart of the Windows taskbar button. It is its
+                    // own row and its own field rather than a second meaning of
+                    // `show_taskbar_icon`, which the contract explicitly refuses to
+                    // read as a Dock icon.
+                    #[cfg(target_os = "macos")]
+                    items.push(SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.app_system.dock_icon.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.dock_icon_visible)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_dock_icon_visible(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    ));
                     items
                 }, &app_desktop_keywords)),
             SettingGroup::new()

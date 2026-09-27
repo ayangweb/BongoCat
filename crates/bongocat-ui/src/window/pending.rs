@@ -16,6 +16,8 @@ pub(crate) enum PendingOperation {
     StatusIconVisibility,
     #[cfg(target_os = "windows")]
     TaskbarIconVisibility,
+    #[cfg(target_os = "macos")]
+    DockIconVisibility,
     AutomaticUpdateCheck,
     CheckForUpdatesIntervalHours,
     LoggingSettings,
@@ -62,6 +64,11 @@ pub(crate) enum SettingValue {
     },
     #[cfg(target_os = "windows")]
     TaskbarIconVisible {
+        expected_config_revision: u64,
+        visible: bool,
+    },
+    #[cfg(target_os = "macos")]
+    DockIconVisible {
         expected_config_revision: u64,
         visible: bool,
     },

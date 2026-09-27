@@ -80,6 +80,8 @@ use gamepad_observer::GamepadConnectionObserver;
 use model_cover::{COVER_CAPTURE_POLL_INTERVAL_MS, capture_model_cover_without_blocking};
 use overlay_placement::OverlayPlacementDebouncer;
 use preset_root::preset_root;
+#[cfg(target_os = "macos")]
+use product_icons::ProductDockIcon;
 use product_icons::ProductStatusIcon;
 #[cfg(target_os = "windows")]
 use product_icons::ProductTaskbarIcon;
@@ -93,7 +95,7 @@ use product_shutdown::{
 #[cfg(target_os = "windows")]
 use product_shutdown::{request_windows_product_quit, start_windows_product_shutdown};
 #[cfg(target_os = "macos")]
-use product_windows::poll_update_restart;
+use product_windows::{apply_dock_icon_visibility, poll_update_restart, product_dock_icon_state};
 #[cfg(target_os = "windows")]
 use product_windows::{
     apply_taskbar_icon_visibility, product_taskbar_icon_state, take_update_restart_request,
@@ -163,6 +165,11 @@ struct ProductCoordinator {
     system_menu: Option<SystemMenu>,
     #[cfg(target_os = "windows")]
     taskbar_icon_visible: bool,
+    /// The macOS Dock icon the product last applied. Kept for the same reason as
+    /// `taskbar_icon_visible`: it is the coordinator's own record of a
+    /// process-wide surface the settings worker cannot observe on its own thread.
+    #[cfg(target_os = "macos")]
+    dock_icon_visible: bool,
     #[cfg(target_os = "macos")]
     application_reopens: u64,
     #[cfg(target_os = "windows")]
@@ -337,6 +344,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     #[cfg(target_os = "windows")]
     let initial_taskbar_icon_visible = application.config().system.show_taskbar_icon;
+    #[cfg(target_os = "macos")]
+    let (dock_icon_sender, dock_icon_receiver) = std::sync::mpsc::sync_channel(4);
+    #[cfg(target_os = "macos")]
+    let dock_icon = Arc::new(ProductDockIcon {
+        sender: dock_icon_sender,
+    });
+    #[cfg(target_os = "macos")]
+    let initial_dock_icon_visible = application.config().system.show_dock_icon;
     let main_thread_signals = bongocat_app::ApplicationMainThreadSignals::default();
     let input_producer = application.input_producer();
     let cursor_producer = application.cursor_producer();
@@ -424,6 +439,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 status_icon,
                 #[cfg(target_os = "windows")]
                 taskbar_icon,
+                #[cfg(target_os = "macos")]
+                dock_icon,
             ) {
                 Ok(service) => service,
                 Err(error) => {
@@ -532,6 +549,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             taskbar_icon_visible: initial_taskbar_icon_visible,
             #[cfg(target_os = "macos")]
+            dock_icon_visible: initial_dock_icon_visible,
+            #[cfg(target_os = "macos")]
             application_reopens: 0,
             #[cfg(target_os = "windows")]
             single_instance: Some(single_instance),
@@ -549,6 +568,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             shutdown_flush_complete: Arc::new(AtomicBool::new(false)),
         });
+
+        // The overlay started the process as a menu bar accessory application, so a
+        // saved "show Dock icon" preference has to be applied after it, not before.
+        // This is the same ordering rule the Windows taskbar button follows: the
+        // current v1 value is installed before anything the user can see.
+        #[cfg(target_os = "macos")]
+        if let Err(error) = bongocat_platform::set_dock_icon_visible(initial_dock_icon_visible) {
+            record_failure(
+                &run_failures,
+                format!("apply startup Dock icon visibility: {error}"),
+            );
+        }
 
         // Every model the settings worker installs is rendered into its own cover
         // here. The worker cannot do it — a capture creates a native window, and the
@@ -885,6 +916,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "windows")]
                 while let Ok(request) = taskbar_icon_receiver.try_recv() {
                     let result = cx.update(|cx| apply_taskbar_icon_visibility(cx, request.visible));
+                    let _ = request.reply.send(result);
+                }
+                #[cfg(target_os = "macos")]
+                while let Ok(request) = dock_icon_receiver.try_recv() {
+                    let result = cx.update(|cx| apply_dock_icon_visibility(cx, request.visible));
                     let _ = request.reply.send(result);
                 }
                 // Only macOS observes a completed install: the Windows install path
@@ -1985,6 +2021,74 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return;
                     }
                     if let Err(error) = write_smoke_status("taskbar icon toggled and restored") {
+                        record_failure(&smoke_failures, error.to_string());
+                        cx.update(request_product_quit);
+                        return;
+                    }
+                }
+
+                #[cfg(target_os = "macos")]
+                {
+                    let dock_result = async {
+                        let initial = smoke_client
+                            .read_snapshot()
+                            .await
+                            .map_err(|error| format!("read dock icon snapshot: {error}"))?;
+                        let initial_visibility = initial.dock_icon_visible;
+                        let (native_initial, applied_initial) =
+                            cx.update(product_dock_icon_state)?;
+                        if native_initial != initial_visibility
+                            || applied_initial != initial_visibility
+                        {
+                            return Err(
+                                "startup Dock visibility diverged from the current snapshot"
+                                    .to_owned(),
+                            );
+                        }
+                        let changed = smoke_client
+                            .set_dock_icon_visible(
+                                initial.config_revision.ok_or_else(|| {
+                                    "dock icon config revision is unavailable".to_owned()
+                                })?,
+                                !initial_visibility,
+                            )
+                            .await
+                            .map_err(|error| format!("toggle dock icon: {error}"))?;
+                        let (native_changed, applied_changed) = cx.update(product_dock_icon_state)?;
+                        if changed.dock_icon_visible == initial_visibility
+                            || native_changed != changed.dock_icon_visible
+                            || applied_changed != changed.dock_icon_visible
+                        {
+                            return Err(
+                                "dock icon toggle did not reach the process activation policy"
+                                    .to_owned(),
+                            );
+                        }
+                        let restored = smoke_client
+                            .set_dock_icon_visible(
+                                changed.config_revision.ok_or_else(|| {
+                                    "changed dock icon revision is unavailable".to_owned()
+                                })?,
+                                initial_visibility,
+                            )
+                            .await
+                            .map_err(|error| format!("restore dock icon: {error}"))?;
+                        let (native_restored, applied_restored) = cx.update(product_dock_icon_state)?;
+                        if restored.dock_icon_visible != initial_visibility
+                            || native_restored != initial_visibility
+                            || applied_restored != initial_visibility
+                        {
+                            return Err("dock icon visibility was not restored atomically".to_owned());
+                        }
+                        Ok::<(), String>(())
+                    }
+                    .await;
+                    if let Err(error) = dock_result {
+                        record_failure(&smoke_failures, error);
+                        cx.update(request_product_quit);
+                        return;
+                    }
+                    if let Err(error) = write_smoke_status("dock icon toggled and restored") {
                         record_failure(&smoke_failures, error.to_string());
                         cx.update(request_product_quit);
                         return;

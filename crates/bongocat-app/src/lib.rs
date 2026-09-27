@@ -47,7 +47,7 @@ pub(crate) use config_projection::{
     settings_logging_from_config,
 };
 pub use settings::{
-    ApplicationSettingsService, SettingsServiceJoinError, StatusIconCapability,
+    ApplicationSettingsService, DockIconCapability, SettingsServiceJoinError, StatusIconCapability,
     TaskbarIconCapability,
 };
 pub use shortcuts::application_shortcut_dispatcher;

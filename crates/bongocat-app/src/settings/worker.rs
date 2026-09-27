@@ -244,6 +244,31 @@ pub(super) fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetDockIconVisible {
+                expected_config_revision,
+                visible,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        let previous = application.config().system.show_dock_icon;
+                        if previous == visible {
+                            return Ok(());
+                        }
+                        visibility.dock_icon.set_visible(visible)?;
+                        if let Err(error) = application.set_dock_icon_visible(visible) {
+                            if visibility.dock_icon.set_visible(previous).is_err() {
+                                return Err(SettingsError::new(
+                                    SettingsErrorCode::DockIconUpdateFailed,
+                                ));
+                            }
+                            return Err(map_application_error(error));
+                        }
+                        Ok(())
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetCheckForUpdatesAutomatically {
                 expected_config_revision,
                 enabled,

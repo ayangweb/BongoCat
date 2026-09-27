@@ -14,7 +14,9 @@ use objc2::{
     MainThreadMarker,
     rc::{Retained, autoreleasepool},
 };
-use objc2_app_kit::{NSView, NSWindow, NSWindowStyleMask};
+use objc2_app_kit::{
+    NSApplication, NSApplicationActivationPolicy, NSView, NSWindow, NSWindowStyleMask,
+};
 use objc2_core_foundation::{
     CFMachPort, CFRetained, CFRunLoop, CFRunLoopSource, CGPoint, CGRect, CGSize,
     kCFRunLoopDefaultMode,
@@ -219,6 +221,52 @@ pub fn hide_native_window(window: &impl HasWindowHandle) -> Result<(), NativeWin
 pub fn show_native_window(window: &impl HasWindowHandle) -> Result<(), NativeWindowError> {
     native_window(window)?.makeKeyAndOrderFront(None);
     Ok(())
+}
+
+/// Whether the process currently shows a Dock icon.
+///
+/// macOS owns the Dock icon as a process-wide activation policy rather than a
+/// window style, so this is the readable half of the pair that
+/// [`set_dock_icon_visible`] writes. `Regular` is the only policy that puts the
+/// application in the Dock; `Accessory` (what the product starts as) and
+/// `Prohibited` both hide it.
+pub fn dock_icon_is_visible() -> Result<bool, NativeWindowError> {
+    let application = shared_application()?;
+    Ok(application.activationPolicy() == NSApplicationActivationPolicy::Regular)
+}
+
+/// Shows or hides the process Dock icon by moving the activation policy.
+///
+/// The product launches the overlay as an `Accessory` application, so a Dock
+/// icon is opt-in. The policy is read back instead of trusted: `setActivationPolicy`
+/// reports failure by returning `false`, and a policy that did not actually change
+/// would leave the shell disagreeing with the persisted preference, which is the
+/// one thing the settings worker refuses to commit.
+pub fn set_dock_icon_visible(visible: bool) -> Result<(), NativeWindowError> {
+    let application = shared_application()?;
+    let policy = if visible {
+        NSApplicationActivationPolicy::Regular
+    } else {
+        NSApplicationActivationPolicy::Accessory
+    };
+    if application.activationPolicy() == policy {
+        return Ok(());
+    }
+    if !application.setActivationPolicy(policy) {
+        return Err(NativeWindowError::DockVisibilityUpdateFailed);
+    }
+    if dock_icon_is_visible()? != visible {
+        return Err(NativeWindowError::DockVisibilityUpdateFailed);
+    }
+    Ok(())
+}
+
+fn shared_application() -> Result<Retained<NSApplication>, NativeWindowError> {
+    // `NSApplication` is a process-wide AppKit object and its activation policy is
+    // main-thread-only. Constructing the shared instance off the main thread also
+    // aborts, so the marker is checked before the instance is asked for.
+    let marker = MainThreadMarker::new().ok_or(NativeWindowError::WrongThread)?;
+    Ok(NSApplication::sharedApplication(marker))
 }
 
 fn native_window(window: &impl HasWindowHandle) -> Result<Retained<NSWindow>, NativeWindowError> {

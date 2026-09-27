@@ -311,6 +311,7 @@
       "login_startup_update_failed": "The login startup setting could not be updated",
       "system_icon_update_failed": "Could not update the system icon.",
       "taskbar_icon_update_failed": "Could not update the taskbar icon.",
+      "dock_icon_update_failed": "Could not update the Dock icon.",
       "window_hide_failed": "Settings window could not be hidden",
       "window_layout_save_failed": "The window layout could not be saved",
       "application_shutdown_failed": "BongoCat could not close completely"
@@ -489,6 +490,9 @@
       },
       "taskbar_icon": {
         "label": "Show taskbar icon"
+      },
+      "dock_icon": {
+        "label": "Show Dock icon"
       },
       "auto_update": {
         "label": "Check for updates automatically",

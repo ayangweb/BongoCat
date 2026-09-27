@@ -1,8 +1,8 @@
-//! The status and taskbar icons, as the settings worker's capabilities.
+//! The status, taskbar and Dock icons, as the settings worker's capabilities.
 //!
-//! Both sit behind a request channel rather than a direct platform call: the icon
-//! belongs to the GPUI thread that owns the window, while the settings worker is
-//! the one asking for the change, so the request carries the answer back.
+//! All three sit behind a request channel rather than a direct platform call: the
+//! icon belongs to the GPUI thread that owns the window, while the settings worker
+//! is the one asking for the change, so the request carries the answer back.
 
 use super::*;
 
@@ -50,5 +50,30 @@ impl bongocat_app::TaskbarIconCapability for ProductTaskbarIcon {
         receiver
             .recv_timeout(Duration::from_secs(2))
             .map_err(|_| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed))?
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) struct DockIconRequest {
+    pub(crate) visible: bool,
+    pub(crate) reply: std::sync::mpsc::SyncSender<Result<(), SettingsError>>,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone)]
+pub(crate) struct ProductDockIcon {
+    pub(crate) sender: std::sync::mpsc::SyncSender<DockIconRequest>,
+}
+
+#[cfg(target_os = "macos")]
+impl bongocat_app::DockIconCapability for ProductDockIcon {
+    fn set_visible(&self, visible: bool) -> Result<(), SettingsError> {
+        let (reply, receiver) = std::sync::mpsc::sync_channel(1);
+        self.sender
+            .try_send(DockIconRequest { visible, reply })
+            .map_err(|_| SettingsError::new(SettingsErrorCode::DockIconUpdateFailed))?;
+        receiver
+            .recv_timeout(Duration::from_secs(2))
+            .map_err(|_| SettingsError::new(SettingsErrorCode::DockIconUpdateFailed))?
     }
 }

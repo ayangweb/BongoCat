@@ -99,6 +99,12 @@ struct TestTaskbarIcon {
     fail_updates: AtomicBool,
 }
 
+struct TestDockIcon {
+    visible: Mutex<bool>,
+    updates: Mutex<Vec<bool>>,
+    fail_updates: AtomicBool,
+}
+
 impl TestStatusIcon {
     fn new(visible: bool) -> Self {
         Self {
@@ -176,6 +182,47 @@ impl TaskbarIconCapability for TestTaskbarIcon {
             return Err(SettingsError::new(
                 SettingsErrorCode::TaskbarIconUpdateFailed,
             ));
+        }
+        *self
+            .visible
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = visible;
+        Ok(())
+    }
+}
+
+impl TestDockIcon {
+    fn new(visible: bool) -> Self {
+        Self {
+            visible: Mutex::new(visible),
+            updates: Mutex::new(Vec::new()),
+            fail_updates: AtomicBool::new(false),
+        }
+    }
+
+    fn visible(&self) -> bool {
+        *self
+            .visible
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn updates(&self) -> Vec<bool> {
+        self.updates
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+impl DockIconCapability for TestDockIcon {
+    fn set_visible(&self, visible: bool) -> Result<(), SettingsError> {
+        self.updates
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(visible);
+        if self.fail_updates.load(Ordering::Acquire) {
+            return Err(SettingsError::new(SettingsErrorCode::DockIconUpdateFailed));
         }
         *self
             .visible

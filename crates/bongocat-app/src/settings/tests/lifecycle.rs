@@ -186,6 +186,88 @@ fn service_applies_and_persists_taskbar_icon_visibility_transactionally() {
 }
 
 #[test]
+fn service_applies_and_persists_dock_icon_visibility_transactionally() {
+    let base = tempdir().expect("temporary storage");
+    let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+    let application = Application::start_with_layout(layout.clone()).expect("application start");
+    // The product starts as a menu bar accessory app, so the saved default is a
+    // hidden Dock icon. The seam is seeded visible to prove the first commit is a
+    // real transition and not a no-op against an already-matching value.
+    let dock_icon = Arc::new(TestDockIcon::new(true));
+    let service = ApplicationSettingsService::start_with_dock_icon(application, dock_icon.clone())
+        .expect("service start");
+    let client = service.client();
+
+    let initial = client.read_snapshot_blocking().expect("initial snapshot");
+    assert!(!initial.dock_icon_visible);
+    let hidden = client
+        .set_dock_icon_visible_blocking(initial.config_revision.expect("config revision"), false)
+        .expect("hide dock icon");
+    assert!(!hidden.dock_icon_visible);
+    // Already false in the configuration, so the worker never reaches the platform.
+    assert_eq!(dock_icon.updates(), Vec::<bool>::new());
+
+    let shown = client
+        .set_dock_icon_visible_blocking(
+            hidden.config_revision.expect("hidden config revision"),
+            true,
+        )
+        .expect("show dock icon");
+    assert!(shown.dock_icon_visible);
+    assert!(dock_icon.visible());
+    assert_eq!(dock_icon.updates(), vec![true]);
+
+    let stale = client
+        .set_dock_icon_visible_blocking(
+            hidden.config_revision.expect("hidden config revision"),
+            false,
+        )
+        .expect_err("stale dock icon update");
+    assert_eq!(stale.code(), SettingsErrorCode::SnapshotOutdated);
+    assert_eq!(dock_icon.updates(), vec![true]);
+
+    dock_icon.fail_updates.store(true, Ordering::Release);
+    let failed = client
+        .set_dock_icon_visible_blocking(shown.config_revision.expect("shown revision"), false)
+        .expect_err("platform update failure");
+    assert_eq!(failed.code(), SettingsErrorCode::DockIconUpdateFailed);
+    // A failed platform call must not move the committed revision or the reported
+    // value. Whole-snapshot equality is not asserted here because the runtime
+    // work-budget counters advance on their own clock between two reads.
+    let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
+    assert_eq!(unchanged.config_revision, shown.config_revision);
+    assert_eq!(unchanged.dock_icon_visible, shown.dock_icon_visible);
+    assert!(dock_icon.visible());
+
+    dock_icon.fail_updates.store(false, Ordering::Release);
+    let occupied = layout.config.with_extension("json.tmp");
+    std::fs::create_dir(&occupied).expect("occupied temp target");
+    let persist_failed = client
+        .set_dock_icon_visible_blocking(shown.config_revision.expect("shown revision"), false)
+        .expect_err("config persist failure");
+    assert_eq!(
+        persist_failed.code(),
+        SettingsErrorCode::ConfigTargetOccupied
+    );
+    assert!(dock_icon.visible());
+    // The failed commit is rolled back on the platform too, so the shell and the
+    // saved preference cannot drift apart.
+    assert_eq!(dock_icon.updates(), vec![true, false, false, true]);
+    let rolled_back = client
+        .read_snapshot_blocking()
+        .expect("rolled back snapshot");
+    assert_eq!(rolled_back.config_revision, shown.config_revision);
+    assert_eq!(rolled_back.dock_icon_visible, shown.dock_icon_visible);
+    std::fs::remove_dir(occupied).expect("remove occupied temp target");
+
+    client.shutdown_blocking().expect("service shutdown");
+    service.join().expect("service join");
+    let restarted = Application::start_with_layout(layout).expect("restart application");
+    assert!(restarted.config().system.show_dock_icon);
+    restarted.shutdown().expect("restart shutdown");
+}
+
+#[test]
 fn service_exports_diagnostics_and_reports_the_result_in_a_new_snapshot() {
     let base = tempdir().expect("temporary storage");
     let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
