@@ -103,7 +103,7 @@ impl Default for NativeConfig {
             },
             shortcuts: ShortcutConfig::default(),
             system: SystemConfig {
-                show_taskbar_icon: true,
+                show_taskbar_icon: false,
                 show_dock_icon: false,
                 show_status_icon: true,
             },

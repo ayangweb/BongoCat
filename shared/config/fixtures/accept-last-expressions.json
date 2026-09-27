@@ -86,7 +86,7 @@
     "model_behaviors_enabled": false
   },
   "system": {
-    "show_taskbar_icon": true,
+    "show_taskbar_icon": false,
     "show_dock_icon": false,
     "show_status_icon": true
   },

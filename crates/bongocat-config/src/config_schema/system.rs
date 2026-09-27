@@ -12,8 +12,9 @@ use super::*;
 #[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct SystemConfig {
-    /// Whether the Windows settings window keeps its taskbar button. Windows
-    /// only: macOS never reads this field as a Dock icon.
+    /// Whether the Windows model window keeps its taskbar button, default
+    /// `false`. Windows only: macOS never reads this field as a Dock icon, and
+    /// the settings window keeps its own taskbar button either way.
     pub show_taskbar_icon: bool,
     /// Whether the macOS process shows a Dock icon. This is the process
     /// activation policy, not a window style, so it is macOS only and it is the

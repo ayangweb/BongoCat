@@ -84,8 +84,8 @@ pub use windows::WindowsInputService;
 #[cfg(target_os = "windows")]
 pub use windows::{
     current_display_bounds, display_bounds_for_window, global_window_origin, hide_native_window,
-    local_window_origin, request_native_window_close, set_taskbar_icon_visible, show_native_window,
-    system_language, taskbar_icon_is_visible, terminate_after_product_shutdown,
+    local_window_origin, request_native_window_close, show_native_window, system_language,
+    taskbar_icon_is_visible, terminate_after_product_shutdown,
 };
 
 /// Let the user choose the model folder to import.

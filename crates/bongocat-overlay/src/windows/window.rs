@@ -9,6 +9,21 @@ use super::*;
 
 pub(crate) const WINDOW_CLASS: windows::core::PCWSTR = w!("BongoCatProductOverlayWindow");
 
+/// The taskbar half of the model window's extended style.
+///
+/// A tool window owns no taskbar button and `WS_EX_APPWINDOW` forces one, so
+/// exactly one of the two is set at a time. Only the model window is toggled
+/// this way: the settings window keeps the taskbar button GPUI gives it,
+// because a framed window that loses `WS_EX_APPWINDOW` also loses its icon and
+/// its minimize and maximize buttons to the tool window's short caption.
+pub(crate) const fn taskbar_ex_style(visible: bool) -> WINDOW_EX_STYLE {
+    if visible {
+        WS_EX_APPWINDOW
+    } else {
+        WS_EX_TOOLWINDOW
+    }
+}
+
 pub(crate) struct OverlayWindow {
     pub(crate) hwnd: HWND,
     pub(crate) instance: HINSTANCE,
@@ -74,7 +89,9 @@ impl OverlayWindow {
                 return Err(error);
             }
         }
-        let mut extended = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_NOREDIRECTIONBITMAP;
+        let mut extended = taskbar_ex_style(options.taskbar_icon_visible)
+            | WS_EX_NOACTIVATE
+            | WS_EX_NOREDIRECTIONBITMAP;
         if options.click_through {
             // `WS_EX_TRANSPARENT` alone leaves a DirectComposition-backed
             // top-level window on the desktop input path: `WM_NCHITTEST`
@@ -296,6 +313,59 @@ impl OverlayWindow {
             .map_err(windows_error("update overlay z-order"))?;
         }
         Ok(())
+    }
+
+    /// Whether the taskbar currently shows a button for this window.
+    pub(crate) fn taskbar_icon_is_visible(&self) -> bool {
+        self.assert_owner_thread();
+        // SAFETY: the HWND is live and confined to its owner thread, and
+        // `GWL_EXSTYLE` only reads this window's own extended style bits.
+        let style = WINDOW_EX_STYLE(unsafe { GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) } as u32);
+        style.contains(WS_EX_APPWINDOW) && !style.contains(WS_EX_TOOLWINDOW)
+    }
+
+    /// Show or hide this window's taskbar button without replacing it.
+    ///
+    /// The style pair is the same one `set_click_through` writes, and
+    /// `SWP_FRAMECHANGED` is what makes the shell observe it. The read-back
+    /// keeps a style the system refused from being reported as applied, the
+    /// same way the click-through path is read back by its own caller.
+    pub(crate) fn set_taskbar_icon_visible(&self, visible: bool) -> Result<(), OverlayError> {
+        self.assert_owner_thread();
+        if self.taskbar_icon_is_visible() == visible {
+            return Ok(());
+        }
+        // SAFETY: the HWND is live and confined to its owner thread. The write
+        // touches only the two taskbar bits of this window's extended style,
+        // and the position call refreshes the cached non-client state without
+        // moving, resizing or restacking the window.
+        unsafe {
+            let taskbar_style = taskbar_ex_style(visible).0 as isize;
+            let current = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE);
+            let next = if visible {
+                (current | taskbar_style) & !WS_EX_TOOLWINDOW.0 as isize
+            } else {
+                (current | taskbar_style) & !WS_EX_APPWINDOW.0 as isize
+            };
+            SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, next);
+            SetWindowPos(
+                self.hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER,
+            )
+            .map_err(windows_error("update overlay taskbar button"))?;
+        }
+        if self.taskbar_icon_is_visible() == visible {
+            Ok(())
+        } else {
+            Err(OverlayError::new(
+                "Win32 overlay taskbar button did not follow the extended style",
+            ))
+        }
     }
 
     pub(crate) fn set_click_through(&self, click_through: bool) -> Result<(), OverlayError> {

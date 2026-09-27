@@ -3671,16 +3671,26 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `Smoke native system menu lifecycle`。独立 macOS GPUI spike 首次因 tooltip 延迟、第二次因无显示
       runner 的 Metal drawable-pool 测量抖动失败，第三次 job `101044187976` 全部通过；两次重跑均未
       掩盖产品 job，且最终 run 保留完整成功证据。
-56. [x] `P5-TASKBAR-ICON-VISIBILITY`：让当前 v1 的 Windows 设置窗口任务栏按钮可即时隐藏和恢复。
-    - 依赖：当前 v1 `system.show_taskbar_icon`、GPUI 设置窗口 HWND、settings revision/CAS、
-      platform main-thread adapter 和 GPUI Kit switch；macOS 不把该字段映射为 Dock 图标。
-    - 退出条件：Windows-only 配置值通过强类型 snapshot/command 往返；平台主线程先修改窗口扩展
-      样式，Application owner 再原子提交，平台失败不改配置，配置失败回滚 HWND；启动和窗口重建
-      恢复已保存值，隐藏任务栏按钮不隐藏/销毁设置窗口；General 控件具备 keyboard/UIA switch
-      语义；定向测试、完整 workspace 与 Windows release settings smoke 通过。
-    - 验收证据（2026-09-04）：commit `8ad5c49` 完成 Windows-only typed command/snapshot、GPUI
-      owner request/reply bridge、HWND 扩展样式切换与回读、config commit/rollback、启动/重建恢复、
-      GPUI Kit switch 和 UIA 语义；本机定向测试、完整 format/Clippy/workspace test/release check、
+56. [x] `P5-TASKBAR-ICON-VISIBILITY`：让当前 v1 的 Windows 模型窗口任务栏按钮可即时隐藏和恢复。
+    - 依赖：当前 v1 `system.show_taskbar_icon`、overlay 会话拥有的模型窗口 HWND、settings
+      revision/CAS、platform main-thread adapter 和 GPUI Kit switch；macOS 不把该字段映射为
+      Dock 图标，设置窗口始终保留自己的任务栏按钮。
+    - 退出条件：Windows-only 配置值通过强类型 snapshot/command 往返；平台主线程先修改模型窗口
+      扩展样式，Application owner 再原子提交，平台失败不改配置，配置失败回滚 HWND；启动把已保存
+      值写进 overlay 会话选项，模型切换重建 HWND 时沿用已应用值，隐藏任务栏按钮不隐藏/销毁模型
+      窗口且不改动设置窗口标题栏；General 控件具备 keyboard/UIA switch 语义；定向测试、完整
+      workspace 与 Windows release settings smoke 通过。
+    - 修正记录（2026-09-27）：该字段原本被实现为设置窗口的任务栏按钮，实测会让该窗口的原生
+      标题栏退化成工具窗口的短标题栏（丢失图标与最小化/最大化按钮）。归属改为模型窗口：模型窗口
+      是无标题栏的 `WS_POPUP`，切换 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW` 只影响任务栏按钮；设置
+      窗口恢复为不写扩展样式。配置 schema、字段名和本地化文案均未变。
+    - 默认值修正（2026-09-28）：模型窗口的任务栏按钮默认由 `true` 改为 `false`。理由是模型窗口
+      本身没有可供操作的任务栏目标，任务栏因此只保留设置窗口一个可用入口。当前 v1 直接更新
+      默认值、fixture 和实现，不引入迁移或版本分支；已保存的 `true` 用户配置保持按钮显示。
+    - 验收证据（2026-09-04，归属修正前）：commit `8ad5c49` 完成 Windows-only typed
+      command/snapshot、GPUI owner request/reply bridge、HWND 扩展样式切换与回读、config
+      commit/rollback、启动/重建恢复、GPUI Kit switch 和 UIA 语义；本机定向测试、完整
+      format/Clippy/workspace test/release check、
       x64/ARM64 platform source check、共享 fixture/schema 门禁和 macOS release system-menu smoke 通过。
       CI run `33882985949` 全绿；Windows CI job `101055885362` 通过完整 workspace、release 产品
       smoke 并输出 `taskbar icon toggled and restored`，macOS job `101055885548` 同时证明该 Windows

@@ -220,11 +220,16 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   由 `muda` 从 overlay 的真实 HWND/`NSView` 弹出，不借用托盘隐藏窗口。
   正式启动不创建或显示设置窗口，设置窗口、单实例唤醒和 application reopen 仍提供恢复入口；
   平台失败只返回稳定匿名 settings error。
-- `system.show_taskbar_icon` 只控制 Windows GPUI 设置窗口的任务栏按钮，不改变窗口可见性，
-  也不映射为 macOS Dock 图标。settings worker 通过独立的有界 request/reply bridge 请求 GPUI 主线程
-  切换 HWND 的 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW` 并回读结果，平台成功后才由 Application
-  owner 按 expected revision 原子提交；配置提交失败时恢复旧样式。启动和窗口创建必须先应用当前
-  v1 值再显示窗口，平台失败只返回稳定匿名 settings error。
+- `system.show_taskbar_icon` 只控制 Windows 模型窗口的任务栏按钮，默认 `false`，不改变窗口
+  可见性，也不映射为 macOS Dock 图标。默认关闭是刻意的：模型窗口是无标题栏的 `WS_POPUP`，
+  它在任务栏里的按钮没有用户可操作的对应窗口，而设置窗口才是可用的任务栏入口，因此默认
+  不额外占用一个任务栏位置。设置窗口始终保留 GPUI 创建时带的任务栏按钮与原生标题栏：
+  给它套上 `WS_EX_TOOLWINDOW` 会连标题栏一起换成工具窗口的短标题栏，因此产品不写它的
+  扩展样式。该偏好只切换模型窗口的 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW`。
+  settings worker 通过独立的有界 request/reply bridge 请求主线程在 overlay 会话上应用并回读，
+  平台成功后才由 Application owner 按 expected revision 原子提交；配置提交失败时恢复旧值。
+  启动必须把当前 v1 值写进 overlay 会话选项，模型切换重建 HWND 时沿用会话记录的应用值，
+  平台失败只返回稳定匿名 settings error。
 - `system.show_dock_icon` 是 macOS 程序坞图标的对应项，默认 `false`，因为 overlay 会话把进程
   启动为 `NSApplicationActivationPolicyAccessory`，产品本来就是没有 Dock 图标的菜单栏应用。
   它是进程激活策略而非窗口样式，因此是独立字段，不复用 `show_taskbar_icon`：打开切到

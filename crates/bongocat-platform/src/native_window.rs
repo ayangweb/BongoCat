@@ -7,9 +7,8 @@
 //! single code path and only maps the error to a stable settings error code.
 //!
 //! `WrongThread` is produced by the macOS calls, which are AppKit main-thread calls;
-//! `CloseRequestFailed` and `TaskbarVisibilityUpdateFailed` are produced by the
-//! Windows calls that own those concepts, and `DockVisibilityUpdateFailed` by
-//! the macOS one that owns the Dock.
+//! `CloseRequestFailed` is produced by the Windows call that owns that concept, and
+//! `DockVisibilityUpdateFailed` by the macOS one that owns the Dock.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum NativeWindowError {
@@ -21,8 +20,6 @@ pub enum NativeWindowError {
     WrongThread,
     #[error("the native window rejected the close request")]
     CloseRequestFailed,
-    #[error("the native window taskbar visibility did not update")]
-    TaskbarVisibilityUpdateFailed,
     #[error("the Dock visibility did not update")]
     DockVisibilityUpdateFailed,
 }

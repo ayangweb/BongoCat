@@ -54,6 +54,14 @@ pub struct OverlaySessionOptions {
     pub keep_inside_screen: bool,
     pub maximum_fps: u16,
     pub window_bounds: Option<OverlayWindowBounds>,
+    /// Windows only: whether the model window owns a taskbar button.
+    ///
+    /// The model window is a caption-less `WS_POPUP`, so this is the only part
+    /// of its frame the product exposes to the shell; the settings window keeps
+    /// the taskbar button GPUI gives it whatever this says, because hiding that
+    /// one also replaces its caption with a tool window's short caption.
+    #[cfg(target_os = "windows")]
+    pub taskbar_icon_visible: bool,
 }
 
 impl OverlaySessionOptions {
@@ -71,12 +79,19 @@ impl OverlaySessionOptions {
             keep_inside_screen: settings.keep_inside_screen,
             maximum_fps: self.maximum_fps,
             window_bounds: self.window_bounds,
+            // The taskbar button is a system preference rather than overlay
+            // state, so it is not part of the runtime overlay settings. The
+            // session keeps the applied value here and re-applies it to a
+            // replacement window.
+            #[cfg(target_os = "windows")]
+            taskbar_icon_visible: self.taskbar_icon_visible,
         }
     }
 
-    /// Z-order, mouse-routing, hover, opacity, and scale changes are applied
-    /// directly to the native surface. Corner-radius and screen-constraint
-    /// changes still require replacing the native window resources.
+    /// Z-order, mouse-routing, hover, opacity, scale and taskbar-button changes
+    /// are applied directly to the native surface. Corner-radius and
+    /// screen-constraint changes still require replacing the native window
+    /// resources.
     pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
         self.corner_radius_percent != next.corner_radius_percent
             || self.keep_inside_screen != next.keep_inside_screen
@@ -96,6 +111,11 @@ impl Default for OverlaySessionOptions {
             keep_inside_screen: true,
             maximum_fps: 60,
             window_bounds: None,
+            // The shipped v1 configuration leaves the model window's taskbar
+            // button off by default, so the fallback options have to agree with
+            // it rather than invent a second default.
+            #[cfg(target_os = "windows")]
+            taskbar_icon_visible: false,
         }
     }
 }

@@ -40,7 +40,7 @@ updates
 
 | Section       | Field                                 | Meaning                                |
 | ------------- | ------------------------------------- | -------------------------------------- |
-| `system`      | `show_taskbar_icon`                   | Windows 任务栏可见性                   |
+| `system`      | `show_taskbar_icon`                   | Windows 模型窗口任务栏按钮可见性，默认 `false` |
 | `system`      | `show_dock_icon`                      | macOS 程序坞图标可见性，默认 `false`    |
 | `system`      | `show_status_icon`                    | 托盘/菜单栏入口可见性                  |
 | `updates`     | `check_automatically`                 | 自动检查更新，默认 `false`              |
@@ -120,10 +120,14 @@ runtime 的 overlay visibility。延迟值在 `next` 首版收窄为 `0..=60` �
 expected revision 原子提交配置；平台失败不提交，配置失败则恢复旧的平台可见性。启动直接应用当前 v1
 值，隐藏后仍可通过设置窗口、Windows 单实例唤醒或 macOS application reopen 恢复入口。
 
-`system.show_taskbar_icon` 只控制 Windows 设置窗口的任务栏按钮，不隐藏或销毁窗口，也不
-影响 overlay；macOS 不把该字段解释为 Dock 图标。修改时先在 GPUI owner 线程切换并回读 HWND
-扩展样式，成功后才按 expected revision 原子提交配置；平台失败不提交，配置失败恢复旧样式。
-启动和设置窗口创建都在窗口显示前应用当前 v1 值；窗口之后只隐藏/重显，不重建。
+`system.show_taskbar_icon` 只控制 Windows 模型窗口的任务栏按钮，默认 `false`，也不隐藏或
+销毁窗口，更不影响设置窗口；设置窗口始终保留它自己的任务栏按钮和原生标题栏。默认关闭是
+刻意的：模型窗口本身是一个无标题栏的 `WS_POPUP`，它在任务栏里的按钮没有对应的窗口可供
+用户操作，设置窗口才是可用的任务栏入口，因此默认不额外占用一个任务栏位置，需要的用户自行
+打开。macOS 不把该字段解释为 Dock 图标。修改时先在主线程把模型窗口的
+`WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW` 切换并回读，成功后才按 expected revision 原子提交
+配置；平台失败不提交，配置失败恢复旧值。启动把当前 v1 值写进 overlay 会话选项，模型切换
+或圆角等需要重建 HWND 的变化沿用会话已应用的值。
 
 `system.show_dock_icon` 是 macOS 程序坞图标的唯一来源，默认 `false`。默认关闭是刻意的：产品
 启动时以 `NSApplicationActivationPolicyAccessory` 运行，本来就没有程序坞图标，菜单栏状态图标

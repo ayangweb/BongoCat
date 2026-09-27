@@ -85,7 +85,6 @@ pub(crate) fn run_settings_window_state_smoke() -> Result<(), Box<dyn std::error
                     appearance_theme: SettingsTheme::Dark,
                 },
                 SettingsNavigationMemory::new(),
-                true,
                 |cx| cx.quit(),
                 |_: &mut App| {},
                 cx,

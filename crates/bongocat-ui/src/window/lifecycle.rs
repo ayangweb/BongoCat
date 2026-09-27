@@ -6,7 +6,6 @@ pub fn open_settings_window(
     window_state: SettingsWindowState,
     seed: SettingsWindowSeed,
     navigation_memory: SettingsNavigationMemory,
-    _taskbar_icon_visible: bool,
     request_quit: impl Fn(&mut App) + 'static,
     request_update: impl Fn(&mut App) + 'static,
     cx: &mut App,
@@ -14,10 +13,6 @@ pub fn open_settings_window(
     let (window_bounds, display_id) = initial_window_bounds(&window_state, cx);
     let initial_content_size = window_bounds.get_bounds().size;
     let normalize_initial_content_size = matches!(window_bounds, WindowBounds::Windowed(_));
-    #[cfg(target_os = "windows")]
-    let taskbar_error = Rc::new(RefCell::new(None));
-    #[cfg(target_os = "windows")]
-    let open_taskbar_error = Rc::clone(&taskbar_error);
     let settings_view = Rc::new(RefCell::new(None));
     let opened_settings_view = Rc::clone(&settings_view);
     let handle = cx
@@ -100,12 +95,6 @@ pub fn open_settings_window(
                         }
                     })
                     .detach();
-                #[cfg(target_os = "windows")]
-                if let Err(error) =
-                    bongocat_platform::set_taskbar_icon_visible(window, _taskbar_icon_visible)
-                {
-                    *open_taskbar_error.borrow_mut() = Some(error.to_string());
-                }
                 // Closing settings destroys the GPUI window on both platforms. The
                 // view flushes UI-owned work before returning `true`; the next open
                 // creates a fresh view and uses the app-owned navigation memory to
@@ -125,19 +114,16 @@ pub fn open_settings_window(
                 {
                     let _ = window_state.request_persist_if_current(revision);
                 }
-                #[cfg(target_os = "windows")]
-                if open_taskbar_error.borrow().is_none() {
-                    window.activate_window();
-                }
+                // The window keeps the taskbar button and caption GPUI creates it
+                // with. `show_taskbar_icon` belongs to the model window, which
+                // the overlay owns, and a framed window that traded its
+                // `WS_EX_APPWINDOW` for `WS_EX_TOOLWINDOW` would show the tool
+                // window's short caption instead of this title bar.
+                window.activate_window();
                 cx.new(|cx| Root::new(view, window, cx))
             },
         )
         .map_err(|error| error.to_string())?;
-    #[cfg(target_os = "windows")]
-    if let Some(error) = taskbar_error.borrow_mut().take() {
-        let _ = handle.update(cx, |_, window, _| window.remove_window());
-        return Err(format!("apply settings taskbar visibility: {error}"));
-    }
     cx.activate(true);
     let view = settings_view
         .borrow_mut()

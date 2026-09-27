@@ -181,6 +181,21 @@ impl ProductOverlaySession {
         self.inner.model_generation()
     }
 
+    /// Windows only: apply the configured taskbar button to the model window.
+    ///
+    /// macOS has no per-window equivalent: the Dock belongs to the process
+    /// activation policy, which `show_dock_icon` owns.
+    #[cfg(target_os = "windows")]
+    pub fn set_taskbar_icon_visible(&mut self, visible: bool) -> Result<(), OverlayError> {
+        self.inner.set_taskbar_icon_visible(visible)
+    }
+
+    /// Windows only: what the model window's taskbar currently shows.
+    #[cfg(target_os = "windows")]
+    pub fn taskbar_icon_is_visible(&self) -> bool {
+        self.inner.taskbar_icon_is_visible()
+    }
+
     #[cfg(target_os = "windows")]
     pub fn system_termination_requested(&self) -> bool {
         self.inner.system_termination_requested()

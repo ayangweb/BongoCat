@@ -122,6 +122,9 @@ fn service_applies_and_persists_taskbar_icon_visibility_transactionally() {
     let base = tempdir().expect("temporary storage");
     let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
     let application = Application::start_with_layout(layout.clone()).expect("application start");
+    // The model window's taskbar button is off by default, so the seam is seeded
+    // visible to prove the first commit is a real transition rather than a no-op
+    // against an already-matching value.
     let taskbar_icon = Arc::new(TestTaskbarIcon::new(true));
     let service =
         ApplicationSettingsService::start_with_taskbar_icon(application, taskbar_icon.clone())
@@ -129,59 +132,75 @@ fn service_applies_and_persists_taskbar_icon_visibility_transactionally() {
     let client = service.client();
 
     let initial = client.read_snapshot_blocking().expect("initial snapshot");
-    assert!(initial.taskbar_icon_visible);
-    let hidden = client
+    assert!(!initial.taskbar_icon_visible);
+    let still_hidden = client
         .set_taskbar_icon_visible_blocking(initial.config_revision.expect("config revision"), false)
         .expect("hide taskbar icon");
-    assert!(!hidden.taskbar_icon_visible);
-    assert!(!taskbar_icon.visible());
-    assert_eq!(taskbar_icon.updates(), vec![false]);
+    assert!(!still_hidden.taskbar_icon_visible);
+    // Already false in the configuration, so the worker never reaches the platform.
+    assert_eq!(taskbar_icon.updates(), Vec::<bool>::new());
+
+    let shown = client
+        .set_taskbar_icon_visible_blocking(
+            still_hidden
+                .config_revision
+                .expect("hidden config revision"),
+            true,
+        )
+        .expect("show taskbar icon");
+    assert!(shown.taskbar_icon_visible);
+    assert!(taskbar_icon.visible());
+    assert_eq!(taskbar_icon.updates(), vec![true]);
 
     let stale = client
-        .set_taskbar_icon_visible_blocking(initial.config_revision.expect("config revision"), true)
+        .set_taskbar_icon_visible_blocking(
+            still_hidden
+                .config_revision
+                .expect("hidden config revision"),
+            false,
+        )
         .expect_err("stale taskbar icon update");
     assert_eq!(stale.code(), SettingsErrorCode::SnapshotOutdated);
-    assert_eq!(taskbar_icon.updates(), vec![false]);
+    assert_eq!(taskbar_icon.updates(), vec![true]);
 
     taskbar_icon.fail_updates.store(true, Ordering::Release);
     let failed = client
-        .set_taskbar_icon_visible_blocking(
-            hidden.config_revision.expect("hidden config revision"),
-            true,
-        )
+        .set_taskbar_icon_visible_blocking(shown.config_revision.expect("shown revision"), false)
         .expect_err("platform update failure");
     assert_eq!(failed.code(), SettingsErrorCode::TaskbarIconUpdateFailed);
+    // A failed platform call must not move the committed revision or the reported
+    // value. Whole-snapshot equality is not asserted here because the runtime
+    // work-budget counters advance on their own clock between two reads.
     let unchanged = client.read_snapshot_blocking().expect("unchanged snapshot");
-    assert_eq!(unchanged, hidden);
-    assert!(!taskbar_icon.visible());
+    assert_eq!(unchanged.config_revision, shown.config_revision);
+    assert_eq!(unchanged.taskbar_icon_visible, shown.taskbar_icon_visible);
+    assert!(taskbar_icon.visible());
 
     taskbar_icon.fail_updates.store(false, Ordering::Release);
     let occupied = layout.config.with_extension("json.tmp");
     std::fs::create_dir(&occupied).expect("occupied temp target");
     let persist_failed = client
-        .set_taskbar_icon_visible_blocking(
-            hidden.config_revision.expect("hidden config revision"),
-            true,
-        )
+        .set_taskbar_icon_visible_blocking(shown.config_revision.expect("shown revision"), false)
         .expect_err("config persist failure");
     assert_eq!(
         persist_failed.code(),
         SettingsErrorCode::ConfigTargetOccupied
     );
-    assert!(!taskbar_icon.visible());
-    assert_eq!(taskbar_icon.updates(), vec![false, true, true, false]);
-    assert_eq!(
-        client
-            .read_snapshot_blocking()
-            .expect("rolled back snapshot"),
-        hidden
-    );
+    assert!(taskbar_icon.visible());
+    // The failed commit is rolled back on the platform too, so the shell and the
+    // saved preference cannot drift apart.
+    assert_eq!(taskbar_icon.updates(), vec![true, false, false, true]);
+    let rolled_back = client
+        .read_snapshot_blocking()
+        .expect("rolled back snapshot");
+    assert_eq!(rolled_back.config_revision, shown.config_revision);
+    assert_eq!(rolled_back.taskbar_icon_visible, shown.taskbar_icon_visible);
     std::fs::remove_dir(occupied).expect("remove occupied temp target");
 
     client.shutdown_blocking().expect("service shutdown");
     service.join().expect("service join");
     let restarted = Application::start_with_layout(layout).expect("restart application");
-    assert!(!restarted.config().system.show_taskbar_icon);
+    assert!(restarted.config().system.show_taskbar_icon);
     restarted.shutdown().expect("restart shutdown");
 }
 

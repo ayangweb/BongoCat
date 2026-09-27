@@ -19,6 +19,9 @@ pub(crate) struct NativeOverlay {
     /// carries it.
     pub(crate) applied_alpha: f32,
     pub(crate) applied_click_through: bool,
+    /// The taskbar button this window was last given. The style is the
+    /// shell-visible truth, so this only keeps a tick from writing it again.
+    pub(crate) applied_taskbar_icon: bool,
 }
 
 impl NativeOverlay {
@@ -44,6 +47,7 @@ impl NativeOverlay {
             presentation: OverlayPresentationState::default(),
             applied_alpha: f32::from(options.opacity_percent) / 100.0,
             applied_click_through: options.click_through,
+            applied_taskbar_icon: options.taskbar_icon_visible,
         })
     }
 
@@ -64,6 +68,21 @@ impl NativeOverlay {
 
     pub(crate) fn set_click_through(&self, click_through: bool) -> Result<(), OverlayError> {
         self.window.set_click_through(click_through)
+    }
+
+    /// Give the model window a taskbar button, or take it away, in place.
+    pub(crate) fn set_taskbar_icon_visible(&mut self, visible: bool) -> Result<(), OverlayError> {
+        if self.applied_taskbar_icon == visible {
+            return Ok(());
+        }
+        self.window.set_taskbar_icon_visible(visible)?;
+        self.applied_taskbar_icon = visible;
+        Ok(())
+    }
+
+    /// What the shell currently shows for this window's taskbar button.
+    pub(crate) fn taskbar_icon_is_visible(&self) -> bool {
+        self.window.taskbar_icon_is_visible()
     }
 
     /// Resize the existing native window and its swap-chain-backed renderer.
@@ -501,6 +520,25 @@ impl ProductOverlaySession {
 
     pub(crate) fn window_bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {
         self.overlay.window.bounds()
+    }
+
+    /// Apply `system.show_taskbar_icon` to the live model window.
+    ///
+    /// The applied value is recorded on the session as well as the window,
+    /// because a model switch or a corner-radius change replaces the HWND and
+    /// the replacement must not bring back a taskbar button the user turned
+    /// off. The caller is the product's own main-thread bridge, so this is the
+    /// only writer: the value is a system preference rather than runtime
+    /// overlay state and never arrives through a frame.
+    pub(crate) fn set_taskbar_icon_visible(&mut self, visible: bool) -> Result<(), OverlayError> {
+        self.overlay.set_taskbar_icon_visible(visible)?;
+        self.options.taskbar_icon_visible = visible;
+        Ok(())
+    }
+
+    /// What the shell currently shows for the model window's taskbar button.
+    pub(crate) fn taskbar_icon_is_visible(&self) -> bool {
+        self.overlay.taskbar_icon_is_visible()
     }
 
     /// Advance the hover hide and push the resulting window presentation.

@@ -68,26 +68,12 @@ pub(crate) async fn update_settings_window<R>(
 }
 
 pub(crate) fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> {
-    let (existing, taskbar_icon_visible) = cx
+    let existing = cx
         .try_global::<ProductCoordinator>()
-        .map(|coordinator| {
-            (
-                coordinator.settings_window.clone(),
-                #[cfg(target_os = "windows")]
-                coordinator.taskbar_icon_visible,
-                #[cfg(not(target_os = "windows"))]
-                true,
-            )
-        })
-        .unwrap_or((None, true));
+        .and_then(|coordinator| coordinator.settings_window.clone());
     if let Some(window_handle) = existing {
         if window_handle.is_open() {
-            return match window_handle.update(cx, |view, window, cx| {
-                #[cfg(target_os = "windows")]
-                bongocat_platform::set_taskbar_icon_visible(window, taskbar_icon_visible)
-                    .map_err(|error| error.to_string())?;
-                view.reopen(window, cx)
-            }) {
+            return match window_handle.update(cx, |view, window, cx| view.reopen(window, cx)) {
                 Ok(Ok(())) => {
                     cx.activate(true);
                     Ok(window_handle)
@@ -125,7 +111,6 @@ pub(crate) fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandl
         window_state,
         seed,
         navigation_memory,
-        taskbar_icon_visible,
         finish_product_quit,
         open_update_window_and_check,
         cx,
@@ -371,44 +356,56 @@ pub(crate) fn apply_taskbar_icon_visibility(
             SettingsErrorCode::TaskbarIconUpdateFailed,
         ));
     }
-    let Some(window_handle) = cx
+    // The model window is a session-lifetime resource, so there is normally one
+    // to apply to. Between startup and the first frame, and during shutdown,
+    // there is none; the desired value is kept for the next window instead.
+    let mut borrowed = cx
         .try_global::<ProductCoordinator>()
-        .and_then(|coordinator| coordinator.settings_window.clone())
-    else {
-        // The settings window is intentionally destroyed on close. The native
-        // taskbar button does not exist while it is absent; retain the desired
-        // value and apply it when the next window is created.
-        cx.global_mut::<ProductCoordinator>().taskbar_icon_visible = visible;
-        return Ok(());
-    };
-    let result = window_handle
-        .update(cx, |_, window, _| {
-            bongocat_platform::set_taskbar_icon_visible(window, visible)
-        })
-        .map_err(|_| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed))?
-        .map_err(|_| SettingsError::new(SettingsErrorCode::TaskbarIconUpdateFailed));
-    if result.is_err() && window_handle.is_open() {
+        .map(|coordinator| coordinator.overlay.borrow_mut());
+    if let Some(overlay) = borrowed.as_mut()
+        && let Some(session) = overlay.as_mut()
+        && session.set_taskbar_icon_visible(visible).is_err()
+    {
         return Err(SettingsError::new(
             SettingsErrorCode::TaskbarIconUpdateFailed,
         ));
     }
+    drop(borrowed);
     cx.global_mut::<ProductCoordinator>().taskbar_icon_visible = visible;
     Ok(())
 }
 
+/// What both product windows currently show for the `show_taskbar_icon`
+/// preference: the model window's own taskbar button, and the settings
+/// window's, which must stay whatever the preference says.
+///
+/// The settings window is created with the button GPUI gives it and the product
+/// never changes it, so a read that disagrees is the regression this pair
+/// exists to catch: hiding that button with `WS_EX_TOOLWINDOW` also replaces
+/// the title bar with the tool window's short caption.
 #[cfg(target_os = "windows")]
-pub(crate) fn product_taskbar_icon_state(cx: &mut App) -> Result<(bool, bool), String> {
+pub(crate) fn product_taskbar_icon_state(cx: &mut App) -> Result<(bool, bool, bool), String> {
+    let (model_taskbar_icon, model_visible) = {
+        let coordinator = cx
+            .try_global::<ProductCoordinator>()
+            .ok_or_else(|| "product coordinator is unavailable".to_owned())?;
+        let overlay = coordinator.overlay.borrow();
+        let overlay = overlay
+            .as_ref()
+            .ok_or_else(|| "product overlay is unavailable".to_owned())?;
+        (overlay.taskbar_icon_is_visible(), overlay.is_visible())
+    };
     let window_handle = cx
         .try_global::<ProductCoordinator>()
         .and_then(|coordinator| coordinator.settings_window.clone())
         .ok_or_else(|| "settings window is unavailable".to_owned())?;
-    window_handle
-        .update(cx, |view, window, _| {
+    let settings_taskbar_icon = window_handle
+        .update(cx, |_, window, _| {
             bongocat_platform::taskbar_icon_is_visible(window)
-                .map(|visible| (visible, view.window_hidden()))
-                .map_err(|error| error.to_string())
         })
         .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?;
+    Ok((model_taskbar_icon, settings_taskbar_icon, model_visible))
 }
 
 #[cfg(target_os = "macos")]

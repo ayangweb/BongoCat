@@ -51,11 +51,11 @@ use windows::{
             WindowsAndMessaging::{
                 CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
                 GIDC_REMOVAL, GWL_EXSTYLE, GWLP_USERDATA, GetCursorPos, GetMessageW,
-                GetWindowLongPtrW, IsWindowVisible, KillTimer, MSG, PBT_APMRESUMEAUTOMATIC,
-                PBT_APMRESUMECRITICAL, PBT_APMRESUMESTANDBY, PBT_APMRESUMESUSPEND, PBT_APMSTANDBY,
-                PBT_APMSUSPEND, PostMessageW, PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOW,
-                SetTimer, SetWindowLongPtrW, ShowWindow, TranslateMessage, UnregisterClassW,
-                WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_DESTROY, WM_ENDSESSION, WM_INPUT,
+                GetWindowLongPtrW, KillTimer, MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMECRITICAL,
+                PBT_APMRESUMESTANDBY, PBT_APMRESUMESUSPEND, PBT_APMSTANDBY, PBT_APMSUSPEND,
+                PostMessageW, PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOW, SetTimer,
+                SetWindowLongPtrW, ShowWindow, TranslateMessage, UnregisterClassW, WINDOW_EX_STYLE,
+                WINDOW_STYLE, WM_CLOSE, WM_DESTROY, WM_ENDSESSION, WM_INPUT,
                 WM_INPUT_DEVICE_CHANGE, WM_NCCREATE, WM_NCDESTROY, WM_POWERBROADCAST,
                 WM_QUERYENDSESSION, WM_TIMER, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_APPWINDOW,
                 WS_EX_TOOLWINDOW, WTS_CONSOLE_CONNECT, WTS_CONSOLE_DISCONNECT, WTS_REMOTE_CONNECT,
@@ -199,53 +199,20 @@ pub fn show_native_window(window: &impl HasWindowHandle) -> Result<(), NativeWin
     Ok(())
 }
 
-pub fn set_taskbar_icon_visible(
-    window: &impl HasWindowHandle,
-    visible: bool,
-) -> Result<(), NativeWindowError> {
-    let hwnd = native_hwnd(window)?;
-    // SAFETY: raw-window-handle guarantees that the HWND remains valid while
-    // `window` is borrowed, and this adapter is called on the GPUI owner thread.
-    let was_visible = unsafe { IsWindowVisible(hwnd).as_bool() };
-    // SAFETY: the borrowed HWND is valid and GWL_EXSTYLE only reads its value.
-    let current = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
-    let expected = taskbar_ex_style(WINDOW_EX_STYLE(current), visible);
-    if expected.0 == current {
-        return Ok(());
-    }
-    if was_visible {
-        // SAFETY: the valid HWND is hidden only long enough for the shell to
-        // observe its changed taskbar style, then restored below.
-        let _ = unsafe { ShowWindow(hwnd, SW_HIDE) };
-    }
-    // SAFETY: the HWND remains valid and the new value changes only documented
-    // extended window-style bits.
-    unsafe { SetWindowLongPtrW(hwnd, GWL_EXSTYLE, expected.0 as isize) };
-    if was_visible {
-        // SAFETY: this balances the temporary hide above on the same owner thread.
-        let _ = unsafe { ShowWindow(hwnd, SW_SHOW) };
-    }
-    if taskbar_icon_is_visible(window)? == visible {
-        Ok(())
-    } else {
-        Err(NativeWindowError::TaskbarVisibilityUpdateFailed)
-    }
-}
-
+/// Read whether a product window currently owns a taskbar button.
+///
+/// This is a read-back, not a switch: the settings window is created with the
+/// taskbar button GPUI gives it and nothing in the product changes that, because
+/// a framed window that loses `WS_EX_APPWINDOW` also loses its icon and its
+/// minimize and maximize buttons to the tool window's short caption. The
+/// `show_taskbar_icon` preference belongs to the model window, which the
+/// overlay crate owns.
 pub fn taskbar_icon_is_visible(window: &impl HasWindowHandle) -> Result<bool, NativeWindowError> {
     let hwnd = native_hwnd(window)?;
     // SAFETY: raw-window-handle guarantees that the HWND remains valid while
     // `window` is borrowed, and GWL_EXSTYLE only reads its value.
     let style = WINDOW_EX_STYLE(unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32);
     Ok(style.contains(WS_EX_APPWINDOW) && !style.contains(WS_EX_TOOLWINDOW))
-}
-
-fn taskbar_ex_style(style: WINDOW_EX_STYLE, visible: bool) -> WINDOW_EX_STYLE {
-    if visible {
-        WINDOW_EX_STYLE((style | WS_EX_APPWINDOW).0 & !WS_EX_TOOLWINDOW.0)
-    } else {
-        WINDOW_EX_STYLE((style | WS_EX_TOOLWINDOW).0 & !WS_EX_APPWINDOW.0)
-    }
 }
 
 pub fn request_native_window_close(window: &impl HasWindowHandle) -> Result<(), NativeWindowError> {
@@ -1463,20 +1430,6 @@ mod tests {
         INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, SendInput,
         VIRTUAL_KEY,
     };
-
-    #[test]
-    fn taskbar_visibility_preserves_unrelated_extended_styles() {
-        let unrelated = WINDOW_EX_STYLE(0x0000_0008);
-        let shown = taskbar_ex_style(unrelated | WS_EX_TOOLWINDOW, true);
-        assert!(shown.contains(WS_EX_APPWINDOW));
-        assert!(!shown.contains(WS_EX_TOOLWINDOW));
-        assert_eq!(shown.0 & unrelated.0, unrelated.0);
-
-        let hidden = taskbar_ex_style(shown, false);
-        assert!(!hidden.contains(WS_EX_APPWINDOW));
-        assert!(hidden.contains(WS_EX_TOOLWINDOW));
-        assert_eq!(hidden.0 & unrelated.0, unrelated.0);
-    }
 
     #[test]
     fn window_state_publishes_live_platform_diagnostics() {

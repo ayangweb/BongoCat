@@ -163,6 +163,10 @@ struct ProductCoordinator {
     #[cfg(target_os = "macos")]
     update_restart_started: bool,
     system_menu: Option<SystemMenu>,
+    /// The model window's taskbar button the product last applied. The settings
+    /// worker cannot observe a native window from its own thread, and the model
+    /// window may not exist yet while the overlay is starting, so the applied
+    /// value is recorded here and read back by the smoke.
     #[cfg(target_os = "windows")]
     taskbar_icon_visible: bool,
     /// The macOS Dock icon the product last applied. Kept for the same reason as
@@ -318,6 +322,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         window_bounds: application.overlay_window_placement().map(|placement| {
             OverlayWindowBounds::new(placement.x, placement.y, placement.width, placement.height)
         }),
+        // The taskbar button belongs to the model window, so the saved v1 value
+        // is applied before the window exists rather than by the settings
+        // window that GPUI creates.
+        #[cfg(target_os = "windows")]
+        taskbar_icon_visible: application.config().system.show_taskbar_icon,
     };
     // Startup model restore: activate the configured selection, or fall back
     // to the always-available standard preset when it is missing or unusable;
@@ -1965,9 +1974,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .await
                             .map_err(|error| format!("read taskbar icon snapshot: {error}"))?;
                         let initial_visibility = initial.taskbar_icon_visible;
-                        let (native_initial_visibility, initially_hidden) =
+                        let (native_initial, settings_native, model_visible) =
                             cx.update(product_taskbar_icon_state)?;
-                        if native_initial_visibility != initial_visibility || initially_hidden {
+                        if native_initial != initial_visibility
+                            || !settings_native
+                            || !model_visible
+                        {
                             return Err(
                                 "startup taskbar visibility diverged from the current snapshot"
                                     .to_owned(),
@@ -1982,14 +1994,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             )
                             .await
                             .map_err(|error| format!("toggle taskbar icon: {error}"))?;
-                        let (native_changed_visibility, window_hidden) =
+                        let (native_changed, settings_native, model_visible) =
                             cx.update(product_taskbar_icon_state)?;
                         if changed.taskbar_icon_visible == initial_visibility
-                            || native_changed_visibility != changed.taskbar_icon_visible
-                            || window_hidden
+                            || native_changed != changed.taskbar_icon_visible
+                            || !settings_native
+                            || !model_visible
                         {
                             return Err(
-                                "taskbar icon toggle did not preserve the visible settings window"
+                                "taskbar icon toggle did not preserve the model window button"
                                     .to_owned(),
                             );
                         }
@@ -2002,11 +2015,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             )
                             .await
                             .map_err(|error| format!("restore taskbar icon: {error}"))?;
-                        let (native_restored_visibility, window_hidden) =
+                        let (native_restored, settings_native, model_visible) =
                             cx.update(product_taskbar_icon_state)?;
                         if restored.taskbar_icon_visible != initial_visibility
-                            || native_restored_visibility != initial_visibility
-                            || window_hidden
+                            || native_restored != initial_visibility
+                            || !settings_native
+                            || !model_visible
                         {
                             return Err(
                                 "taskbar icon visibility was not restored atomically".to_owned()
