@@ -65,7 +65,8 @@ updates
 | `model`       | `imported_models`                     | 用户导入模型的元数据列表（`id` + `title` + `input_mode`） |
 | `model`       | `built_in_models`                     | 内置模型被改名后的元数据列表（`id` + `title`） |
 | `model`       | `mirror`                              | 水平翻转模型                           |
-| `model`       | `mirror_pointer_tracking`             | 翻转指针跟随方向                       |
+| `model`       | `mirror_pointer_tracking_horizontal`   | 水平翻转指针跟随方向                   |
+| `model`       | `mirror_pointer_tracking_vertical`     | 垂直翻转指针跟随方向，默认 `false`     |
 | `model`       | `play_motion_audio`                   | 播放动作音效，默认 `false`             |
 | `model`       | `ignore_keyboard`                     | 模型求值忽略键盘输入                   |
 | `model`       | `ignore_gamepad`                      | 模型求值忽略手柄输入                   |
@@ -81,6 +82,12 @@ updates
 | `shortcuts`   | `command_bindings`                    | 应用 command 到快捷键绑定              |
 | `shortcuts`   | `model_behaviors_enabled`             | 模型动作/表情绑定是否进入平台匹配表     |
 | `shortcuts`   | `model_behavior_bindings`             | 模型动作/表情绑定，模型身份为 `{ id, source }` |
+
+`model.mirror_pointer_tracking_horizontal` 和 `model.mirror_pointer_tracking_vertical` 是两条互相独立的
+修正，默认都是 `false`。水平项反转指针的 X 与 Z 产品参数（Z 是同一水平扫视的另一个方向），垂直项
+只反转 Y 产品参数。分成两个字段而不是一个枚举，是因为「左右相反」和「上下相反」是可以同时出现、
+也可以只出现其一的两种不同故障：把方向编码成一个枚举会让「水平翻转 + 垂直翻转」不可表达，或被迫
+引入第三种取值去表示两个独立开关的组合。
 
 `model.ignore_keyboard` 和 `model.ignore_gamepad` 默认均为 `false`。它们只过滤输入到当前模型的
 投影：键盘门禁移除键盘键图和手部贡献，手柄门禁移除手柄按钮、手部、摇杆和扳机贡献；原始采集、

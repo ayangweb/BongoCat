@@ -349,7 +349,10 @@ impl Application {
     ) -> Result<RuntimeSnapshot, ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.model.mirror = settings.mirror;
-        next_config.model.mirror_pointer_tracking = settings.mirror_pointer_tracking;
+        next_config.model.mirror_pointer_tracking_horizontal =
+            settings.mirror_pointer_tracking_horizontal;
+        next_config.model.mirror_pointer_tracking_vertical =
+            settings.mirror_pointer_tracking_vertical;
         next_config.model.ignore_keyboard = settings.ignore_keyboard;
         next_config.model.ignore_gamepad = settings.ignore_gamepad;
         next_config.model.ignore_pointer = settings.ignore_pointer;

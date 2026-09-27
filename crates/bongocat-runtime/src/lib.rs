@@ -230,7 +230,10 @@ impl OverlaySettings {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ModelSettings {
     pub mirror: bool,
-    pub mirror_pointer_tracking: bool,
+    /// Reverse the pointer's X/Z parameters together; the Y axis is separate.
+    pub mirror_pointer_tracking_horizontal: bool,
+    /// Reverse the pointer's Y parameter on its own.
+    pub mirror_pointer_tracking_vertical: bool,
     /// Whether keyboard input is excluded from the model's input projection.
     pub ignore_keyboard: bool,
     /// Whether gamepad input is excluded from the model's input projection.

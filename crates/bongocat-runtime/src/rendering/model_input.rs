@@ -15,14 +15,23 @@ pub(crate) fn apply_model_input(
     let (pointer_x, pointer_y, pointer_z) = if settings.ignore_pointer {
         (0.0, 0.0, 0.0)
     } else {
-        let horizontal_sign = if settings.mirror_pointer_tracking {
+        // The two axes are corrected independently. X and Z share one sign
+        // because they are the same horizontal sweep seen from two directions;
+        // Y is its own axis, so a model that is wrong only up and down is fixed
+        // without also reversing the way it turns to follow the cursor.
+        let horizontal_sign = if settings.mirror_pointer_tracking_horizontal {
+            -1.0
+        } else {
+            1.0
+        };
+        let vertical_sign = if settings.mirror_pointer_tracking_vertical {
             -1.0
         } else {
             1.0
         };
         (
             input.pointer_x * horizontal_sign,
-            input.pointer_y,
+            input.pointer_y * vertical_sign,
             input.pointer_z * horizontal_sign,
         )
     };

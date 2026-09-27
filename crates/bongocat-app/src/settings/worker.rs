@@ -424,7 +424,8 @@ pub(super) fn run_service(
             } => {
                 let runtime_settings = ModelSettings {
                     mirror: settings.mirror,
-                    mirror_pointer_tracking: settings.mirror_pointer_tracking,
+                    mirror_pointer_tracking_horizontal: settings.mirror_pointer_tracking_horizontal,
+                    mirror_pointer_tracking_vertical: settings.mirror_pointer_tracking_vertical,
                     ignore_keyboard: settings.ignore_keyboard,
                     ignore_gamepad: settings.ignore_gamepad,
                     ignore_pointer: settings.ignore_pointer,

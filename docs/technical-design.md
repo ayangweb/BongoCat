@@ -456,10 +456,11 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   `SetExpression` 产生，因此它是「用户主动」的唯一判据，不需要额外的来源标记。
 - render snapshot 不含锁和平台对象，通过双缓冲或 latest-value channel 交给渲染线程。
 - `ModelSettings` 是 runtime 的强类型模型交互设置：`mirror` 只影响不可变
-  `RenderSnapshot::mirror_horizontal` 的水平变换，`mirror_pointer_tracking` 只反转
-  指针的 X/Z 产品参数，`ignore_pointer` 跳过所有指针参数覆盖；`ignore_keyboard` 和
+  `RenderSnapshot::mirror_horizontal` 的水平变换，`mirror_pointer_tracking_horizontal` 只反转
+  指针的 X/Z 产品参数，`mirror_pointer_tracking_vertical` 只反转指针的 Y 产品参数；两者相互独立，
+  都默认 `false`。`ignore_pointer` 跳过所有指针参数覆盖；`ignore_keyboard` 和
   `ignore_gamepad` 只在模型输入投影中屏蔽对应来源的按键/按钮/手柄轴贡献，不停止可靠采集、
-  pressed-state 恢复、诊断或快捷键注册。五项通过 `SetModelSettings` command 和
+  pressed-state 恢复、诊断或快捷键注册。六项通过 `SetModelSettings` command 和
   revisioned snapshot 传播，renderer 不读取配置；三个输入门禁还可由对应的 application
   shortcut target 经 settings service 切换，持久化后仍只改变模型输入投影。
 - GPUI 通过 command/snapshot 边界交互，不直接持有 runtime mutex。

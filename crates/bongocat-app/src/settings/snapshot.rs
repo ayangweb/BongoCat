@@ -211,7 +211,12 @@ pub(super) fn snapshot(
         },
         model_settings: SettingsModelSettings {
             mirror: runtime.model_settings.mirror,
-            mirror_pointer_tracking: runtime.model_settings.mirror_pointer_tracking,
+            mirror_pointer_tracking_horizontal: runtime
+                .model_settings
+                .mirror_pointer_tracking_horizontal,
+            mirror_pointer_tracking_vertical: runtime
+                .model_settings
+                .mirror_pointer_tracking_vertical,
             ignore_keyboard: runtime.model_settings.ignore_keyboard,
             ignore_gamepad: runtime.model_settings.ignore_gamepad,
             ignore_pointer: runtime.model_settings.ignore_pointer,

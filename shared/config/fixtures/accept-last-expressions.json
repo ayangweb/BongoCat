@@ -30,7 +30,8 @@
   },
   "model": {
     "mirror": false,
-    "mirror_pointer_tracking": false,
+    "mirror_pointer_tracking_horizontal": false,
+    "mirror_pointer_tracking_vertical": false,
     "play_motion_audio": false,
     "ignore_keyboard": false,
     "ignore_gamepad": false,

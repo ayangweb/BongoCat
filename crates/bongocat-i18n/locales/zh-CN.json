@@ -409,8 +409,11 @@
     "input_interaction": {
       "mouse": {
         "title": "鼠标",
-        "mirror_mouse_tracking": {
-          "label": "翻转鼠标跟随"
+        "mirror_mouse_tracking_horizontal": {
+          "label": "水平翻转鼠标跟随"
+        },
+        "mirror_mouse_tracking_vertical": {
+          "label": "垂直翻转鼠标跟随"
         },
         "ignore_mouse_input": {
           "label": "忽略鼠标输入"

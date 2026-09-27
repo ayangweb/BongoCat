@@ -383,7 +383,8 @@ fn model_input_filters_preserve_raw_pressed_state_and_recompose_immediately() {
     let keyboard_filter = client
         .send(RuntimeCommand::SetModelSettings(ModelSettings {
             mirror: false,
-            mirror_pointer_tracking: false,
+            mirror_pointer_tracking_horizontal: false,
+            mirror_pointer_tracking_vertical: false,
             ignore_keyboard: true,
             ignore_gamepad: false,
             ignore_pointer: false,
@@ -411,7 +412,8 @@ fn model_input_filters_preserve_raw_pressed_state_and_recompose_immediately() {
     let gamepad_filter = client
         .send(RuntimeCommand::SetModelSettings(ModelSettings {
             mirror: false,
-            mirror_pointer_tracking: false,
+            mirror_pointer_tracking_horizontal: false,
+            mirror_pointer_tracking_vertical: false,
             ignore_keyboard: false,
             ignore_gamepad: true,
             ignore_pointer: false,

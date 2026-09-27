@@ -22,7 +22,19 @@ pub struct ModelConfig {
     /// Editable metadata for the models shipped by the build.
     pub built_in_models: Vec<BuiltInModelMetadata>,
     pub mirror: bool,
-    pub mirror_pointer_tracking: bool,
+    /// Whether the model's pointer tracking runs backwards along the X axis.
+    ///
+    /// This flips the pointer's X and Z parameters together: Z is the roll that
+    /// follows the same horizontal sweep, so reversing only X would leave the
+    /// head turned the wrong way.
+    pub mirror_pointer_tracking_horizontal: bool,
+    /// Whether the model's pointer tracking runs backwards along the Y axis.
+    ///
+    /// Independent of [`Self::mirror_pointer_tracking_horizontal`] because the
+    /// two axes are separate corrections: a model that follows the cursor
+    /// correctly side to side can still look up when the cursor goes down, and
+    /// only the second switch fixes that.
+    pub mirror_pointer_tracking_vertical: bool,
     /// Whether a motion that ships an audio clip is allowed to play it.
     ///
     /// Defaults to `false`: the Model behavior page renders this as the "play

@@ -409,8 +409,11 @@
     "input_interaction": {
       "mouse": {
         "title": "Mouse",
-        "mirror_mouse_tracking": {
-          "label": "Flip mouse tracking"
+        "mirror_mouse_tracking_horizontal": {
+          "label": "Flip mouse tracking horizontally"
+        },
+        "mirror_mouse_tracking_vertical": {
+          "label": "Flip mouse tracking vertically"
         },
         "ignore_mouse_input": {
           "label": "Ignore mouse input"

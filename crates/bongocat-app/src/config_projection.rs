@@ -77,7 +77,8 @@ pub(crate) fn overlay_settings_from_config(config: &NativeConfig) -> OverlaySett
 pub(crate) const fn model_settings_from_config(config: &NativeConfig) -> ModelSettings {
     ModelSettings {
         mirror: config.model.mirror,
-        mirror_pointer_tracking: config.model.mirror_pointer_tracking,
+        mirror_pointer_tracking_horizontal: config.model.mirror_pointer_tracking_horizontal,
+        mirror_pointer_tracking_vertical: config.model.mirror_pointer_tracking_vertical,
         ignore_keyboard: config.model.ignore_keyboard,
         ignore_gamepad: config.model.ignore_gamepad,
         ignore_pointer: config.model.ignore_pointer,

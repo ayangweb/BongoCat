@@ -238,7 +238,8 @@ fn application_projects_model_interaction_settings_at_startup() {
     let store = ConfigStore::new(layout.clone()).expect("config store");
     let mut config = store.load_or_default().expect("default config").config;
     config.model.mirror = true;
-    config.model.mirror_pointer_tracking = true;
+    config.model.mirror_pointer_tracking_horizontal = true;
+    config.model.mirror_pointer_tracking_vertical = true;
     config.model.ignore_keyboard = true;
     config.model.ignore_gamepad = true;
     config.model.ignore_pointer = true;
@@ -252,7 +253,8 @@ fn application_projects_model_interaction_settings_at_startup() {
         application.runtime_client().snapshot().model_settings,
         ModelSettings {
             mirror: true,
-            mirror_pointer_tracking: true,
+            mirror_pointer_tracking_horizontal: true,
+            mirror_pointer_tracking_vertical: true,
             ignore_keyboard: true,
             ignore_gamepad: true,
             ignore_pointer: true,

@@ -92,7 +92,8 @@ pub struct SettingsModelBehaviorBinding {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SettingsModelSettings {
     pub mirror: bool,
-    pub mirror_pointer_tracking: bool,
+    pub mirror_pointer_tracking_horizontal: bool,
+    pub mirror_pointer_tracking_vertical: bool,
     pub ignore_keyboard: bool,
     pub ignore_gamepad: bool,
     pub ignore_pointer: bool,

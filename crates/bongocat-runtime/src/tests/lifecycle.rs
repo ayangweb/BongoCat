@@ -332,7 +332,8 @@ fn model_settings_command_is_revisioned_and_published() {
 
     let settings = ModelSettings {
         mirror: true,
-        mirror_pointer_tracking: true,
+        mirror_pointer_tracking_horizontal: true,
+        mirror_pointer_tracking_vertical: false,
         ignore_keyboard: false,
         ignore_gamepad: false,
         ignore_pointer: true,

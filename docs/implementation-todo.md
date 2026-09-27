@@ -1500,6 +1500,15 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
     viewport 变化直接对齐，周期 tick 在没有新 sample 时继续推进。纯 Rust 与 runtime 集成回归
     覆盖单帧/半帧等价、跨显示器保护和连续模型参数投影；多显示器物理光标与完整 mirror
     实机证据仍待完成，因此总项保持未勾选。
+  - 状态（2026-09-27）：指针跟随按轴拆成 `model.mirror_pointer_tracking_horizontal` 与
+    `model.mirror_pointer_tracking_vertical`（ADR-0018），直接更新当前 v1 schema、默认值、
+    41 份 fixture 与实现，不提供迁移或 fallback。水平项按旧行为反转 X/Z，垂直项只反转 Y，
+    两项独立、默认均 `false`。Input & interaction 的 Mouse 组由一行改为
+    「水平翻转鼠标跟随」「垂直翻转鼠标跟随」两行，文案沿用模型页已有的「水平翻转」轴向表述。
+    已补：runtime 回归证明单开任一开关只影响所属轴、两项同开等于两次单开结果的组合
+    （并已反向验证该回归能捕获交叉接线）；app service 回归证明两个字段经 typed command
+    落盘并在重启后恢复；smoke 的本地化 key 清单补齐两行。多显示器实机与完整 mirror fixture
+    仍未完成，本项保持未勾选。
 - [ ] 随机模型行为模式、播放间隔与测试 seed。
   - 状态（2026-09-25）：runtime 已加入固定 seed 的确定性选择器、单调时钟定时器、模型切换重锚和
     `Idle` motion 优先级门禁；配置、typed settings command、GPUI 开关/间隔控件及 Core-backed

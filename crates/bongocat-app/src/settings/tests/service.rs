@@ -442,7 +442,8 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
         .expect("enable motion audio");
     let model_settings = bongocat_ui_protocol::SettingsModelSettings {
         mirror: true,
-        mirror_pointer_tracking: true,
+        mirror_pointer_tracking_horizontal: true,
+        mirror_pointer_tracking_vertical: true,
         ignore_keyboard: true,
         ignore_gamepad: true,
         ignore_pointer: true,
@@ -511,7 +512,8 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
     assert!(persisted.contains("\"opacity_percent\": 80"));
     assert!(persisted.contains("\"keep_inside_screen\": false"));
     assert!(persisted.contains("\"mirror\": true"));
-    assert!(persisted.contains("\"mirror_pointer_tracking\": true"));
+    assert!(persisted.contains("\"mirror_pointer_tracking_horizontal\": true"));
+    assert!(persisted.contains("\"mirror_pointer_tracking_vertical\": true"));
     assert!(persisted.contains("\"ignore_keyboard\": true"));
     assert!(persisted.contains("\"ignore_gamepad\": true"));
     assert!(persisted.contains("\"ignore_pointer\": true"));
@@ -539,7 +541,8 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
         restarted.runtime_client().snapshot().model_settings,
         ModelSettings {
             mirror: true,
-            mirror_pointer_tracking: true,
+            mirror_pointer_tracking_horizontal: true,
+            mirror_pointer_tracking_vertical: true,
             ignore_keyboard: true,
             ignore_gamepad: true,
             ignore_pointer: true,
@@ -655,7 +658,8 @@ fn service_rejects_stale_direct_settings_without_mutating_runtime_or_config() {
             initial_config_revision,
             bongocat_ui_protocol::SettingsModelSettings {
                 mirror: true,
-                mirror_pointer_tracking: true,
+                mirror_pointer_tracking_horizontal: true,
+                mirror_pointer_tracking_vertical: false,
                 ignore_keyboard: false,
                 ignore_gamepad: false,
                 ignore_pointer: true,

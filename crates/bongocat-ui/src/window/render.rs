@@ -829,7 +829,7 @@ impl Render for SettingsView {
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
-                            "settings.input_interaction.mouse.mirror_mouse_tracking.label",
+                            "settings.input_interaction.mouse.mirror_mouse_tracking_horizontal.label",
                         ),
                         SettingField::switch(
                             {
@@ -838,7 +838,9 @@ impl Render for SettingsView {
                                     view.read(app)
                                         .snapshot
                                         .as_ref()
-                                        .is_some_and(|s| s.model_settings.mirror_pointer_tracking)
+                                        .is_some_and(|s| {
+                                            s.model_settings.mirror_pointer_tracking_horizontal
+                                        })
                                 }
                             },
                             {
@@ -847,7 +849,38 @@ impl Render for SettingsView {
                                     view.update(app, |view, cx| {
                                         if let Some(s) = view.snapshot.as_ref() {
                                             let mut settings = s.model_settings;
-                                            settings.mirror_pointer_tracking = value;
+                                            settings.mirror_pointer_tracking_horizontal = value;
+                                            view.set_model_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    ),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.input_interaction.mouse.mirror_mouse_tracking_vertical.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| {
+                                            s.model_settings.mirror_pointer_tracking_vertical
+                                        })
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.model_settings;
+                                            settings.mirror_pointer_tracking_vertical = value;
                                             view.set_model_settings(settings, cx);
                                         }
                                     });

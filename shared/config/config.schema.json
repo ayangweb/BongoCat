@@ -248,7 +248,10 @@
         "mirror": {
           "type": "boolean"
         },
-        "mirror_pointer_tracking": {
+        "mirror_pointer_tracking_horizontal": {
+          "type": "boolean"
+        },
+        "mirror_pointer_tracking_vertical": {
           "type": "boolean"
         },
         "play_motion_audio": {
@@ -275,7 +278,8 @@
         "imported_models",
         "built_in_models",
         "mirror",
-        "mirror_pointer_tracking",
+        "mirror_pointer_tracking_horizontal",
+        "mirror_pointer_tracking_vertical",
         "play_motion_audio",
         "ignore_keyboard",
         "ignore_gamepad",

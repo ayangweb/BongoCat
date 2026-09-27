@@ -16,6 +16,7 @@
 - You can rename built-in and imported models and give them new covers. BongoCatMver folders can also be converted during import, with selectable input modes shown on each card.
 - Models can play random motions or expressions on a schedule, and you can choose expressions only, motions only, or both. Random playback is off by default. Motion audio starts off and can be turned on without a restart.
 - BongoCat can now bring each model back to the expression you last used on it. Turn on “Remember the last expression of each model” in Model behavior, and the expression you play on a model is remembered for that model alone, so the next launch — or switching back to it — shows the same face again. Only expressions you trigger yourself are remembered, so random playback never becomes the face a model returns to. Turning the switch off stops the restore without forgetting what you had chosen.
+- Mouse tracking can now be flipped on either axis separately. “Flip mouse tracking horizontally” reverses which way the model follows the cursor side to side, and the new “Flip mouse tracking vertically” corrects a model that looks up when the cursor moves down, which some models do. The two switches are independent, both start off, and each applies as soon as you flip it without a restart.
 - The model window supports right-drag resizing, 25–400% scale, 1–100% opacity, and smoother placement when moving between displays.
 - Automatic update checks can run every 1–8,760 hours. The update window shows download, verification, installation, retry, and restart status.
 - Logs are readable dated files with adjustable levels, retention, and automatic cleanup.
@@ -38,7 +39,7 @@
 - Invalid or incomplete v1 settings and model IDs are now rejected consistently instead of being partially accepted or silently ignored.
 - BongoCat no longer keeps a CPU core busy in the background on macOS. Gamepad support was spinning in a tight loop from the moment the app started, whether or not a controller was connected. Idle CPU use drops from about a full core to a few percent, which mostly shows up as longer battery life.
 - The model window now waits for the graphics card to finish each frame instead of checking on it in a loop, so the app is more responsive and uses less CPU while the cat is on screen. Settings and update windows only re-read what they display when something actually changed, instead of rescanning your model folder every second while they are open.
-- The two flipping settings are now worded as flips: “Flip model horizontally” and “Flip mouse tracking”. Flipping is what graphics tools call it, so it is easier to read than the previous mirror wording.
+- The two flipping settings are now worded as flips and name the axis they flip: “Flip model horizontally”, “Flip mouse tracking horizontally”, and the new “Flip mouse tracking vertically”. Flipping is what graphics tools call it, so it is easier to read than the previous mirror wording.
 
 ### 💻 Support Changes
 
