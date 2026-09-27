@@ -1,6 +1,4 @@
-use bongocat_config_store_spike::{
-    BUNDLE_ID, BuildEnvironment, ConfigStore, StorageLayout, platform_layout,
-};
+use bongocat_config_store_spike::{BuildEnvironment, ConfigStore, StorageLayout};
 use std::{
     fs::{self, OpenOptions},
     io::Write,
@@ -59,10 +57,23 @@ fn commit_language(
     Ok(())
 }
 
+/// The binary exists to be driven by `tests/process_crash_recovery.rs`, so every
+/// mode takes its own storage root.
+///
+/// There is deliberately no default that resolves the real platform data
+/// directory. That directory is defined for the two shipped platforms only, and a
+/// default reaching for it would make this binary unbuildable for `--all-targets`
+/// anywhere else — which is exactly the kind of compatibility shim the platform
+/// contract test exists to reject. `platform_layout` stays part of the library and
+/// is covered there; a developer who wants it can call it from a test.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut arguments = std::env::args().skip(1);
-    match arguments.next().as_deref() {
-        Some("--hold-lock-after-temp-sync") => {
+    let mode = arguments.next().ok_or(
+        "usage: config-store-spike --hold-lock-after-temp-sync <base> <environment> \
+         | --commit-language <base> <environment> <language>",
+    )?;
+    match mode.as_str() {
+        "--hold-lock-after-temp-sync" => {
             let base = arguments.next().ok_or("missing crash probe base path")?;
             let environment = arguments
                 .next()
@@ -72,9 +83,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if arguments.next().is_some() {
                 return Err("unexpected crash probe argument".into());
             }
-            return hold_lock_after_temp_sync(Path::new(&base), environment);
+            hold_lock_after_temp_sync(Path::new(&base), environment)
         }
-        Some("--commit-language") => {
+        "--commit-language" => {
             let base = arguments.next().ok_or("missing commit probe base path")?;
             let environment = arguments
                 .next()
@@ -85,24 +96,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if arguments.next().is_some() {
                 return Err("unexpected commit probe argument".into());
             }
-            return commit_language(Path::new(&base), environment, language);
+            commit_language(Path::new(&base), environment, language)
         }
-        Some(_) => return Err("unexpected config-store spike argument".into()),
-        None => {}
+        other => Err(format!("unexpected config-store spike argument: {other}").into()),
     }
-
-    let environment = if cfg!(debug_assertions) {
-        BuildEnvironment::Development
-    } else {
-        BuildEnvironment::Production
-    };
-    let store = ConfigStore::new(platform_layout(environment)?)?;
-    let config = store.load_or_default()?;
-    println!(
-        "config-store-spike: bundle_id={BUNDLE_ID} environment={} schema_version={} config={}",
-        environment.directory_name(),
-        config.schema_version,
-        store.layout().config.display()
-    );
-    Ok(())
 }

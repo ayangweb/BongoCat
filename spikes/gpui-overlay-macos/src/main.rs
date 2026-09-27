@@ -1408,36 +1408,6 @@ fn frame_smoke_milestone_complete(
         && (!recovery_expected || (frame_source.injected_failure && frame_source.recoveries > 0))
 }
 
-#[cfg(test)]
-mod frame_source_tests {
-    use super::*;
-
-    #[test]
-    fn auto_quit_waits_for_resize_and_expected_recovery() {
-        let mut frame_source = FrameSourceState {
-            started: true,
-            running: true,
-            ..FrameSourceState::default()
-        };
-        assert!(!frame_smoke_milestone_complete(&frame_source, false));
-        frame_source.resize_completed = true;
-        assert!(frame_smoke_milestone_complete(&frame_source, false));
-        assert!(!frame_smoke_milestone_complete(&frame_source, true));
-        frame_source.injected_failure = true;
-        frame_source.recoveries = 1;
-        assert!(frame_smoke_milestone_complete(&frame_source, true));
-    }
-
-    #[test]
-    fn auto_quit_does_not_wait_for_an_unstarted_or_fatal_frame_source() {
-        let mut frame_source = FrameSourceState::default();
-        assert!(frame_smoke_milestone_complete(&frame_source, true));
-        frame_source.started = true;
-        frame_source.recovery_disabled = true;
-        assert!(frame_smoke_milestone_complete(&frame_source, true));
-    }
-}
-
 fn tick_frame_source(
     global: &mut OverlayGlobal,
     simulate_renderer_loss_at_frame: Option<u64>,
@@ -1750,4 +1720,34 @@ fn argument_value(name: &str) -> Option<String> {
 
 fn has_argument(name: &str) -> bool {
     std::env::args().skip(1).any(|argument| argument == name)
+}
+
+#[cfg(test)]
+mod frame_source_tests {
+    use super::*;
+
+    #[test]
+    fn auto_quit_waits_for_resize_and_expected_recovery() {
+        let mut frame_source = FrameSourceState {
+            started: true,
+            running: true,
+            ..FrameSourceState::default()
+        };
+        assert!(!frame_smoke_milestone_complete(&frame_source, false));
+        frame_source.resize_completed = true;
+        assert!(frame_smoke_milestone_complete(&frame_source, false));
+        assert!(!frame_smoke_milestone_complete(&frame_source, true));
+        frame_source.injected_failure = true;
+        frame_source.recoveries = 1;
+        assert!(frame_smoke_milestone_complete(&frame_source, true));
+    }
+
+    #[test]
+    fn auto_quit_does_not_wait_for_an_unstarted_or_fatal_frame_source() {
+        let mut frame_source = FrameSourceState::default();
+        assert!(frame_smoke_milestone_complete(&frame_source, true));
+        frame_source.started = true;
+        frame_source.recovery_disabled = true;
+        assert!(frame_smoke_milestone_complete(&frame_source, true));
+    }
 }
