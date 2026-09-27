@@ -30,12 +30,9 @@ pub(super) fn shortcut_command_name(language: SettingsLanguage, command: &str) -
     let key = match command {
         "toggle_overlay" => "shortcuts.command_names.toggle_model_window",
         "open_settings" => "shortcuts.command_names.open_settings",
-        "toggle_mirror" => "shortcuts.command_names.toggle_mirror",
         "toggle_ignore_mouse_input" => "shortcuts.command_names.toggle_ignore_mouse_input",
         "toggle_ignore_keyboard_input" => "shortcuts.command_names.toggle_ignore_keyboard_input",
         "toggle_ignore_gamepad_input" => "shortcuts.command_names.toggle_ignore_gamepad_input",
-        "toggle_click_through" => "shortcuts.command_names.toggle_click_through",
-        "toggle_always_on_top" => "shortcuts.command_names.toggle_always_on_top",
         _ => return command.to_owned(),
     };
     bongocat_i18n::text(language.catalog_locale(), key).to_owned()

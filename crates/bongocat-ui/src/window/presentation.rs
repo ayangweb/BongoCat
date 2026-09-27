@@ -421,15 +421,12 @@ impl ShortcutRow {
     }
 }
 
-const WINDOW_SHORTCUT_COMMANDS: [&str; 8] = [
+const WINDOW_SHORTCUT_COMMANDS: [&str; 5] = [
     "toggle_overlay",
     "open_settings",
-    "toggle_mirror",
     "toggle_ignore_mouse_input",
     "toggle_ignore_keyboard_input",
     "toggle_ignore_gamepad_input",
-    "toggle_click_through",
-    "toggle_always_on_top",
 ];
 
 pub(super) fn window_shortcut_rows(shortcuts: &SettingsShortcuts) -> Vec<ShortcutRow> {

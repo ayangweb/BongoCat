@@ -196,7 +196,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   每个 motion 和 expression 自动分配一整层 `primary + [Shift/Alt] + 数字/字母` 组合键，用户没有
   拒绝的机会。BongoCat 按维护者决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
   该开关只作用于 motion/expression 绑定，不得清空或改写配置中的绑定，也不得连带禁用
-  `open_settings`、overlay 显隐、镜像、穿透、置顶以及三个模型输入忽略开关等应用级快捷键——应用级快捷键有它自己的开关。
+  `open_settings`、overlay 显隐以及三个模型输入忽略开关等应用级快捷键——应用级快捷键有它自己的开关。
 - 模型行为快捷键的自动分配与旧版同构：模型激活时（`prepare_model` / `select_model`）按声明顺序
   遍历该模型的 motion 与 expression，依次填入 `[primary]`、`[primary, Shift]`、`[primary, Alt]`、
   `[primary, Shift, Alt]` 四层、每层先数字后字母的组合键，共 144 个名额；`primary` 在 macOS 是

@@ -1867,6 +1867,12 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     录制/冲突/门禁与 revision-checked 持久化路径，经 settings service 切换对应模型输入投影门禁；
     `bongocat-config` closed-command 解析、UI 中英文文案和 service 端到端持久化测试已覆盖，Windows/macOS
     实机注册与触发证据仍待完成。
+  - 状态（2026-09-27）：按 ADR-0073 把 application command 收窄为五个，移除
+    `toggle_mirror`、`toggle_click_through` 和 `toggle_always_on_top`。三项设置本身
+    （`model.mirror`、`overlay.click_through`、`overlay.always_on_top`）和 ADR-0068 的右键菜单
+    不变，只是不再是可绑定的快捷键；`bongocat-config` 闭合解析、protocol 取值、Application
+    投影、快捷键页行集与中英文文案同步收窄，仍持有这三个绑定的开发配置按 v1 损坏走
+    「最新有效备份 → 默认配置」。Windows/macOS 实机注册与触发证据仍未完成。
 - [ ] 动作/表情：绑定、预览 command 和错误状态。
   - 状态（2026-09-18）：模型页不再列出或预览行为（表情列表已在快捷键页，属重复入口），
     `PreviewModelBehavior` command、对应 client 方法、服务端处理、

@@ -15,12 +15,9 @@ use super::*;
 pub enum ShortcutCommand {
     ToggleOverlay,
     OpenSettings,
-    ToggleMirror,
     ToggleIgnoreMouseInput,
     ToggleIgnoreKeyboardInput,
     ToggleIgnoreGamepadInput,
-    ToggleClickThrough,
-    ToggleAlwaysOnTop,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
@@ -36,12 +33,9 @@ impl ShortcutCommand {
         match value.trim() {
             "toggle_overlay" => Ok(Self::ToggleOverlay),
             "open_settings" => Ok(Self::OpenSettings),
-            "toggle_mirror" => Ok(Self::ToggleMirror),
             "toggle_ignore_mouse_input" => Ok(Self::ToggleIgnoreMouseInput),
             "toggle_ignore_keyboard_input" => Ok(Self::ToggleIgnoreKeyboardInput),
             "toggle_ignore_gamepad_input" => Ok(Self::ToggleIgnoreGamepadInput),
-            "toggle_click_through" => Ok(Self::ToggleClickThrough),
-            "toggle_always_on_top" => Ok(Self::ToggleAlwaysOnTop),
             "" => Err(ShortcutCommandParseError::Empty),
             _ => Err(ShortcutCommandParseError::Unknown),
         }
@@ -51,12 +45,9 @@ impl ShortcutCommand {
         match self {
             Self::ToggleOverlay => "toggle_overlay",
             Self::OpenSettings => "open_settings",
-            Self::ToggleMirror => "toggle_mirror",
             Self::ToggleIgnoreMouseInput => "toggle_ignore_mouse_input",
             Self::ToggleIgnoreKeyboardInput => "toggle_ignore_keyboard_input",
             Self::ToggleIgnoreGamepadInput => "toggle_ignore_gamepad_input",
-            Self::ToggleClickThrough => "toggle_click_through",
-            Self::ToggleAlwaysOnTop => "toggle_always_on_top",
         }
     }
 }

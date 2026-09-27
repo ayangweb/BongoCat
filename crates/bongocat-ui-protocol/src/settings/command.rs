@@ -257,11 +257,8 @@ pub enum SettingsCommand {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SettingsApplicationShortcut {
     ToggleOverlay,
-    ToggleMirror,
     ToggleIgnoreMouseInput,
     ToggleIgnoreKeyboardInput,
     ToggleIgnoreGamepadInput,
-    ToggleClickThrough,
-    ToggleAlwaysOnTop,
     OpenSettings,
 }

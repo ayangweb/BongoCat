@@ -471,14 +471,25 @@ fn shortcut_commands_and_model_behaviors_parse_as_closed_actions() {
         assert_eq!(ShortcutCommand::parse(value).expect("command"), expected);
         assert_eq!(expected.as_str(), value);
     }
-    assert_eq!(
-        ShortcutCommand::ToggleAlwaysOnTop.as_str(),
-        "toggle_always_on_top"
-    );
+    assert_eq!(ShortcutCommand::OpenSettings.as_str(), "open_settings");
     assert_eq!(
         ShortcutCommand::parse("unknown"),
         Err(ShortcutCommandParseError::Unknown)
     );
+    // The three commands retired by ADR-0073 are spelled here so a later change
+    // that resurrects one of them has to say so in this test rather than by
+    // accident. The settings they toggled are untouched; only the shortcut
+    // binding is gone.
+    for retired in [
+        "toggle_mirror",
+        "toggle_click_through",
+        "toggle_always_on_top",
+    ] {
+        assert_eq!(
+            ShortcutCommand::parse(retired),
+            Err(ShortcutCommandParseError::Unknown)
+        );
+    }
 
     let motion = ModelBehaviorBinding {
         model: ModelIdentity {

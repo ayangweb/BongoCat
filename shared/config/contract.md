@@ -275,11 +275,12 @@ key 必须属于稳定的物理键闭合集合：`A`-`Z`、`0`-`9`、`F1`-`F12`�
 `primary + 1` 独立编号的前提。该规则只冻结持久化和冲突检测语义，物理 key 映射、系统注册和捕获
 仍由后续平台 adapter 负责。
 
-应用 command 使用闭合集合：`toggle_overlay`、`open_settings`、`toggle_mirror`、
-`toggle_ignore_mouse_input`、`toggle_ignore_keyboard_input`、`toggle_ignore_gamepad_input`、
-`toggle_click_through` 和 `toggle_always_on_top`。三个 `toggle_ignore_*_input` command
+应用 command 使用闭合集合：`toggle_overlay`、`open_settings`、
+`toggle_ignore_mouse_input`、`toggle_ignore_keyboard_input` 和 `toggle_ignore_gamepad_input`。三个
+`toggle_ignore_*_input` command
 分别通过 settings service 切换对应的模型输入门禁；它们不停止平台采集，也不绕过现有的
-配置 revision、快捷键门禁和冲突校验。未知 command 在配置提交前拒绝。
+配置 revision、快捷键门禁和冲突校验。模型水平翻转、鼠标穿透和始终置顶只保留在设置与右键菜单
+中，不再是可绑定的 application command。未知 command 在配置提交前拒绝。
 模型行为使用 `motion:<group>:<index>` 或 `expression:<name>` 形式；绑定携带完整模型身份
 `{ id, source }`，runtime 在动作进入队列前接收解析后的强类型 motion/expression identity。
 行为 ID 不接受旧版的复合模型路径或任意未定义 kind。

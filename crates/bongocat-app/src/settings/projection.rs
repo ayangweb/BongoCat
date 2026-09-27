@@ -71,7 +71,6 @@ pub(super) fn settings_shortcuts(config: &NativeConfig) -> SettingsShortcuts {
 pub(super) fn settings_shortcut(command: ShortcutCommand) -> Option<SettingsApplicationShortcut> {
     Some(match command {
         ShortcutCommand::ToggleOverlay => SettingsApplicationShortcut::ToggleOverlay,
-        ShortcutCommand::ToggleMirror => SettingsApplicationShortcut::ToggleMirror,
         ShortcutCommand::ToggleIgnoreMouseInput => {
             SettingsApplicationShortcut::ToggleIgnoreMouseInput
         }
@@ -81,8 +80,6 @@ pub(super) fn settings_shortcut(command: ShortcutCommand) -> Option<SettingsAppl
         ShortcutCommand::ToggleIgnoreGamepadInput => {
             SettingsApplicationShortcut::ToggleIgnoreGamepadInput
         }
-        ShortcutCommand::ToggleClickThrough => SettingsApplicationShortcut::ToggleClickThrough,
-        ShortcutCommand::ToggleAlwaysOnTop => SettingsApplicationShortcut::ToggleAlwaysOnTop,
         ShortcutCommand::OpenSettings => SettingsApplicationShortcut::OpenSettings,
     })
 }
@@ -96,13 +93,6 @@ pub(super) fn apply_application_shortcut(
         SettingsApplicationShortcut::ToggleOverlay => {
             let visible = application.runtime_client().snapshot().overlay_visible;
             application.set_overlay_visible(!visible)?;
-        }
-        SettingsApplicationShortcut::ToggleMirror => {
-            let settings = application.runtime_client().snapshot().model_settings;
-            application.set_model_settings(ModelSettings {
-                mirror: !settings.mirror,
-                ..settings
-            })?;
         }
         SettingsApplicationShortcut::ToggleIgnoreMouseInput => {
             let settings = application.runtime_client().snapshot().model_settings;
@@ -123,20 +113,6 @@ pub(super) fn apply_application_shortcut(
             application.set_model_settings(ModelSettings {
                 ignore_gamepad: !settings.ignore_gamepad,
                 ..settings
-            })?;
-        }
-        SettingsApplicationShortcut::ToggleClickThrough => {
-            let current = application.runtime_client().snapshot().overlay_settings;
-            application.set_overlay_settings(OverlaySettings {
-                click_through: !current.click_through,
-                ..current
-            })?;
-        }
-        SettingsApplicationShortcut::ToggleAlwaysOnTop => {
-            let current = application.runtime_client().snapshot().overlay_settings;
-            application.set_overlay_settings(OverlaySettings {
-                always_on_top: !current.always_on_top,
-                ..current
             })?;
         }
     }

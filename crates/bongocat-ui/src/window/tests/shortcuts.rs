@@ -121,7 +121,7 @@ fn shortcut_capture_conflict_preview_is_order_independent() {
                 shortcut: "ctrl+b".to_owned(),
             },
             SettingsShortcutBinding {
-                command: "toggle_mirror".to_owned(),
+                command: "toggle_ignore_mouse_input".to_owned(),
                 shortcut: "Control+B".to_owned(),
             },
         ],
@@ -238,7 +238,7 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
         ),
     ];
     let targets = shortcut_targets(&shortcuts, Some(&active_model), &entries);
-    assert_eq!(targets.len(), 10);
+    assert_eq!(targets.len(), 7);
     // A row's controls are numbered as one group of three, in reading order,
     // with the play slot in the middle. The stride is fixed rather than counted
     // from the controls a row actually renders — an application command leaves
@@ -264,14 +264,14 @@ fn shortcut_capture_targets_have_independent_tab_stops() {
         indices.len(),
         "a row's three controls must hold three tab indices no other row uses"
     );
-    assert_eq!(targets.into_iter().collect::<BTreeSet<_>>().len(), 10);
+    assert_eq!(targets.into_iter().collect::<BTreeSet<_>>().len(), 7);
 }
 
 /// Only a model behavior row has something to play.
 ///
-/// The application commands are named by what they switch — show, hide, mirror —
-/// not by anything the model can perform, so a play control on those rows would
-/// be a button with no action behind it.
+/// The application commands are named by what they switch — window visibility,
+/// settings, input gates — not by anything the model can perform, so a play
+/// control on those rows would be a button with no action behind it.
 #[test]
 fn only_a_model_behavior_row_carries_a_playable_behavior() {
     let model = SettingsModelKey {
@@ -297,20 +297,20 @@ fn only_a_model_behavior_row_carries_a_playable_behavior() {
 
     let rows = shortcut_rows(&SettingsShortcuts::default(), Some(&model), &entries);
     assert!(
-        rows[..8].iter().all(|row| row.playable.is_none()),
+        rows[..5].iter().all(|row| row.playable.is_none()),
         "the application command rows must offer no play control"
     );
     assert_eq!(
-        rows[8].playable.as_ref().map(|playable| &playable.model),
+        rows[5].playable.as_ref().map(|playable| &playable.model),
         Some(&model),
         "the play control must play the row's own model, not a looked-up one"
     );
     assert_eq!(
-        rows[8].playable.as_ref().map(|p| &p.behavior),
+        rows[5].playable.as_ref().map(|p| &p.behavior),
         Some(&behavior)
     );
     assert_eq!(
-        rows[9].playable.as_ref().map(|p| &p.behavior),
+        rows[6].playable.as_ref().map(|p| &p.behavior),
         Some(&SettingsModelBehavior::Expression {
             name: "happy".to_owned(),
         })
@@ -614,7 +614,7 @@ fn a_shortcut_rows_frame_is_sized_by_its_chord_and_holds_its_controls(cx: &mut T
 fn window_shortcuts_are_visible_and_recordable_without_saved_bindings() {
     let mut shortcuts = SettingsShortcuts::default();
     let rows = window_shortcut_rows(&shortcuts);
-    assert_eq!(rows.len(), 8);
+    assert_eq!(rows.len(), 5);
     assert!(rows.iter().all(|row| row.shortcut.is_none()));
 
     let target = ShortcutCaptureTarget::Command("open_settings".to_owned());

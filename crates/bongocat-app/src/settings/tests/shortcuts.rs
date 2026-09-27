@@ -296,7 +296,7 @@ fn service_rejects_stale_shortcuts_without_mutating_config_or_snapshot() {
     let committed_config = std::fs::read(&layout.config).expect("committed config");
     let stale = SettingsShortcuts {
         commands: vec![SettingsShortcutBinding {
-            command: "toggle_mirror".to_owned(),
+            command: "toggle_ignore_mouse_input".to_owned(),
             shortcut: "Control+Alt+X".to_owned(),
         }],
         ..SettingsShortcuts::default()

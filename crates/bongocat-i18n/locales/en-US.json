@@ -256,12 +256,9 @@
     "command_names": {
       "toggle_model_window": "Show or hide the model window",
       "open_settings": "Show or hide settings window",
-      "toggle_mirror": "Toggle horizontal model flip",
       "toggle_ignore_mouse_input": "Toggle ignoring mouse input",
       "toggle_ignore_keyboard_input": "Toggle ignoring keyboard input",
-      "toggle_ignore_gamepad_input": "Toggle ignoring gamepad input",
-      "toggle_click_through": "Toggle mouse click-through",
-      "toggle_always_on_top": "Toggle always on top"
+      "toggle_ignore_gamepad_input": "Toggle ignoring gamepad input"
     },
     "behavior_names": {
       "motion": "Motion %{index}",
