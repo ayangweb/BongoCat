@@ -256,7 +256,7 @@
     "command_names": {
       "toggle_model_window": "Show or hide the model window",
       "open_settings": "Show or hide settings window",
-      "toggle_mirror": "Toggle horizontal model mirroring",
+      "toggle_mirror": "Toggle horizontal model flip",
       "toggle_ignore_mouse_input": "Toggle ignoring mouse input",
       "toggle_ignore_keyboard_input": "Toggle ignoring keyboard input",
       "toggle_ignore_gamepad_input": "Toggle ignoring gamepad input",
@@ -387,7 +387,7 @@
     "models": {
       "behavior": {
         "mirror_model": {
-          "label": "Mirror model horizontally"
+          "label": "Flip model horizontally"
         },
         "motion_audio": {
           "label": "Play motion sounds"
@@ -413,7 +413,7 @@
       "mouse": {
         "title": "Mouse",
         "mirror_mouse_tracking": {
-          "label": "Mirror mouse tracking"
+          "label": "Flip mouse tracking"
         },
         "ignore_mouse_input": {
           "label": "Ignore mouse input"

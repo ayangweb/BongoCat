@@ -38,6 +38,7 @@
 - Invalid or incomplete v1 settings and model IDs are now rejected consistently instead of being partially accepted or silently ignored.
 - BongoCat no longer keeps a CPU core busy in the background on macOS. Gamepad support was spinning in a tight loop from the moment the app started, whether or not a controller was connected. Idle CPU use drops from about a full core to a few percent, which mostly shows up as longer battery life.
 - The model window now waits for the graphics card to finish each frame instead of checking on it in a loop, so the app is more responsive and uses less CPU while the cat is on screen. Settings and update windows only re-read what they display when something actually changed, instead of rescanning your model folder every second while they are open.
+- The two mirroring settings are now worded as flips: “Flip model horizontally” and “Flip mouse tracking”, and their shortcut names use the same wording. Flipping is what graphics tools call it, so it is easier to read than the previous mirror wording.
 
 ### 💻 Support Changes
 

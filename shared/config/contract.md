@@ -64,8 +64,8 @@ updates
 | `model`       | `selected_model`                      | 当前模型完整身份：`{ id, source }`，或为 `null` |
 | `model`       | `imported_models`                     | 用户导入模型的元数据列表（`id` + `title` + `input_mode`） |
 | `model`       | `built_in_models`                     | 内置模型被改名后的元数据列表（`id` + `title`） |
-| `model`       | `mirror`                              | 水平镜像模型                           |
-| `model`       | `mirror_pointer_tracking`             | 镜像指针跟随方向                       |
+| `model`       | `mirror`                              | 水平翻转模型                           |
+| `model`       | `mirror_pointer_tracking`             | 翻转指针跟随方向                       |
 | `model`       | `play_motion_audio`                   | 播放动作音效，默认 `false`             |
 | `model`       | `ignore_keyboard`                     | 模型求值忽略键盘输入                   |
 | `model`       | `ignore_gamepad`                      | 模型求值忽略手柄输入                   |

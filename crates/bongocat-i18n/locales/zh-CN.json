@@ -256,7 +256,7 @@
     "command_names": {
       "toggle_model_window": "显示或隐藏模型窗口",
       "open_settings": "显示或隐藏设置窗口",
-      "toggle_mirror": "切换模型水平镜像",
+      "toggle_mirror": "切换模型水平翻转",
       "toggle_ignore_mouse_input": "切换忽略鼠标输入",
       "toggle_ignore_keyboard_input": "切换忽略键盘输入",
       "toggle_ignore_gamepad_input": "切换忽略手柄输入",
@@ -387,7 +387,7 @@
     "models": {
       "behavior": {
         "mirror_model": {
-          "label": "水平镜像模型"
+          "label": "水平翻转模型"
         },
         "motion_audio": {
           "label": "播放动作音效"
@@ -413,7 +413,7 @@
       "mouse": {
         "title": "鼠标",
         "mirror_mouse_tracking": {
-          "label": "镜像鼠标跟随"
+          "label": "翻转鼠标跟随"
         },
         "ignore_mouse_input": {
           "label": "忽略鼠标输入"
