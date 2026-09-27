@@ -44,7 +44,7 @@
       }
     },
     {
-      "atMs": 65,
+      "atMs": 60,
       "input": {
         "pressedKeys": [],
         "pressedMouseButtons": [],

@@ -126,7 +126,7 @@ enum ModelMode {
     Gamepad,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 enum Side {
     Left,
@@ -347,6 +347,18 @@ struct InputSnapshot {
     cursor_position: Option<Point>,
 }
 
+/// The key overlay the model is asked to draw for one hand at a checkpoint.
+///
+/// A keyboard key is named by the sequence's `keySides` key and a gamepad button
+/// by its `Gamepad<Button>` form, which is the vocabulary the runtime and the
+/// model resources already share (ADR-0070).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct KeyOverlay {
+    key: String,
+    side: Side,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ModelSnapshot {
@@ -354,6 +366,13 @@ struct ModelSnapshot {
     selected_model_id: Option<String>,
     left_hand_down: bool,
     right_hand_down: bool,
+    /// The overlays the model is asked to draw at this checkpoint.
+    ///
+    /// A checkpoint that presses nothing declares no overlay list at all, and
+    /// leaving the field out means the same thing as declaring an empty one, so
+    /// the default keeps both spellings comparable.
+    #[serde(default)]
+    active_key_overlays: Vec<KeyOverlay>,
     parameters: BTreeMap<String, f64>,
     active_motion: Option<String>,
     active_expression: Option<String>,
@@ -380,10 +399,10 @@ impl TrackedParameter {
 
 #[derive(Default)]
 struct RuntimeState {
-    pressed_keys: BTreeSet<String>,
+    pressed_keys: BTreeMap<String, u64>,
     pressed_mouse_buttons: BTreeSet<MouseButton>,
     connected_devices: BTreeMap<String, DeviceKind>,
-    gamepad_buttons: BTreeSet<(String, String)>,
+    gamepad_buttons: BTreeMap<(String, String), u64>,
     gamepad_axes: BTreeMap<(String, String), f64>,
     cursor_position: Option<Point>,
     last_reset_reason: Option<ResetReason>,
@@ -398,6 +417,7 @@ impl RuntimeState {
     fn apply(&mut self, event: &FixtureEvent, sequence_id: &str) -> Result<(), RunnerError> {
         match event {
             FixtureEvent::KeyDown {
+                at_ms,
                 key,
                 repeat,
                 source,
@@ -406,8 +426,12 @@ impl RuntimeState {
                 if !matches!(source, InputSource::Capture) {
                     return invalid(sequence_id, "key_down must come from capture");
                 }
-                if !*repeat || self.pressed_keys.contains(key) {
-                    self.pressed_keys.insert(key.clone());
+                if !*repeat || self.pressed_keys.contains_key(key) {
+                    // A repeat is a duplicate edge rather than a new press, so
+                    // the control keeps the time it was first seen down. That
+                    // time is what picks the overlay when one hand has more
+                    // than one control held.
+                    self.pressed_keys.entry(key.clone()).or_insert(*at_ms);
                 } else {
                     return invalid(
                         sequence_id,
@@ -434,6 +458,7 @@ impl RuntimeState {
                 self.cursor_position = Some(*position);
             }
             FixtureEvent::GamepadButton {
+                at_ms,
                 device_id,
                 button,
                 value,
@@ -445,7 +470,7 @@ impl RuntimeState {
                 }
                 let key = (device_id.clone(), button.clone());
                 if *value >= GAMEPAD_BUTTON_THRESHOLD {
-                    self.gamepad_buttons.insert(key);
+                    self.gamepad_buttons.entry(key).or_insert(*at_ms);
                 } else {
                     self.gamepad_buttons.remove(&key);
                 }
@@ -494,7 +519,7 @@ impl RuntimeState {
                     );
                 }
                 self.gamepad_buttons
-                    .retain(|(connected_id, _)| connected_id != device_id);
+                    .retain(|(connected_id, _), _| connected_id != device_id);
                 self.gamepad_axes
                     .retain(|(connected_id, _), _| connected_id != device_id);
             }
@@ -571,14 +596,14 @@ impl RuntimeState {
                     TrackedParameter::Mouse(button) => self.pressed_mouse_buttons.contains(button),
                     TrackedParameter::GamepadButton { button, .. } => self
                         .gamepad_buttons
-                        .iter()
+                        .keys()
                         .any(|(_, pressed_button)| pressed_button == button),
                 };
                 (parameter.name(), normalize_number(f64::from(value)))
             })
             .collect();
         let input = InputSnapshot {
-            pressed_keys: self.pressed_keys.iter().cloned().collect(),
+            pressed_keys: self.pressed_keys.keys().cloned().collect(),
             pressed_mouse_buttons: self
                 .pressed_mouse_buttons
                 .iter()
@@ -598,6 +623,7 @@ impl RuntimeState {
             selected_model_id: self.selected_model_id.clone(),
             left_hand_down,
             right_hand_down,
+            active_key_overlays: self.key_overlays(context),
             parameters,
             active_motion: self.active_motion.clone(),
             active_expression: self.active_expression.clone(),
@@ -607,12 +633,54 @@ impl RuntimeState {
 
     fn hand_down(&self, context: &FixtureContext, side: Side) -> bool {
         self.pressed_keys
-            .iter()
+            .keys()
             .any(|key| context.key_sides.get(key) == Some(&side))
             || self
                 .gamepad_buttons
-                .iter()
+                .keys()
                 .any(|(_, button)| context.key_sides.get(&gamepad_key(button)) == Some(&side))
+    }
+
+    /// The overlays the model is asked to draw: one per hand, naming the control
+    /// that hand most recently saw pressed.
+    ///
+    /// This mirrors the runtime's key-press projection, which keeps a single
+    /// press per hand and drops a control the model has no hand for. A mouse
+    /// button never reaches it: it drives a parameter, not an overlay. Reporting
+    /// the overlay here is what lets a fixture pin that a gamepad button is
+    /// drawable at all, which is the whole point of the field (ADR-0070).
+    fn key_overlays(&self, context: &FixtureContext) -> Vec<KeyOverlay> {
+        [Side::Left, Side::Right]
+            .into_iter()
+            .filter_map(|side| {
+                self.latest_control_for(context, side)
+                    .map(|key| KeyOverlay { key, side })
+            })
+            .collect()
+    }
+
+    /// The control that most recently went down on `side`, ignoring any control
+    /// the model has no hand for.
+    ///
+    /// The whole `(pressed_at, key)` pair orders the candidates, so the answer is
+    /// a total order and every reference model agrees on it. No fixture relies
+    /// on a tie: a hand only ever draws one overlay, so a tie would make the
+    /// drawn artwork arbitrary.
+    fn latest_control_for(&self, context: &FixtureContext, side: Side) -> Option<String> {
+        self.pressed_keys
+            .iter()
+            .filter(|(key, _)| context.key_sides.get(*key) == Some(&side))
+            .map(|(key, at_ms)| (at_ms, key.clone()))
+            .chain(
+                self.gamepad_buttons
+                    .iter()
+                    .filter_map(|((_, button), at_ms)| {
+                        let name = gamepad_key(button);
+                        (context.key_sides.get(&name) == Some(&side)).then_some((at_ms, name))
+                    }),
+            )
+            .max()
+            .map(|(_, key)| key)
     }
 }
 
@@ -898,8 +966,195 @@ mod tests {
         let report = run_fixture_directory(&repository_fixture_root()).unwrap();
         assert_eq!(report.sequences, 9);
         assert_eq!(report.events, 51);
-        assert_eq!(report.checkpoints, 24);
+        assert_eq!(report.checkpoints, 25);
         assert_eq!(report.audio_triggers, 1);
+    }
+
+    /// A hand draws the control it most recently saw pressed, and only that one.
+    ///
+    /// This is the rule `activeKeyOverlays` exists to pin. Three keys share the
+    /// left hand here, and only `KeyA` goes down last, so only `KeyA` is drawn
+    /// even though all three are held.
+    #[test]
+    fn one_overlay_per_hand_names_the_latest_press() {
+        let context = FixtureContext {
+            model_mode: ModelMode::Keyboard,
+            key_sides: BTreeMap::from([
+                ("ControlLeft".to_owned(), Side::Left),
+                ("KeyA".to_owned(), Side::Left),
+                ("KeyB".to_owned(), Side::Right),
+            ]),
+        };
+        let mut state = RuntimeState::default();
+        for (at_ms, key) in [(0, "ControlLeft"), (10, "KeyA")] {
+            state
+                .apply(
+                    &FixtureEvent::KeyDown {
+                        at_ms,
+                        key: key.to_owned(),
+                        repeat: false,
+                        source: InputSource::Capture,
+                    },
+                    "overlays",
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            state.key_overlays(&context),
+            vec![KeyOverlay {
+                key: "KeyA".to_owned(),
+                side: Side::Left,
+            }]
+        );
+
+        state
+            .apply(
+                &FixtureEvent::KeyDown {
+                    at_ms: 20,
+                    key: "KeyB".to_owned(),
+                    repeat: false,
+                    source: InputSource::Capture,
+                },
+                "overlays",
+            )
+            .unwrap();
+        assert_eq!(
+            state.key_overlays(&context),
+            vec![
+                KeyOverlay {
+                    key: "KeyA".to_owned(),
+                    side: Side::Left,
+                },
+                KeyOverlay {
+                    key: "KeyB".to_owned(),
+                    side: Side::Right,
+                },
+            ]
+        );
+    }
+
+    /// A repeated key-down is a duplicate edge, so it must not make the older
+    /// press look like the most recent one.
+    #[test]
+    fn a_repeat_does_not_win_its_hands_overlay() {
+        let context = FixtureContext {
+            model_mode: ModelMode::Keyboard,
+            key_sides: BTreeMap::from([("KeyA".to_owned(), Side::Left)]),
+        };
+        let mut state = RuntimeState::default();
+        state
+            .apply(
+                &FixtureEvent::KeyDown {
+                    at_ms: 0,
+                    key: "KeyA".to_owned(),
+                    repeat: false,
+                    source: InputSource::Capture,
+                },
+                "repeat",
+            )
+            .unwrap();
+        state
+            .apply(
+                &FixtureEvent::KeyDown {
+                    at_ms: 500,
+                    key: "KeyA".to_owned(),
+                    repeat: true,
+                    source: InputSource::Capture,
+                },
+                "repeat",
+            )
+            .unwrap();
+        assert_eq!(state.pressed_keys.get("KeyA"), Some(&0));
+        assert_eq!(
+            state.key_overlays(&context),
+            vec![KeyOverlay {
+                key: "KeyA".to_owned(),
+                side: Side::Left,
+            }]
+        );
+    }
+
+    /// A gamepad button is drawable under its own `Gamepad<Button>` name, and
+    /// disconnecting the pad takes the overlay with it.
+    ///
+    /// This is the last mile of the reported bug: a button used to reach the
+    /// renderer as a bare HID usage, which no gamepad button can be, so the paw
+    /// moved and the button's own artwork never appeared.
+    #[test]
+    fn a_gamepad_button_is_drawn_and_the_disconnect_clears_it() {
+        let context = FixtureContext {
+            model_mode: ModelMode::Gamepad,
+            key_sides: BTreeMap::from([("GamepadSouth".to_owned(), Side::Left)]),
+        };
+        let mut state = RuntimeState::default();
+        for event in [
+            FixtureEvent::DeviceConnected {
+                at_ms: 0,
+                device_id: "pad".to_owned(),
+                device_kind: DeviceKind::Gamepad,
+            },
+            FixtureEvent::GamepadButton {
+                at_ms: 10,
+                device_id: "pad".to_owned(),
+                button: "south".to_owned(),
+                value: 1.0,
+            },
+        ] {
+            state.apply(&event, "gamepad overlay").unwrap();
+        }
+        assert_eq!(
+            state.key_overlays(&context),
+            vec![KeyOverlay {
+                key: "GamepadSouth".to_owned(),
+                side: Side::Left,
+            }]
+        );
+
+        state
+            .apply(
+                &FixtureEvent::DeviceDisconnected {
+                    at_ms: 20,
+                    device_id: "pad".to_owned(),
+                    device_kind: DeviceKind::Gamepad,
+                },
+                "gamepad overlay",
+            )
+            .unwrap();
+        assert!(state.key_overlays(&context).is_empty());
+    }
+
+    /// A control the model has no hand for is dropped before it can be drawn,
+    /// and so is a mouse button: it drives a parameter, not an overlay.
+    #[test]
+    fn an_unbound_control_and_a_mouse_button_draw_nothing() {
+        let context = FixtureContext {
+            model_mode: ModelMode::Standard,
+            key_sides: BTreeMap::new(),
+        };
+        let mut state = RuntimeState::default();
+        state
+            .apply(
+                &FixtureEvent::KeyDown {
+                    at_ms: 0,
+                    key: "KeyA".to_owned(),
+                    repeat: false,
+                    source: InputSource::Capture,
+                },
+                "unbound",
+            )
+            .unwrap();
+        state
+            .apply(
+                &FixtureEvent::MouseDown {
+                    at_ms: 1,
+                    button: MouseButton::Left,
+                    source: InputSource::Capture,
+                },
+                "unbound",
+            )
+            .unwrap();
+        assert!(state.key_overlays(&context).is_empty());
+        assert!(state.pressed_mouse_buttons.contains(&MouseButton::Left));
     }
 
     #[test]

@@ -15,10 +15,10 @@ PACKAGER_MANIFEST = ROOT / "crates" / "bongocat-packaging" / "Cargo.toml"
 WINDOWS_RESOURCE = ROOT / "crates" / "bongocat-app" / "windows" / "bongocat-app.rc"
 APP_BUILD_SCRIPT = ROOT / "crates" / "bongocat-app" / "build.rs"
 APP_LIBRARY = ROOT / "crates" / "bongocat-app" / "src" / "lib.rs"
-APP_SETTINGS = ROOT / "crates" / "bongocat-app" / "src" / "settings.rs"
+APP_SETTINGS_SNAPSHOT = ROOT / "crates" / "bongocat-app" / "src" / "settings" / "snapshot.rs"
 UI_LIBRARY = ROOT / "crates" / "bongocat-ui" / "src" / "lib.rs"
-UI_WINDOW_TESTS = ROOT / "crates" / "bongocat-ui" / "src" / "window" / "tests.rs"
-UPDATE_RUNTIME = ROOT / "crates" / "bongocat-update" / "src" / "runtime.rs"
+UI_WINDOW_COPY_TESTS = ROOT / "crates" / "bongocat-ui" / "src" / "window" / "tests" / "copy.rs"
+UPDATE_RUNTIME_TESTS = ROOT / "crates" / "bongocat-update" / "src" / "runtime" / "tests.rs"
 UPDATE_CAPABILITY_TESTS = (
     ROOT / "crates" / "bongocat-update" / "tests" / "release_manifest_capability.rs"
 )
@@ -112,22 +112,26 @@ class ProductVersionContractTests(unittest.TestCase):
             'pub const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");',
             read(APP_LIBRARY),
         )
-        self.assertIn("product_version: PRODUCT_VERSION.to_owned()", read(APP_SETTINGS))
+        self.assertIn(
+            "product_version: PRODUCT_VERSION.to_owned()", read(APP_SETTINGS_SNAPSHOT)
+        )
         self.assertIn(
             'product_version: env!("CARGO_PKG_VERSION").to_owned()',
             read(UI_LIBRARY),
         )
-        self.assertIn('let product_version = env!("CARGO_PKG_VERSION");', read(UI_WINDOW_TESTS))
+        self.assertIn(
+            'let product_version = env!("CARGO_PKG_VERSION");', read(UI_WINDOW_COPY_TESTS)
+        )
         self.assertIn(
             'format!("Version {product_version} · Development build")',
-            read(UI_WINDOW_TESTS),
+            read(UI_WINDOW_COPY_TESTS),
         )
         self.assertIn(
             'format!("版本 {product_version} · 开发版")',
-            read(UI_WINDOW_TESTS),
+            read(UI_WINDOW_COPY_TESTS),
         )
 
-        update_runtime = read(UPDATE_RUNTIME)
+        update_runtime = read(UPDATE_RUNTIME_TESTS)
         self.assertIn('env!("CARGO_PKG_VERSION")', update_runtime)
 
         capability_tests = read(UPDATE_CAPABILITY_TESTS)
@@ -139,10 +143,10 @@ class ProductVersionContractTests(unittest.TestCase):
 
         product_version = workspace_package_version()
         for path in (
-            APP_SETTINGS,
+            APP_SETTINGS_SNAPSHOT,
             UI_LIBRARY,
-            UI_WINDOW_TESTS,
-            UPDATE_RUNTIME,
+            UI_WINDOW_COPY_TESTS,
+            UPDATE_RUNTIME_TESTS,
             UPDATE_CAPABILITY_TESTS,
         ):
             with self.subTest(path=path):

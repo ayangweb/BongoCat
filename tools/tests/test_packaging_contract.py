@@ -26,7 +26,7 @@ PACKAGER = ROOT / "crates" / "bongocat-packaging" / "src" / "main.rs"
 PACKAGER_MANIFEST = ROOT / "crates" / "bongocat-packaging" / "Cargo.toml"
 JUSTFILE = ROOT / "justfile"
 MACOS_INFO = ROOT / "macos" / "Info.plist"
-APP_MAIN = ROOT / "crates" / "bongocat-app" / "src" / "main.rs"
+APP_PRESET_ROOT = ROOT / "crates" / "bongocat-app" / "src" / "preset_root.rs"
 WINDOWS_RESOURCE = ROOT / "crates" / "bongocat-app" / "windows" / "bongocat-app.rc"
 UPDATE_RELEASE = ROOT / "crates" / "bongocat-update" / "src" / "release.rs"
 DEPENDENCY_POLICY = ROOT / "deny.toml"
@@ -166,7 +166,7 @@ class MacosBundleTests(unittest.TestCase):
 
     def test_bundled_resources_match_the_runtime_lookup(self):
         source = read(PACKAGER)
-        app = read(APP_MAIN)
+        app = read(APP_PRESET_ROOT)
 
         # macOS resolves Contents/Resources/models; Windows resolves
         # <executable dir>/resources/models. The packaging tool must produce exactly

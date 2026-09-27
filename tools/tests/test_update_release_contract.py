@@ -1,7 +1,7 @@
 """Pin the release identity that `bongocat-update` and the packaging pipeline share.
 
 `cargo-packager-updater` reads that identity out of compile-time constants in
-`crates/bongocat-update/src/runtime.rs`:
+`crates/bongocat-update/src/runtime/release_identity.rs`:
 
 * `RELEASE_REPOSITORY_OWNER` / `RELEASE_REPOSITORY_NAME` become the manifest URL the
   updater requests, so they have to name the repository that publishes the releases.
@@ -27,7 +27,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNTIME = ROOT / "crates" / "bongocat-update" / "src" / "runtime.rs"
+RUNTIME = ROOT / "crates" / "bongocat-update" / "src" / "runtime" / "release_identity.rs"
 RELEASE = ROOT / "crates" / "bongocat-update" / "src" / "release.rs"
 APP_MANIFEST = ROOT / "crates" / "bongocat-app" / "Cargo.toml"
 WORKSPACE_MANIFEST = ROOT / "Cargo.toml"

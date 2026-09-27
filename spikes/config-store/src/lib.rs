@@ -149,7 +149,11 @@ pub struct NativeConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct SystemConfig {
+    /// Windows only: the product launches without a model-window taskbar button.
     pub show_taskbar_icon: bool,
+    /// macOS only: the process is a menu bar accessory app, so a fresh
+    /// configuration keeps the Dock icon hidden.
+    pub show_dock_icon: bool,
     pub show_status_icon: bool,
 }
 
@@ -236,25 +240,69 @@ pub struct ModelConfig {
     pub imported_models: Vec<ImportedModelMetadata>,
     pub built_in_models: Vec<BuiltInModelMetadata>,
     pub mirror: bool,
-    pub mirror_pointer_tracking: bool,
+    /// Pointer tracking runs backwards along each axis independently: a model
+    /// that follows the cursor correctly side to side can still look up when the
+    /// cursor goes down, and only the second switch fixes that.
+    pub mirror_pointer_tracking_horizontal: bool,
+    pub mirror_pointer_tracking_vertical: bool,
     pub play_motion_audio: bool,
     pub ignore_keyboard: bool,
     pub ignore_gamepad: bool,
     pub ignore_pointer: bool,
     pub random_behavior: RandomBehaviorConfig,
+    pub gamepad_auto_switch: GamepadAutoSwitchConfig,
+    /// A fresh configuration has never been told to restore an expression, so
+    /// the recorded expressions are kept but nothing replays them.
+    pub remember_last_expression: bool,
+    pub last_expressions: Vec<ModelExpressionMemory>,
+}
+
+/// One model's remembered expression, keyed by the complete identity because two
+/// catalog entries may share an id.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ModelExpressionMemory {
+    pub model: ModelIdentity,
+    pub expression: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct RandomBehaviorConfig {
-    pub enabled: bool,
+    pub mode: RandomBehaviorMode,
     pub interval_seconds: u32,
+}
+
+/// What the idle scheduler may pick on its own.
+///
+/// Turning it off is one choice rather than a separate `enabled` flag: a switch
+/// beside a mode dropdown reads as two questions and admits a state no user asked
+/// for, namely on with nothing to play.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RandomBehaviorMode {
+    #[default]
+    Off,
+    Expressions,
+    Motions,
+    MotionsAndExpressions,
+}
+
+/// Switching the shown model from gamepad connection state. `enabled` is the only
+/// gate and defaults to `false`; a `None` target means the last model the user
+/// activated for that input family.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct GamepadAutoSwitchConfig {
+    pub enabled: bool,
+    pub connected_model: Option<ModelIdentity>,
+    pub disconnected_model: Option<ModelIdentity>,
 }
 
 impl Default for RandomBehaviorConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            mode: RandomBehaviorMode::default(),
             interval_seconds: DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
         }
     }
@@ -369,16 +417,21 @@ impl Default for NativeConfig {
                 imported_models: Vec::new(),
                 built_in_models: Vec::new(),
                 mirror: false,
-                mirror_pointer_tracking: false,
+                mirror_pointer_tracking_horizontal: false,
+                mirror_pointer_tracking_vertical: false,
                 play_motion_audio: false,
                 ignore_keyboard: false,
                 ignore_gamepad: false,
                 ignore_pointer: false,
                 random_behavior: RandomBehaviorConfig::default(),
+                gamepad_auto_switch: GamepadAutoSwitchConfig::default(),
+                remember_last_expression: false,
+                last_expressions: Vec::new(),
             },
             shortcuts: ShortcutConfig::default(),
             system: SystemConfig {
-                show_taskbar_icon: true,
+                show_taskbar_icon: false,
+                show_dock_icon: false,
                 show_status_icon: true,
             },
             updates: UpdateConfig {
@@ -1132,11 +1185,20 @@ mod tests {
         assert!(value.get("application").is_none());
         assert!(value["overlay"].get("visible").is_none());
         assert!(value["system"].get("show_taskbar_icon").is_some());
+        assert!(value["system"].get("show_dock_icon").is_some());
         assert!(value["system"].get("show_status_icon").is_some());
         assert!(value["updates"].get("check_automatically").is_some());
         assert!(value["updates"].get("check_interval_hours").is_some());
-        assert!(value["updates"].get("check_for_updates_automatically").is_none());
-        assert!(value["updates"].get("check_for_updates_interval_hours").is_none());
+        assert!(
+            value["updates"]
+                .get("check_for_updates_automatically")
+                .is_none()
+        );
+        assert!(
+            value["updates"]
+                .get("check_for_updates_interval_hours")
+                .is_none()
+        );
         assert!(value["overlay"].get("corner_radius_percent").is_some());
         assert!(value["overlay"].get("hide_on_pointer_hover").is_some());
         assert!(
@@ -1163,6 +1225,26 @@ mod tests {
         assert!(value["model"].get("built_in_models").is_some());
         assert!(value["model"].get("random_behavior").is_some());
         assert!(value["model"].get("random_behavior_enabled").is_none());
+        // Random behavior is one enumerated mode in the current v1, so the
+        // separate enable flag must not come back beside it.
+        assert!(value["model"]["random_behavior"].get("mode").is_some());
+        assert!(value["model"]["random_behavior"].get("enabled").is_none());
+        // Pointer tracking mirrors per axis, and the single combined switch is
+        // not part of the current v1.
+        assert!(
+            value["model"]
+                .get("mirror_pointer_tracking_horizontal")
+                .is_some()
+        );
+        assert!(
+            value["model"]
+                .get("mirror_pointer_tracking_vertical")
+                .is_some()
+        );
+        assert!(value["model"].get("mirror_pointer_tracking").is_none());
+        assert!(value["model"].get("gamepad_auto_switch").is_some());
+        assert!(value["model"].get("remember_last_expression").is_some());
+        assert!(value["model"].get("last_expressions").is_some());
         assert!(value["shortcuts"].get("command_bindings").is_some());
         assert!(value["shortcuts"].get("model_behavior_bindings").is_some());
         assert_eq!(value["updates"]["check_interval_hours"], 24);
@@ -1189,18 +1271,24 @@ mod tests {
     #[test]
     fn random_behavior_settings_follow_the_current_v1_bounds() {
         let mut config = NativeConfig::default();
-        assert!(!config.model.random_behavior.enabled);
+        assert_eq!(config.model.random_behavior.mode, RandomBehaviorMode::Off);
         assert_eq!(
             config.model.random_behavior.interval_seconds,
             DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS
         );
-        for accepted in [
-            MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
-            MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+        for mode in [
+            RandomBehaviorMode::Expressions,
+            RandomBehaviorMode::Motions,
+            RandomBehaviorMode::MotionsAndExpressions,
         ] {
-            config.model.random_behavior.enabled = true;
-            config.model.random_behavior.interval_seconds = accepted;
-            assert!(config.validate().is_ok());
+            for accepted in [
+                MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+                MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+            ] {
+                config.model.random_behavior.mode = mode;
+                config.model.random_behavior.interval_seconds = accepted;
+                assert!(config.validate().is_ok());
+            }
         }
         for rejected in [0, MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS + 1] {
             config.model.random_behavior.interval_seconds = rejected;
