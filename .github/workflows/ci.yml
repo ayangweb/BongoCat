@@ -170,7 +170,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
-          cargo run --manifest-path Cargo.toml --locked --release -p bongocat-platform --example model_source_picker_smoke -- --expect-selected-any --auto --kind directory
+          # A model source is recognised from its own content, so the harness takes
+          # no kind: a folder is what the picker asks for on both platforms.
+          cargo run --manifest-path Cargo.toml --locked --release -p bongocat-platform --example model_source_picker_smoke -- --expect-selected-any --auto
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
