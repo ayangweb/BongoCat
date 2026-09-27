@@ -41,6 +41,7 @@
 - The model window now waits for the graphics card to finish each frame instead of checking on it in a loop, so the app is more responsive and uses less CPU while the cat is on screen. Settings and update windows only re-read what they display when something actually changed, instead of rescanning your model folder every second while they are open.
 - The two flipping settings are now worded as flips and name the axis they flip: “Flip model horizontally”, “Flip mouse tracking horizontally”, and the new “Flip mouse tracking vertically”. Flipping is what graphics tools call it, so it is easier to read than the previous mirror wording.
 - On Windows the Settings window keeps its normal title bar — icon, title, and minimize, maximize, and close — in every state. Turning off “Show taskbar icon” no longer leaves a bare bar with only a close button, and that setting now controls the model window's taskbar button, which is where it belonged. That button is now off by default: the model window has no window of its own to act on, so the taskbar keeps a single usable entry, and you can turn it on if you want one there too.
+- The Settings window and the update window on Windows now show the BongoCat icon in their title bars and taskbar buttons, instead of the generic placeholder icon Windows draws for an app that does not supply an icon of its own.
 
 ### 💻 Support Changes
 

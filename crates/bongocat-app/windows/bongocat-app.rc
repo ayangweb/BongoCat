@@ -1,10 +1,13 @@
-#define BONGOCAT_PRODUCT_ICON 101
-
 #if !defined(VERSION) || !defined(VERSION_MAJOR) || !defined(VERSION_MINOR) || !defined(VERSION_PATCH)
 #error "VERSION, VERSION_MAJOR, VERSION_MINOR and VERSION_PATCH must be supplied by build.rs"
 #endif
 
-BONGOCAT_PRODUCT_ICON ICON "../../resources/icons/logo-windows.ico"
+// The product icon has to sit at resource id 1. GPUI loads it with
+// `LoadImageW(module, MAKEINTRESOURCE(1), IMAGE_ICON, ...)` while it registers the
+// window class, and Windows paints a window whose class has a null `hIcon` with its
+// generic default icon, which is what product window captions and taskbar buttons
+// showed when the icon only existed under a private id.
+1 ICON "../../resources/icons/logo-windows.ico"
 
 1 VERSIONINFO
 FILEVERSION VERSION_MAJOR,VERSION_MINOR,VERSION_PATCH,0

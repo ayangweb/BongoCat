@@ -27,6 +27,7 @@ PACKAGER_MANIFEST = ROOT / "crates" / "bongocat-packaging" / "Cargo.toml"
 JUSTFILE = ROOT / "justfile"
 MACOS_INFO = ROOT / "macos" / "Info.plist"
 APP_MAIN = ROOT / "crates" / "bongocat-app" / "src" / "main.rs"
+WINDOWS_RESOURCE = ROOT / "crates" / "bongocat-app" / "windows" / "bongocat-app.rc"
 UPDATE_RELEASE = ROOT / "crates" / "bongocat-update" / "src" / "release.rs"
 DEPENDENCY_POLICY = ROOT / "deny.toml"
 WORKFLOW_DIRECTORY = ROOT / ".github" / "workflows"
@@ -107,6 +108,35 @@ class PackagingTargetTests(unittest.TestCase):
             with self.subTest(uploaded=uploaded):
                 self.assertIn(uploaded, workflow)
         self.assertNotIn("-setup", workflow, "the published installer drops the packaging suffix")
+
+
+class WindowsProductIconTests(unittest.TestCase):
+    """The shipped executable has to carry the product icon where GPUI reads it.
+
+    GPUI loads the application icon with
+    `LoadImageW(module, MAKEINTRESOURCE(1), IMAGE_ICON, ...)` while it registers the
+    window class, and Windows paints a window whose class icon is missing with its
+    generic default icon. The resource id is therefore a product guarantee, not a
+    free choice inside the resource script.
+    """
+
+    def test_product_icon_is_embedded_at_the_id_gpui_loads(self):
+        resource = read(WINDOWS_RESOURCE)
+        declarations = re.findall(
+            r'^\s*(\S+)\s+ICON\s+"?([^"\s]+)"?\s*$', resource, re.MULTILINE
+        )
+        self.assertEqual(
+            len(declarations),
+            1,
+            "the resource script must declare exactly one product icon",
+        )
+
+        name, path = declarations[0]
+        self.assertEqual(name, "1", "GPUI only looks the application icon up at id 1")
+        self.assertTrue(
+            path.endswith("icons/logo-windows.ico"),
+            f"the embedded icon must be the shipped product icon, found {path}",
+        )
 
 
 class MacosBundleTests(unittest.TestCase):
