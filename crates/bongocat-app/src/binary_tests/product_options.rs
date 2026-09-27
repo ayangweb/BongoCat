@@ -16,7 +16,6 @@ fn run_options_default_to_an_unbounded_product_lifetime() {
             settings_window_smoke: false,
             settings_window_open_smoke: false,
             models_page_smoke: false,
-            app_system_page_smoke: false,
             hidden_model_switch_smoke: false,
             #[cfg(feature = "storage-test-injection")]
             settings_window_state_smoke: false,
@@ -63,25 +62,6 @@ fn zero_seconds_remains_an_explicit_unbounded_run() {
     );
 }
 
-/// The app & system flag is a harness, and it is a page the window opens on.
-///
-/// It is a harness because the startup permission prompt must not appear in front
-/// of a script, and it is a page because the settings window renders one page at a
-/// time: the Windows automation smoke looks up the startup switch by name, and
-/// that name only exists on this page.
-#[test]
-fn the_app_system_page_flag_is_a_harness_and_opens_that_page() {
-    let options =
-        RunOptions::parse(["--app-system-page-smoke".to_owned()]).expect("app system options");
-    assert!(options.app_system_page_smoke);
-    assert!(options.automated_verification());
-
-    let memory = SettingsNavigationMemory::new();
-    assert_eq!(memory.page_index(), 0);
-    memory.select_app_system();
-    assert_ne!(memory.page_index(), 0);
-}
-
 /// `--flag=value` is the other spelling of the same command line.
 ///
 /// It costs nothing to accept and it is what every other command-line tool accepts,
@@ -117,7 +97,6 @@ fn only_the_bounded_run_duration_keeps_a_start_interactive() {
         "--settings-window-smoke",
         "--settings-window-open-smoke",
         "--models-page-smoke",
-        "--app-system-page-smoke",
         "--hidden-model-switch-smoke",
         "--system-menu-smoke",
         "--startup-permission-smoke",

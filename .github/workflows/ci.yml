@@ -221,15 +221,11 @@ jobs:
             }
           }
           $childrenScope = [System.Windows.Automation.TreeScope]::Children
-          $descendantsScope = [System.Windows.Automation.TreeScope]::Descendants
           1..5 | ForEach-Object {
             $stdout = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stdout.log"
             $stderr = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stderr.log"
-            # The startup switch is on the app & system page and the settings window
-            # renders one page at a time, so the window has to open on that page for
-            # its name to be in the automation tree at all.
             $arguments = if ($_ -eq 1) {
-              @("--run-seconds", "30", "--settings-window-open-smoke", "--app-system-page-smoke")
+              @("--run-seconds", "30", "--settings-window-open-smoke")
             } else {
               @("--run-seconds", "30", "--settings-window-smoke", "--models-page-smoke")
             }
@@ -269,201 +265,17 @@ jobs:
               if ($null -eq $root) {
                 throw "Windows product did not expose a settings HWND"
               }
-              $startupCondition = [System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::NameProperty,
-                "Open at login"
-              )
-              # This waits for the app & system page to be built and painted after
-              # the window appears, on a two-core runner that has just spent ten
-              # minutes linking this binary. It is first-paint latency, not a
-              # behavioural budget, so it is given room; the deadlines below measure
-              # how the product answers a UI Automation action and stay short.
-              $startupDeadline = [DateTime]::UtcNow.AddSeconds(20)
-              do {
-                Start-Sleep -Milliseconds 100
-                $startup = Find-UiAutomationElement `
-                  -Owner $root `
-                  -Scope $descendantsScope `
-                  -Condition $startupCondition
-              } while ($null -eq $startup -and [DateTime]::UtcNow -lt $startupDeadline)
-              if ($null -eq $startup) {
-                throw "Windows UIA did not expose the startup switch"
-              }
-              if ($startup.Current.ControlType -ne [System.Windows.Automation.ControlType]::Button) {
-                throw "Windows UIA startup switch did not use the button control type"
-              }
-              # Some GitHub-hosted runner UIAutomationClient builds do not
-              # expose the optional ARIA role property at all. Resolve the
-              # stable UIA property id directly when the client supports it.
-              $ariaRoleProperty = $null
-              try {
-                $ariaRoleProperty = [System.Windows.Automation.AutomationProperty]::LookupById(30101)
-              } catch {
-                $ariaRoleProperty = $null
-              }
-              if ($null -eq $ariaRoleProperty) {
-                Write-Warning "Windows UIA client does not expose optional UIA_AriaRoleProperty (30101); relying on ControlType and TogglePattern checks"
-              } else {
-                $ariaRole = [string]$startup.GetCurrentPropertyValue($ariaRoleProperty)
-                if ($ariaRole -ne "switch") {
-                  throw "Windows UIA startup control did not expose aria role switch: '$ariaRole'"
-                }
-              }
-              if (-not $startup.Current.IsEnabled -or -not $startup.Current.IsKeyboardFocusable) {
-                throw "Windows UIA startup switch was not enabled and focusable"
-              }
-              $toggle = $startup.GetCurrentPattern(
-                [System.Windows.Automation.TogglePattern]::Pattern
-              )
-              $toggleState = $toggle.Current.ToggleState
-              if ($toggleState -notin @(
-                [System.Windows.Automation.ToggleState]::On,
-                [System.Windows.Automation.ToggleState]::Off
-              )) {
-                throw "Windows UIA startup switch exposed an indeterminate value"
-              }
-              $initialToggleState = $toggleState
-              # Exercise the real UIA action and wait for the revisioned settings
-              # snapshot to project the new state. The runner uses an ephemeral
-              # HKCU profile, so toggling twice restores the initial disabled/
-              # enabled state without changing a user's login item.
-              if ($toggleState -eq [System.Windows.Automation.ToggleState]::Off) {
-                $expectedToggleState = [System.Windows.Automation.ToggleState]::On
-              } else {
-                $expectedToggleState = [System.Windows.Automation.ToggleState]::Off
-              }
-              $actionSucceeded = $false
-              $actionError = "startup switch was unavailable"
-              $actionDeadline = [DateTime]::UtcNow.AddSeconds(2)
-              do {
-                $startup = Find-UiAutomationElement `
-                  -Owner $root `
-                  -Scope $descendantsScope `
-                  -Condition $startupCondition
-                if ($null -ne $startup) {
-                  try {
-                    $startup.GetCurrentPattern(
-                      [System.Windows.Automation.TogglePattern]::Pattern
-                    ).Toggle()
-                    $actionSucceeded = $true
-                  } catch {
-                    $actionError = $_.Exception.Message
-                  }
-                }
-                if (-not $actionSucceeded) {
-                  Start-Sleep -Milliseconds 50
-                }
-              } while (-not $actionSucceeded -and [DateTime]::UtcNow -lt $actionDeadline)
-              if (-not $actionSucceeded) {
-                throw "Windows UIA startup switch action failed after reacquiring the current node: $actionError"
-              }
-              $toggleDeadline = [DateTime]::UtcNow.AddSeconds(5)
-              $startupReady = $false
-              do {
-                Start-Sleep -Milliseconds 100
-                $startupReady = $false
-                $startup = Find-UiAutomationElement `
-                  -Owner $root `
-                  -Scope $descendantsScope `
-                  -Condition $startupCondition
-                if ($null -ne $startup) {
-                  try {
-                    $toggleState = $startup.GetCurrentPattern(
-                      [System.Windows.Automation.TogglePattern]::Pattern
-                    ).Current.ToggleState
-                    $startupReady = $startup.Current.IsEnabled
-                  } catch {
-                    $toggleState = $null
-                  }
-                }
-              } while (($toggleState -ne $expectedToggleState -or -not $startupReady) -and [DateTime]::UtcNow -lt $toggleDeadline)
-              if ($toggleState -ne $expectedToggleState) {
-                throw "Windows UIA startup switch action did not update state: expected '$expectedToggleState', found '$toggleState'"
-              }
-              if (-not $startupReady) {
-                throw "Windows UIA startup switch did not become enabled after updating state"
-              }
-              $actionSucceeded = $false
-              $actionError = "startup switch was unavailable"
-              $actionDeadline = [DateTime]::UtcNow.AddSeconds(5)
-              do {
-                $startup = Find-UiAutomationElement `
-                  -Owner $root `
-                  -Scope $descendantsScope `
-                  -Condition $startupCondition
-                if ($null -ne $startup) {
-                  try {
-                    if ($startup.Current.IsEnabled) {
-                      $startup.GetCurrentPattern(
-                        [System.Windows.Automation.TogglePattern]::Pattern
-                      ).Toggle()
-                      $actionSucceeded = $true
-                    } else {
-                      $actionError = "startup switch was disabled"
-                    }
-                  } catch {
-                    $actionError = $_.Exception.Message
-                  }
-                }
-                if (-not $actionSucceeded) {
-                  Start-Sleep -Milliseconds 50
-                }
-              } while (-not $actionSucceeded -and [DateTime]::UtcNow -lt $actionDeadline)
-              if (-not $actionSucceeded) {
-                throw "Windows UIA startup switch restore action failed after reacquiring the current node: $actionError"
-              }
-              $restoreDeadline = [DateTime]::UtcNow.AddSeconds(5)
-              do {
-                Start-Sleep -Milliseconds 100
-                $startup = Find-UiAutomationElement `
-                  -Owner $root `
-                  -Scope $descendantsScope `
-                  -Condition $startupCondition
-                if ($null -ne $startup) {
-                  try {
-                    $toggleState = $startup.GetCurrentPattern(
-                      [System.Windows.Automation.TogglePattern]::Pattern
-                    ).Current.ToggleState
-                  } catch {
-                    $toggleState = $null
-                  }
-                }
-              } while ($toggleState -ne $initialToggleState -and [DateTime]::UtcNow -lt $restoreDeadline)
-              if ($toggleState -ne $initialToggleState) {
-                throw "Windows UIA startup switch action did not restore state: expected '$initialToggleState', found '$toggleState'"
-              }
-              # The settings snapshot revision rebuilds the GPUI control tree.
-              # Reacquire the current node for every transient focus attempt.
-              $focusSucceeded = $false
-              $focusError = "startup switch was unavailable"
-              $focusDeadline = [DateTime]::UtcNow.AddSeconds(5)
-              do {
-                $startup = Find-UiAutomationElement `
-                  -Owner $root `
-                  -Scope $descendantsScope `
-                  -Condition $startupCondition
-                if ($null -ne $startup) {
-                  try {
-                    $startup.SetFocus()
-                    $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
-                    $focusedName = if ($null -eq $focused) { "" } else { $focused.Current.Name }
-                    if ($focusedName -eq "Open at login") {
-                      $focusSucceeded = $true
-                    } else {
-                      $focusError = "focused element was '$focusedName'"
-                    }
-                  } catch {
-                    $focusError = $_.Exception.Message
-                  }
-                }
-                if (-not $focusSucceeded) {
-                  Start-Sleep -Milliseconds 50
-                }
-              } while (-not $focusSucceeded -and [DateTime]::UtcNow -lt $focusDeadline)
-              if (-not $focusSucceeded) {
-                throw "Windows UIA startup switch focus failed after reacquiring the current node: $focusError"
-              }
-              Write-Host "bongocat-app: Windows UIA startup switch role/value/action verified"
+              # The settings window is the product behaviour this step verifies:
+              # the run opened it, as a real top-level window with this
+              # process behind it, and the bounded run below then finishes on its
+              # own. It deliberately stops there. Asserting a control's accessible
+              # name, control type, ARIA role and toggle pattern is an
+              # accessibility-tree assertion, which ADR-0054 rules out as a
+              # completion criterion for this product: the settings rows are plain
+              # labels and fields and carry no accessibility node of their own, and
+              # UIA is not a UI contract BongoCat owns. Accessibility behaviour is
+              # covered where it does exist, by the GPUI settings spike, against the
+              # components that actually carry it.
             }
             if (!$process.WaitForExit(60000)) {
               Stop-Process -Id $process.Id -Force

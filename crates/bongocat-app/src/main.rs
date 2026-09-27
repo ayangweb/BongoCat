@@ -537,12 +537,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let overlay = Rc::new(RefCell::new(Some(overlay)));
         #[cfg(target_os = "windows")]
         let frame_overlay = Rc::clone(&overlay);
-        // The page is read when the settings window is built, so a harness that needs
-        // a particular page has to choose it before anything opens the window.
-        let settings_navigation_memory = SettingsNavigationMemory::new();
-        if run_options.app_system_page_smoke {
-            settings_navigation_memory.select_app_system();
-        }
         cx.set_global(ProductCoordinator {
             _core_log: core_log,
             #[cfg(target_os = "macos")]
@@ -551,7 +545,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             overlay,
             settings_service: Some(settings_service),
             settings_window: None,
-            settings_navigation_memory,
+            settings_navigation_memory: SettingsNavigationMemory::new(),
             update_service: Some(update_service),
             update_window: None,
             product_language: initial_settings_snapshot.resolved_language,
