@@ -62,6 +62,17 @@ impl SettingsNavigationMemory {
         );
     }
 
+    /// Open the next settings window on the app & system page.
+    ///
+    /// The page is read when the window is built, so this has to run before the
+    /// window is created rather than after it appears. It exists because the
+    /// startup switch lives on that page: a harness that inspects the control by
+    /// name has to have the window show the page that carries it, because the
+    /// window otherwise opens on Appearance and renders one page at a time.
+    pub fn select_app_system(&self) {
+        self.select(SettingsNavigationPage::AppSystem);
+    }
+
     pub(super) fn select(&self, page: SettingsNavigationPage) {
         self.page.set(page);
     }

@@ -50,6 +50,14 @@ pub(crate) struct RunOptions {
     #[arg(long)]
     pub(crate) models_page_smoke: bool,
 
+    /// Open the settings window on the app & system page.
+    ///
+    /// The Windows UI Automation smoke inspects the startup switch by name, and the
+    /// settings window renders one page at a time, so without this the window opens on
+    /// Appearance and the switch is absent from the automation tree entirely.
+    #[arg(long)]
+    pub(crate) app_system_page_smoke: bool,
+
     /// Switch models without the overlay or the status icon being visible.
     #[arg(long)]
     pub(crate) hidden_model_switch_smoke: bool,
@@ -176,6 +184,7 @@ impl RunOptions {
         self.settings_window_smoke
             || self.settings_window_open_smoke
             || self.models_page_smoke
+            || self.app_system_page_smoke
             || self.hidden_model_switch_smoke
             || self.system_menu_smoke
             || self.startup_permission_smoke

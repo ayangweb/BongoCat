@@ -225,8 +225,11 @@ jobs:
           1..5 | ForEach-Object {
             $stdout = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stdout.log"
             $stderr = Join-Path $env:RUNNER_TEMP "bongocat-product-$_.stderr.log"
+            # The startup switch is on the app & system page and the settings window
+            # renders one page at a time, so the window has to open on that page for
+            # its name to be in the automation tree at all.
             $arguments = if ($_ -eq 1) {
-              @("--run-seconds", "30", "--settings-window-open-smoke")
+              @("--run-seconds", "30", "--settings-window-open-smoke", "--app-system-page-smoke")
             } else {
               @("--run-seconds", "30", "--settings-window-smoke", "--models-page-smoke")
             }
@@ -270,7 +273,12 @@ jobs:
                 [System.Windows.Automation.AutomationElement]::NameProperty,
                 "Open at login"
               )
-              $startupDeadline = [DateTime]::UtcNow.AddSeconds(5)
+              # This waits for the app & system page to be built and painted after
+              # the window appears, on a two-core runner that has just spent ten
+              # minutes linking this binary. It is first-paint latency, not a
+              # behavioural budget, so it is given room; the deadlines below measure
+              # how the product answers a UI Automation action and stay short.
+              $startupDeadline = [DateTime]::UtcNow.AddSeconds(20)
               do {
                 Start-Sleep -Milliseconds 100
                 $startup = Find-UiAutomationElement `
