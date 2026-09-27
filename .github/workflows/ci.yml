@@ -597,7 +597,10 @@ jobs:
           $primary = Start-Process `
             -FilePath $executable `
             -ArgumentList @(
-              "--run-seconds", "10",
+              # The smoke waits half a second, then up to three to see its window
+              # destroyed, then up to five for the wake to deliver a snapshot. A
+              # ten second run could expire mid-poll and look like a failed wake.
+              "--run-seconds", "30",
               "--single-instance-smoke",
               "--single-instance-ready-file", $readyMarker,
               "--single-instance-result-file", $primaryResultMarker
@@ -661,7 +664,9 @@ jobs:
             throw "secondary instance wrote an unexpected result status: $secondaryStatus"
           }
 
-          if (-not $primary.WaitForExit(30000)) {
+          # Longer than the run duration above, so an orderly shutdown is what ends
+          # this wait rather than the bound being reached at the same moment.
+          if (-not $primary.WaitForExit(60000)) {
             Stop-Process -Id $primary.Id -Force -ErrorAction SilentlyContinue
             $primary.WaitForExit()
             throw "primary instance did not finish ordered shutdown after the wake"

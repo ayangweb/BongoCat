@@ -2321,6 +2321,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
 
+                // The wake creates the window at once, and the settings snapshot
+                // follows it on the next round trip, so a window without one is not
+                // ready yet rather than broken. Every other not-ready condition in
+                // this loop keeps polling; this one used to give up on its first
+                // poll, and that raced a snapshot which arrives in a few hundred
+                // milliseconds — the same wait the user-reopen smoke makes before it
+                // looks. Keep polling, and name the real reason if it never lands.
+                let mut window_without_snapshot = false;
                 for _ in 0..100 {
                     Timer::after(Duration::from_millis(50)).await;
                     let restored = cx.update(|cx| -> Result<bool, String> {
@@ -2356,9 +2364,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .update(cx, |view, _, _| view.snapshot_revision())
                             .map_err(|error| error.to_string())?;
                         if revision.is_none() {
-                            return Err(
-                                "instance wake did not restore a runtime snapshot".to_owned()
-                            );
+                            window_without_snapshot = true;
+                            return Ok(false);
                         }
                         Ok(true)
                     });
@@ -2388,10 +2395,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                record_failure(
-                    &smoke_failures,
-                    "primary instance did not receive the secondary wake",
-                );
+                let unobserved = if window_without_snapshot {
+                    "the instance wake reopened the settings window without a runtime snapshot"
+                } else {
+                    "primary instance did not receive the secondary wake"
+                };
+                record_failure(&smoke_failures, unobserved.to_owned());
                 request_windows_product_quit(&smoke_shutdown_requested);
             })
             .detach();
