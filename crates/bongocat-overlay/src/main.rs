@@ -16,12 +16,30 @@ fn main() -> ExitCode {
     }
 }
 
-fn run() -> Result<String, String> {
-    let mut arguments = env::args().skip(1);
-    if arguments.next().as_deref() == Some(CAPTURE_COVER) {
-        return capture_cover(arguments);
-    }
-    let model_id = arguments.next().unwrap_or_else(|| "standard".to_owned());
+/// What a preview run was asked to do.
+#[derive(Debug, PartialEq, Eq)]
+struct PreviewOptions {
+    model_id: String,
+    seconds: u64,
+    interactive: bool,
+    switch_cycles: Option<u32>,
+}
+
+const PREVIEW_USAGE: &str = "usage: bongocat-overlay [standard|keyboard|gamepad] [seconds] [--interactive|--switch-cycles cycles]";
+
+/// Reads the preview arguments, with the model first and the duration second.
+///
+/// `first` is the argument `run` already took to tell the subcommand from a
+/// preview, handed back rather than re-read. Testing it against the subcommand
+/// name spent it: the model was never seen, so `bongocat-overlay standard 30`
+/// read "30" as the model and refused to run, and every preview invocation the
+/// justfile and CI use was broken with it.
+fn parse_preview_arguments(
+    first: Option<String>,
+    rest: impl Iterator<Item = String>,
+) -> Result<PreviewOptions, String> {
+    let mut arguments = rest;
+    let model_id = first.unwrap_or_else(|| "standard".to_owned());
     if !matches!(model_id.as_str(), "standard" | "keyboard" | "gamepad") {
         return Err("model must be standard, keyboard, or gamepad".to_owned());
     }
@@ -45,17 +63,31 @@ fn run() -> Result<String, String> {
                 .map_err(|_| "switch cycle count must be a whole number".to_owned())?;
             (false, Some(cycles))
         }
-        Some(_) => {
-            return Err(
-                "usage: bongocat-overlay [standard|keyboard|gamepad] [seconds] [--interactive|--switch-cycles cycles]".to_owned(),
-            );
-        }
+        Some(_) => return Err(PREVIEW_USAGE.to_owned()),
     };
     if arguments.next().is_some() {
-        return Err(
-            "usage: bongocat-overlay [standard|keyboard|gamepad] [seconds] [--interactive|--switch-cycles cycles]".to_owned(),
-        );
+        return Err(PREVIEW_USAGE.to_owned());
     }
+    Ok(PreviewOptions {
+        model_id,
+        seconds,
+        interactive,
+        switch_cycles,
+    })
+}
+
+fn run() -> Result<String, String> {
+    let mut arguments = env::args().skip(1);
+    let first = arguments.next();
+    if first.as_deref() == Some(CAPTURE_COVER) {
+        return capture_cover(arguments);
+    }
+    let PreviewOptions {
+        model_id,
+        seconds,
+        interactive,
+        switch_cycles,
+    } = parse_preview_arguments(first, arguments)?;
     let model_root = repository_root()?.join("resources/models").join(&model_id);
     let report = if let Some(cycles) = switch_cycles {
         bongocat_overlay::run_model_switch_preview(&model_id, &model_root, cycles)
@@ -134,4 +166,60 @@ fn repository_root() -> Result<PathBuf, String> {
         .nth(2)
         .ok_or_else(|| "cannot locate repository root".to_owned())?
         .to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(first: Option<&str>, rest: &[&str]) -> Result<PreviewOptions, String> {
+        parse_preview_arguments(
+            first.map(str::to_owned),
+            rest.iter().map(|value| (*value).to_owned()),
+        )
+    }
+
+    /// The model is the first argument, and the subcommand check must not spend it.
+    ///
+    /// It did, and the symptom was that every documented invocation was rejected:
+    /// `bongocat-overlay standard 30` read the duration as the model and reported
+    /// "model must be standard, keyboard, or gamepad", so both the justfile's
+    /// preview recipe and the CI model-switching smoke were broken by it.
+    #[test]
+    fn the_first_argument_is_the_model_and_is_not_consumed_by_the_subcommand_check() {
+        let options = parse(Some("keyboard"), &["30"]).expect("preview options");
+        assert_eq!(options.model_id, "keyboard");
+        assert_eq!(options.seconds, 30);
+        assert!(!options.interactive);
+        assert_eq!(options.switch_cycles, None);
+
+        let options =
+            parse(Some("standard"), &["0", "--switch-cycles", "3"]).expect("switch cycle options");
+        assert_eq!(options.model_id, "standard");
+        assert_eq!(options.seconds, 0);
+        assert_eq!(options.switch_cycles, Some(3));
+    }
+
+    #[test]
+    fn an_empty_command_line_previews_the_standard_model() {
+        let options = parse(None, &[]).expect("default options");
+        assert_eq!(options.model_id, "standard");
+        assert_eq!(options.seconds, 15);
+        assert!(!options.interactive);
+        assert_eq!(options.switch_cycles, None);
+    }
+
+    #[test]
+    fn an_unknown_model_and_a_trailing_argument_are_refused() {
+        assert!(
+            parse(Some("30"), &[])
+                .expect_err("a duration in the model slot")
+                .contains("model must be")
+        );
+        assert_eq!(
+            parse(Some("standard"), &["1", "2"]),
+            Err(PREVIEW_USAGE.to_owned())
+        );
+        assert!(parse(Some("standard"), &["--switch-cycles", "many"]).is_err());
+    }
 }
