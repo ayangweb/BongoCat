@@ -15,6 +15,25 @@ pub enum RuntimeHealth {
     Stopped,
 }
 
+impl RuntimeHealth {
+    /// The stable code a report and the application log share for a state.
+    ///
+    /// The snapshot observer writes this same spelling into its "runtime
+    /// health changed" record, and the software information a user pastes into
+    /// an issue uses it too, so no two of them can disagree about what a state
+    /// is called.
+    pub const ALL: [Self; 4] = [Self::Starting, Self::Ready, Self::Degraded, Self::Stopped];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Starting => "starting",
+            Self::Ready => "ready",
+            Self::Degraded => "degraded",
+            Self::Stopped => "stopped",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SettingsRuntimeErrorCode {
     ModelLoadFailed,

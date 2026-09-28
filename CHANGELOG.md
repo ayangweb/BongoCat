@@ -22,6 +22,11 @@
 - Logs have an adjustable level and retention, and old logs are cleaned up automatically.
 - Window shortcuts and model-behaviour shortcuts have separate switches.
 
+### 🎨 Interface
+
+- The software information copied from the About page is now a JSON report, with stable field names that do not change with the interface language.
+- The report also names the operating system version and build, the Cubism Core version, and the current runtime and input state. It still contains no file paths, model names or configured values.
+
 ### 🐛 Bug Fixes
 
 - Held keys and gamepad buttons no longer stay stuck after device, lock, sleep and permission changes.

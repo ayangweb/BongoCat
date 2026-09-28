@@ -60,11 +60,9 @@
     },
     "software_information": {
       "title": "Software information",
-      "description": "Copy version, platform, and architecture details for a bug report.",
+      "description": "Copy the version, system, and runtime details as JSON for a bug report.",
       "copy": "Copy",
-      "copy_success": "Software information copied",
-      "platform": "Platform",
-      "architecture": "Architecture"
+      "copy_success": "Software information copied"
     },
     "project": {
       "title": "Project home",
@@ -72,7 +70,7 @@
     },
     "feedback": {
       "title": "Problem feedback",
-      "description": "Copy the software information before opening an issue.",
+      "description": "Copy the software information first, then paste it into the report.",
       "action": "Report an issue"
     },
     "logs": {

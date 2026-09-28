@@ -10,14 +10,12 @@ pub(super) const FEEDBACK_URL: &str = "https://github.com/ayangweb/BongoCat/issu
 /// Every user-visible string on the About page belongs to this small contract.
 /// Keeping it beside the page assembly makes the settings smoke check cover
 /// the same rows that users can actually reach.
-pub(super) const ABOUT_LOCALIZED_KEYS: [&str; 15] = [
+pub(super) const ABOUT_LOCALIZED_KEYS: [&str; 13] = [
     "about.product_information.version.title",
     "about.software_information.title",
     "about.software_information.description",
     "about.software_information.copy",
     "about.software_information.copy_success",
-    "about.software_information.platform",
-    "about.software_information.architecture",
     "about.project.title",
     "about.project.action",
     "about.feedback.title",
@@ -28,25 +26,108 @@ pub(super) const ABOUT_LOCALIZED_KEYS: [&str; 15] = [
     "update.about.label",
 ];
 
-/// The product identity shown in the first row.
+/// The product identity the report names, and the About page's own row title.
+const PRODUCT_NAME: &str = "BongoCat";
+
+/// The bug-report document `copy_software_info` puts on the clipboard.
 ///
-/// This deliberately contains only compiled identity and the platform
-/// constants. It does not include a storage path, a model name, a log excerpt,
-/// or a user file name, so copying it for a bug report cannot accidentally
-/// disclose the user's data.
-pub(super) fn software_info_text(
-    language: SettingsLanguage,
-    build_info: &SettingsBuildInfo,
-) -> String {
-    let locale = language.catalog_locale();
-    format!(
-        "BongoCat\n{}\n{}: {}\n{}: {}",
-        build_info_detail(language, build_info),
-        bongocat_i18n::text(locale, "about.software_information.platform"),
-        std::env::consts::OS,
-        bongocat_i18n::text(locale, "about.software_information.architecture"),
-        std::env::consts::ARCH,
-    )
+/// A JSON object rather than prose, because the reader of a report is a person
+/// triaging many of them: named, stable keys can be looked up, diffed between
+/// two reports and quoted in an answer, where a line of translated prose has to
+/// be read and translated back first. Field order is the order a human scans
+/// them in — what was built, what it runs on, then what state it is in — and
+/// `serde` preserves it.
+///
+/// Every value here is a fact about the build or the running process. There is
+/// no storage path, no model title, no log line, no shortcut, and no configured
+/// value anywhere in this document, so copying it for a report cannot disclose
+/// anything about the machine it was copied from. The platform fields are the
+/// closest the document comes to machine-specific data: three of them are
+/// compile-time constants of the process itself, and the fourth is what the
+/// kernel reports about the system it is running on.
+///
+/// `platform_version` and `platform_build` are `None` on a system that cannot
+/// name its own version. The field is left out of the document rather than
+/// filled with a placeholder, because a value a maintainer has to learn to
+/// distrust is worse than a field they can see is missing.
+#[derive(serde::Serialize)]
+pub(super) struct SoftwareInformation {
+    app_name: &'static str,
+    app_version: String,
+    build_environment: &'static str,
+    /// Which Cubism Core this binary is linked against, because a model's
+    /// compatibility is a property of this and not of the app version.
+    cubism_core_version: String,
+    platform: &'static str,
+    platform_arch: &'static str,
+    platform_version: Option<String>,
+    platform_build: Option<String>,
+    /// The language the window is actually showing, as a locale code. A report
+    /// about a label or a layout has to be read in the language it was seen in.
+    locale: &'static str,
+    runtime_health: &'static str,
+    /// The last render error, when the runtime has one. The single most useful
+    /// field in the document for a model that renders black or not at all.
+    runtime_error_code: Option<&'static str>,
+    input_service_status: &'static str,
+    input_monitoring_permission: &'static str,
+    connected_gamepad_count: usize,
+    /// How many times the input service has had to clear a pressed key or button
+    /// without a matching release edge from the platform: a state reconcile, a
+    /// release attributed to a reset, and a release with no press before it.
+    ///
+    /// Zero is the healthy answer for all three, and a non-zero one is the
+    /// evidence behind "a key stays stuck" (issue #47) that a report can be
+    /// acted on. They are summed rather than listed because the question a
+    /// triage asks is whether any of them ever happened, and one number answers
+    /// it; the full split is in the diagnostics export.
+    input_release_reconciliations: u64,
+}
+
+impl SoftwareInformation {
+    /// Read the current state of this process.
+    ///
+    /// `snapshot` is the only input: the operating system version is read
+    /// through the platform adapter at the moment the report is built, so it
+    /// cannot go stale the way a value carried in a revisioned snapshot would.
+    pub(super) fn read(snapshot: &SettingsSnapshot) -> Self {
+        let system = bongocat_platform::operating_system_version();
+        let input = &snapshot.input_diagnostics;
+        Self {
+            app_name: PRODUCT_NAME,
+            app_version: snapshot.build_info.product_version.clone(),
+            build_environment: snapshot.build_info.environment.code(),
+            cubism_core_version: snapshot.build_info.cubism_core_version.clone(),
+            platform: std::env::consts::OS,
+            platform_arch: std::env::consts::ARCH,
+            platform_version: system.as_ref().map(|system| system.version.clone()),
+            platform_build: system.as_ref().map(|system| system.build.clone()),
+            locale: snapshot.resolved_language.code(),
+            runtime_health: snapshot.runtime_health.as_str(),
+            runtime_error_code: snapshot
+                .runtime_diagnostics
+                .render_error
+                .map(SettingsRuntimeErrorCode::as_str),
+            input_service_status: input.service_status.as_str(),
+            input_monitoring_permission: input.input_monitoring_permission.as_str(),
+            connected_gamepad_count: input.connected_gamepad_count,
+            input_release_reconciliations: input
+                .reconciled_release
+                .saturating_add(input.released_by_reset)
+                .saturating_add(input.unmatched_release),
+        }
+    }
+
+    /// Render the document for the clipboard.
+    ///
+    /// Pretty-printed, because the reader is a person opening an issue and this
+    /// text is pasted into a code block. `None` when serialization fails, which
+    /// for a document of strings and integers means a formatting fault rather
+    /// than a missing value, and is reported as the same copy failure as a
+    /// clipboard that would not accept the text.
+    pub(super) fn to_json(&self) -> Option<String> {
+        serde_json::to_string_pretty(self).ok()
+    }
 }
 
 fn product_info_description(snapshot: Option<&SettingsSnapshot>) -> String {
@@ -116,7 +197,7 @@ pub(super) fn operational_group(
     let update_view = view.clone();
     let update_request = request_update;
     let product = SettingItem::new(
-        "BongoCat",
+        PRODUCT_NAME,
         SettingField::element(
             move |options: &RenderOptions, _: &mut Window, app: &mut App| {
                 let available = update_view.read(app).snapshot.is_some();
@@ -233,23 +314,31 @@ pub(super) fn operational_group(
 }
 
 impl SettingsView {
-    /// Copy the small, privacy-safe build summary a bug reporter needs.
+    /// Copy the privacy-safe [`SoftwareInformation`] report a bug reporter needs.
+    ///
+    /// The document is built here, at the moment the user asks for it, rather
+    /// than held in the snapshot: the operating system version is a question to
+    /// the machine this runs on, and a revisioned snapshot is the wrong place to
+    /// keep an answer to it.
     ///
     /// Clipboard access is a main-thread platform capability. This method is
     /// called from the GPUI button callback, never from the settings worker, so
-    /// the macOS AppKit invariant is preserved by construction.
+    /// the macOS AppKit invariant is preserved by construction. A report that
+    /// cannot be built and a clipboard that will not accept it are the same
+    /// failure to the user — nothing was copied — so they report one code.
     pub(super) fn copy_software_info(&mut self, cx: &mut Context<Self>) {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        let text = software_info_text(snapshot.resolved_language, &snapshot.build_info);
-        match bongocat_platform::write_clipboard_text(&text) {
-            Ok(()) => self.about_copy_success_pending = true,
-            Err(_) => {
-                self.pending_notification = Some(SettingsError::new(
-                    SettingsErrorCode::SoftwareInfoCopyFailed,
-                ));
-            }
+        let copied = SoftwareInformation::read(snapshot)
+            .to_json()
+            .is_some_and(|json| bongocat_platform::write_clipboard_text(&json).is_ok());
+        if copied {
+            self.about_copy_success_pending = true;
+        } else {
+            self.pending_notification = Some(SettingsError::new(
+                SettingsErrorCode::SoftwareInfoCopyFailed,
+            ));
         }
         cx.notify();
     }

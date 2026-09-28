@@ -546,6 +546,12 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   不显示重复描述。Model window 继续按 Window behavior、Window appearance、Window performance 分组。About 的
   操作行使用标准设置项：产品信息/手动检查更新、隐私安全的软件信息复制、项目主页、问题反馈和打开
   application-owned 日志目录；日志路径不进入 SettingsSnapshot，由 settings service 持有并校验。
+  软件信息复制写入的是一个 JSON 对象而不是本地化文案：字段名稳定，不随界面语言变化，报告方可以检索、
+  比较和引用。字段只包含 build 与进程事实——产品版本、build environment、Cubism Core 版本、平台与
+  架构、操作系统版本与 build（由 `bongocat-platform` 在复制时向系统查询，因此不会像 revisioned
+  snapshot 里的值一样过期）、界面语言、runtime health 与最近一次 render error code、input service
+  状态与输入监控权限、已连接手柄数、input release 校正计数；不含任何路径、模型名、日志正文、快捷键
+  或用户配置值。系统无法自报版本时该字段缺省而不是填占位值。
   About 的描述只在标题和按钮说不清时才出现：产品信息行显示 build 标识，软件信息行说明复制内容，
   问题反馈行提示先复制软件信息；项目主页行只显示链接，日志目录行不显示描述。About 的操作按钮
   以「检查更新」为唯一实心 `primary`，「反馈问题」用 `danger` 描边，复制、项目主页与日志目录三行

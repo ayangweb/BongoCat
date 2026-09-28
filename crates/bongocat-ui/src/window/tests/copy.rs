@@ -8,6 +8,7 @@ fn build_information_is_localized_and_contains_only_compiled_identity() {
     let build_info = crate::SettingsBuildInfo {
         product_version: product_version.to_owned(),
         environment: crate::SettingsBuildEnvironment::Development,
+        cubism_core_version: "6.0.1".to_owned(),
     };
     let detail = build_info_detail(SettingsLanguage::EnglishUnitedStates, &build_info);
     assert_eq!(
@@ -21,21 +22,104 @@ fn build_information_is_localized_and_contains_only_compiled_identity() {
     assert_eq!(chinese, format!("版本 {product_version} · 开发版"));
 }
 
+/// The report has to survive being pasted into an issue as a code block, which
+/// means the thing that is copied has to parse. A user who edits it by hand, or
+/// pastes it through something that reformats it, is not the failure this
+/// guards; a document that is not valid JSON is.
 #[test]
-fn software_information_is_useful_for_bug_reports_without_paths_or_user_data() {
-    let build_info = crate::SettingsBuildInfo {
-        product_version: env!("CARGO_PKG_VERSION").to_owned(),
-        environment: crate::SettingsBuildEnvironment::Production,
-    };
-    let text = about::software_info_text(SettingsLanguage::EnglishUnitedStates, &build_info);
-    assert!(text.starts_with("BongoCat\n"));
-    assert!(text.contains(&format!("Version {}", env!("CARGO_PKG_VERSION"))));
-    assert!(text.contains("Release build"));
-    assert!(text.contains(&format!("Platform: {}", std::env::consts::OS)));
-    assert!(text.contains(&format!("Architecture: {}", std::env::consts::ARCH)));
-    assert!(!text.contains("Tauri"));
-    assert!(!text.contains('/'));
-    assert!(!text.to_lowercase().contains("path"));
+fn copied_software_information_is_a_json_document() {
+    let document =
+        super::super::about::SoftwareInformation::read(&crate::tests::snapshot(1, true, true));
+    let json = document.to_json().expect("serialize the report");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("the report is valid JSON");
+    assert_eq!(parsed["app_name"], "BongoCat");
+    assert_eq!(parsed["app_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(parsed["build_environment"], "development");
+    assert_eq!(parsed["runtime_health"], "ready");
+    assert_eq!(parsed["input_service_status"], "not_started");
+    assert_eq!(parsed["platform"], std::env::consts::OS);
+    assert_eq!(parsed["platform_arch"], std::env::consts::ARCH);
+    assert!(
+        json.contains('\n'),
+        "the report is pretty-printed for a human"
+    );
+}
+
+/// A report is read by someone triaging many of them, so the fields a triage
+/// actually turns on have to be present rather than optional. Each one names a
+/// question a maintainer asks before they can act: what was built, what does it
+/// run on, and is the input pipeline even working.
+#[test]
+fn the_report_names_the_facts_a_bug_triage_needs() {
+    let document =
+        super::super::about::SoftwareInformation::read(&crate::tests::snapshot(1, true, true));
+    let parsed: serde_json::Value =
+        serde_json::from_str(&document.to_json().expect("serialize the report"))
+            .expect("the report is valid JSON");
+    let object = parsed.as_object().expect("the report is an object");
+    for field in [
+        "app_name",
+        "app_version",
+        "build_environment",
+        "cubism_core_version",
+        "platform",
+        "platform_arch",
+        "platform_version",
+        "platform_build",
+        "locale",
+        "runtime_health",
+        "runtime_error_code",
+        "input_service_status",
+        "input_monitoring_permission",
+        "connected_gamepad_count",
+        "input_release_reconciliations",
+    ] {
+        assert!(
+            object.contains_key(field),
+            "the report is missing {field}, which a triage needs"
+        );
+    }
+    // A Core version is what tells a maintainer whether a model that will not
+    // load is malformed or simply older than the Core this build ships.
+    assert!(
+        !object["cubism_core_version"]
+            .as_str()
+            .expect("a Cubism version string")
+            .is_empty()
+    );
+}
+
+/// The privacy rule is enforced by what the document chooses to serialize, and
+/// this is the test that says so. Everything here is a fact about the build or
+/// the process; nothing describes what the user has configured or where their
+/// files are.
+#[test]
+fn the_report_carries_no_path_no_user_data_and_no_framework_name() {
+    let document =
+        super::super::about::SoftwareInformation::read(&crate::tests::snapshot(1, true, true));
+    let json = document.to_json().expect("serialize the report");
+    assert!(!json.contains('/'), "a path leaked into the report");
+    assert!(!json.contains('\\'), "a path leaked into the report");
+    assert!(!json.to_lowercase().contains("path"));
+    assert!(!json.contains('~'), "a home directory reference leaked");
+    assert!(!json.contains("Users/"), "a home directory leaked");
+    // The fixture's active model is called `standard`, and a model package is
+    // identified by its file names. Either appearing here would mean the report
+    // had started describing what the user has instead of what was built.
+    for owned in ["standard", ".moc3", ".physics3d", ".model3.json", "moc3"] {
+        assert!(
+            !json.contains(owned),
+            "a model name or asset extension leaked into the report: {owned}"
+        );
+    }
+    // The report is a JSON document, so a translated label cannot appear in it:
+    // the same fields are readable whatever language the window is in.
+    for localized in ["Version ", "版本", "平台", "Architektur", "Plattform"] {
+        assert!(
+            !json.contains(localized),
+            "a translated label leaked into the report: {localized}"
+        );
+    }
 }
 
 #[test]

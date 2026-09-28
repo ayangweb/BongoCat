@@ -52,6 +52,23 @@ pub enum SettingsInputMonitoringPermission {
     Granted,
 }
 
+impl SettingsInputMonitoringPermission {
+    /// The stable code a report and the application log share for a permission.
+    ///
+    /// `unsupported` is a real answer rather than a missing one: a platform that
+    /// never gates input behind a permission reports it, so "this build cannot
+    /// ask" and "the user said no" stay distinguishable in a bug report.
+    pub const ALL: [Self; 3] = [Self::Unsupported, Self::Denied, Self::Granted];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unsupported => "unsupported",
+            Self::Denied => "denied",
+            Self::Granted => "granted",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum SettingsInputServiceStatus {
     #[default]
@@ -61,6 +78,28 @@ pub enum SettingsInputServiceStatus {
     BackendUnavailable,
     Failed,
     Stopped,
+}
+
+impl SettingsInputServiceStatus {
+    pub const ALL: [Self; 6] = [
+        Self::NotStarted,
+        Self::Running,
+        Self::PermissionDenied,
+        Self::BackendUnavailable,
+        Self::Failed,
+        Self::Stopped,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotStarted => "not_started",
+            Self::Running => "running",
+            Self::PermissionDenied => "permission_denied",
+            Self::BackendUnavailable => "backend_unavailable",
+            Self::Failed => "failed",
+            Self::Stopped => "stopped",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

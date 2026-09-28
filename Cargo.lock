@@ -976,6 +976,7 @@ dependencies = [
  "gilrs",
  "global-hotkey",
  "image",
+ "libc",
  "muda",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -1037,6 +1038,8 @@ dependencies = [
  "bongocat-ui-protocol",
  "gpui-kit",
  "raw-window-handle",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

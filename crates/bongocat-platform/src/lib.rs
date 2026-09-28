@@ -23,6 +23,9 @@ pub use clipboard::{ClipboardError, read_clipboard_text, write_clipboard_text};
 mod url_opener;
 pub use url_opener::{ExternalUrlOpenError, open_external_url};
 
+mod system_version;
+pub use system_version::{OperatingSystemVersion, operating_system_version};
+
 mod single_instance;
 pub use single_instance::{SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceError};
 

@@ -47,6 +47,7 @@ gpui-kit = "=0.7.0"
 gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "e69f1083d1a13a234513cb360c3d9d8abe5ea025", default-features = false }
 rust-i18n = "=4.2.2"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
+libc = "=0.2.189"
 muda = { version = "=0.20.0", default-features = false }
 opener = { version = "=0.8.5", features = ["reveal"] }
 oxipng = { version = "=10.2.1", default-features = false }

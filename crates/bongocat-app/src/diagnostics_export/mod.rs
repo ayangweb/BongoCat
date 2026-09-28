@@ -61,28 +61,18 @@ pub(super) fn export_diagnostics_file(
 /// The stable code the report and the application log share for a runtime state.
 ///
 /// The settings snapshot observer writes the same spelling into its
-/// "input status changed" record, so the two never disagree about what a state
-/// is called.
+/// "input status changed" record, and the software information the About page
+/// copies uses it as well, so all three name a state identically. The spelling
+/// itself lives on [`RuntimeHealth`] in the protocol, because it is a property
+/// of the state rather than of anything that reports it.
 pub(crate) const fn runtime_health_code(health: RuntimeHealth) -> &'static str {
-    match health {
-        RuntimeHealth::Starting => "starting",
-        RuntimeHealth::Ready => "ready",
-        RuntimeHealth::Degraded => "degraded",
-        RuntimeHealth::Stopped => "stopped",
-    }
+    health.as_str()
 }
 
 /// The stable code the report and the application log share for an input service
 /// state. See [`runtime_health_code`] for why both callers share one spelling.
 pub(crate) const fn input_service_status_code(status: SettingsInputServiceStatus) -> &'static str {
-    match status {
-        SettingsInputServiceStatus::NotStarted => "not_started",
-        SettingsInputServiceStatus::Running => "running",
-        SettingsInputServiceStatus::PermissionDenied => "permission_denied",
-        SettingsInputServiceStatus::BackendUnavailable => "backend_unavailable",
-        SettingsInputServiceStatus::Failed => "failed",
-        SettingsInputServiceStatus::Stopped => "stopped",
-    }
+    status.as_str()
 }
 
 fn diagnostics_document(
@@ -454,6 +444,7 @@ mod tests {
             build_info: SettingsBuildInfo {
                 product_version: PRODUCT_VERSION.to_owned(),
                 environment: SettingsBuildEnvironment::Development,
+                cubism_core_version: bongocat_live2d::CUBISM_CORE_VERSION_TEXT.to_owned(),
             },
             runtime_health: RuntimeHealth::Degraded,
             runtime_diagnostics: SettingsRuntimeDiagnostics {
