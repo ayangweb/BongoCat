@@ -31,9 +31,16 @@
   </p>
 </div>
 
-| macOS                                                                                        | Windows                                                                                        |
-| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| ![macOS](https://i0.hdslb.com/bfs/openplatform/56f72568579bb44284382fe1f9b9049a700282d3.png) | ![Windows](https://i0.hdslb.com/bfs/openplatform/65129576aa3062f840d0640c060298c1d52b9be2.png) |
+<table width="100%">
+  <tr>
+    <th width="50%" align="center">macOS</th>
+    <th width="50%" align="center">Windows</th>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="https://i0.hdslb.com/bfs/openplatform/56f72568579bb44284382fe1f9b9049a700282d3.png" alt="macOS" width="100%" /></td>
+    <td width="50%" align="center"><img src="https://i0.hdslb.com/bfs/openplatform/65129576aa3062f840d0640c060298c1d52b9be2.png" alt="Windows" width="100%" /></td>
+  </tr>
+</table>
 
 BongoCat 是一款面向 Windows 和 macOS 的桌面陪伴应用。一只 Live2D 小猫住在你的屏幕上，眼神和爪子会跟着鼠标移动，你按下的每个按键、鼠标键和手柄按键它都会有反应。你可以换上自己的模型，把窗口拖到任何位置，需要的时候它就安静地待在一边。
 
