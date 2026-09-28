@@ -20,8 +20,6 @@
 - Resize the model window by right-dragging, with 25–400% scale, 1–100% opacity, and smoother placement across displays.
 - Schedule automatic update checks every 1–8,760 hours. The update window shows download, verification, installation, retry and restart status.
 - Logs are dated files with an adjustable level and retention, and old logs are cleaned up automatically.
-- Settings are organised by task, and the light or dark theme follows supported system windows, menus and file pickers.
-- The tray and model-window context menus share one menu, grouped by model-window action, with always-on-top and hide-on-hover checks. Visibility uses the same "Hide model window" switch, off by default.
 - Show or hide the Dock icon under "App & system" on macOS. It is off by default and does not affect the menu bar icon, the model window, or how the app is quit.
 - Window shortcuts and model-behaviour shortcuts have separate switches. Model shortcuts are off by default, and holding a shortcut triggers its action only once.
 - Closing Settings destroys its window; reopening it in the same process restores the last sidebar page.
@@ -39,12 +37,20 @@
 - Invalid or incomplete v1 settings and model IDs are rejected consistently instead of being partially accepted or silently ignored.
 - Fixed a background CPU core on macOS. Gamepad support was polling from startup, whether or not a controller was connected; idle use drops from about a full core to a few percent.
 - The model window waits for the graphics card to finish each frame instead of polling it, and the settings and update windows only re-read what they display when it changes.
-- The three flip settings are worded as flips and name the axis they flip: flip model horizontally, flip mouse tracking horizontally, and flip mouse tracking vertically.
 - The Settings window keeps its full title bar on Windows in every state, and "Show taskbar icon" now controls the model window's taskbar button, which is off by default.
 - The Settings and update windows show the BongoCat icon in their title bars and taskbar buttons on Windows.
 
-### 💻 Support Changes
+### 🗑️ Removals
 
 - The "Key release timeout" setting and the `input.keyboard.release_fallback_timeout_ms` key it wrote are removed. The Keyboard group holds only "Ignore keyboard input", and a configuration file that still carries the old key is rejected as an unknown field.
+- Traditional Chinese, Portuguese and Vietnamese are no longer available. The language choices are now System, Simplified Chinese and English.
+
+### 🎨 Interface
+
+- Settings are organised by task, and the light or dark theme follows supported system windows, menus and file pickers.
+- The tray and model-window context menus share one menu, grouped by model-window action, with always-on-top and hide-on-hover checks. Visibility uses the same "Hide model window" switch, off by default.
+- The three flip settings are worded as flips and name the axis they flip: flip model horizontally, flip mouse tracking horizontally, and flip mouse tracking vertically.
+
+### 💻 Support Changes
+
 - Supported platforms are Windows 10 1903+ (x64) and macOS 12+ (Intel/Apple silicon). Windows ARM runs the x64 build through emulation; x86, native ARM64 and Linux builds are not provided.
-- Language choices are System, Simplified Chinese and English. Traditional Chinese, Portuguese and Vietnamese are no longer available.
