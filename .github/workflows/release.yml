@@ -47,6 +47,17 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match the workspace product version $version" >&2
             exit 1
           fi
+          # A release is titled after the tag it produces, so the history reads the way
+          # the release page does and a version bump is findable without knowing the
+          # version in advance. Checked before the build because the build is the
+          # expensive part of this job, and a mistitled release should cost seconds.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            subject=$(git log -1 --format=%s)
+            if [ "$subject" != "chore: release $GITHUB_REF_NAME" ]; then
+              echo "::error::the commit tagged $GITHUB_REF_NAME is titled '$subject'; a release commit must be titled 'chore: release $GITHUB_REF_NAME'" >&2
+              exit 1
+            fi
+          fi
       - name: Require the update signing key
         shell: bash
         run: |
@@ -152,6 +163,13 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
             echo "tag $GITHUB_REF_NAME does not match the workspace product version $version" >&2
             exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            subject=$(git log -1 --format=%s)
+            if [ "$subject" != "chore: release $GITHUB_REF_NAME" ]; then
+              echo "::error::the commit tagged $GITHUB_REF_NAME is titled '$subject'; a release commit must be titled 'chore: release $GITHUB_REF_NAME'" >&2
+              exit 1
+            fi
           fi
       - name: Require the update signing key
         shell: bash

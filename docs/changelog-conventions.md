@@ -69,8 +69,59 @@ python3 -m unittest tools.tests.test_release_changelog_contract
 因此这条规则**不依赖 review 记忆**：写错、漏译或在词表外自造一节都会在门禁上变红。
 `python3 -m unittest discover -s tools/tests` 会一并跑到它。
 
-## 2. 版本标题不受本文约束
+## 2. 版本标题
 
-版本标题是 `## <version> - <date>`，其格式由发布流水线决定而不是本文：`just release-notes`
-按 `[workspace.package].version`（即 `just version` 打印的值）去 changelog 里找对应条目，
-找不到就让发布失败。详见 `docs/adr/0033-build-packaging-and-release-toolchain.md`。
+版本标题是 `## <version> - <date>`。`just release-notes` 按
+`[workspace.package].version`（即 `just version` 打印的值）去 changelog 里找对应条目，
+找不到就让发布失败。因此发版时必须把 `## Unreleased` 改成 `## <version> - <date>`。
+详见 `docs/adr/0033-build-packaging-and-release-toolchain.md`。
+
+## 3. 发布提交：标题固定为 `chore: release v<version>`
+
+**规则：打 tag 的那个 commit，标题必须逐字为 `chore: release v<version>`，其中
+`${version}` 就是 tag 去掉 `v` 后的部分。**
+
+```
+chore: release v2.0.0
+```
+
+理由：
+
+- **历史读起来和发布页一致。** `git log` 里一眼能看出哪个 commit 是发版点，不必先知道
+  版本号再去找 tag。
+- **版本升级是可检索的。** `git log --grep='^chore: release'` 就能列出所有发版点。
+- **它把「发版」和「改代码」分成两类。** 发版 commit 只装版本相关的改动（版本号、
+  changelog 标题），功能改动留在各自的 `feat`/`fix` 里。Conventional Commits 的
+  `chore` 正是这个用途。
+
+### 3.1 怎么强制
+
+`.github/workflows/release.yml` 的「Check the tag against the single product version
+source」步骤在**构建之前**就断言这件事，所以标题写错只需几秒就失败，而不是等三个平台
+白跑二十分钟：
+
+```text
+::error::the commit tagged v2.0.0 is titled 'fix: 某个功能'; a release commit must be titled 'chore: release v2.0.0'
+```
+
+这个断言和同一步里既有的 tag／版本号一致性断言是同一个守卫：只有
+`GITHUB_REF_TYPE == 'tag'` 时才生效，因此用 `workflow_dispatch` 手动跑不会误伤。
+
+### 3.2 发版时的动作顺序
+
+```sh
+# 1. 版本号只有一个来源，改它：[workspace.package].version
+# 2. 两份 changelog 的 `## Unreleased` 改成 `## 2.0.0 - <date>`
+# 3. 提交，标题逐字为 `chore: release v2.0.0`
+git commit -m "chore: release v2.0.0"
+# 4. 打 tag 并推送，流水线按 tag 触发
+git tag -a v2.0.0 -m "Release 2.0.0"
+git push origin next && git push origin v2.0.0
+```
+
+改完第 2 步先本地验一次，避免构建跑完才发现发布说明取不到：
+
+```sh
+just release-notes release-notes.md
+```
+
