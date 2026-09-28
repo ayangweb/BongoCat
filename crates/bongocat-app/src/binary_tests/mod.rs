@@ -16,6 +16,7 @@ use crate::product_shutdown::*;
 // Windows, which clippy refuses.
 #[cfg(target_os = "macos")]
 use crate::product_windows::*;
+use crate::taskbar_settle::*;
 use crate::update_schedule::*;
 use bongocat_ui_protocol::SettingsCommand;
 
@@ -25,4 +26,5 @@ mod preset_root;
 mod product_options;
 mod product_shutdown;
 mod smoke_status;
+mod taskbar_settle;
 mod update_schedule;

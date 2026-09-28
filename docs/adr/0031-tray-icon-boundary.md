@@ -94,6 +94,14 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
   `Shell_NotifyIconW(NIM_MODIFY)` 的失败结果，可能对已失效的 shell registration 返回 `Ok`；
   同样，初次 `NIM_ADD` 失败会等待 `TaskbarCreated` 恢复。adapter 的 `Ok` 不能替代真实托盘
   可见性验收，发布前必须在 Windows 10 1903+ 实机验证隐藏、恢复、Explorer 重启和右键菜单。
+- `show_taskbar_icon` 同时出现在三个位置：runtime 发布的 settings snapshot、产品记录的已应用
+  值，以及 shell 对两个产品窗口 taskbar button 的**实时**读数。设置写入按"先原生面、再配置、
+  最后重新发布 snapshot"三步到达，因此写入与携带它的 snapshot 之间三者**本应**不一致；shell
+  对 `WS_EX_TOOLWINDOW` 的可见性读数也会滞后于产品已施加的窗口样式。任何断言这三者一致的
+  检查都必须是有界轮询等待收敛，而不是采样一次——采样一次正是 system menu smoke 的启动断言
+  在 Windows runner 上偶发失败的原因（`startup taskbar visibility diverged`）。轮询预算只界定
+  等待时长，不豁免结果：预算内不收敛仍然是失败，且必须报告具体是哪一处未收敛。判定逻辑放在
+  平台无关的 `taskbar_settle` 里，以便在任意平台单测。
 - `tray-icon 0.25.0` 的 Windows `set_tooltip` 对以固定 GUID 注册的图标必然失败：它发出的
   `NIM_MODIFY` 未带 `NIF_GUID`，而 shell 对以 `guidItem` 标识的图标忽略 `uID`，并要求后续每次
   `Shell_NotifyIcon` 调用都携带同一 GUID
