@@ -140,6 +140,30 @@ check，Linux 上的一份是严格子集，从 `contract-spikes` 的矩阵里�
 作业丢了证据步骤"和"某个作业本来就没有"。测试改为解析 `jobs:` 块、断言每个作业各自持有
 一对证据步骤。
 
+### 9. 文档改动跳过编译作业，但只有 `fixtures` 永远运行
+
+编译器占了流水线约 93% 的时间，而 README、ADR、issue 模板这类改动一行代码都碰不到。
+新增 `filter-paths` 作业判定"这次改动是否**只**碰了文档"，为 `true` 时其余作业全部跳过，
+关键路径从约 9 分钟降到 16 秒。
+
+三条让它不变成静默失守的约束：
+
+1. **单向判定。** 过滤器只能*证明*改动与代码无关才能跳：识别不出的路径、读不到的 diff、
+   空的改动集一律判为 `false`（全跑）。反过来那种"作业的输入变了才跑"的写法是**开口**的
+   —— 将来新增一个顶层目录不匹配任何输入表，于是所有作业跳过，一次没人验证的改动带着
+   全绿的 run 合并。这个方向是本决策里最容易写错的一步。
+2. **门禁在作业级，不在 workflow 级。** 跳过的作业报告为 *skipped*，能满足 required check
+   而不会卡住；workflow 级 `paths:` 一个都不匹配时**整个 workflow 都不运行**，required check
+   永远不上报，PR 永久等待。`workflow_dispatch` 是"我怀疑跳多了"时的手动全量入口。
+3. **`fixtures` 永远运行。** 它执行的契约测试会读 `verify.yml`、`release.yml`、两份 changelog、
+   `justfile`、`macos/Info.plist`、`deny.toml`、`.github/dependabot.yml` 与
+   `docs/product-runtime.md`——所以"改文档"不等于"不需要验证"。`.github/workflows/` 也因此
+   不在文档白名单里：改流水线必须由这条流水线自己验证。
+
+`tools/changed-paths.py` 承担判定，`tools/tests/` 里有两条契约测试守护：一条覆盖分类本身
+（含"空改动集判为非文档"这个失败方向），另一条断言 **`verify.yml` 里每个作业必须要么在
+永远运行的白名单里，要么带显式 `if:`**——新增作业时不可能"忘了决定它能不能跳"就把门禁关掉。
+
 ## 备选方案
 
 - **只删步骤不改结构**：删掉 `cargo check --workspace --release` 或某个 smoke 可以立刻省

@@ -16,6 +16,10 @@ on:
     branches:
       - master
 
+  # The escape hatch for "I do not believe the documentation filter skipped
+  # enough". Nothing in the pipeline depends on this trigger.
+  workflow_dispatch:
+
 # A superseded run on the same ref can only burn runner minutes: its result is
 # replaced by the next push.
 concurrency:
@@ -26,8 +30,44 @@ permissions:
   contents: read
 
 jobs:
+  # Decides once whether this change can only have touched documentation, and is
+  # the only job that never skips. A skipped job reports as *skipped*, which
+  # satisfies a required check without hanging, so every job below is gated here
+  # rather than at the workflow level: a workflow-level `paths:` that matches
+  # nothing runs nothing at all, and the pull request then waits forever for a
+  # status that is never reported.
+  filter-paths:
+    name: Classify changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      docs-only: ${{ steps.classify.outputs.docs-only }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The default shallow clone has no base branch in it, and an unreadable
+          # diff classifies as "not documentation", which runs everything — so a
+          # wrong depth costs time rather than coverage.
+          fetch-depth: 0
+      - name: Classify the change
+        id: classify
+        run: python3 tools/changed-paths.py
+      - name: Collect redacted failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-evidence-filter-paths
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
+
   toolchain:
     name: Verify Rust toolchains
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -99,6 +139,8 @@ jobs:
 
   dependency-policy:
     name: Check dependency policy
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -137,6 +179,8 @@ jobs:
 
   workspace:
     name: Test workspace (${{ matrix.os }})
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -209,6 +253,8 @@ jobs:
 
   product-smoke:
     name: Smoke product (${{ matrix.os }})
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -662,6 +708,8 @@ jobs:
   # them instead of after them.
   packaging-smoke:
     name: Smoke macOS packaging
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -829,6 +877,8 @@ jobs:
 
   windows-platform-smoke:
     name: Smoke Windows platform release behaviour
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -870,6 +920,8 @@ jobs:
           retention-days: 7
   cubism-binding-contract:
     name: Check Cubism binding generation contract
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -954,6 +1006,8 @@ jobs:
 
   contract-spikes:
     name: Test ${{ matrix.name }}
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -1036,6 +1090,8 @@ jobs:
 
   model-package-platforms:
     name: Test model package on ${{ matrix.os }}
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -1092,6 +1148,8 @@ jobs:
 
   macos-spikes:
     name: Build macOS GPUI spikes
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -1361,6 +1419,8 @@ jobs:
 
   windows-input-spike:
     name: Smoke Windows input and config services
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -1432,6 +1492,8 @@ jobs:
 
   windows-gpui-spikes:
     name: Build Windows GPUI ${{ matrix.name }} spike
+    if: needs.filter-paths.outputs.docs-only != 'true'
+    needs: filter-paths
     runs-on: windows-latest
     strategy:
       fail-fast: false
