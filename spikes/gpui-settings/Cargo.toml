@@ -14,7 +14,7 @@ unicode-segmentation = "=1.13.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "=0.5.2"
-objc2-foundation = "=0.2.2"
+objc2-foundation = { version = "=0.2.2", features = ["NSGeometry"] }
 
 [dev-dependencies]
 futures-lite = "=2.6.1"

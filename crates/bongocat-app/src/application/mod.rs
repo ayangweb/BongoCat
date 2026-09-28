@@ -16,8 +16,8 @@ use crate::model_identity::config_source_from_model;
 use crate::shortcut_config::active_shortcuts;
 use bongocat_audio::MotionAudioService;
 use bongocat_config::{
-    CompiledShortcuts, ConfigRevision, ConfigStore, Language, ModelIdentity, ModelInputMode,
-    NativeConfig, ShortcutTable, WindowState, WindowStateStore,
+    ConfigRevision, ConfigStore, Language, ModelIdentity, ModelInputMode, NativeConfig,
+    ShortcutTable, WindowState, WindowStateStore,
 };
 use bongocat_input::{CursorProducer, GamepadAxisProducer, InputProducer};
 use bongocat_model::{ModelId, ModelOrigin, PresetModelCatalog};
