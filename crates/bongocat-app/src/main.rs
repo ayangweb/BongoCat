@@ -32,6 +32,11 @@ mod product_windows;
 mod smoke;
 mod smoke_status;
 mod system_menu;
+// Windows only in a product build, since the taskbar button is; the tests read
+// the settle decision on every platform, which is the point of keeping it apart
+// from the smoke that polls with it.
+#[cfg(any(target_os = "windows", test))]
+mod taskbar_settle;
 mod update_schedule;
 
 use async_io::Timer;
@@ -74,6 +79,11 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
+};
+#[cfg(target_os = "windows")]
+use taskbar_settle::{
+    TASKBAR_ICON_SETTLE_ATTEMPTS, TASKBAR_ICON_SETTLE_INTERVAL, TaskbarIconSample,
+    TaskbarIconSettleGap, taskbar_icon_settle_gap,
 };
 
 use gamepad_observer::GamepadConnectionObserver;
@@ -123,6 +133,43 @@ fn gpui_application() -> GpuiApplication {
     // the overlay and the status icon even when every product window is closed,
     // so GPUI must never auto-quit on last-window-closed.
     GpuiApplication::new_inaccessible(current_platform(false)).with_quit_mode(QuitMode::Explicit)
+}
+
+/// How long a Windows taskbar check waits for the runtime's published
+/// preference and the two product windows' own taskbar buttons to agree.
+/// See `taskbar_settle` for why it waits at all.
+#[cfg(target_os = "windows")]
+async fn settle_taskbar_icon(
+    smoke_client: &SettingsClient,
+    cx: &mut AsyncApp,
+    expected: bool,
+) -> Result<(), String> {
+    let mut last = TaskbarIconSettleGap::PublishedPreferenceStale;
+    for _ in 0..TASKBAR_ICON_SETTLE_ATTEMPTS {
+        let snapshot = smoke_client
+            .read_snapshot()
+            .await
+            .map_err(|error| format!("read taskbar icon snapshot: {error}"))?;
+        let (model_window, settings_window, model_window_visible) =
+            cx.update(product_taskbar_icon_state)?;
+        match taskbar_icon_settle_gap(
+            &TaskbarIconSample::new(
+                snapshot.taskbar_icon_visible,
+                model_window,
+                settings_window,
+                model_window_visible,
+            ),
+            expected,
+        ) {
+            None => return Ok(()),
+            Some(gap) => last = gap,
+        }
+        Timer::after(TASKBAR_ICON_SETTLE_INTERVAL).await;
+    }
+    Err(format!(
+        "taskbar icon did not settle on {expected} within {TASKBAR_ICON_SETTLE_ATTEMPTS} attempts: {}",
+        last.reason()
+    ))
 }
 
 struct ProductCoordinator {
@@ -1974,17 +2021,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .await
                             .map_err(|error| format!("read taskbar icon snapshot: {error}"))?;
                         let initial_visibility = initial.taskbar_icon_visible;
-                        let (native_initial, settings_native, model_visible) =
-                            cx.update(product_taskbar_icon_state)?;
-                        if native_initial != initial_visibility
-                            || !settings_native
-                            || !model_visible
-                        {
-                            return Err(
-                                "startup taskbar visibility diverged from the current snapshot"
-                                    .to_owned(),
-                            );
-                        }
+                        settle_taskbar_icon(&smoke_client, cx, initial_visibility).await?;
                         let changed = smoke_client
                             .set_taskbar_icon_visible(
                                 initial.config_revision.ok_or_else(|| {
@@ -1994,18 +2031,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             )
                             .await
                             .map_err(|error| format!("toggle taskbar icon: {error}"))?;
-                        let (native_changed, settings_native, model_visible) =
-                            cx.update(product_taskbar_icon_state)?;
-                        if changed.taskbar_icon_visible == initial_visibility
-                            || native_changed != changed.taskbar_icon_visible
-                            || !settings_native
-                            || !model_visible
-                        {
+                        if changed.taskbar_icon_visible == initial_visibility {
                             return Err(
-                                "taskbar icon toggle did not preserve the model window button"
+                                "taskbar icon toggle did not change the published preference"
                                     .to_owned(),
                             );
                         }
+                        settle_taskbar_icon(&smoke_client, cx, changed.taskbar_icon_visible)
+                            .await
+                            .map_err(|error| {
+                                format!("taskbar icon toggle did not reach both windows: {error}")
+                            })?;
                         let restored = smoke_client
                             .set_taskbar_icon_visible(
                                 changed.config_revision.ok_or_else(|| {
@@ -2015,17 +2051,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             )
                             .await
                             .map_err(|error| format!("restore taskbar icon: {error}"))?;
-                        let (native_restored, settings_native, model_visible) =
-                            cx.update(product_taskbar_icon_state)?;
-                        if restored.taskbar_icon_visible != initial_visibility
-                            || native_restored != initial_visibility
-                            || !settings_native
-                            || !model_visible
-                        {
+                        if restored.taskbar_icon_visible != initial_visibility {
                             return Err(
-                                "taskbar icon visibility was not restored atomically".to_owned()
+                                "restoring the taskbar icon did not restore the published \
+                                 preference"
+                                    .to_owned(),
                             );
                         }
+                        settle_taskbar_icon(&smoke_client, cx, initial_visibility)
+                            .await
+                            .map_err(|error| {
+                                format!("taskbar icon visibility was not restored atomically: {error}")
+                            })?;
                         Ok::<(), String>(())
                     }
                     .await;
