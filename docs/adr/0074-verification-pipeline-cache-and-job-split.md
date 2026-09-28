@@ -101,17 +101,39 @@ registry 键是明确的优化项，但在条目数与预算都稳定之前不�
 
 `rust-toolchain.toml` 把 toolchain 钉在 1.97.1，因此作业里裸跑的 `cargo check` 始终解析
 到被钉住的版本——"Build workspace with current stable" 与随后的 minimum 检查跑的是同一个
-编译器，第二次是空操作（实测 0 秒）。现在 stable 检查显式使用 `cargo +stable`，并与
-minimum 检查分处 `target/toolchain-stable` 与 `target/toolchain-minimum`，两个编译器不会
-互相使缓存失效。这让一个此前静默失效的门禁真正生效，代价是该作业冷跑时多编译一次
-workspace（约 3 分钟，不在任何作业的关键路径上）。
+编译器，第二次是空操作（实测 0 秒）。现在 stable 检查显式使用 `cargo +stable`，并单独放在
+`target/toolchain-stable`，让这个此前静默失效的门禁真正生效。它在关键路径之外，冷跑多编译
+一次 workspace 的代价不进入任何 PR 的等待时间。minimum 半边随后按第 7 条删除，所以本作业
+现在只做 stable canary 一件事。
 
 ### 6. `spikes/model-package` 不再在 Linux 上重复跑
 
 `model-package-platforms` 已经在两个发布平台上运行它的 fmt、clippy、test 与 release
 check，Linux 上的一份是严格子集，从 `contract-spikes` 的矩阵里移除。
 
-### 7. 失败证据契约从固定数字改为按作业推导
+### 7. 三处只有重复成本、没有覆盖的步骤被删除
+
+按 PR #1059 与 PR #1055 的实测步骤耗时逐条排查后，删掉三处：
+
+1. **toolchain 作业的 minimum 半边。** `rust-toolchain.toml` 钉住 toolchain，所以这一半与
+   stable canary 跑的是同一个编译器；而 `workspace` 作业已在两个平台上用 clippy
+   `--all-targets`、test 与 release check 编译了整个 workspace。严格子集，删除。
+2. **四个 spike 作业里的 `cargo check --release`。** 这些作业的 smoke 跑的是自己
+   `cargo build` 出来的 **debug** 可执行文件，release profile 的产物没有任何东西执行过：
+   macOS 作业 4.95 分钟，两个 Windows GPUI 作业各约 3 分钟。产品自身的 release profile 由
+   `workspace` 的 `cargo check --workspace --release` 与 product smoke 的真实 release 构建覆盖。
+   `spikes/model-package` 的 release check 保留：它没有 smoke，那个检查是它唯一的 release
+   信号。`spikes/input-windows` 的两条 `--release` 压力运行也保留，那是 issue #47 的证据。
+3. **packaging smoke 的第二次 `just build`。** 两个 bundle 的差异只有编译进去的
+   `BUILD_ENVIRONMENT` 常量与 bundle 内 provenance 的 `environment` 字段：reopen smoke 断言的
+   是 bundle id、图标、签名和 LaunchServices 握手，两项都不读；environment 到 feature 的映射
+   已由 `tools/tests/test_packaging_contract.py` 静态断言。留下的是"CI 不再端到端启动一个
+   Development bundle"——"bundle 能在 runner 上启动"仍由同作业的 startup-item smoke 覆盖，
+   它按 ADR-0051 必须使用 Production bundle。
+
+删除 1 与 2 不在关键路径上，只减分钟；删除 3 把 packaging 作业从 18 分钟降到约 14 分钟。
+
+### 8. 失败证据契约从固定数字改为按作业推导
 
 `tools/tests/test_failure_evidence_workflow.py` 原先断言 `verify.yml` 里恰好有 10 个
 `Collect redacted failure evidence`。拆分后这个数字会立刻过期，而过期的数字无法区分"某个

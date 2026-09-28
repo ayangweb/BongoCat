@@ -38,25 +38,20 @@ jobs:
       - name: Cache Cargo artifacts
         uses: actions/cache@v6
         with:
-          # Only this job's two compilers: the pinned and the current stable one
-          # never share a target directory.
+          # Only this job's stable canary. The pinned toolchain gets no second
+          # copy: `rust-toolchain.toml` selects it for every other job, and the
+          # workspace job already compiles the whole workspace with it on both
+          # platforms, so building it again under a second target directory
+          # bought nothing.
           path: |
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             target/toolchain-stable/
-            target/toolchain-minimum/
           key: ${{ runner.os }}-toolchain-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml') }}
       - name: Check current stable toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Build workspace with current stable
         run: cargo +stable check --manifest-path Cargo.toml --locked --workspace --target-dir target/toolchain-stable
-      - name: Check declared minimum toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.97.1
-          components: clippy, rustfmt
-      - name: Build workspace with declared minimum
-        run: cargo check --manifest-path Cargo.toml --locked --workspace --target-dir target/toolchain-minimum
       - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
@@ -738,12 +733,23 @@ jobs:
           grep -Fq 'bongocat-app: startup-item original state' "$stdout_path"
           test "$restored" = true
       - name: Smoke macOS application reopen lifecycle
-        # `just build` runs cargo-packager, and the neighbouring startup-item step
-        # that does the same work is left on the default budget.
+        # Reuses the Production bundle the startup-item step built, rather than
+        # releasing a second one for `--environment development`. The two
+        # bundles differ only in the compiled `BUILD_ENVIRONMENT` constant and
+        # the `environment` field of the bundle's provenance record: the reopen
+        # assertions below are the bundle id, the icon, the signature and the
+        # LaunchServices handshake, none of which read either, and
+        # `tools/tests/test_packaging_contract.py` already pins the
+        # environment-to-feature mapping. What this gave up is launching a
+        # Development bundle end to end in CI; that a bundle runs at all is still
+        # covered here, because the startup-item smoke above runs this one.
         timeout-minutes: 30
         run: |
-          just build --environment development --formats app
           app_path=target/package/BongoCat.app
+          if [ ! -d "$app_path" ]; then
+            echo "the packaging smoke left no bundle to reopen" >&2
+            exit 1
+          fi
           stdout_path="$RUNNER_TEMP/macos-application-reopen.stdout.log"
           stderr_path="$RUNNER_TEMP/macos-application-reopen.stderr.log"
           rm -f "$stdout_path" "$stderr_path"
@@ -1139,12 +1145,12 @@ jobs:
           cargo test --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked
       - name: Run macOS input spike tests
         run: cargo test --manifest-path spikes/input-macos/Cargo.toml --locked
-      - name: Check GPUI spike release builds
-        run: |
-          cargo check --manifest-path spikes/gpui-settings/Cargo.toml --locked --release
-          cargo check --manifest-path spikes/gpui-overlay-macos/Cargo.toml --locked --release
-      - name: Check macOS input spike release build
-        run: cargo check --manifest-path spikes/input-macos/Cargo.toml --locked --release
+      # No `--release` pass over the spikes. These jobs smoke the *debug*
+      # executables they build below, so a release profile here produced
+      # artifacts nothing ever ran: 4.95 minutes in this job and about 3 in each
+      # Windows GPUI spike job. The product's release profile is covered by the
+      # workspace job's `cargo check --workspace --release` and by the real
+      # release build the product smoke jobs link.
       - name: Build macOS settings smoke executable
         timeout-minutes: 10
         run: cargo build --manifest-path spikes/gpui-settings/Cargo.toml --locked
@@ -1471,8 +1477,10 @@ jobs:
         run: cargo clippy --manifest-path ${{ matrix.manifest }} --locked --all-targets -- -D warnings
       - name: Run tests
         run: cargo test --manifest-path ${{ matrix.manifest }} --locked
-      - name: Check release build
-        run: cargo check --manifest-path ${{ matrix.manifest }} --locked --release
+      # No `--release` pass here either, for the reason the macOS spike job
+      # gives: the smoke below runs the debug executable this job builds, so the
+      # release metadata cost about three minutes per job and nothing consumed
+      # it.
       - name: Build Windows settings smoke executable
         if: matrix.manifest == 'spikes/gpui-settings/Cargo.toml'
         timeout-minutes: 5
