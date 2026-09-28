@@ -1,0 +1,134 @@
+name: 🐞 问题反馈
+description: 某个功能没有按文档描述的方式工作
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间反馈问题。BongoCat 仅发布 Windows 与 macOS 版本。
+
+        提交前请先做三件事：
+
+        1. [搜索现有 issue](https://github.com/ayangweb/BongoCat/issues?q=is%3Aissue)，这个问题可能已经有人反馈或修复。
+        2. 确认能在[最新版本](https://github.com/ayangweb/BongoCat/releases/latest)上复现。很多「只有我这儿有问题」其实是版本落后。
+        3. 打开「设置 > 关于 > 软件信息」点击**复制**，把 JSON 粘贴到下面的输入框。它包含版本、系统与运行状态，不含文件路径、模型名称和按键序列，可以放心分享。
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      description: 问题发生在哪个操作系统？Linux 不在发布范围内，相关反馈不会被处理。
+      options:
+        - Windows
+        - macOS
+        - Linux（不在发布范围内）
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 问题涉及哪一部分？
+      description: 这个问题属于 BongoCat 的哪一部分，便于分流到对应的模块。
+      options:
+        - 模型显示、动作或表情
+        - 模型库：导入、删除或模型状态
+        - 模型窗口：大小、位置、不透明度、鼠标穿透
+        - 输入：键盘
+        - 输入：鼠标
+        - 输入：手柄
+        - 快捷键
+        - 外观与语言
+        - 应用与系统：开机启动、托盘或菜单栏图标、日志
+        - 更新
+        - 设置窗口布局或文案
+        - 安装、启动或权限提示
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: software-information
+    attributes:
+      label: 软件信息
+      description: 打开「设置 > 关于」，在「软件信息」下点击**复制**，把 JSON 粘贴到这里。如果设置窗口打不开，直接写你安装的版本号。
+      render: json
+      placeholder: |
+        {
+          "app_version": "2.0.0",
+          "platform": "macos",
+          "runtime_health": "ready"
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题现象
+      description: 实际看到了什么、期望看到什么，以及屏幕上的任何提示。描述结果即可，不用写猜测的原因。
+      placeholder: 按下按键后猫猫会消失，模型窗口也不再出现在任务栏里。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从重新启动到再次出现问题的最短步骤，并说明当时使用的是哪个模型。
+      placeholder: |
+        1. 启动 BongoCat，等待模型窗口出现
+        2. 打开「设置 > 模型窗口」，把「窗口缩放」调到 50%
+        3. 按下 A 键
+        4. 模型右侧被裁掉
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: 出现频率
+      options:
+        - 每次都发生
+        - 经常发生
+        - 偶尔发生
+        - 只出现过一次
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 软件日志
+      description: 可选，但输入与渲染相关的问题请尽量附上。在「设置 > 应用与系统 > 日志」把「日志级别」调为「诊断信息」，复现一次后从「设置 > 关于 > 软件日志 > 打开」进入日志目录，把当天的日志文件拖到这里。日志不记录按键内容、剪贴板和文件内容，可以直接分享。
+      render: text
+    validations:
+      required: false
+
+  - type: upload
+    id: screenshots
+    attributes:
+      label: 截图或录屏
+      description: 问题的画面截图；动作不对时，一段短录屏比文字更有效。
+    validations:
+      required: false
+      accept: .png,.jpg,.jpeg,.gif,.webm,.mp4,.mov,.log,.txt,.zip
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 附加信息
+      description: 当时正在做的其他事、涉及的其他软件，或所用模型的链接。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索现有 issue，确认不是重复问题。
+          required: true
+        - label: 我已移除报告中的隐私信息——文件路径、按键序列、剪贴板内容和个人模型文件。
+          required: true

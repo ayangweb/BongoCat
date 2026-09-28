@@ -1,0 +1,91 @@
+name: 💡 Feature request
+description: Suggest something BongoCat should do
+title: "[feat] "
+labels: ["feature request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Two things make a feature request useful:
+
+        - The **problem** comes first: what are you trying to do that BongoCat does not let you do?
+        - The **solution** comes second, and a rough description is better than none.
+
+        If BongoCat already does this but gets it wrong, a [bug report](https://github.com/ayangweb/BongoCat/issues/new/choose) gets it fixed faster. If the same idea already exists as an issue, add your use case to it instead of opening a new one.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which operating system would this be for? Linux is not a release target, so those requests are not planned.
+      options:
+        - Windows
+        - macOS
+        - Both
+        - Linux (not a release target)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where would it belong?
+      description: Which part of BongoCat this would belong to, so it reaches the right part of triage.
+      options:
+        - Model display, motion, or expression
+        - "Model library: import, delete, or model status"
+        - "Model window: size, position, opacity, click-through"
+        - "Input: keyboard"
+        - "Input: mouse"
+        - "Input: gamepad"
+        - Shortcuts
+        - "Appearance & language"
+        - "App & system: start at login, tray or menu bar icon, logging"
+        - Updates
+        - Settings window layout or wording
+        - Install, launch, or permissions
+        - A new area entirely
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, what stops you from finishing it, and how you work around it today.
+      placeholder: I record my screen for tutorials, and the model window ends up in the capture every time.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: The solution you have in mind
+      description: The change you would make. A sentence or a sketch is enough.
+      placeholder: Hide the model window automatically while a screen recording is running, and bring it back when the recording stops.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Other ways you tried to get the same result, including workarounds that already exist.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Screenshots, a sketch, the models or apps you use it with, or how often you would need it.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before sending
+      options:
+        - label: I searched the issues and pull requests, and this idea is not on the list yet.
+          required: true

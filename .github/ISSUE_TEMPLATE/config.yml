@@ -1,0 +1,4 @@
+# Every report arrives as a form, so a triage reads the same fields in the same
+# order whichever template a reporter picked. Blank issues stay available to
+# maintainers and are labelled as such in the chooser.
+blank_issues_enabled: false
