@@ -11,8 +11,7 @@
    `NSApplication.appearance` 可以让整棵继承链（窗口 → 弹框 → 菜单 → 面板）一起变；Windows
    只有窗口框有官方 API，ComCtl32 弹框、Win32 菜单和 shell 文件框**没有任何**官方接口可以跟随
    应用主题，最多只能跟随**系统**主题。
-3. **调研结论：不存在可以直接用的现成 crate。** 逐个核查的候选见
-   `docs/theme-mode-native-surface-research.md` §2，摘要如下：
+3. **调研结论：不存在可以直接用的现成 crate。** 逐个核查过的候选与摘要如下：
 
    | 候选 | 为什么不能直接用 |
    | --- | --- |
@@ -184,8 +183,7 @@ smoke 断言都调它。**smoke 此前用 `component_theme_mode(theme, cx.window
    回归会表现为"主题悄悄不生效"而不是任何信号**。当前 `apply_component_theme` 只从 render
    调用，不存在这个路径；若要让它可诊断，需要按 ADR-0017 的有界日志契约新增一个固定 code，
    本次未做。
-8. **本 ADR 只覆盖"哪个外观"，不覆盖颜色。** 主题色的架构评估见
-   `docs/theme-color-extraction-evaluation.md`（结论：不拆 crate，在 `bongocat-ui` 内收口）。
+8. **本 ADR 只覆盖"哪个外观"，不覆盖颜色。** 主题色不拆独立 crate，在 `bongocat-ui` 内收口。
 9. **`apply_optimistic_component_theme` 与 `resolved_theme_mode` 仍是两个函数。** 前者只服务
    "用户刚点了下拉、配置还没往返" 这一个场景，且拿不到 `Window`，因此没有并入统一入口。B3 的
    三套并行同步已收敛为「一处解析 + 一处乐观」两条职责清晰的路径，但没有收敛成一条。

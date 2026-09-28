@@ -115,7 +115,7 @@ This proves the generation workflow. The real r.5 header SHA-256 is
 `6f1802780d1eb36ff39705e0764f9eeed9b41c313a13ac155270c6f4ad51d53f`; an external
 arm64 generation produced binding SHA-256
 `6cd53ddbb173d73a842b33a507c5c03c879adcb05a8c005730b58c1f0f061364` and passed the
-macOS arm64 Core/model probe in `cubism-core-r5-probe.md`. Commit `57118ff` 将审阅后的
+macOS arm64 Core/model probe in `core-r5-probe.md`. Commit `57118ff` 将审阅后的
 macOS arm64/x64 与 Windows x64 binding 固定到产品 crate，Windows x64 release
 交叉 check 已通过。Synthetic contract 现在要求 r.5 的 `csmGetRenderOrders`、drawable
 blend mode、part offscreen index 和全部 offscreen array。第二人重生成 review 及

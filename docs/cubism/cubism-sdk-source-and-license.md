@@ -34,7 +34,7 @@
 和 x86_64，动态调用 `csmGetVersion()` 返回 `0x06000001`，
 `csmGetLatestMocVersion()` 返回 `6`。外部生成的 arm64 binding 随后完成三个预置
 Moc 各 100 次 revive/model/update/array/drop，并由 `leaks` 得到 0-byte leak；详见
-`cubism-core-r5-probe.md`。维护者之后批准把产品开发所需的最小 Core/header 子集和
+`core-r5-probe.md`。维护者之后批准把产品开发所需的最小 Core/header 子集和
 真实 target bindings 固定到 `vendor/cubism/5-r.5` 与 `bongocat-live2d`；
 完整 ZIP、Framework 源码、临时 universal dylib 和 inspector JSON 仍不进入仓库。
 Windows 原生 ABI、macOS Intel 原生验证和第二机器复核仍保持未完成。
@@ -45,7 +45,7 @@ Windows 原生 ABI、macOS Intel 原生验证和第二机器复核仍保持未�
 
 R5 `Core/README.md` 和 `Core/RedistributableFiles.txt` 给出以下首发相关能力：
 
-| Rust target               | R5 Core artifact                                                                                       | Phase 0 disposition                                              |
+| Rust target               | R5 Core artifact                                                                                       | Disposition                                                      |
 | ------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
 | `x86_64-pc-windows-msvc`  | `Core/dll/windows/x86_64/Live2DCubismCore.dll` 与 import `.lib`；另有 MSVC 141/142/143 static variants | 首发候选；先验证 DLL + import library                            |
 | `i686-pc-windows-msvc`    | `Core/dll/windows/x86/` 与 MSVC 141/142/143 static variants；DLL 调用约定为 `__stdcall`                | **产品范围外**；BongoCat 不构建或发布 x86                  |
@@ -63,7 +63,7 @@ R5 `Core/README.md` 和 `Core/RedistributableFiles.txt` 给出以下首发相关
 - Native Framework 和 Native Samples 属于 Live2D Cubism Components，使用 Live2D Open Software License；它不是 MIT/Apache/BSD 类宽松许可证。
 - 官方 `NOTICE.md` 包含 `©Live2D`。发布 notice、终端用户条款和 trademark 展示方式必须在发布许可确认后形成明确清单。
 
-BongoCat 的 Rust 源码不能直接复制、翻译或机械移植 Framework C++ 实现后仍默认按仓库 Apache-2.0 许可证发布。在 Live2D 书面答复或法律评审明确边界前，Framework 源码只能用于识别待验证行为，不能作为可直接移植的实现素材。若纯 Rust motion/expression/physics/pose 实现无法在许可边界内完成，Phase 0 必须给出 NO-GO 或明确条件，不能静默引入长期 C++ 业务 bridge。
+BongoCat 的 Rust 源码不能直接复制、翻译或机械移植 Framework C++ 实现后仍默认按仓库 Apache-2.0 许可证发布。在 Live2D 书面答复或法律评审明确边界前，Framework 源码只能用于识别待验证行为，不能作为可直接移植的实现素材。若纯 Rust motion/expression/physics/pose 实现无法在许可边界内完成，必须先停下并取得明确的书面结论，不能静默引入长期 C++ 业务 bridge。
 
 ### 3.2 Expandable Application 是发布阻塞
 
@@ -81,7 +81,7 @@ Proprietary Software License 将“通过增加或组合文件/数据，使用�
 - 可以继续不公开分发的本地技术验证和产品实现；
 - 不得发布包含 Cubism Core/Framework 的 BongoCat 安装包；
 - 不得将“开源”“免费”或当前收入规模当作自动豁免；
-- Phase 0 退出结论最多为 `GO WITH CONDITIONS`，且发布授权必须是显式阻塞条件。
+- 发布授权是显式阻塞条件：未取得书面结论前不分发含 Cubism artifact 的安装包。
 
 维护者联系 Live2D 时应一次性确认：
 
@@ -103,7 +103,7 @@ Proprietary Software License 将“通过增加或组合文件/数据，使用�
 5. 维护者从已验证 ZIP 选择产品所需的最小 Core/header 子集，保持原始文件 bytes，
    使用 inspector 报告中的 header SHA-256 运行 `tools/cubism-bindgen`；经维护者批准的
    bindings 固定到 `bongocat-live2d/src/sys`，不在 build 时重新生成。
-6. 第二位维护者使用记录的 bindgen/libclang/target 配置独立生成并比较 output/config hash，再执行对应 Core 的 compile/link/ABI smoke；详见 `cubism-binding-generation.md`。
+6. 第二位维护者使用记录的 bindgen/libclang/target 配置独立生成并比较 output/config hash，再执行对应 Core 的 compile/link/ABI smoke；详见 `binding-generation.md`。
 7. 当前 expected SHA-256 已写入本文；后续运行使用 `--expected-sha256` 拒绝漂移，第二人或第二机器复核仍待完成。
 8. 发布阶段再设计安装包中的 Core 复制、notice 生成和签名流程；构建与 CI 默认保持离线。
 

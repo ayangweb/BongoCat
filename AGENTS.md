@@ -7,7 +7,6 @@
 | 主题                         | 事实来源                          |
 | ---------------------------- | --------------------------------- |
 | 目标架构                     | `docs/technical-design.md`        |
-| 阶段顺序、完成定义、验收门槛 | `docs/implementation-todo.md`     |
 | 单项决策背景与取舍           | `docs/adr/`                       |
 | 依赖与工具校验               | `deny.toml`、`tools/`、`justfile` |
 
@@ -51,7 +50,7 @@
 
 ## 3. 阶段与数据版本
 
-- 阶段顺序、状态和退出门槛只看 `docs/implementation-todo.md`。ADR-0011 允许已通过自动化 contract 且不依赖缺失外部证据的模块先进入正式实现，其余按 TODO 顺序推进，每次只推进一个最小闭环。
+- 每次只推进一个最小闭环；新增能力先有自动化 contract 或 ADR，再进入实现。ADR-0011 允许已通过自动化 contract 且不依赖缺失外部证据的模块先进入正式实现。
 - 门禁未过的能力不得宣称完成（Live2D、输入可靠性、双平台渲染等）；未取得 Cubism 书面授权、SDK 分发、实机输入/UI/GPU、签名、Windows 实机安装升级卸载与 soak 证据时，不得分发含受限 artifact 的安装包。
 - 不批量迁移历史功能，不为目录美观预建空 crate，未经授权不删除历史源码和行为对照。
 - `config.json` 与 window state 显式带 `schema_version: 1`，保留单一严格解析入口：非 1 明确拒绝，不静默转换。

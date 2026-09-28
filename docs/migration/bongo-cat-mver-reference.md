@@ -29,7 +29,7 @@
 文件名随上游版本变化时用 `rg` 搜索相关 API 或产品字段，不凭记忆推断行为。
 
 帧率限制的完整语义——窗口帧预算与呈现节拍、动画时间源与帧率的解耦、以及明确不采纳的做法——见
-`docs/phase-0/mver-frame-rate-semantics.md`；该文档只是本基线在帧率一项上的展开，commit 与使用规则
+`docs/migration/bongo-cat-mver-frame-rate-semantics.md`；该文档只是本基线在帧率一项上的展开，commit 与使用规则
 仍以本文件为准。
 
 ## 3. 已确认与待核对的渲染证据
@@ -49,7 +49,7 @@
 该 commit **不包含** `LAppTextureManager` 实现、官方 OpenGL shader、Cubism Framework/SFML
 版本锁定或完整 build flags，因此不能仅凭它断言实际二进制的纹理上传格式、shader 数学和所有
 背景/按键 compositor 细节。另行固定的 Cubism Native Framework R5 `5-r.5` 行为来源
-（见 `docs/phase-0/cubism-framework-behavior-sources.md`）确实展示了普通 `GL_RGBA` render target
+（见 `docs/cubism/cubism-framework-behavior-sources.md`）确实展示了普通 `GL_RGBA` render target
 与 encoded-space shader 参考路径，但它是独立的 R5 oracle，不是该 Mver 二进制来源的直接证明。
 
 因此，encoded-space 颜色契约目前是基于用户报告、固定 Mver 调用关系和独立 R5 参考来源的

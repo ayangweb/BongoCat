@@ -1,8 +1,7 @@
 # 更新日志书写规范
 
 > **文档性质：规范性约定。** 本文只约束 `CHANGELOG.md` 与 `CHANGELOG.zh-CN.md` 的分段标题
-> 怎么写。目标架构、工作顺序与验收门槛仍以 `docs/technical-design.md`、
-> `docs/implementation-todo.md` 和 `docs/adr/` 为准。
+> 怎么写。目标架构仍以 `docs/technical-design.md` 和 `docs/adr/` 为准。
 >
 > UI 文案的书写规范另见 `docs/localization-copy-conventions.md`；该文 §1.2 明确把
 > `CHANGELOG` 排除在自己的适用范围之外，所以两套规范互不覆盖。

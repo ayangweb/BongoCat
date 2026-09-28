@@ -112,4 +112,4 @@
 
 ## 验证
 
-见 `docs/implementation-todo.md` 第 101 项。
+`the_command_gate_keeps_the_recorded_bindings_and_only_leaves_the_table`。
