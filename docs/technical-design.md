@@ -366,8 +366,8 @@ config/platform/update producer 映射为 protocol 类型。debounce、语言显
 文件选择后的展示判断留在 UI/适配器，不进入跨层 contract。
 
 正式 workspace 位于仓库根目录，是仓库中唯一的产品构建入口。重构前实现仅在远端
-`pre-refactor-tauri` 分支中保留，当前工作树不包含其源码、资源或构建入口；`next` 合并进入
-`master` 后，`master` 承载当前代码，不作为旧实现参考。该路径安排不改变 crate 边界或产品架构。
+`pre-refactor-tauri` 分支中保留，当前工作树不包含其源码、资源或构建入口；`master` 承载当前代码，
+不作为旧实现参考。该路径安排不改变 crate 边界或产品架构。
 
 ## 8. Runtime 与并发
 
@@ -737,7 +737,7 @@ model evaluation + render snapshot
 - raw binding 只由精确锁定的离线生成工具从 hash 固定的官方 header 生成；生成配置、target ABI、libclang 版本和输出 hash 必须进入 provenance，禁止手改生成代码。
 - 维护者提供并批准用于开发的固定基线已存入 `vendor/cubism/5-r.5`，包括
   Core、官方 header 和由该 header 生成的 target binding。公开发布前另行核对
-  attribution 与再分发清单；该发布工作不阻塞本地功能实现和 `next` 开发提交。
+  attribution 与再分发清单；该发布工作不阻塞本地功能实现和开发提交。
 - 原始指针不离开 safe wrapper；Moc 必须比 Model 活得更久。
 - Core 全局日志 callback 只在 callback 生命周期内有界复制至多 512 bytes，并以容量 128 的
   非阻塞队列交给专用 Rust worker；callback 不获取 writer mutex、不转义/格式化文本、不执行文件 I/O。
@@ -938,7 +938,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 
 - BongoCat 配置从全新 schema 开始，不读取、不探测、不导入旧 Tauri/Pinia store。
 - JSON key 使用 `snake_case`，字段按当前领域语义命名，不提供旧字段 alias。
-- `next` 是全新的初始版本，当前完整配置统一使用 `schema_version: 1`。v1 直接包含完整的
+- 初始版本是全新的，当前完整配置统一使用 `schema_version: 1`。v1 直接包含完整的
   `model.selected_model: { id, source }`、用户导入模型的元数据列表 `model.imported_models` 与内置
   模型的列表 `model.built_in_models`。imported 记录包含稳定唯一的 `id`、可编辑 `title` 与必填的
   `input_mode`（`standard`、`keyboard` 或 `gamepad`）；built-in 记录只包含 `id` 与 `title`，其模式
@@ -963,7 +963,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `model` 语义详见 `shared/config/contract.md`。overlay visibility 属于 runtime 会话状态，
   不写入 config；设置页使用
   `settings.overlay.hide_model_window.label` 将其投影为“隐藏模型窗口”开关，开关选中表示已隐藏，默认未选中。
-- `next` 开发期间不读取或转换任何早期中间结构，不实现 schema migration、字段 alias 或版本兼容
+- 开发期间不读取或转换任何早期中间结构，不实现 schema migration、字段 alias 或版本兼容
   分支。新增字段直接更新当前 v1 的 Rust 类型、JSON Schema、默认值和 fixture。解析入口保留显式
   版本检查并拒绝非 v1 数据；首次正式发布后的后续版本再以该发布版为基线单独设计迁移链。
 - 写入使用同目录临时文件、flush、原子替换和提交后验证；替换前把当前配置封装为带格式版本、
@@ -996,7 +996,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `BackupLocationOpenFailed`。
 - `config.json` 只包含用户设置；窗口布局写入 `window-state.json`，pressed state、权限结果和模型解析缓存不持久化。
 - `window-state.json` 使用独立 v1 schema，保存设置窗口的逻辑坐标、尺寸与 maximized 状态，以及 overlay
-  的坐标与尺寸；不读取或转换 `next` 开发期间出现过的其他结构。坐标支持多显示器负值并设有有限范围，
+  的坐标与尺寸；不读取或转换开发期间出现过的其他结构。坐标支持多显示器负值并设有有限范围，
   设置窗口尺寸限制为 `640x480..16384x16384`，overlay 尺寸限制为
   `64x64..16384x16384`。缺失、损坏、越界、未知字段或读取失败只回退到鼠标当前所在显示器
   居中的默认尺寸，不得阻塞 config 或 runtime 启动；非 v1 window state 回退显示且不被覆盖。

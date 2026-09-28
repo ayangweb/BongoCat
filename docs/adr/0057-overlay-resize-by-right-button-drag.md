@@ -4,11 +4,11 @@
 日期：2026-09-23
 修订（2026-09-24）：缩放写回配置不再重建 HWND/NSPanel；统一改为在现有原生窗口上更新几何，
 并在尺寸变化后立即填充新的 swap-chain/drawable，避免设置更新暴露未初始化透明帧。
-取代：无（恢复旧版 `pre-refactor` 分支存在、`next` 尚未实现的窗口缩放交互）
+取代：无（恢复旧版 `pre-refactor` 分支存在、当前产品尚未实现的窗口缩放交互）
 
 ## Context
 
-`next` 的模型窗口尺寸只有一个来源：配置 `overlay.scale_percent`。在本 ADR 初始实现时，改变它意味着
+模型窗口尺寸只有一个来源：配置 `overlay.scale_percent`。在本 ADR 初始实现时，改变它意味着
 **重建整个窗口**——`OverlaySessionOptions::requires_window_recreation` 把 `scale_percent` 列为重建条件，
 重建会重新创建原生窗口与 GPU 资源，`GpuModel::prepare` 还会重新加载全部模型纹理。因此在这次改动之前，
 调整窗口大小只有设置页滑块这一条路，而且每次都伴随一次可见的重建。
@@ -22,9 +22,9 @@ catStore.window.scale = round(clamp(scale + delta, 10, 500))
 ```
 
 即按住右键并移动指针即可改缩放，但要求同时按住 Shift，范围 `10–500`，并且直接改
-`window.scale`（与设置页滑块同源）。`next` 没有移植这个交互。
+`window.scale`（与设置页滑块同源）。本产品没有移植这个交互。
 
-同时，`next` 的右键已经被上下文菜单独占：Windows 拦截 `WM_CONTEXTMENU | WM_NCRBUTTONUP` 并转发
+同时，右键已经被上下文菜单独占：Windows 拦截 `WM_CONTEXTMENU | WM_NCRBUTTONUP` 并转发
 成 `OverlayContextMenuRequest`，macOS 用 `NSEvent` local monitor 监听 `RightMouseUp`，两者都交给
 应用的 `muda` 菜单。任何新的右键交互都必须先解决这个冲突。
 

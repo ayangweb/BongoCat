@@ -39,7 +39,7 @@ ADR-0039 的 `Return` → `Enter` 是同一套做法：转换写产品词汇表�
 0x31 (BackSlash) → BackSlash, Backslash
 ```
 
-canonical 在前。已经安装过、不会被重新归一化的包（`next` 无迁移路径）因此仍然能画。
+canonical 在前。已经安装过、不会被重新归一化的包（无迁移路径）因此仍然能画。
 
 ### 3. 导入归一化登记该拼写
 

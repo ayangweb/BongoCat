@@ -2,7 +2,7 @@
 
 状态：Phase 0 证据补齐与 Phase 1 渐进实现并行
 最后更新：2026-09-28
-当前分支：`next`
+当前分支：`master`
 首发平台：Windows 10 1903+、macOS 12+
 后续评估：Linux
 
@@ -39,7 +39,7 @@
 > 本文后续已勾选的历史状态若提到旧恢复 UI 或项目 AccessKit bridge，只作为当时的实现证据；
 > 后续代码以 ADR-0054 为准，不得据此重新引入。
 
-> 初始版本基线：`next` 只开发全新的首版，当前完整配置、window state 和内部持久格式统一从 v1 开始。
+> 初始版本基线：只开发全新的首版，当前完整配置、window state 和内部持久格式统一从 v1 开始。
 > 首次正式发布前不实现版本迁移、schema 兼容、旧数据转换或历史版本判断；新增字段直接修改当前
 > v1。保留版本字段和严格的当前版本解析入口，首次发布后的后续版本再以实际发布基线设计迁移。
 
@@ -58,7 +58,7 @@
 - [ ] Linux 不阻塞首发，但共享 crate 不得暴露 Win32/AppKit 类型。
 - [ ] Development 不得读取、写入、锁住或 fallback 到 Production 数据。
 - [ ] 不实现旧配置字段 alias、自动导入或旧目录探测。
-- [ ] `next` 的配置、window state 和内部持久格式保持 v1，不包含开发中间版本的迁移或兼容分支。
+- [ ] 配置、window state 和内部持久格式保持 v1，不包含开发中间版本的迁移或兼容分支。
 - [ ] 新功能实现遵守 ADR-0030：先复用现有代码、标准库、平台能力、已安装依赖和成熟第三方
       方案；只有现成方案无法满足需求或引入成本明显更高时才编写最小自有实现。
 
@@ -87,7 +87,7 @@
 ### 0.4 状态、依赖与验收证据
 
 - `[ ]` 表示未开始、进行中、被阻塞或尚缺任一验收条件；部分完成不得改成 `[x]`。
-- `[x]` 只表示该行描述的完整工作已进入 `next`，并具有可重复验证证据；不代表所属 section 或 phase 自动完成。
+- `[x]` 只表示该行描述的完整工作已进入产品代码，并具有可重复验证证据；不代表所属 section 或 phase 自动完成。
 - 被阻塞的任务在其下记录 `Blocked by`、阻塞日期、所需决策或外部条件，不创建假实现绕过。
 - 有前置依赖的任务在开始前确认上游 contract 已冻结；若必须并行，先写清临时接口、owner 和回收日期。
 - 每个 spike 必须包含：假设、范围、非目标、依赖版本/来源、运行命令、环境、成功条件、失败条件、原始结果位置和后续处置。
@@ -127,7 +127,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 新增 ADR-007：生产版本只有单一 Rust 运行环境，历史实现仅用于行为与资源对照。
 - [x] 新增 ADR-008：固定 Bundle ID，并隔离 Development/Production 存储环境。
 - [x] 新增 ADR-010：Windows 只保留 x64/ARM64，移除 i686，并把缺少 R5 desktop ARM64 Core 固定为发布阻塞。
-- [x] 记录 `master`、`next`、旧版本 tag 和可回退 commit。
+- [x] 记录 `master`、旧版本 tag 和可回退 commit。
 - [x] 固定上游 Bongo-Cat-Mver 行为参考仓库、commit、关键文件和使用边界。
   - 验收证据（2026-08-30）：`docs/migration/bongo-cat-mver-reference.md` 固定
     `MMmmmoko/Bongo-Cat-Mver` commit `4da0b9468ad3b6ffaa096eba3f080501d6ab0b5c`，
@@ -146,7 +146,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 建立依赖许可证清单，确认当前 spike crate graph 与项目 MIT 发布兼容。
   - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 13 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
 - [x] 审计 BongoCat 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
-  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 当时审计的 21 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1`、`sha2 0.11.0` 与 `libc 0.2.189` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 workspace 并向 `next` 提交分组更新。
+  - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 当时审计的 21 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1`、`sha2 0.11.0` 与 `libc 0.2.189` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 workspace 并向默认分支提交分组更新。
   - 状态（2026-09-25）：本次新增的 `time 0.3.55`、`thiserror 2.0.21`、`schemars 1.2.2` 与 `walkdir 2.5.0` 已按 crates.io 最新稳定版、许可证和替换边界补入依赖审计；四者均复用既有传递图，不新增产品业务 API。
 - [x] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
   - 状态（2026-08-29）：ADR-0010 已固定 Windows 仅支持 x64/ARM64，i686 不再构建或发布。官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 ARM64 当前是发布阻塞；macOS Intel 和最终安装包形式仍待实机与发布链验证。
@@ -585,7 +585,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     下次启动会记录匿名 `previous_run_unclean` 事件；panic、shutdown 错误和强制终止会保留标记。
     Diagnostics 导出格式版本已提升到 2，并增加固定事件 code 的聚合计数；不导出原始日志、panic payload 或路径；
     release 实机崩溃收集仍待完成，因此本项保持未勾选。`bongocat-app` 63 项 app/lib 测试和
-    app Clippy 已在本机通过；marker 逻辑随 commit `19afddf`（远端合并提交 `b6244cc`）进入 `next`。
+    app Clippy 已在本机通过；marker 逻辑随 commit `19afddf`（远端合并提交 `b6244cc`）进入主线。
   - 状态（2026-09-04）：新增 Development-only 隔离父/子进程 smoke，以同一 executable 在正式
     Application owner 存活时触发 panic；父进程验证固定 panic code、payload/路径脱敏、配置字节
     不变、unclean 重启分类及正常 shutdown 清除 marker。本机 debug 行为闭环通过，双平台
@@ -2062,11 +2062,11 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     Rust 配置类型逐层使用 `deny_unknown_fields`；共享 `invalid-unknown-field.json` 在根对象注入
     `unexpected_field` 并由固定 Draft 2020-12 validator 拒绝，正式 crate 另有
     unknown/legacy 字段拒绝测试。
-- [x] `next` 的当前完整配置 schema 固定为 `schema_version: 1`，不包含迁移链。
+- [x] 当前完整配置 schema 固定为 `schema_version: 1`，不包含迁移链。
   - 状态（2026-09-04）：正式 config、独立 config-store contract、JSON Schema 和全部 fixture
     已统一为完整 v1；模型来源、input dead-zone 与现有字段都直接属于首版结构。store 只接受 v1，
     非 v1 明确拒绝且不改写；迁移函数与迁移专用测试已删除。首次正式发布后的后续版本再以实际
-    发布的 v1 为基线新增迁移，不在 `next` 预置兼容逻辑。
+    发布的 v1 为基线新增迁移，不预置兼容逻辑。
 - [x] 不包含旧 Pinia store key、旧字段 alias 或自动导入逻辑。
   - 验收证据（2026-08-31）：configuration schema/Rust 类型没有 serde alias 或 legacy 字段，严格未知
     字段 fixture 与单元测试拒绝 `legacy_alias`/`old_pinia_field`；产品 `ConfigStore` 只解析当前
@@ -2896,7 +2896,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 状态（2026-09-10）：历史 Vue/Tauri workspace、Web 资源、Node manifests、旧 updater/release
 workflow、legacy config inspector 及其本地 fixture 已从当前工作树删除。BongoCat、测试与
 共享 preset fixture 统一使用 `resources/models`；`pre-refactor-tauri` 是唯一的历史源码参考，
-`next` 合并进入 `master` 后，`master` 承载当前代码。Phase 0、稳定性和发布验收门槛仍按各自未完成项
+`master` 承载当前代码。Phase 0、稳定性和发布验收门槛仍按各自未完成项
 跟踪，代码退役不代表 stable 发布就绪。
 
 ### 10.4 最终完成定义
@@ -2949,10 +2949,10 @@ workflow、legacy config inspector 及其本地 fixture 已从当前工作树删
 
 - [x] 先完成无平台依赖的 overlay lifecycle contract probe；平台窗口和 GPU 验证仍未完成。
 - [x] Windows Win32/D3D11/DirectComposition owner、故障降级、析构顺序与 100-cycle 已通过既有 push/PR `windows-latest`；macOS 本机与 push/PR runner 的透明 clear/present、drawable unavailable、显式 shutdown 与 100-cycle 也已通过，并通过 `leaks` 基线消除窗口动画 retain cycle。GPUI 定时 frame source、双平台 resize、有序停止、原生 drag 状态切换及受控运行中故障恢复已实现；双平台具有 process thread 与 API 可见 GPU allocation 门禁，macOS 又以逐帧 backing-size 校正修复跨显示器后 drawable 尺寸漂移。commit `5baa6ba` 证明单次 `currentAllocatedSize` 相等不能代表无显示 compositor pool 收敛；当前按实测物理尺寸和三缓冲上限计算一个 drawable pool，commit `fd9ad85` 的 push run `33255204781`、job `99107586014` 已通过新门禁。完整 `P0-OVERLAY` 还等待 Windows 真实 swapchain unavailable、双平台真实 device-lost、driver 专项采样、物理拖动及显示器/DPI 切换。
-- 状态（2026-09-13）：run `34743931898`、job `103688224078`（PR #1030、`next` @ `f7c20a2`）的
+- 状态（2026-09-13）：run `34743931898`、job `103688224078`（PR #1030、`f7c20a2`）的
   transactional D3D11 切模 smoke 以 `process thread count exceeded the warmup high-water mark
   12 with 13 threads during model switching` 失败。该提交与上一个绿灯提交 `5554bd5` 的差异仅为
-  `bongocat-update` 新增集成测试与 ADR 措辞，overlay 不依赖该 crate，且前 7 次 `next` 运行同一
+  `bongocat-update` 新增集成测试与 ADR 措辞，overlay 不依赖该 crate，且前 7 次主线运行同一
   步骤均通过，故判定为线程门禁误报而非回归：进程全局 D3D11/DXGI/线程池 worker 可在预热 settle
   窗口之后才出现并长期驻留，而原实现把测量前快照当作硬上限，零容忍比较会把一次性 `+1` 判成泄漏
   （真实逐 switch 泄漏应为 `+309`）。产品探针现采用有界容差 `THREAD_GROWTH_LIMIT = 2`（与既有
@@ -3061,7 +3061,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       排序；重复 ID 保留 `(origin, id)` 复合身份；snapshot 只暴露稳定诊断而不泄漏路径；
       model/app/ui 单元测试、Clippy 与完整 workspace 门禁通过。
     - 验收证据（2026-08-31）：来源合并、无效条目、重复 ID、确定排序、路径脱敏与 typed
-      snapshot 测试均进入 `next`；push run `33333789799` 的 Windows/macOS/Ubuntu workspace
+      snapshot 测试均进入主线；push run `33333789799` 的 Windows/macOS/Ubuntu workspace
       jobs `99316966532`/`99316966517`/`99316966591` 全部通过。
 19. [x] `P4-MODEL-SELECTION`：以 `(origin, model_id)` 从设置服务事务切换并持久化模型。
     - 依赖：`P4-MODEL-CATALOG`、runtime/renderer model commit、config expected revision。
@@ -3069,7 +3069,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       配置直接保存成对的 origin/id；CPU/GPU/配置失败保留当前模型，GPU 拒绝恢复旧配置；
       重启重新加载所选来源；schema fixture、定向测试与完整 workspace 门禁通过。
     - 验收证据（2026-08-31）：复合身份选择、重启、CPU/GPU/config rollback 与 Windows/macOS
-      renderer rejection 测试均进入 `next`；push run `33333789799` 的三平台 workspace jobs
+      renderer rejection 测试均进入主线；push run `33333789799` 的三平台 workspace jobs
       全部通过，Windows job 又通过 transactional D3D11 model switching smoke。2026-09-04 将当前
       完整结构重置为 v1 后，本地 workspace 回归继续覆盖同一行为。
 20. [x] `P4-MODEL-IMPORT-COMMAND`：从设置服务显式导入用户确认的外部模型目录。
@@ -3105,7 +3105,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       或改配置；非法 ID、未安装、store busy/I/O 返回稳定无路径错误；app/ui 定向测试与完整
       workspace 门禁通过。
     - 验收证据（2026-08-31）：核心来源判断、typed client/service、全部 store diagnostic
-      的稳定错误映射及 app/ui 定向测试已进入 `next`；push run `33333789799` 的 Windows/macOS/
+      的稳定错误映射及 app/ui 定向测试已进入主线；push run `33333789799` 的 Windows/macOS/
       Ubuntu workspace jobs `99316966532`/`99316966517`/`99316966591` 全部通过。
 23. [x] `P4-MODEL-PARSER-PROPERTY`：固定模型包解析的随机输入安全边界。
     - 依赖：`bongocat-model` package limits、路径规范化、model3 JSON 与 PNG header parser。
@@ -3562,7 +3562,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       解析、runtime typed shortcut dispatch、settings typed command、revision-checked 原子
       持久化、snapshot projection、重启恢复回归、`RestoreDefaultShortcuts` 清除/恢复默认
       command、canonicalization 回归、单元测试和
-      `shared/config/contract.md` 已进入 `next`。2026-09-01 又增加
+      `shared/config/contract.md` 已进入主线。2026-09-01 又增加
       `CompiledShortcuts` typed table 和 `Application::compiled_shortcuts()` 只读投影：配置提交
       后可一次性解析为闭合 command/model action。chord key 已冻结为 legacy 可录制键闭集并携带
       USB HID usage；平台 `ShortcutMatcher` 按左右 modifier 聚合 + HID identity 确定性匹配，拒绝
@@ -3874,7 +3874,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       清除只由可靠 `KeyUp`、状态校正和生命周期 `Reset` 决定。此行只保留当时状态。
 
 64. [x] `P6-REMOVE-STARTUP-CONFIG-FIELD`：从当前 v1 配置移除未被产品消费的登录启动布尔值。
-    - 依赖：ADR-0013、正式 startup-item platform snapshot/command、`next` 首版 schema 边界。
+    - 依赖：ADR-0013、正式 startup-item platform snapshot/command、首版 schema 边界。
     - 退出条件：Rust config、JSON Schema、默认 fixture 与 config-store spike 不再序列化或接受
       `application.launch_at_login`；启动项仍只由平台 snapshot 读取并仅由显式 typed command
       修改，外部系统变更可观察；不增加 migration、alias 或旧数据 fallback；共享 schema/fixture、
@@ -3888,7 +3888,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       workspace 门禁，双平台 startup-item lifecycle 继续从 platform snapshot 验证且无配置回归。
 
 65. [x] `P6-REMOVE-DEFERRED-CORNER-RADIUS-FIELD`：从当前 v1 配置移除首发后才实现的窗口圆角字段。
-    - 依赖：Phase 0 行为清单的 `P1 首发后` 决策、`next` 首版 schema 边界。
+    - 依赖：Phase 0 行为清单的 `P1 首发后` 决策、首版 schema 边界。
     - 退出条件：Rust config、JSON Schema、默认 fixture 与 config-store spike 不再序列化或接受
       `overlay.corner_radius_percent`；该 P1 功能仍留在行为清单且不误报为首发实现；不增加 migration、
       alias 或旧数据 fallback；共享 schema/fixture、config 定向测试、完整 workspace 门禁和
@@ -3905,7 +3905,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `overlay.corner_radius_percent` 重新进入当前 v1。此行只保留当时状态。
 
 66. [x] `P6-REMOVE-DEFERRED-HOVER-FIELDS`：从当前 v1 配置移除首发后才实现的指针悬停隐藏字段。
-    - 依赖：Phase 0 行为清单的 `P1 首发后` 决策、`next` 首版 schema 边界。
+    - 依赖：Phase 0 行为清单的 `P1 首发后` 决策、首版 schema 边界。
     - 退出条件：Rust config、JSON Schema、默认 fixture 与 config-store spike 不再序列化或接受
       `overlay.hide_on_pointer_hover` 和 `overlay.hide_on_pointer_hover_delay_ms`；两个旧键各有独立
       reject contract；该 P1 功能仍留在行为清单且不误报为首发实现；不增加 migration、alias 或
@@ -4217,8 +4217,8 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       按 §9 执行了完整 `cargo update`，只升了 4 个与本功能无关的传递依赖补丁版本
       （`synstructure` 0.13.2 → 0.14.0，连带切到 `syn 3`；`yoke-derive` 0.8.2 → 0.8.3；
       `zerofrom-derive` 0.1.7 → 0.1.8；`zlib-rs` 0.6.7 → 0.6.8）。
-      **顺带修复的既有缺陷**：`bongocat-platform` 的示例 `model_source_picker_smoke` 在 `next`
-      上本来就无法编译（已用 `git stash` 在 HEAD 上复现 `objc2_app_kit::NSBackingStoreType`
+      **顺带修复的既有缺陷**：`bongocat-platform` 的示例 `model_source_picker_smoke`
+      本来就无法编译（已用 `git stash` 在 HEAD 上复现 `objc2_app_kit::NSBackingStoreType`
       未解析），因为 `NSBackingStoreType` 属于未被打开的 `NSGraphics` feature；本次因需要修改该
       示例而补上 `"NSGraphics"`。这是与本功能无关的既有缺陷，需要单独复核。
       **未运行**：Windows 实机（无 Windows 机器）、UI 真实点击两个按钮与真实
@@ -4324,7 +4324,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       操作。这推翻本项同日「延迟上界收窄为 `0..=60000` 毫秒」的契约决定，字段改名为
       `overlay.hide_on_pointer_hover_delay_seconds`，范围 `0..=60` 秒、步进 1 秒，与旧版 UI 的
       整秒单位一致；`60000` 毫秒的上界在数值上等于 `60` 秒，因此本次只改单位与名字，不改语义
-      边界。不新增 ADR：同上，不改变架构边界。`next` 仍是全新首版，按 §4.1 直接改当前 v1 schema、
+      边界。不新增 ADR：同上，不改变架构边界。首版仍是全新首版，按 §4.1 直接改当前 v1 schema、
       默认值、fixture 与实现，不引入迁移、alias 或兼容分支；overlay frame loop 与两个平台的
       options 继续以毫秒计时，秒到毫秒的换算集中在 `bongocat_runtime::hover_hide_delay_ms` 一处，
       平台源码在本次修订中未改动。设置页数字输入的步进由 250 毫秒改为 1 秒，AX value 增加 `s`
@@ -4634,7 +4634,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `left-keys` 用 `git mv` 改名为 `AltLeft.png`/`AltRight.png`，字节不变，
       `preset-model3-index.json` 冻结快照同步（重跑 `spikes/model-package` 解析器逐字段相等）；
       ②`bongocat-live2d::key_name_candidates` 中右 Alt 的候选改为 `AltRight`→`AltGr`→`Alt`，
-      `AltGr` 是唯一保留的旧名且只对右侧生效，使**已经安装**的旧模型不回退成共用图（`next` 无
+      `AltGr` 是唯一保留的旧名且只对右侧生效，使**已经安装**的旧模型不回退成共用图（无
       迁移，导入归一化不会回头改写用户数据根里的已有模型）；③`bongocat-model` 新增 `key_names`
       模块，在 store 自己的 staging 上把 `resources/{left-,right-}keys/` 的 `Alt.png`/`AltGr.png`
       改名为 canonical 名，调用点在目录复制与归档解压之后、共用的 `commit_installed_staging`
@@ -5067,7 +5067,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       得到 **exit 0**；在 `ProductShutdown::finish()` 入口临时记录 `forced finish failure` 后，同一
       命令得到 **exit 1**，stderr 输出 `product run failed: forced finish failure`，确认失败发生在
       最终 shutdown 阶段时也会映射到退出码；探针已还原。实现与验证已完成，待按 §0.2
-      在 `next` 提交后勾选。
+      在主线提交后勾选。
     - 当前边界：应用自有的 quit 已 await 完整 `finish()` 并把最终失败列表映射到退出码，因此
       `finish()` 内新产生的失败有明确传播路径；剩余边界仅是 AppKit 自行终止且 shutdown future
       未完成时，只能由 `exit_after_automated_smoke` 检查调用时已存在的失败。
@@ -5086,7 +5086,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       `FlagsChanged` 分支先查表再解码，查不到即计入 `unmapped_keys` 丢弃。
     - 决策（ADR-0049）：地球键 = `Globe`（usage `0xff03`，即 Apple 厂商页 `0xFF` 的 usage `0x03`
       `KeyboardFn` 的折叠值）；**`Fn` 保持原义，`Fn.png` 不改名、不迁移**——若地球键取 `Fn`，旧包
-      里的 `Fn.png`（功能键共享图）与新地球键美术同名，导入归一化无法区分，而 `next` 无迁移路径、
+      里的 `Fn.png`（功能键共享图）与新地球键美术同名，导入归一化无法区分，而本产品无迁移路径、
       已安装模型不会被重新归一化，结果是按 F3 画出地球图、按地球键画出功能键图的双向回归。
       旧名 `Function` 走导入归一化（`Function.png` → `Globe.png`）+ 运行时候选末位别名。
     - 改动：`bongocat-render` 新增 `GLOBE_KEY_USAGE` 作为六处唯一来源；`bongocat-runtime` 新增
@@ -6380,7 +6380,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       六道门通过；`tools/tests` 66 项、fixture validator、locale validator（246 keys × 2）、
       JSON Schema validator 与 `git diff --check` 均通过。
     - 状态（2026-09-24，已提交）：首版实现提交 `1917eae5` 与独立审查后的边界修复均进入
-      `next`。当前未做 Windows/macOS 双平台实机 smoke；仍需用真实动作与表情确认最终姿态、替换、
+      主线。当前未做 Windows/macOS 双平台实机 smoke；仍需用真实动作与表情确认最终姿态、替换、
       显式停止和模型切换观感，因此本项保持未勾选。
 
 108. -[x] `P4-MODEL-FOLDER-DROP`：让设置窗口支持把一个模型文件夹拖到任意页面导入。

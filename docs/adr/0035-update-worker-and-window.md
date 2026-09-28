@@ -301,7 +301,7 @@ check → download → verify → install → 按 §5.3 顺序 shutdown → exec
 - `tools/tests/test_release_changelog_contract.py` 新增 6 个用例；`python3 -m unittest discover
   -s tools/tests` 共 63 项。
 - **既有失败（非本次引入）**：`test_product_version_contract.py` 的
-  `test_runtime_and_ui_use_the_compiled_product_version` 在 `next` 上失败——该测试要求当前工作区版本
+  `test_runtime_and_ui_use_the_compiled_product_version` 失败——该测试要求当前工作区版本
   字面量不出现在指定源文件里，而 `crates/bongocat-update/src/runtime.rs` 的测试夹具 URL 里有三处
   `v1.1.0`（1144、1149、1172 行，`HEAD` 版本即如此，本次未改动该文件）。夹具用哪个版本号不影响它
   要固定的形状，但修与不修属于该测试自己的取舍，未在本次改动范围内。本次新增的测试数据因此一律

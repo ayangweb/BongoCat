@@ -62,15 +62,15 @@
 5. 架构、行为协议或退出条件变化时同步 Technical Design、TODO 和 ADR。
 6. 最终报告列出改动、验证、未运行测试、已知风险和下一项未完成任务。
 
-## 3. 阶段与 `next`
+## 3. 阶段与版本
 
 - 当前为 Phase 0 证据补齐与 Phase 1 渐进实现并行；ADR-0011 授权在外部证据未齐时建立正式 workspace。除非用户改变顺序，按此顺序推进：行为/配置/模型资源考古 → fixture 与规范化 snapshot → GPUI 设置窗口 spike → GPUI 与独立 overlay 共存 spike → Windows 输入可靠性 spike → macOS 输入权限与恢复 spike → Cubism + D3D11/Metal spike → Phase 0 go/no-go。
 - 经自动化 contract 验证且不依赖缺失外部证据的模块可进入正式实现。每次只推进一个最小产品闭环，并持续维护 Phase 0/发布证据。
 - Phase 0 退出前：不实现完整设置 UI；不批量迁移历史功能；未经授权不删除历史源码和行为对照；不宣称 Live2D、输入可靠性或双平台渲染完成；不为目录美观预建大量空 crate。
 - Phase 0 未完成不阻止正式 workspace、runtime、config、model contract 或最小产品窗口。stable 发布仍需 Cubism 书面授权、SDK 分发、实机输入、UI/主题、GPU、签名、Windows 实机安装/升级/卸载和 soak 证据；缺失时不得分发含受限 artifact 的安装包。
-- `next` 只面向全新的首版，不考虑历史版本兼容和迭代迁移。当前完整数据结构统一使用 `schema_version: 1`；`next` 开发期的中间结构或版本号也不兼容。
+- 首版只面向全新的数据结构，不考虑历史版本兼容和迭代迁移。当前完整数据结构统一使用 `schema_version: 1`；开发期的中间结构或版本号也不兼容。
 - 删除并禁止新增迁移、schema 兼容、旧数据转换和历史版本判断。新增字段直接更新当前 v1 schema、默认值、fixture 和实现，不增加中间版本分支、转换器或 fallback。
-- 保留显式 `schema_version` 和单一版本解析入口；非 v1 明确拒绝且不自动转换。`next` 首次正式发布后，后续版本才可基于该版本新增顺序、幂等迁移，并单独建立设计、测试和发布门禁。
+- 保留显式 `schema_version` 和单一版本解析入口；非 v1 明确拒绝且不自动转换。首次正式发布后，后续版本才可基于该版本新增顺序、幂等迁移，并单独建立设计、测试和发布门禁。
 
 ## 4. 架构边界
 
@@ -156,7 +156,7 @@ Issue #47 的“按下后无释放”必须从架构处理，不能只增加动�
 
 ## 7. 配置、文件安全与更新
 
-- 配置显式包含 `schema_version: 1`，`next` 只接受当前完整 v1；不做迁移、兼容转换、旧 Tauri/Pinia 探测、字段 alias、自动导入或目录 fallback。
+- 配置显式包含 `schema_version: 1`，只接受当前完整 v1；不做迁移、兼容转换、旧 Tauri/Pinia 探测、字段 alias、自动导入或目录 fallback。
 - JSON key 使用 `snake_case` 和当前产品领域名称。
 - 构建产物固定携带 Development/Production 环境，运行时输入不得切换。
 - 配置、状态、模型、备份、日志、锁、单实例命名和更新 channel 全部按环境隔离。
@@ -252,28 +252,25 @@ just schema                                              # 从 Rust 类型生成
 
 ### 9.5 CHANGELOG 编写规则
 
-- 当前分支为 `next` 时，编写 changelog 前必须先对比重构前后的代码与功能，确认功能的实际新增、修改或修复；不得把重构前已经存在且没有实质变化的功能重复写入 changelog，只记录本次重构带来的变化。
-- 当前分支不是 `next` 时，无需进行上述重构前后对比，相关新增、修改或修复内容直接写入 changelog。
 - changelog 中没有对应的下一个版本标题时，统一将内容写入 `Unreleased`，不得自行创建版本标题。
 
 ## 10. 历史源码、Git 与交付
 
 - 历史源码只作行为考古和模型兼容参考；TODO 10.3 后只保留在受保护的远端
-  `pre-refactor-tauri` 分支。`next` 合并进入 `master` 后，`master` 承载当前代码，不作为旧实现参考。
+  `pre-refactor-tauri` 分支。`master` 承载当前代码，不作为旧实现参考。
 - 不在远端历史实现上扩展 BongoCat，不重新接入当前工作树或产品依赖图；读取配置和模型样本不得原地修改；结论须由实际代码、配置或实机行为证明。
 - 上游 [MMmmmoko/Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver) 是输入、模型装配、Live2D 更新顺序和产品行为的固定参考。先查阅 `docs/migration/bongo-cat-mver-reference.md` 的 commit 和关键文件，再结合 Technical Design 与 ADR-0030；不得直接复制 C++ 业务代码或让旧架构覆盖当前边界。
-- 当前目标分支是 `next`。未经用户要求不创建、删除、重命名或切换分支；不 reset、checkout、覆盖或格式化无关文件。
+- 当前工作分支从 `master` 起步。未经用户要求不创建、删除、重命名或切换分支；不 reset、checkout、覆盖或格式化无关文件。
 - 未经用户明确要求，不 commit、push 或 release。要求 commit 时先检查分支：
   - `master`：禁止直接提交；按实际改动创建 `<type>/<short-topic>` 语义分支后提交，例如 `feat/native-overlay`、`fix/input-release`、`docs/phase-0-plan`。
-  - `next`：直接在 `next` 提交，不询问切换。
   - 其他分支：用户未明确当前分支或新分支时，先询问；得到答复前不得 commit。用户已指定时照做，不重复询问。
 - Commit message 必须依据实际 staged diff，遵循 Conventional Commits 的 `<type>: <summary>`；只有 scope 有明确区分价值时使用 `<type>(<scope>): <summary>`。
 - 常用 type：`feat`、`fix`、`docs`、`test`、`refactor`、`perf`、`build`、`ci`、`chore`；不得使用 `update`、`changes`、`misc`。summary 用简洁英文祈使句、不加句号、建议不超过 72 字符；不兼容变更加 `!`，正文写 `BREAKING CHANGE:`。提交前核对 staged diff，排除未暂存或无关改动。
 - **推送顺序固定为「先拉取上游 → 解决冲突 → 再提交推送」。** 动手写代码前先
-  `git fetch`（必要时 `git pull --ff-only`）把 `origin/next` 同步到最新，在最新上游之上工作；
+  `git fetch`（必要时 `git pull --ff-only`）把上游同步到最新，在最新上游之上工作；
   提交前若发现远端已有新 commit，必须先把上游改动拉进来并解决冲突，再提交自己的改动。
   禁止先 commit 自己的改动、再 merge 远端：那样会留下
-  `Merge remote-tracking branch 'origin/next' into next` 这类 merge commit，污染线性历史。
+  `Merge remote-tracking branch 'origin/master' into <branch>` 这类 merge commit，污染线性历史。
 - 因此推送前的固定顺序是：fetch → 把上游改动合入当前工作树并解决冲突 → 在合并后的树上跑完整
   验证（`fmt`/`clippy`/`test`/`--release` check 加平台 smoke）→ 提交 → push。上游已合入后要重新
   验证，不能沿用合入前的结论，因为上游可能改动同一文件或同一行为。

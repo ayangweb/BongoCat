@@ -1,8 +1,8 @@
 # BongoCat Product Runtime
 
 The repository root is the formal workspace and the only product build entry. The previous
-implementation is retained only in the remote `pre-refactor-tauri` branch; `master` will receive
-`next` and carry the current code rather than a historical implementation.
+implementation is retained only in the remote `pre-refactor-tauri` branch; `master` carries the
+current code rather than a historical implementation.
 
 ## Build Environments
 

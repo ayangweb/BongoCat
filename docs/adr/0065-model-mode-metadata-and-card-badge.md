@@ -75,7 +75,7 @@ GPUI 页面只消费 snapshot，不读取 config、不扫描模型目录，也�
 
 ### 6. 当前 v1 直接增加必填字段
 
-`next` 尚未发布完整 v1，因此不增加 schema 版本、migration、alias 或旧字段 fallback。缺少 `input_mode` 的 installed metadata、未知枚举值或其它旧开发结构都不是当前完整 v1，按现有严格配置恢复边界处理。Development 与 Production 使用相同结构、不同存储根。
+完整 v1 尚未发布，因此不增加 schema 版本、migration、alias 或旧字段 fallback。缺少 `input_mode` 的 installed metadata、未知枚举值或其它旧开发结构都不是当前完整 v1，按现有严格配置恢复边界处理。Development 与 Production 使用相同结构、不同存储根。
 
 ## 结果
 

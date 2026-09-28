@@ -116,7 +116,7 @@ source」步骤在**构建之前**就断言这件事，所以标题写错只需�
 git commit -m "chore: release v2.0.0"
 # 4. 打 tag 并推送，流水线按 tag 触发
 git tag -a v2.0.0 -m "Release 2.0.0"
-git push origin next && git push origin v2.0.0
+git push origin master && git push origin v2.0.0
 ```
 
 改完第 2 步先本地验一次，避免构建跑完才发现发布说明取不到：

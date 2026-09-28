@@ -55,8 +55,8 @@ CLI/API，并且 Production 构建与该 feature 的组合在编译期失败。
 
 BongoCat 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一使用 `snake_case`，名称从当前产品领域语义定义，不保留旧字段 alias。
 
-`next` 是全新的初始版本，当前完整 `config.json` 与 `window-state.json` 都以 `schema_version: 1`
-开始。在 `next` 首次正式发布前，新增字段直接修改当前 v1，不保留开发中间结构，也不实现迁移、
+初始版本是全新的，当前完整 `config.json` 与 `window-state.json` 都以 `schema_version: 1`
+开始。在首次正式发布前，新增字段直接修改当前 v1，不保留开发中间结构，也不实现迁移、
 旧数据转换或历史版本兼容判断。解析边界保留版本字段并拒绝非 v1 数据，避免静默改写未知格式。
 首次正式发布后，后续版本才以实际发布的 v1 为基线单独设计顺序、幂等迁移。
 
@@ -79,7 +79,7 @@ BongoCat 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一使用 
 - 工作区直接 Cargo 命令默认 Development；Production build/package 必须显式启用
   `bongocat-app/production`。
 - Production 构建不能携带存储根注入能力；需要隔离临时数据根的进程级测试必须使用独立 Development 测试产物并显式启用 `storage-test-injection`。
-- `next` 开发过程中产生的旧 schema 或中间数据需要删除并重新生成，不属于产品兼容输入。
+- 开发过程中产生的旧 schema 或中间数据需要删除并重新生成，不属于产品兼容输入。
 
 ## Verification
 
@@ -91,4 +91,4 @@ BongoCat 不读取或导入旧 Tauri/Pinia 配置。配置 JSON 键统一使用 
 - 验证锁、日志、备份、模型目录和更新 channel 均无跨环境访问。
 - 发布产物验证 Bundle ID 精确等于 `com.ayangweb.bongo-cat`。
 - 扫描发布依赖和运行日志，确认没有旧 Tauri/Pinia 配置探测。
-- 扫描 `next` 产品代码，确认不存在 schema migration、字段 alias 或旧结构转换路径。
+- 扫描产品代码，确认不存在 schema migration、字段 alias 或旧结构转换路径。
