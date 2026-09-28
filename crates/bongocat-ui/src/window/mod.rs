@@ -24,7 +24,7 @@ use bongocat_platform::{
 };
 use gpui_kit::component::{
     ActiveTheme, Disableable, Icon, IndexPath, Root, Theme, ThemeMode, ThemeStyled, WindowExt,
-    button::{Button, ButtonVariants},
+    button::{Button, ButtonVariant, ButtonVariants},
     checkbox::Checkbox,
     dialog::{Dialog, DialogButtonProps},
     group_box::GroupBoxVariant,

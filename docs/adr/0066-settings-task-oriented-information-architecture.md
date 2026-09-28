@@ -84,7 +84,8 @@ GPUI Kit 的搜索只匹配设置项标题、描述和显式关键词，不匹�
 - Appearance 与 About 删除与页面标题重复的操作分组标题；About 只保留产品信息和支持动作，
   不再在设置页展示法律与隐私正文。
 - About 的操作行使用标准设置项和按钮，打开日志目录由 settings service 持有路径；UI 不把
-  存储路径放进 revisioned snapshot。
+  存储路径放进 revisioned snapshot。行描述只在标题与按钮说不清时出现：项目主页行只显示链接，
+  日志目录行没有描述。
 - Model library 仍是 `GroupBoxVariant::Normal` 的自绘卡片网格；Model behavior 使用窗口默认
   Outline。ADR-0056 只适用于前者。
 - 页面名称、图标、顺序及旧名称搜索别名由 `bongocat-ui` 的导航 contract 统一拥有；各分组的

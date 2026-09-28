@@ -10,7 +10,7 @@ pub(super) const FEEDBACK_URL: &str = "https://github.com/ayangweb/BongoCat/issu
 /// Every user-visible string on the About page belongs to this small contract.
 /// Keeping it beside the page assembly makes the settings smoke check cover
 /// the same rows that users can actually reach.
-pub(super) const ABOUT_LOCALIZED_KEYS: [&str; 17] = [
+pub(super) const ABOUT_LOCALIZED_KEYS: [&str; 15] = [
     "about.product_information.version.title",
     "about.software_information.title",
     "about.software_information.description",
@@ -19,13 +19,11 @@ pub(super) const ABOUT_LOCALIZED_KEYS: [&str; 17] = [
     "about.software_information.platform",
     "about.software_information.architecture",
     "about.project.title",
-    "about.project.description",
     "about.project.action",
     "about.feedback.title",
     "about.feedback.description",
     "about.feedback.action",
     "about.logs.title",
-    "about.logs.description",
     "about.logs.action",
     "update.about.label",
 ];
@@ -73,6 +71,38 @@ fn product_info_description(snapshot: Option<&SettingsSnapshot>) -> String {
 /// every other settings destination. The buttons are deliberately one-shot
 /// actions: this page does not invent a second persisted preference for
 /// information that is already owned by the application and its services.
+///
+/// The page shows one button per row, so five same-coloured buttons in a
+/// column are told apart by their labels alone. The page is a quiet one, so it
+/// uses three tiers instead of a colour per row: checking for updates is the
+/// single filled `primary` action, reporting an issue is the one row that wants
+/// an answer and carries `danger`, and the three rows that only read or open
+/// something stay on the library's plain default button. A colour that means
+/// nothing on its row is noise, and every colour that is used comes from the
+/// active theme rather than a hardcoded value, which needs no branch for a
+/// light/dark switch:
+///
+/// | row | variant | reads as |
+/// | --- | --- | --- |
+/// | checking for updates | `primary` | the one action that changes the app |
+/// | copy software information | `Default` | a read-only action |
+/// | open the project home | `Default` | a read-only action |
+/// | report an issue | `danger` + outline | the row that wants an answer |
+/// | open the log folder | `Default` | a read-only action |
+///
+/// `danger` is borrowed here as "this one wants an answer", not as a claim that
+/// the action is destructive; the window's own destructive surfaces keep their
+/// own `danger` controls.
+///
+/// A row carries a description only when it has something the title and the
+/// button cannot say: the build identity under the product row, what gets
+/// copied under "Software information", and what to copy first under "Problem
+/// feedback". The project row shows the URL and the log row shows nothing,
+/// because a sentence beside an open-the-link button repeats it.
+///
+/// The two rows that open a location label their button with the bare verb
+/// ("Open"), because the row title beside it already names what is opened and a
+/// longer label only widens the button.
 pub(super) fn operational_group(
     view: Entity<SettingsView>,
     snapshot: Option<&SettingsSnapshot>,
@@ -116,7 +146,7 @@ pub(super) fn operational_group(
                         "about.software_information.copy",
                     ))
                     .with_size(options.size())
-                    .secondary()
+                    .with_variant(ButtonVariant::Default)
                     .disabled(!available)
                     .on_click(move |_, _, app| {
                         action_view.update(app, |view, cx| view.copy_software_info(cx));
@@ -131,11 +161,9 @@ pub(super) fn operational_group(
     .keywords(keywords.clone());
 
     let project_view = view.clone();
-    let project_description = format!(
-        "{}\n{}",
-        bongocat_i18n::text(locale, "about.project.description"),
-        PROJECT_SOURCE_URL
-    );
+    // The row's description is the link itself: a second sentence about the
+    // source, releases or progress repeats what the button and the URL already
+    // say, and the URL is the part a reader may want to select or type.
     let project = SettingItem::new(
         bongocat_i18n::text(locale, "about.project.title"),
         SettingField::element(
@@ -145,7 +173,7 @@ pub(super) fn operational_group(
                 Button::new("about-open-project-source-button")
                     .label(bongocat_i18n::text(locale, "about.project.action"))
                     .with_size(options.size())
-                    .secondary()
+                    .with_variant(ButtonVariant::Default)
                     .disabled(!available)
                     .on_click(move |_, _, app| {
                         action_view.update(app, |view, cx| view.open_project_source(cx));
@@ -153,7 +181,7 @@ pub(super) fn operational_group(
             },
         ),
     )
-    .description(project_description)
+    .description(PROJECT_SOURCE_URL.to_owned())
     .keywords(keywords.clone());
 
     let feedback_view = view.clone();
@@ -166,7 +194,8 @@ pub(super) fn operational_group(
                 Button::new("about-open-feedback-button")
                     .label(bongocat_i18n::text(locale, "about.feedback.action"))
                     .with_size(options.size())
-                    .secondary()
+                    .danger()
+                    .outline()
                     .disabled(!available)
                     .on_click(move |_, _, app| {
                         action_view.update(app, |view, cx| view.open_feedback(cx));
@@ -178,6 +207,9 @@ pub(super) fn operational_group(
     .keywords(keywords.clone());
 
     let logs_view = view.clone();
+    // No description: this row opens the log folder rather than explaining it,
+    // and the size, level and retention limits are already settings of their own
+    // under "App & system > Logging".
     let logs = SettingItem::new(
         bongocat_i18n::text(locale, "about.logs.title"),
         SettingField::element(
@@ -187,7 +219,7 @@ pub(super) fn operational_group(
                 Button::new("about-open-logs-button")
                     .label(bongocat_i18n::text(locale, "about.logs.action"))
                     .with_size(options.size())
-                    .secondary()
+                    .with_variant(ButtonVariant::Default)
                     .disabled(!available)
                     .on_click(move |_, _, app| {
                         action_view.update(app, |view, cx| view.open_logs_location(cx));
@@ -195,7 +227,6 @@ pub(super) fn operational_group(
             },
         ),
     )
-    .description(bongocat_i18n::text(locale, "about.logs.description"))
     .keywords(keywords);
 
     SettingGroup::new().items([product, software, project, feedback, logs])

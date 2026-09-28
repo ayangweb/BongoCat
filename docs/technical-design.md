@@ -546,6 +546,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   不显示重复描述。Model window 继续按 Window behavior、Window appearance、Window performance 分组。About 的
   操作行使用标准设置项：产品信息/手动检查更新、隐私安全的软件信息复制、项目主页、问题反馈和打开
   application-owned 日志目录；日志路径不进入 SettingsSnapshot，由 settings service 持有并校验。
+  About 的描述只在标题和按钮说不清时才出现：产品信息行显示 build 标识，软件信息行说明复制内容，
+  问题反馈行提示先复制软件信息；项目主页行只显示链接，日志目录行不显示描述。About 的操作按钮
+  以「检查更新」为唯一实心 `primary`，「反馈问题」用 `danger` 描边，复制、项目主页与日志目录三行
+  保持组件库默认按钮，使颜色本身始终携带含义。
   About 不再展示法律与隐私正文。页面与分组标题同时作为设置搜索关键词，
   旧页面名保留为只搜索的别名；模型库还索引当前模型显示名。About 位于同一菜单的最后一项。
   配置损坏在 settings window 出现前完成 fallback，不显示配置恢复横幅、按钮或重启提示。

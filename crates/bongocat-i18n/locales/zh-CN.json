@@ -68,8 +68,7 @@
     },
     "project": {
       "title": "项目主页",
-      "description": "查看 BongoCat 的源代码、发布说明和开发进展。",
-      "action": "打开项目主页"
+      "action": "打开"
     },
     "feedback": {
       "title": "问题反馈",
@@ -78,8 +77,7 @@
     },
     "logs": {
       "title": "软件日志",
-      "description": "本机日志，自动限制大小与保留天数。",
-      "action": "打开日志目录"
+      "action": "打开"
     }
   },
   "models": {
