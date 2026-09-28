@@ -25,7 +25,7 @@
 ### 🎨 Interface
 
 - The software information copied from the About page is now a JSON report, with stable field names that do not change with the interface language.
-- The report also names the operating system version and build, the Cubism Core version, and the current runtime and input state. It still contains no file paths, model names or configured values.
+- The report also names the operating system version and build, the Cubism Core version, and the current runtime and input state — including whether BongoCat is running as administrator on Windows, or has Input Monitoring access on macOS. It still contains no file paths, model names or configured values.
 
 ### 🐛 Bug Fixes
 

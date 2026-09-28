@@ -13,33 +13,35 @@ use super::*;
 use super::model_projection::*;
 use super::projection::*;
 
-/// How long an input-monitoring permission answer stays usable.
+/// How long an input-capability answer stays usable.
 ///
-/// The system answers this query through a TCC round trip on its own dispatch queue,
-/// which costs milliseconds and dominated the settings snapshot profile: every snapshot
-/// used to pay it, once per settings command, once per settings refresh and once per
-/// system-menu poll. The value only decides what the diagnostics page displays, and the
-/// input service re-checks the permission itself before it creates or restarts an event
-/// tap, so a bounded staleness here changes nothing that matters.
-pub(super) const INPUT_MONITORING_PERMISSION_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+/// On macOS the system answers this query through a TCC round trip on its own
+/// dispatch queue, which costs milliseconds and dominated the settings snapshot
+/// profile: every snapshot used to pay it, once per settings command, once per
+/// settings refresh and once per system-menu poll. The value reaches the
+/// snapshot, the change log and the software information a user pastes into a
+/// report, and the input service re-checks the capability itself before it
+/// creates or restarts an event tap, so a bounded staleness here changes nothing
+/// that matters. It is cached rather than read once per build for the same
+/// reason: nothing above needs a value that is fresh to the microsecond.
+pub(super) const INPUT_CAPABILITY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
-/// The system input-monitoring permission, re-read at most once per
-/// [`INPUT_MONITORING_PERMISSION_REFRESH_INTERVAL`].
+/// The system's input capability, re-read at most once per
+/// [`INPUT_CAPABILITY_REFRESH_INTERVAL`].
 #[derive(Default)]
-pub(super) struct InputMonitoringPermissionCache {
+pub(super) struct InputCapabilityCache {
     checked_at: Option<Instant>,
-    value: SettingsInputMonitoringPermission,
+    value: SettingsInputCapability,
 }
 
-impl InputMonitoringPermissionCache {
+impl InputCapabilityCache {
     pub(super) fn resolve(
         &mut self,
         now: Instant,
-        probe: impl FnOnce() -> SettingsInputMonitoringPermission,
-    ) -> SettingsInputMonitoringPermission {
+        probe: impl FnOnce() -> SettingsInputCapability,
+    ) -> SettingsInputCapability {
         let expired = self.checked_at.is_none_or(|checked_at| {
-            now.saturating_duration_since(checked_at)
-                >= INPUT_MONITORING_PERMISSION_REFRESH_INTERVAL
+            now.saturating_duration_since(checked_at) >= INPUT_CAPABILITY_REFRESH_INTERVAL
         });
         if expired {
             self.value = probe();
@@ -57,7 +59,7 @@ pub(super) struct SettingsSnapshotClock {
     observed_startup_item: Option<SettingsStartupItemStatus>,
     observed_overlay_visible: Option<bool>,
     diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
-    input_monitoring_permission: InputMonitoringPermissionCache,
+    input_capability: InputCapabilityCache,
 }
 
 impl SettingsSnapshotClock {
@@ -70,16 +72,16 @@ impl SettingsSnapshotClock {
             observed_startup_item: None,
             observed_overlay_visible: None,
             diagnostics_export: None,
-            input_monitoring_permission: InputMonitoringPermissionCache {
+            input_capability: InputCapabilityCache {
                 checked_at: None,
-                value: SettingsInputMonitoringPermission::Unsupported,
+                value: SettingsInputCapability::unobserved(),
             },
         }
     }
 
-    pub(super) fn input_monitoring_permission(&mut self) -> SettingsInputMonitoringPermission {
-        self.input_monitoring_permission
-            .resolve(Instant::now(), system_input_monitoring_permission)
+    pub(super) fn input_capability(&mut self) -> SettingsInputCapability {
+        self.input_capability
+            .resolve(Instant::now(), system_input_capability)
     }
 
     pub(super) fn observe_config(&mut self, config_revision: Option<u64>) {
@@ -272,7 +274,7 @@ pub(super) fn observe_snapshot_state(
     let input_diagnostics = settings_input_diagnostics(
         &runtime.input,
         runtime.platform_input,
-        clock.input_monitoring_permission(),
+        clock.input_capability(),
     );
     clock.observe_config(application.config_revision());
     let runtime_diagnostics = settings_runtime_diagnostics(&runtime);
@@ -314,21 +316,21 @@ pub(super) fn observe_snapshot_state(
                 ),
             );
         }
-        if previous.input_monitoring_permission != input_diagnostics.input_monitoring_permission {
-            match input_diagnostics.input_monitoring_permission {
-                SettingsInputMonitoringPermission::Denied => application.record_log(
-                    ApplicationLogEvent::new(ApplicationLogCode::InputPermissionUnavailable)
-                        .with_context(ApplicationLogContext::Reason("permission_denied")),
-                ),
-                SettingsInputMonitoringPermission::Granted => application.record_log(
-                    ApplicationLogEvent::new(ApplicationLogCode::InputStatusChanged)
-                        .with_context(ApplicationLogContext::State("input_monitoring_granted")),
-                ),
-                SettingsInputMonitoringPermission::Unsupported => application.record_log(
-                    ApplicationLogEvent::new(ApplicationLogCode::InputStatusChanged)
-                        .with_context(ApplicationLogContext::State("input_monitoring_unsupported")),
-                ),
-            }
+        // The record names the capability the platform actually gates input
+        // behind, so a Windows line says `source=administrator` and a macOS one
+        // says `source=input_monitoring`. Spelling either platform's gate as the
+        // other's is what made the previous `input_monitoring_unsupported` state
+        // wrong everywhere except macOS. The code carries present/absent and the
+        // context names which capability, so neither half has to be assembled
+        // into one string that could drift from the platform's own name.
+        if previous.input_capability != input_diagnostics.input_capability {
+            let capability = ApplicationLogContext::Source(input_diagnostics.input_capability.name);
+            let code = if input_diagnostics.input_capability.available {
+                ApplicationLogCode::InputStatusChanged
+            } else {
+                ApplicationLogCode::InputPermissionUnavailable
+            };
+            application.record_log(ApplicationLogEvent::new(code).with_context(capability));
         }
         if input_diagnostics.transport_queue_full > previous.transport_queue_full {
             application.record_log_once(

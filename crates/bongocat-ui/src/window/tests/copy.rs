@@ -70,7 +70,8 @@ fn the_report_names_the_facts_a_bug_triage_needs() {
         "runtime_health",
         "runtime_error_code",
         "input_service_status",
-        "input_monitoring_permission",
+        "input_capability",
+        "input_capability_available",
         "connected_gamepad_count",
         "input_release_reconciliations",
     ] {
@@ -87,6 +88,57 @@ fn the_report_names_the_facts_a_bug_triage_needs() {
             .expect("a Cubism version string")
             .is_empty()
     );
+}
+
+/// The report has to name the capability the running platform actually gates
+/// input behind, with the state this process is in.
+///
+/// A Windows report used to say `input_monitoring_permission: "unsupported"`,
+/// which reads as "this platform has no such concept" when the truth is "this
+/// platform gates input behind elevation, and you are not elevated" — the one
+/// answer that decides whether raw input keeps arriving while an elevated window
+/// has focus. So the two fields below are the whole contract: the name is the
+/// platform's own, and the boolean is that platform's own question.
+#[test]
+fn the_report_names_the_platform_input_capability_and_whether_we_have_it() {
+    for (name, available) in [("administrator", false), ("input_monitoring", true)] {
+        let mut snapshot = crate::tests::snapshot(1, true, true);
+        snapshot.input_diagnostics.input_capability =
+            crate::SettingsInputCapability { name, available };
+        let report = super::super::about::SoftwareInformation::read(&snapshot)
+            .to_json()
+            .expect("serialize the report");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&report).expect("the report is valid JSON");
+        assert_eq!(parsed["input_capability"], name);
+        assert_eq!(parsed["input_capability_available"], available);
+    }
+}
+
+/// A report that says the platform has no permission concept is worse than one
+/// that says nothing about it, because a maintainer reads it as a fact about the
+/// build. The shape has to keep making room for the platform's own answer.
+#[test]
+fn the_report_never_claims_a_platform_has_no_input_permission_concept() {
+    let mut snapshot = crate::tests::snapshot(1, true, true);
+    snapshot.input_diagnostics.input_capability = crate::SettingsInputCapability {
+        name: "administrator",
+        available: false,
+    };
+    let report = super::super::about::SoftwareInformation::read(&snapshot)
+        .to_json()
+        .expect("serialize the report");
+    for retired in [
+        "unsupported",
+        "granted",
+        "denied",
+        "input_monitoring_permission",
+    ] {
+        assert!(
+            !report.contains(retired),
+            "the report still carries the macOS-only permission vocabulary: {retired}"
+        );
+    }
 }
 
 /// The privacy rule is enforced by what the document chooses to serialize, and

@@ -7,7 +7,7 @@
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SettingsInputDiagnostics {
-    pub input_monitoring_permission: SettingsInputMonitoringPermission,
+    pub input_capability: SettingsInputCapability,
     pub service_status: SettingsInputServiceStatus,
     pub service_error_code: Option<&'static str>,
     pub service_start_attempts: u64,
@@ -44,28 +44,52 @@ pub struct SettingsInputDiagnostics {
     pub transport_runtime_stopped: u64,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum SettingsInputMonitoringPermission {
-    #[default]
-    Unsupported,
-    Denied,
-    Granted,
+/// The platform capability global input needs, and whether this process has it.
+///
+/// Each platform gates input behind exactly one thing, and the two are not the
+/// same kind of thing: macOS asks the user for the Input Monitoring TCC grant,
+/// while Windows needs an elevated token to keep receiving Raw Input while a
+/// higher-integrity window is in the foreground (ADR-0032). A single
+/// granted/denied/unsupported enum can only name the macOS case — `unsupported`
+/// on Windows says "this platform has no such concept" when the truth is "this
+/// platform has a different one, and right now the process does not have it".
+/// Naming the capability and saying whether it is present is true on both
+/// platforms and actionable on both.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsInputCapability {
+    /// The platform's own stable name for it: `input_monitoring` on macOS,
+    /// `administrator` on Windows. Anonymous by construction — a capability name
+    /// is a property of the platform, never of the machine or the user.
+    pub name: &'static str,
+    /// Whether this process currently has the capability.
+    pub available: bool,
 }
 
-impl SettingsInputMonitoringPermission {
-    /// The stable code a report and the application log share for a permission.
-    ///
-    /// `unsupported` is a real answer rather than a missing one: a platform that
-    /// never gates input behind a permission reports it, so "this build cannot
-    /// ask" and "the user said no" stay distinguishable in a bug report.
-    pub const ALL: [Self; 3] = [Self::Unsupported, Self::Denied, Self::Granted];
+/// The capability name a snapshot carries before the service has observed one.
+///
+/// A snapshot the settings service fills always carries the platform's real
+/// capability name. This exists because [`SettingsInputDiagnostics`] derives
+/// `Default` for its fixtures, and an unobserved capability is reported as
+/// unavailable rather than assumed to be present.
+const UNOBSERVED_INPUT_CAPABILITY: &str = "unknown";
 
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Unsupported => "unsupported",
-            Self::Denied => "denied",
-            Self::Granted => "granted",
+impl SettingsInputCapability {
+    /// A capability no platform has answered for yet.
+    ///
+    /// Named rather than left to `Default` so the settings snapshot clock can
+    /// seed one inside a `const fn`, and so a reader of that constructor sees
+    /// "not observed" instead of "default".
+    pub const fn unobserved() -> Self {
+        Self {
+            name: UNOBSERVED_INPUT_CAPABILITY,
+            available: false,
         }
+    }
+}
+
+impl Default for SettingsInputCapability {
+    fn default() -> Self {
+        Self::unobserved()
     }
 }
 

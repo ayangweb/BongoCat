@@ -550,8 +550,14 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   比较和引用。字段只包含 build 与进程事实——产品版本、build environment、Cubism Core 版本、平台与
   架构、操作系统版本与 build（由 `bongocat-platform` 在复制时向系统查询，因此不会像 revisioned
   snapshot 里的值一样过期）、界面语言、runtime health 与最近一次 render error code、input service
-  状态与输入监控权限、已连接手柄数、input release 校正计数；不含任何路径、模型名、日志正文、快捷键
-  或用户配置值。系统无法自报版本时该字段缺省而不是填占位值。
+  状态、平台输入能力名与其是否具备（`input_capability` + `input_capability_available`）、已连接
+  手柄数、input release 校正计数；不含任何路径、模型名、日志正文、快捷键或用户配置值。系统无法
+  自报版本时该字段缺省而不是填占位值。
+  输入能力不是一个跨平台同形的 granted/denied/unsupported：macOS 门在 TCC Input Monitoring，
+  Windows 门在提权令牌（`TokenElevation`，高完整性前台窗口存在时 Raw Input 才会继续送达，
+  ADR-0032），因此契约用「平台自己的能力名 + 本进程是否具备」表达，两平台都真、都有用。
+  早期实现用 macOS 语汇的 `input_monitoring_permission`，在 Windows 上报 `unsupported`，
+  读起来像「该平台没有权限概念」而实际是「门在提权上且当前未提权」，已随本字段改为能力模型。
   About 的描述只在标题和按钮说不清时才出现：产品信息行显示 build 标识，软件信息行说明复制内容，
   问题反馈行提示先复制软件信息；项目主页行只显示链接，日志目录行不显示描述。About 的操作按钮
   以「检查更新」为唯一实心 `primary`，「反馈问题」用 `danger` 描边，复制、项目主页与日志目录三行

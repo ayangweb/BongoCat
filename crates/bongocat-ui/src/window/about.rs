@@ -70,7 +70,19 @@ pub(super) struct SoftwareInformation {
     /// field in the document for a model that renders black or not at all.
     runtime_error_code: Option<&'static str>,
     input_service_status: &'static str,
-    input_monitoring_permission: &'static str,
+    /// What this platform gates global input behind, by the platform's own name:
+    /// `input_monitoring` on macOS and `administrator` on Windows.
+    ///
+    /// Naming it rather than assuming one shape is what lets a Windows report
+    /// answer the question that matters there — is the process elevated — and a
+    /// macOS one answer whether the TCC grant was given. A single
+    /// granted/denied/unsupported field could only ever describe the second
+    /// (ADR-0032).
+    input_capability: &'static str,
+    /// Whether this process has that capability right now. On Windows this is
+    /// the elevation state, which is what decides whether raw input keeps
+    /// arriving while a higher-integrity window has focus.
+    input_capability_available: bool,
     connected_gamepad_count: usize,
     /// How many times the input service has had to clear a pressed key or button
     /// without a matching release edge from the platform: a state reconcile, a
@@ -109,7 +121,8 @@ impl SoftwareInformation {
                 .render_error
                 .map(SettingsRuntimeErrorCode::as_str),
             input_service_status: input.service_status.as_str(),
-            input_monitoring_permission: input.input_monitoring_permission.as_str(),
+            input_capability: input.input_capability.name,
+            input_capability_available: input.input_capability.available,
             connected_gamepad_count: input.connected_gamepad_count,
             input_release_reconciliations: input
                 .reconciled_release

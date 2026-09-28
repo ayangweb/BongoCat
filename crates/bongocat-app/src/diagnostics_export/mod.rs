@@ -421,12 +421,12 @@ mod tests {
     use bongocat_ui_protocol::SettingsGamepadAutoSwitch;
     use bongocat_ui_protocol::{
         SettingsBuildEnvironment, SettingsBuildInfo, SettingsGamepadAxisSettings,
-        SettingsInputMonitoringPermission, SettingsLanguage, SettingsLogging,
-        SettingsModelBehavior, SettingsModelCatalog, SettingsModelDiagnostic, SettingsModelEntry,
-        SettingsModelKey, SettingsModelMode, SettingsModelSettings, SettingsOverlay,
-        SettingsRandomBehavior, SettingsRuntimeCommandFailure,
-        SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics, SettingsShortcuts,
-        SettingsStartupItemState, SettingsStartupItemStatus, SettingsTheme,
+        SettingsInputCapability, SettingsLanguage, SettingsLogging, SettingsModelBehavior,
+        SettingsModelCatalog, SettingsModelDiagnostic, SettingsModelEntry, SettingsModelKey,
+        SettingsModelMode, SettingsModelSettings, SettingsOverlay, SettingsRandomBehavior,
+        SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
+        SettingsRuntimeDiagnostics, SettingsShortcuts, SettingsStartupItemState,
+        SettingsStartupItemStatus, SettingsTheme,
     };
     use std::path::PathBuf;
     use tempfile::tempdir;
@@ -500,7 +500,7 @@ mod tests {
                 duplicate_down: 7,
                 transport_queue_full: 8,
                 transport_recovered_after_overflow: 9,
-                input_monitoring_permission: SettingsInputMonitoringPermission::Unsupported,
+                input_capability: SettingsInputCapability::unobserved(),
                 ..SettingsInputDiagnostics::default()
             },
             active_model: Some(SettingsModelKey {
