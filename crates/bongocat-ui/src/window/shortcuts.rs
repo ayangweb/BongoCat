@@ -1,0 +1,404 @@
+use super::*;
+
+impl SettingsView {
+    /// Whether a shortcut target's row accepts edits under the unified gate
+    /// rule: its scope's switch is on in the current snapshot.
+    ///
+    /// This is the guard arm of the binding between a gate switch and the
+    /// rows it controls (`setting_gate`): the visible rows stop offering
+    /// interaction and
+    /// the mutating methods refuse to act on a target whose gate is off — so
+    /// changes nothing. Structural blocking (no snapshot, an import running) is
+    /// covered by the existing availability checks at each call site.
+    fn shortcut_target_editable(&self, target: &ShortcutCaptureTarget) -> bool {
+        self.snapshot.as_ref().is_some_and(|snapshot| {
+            shortcuts_page::ShortcutScope::for_target(target).is_enabled(snapshot)
+        })
+    }
+
+    pub(super) fn sync_shortcut_row_focus(
+        &mut self,
+        shortcuts: &SettingsShortcuts,
+        active_model: Option<&SettingsModelKey>,
+        entries: &[SettingsModelEntry],
+        commands_blocked: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let rows = shortcut_rows(shortcuts, active_model, entries);
+        let targets = rows
+            .iter()
+            .map(|row| row.target.clone())
+            .collect::<Vec<_>>();
+        let target_set = targets.iter().cloned().collect::<BTreeSet<_>>();
+        self.shortcut_row_focus
+            .retain(|target, _| target_set.contains(target));
+        self.shortcut_play_focus
+            .retain(|target, _| target_set.contains(target));
+        self.shortcut_clear_focus
+            .retain(|target, _| target_set.contains(target));
+        // A capture started before its scope's switch turned off must not
+        // keep recording into a row that renders disabled: cancel it the same
+        // way a capture whose target left the table is cancelled.
+        let capture_orphaned = self
+            .shortcut_capture
+            .as_ref()
+            .is_some_and(|capture| !self.shortcut_target_editable(&capture.target));
+        if capture_orphaned
+            || self
+                .shortcut_capture
+                .as_ref()
+                .is_some_and(|capture| !target_set.contains(&capture.target))
+        {
+            self.cancel_shortcut_capture(cx);
+        }
+        for (index, row) in rows.into_iter().enumerate() {
+            // Read before the target is moved out of the row below.
+            let playable = row.playable.is_some();
+            let target = row.target;
+            let editable = self.shortcut_target_editable(&target);
+            let tab_index = shortcut_capture_tab_index(index);
+            let focus = self
+                .shortcut_row_focus
+                .entry(target.clone())
+                .or_insert_with(|| cx.focus_handle());
+            *focus = focus
+                .clone()
+                .tab_index(tab_index)
+                .tab_stop(!commands_blocked && editable);
+            // The play control exists only on a model behavior row, so only
+            // those rows put it in the tab order. Its handle is kept for every
+            // row anyway: the render path looks one up by target without
+            // re-deciding whether this row renders the control.
+            let play_focus = self
+                .shortcut_play_focus
+                .entry(target.clone())
+                .or_insert_with(|| cx.focus_handle());
+            *play_focus = play_focus
+                .clone()
+                .tab_index(shortcut_play_tab_index(index))
+                .tab_stop(!commands_blocked && editable && playable);
+            let clear_focus = self
+                .shortcut_clear_focus
+                .entry(target)
+                .or_insert_with(|| cx.focus_handle());
+            *clear_focus = clear_focus
+                .clone()
+                .tab_index(shortcut_clear_tab_index(index))
+                .tab_stop(!commands_blocked && editable && row.shortcut.is_some());
+        }
+    }
+
+    pub(super) fn begin_shortcut_capture(
+        &mut self,
+        target: ShortcutCaptureTarget,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.shortcut_capture.is_some() || !self.shortcut_commands_available() {
+            return;
+        }
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        // The unified gate rule's guard arm: the row is disabled while its
+        // scope's switch is off, so a request nothing displays changes
+        // nothing either.
+        if !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot) {
+            return;
+        }
+        let mut shortcuts_without_capture_target = snapshot.shortcuts.clone();
+        clear_shortcut(&mut shortcuts_without_capture_target, &target);
+        self.pending = Some(PendingOperation::BeginShortcutCapture);
+        cx.notify();
+        let client = self.client.clone();
+        let resume_client = client.clone();
+        cx.spawn_in(window, async move |this, cx| {
+            let result = client
+                .suspend_shortcut_capture(
+                    expected_config_revision,
+                    shortcuts_without_capture_target,
+                )
+                .await;
+            let Some(view) = this.upgrade() else {
+                if result.is_ok() {
+                    let _ = resume_client.resume_shortcut_capture().await;
+                }
+                return;
+            };
+            let _ = cx.update_window_entity(&view, |view, window, cx| {
+                if view.pending != Some(PendingOperation::BeginShortcutCapture) {
+                    return;
+                }
+                view.pending = None;
+                match result {
+                    Ok(snapshot) => {
+                        if accepts_snapshot_revision(
+                            view.snapshot.as_ref().map(|current| current.revision),
+                            snapshot.revision,
+                        ) {
+                            view.snapshot = Some(snapshot);
+                        }
+                        view.shortcut_capture = Some(ShortcutCapture::new(target.clone()));
+                        let Some(focus) = view.shortcut_row_focus.get(&target).cloned() else {
+                            view.cancel_shortcut_capture(cx);
+                            return;
+                        };
+                        let blur_target = target.clone();
+                        view.shortcut_capture_blur_subscription =
+                            Some(cx.on_blur(&focus, window, move |view, _, cx| {
+                                if view
+                                    .shortcut_capture
+                                    .as_ref()
+                                    .is_some_and(|capture| capture.target == blur_target)
+                                {
+                                    view.cancel_shortcut_capture(cx);
+                                }
+                            }));
+                        window.focus(&focus, cx);
+                    }
+                    Err(error) => view.pending_notification = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub(super) fn capture_shortcut(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if event.keystroke.key.eq_ignore_ascii_case("escape") {
+            self.cancel_shortcut_capture(cx);
+            return;
+        }
+        {
+            let Some(capture) = self.shortcut_capture.as_mut() else {
+                return;
+            };
+            capture.modifiers = event.keystroke.modifiers;
+            if let Some(key) = capture_key(event.keystroke.key.as_str()) {
+                capture.keys.insert(key);
+            }
+        }
+        self.finish_shortcut_capture_if_valid(window, cx);
+    }
+
+    pub(super) fn update_shortcut_capture_on_key_up(
+        &mut self,
+        event: &KeyUpEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        {
+            let Some(capture) = self.shortcut_capture.as_mut() else {
+                return;
+            };
+            capture.modifiers = event.keystroke.modifiers;
+            if let Some(key) = capture_key(event.keystroke.key.as_str()) {
+                capture.keys.remove(&key);
+            }
+        }
+        self.finish_shortcut_capture_if_valid(window, cx);
+    }
+
+    pub(super) fn update_shortcut_capture_modifiers(
+        &mut self,
+        modifiers: Modifiers,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(capture) = self.shortcut_capture.as_mut() else {
+            return;
+        };
+        capture.modifiers = modifiers;
+        self.finish_shortcut_capture_if_valid(window, cx);
+    }
+
+    fn finish_shortcut_capture_if_valid(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((target, shortcut)) = self.shortcut_capture.as_ref().and_then(|capture| {
+            shortcut_from_capture(&capture.modifiers, &capture.keys)
+                .map(|shortcut| (capture.target.clone(), shortcut))
+        }) else {
+            cx.notify();
+            return;
+        };
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            cx.notify();
+            return;
+        };
+        // The switch that gates this target's row turned off mid-capture: the
+        // row is disabled now, so the capture ends instead of writing a
+        // binding nothing displays. `sync_shortcut_row_focus` cancels the
+        // same capture on the next render; this keeps the two paths honest.
+        if !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot) {
+            self.cancel_shortcut_capture(cx);
+            return;
+        }
+        let mut shortcuts = snapshot.shortcuts.clone();
+        if !replace_shortcut(&mut shortcuts, &target, shortcut.clone()) {
+            cx.notify();
+            return;
+        }
+        if let Some(conflict) = conflicting_shortcut(&shortcuts) {
+            if let Some(capture) = self.shortcut_capture.as_mut() {
+                capture.clear_temporary_input();
+            }
+            window.push_notification(
+                Notification::new()
+                    .id::<ShortcutConflictNotification>()
+                    .message(shortcut_conflict_message(
+                        snapshot.resolved_language,
+                        &shortcut_display(&conflict),
+                    ))
+                    .with_type(NotificationType::Error),
+                cx,
+            );
+            cx.notify();
+            return;
+        }
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            return;
+        };
+        self.shortcut_capture = None;
+        self.shortcut_capture_blur_subscription = None;
+        window.blur(cx);
+        self.start_request(
+            PendingOperation::SetShortcuts,
+            Some(SettingValue::Shortcuts {
+                expected_config_revision,
+                shortcuts,
+            }),
+            cx,
+        );
+    }
+
+    /// Play the behavior a model behavior shortcut row binds.
+    ///
+    /// The play control is the only way to see what a recorded chord will do
+    /// before pressing it, so the request carries the model and behavior the row
+    /// is rendered from. Nothing is persisted and no revision is sent: playing a
+    /// behavior is not a configuration change, so there is nothing a stale
+    /// revision could protect, and however the preview ends the row is left
+    /// exactly as it was.
+    pub(super) fn play_shortcut_behavior(
+        &mut self,
+        target: ShortcutCaptureTarget,
+        model: SettingsModelKey,
+        behavior: SettingsModelBehavior,
+        cx: &mut Context<Self>,
+    ) {
+        // The unified gate rule's guard arm: the row is disabled while its
+        // scope's switch is off, so a request nothing displays plays nothing
+        // either. The structural blocks (no snapshot, an import running) come
+        // from the availability check below.
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot) {
+            return;
+        }
+        // A row only exists for the model the runtime is running, and the
+        // service plays a behavior of the active model only. The request carries
+        // the row's own key rather than the current snapshot's, so a row left
+        // over from a model that has since been switched away from is refused
+        // instead of playing the new model's behavior of the same name.
+        if snapshot.active_model.as_ref() != Some(&model) {
+            return;
+        }
+        if !self.shortcut_commands_available() {
+            return;
+        }
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = client.preview_model_behavior(model, behavior).await;
+            let _ = this.update(cx, |view, cx| {
+                match result {
+                    Ok(snapshot)
+                        if accepts_snapshot_revision(
+                            view.snapshot.as_ref().map(|current| current.revision),
+                            snapshot.revision,
+                        ) =>
+                    {
+                        view.snapshot = Some(snapshot);
+                    }
+                    Ok(_) => {}
+                    Err(error) => view.pending_notification = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub(super) fn clear_shortcut(&mut self, target: ShortcutCaptureTarget, cx: &mut Context<Self>) {
+        if !self.shortcut_commands_available() {
+            return;
+        }
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        // The unified gate rule's guard arm: a disabled row cannot clear its
+        // binding either.
+        if !shortcuts_page::ShortcutScope::for_target(&target).is_enabled(snapshot) {
+            return;
+        }
+        let mut shortcuts = snapshot.shortcuts.clone();
+        if !clear_shortcut(&mut shortcuts, &target) {
+            return;
+        }
+        let Some(expected_config_revision) = snapshot.config_revision else {
+            return;
+        };
+        self.shortcut_capture = None;
+        self.shortcut_capture_blur_subscription = None;
+        self.start_request(
+            PendingOperation::SetShortcuts,
+            Some(SettingValue::Shortcuts {
+                expected_config_revision,
+                shortcuts,
+            }),
+            cx,
+        );
+    }
+
+    pub(super) fn cancel_shortcut_capture(&mut self, cx: &mut Context<Self>) {
+        let capture_is_being_started = self.pending == Some(PendingOperation::BeginShortcutCapture);
+        if self.shortcut_capture.take().is_none() && !capture_is_being_started {
+            return;
+        }
+        self.shortcut_capture_blur_subscription = None;
+        self.pending = Some(PendingOperation::CancelShortcutCapture);
+        cx.notify();
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = client.resume_shortcut_capture().await;
+            let _ = this.update(cx, |view, cx| {
+                view.pending = None;
+                match result {
+                    Ok(snapshot)
+                        if accepts_snapshot_revision(
+                            view.snapshot.as_ref().map(|current| current.revision),
+                            snapshot.revision,
+                        ) =>
+                    {
+                        view.snapshot = Some(snapshot)
+                    }
+                    Ok(_) => {}
+                    Err(error) => view.pending_notification = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+}

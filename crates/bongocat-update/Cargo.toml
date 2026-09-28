@@ -1,0 +1,22 @@
+[package]
+name = "bongocat-update"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+bongocat-config.workspace = true
+cargo-packager-updater.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+cargo-packager.workspace = true
+flate2.workspace = true
+serde_json.workspace = true
+tar.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "lifecycle-reset",
+  "description": "A session lock clears all pressed keyboard and mouse state.",
+  "context": {
+    "modelMode": "standard",
+    "keySides": { "KeyA": "left" }
+  },
+  "events": [
+    { "atMs": 0, "type": "key_down", "key": "KeyA", "repeat": false, "source": "capture" },
+    { "atMs": 10, "type": "mouse_down", "button": "left", "source": "capture" },
+    { "atMs": 250, "type": "reset", "reason": "session_lock" }
+  ]
+}

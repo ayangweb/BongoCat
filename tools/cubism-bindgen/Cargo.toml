@@ -1,0 +1,18 @@
+[package]
+name = "bongocat-cubism-bindgen"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[dependencies]
+bindgen = { version = "=0.72.1", default-features = false, features = ["prettyplease", "runtime"] }
+sha2 = { version = "=0.11.0", default-features = false }
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+
+[workspace]
+
+[lints.rust]
+unsafe_code = "forbid"

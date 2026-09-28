@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "keyboard-reconciled-release",
+  "description": "A missing captured release is repaired by platform state reconciliation.",
+  "context": {
+    "modelMode": "standard",
+    "keySides": { "KeyA": "left" }
+  },
+  "events": [
+    { "atMs": 0, "type": "key_down", "key": "KeyA", "repeat": false, "source": "capture" },
+    { "atMs": 500, "type": "key_up", "key": "KeyA", "source": "reconciliation" }
+  ]
+}

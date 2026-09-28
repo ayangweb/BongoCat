@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "keyboard-single-key",
+  "description": "A captured KeyA press and release updates and clears the left hand state.",
+  "context": {
+    "modelMode": "standard",
+    "keySides": { "KeyA": "left" }
+  },
+  "events": [
+    { "atMs": 0, "type": "key_down", "key": "KeyA", "repeat": false, "source": "capture" },
+    { "atMs": 120, "type": "key_up", "key": "KeyA", "source": "capture" }
+  ]
+}

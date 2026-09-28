@@ -1,5 +1,0 @@
-"$schema" = "schemas/schema.json"
-
-[default]
-description = "Default permissions for the plugin"
-permissions = ["allow-is-running-as-administrator"]

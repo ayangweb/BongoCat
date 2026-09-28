@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "settings_window": {
+    "x": 20,
+    "y": 40,
+    "width": 800,
+    "height": 600,
+    "maximized": false
+  },
+  "overlay_window": null,
+  "overlay": {
+    "visible": false
+  }
+}

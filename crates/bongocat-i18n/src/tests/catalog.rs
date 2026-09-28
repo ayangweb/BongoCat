@@ -1,0 +1,87 @@
+//! The catalogs hold what the default language holds.
+
+use super::*;
+
+#[test]
+fn locale_keys_and_placeholders_match_default_language() {
+    let english = messages("en-US");
+    let chinese = messages("zh-CN");
+    assert_eq!(
+        english.keys().collect::<Vec<_>>(),
+        chinese.keys().collect::<Vec<_>>()
+    );
+    for key in english.keys() {
+        assert_eq!(
+            placeholders(&english[key]),
+            placeholders(&chinese[key]),
+            "placeholder mismatch for {key}"
+        );
+    }
+}
+
+/// The catalog that ships must agree with the file it was built from.
+///
+/// `rust_i18n::i18n!` resolves through a proc macro that reads the locale files while it
+/// expands, so the compiler records no dependency on them: `dep-lib-bongocat_i18n` lists
+/// `src/lib.rs` and nothing else. Freshness therefore rests entirely on `build.rs`'s
+/// `rerun-if-changed` plus the revision it injects. Miss that path — a build that only
+/// relinks the UI, a stale fingerprint, an editor that leaves the mtime behind — and the
+/// crate keeps serving the previous copy while every other check stays green, because
+/// `validate-locales.py` and both key scans above read the JSON rather than the catalog that
+/// actually ships. The window then renders retired copy: on 2026-09-21 the model delete
+/// confirmation displayed the pre-rename template `%{status} · %{confirm_deletion}` with
+/// every gate passing.
+#[test]
+fn compiled_catalog_matches_the_files_on_disk() {
+    for locale in ["en-US", "zh-CN"] {
+        for (key, expected) in messages_on_disk(locale) {
+            assert_eq!(
+                text(locale, &key),
+                expected,
+                "{locale}: `{key}` differs from locales/{locale}.json — this build is serving \
+                 a stale catalog; rebuild with `cargo build -p bongocat-i18n`"
+            );
+        }
+    }
+}
+
+#[test]
+fn locale_source_uses_nested_snake_case_keys() {
+    for locale in ["en-US", "zh-CN"] {
+        let value: serde_json::Value = serde_json::from_str(match locale {
+            "en-US" => include_str!("../../locales/en-US.json"),
+            "zh-CN" => include_str!("../../locales/zh-CN.json"),
+            _ => unreachable!(),
+        })
+        .expect("valid locale JSON");
+        fn visit(value: &serde_json::Value, path: &str) {
+            if let Some(object) = value.as_object() {
+                for (key, child) in object {
+                    if key != "_version" {
+                        assert!(!key.contains('.'), "flat key at {path}: {key}");
+                        assert!(
+                            key.chars()
+                                .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit()),
+                            "non-snake-case key at {path}: {key}"
+                        );
+                    }
+                    visit(child, &format!("{path}.{key}"));
+                }
+            }
+        }
+        visit(&value, locale);
+    }
+}
+
+#[test]
+fn missing_locale_text_falls_back_to_english() {
+    assert_eq!(text("zh-CN", "navigation.settings.title"), "BongoCat 设置");
+    assert_eq!(
+        text("system", "navigation.settings.title"),
+        "BongoCat Settings"
+    );
+    assert_eq!(
+        text("de-DE", "navigation.settings.title"),
+        "BongoCat Settings"
+    );
+}

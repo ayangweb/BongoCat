@@ -1,0 +1,579 @@
+use super::*;
+
+use gpui_kit::base::TestSupportExt as _;
+use gpui_kit::component::Sizable as _;
+
+/// Which set of shortcut bindings one group of the page renders.
+///
+/// The two sets used to be tabs. They are titled groups now: `SettingPage`
+/// cannot host child pages, but the settings component renders every titled
+/// group of a page that has more than one group as a second-level sidebar
+/// entry, so the sidebar lists both scopes under "Shortcuts" while the body
+/// renders them one after the other.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ShortcutScope {
+    Window,
+    Model,
+}
+
+impl ShortcutScope {
+    /// Whether this scope's bindings may reach the platform table.
+    ///
+    /// Both gates are configured positively and rendered as "enable …"
+    /// switches, so the switch and the command it sends
+    /// all read the same configuration field — there is no inversion to keep in
+    /// step anywhere.
+    pub(super) fn is_enabled(self, snapshot: &SettingsSnapshot) -> bool {
+        match self {
+            Self::Window => snapshot.command_shortcuts_enabled,
+            Self::Model => snapshot.behavior_shortcuts_enabled,
+        }
+    }
+
+    /// The label of this scope's gate.
+    ///
+    /// The visible row reads one string, so it cannot drift apart from the
+    /// catalog. The literal is written out in full rather than assembled from a
+    /// suffix. The row carries
+    /// no description: "enable …" already says what the switch does, and a
+    /// second line would only be the label in other words.
+    pub(super) fn gate_label(self, language: SettingsLanguage) -> &'static str {
+        match self {
+            Self::Window => bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.switches.enable_window_shortcuts.label",
+            ),
+            Self::Model => bongocat_i18n::text(
+                language.catalog_locale(),
+                "shortcuts.switches.enable_model_behavior_shortcuts.label",
+            ),
+        }
+    }
+
+    /// The scope a shortcut target belongs to.
+    ///
+    /// The one mapping from a target to the switch that gates its row: the
+    /// render layer and the mutating methods read it through
+    /// [`Self::is_enabled`] instead of re-matching the target type.
+    pub(super) fn for_target(target: &ShortcutCaptureTarget) -> Self {
+        match target {
+            ShortcutCaptureTarget::Command(_) => Self::Window,
+            ShortcutCaptureTarget::ModelBehavior { .. } => Self::Model,
+        }
+    }
+
+    /// The switch that turns this scope's bindings off and on again.
+    ///
+    /// It is the first row of the scope's group, above the bindings it gates,
+    /// because the gate used to live on the old Interaction page and a list of
+    /// chords that silently does nothing is the state that page produced.
+    /// Switching it back on never needs the chords to be recorded again: no
+    /// gate rewrites the bindings, they only stay out of the platform table.
+    fn gate_item(
+        self,
+        language: SettingsLanguage,
+        view: Entity<SettingsView>,
+        gate: SettingGate,
+    ) -> SettingItem {
+        SettingItem::new(
+            self.gate_label(language),
+            SettingField::switch(
+                {
+                    let view = view.clone();
+                    move |app| {
+                        view.read(app)
+                            .snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| self.is_enabled(snapshot))
+                    }
+                },
+                {
+                    let view = view.clone();
+                    move |enabled, app| {
+                        view.update(app, |view, cx| match self {
+                            Self::Window => view.set_command_shortcuts_enabled(enabled, cx),
+                            Self::Model => view.set_behavior_shortcuts_enabled(enabled, cx),
+                        });
+                    }
+                },
+            ),
+        )
+        // The switch is disabled by the unified gate rule's switch arm: only
+        // structurally blocked editing dims it, never its own state — a gate
+        // that dimmed itself while off could never be turned back on.
+        .disabled(gate.disables_switch())
+    }
+
+    /// The name of this scope, used as its group heading and its sidebar entry.
+    pub(super) fn title(self, language: SettingsLanguage) -> &'static str {
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            match self {
+                Self::Window => "shortcuts.scopes.window",
+                Self::Model => "shortcuts.scopes.model",
+            },
+        )
+    }
+
+    /// The rows this scope binds.
+    ///
+    /// The window scope always lists every application command, so only the
+    /// model scope can come back empty — when the active model declares no
+    /// behavior.
+    pub(super) fn rows(
+        self,
+        shortcuts: &SettingsShortcuts,
+        active_model: Option<&SettingsModelKey>,
+        entries: &[SettingsModelEntry],
+    ) -> Vec<ShortcutRow> {
+        match self {
+            Self::Window => window_shortcut_rows(shortcuts),
+            Self::Model => shortcut_behavior_rows(shortcuts, active_model, entries),
+        }
+    }
+
+    /// Where this scope's rows start in the page-wide row order.
+    ///
+    /// Both scopes are one page, so their capture and clear controls share one
+    /// keyboard tab order is based on the combined list of rows.
+    pub(super) fn row_index_offset(self, shortcuts: &SettingsShortcuts) -> usize {
+        match self {
+            Self::Window => 0,
+            Self::Model => window_shortcut_rows(shortcuts).len(),
+        }
+    }
+
+    /// The message to show while this scope has no rows at all.
+    pub(super) fn empty_message(self, language: SettingsLanguage) -> Option<&'static str> {
+        match self {
+            Self::Window => None,
+            Self::Model => Some(bongocat_i18n::text(
+                language.catalog_locale(),
+                "models.behaviors.empty",
+            )),
+        }
+    }
+}
+
+/// One scope of the shortcut page as a titled group.
+///
+/// `gate` is the scope's [`SettingGate`] (see `setting_gate`): the stable
+/// structural editing state combined with this scope's switch. It
+/// deliberately excludes the transient in-flight `pending` flag — that one
+/// flips on and off around every save, and threading it into every row dimmed
+/// and re-enabled the whole page on each control change, which read as the
+/// page visibly refreshing. Requests that land while another is in flight
+/// already no-op through `start_request` and `shortcut_commands_available`.
+pub(super) fn group(
+    scope: ShortcutScope,
+    language: SettingsLanguage,
+    view: Entity<SettingsView>,
+    gate: SettingGate,
+) -> SettingGroup {
+    // The group heading names the scope in the body and in the sidebar, so the
+    // custom item below carries no label of its own: a `SettingItem` with a
+    // title would print the scope name a second time, directly under the
+    // heading. Search matches an item by its title or keywords, and a custom
+    // element has no title, so the page and scope names are passed as keywords
+    // to keep the page reachable through the sidebar's search box.
+    let keywords = [
+        SettingsNavigationPage::Shortcuts.title(language),
+        scope.title(language).into(),
+    ];
+    SettingGroup::new()
+        .title(scope.title(language))
+        .item(scope.gate_item(language, view.clone(), gate))
+        .item(
+            SettingItem::render({
+                let view = view.clone();
+                move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+                    let snapshot = view.read(app).snapshot.clone();
+                    let tokens = Tokens::from_theme(app);
+                    view.update(app, move |view, cx| {
+                        content(view, window, cx, snapshot.as_ref(), scope, gate, tokens)
+                    })
+                    .into_any_element()
+                }
+            })
+            .keywords(keywords),
+        )
+}
+
+pub(super) fn content(
+    view: &SettingsView,
+    window: &Window,
+    cx: &mut Context<SettingsView>,
+    snapshot: Option<&SettingsSnapshot>,
+    scope: ShortcutScope,
+    gate: SettingGate,
+    tokens: Tokens,
+) -> Stateful<Div> {
+    let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+        snapshot.resolved_language
+    });
+    div()
+        .min_w_0()
+        .w_full()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .text_color(tokens.text)
+        .id(match scope {
+            ShortcutScope::Window => "window-shortcuts-content",
+            ShortcutScope::Model => "model-shortcuts-content",
+        })
+        .when_some(snapshot, |content, snapshot| {
+            let rows = scope.rows(
+                &snapshot.shortcuts,
+                snapshot.active_model.as_ref(),
+                &snapshot.model_catalog.entries,
+            );
+            let row_index_offset = scope.row_index_offset(&snapshot.shortcuts);
+            let empty_message = scope.empty_message(language).filter(|_| rows.is_empty());
+            content
+                .when_some(empty_message, |content, message| {
+                    content.child(div().text_sm().text_color(tokens.muted).child(message))
+                })
+                .children(rows.into_iter().enumerate().map(|(index, row)| {
+                    shortcut_row(
+                        view,
+                        window,
+                        cx,
+                        language,
+                        gate,
+                        tokens,
+                        scope,
+                        row,
+                        row_index_offset + index,
+                    )
+                }))
+        })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn shortcut_row(
+    view: &SettingsView,
+    window: &Window,
+    cx: &mut Context<SettingsView>,
+    language: SettingsLanguage,
+    gate: SettingGate,
+    tokens: Tokens,
+    scope: ShortcutScope,
+    row: ShortcutRow,
+    row_index: usize,
+) -> Div {
+    let target_name = row.name(language);
+    let target = row.target;
+    let playable = row.playable;
+    let shortcut = row.shortcut;
+    let capture = view
+        .shortcut_capture
+        .as_ref()
+        .filter(|capture| capture.target == target);
+    let capturing = capture.is_some();
+    // The unified gate rule's control arm: the row dims and drops its
+    // interaction handlers while editing is structurally blocked or this
+    // scope's switch is off. A disabled row is inert, not merely painted
+    // lighter — the mutators guard on the same predicate.
+    let row_disabled = gate.disables_controls();
+    let focus = view
+        .shortcut_row_focus
+        .get(&target)
+        .expect("shortcut row focus is synchronized")
+        .clone();
+    let play_focus = view
+        .shortcut_play_focus
+        .get(&target)
+        .expect("shortcut play focus is synchronized")
+        .clone();
+    let clear_focus = view
+        .shortcut_clear_focus
+        .get(&target)
+        .expect("shortcut clear focus is synchronized")
+        .clone();
+    let keyboard_target = target.clone();
+    let clear_target = target.clone();
+    let clear_key_target = target.clone();
+    let clear_key_focus = clear_focus.clone();
+    // The two scopes are one page and their element ids live in one namespace,
+    // so the scope prefix keeps the ids apart without folding the row index
+    // (which is already unique across the page) into the name.
+    let (capture_id, play_id, clear_id) = match scope {
+        ShortcutScope::Window => (
+            ("capture-window-shortcut", row_index),
+            ("play-window-shortcut", row_index),
+            ("clear-window-shortcut", row_index),
+        ),
+        ShortcutScope::Model => (
+            ("capture-model-shortcut", row_index),
+            ("play-model-shortcut", row_index),
+            ("clear-model-shortcut", row_index),
+        ),
+    };
+    let chord = if let Some(capture) = capture {
+        shortcut_capture_preview(&capture.modifiers, &capture.keys)
+            .map(|shortcut| shortcut_display(&shortcut))
+            .unwrap_or_else(|| {
+                bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "shortcuts.capture.press_to_record",
+                )
+                .to_owned()
+            })
+    } else if let Some(shortcut) = shortcut.as_ref() {
+        shortcut_display(shortcut)
+    } else {
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "shortcuts.capture.click_to_record",
+        )
+        .to_owned()
+    };
+    // The frame around the chord is the group's: the play and clear controls sit
+    // inside it, at the leading and trailing edges, so the row reads as one
+    // control the way an input group's addons do. The chord itself keeps the
+    // middle and stays centred, which is where it was when the clear button
+    // lived outside the frame.
+    let mut frame = div()
+        .id(capture_id)
+        // Observed before the focus binding, so the rendered test can click the
+        // frame itself: the controls sit inside it, and "a press that is not on
+        // one of them records a chord" is only measurable against its bounds.
+        .test_support()
+        .key_context("SettingsControl")
+        .track_focus(&focus)
+        .tab_index(shortcut_capture_tab_index(row_index))
+        .h(px(32.))
+        .min_w(px(180.))
+        .flex()
+        .items_center()
+        .gap_1()
+        .px_1()
+        .border_1()
+        .border_color(if capturing {
+            tokens.accent
+        } else {
+            tokens.border
+        })
+        .rounded_md()
+        .when(capturing, |this| this.focus_ring_style(window, cx))
+        .cursor_pointer()
+        .text_color(if capturing || shortcut.is_some() {
+            tokens.text
+        } else {
+            tokens.muted
+        })
+        .when(row_disabled, |this| this.cursor_default());
+    if let Some(playable) = playable {
+        frame = frame.child(shortcut_play_control(
+            cx,
+            language,
+            play_id.into(),
+            play_focus,
+            target.clone(),
+            playable,
+            shortcut_play_tab_index(row_index),
+            row_disabled,
+        ));
+    }
+    frame = frame
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(chord),
+        )
+        .child(shortcut_clear_control(
+            cx,
+            language,
+            clear_id.into(),
+            clear_focus,
+            clear_key_focus,
+            clear_target,
+            clear_key_target,
+            shortcut_clear_tab_index(row_index),
+            // The clear control keeps its place on every row, the way an input
+            // group's trailing button does, and only greys out when there is
+            // nothing to clear — a control that came and went would move the
+            // chord every time a binding was recorded or removed.
+            row_disabled || shortcut.is_none(),
+        ));
+    if !row_disabled {
+        frame = frame
+            .on_click(cx.listener(move |view, _, window, cx| {
+                view.begin_shortcut_capture(target.clone(), window, cx);
+            }))
+            .when(capturing, |this| {
+                this.on_mouse_down_out(cx.listener(|view, _, window, cx| {
+                    view.cancel_shortcut_capture(cx);
+                    window.blur(cx);
+                }))
+            })
+            .on_key_down(cx.listener(move |view, event, window, cx| {
+                if view.shortcut_capture.is_none() && is_activation_key(event) {
+                    cx.stop_propagation();
+                    view.begin_shortcut_capture(keyboard_target.clone(), window, cx);
+                }
+            }));
+    }
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .text_sm()
+        // The unified gate rule dims the whole row — label included — the
+        // same way `SettingItem::disabled` dims a packaged field's title and
+        // description, so a gated setting reads as one unavailable entry
+        // rather than a live label sitting next to a dead control.
+        .when(row_disabled, |this| this.opacity(0.5))
+        .child(div().min_w_0().flex_1().child(target_name))
+        .child(frame)
+}
+
+/// The compact icon button that lives inside a shortcut row's frame.
+///
+/// The row's controls are the only ones in the settings window that sit inside
+/// another control's border, so they take the extra-small size that fits the
+/// frame's height rather than the standard icon button the models page renders
+/// beside a card. Ghost keeps the frame's own border the only one the row shows.
+/// [`icon_command_control`] supplies the wrapper the control is queried and
+/// tabbed through by.
+fn shortcut_icon_button(
+    id: &'static str,
+    label: &'static str,
+    icon: impl Into<Icon>,
+    disabled: bool,
+) -> Button {
+    Button::new(id)
+        .ghost()
+        .xsmall()
+        .icon(icon)
+        .tooltip(label)
+        .disabled(disabled)
+}
+
+/// The play control that sits before the chord on a model behavior row.
+///
+/// Only a model behavior row has something to play, so an application command
+/// renders no control here at all and its frame simply starts with the chord.
+///
+/// The press is stopped before it reaches the frame: the frame starts a capture
+/// on any click inside it, and pressing play is not a request to record a chord.
+/// The stop lives on a wrapper around the control rather than on the control
+/// itself, because stopping an event also stops the handlers that come after it
+/// — including the control's own click.
+#[allow(clippy::too_many_arguments)]
+fn shortcut_play_control(
+    cx: &mut Context<SettingsView>,
+    language: SettingsLanguage,
+    id: ElementId,
+    focus: FocusHandle,
+    target: ShortcutCaptureTarget,
+    playable: PlayableBehavior,
+    tab_index: isize,
+    disabled: bool,
+) -> impl IntoElement {
+    let focus_for_click = focus.clone();
+    let focus_for_key = focus.clone();
+    let click_target = target.clone();
+    let key_target = target.clone();
+    let click_model = playable.model.clone();
+    let key_model = playable.model;
+    let click_behavior = playable.behavior.clone();
+    let key_behavior = playable.behavior;
+    div()
+        .flex_none()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(
+            icon_command_control(
+                &focus,
+                tab_index,
+                shortcut_icon_button(
+                    "play-model-behavior-control",
+                    bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.play"),
+                    gpui_kit::assets::IconName::Play,
+                    disabled,
+                ),
+            )
+            .id(id)
+            .test_support()
+            .when(!disabled, |this| {
+                this.on_click(cx.listener(move |view, _, window, cx| {
+                    window.focus(&focus_for_click, cx);
+                    view.play_shortcut_behavior(
+                        click_target.clone(),
+                        click_model.clone(),
+                        click_behavior.clone(),
+                        cx,
+                    );
+                }))
+                .on_key_down(cx.listener(move |view, event, window, cx| {
+                    if is_activation_key(event) {
+                        cx.stop_propagation();
+                        window.focus(&focus_for_key, cx);
+                        view.play_shortcut_behavior(
+                            key_target.clone(),
+                            key_model.clone(),
+                            key_behavior.clone(),
+                            cx,
+                        );
+                    }
+                }))
+            }),
+        )
+}
+
+/// The clear control that sits after the chord.
+///
+/// It replaces the standalone button the row used to render beside the frame,
+/// and keeps the same two jobs: drop this row's binding, and put the row's
+/// keyboard focus back on the control it was pressed from. Like the play
+/// control's, its press is stopped by a wrapper so it cannot reach the frame.
+#[allow(clippy::too_many_arguments)]
+fn shortcut_clear_control(
+    cx: &mut Context<SettingsView>,
+    language: SettingsLanguage,
+    id: ElementId,
+    focus: FocusHandle,
+    key_focus: FocusHandle,
+    target: ShortcutCaptureTarget,
+    key_target: ShortcutCaptureTarget,
+    tab_index: isize,
+    disabled: bool,
+) -> impl IntoElement {
+    let focus_for_click = focus.clone();
+    div()
+        .flex_none()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(
+            icon_command_control(
+                &focus,
+                tab_index,
+                shortcut_icon_button(
+                    "clear-shortcut-control",
+                    bongocat_i18n::text(language.catalog_locale(), "shortcuts.actions.clear"),
+                    gpui_kit::assets::IconName::Close,
+                    disabled,
+                ),
+            )
+            .id(id)
+            .test_support()
+            .when(!disabled, |this| {
+                this.on_click(cx.listener(move |view, _, window, cx| {
+                    window.focus(&focus_for_click, cx);
+                    view.clear_shortcut(target.clone(), cx);
+                }))
+                .on_key_down(cx.listener(move |view, event, window, cx| {
+                    if is_activation_key(event) {
+                        cx.stop_propagation();
+                        window.focus(&key_focus, cx);
+                        view.clear_shortcut(key_target.clone(), cx);
+                    }
+                }))
+            }),
+        )
+}
