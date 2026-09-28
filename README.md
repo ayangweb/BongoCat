@@ -61,6 +61,10 @@ Inspired by [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver) by
 - Bring your own Live2D models and make the cat your own.
 - Fully open source, public code, and no collection of user data.
 - Works offline with no network access, so your privacy is protected.
+- On Windows, a copy keeps all of its settings inside its own folder when you
+  create an empty `portable.txt` next to `BongoCat.exe`. Everything the app
+  writes then travels with the folder, so you can run it from a USB stick
+  without an installer. Delete the file to go back to the normal location.
 
 ## More models
 

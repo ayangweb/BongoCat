@@ -10,6 +10,7 @@ use crate::atomic::*;
 use std::process::{Command, Stdio};
 use tempfile::tempdir;
 
+mod portable;
 mod recovery;
 mod shortcuts;
 mod store;

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### ✨ Features
+
+- **Windows:** a copy can now keep all of its settings inside its own folder. Create an empty `portable.txt` next to `BongoCat.exe` and everything the app writes travels with the folder, so it runs from a USB stick with no installer. Delete the file to return to the normal location. Existing installations are unaffected and keep their current settings.
+
 ## 2.0.0 - 2026-09-29
 
 ### ⚠️ Upgrade Notice

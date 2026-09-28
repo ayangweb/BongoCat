@@ -59,6 +59,12 @@ pub(super) struct SoftwareInformation {
     /// Which Cubism Core this binary is linked against, because a model's
     /// compatibility is a property of this and not of the app version.
     cubism_core_version: String,
+    /// Whether this copy keeps its settings beside its own executable.
+    ///
+    /// A portable copy and an installed one are the same build with a different
+    /// storage root, so "my settings are not where I left them" and "the
+    /// installer's folder is read-only" are both answered by this field.
+    portable: bool,
     platform: &'static str,
     platform_arch: &'static str,
     platform_version: Option<String>,
@@ -196,6 +202,7 @@ impl SoftwareInformation {
             app_version: snapshot.build_info.product_version.clone(),
             build_environment: snapshot.build_info.environment.code(),
             cubism_core_version: snapshot.build_info.cubism_core_version.clone(),
+            portable: snapshot.build_info.portable,
             platform: std::env::consts::OS,
             platform_arch: std::env::consts::ARCH,
             platform_version: system.as_ref().map(|system| system.version.clone()),

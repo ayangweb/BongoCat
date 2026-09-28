@@ -34,6 +34,12 @@ pub struct SettingsBuildInfo {
     /// distinguish "this model is malformed" from "this model predates the Core
     /// we ship".
     pub cubism_core_version: String,
+    /// Whether this copy keeps its settings next to its own executable.
+    ///
+    /// Part of the build identity rather than a setting: it is chosen by a file
+    /// beside the binary rather than by anything the user can change from the
+    /// window, and a report about "my settings do not stick" is answered by it.
+    pub portable: bool,
 }
 
 /// Version of the anonymous diagnostics export JSON contract.

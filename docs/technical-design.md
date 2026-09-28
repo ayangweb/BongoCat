@@ -1005,6 +1005,16 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   都返回普通可用配置，没有 `RecoveryRequired`、recovery-only settings window、snapshot 恢复字段、
   `RestoreDefaultConfiguration` command 或“恢复后必须重启”流程。非 v1 schema 仍按当前 v1
   的严格版本入口报告 unsupported，禁止自动转换、downgrade 或覆盖未知格式。
+- 存储根本身可以被重新定位，但**不会**被取消。Windows 下当可执行文件旁存在普通文件
+  `portable.txt` 时，application root 取可执行文件所在目录，否则取平台数据目录下的
+  bundle id；两种情况都在 root 下再按 build environment 分子目录，因此 portable 副本
+  仍然与 installed 副本共享同一套 Development/Production 隔离。判定只看该文件是否是
+  **普通文件**——同名空目录不算请求，否则一次打包事故就能把所有用户的数据搬到可执行
+  文件旁边。macOS 不提供 portable：可执行文件在签名 bundle 内，在旁边写 `production/`
+  会产生签名未覆盖的文件，下次启动 `codesign --verify` 即失败。该模式在进程内只解析一次，
+  并出现在软件信息报告里，让“我的设置没记住”这类反馈能被定位到根因。已安装副本的行为
+  完全不变；判定的唯一规则 `portable_application_root` 在两个平台都编译并测试，而不是
+  只在能使用它的那一个平台才有测试。
 - 配置写入将权限/只读文件系统、存储空间/配额不足和 temp 目标占用分类为稳定的匿名失败原因；
   settings 只显示可操作的项目文案，不泄漏路径或操作系统原始错误。写入只清理由当前调用成功创建的
   temp；若固定 temp 已被文件、目录、符号链接或并发创建占用，则保留该条目和 current 并明确失败。

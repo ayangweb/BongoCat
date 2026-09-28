@@ -170,6 +170,7 @@ pub(super) fn snapshot(
                 BuildEnvironment::Production => SettingsBuildEnvironment::Production,
             },
             cubism_core_version: bongocat_live2d::CUBISM_CORE_VERSION_TEXT.to_owned(),
+            portable: application.is_portable(),
         },
         runtime_health: if input_service_is_degraded(input_diagnostics.service_status) {
             RuntimeHealth::Degraded

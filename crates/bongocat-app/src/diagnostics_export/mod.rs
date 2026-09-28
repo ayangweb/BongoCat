@@ -445,6 +445,7 @@ mod tests {
                 product_version: PRODUCT_VERSION.to_owned(),
                 environment: SettingsBuildEnvironment::Development,
                 cubism_core_version: bongocat_live2d::CUBISM_CORE_VERSION_TEXT.to_owned(),
+                portable: false,
             },
             runtime_health: RuntimeHealth::Degraded,
             runtime_diagnostics: SettingsRuntimeDiagnostics {

@@ -10,6 +10,15 @@ use bongocat_config::{OverlayWindowPlacement, WindowPlacement, WindowState};
 use std::path::Path;
 
 impl Application {
+    /// Whether this copy keeps its settings beside its own executable.
+    ///
+    /// Resolved once, from a marker file next to the binary, and never changed
+    /// while the process runs: the root it chose is the root every store in the
+    /// process is already writing to.
+    pub const fn is_portable(&self) -> bool {
+        self.config_store.layout().portable
+    }
+
     pub const fn settings_window_placement(&self) -> Option<WindowPlacement> {
         self.window_state.settings_window
     }

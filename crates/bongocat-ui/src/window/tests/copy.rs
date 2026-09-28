@@ -27,6 +27,7 @@ fn build_information_is_localized_and_contains_only_compiled_identity() {
         product_version: product_version.to_owned(),
         environment: crate::SettingsBuildEnvironment::Development,
         cubism_core_version: "6.0.1".to_owned(),
+        portable: false,
     };
     let detail = build_info_detail(SettingsLanguage::EnglishUnitedStates, &build_info);
     assert_eq!(
@@ -58,12 +59,22 @@ fn copied_software_information_is_a_json_document() {
     assert_eq!(parsed["build_environment"], "development");
     assert_eq!(parsed["runtime_health"], "ready");
     assert_eq!(parsed["input_service_status"], "not_started");
+    assert_eq!(parsed["portable"], false);
     assert_eq!(parsed["platform"], std::env::consts::OS);
     assert_eq!(parsed["platform_arch"], std::env::consts::ARCH);
     assert!(
         json.contains('\n'),
         "the report is pretty-printed for a human"
     );
+}
+
+/// A portable copy says so, because where its settings live is the first thing
+/// to check when a report says they are not where the user left them.
+#[test]
+fn a_portable_copy_reports_that_it_is_portable() {
+    let mut snapshot = crate::tests::snapshot(1, true, true);
+    snapshot.build_info.portable = true;
+    assert_eq!(report_of(&snapshot)["portable"], true);
 }
 
 /// A report is read by someone triaging many of them, so the fields a triage
@@ -79,6 +90,7 @@ fn the_report_names_the_facts_a_bug_triage_needs() {
         "app_version",
         "build_environment",
         "cubism_core_version",
+        "portable",
         "platform",
         "platform_arch",
         "platform_version",
