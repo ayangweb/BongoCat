@@ -488,17 +488,6 @@ impl SettingsClient {
             .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
     }
 
-    pub async fn import_model(
-        &self,
-        request: SettingsModelImportRequest,
-    ) -> Result<SettingsSnapshot, SettingsError> {
-        self.start_model_import(request)
-            .await?
-            .final_result()
-            .await
-            .result
-    }
-
     pub async fn start_model_import(
         &self,
         request: SettingsModelImportRequest,
@@ -520,16 +509,6 @@ impl SettingsClient {
         model: SettingsModelKey,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::DeleteModel { model, reply })
-            .await
-    }
-
-    pub async fn open_config_backup_location(&self) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::OpenConfigBackupLocation { reply })
-            .await
-    }
-
-    pub async fn export_diagnostics(&self) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::ExportDiagnostics { reply })
             .await
     }
 
@@ -856,18 +835,6 @@ impl SettingsClient {
             expected_config_revision,
             model,
             title,
-            reply,
-        })
-    }
-
-    pub fn preview_model_behavior_blocking(
-        &self,
-        model: SettingsModelKey,
-        behavior: SettingsModelBehavior,
-    ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request_blocking(|reply| SettingsCommand::PreviewModelBehavior {
-            model,
-            behavior,
             reply,
         })
     }

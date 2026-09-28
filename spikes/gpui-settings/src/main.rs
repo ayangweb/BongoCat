@@ -1,14 +1,9 @@
-mod accessibility;
 #[cfg(target_os = "macos")]
 mod macos_menu;
 mod platform_ui_probe;
 mod runtime_bridge;
 mod text_input;
 
-use accessibility::{
-    AccessibilityAction, AccessibilityBridge, AccessibilityFocus, AccessibilitySnapshot,
-    AccessibilityTheme,
-};
 use gpui::{
     App, Application, Bounds, Context, FocusHandle, Focusable, KeyBinding, Menu, MenuItem, Render,
     SharedString, SystemMenuType, Timer, TitlebarOptions, Window, WindowAppearance, WindowBounds,
@@ -130,8 +125,6 @@ struct SettingsWindow {
     runtime_snapshot: Option<RuntimeSnapshot>,
     runtime_request_in_flight: bool,
     runtime_error: Option<SharedString>,
-    accessibility: AccessibilityBridge,
-    accessibility_actions: Option<async_channel::Receiver<AccessibilityAction>>,
     ui_probe: UiProbeState,
     tooltip_probe_enabled: bool,
 }
@@ -140,8 +133,6 @@ impl SettingsWindow {
     fn new(
         window: &mut Window,
         runtime_bridge: RuntimeBridge,
-        accessibility: AccessibilityBridge,
-        accessibility_actions: async_channel::Receiver<AccessibilityAction>,
         ui_probe: UiProbeState,
         tooltip_probe_enabled: bool,
         cx: &mut Context<Self>,
@@ -185,8 +176,6 @@ impl SettingsWindow {
             runtime_snapshot: None,
             runtime_request_in_flight: false,
             runtime_error: None,
-            accessibility,
-            accessibility_actions: Some(accessibility_actions),
             ui_probe,
             tooltip_probe_enabled,
         }
@@ -297,26 +286,6 @@ impl SettingsWindow {
             input.set_dark_theme(self.resolved_dark(window));
         });
         cx.notify();
-    }
-
-    fn start_accessibility_action_task(&mut self, window: &Window, cx: &mut Context<Self>) {
-        let Some(receiver) = self.accessibility_actions.take() else {
-            return;
-        };
-        let window_handle = window.window_handle();
-        cx.spawn(async move |this, cx| {
-            while let Ok(action) = receiver.recv().await {
-                let updated = window_handle.update(cx, |_, window, cx| {
-                    this.update(cx, |settings, cx| {
-                        settings.apply_accessibility_action(action, window, cx);
-                    })
-                });
-                if updated.is_err() {
-                    break;
-                }
-            }
-        })
-        .detach();
     }
 
     #[cfg(target_os = "macos")]
@@ -520,68 +489,6 @@ impl SettingsWindow {
         cx.quit();
     }
 
-    fn apply_accessibility_action(
-        &mut self,
-        action: AccessibilityAction,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match action {
-            AccessibilityAction::SelectTheme(theme) => {
-                let mode = ThemeMode::from(theme);
-                let focus = self.theme_focus[mode as usize].clone();
-                window.focus(&focus);
-                self.set_theme_mode(mode, window, cx);
-            }
-            AccessibilityAction::FocusTheme(theme) => {
-                window.focus(&self.theme_focus[ThemeMode::from(theme) as usize]);
-                cx.notify();
-            }
-            AccessibilityAction::FocusModelName => {
-                window.focus(&self.model_name.focus_handle(cx));
-                cx.notify();
-            }
-            AccessibilityAction::SetModelName(value) => {
-                self.model_name.update(cx, |input, cx| {
-                    input.set_content(&value, window, cx);
-                });
-            }
-            AccessibilityAction::FocusRefresh => {
-                window.focus(&self.refresh_focus);
-                cx.notify();
-            }
-            AccessibilityAction::RefreshRuntime => self.request_runtime_snapshot(cx),
-            AccessibilityAction::FocusReset => {
-                window.focus(&self.reset_focus);
-                cx.notify();
-            }
-            AccessibilityAction::OpenResetDialog => self.open_reset_dialog(window, cx),
-            AccessibilityAction::FocusDialogCancel => {
-                if self.reset_dialog_open {
-                    window.focus(&self.dialog_cancel_focus);
-                    cx.notify();
-                }
-            }
-            AccessibilityAction::FocusDialogConfirm => {
-                if self.reset_dialog_open {
-                    window.focus(&self.dialog_confirm_focus);
-                    cx.notify();
-                }
-            }
-            AccessibilityAction::CancelReset => {
-                if self.reset_dialog_open {
-                    self.close_reset_dialog(window, cx);
-                }
-            }
-            AccessibilityAction::ConfirmReset => {
-                if self.reset_dialog_open {
-                    self.confirm_reset(window, cx);
-                }
-            }
-        }
-        println!("gpui-settings-spike: accessibility action applied");
-    }
-
     fn request_runtime_snapshot(&mut self, cx: &mut Context<Self>) {
         if self.runtime_request_in_flight {
             return;
@@ -613,16 +520,6 @@ impl SettingsWindow {
             });
         })
         .detach();
-    }
-}
-
-impl From<AccessibilityTheme> for ThemeMode {
-    fn from(value: AccessibilityTheme) -> Self {
-        match value {
-            AccessibilityTheme::System => Self::System,
-            AccessibilityTheme::Light => Self::Light,
-            AccessibilityTheme::Dark => Self::Dark,
-        }
     }
 }
 
@@ -673,38 +570,6 @@ impl Render for SettingsWindow {
         } else {
             "Runtime unavailable".into()
         };
-        self.accessibility.update(AccessibilitySnapshot {
-            selected_theme: self.theme_mode.label(),
-            model_name: self.model_name.read(cx).content().to_string(),
-            runtime_status: runtime_status.to_string(),
-            runtime_busy: self.runtime_request_in_flight,
-            runtime_error: self.runtime_error.is_some(),
-            focus: if self.model_name.focus_handle(cx).is_focused(window) {
-                AccessibilityFocus::ModelName
-            } else if let Some((mode, _)) = ThemeMode::ALL
-                .into_iter()
-                .zip(&self.theme_focus)
-                .find(|(_, focus)| focus.is_focused(window))
-            {
-                AccessibilityFocus::Theme(match mode {
-                    ThemeMode::System => AccessibilityTheme::System,
-                    ThemeMode::Light => AccessibilityTheme::Light,
-                    ThemeMode::Dark => AccessibilityTheme::Dark,
-                })
-            } else if self.refresh_focus.is_focused(window) {
-                AccessibilityFocus::Refresh
-            } else if self.reset_focus.is_focused(window) {
-                AccessibilityFocus::Reset
-            } else if self.dialog_cancel_focus.is_focused(window) {
-                AccessibilityFocus::DialogCancel
-            } else if self.dialog_confirm_focus.is_focused(window) {
-                AccessibilityFocus::DialogConfirm
-            } else {
-                AccessibilityFocus::Root
-            },
-            reset_dialog_open: self.reset_dialog_open,
-        });
-
         let sidebar = div()
             .flex()
             .flex_col()
@@ -1061,18 +926,8 @@ fn open_settings_window(
             ..Default::default()
         },
         move |window, cx| {
-            let (accessibility, accessibility_actions) = AccessibilityBridge::attach(window)
-                .expect("attach AccessKit before the GPUI window is shown");
             let settings = cx.new(|cx| {
-                SettingsWindow::new(
-                    window,
-                    runtime_bridge,
-                    accessibility,
-                    accessibility_actions,
-                    ui_probe,
-                    probes.tooltip,
-                    cx,
-                )
+                SettingsWindow::new(window, runtime_bridge, ui_probe, probes.tooltip, cx)
             });
             window.activate_window();
             settings
@@ -1081,35 +936,26 @@ fn open_settings_window(
 
     match result {
         Ok(window) => {
-            let setup = window
-                .update(cx, |settings, window, cx| {
-                    settings.start_accessibility_action_task(window, cx);
-                    #[cfg(target_os = "macos")]
-                    if probes.menu {
-                        settings.start_menu_probe(window, cx);
-                    }
-                    if probes.tooltip {
-                        settings.start_tooltip_probe(window, cx);
-                    }
-                    window.focus(&settings.model_name.focus_handle(cx));
-                    settings.request_runtime_snapshot(cx);
-                    if let Some(started_at) = startup_started_at {
-                        window.on_next_frame(move |window, _| {
-                            println!(
-                                "gpui-settings-spike: first frame elapsed_ms={:.3} scale_factor={:.3}",
-                                started_at.elapsed().as_secs_f64() * 1_000.0,
-                                window.scale_factor(),
-                            );
-                        });
-                    }
-                    settings.accessibility.verify_platform_tree()
-                })
-                .map_err(|error| error.to_string())
-                .and_then(|result| result);
-            if let Err(error) = setup {
-                eprintln!("gpui-settings-spike: accessibility setup failed: {error}");
-                return false;
-            }
+            let _ = window.update(cx, |settings, window, cx| {
+                #[cfg(target_os = "macos")]
+                if probes.menu {
+                    settings.start_menu_probe(window, cx);
+                }
+                if probes.tooltip {
+                    settings.start_tooltip_probe(window, cx);
+                }
+                window.focus(&settings.model_name.focus_handle(cx));
+                settings.request_runtime_snapshot(cx);
+                if let Some(started_at) = startup_started_at {
+                    window.on_next_frame(move |window, _| {
+                        println!(
+                            "gpui-settings-spike: first frame elapsed_ms={:.3} scale_factor={:.3}",
+                            started_at.elapsed().as_secs_f64() * 1_000.0,
+                            window.scale_factor(),
+                        );
+                    });
+                }
+            });
             println!("gpui-settings-spike: window opened");
             true
         }

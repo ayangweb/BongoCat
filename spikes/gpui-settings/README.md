@@ -16,10 +16,9 @@ For a repeatable lifecycle smoke test:
 BONGOCAT_SPIKE_AUTO_QUIT_MS=1500 cargo run --locked
 ```
 
-Successful output includes an accessibility tree marker, `window opened`, a
-first-frame line with a positive platform `scale_factor`, an applied semantic
-action, `runtime snapshot revision=1`, `runtime stopped`, and `stopped`. Window
-or accessibility initialization failure exits non-zero after the runtime
+Successful output includes `window opened`, a first-frame line with a positive
+platform `scale_factor`, `runtime snapshot revision=1`, `runtime stopped`, and
+`stopped`. Window initialization failure exits non-zero after the runtime
 shutdown hook completes, so automated smoke tests cannot pass on an error log
 alone.
 
@@ -38,10 +37,15 @@ failure, retry, and revision recovery. The first refresh resolves to revision
 thread.
 
 The Reset command exercises GPUI's public tooltip API and a project-owned modal
-dialog. The dialog traps Tab/Shift-Tab between Cancel and Reset, supports
-Enter/Space activation and Escape dismissal, and replaces the background
-AccessKit subtree while it is open. It remains a Phase 0 interaction probe, not
-a product settings reset implementation.
+dialog. The dialog traps Tab/Shift-Tab between Cancel and Reset and supports
+Enter/Space activation and Escape dismissal. It remains a Phase 0 interaction
+probe, not a product settings reset implementation.
+
+This probe is visual-first like the product: it does not maintain a
+project-owned accessibility tree, adapter or action channel, and it does not
+depend on `accesskit`, `accesskit_macos` or `accesskit_windows` (ADR-0054). Its
+CI smoke therefore checks window lifecycle, the typed runtime bridge and the
+visible UI probes, not an auxiliary-technology tree.
 
 On macOS, launch with `--menu-probe` to verify the native Application, Edit,
 and Window menu structure. The probe dispatches Select All, Cut, and Paste via
@@ -53,7 +57,7 @@ Launch with `--tooltip-probe` to send synthetic native mouse-move messages
 through the platform window and GPUI input path. The probe finds the Reset
 hitbox, waits for GPUI's 500 ms tooltip delay, verifies that the tooltip is
 built, then moves out and verifies hover cleanup. It does not replace a physical
-pointer or screen-reader announcement test.
+pointer.
 
 Build the release binary and collect the macOS Phase 0 performance probe with:
 

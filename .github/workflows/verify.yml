@@ -1204,7 +1204,7 @@ jobs:
       - name: Build macOS settings smoke executable
         timeout-minutes: 10
         run: cargo build --manifest-path spikes/gpui-settings/Cargo.toml --locked
-      - name: Smoke macOS GPUI settings accessibility
+      - name: Smoke macOS GPUI settings lifecycle
         timeout-minutes: 2
         run: |
           python3 - <<'PY'
@@ -1232,12 +1232,10 @@ jobs:
                   f"macOS GPUI settings smoke exited with {completed.returncode}"
               )
           for expected in (
-              "accessibility tree root_role=AXGroup nodes=9 controls=7",
               "window opened",
               "first frame elapsed_ms=",
               "scale_factor=",
               "runtime snapshot revision=1",
-              "accessibility action applied",
               "native menu edit actions verified",
               "native tooltip hover entered",
               "tooltip built after hover delay",
@@ -1550,211 +1548,22 @@ jobs:
           Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
           $process = Start-Process `
             -FilePath $executable `
-            -ArgumentList @("--auto-quit-ms", "20000", "--runtime-error-probe", "--tooltip-probe") `
+            -ArgumentList @("--auto-quit-ms", "10000", "--tooltip-probe") `
             -NoNewWindow `
             -PassThru `
             -RedirectStandardOutput $stdout `
             -RedirectStandardError $stderr
-          Add-Type -AssemblyName UIAutomationTypes
-          Add-Type -AssemblyName UIAutomationClient
-          $windowDeadline = [DateTime]::UtcNow.AddSeconds(15)
-          $processCondition = [System.Windows.Automation.PropertyCondition]::new(
-            [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
-            $process.Id
-          )
-          $windowNameCondition = [System.Windows.Automation.PropertyCondition]::new(
-            [System.Windows.Automation.AutomationElement]::NameProperty,
-            "BongoCat Settings"
-          )
-          $settingsWindowCondition = [System.Windows.Automation.AndCondition]::new(
-            $processCondition,
-            $windowNameCondition
-          )
-          $root = $null
-          do {
-            Start-Sleep -Milliseconds 100
-            $process.Refresh()
-            if ($process.HasExited) {
-              throw "Windows GPUI settings exited before UI Automation inspection"
-            }
-            $root = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-              [System.Windows.Automation.TreeScope]::Children,
-              $settingsWindowCondition
-            )
-          } while ($null -eq $root -and [DateTime]::UtcNow -lt $windowDeadline)
-          if ($null -eq $root) {
-            throw "Windows GPUI settings did not expose a settings UIA window"
-          }
-          $elements = $root.FindAll(
-            [System.Windows.Automation.TreeScope]::Descendants,
-            [System.Windows.Automation.Condition]::TrueCondition
-          )
-          $observed = @{}
-          $observedElements = @{}
-          for ($index = 0; $index -lt $elements.Count; $index++) {
-            $element = $elements.Item($index)
-            $name = $element.Current.Name
-            if ($name) {
-              $observed[$name] = $element.Current.ControlType.ProgrammaticName
-              $observedElements[$name] = $element
-            }
-          }
-          $expectedControls = @{
-            "Appearance" = "ControlType.Group"
-            "System" = "ControlType.RadioButton"
-            "Light" = "ControlType.RadioButton"
-            "Dark" = "ControlType.RadioButton"
-            "Model display name" = "ControlType.Edit"
-            "Runtime status" = "ControlType.StatusBar"
-            "Reset settings..." = "ControlType.Button"
-            "Refresh" = "ControlType.Button"
-          }
-          foreach ($entry in $expectedControls.GetEnumerator()) {
-            if ($observed[$entry.Key] -ne $entry.Value) {
-              throw "Windows UIA control '$($entry.Key)' expected $($entry.Value), found $($observed[$entry.Key])"
-            }
-          }
-          $selectionPattern = $observedElements["Dark"].GetCurrentPattern(
-            [System.Windows.Automation.SelectionItemPattern]::Pattern
-          )
-          $selectionPattern.Select()
-          $selectionDeadline = [DateTime]::UtcNow.AddSeconds(5)
-          do {
-            Start-Sleep -Milliseconds 100
-            $selected = $selectionPattern.Current.IsSelected
-          } while (-not $selected -and [DateTime]::UtcNow -lt $selectionDeadline)
-          if (-not $selected) {
-            throw "Windows UIA Dark radio action did not update selected state"
-          }
-
-          $status = $observedElements["Runtime status"]
-          $statusCondition = [System.Windows.Automation.PropertyCondition]::new(
-            [System.Windows.Automation.AutomationElement]::NameProperty,
-            "Runtime status"
-          )
-          $statusValue = $status.GetCurrentPattern(
-            [System.Windows.Automation.ValuePattern]::Pattern
-          )
-          $ariaPropertiesProperty = [System.Windows.Automation.AutomationElement]::AriaPropertiesProperty
-          $readyDeadline = [DateTime]::UtcNow.AddSeconds(5)
-          do {
-            Start-Sleep -Milliseconds 100
-            $readyValue = $statusValue.Current.Value
-          } while ($readyValue -ne "Runtime Ready · revision 1" -and [DateTime]::UtcNow -lt $readyDeadline)
-          if ($readyValue -ne "Runtime Ready · revision 1") {
-            throw "Windows UIA runtime status did not reach the first ready snapshot"
-          }
-          $observedElements["Refresh"].GetCurrentPattern(
-            [System.Windows.Automation.InvokePattern]::Pattern
-          ).Invoke()
-          $busyValueSeen = $false
-          $busyPropertySeen = $false
-          $busyDeadline = [DateTime]::UtcNow.AddSeconds(4)
-          do {
-            Start-Sleep -Milliseconds 50
-            $busyValue = $statusValue.Current.Value
-            $currentStatus = $root.FindFirst(
-              [System.Windows.Automation.TreeScope]::Descendants,
-              $statusCondition
-            )
-            $busyProperties = if ($null -eq $currentStatus -or $null -eq $ariaPropertiesProperty) {
-              ""
-            } else {
-              [string]$currentStatus.GetCurrentPropertyValue(
-                $ariaPropertiesProperty
-              )
-            }
-            $busyValueSeen = $busyValueSeen -or $busyValue -eq "Refreshing..."
-            $busyPropertySeen = $busyPropertySeen -or $busyProperties -match "busy=true"
-          } while (
-            (-not $busyValueSeen -or ($null -ne $ariaPropertiesProperty -and -not $busyPropertySeen)) -and
-            [DateTime]::UtcNow -lt $busyDeadline
-          )
-          if (-not $busyValueSeen) {
-            throw "Windows UIA runtime status did not expose the loading value: final_value='$busyValue'"
-          }
-          if ($null -eq $ariaPropertiesProperty) {
-            Write-Warning "Windows managed UIA client does not expose AriaPropertiesProperty"
-          } elseif (-not $busyPropertySeen) {
-            Write-Warning "Windows UIA did not project AccessKit busy=true through AriaProperties"
-          }
-          $errorDeadline = [DateTime]::UtcNow.AddSeconds(5)
-          do {
-            Start-Sleep -Milliseconds 100
-            $errorValue = $statusValue.Current.Value
-          } while ($errorValue -ne "runtime probe failed" -and [DateTime]::UtcNow -lt $errorDeadline)
-          if ($errorValue -ne "runtime probe failed") {
-            throw "Windows UIA runtime status did not expose the injected error"
-          }
-          $observedElements["Refresh"].GetCurrentPattern(
-            [System.Windows.Automation.InvokePattern]::Pattern
-          ).Invoke()
-          $recoveryDeadline = [DateTime]::UtcNow.AddSeconds(5)
-          do {
-            Start-Sleep -Milliseconds 100
-            $recoveredValue = $statusValue.Current.Value
-          } while ($recoveredValue -ne "Runtime Ready · revision 2" -and [DateTime]::UtcNow -lt $recoveryDeadline)
-          if ($recoveredValue -ne "Runtime Ready · revision 2") {
-            throw "Windows UIA runtime status did not recover after retry"
-          }
-
-          $resetPattern = $observedElements["Reset settings..."].GetCurrentPattern(
-            [System.Windows.Automation.InvokePattern]::Pattern
-          )
-          $resetPattern.Invoke()
-          $dialogCondition = [System.Windows.Automation.PropertyCondition]::new(
-            [System.Windows.Automation.AutomationElement]::NameProperty,
-            "Reset settings?"
-          )
-          $dialogDeadline = [DateTime]::UtcNow.AddSeconds(5)
-          do {
-            Start-Sleep -Milliseconds 100
-            $dialog = $root.FindFirst(
-              [System.Windows.Automation.TreeScope]::Descendants,
-              $dialogCondition
-            )
-          } while ($null -eq $dialog -and [DateTime]::UtcNow -lt $dialogDeadline)
-          if ($null -eq $dialog) {
-            throw "Windows UIA reset action did not expose a confirmation dialog"
-          }
-          if ($dialog.Current.ControlType.ProgrammaticName -ne "ControlType.Window") {
-            throw "Windows UIA reset confirmation was not exposed as a dialog window"
-          }
-          $cancelCondition = [System.Windows.Automation.PropertyCondition]::new(
-            [System.Windows.Automation.AutomationElement]::NameProperty,
-            "Cancel"
-          )
-          $cancel = $dialog.FindFirst(
-            [System.Windows.Automation.TreeScope]::Descendants,
-            $cancelCondition
-          )
-          if ($null -eq $cancel) {
-            throw "Windows UIA reset dialog did not expose Cancel"
-          }
-          $focusDeadline = [DateTime]::UtcNow.AddSeconds(5)
-          do {
-            Start-Sleep -Milliseconds 100
-            $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
-            $focusedName = if ($null -eq $focused) { "" } else { $focused.Current.Name }
-          } while ($focusedName -ne "Cancel" -and [DateTime]::UtcNow -lt $focusDeadline)
-          if ($focusedName -ne "Cancel") {
-            throw "Windows UIA reset dialog did not move focus to Cancel"
-          }
-          $cancel.GetCurrentPattern(
-            [System.Windows.Automation.InvokePattern]::Pattern
-          ).Invoke()
-          $closeDeadline = [DateTime]::UtcNow.AddSeconds(5)
-          do {
-            Start-Sleep -Milliseconds 100
-            $dialog = $root.FindFirst(
-              [System.Windows.Automation.TreeScope]::Descendants,
-              $dialogCondition
-            )
-          } while ($null -ne $dialog -and [DateTime]::UtcNow -lt $closeDeadline)
-          if ($null -ne $dialog) {
-            throw "Windows UIA cancel action did not dismiss the reset dialog"
-          }
-          Write-Host "gpui-settings-spike: Windows UIA tree controls=$($expectedControls.Count)"
+          # No UI Automation inspection here. GPUI 0.2.2 does not project a
+          # usable UIA tree of its own, and ADR-0054 retired the spike's
+          # project-owned AccessKit bridge, so a UIA-driven check could only
+          # assert a contract BongoCat no longer owns. This step is now a pure
+          # lifecycle smoke: the debug binary must open its window, render a
+          # first frame at a positive scale factor, run its typed runtime
+          # bridge and tooltip probe, and shut the runtime down before the
+          # application exits. `--runtime-error-probe` is not passed because
+          # driving a second refresh needed the retired action channel; runtime
+          # error/retry state coverage lives in the product's own
+          # settings-window state smoke instead.
           if (-not $process.WaitForExit(30000)) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
             $process.WaitForExit()
@@ -1773,7 +1582,6 @@ jobs:
             "gpui-settings-spike: first frame elapsed_ms=",
             "scale_factor=",
             "gpui-settings-spike: runtime snapshot revision=1",
-            "gpui-settings-spike: accessibility action applied",
             "gpui-settings-spike: native tooltip hover entered",
             "gpui-settings-spike: tooltip built after hover delay",
             "gpui-settings-spike: tooltip hover delay and exit verified",

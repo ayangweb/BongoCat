@@ -9,7 +9,6 @@ publish.workspace = true
 
 [dependencies]
 bongocat-input.workspace = true
-bongocat-live2d.workspace = true
 bongocat-model.workspace = true
 bongocat-platform.workspace = true
 bongocat-render.workspace = true

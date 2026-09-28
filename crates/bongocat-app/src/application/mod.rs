@@ -117,13 +117,6 @@ impl Application {
             .resolve(self.system_language)
     }
 
-    /// Compile the currently committed shortcut bindings for a platform
-    /// adapter. This is read-only and never performs registration or capture.
-    pub fn compiled_shortcuts(&self) -> Result<CompiledShortcuts, ApplicationError> {
-        active_shortcuts(&self.config, self.live_model_identity().as_ref())
-            .map_err(ApplicationError::Config)
-    }
-
     /// The model identity whose behavior bindings are live: the one the runtime
     /// is showing. This is tracked on the application instead of being read from
     /// the persisted selection, because startup may activate the default model

@@ -99,4 +99,7 @@ Tauri/Pinia、开发中间版本或未知未来版本增加转换器、alias、f
 - `bongocat-config`：有效当前配置、有效备份优先、无有效备份回落默认值。
 - `bongocat-app` / `bongocat-ui`：无 recovery-only window、无配置恢复 command/snapshot 字段。
 - Development、Production、smoke 的 Settings window 查看同一页面与更新入口组成。
-- workspace 搜索不再出现项目自有 `accessibility`、`accesskit` 模块、节点或直接依赖。
+- workspace 与 `spikes/` 都不再出现项目自有 `accessibility`、`accesskit` 模块、节点或直接依赖。
+  `spikes/gpui-settings` 原本自建的 AccessKit bridge、action channel 与隐藏 `Status`
+  节点已随该 ADR 删除；它的 CI smoke 改为纯生命周期检查，Windows 侧不再用 UI
+  Automation 驱动探针。

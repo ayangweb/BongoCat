@@ -232,13 +232,6 @@ impl ConfigStore {
         Ok(outcome)
     }
 
-    pub fn recover_interrupted_commit(
-        &self,
-    ) -> Result<Option<InterruptedConfigRecovery>, ConfigError> {
-        let _lock = self.acquire_recovery_lock(RECOVERY_LOCK_TIMEOUT)?;
-        self.recover_interrupted_commit_unlocked()
-    }
-
     pub fn commit(&self, config: &NativeConfig) -> Result<ConfigRevision, ConfigError> {
         let _lock = self.acquire_writer_lock()?;
         self.commit_unlocked(config)
