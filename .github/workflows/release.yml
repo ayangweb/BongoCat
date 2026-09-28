@@ -27,6 +27,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+      # `rust-toolchain.toml` pins the toolchain every `cargo` invocation in this
+      # workspace resolves to, and that pin is the single product version source for
+      # the release. The action above installs the target for `stable`, which is not
+      # the toolchain that actually compiles here, so the target has to be installed
+      # for the pinned one as well. Without this the cross-compiled macOS job dies
+      # with `can't find crate for 'std'`; the jobs whose target happens to be the
+      # runner's host are only passing because a host toolchain ships its own std.
+      - name: Install the target for the pinned toolchain
+        run: rustup target add x86_64-pc-windows-msvc
       - uses: taiki-e/install-action@just
       - name: Check the tag against the single product version source
         shell: bash
@@ -125,6 +134,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.triple }}
+      # The action installs the target for `stable`, but `rust-toolchain.toml` pins
+      # the toolchain that actually compiles in this workspace, so the target has to
+      # be installed for the pinned toolchain too. `aarch64-apple-darwin` is the
+      # runner's host and is covered either way; the `x86_64-apple-darwin` leg of
+      # this matrix is the one that cross-compiles, and it fails with
+      # `can't find crate for 'std'` without this.
+      - name: Install the target for the pinned toolchain
+        run: rustup target add ${{ matrix.triple }}
       - uses: taiki-e/install-action@just
       - name: Check the tag against the single product version source
         shell: bash
