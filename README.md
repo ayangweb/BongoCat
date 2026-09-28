@@ -31,9 +31,20 @@ English | [简体中文](README.zh-CN.md)
   </p>
 </div>
 
-| macOS | Windows |
-| --- | --- |
-| ![macOS](https://i0.hdslb.com/bfs/openplatform/dff276b96d49c5d6c431b74b531aab72191b3d87.png) | ![Windows](https://i0.hdslb.com/bfs/openplatform/a4149b753856ee7f401989da902cf3b5ad35b39e.png) |
+<table width="100%">
+  <thead>
+    <tr>
+      <th width="50%" align="center">macOS</th>
+      <th width="50%" align="center">Windows</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td width="50%" align="center"><img src="https://i0.hdslb.com/bfs/openplatform/56f72568579bb44284382fe1f9b9049a700282d3.png" alt="macOS" width="100%" /></td>
+      <td width="50%" align="center"><img src="https://i0.hdslb.com/bfs/openplatform/65129576aa3062f840d0640c060298c1d52b9be2.png" alt="Windows" width="100%" /></td>
+    </tr>
+  </tbody>
+</table>
 
 BongoCat is a desktop companion for Windows and macOS. A Live2D cat lives on your screen, its eyes
 and paws follow your mouse, and it reacts to every key, mouse button and gamepad button you press.
