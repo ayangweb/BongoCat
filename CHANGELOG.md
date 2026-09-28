@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### ✨ Features
+
+- A nightly build of the latest commit is published every day for anyone who wants to try a change before it is released. Download the installer or disk image from the Nightly workflow run; nightly artifacts are unsigned and cannot be installed through the in-app updater.
+
 ## 2.0.0 - 2026-09-29
 
 ### ⚠️ Upgrade Notice

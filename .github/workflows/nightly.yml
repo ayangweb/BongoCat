@@ -1,0 +1,146 @@
+name: Nightly
+
+# An untagged build of the default branch, for trying a commit that has no
+# release yet.
+#
+# This publishes no GitHub release and no update manifest on purpose. The updater
+# requests `latest.json` from the repository's latest release, so a nightly that
+# produced one would move every installed copy onto a build no tag names. The
+# artifacts therefore stay workflow artifacts, which expire, and they carry no
+# Minisign signature: nothing in the product can install them.
+on:
+  schedule:
+    # 18:00 UTC is 02:00 in the maintainer's timezone. The hour is arbitrary;
+    # the UTC is not, because `schedule` is always interpreted as UTC and the
+    # comment is the only thing that tells a reader when this actually runs.
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A nightly still building when the next one starts has already been superseded,
+# and the runner minutes it holds cannot be recovered. This is the opposite of
+# the verification pipeline, where a newer run replaces an older result on one
+# ref: here there is no ref and no result to preserve.
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows-x64:
+    name: Build nightly Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      # `rust-toolchain.toml` pins the toolchain every `cargo` invocation in
+      # this workspace resolves to, and the action above installs the target for
+      # `stable` rather than for that pin. Without this the job dies with
+      # `can't find crate for 'std'`.
+      - name: Install the target for the pinned toolchain
+        run: rustup target add x86_64-pc-windows-msvc
+      - uses: taiki-e/install-action@just
+      - name: Build the Production product
+        # No signing key is injected, so the packaging entry point skips the
+        # update payload and its detached signature. That is what a nightly
+        # wants: the installer becomes a workflow artifact and never becomes
+        # something the updater could install.
+        run: just build
+      - name: Verify the installer artifact
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem -Path "target/package" -Filter "*.exe" -File)
+          if ($installers.Count -ne 1) {
+            throw "expected exactly one installer, found $($installers.Count)"
+          }
+          $installer = $installers[0]
+          if ($installer.Length -le 0) { throw "installer is empty" }
+          Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256 |
+            Select-Object -ExpandProperty Hash |
+            ForEach-Object { Write-Host "installer sha256=$_" }
+      - name: Collect the nightly artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path nightly-assets | Out-Null
+          # The installer is labelled with the commit it was built from. Every
+          # nightly in a run of unreleased commits shares one workspace version,
+          # so the version alone cannot tell a reader which of two downloaded
+          # builds is newer. The name is derived from the artifact rather than
+          # restated: the packaging entry point owns the product's published
+          # file names, and this only labels a file that never reaches a release.
+          $installer = Get-ChildItem -Path "target/package" -Filter "*.exe" -File
+          $sha = (git rev-parse --short=12 HEAD).Trim()
+          Copy-Item -LiteralPath $installer.FullName `
+            -Destination "nightly-assets/BongoCat-nightly-$sha.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-windows-x64
+          path: nightly-assets/*
+          if-no-files-found: error
+          # A nightly is only worth keeping while it is recent. Seven days is
+          # the retention the verification pipeline gives its own failure
+          # evidence, so the repository answers "how long do we keep this" the
+          # same way everywhere.
+          retention-days: 7
+
+  macos:
+    name: Build nightly macOS ${{ matrix.arch }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # `arch` is the one token every published file name of this target is
+        # built from, so the artifact uploaded below is keyed by the same value
+        # the disk image inside it carries.
+        include:
+          - triple: aarch64-apple-darwin
+            arch: aarch64
+          - triple: x86_64-apple-darwin
+            arch: x64
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
+      # As on Windows: the action installs the target for `stable` while
+      # `rust-toolchain.toml` pins what actually compiles, and the cross-compiled
+      # `x86_64-apple-darwin` leg is the one that fails without this.
+      - name: Install the target for the pinned toolchain
+        run: rustup target add ${{ matrix.triple }}
+      - uses: taiki-e/install-action@just
+      - name: Build the Production product
+        # No signing key is injected, so neither the update payload nor its
+        # signature is produced. See the Windows job for why a nightly must not
+        # have them.
+        run: just build --target ${{ matrix.triple }}
+      - name: Verify the disk image
+        run: |
+          set -euo pipefail
+          # A macOS target publishes a disk image, so that is the artifact a
+          # user downloads. Verifying the bundle inside the workspace is enough
+          # to catch a build that produced neither, and the disk image is built
+          # from that same bundle.
+          codesign --verify --deep --strict target/package/BongoCat.app
+          ls -la target/package/*.dmg
+      - name: Collect the nightly artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p nightly-assets
+          # The disk image keeps the name the packaging tool gave it. It already
+          # carries the version and the architecture, and renaming it here would
+          # restate a product file name in a second place.
+          cp target/package/*.dmg nightly-assets/
+          ls -la nightly-assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-macos-${{ matrix.arch }}
+          path: nightly-assets/*
+          if-no-files-found: error
+          retention-days: 7
