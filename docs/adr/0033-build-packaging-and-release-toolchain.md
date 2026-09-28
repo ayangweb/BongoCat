@@ -147,7 +147,7 @@ macOS 两种架构在同一个 runner 上构建，保证 SDK、工具链与配�
   不生成的键（`LSMultipleInstancesProhibited`、`NSPrincipalClass`）；其余键由工具生成，
   避免两处定义同一个值。
 - Windows 安装目录由 `$LOCALAPPDATA\Programs\BongoCat` 变为 `$LOCALAPPDATA\BongoCat`
-  （`cargo-packager` 的 currentUser 布局），注册表仍写在 HKCU。`next` 尚未发布，
+  （`cargo-packager` 的 currentUser 布局），注册表仍写在 HKCU。首个正式版本发布前，
   不存在需要迁移的已安装实例。
 - `cargo-packager` 硬编码 Windows 安装器文件名为
   `{主二进制名}_{version}_{arch}-setup.exe`，且没有可配置项。发布资产名是产品决策，

@@ -63,7 +63,10 @@ class DependabotContractTests(unittest.TestCase):
         source = read(CONFIGURATION)
         self.assertIn("version: 2", source)
         self.assertEqual(source.count("package-ecosystem: cargo"), 1)
-        self.assertIn("target-branch: next", source)
+        # Dependabot opens its pull requests against the default branch. Pinning
+        # `target-branch` to a development branch would silently stop updates
+        # once that branch is gone, so the contract is that none is named here.
+        self.assertNotIn("target-branch", source)
 
     def test_every_configured_directory_exists_and_holds_a_manifest(self):
         entries = configured_directories()

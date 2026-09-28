@@ -109,7 +109,7 @@ Overlay 可见性是 runtime 会话状态，不写入 `config.json`。每次启�
 `0`（立即隐藏）。两者只在窗口呈现层生效：开启后指针进入 overlay 窗口矩形并停留满延迟时间，
 窗口渲染 alpha 在 300ms 内降到 `0`，同时指针事件立即穿透；指针离开后 alpha 在 300ms 内恢复，
 穿透状态回到 `overlay.click_through`。窗口本身不隐藏、不销毁，也不改变
-runtime 的 overlay visibility。延迟值在 `next` 首版收窄为 `0..=60` 秒，理由见
+runtime 的 overlay visibility。延迟值在首版收窄为 `0..=60` 秒，理由见
 `bongocat-config` 中 `OverlayConfig::hide_on_pointer_hover_delay_seconds` 的文档注释。该字段以
 整秒存储，与设置页显示和输入的单位一致；overlay frame loop 仍以毫秒计时，只在
 `OverlaySessionOptions` 边界换算一次。
@@ -149,7 +149,7 @@ typed platform snapshot，并仅在显式用户 command 时调用平台 adapter�
 `model.play_motion_audio` 默认 `false`。设置页把它呈现为"动作音效"开关，也就是正向字段的直出：
 打开后，带音效资源的 motion 在播放时同时播放该音效；关闭时 runtime 既不预解码也不发布 `Play`。
 默认关闭是对旧版行为的刻意收窄：`docs/phase-0/behavior-inventory.md` 记录的旧版观察是"默认音效开"，
-因此旧版第一次启动就会出声，用户还没打开过任何设置页面。`next` 把是否出声交给用户，新装或新建的
+因此旧版第一次启动就会出声，用户还没打开过任何设置页面。当前版本把是否出声交给用户，新装或新建的
 配置一律静音，只有显式打开开关之后才会有声音。
 
 `shortcuts.model_behaviors_enabled` 默认 `false`，只决定配置中的
@@ -250,7 +250,7 @@ typed command 与配置校验两处都被拒绝并保留旧值。语义来源与
 
 窗口圆角（`overlay.corner_radius_percent`）与指针悬停隐藏（`overlay.hide_on_pointer_hover`、
 `overlay.hide_on_pointer_hover_delay_seconds`）原本属于 `P1 首发后` 范围，现按维护者决定上调为
-`P0 首发`，作为当前 v1 字段进入 `next` 初始版本。这不引入迁移或兼容逻辑：`next` 仍是全新首版，
+`P0 首发`，作为当前 v1 字段进入初始版本。这不引入迁移或兼容逻辑：初始版本仍是全新首版，
 三个字段直接写在当前 v1 schema、默认值、fixture 与实现中。
 
 `appearance.language` 是严格的三值枚举：`system`、`zh-CN` 和 `en-US`，默认 `system`；未知值
@@ -339,10 +339,10 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
 
 ## Initial Version Boundary
 
-- `next` 是全新的初始版本。当前完整配置直接定义为 `schema_version: 1`，包括
+- 初始版本是全新的。当前完整配置直接定义为 `schema_version: 1`，包括
   `appearance`、`overlay`、`input`、`logging`、`model`、`shortcuts`、`system`、`updates`
   和本文件列出的全部现有字段。overlay 可见性是 runtime 会话状态，不属于配置。
-- `next` 开发期间新增字段直接修改 v1 的 Rust 类型、JSON Schema、默认值和 fixture；不保留开发
+- 开发期间新增字段直接修改 v1 的 Rust 类型、JSON Schema、默认值和 fixture；不保留开发
   中间结构，不实现 migration、字段 alias、旧数据转换或历史版本判断。
 - 解析入口只接受完整 v1，并明确拒绝其他版本且不改写原文件。该入口为首次正式发布后的迁移机制
   保留边界；发布前不包含任何迁移实现，发布后再以实际发布的 v1 为唯一迁移基线。

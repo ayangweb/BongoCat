@@ -413,7 +413,7 @@ pub fn key_name_candidates(hid_usage: u16) -> Vec<&'static str> {
     // can never disagree about which artwork a key means. Both are needed for
     // already-installed models: an import rewrites the package's own staging
     // copy, but a store entry that predates the normalizer is never rewritten
-    // in place (`next` has no migration path).
+    // in place (there is no migration path).
     match hid_usage {
         // The main Enter key: community models in the wild ship `Return.png`.
         0x28 => candidates.push("Return"),

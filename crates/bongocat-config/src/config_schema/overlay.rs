@@ -71,7 +71,7 @@ pub struct OverlayConfig {
         schemars(range(min = 0, max = 60))
     )]
     pub hide_on_pointer_hover_delay_seconds: u32,
-    /// Keep the overlay window fully on a display. `next` keeps the window on
+    /// Keep the overlay window fully on a display. The window stays on
     /// the union of the connected displays, so it may cover a taskbar, Dock or
     /// menu bar, and a window dragged off the desktop is moved back only after
     /// the drag has stopped. This replaces the earlier work-area constraint,

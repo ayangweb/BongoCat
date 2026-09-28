@@ -11,12 +11,10 @@
 | ------------------------------ | ---------------------------------------- | ------------------------------------------ |
 | 当前主分支基线                 | `master`, `origin/master`, `origin/HEAD` | `44f44bcf2b17b8e16463ad479a477a949d01cc9a` |
 | 重构前保护引用                 | `pre-refactor`, `origin/pre-refactor`    | `44f44bcf2b17b8e16463ad479a477a949d01cc9a` |
-| `next` 创建基点                | `merge-base(master, next)`               | `44f44bcf2b17b8e16463ad479a477a949d01cc9a` |
-| 记录前的 `next` 文档提交       | `next`                                   | `f630e6fc0609fc205d885484835321e929819db0` |
 | 最新已发布 tag object          | `v1.1.0`                                 | `2a4e3b51706fe9e1ed5f8e39aed02336583a8823` |
 | `v1.1.0` peeled release commit | `v1.1.0^{}`                              | `84f9f4ccfb11d8a4aefb9623934637878be0e384` |
 
-仓库包含 `v0.1.0` 至 `v1.1.0` 的连续发布 tag。回看行为或恢复旧源码时优先使用不可变 tag/commit，不依赖会继续移动的 `master` 或 `next` 名称。
+仓库包含 `v0.1.0` 至 `v1.1.0` 的连续发布 tag。回看行为或恢复旧源码时优先使用不可变 tag/commit，不依赖会继续移动的 `master` 名称。
 
 ## 2. Historical Build Matrix
 

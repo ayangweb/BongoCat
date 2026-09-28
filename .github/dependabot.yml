@@ -18,7 +18,6 @@ updates:
       - /spikes/runtime-contract
       - /tools/cubism-bindgen
       - /tools/cubism-core-probe
-    target-branch: next
     schedule:
       interval: weekly
       day: monday

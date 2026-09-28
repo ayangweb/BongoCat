@@ -237,7 +237,7 @@ stable 发布保持阻塞，详见 `future-incompatibility.md`。
 
 新增依赖时必须先核对当日最新稳定版并选用该版本。若最新版本与已确认 toolchain、target、许可证或安全边界冲突，提交必须同时记录实际选择、阻塞原因、上游解除条件和替换成本。新增或修改 manifest 后必须更新对应 lockfile，运行 license/source policy、format、Clippy、test 和目标平台 build。
 
-`.github/dependabot.yml` 每周扫描当前 workspace 和独立 spike/tool workspace，并把更新目标固定为 `next`。自动 PR 仍必须通过双平台 CI 和人工 API/许可证评审，不能因版本号更新而自动合并。
+`.github/dependabot.yml` 每周扫描当前 workspace 和独立 spike/tool workspace，更新 PR 面向默认分支。自动 PR 仍必须通过双平台 CI 和人工 API/许可证评审，不能因版本号更新而自动合并。
 
 版本最新不替代依赖审查。维护状态、许可证、unsafe 面积、平台覆盖和公共 API 泄漏仍按 `AGENTS.md` 的依赖规则独立验收。
 

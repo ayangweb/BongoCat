@@ -34,7 +34,7 @@ runtime、输入、配置和日志 owner 的聚合状态，但不能让维护者
 - ZIP 在当前环境 `logs/` 下以私有同目录 staging file 创建，完成所有 entry 的大小、数量和结构验证
   后 `flush`/`sync_all` 并原子替换目标。取消、解析、写入、同步或替换失败必须删除本次 staging，
   保留上一份有效 preview；Unix 目录/文件分别恢复 `0700`/`0600`，Windows 使用当前 profile ACL。
-- package format 继续是当前 `next` 首版 v1；在首版发布前字段可直接同步调整 manifest、writer、
+- package format 继续是首版 v1；在首版发布前字段可直接同步调整 manifest、writer、
   fixture 和测试，不添加任何兼容 reader 或 migration。首版发布后才为不兼容演进建立新的 versioned
   format 与 ADR。
 - UI executor 只调用 typed export command。UI 显示 stable result code、format version、entry count

@@ -3,7 +3,7 @@
 状态：`IMPLEMENTATION GO WITH RELEASE CONDITIONS`
 评审日期：2026-08-30
 一致性修订：2026-09-25
-目标分支：`next`
+目标分支：`master`
 
 本文是 Phase 0 证据索引和剩余工作清单。ADR-0011 允许正式 workspace 和不依赖外部证据的模块渐进实现；本状态不是完整功能或 stable 发布的 GO，`P0-GO-NO-GO` 在全部退出门槛可复核前保持未勾选。修订后的当前契约以 ADR-0033 的三个首发 target 和 ADR-0054 的 visual-first 设置 UI 为准。
 

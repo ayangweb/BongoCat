@@ -13,7 +13,7 @@
 - 两个环境具有完全一致的相对结构：`config.json`、`window-state.json`、`models/`、`backups/`、`logs/`、`updates/`、`locks/`；
 - `NativeConfig` 是强类型结构，当前与共享默认 fixture 对齐为 `schema_version = 1`，模型选择
   使用 nullable 的完整 `selected_model: { id, source }`，JSON key 使用当前产品语义的
-  `snake_case`；`next` 不读取或迁移开发中间结构；
+  `snake_case`；不读取或迁移开发中间结构；
 - typed parser 与 JSON schema 都拒绝未知字段，避免拼写错误或旧配置字段被静默接受；
 - commit 流程为 validate -> serialize -> 同目录临时文件 -> `sync_all` -> 备份当前有效配置 -> rename -> 提交后重新打开验证；校验失败不会覆盖旧配置，成功提交会保留 `backups/config.previous.json`；
 - 损坏 JSON 会返回诊断错误并保留原始文件，不静默写回默认配置；

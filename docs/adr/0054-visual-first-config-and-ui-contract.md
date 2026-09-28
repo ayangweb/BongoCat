@@ -34,7 +34,7 @@
 - 每个阶段复用既有 writer lock、原子替换和损坏文件 quarantine；不再有“等待用户点恢复默认”的
   中间状态。
 
-非 v1 当前文件仍按当前 v1 的严格版本入口处理，不属于自动 downgrade/migration。`next` 不为旧
+非 v1 当前文件仍按当前 v1 的严格版本入口处理，不属于自动 downgrade/migration。本产品不为旧
 Tauri/Pinia、开发中间版本或未知未来版本增加转换器、alias、fallback UI 或兼容分支。
 
 ### 2. 设置窗口没有配置恢复 UI

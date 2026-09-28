@@ -52,7 +52,7 @@ make code `0x1c` + E0 扩展位，macOS keycode `76`），`bongocat-platform` �
 ```
 
 - `Enter` 排在 `Return` 之前：新导入与预置模型命中 canonical 名；未经归一化的已安装模型
-  落到 `Return.png`，主 Enter 照常画图（与 ADR-0038 保留 `AltGr` 的理由相同——`next` 没有
+  落到 `Return.png`，主 Enter 照常画图（与 ADR-0038 保留 `AltGr` 的理由相同——本产品没有
   就地迁移路径，旧安装只能靠运行时 alias 保持可用）。
 - `KpEnter` 排在 `Enter` 之前：模型画了专用图就用专用图；没画就回退主 Enter 的图。回退在
   `key_name_candidates`（资源加载层）实现，不要求模型额外提供图片；模型补了 `KpEnter.png`

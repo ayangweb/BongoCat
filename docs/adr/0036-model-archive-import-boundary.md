@@ -222,7 +222,7 @@ Windows 的 common item dialog 同样区分），所以 Models 页面提供两�
 - **新增"解压中"进度阶段**：typed 操作契约的 stage 集合（prepare/copy/validate/commit）不变，
   解压计入 `Copying` ——它描述的是"把来源字节物化进 staging"，对归档而言就是解压。新增阶段会
   让 model/ui/app 三处的单调性契约与测试同时改，收益只是一个更细的动词，不值得。
-- **把归档解压到已安装目录**：`next` 不允许任何就地更新语义；导入永远是"新 id + 新目录"。
+- **把归档解压到已安装目录**：本产品不允许任何就地更新语义；导入永远是"新 id + 新目录"。
 - **压缩包内的多模型选择**：一个归档 = 一个模型，仍是入口发现规则（0 个 → 缺失，≥2 个 → 歧义）。
 
 ## 残余风险与待验证项（不得当作已确认）
@@ -282,7 +282,7 @@ Windows 的 common item dialog 同样区分），所以 Models 页面提供两�
   `cargo check --locked --workspace --release` 全部通过。
 
 **顺带修复的既有缺陷（与本功能无关，需要单独复核）**：`bongocat-platform` 的示例
-`model_source_picker_smoke` 在 `next` 上**本来无法编译**（已用 `git stash` 在 HEAD 上复现）：
+`model_source_picker_smoke` **本来无法编译**（已用 `git stash` 在 HEAD 上复现）：
 它引用 `objc2_app_kit::NSBackingStoreType`，而该类型属于 `NSGraphics` feature，清单里没有打开。
 因为本次需要改这个示例，所以补上了 `"NSGraphics"`；这也是 `cargo check --all-targets` 能通过的前提。
 若不接受这次修复，应单独回滚该清单行，并另行处理该示例。
