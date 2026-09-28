@@ -151,4 +151,4 @@ Contributions are very welcome. Please read the [contributing guide](CONTRIBUTIN
 
 ## License
 
-BongoCat is open source under the [MIT](LICENSE) license.
+BongoCat is open source under the [Apache License 2.0](LICENSE) license.

@@ -7,6 +7,7 @@
 - BongoCat 2.0.0 is a complete Rust rewrite of the desktop app, replacing the WebView version.
 - Settings and model data use a new format. Earlier settings, shortcuts, selected models and installed models are not imported; reconfigure BongoCat and import your models again.
 - The model window is shown on every launch, and hiding it lasts only for the current session.
+- BongoCat is now licensed under the Apache License 2.0 instead of MIT, and the copyright is held by ayangweb. The new license adds an express patent grant, and redistributed copies must include the license text and mark changed files.
 
 ### ✨ Features
 

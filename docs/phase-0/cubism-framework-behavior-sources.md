@@ -83,7 +83,7 @@ the R5 path. This correction does not claim a complete Mver physics oracle.
 
 ## 3. License Boundary
 
-Native Framework and Samples use the Live2D Open Software License, not the repository MIT license. Core and its header use the Live2D Proprietary Software License. `Core/RedistributableFiles.txt` lists runtime libraries but does not list the Core header, so publishing generated Rust bindings derived from that header also requires an explicit Live2D answer.
+Native Framework and Samples use the Live2D Open Software License, not the repository Apache-2.0 license. Core and its header use the Live2D Proprietary Software License. `Core/RedistributableFiles.txt` lists runtime libraries but does not list the Core header, so publishing generated Rust bindings derived from that header also requires an explicit Live2D answer.
 
 Until that answer exists:
 
