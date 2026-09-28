@@ -399,8 +399,10 @@ class MacosBundleTests(unittest.TestCase):
         self.assertIn("finder_store::window(", source)
         # The layout is written into the volume, not arranged by Finder: driving
         # Finder needs a graphical session and an Automation consent prompt,
-        # which an unattended release job does not have.
-        self.assertNotIn("osascript", source)
+        # which an unattended release job does not have. The one AppleScript call
+        # in this crate is the shipped repair script closing its own window, so
+        # the invariant is that the build runs none.
+        self.assertNotIn('Command::new("osascript")', source)
         self.assertNotIn("osascript", layout)
 
     def test_disk_image_carries_a_repair_command_for_the_installed_copy(self):
@@ -419,6 +421,53 @@ class MacosBundleTests(unittest.TestCase):
         self.assertNotIn("spctl", source)
         # It only repairs; re-signing is reported as a manual command instead.
         self.assertIn("sudo codesign --force --deep --sign -", source)
+
+    def test_the_repair_command_says_what_to_do_when_there_is_nothing_to_repair(self):
+        # A reader who has not installed the app yet should be told to install
+        # it, not told there is nothing wrong: the two states are told apart, and
+        # neither asks for a password it does not need.
+        source = read(PACKAGER)
+        for value in (
+            'if [ ! -d "$app_dir" ]; then',
+            "Drag {app_name} from this disk image into Applications first, then run",
+            "Either that copy is already repaired, or it is not the copy from this",
+            "onto Applications, replacing the copy that is there, then run this again",
+        ):
+            with self.subTest(value=value):
+                self.assertIn(value, source)
+        # The password is only asked for on the branch that needs it.
+        self.assertLess(
+            source.index("if ! xattr -p com.apple.quarantine"),
+            source.index("Enter your Mac login password when asked"),
+        )
+
+    def test_the_repair_command_closes_the_window_it_ran_in(self):
+        # Terminal leaves the window open when the command finishes, so the
+        # prompt's promise is kept by the script. The close waits a second
+        # because Terminal asks before terminating a running process, and it
+        # matches the window by tty and title so a shell in use is not closed.
+        source = read(PACKAGER)
+        for value in (
+            '"${{TERM_PROGRAM:-}}" = "Apple_Terminal"',
+            "Press Enter to close this window...",
+            "sleep 1",
+            "first window whose tty is",
+            "and name contains",
+        ):
+            with self.subTest(value=value):
+                self.assertIn(value, source)
+        # `tty` has to be read in the foreground: bash hands a background job
+        # /dev/null as its input, and `tty` then answers "not a tty" instead of
+        # naming the window. That is the version that silently never closes
+        # anything, and it is invisible to a stubbed run.
+        start = source.index("fn repair_command(app_name: &str) -> String {")
+        command = source[start : source.index("\n}\n", start)]
+        self.assertIn("this_tty=$(tty)", command)
+        self.assertLess(
+            command.index("this_tty=$(tty)"),
+            command.index("\n    ) &\n"),
+            "the tty has to be read before the close is put in the background",
+        )
 
     def test_disk_image_gives_the_volume_the_application_icon(self):
         # Finder reads a volume's own icon from `.VolumeIcon.icns` plus a file

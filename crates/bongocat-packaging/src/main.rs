@@ -2049,6 +2049,10 @@ fn build_disk_image(
 /// Two commands, in one order. The recursive form is the one that also covers a
 /// bundle with anything quarantined inside it, and macOS 15 and later reject it,
 /// so the plain form is the fallback rather than a third thing to try.
+///
+/// The script also closes the Terminal window it ran in, because the window is
+/// the interface here and a prompt that promises to close it has to keep that
+/// promise; see `finish` in the script for the two conditions that make it safe.
 #[cfg(unix)]
 fn repair_command(app_name: &str) -> String {
     format!(
@@ -2070,23 +2074,53 @@ red="\033[0;31m"
 cyan="\033[0;36m"
 none="\033[0m"
 
+# Closes the window once the reader is done with it, then exits with `status`.
+#
+# Terminal leaves a window open when the command in it finishes, so the promise
+# printed below has to be kept here. The close waits a second, because Terminal
+# asks for confirmation before it terminates a process that is still running and
+# this script would be one. It only ever matches the window Terminal opened for
+# this file, by tty and by title, so a shell somebody is using is never closed;
+# from another terminal there is nothing to close and the script just waits.
+finish() {{
+  if [ "${{TERM_PROGRAM:-}}" = "Apple_Terminal" ]; then
+    read -r -p "Press Enter to close this window... " _
+    # Read here rather than inside the background job: bash gives a background
+    # job /dev/null as its input, and `tty` then answers "not a tty" instead of
+    # naming the window this script is running in.
+    this_tty=$(tty)
+    this_name=$(basename "$0")
+    (
+      sleep 1
+      osascript -e "tell application \"Terminal\" to close (first window whose tty is \"$this_tty\" and name contains \"$this_name\")" >/dev/null 2>&1
+    ) &
+  else
+    read -r -p "Press Enter when you are done... " _
+  fi
+  exit "$1"
+}}
+
 echo ""
 echo -e "${{cyan}}Fix Damaged App: $app_dir${{none}}"
 echo ""
 
 if [ ! -d "$app_dir" ]; then
-  echo -e "${{red}}{app_name} is not installed in {applications}.${{none}}"
-  echo "Copy {app_name} from this disk image into Applications, then run this again."
+  echo -e "${{red}}{app_name} is not in {applications} yet.${{none}}"
+  echo "Drag {app_name} from this disk image into Applications first, then run"
+  echo "this again."
   echo ""
-  read -r -p "Press Enter to close this window... " _
-  exit 1
+  finish 1
 fi
 
 if ! xattr -p com.apple.quarantine "$app_dir" >/dev/null 2>&1; then
-  echo -e "${{green}}No quarantine attribute found, so there is nothing to repair.${{none}}"
+  echo -e "${{yellow}}Nothing to repair: no quarantine attribute on {app_name}.${{none}}"
   echo ""
-  read -r -p "Press Enter to close this window... " _
-  exit 0
+  echo "Either that copy is already repaired, or it is not the copy from this"
+  echo "disk image. Install a fresh one by dragging {app_name} from this image"
+  echo "onto Applications, replacing the copy that is there, then run this again"
+  echo "if macOS still calls it damaged."
+  echo ""
+  finish 0
 fi
 
 echo -e "${{yellow}}Enter your Mac login password when asked. Nothing is shown while you type.${{none}}"
@@ -2097,15 +2131,14 @@ if sudo xattr -r -d com.apple.quarantine "$app_dir" 2>/dev/null ||
   echo ""
   echo -e "${{green}}Repaired. {app_name} should open normally now.${{none}}"
   open "$app_dir"
-else
-  echo ""
-  echo -e "${{red}}Could not remove the quarantine attribute.${{none}}"
-  echo "If macOS still reports {app_name} as damaged, run this in Terminal:"
-  echo "  sudo codesign --force --deep --sign - \"$app_dir\""
+  finish 0
 fi
 
 echo ""
-read -r -p "Press Enter to close this window... " _
+echo -e "${{red}}Could not remove the quarantine attribute.${{none}}"
+echo "If macOS still reports {app_name} as damaged, run this in Terminal:"
+echo "  sudo codesign --force --deep --sign - \"$app_dir\""
+finish 1
 "##,
         app_name = app_name,
         applications = APPLICATIONS_DIRECTORY
@@ -2290,6 +2323,25 @@ mod tests {
         MODEL_DIRECTORY, OUTPUT_DIRECTORY, PRESET_MODELS, PRODUCT_NAME, ReleaseTarget,
         is_packaging_junk,
     };
+
+    /// The repair command is shell, and nothing in the build runs it, so `bash -n`
+    /// is the only check it gets from the test suite. A quoting mistake in the
+    /// format string above would otherwise ship a file that fails only on the
+    /// reader's machine, after they have already dragged the app across.
+    #[test]
+    #[cfg(unix)]
+    fn the_shipped_repair_command_is_valid_shell() {
+        let script = super::repair_command("BongoCat.app");
+        let path = std::env::temp_dir().join("bongocat-repair-command-check.sh");
+        std::fs::write(&path, &script).expect("write the repair command");
+
+        let status = std::process::Command::new("bash")
+            .args(["-n", &path.to_string_lossy()])
+            .status()
+            .expect("bash is on every macOS");
+        let _ = std::fs::remove_file(&path);
+        assert!(status.success(), "the repair command must parse:\n{script}");
+    }
 
     /// The staged models are only an input to the packager, so packaging must not
     /// leave a second copy of them in the output directory — and cleaning up a
