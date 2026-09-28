@@ -5,8 +5,8 @@ use crate::update_window::{
     human_bytes, required_height, stage_message_key, update_error_message_key,
 };
 use crate::{
-    UpdateErrorCode, UpdateFailureStage, UpdatePhase, UpdateSnapshot, UpdateUnavailableReason,
-    UpdateWindowHandle,
+    SettingsLanguage, UpdateErrorCode, UpdateFailureStage, UpdatePhase, UpdateSnapshot,
+    UpdateUnavailableReason, UpdateWindowHandle,
 };
 use gpui_kit::{Bounds, point, px, size};
 
@@ -29,7 +29,10 @@ fn every_stage_has_its_own_message() {
 fn every_error_code_resolves_to_text_and_the_handle_is_send() {
     for code in UpdateErrorCode::ALL {
         let key = update_error_message_key(code);
-        for locale in ["en-US", "zh-CN"] {
+        for locale in SettingsLanguage::ALL
+            .into_iter()
+            .map(|language| language.catalog_locale())
+        {
             let message = bongocat_i18n::text(locale, key);
             assert_ne!(message, key, "{locale} is missing {key}");
             assert!(!message.trim().is_empty(), "{locale} has an empty {key}");

@@ -23,6 +23,7 @@ pub const DEFAULT_LOCALE: &str = "en-US";
 pub fn locale_code(code: &str) -> &str {
     match code {
         "zh-CN" => "zh-CN",
+        "ar" => "ar",
         "en-US" | "system" => DEFAULT_LOCALE,
         _ => DEFAULT_LOCALE,
     }

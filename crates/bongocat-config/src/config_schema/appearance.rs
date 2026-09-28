@@ -33,13 +33,25 @@ pub enum Language {
     ChineseSimplified,
     #[serde(rename = "en-US")]
     EnglishUnitedStates,
+    // Arabic. The stored form is the bare `ar` subtag rather than a
+    // region-qualified one, so a machine reporting `ar-EG`, `ar-SA` or plain
+    // `ar` all resolve here and one catalog serves every Arabic locale.
+    //
+    // A plain comment rather than a doc comment is deliberate: `schemars`
+    // describes a documented variant and leaves the others bare, which turns
+    // the generated `Language` schema from a flat `enum` into a `oneOf`. The
+    // checked-in schema is a contract other tools read, so it keeps the shape
+    // that reads best and the reasoning lives here instead.
+    #[serde(rename = "ar")]
+    Arabic,
 }
 
 impl Language {
-    pub const ALL: [Self; 3] = [
+    pub const ALL: [Self; 4] = [
         Self::System,
         Self::ChineseSimplified,
         Self::EnglishUnitedStates,
+        Self::Arabic,
     ];
 
     pub const fn code(self) -> &'static str {
@@ -47,6 +59,7 @@ impl Language {
             Self::System => "system",
             Self::ChineseSimplified => "zh-CN",
             Self::EnglishUnitedStates => "en-US",
+            Self::Arabic => "ar",
         }
     }
 
@@ -59,6 +72,8 @@ impl Language {
                 .any(|subtag| matches!(*subtag, "hant" | "tw" | "hk" | "mo"))
         {
             Self::ChineseSimplified
+        } else if subtags.first() == Some(&"ar") {
+            Self::Arabic
         } else {
             Self::EnglishUnitedStates
         }
@@ -68,10 +83,12 @@ impl Language {
         match self {
             Self::System => match system_language {
                 Self::ChineseSimplified => Self::ChineseSimplified,
+                Self::Arabic => Self::Arabic,
                 Self::System | Self::EnglishUnitedStates => Self::EnglishUnitedStates,
             },
             Self::ChineseSimplified => Self::ChineseSimplified,
             Self::EnglishUnitedStates => Self::EnglishUnitedStates,
+            Self::Arabic => Self::Arabic,
         }
     }
 }

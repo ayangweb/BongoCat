@@ -4,18 +4,21 @@ use super::*;
 
 #[test]
 fn locale_keys_and_placeholders_match_default_language() {
-    let english = messages("en-US");
-    let chinese = messages("zh-CN");
-    assert_eq!(
-        english.keys().collect::<Vec<_>>(),
-        chinese.keys().collect::<Vec<_>>()
-    );
-    for key in english.keys() {
+    let reference = messages(DEFAULT);
+    for locale in LOCALES.into_iter().filter(|locale| *locale != DEFAULT) {
+        let current = messages(locale);
         assert_eq!(
-            placeholders(&english[key]),
-            placeholders(&chinese[key]),
-            "placeholder mismatch for {key}"
+            reference.keys().collect::<Vec<_>>(),
+            current.keys().collect::<Vec<_>>(),
+            "{locale} does not hold the keys the default language holds"
         );
+        for key in reference.keys() {
+            assert_eq!(
+                placeholders(&reference[key]),
+                placeholders(&current[key]),
+                "placeholder mismatch for {key} in {locale}"
+            );
+        }
     }
 }
 
@@ -33,7 +36,7 @@ fn locale_keys_and_placeholders_match_default_language() {
 /// every gate passing.
 #[test]
 fn compiled_catalog_matches_the_files_on_disk() {
-    for locale in ["en-US", "zh-CN"] {
+    for locale in LOCALES {
         for (key, expected) in messages_on_disk(locale) {
             assert_eq!(
                 text(locale, &key),
@@ -47,13 +50,9 @@ fn compiled_catalog_matches_the_files_on_disk() {
 
 #[test]
 fn locale_source_uses_nested_snake_case_keys() {
-    for locale in ["en-US", "zh-CN"] {
-        let value: serde_json::Value = serde_json::from_str(match locale {
-            "en-US" => include_str!("../../locales/en-US.json"),
-            "zh-CN" => include_str!("../../locales/zh-CN.json"),
-            _ => unreachable!(),
-        })
-        .expect("valid locale JSON");
+    for locale in LOCALES {
+        let value: serde_json::Value =
+            serde_json::from_str(source(locale)).expect("valid locale JSON");
         fn visit(value: &serde_json::Value, path: &str) {
             if let Some(object) = value.as_object() {
                 for (key, child) in object {
@@ -76,6 +75,7 @@ fn locale_source_uses_nested_snake_case_keys() {
 #[test]
 fn missing_locale_text_falls_back_to_english() {
     assert_eq!(text("zh-CN", "navigation.settings.title"), "BongoCat 设置");
+    assert_eq!(text("ar", "navigation.settings.title"), "إعدادات BongoCat");
     assert_eq!(
         text("system", "navigation.settings.title"),
         "BongoCat Settings"
@@ -84,4 +84,23 @@ fn missing_locale_text_falls_back_to_english() {
         text("de-DE", "navigation.settings.title"),
         "BongoCat Settings"
     );
+}
+
+/// A locale the product never asks for must resolve to the default catalog.
+///
+/// `text` takes a free-form locale string, so a code the crate does not ship —
+/// a regional variant, or a typo in a `code()` arm — silently falls through to
+/// the default. That is the intended fallback, and the two assertions above
+/// already cover it; this one pins the answer for the regional Arabic codes a
+/// machine may report, so a future `ar-SA` catalog cannot appear without this
+/// test being updated to say which one the product intends.
+#[test]
+fn a_regional_locale_the_product_does_not_ship_falls_back_to_the_default() {
+    for locale in ["de-DE", "ar-SA", "ar-EG"] {
+        assert_eq!(
+            text(locale, "navigation.settings.title"),
+            text(DEFAULT, "navigation.settings.title"),
+            "{locale} is not a catalog this product ships"
+        );
+    }
 }

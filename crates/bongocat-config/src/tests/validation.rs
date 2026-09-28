@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[test]
-fn system_locale_resolves_to_simplified_chinese_or_english() {
+fn system_locale_resolves_to_a_shipped_language() {
     assert_eq!(
         Language::from_system_locale("zh-Hans-CN"),
         Language::ChineseSimplified
@@ -24,10 +24,21 @@ fn system_locale_resolves_to_simplified_chinese_or_english() {
         Language::from_system_locale("de-DE"),
         Language::EnglishUnitedStates
     );
+    // One catalog serves every Arabic region, so the region subtag is
+    // deliberately not part of the match: a machine in Saudi Arabia and one in
+    // Egypt both report a locale the product reads from the same `ar` catalog.
+    for locale in ["ar", "ar-EG", "ar-SA", "ar_MA"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::Arabic,
+            "{locale} is an Arabic locale"
+        );
+    }
     assert_eq!(
         Language::System.resolve(Language::ChineseSimplified),
         Language::ChineseSimplified
     );
+    assert_eq!(Language::System.resolve(Language::Arabic), Language::Arabic);
     assert_eq!(
         Language::System.resolve(Language::System),
         Language::EnglishUnitedStates
@@ -39,6 +50,15 @@ fn system_locale_resolves_to_simplified_chinese_or_english() {
     assert_eq!(
         Language::ChineseSimplified.resolve(Language::EnglishUnitedStates),
         Language::ChineseSimplified
+    );
+    // An explicit choice never follows the system, in either direction.
+    assert_eq!(
+        Language::EnglishUnitedStates.resolve(Language::Arabic),
+        Language::EnglishUnitedStates
+    );
+    assert_eq!(
+        Language::Arabic.resolve(Language::ChineseSimplified),
+        Language::Arabic
     );
 }
 
@@ -57,6 +77,25 @@ fn language_codes_round_trip_and_unsupported_values_are_rejected() {
     let fixture =
         include_str!("../../../../shared/config/fixtures/invalid-unsupported-language.json");
     assert!(parse_config(fixture.as_bytes()).is_err());
+}
+
+/// A document written before Arabic existed must still load and validate.
+///
+/// The enum only gained a variant, so every value an older build could write is
+/// still one this build accepts, and a persisted configuration is not migrated
+/// or rewritten by the upgrade. A document is read here verbatim rather than
+/// round-tripped through `Default`, because serializing the current default
+/// would prove nothing about what the old bytes contain.
+#[test]
+fn a_configuration_written_before_arabic_existed_still_loads() {
+    let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    for language in ["system", "zh-CN", "en-US"] {
+        document["appearance"]["language"] = serde_json::Value::String(language.to_owned());
+        let written = serde_json::to_string(&document).expect("serialize document");
+        let loaded: NativeConfig = serde_json::from_str(&written).expect("read old document");
+        assert_eq!(loaded.appearance.language.code(), language);
+        loaded.validate().expect("an old document still validates");
+    }
 }
 
 #[test]

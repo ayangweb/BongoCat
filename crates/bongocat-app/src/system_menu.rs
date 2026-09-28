@@ -6,10 +6,10 @@
 use super::*;
 
 pub(crate) fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMenuPresentation {
-    let locale = match snapshot.resolved_language.code() {
-        "zh-CN" => "zh-CN",
-        _ => "en-US",
-    };
+    // `catalog_locale` is the protocol's own answer to "which catalog does this
+    // resolved language read from". Restating that mapping here is what left the
+    // tray menu in English for every language other than Chinese.
+    let locale = snapshot.resolved_language.catalog_locale();
     let text = |key| bongocat_i18n::text(locale, key).to_owned();
     SystemMenuPresentation {
         title: text("system_menu.title"),

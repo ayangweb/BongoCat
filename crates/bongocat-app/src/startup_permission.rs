@@ -55,10 +55,16 @@ pub fn ensure_startup_permission(language: Language) -> bongocat_platform::Start
 #[cfg(test)]
 mod tests {
     use super::keys;
+    use bongocat_config::Language;
 
     #[test]
     fn prompt_keys_are_translated_for_every_supported_language() {
-        for locale in ["en-US", "zh-CN"] {
+        // `Language::ALL` rather than a list of codes: a language the product
+        // can be switched to and a catalog that has to carry the prompt are the
+        // same question, and answering it from the enum means adding a language
+        // cannot leave this prompt untranslated.
+        for language in Language::ALL {
+            let locale = bongocat_i18n::locale_code(language.code());
             for key in [
                 keys::TITLE,
                 keys::DESCRIPTION,
@@ -76,10 +82,12 @@ mod tests {
     fn prompt_labels_stay_distinguishable_in_every_language() {
         // The macOS mapping from an `rfd` result back to the user's choice compares the returned
         // label with the primary label, so the two labels must never be interchangeable.
-        for code in ["zh-CN", "en-US"] {
+        for language in Language::ALL {
+            let code = language.code();
+            let locale = bongocat_i18n::locale_code(code);
             assert_ne!(
-                bongocat_i18n::text(code, keys::PRIMARY),
-                bongocat_i18n::text(code, keys::SECONDARY),
+                bongocat_i18n::text(locale, keys::PRIMARY),
+                bongocat_i18n::text(locale, keys::SECONDARY),
                 "{code}"
             );
         }

@@ -139,11 +139,13 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   `appearance_changed` 中更新；也不复用 gpui 的外观名映射，因为它不识别
   `AccessibilityHighContrastDarkAqua`，会把开启「提高对比度」的暗色系统判成浅色。主题失败一律
   降级为该表面保持系统外观，不报错、不改配置、不阻止启动。
-- `appearance.language` 只接受 `system`、`zh-CN` 和 `en-US` 三个当前 v1 值，默认 `system`。
-  平台 adapter 在启动时读取系统首选 locale；仅简体中文解析为 `zh-CN`，英语及其它 locale 都
+- `appearance.language` 只接受 `system`、`zh-CN`、`en-US` 和 `ar` 四个当前 v1 值，默认 `system`。
+  平台 adapter 在启动时读取系统首选 locale；仅简体中文解析为 `zh-CN`，阿拉伯语 locale
+  （`ar`、`ar-EG`、`ar-SA` 等）解析为不带地区子标签的 `ar`，英语及其它 locale 都
   回退 `en-US`，不把解析结果写回配置。UI 通过独立 `SettingsLanguage`、revision-checked typed
   command 和 GPUI Kit `Select` 修改并立即刷新窗口标题、导航和当前可见文案。
   未知持久化值直接拒绝，不增加 alias、开发中间版本兼容或旧配置导入。
+  语言下拉里每种语言用自身文字书写（endonym），因此看不懂当前窗口语言的用户仍能找回自己的。
 - 启动项等系统能力通过 UI 自有的 typed platform snapshot 显示，由 settings service worker
   读取和显式变更；外部状态变化递增 settings revision。读取失败只形成可重试状态，写入失败
   不改变 config/runtime，Development macOS 的 unsupported 状态不允许发出变更 command。

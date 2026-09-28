@@ -1,0 +1,504 @@
+{
+  "_version": 1,
+  "navigation": {
+    "settings": {
+      "title": "إعدادات BongoCat"
+    },
+    "appearance": {
+      "title": "المظهر واللغة"
+    },
+    "model_library": {
+      "title": "مكتبة النماذج"
+    },
+    "model_behavior": {
+      "title": "سلوك النموذج"
+    },
+    "model_window": {
+      "title": "نافذة النموذج"
+    },
+    "input_interaction": {
+      "title": "الإدخال والتفاعل"
+    },
+    "shortcuts": {
+      "title": "الاختصارات"
+    },
+    "app_system": {
+      "title": "التطبيق والنظام"
+    },
+    "about": {
+      "title": "حول"
+    }
+  },
+  "system_menu": {
+    "title": "BongoCat",
+    "open_settings": "الإعدادات",
+    "quit": "إنهاء BongoCat"
+  },
+  "startup_permission": {
+    "later": "الإعداد لاحقًا",
+    "input_monitoring": {
+      "title": "مطلوب إذن مراقبة الإدخال",
+      "description": "يحتاج BongoCat إلى إذن «مراقبة الإدخال» لاستقبال إدخال لوحة المفاتيح والفأرة.\n\nملاحظة: إذا كان BongoCat مدرجًا في القائمة بالفعل، فحدّده وانقر على \"−\" لإزالته، ثم انقر على \"+\" لإضافته مرة أخرى. أعد تشغيل BongoCat بعد منح الإذن.",
+      "open_settings": "فتح إعدادات النظام"
+    },
+    "administrator": {
+      "title": "يُنصح بالتشغيل بصلاحيات المسؤول",
+      "description": "يحتاج BongoCat إلى صلاحيات المسؤول حتى يواصل استقبال إدخال لوحة المفاتيح والفأرة أثناء تشغيل تطبيق آخر بصلاحيات المسؤول.\n\nلضبط ذلك: انقر بالزر الأيمن على BongoCat ← خصائص ← التوافق ← فعّل «تشغيل هذا البرنامج كمسؤول».",
+      "open_program_folder": "الخروج وفتح الإعدادات"
+    }
+  },
+  "about": {
+    "product_information": {
+      "version": {
+        "title": "معلومات الإصدار",
+        "label": "الإصدار",
+        "environment": {
+          "development": "نسخة التطوير",
+          "release": "نسخة الإصدار"
+        }
+      }
+    },
+    "software_information": {
+      "title": "معلومات البرنامج",
+      "description": "انسخ تفاصيل الإصدار والنظام ووقت التشغيل بصيغة JSON لاستخدامها في بلاغ عن خطأ.",
+      "copy": "نسخ",
+      "copy_success": "تم نسخ معلومات البرنامج"
+    },
+    "project": {
+      "title": "صفحة المشروع",
+      "action": "فتح"
+    },
+    "feedback": {
+      "title": "الإبلاغ عن مشكلة",
+      "description": "انسخ معلومات البرنامج أولًا، ثم الصقها في البلاغ.",
+      "action": "الإبلاغ عن مشكلة"
+    },
+    "logs": {
+      "title": "سجلات التطبيق",
+      "action": "فتح"
+    }
+  },
+  "models": {
+    "catalog": {
+      "load_failed": "تعذّر تحميل قائمة النماذج"
+    },
+    "identity": {
+      "title": "اسم النموذج",
+      "source": {
+        "built_in": "مدمج",
+        "imported": "مستورد"
+      },
+      "status": {
+        "active": "قيد الاستخدام",
+        "unavailable": "غير متاح"
+      }
+    },
+    "card": {
+      "cover_missing": "لا يوجد غلاف"
+    },
+    "edit": {
+      "cover": {
+        "label": "اختيار الغلاف"
+      }
+    },
+    "actions": {
+      "use": "استخدام",
+      "edit": "تعديل",
+      "open_folder": "فتح مجلد النموذج",
+      "save": "حفظ",
+      "delete": "حذف"
+    },
+    "validation": {
+      "package_layout_invalid": "بنية الحزمة غير صالحة",
+      "package_safety_limits_exceeded": "الحزمة تتجاوز حدود الأمان",
+      "model_format_invalid_or_unsupported": "صيغة النموذج غير صالحة أو غير مدعومة",
+      "texture_invalid": "النسيج غير صالح",
+      "files_unavailable": "ملفات النموذج غير متاحة",
+      "resource_invalid": "مورد النموذج غير صالح"
+    },
+    "import": {
+      "success": "اكتمل استيراد النموذج",
+      "failed": "فشل استيراد النموذج",
+      "mver_dialog": {
+        "title": "اختر الأوضاع المراد تحويلها",
+        "description": "حدّد أوضاع BongoCat Mver المراد استيرادها.",
+        "import": "استيراد"
+      },
+      "step": {
+        "choosing": "جارٍ فتح منتقي الملفات…",
+        "validating_source": "جارٍ قراءة مجلد النموذج…",
+        "importing": "جارٍ استيراد ملفات النموذج…",
+        "capturing": "جارٍ التقاط غلاف النموذج…"
+      },
+      "drop": {
+        "ready": {
+          "title": "أفلت مجلد النموذج هذا لاستيراده"
+        },
+        "busy": {
+          "title": "توجد عملية نموذج أخرى قيد التنفيذ"
+        },
+        "invalid": {
+          "title": "يُرجى إفلات مجلد نموذج واحد في كل مرة"
+        }
+      },
+      "title": "استيراد نموذج",
+      "hint": "انقر للاختيار أو اسحب مجلد نموذج"
+    },
+    "mode": {
+      "standard": "قياسي",
+      "keyboard": "لوحة مفاتيح",
+      "gamepad": "يد تحكم"
+    },
+    "mver": {
+      "mode": {
+        "standard": "الوضع القياسي",
+        "keyboard": "وضع لوحة المفاتيح",
+        "gamepad": "وضع يد التحكم"
+      }
+    },
+    "behaviors": {
+      "empty": "لا توجد حركات أو تعابير متاحة"
+    },
+    "invalid_summary": "%{origin} · %{diagnostic}",
+    "delete_confirmation": "هل أنت متأكد من حذف هذا النموذج؟"
+  },
+  "update": {
+    "window": {
+      "title": "تحديث BongoCat"
+    },
+    "heading": {
+      "title": "تحديث BongoCat"
+    },
+    "current_version": "الإصدار الحالي %{version}",
+    "status": {
+      "idle": "تحقّق من وجود إصدار أحدث من BongoCat.",
+      "checking": "جارٍ البحث عن تحديثات…",
+      "up_to_date": "BongoCat %{version} هو أحدث إصدار.",
+      "available": "يمكن تثبيت BongoCat %{version}.",
+      "downloading": "جارٍ التنزيل… %{percent}%",
+      "downloading_unknown": "جارٍ التنزيل…",
+      "downloading_detail": "BongoCat %{version} · %{downloaded} من %{total}",
+      "verifying": "جارٍ التحقق من BongoCat %{version} الذي نُزّل…",
+      "installing": "جارٍ تثبيت BongoCat %{version}…",
+      "installed_restarting": "تم تثبيت BongoCat %{version}. جارٍ إعادة التشغيل…",
+      "installed_relaunching": "تم تثبيت BongoCat %{version}. سيعيد المثبّت تشغيله الآن."
+    },
+    "notes": {
+      "title": "ما الجديد"
+    },
+    "action": {
+      "check": "البحث عن تحديثات",
+      "recheck": "البحث مجددًا",
+      "install": "التنزيل والتثبيت",
+      "restart": "إعادة التشغيل الآن",
+      "view_on_github": "عرض على GitHub"
+    },
+    "error": {
+      "stage": {
+        "check": "تعذّر البحث عن إصدار جديد من BongoCat %{version}.",
+        "download": "تعذّر تنزيل BongoCat %{version}.",
+        "verify": "تعذّر التحقق من BongoCat %{version} الذي نُزّل.",
+        "install": "تعذّر تثبيت BongoCat %{version}."
+      },
+      "not_configured": "التحديثات غير مفعّلة في هذا الإصدار.",
+      "environment_disabled": "لا يمكن لهذا الإصدار تثبيت التحديثات.",
+      "signature_key_missing": "لا يمكن لهذا الإصدار التحقق من التحديثات، لذلك لم يُثبَّت أي منها.",
+      "release_fetch_failed": "لم يُعثر على معلومات الإصدار. حاول مرة أخرى لاحقًا.",
+      "release_manifest_invalid": "معلومات التحديث غير صالحة أو غير متوافقة مع هذا الإصدار. حاول مرة أخرى لاحقًا.",
+      "no_matching_asset": "لا يتضمن هذا الإصدار مثبّتًا لهذا الجهاز.",
+      "download_transport_failed": "لم يكتمل التنزيل. تحقّق من الاتصال وحاول مرة أخرى.",
+      "checksum_mismatch": "التحديث المُنزَّل تالف أو غير مكتمل.",
+      "signature_invalid": "تعذّر التحقق من التحديث ولم يُثبَّت.",
+      "archive_invalid": "تعذّرت قراءة التحديث المُنزَّل.",
+      "install_path_not_writable": "لا يمكن تحديث BongoCat في موقعه الحالي.",
+      "install_failed": "تعذّر تحديث BongoCat.",
+      "restart_failed": "تعذّرت إعادة تشغيل BongoCat. شغّله مجددًا لاستخدام الإصدار الجديد.",
+      "internal": "فشل التحديث لسبب غير متوقع."
+    },
+    "unavailable": {
+      "development_build": "نسخ التطوير لا يمكنها تثبيت تحديثات الإصدار.",
+      "signing_key_missing": "لا يمكن لهذا الإصدار التحقق من التحديثات، لذلك تم تعطيل التحديث."
+    },
+    "about": {
+      "label": "البحث عن تحديثات"
+    }
+  },
+  "actions": {
+    "cancel": "إلغاء",
+    "confirm": "تأكيد",
+    "close": "إغلاق"
+  },
+  "shortcuts": {
+    "scopes": {
+      "window": "اختصارات النافذة",
+      "model": "اختصارات سلوك النموذج"
+    },
+    "switches": {
+      "enable_window_shortcuts": {
+        "label": "تفعيل اختصارات النافذة"
+      },
+      "enable_model_behavior_shortcuts": {
+        "label": "تفعيل اختصارات سلوك النموذج"
+      }
+    },
+    "actions": {
+      "clear": "مسح",
+      "play": "تشغيل"
+    },
+    "capture": {
+      "press_to_record": "اضغط لتسجيل اختصار",
+      "click_to_record": "انقر لتسجيل اختصار"
+    },
+    "command_names": {
+      "toggle_model_window": "إظهار نافذة النموذج أو إخفاؤها",
+      "open_settings": "إظهار نافذة الإعدادات أو إخفاؤها",
+      "toggle_ignore_mouse_input": "تبديل تجاهل إدخال الفأرة",
+      "toggle_ignore_keyboard_input": "تبديل تجاهل إدخال لوحة المفاتيح",
+      "toggle_ignore_gamepad_input": "تبديل تجاهل إدخال يد التحكم"
+    },
+    "behavior_names": {
+      "motion": "الحركة %{index}",
+      "expression": "التعبير %{index}"
+    },
+    "errors": {
+      "conflict": "اختصار %{shortcut} مُخصَّص بالفعل لاختصار آخر"
+    }
+  },
+  "errors": {
+    "settings": {
+      "service_unavailable": "خدمة الإعدادات غير متاحة",
+      "snapshot_outdated": "تغيّرت الإعدادات في مكان آخر. راجع أحدث الإعدادات وحاول مرة أخرى.",
+      "setting_not_applied": "لم يسرِ الإعداد",
+      "invalid_shortcut_bindings": "روابط الاختصارات غير صالحة أو متعارضة",
+      "setting_save_failed": "تعذّر حفظ الإعداد",
+      "config_permission_denied": "لا يمكن كتابة ملف الإعداد؛ تحقّق من الأذونات وأعد المحاولة",
+      "config_storage_full": "القرص الذي يحوي ملف الإعداد ممتلئ؛ حرّر مساحة وأعد المحاولة",
+      "config_target_occupied": "موقع ملف الإعداد قيد الاستخدام؛ أغلق البرنامج الذي يستخدمه وأعد المحاولة",
+      "configuration_backup_open_failed": "تعذّر فتح مجلد نسخ الإعداد الاحتياطية",
+      "model_unavailable": "النموذج المحدد غير متاح",
+      "model_activation_failed": "تعذّر تفعيل النموذج المحدد",
+      "model_behavior_unavailable": "ينتمي هذا الإجراء أو التعبير إلى نموذج لم يعد قيد الاستخدام",
+      "model_behavior_play_failed": "تعذّر تشغيل الإجراء أو التعبير",
+      "model_name_invalid": "اسم النموذج غير قابل للاستخدام",
+      "model_not_found": "لم يُعثر على النموذج",
+      "model_cover_invalid": "يجب أن تكون صورة الغلاف ملف PNG",
+      "model_cover_update_failed": "تعذّر تحديث غلاف النموذج",
+      "model_file_picker_unavailable": "تعذّر إكمال مربع اختيار الملف. حاول مرة أخرى.",
+      "model_folder_open_failed": "تعذّر فتح مجلد النموذج",
+      "model_id_invalid": "معرّف النموذج غير صالح",
+      "model_already_installed": "هذا النموذج مثبَّت بالفعل",
+      "model_import_invalid_package": "حزمة النموذج غير صالحة",
+      "model_import_drop_invalid": "أفلت مجلد نموذج صالح واحدًا في كل مرة",
+      "model_import_source_invalid": "يحتوي المجلد المحدد على مخزن نماذج BongoCat. اختر مجلد نموذج بعينه بدلًا من ذلك.",
+      "model_import_source_changed": "تغيّر مصدر النموذج أثناء الاستيراد",
+      "model_import_source_unsupported": "يحتوي مصدر النموذج على ملف غير مدعوم",
+      "model_import_cancelled": "أُلغي استيراد النموذج",
+      "model_operations_busy": "توجد عملية نموذج أخرى قيد التنفيذ. حاول بعد قليل.",
+      "model_import_failed": "تعذّر استيراد النموذج",
+      "built_in_model_cannot_be_deleted": "لا يمكن حذف النماذج المدمجة",
+      "model_delete_failed": "تعذّر حذف النموذج المستورد",
+      "diagnostics_export_failed": "تعذّر تصدير بيانات التشخيص",
+      "software_info_copy_failed": "تعذّر نسخ معلومات البرنامج",
+      "external_link_open_failed": "تعذّر فتح الرابط",
+      "log_location_open_failed": "تعذّر فتح مجلد سجلات التطبيق",
+      "login_startup_update_failed": "تعذّر تحديث إعداد بدء التشغيل عند تسجيل الدخول",
+      "system_icon_update_failed": "تعذّر تحديث أيقونة النظام.",
+      "taskbar_icon_update_failed": "تعذّر تحديث أيقونة شريط المهام.",
+      "dock_icon_update_failed": "تعذّر تحديث أيقونة Dock.",
+      "window_hide_failed": "تعذّر إخفاء نافذة الإعدادات",
+      "window_layout_save_failed": "تعذّر حفظ تخطيط النافذة",
+      "application_shutdown_failed": "تعذّر إغلاق BongoCat بالكامل"
+    }
+  },
+  "settings": {
+    "appearance": {
+      "theme": {
+        "label": "السمة",
+        "options": {
+          "system": "حسب النظام",
+          "light": "فاتحة",
+          "dark": "داكنة"
+        }
+      },
+      "language": {
+        "label": "اللغة",
+        "options": {
+          "system": "حسب النظام",
+          "arabic": "العربية",
+          "chinese_simplified": "简体中文",
+          "english_united_states": "English"
+        }
+      }
+    },
+    "overlay": {
+      "behavior": {
+        "title": "سلوك النافذة"
+      },
+      "appearance": {
+        "title": "مظهر النافذة"
+      },
+      "performance": {
+        "title": "أداء النافذة"
+      },
+      "hide_model_window": {
+        "label": "إخفاء نافذة النموذج"
+      },
+      "always_on_top": {
+        "label": "دائمًا في المقدمة"
+      },
+      "click_through": {
+        "label": "تمرير نقرات الفأرة"
+      },
+      "keep_inside_screen": {
+        "label": "إبقاؤها على الشاشة"
+      },
+      "hide_on_mouse_hover": {
+        "label": "الإخفاء عند مرور الفأرة"
+      },
+      "hide_on_mouse_hover_delay": {
+        "label": "مهلة الإخفاء عند مرور الفأرة (بالثواني)"
+      },
+      "scale": {
+        "label": "حجم النافذة"
+      },
+      "opacity": {
+        "label": "شفافية النافذة"
+      },
+      "corner_radius": {
+        "label": "استدارة زوايا النافذة"
+      },
+      "maximum_fps": {
+        "label": "أقصى عدد إطارات في الثانية"
+      }
+    },
+    "models": {
+      "behavior": {
+        "mirror_model": {
+          "label": "قلب النموذج أفقيًا"
+        },
+        "motion_audio": {
+          "label": "تشغيل أصوات الحركات"
+        },
+        "remember_last_expression": {
+          "label": "تذكّر آخر تعبير لكل نموذج"
+        },
+        "random_behavior_mode": {
+          "label": "تشغيل حركات أو تعابير عشوائيًا",
+          "options": {
+            "off": "معطّل",
+            "expressions": "التعابير فقط",
+            "motions": "الحركات فقط",
+            "motions_and_expressions": "التعابير والحركات"
+          }
+        },
+        "random_behavior_interval": {
+          "label": "الفاصل بين الحركة أو التعبير العشوائي (بالثواني)"
+        }
+      }
+    },
+    "input_interaction": {
+      "mouse": {
+        "title": "الفأرة",
+        "mirror_mouse_tracking_horizontal": {
+          "label": "قلب تتبّع الفأرة أفقيًا"
+        },
+        "mirror_mouse_tracking_vertical": {
+          "label": "قلب تتبّع الفأرة رأسيًا"
+        },
+        "ignore_mouse_input": {
+          "label": "تجاهل إدخال الفأرة"
+        }
+      },
+      "keyboard": {
+        "title": "لوحة المفاتيح",
+        "ignore_keyboard_input": {
+          "label": "تجاهل إدخال لوحة المفاتيح"
+        }
+      },
+      "gamepad": {
+        "title": "يد التحكم",
+        "auto_switch": {
+          "label": "تبديل النموذج عند توصيل يد التحكم أو فصلها"
+        },
+        "connected_model": {
+          "label": "النموذج المستخدم عند توصيل يد التحكم",
+          "options": {
+            "last_used": "آخر نموذج مستخدم مع يد التحكم"
+          }
+        },
+        "disconnected_model": {
+          "label": "النموذج المستخدم عند عدم توصيل يد التحكم",
+          "options": {
+            "last_used": "آخر نموذج مستخدم دون يد التحكم"
+          }
+        },
+        "ignore_gamepad_input": {
+          "label": "تجاهل إدخال يد التحكم"
+        },
+        "stick_dead_zone": {
+          "label": "المنطقة الميتة لعصا التحكم",
+          "description": "تجاهل الحركات الصغيرة لعصا التحكم التناظرية."
+        },
+        "trigger_dead_zone": {
+          "label": "المنطقة الميتة لزر الزناد",
+          "description": "تجاهل الحركات الصغيرة لزر الزناد."
+        }
+      }
+    },
+    "app_system": {
+      "desktop": {
+        "title": "بدء التشغيل وسطح المكتب"
+      },
+      "updates": {
+        "title": "التحديثات"
+      },
+      "logging": {
+        "title": "السجلات",
+        "level": {
+          "label": "مستوى السجل",
+          "options": {
+            "error": "الأخطاء فقط",
+            "warn": "الأخطاء والتحذيرات",
+            "info": "تفاصيل معتادة",
+            "debug": "تفاصيل تشخيصية",
+            "trace": "كل التفاصيل"
+          }
+        },
+        "retention_days": {
+          "label": "مدة الاحتفاظ بالسجلات (بالأيام)"
+        }
+      },
+      "status_icon": {
+        "label": {
+          "macos": "إظهار أيقونة شريط القوائم",
+          "windows": "إظهار أيقونة منطقة النظام"
+        }
+      },
+      "taskbar_icon": {
+        "label": "إظهار أيقونة شريط المهام"
+      },
+      "dock_icon": {
+        "label": "إظهار أيقونة Dock"
+      },
+      "auto_update": {
+        "label": "البحث عن التحديثات تلقائيًا",
+        "interval": {
+          "label": "الفاصل بين عمليات البحث عن التحديثات (بالساعات)"
+        }
+      },
+      "open_at_login": {
+        "label": "الفتح عند تسجيل الدخول"
+      },
+      "startup": {
+        "checking": "جارٍ التحقق من عنصر بدء التشغيل…",
+        "unavailable": "الحالة غير متاحة؛ انقر على المفتاح لإعادة المحاولة",
+        "stale": "تغيّر موقع التطبيق المحفوظ؛ أطفئ المفتاح ثم أعد تشغيله لإصلاحه",
+        "requires_approval": "اسمح لـ BongoCat في إعدادات النظام",
+        "not_found": "عنصر بدء التشغيل مفقود؛ أطفئ المفتاح ثم أعد تشغيله لإصلاحه",
+        "unsupported_platform": "بدء التشغيل عند تسجيل الدخول غير متاح على هذا النظام",
+        "unsupported_os": "بدء التشغيل عند تسجيل الدخول غير متاح على نظام التشغيل هذا",
+        "unsupported_build": "بدء التشغيل عند تسجيل الدخول غير متاح في نسخ التطوير"
+      }
+    }
+  }
+}

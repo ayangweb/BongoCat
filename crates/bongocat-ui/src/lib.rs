@@ -36,6 +36,9 @@ pub(crate) fn settings_language_display_name(
             locale,
             "settings.appearance.language.options.english_united_states",
         ),
+        SettingsLanguage::Arabic => {
+            bongocat_i18n::text(locale, "settings.appearance.language.options.arabic")
+        }
     }
 }
 
@@ -251,25 +254,42 @@ pub(crate) mod tests {
 
     #[test]
     fn language_preferences_have_stable_codes_and_localized_names() {
-        let expected = [
-            ("system", "System"),
+        // A language is named by its own endonym in every catalog, the way
+        // `简体中文` already is: a reader who cannot read the current window
+        // language still finds their own. "System" is not one of them — it is
+        // the choice to follow the system, and it is translated like any other
+        // option, so it is asserted separately below.
+        let endonyms = [
             ("zh-CN", "简体中文"),
             ("en-US", "English"),
+            ("ar", "العربية"),
         ];
-        for (language, (code, display_name)) in SettingsLanguage::ALL.into_iter().zip(expected) {
+        for (language, (code, endonym)) in SettingsLanguage::ALL
+            .into_iter()
+            .filter(|language| *language != SettingsLanguage::System)
+            .zip(endonyms)
+        {
             assert_eq!(language.code(), code);
-            assert_eq!(
-                settings_language_display_name(language, SettingsLanguage::EnglishUnitedStates),
-                display_name
-            );
-            assert_eq!(
-                settings_language_from_display_name(
-                    display_name,
-                    SettingsLanguage::EnglishUnitedStates
-                ),
-                Some(language)
-            );
+            for display_language in SettingsLanguage::ALL {
+                assert_eq!(
+                    settings_language_display_name(language, display_language),
+                    endonym,
+                    "{code} is named in its own language, shown in {display_language:?}"
+                );
+                assert_eq!(
+                    settings_language_from_display_name(endonym, display_language),
+                    Some(language),
+                    "{endonym} does not select {code} in {display_language:?}"
+                );
+            }
         }
+        assert_eq!(
+            settings_language_display_name(
+                SettingsLanguage::System,
+                SettingsLanguage::EnglishUnitedStates,
+            ),
+            "System"
+        );
         assert_eq!(
             settings_language_display_name(
                 SettingsLanguage::System,
@@ -278,9 +298,45 @@ pub(crate) mod tests {
             "跟随系统"
         );
         assert_eq!(
+            settings_language_display_name(SettingsLanguage::System, SettingsLanguage::Arabic),
+            "حسب النظام"
+        );
+        assert_eq!(
             settings_language_from_display_name("Deutsch", SettingsLanguage::EnglishUnitedStates,),
             None
         );
+    }
+
+    /// Every language the selector offers has to be selectable by its own name.
+    ///
+    /// The selector is a searchable list, so a name that does not round-trip
+    /// through `settings_language_from_display_name` is a row the user can see
+    /// and cannot choose. This is the assertion that catches a language added
+    /// to `SettingsLanguage::ALL` without a catalog entry.
+    #[test]
+    fn every_language_round_trips_in_every_display_language() {
+        for display_language in SettingsLanguage::ALL {
+            let names = SettingsLanguage::ALL
+                .into_iter()
+                .map(|language| settings_language_display_name(language, display_language))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                names
+                    .iter()
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len(),
+                names.len(),
+                "two languages share one visible name in {display_language:?}: {names:?}"
+            );
+            for language in SettingsLanguage::ALL {
+                let name = settings_language_display_name(language, display_language);
+                assert_eq!(
+                    settings_language_from_display_name(name, display_language),
+                    Some(language),
+                    "{name:?} does not select the language it names in {display_language:?}"
+                );
+            }
+        }
     }
 
     #[test]

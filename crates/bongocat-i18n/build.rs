@@ -1,6 +1,10 @@
 use std::{fs, path::Path};
 
-const CATALOGS: [&str; 2] = ["locales/en-US.json", "locales/zh-CN.json"];
+const CATALOGS: [&str; 3] = [
+    "locales/en-US.json",
+    "locales/zh-CN.json",
+    "locales/ar.json",
+];
 
 fn main() {
     let mut fingerprint = 0xcbf29ce484222325_u64;
