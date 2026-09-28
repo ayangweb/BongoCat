@@ -1,8 +1,10 @@
-# BongoCat
+![BongoCat](https://socialify.git.ci/ayangweb/BongoCat/image?custom_language=Rust&font=JetBrains+Mono&forks=1&issues=1&language=1&logo=https%3A%2F%2Fi0.hdslb.com%2Fbfs%2Fopenplatform%2F8b37066049da62a8e6d105363472ef72fe2e435b.png&name=1&owner=1&pulls=1&stargazers=1&theme=Auto)
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+<div align="center">
 
-![BongoCat](https://socialify.git.ci/ayangweb/BongoCat/image?custom_description=&description=1&font=Source+Code+Pro&forks=1&issues=1&name=1&owner=1&pattern=Floating+Cogs&pulls=1&stargazers=1&theme=Auto)
+[English](README.md) | 简体中文
+
+</div>
 
 <div align="center">
   <div>
@@ -29,11 +31,9 @@
   </p>
 </div>
 
-<!-- TODO(release): replace the two placeholders below with BongoCat screenshots. -->
-
-| macOS                                         | Windows                                           |
-| --------------------------------------------- | ------------------------------------------------- |
-| ![macOS](REPLACE-WITH-MACOS-SCREENSHOT)       | ![Windows](REPLACE-WITH-WINDOWS-SCREENSHOT)       |
+| macOS                                                                                        | Windows                                                                                        |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| ![macOS](https://i0.hdslb.com/bfs/openplatform/dff276b96d49c5d6c431b74b531aab72191b3d87.png) | ![Windows](https://i0.hdslb.com/bfs/openplatform/a4149b753856ee7f401989da902cf3b5ad35b39e.png) |
 
 BongoCat is a desktop companion for Windows and macOS. A Live2D cat lives on your screen, its eyes
 and paws follow your mouse, and it reacts to every key, mouse button and gamepad button you press.
@@ -45,52 +45,11 @@ Inspired by [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver) by
 
 ## Features
 
-- **Bring your own model.** Import a Live2D model folder, rename it, replace its cover, and switch
-  between the models in your library. Three models are built in: standard, keyboard and gamepad.
-- **A model window you control.** Drag it anywhere, resize it by right-dragging, and set its scale
-  (25–400%), opacity (1–100%), corner radius and maximum frame rate. Keep it on top, let clicks pass
-  through it, keep it inside the screen, or hide it when the mouse rests on it.
-- **Fix models that face the wrong way.** Flip the model horizontally, and flip mouse tracking
-  horizontally or vertically.
-- **Model behaviour.** Turn on motion sounds, play random motions or expressions on an interval, and
-  let each model return to the expression you last used on it.
-- **Per-input control.** Ignore mouse, keyboard or gamepad input separately, adjust gamepad stick and
-  trigger dead zones, and switch models automatically when a gamepad connects or disconnects.
-- **Global shortcuts.** Show or hide the model window, open Settings, toggle ignoring each kind of
-  input, and play a chosen motion or expression. Window shortcuts and model shortcuts have separate
-  switches.
-- **In-app updates.** Check on demand or on a schedule from 1 to 8760 hours, then download, verify,
-  install and restart from one window.
-- **Looks like your system.** Light, dark and system themes; system, Simplified Chinese and English.
-- **Sits where you want it.** Menu bar icon on macOS, system tray icon on Windows, and separate
-  switches for the Dock and taskbar icons. It can also open at login.
-- **Dated, bounded logs.** Choose the log level and how many days to keep; old files are cleaned up
-  automatically.
-- **Open source and private.** No accounts, no telemetry, no data collection. Everything works
-  offline; the only network access is the update check, which stays off until you turn it on.
-
-## Download
-
-The latest build is on [GitHub Releases](https://github.com/ayangweb/BongoCat/releases/latest).
-
-| Your system                          | Requirement              | Download file                  |
-| ------------------------------------ | ------------------------ | ------------------------------ |
-| Windows                              | Windows 10 1903 or later | `BongoCat_<version>_x64.exe`   |
-| macOS on Apple silicon (M1 or later) | macOS 12 or later        | `BongoCat-<version>-arm64.dmg` |
-| macOS on Intel                       | macOS 12 or later        | `BongoCat-<version>-x64.dmg`   |
-
-Windows on ARM runs the x64 build through emulation. Linux builds are not provided.
-
-macOS asks for Input Monitoring permission on first launch so the cat can see your keyboard and
-mouse. If you already see BongoCat in the list, remove it with `−` and add it again with `+`, then
-restart BongoCat. On Windows, if another app runs with administrator privileges, BongoCat suggests
-running itself as administrator so it keeps receiving input.
-
-## Converting models
-
-Model folders from Bongo-Cat-Mver can be converted while you import them. Choose the modes to
-convert — standard, keyboard or gamepad — and BongoCat converts the folder, creates a cover from the
-model and adds it to your library.
+- Runs on macOS and Windows.
+- Matches the right motion to every key, mouse button or gamepad button you press.
+- Bring your own Live2D models and make the cat your own.
+- Fully open source, public code, and no collection of user data.
+- Works offline with no network access, so your privacy is protected.
 
 ## More models
 
@@ -169,22 +128,16 @@ Contributions are very welcome. Please read the [contributing guide](CONTRIBUTIN
   <img src="https://openomy.com/svg?repo=ayangweb/BongoCat&chart=bubble" alt="Contribution Leaderboard" style="display: block; width: 100%;" />
 </a>
 
-## Build from source
+## Star history
 
-Install `rustup` (the repository pins the required toolchain), `just`, and Python 3, then run
-commands from the repository root:
+<a href="https://www.star-history.com/#ayangweb/BongoCat&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=ayangweb/BongoCat&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=ayangweb/BongoCat&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=ayangweb/BongoCat&type=Date" />
+ </picture>
+</a>
 
-```text
-just dev
-just check
-just build
-```
+## License
 
-`just build` produces the release package: a `.app` and `.dmg` on macOS, or an x64 installer on
-Windows. Run `just version` to print the product version.
-
-## Documentation
-
-- [Contributing guide](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
-- [License](LICENSE)
+BongoCat is open source under the [MIT](LICENSE) license.
