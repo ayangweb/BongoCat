@@ -1,3 +1,4 @@
+use super::lifecycle::rounded_u32;
 use super::*;
 use gpui_kit::component::Sizable as _;
 
@@ -94,17 +95,102 @@ pub(super) struct SoftwareInformation {
     /// triage asks is whether any of them ever happened, and one number answers
     /// it; the full split is in the diagnostics export.
     input_release_reconciliations: u64,
+    /// Where the active model came from: `preset` or `installed`, and absent
+    /// when no model is active. The id is deliberately not here — an imported
+    /// model's id is derived from the user's own file.
+    active_model_origin: Option<&'static str>,
+    /// How many imported models are ready, and how many the store rejected.
+    ///
+    /// A count is the whole answer to "my model is not showing up": zero ready
+    /// means it never loaded, a non-zero invalid count means the store refused
+    /// it and the log carries which diagnostic said why. The diagnostics export
+    /// has the same counts with the per-code breakdown.
+    ready_installed_model_count: usize,
+    invalid_model_count: usize,
+    /// The display scale the window is rendering at: 1.0, 1.25, 1.5, 2.0.
+    ///
+    /// Layout reports are the ones a maintainer cannot reproduce from a version
+    /// and an OS build, because the same window is correct at one scale and
+    /// clipped at another. The 800x600 layout floor in the acceptance criteria
+    /// makes the size below the other half of that pair.
+    ui_scale_factor: f32,
+    /// The settings window's size in logical pixels, as the user left it.
+    ///
+    /// Logical, not physical: multiplied by [`Self::ui_scale_factor`] it is the
+    /// pixel count the compositor works with, and reporting it that way keeps
+    /// the two fields consistent on a Retina or scaled display.
+    ui_window_size: (u32, u32),
+}
+
+/// The window's own presentation facts, for a layout report.
+///
+/// The scale factor and the bounds exist only on a `Window`, so they are read
+/// where the button hands one over rather than being carried through the view.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct WindowFacts {
+    scale_factor: f32,
+    width: u32,
+    height: u32,
+}
+
+impl WindowFacts {
+    /// A window at a known scale and size.
+    ///
+    /// A unit test cannot have a real `Window`, and stating one through this
+    /// constructor keeps its fixture in exactly the shape [`Self::read`]
+    /// produces.
+    pub(super) const fn new(scale_factor: f32, width: u32, height: u32) -> Self {
+        Self {
+            scale_factor,
+            width,
+            height,
+        }
+    }
+
+    fn read(window: &Window) -> Self {
+        // A fullscreen window has no size the user chose, so the viewport it is
+        // filling is what a layout report is about. A window that has not been
+        // laid out yet measures as zero, which is the same "no size to report"
+        // answer the window placement code gives.
+        let size = window.viewport_size();
+        Self::new(
+            window.scale_factor(),
+            rounded_u32(size.width).unwrap_or_default(),
+            rounded_u32(size.height).unwrap_or_default(),
+        )
+    }
+}
+
+/// The imported models the store can use, and the ones it refused.
+///
+/// A preset is never counted here: it ships with the product, so a user who
+/// reports a missing model is always talking about one they added, and the
+/// preset's presence is not a variable.
+fn model_counts(snapshot: &SettingsSnapshot) -> (usize, usize) {
+    snapshot
+        .model_catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.origin == SettingsModelOrigin::Imported)
+        .fold((0, 0), |(ready, invalid), entry| {
+            match &entry.availability {
+                SettingsModelAvailability::Ready { .. } => (ready + 1, invalid),
+                SettingsModelAvailability::Invalid { .. } => (ready, invalid + 1),
+            }
+        })
 }
 
 impl SoftwareInformation {
     /// Read the current state of this process.
     ///
-    /// `snapshot` is the only input: the operating system version is read
-    /// through the platform adapter at the moment the report is built, so it
-    /// cannot go stale the way a value carried in a revisioned snapshot would.
-    pub(super) fn read(snapshot: &SettingsSnapshot) -> Self {
+    /// `snapshot` carries everything the services know; the operating system
+    /// version is read through the platform adapter and the window facts come
+    /// from the window itself, both at the moment the report is built, so
+    /// neither can go stale the way a value in a revisioned snapshot would.
+    pub(super) fn read(snapshot: &SettingsSnapshot, window: WindowFacts) -> Self {
         let system = bongocat_platform::operating_system_version();
         let input = &snapshot.input_diagnostics;
+        let (ready_installed, invalid) = model_counts(snapshot);
         Self {
             app_name: PRODUCT_NAME,
             app_version: snapshot.build_info.product_version.clone(),
@@ -128,6 +214,17 @@ impl SoftwareInformation {
                 .reconciled_release
                 .saturating_add(input.released_by_reset)
                 .saturating_add(input.unmatched_release),
+            active_model_origin: snapshot
+                .active_model
+                .as_ref()
+                .map(|model| match model.origin {
+                    SettingsModelOrigin::BuiltIn => "preset",
+                    SettingsModelOrigin::Imported => "installed",
+                }),
+            ready_installed_model_count: ready_installed,
+            invalid_model_count: invalid,
+            ui_scale_factor: window.scale_factor,
+            ui_window_size: (window.width, window.height),
         }
     }
 
@@ -242,8 +339,11 @@ pub(super) fn operational_group(
                     .with_size(options.size())
                     .with_variant(ButtonVariant::Default)
                     .disabled(!available)
-                    .on_click(move |_, _, app| {
-                        action_view.update(app, |view, cx| view.copy_software_info(cx));
+                    .on_click(move |_, window, app| {
+                        // The layout facts only exist on the window, so they are
+                        // taken here rather than threaded through the view.
+                        let window = WindowFacts::read(window);
+                        action_view.update(app, |view, cx| view.copy_software_info(window, cx));
                     })
             },
         ),
@@ -339,11 +439,11 @@ impl SettingsView {
     /// the macOS AppKit invariant is preserved by construction. A report that
     /// cannot be built and a clipboard that will not accept it are the same
     /// failure to the user — nothing was copied — so they report one code.
-    pub(super) fn copy_software_info(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn copy_software_info(&mut self, window: WindowFacts, cx: &mut Context<Self>) {
         let Some(snapshot) = self.snapshot.as_ref() else {
             return;
         };
-        let copied = SoftwareInformation::read(snapshot)
+        let copied = SoftwareInformation::read(snapshot, window)
             .to_json()
             .is_some_and(|json| bongocat_platform::write_clipboard_text(&json).is_ok());
         if copied {

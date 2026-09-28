@@ -551,13 +551,18 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   架构、操作系统版本与 build（由 `bongocat-platform` 在复制时向系统查询，因此不会像 revisioned
   snapshot 里的值一样过期）、界面语言、runtime health 与最近一次 render error code、input service
   状态、平台输入能力名与其是否具备（`input_capability` + `input_capability_available`）、已连接
-  手柄数、input release 校正计数；不含任何路径、模型名、日志正文、快捷键或用户配置值。系统无法
-  自报版本时该字段缺省而不是填占位值。
+  手柄数、input release 校正计数、当前模型来源与导入模型的就绪/无效计数（只计数与固定词表，不含
+  模型 id、标题或目录）、设置窗口的显示缩放与逻辑尺寸（复制当刻从 `Window` 读取，因此布局问题
+  可以被复现）；不含任何路径、模型名、日志正文、快捷键或用户配置值。系统无法自报版本时该字段
+  缺省而不是填占位值。
   输入能力不是一个跨平台同形的 granted/denied/unsupported：macOS 门在 TCC Input Monitoring，
   Windows 门在提权令牌（`TokenElevation`，高完整性前台窗口存在时 Raw Input 才会继续送达，
   ADR-0032），因此契约用「平台自己的能力名 + 本进程是否具备」表达，两平台都真、都有用。
   早期实现用 macOS 语汇的 `input_monitoring_permission`，在 Windows 上报 `unsupported`，
   读起来像「该平台没有权限概念」而实际是「门在提权上且当前未提权」，已随本字段改为能力模型。
+  仍未采集的是 GPU adapter 名称与渲染后端：它需要 Metal/DXGI 枚举（新的 `objc2-metal` 依赖或新的
+  `windows` feature）与无法在本机验证的 unsafe FFI，不属于本字段的最小闭环；渲染问题先靠
+  `runtime_error_code` 与 `cubism_core_version` 定位，adapter 名称是下一个独立条目。
   About 的描述只在标题和按钮说不清时才出现：产品信息行显示 build 标识，软件信息行说明复制内容，
   问题反馈行提示先复制软件信息；项目主页行只显示链接，日志目录行不显示描述。About 的操作按钮
   以「检查更新」为唯一实心 `primary`，「反馈问题」用 `danger` 描边，复制、项目主页与日志目录三行

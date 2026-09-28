@@ -2,6 +2,24 @@
 
 use super::*;
 
+/// A window to read a report from, standing in for the real one.
+///
+/// The report takes the scale factor and the size from the window rather than
+/// from the snapshot, so every test that builds a document has to say what the
+/// window looked like. Two logical pixels at 1.5 is the layout case the
+/// acceptance criteria name, so the fixture is that one.
+fn window_facts() -> crate::window::about::WindowFacts {
+    crate::window::about::WindowFacts::new(1.5, 800, 600)
+}
+
+/// The report a user pastes, parsed back out of the JSON the clipboard receives.
+fn report_of(snapshot: &SettingsSnapshot) -> serde_json::Value {
+    let json = crate::window::about::SoftwareInformation::read(snapshot, window_facts())
+        .to_json()
+        .expect("serialize the report");
+    serde_json::from_str(&json).expect("the report is valid JSON")
+}
+
 #[test]
 fn build_information_is_localized_and_contains_only_compiled_identity() {
     let product_version = env!("CARGO_PKG_VERSION");
@@ -28,9 +46,12 @@ fn build_information_is_localized_and_contains_only_compiled_identity() {
 /// guards; a document that is not valid JSON is.
 #[test]
 fn copied_software_information_is_a_json_document() {
-    let document =
-        super::super::about::SoftwareInformation::read(&crate::tests::snapshot(1, true, true));
-    let json = document.to_json().expect("serialize the report");
+    let json = crate::window::about::SoftwareInformation::read(
+        &crate::tests::snapshot(1, true, true),
+        window_facts(),
+    )
+    .to_json()
+    .expect("serialize the report");
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("the report is valid JSON");
     assert_eq!(parsed["app_name"], "BongoCat");
     assert_eq!(parsed["app_version"], env!("CARGO_PKG_VERSION"));
@@ -51,11 +72,7 @@ fn copied_software_information_is_a_json_document() {
 /// run on, and is the input pipeline even working.
 #[test]
 fn the_report_names_the_facts_a_bug_triage_needs() {
-    let document =
-        super::super::about::SoftwareInformation::read(&crate::tests::snapshot(1, true, true));
-    let parsed: serde_json::Value =
-        serde_json::from_str(&document.to_json().expect("serialize the report"))
-            .expect("the report is valid JSON");
+    let parsed = report_of(&crate::tests::snapshot(1, true, true));
     let object = parsed.as_object().expect("the report is an object");
     for field in [
         "app_name",
@@ -74,6 +91,11 @@ fn the_report_names_the_facts_a_bug_triage_needs() {
         "input_capability_available",
         "connected_gamepad_count",
         "input_release_reconciliations",
+        "active_model_origin",
+        "ready_installed_model_count",
+        "invalid_model_count",
+        "ui_scale_factor",
+        "ui_window_size",
     ] {
         assert!(
             object.contains_key(field),
@@ -105,11 +127,7 @@ fn the_report_names_the_platform_input_capability_and_whether_we_have_it() {
         let mut snapshot = crate::tests::snapshot(1, true, true);
         snapshot.input_diagnostics.input_capability =
             crate::SettingsInputCapability { name, available };
-        let report = super::super::about::SoftwareInformation::read(&snapshot)
-            .to_json()
-            .expect("serialize the report");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&report).expect("the report is valid JSON");
+        let parsed = report_of(&snapshot);
         assert_eq!(parsed["input_capability"], name);
         assert_eq!(parsed["input_capability_available"], available);
     }
@@ -125,7 +143,7 @@ fn the_report_never_claims_a_platform_has_no_input_permission_concept() {
         name: "administrator",
         available: false,
     };
-    let report = super::super::about::SoftwareInformation::read(&snapshot)
+    let report = crate::window::about::SoftwareInformation::read(&snapshot, window_facts())
         .to_json()
         .expect("serialize the report");
     for retired in [
@@ -141,15 +159,89 @@ fn the_report_never_claims_a_platform_has_no_input_permission_concept() {
     }
 }
 
+/// A layout report cannot be reproduced from a version and an OS build alone:
+/// the same build is correct at one scale and clipped at another. So the report
+/// carries the scale factor and the logical size, and the two have to describe
+/// the same window.
+#[test]
+fn the_report_carries_the_window_scale_and_size() {
+    let parsed = report_of(&crate::tests::snapshot(1, true, true));
+    assert_eq!(parsed["ui_scale_factor"], 1.5);
+    assert_eq!(parsed["ui_window_size"], serde_json::json!([800, 600]));
+    // The layout floor in the acceptance criteria is 800x600, so a report from a
+    // window at or below it is the one worth reproducing.
+    let size = parsed["ui_window_size"].as_array().expect("a size pair");
+    assert!(size[0].as_u64().expect("a width") <= 800);
+    assert!(size[1].as_u64().expect("a height") <= 600);
+}
+
+/// "My model is not showing up" is answered by a count, and a preset is never
+/// part of it: the presets ship with the product, so anything missing is
+/// something the user added.
+#[test]
+fn the_model_facts_count_imported_models_without_naming_them() {
+    let mut snapshot = crate::tests::snapshot(1, true, true);
+    let parsed = report_of(&snapshot);
+    assert_eq!(
+        parsed["active_model_origin"], "preset",
+        "the fixture's active model is a built-in one"
+    );
+
+    let entry = |origin: SettingsModelOrigin, ready: bool| {
+        let mut entry = model_entry(
+            "private-model-name",
+            origin,
+            if ready {
+                SettingsModelAvailability::Ready {
+                    behaviors: Vec::new(),
+                }
+            } else {
+                SettingsModelAvailability::Invalid {
+                    diagnostic: SettingsModelDiagnostic::ModelTextureMissing,
+                }
+            },
+        );
+        // A title is the user's own text, so the fixture carries one and the
+        // report still must not.
+        entry.title = "A private title".to_owned();
+        entry
+    };
+    snapshot.model_catalog.entries = vec![
+        entry(SettingsModelOrigin::BuiltIn, true),
+        entry(SettingsModelOrigin::Imported, true),
+        entry(SettingsModelOrigin::Imported, false),
+    ];
+    let parsed = report_of(&snapshot);
+    assert_eq!(parsed["ready_installed_model_count"], 1);
+    assert_eq!(parsed["invalid_model_count"], 1);
+    let json = parsed.to_string();
+    assert!(
+        !json.contains("private-model-name") && !json.contains("A private title"),
+        "a model identity leaked into the report: {json}"
+    );
+}
+
+/// No active model is a real state — the store can be empty while it scans — and
+/// it has to read as absent rather than as a model from somewhere.
+#[test]
+fn an_absent_active_model_is_reported_as_absent() {
+    let mut snapshot = crate::tests::snapshot(1, true, true);
+    snapshot.active_model = None;
+    assert!(report_of(&snapshot)["active_model_origin"].is_null());
+}
+
 /// The privacy rule is enforced by what the document chooses to serialize, and
 /// this is the test that says so. Everything here is a fact about the build or
 /// the process; nothing describes what the user has configured or where their
 /// files are.
 #[test]
 fn the_report_carries_no_path_no_user_data_and_no_framework_name() {
-    let document =
-        super::super::about::SoftwareInformation::read(&crate::tests::snapshot(1, true, true));
-    let json = document.to_json().expect("serialize the report");
+    let json = crate::window::about::SoftwareInformation::read(
+        &crate::tests::snapshot(1, true, true),
+        window_facts(),
+    )
+    .to_json()
+    .expect("serialize the report");
     assert!(!json.contains('/'), "a path leaked into the report");
     assert!(!json.contains('\\'), "a path leaked into the report");
     assert!(!json.to_lowercase().contains("path"));
