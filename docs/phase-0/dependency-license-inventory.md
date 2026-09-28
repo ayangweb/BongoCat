@@ -12,13 +12,13 @@
 - `x86_64-apple-darwin`
 - `x86_64-pc-windows-msvc`
 
-扫描 package 节点数由当前 lockfile 与 target filter 动态决定，不作为需要手工维护的 golden value。2026-08-29 已先完成所有 BongoCat 直接依赖的最新稳定版审计和 lockfile 更新；ADR-0056 的 `gpui-kit` 上游固定 revision 与 ADR-0066 的 `gilrs` 维护者 fork revision/source 在 `rust-dependency-versions.md` 中单独记录。
+扫描 package 节点数由当前 lockfile 与 target filter 动态决定，不作为需要手工维护的 golden value。2026-08-29 已先完成所有 BongoCat 直接依赖的最新稳定版审计和 lockfile 更新；2026-09-28 `gpui-kit` 恢复为 crates.io 精确 pin（ADR-0056 的临时上游固定 revision 已删除），ADR-0066 的 `gilrs` 维护者 fork revision/source 在 `rust-dependency-versions.md` 中单独记录。
 
 ## Direct dependencies
 
 | Dependency family                | Locked version                 | License                   | Role                                     |
 | -------------------------------- | ------------------------------ | ------------------------- | ---------------------------------------- |
-| GPUI Kit                         | `0.6.5` @ `500852f`            | Apache-2.0                | Formal settings UI facade and components; ADR-0056 exact upstream revision |
+| GPUI Kit                         | `0.7.0`                        | Apache-2.0                | Formal settings UI facade and components; ADR-0056 exact registry pin (GPUI snapshot `gpui-pre 0.3.7`) |
 | gilrs / gilrs-core              | `0.11.2` / `0.6.8` @ `fb3cc4e` | Apache-2.0 OR MIT         | Formal WGI/IOHID gamepad backend; ADR-0066 exact maintainer fork revision |
 | AccessKit core/macOS/Windows     | `0.25.0` / `0.27.0` / `0.35.0` | MIT OR Apache-2.0         | Direct in `spikes/gpui-settings`; formal UI receives `gpui-kit` transitive semantics after ADR-0054 |
 | arboard                          | `3.6.1`                        | MIT OR Apache-2.0         | Dual-platform private text clipboard     |
@@ -67,12 +67,12 @@ GPUI Kit 的 HTTP/TLS 传递图引入 `libbz2-rs-sys 0.2.5`（`bzip2-1.0.6`）�
 
 `cargo-deny list` 会为包含多选许可的 crate 展示所有标识。例如 `self_cell` 的表达式包含 `Apache-2.0 OR GPL-2.0`，`r-efi` 包含 `MIT OR Apache-2.0 OR LGPL-2.1-or-later`；策略通过允许的 Apache/MIT 分支满足表达式，没有全局允许 GPL/LGPL。
 
-依赖来源基线仍是 crates.io index；unknown registry 会使检查失败。`allow-git` 只额外放行固定上游
-`https://github.com/longbridge/gpui-kit` rev `500852f449c05dc01920ec82f3ae2656a61d0387` 与固定维护者
-fork `https://github.com/ayangweb/gilrs` rev `e69f1083d1a13a234513cb360c3d9d8abe5ea025`。GPUI Kit suite
-五个 package 与 gilrs/gilrs-core/固定 SDL mapping submodule 都从各自 commit 解析；其它 git source
-继续失败。`required-git-spec = "rev"` 强制所有 git source 必须精确锁定 commit。GPUI release
-门禁与 gilrs fork 生命周期/队列门禁分别由 ADR-0056/0066 管理。
+依赖来源基线仍是 crates.io index；unknown registry 会使检查失败。2026-09-28 起 GPUI Kit 从
+crates.io 精确 pin `=0.7.0` 解析，`allow-git` 只额外放行固定维护者 fork
+`https://github.com/ayangweb/gilrs` rev `e69f1083d1a13a234513cb360c3d9d8abe5ea025`。GPUI Kit suite
+五个 package 与 gilrs/gilrs-core/固定 SDL mapping submodule 各自从对应来源解析；其它 git source
+继续失败。`required-git-spec = "rev"` 强制所有 git source 必须精确锁定 commit。GPUI Kit 版本
+升级门禁由 ADR-0020/0056 管理，gilrs fork 生命周期/队列门禁由 ADR-0066 管理。
 
 ## Reproduction
 

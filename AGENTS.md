@@ -168,7 +168,7 @@ Issue #47 的“按下后无释放”必须从架构处理，不能只增加动�
 
 ## 8. GPUI Kit UI
 
-GPUI 设置界面统一使用上游 `longbridge/gpui-kit` 的固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`（当前 package 版本 `0.6.5`），并作为唯一直接 GPUI 依赖；不得直接声明 `gpui`、`gpui_platform`、`gpui-component` 或单独 assets crate，也不得混入其它 GPUI git source。该 revision 是上游合并 `SettingGroup::variant()` 与 `Popover::arrow()`、但尚未发布对应 crates.io release 时的临时精确来源；上游 release 包含这两项能力后必须切回 crates.io 精确 pin 并删除 git source。GPUI Kit 通过 crates.io 的 `gpui-pre` 同步包提供 crate 名 `gpui`，元数据对应 Zed `gpui 0.2.2`。开发前必须查阅 [gpui-kit](https://github.com/longbridge/gpui-kit)、[组件文档](https://gpui-kit.com/docs/components) 和 [docs.rs](https://docs.rs/gpui-kit/)，不得凭记忆或猜测 API。
+GPUI 设置界面统一使用 crates.io 的 `gpui-kit` 精确 pin `=0.7.0`，并作为唯一直接 GPUI 依赖；不得直接声明 `gpui`、`gpui_platform`、`gpui-component` 或单独 assets crate，也不得混入 GPUI git source。v0.7.0 是包含 `SettingGroup::variant()` 与 `Popover::arrow()` 的首个 release，此前为拿到这两项能力而固定的 `longbridge/gpui-kit` git revision 已删除，`deny.toml` 也不再放行该仓库。GPUI Kit 通过 crates.io 的 `gpui-pre` 同步包提供 crate 名 `gpui`，元数据对应 Zed `gpui 0.2.2`；v0.7.0 把完整 `gpui-pre-*` 家族精确 pin 到 `=0.3.7`（`gpui-pre-reqwest` 仍为 `0.12.15`）。开发前必须查阅 [gpui-kit](https://github.com/longbridge/gpui-kit)、[组件文档](https://gpui-kit.com/docs/components) 和 [docs.rs](https://docs.rs/gpui-kit/)，不得凭记忆或猜测 API。
 
 - 类型从 `gpui_kit` 根导出，平台、组件、资源分别从 `gpui_kit::platform`、`gpui_kit::component`、`gpui_kit::assets` 使用；仅业务特殊行为或无等价 primitive 时保留薄封装。
 - 创建组件前调用 `gpui_kit::init(cx)`；窗口根视图使用 `gpui_kit::component::Root`；系统外观变化用 `Theme::sync_system_appearance(Some(window), cx)`。

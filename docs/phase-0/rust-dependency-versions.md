@@ -1,7 +1,7 @@
 # Rust Dependency Version Audit
 
 状态：所有直接依赖已使用 crates.io 最新稳定版、精确上游 revision 或已记录的 ABI/transition 例外；lockfile 已更新到上游约束允许的最新解析结果
-日期：2026-09-26（`ayangweb/gilrs` 固定 commit 更新到 `e69f1083d1a13a234513cb360c3d9d8abe5ea025`，含 macOS IOHID worker run-loop 空转修复；`gpui-kit` 固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`；上次全量审计 2026-09-13）
+日期：2026-09-28（`gpui-kit` 由上游固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387` 切回 crates.io 精确 pin `=0.7.0`，`gpui-pre` 随之由 `0.3.6` 升到 `0.3.7`；`ayangweb/gilrs` 固定 commit 仍为 `e69f1083d1a13a234513cb360c3d9d8abe5ea025`；上次全量审计 2026-09-13）
 Rust：`cargo 1.97.1`、`rustc 1.97.1`
 
 ## Scope
@@ -18,7 +18,7 @@ cargo update --manifest-path <workspace>/Cargo.toml --dry-run --verbose
 cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 ```
 
-预发布版本、yanked 版本和未固定 git branch 不属于“最新稳定版”。直接依赖精确 pin，传递依赖由 `Cargo.lock` 固定；`deny.toml` 的 `required-git-spec = "rev"` 进一步拒绝 branch/tag git source。两个直接依赖例外都固定完整 commit：`gpui-kit` 等待包含已合并 API 的 crates.io release；`gilrs` 使用维护者 fork 统一承接手柄兼容、backend queue 与平台生命周期修复，不能以浮动 branch 跟随。
+预发布版本、yanked 版本和未固定 git branch 不属于“最新稳定版”。直接依赖精确 pin，传递依赖由 `Cargo.lock` 固定；`deny.toml` 的 `required-git-spec = "rev"` 进一步拒绝 branch/tag git source。直接依赖中只剩一个固定 commit 例外：`gilrs` 使用维护者 fork 统一承接手柄兼容、backend queue 与平台生命周期修复，不能以浮动 branch 跟随；`gpui-kit` 已在 2026-09-28 恢复为纯 registry 精确 pin。
 
 ## Direct Dependencies
 
@@ -37,7 +37,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 | `core-graphics2`                      |        `0.6.1` | 从 `0.4.1` 升级                                          |
 | `dirs`                                |        `6.0.0` | 从 `5.0.1` 升级                                          |
 | `embed-resource`                      |       `3.0.11` | Windows 产品图标新增时最新                               |
-| `gpui-kit`                            | `0.6.5` @ `500852f` | 上游固定 revision；含 variant 与 Popover arrow                |
+| `gpui-kit`                            |        `0.7.0` | crates.io 精确 pin；含 variant 与 Popover arrow，GPUI 快照升到 `0.3.7` |
 | `gilrs`                               | `0.11.2` @ `fb3cc4e` | 维护者 fork 固定 revision；WGI/IOHID 与后续手柄修复统一维护    |
 | `futures-lite`                        |        `2.6.1` | 已是最新                                                 |
 | `gpui`                                |        `0.2.2` | spike 直接依赖；正式 UI 经 `gpui-kit` suite 传递              |
@@ -74,7 +74,7 @@ cargo tree --manifest-path <workspace>/Cargo.toml --invert <crate>@<version>
 
 `windows 0.62.2` 删除了 `Error::from_win32()`；Win32 wrapper 已改为在失败调用后立即使用语义等价的 `Error::from_thread()`，避免清理 API 覆盖 thread last-error。
 
-`cargo search gpui-kit --limit 1` 与 `cargo info gpui-kit` 在 2026-09-24 仍显示 crates.io 最新稳定版为 `0.6.6`，但该 release 不含后来合并的 `SettingGroup::variant()` 与 `Popover::arrow()`。ADR-0056 因此删除根目录 `[patch.crates-io]` 和 `ayangweb/gpui-kit` fork，直接固定上游 `longbridge/gpui-kit` merge commit `500852f449c05dc01920ec82f3ae2656a61d0387`；该 commit 的 package 元数据为 `0.6.5`。lockfile 中五个 GPUI Kit suite package 统一从这一 git source 解析，`gpui-pre` 仍为 crates.io `0.3.6`。`deny.toml` 只放行该上游仓库；包含两项 API 的 release 发布后必须切回 registry 精确 pin。
+`gpui-kit` 的来源经历了三步，全部记录在 ADR-0020 与 ADR-0056：`=0.6.6`（当时 crates.io 最新非 yanked 稳定版，不含 `SettingGroup::variant()` 与 `Popover::arrow()`）→ 上游固定 commit `500852f449c05dc01920ec82f3ae2656a61d0387`（package 元数据 `0.6.5`）→ 2026-09-28 恢复为 crates.io 精确 pin `=0.7.0`。v0.7.0 是首个同时发布这两项 API 的 release，因此临时 git source 及其 `deny.toml` 放行项一并删除；`deny.toml` 现在只放行 `ayangweb/gilrs`。lockfile 中五个 GPUI Kit suite package 统一解析为 `0.7.0`，`gpui-pre` 家族由 `0.3.6` 升到 `0.3.7`（v0.7.0 以 `=0.3.7` 精确 pin，`gpui-pre-reqwest` 仍为 `0.12.15`；Zed 快照由 `bcf6582ce3500df93a8a39366640173e6786cea6` 前移到 `1a28cff4b409169bac058bca40dfbfeb7621d19b`，`zed-version` 仍为 `0.2.2`）。相对上一个固定 revision，v0.7.0 对本仓库用到的 API 全部是增量：项目未使用 Chart/Plot、DatePicker、Table、Dock、Accordion、Attachment、Form、Command 或 Tree-sitter，因此本次升级不产生源码迁移。
 
 ### 已记录的上游阻塞：`tray-icon 0.25.0` 的 Windows `set_tooltip`
 
@@ -226,7 +226,7 @@ GPUI accessibility spike 直接固定 `objc2 0.5.2` 与 `objc2-foundation 0.2.2`
   build 不链接 ALSA。真实预置 FLAC header/首样本、资源/解码失败、抢占、overflow 恢复和
   shutdown 均有 Rust 测试；默认设备热切换与长期资源测量留给后续平台验收；
 - `bindgen 0.72.1` 与 `sha2 0.11.0` 只存在于离线 Cubism raw binding 工具；三个当前可绑定 target 的合成 header golden、外部路径/hash/不可覆盖/provenance 测试和 release check 通过；
-- `cargo-deny 0.20.2` 驱动 14 个 manifest 的 locked license/source policy，目标矩阵为三个首发 target。`allow-git` 只放行固定上游 `https://github.com/longbridge/gpui-kit` 与固定维护者 fork `https://github.com/ayangweb/gilrs`，其它未知 git source 继续失败。
+- `cargo-deny 0.20.2` 驱动 14 个 manifest 的 locked license/source policy，目标矩阵为三个首发 target。2026-09-28 起 `allow-git` 只放行固定维护者 fork `https://github.com/ayangweb/gilrs`，其它未知 git source 继续失败。
 
 GPUI 图继续报告已单独建档的 `block 0.1.6` 和 `proc-macro-error2 2.0.1`
 future-incompatibility。两者本身已是各自当前最新版，升级直接依赖没有解除上游约束；

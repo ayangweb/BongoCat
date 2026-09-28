@@ -4,6 +4,11 @@
 
 > 后续修订（2026-09-24）：ADR-0054 退役项目自有设置语义桥。上游已合并 `SettingGroup::variant()`，但包含该能力与 `Popover::arrow()` 的 crates.io release 尚未发布；当前直接依赖上游固定 revision `500852f449c05dc01920ec82f3ae2656a61d0387`，不再使用 `[patch.crates-io]` 或维护者 fork。对应 release 发布后恢复纯 registry 精确 pin。
 
+> 后续修订（2026-09-28）：上游已发布 `gpui-kit v0.7.0`，该 release 同时包含
+> `SettingGroup::variant()` 与 `Popover::arrow()`。按上一条与 ADR-0056 的既定条件，直接依赖
+> 切回 crates.io 精确 pin `=0.7.0`，`longbridge/gpui-kit` git source 与 `deny.toml` 的对应
+> 放行项一并删除。GPUI 依赖随之上移到 `gpui-pre 0.3.7`。
+
 ## 背景
 
 ADR-0019 直接组合 Zed git source 的 `gpui`、`gpui_platform` 与 GPUI Component 开发版及
@@ -12,16 +17,15 @@ assets。应用必须手工保证四个 source 的类型一致，manifest、impo
 
 ## 决策
 
-- workspace 只直接依赖上游 `longbridge/gpui-kit` 的固定 revision
-  `500852f449c05dc01920ec82f3ae2656a61d0387`，提交完整 `cargo update` 后的
-  `Cargo.lock`。不再直接声明 `gpui`、`gpui_platform`、`gpui-component` 或独立 assets
-  crate，也不使用其它 git source 混装 GPUI。
+- workspace 只直接依赖 `gpui-kit`，当前为 crates.io 精确 pin `=0.7.0`，并提交完整
+  `cargo update` 后的 `Cargo.lock`。不再直接声明 `gpui`、`gpui_platform`、`gpui-component`
+  或独立 assets crate，也不使用其它 git source 混装 GPUI。
 - 代码从 `gpui_kit` 根使用 GPUI 类型，从 `gpui_kit::platform`、`gpui_kit::component` 和
   `gpui_kit::assets` 使用对应层；组件初始化统一调用 `gpui_kit::init`。
-- 当前固定的 `gpui-kit` revision 使用 Apache-2.0 许可证。它的 GPUI 依赖
-  通过 crates.io `gpui-pre` 同步包交付；当前 lockfile 解析到 `0.3.6`（v0.6.6 起
-  `gpui-kit` 以 `=0.3.6` 精确 pin 该同步包），包元数据声明对应
-  Zed `gpui 0.2.2` revision `bcf6582ce3500df93a8a39366640173e6786cea6`。因此项目不再直接
+- 当前固定的 `gpui-kit` 使用 Apache-2.0 许可证。它的 GPUI 依赖
+  通过 crates.io `gpui-pre` 同步包交付；当前 lockfile 解析到 `0.3.7`（v0.7.0 起
+  `gpui-kit` 以 `=0.3.7` 精确 pin 该家族，`gpui-pre-reqwest` 仍为 `0.12.15`），包元数据声明
+  Zed `gpui 0.2.2` revision `1a28cff4b409169bac058bca40dfbfeb7621d19b`。因此项目不再直接
   覆写 GPUI，但也不把该传递包误记为 crates.io 包名 `gpui = 0.2.2`。
 - 2026-09-19：`gpui-kit` 由 `=0.6.1` 升级到 `=0.6.4`（v0.6.2 功能版与 v0.6.4 补丁的
   最新稳定版；无 breaking API 变化），升级范围仍在 `bongocat-ui` 与 `bongocat-app`，
@@ -44,6 +48,13 @@ assets。应用必须手工保证四个 source 的类型一致，manifest、impo
   `Root::render_*_layer` 调用。`PopConfirm` 转发 `Popover::arrow(bool)`，模型删除确认启用
   anchor-aligned arrow。对应上游 release 发布后，本条临时 git source 决策自动失效并恢复
   crates.io 精确 pin。
+- 2026-09-28：`gpui-kit v0.7.0` 发布，包含上述两项 API 与 `Root` 的自动挂载行为，因此
+  切回 crates.io 精确 pin `=0.7.0`，删除 `longbridge/gpui-kit` git source 与 `deny.toml`
+  的对应放行项。lockfile 中五个 suite package 统一解析为 `0.7.0`，GPUI 同步包升到
+  `gpui-pre 0.3.7`（v0.7.0 以 `=0.3.7` 精确 pin 该家族）。项目未使用 release notes 中
+  breaking change 涉及的 Chart/Plot、DatePicker/TimeField、Table、TextView heading 与
+  表单/表格/弹层 primitive 迁移面，源码零改动；`Root` 与 `WindowExt` 仍由业务窗口入口
+  直接使用。
 - GPUI Kit 默认 component/assets feature 正好覆盖当前设置窗口。tree-sitter、decimal、
   inspector 和 test-support 等可选 feature 不启用。其 native facade 还会引入配套 HTTP client
   与 TLS 传递依赖；这些依赖不得进入 BongoCat 的业务 API。
@@ -54,8 +65,8 @@ assets。应用必须手工保证四个 source 的类型一致，manifest、impo
 
 ## 影响
 
-manifest 和 Rust import 只有一个版本入口，避免应用与组件解析到两套 GPUI 类型。固定 git
-revision 进入 lockfile，`deny.toml` 只允许该上游仓库；对应 crates.io release 发布后改回
-registry checksum。代价是 GPUI Kit
+manifest 和 Rust import 只有一个版本入口，避免应用与组件解析到两套 GPUI 类型。来源在
+2026-09-28 回到 crates.io 精确 pin，lockfile 记录 registry checksum，`deny.toml` 不再放行
+GPUI Kit 的 git 仓库。代价是 GPUI Kit
 统一管理整套传递版本，升级必须作为单独变更重跑双平台构建、设置窗口、IME、辅助功能、缩放、
 窗口重建和 shutdown smoke；ADR-0054 后“辅助功能 smoke”不再是项目自有 UI 完成条件。本 ADR 不把仍缺少实机证据的 UI TODO 标记完成。

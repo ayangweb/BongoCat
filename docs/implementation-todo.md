@@ -210,7 +210,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 
 ### 1.5 GPUI spike
 
-状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，历史 spike 精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；它只保留为 Phase 0 证据，正式 workspace 当时使用 `gpui-kit = "=0.6.1"`，后续升级至 `=0.6.6`，并于 2026-09-24 固定到含新增组件 API 的上游 revision。默认预编译 shader、release `.app`、原生 Application/Edit/Window 菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range；本机 WeType 拼音 2.2.3 进一步通过真实系统组合更新、候选提交和已有中文前缀后的再次组合。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip 已通过双平台原生合成 mouse-move -> GPUI 500ms delay -> build -> hover exit 链路，modal AlertDialog 的 Cancel 初始焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏也已验证。Windows UIA runner 已读取基础 role/name、selected/action、dialog，并通过 loading -> error -> retry/revision 2 恢复门禁；`busy=true` 因 runner 托管 UIA client 缺少属性标识而仍未验证。Apple 拼音、Windows IME、物理键盘/pointer 和目标 DPI 仍未验证；tooltip 朗读与真实辅助技术操作属于 ADR-0054 前的历史证据，不再是当前项目自有 gate，详见 `docs/phase-0/gpui-settings-spike.md`。
+状态（2026-08-30）：已在 `spikes/gpui-settings/` 建立隔离的 macOS 最小窗口，历史 spike 精确锁定 `gpui = 0.2.2` 并生成独立 lockfile；它只保留为 Phase 0 证据，正式 workspace 当时使用 `gpui-kit = "=0.6.1"`，后续升级至 `=0.6.6`，并于 2026-09-24 固定到含新增组件 API 的上游 revision，2026-09-28 回到 crates.io 精确 pin `=0.7.0`（详见 §6.3）。默认预编译 shader、release `.app`、原生 Application/Edit/Window 菜单、窗口关闭/重开和 shutdown smoke 通过。当前 spike 还验证了 System/Light/Dark 主题、焦点边框、Tab/Shift-Tab、Unicode/grapheme 文本编辑、选择、剪切、复制和粘贴，以及 GPUI executor 上的 bounded typed command/revision snapshot/shutdown acknowledgement，并保存浅色/深色截图证据。marked-text 纯状态 contract 已覆盖连续中文组合、已有多字节前缀、surrogate pair 和异常 range；本机 WeType 拼音 2.2.3 进一步通过真实系统组合更新、候选提交和已有中文前缀后的再次组合。项目自有 AccessKit tree 已由 macOS AppKit AX API 读取 9 个语义节点，Dark radio 的系统 press 经强类型 channel 回到 GPUI；Reset tooltip 已通过双平台原生合成 mouse-move -> GPUI 500ms delay -> build -> hover exit 链路，modal AlertDialog 的 Cancel 初始焦点、Tab/Shift-Tab 陷阱、Escape 关闭和背景语义隐藏也已验证。Windows UIA runner 已读取基础 role/name、selected/action、dialog，并通过 loading -> error -> retry/revision 2 恢复门禁；`busy=true` 因 runner 托管 UIA client 缺少属性标识而仍未验证。Apple 拼音、Windows IME、物理键盘/pointer 和目标 DPI 仍未验证；tooltip 朗读与真实辅助技术操作属于 ADR-0054 前的历史证据，不再是当前项目自有 gate，详见 `docs/phase-0/gpui-settings-spike.md`。
 
 - [x] 建立最小 Rust workspace 和 GPUI hello/settings 窗口。
 - [x] 固定 `gpui = "=0.2.2"` 并提交 Cargo.lock。
@@ -1843,6 +1843,28 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 完整 `just check` 记为全绿。使用临时安装的精确 `cargo-deny 0.20.2` 对正式 workspace、
 12 个 spike workspace 与 bindgen tool 的 14 个 manifest 执行 locked `licenses sources`
 检查均通过；本机没有 `bash`，因此等价的 shell wrapper 本身未直接运行。
+  当前补充（2026-09-28，gpui-kit 升级到 v0.7.0）：上游发布 `gpui-kit v0.7.0`，它是首个同时
+  包含 `SettingGroup::variant()` 与 `Popover::arrow()` 的 release，因此按 ADR-0020/0056 恢复纯
+  registry 来源：直接依赖改为 `gpui-kit = "=0.7.0"`，删除 `longbridge/gpui-kit` git source，
+  `deny.toml` 的 `allow-git` 只保留 `ayangweb/gilrs`。lockfile 中五个 GPUI Kit suite package
+  统一解析为 `0.7.0`，GPUI 同步包由 `gpui-pre 0.3.6` 升到 `0.3.7`（v0.7.0 以 `=0.3.7` 精确
+  pin，`gpui-pre-reqwest` 仍为 `0.12.15`；Zed 快照由 `bcf6582c` 前移到 `1a28cff4`，
+  `zed-version` 仍为 `0.2.2`），无其它 package 变化。
+  迁移评估按 release notes 逐条对照本仓库实际使用的 API：v0.7.0 相对前一个固定 revision 的
+  源码差异中，项目用到的部分全部是增量或修复——`Root`、`WindowExt`
+  （`open_dialog`/`close_dialog`/`push_notification`）、组件层 `Dialog`（定位未变）、
+  `Popover`（新增 `Styled` 与 `offset`）、`Settings`/`SettingGroup`（跨页选择分组改为按索引
+  滚动）、`Select`（菜单宽度去掉 2px 叠加）、`SearchableList`/`SearchableVec`（改为按索引过滤、
+  长标签截断）、`Notification`（静止后不再空转生命周期时钟）、`Input`（禁用态不再抢指针焦点、
+  Paste 恒可用）、`Base Popover`/`DropdownMenu`/`ContextMenu`（改用弱句柄，避免弹层实体泄漏）
+  均不需要本仓库改动。项目未使用 Chart/Plot、DatePicker/TimeField、Table、Dock、Accordion、
+  Attachment、Form、Command、Carousel、ColorPicker、Combobox、Pagination、Rating、Tree 与
+  tree-sitter，因此 release notes 中针对这些组件的 breaking change 对本仓库不适用；窗口入口
+  仍由业务自己 `cx.open_window` + `Root::new`（`gpui_kit::open_window` 是等价 helper，非必需）。
+  验证：`cargo fmt --all -- --check`、`cargo deny check sources`、
+  `cargo test --locked --workspace`（含 `bongocat-ui` 171 个 lib 测试，PopConfirm arrow 几何、
+  设置窗口渲染、更新窗口 Markdown 渲染等回归全通过）均通过；Windows 目标检查与双平台实机
+  smoke 仍待 CI/实机复跑。
 
 - [ ] 定义颜色、排版、间距、圆角、边框、阴影和焦点 token。
 - [ ] 实现 Button、IconButton、TextInput、NumberInput、Slider、Switch。

@@ -39,6 +39,7 @@
 - The model window waits for the graphics card to finish each frame instead of polling it, and the settings and update windows only re-read what they display when it changes.
 - The Settings window keeps its full title bar on Windows in every state, and "Show taskbar icon" now controls the model window's taskbar button, which is off by default.
 - The Settings and update windows show the BongoCat icon in their title bars and taskbar buttons on Windows.
+- A number field in Settings that is currently unavailable no longer takes keyboard focus when you click it, so typing continues in the field you were editing.
 
 ### 🗑️ Removals
 
@@ -51,6 +52,7 @@
 - The tray and model-window context menus share one menu, grouped by model-window action, with always-on-top and hide-on-hover checks. Visibility uses the same "Hide model window" switch, off by default.
 - The three flip settings are worded as flips and name the axis they flip: flip model horizontally, flip mouse tracking horizontally, and flip mouse tracking vertically.
 - The model window's settings for staying on screen, hiding on mouse hover and its delay, scale, opacity, corner radius and maximum FPS no longer print an explanation under the title; each row shows only its title and control. A hover-hide delay of 0 still hides the window as soon as the mouse rests on it.
+- A long option label in a Settings dropdown, such as a long model name in the two gamepad model choices, now ends in an ellipsis instead of being cut off, and the dropdown is exactly as wide as the control it belongs to.
 
 ### 💻 Support Changes
 
