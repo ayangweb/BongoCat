@@ -18,13 +18,13 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
 
 已核实（2026-09-13，`cargo search`、`cargo info`、`cargo tree` 与源码阅读）：
 
-- `tray-icon 0.25.0`（MIT OR Apache-2.0，Rust 1.90+）是 crates.io 当日最新稳定版，由 Tauri
+- `tray-icon 0.25.1`（MIT OR Apache-2.0，Rust 1.90+）是 crates.io 当日最新稳定版，由 Tauri
   项目维护，同时支持 macOS `NSStatusItem` 与 Windows `Shell_NotifyIcon`，并提供图标、tooltip、
   菜单、固定 GUID 和显隐 API。当前 toolchain 为 Rust 1.97.1，满足其 MSRV。
 - `muda 0.20.0`（Apache-2.0 OR MIT，Rust 1.90+）是 crates.io 当日最新稳定版，由 Tauri 项目维护；
   `Menu`/`MenuItem`/`CheckMenuItem` 提供菜单构建与动态文本、状态更新，`ContextMenu` 提供 Windows
   HWND 与 macOS `NSView` 的右键弹出 API。它没有可设置的菜单标题，因此既有
-  `SystemMenuPresentation::title` 不再有对应可变标题 API。`tray-icon 0.25.0` 也依赖同一
+  `SystemMenuPresentation::title` 不再有对应可变标题 API。`tray-icon 0.25.1` 也依赖同一
   `muda 0.20.0` package 来挂载托盘菜单；项目直接声明 `muda`，确保共用 popup 根使用同一份第三方
   类型和同一个项目 owner，而不是依赖第三方 crate 的重导出。
 - `tray-icon` 的 `TrayIcon`、`TrayIconEvent::receiver` 与 `muda::MenuEvent::receiver` 均以进程级
@@ -46,7 +46,7 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
 ## 决策
 
 - macOS 与 Windows 状态图标统一由 `bongocat-platform` 私有 `system_menu_native` adapter 管理：
-  `tray-icon 0.25.0` 是托盘/菜单栏图标的 native owner，直接依赖的 `muda 0.20.0` 是共用 popup 根
+  `tray-icon 0.25.1` 是托盘/菜单栏图标的 native owner，直接依赖的 `muda 0.20.0` 是共用 popup 根
   和菜单事件的 owner；旧 `system_menu_macos.rs`、`system_menu_windows.rs` 与 `tray-windows.ico` 退役。
 - adapter 是 `SystemMenu` 的唯一 owner，长期持有 `TrayIcon`、一个托盘/模型窗口共用菜单根、模型窗口
   子菜单、全部可变菜单项和 `muda` 菜单事件 receiver。`set_visible(false)` 只改变平台表示（macOS 移除
@@ -90,16 +90,18 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
   `SystemMenu`。
 - Windows adapter 捕获 `TrayIconEvent` 时按自有的稳定 `TrayIconId` 过滤，不消费其他 owner 的
   事件；菜单事件 receiver 也只在同一个 app owner 线程轮询并转换为强类型队列。
-- `tray-icon 0.25.0` 的 Windows `set_visible` 会发送 `WM_USER_SHOW_TRAYICON` 并在库内部忽略
+- `tray-icon 0.25.1` 的 Windows `set_visible` 会发送 `WM_USER_SHOW_TRAYICON` 并在库内部忽略
   `Shell_NotifyIconW(NIM_MODIFY)` 的失败结果，可能对已失效的 shell registration 返回 `Ok`；
   同样，初次 `NIM_ADD` 失败会等待 `TaskbarCreated` 恢复。adapter 的 `Ok` 不能替代真实托盘
   可见性验收，发布前必须在 Windows 10 1903+ 实机验证隐藏、恢复、Explorer 重启和右键菜单。
-- `tray-icon 0.25.0` 的 Windows `set_tooltip` 对以固定 GUID 注册的图标必然失败：它发出的
+- `tray-icon 0.25.1` 的 Windows `set_tooltip` 对以固定 GUID 注册的图标必然失败：它发出的
   `NIM_MODIFY` 未带 `NIF_GUID`，而 shell 对以 `guidItem` 标识的图标忽略 `uID`，并要求后续每次
   `Shell_NotifyIcon` 调用都携带同一 GUID
   （<https://learn.microsoft.com/windows/win32/api/shellapi/ns-shellapi-notifyicondataw#troubleshooting>）。
   库内 `set_icon` 与内部 `set_tray_visible` 都调用了 `apply_guid`，只有 `set_tooltip` 漏掉，属上游
-  缺陷；上游 `dev` 分支同样如此，`0.25.0` 已是 crates.io 最新稳定版，没有可升级的修复版本。
+  缺陷。2026-09-28 升级到 `0.25.1` 时已逐行核对 `tray-icon-v0.25.1` tag：`set_tooltip` 仍只设置
+  `NIF_TIP`、`hWnd` 与 `uID`，没有写入 `guidItem`，即该缺陷仍未修复；`0.25.1` 已是 crates.io
+  最新稳定版，没有可升级的修复版本。
   因此 `SystemMenuPresentation::tooltip` 是**创建期输入**：由 `start_with_presentation` 经
   `with_tooltip` 一次性写入（该路径的 `NIM_ADD` 携带 `NIF_GUID`，可正常工作），
   `set_presentation` 不得再调用 `set_tooltip`。当前产品文案 `system_menu.title` 在中英目录中

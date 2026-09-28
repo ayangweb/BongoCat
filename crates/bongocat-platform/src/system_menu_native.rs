@@ -239,10 +239,11 @@ impl SystemMenu {
     /// Applies a new settings snapshot to both native menu surfaces.
     ///
     /// `SystemMenuPresentation::tooltip` is a creation-time input: it is applied once by
-    /// [`Self::start_with_presentation`] and deliberately not re-applied here. `tray-icon 0.25.0`
-    /// cannot update the tooltip of a GUID-registered Windows icon, because its `set_tooltip`
-    /// issues `NIM_MODIFY` without `NIF_GUID`. The shell ignores `uID` for an icon identified by
-    /// `guidItem` and requires the same GUID in every later call, so that call always fails
+    /// [`Self::start_with_presentation`] and deliberately not re-applied here. `tray-icon 0.25.1`
+    /// still cannot update the tooltip of a GUID-registered Windows icon, because its
+    /// `set_tooltip` issues `NIM_MODIFY` without `NIF_GUID`. The shell ignores `uID` for an icon
+    /// identified by `guidItem` and requires the same GUID in every later call, so that call always
+    /// fails
     /// (<https://learn.microsoft.com/windows/win32/api/shellapi/ns-shellapi-notifyicondataw#troubleshooting>).
     /// The tooltip must therefore stay invariant for the lifetime of this owner; changing it
     /// requires replacing the tray owner, which ADR-0031 forbids while the app is running.

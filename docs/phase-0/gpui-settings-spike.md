@@ -142,8 +142,8 @@ ad-hoc signing 只验证本地 bundle 完整性，不代表 Developer ID、Harde
 ## Accessibility Result
 
 GPUI 0.2.2 没有普通 element 的公共语义 API，但 `Window` 实现标准
-`raw-window-handle 0.6.2`。spike 使用 `accesskit 0.25.0`、macOS adapter `0.27.0` 与
-Windows adapter `0.35.0`，在窗口首次显示/聚焦前分别动态 subclass GPUI `NSView` 和
+`raw-window-handle 0.6.2`。spike 使用 `accesskit 0.25.1`、macOS adapter `0.27.1` 与
+Windows adapter `0.35.1`，在窗口首次显示/聚焦前分别动态 subclass GPUI `NSView` 和
 subclass `HWND`。方案不依赖 Zed 私有 crate、GPUI renderer、隐藏控件或 fork。
 
 项目自有 tree 当前包含顶层 window、Appearance group、System/Light/Dark radio、模型名称
@@ -192,10 +192,15 @@ GPUI action；若错误映射为 Cocoa `cut:`/`paste:` responder selector，菜�
 `AsyncApp::update` 内同步回调造成可重入借用。Select All -> Cut -> Paste 的文本/剪贴板结果和
 runtime-first shutdown 已在本机通过；该证据不包含后续 `NSStatusItem` 常驻菜单。
 
-`accesskit_macos 0.27.0` 的公开 adapter 类型基于 `objc2 0.5.x`，因此仅用于 AX 诊断消息的
-直接 `objc2` 精确固定为 `0.5.2`，避免通过 `objc2 0.6` Rust 类型访问另一 generation 的
-Objective-C 对象。该版本例外的解除条件是 AccessKit macOS adapter 升级到 0.6 generation；
-业务和语义类型不依赖 `objc2`。
+2026-09-28 复核并撤销了此前“直接 `objc2` 固定为 `0.5.2`”的版本例外。spike 传给
+`accesskit_macos::SubclassingAdapter::new` 的是 `handle.ns_view.as_ptr()`，即原始
+`*mut c_void` NSView；spike 与 AccessKit adapter 之间没有任何 `objc2` typed object 跨界。
+AX 诊断与 native tooltip probe 用到的 `msg_send!`/`AnyObject`/`Retained`/`autoreleasepool`/
+`NSPoint` 都是 spike 自己的原始指针代码，不引用 AccessKit 构造的对象。因此直接依赖已改为与
+产品 `bongocat-platform` 相同的 `objc2 0.6.4` 与 `objc2-foundation 0.3.2`；仓库外一次性 probe
+以两代版本分别编译 spike 的全部调用形状并跑 `clippy -D warnings`，均为零错误零 warning。
+`accesskit_macos 0.27.1` 仍声明 `objc2 ^0.5.1`，因此旧一代只作为传递依赖留在 lockfile 中，
+项目代码不再直接引用。业务和语义类型不依赖 `objc2`。
 
 ## 本地化资源边界
 

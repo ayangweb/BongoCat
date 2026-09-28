@@ -148,6 +148,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 - [x] 审计 BongoCat 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
   - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 当时审计的 21 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1`、`sha2 0.11.0` 与 `libc 0.2.189` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 workspace 并向默认分支提交分组更新。
   - 状态（2026-09-25）：本次新增的 `time 0.3.55`、`thiserror 2.0.21`、`schemars 1.2.2` 与 `walkdir 2.5.0` 已按 crates.io 最新稳定版、许可证和替换边界补入依赖审计；四者均复用既有传递图，不新增产品业务 API。
+  - 状态（2026-09-28）：全量升级审计。`dirs` `6.0.0`→`7.0.0`、`tray-icon` `0.25.0`→`0.25.1`、`rust-i18n` `4.2.2`→`4.2.3`、`accesskit` `0.25.0`→`0.25.1`、`accesskit_macos` `0.27.0`→`0.27.1`、`accesskit_windows` `0.35.0`→`0.35.1`、`bindgen` `0.72.1`→`0.73.2`；14 个 manifest 全部执行完整 `cargo update` 并通过 `cargo deny check licenses sources`，三个首发 target 的 release dependency tree 仍无 Tauri/WebView/JavaScript runtime。`spikes/gpui-settings` 原先的 `objc2 0.5.2`/`objc2-foundation 0.2.2` 直接 pin 经源码复核后确认并非必需的 ABI 例外（spike 与 `accesskit_macos` 只经原始 `*mut c_void` NSView 交互），已升到与产品一致的 `0.6.4`/`0.3.2` 并用仓库外双代 probe 验证；旧一代仅作为 `accesskit_macos 0.27.1` 的传递依赖保留。`bindgen 0.73` 改变了零尺寸 opaque handle `csmMoc`/`csmModel` 的 derive（`Copy, Clone`→`Debug`），已按既定 review flow 重生成三个 target 的产品 raw bindings，`csm*` 签名与 C ABI 逐字节不变。`dirs 6/7` 共用 `dirs-sys 0.5.0`，平台存储根无迁移。`tray-icon 0.25.1` 未修复 Windows GUID 注册下的 `set_tooltip` 缺陷（已逐行核对上游 tag），既有的创建期固定 tooltip 绕行继续有效。`just check`、`sh tools/check-dependencies.sh`、`just schema`、全部 Python 校验与 `tools/cubism-*` 契约、macOS `just preview`/`just dev-smoke` 均通过；`spikes/gpui-settings` 与 `spikes/gpui-overlay-macos` 的 macOS 编译因本机缺完整 Xcode 的 `metal` 编译器未运行（已在未改动 `master` 上复现为既有失败），需 CI 补验。详见 `docs/phase-0/rust-dependency-versions.md`。
 - [x] 冻结首发 target triple 和 CPU 架构矩阵，明确 Windows ARM64、macOS Intel 是否发布或仅测试。
   - 状态（2026-08-29）：ADR-0010 已固定 Windows 仅支持 x64/ARM64，i686 不再构建或发布。官方 Cubism Native R5 不提供 desktop Windows ARM64 Core，只有 experimental UWP ARM64 DLL，因此 ARM64 当前是发布阻塞；macOS Intel 和最终安装包形式仍待实机与发布链验证。
   - 状态（2026-09-07）：历史手动 release workflow 已移除 `i686-pc-windows-msvc` matrix entry，避免任何仓库发布入口继续构建 BongoCat 明确排除的 Windows x86 target；历史基线文档中的旧版 i686 产物记录仅保留为考古证据。
@@ -451,6 +452,13 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     目录和重复生成 hash 一致后才可审阅导入。合成 header 的三 target golden、拒绝覆盖/仓库内
     header/hash 不符测试，以及 format、Clippy、test、release check 均通过。真实 SDK 的第二人
     重生成、平台 ABI 和模型 smoke 仍由 P0 Cubism 发布门禁跟踪。
+  - 状态（2026-09-28）：`bindgen` 精确固定升到 `0.73.2`。生成选项与 config revision
+    `cubism-core-r5-v1` 未变；按既定 review flow 用固定 r.5 header 重新生成三个 target 的产品
+    raw bindings，`csm*` 签名、整数/指针宽度与 extern block 与旧输出逐字节相同，唯一差异是
+    零尺寸 opaque handle `csmMoc`/`csmModel` 的 derive 由 `Copy, Clone` 变为 `Debug`；产品只持有
+    原始指针因此无行为变化。合成 golden 已 `refresh-fixtures` 并在三个 target 以
+    `rustc --emit metadata -D warnings` 编译通过，`csm*` allowlist、required symbol 与确定性
+    检查保持不变。详见 `docs/phase-0/cubism-binding-generation.md` §6。
 
 ### 1.9 Phase 0 退出门槛
 
@@ -2254,7 +2262,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     `SetOverlayVisible` 进入 settings service/runtime，不直接修改 overlay 或 config。macOS
     release system-menu smoke 已通过原生路径切换与恢复 overlay visibility，并确认产生新的
     config revision；Windows 使用同一 action/command contract，仍待真实 Windows desktop 复验。
-  - 状态（2026-09-13）：当前 macOS/Windows 实现已统一为 `tray-icon 0.25.0` 托盘 owner + 直接
+  - 状态（2026-09-13）：当前 macOS/Windows 实现已统一为 `tray-icon 0.25.1` 托盘 owner + 直接
     `muda 0.20.0` 菜单 owner，见 ADR-0031；上述历史 smoke 证据保留，但 Windows tray behavior
     不以 cross-compile 代替实机验证。
 -[x] 系统关机、注销和普通退出进入 shutdown coordinator。
@@ -2276,7 +2284,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 
 ### 8.2 Windows
 
-- [x] `tray-icon 0.25.0` 托盘（Windows 使用 `muda 0.20.0` 菜单与 `tray-windows.png`）。
+- [x] `tray-icon 0.25.1` 托盘（Windows 使用 `muda 0.20.0` 菜单与 `tray-windows.png`）。
 - [x] named mutex + registered message/IPC 唤醒单实例。
   - 验收证据（2026-08-31）：`P7-WINDOWS-SINGLE-INSTANCE` 已使用按环境隔离的 local named
     mutex、隐藏 owner window 与 registered wake message；secondary 只通知 primary 后退出，
@@ -2331,7 +2339,7 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
 
 ### 8.3 macOS
 
-- [x] `tray-icon 0.25.0` 菜单栏（macOS 托管 `NSStatusItem` 与 `muda 0.20.0` 菜单）。
+- [x] `tray-icon 0.25.1` 菜单栏（macOS 托管 `NSStatusItem` 与 `muda 0.20.0` 菜单）。
 - [x] NSApplication activation/reopen/single-instance 行为。
 - [x] SMAppService 启动项启用、禁用和状态检测。
   - 验收证据（2026-08-31）：`P7-STARTUP-ITEM-PLATFORM` 已以 Production-only macOS 13+
@@ -3209,7 +3217,7 @@ AsyncApp::update`，而非 close/reopen 本身。commit `7fe3d10` 将 Windows ov
       Ubuntu jobs `99340456922`/`99340462194` 通过共享 UI contract 与完整 workspace 门禁。
 27. [x] `P7-SYSTEM-MENU-LIFECYCLE`：提供双平台后台产品的系统菜单恢复入口与显式退出。
     - 依赖：`P1-SETTINGS-WINDOW-LIFECYCLE`、app shutdown coordinator、平台 UI 主线程。
-    - 当前退出条件：macOS/Windows 的 `tray-icon 0.25.0` 与 `muda 0.20.0` 菜单由明确 owner 管理；
+    - 当前退出条件：macOS/Windows 的 `tray-icon 0.25.1` 与 `muda 0.20.0` 菜单由明确 owner 管理；
       Open Settings 不创建重复窗口并恢复当前 revisioned snapshot；Quit 停止菜单事件后进入既定
       input/runtime/config/frame/renderer/overlay shutdown；callback 只发送强类型有序事件；双平台
       release smoke、Windows x64/ARM64 source check 与完整门禁通过。
@@ -3736,7 +3744,7 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       和 GPUI Kit switch。
     - 当前退出条件：配置值通过强类型 snapshot/command 往返；平台主线程先应用显隐，Application
       owner 再原子提交，平台失败不改配置，配置失败回滚平台状态；macOS/Windows 共用同一个长期存活的
-      `tray-icon 0.25.0` 托盘 owner 与直接 `muda 0.20.0` 菜单，`set_visible` 后两平台仍保留唯一
+      `tray-icon 0.25.1` 托盘 owner 与直接 `muda 0.20.0` 菜单，`set_visible` 后两平台仍保留唯一
       菜单事件 owner；启动恢复已保存值；General 控件具备 keyboard/AccessKit switch 语义；定向测试、
       完整 workspace 与双平台 release system-menu smoke 通过。
     - 验收证据（2026-09-04）：commit `8632ae5` 完成强类型 command/snapshot、主线程平台桥、

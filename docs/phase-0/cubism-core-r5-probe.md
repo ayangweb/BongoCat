@@ -20,10 +20,17 @@ bindings、解压目录和编译 target 均保留在仓库外，未进入 Git �
 | Archive SHA-256                 | `7ff3a4bbc19c0a8728965aa522ab77eb11b252916453e68a8a78d3b71188bb12` |
 | Core                            | `06.00.0001` (`csmGetVersion() == 0x06000001`)                     |
 | Header SHA-256                  | `6f1802780d1eb36ff39705e0764f9eeed9b41c313a13ac155270c6f4ad51d53f` |
-| Generated arm64 binding SHA-256 | `6cd53ddbb173d73a842b33a507c5c03c879adcb05a8c005730b58c1f0f061364` |
+| Generated arm64 binding SHA-256 | `6cd53ddbb173d73a842b33a507c5c03c879adcb05a8c005730b58c1f0f061364`（`bindgen 0.72.1`）; `67a93266d5b4104d10e13b2a605023c048aed877c706c127b152edbe4df5cd77`（`bindgen 0.73.2`） |
 | macOS universal dylib SHA-256   | `d6b029354e47e81c1e063ad2de3cfc63bdd0b7bf3fe8dd079de17c2a4b43b27f` |
-| Binding generator               | `bindgen 0.72.1`, config `cubism-core-r5-v1`                       |
-| Binding config SHA-256          | `abacb15263ef79f17117551035d746d4ab1c336bcd398b61d0d26c01e12d9f77` |
+| Binding generator               | `bindgen 0.73.2`, config `cubism-core-r5-v1`                       |
+| Binding config SHA-256          | `abacb15263ef79f17117551035d746d4ab1c336bcd398b61d0d26c01e12d9f77`（`bindgen 0.72.1`）; `4293e0f8bda7bad45fea727a7abef231ef3579409408286c13dd90438c353127`（`bindgen 0.73.2`） |
+
+2026-09-28 `bindgen` 由 `0.72.1` 升到 `0.73.2` 后，生成选项集合未变，因此 config revision 仍为
+`cubism-core-r5-v1`；变化只来自 `bindgen` 版本本身与 `prettyplease 0.2.37`→`0.3.0`。`config_sha256`
+覆盖 `CONFIG_DESCRIPTION`（含 `bindgen=0.73.2`），所以随版本变化，这是预期结果。`csm*` 函数签名、
+整数/指针类型与 extern block 逐字节不变；唯一差异是零尺寸 opaque handle `csmMoc`/`csmModel` 的
+derive 由 `Copy, Clone` 变为 `Debug`。上表的 macOS universal dylib 与 archive SHA-256 未变，
+真实 Core 链接与模型生命周期证据不受影响。
 
 主机为 Apple Silicon、macOS `26.5.2 (25F84)`、Rust `1.97.1`
 (`aarch64-apple-darwin`)、Xcode `26.6 (17F113)`、Apple clang

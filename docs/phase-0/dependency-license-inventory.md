@@ -41,7 +41,7 @@
 | objc2 (GPUI AX compatibility)    | `0.5.2`                        | MIT                       | Historical spike input for AccessKit macOS adapter objects |
 | metal / core-graphics-types      | `0.33.0` / `0.2.0`             | MIT OR Apache-2.0         | macOS transparent present spike          |
 | windows                          | `0.62.2`                       | MIT OR Apache-2.0         | Windows Raw Input/window/overlay boundary |
-| bindgen                          | `0.72.1`                       | BSD-3-Clause              | Offline Cubism raw binding generator     |
+| bindgen                          | `0.73.2`                       | BSD-3-Clause              | Offline Cubism raw binding generator     |
 | embed-resource                   | `3.0.11`                       | MIT                       | Windows executable product icon compiler |
 | sha2                             | `0.11.0`                       | MIT OR Apache-2.0         | Header/output provenance hashes          |
 | tray-icon                        | `0.25.0`                       | MIT OR Apache-2.0         | Unified macOS/Windows system tray owner  |
@@ -105,11 +105,11 @@ Cubism 版本、来源、hash、再分发条款和 attribution 必须在 `P0-CUB
 分别是 `crates/bongocat-packaging` 与 `bongocat-update` 的 `UpdateRuntime`。换库带来的能力损失
 见 ADR-0034 的损失表。
 
-AccessKit 由同一上游仓库维护。当前 `spikes/gpui-settings` 直接依赖 core 与双平台 adapter，正式 `bongocat-platform` 不再维护项目自有语义树、native bridge 或 action channel；ADR-0054 后设置 UI 只把 `gpui-kit` 传递提供的默认语义作为内部实现，不作为 BongoCat contract。`objc2 0.5.2` 是 spike 中 `accesskit_macos 0.27.0` 的 ABI 类型世代兼容例外；正式依赖只通过 `gpui-kit` suite 传递，AccessKit 切换代或 spike 退役后不再保留旧版本。
+AccessKit 由同一上游仓库维护。当前 `spikes/gpui-settings` 直接依赖 core（`accesskit 0.25.1`）与双平台 adapter（`accesskit_macos 0.27.1`、`accesskit_windows 0.35.1`），正式 `bongocat-platform` 不再维护项目自有语义树、native bridge 或 action channel；ADR-0054 后设置 UI 只把 `gpui-kit` 传递提供的默认语义作为内部实现，不作为 BongoCat contract。spike 的直接 `objc2` 已于 2026-09-28 与产品对齐为 `0.6.4`/`objc2-foundation 0.3.2`（旧记为 ABI 类型世代兼容例外，复核后确认 spike 与 AccessKit 之间只经原始 `*mut c_void` NSView 交互，例外并不成立）；`accesskit_macos 0.27.1` 仍声明 `objc2 ^0.5.1`，旧一代仅作为传递依赖保留在 lockfile 中，spike 退役后一并消失。正式依赖只通过 `gpui-kit` suite 传递。
 
 `arboard 3.6.1`（MIT OR Apache-2.0）由 1Password 维护，仅作为 `bongocat-platform` 私有文本剪贴板 adapter 的双平台实现，并关闭默认 `image-data` feature。其 `Clipboard` 与 `Error` 类型和系统错误文本不进入公共 API；项目仍只暴露自有 `Option<String>`/稳定错误码，并保留 macOS AppKit 主线程与 autorelease-pool 约束。
 
-`tray-icon 0.25.0`（MIT OR Apache-2.0，Rust 1.90+）由 Tauri 项目维护，是 macOS/Windows
+`tray-icon 0.25.1`（MIT OR Apache-2.0，Rust 1.90+）由 Tauri 项目维护，是 macOS/Windows
 状态图标的 native owner；仅在 macOS/Windows 启用并关闭默认 features，避免 Linux
 GTK/libappindicator 系统依赖。`muda 0.20.0`（Apache-2.0 OR MIT，Rust 1.90+）由同一项目维护，
 直接负责托盘与 overlay 共用的 popup 菜单根、菜单事件以及 overlay 窗口的右键弹出，并关闭

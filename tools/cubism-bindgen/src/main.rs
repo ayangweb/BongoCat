@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 const SDK_RELEASE: &str = "5-r.5";
 const CORE_VERSION: &str = "06.00.0001";
-const BINDGEN_VERSION: &str = "0.72.1";
+const BINDGEN_VERSION: &str = "0.73.2";
 const RUST_TARGET: &str = "1.85";
 const CONFIG_REVISION: &str = "cubism-core-r5-v1";
 const HEADER_NAME: &str = "Live2DCubismCore.h";
@@ -49,7 +49,7 @@ const REQUIRED_SYMBOLS: &[&str] = &[
 
 const CONFIG_DESCRIPTION: &str = concat!(
     "revision=cubism-core-r5-v1\n",
-    "bindgen=0.72.1\n",
+    "bindgen=0.73.2\n",
     "rust_target=1.85\n",
     "rust_edition=2024\n",
     "allowlist_function=^csm[A-Za-z0-9_]*$\n",

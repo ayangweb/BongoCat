@@ -21,14 +21,14 @@ Cubism Core C header 转换为 raw Rust declarations，不加载 Core、不创�
 | SDK release            | Cubism 5 SDK for Native R5 (`5-r.5`)                            |
 | Core version           | `06.00.0001`                                                    |
 | Header path inside SDK | `Core/include/Live2DCubismCore.h`                               |
-| Generator              | `bindgen 0.72.1`                                                |
+| Generator              | `bindgen 0.73.2`                                                |
 | Hash implementation    | `sha2 0.11.0`                                                   |
 | Generated Rust target  | Rust `1.85`, edition 2024                                       |
 | Symbol allowlist       | functions, types and variables matching `^csm[A-Za-z0-9_]*$`    |
 | Formatter              | bindgen `prettyplease` feature from the same locked graph       |
 | Output                 | `bindings.rs` and `provenance.json` in a new external directory |
 
-Direct dependencies were checked against crates.io on 2026-08-29 and are exact-pinned
+Direct dependencies were checked against crates.io on 2026-09-28 and are exact-pinned
 in the tool's `Cargo.toml`/`Cargo.lock`. `bindgen` is maintained by the rust-bindgen
 project under BSD-3-Clause; `sha2` is maintained by RustCrypto under MIT OR
 Apache-2.0. Both are build-time tooling only and do not enter the application binary.
@@ -120,3 +120,32 @@ macOS arm64/x64 与 Windows x64 binding 固定到产品 crate，Windows x64 rele
 交叉 check 已通过。Synthetic contract 现在要求 r.5 的 `csmGetRenderOrders`、drawable
 blend mode、part offscreen index 和全部 offscreen array。第二人重生成 review 及
 Windows x64/macOS x64 原生 ABI evidence 完成前，P0 raw-binding TODO 保持未完成。
+
+## 6. 2026-09-28 `bindgen 0.72.1` → `0.73.2` 重生成
+
+生成选项、symbol allowlist、formatter 与 config revision 全部未变，只换了 bindgen 版本
+和它解析到的 `prettyplease 0.3.0`。按 §4 的 review flow 重跑了三个 target 的真实 header 生成，
+并把结果更新到 `crates/bongocat-live2d/src/sys`：
+
+| Target                     | `0.72.1` binding SHA-256 | `0.73.2` binding SHA-256 |
+| -------------------------- | ------------------------ | ------------------------ |
+| `aarch64-apple-darwin`     | `6cd53dddb173d73a842b33a507c5c03c879adcb05a8c005730b58c1f0f061364` | `67a93266d5b4104d10e13b2a605023c048aed877c706c127b152edbe4df5cd77` |
+| `x86_64-apple-darwin`      | 与 arm64 相同             | `67a93266d5b4104d10e13b2a605023c048aed877c706c127b152edbe4df5cd77` |
+| `x86_64-pc-windows-msvc`   | 见上表旧 binding hash 记录 | `7099db44a618ccebd116f8a44f1cd356eb6be6db25918769deb6c0b74ee52a0e` |
+
+Review 结论：
+
+1. header/archive hash 未变，仍为固定的 r.5 baseline；`config_sha256` 由
+   `abacb152…` 变为 `4293e0f8…`，因为 `CONFIG_DESCRIPTION` 含 `bindgen=0.73.2`。
+2. 公开符号清单仍只有 `csm*`（外加 bindgen 自身的 `_bindgen_ty_*` 别名），无 vendor internal 泄漏。
+3. 全部 `csm*` 函数签名、整数/指针宽度与 extern block 与 `0.72.1` 输出逐字节相同；C ABI 未变。
+4. 重复生成对 arm64 与 Windows x64 都得到逐字节相同的 `bindings.rs` 与 `provenance.json`。
+5. 与 `libLive2DCubismCore.a` 链接、`csmGetVersion()` 报 `6.0.1`、`just preview standard` 的
+   21 drawable / 5 masked drawable / 3 texture 渲染与 `just dev-smoke` 均通过。
+6. 唯一差异是零尺寸 opaque handle `csmMoc`/`csmModel` 的 derive 从 `Copy, Clone` 变为 `Debug`
+   （bindgen "Prevent default derives for forward-declared types"）。产品只持有
+   `NonNull<csmModel>` / `*mut csmModel` 原始指针，从不复制 handle，因此无行为变化。
+
+`0.73` 移除的 `< 1.51` `RustTarget`、改签名的 `Bindings::write`（`Box<dyn Write>` → `impl Write`）
+以及 `syn 3`/`shlex 2` 迁移都未被本工具使用；`RustTarget::stable(85, 0)`、`RustEdition::Edition2024`
+和 `Bindings::to_string` 保持可用。第二次人审的 Windows x64/macOS x64 原生 ABI evidence 仍待补充。
