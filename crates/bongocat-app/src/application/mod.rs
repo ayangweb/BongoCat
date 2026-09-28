@@ -16,8 +16,8 @@ use crate::model_identity::config_source_from_model;
 use crate::shortcut_config::active_shortcuts;
 use bongocat_audio::MotionAudioService;
 use bongocat_config::{
-    CompiledShortcuts, ConfigRevision, ConfigStore, Language, ModelIdentity, ModelInputMode,
-    NativeConfig, ShortcutTable, WindowState, WindowStateStore,
+    ConfigRevision, ConfigStore, Language, ModelIdentity, ModelInputMode, NativeConfig,
+    ShortcutTable, WindowState, WindowStateStore,
 };
 use bongocat_input::{CursorProducer, GamepadAxisProducer, InputProducer};
 use bongocat_model::{ModelId, ModelOrigin, PresetModelCatalog};
@@ -115,13 +115,6 @@ impl Application {
             .appearance
             .language
             .resolve(self.system_language)
-    }
-
-    /// Compile the currently committed shortcut bindings for a platform
-    /// adapter. This is read-only and never performs registration or capture.
-    pub fn compiled_shortcuts(&self) -> Result<CompiledShortcuts, ApplicationError> {
-        active_shortcuts(&self.config, self.live_model_identity().as_ref())
-            .map_err(ApplicationError::Config)
     }
 
     /// The model identity whose behavior bindings are live: the one the runtime

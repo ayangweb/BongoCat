@@ -111,6 +111,8 @@ Issue #47 的“按下后无释放”必须从架构处理，不能只增加动�
 - crates.io 依赖默认精确 pin。新增或升级前用 `cargo info <crate>` 或 crates.io API 核对最新非 yanked 稳定版，不因少改 API 主动选旧版；最新版若不支持既定 toolchain、target、许可证或安全边界，在相关 Phase 文档记录阻塞版本、原因、上游 owner 和解除条件，不只写代码注释。
 - 修改 manifest 后对整个 workspace 执行 `cargo update` 同步 `Cargo.lock`；受上游约束保留的旧版本须能由 `cargo tree --invert` 解释。禁止 `version = "*"` 和未固定 revision 的 git dependency。
 - 不依赖 Zed 应用内部 crate 或私有 GPUI renderer 接口；依赖审计只覆盖正式 workspace 与离线工具，不引入历史 Tauri workspace 依赖。系统能力先找满足边界的成熟 crate，再考虑 `windows-rs`、`objc2` 等基础 binding；第三方事件、错误、配置和平台类型不得进入项目公共 API。
+- 不在 `Cargo.toml` 写注释。理由、取舍、许可证判断和踩坑记录属于 ADR 或代码注释，依赖文件只保留声明本身；确有必要时指向对应 ADR 编号而不是就地解释。
+- 移除功能时同步删除其遗留的未使用依赖与零调用公开方法，不用注释或 `#[allow]` 掩盖；未使用依赖不是 `cargo clippy -D warnings` 能发现的问题，删除前用全仓引用搜索确认。
 
 ### 6.1 手柄后端（`ayangweb/gilrs`）
 
