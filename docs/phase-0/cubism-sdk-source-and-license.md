@@ -63,7 +63,7 @@ R5 `Core/README.md` 和 `Core/RedistributableFiles.txt` 给出以下首发相关
 - Native Framework 和 Native Samples 属于 Live2D Cubism Components，使用 Live2D Open Software License；它不是 MIT/Apache/BSD 类宽松许可证。
 - 官方 `NOTICE.md` 包含 `©Live2D`。发布 notice、终端用户条款和 trademark 展示方式必须在发布许可确认后形成明确清单。
 
-BongoCat 的 Rust 源码不能直接复制、翻译或机械移植 Framework C++ 实现后仍默认按仓库 MIT 许可证发布。在 Live2D 书面答复或法律评审明确边界前，Framework 源码只能用于识别待验证行为，不能作为可直接移植的实现素材。若纯 Rust motion/expression/physics/pose 实现无法在许可边界内完成，Phase 0 必须给出 NO-GO 或明确条件，不能静默引入长期 C++ 业务 bridge。
+BongoCat 的 Rust 源码不能直接复制、翻译或机械移植 Framework C++ 实现后仍默认按仓库 Apache-2.0 许可证发布。在 Live2D 书面答复或法律评审明确边界前，Framework 源码只能用于识别待验证行为，不能作为可直接移植的实现素材。若纯 Rust motion/expression/physics/pose 实现无法在许可边界内完成，Phase 0 必须给出 NO-GO 或明确条件，不能静默引入长期 C++ 业务 bridge。
 
 ### 3.2 Expandable Application 是发布阻塞
 
@@ -86,7 +86,7 @@ Proprietary Software License 将“通过增加或组合文件/数据，使用�
 维护者联系 Live2D 时应一次性确认：
 
 1. BongoCat 的任意用户模型导入是否属于 Expandable Application；
-2. MIT 开源的 Rust 应用通过原始 C API 调用 Core 是否允许；
+2. Apache-2.0 开源的 Rust 应用通过原始 C API 调用 Core 是否允许；
 3. 独立实现 model3、motion、expression、physics 和 pose 时，哪些规范或 Framework 行为可以作为实现依据；
 4. Windows DLL/import library 与 macOS static library 的发布、签名和更新方式；
 5. 必须随源码、安装包和应用 UI 提供的 license、notice、终端用户保护条款和 attribution；

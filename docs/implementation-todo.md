@@ -143,7 +143,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
     `docs/migration/legacy-build-baseline.md`；未将旧 updater key 警告或 `block 0.1.6`
     future-incompatibility 误记为当前实现问题。
 - [x] 建立 `docs/adr/`、`docs/benchmark/`、`docs/migration/` 目录。
-- [x] 建立依赖许可证清单，确认当前 spike crate graph 与项目 MIT 发布兼容。
+- [x] 建立依赖许可证清单，确认当前 spike crate graph 与项目 Apache-2.0 发布兼容。
   - 状态（2026-08-29）：最新稳定版 `cargo-deny 0.20.2` 以四个 Windows/macOS target 扫描 13 个独立 workspace，license/source policy 通过并接入 CI；依赖升级后 package 节点数由 lockfile 动态决定，不再把旧的 535 节点快照当作当前事实。Cubism 厂商许可、未来产品依赖、SBOM 和 notice bundle 仍由各自后续门禁处理。
 - [x] 审计 BongoCat 所有直接 Rust 依赖并升级到 crates.io 最新稳定版。
   - 验收证据：`docs/phase-0/rust-dependency-versions.md` 记录 2026-08-29 当时审计的 21 个直接依赖家族、升级范围和命令。原 18 个家族中 8 个已升级、10 个原本已是最新；后续新增的最新稳定版 `bindgen 0.72.1`、`sha2 0.11.0` 与 `libc 0.2.189` 也已精确锁定。完整 `cargo update` 后，最新 `gpui 0.2.2` 仍约束旧 generation 的 Metal/CoreGraphics 和 5 个有兼容更新的传递版本；均已记录 owner path，未静默覆盖或 fork。Dependabot 每周仅扫描 13 个 workspace 并向默认分支提交分组更新。
@@ -396,7 +396,7 @@ Technical Design 使用 7 个产品阶段描述总体路线，本 TODO 为了设
 ### 1.8 Cubism/Renderer spike
 
 - [ ] 确认 Cubism SDK/Core 版本、来源、再分发条款和 attribution 要求。
-  - 状态（2026-08-30）：`docs/phase-0/cubism-sdk-source-and-license.md` 已固定 Native `5-r.5`/Core `06.00.0001`、archive/header/Core hashes、官方 tag/commit、下载入口和 RedistributableFiles 边界；macOS arm64 真实 Core/model probe 已通过。BongoCat 很可能属于需预先批准和单独协议的 Expandable Application；Framework 到 MIT Rust 实现的许可边界、最终 attribution、第二来源复核和 Live2D 书面授权仍未完成，因此保持未勾选并阻塞 stable 发布。
+  - 状态（2026-08-30）：`docs/phase-0/cubism-sdk-source-and-license.md` 已固定 Native `5-r.5`/Core `06.00.0001`、archive/header/Core hashes、官方 tag/commit、下载入口和 RedistributableFiles 边界；macOS arm64 真实 Core/model probe 已通过。BongoCat 很可能属于需预先批准和单独协议的 Expandable Application；Framework 到 Apache-2.0 Rust 实现的许可边界、最终 attribution、第二来源复核和 Live2D 书面授权仍未完成，因此保持未勾选并阻塞 stable 发布。
 - [ ] 建立目标架构二进制清单、hash 和可重复获取流程。
   - 状态（2026-08-30）：r.5 Windows x64 与 macOS arm64/x64 artifact 路径和 SHA-256 已形成清单，Windows ARM64 已明确无 desktop artifact，i686 已排除；固定 archive hash 的离线 ZIP 检查和 macOS arm64 ABI 已通过。第二人/第二机器复核、Windows x64/macOS x64 原生 ABI 与授权后的可分发获取流程仍待完成。
 - [x] 验证 Rust sys binding 加载 moc、创建 model 并读取 drawable 数据。

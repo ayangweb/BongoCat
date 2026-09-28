@@ -145,4 +145,4 @@ BongoCat 是一款面向 Windows 和 macOS 的桌面陪伴应用。一只 Live2D
 
 ## 开源协议
 
-BongoCat 基于 [MIT](LICENSE) 开源。
+BongoCat 基于 [Apache License 2.0](LICENSE) 开源。

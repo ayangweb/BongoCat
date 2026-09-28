@@ -3,7 +3,7 @@ name = "bongocat-cubism-bindgen"
 version = "0.1.0"
 edition = "2024"
 publish = false
-license = "MIT"
+license = "Apache-2.0"
 
 [dependencies]
 bindgen = { version = "=0.72.1", default-features = false, features = ["prettyplease", "runtime"] }

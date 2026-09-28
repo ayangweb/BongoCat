@@ -20,7 +20,7 @@ dist/index.js      SHA-256 9d5bd793768739357c0011556644d715c928b05f71b593033943c
 dist/index.js.map  SHA-256 146e7a76a48e71a8bd9fe1b0951e2c82b7943615a94ada76d2226218dbb6ec4f
 ```
 
-easy-live2d package metadata 声明 MPL-2.0，但其 bundle 同时包含受 Live2D Open Software License 管理的 Cubism Framework 内容。因此它只能作为旧行为 oracle，不能成为 MIT Rust 实现的源码来源。
+easy-live2d package metadata 声明 MPL-2.0，但其 bundle 同时包含受 Live2D Open Software License 管理的 Cubism Framework 内容。因此它只能作为旧行为 oracle，不能成为 Apache-2.0 Rust 实现的源码来源。
 
 ## 2. Actual BongoCat Surface
 

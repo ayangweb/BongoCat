@@ -765,8 +765,8 @@ fn packaging_config(
     config.homepage = Some("https://github.com/ayangweb/BongoCat".to_owned());
     config.authors = Some(vec!["ayangweb".to_owned()]);
     // No `license_file`: cargo-packager uses it only to add an end-user EULA page
-    // to the NSIS installer, which the product does not ask for. The MIT licence
-    // stays in the repository.
+    // to the NSIS installer, which the product does not ask for. The Apache-2.0
+    // licence stays in the repository.
     config.icons = Some(vec![
         workspace
             .join(RESOURCE_DIRECTORY)
