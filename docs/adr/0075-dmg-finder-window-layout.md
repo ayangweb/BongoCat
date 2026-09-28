@@ -21,6 +21,9 @@ Tauri v2 的默认 `.dmg` 不是这样。它的 `bundle.macOS.dmg` 默认值是
 | `background` | `null` |
 | `windowPosition` | `null` |
 
+> 2026-09-29 修订：安装器窗口多了一个修复命令条目，改为三个条目的倒三角排列，
+> 窗口与图标随之改为 660×420、96 px 图标、13 pt 标签（ADR-0076）。宽度与原点不变。
+
 并且它把窗口交给 `create-dmg` 脚本去排（`--icon <app> 180 170 --app-drop-link 480 170
 --window-size 660 400 --volicon <icns> --hide-extension <app>`）。Tauri 没有传的
 `--window-pos`、`--icon-size`、`--text-size` 落到 `create-dmg` 自己的默认值
@@ -48,9 +51,10 @@ Tauri v2 的默认 `.dmg` 不是这样。它的 `bundle.macOS.dmg` 默认值是
 
 因此 `crates/bongocat-packaging` 直接写卷根的 `.DS_Store`，写的就是 `create-dmg` 那份
 `template.applescript` 会让 Finder 记下的内容：`bwsp`（窗口 bounds 与要隐藏的 Finder
-部件）、`icvp`（图标视图设置，含图标与标签尺寸）、`vSrn`（视图设置版本），以及两个
-`Iloc`（app 与 `Applications` 的图标坐标）。数值取自上面的 Tauri 默认值与 `create-dmg`
-默认值，集中在 `finder_store::WindowLayout::default()` 一处。
+部件）、`icvp`（图标视图设置，含图标与标签尺寸）、`vSrn`（视图设置版本），以及卷根里
+每个条目一条 `Iloc`（图标坐标）。条目与坐标由打包工具给出——条目名必须是卷根里真的
+存在的名字，否则坐标没有意义——窗口自身的数值（宽、原点、图标与标签尺寸）集中在
+`finder_store::WindowLayout::default()`，条目坐标集中在 `build_disk_image` 里。
 
 路径栏刻意不隐藏：它在窗口底部标出卷名与卷图标，Tauri 也没有隐藏它，而
 `template.applescript` 里没有对应语句。
@@ -147,6 +151,9 @@ Command Line Tools；缺失时构建直接失败，而不是悄悄少一个图�
   反而小 0.32%——两次调用压缩的差异来自转码路径本身。
 - 编码器只在 Unix 上编译（`#[cfg(unix)] mod finder_store;`）：Windows 的打包不读也不写
   `.DS_Store`，而 workspace 的 `-D warnings` 门禁不接受一个无人调用的模块。
+- 卷根从两个条目变成三个（新增修复命令，ADR-0076）：三个图标排成倒三角（`BongoCat.app`
+  与 `Applications` 在上，修复命令居中在下），窗口 660×420、图标 96 px、标签 13 pt
+  （Tauri 默认是 660×400、128 px、16 pt，两条目时更合适），卷里多一个可执行命令文件。
 
 ## 已接受的残余风险
 
@@ -178,5 +185,6 @@ Command Line Tools；缺失时构建直接失败，而不是悄悄少一个图�
 - `hdiutil imageinfo` → `Format: ULMO`；`codesign --verify --deep --strict` 通过。
 - `GetFileInfo -a <挂载点>` → `avbstClinmedz`（`C` 即卷使用自定义图标）。
 - 挂载后卷根只有 `.DS_Store`、`.VolumeIcon.icns`、`Applications`、`BongoCat.app`。
-- `tools/tests/test_packaging_contract.py` 断言布局的七个数值来自 Tauri 默认值、镜像
-  构建路径不出现 `osascript`，以及 `SetFile`、卷图标与转码步骤仍在。
+- `tools/tests/test_packaging_contract.py` 断言五个窗口数值、三个条目与倒三角坐标、镜像
+  构建路径不出现 `osascript`，以及 `SetFile`、卷图标与转码步骤仍在。三个条目在挂载后由
+  AppleScript 读回：`175, 110`、`485, 110`、`330, 255`，窗口 660×420。

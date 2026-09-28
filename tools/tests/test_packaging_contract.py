@@ -371,22 +371,29 @@ class MacosBundleTests(unittest.TestCase):
         self.assertIn('symlink("/Applications"', source)
 
     def test_disk_image_declares_the_window_the_installer_opens_with(self):
-        # The window layout comes from Tauri v2's documented `bundle.macOS.dmg`
-        # defaults plus the icon and label sizes `create-dmg` uses when Tauri
-        # passes no `--icon-size` / `--text-size`. See ADR-0075.
+        # The width and the origin are Tauri v2's documented `bundle.macOS.dmg`
+        # defaults; the height and the icon and label sizes are sized for the three
+        # items this product puts in the window. See ADR-0075 and ADR-0076.
         source = read(PACKAGER)
         layout = read(FINDER_STORE)
         for value in (
             "width: 660",
-            "height: 400",
+            "height: 420",
             "origin: (10, 60)",
-            "app: (180, 170)",
-            "applications: (480, 170)",
-            "icon_size: 128",
-            "text_size: 16",
+            "icon_size: 96",
+            "text_size: 13",
         ):
             with self.subTest(value=value):
                 self.assertIn(value, layout)
+
+        # The three items, and the inverted triangle they are arranged in.
+        for value in (
+            "finder_store::Item::new(&bundle_name, 175, 110)",
+            "finder_store::Item::new(APPLICATIONS_LINK, 485, 110)",
+            "finder_store::Item::new(REPAIR_COMMAND, 330, 255)",
+        ):
+            with self.subTest(value=value):
+                self.assertIn(value, source)
 
         self.assertIn("mod finder_store;", source)
         self.assertIn("finder_store::window(", source)
@@ -395,6 +402,23 @@ class MacosBundleTests(unittest.TestCase):
         # which an unattended release job does not have.
         self.assertNotIn("osascript", source)
         self.assertNotIn("osascript", layout)
+
+    def test_disk_image_carries_a_repair_command_for_the_installed_copy(self):
+        # A downloaded, unnotarized bundle carries the quarantine attribute
+        # Gatekeeper puts on downloads, and removing it needs a password typed
+        # into a terminal, so the installer ships that as a command script
+        # rather than leaving the reader with a manual command to look up.
+        source = read(PACKAGER)
+        self.assertIn('const REPAIR_COMMAND: &str = "Fix Damaged App";', source)
+        self.assertIn("fn repair_command(app_name: &str) -> String", source)
+        # Both forms, because macOS 15 rejects the recursive one.
+        self.assertIn("sudo xattr -r -d com.apple.quarantine", source)
+        self.assertIn("sudo xattr -d com.apple.quarantine", source)
+        # Nothing here may weaken the machine: the reference tools this one is
+        # modelled on also switch Gatekeeper off system-wide.
+        self.assertNotIn("spctl", source)
+        # It only repairs; re-signing is reported as a manual command instead.
+        self.assertIn("sudo codesign --force --deep --sign -", source)
 
     def test_disk_image_gives_the_volume_the_application_icon(self):
         # Finder reads a volume's own icon from `.VolumeIcon.icns` plus a file

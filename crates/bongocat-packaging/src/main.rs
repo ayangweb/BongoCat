@@ -133,6 +133,22 @@ const APPLICATIONS_LINK: &str = "Applications";
 /// The icon file Finder reads a volume's own icon from.
 #[cfg(unix)]
 const VOLUME_ICON_FILE: &str = ".VolumeIcon.icns";
+/// The repair command the installer window offers next to the drop link.
+///
+/// The name carries no extension on purpose: macOS runs a file with a shebang and
+/// the executable bit in Terminal on a double-click, and an extension would only
+/// be one more line in the window's label. Finder's hidden-extension attribute is
+/// not an alternative — it is a per-file bit that icon view does not honour.
+///
+/// It is named after what the person reading the window is looking at rather than
+/// after the product: macOS tells them the app is damaged, and this is the item
+/// that answers that. The `App` is what keeps it apart from disk damage, which
+/// matters for an item that lives on a disk image.
+#[cfg(unix)]
+const REPAIR_COMMAND: &str = "Fix Damaged App";
+/// Where a drag-to-install product lands, which is what the repair repairs.
+#[cfg(unix)]
+const APPLICATIONS_DIRECTORY: &str = "/Applications";
 /// Staging directory for the cleaned preset models, relative to the output directory.
 ///
 /// See [`stage_model_resources`].
@@ -1951,18 +1967,24 @@ fn build_disk_image(
     )?;
     mark_icon_file(&volume_icon)?;
 
+    let repair = staging.join(REPAIR_COMMAND);
+    fs::write(&repair, repair_command(&bundle_name))?;
+    make_executable(&repair)?;
+
     // The window the mounted image opens with. Writing it is what keeps the
     // layout out of Finder: `create-dmg` would mount the image and drive Finder
     // with AppleScript, which needs a graphical session and an Automation
     // consent prompt, and this build has to run unattended.
+    let layout = finder_store::WindowLayout::default();
+    let items = [
+        finder_store::Item::new(&bundle_name, 175, 110),
+        finder_store::Item::new(APPLICATIONS_LINK, 485, 110),
+        finder_store::Item::new(REPAIR_COMMAND, 330, 255),
+    ];
     fs::write(
         staging.join(finder_store::FILE_NAME),
-        finder_store::window(
-            &finder_store::WindowLayout::default(),
-            &bundle_name,
-            APPLICATIONS_LINK,
-        )
-        .map_err(|error| Box::new(Failure(error.to_string())) as Box<dyn std::error::Error>)?,
+        finder_store::window(&layout, &items)
+            .map_err(|error| Box::new(Failure(error.to_string())) as Box<dyn std::error::Error>)?,
     )?;
 
     if image.exists() {
@@ -2016,6 +2038,88 @@ fn build_disk_image(
         return failure(format!("disk image was not created: {}", image.display()));
     }
     Ok(image)
+}
+
+/// The repair command the installer window offers, for `app_name`.
+///
+/// It is a command script rather than a product mode because the product may be
+/// the thing that is broken: this file is the one thing in the disk image that
+/// only needs Terminal, `sudo` and `xattr`, all of which macOS ships.
+///
+/// Two commands, in one order. The recursive form is the one that also covers a
+/// bundle with anything quarantined inside it, and macOS 15 and later reject it,
+/// so the plain form is the fallback rather than a third thing to try.
+#[cfg(unix)]
+fn repair_command(app_name: &str) -> String {
+    format!(
+        r##"#!/bin/bash
+# Repairs the {app_name} copy in {applications}.
+#
+# A bundle copied out of a downloaded disk image carries the quarantine attribute
+# Gatekeeper puts on downloads, which is what makes macOS report the app as
+# damaged or as coming from an unidentified developer. Removing that attribute
+# is the whole repair, and /Applications is why it needs your password.
+#
+# Double-clicked, this file runs in Terminal and reads its password from there.
+clear
+
+app_dir="{applications}/{app_name}"
+green="\033[0;32m"
+yellow="\033[1;33m"
+red="\033[0;31m"
+cyan="\033[0;36m"
+none="\033[0m"
+
+echo ""
+echo -e "${{cyan}}Fix Damaged App: $app_dir${{none}}"
+echo ""
+
+if [ ! -d "$app_dir" ]; then
+  echo -e "${{red}}{app_name} is not installed in {applications}.${{none}}"
+  echo "Copy {app_name} from this disk image into Applications, then run this again."
+  echo ""
+  read -r -p "Press Enter to close this window... " _
+  exit 1
+fi
+
+if ! xattr -p com.apple.quarantine "$app_dir" >/dev/null 2>&1; then
+  echo -e "${{green}}No quarantine attribute found, so there is nothing to repair.${{none}}"
+  echo ""
+  read -r -p "Press Enter to close this window... " _
+  exit 0
+fi
+
+echo -e "${{yellow}}Enter your Mac login password when asked. Nothing is shown while you type.${{none}}"
+echo ""
+
+if sudo xattr -r -d com.apple.quarantine "$app_dir" 2>/dev/null ||
+  sudo xattr -d com.apple.quarantine "$app_dir"; then
+  echo ""
+  echo -e "${{green}}Repaired. {app_name} should open normally now.${{none}}"
+  open "$app_dir"
+else
+  echo ""
+  echo -e "${{red}}Could not remove the quarantine attribute.${{none}}"
+  echo "If macOS still reports {app_name} as damaged, run this in Terminal:"
+  echo "  sudo codesign --force --deep --sign - \"$app_dir\""
+fi
+
+echo ""
+read -r -p "Press Enter to close this window... " _
+"##,
+        app_name = app_name,
+        applications = APPLICATIONS_DIRECTORY
+    )
+}
+
+/// Makes a staged file runnable by whoever opens the image.
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)?;
+    Ok(())
 }
 
 /// A disk image attached to a mount point, detached again when it goes out of

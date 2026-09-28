@@ -22,13 +22,12 @@
 //!
 //! The records, all on the volume root `.` unless a name says otherwise:
 //!
-//! | Field  | Name            | What it holds                                    |
-//! | ------ | --------------- | ------------------------------------------------ |
-//! | `bwsp` | `.`             | window bounds, and the Finder chrome to hide     |
-//! | `icvp` | `.`             | icon view settings, including the icon size      |
-//! | `vSrn` | `.`             | the view settings version Finder writes          |
-//! | `Iloc` | `app`           | where the application bundle's icon sits         |
-//! | `Iloc` | `Applications`  | where the drop link's icon sits                  |
+//! | Field   | Name         | What it holds                                   |
+//! | ------- | ------------ | ----------------------------------------------- |
+//! | `bwsp`  | `.`          | window bounds, and the Finder chrome to hide    |
+//! | `icvp`  | `.`          | icon view settings, including the icon size     |
+//! | `vSrn`  | `.`          | the view settings version Finder writes         |
+//! | `Iloc`  | one per item | where that item's icon sits, one record each    |
 //!
 //! `bwsp` and `icvp` carry binary property lists, and `plist` writes those.
 //!
@@ -88,7 +87,11 @@ pub enum Error {
 
 /// The window a BongoCat disk image opens with, in Finder's icon-view
 /// coordinates: the origin is the window's bottom-left corner on the screen, and
-/// the positions are measured from the top-left of the window's contents.
+/// the item positions are measured from the top-left of the window's contents.
+///
+/// The items are passed to [`window`] rather than declared here, because the
+/// volume holds whatever the installer puts in it and a position only means
+/// something next to a name that is really there.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WindowLayout {
     /// Window width, in points.
@@ -97,10 +100,6 @@ pub struct WindowLayout {
     pub height: u32,
     /// Where the window opens on the screen.
     pub origin: (u32, u32),
-    /// Where the application bundle's icon sits in the window.
-    pub app: (u32, u32),
-    /// Where the `/Applications` drop link's icon sits in the window.
-    pub applications: (u32, u32),
     /// Icon edge length, in points.
     pub icon_size: u32,
     /// Label size, in points.
@@ -108,45 +107,63 @@ pub struct WindowLayout {
 }
 
 impl Default for WindowLayout {
-    /// The window Tauri v2 opens by default, which is the one this product
-    /// ships.
+    /// The window Tauri v2 opens by default, sized for what this product puts in
+    /// it.
     ///
-    /// The size and the two icon positions are Tauri v2's documented
-    /// `bundle.macOS.dmg` defaults. The origin, the icon size and the label size
-    /// are `create-dmg`'s own defaults, which is what Tauri gets for not passing
-    /// `windowPosition`, `--icon-size` or `--text-size`: it builds its disk image
-    /// by running that script, so these are the numbers its default image opens
-    /// with.
+    /// The width, the origin and the shape of the window come from Tauri v2's
+    /// documented `bundle.macOS.dmg` defaults: Tauri builds its disk image by
+    /// running `create-dmg` and passes no `windowPosition`. The rest is sized for
+    /// what this product puts in the window rather than what Tauri does — three
+    /// items in an inverted triangle instead of two side by side (ADR-0075,
+    /// ADR-0076), with icons and labels two sizes down from `create-dmg`'s 128 and
+    /// 16 so that three items still read as one row plus one.
     fn default() -> Self {
         Self {
             width: 660,
-            height: 400,
+            height: 420,
             origin: (10, 60),
-            app: (180, 170),
-            applications: (480, 170),
-            icon_size: 128,
-            text_size: 16,
+            icon_size: 96,
+            text_size: 13,
         }
     }
 }
 
-/// Encodes the `.DS_Store` a volume holding `app` and an `applications` drop
-/// link opens with.
+/// One item in the volume root, and where its icon sits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Item<'a> {
+    /// The name Finder will see in the volume root.
+    pub name: &'a str,
+    /// The icon's position in the window.
+    pub position: (u32, u32),
+}
+
+impl<'a> Item<'a> {
+    /// An item whose icon sits at `x, y`.
+    pub const fn new(name: &'a str, x: u32, y: u32) -> Self {
+        Self {
+            name,
+            position: (x, y),
+        }
+    }
+}
+
+/// Encodes the `.DS_Store` a volume holding `items` opens with.
 ///
-/// The two names are the names Finder will see in the volume root, so an icon
+/// The names are the names Finder will see in the volume root, so an icon
 /// position only applies to a file that is actually there under that name.
-pub fn window(layout: &WindowLayout, app: &str, applications: &str) -> Result<Vec<u8>, Error> {
+pub fn window(layout: &WindowLayout, items: &[Item<'_>]) -> Result<Vec<u8>, Error> {
     let mut records = vec![
         record(".", b"bwsp", Payload::plist(window_settings(layout))?)?,
         record(".", b"icvp", Payload::plist(icon_view_settings(layout))?)?,
         record(".", b"vSrn", Payload::long(1))?,
-        record(
-            applications,
-            b"Iloc",
-            Payload::icon_position(layout.applications),
-        )?,
-        record(app, b"Iloc", Payload::icon_position(layout.app))?,
     ];
+    for item in items {
+        records.push(record(
+            item.name,
+            b"Iloc",
+            Payload::icon_position(item.position),
+        )?);
+    }
     // Finder reads the tree in key order, so the records have to be written that
     // way whatever order they were built in.
     records.sort_by(Record::order);
@@ -442,22 +459,27 @@ impl Payload {
 
 #[cfg(test)]
 mod tests {
-    use super::{Error, FILE_NAME, PAGE_SIZE, Payload, WindowLayout, block, window};
+    use super::{Error, FILE_NAME, Item, PAGE_SIZE, Payload, WindowLayout, block, window};
     use plist::Value;
 
     /// The window the product ships, spelled out so the defaults have something
     /// to be compared against.
     const SHIPPED: WindowLayout = WindowLayout {
         width: 660,
-        height: 400,
+        height: 420,
         origin: (10, 60),
-        app: (180, 170),
-        applications: (480, 170),
-        icon_size: 128,
-        text_size: 16,
+        icon_size: 96,
+        text_size: 13,
     };
     const APP: &str = "BongoCat.app";
     const APPLICATIONS: &str = "Applications";
+    const REPAIR: &str = "Fix Damaged App";
+    /// The inverted triangle the installer window arranges its three items in.
+    const ITEMS: [Item<'_>; 3] = [
+        Item::new(APP, 175, 110),
+        Item::new(APPLICATIONS, 485, 110),
+        Item::new(REPAIR, 330, 255),
+    ];
 
     /// One record read back out of an encoded store, as the bytes Finder sees.
     struct Decoded {
@@ -551,7 +573,7 @@ mod tests {
 
     /// The store the product ships, encoded.
     fn store() -> Vec<u8> {
-        window(&SHIPPED, APP, APPLICATIONS).expect("the shipped layout fits")
+        window(&SHIPPED, &ITEMS).expect("the shipped layout fits")
     }
 
     #[test]
@@ -573,7 +595,8 @@ mod tests {
             .map(|record| (record.name.clone(), record.code.clone()))
             .collect();
         // Names compare as UTF-16 code units and then by field code, which puts
-        // the volume root's records first, `bwsp` before `icvp` before `vSrn`.
+        // the volume root's records first, `bwsp` before `icvp` before `vSrn`,
+        // and the items after them in name order however they were passed in.
         assert_eq!(
             keys,
             [
@@ -582,23 +605,34 @@ mod tests {
                 (".".to_owned(), "vSrn".to_owned()),
                 (APPLICATIONS.to_owned(), "Iloc".to_owned()),
                 (APP.to_owned(), "Iloc".to_owned()),
+                (REPAIR.to_owned(), "Iloc".to_owned()),
             ]
         );
     }
 
     #[test]
-    fn both_items_get_the_position_the_layout_asks_for() {
+    fn the_items_sit_in_an_inverted_triangle_that_fits_the_window() {
+        let top = ITEMS[0].position.1;
+        let bottom = ITEMS[2].position.1;
+        assert!(bottom > top, "the third item sits below the first two");
+        assert_eq!(ITEMS[0].position.1, ITEMS[1].position.1);
+        // An icon and its label have to clear the window's bottom edge.
+        let cell = SHIPPED.icon_size + 32;
+        assert!(bottom + cell <= SHIPPED.height);
+        assert!(top + cell <= bottom);
+    }
+
+    #[test]
+    fn every_item_gets_the_position_it_was_given() {
         let records = decode(&store());
-        let app = record(&records, APP, "Iloc");
-        assert_eq!(app.icon_position(), (180, 170));
-        // The eight trailing bytes are the ones Finder writes itself.
+        for item in ITEMS {
+            let decoded = record(&records, item.name, "Iloc");
+            assert_eq!(decoded.icon_position(), item.position, "{}", item.name);
+        }
+        // The eight trailing bytes of an icon position are the ones Finder writes.
         assert_eq!(
-            app.value[8..],
+            record(&records, APP, "Iloc").value[8..],
             [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00]
-        );
-        assert_eq!(
-            record(&records, APPLICATIONS, "Iloc").icon_position(),
-            (480, 170)
         );
     }
 
@@ -607,7 +641,7 @@ mod tests {
         let settings = record(&decode(&store()), ".", "bwsp").settings();
         assert_eq!(
             settings.get("WindowBounds").and_then(Value::as_string),
-            Some("{{10, 60}, {660, 400}}")
+            Some("{{10, 60}, {660, 420}}")
         );
         for hidden in ["ShowSidebar", "ShowStatusBar", "ShowTabView", "ShowToolbar"] {
             assert_eq!(
@@ -632,11 +666,11 @@ mod tests {
         let settings = record(&decode(&store()), ".", "icvp").settings();
         assert_eq!(
             settings.get("iconSize").and_then(Value::as_real),
-            Some(128.0)
+            Some(96.0)
         );
         assert_eq!(
             settings.get("textSize").and_then(Value::as_real),
-            Some(16.0)
+            Some(13.0)
         );
         assert_eq!(
             settings.get("arrangeBy").and_then(Value::as_string),
@@ -697,7 +731,7 @@ mod tests {
     #[test]
     fn a_layout_that_does_not_fit_one_page_is_rejected() {
         let long = "L".repeat(PAGE_SIZE);
-        let result = window(&SHIPPED, &format!("{long}.app"), APPLICATIONS);
+        let result = window(&SHIPPED, &[Item::new(&format!("{long}.app"), 0, 0)]);
         assert!(
             matches!(result, Err(Error::TooLarge { page, .. }) if page == PAGE_SIZE),
             "a name that cannot fit the page is reported as a layout that does not fit"
