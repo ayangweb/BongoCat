@@ -403,11 +403,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.overlay.keep_inside_screen.description",
-                    )),
+                    ),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -436,11 +432,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.overlay.hide_on_mouse_hover.description",
-                    )),
+                    ),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -472,10 +464,6 @@ impl Render for SettingsView {
                             },
                         ),
                     )
-                    .description(bongocat_i18n::text(
-                        language.catalog_locale(),
-                        "settings.overlay.hide_on_mouse_hover_delay.description",
-                    ))
                     .disabled(hover_hide_delay_gate.disables_controls()),
                 ],
                         &model_window_behavior_keywords,
@@ -515,11 +503,7 @@ impl Render for SettingsView {
                                         }
                                     },
                                 ),
-                            )
-                            .description(bongocat_i18n::text(
-                                language.catalog_locale(),
-                                "settings.overlay.scale.description",
-                            )),
+                            ),
                             SettingItem::new(
                                 bongocat_i18n::text(
                                     language.catalog_locale(),
@@ -548,11 +532,7 @@ impl Render for SettingsView {
                                         }
                                     },
                                 ),
-                            )
-                            .description(bongocat_i18n::text(
-                                language.catalog_locale(),
-                                "settings.overlay.opacity.description",
-                            )),
+                            ),
                             SettingItem::new(
                                 bongocat_i18n::text(
                                     language.catalog_locale(),
@@ -581,11 +561,7 @@ impl Render for SettingsView {
                                         }
                                     },
                                 ),
-                            )
-                            .description(bongocat_i18n::text(
-                                language.catalog_locale(),
-                                "settings.overlay.corner_radius.description",
-                            )),
+                            ),
                         ],
                         &model_window_appearance_keywords,
                     )),
@@ -595,42 +571,36 @@ impl Render for SettingsView {
                         "settings.overlay.performance.title",
                     ))
                     .items(with_search_keywords(
-                        vec![
-                            SettingItem::new(
-                                bongocat_i18n::text(
-                                    language.catalog_locale(),
-                                    "settings.overlay.maximum_fps.label",
-                                ),
-                                SettingField::number_input(
-                                    NumberFieldOptions {
-                                        min: 15.0,
-                                        max: 240.0,
-                                        step: 15.0,
-                                    },
-                                    {
-                                        let view = view_entity.clone();
-                                        move |app| {
-                                            view.read(app)
-                                                .snapshot
-                                                .as_ref()
-                                                .map_or(60.0, |s| f64::from(s.maximum_fps))
-                                        }
-                                    },
-                                    {
-                                        let view = view_entity.clone();
-                                        move |value, app| {
-                                            view.update(app, |view, cx| {
-                                                view.set_maximum_fps_value(value, cx)
-                                            });
-                                        }
-                                    },
-                                ),
-                            )
-                            .description(bongocat_i18n::text(
+                        vec![SettingItem::new(
+                            bongocat_i18n::text(
                                 language.catalog_locale(),
-                                "settings.overlay.maximum_fps.description",
-                            )),
-                        ],
+                                "settings.overlay.maximum_fps.label",
+                            ),
+                            SettingField::number_input(
+                                NumberFieldOptions {
+                                    min: 15.0,
+                                    max: 240.0,
+                                    step: 15.0,
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .map_or(60.0, |s| f64::from(s.maximum_fps))
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_maximum_fps_value(value, cx)
+                                        });
+                                    }
+                                },
+                            ),
+                        )],
                         &model_window_performance_keywords,
                     )),
             ]);

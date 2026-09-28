@@ -50,6 +50,7 @@
 - Settings are organised by task, and the light or dark theme follows supported system windows, menus and file pickers.
 - The tray and model-window context menus share one menu, grouped by model-window action, with always-on-top and hide-on-hover checks. Visibility uses the same "Hide model window" switch, off by default.
 - The three flip settings are worded as flips and name the axis they flip: flip model horizontally, flip mouse tracking horizontally, and flip mouse tracking vertically.
+- The model window's settings for staying on screen, hiding on mouse hover and its delay, scale, opacity, corner radius and maximum FPS no longer print an explanation under the title; each row shows only its title and control. A hover-hide delay of 0 still hides the window as soon as the mouse rests on it.
 
 ### 💻 Support Changes
 

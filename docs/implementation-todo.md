@@ -5699,6 +5699,16 @@ Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
       登录项的失效与缺失修复提示。
     - 当前补充（2026-09-25）：自动检查更新间隔现在用独立的“自动检查更新间隔（小时）”字段与
        `1..=8760` 范围文案表达可配置行为；固定 24 小时节奏不再是当前配置契约的一部分。
+    - 当前补充（2026-09-28，维护者要求）：上述判定标准对「模型窗口」页的这 7 条放宽——不再保留
+      描述，只留标题与控件：`keep_inside_screen`、`hide_on_mouse_hover`、
+      `hide_on_mouse_hover_delay`、`scale`、`opacity`、`corner_radius`、`maximum_fps`。
+      两个 locale 同步删除对应 `.description`，各 261 → 254 键；本项此前保留它们的理由
+      （数值项取值区间、延迟 0 的含义、可覆盖任务栏/程序坞、悬停淡出后恢复）不再作为保留条件。
+      行为、值域、步进、门禁与配置契约都不变：值域仍由 `render.rs` 的 `NumberFieldOptions`
+      与 `bongocat-config` schema 表达，数字输入的当前值本身可见。已知取舍：gpui-kit 的设置搜索
+      也会匹配描述原文，删除后这些行只能靠标题命中，`bongocat-i18n` 双向 key 守门与
+      `tools/validate-locales.py` 均通过。Technical Design 的设置窗口段落同步把 Model window
+      列入“不显示重复描述”的分组。
     - 删除 15 个键（两个 locale 同步删除，各 303 → 288 键）：
       ① `settings.appearance.theme.description`、`settings.appearance.language.description`；
       ② `settings.overlay.visibility` /`.always_on_top`/`.click_through` 三条 `.description`；

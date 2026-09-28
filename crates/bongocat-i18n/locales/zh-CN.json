@@ -353,32 +353,25 @@
         "label": "鼠标穿透"
       },
       "keep_inside_screen": {
-        "label": "保持在屏幕内",
-        "description": "让模型窗口始终完整显示在屏幕上，可覆盖任务栏、程序坞或菜单栏等系统区域。"
+        "label": "保持在屏幕内"
       },
       "hide_on_mouse_hover": {
-        "label": "鼠标悬停时隐藏",
-        "description": "鼠标停在模型窗口上时淡出，移开后恢复。"
+        "label": "鼠标悬停时隐藏"
       },
       "hide_on_mouse_hover_delay": {
-        "label": "鼠标悬停时隐藏延迟（秒）",
-        "description": "鼠标停留在模型窗口上多久后隐藏，范围 0 至 60 秒；0 表示立即隐藏。"
+        "label": "鼠标悬停时隐藏延迟（秒）"
       },
       "scale": {
-        "label": "窗口缩放",
-        "description": "将模型窗口缩放调整为 25% 至 400%。"
+        "label": "窗口缩放"
       },
       "opacity": {
-        "label": "窗口不透明度",
-        "description": "将模型窗口不透明度调整为 1% 至 100%。"
+        "label": "窗口不透明度"
       },
       "corner_radius": {
-        "label": "窗口圆角",
-        "description": "将模型窗口圆角调整为窗口宽高的 0% 至 50%。"
+        "label": "窗口圆角"
       },
       "maximum_fps": {
-        "label": "最大帧率",
-        "description": "将动画和模型窗口的刷新率限制为每秒 15 至 240 帧。"
+        "label": "最大帧率"
       }
     },
     "models": {

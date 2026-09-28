@@ -353,32 +353,25 @@
         "label": "Mouse click-through"
       },
       "keep_inside_screen": {
-        "label": "Keep on screen",
-        "description": "Keep the model window fully on screen, even where it covers the taskbar, Dock or menu bar."
+        "label": "Keep on screen"
       },
       "hide_on_mouse_hover": {
-        "label": "Hide on mouse hover",
-        "description": "Fade the model window out while the mouse rests on it, and restore it when the mouse leaves."
+        "label": "Hide on mouse hover"
       },
       "hide_on_mouse_hover_delay": {
-        "label": "Mouse hover hide delay (seconds)",
-        "description": "Delay before the model window hides while the mouse rests on it, from 0 to 60 seconds; 0 hides it on entry."
+        "label": "Mouse hover hide delay (seconds)"
       },
       "scale": {
-        "label": "Window scale",
-        "description": "Resize the model window from 25% to 400%."
+        "label": "Window scale"
       },
       "opacity": {
-        "label": "Window opacity",
-        "description": "Adjust the model window opacity from 1% to 100%."
+        "label": "Window opacity"
       },
       "corner_radius": {
-        "label": "Window corner radius",
-        "description": "Round the model window corners from 0% to 50% of its width and height."
+        "label": "Window corner radius"
       },
       "maximum_fps": {
-        "label": "Maximum FPS",
-        "description": "Limit animation and model window updates to 15 to 240 frames per second."
+        "label": "Maximum FPS"
       }
     },
     "models": {

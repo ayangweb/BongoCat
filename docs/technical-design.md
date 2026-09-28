@@ -543,7 +543,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   Shortcuts、App & system 七个业务分类，About 作为设置菜单中的最后一个普通页面。Appearance & language
   直接展示主题与语言，不再重复同名分组；Model library 单独展示模型卡片，Model behavior 单独展示模型镜像、动作音效，以及随机播放内容的模式下拉（关闭 / 仅表情 / 仅动作 / 表情和动作，ADR-0072）和它控制的间隔，模型行为快捷键仍留在 Shortcuts；Input & interaction 按 Mouse、Keyboard、
   Gamepad 分组；Gamepad 分组末尾是「连接或断开手柄时自动切换模型」门禁开关及其
-  连接/断开两个模型下拉（ADR-0071）；App & system 按 Startup & desktop、Updates、Logging 分组。Updates 与 Logging 的设置项只保留标题和控件，
+  连接/断开两个模型下拉（ADR-0071）；App & system 按 Startup & desktop、Updates、Logging 分组。Updates、Logging 与 Model window 的设置项只保留标题和控件，
   不显示重复描述。Model window 继续按 Window behavior、Window appearance、Window performance 分组。About 的
   操作行使用标准设置项：产品信息/手动检查更新、隐私安全的软件信息复制、项目主页、问题反馈和打开
   application-owned 日志目录；日志路径不进入 SettingsSnapshot，由 settings service 持有并校验。
