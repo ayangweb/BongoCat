@@ -2,6 +2,25 @@ name: Verify
 
 on:
   pull_request:
+  # This is not about verifying master: a pull request has to pass before it
+  # merges, so master is already verified. It is here because GitHub scopes
+  # caches by ref. A pull_request run may only restore caches created on its base
+  # branch, and what it writes lands in `refs/pull/<n>/merge`, which no later run
+  # reads. Measured on three consecutive runs of one pull request: the first
+  # reported `Cache not found` and took 16.9 minutes, the third restored a cache
+  # and took 2.9. So caches are reused within a pull request but never across
+  # them, and without a run on master no pull request can ever start warm. It
+  # also keeps the 10 GB repository budget from filling up with the 7-9 GB of
+  # dead cache each merged pull request leaves behind.
+  push:
+    branches:
+      - master
+
+# A superseded run on the same ref can only burn runner minutes: its result is
+# replaced by the next push.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -12,17 +31,32 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
+      # `rust-toolchain.toml` pins 1.97.1, so a bare `cargo` here always resolves
+      # to the pinned toolchain and the stable check below silently repeated the
+      # minimum one. `+stable` and a separate target directory make the canary
+      # real, and keep the two compilers from invalidating each other's cache.
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          # Only this job's two compilers: the pinned and the current stable one
+          # never share a target directory.
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            target/toolchain-stable/
+            target/toolchain-minimum/
+          key: ${{ runner.os }}-toolchain-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml') }}
       - name: Check current stable toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Build workspace with current stable
-        run: cargo check --manifest-path Cargo.toml --locked --workspace
+        run: cargo +stable check --manifest-path Cargo.toml --locked --workspace --target-dir target/toolchain-stable
       - name: Check declared minimum toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.1
           components: clippy, rustfmt
       - name: Build workspace with declared minimum
-        run: cargo check --manifest-path Cargo.toml --locked --workspace
+        run: cargo check --manifest-path Cargo.toml --locked --workspace --target-dir target/toolchain-minimum
       - name: Collect redacted failure evidence
         if: ${{ failure() }}
         shell: bash
@@ -124,10 +158,16 @@ jobs:
       - name: Cache Cargo artifacts
         uses: actions/cache@v6
         with:
+          # `target/release/` here holds only the metadata the two release
+          # `cargo check` steps produce, which is a few hundred MB against the
+          # gigabytes of code the smoke jobs link. Keeping it means the release
+          # check does not redo 189 crates on every run, and the product caches
+          # carry the codegen side.
           path: |
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
-            target/
+            target/debug/
+            target/release/
           key: ${{ runner.os }}-workspace-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-workspace-
@@ -159,6 +199,42 @@ jobs:
           name: provenance-${{ matrix.os }}
           path: target/provenance/${{ runner.os }}.json
           if-no-files-found: error
+      - name: Collect redacted failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-evidence-workspace-${{ matrix.os }}
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
+
+  product-smoke:
+    name: Smoke product (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+          components: clippy, rustfmt
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            target/release/
+          key: ${{ runner.os }}-product-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-product-
       - name: Smoke Windows model directory picker
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -179,11 +255,12 @@ jobs:
       - name: Smoke Windows D3D11 product overlay
         if: matrix.os == 'windows-latest'
         shell: pwsh
-        # This step owns the first release link of `bongocat-app`: the earlier
-        # `cargo check --release` produces metadata, not code, so nothing before
-        # here warms the linker. That build alone has run past 12 minutes on this
-        # runner, and the five 30-second product runs follow it. Budget the build
-        # and the runs, the way the storage-injection build below does.
+        # This step owns the first release link of `bongocat-app` in this job,
+        # and `cargo check --release` in the workspace job produces metadata
+        # rather than code, so nothing warms the linker ahead of it. That build
+        # alone has run past 12 minutes on this runner, and the five 30-second
+        # product runs follow it. Budget the build and the runs, the way the
+        # storage-injection build below does.
         timeout-minutes: 30
         env:
           RUST_BACKTRACE: full
@@ -289,292 +366,16 @@ jobs:
           }
       - name: Smoke macOS settings window lifecycle
         if: matrix.os == 'macos-latest'
-        # First step to link `bongocat-app` in release, so it pays for the whole
-        # build before its own eight-second run: 8.2 minutes of a 10 minute budget
-        # on a warm cache, and a cold one has no headroom left at all.
+        # First step to link `bongocat-app` in release in this job, so it pays
+        # for the whole build before its own eight-second run: 8.2 minutes of a
+        # 10 minute budget on a warm cache, and a cold one has no headroom left
+        # at all.
         timeout-minutes: 30
         run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 8 --settings-window-smoke --models-page-smoke
       - name: Smoke hidden overlay model switching
         if: matrix.os != 'ubuntu-latest'
         timeout-minutes: 5
         run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 20 --hidden-model-switch-smoke
-      - name: Build isolated storage smoke executable
-        if: matrix.os != 'ubuntu-latest'
-        timeout-minutes: 30
-        run: cargo build --manifest-path Cargo.toml --locked -p bongocat-app --release --features storage-test-injection --target-dir target/storage-test-injection
-      - name: Smoke macOS settings window state restore
-        if: matrix.os == 'macos-latest'
-        timeout-minutes: 2
-        run: |
-          set +e
-          output=$(target/storage-test-injection/release/bongocat-app --settings-window-state-smoke 2>&1)
-          status=$?
-          set -e
-          printf '%s\n' "$output"
-          if ((status != 0)); then
-            exit "$status"
-          fi
-          grep -Fq 'bongocat-app: Chinese Appearance and language localization verified' <<<"$output"
-          grep -Fq 'bongocat-app: Chinese Model library localization verified' <<<"$output"
-          grep -Fq 'bongocat-app: settings window state restored after restart' <<<"$output"
-      - name: Smoke macOS release panic diagnostics
-        if: matrix.os == 'macos-latest'
-        timeout-minutes: 2
-        run: |
-          output=$(target/storage-test-injection/release/bongocat-app --panic-diagnostics-smoke 2>&1)
-          printf '%s\n' "$output"
-          grep -Fq 'bongocat-app: panic diagnostics recovered after crash' <<<"$output"
-      - name: Smoke macOS diagnostics preview export
-        if: matrix.os == 'macos-latest'
-        timeout-minutes: 2
-        run: |
-          output=$(target/storage-test-injection/release/bongocat-app --diagnostics-export-smoke 2>&1)
-          printf '%s\n' "$output"
-          grep -Fq 'bongocat-app: diagnostics export completed with a private preview bundle' <<<"$output"
-      - name: Smoke macOS diagnostics export filesystem failures
-        if: matrix.os == 'macos-latest'
-        timeout-minutes: 2
-        run: |
-          output=$(target/storage-test-injection/release/bongocat-app --diagnostics-export-failure-smoke 2>&1)
-          printf '%s\n' "$output"
-          grep -Fq 'bongocat-app: diagnostics export filesystem failures preserved the previous bundle' <<<"$output"
-      - name: Smoke Windows settings window state restore
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        timeout-minutes: 2
-        run: |
-          $smokeTarget = Join-Path $PWD "target/storage-test-injection"
-          $executable = Join-Path $smokeTarget "release/bongocat-app.exe"
-          if (-not (Test-Path $executable)) {
-            throw "storage injection smoke executable was not built"
-          }
-          $stateStdout = Join-Path $env:RUNNER_TEMP "bongocat-settings-window-state.stdout.log"
-          $stateStderr = Join-Path $env:RUNNER_TEMP "bongocat-settings-window-state.stderr.log"
-          Remove-Item $stateStdout, $stateStderr -Force -ErrorAction SilentlyContinue
-          $stateProcess = Start-Process `
-            -FilePath $executable `
-            -ArgumentList @("--settings-window-state-smoke") `
-            -NoNewWindow `
-            -PassThru `
-            -RedirectStandardOutput $stateStdout `
-            -RedirectStandardError $stateStderr
-          if (-not $stateProcess.WaitForExit(20000)) {
-            Stop-Process -Id $stateProcess.Id -Force -ErrorAction SilentlyContinue
-            throw "Windows settings window state smoke exceeded 20 seconds"
-          }
-          $stateOutput = @(
-            Get-Content $stateStdout -Raw -ErrorAction SilentlyContinue
-            Get-Content $stateStderr -Raw -ErrorAction SilentlyContinue
-          ) -join "`n"
-          Write-Host $stateOutput
-          if ($stateProcess.ExitCode -ne 0) { throw "Windows settings window state smoke exited with $($stateProcess.ExitCode)" }
-          if (-not $stateOutput.Contains("bongocat-app: settings window state restored after restart")) {
-            throw "Windows settings window state smoke did not report restart restore"
-          }
-          if (-not $stateOutput.Contains("bongocat-app: Chinese Appearance and language localization verified")) {
-            throw "Windows settings window state smoke did not verify Chinese Appearance and language localization"
-          }
-          if (-not $stateOutput.Contains("bongocat-app: Chinese Model library localization verified")) {
-            throw "Windows settings window state smoke did not verify Chinese Models localization"
-          }
-      - name: Smoke Windows release panic diagnostics
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        timeout-minutes: 2
-        run: |
-          $output = & target/storage-test-injection/release/bongocat-app.exe --panic-diagnostics-smoke 2>&1 | Out-String
-          $exitCode = $LASTEXITCODE
-          Write-Host $output
-          if ($exitCode -ne 0) { exit $exitCode }
-          if (-not $output.Contains("bongocat-app: panic diagnostics recovered after crash")) {
-            throw "Windows panic diagnostics smoke did not report recovery"
-          }
-      - name: Smoke Windows diagnostics preview export
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        timeout-minutes: 2
-        run: |
-          $output = & target/storage-test-injection/release/bongocat-app.exe --diagnostics-export-smoke 2>&1 | Out-String
-          $exitCode = $LASTEXITCODE
-          Write-Host $output
-          if ($exitCode -ne 0) { exit $exitCode }
-          if (-not $output.Contains("bongocat-app: diagnostics export completed with a private preview bundle")) {
-            throw "Windows diagnostics export smoke did not report a private preview bundle"
-          }
-      - name: Smoke Windows diagnostics export filesystem failures
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        timeout-minutes: 2
-        run: |
-          $output = & target/storage-test-injection/release/bongocat-app.exe --diagnostics-export-failure-smoke 2>&1 | Out-String
-          $exitCode = $LASTEXITCODE
-          Write-Host $output
-          if ($exitCode -ne 0) { exit $exitCode }
-          if (-not $output.Contains("bongocat-app: diagnostics export filesystem failures preserved the previous bundle")) {
-            throw "Windows diagnostics export failure smoke did not preserve the previous bundle"
-          }
-      - name: Smoke Windows startup item lifecycle
-        if: matrix.os == 'windows-latest'
-        run: cargo test --manifest-path Cargo.toml --locked --release -p bongocat-platform windows_startup_item_registry_smoke_restores_original_value -- --ignored
-      - name: Reject an unknown macOS packaging environment
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          if just build --environment unknown --formats app; then
-            echo 'the packaging entry point accepted an unknown build environment' >&2
-            exit 1
-          fi
-          if just build --formats dmg2; then
-            echo 'the packaging entry point accepted an unknown artifact format' >&2
-            exit 1
-          fi
-      - name: Smoke macOS startup item lifecycle
-        if: matrix.os == 'macos-latest'
-        run: |
-          just build --formats app
-          app_path=target/package/BongoCat.app
-          install_root=$(mktemp -d '/Applications/bongocat-startup-item-smoke.XXXXXX')
-          installed_app="$install_root/BongoCat.app"
-          stdout_path="$RUNNER_TEMP/macos-startup-item.stdout.log"
-          stderr_path="$RUNNER_TEMP/macos-startup-item.stderr.log"
-          cleanup() {
-            /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-              -u "$installed_app" >/dev/null 2>&1 || true
-            rm -rf "$install_root"
-          }
-          trap cleanup EXIT
-          ditto "$app_path" "$installed_app"
-          codesign --verify --deep --strict "$installed_app"
-          rm -f "$stdout_path" "$stderr_path"
-          open \
-            -n \
-            -o "$stdout_path" \
-            --stderr "$stderr_path" \
-            "$installed_app" \
-            --args \
-            --startup-item-smoke
-          restored=false
-          for _ in {1..120}; do
-            if grep -Fq 'bongocat-app: startup-item restored state' "$stdout_path"; then
-              restored=true
-              break
-            fi
-            if grep -Fq 'Error:' "$stderr_path"; then
-              break
-            fi
-            sleep 0.5
-          done
-          cat "$stdout_path" "$stderr_path" 2>/dev/null || true
-          grep -Fq 'bongocat-app: startup-item original state' "$stdout_path"
-          test "$restored" = true
-      - name: Smoke macOS application reopen lifecycle
-        if: matrix.os == 'macos-latest'
-        # `just build` runs cargo-packager, and the neighbouring startup-item step
-        # that does the same work is left on the default budget.
-        timeout-minutes: 30
-        run: |
-          just build --environment development --formats app
-          app_path=target/package/BongoCat.app
-          stdout_path="$RUNNER_TEMP/macos-application-reopen.stdout.log"
-          stderr_path="$RUNNER_TEMP/macos-application-reopen.stderr.log"
-          rm -f "$stdout_path" "$stderr_path"
-          open \
-            -n \
-            -W \
-            -o "$stdout_path" \
-            --stderr "$stderr_path" \
-            "$app_path" \
-            --args \
-            --run-seconds 10 \
-            --application-reopen-smoke &
-          open_waiter=$!
-
-          ready=0
-          for _ in $(seq 1 150); do
-            if grep -Fq 'bongocat-app: application-reopen primary ready' "$stdout_path" 2>/dev/null; then
-              ready=1
-              break
-            fi
-            if ! kill -0 "$open_waiter" 2>/dev/null; then
-              break
-            fi
-            sleep 0.1
-          done
-          if [ "$ready" -ne 1 ]; then
-            cat "$stdout_path" "$stderr_path" 2>/dev/null || true
-            pkill -f -- "$app_path/Contents/MacOS/bongocat-app" || true
-            wait "$open_waiter" || true
-            printf '%s\n' 'macOS product did not reach the application-reopen gate' >&2
-            exit 1
-          fi
-
-          open "$app_path"
-          sleep 0.5
-          pid_path="$RUNNER_TEMP/macos-application-reopen.pids"
-          pgrep -f "$app_path/Contents/MacOS/bongocat-app" > "$pid_path" || true
-          process_count=$(wc -l < "$pid_path" | tr -d ' ')
-          if [ "$process_count" -ne 1 ]; then
-            pkill -f -- "$app_path/Contents/MacOS/bongocat-app" || true
-            wait "$open_waiter" || true
-            printf 'LaunchServices observed %s BongoCat processes after reopen\n' "$process_count" >&2
-            exit 1
-          fi
-
-          set +e
-          wait "$open_waiter"
-          open_status=$?
-          set -e
-          cat "$stdout_path" "$stderr_path" 2>/dev/null || true
-          if [ "$open_status" -ne 0 ]; then
-            exit "$open_status"
-          fi
-          grep -Fq \
-            'bongocat-app: application reopen restored the settings window' \
-            "$stdout_path"
-          test "$(plutil -extract CFBundleIdentifier raw -o - "$app_path/Contents/Info.plist")" = \
-            'com.ayangweb.bongo-cat'
-          test "$(plutil -extract CFBundleIconFile raw -o - "$app_path/Contents/Info.plist")" = \
-            'logo-macos.icns'
-          cmp \
-            resources/icons/logo-macos.icns \
-            "$app_path/Contents/Resources/logo-macos.icns"
-          codesign --verify --deep --strict "$app_path"
-      - name: Smoke native system menu lifecycle
-        if: matrix.os == 'windows-latest' || matrix.os == 'macos-latest'
-        # `cargo run` may still have work to do before the bounded ten-second run
-        # starts, so this needs a build's budget rather than the two minutes the
-        # steps that only execute an already-built binary get.
-        timeout-minutes: 10
-        run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 10 --system-menu-smoke
-      - name: Verify Windows executable product icon
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          $executable = Join-Path $PWD "target/release/bongocat-app.exe"
-          Add-Type -TypeDefinition @'
-          using System;
-          using System.Runtime.InteropServices;
-
-          public static class BongoCatIconProbe
-          {
-              [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-              public static extern uint ExtractIconEx(
-                  string fileName,
-                  int iconIndex,
-                  IntPtr[] largeIcons,
-                  IntPtr[] smallIcons,
-                  uint iconCount);
-          }
-          '@
-          $iconCount = [BongoCatIconProbe]::ExtractIconEx(
-            $executable,
-            -1,
-            $null,
-            $null,
-            0)
-          if ($iconCount -lt 1) {
-            throw "Windows executable does not contain a product icon"
-          }
       - name: Smoke Windows single-instance wake
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -683,11 +484,371 @@ jobs:
           if ($primaryStatus -ne "single-instance wake restored the settings window") {
             throw "primary instance wrote an unexpected result status: $primaryStatus"
           }
-      - name: Smoke formal Windows missing-release recovery
+      - name: Verify Windows executable product icon
         if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $executable = Join-Path $PWD "target/release/bongocat-app.exe"
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+
+          public static class BongoCatIconProbe
+          {
+              [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+              public static extern uint ExtractIconEx(
+                  string fileName,
+                  int iconIndex,
+                  IntPtr[] largeIcons,
+                  IntPtr[] smallIcons,
+                  uint iconCount);
+          }
+          '@
+          $iconCount = [BongoCatIconProbe]::ExtractIconEx(
+            $executable,
+            -1,
+            $null,
+            $null,
+            0)
+          if ($iconCount -lt 1) {
+            throw "Windows executable does not contain a product icon"
+          }
+      - name: Smoke native system menu lifecycle
+        if: matrix.os == 'windows-latest' || matrix.os == 'macos-latest'
+        # `cargo run` may still have work to do before the bounded ten-second run
+        # starts, so this needs a build's budget rather than the two minutes the
+        # steps that only execute an already-built binary get.
+        timeout-minutes: 10
+        run: cargo run --manifest-path Cargo.toml --locked -p bongocat-app --release -- --run-seconds 10 --system-menu-smoke
+      - name: Build isolated storage smoke executable
+        if: matrix.os != 'ubuntu-latest'
+        # `storage-test-injection` is a leaf feature of `bongocat-app`, so this
+        # used to share nothing with the build above and recompiled the whole
+        # release dependency graph into a second target directory: 14 minutes on
+        # Windows and 8 on macOS, per run. Building into the same directory
+        # relinks one crate instead, and the copy keeps the storage smokes on a
+        # binary of their own.
+        shell: bash
+        timeout-minutes: 30
+        run: |
+          cargo build --manifest-path Cargo.toml --locked -p bongocat-app --release --features storage-test-injection
+          mkdir -p target/storage-smoke
+          if [ -f target/release/bongocat-app.exe ]; then
+            cp target/release/bongocat-app.exe target/storage-smoke/bongocat-app.exe
+          else
+            cp target/release/bongocat-app target/storage-smoke/bongocat-app
+          fi
+      - name: Smoke macOS settings window state restore
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
+        run: |
+          set +e
+          output=$(target/storage-smoke/bongocat-app --settings-window-state-smoke 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if ((status != 0)); then
+            exit "$status"
+          fi
+          grep -Fq 'bongocat-app: Chinese Appearance and language localization verified' <<<"$output"
+          grep -Fq 'bongocat-app: Chinese Model library localization verified' <<<"$output"
+          grep -Fq 'bongocat-app: settings window state restored after restart' <<<"$output"
+      - name: Smoke macOS release panic diagnostics
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
+        run: |
+          output=$(target/storage-smoke/bongocat-app --panic-diagnostics-smoke 2>&1)
+          printf '%s\n' "$output"
+          grep -Fq 'bongocat-app: panic diagnostics recovered after crash' <<<"$output"
+      - name: Smoke macOS diagnostics preview export
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
+        run: |
+          output=$(target/storage-smoke/bongocat-app --diagnostics-export-smoke 2>&1)
+          printf '%s\n' "$output"
+          grep -Fq 'bongocat-app: diagnostics export completed with a private preview bundle' <<<"$output"
+      - name: Smoke macOS diagnostics export filesystem failures
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 2
+        run: |
+          output=$(target/storage-smoke/bongocat-app --diagnostics-export-failure-smoke 2>&1)
+          printf '%s\n' "$output"
+          grep -Fq 'bongocat-app: diagnostics export filesystem failures preserved the previous bundle' <<<"$output"
+      - name: Smoke Windows settings window state restore
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $executable = Join-Path $PWD "target/storage-smoke/bongocat-app.exe"
+          if (-not (Test-Path $executable)) {
+            throw "storage injection smoke executable was not built"
+          }
+          $stateStdout = Join-Path $env:RUNNER_TEMP "bongocat-settings-window-state.stdout.log"
+          $stateStderr = Join-Path $env:RUNNER_TEMP "bongocat-settings-window-state.stderr.log"
+          Remove-Item $stateStdout, $stateStderr -Force -ErrorAction SilentlyContinue
+          $stateProcess = Start-Process `
+            -FilePath $executable `
+            -ArgumentList @("--settings-window-state-smoke") `
+            -NoNewWindow `
+            -PassThru `
+            -RedirectStandardOutput $stateStdout `
+            -RedirectStandardError $stateStderr
+          if (-not $stateProcess.WaitForExit(20000)) {
+            Stop-Process -Id $stateProcess.Id -Force -ErrorAction SilentlyContinue
+            throw "Windows settings window state smoke exceeded 20 seconds"
+          }
+          $stateOutput = @(
+            Get-Content $stateStdout -Raw -ErrorAction SilentlyContinue
+            Get-Content $stateStderr -Raw -ErrorAction SilentlyContinue
+          ) -join "`n"
+          Write-Host $stateOutput
+          if ($stateProcess.ExitCode -ne 0) { throw "Windows settings window state smoke exited with $($stateProcess.ExitCode)" }
+          if (-not $stateOutput.Contains("bongocat-app: settings window state restored after restart")) {
+            throw "Windows settings window state smoke did not report restart restore"
+          }
+          if (-not $stateOutput.Contains("bongocat-app: Chinese Appearance and language localization verified")) {
+            throw "Windows settings window state smoke did not verify Chinese Appearance and language localization"
+          }
+          if (-not $stateOutput.Contains("bongocat-app: Chinese Model library localization verified")) {
+            throw "Windows settings window state smoke did not verify Chinese Models localization"
+          }
+      - name: Smoke Windows release panic diagnostics
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $output = & target/storage-smoke/bongocat-app.exe --panic-diagnostics-smoke 2>&1 | Out-String
+          $exitCode = $LASTEXITCODE
+          Write-Host $output
+          if ($exitCode -ne 0) { exit $exitCode }
+          if (-not $output.Contains("bongocat-app: panic diagnostics recovered after crash")) {
+            throw "Windows panic diagnostics smoke did not report recovery"
+          }
+      - name: Smoke Windows diagnostics preview export
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $output = & target/storage-smoke/bongocat-app.exe --diagnostics-export-smoke 2>&1 | Out-String
+          $exitCode = $LASTEXITCODE
+          Write-Host $output
+          if ($exitCode -ne 0) { exit $exitCode }
+          if (-not $output.Contains("bongocat-app: diagnostics export completed with a private preview bundle")) {
+            throw "Windows diagnostics export smoke did not report a private preview bundle"
+          }
+      - name: Smoke Windows diagnostics export filesystem failures
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $output = & target/storage-smoke/bongocat-app.exe --diagnostics-export-failure-smoke 2>&1 | Out-String
+          $exitCode = $LASTEXITCODE
+          Write-Host $output
+          if ($exitCode -ne 0) { exit $exitCode }
+          if (-not $output.Contains("bongocat-app: diagnostics export filesystem failures preserved the previous bundle")) {
+            throw "Windows diagnostics export failure smoke did not preserve the previous bundle"
+          }
+      - name: Collect redacted failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-evidence-product-${{ matrix.os }}
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
+
+  # The two packaging smokes each run `just build`, which releases the whole
+  # application for an explicit target triple. That is 13 minutes of the macOS
+  # chain and it shares no artifact with the product smokes, so it runs beside
+  # them instead of after them.
+  packaging-smoke:
+    name: Smoke macOS packaging
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+          components: clippy, rustfmt
+      - uses: taiki-e/install-action@just
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v6
+        with:
+          # `just build` releases for an explicit target triple, so this job owns
+          # `target/<triple>/` and nothing else. Caching the whole `target/`
+          # would store a second copy of the release tree the smoke jobs own.
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            target/*/release/
+          key: ${{ runner.os }}-packaging-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-packaging-
+      - name: Reject an unknown macOS packaging environment
+        shell: bash
+        run: |
+          if just build --environment unknown --formats app; then
+            echo 'the packaging entry point accepted an unknown build environment' >&2
+            exit 1
+          fi
+          if just build --formats dmg2; then
+            echo 'the packaging entry point accepted an unknown artifact format' >&2
+            exit 1
+          fi
+      - name: Smoke macOS startup item lifecycle
+        run: |
+          just build --formats app
+          app_path=target/package/BongoCat.app
+          install_root=$(mktemp -d '/Applications/bongocat-startup-item-smoke.XXXXXX')
+          installed_app="$install_root/BongoCat.app"
+          stdout_path="$RUNNER_TEMP/macos-startup-item.stdout.log"
+          stderr_path="$RUNNER_TEMP/macos-startup-item.stderr.log"
+          cleanup() {
+            /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+              -u "$installed_app" >/dev/null 2>&1 || true
+            rm -rf "$install_root"
+          }
+          trap cleanup EXIT
+          ditto "$app_path" "$installed_app"
+          codesign --verify --deep --strict "$installed_app"
+          rm -f "$stdout_path" "$stderr_path"
+          open \
+            -n \
+            -o "$stdout_path" \
+            --stderr "$stderr_path" \
+            "$installed_app" \
+            --args \
+            --startup-item-smoke
+          restored=false
+          for _ in {1..120}; do
+            if grep -Fq 'bongocat-app: startup-item restored state' "$stdout_path"; then
+              restored=true
+              break
+            fi
+            if grep -Fq 'Error:' "$stderr_path"; then
+              break
+            fi
+            sleep 0.5
+          done
+          cat "$stdout_path" "$stderr_path" 2>/dev/null || true
+          grep -Fq 'bongocat-app: startup-item original state' "$stdout_path"
+          test "$restored" = true
+      - name: Smoke macOS application reopen lifecycle
+        # `just build` runs cargo-packager, and the neighbouring startup-item step
+        # that does the same work is left on the default budget.
+        timeout-minutes: 30
+        run: |
+          just build --environment development --formats app
+          app_path=target/package/BongoCat.app
+          stdout_path="$RUNNER_TEMP/macos-application-reopen.stdout.log"
+          stderr_path="$RUNNER_TEMP/macos-application-reopen.stderr.log"
+          rm -f "$stdout_path" "$stderr_path"
+          open \
+            -n \
+            -W \
+            -o "$stdout_path" \
+            --stderr "$stderr_path" \
+            "$app_path" \
+            --args \
+            --run-seconds 10 \
+            --application-reopen-smoke &
+          open_waiter=$!
+
+          ready=0
+          for _ in $(seq 1 150); do
+            if grep -Fq 'bongocat-app: application-reopen primary ready' "$stdout_path" 2>/dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$open_waiter" 2>/dev/null; then
+              break
+            fi
+            sleep 0.1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat "$stdout_path" "$stderr_path" 2>/dev/null || true
+            pkill -f -- "$app_path/Contents/MacOS/bongocat-app" || true
+            wait "$open_waiter" || true
+            printf '%s\n' 'macOS product did not reach the application-reopen gate' >&2
+            exit 1
+          fi
+
+          open "$app_path"
+          sleep 0.5
+          pid_path="$RUNNER_TEMP/macos-application-reopen.pids"
+          pgrep -f "$app_path/Contents/MacOS/bongocat-app" > "$pid_path" || true
+          process_count=$(wc -l < "$pid_path" | tr -d ' ')
+          if [ "$process_count" -ne 1 ]; then
+            pkill -f -- "$app_path/Contents/MacOS/bongocat-app" || true
+            wait "$open_waiter" || true
+            printf 'LaunchServices observed %s BongoCat processes after reopen\n' "$process_count" >&2
+            exit 1
+          fi
+
+          set +e
+          wait "$open_waiter"
+          open_status=$?
+          set -e
+          cat "$stdout_path" "$stderr_path" 2>/dev/null || true
+          if [ "$open_status" -ne 0 ]; then
+            exit "$open_status"
+          fi
+          grep -Fq \
+            'bongocat-app: application reopen restored the settings window' \
+            "$stdout_path"
+          test "$(plutil -extract CFBundleIdentifier raw -o - "$app_path/Contents/Info.plist")" = \
+            'com.ayangweb.bongo-cat'
+          test "$(plutil -extract CFBundleIconFile raw -o - "$app_path/Contents/Info.plist")" = \
+            'logo-macos.icns'
+          cmp \
+            resources/icons/logo-macos.icns \
+            "$app_path/Contents/Resources/logo-macos.icns"
+          codesign --verify --deep --strict "$app_path"
+      - name: Collect redacted failure evidence
+        if: ${{ failure() }}
+        shell: bash
+        run: python3 tools/collect-failure-evidence.py --input "$RUNNER_TEMP" --output "$RUNNER_TEMP/bongocat-failure-evidence" --platform "${{ runner.os }}"
+      - name: Upload redacted failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-evidence-packaging
+          path: ${{ runner.temp }}/bongocat-failure-evidence
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-platform-smoke:
+    name: Smoke Windows platform release behaviour
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+          components: clippy, rustfmt
+      - name: Restore Cargo artifacts
+        # Read-only on purpose: this job adds two test harnesses and one overlay
+        # binary to a release tree the `product-smoke` cache already holds, so
+        # storing it again would spend another 1.4 GB of the repository's 10 GB
+        # budget on a subset of the same artifacts.
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            target/release/
+          key: ${{ runner.os }}-product-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-product-
+      - name: Smoke Windows startup item lifecycle
+        run: cargo test --manifest-path Cargo.toml --locked --release -p bongocat-platform windows_startup_item_registry_smoke_restores_original_value -- --ignored
+      - name: Smoke formal Windows missing-release recovery
         run: cargo test --manifest-path Cargo.toml --locked -p bongocat-platform --lib --release windows::tests::synthetic_missing_release_is_reconciled_in_formal_runtime -- --ignored --exact
       - name: Smoke transactional Windows D3D11 model switching
-        if: matrix.os == 'windows-latest'
         run: cargo run --manifest-path Cargo.toml --locked -p bongocat-overlay --release -- standard 0 --switch-cycles 3
       - name: Collect redacted failure evidence
         if: ${{ failure() }}
@@ -697,11 +858,10 @@ jobs:
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: failure-evidence-${{ matrix.os }}
+          name: failure-evidence-windows-platform
           path: ${{ runner.temp }}/bongocat-failure-evidence
           if-no-files-found: error
           retention-days: 7
-
   cubism-binding-contract:
     name: Check Cubism binding generation contract
     runs-on: ubuntu-latest
@@ -820,9 +980,9 @@ jobs:
           - name: input-macos
             manifest: spikes/input-macos/Cargo.toml
             workspace: spikes/input-macos
-          - name: model-package
-            manifest: spikes/model-package/Cargo.toml
-            workspace: spikes/model-package
+          # `spikes/model-package` is deliberately absent: the
+          # `model-package-platforms` job below runs it on both shipped
+          # platforms, which supersedes a Linux-only copy of the same checks.
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
