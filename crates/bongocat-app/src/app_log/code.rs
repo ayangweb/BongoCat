@@ -248,7 +248,9 @@ impl ApplicationLogCode {
             Self::WindowVisibilityChanged => "Model window visibility changed",
             Self::WindowStatePersisted => "Window state was persisted",
             Self::InputStatusChanged => "Input service status changed",
-            Self::InputPermissionUnavailable => "Input monitoring permission is unavailable",
+            Self::InputPermissionUnavailable => {
+                "The platform capability global input needs is unavailable"
+            }
             Self::UpdateUnavailable => "Updates are unavailable",
             Self::UpdateCheckCompleted => "Update check completed",
             Self::UpdateCheckFailed => "Update check failed",

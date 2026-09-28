@@ -33,11 +33,10 @@ use bongocat_model::{
 use bongocat_model_store::{
     ModelImportProgress, ModelImportStage, ModelStoreDiagnostic, MverInputMode,
 };
-#[cfg(target_os = "macos")]
-use bongocat_platform::{InputPermission, input_monitoring_permission};
 use bongocat_platform::{
-    StartupItemEnvironment, StartupItemError, StartupItemState, StartupItemUnsupportedReason,
-    open_directory, set_startup_item_enabled, startup_item_state,
+    STARTUP_PERMISSION_CAPABILITY, StartupItemEnvironment, StartupItemError, StartupItemState,
+    StartupItemUnsupportedReason, open_directory, set_startup_item_enabled, startup_item_state,
+    startup_permission_available,
 };
 use bongocat_runtime::{
     InputSnapshot, ModelSettings, OverlaySettings, RandomBehaviorSettings, RuntimeRenderErrorCode,
@@ -47,7 +46,7 @@ use bongocat_ui_protocol::{
     AutomaticUpdateSettings, RuntimeHealth, SettingsApplicationShortcut, SettingsBuildEnvironment,
     SettingsBuildInfo, SettingsClient, SettingsCommand, SettingsDiagnosticsExportStatus,
     SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings,
-    SettingsInputDiagnostics, SettingsInputMonitoringPermission, SettingsInputServiceStatus,
+    SettingsInputCapability, SettingsInputDiagnostics, SettingsInputServiceStatus,
     SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,

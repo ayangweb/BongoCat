@@ -15,6 +15,8 @@ bongocat-ui-protocol.workspace = true
 bongocat-platform.workspace = true
 gpui-kit.workspace = true
 raw-window-handle.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

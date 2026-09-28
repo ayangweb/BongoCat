@@ -280,6 +280,31 @@ macOS 的 `rfd` 无父窗口消息框（同步与异步都是）最终调用 `CF
   呈现、禁止回退 `AsyncMessageDialog`。
 - 深浅两色下弹框外观的实机肉眼验收未完成，归入 ADR-0048 既有的「双平台实机主题验收」门禁。
 
+## 设置契约与软件信息报告的能力模型（2026-09-28）
+
+本 ADR 一直把能力表达为「平台自己的能力名 + `available`/`missing`」（见决策第 6 条的
+`--startup-permission-smoke` 输出），但 `SettingsInputDiagnostics` 早期用的是 macOS 语汇的
+`SettingsInputMonitoringPermission { Unsupported, Denied, Granted }`，Windows 侧因此固定投影成
+`unsupported`。该值只在 snapshot、变更日志和用户可复制的软件信息报告里出现，没有 UI 渲染它，
+所以它长期无人发现；实机在 Windows 上复制报告时才暴露问题：报告里
+`input_monitoring_permission: "unsupported"` 读起来像「该平台没有权限概念」，而事实是
+「Windows 的门在提权令牌上，且当前进程未提权」——恰好是决定高完整性前台窗口存在时 Raw Input
+是否继续送达的那一个状态（背景第 2 条与本 ADR 决策表）。
+
+因此契约改为 `SettingsInputCapability { name, available }`，`name` 取自
+`bongocat_platform::STARTUP_PERMISSION_CAPABILITY`（macOS `input_monitoring`、Windows
+`administrator`），`available` 取自 `startup_permission_available()`（macOS TCC preflight、
+Windows `TokenElevation`）。带来的约束：
+
+- 平台差异只留在 adapter 内。`bongocat-app` 的投影函数因此不再有 `cfg` 分支，报告方
+  （About 页复制的 JSON）也只读 protocol 类型，两个平台的措辞不会各自漂移。
+- 应用日志的 `input/permission_unavailable` 与 `input/status_changed` 记录用
+  `source=<capability>` 说明是哪一个能力，code 承担「具备/缺失」；不再拼出
+  `input_monitoring_*` 这类只对 macOS 成立的字符串。
+- 未被观察到的能力（只出现在测试 fixture 与尚未填充的 snapshot）用 `unobserved()` 显式
+  构造，`name = "unknown"` 且 `available = false`，不得借用真实平台的能力名。
+- 隐私边界不变：能力名是平台属性，不含机器或用户信息。
+
 ## 替换边界
 
 替换点只有 `bongocat-platform` 的私有 `startup_permission` adapter 和 `bongocat-app` 的文案

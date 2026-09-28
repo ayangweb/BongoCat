@@ -135,6 +135,7 @@ pub(crate) mod tests {
             build_info: SettingsBuildInfo {
                 product_version: env!("CARGO_PKG_VERSION").to_owned(),
                 environment: SettingsBuildEnvironment::Development,
+                cubism_core_version: "6.0.1".to_owned(),
             },
             runtime_health: RuntimeHealth::Ready,
             runtime_diagnostics: SettingsRuntimeDiagnostics::default(),

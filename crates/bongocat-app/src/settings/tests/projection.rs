@@ -74,13 +74,20 @@ fn input_diagnostics_projection_is_complete_and_advances_its_own_revision() {
             gamepad_event_discards: 31,
             ..PlatformInputDiagnostics::default()
         },
-        SettingsInputMonitoringPermission::Granted,
+        SettingsInputCapability {
+            name: "input_monitoring",
+            available: true,
+        },
     );
-    // The permission is handed in rather than queried here, so what the projection
-    // reports is exactly what the caller resolved.
+    // The capability is handed in rather than queried here, so what the projection
+    // reports is exactly what the caller resolved — including which capability
+    // the platform gates input behind, which differs per platform.
     assert_eq!(
-        projected.input_monitoring_permission,
-        SettingsInputMonitoringPermission::Granted
+        projected.input_capability,
+        SettingsInputCapability {
+            name: "input_monitoring",
+            available: true,
+        }
     );
     assert_eq!(
         projected.service_status,
@@ -223,7 +230,7 @@ fn input_service_error_code_is_preserved_without_guessing_from_status() {
             service_error_code: Some("platform_input_tap_create_failed"),
             ..PlatformInputDiagnostics::default()
         },
-        SettingsInputMonitoringPermission::Unsupported,
+        SettingsInputCapability::unobserved(),
     );
     assert_eq!(
         diagnostics.service_status,
@@ -244,7 +251,7 @@ fn input_service_error_code_drops_unregistered_provider_details() {
             service_error_code: Some("platform_input_private_detail"),
             ..PlatformInputDiagnostics::default()
         },
-        SettingsInputMonitoringPermission::Unsupported,
+        SettingsInputCapability::unobserved(),
     );
     assert_eq!(
         diagnostics.service_status,
@@ -298,46 +305,94 @@ fn the_revision_probe_matches_the_snapshot_it_stands_in_for() {
     service.join().expect("service join");
 }
 
-/// The input-monitoring permission is a system query, not a per-snapshot one.
+/// The input capability is a system query, not a per-snapshot one.
 ///
 /// Snapshot builds happen for every settings command, for the window's refresh and
 /// for the system-menu poll, and the macOS answer costs milliseconds, so the cache
-/// has to hold it for a while and still pick up a permission the user grants while
+/// has to hold it for a while and still pick up a capability the user grants while
 /// the product runs.
 #[test]
-fn the_input_monitoring_permission_is_cached_until_it_goes_stale() {
+fn the_input_capability_is_cached_until_it_goes_stale() {
     let started = Instant::now();
-    let answer = std::cell::Cell::new(SettingsInputMonitoringPermission::Denied);
+    let answer = std::cell::Cell::new(SettingsInputCapability {
+        name: "input_monitoring",
+        available: false,
+    });
     let probes = std::cell::Cell::new(0_u32);
     let probe = || {
         probes.set(probes.get() + 1);
         answer.get()
     };
-    let mut cache = InputMonitoringPermissionCache::default();
+    let mut cache = InputCapabilityCache::default();
 
     assert_eq!(
         cache.resolve(started, probe),
-        SettingsInputMonitoringPermission::Denied
+        SettingsInputCapability {
+            name: "input_monitoring",
+            available: false,
+        }
     );
     assert_eq!(probes.get(), 1, "the first read queries the system");
 
-    answer.set(SettingsInputMonitoringPermission::Granted);
+    answer.set(SettingsInputCapability {
+        name: "input_monitoring",
+        available: true,
+    });
     assert_eq!(
-        cache.resolve(
-            started + INPUT_MONITORING_PERMISSION_REFRESH_INTERVAL / 2,
-            probe
-        ),
-        SettingsInputMonitoringPermission::Denied,
+        cache.resolve(started + INPUT_CAPABILITY_REFRESH_INTERVAL / 2, probe),
+        SettingsInputCapability {
+            name: "input_monitoring",
+            available: false,
+        },
         "a fresh answer is reused instead of re-queried"
     );
     assert_eq!(probes.get(), 1);
     assert_eq!(
-        cache.resolve(
-            started + INPUT_MONITORING_PERMISSION_REFRESH_INTERVAL,
-            probe
-        ),
-        SettingsInputMonitoringPermission::Granted,
+        cache.resolve(started + INPUT_CAPABILITY_REFRESH_INTERVAL, probe),
+        SettingsInputCapability {
+            name: "input_monitoring",
+            available: true,
+        },
         "a stale answer is re-queried"
     );
     assert_eq!(probes.get(), 2);
+}
+
+/// The capability the report names has to be the one this platform actually
+/// gates input behind, and a snapshot the service has not observed must not
+/// borrow a real platform's name.
+#[test]
+fn an_unobserved_capability_names_no_platform() {
+    let unobserved = SettingsInputCapability::unobserved();
+    assert!(!unobserved.available);
+    assert_ne!(
+        unobserved.name, STARTUP_PERMISSION_CAPABILITY,
+        "an unobserved capability must not claim to be this platform's"
+    );
+    assert!(
+        !unobserved.name.is_empty(),
+        "an unobserved capability still has to name itself"
+    );
+    // The pair travels together: a name without a state, or a state without a
+    // name, is what made a Windows report say "unsupported".
+    assert_eq!(
+        SettingsInputCapability::default(),
+        unobserved,
+        "the default must be the same unobserved state, not a different one"
+    );
+}
+
+/// `TokenElevation` on Windows and the TCC grant on macOS answer the same
+/// question, so one query and one shape serve both. This pins the shape: a
+/// platform with no capability concept would have to change the contract, not
+/// report a value that reads like one.
+#[test]
+fn the_running_system_reports_the_capability_it_actually_gates_input_behind() {
+    let capability = system_input_capability();
+    assert_eq!(capability.name, STARTUP_PERMISSION_CAPABILITY);
+    assert!(
+        matches!(capability.name, "input_monitoring" | "administrator"),
+        "the capability name is a property of the platform, got {}",
+        capability.name
+    );
 }

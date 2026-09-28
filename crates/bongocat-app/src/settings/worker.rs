@@ -753,7 +753,7 @@ pub(super) fn run_service(
                         stopped_snapshot.input_diagnostics = settings_input_diagnostics(
                             &stopped.input,
                             stopped.platform_input,
-                            clock.input_monitoring_permission(),
+                            clock.input_capability(),
                         );
                         Ok(stopped_snapshot)
                     }

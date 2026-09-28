@@ -43,7 +43,7 @@ pub use command::{SettingsApplicationShortcut, SettingsCommand, SettingsReply};
 pub use endpoint::{SettingsServiceClosed, SettingsServiceEndpoint};
 pub use error::{SettingsError, SettingsErrorCode};
 pub use input_diagnostics::{
-    SettingsDiagnosticsExportStatus, SettingsInputDiagnostics, SettingsInputMonitoringPermission,
+    SettingsDiagnosticsExportStatus, SettingsInputCapability, SettingsInputDiagnostics,
     SettingsInputServiceStatus,
 };
 pub use logging::{SettingsLanguage, SettingsLogLevel, SettingsLogging};

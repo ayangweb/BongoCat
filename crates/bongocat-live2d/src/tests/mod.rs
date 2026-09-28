@@ -44,4 +44,5 @@ mod automatic;
 mod error;
 mod model;
 mod parameter;
+mod version;
 mod vocabulary;

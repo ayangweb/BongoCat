@@ -175,10 +175,10 @@ pub(super) fn settings_runtime_diagnostics(
 pub(super) fn settings_input_diagnostics(
     input: &InputSnapshot,
     platform: PlatformInputDiagnostics,
-    input_monitoring_permission: SettingsInputMonitoringPermission,
+    input_capability: SettingsInputCapability,
 ) -> SettingsInputDiagnostics {
     SettingsInputDiagnostics {
-        input_monitoring_permission,
+        input_capability,
         service_status: match platform.service_status {
             PlatformInputServiceStatus::NotStarted => SettingsInputServiceStatus::NotStarted,
             PlatformInputServiceStatus::Running => SettingsInputServiceStatus::Running,
@@ -229,17 +229,20 @@ pub(super) fn settings_input_diagnostics(
     }
 }
 
-#[cfg(target_os = "macos")]
-pub(super) fn system_input_monitoring_permission() -> SettingsInputMonitoringPermission {
-    match input_monitoring_permission() {
-        InputPermission::Denied => SettingsInputMonitoringPermission::Denied,
-        InputPermission::Granted => SettingsInputMonitoringPermission::Granted,
+/// What this platform gates global input behind, and whether we have it.
+///
+/// One query serves both platforms because the platform adapter already models
+/// the difference: its capability is `input_monitoring` on macOS and
+/// `administrator` on Windows, and its availability is the TCC grant on one and
+/// `TokenElevation` on the other (ADR-0032). Projecting that pair is what keeps
+/// a Windows report from claiming the platform has no permission concept at all
+/// — the question a bug report has to answer there is whether the process runs
+/// elevated.
+pub(super) fn system_input_capability() -> SettingsInputCapability {
+    SettingsInputCapability {
+        name: STARTUP_PERMISSION_CAPABILITY,
+        available: startup_permission_available(),
     }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub(super) const fn system_input_monitoring_permission() -> SettingsInputMonitoringPermission {
-    SettingsInputMonitoringPermission::Unsupported
 }
 
 pub(super) const fn startup_item_status_code(status: SettingsStartupItemStatus) -> &'static str {

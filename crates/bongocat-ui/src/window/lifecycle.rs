@@ -248,7 +248,12 @@ fn rounded_f32_i32(value: f32) -> Option<i32> {
     Some(value.round() as i32)
 }
 
-fn rounded_u32(value: Pixels) -> Option<u32> {
+/// A layout measurement, or `None` when the window reports something a size
+/// cannot be.
+///
+/// Shared with the About page's bug report, which measures the same window and
+/// has to agree with what gets persisted: one rounding rule, one place.
+pub(super) fn rounded_u32(value: Pixels) -> Option<u32> {
     let value = f32::from(value);
     if !value.is_finite() || value < 0.0 || value > u32::MAX as f32 {
         return None;

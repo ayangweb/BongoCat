@@ -52,6 +52,15 @@ pub const CUBISM_SDK_RELEASE: &str = "5-r.5";
 
 pub const CUBISM_CORE_VERSION: u32 = 0x0600_0001;
 
+/// The same Core version in the notation Cubism's release notes use.
+///
+/// The numeric constant above is a packed `0xMMmmpppp` value, which is what
+/// the library reports at load time and what the version check compares. Nobody
+/// writes that form in a bug report, so a user-facing report names this one
+/// instead. `cubism_core_version_matches_this_build` keeps the two from
+/// drifting apart.
+pub const CUBISM_CORE_VERSION_TEXT: &str = "6.0.1";
+
 pub const CUBISM_LATEST_MOC_VERSION: u32 = 6;
 
 pub struct Live2dModel {

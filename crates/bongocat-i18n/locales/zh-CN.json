@@ -60,11 +60,9 @@
     },
     "software_information": {
       "title": "软件信息",
-      "description": "复制版本、平台和架构信息，反馈问题时使用。",
+      "description": "以 JSON 复制版本、系统与运行状态信息，反馈问题时使用。",
       "copy": "复制",
-      "copy_success": "软件信息已复制",
-      "platform": "平台",
-      "architecture": "架构"
+      "copy_success": "软件信息已复制"
     },
     "project": {
       "title": "项目主页",
@@ -72,7 +70,7 @@
     },
     "feedback": {
       "title": "问题反馈",
-      "description": "提交问题前先复制软件信息。",
+      "description": "先复制软件信息，再粘贴到问题反馈中。",
       "action": "反馈问题"
     },
     "logs": {
