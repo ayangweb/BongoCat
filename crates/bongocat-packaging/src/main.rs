@@ -26,6 +26,14 @@
 //! a key uses the same pinned toolchain as signing it, instead of asking a maintainer to
 //! `cargo install` a matching global binary.
 //!
+//! `--extract-release-notes` is the fourth, and it composes the document the other two
+//! entry points publish: each changelog's entry for this version, followed by the download
+//! links, the model gallery and the sponsor list. Those last three are generated here
+//! rather than authored in the changelogs, because the asset names, the download URLs and
+//! the version are all facts this crate already owns — a hand-written copy in
+//! `CHANGELOG.md` would be a second place to correct on every release, with no gate that
+//! could tell it had drifted.
+//!
 //! Only product-specific facts live here: which targets ship, where the runtime
 //! expects its bundled resources, and what the macOS bundle declares. Bundle
 //! contents, `Info.plist` generation and the NSIS installer are owned by
@@ -203,18 +211,52 @@ impl ReleaseTarget {
     /// `None` for the Apple targets: their `.app` and `.dmg` are already named by
     /// this crate. The Windows installer is named by `cargo-packager` instead,
     /// which hard-codes `{main binary name}_{version}_{arch}-setup.exe` with no
-    /// option to configure it, so it is renamed to this name after packaging.
+    /// option to configure it, so it is renamed to this name after packaging —
+    /// which is why the name itself is [`Self::download_asset`]'s to define.
+    ///
     /// Version and architecture come from the same sources as every other
     /// artifact, so neither is hard-coded here.
     fn installer_file_name(self) -> Option<String> {
         match self {
-            Self::WindowsX86_64 => Some(format!(
+            Self::WindowsX86_64 => Some(self.download_asset()),
+            Self::MacosAarch64 | Self::MacosX86_64 => None,
+        }
+    }
+
+    /// The file name this target's hand-installed release asset is published under.
+    ///
+    /// Every target publishes exactly one: the Windows installer for Windows, the
+    /// disk image for the Apple targets. The name is the same one
+    /// [`Self::installer_file_name`] renames the installer to and
+    /// [`build_disk_image`] creates the image under, which is the point — the
+    /// release notes link these files, so a second spelling here would produce a
+    /// download link to an asset the release never uploads, and nothing else in
+    /// the build would fail.
+    ///
+    /// Deliberately *not* [`Self::update_payload_name`]: that is the signed archive
+    /// the updater resolves out of the manifest, not something a person installs,
+    /// and offering it as a download would point readers at the same bundle twice.
+    fn download_asset(self) -> String {
+        match self {
+            Self::WindowsX86_64 => format!(
                 "{PRODUCT_NAME}_{}_{}.exe",
                 env!("CARGO_PKG_VERSION"),
                 self.architecture()
-            )),
-            Self::MacosAarch64 | Self::MacosX86_64 => None,
+            ),
+            Self::MacosAarch64 | Self::MacosX86_64 => self.disk_image_file_name(),
         }
+    }
+
+    /// The file name this target's macOS disk image is published under.
+    ///
+    /// An Apple target's name, and the same name [`build_disk_image`] writes the
+    /// image to, so the two cannot disagree about what a release uploads.
+    fn disk_image_file_name(self) -> String {
+        format!(
+            "{PRODUCT_NAME}-{}-{}.dmg",
+            env!("CARGO_PKG_VERSION"),
+            self.architecture()
+        )
     }
 
     fn parse(triple: &str) -> Result<Self> {
@@ -265,19 +307,43 @@ impl ReleaseTarget {
         }
     }
 
+    /// The architecture token this target's update payload is named with.
+    ///
+    /// Deliberately neither [`Self::architecture`] nor the triple. The payload is
+    /// published for the Apple targets only, so the `-apple-darwin` segment the triple
+    /// carried was the same string on both of them and said nothing a reader could act
+    /// on. What is left has to still tell the two apart, and it has to match what a
+    /// Homebrew cask writes in its own `arch` line — so Intel takes the disk image's
+    /// `x64` and Apple silicon takes the architecture name Homebrew and Rust both use
+    /// for it. See [`Self::update_payload_name`].
+    const fn payload_architecture(self) -> &'static str {
+        match self {
+            Self::MacosAarch64 => "aarch64",
+            Self::MacosX86_64 | Self::WindowsX86_64 => "x64",
+        }
+    }
+
     /// The file name this target's update payload is published under.
     ///
     /// The updater takes the payload from the manifest rather than matching an asset
     /// name, so these names only have to be stable and self-describing. Windows
     /// reuses the installer it already publishes; macOS needs the bundle wrapped in
     /// an archive, because the updater installs a directory.
+    ///
+    /// The macOS name carries the architecture and nothing else. It used to carry the
+    /// whole target triple, which made the two published names
+    /// `BongoCat-<version>-aarch64-apple-darwin.app.tar.gz` and
+    /// `BongoCat-<version>-x86_64-apple-darwin.app.tar.gz` — long, and repeating a
+    /// platform suffix on a file that can only exist on that platform. The archive is
+    /// still unambiguous: the extension is unique to the macOS payload, and Windows
+    /// publishes an `.exe` under the installer's own name.
     fn update_payload_name(self) -> String {
         match self.installer_file_name() {
             Some(name) => name,
             None => format!(
                 "{PRODUCT_NAME}-{}-{}.app.tar.gz",
                 env!("CARGO_PKG_VERSION"),
-                self.triple()
+                self.payload_architecture()
             ),
         }
     }
@@ -339,9 +405,11 @@ options:
                            the merged manifest, so the update window can show what
                            changed; only valid with --merge-manifests
   --extract-release-notes <file>
-                           compose this version's release notes from CHANGELOG.md and
-                           CHANGELOG.zh-CN.md and write them to <file>, instead of
-                           packaging; takes no other option
+                           compose this version's release notes from CHANGELOG.md
+                           and CHANGELOG.zh-CN.md, followed by the download
+                           links, model gallery and sponsors this tool knows, and
+                           write them to <file>, instead of packaging; takes no
+                           other option
   --generate-signing-key <file>
                            generate a new Minisign key pair for signing update
                            payloads, written to <file> and <file>.pub, instead of
@@ -976,6 +1044,19 @@ fn fragment_file_name(target: ReleaseTarget) -> String {
     format!("{}{UPDATE_FRAGMENT_SUFFIX}", target.manifest_platform())
 }
 
+/// Where a published release asset can be fetched from.
+///
+/// The one place a download URL is spelled. [`publish_update_assets`] puts it in
+/// the manifest the updater fetches and the release notes put it in front of a
+/// reader, so a link in the notes and the manifest entry for the same file are
+/// the same string rather than two shapes that have to be kept in step by hand.
+fn release_asset_url(name: &str) -> String {
+    format!(
+        "{RELEASE_REPOSITORY_URL}/releases/download/v{version}/{name}",
+        version = env!("CARGO_PKG_VERSION"),
+    )
+}
+
 /// Sign this target's update payload and write this target's manifest fragment.
 ///
 /// Signing is the last step for a reason: a Minisign signature covers the exact
@@ -1005,10 +1086,7 @@ fn publish_update_assets(
             Box::new(Failure(format!("invalid payload {}", payload.display())))
                 as Box<dyn std::error::Error>
         })?;
-    let asset_url = format!(
-        "{RELEASE_REPOSITORY_URL}/releases/download/v{version}/{payload_name}",
-        version = env!("CARGO_PKG_VERSION"),
-    );
+    let asset_url = release_asset_url(&payload_name);
 
     // One fragment per target: this job can only announce the payload it produced, and
     // the platform key comes from the file name. The release merges the fragments into
@@ -1089,6 +1167,109 @@ const RELEASE_CHANGELOG_ZH_NAME: &str = "CHANGELOG.zh-CN.md";
 /// has.
 const RELEASE_NOTES_LANGUAGE_SEPARATOR: &str = "---";
 
+/// The model gallery every release points readers at.
+///
+/// A link, not prose: the gallery is the answer to "where do I get more models",
+/// and it is the same for every version, so a changelog entry is the wrong place for
+/// it — two files would have to be edited per release to restate a URL that never
+/// changes. The URL is composed here rather than read from the repository's
+/// `repository` field, because that field names the source tree and this is a
+/// different repository.
+const MODELS_GALLERY_NAME: &str = "Awesome-BongoCat";
+const MODELS_GALLERY_URL: &str = "https://github.com/ayangweb/Awesome-BongoCat";
+
+/// The Homebrew tap macOS readers are pointed at as a third option.
+///
+/// The link goes to the tap's repository rather than to an install command, because
+/// this document is also rendered by the update window, which shows prose and links
+/// but has nowhere to put a shell command a reader could copy. The tap's own README
+/// carries `brew tap` and `brew install`.
+///
+/// `Homebrew` is the tool's own name, so the label is the same in both languages and
+/// is deliberately not a translation slot. The tap is a distribution channel this
+/// project does not build or sign, so it is named as one option among the two
+/// official disk images rather than as the recommended way to install.
+const HOMEBREW_TAP_NAME: &str = "Homebrew";
+const HOMEBREW_TAP_URL: &str = "https://github.com/ayangweb/Homebrew-BongoCat";
+
+/// The sponsors every release lists, in the order they are shown.
+///
+/// Names and URLs only, so both languages link the same two entries under their own
+/// heading. A sponsor that pays in a currency or in kind rather than in a link does
+/// not belong here: this list is the release's disclosure of who is funding the
+/// project, and it is shown in the same document as the install instructions.
+const RELEASE_SPONSORS: [(&str, &str); 2] = [
+    ("NexaRelay", "https://api.nexarelay.com"),
+    ("ChooseC API", "https://api.choosec.cn"),
+];
+
+/// One language's copy for the block the release appends after the changelog entry.
+///
+/// The changelog says what changed; this says the things a reader of a release page
+/// cannot get out of it — where to get this version, where to get more models, and
+/// who sponsors the project. It is generated rather than authored in
+/// `CHANGELOG.md` because every fact in it is one this crate already owns: the asset
+/// names come from [`ReleaseTarget::download_asset`], the URLs from
+/// [`release_asset_url`], and the version from the same `CARGO_PKG_VERSION` the
+/// release tag was matched against. A hand-written copy would have to be corrected
+/// by hand whenever any of those moved, and no gate would notice when it was not.
+struct ReleaseNoteAppendix {
+    /// Heading over the authored changelog entry.
+    ///
+    /// The entry's own sections are `###`, and so is nothing else in the document —
+    /// every generated section below is `##`. Without a heading of its own the entry
+    /// would open the document and its `###` headings would look like they belong to
+    /// whatever came before, so this is what makes the two sources tellable apart: a
+    /// reader can see at a glance which half is the changelog and which half the
+    /// release generated.
+    changelog_heading: &'static str,
+    /// Heading of the download section.
+    downloads_heading: &'static str,
+    /// Row label for the Windows installer, and for the macOS row.
+    windows_label: &'static str,
+    /// Why there is one Windows download and not one per architecture.
+    ///
+    /// Windows on ARM has no separate build: the release ships x64 only, and the
+    /// product runs it there under emulation. A reader on ARM64 therefore has
+    /// nothing to choose between, so the row names no architecture and carries the
+    /// reason instead — otherwise a reader on ARM64 either looks for an ARM64
+    /// download that does not exist or assumes the one offered is not for them.
+    windows_note: &'static str,
+    macos_label: &'static str,
+    /// The two macOS variants, which are separate downloads.
+    apple_silicon_label: &'static str,
+    intel_label: &'static str,
+    /// Heading of the models section. Its single row is a bare link: the gallery's own
+    /// name says what it is, so a sentence describing it only repeats the heading.
+    models_heading: &'static str,
+    /// Heading of the sponsors section.
+    sponsors_heading: &'static str,
+}
+
+const APPENDIX_ENGLISH: ReleaseNoteAppendix = ReleaseNoteAppendix {
+    changelog_heading: "Changelog",
+    downloads_heading: "Downloads",
+    windows_label: "Windows 10 1903+",
+    windows_note: "ARM64 runs the x64 build through emulation",
+    macos_label: "macOS 12+",
+    apple_silicon_label: "Apple silicon",
+    intel_label: "Intel",
+    models_heading: "More models",
+    sponsors_heading: "Sponsors",
+};
+
+const APPENDIX_CHINESE: ReleaseNoteAppendix = ReleaseNoteAppendix {
+    changelog_heading: "更新日志",
+    downloads_heading: "下载地址",
+    windows_label: "Windows 10 1903+",
+    windows_note: "ARM64 可通过仿真运行 x64 版本",
+    macos_label: "macOS 12+",
+    apple_silicon_label: "Apple 芯片",
+    intel_label: "Intel 芯片",
+    models_heading: "更多模型",
+    sponsors_heading: "赞助商",
+};
+
 /// Upper bound on the announced changelog.
 ///
 /// The manifest is fetched and parsed on every check, so it must not grow with the
@@ -1135,6 +1316,13 @@ fn truncate_release_notes(notes: &str) -> String {
 /// record of what changed, so they are the source, and the two languages are joined by a
 /// thematic break into the one document the release page and the update window both show.
 ///
+/// What changed is only half of what a reader of a release page needs: the download
+/// links, the model gallery and the sponsor disclosure are the same for every version
+/// and are facts this crate already holds, so they are generated here and appended to
+/// each language's block. They are deliberately *not* in the changelog files — a
+/// versioned record of a release is the wrong home for text that has to be restated by
+/// hand in two languages on every release, and nothing would check that it was right.
+///
 /// The version is this tool's own — the value `--print-version` reports and the one the
 /// release pipeline has already matched the tag against — so a tag whose changelog entry
 /// was never written fails the release here instead of publishing notes that describe
@@ -1154,8 +1342,80 @@ fn extract_release_notes(output: &Path) -> Result<Vec<PathBuf>> {
 ///
 /// Split out from the file handling so the published shape — which is a contract with
 /// both the release page and the update window — is testable without a workspace.
+///
+/// Each language gets the changelog entry and then the generated block, so a reader
+/// meets this release's install instructions and its sponsor disclosure under their
+/// own language rather than after scrolling past the other one. The block comes last
+/// because the changelog opens with the upgrade notice: a reader who has to uninstall
+/// an old version first should read that before reaching for a download link.
 fn compose_release_notes(english: &str, chinese: &str) -> String {
-    format!("{english}\n\n{RELEASE_NOTES_LANGUAGE_SEPARATOR}\n\n{chinese}\n")
+    format!(
+        "{}\n\n{RELEASE_NOTES_LANGUAGE_SEPARATOR}\n\n{}\n",
+        release_note_block(english, &APPENDIX_ENGLISH),
+        release_note_block(chinese, &APPENDIX_CHINESE),
+    )
+}
+
+/// One language's half of the document: the authored entry under its own heading, then
+/// the generated block.
+fn release_note_block(entry: &str, appendix: &ReleaseNoteAppendix) -> String {
+    format!(
+        "## {}\n\n{entry}\n\n{}",
+        appendix.changelog_heading,
+        render_release_note_appendix(appendix),
+    )
+}
+
+/// The block a release appends to one language's changelog entry.
+///
+/// Every download row links [`ReleaseTarget::download_asset`], the same function the
+/// build names the artifact with, so a link here cannot point at a file the release
+/// does not upload. The Windows row uses the asset name as its link text because that
+/// is the one name a reader has to match against the release page's attachment list;
+/// the two macOS rows are named by chip, which is how a reader tells them apart.
+///
+/// Windows gets one row rather than one per architecture, because the release ships no
+/// ARM64 build — see [`ReleaseNoteAppendix::windows_note`]. The separator is a plain em
+/// dash so each row stays a single line, which is the shape this Markdown is rendered
+/// in by the update window and the shape the release page lays out.
+///
+/// Only Markdown the update window can render safely: ordinary links and list items,
+/// no images and no raw HTML, both of which `bongocat-ui::update_markdown` deliberately
+/// refuses to interpret.
+fn render_release_note_appendix(copy: &ReleaseNoteAppendix) -> String {
+    let mut appendix = String::new();
+
+    appendix.push_str(&format!("## {}\n\n", copy.downloads_heading));
+    let windows = ReleaseTarget::WindowsX86_64.download_asset();
+    appendix.push_str(&format!(
+        "- **{}**: [{windows}]({}) — {}\n",
+        copy.windows_label,
+        release_asset_url(&windows),
+        copy.windows_note,
+    ));
+    appendix.push_str(&format!(
+        "- **{}**: [{}]({}) | [{}]({}) | [{HOMEBREW_TAP_NAME}]({HOMEBREW_TAP_URL})\n\n",
+        copy.macos_label,
+        copy.apple_silicon_label,
+        release_asset_url(&ReleaseTarget::MacosAarch64.download_asset()),
+        copy.intel_label,
+        release_asset_url(&ReleaseTarget::MacosX86_64.download_asset()),
+    ));
+
+    appendix.push_str(&format!("## {}\n\n", copy.models_heading));
+    appendix.push_str(&format!(
+        "- [{MODELS_GALLERY_NAME}]({MODELS_GALLERY_URL})\n\n"
+    ));
+
+    appendix.push_str(&format!("## {}\n\n", copy.sponsors_heading));
+    for (name, url) in RELEASE_SPONSORS {
+        appendix.push_str(&format!("- [{name}]({url})\n"));
+    }
+
+    // The callers set the blank lines around the block themselves — one against the
+    // changelog entry, one against the language separator — so the block ends at its
+    // last character rather than carrying a newline that would make the gap three deep.
+    appendix.trim_end().to_owned()
 }
 
 /// Read one changelog's entry for `version`.
@@ -1622,11 +1882,7 @@ fn build_disk_image(
         return failure("disk images are a macOS artifact");
     }
     let output_directory = workspace.join(OUTPUT_DIRECTORY);
-    let image = output_directory.join(format!(
-        "{PRODUCT_NAME}-{}-{}.dmg",
-        env!("CARGO_PKG_VERSION"),
-        target.architecture()
-    ));
+    let image = output_directory.join(target.disk_image_file_name());
     let staging = output_directory.join(DISK_IMAGE_STAGING_DIRECTORY);
     if staging.exists() {
         fs::remove_dir_all(&staging)?;
@@ -1896,8 +2152,15 @@ mod tests {
     }
 
     /// macOS installs a directory, so its payload is the bundle in an archive.
+    ///
+    /// The name carries the architecture and not the target triple. That is safe for
+    /// the updater because it resolves the payload out of the manifest rather than by
+    /// matching an asset name, and it is safe for a reader because the extension is
+    /// unique to this file — so what has to hold is only that the two Apple targets
+    /// still produce different names.
     #[test]
     fn the_apple_update_payload_is_a_bundle_archive() {
+        let mut names = Vec::new();
         for target in [ReleaseTarget::MacosAarch64, ReleaseTarget::MacosX86_64] {
             let name = target.update_payload_name();
             assert!(
@@ -1905,10 +2168,21 @@ mod tests {
                 "the macOS payload must be an archive, got {name}"
             );
             assert!(
-                name.contains(target.triple()),
-                "the payload name must stay self-describing, got {name}"
+                name.contains(target.payload_architecture()),
+                "the payload name must name the architecture it was built for, got {name}"
             );
+            assert!(
+                !name.contains("-apple-darwin"),
+                "the payload only exists on the one platform, so repeating it in the \
+                 name says nothing: {name}"
+            );
+            names.push(name);
         }
+        names.sort();
+        assert_ne!(
+            names[0], names[1],
+            "the two Apple targets must publish differently named payloads, got {names:?}"
+        );
     }
 
     /// The manifest keys must use the updater's `<os>-<arch>` spelling, which is also
@@ -2324,13 +2598,185 @@ mod tests {
             "### ✨ 新功能\n\n- 做了件事",
         );
 
-        assert_eq!(
-            notes,
-            "### ✨ Features\n\n- did a thing\n\n---\n\n### ✨ 新功能\n\n- 做了件事\n"
+        let (english, chinese) = notes
+            .split_once("\n\n---\n\n")
+            .unwrap_or_else(|| panic!("the two languages must be joined by a rule: {notes}"));
+
+        assert!(
+            english.starts_with("## Changelog\n\n### ✨ Features\n\n- did a thing"),
+            "{english}"
+        );
+        assert!(
+            chinese.starts_with("## 更新日志\n\n### ✨ 新功能\n\n- 做了件事"),
+            "{chinese}"
         );
         // The separator has to be a thematic break and nothing else, or the renderer on
         // the other side draws a paragraph instead of a rule.
         assert!(notes.lines().any(|line| line == "---"));
+    }
+
+    /// The published document, spelled out: two authored entries in their own language,
+    /// each followed by that language's generated block, joined by one rule.
+    ///
+    /// The asset names are read back out of [`ReleaseTarget::download_asset`] rather than
+    /// written here, because `tools/tests/test_product_version_contract.py` fails the
+    /// build if a shipped version is restated anywhere in this file. What this pins is the
+    /// shape — the headings, the list markup, the link syntax, and the order — which is
+    /// what the release page and the update window each depend on.
+    #[test]
+    fn the_release_notes_append_a_download_block_to_each_language() {
+        let block = |copy: &super::ReleaseNoteAppendix| {
+            let windows = ReleaseTarget::WindowsX86_64.download_asset();
+            let apple = ReleaseTarget::MacosAarch64.download_asset();
+            let intel = ReleaseTarget::MacosX86_64.download_asset();
+            format!(
+                "## {downloads}\n\n\
+                 - **{windows_label}**: [{windows}]({windows_url}) — {windows_note}\n\
+                 - **{macos_label}**: [{apple_silicon}]({apple_url}) | [{intel}]({intel_url}) | \
+                 [Homebrew](https://github.com/ayangweb/Homebrew-BongoCat)\n\n\
+                 ## {models}\n\n\
+                 - [{gallery}]({gallery_url})\n\n\
+                 ## {sponsors}\n\n\
+                 - [NexaRelay](https://api.nexarelay.com)\n\
+                 - [ChooseC API](https://api.choosec.cn)",
+                downloads = copy.downloads_heading,
+                windows_label = copy.windows_label,
+                windows_url = super::release_asset_url(&windows),
+                windows_note = copy.windows_note,
+                macos_label = copy.macos_label,
+                apple_silicon = copy.apple_silicon_label,
+                apple_url = super::release_asset_url(&apple),
+                intel = copy.intel_label,
+                intel_url = super::release_asset_url(&intel),
+                models = copy.models_heading,
+                gallery = super::MODELS_GALLERY_NAME,
+                gallery_url = super::MODELS_GALLERY_URL,
+                sponsors = copy.sponsors_heading,
+            )
+        };
+
+        assert_eq!(
+            super::compose_release_notes("- did a thing", "- 做了件事"),
+            format!(
+                "## {changelog}\n\n- did a thing\n\n{block_en}\n\n---\n\n\
+                 ## {changelog_zh}\n\n- 做了件事\n\n{block_zh}\n",
+                changelog = super::APPENDIX_ENGLISH.changelog_heading,
+                block_en = block(&super::APPENDIX_ENGLISH),
+                changelog_zh = super::APPENDIX_CHINESE.changelog_heading,
+                block_zh = block(&super::APPENDIX_CHINESE),
+            ),
+        );
+    }
+
+    /// The generated block links the artifacts this release uploads, and only those.
+    ///
+    /// The signed update payloads are what the updater resolves out of the manifest: they
+    /// install the bundle the disk image already installs, so offering them to a reader
+    /// would be a second, redundant download of the same program.
+    #[test]
+    fn the_generated_block_offers_every_installable_artifact_and_no_payload() {
+        let notes = super::compose_release_notes("- did a thing", "- 做了件事");
+
+        for target in ReleaseTarget::ALL {
+            let asset = target.download_asset();
+            let link = format!("]({})", super::release_asset_url(&asset));
+            assert!(
+                notes.contains(&link),
+                "{target:?} publishes {asset}, so the notes must link it, got {notes}",
+            );
+        }
+
+        for target in [ReleaseTarget::MacosAarch64, ReleaseTarget::MacosX86_64] {
+            let payload = target.update_payload_name();
+            assert!(
+                !notes.contains(&payload),
+                "{payload} is an update payload rather than a download, but the notes \
+                 offer it",
+            );
+        }
+    }
+
+    /// Every link in the published document has to be one the update window will open.
+    ///
+    /// `bongocat-ui::update_markdown` turns a refused target into plain text, so a
+    /// `http://` or `file://` link here would arrive at a reader as a label with no way
+    /// to follow it — and the release page and the window read this same document.
+    #[test]
+    fn every_link_in_the_release_notes_is_one_the_update_window_opens() {
+        let notes = super::compose_release_notes("- did a thing", "- 做了件事");
+
+        let mut links = 0;
+        let mut rest = notes.as_str();
+        while let Some(at) = rest.find("](") {
+            rest = &rest[at + 2..];
+            let end = rest
+                .find(')')
+                .unwrap_or_else(|| panic!("an unterminated link target in {notes}"));
+            let (target, tail) = rest.split_at(end);
+            rest = tail;
+            links += 1;
+            assert!(
+                target.starts_with("https://"),
+                "{target} is not an https target, so the update window renders it as \
+                 plain text",
+            );
+        }
+        // Per language: one installer, two disk images, the tap, the gallery and both
+        // sponsors.
+        assert_eq!(links, 14, "unexpected link count in {notes}");
+    }
+
+    /// The two sources sit at the same level and in a fixed order: the changelog's own
+    /// heading, then its entry, then the generated block.
+    ///
+    /// The heading is what makes the entry's `###` sections read as belonging to the
+    /// changelog rather than to whatever preceded them, and the entry staying first is
+    /// what puts a release's upgrade notice — which is what a changelog opens with —
+    /// ahead of its download links.
+    #[test]
+    fn each_language_heads_its_changelog_before_the_generated_block() {
+        let notes = super::compose_release_notes(
+            "### ⚠️ Upgrade Notice\n\n- uninstall the old version first",
+            "### ⚠️ 升级说明\n\n- 请先卸载旧版本",
+        );
+
+        let (english, chinese) = notes
+            .split_once("\n\n---\n\n")
+            .unwrap_or_else(|| panic!("the two languages must be joined by a rule: {notes}"));
+
+        for (block, changelog, entry, downloads) in [
+            (
+                english,
+                super::APPENDIX_ENGLISH.changelog_heading,
+                "uninstall the old version first",
+                super::APPENDIX_ENGLISH.downloads_heading,
+            ),
+            (
+                chinese,
+                super::APPENDIX_CHINESE.changelog_heading,
+                "请先卸载旧版本",
+                super::APPENDIX_CHINESE.downloads_heading,
+            ),
+        ] {
+            let at = |needle: &str| {
+                block
+                    .find(needle)
+                    .unwrap_or_else(|| panic!("{needle} is missing from {block}"))
+            };
+            let (changelog_at, entry_at, downloads_at) = (at(changelog), at(entry), at(downloads));
+
+            assert_eq!(
+                block[..changelog_at].matches("\n## ").count(),
+                0,
+                "{changelog} must be the first `##` of its half, so the entry's own `###` \
+                 sections have a parent to sit under",
+            );
+            assert!(
+                changelog_at < entry_at && entry_at < downloads_at,
+                "{changelog} must come first, then the entry, then {downloads}; got \
+                 {changelog_at}, {entry_at}, {downloads_at}",
+            );
+        }
     }
 
     /// An entry is opened by a heading whose own first token is the version, so every

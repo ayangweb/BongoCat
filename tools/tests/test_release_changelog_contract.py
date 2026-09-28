@@ -281,6 +281,64 @@ class ReleaseNotesContractTests(unittest.TestCase):
                         "release reads that body as its notes",
                     )
 
+    def test_the_changelogs_do_not_carry_the_generated_download_block(self):
+        """The wrapper heading and the download block are generated, not authored.
+
+        `bongocat-packaging` composes them from the artifact names, the download URL
+        shape and the version it already holds, and wraps each language's entry in them
+        before appending the block. Pasted into a changelog they would be published
+        twice per release, and the second copy would be the one nothing keeps correct.
+
+        The tap is in the list because it is the one link in the block that is not
+        derived from this repository at all: it is a separate repository whose cask
+        names this project's release assets, so a copy written into a changelog would
+        be a third place to keep in step with the other two.
+
+        The heading checks do not collide with the `# Changelog` and `# 更新日志`
+        titles the two changelog files legitimately open with.
+        """
+        generated = (
+            "## Changelog",
+            "## 更新日志",
+            "## Downloads",
+            "## 下载地址",
+            "## More models",
+            "## 更多模型",
+            "## Sponsors",
+            "## 赞助商",
+            "Homebrew-BongoCat",
+        )
+
+        for path in (CHANGELOG, CHANGELOG_ZH):
+            text = read(path)
+            for fragment in generated:
+                with self.subTest(changelog=path.name, fragment=fragment):
+                    self.assertNotIn(
+                        fragment,
+                        text,
+                        f"{path.name} carries '{fragment}', which the release generates; "
+                        "authoring it here would publish it twice and leave the stale "
+                        "copy as the one a reader cannot fix",
+                    )
+
+        # The generated block's own wiring: the tool has to hold both languages' copy,
+        # the sponsor list, the gallery and the tap, or the section silently loses part
+        # of its content.
+        source = read(PACKAGER)
+        for constant in (
+            "APPENDIX_ENGLISH",
+            "APPENDIX_CHINESE",
+            "RELEASE_SPONSORS",
+            "MODELS_GALLERY_URL",
+            "HOMEBREW_TAP_URL",
+        ):
+            with self.subTest(constant=constant):
+                self.assertRegex(
+                    source,
+                    rf"(const|static) {constant}\b",
+                    f"the generated block needs {constant}",
+                )
+
 
 class ChangelogSectionVocabularyTests(unittest.TestCase):
     """The bilingual section headings both changelogs are allowed to use."""

@@ -47,12 +47,44 @@ release 正文和 App 内更新窗口读的是同一个文件），读者会在�
 怎么画，不决定它是哪一节。校验比较前会去掉 U+FE0F，所以两种写法都算对；**不要**为了
 "统一"去批量改写某一侧的 emoji。
 
-### 1.2 新增一节
+## 1.2 新增一节
 
 需要词表里没有的分段时，**在词表里加一行**，同时给出英文和中文，再在两份 changelog 里使用。
 不要只在一侧新增后靠人工翻译——那正是本规范要消除的情况。
 
-### 1.3 怎么强制
+### 1.3 下载链接、模型库与赞助不进 changelog
+
+发布说明不只有 changelog 条目。`bongocat-packaging` 给每个语言块**生成**一个
+`## Changelog` / `## 更新日志` 标题，并在块末尾生成一节下载链接、一节模型库
+（Awesome-BongoCat）和一节赞助（见 §1.4），再与两份 changelog 的条目合成同一份文件。
+**不要把这些内容写进 `CHANGELOG.md` 或 `CHANGELOG.zh-CN.md`**：
+
+- 它们的每一项事实都由打包工具已经持有的值生成——产物名来自 `ReleaseTarget::download_asset`，
+  下载地址来自 `release_asset_url`，版本号来自同一个 `CARGO_PKG_VERSION`；手写一份就多出一处
+  要在每次发版时人工核对的地方。
+- 它们每个版本都一样，进 changelog 等于每次发版改两个文件重述一遍不变的文字。
+- 词表管的是 changelog **条目内**的 `###` 分段。生成块用的是 `##`，因此**不需要**在词表里
+  加行，加了反而会让门禁去校验一份根本不由人写的文案。
+
+要改文案、换赞助或加赞助商，改 `crates/bongocat-packaging/src/main.rs` 里的
+`APPENDIX_ENGLISH`、`APPENDIX_CHINESE` 和 `RELEASE_SPONSORS`，两份 changelog 不动。
+
+### 1.4 生成块的形状
+
+`--extract-release-notes` 产出的文件是「`## Changelog` → 条目 → 生成块 → `---` → `## 更新日志`
+→ 条目 → 生成块」。每个语言块内，changelog 条目在前、生成块在后：条目通常以「⚠️ 升级说明」
+开头，而 2.0.0 这类版本要求先卸载旧版本再装新版本，读者应当先读到这句再点到下载链接。
+
+条目自己只写 `###` 分段，而生成块的三节都是 `##`。所以**条目前面必须由工具补一个
+`## Changelog` / `## 更新日志`**：没有它，条目会顶着文档开头，它的 `###` 看上去像是属于
+前一个块，而读者分不清哪一半是人写的、哪一半是发版时生成的。这个 `##` 同样**不要**写进
+changelog 文件——门禁会把粘进去的写法拦下来。
+
+生成块只用 App 内更新窗口能安全渲染的 Markdown：普通链接和列表项，不含图片和内联 HTML
+（`crates/bongocat-ui/src/update_markdown` 会拒绝解释两者）。链接目标一律 `https`，
+因为窗口只把 `https` 渲染成可点击控件，其余 scheme 会被降级为纯文本。
+
+### 1.5 怎么强制
 
 `tools/tests/test_release_changelog_contract.py` 的 `ChangelogSectionVocabularyTests`
 逐条断言：
@@ -60,6 +92,9 @@ release 正文和 App 内更新窗口读的是同一个文件），读者会在�
 - 两侧每个 `###` 标题的 emoji 在词表内，且文案与词表逐字相同；
 - 两侧的 emoji 序列**完全一致且顺序相同**（漏译一侧会失败）；
 - 词表自身没有重复项。
+
+`ReleaseNotesContractTests` 另外断言两份 changelog 都没有写 §1.3 的生成块标题——有人把它
+粘进 changelog 就会失败，因为发布后那几行会各出现两次。
 
 ```sh
 python3 -m unittest tools.tests.test_release_changelog_contract

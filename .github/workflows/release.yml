@@ -138,8 +138,13 @@ jobs:
         include:
           - triple: aarch64-apple-darwin
             platform: macos-aarch64
+            # The architecture segment of the update payload's published file name.
+            # Only the verification step below needs it; the build and the disk image
+            # are named by the packaging tool.
+            payload_arch: aarch64
           - triple: x86_64-apple-darwin
             platform: macos-x86_64
+            payload_arch: x64
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -220,7 +225,12 @@ jobs:
           # The packaging entry point wraps the finished bundle in a `.tar.gz` and signs
           # it; the updater drops the archive's root entry and installs the rest on the
           # bundle path, so the archive has to root at the bundle directory.
-          payload="target/package/BongoCat-$version-${{ matrix.triple }}.app.tar.gz"
+          #
+          # The name is the architecture and nothing else. It used to be built from the
+          # target triple, which meant restating the packaging tool's naming here; this
+          # job is a consumer of a published name, so a rename has to be made where the
+          # name is defined rather than in two places at once.
+          payload="target/package/BongoCat-$version-${{ matrix.payload_arch }}.app.tar.gz"
           test -f "$payload" || { echo "::error::missing update payload $payload" >&2; exit 1; }
           test -s "$payload.sig" || { echo "::error::missing signature $payload.sig" >&2; exit 1; }
           test "$(tar tzf "$payload" | head -1)" = "BongoCat.app/" || {
@@ -272,12 +282,15 @@ jobs:
           # The notes are the release's own entry in the bilingual changelog, not a
           # summary of the commits between two tags: CHANGELOG.md and CHANGELOG.zh-CN.md
           # are the authored record of what changed, so the release page and the in-app
-          # update window both show that text. One file is fed to both, so the two
-          # cannot disagree. The lookup is keyed on the product version the build jobs
-          # already matched the tag against, which makes a tag whose changelog entry was
-          # never written fail here instead of publishing a release nobody can describe.
-          # The file lives outside `artifacts/` because that directory is uploaded
-          # verbatim as release assets.
+          # update window both show that text. Each language's block is followed by a
+          # download-links, model-gallery and sponsor section the packaging tool
+          # generates from the artifacts it uploads, so those never have to be written
+          # into a changelog to stay correct. One file is fed to both consumers, so the
+          # two cannot disagree. The lookup is keyed on the product version the build
+          # jobs already matched the tag against, which makes a tag whose changelog
+          # entry was never written fail here instead of publishing a release nobody can
+          # describe. The file lives outside `artifacts/` because that directory is
+          # uploaded verbatim as release assets.
           #
           # This runs before the artifacts are downloaded because it needs nothing but
           # the checked-out changelogs: a missing entry is a mistake in the tag, and

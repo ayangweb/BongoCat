@@ -24,6 +24,12 @@
 > §6.2 的落地步骤已执行完毕；§7 清单中已完成的项在 §6.2 中可查到对应实现。
 > 仍未被验证的事项以 ADR-0034 的"待验证项"为准——本文 §8 的若干条目已由
 > `release_manifest_capability.rs` 的 loopback 能力测试覆盖（真实密钥对、真实签名、真实验签）。
+>
+> **状态更新（2026-09-28）：macOS 载荷名去掉了 target triple。**
+> 下文写作时假定载荷必须含完整 triple，那是 `self_update` 的 `Release::asset_for` 按资产名
+> 匹配资产的要求；该库已由 `cargo-packager-updater` 取代，载荷 URL 来自 manifest，不按名字匹配。
+> 因此载荷现名为 `BongoCat-<version>-aarch64.app.tar.gz` / `BongoCat-<version>-x64.app.tar.gz`。
+> §5.2 那条"资产名必须包含完整 triple"的要求**已随旧库退役**，保留在正文里只作为历史对照。
 
 写作日期：2026-09-14。所有"已确认"结论均来自本机源码阅读，**没有执行过任何一次真实签名
 或真实更新**；未验证事项集中列在 §8。
@@ -559,7 +565,7 @@ BongoCat_1.1.0_x64.exe                      ← 现有名字，不含 triple
 
 | 平台 | 发布产物 | 相对现状新增 |
 | --- | --- | --- |
-| macOS | `.dmg`、`BongoCat-<ver>-<triple>.app.tar.gz`、`.app.tar.gz.sig` | +1（`.app.tar.gz` 替代原 `.app.zip`）+ 1 个 `.sig` |
+| macOS | `.dmg`、`BongoCat-<ver>-<arch>.app.tar.gz`、`.app.tar.gz.sig` | +1（`.app.tar.gz` 替代原 `.app.zip`）+ 1 个 `.sig` |
 | Windows | `BongoCat_<ver>_x64.exe`、`.exe.sig` | **仅 +1 个 `.sig`** |
 
 结论：**完全符合你的描述。** 注意 `cargo-packager` 的 `sign_outputs` 会连 `.dmg` 也一起签名
@@ -582,7 +588,7 @@ BongoCat_1.1.0_x64.exe                      ← 现有名字，不含 triple
    `runtime.rs` 的 `RELEASE_SIGNING_KEY`。
 3. **改 CI 的 macOS 归档步骤**（`.github/workflows/release.yml` 的
    `Package the bundle for publication`）：现在用 `ditto -c -k` 产的是 `.zip`，改成产
-   `BongoCat-$version-${{ matrix.triple }}.app.tar.gz`（归档根必须是 `BongoCat.app/`）。
+   `BongoCat-$version-${{ matrix.payload_arch }}.app.tar.gz`（归档根必须是 `BongoCat.app/`）。
 4. **加签名步骤**：在 upload 之前，解码私钥、`zipsign sign tar <归档> release.key`。
 5. **Windows**：需要额外决策——要么接受新增一个载荷归档并实现 `MoveAll` 多文件编排，
    要么放弃 Windows 自更新。
@@ -595,7 +601,7 @@ BongoCat_1.1.0_x64.exe                      ← 现有名字，不含 triple
 2. 在 `packaging_config` 之后、`verify_artifacts` 之前插入签名步骤：
    - 从环境变量读私钥（照 `BONGOCAT_MACOS_SIGNING_IDENTITY` 的先例）；
    - 未设置则跳过签名，并让发布流水线能断言"发布构建必须签过名"；
-   - 把 `.app` 打成 `BongoCat-<ver>-<triple>.app.tar.gz`（根目录 `BongoCat.app/`），
+   - 把 `.app` 打成 `BongoCat-<ver>-<arch>.app.tar.gz`（根目录 `BongoCat.app/`），
      把 Windows 安装器确认为 `BongoCat_<ver>_x64.exe`；
    - 对这两个文件调 `sign_file`，产出 `.sig`。
 3. 更新 `tools/tests/test_update_release_contract.py`，把"资产名必须含完整 triple"这条

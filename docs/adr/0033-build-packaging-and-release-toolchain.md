@@ -195,8 +195,8 @@ macOS 两种架构在同一个 runner 上构建，保证 SDK、工具链与配�
 
 1. ~~为更新流程产出按 target triple 命名的归档并接入 `zipsign`/`RELEASE_SIGNING_KEY`。~~
    已由 ADR-0034 取代：更新载荷改为共享 manifest 指向的
-   `BongoCat-<version>-<triple>.app.tar.gz` 与 NSIS 安装器，并用 detached minisign 签名；
-   `RELEASE_SIGNING_KEY` 已内嵌公钥。真实 GitHub 发布与安装链路仍需端到端验证。
+   `BongoCat-<version>-<arch>.app.tar.gz`（`aarch64` / `x64`）与 NSIS 安装器，并用 detached
+   minisign 签名；`RELEASE_SIGNING_KEY` 已内嵌公钥。真实 GitHub 发布与安装链路仍需端到端验证。
 2. `cargo-packager` 修复 DMG 后删除本项目第 4 条的偏离。
 3. 原生 Intel 机器与干净 Windows 10 1903+ / Windows 11 profile 上的安装、升级、
    卸载与回滚验证。
