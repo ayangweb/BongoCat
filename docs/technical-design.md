@@ -1208,9 +1208,11 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   标题匹配而不是按版本号搜索文本，因此正文里提到的版本、`###` 子标题和围栏代码块里的示例都不会
   被误当条目；版本在 changelog 里没有条目时提取直接失败，而不是发出一份描述别的版本的说明。
 
-- 更新载荷：macOS 为已完成的 `.app` 打包成的 `BongoCat-<version>-<triple>.app.tar.gz`
-  （归档根必须是 `BongoCat.app/`，库会丢弃根条目再装到 bundle 路径）；Windows 复用已发布的
-  NSIS 安装器 `BongoCat_<version>_x64.exe`。`.dmg` 不是更新载荷——它是人工安装路径。
+- 更新载荷：macOS 为已完成的 `.app` 打包成的 `BongoCat-<version>-<arch>.app.tar.gz`，
+  架构段是 `aarch64` / `x64`（归档根必须是 `BongoCat.app/`，库会丢弃根条目再装到 bundle 路径）；
+  Windows 复用已发布的 NSIS 安装器 `BongoCat_<version>_x64.exe`。载荷名不带 target triple：
+  该文件只可能出现在它所属的那个平台上，重复平台后缀对读者和 updater 都没有信息量，而扩展名
+  已经足以区分它和 Windows 安装器。`.dmg` 不是更新载荷——它是人工安装路径。
   签名是打包流程的最后一步：minisign 签名覆盖发布时的确切字节，签名后不得改名、重压缩或 strip。
 - 传输与安装由库承担，启用 Rustls 与 HTTPS；库的 `reqwest` 后端不启用。安装位置：macOS 由库从
   运行中的可执行文件推导其所属 `.app` 并整包替换；Windows 由库运行下载到的安装器

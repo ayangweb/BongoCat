@@ -21,6 +21,7 @@
 - Mouse tracking can also be flipped vertically.
 - Logs have an adjustable level and retention, and old logs are cleaned up automatically.
 - Window shortcuts and model-behaviour shortcuts have separate switches.
+- Release notes now also list where to download each build, where to find more models, and who sponsors the project.
 
 ### 🎨 Interface
 

@@ -99,12 +99,19 @@ job 只能声明自己产出的载荷；发布前由同一个工具用 `--merge-
 
 | target | 更新载荷 | 签名 |
 | --- | --- | --- |
-| `aarch64-apple-darwin` / `x86_64-apple-darwin` | `BongoCat-<version>-<triple>.app.tar.gz`，归档根为 `BongoCat.app/` | `.app.tar.gz.sig` |
+| `aarch64-apple-darwin` / `x86_64-apple-darwin` | `BongoCat-<version>-<arch>.app.tar.gz`（`aarch64` / `x64`），归档根为 `BongoCat.app/` | `.app.tar.gz.sig` |
 | `x86_64-pc-windows-msvc` | 已发布的 NSIS 安装器 `BongoCat_<version>_x64.exe` | `.exe.sig` |
 
 macOS 的归档由 `crates/bongocat-packaging` 用 `tar` + `flate2` 从已完成的 `.app` 生成，
 `follow_symlinks(false)` 保留 bundle 内部链接。库在 `UpdateFormat::App` 下丢弃归档的根条目
 再把其余内容装到 bundle 路径，所以归档根**必须**是 `BongoCat.app/`。
+
+- 补充（2026-09-28）：载荷名里的 target triple 去掉了。macOS 载荷曾经叫
+  `BongoCat-<version>-aarch64-apple-darwin.app.tar.gz`，现在叫
+  `BongoCat-<version>-aarch64.app.tar.gz`（Intel 侧是 `x64`）。去掉平台后缀不削弱本 ADR 的
+  任何一条结论：载荷由 manifest 的 URL 指定，库不按资产名匹配，所以命名只需稳定且可读；
+  而该文件只可能出现在它所属的平台上，重复平台名对读者没有信息量，扩展名也已经把它和 Windows
+  安装器区分开。Homebrew tap 的 cask 从同一行 `url` 读名字，因此不需要单独同步。
 
 `.dmg` **不是**更新载荷：它是人工安装路径（拖入 `/Applications`），库没有安装它的能力。
 
