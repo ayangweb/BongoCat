@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+WORKFLOW = ROOT / ".github" / "workflows" / "verify.yml"
 
 
 class FailureEvidenceWorkflowTests(unittest.TestCase):
