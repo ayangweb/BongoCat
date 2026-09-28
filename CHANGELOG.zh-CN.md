@@ -34,6 +34,6 @@
 
 ### 💻 支持范围变化
 
-- 支持 Windows 10 1903+（x64）和 macOS 12+（Intel/Apple 芯片）。
+- 支持 Windows 10 1903+（x64）和 macOS 12+（Intel/Apple Silicon）。
 - Windows ARM 可通过仿真运行 x64 版本。
 - **不再提供 Windows x86、Windows ARM64 和 Linux 构建。**

@@ -79,6 +79,9 @@ release workflow 用它校验 tag 与版本一致，不再出现"脚本一个版
 
 ### 4. `.dmg` 由操作系统磁盘映像工具产出（有明确退出条件的偏离）
 
+> 2026-09-29 补充：Finder 窗口布局与卷图标由 ADR-0075 决定，本条只负责"镜像由
+> 操作系统磁盘映像工具产出"这件事本身。
+
 `cargo-packager` 0.11.8 的 DMG 实现依赖 `create-dmg` 在 2022 年的固定提交
 `28867ba`，该脚本在当前 macOS 上**无法完成 DMG 构建**。它用
 
@@ -112,7 +115,8 @@ DMG 压缩格式选 `ULMO`（LZFSE）而不是默认的 `UDZO`（zlib）。`UDZO
 `ULMO` 是 Apple 的只读压缩格式，支持版本远早于产品声明的 macOS 12 下限。
 
 **退出条件**：`cargo-packager` 换用可在当前 macOS 工作的 `create-dmg` revision 后，
-改回 `PackageFormat::Dmg` 并删除这段代码。
+改回 `PackageFormat::Dmg` 并删除这段代码（窗口布局与卷图标的部分由 ADR-0075 补充，同样
+在这条退出条件下一并删除）。
 
 ### 5. Release workflow 由项目自己描述，原生 runner 构建
 
@@ -172,7 +176,8 @@ macOS 两种架构在同一个 runner 上构建，保证 SDK、工具链与配�
 2. **DMG 外观布局**：`cargo-packager` 的 `create-dmg` 路径会在挂载后调用 Finder
    AppleScript 排列图标，需要一次"自动化控制 Finder"授权；`CI=true` 时它会传
    `--skip-jenkins` 跳过。本项目已不经过该路径，因此不受影响；如将来恢复该路径，
-   必须重新评估无人值守环境。
+   必须重新评估无人值守环境。本项目自己的窗口布局同样不经过 Finder（ADR-0075
+   决策第 1 条：构建期直接写 `.DS_Store`），所以这条风险对当前实现不适用。
 3. **`x86_64-apple-darwin` 产物在 CI 中不被原生执行**：CI 交叉编译并校验两种架构的
    bundle 结构，但只在宿主架构上运行应用。原生 Intel 机器上的运行验证仍是独立门禁。
 4. **Windows 端到端未在本机验证**：Windows 安装器只能在 Windows runner 上验证，
@@ -181,7 +186,7 @@ macOS 两种架构在同一个 runner 上构建，保证 SDK、工具链与配�
 ## 验证
 
 - `just build` 在本机（macOS 26.5 / aarch64）产出 `BongoCat.app` 与
-  `BongoCat-<version>-arm64.dmg`；`plutil` 断言 bundle id、`LSMinimumSystemVersion`、
+  `BongoCat-<version>-aarch64.dmg`；`plutil` 断言 bundle id、`LSMinimumSystemVersion`、
   `LSMultipleInstancesProhibited`、版本号；`codesign --verify --deep --strict` 通过；
   `.app` 内含 `Contents/Resources/models/{standard,keyboard,gamepad}` 与
   `Contents/Resources/build-provenance.json`。

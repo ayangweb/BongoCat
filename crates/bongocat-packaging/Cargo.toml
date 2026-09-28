@@ -11,9 +11,11 @@ publish.workspace = true
 [dependencies]
 cargo-packager.workspace = true
 flate2.workspace = true
+plist.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tar.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

@@ -36,7 +36,7 @@ cargo run --manifest-path tools/cubism-bindgen/Cargo.toml --locked -- \
   --header /absolute/path/outside/repository/Live2DCubismCore.h \
   --expected-header-sha256 <64-hex-digest> \
   --target aarch64-apple-darwin \
-  --output-directory /absolute/new/path/outside/repository/cubism-bindings-arm64
+  --output-directory /absolute/new/path/outside/repository/cubism-bindings-aarch64
 ```
 
 The tool refuses repository-local licensed headers and output, refuses an

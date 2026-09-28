@@ -213,9 +213,9 @@ minisign 改名后技术上仍可验证通过（代价是丢掉了文件名绑�
 
 | 产物 | `detect_archive()` 结果 | 能否 zipsign 签名 |
 | --- | --- | --- |
-| `BongoCat-1.1.0-aarch64-apple-darwin.app.tar.gz` | `Tar(Gz)` | ✅ |
+| `BongoCat-1.1.0-aarch64.app.tar.gz` | `Tar(Gz)` | ✅ |
 | `BongoCat-1.1.0-...app.zip` | `Zip` | ✅ |
-| `BongoCat-1.1.0-arm64.dmg` | `Plain(None)` | ❌ `NoSignatures` |
+| `BongoCat-1.1.0-aarch64.dmg` | `Plain(None)` | ❌ `NoSignatures` |
 | `BongoCat_1.1.0_x64.exe` | `Plain(None)` | ❌ `NoSignatures` |
 
 再叠加一条：**`.dmg` 本来也不该作为更新产物**。它是人工安装路径（拖进 `/Applications`），
@@ -519,6 +519,13 @@ if keys.is_empty() {
 
 ### 5.2 资产命名要求（决定客户端能不能找到）
 
+> 现状（2026-09-28）：本节描述的是 Tauri `self_update` 的资产匹配规则，已随 Tauri 退役。
+> 当前运行时用 `cargo-packager-updater`，载荷从 `latest.json` 的**平台键**
+> （`macos-aarch64` / `macos-x86_64` / `windows-x86_64`）取出，**不再按资产名匹配**，所以
+> 资产名里既不需要也不应该有 target triple。名称规则现在是：每个 target 一个架构标记
+> （Rust target architecture，即 `aarch64` / `x64`），同一个 target 的磁盘镜像与归档共用它。
+> 唯一定义在 `ReleaseTarget::architecture`。下面保留 `self_update` 的原始分析供考古。
+
 `self_update` 的 `Release::asset_for` 先用**完整 target triple**匹配资产名，失败后退化为
 `arch` + `os` 标记（`arch` = triple 首段，`os` ∈ `darwin`/`windows`/…）。注意
 **`bin_name` 不参与资产名匹配**。
@@ -588,7 +595,7 @@ BongoCat_1.1.0_x64.exe                      ← 现有名字，不含 triple
    `runtime.rs` 的 `RELEASE_SIGNING_KEY`。
 3. **改 CI 的 macOS 归档步骤**（`.github/workflows/release.yml` 的
    `Package the bundle for publication`）：现在用 `ditto -c -k` 产的是 `.zip`，改成产
-   `BongoCat-$version-${{ matrix.payload_arch }}.app.tar.gz`（归档根必须是 `BongoCat.app/`）。
+   `BongoCat-$version-${{ matrix.arch }}.app.tar.gz`（归档根必须是 `BongoCat.app/`）。
 4. **加签名步骤**：在 upload 之前，解码私钥、`zipsign sign tar <归档> release.key`。
 5. **Windows**：需要额外决策——要么接受新增一个载荷归档并实现 `MoveAll` 多文件编排，
    要么放弃 Windows 自更新。

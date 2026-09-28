@@ -3,7 +3,7 @@
 状态：已被 ADR-0034 取代（2026-09-14）
 取代：ADR-0021、ADR-0022、ADR-0025、ADR-0026
 
-> 后续修订（2026-09-23）：ADR-0033/ADR-0034 已把历史“四个 target”收口为 Windows x64、macOS arm64 与 macOS x64；本文的 `self_update`、zipsign、四目标和相应验证记录只作历史。
+> 后续修订（2026-09-23）：ADR-0033/ADR-0034 已把历史“四个 target”收口为 Windows x64、macOS aarch64 与 macOS x64；本文的 `self_update`、zipsign、四目标和相应验证记录只作历史。
 
 > **本文已失效，正文保留为历史记录。**
 >

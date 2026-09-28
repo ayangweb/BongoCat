@@ -23,6 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGER = ROOT / "crates" / "bongocat-packaging" / "src" / "main.rs"
+FINDER_STORE = ROOT / "crates" / "bongocat-packaging" / "src" / "finder_store.rs"
 PACKAGER_MANIFEST = ROOT / "crates" / "bongocat-packaging" / "Cargo.toml"
 JUSTFILE = ROOT / "justfile"
 MACOS_INFO = ROOT / "macos" / "Info.plist"
@@ -109,6 +110,182 @@ class PackagingTargetTests(unittest.TestCase):
                 self.assertIn(uploaded, workflow)
         self.assertNotIn("-setup", workflow, "the published installer drops the packaging suffix")
 
+    def test_release_jobs_and_the_release_notes_call_a_machine_the_same_thing(self):
+        # A reader sees these in two places: the checks list on the tag and the
+        # download block on the release page. They used to disagree on every
+        # macOS job, and the two rows of that block used two words for the same
+        # chip, so the same machine was named four ways in one release.
+        workflow = read(RELEASE_WORKFLOW)
+        packager = read(PACKAGER)
+
+        self.assertIn("name: Build Windows x64", workflow)
+        self.assertIn("name: Build macOS ${{ matrix.label }}", workflow)
+        self.assertNotIn("Build macOS ${{ matrix.triple }}", workflow)
+        for label in ("Apple Silicon", "Intel"):
+            with self.subTest(label=label):
+                self.assertIn(f"- label: {label}", workflow)
+        # The exact strings the two locales assign, rather than a search for a
+        # misspelling anywhere in the file: the reasoning next to the constants
+        # names the rejected spellings on purpose.
+        for assigned in (
+            'windows_label: "Windows 10+"',
+            'windows_architecture_label: "x64"',
+            'apple_silicon_label: "Apple Silicon"',
+            'intel_label: "Intel"',
+        ):
+            with self.subTest(assigned=assigned):
+                self.assertEqual(packager.count(assigned), 2, f"both locales must assign {assigned}")
+        for rejected in (
+            'windows_label: "Windows 10 1903+"',
+            'apple_silicon_label: "Apple silicon"',
+            'apple_silicon_label: "Apple 芯片"',
+            'intel_label: "Intel 芯片"',
+        ):
+            with self.subTest(rejected=rejected):
+                self.assertNotIn(rejected, packager)
+
+    def test_every_release_job_is_named_by_the_action_it_performs(self):
+        # The checks list stacks this workflow's jobs next to the other workflows'
+        # and the reader scans them as one column. Three jobs reading `Windows x64`,
+        # `macOS Apple Silicon`, `macOS Intel` next to `Publish the GitHub release`
+        # reads as two different naming schemes, and the publish job is the one that
+        # is out of step. So every job is verb-first, and the object is
+        # `<platform> <chip>`.
+        #
+        # The verb names the action, never the artifact: this workflow's Windows
+        # target publishes an installer and its macOS targets publish a bundle and a
+        # disk image, so naming either in the job name would make the three read as
+        # three different products. A reader who needs the file follows the download
+        # link in the release notes.
+        workflow = read(RELEASE_WORKFLOW)
+        names = re.findall(r"^  \S+:\n    name: (.+)$", workflow, re.MULTILINE)
+        self.assertEqual(len(names), 3, f"expected three jobs, got {names}")
+        for name in names:
+            with self.subTest(job=name):
+                self.assertRegex(
+                    name,
+                    r"^(Build|Publish) \S+",
+                    "every job name is a verb followed by what it acts on",
+                )
+        for absent in ("App", "app.tar.gz", "apple-darwin"):
+            self.assertNotIn(
+                absent,
+                "".join(names),
+                "a job name must not carry an artifact name or a target triple",
+            )
+
+    def test_a_step_named_require_actually_fails_the_build(self):
+        # A step called "Require X" that only warns is worse than no name at all:
+        # a maintainer scanning a green log reads it as proof X was enforced. The
+        # update-signing gate really does exit 1; the Authenticode step cannot,
+        # because CI has no certificate configured, so it is named for what it does.
+        workflow = read(RELEASE_WORKFLOW)
+
+        enforcing = re.findall(r"- name: (Require [^\n]+)\n(.*?)(?=\n      - )", workflow, re.DOTALL)
+        self.assertTrue(enforcing, "the release must keep a real signing gate")
+        for name, body in enforcing:
+            with self.subTest(step=name):
+                self.assertTrue(
+                    "exit 1" in body,
+                    f"{name} does not fail the build, so it must not be named Require",
+                )
+
+        reporting = re.search(
+            r"- name: (Report Authenticode[^\n]+)\n(.*?)(?=\n      - )", workflow, re.DOTALL
+        )
+        self.assertIsNotNone(reporting, "the Authenticode step must say it reports")
+        self.assertIn("::warning::", reporting.group(2))
+        self.assertNotIn("exit 1", reporting.group(2))
+        self.assertNotIn("Authenticode signatures for a stable release\"", workflow)
+
+    def test_both_build_jobs_name_the_build_step_the_same_way(self):
+        # The two jobs run the same operation on different machines, and the
+        # product vocabulary differs downstream (installer vs bundle and disk
+        # image) because the artifacts really do. Naming that difference here too
+        # made one step read as two unrelated steps; the Verify steps below already
+        # say what each target produced.
+        workflow = read(RELEASE_WORKFLOW)
+        builds = re.findall(r"- name: (Build the Production product[^\n]+)", workflow)
+        self.assertEqual(len(builds), 2, f"expected one build step per job, got {builds}")
+        self.assertEqual(len(set(builds)), 1, f"the build steps must read identically: {builds}")
+
+    def test_every_release_artifact_is_keyed_by_the_architecture_token(self):
+        # The job a reader sees on the tag is named by chip, but the uploaded
+        # artifact is the key `download-artifact` matches on, and the macOS leg
+        # still interpolated the raw triple there — so one release produced job
+        # names reading `macOS Apple Silicon` next to an artifact called
+        # `release-macos-aarch64-apple-darwin`.
+        workflow = read(RELEASE_WORKFLOW)
+        for key in (
+            "name: release-windows-x64",
+            "name: release-macos-${{ matrix.arch }}",
+        ):
+            with self.subTest(key=key):
+                self.assertIn(key, workflow)
+
+        # Every `release-*` key is `<os>-<arch>`, never a triple. Match to the end of
+        # the line so a `${{ matrix.* }}` interpolation is captured whole rather than
+        # truncated at its first space, which would make the check pass vacuously.
+        keys = re.findall(r"^\s*name: (release-\S.*?)\s*$", workflow, re.MULTILINE)
+        self.assertEqual(len(keys), 2, f"expected two release artifact keys, got {keys}")
+        for key in keys:
+            with self.subTest(key=key):
+                self.assertNotIn("apple-darwin", key)
+                self.assertNotIn("pc-windows-msvc", key)
+        self.assertNotIn("release-macos-${{ matrix.triple }}", workflow)
+        # The Windows leg has no matrix, so its `x64` is written out. It has to be
+        # the same token `ReleaseTarget::architecture` returns for that target.
+        self.assertIn(
+            'Self::WindowsX86_64 => "x64",',
+            read(PACKAGER),
+            "the Windows artifact key must be the target's own architecture token",
+        )
+
+    def test_the_published_changelogs_call_a_chip_by_one_name(self):
+        # The changelog entry is fed verbatim into the release body and into the
+        # in-app update window, so a chip spelled one way there and another in the
+        # generated download block puts two names for one machine in one document.
+        # The 2.0.0 entry said "Intel/Apple silicon" in English and
+        # "Intel/Apple 芯片" in Chinese, next to an appendix that says
+        # "Apple Silicon".
+        for name in ("CHANGELOG.md", "CHANGELOG.zh-CN.md"):
+            with self.subTest(changelog=name):
+                changelog = read(ROOT / name)
+                for rejected in ("Apple silicon", "Apple 芯片", "Intel 芯片"):
+                    self.assertNotIn(rejected, changelog)
+                self.assertIn("Apple Silicon", changelog)
+
+    def test_every_macos_artifact_is_named_after_the_same_architecture_token(self):
+        # The disk image, the bundle archive and the manifest key of one machine used
+        # to spell its architecture three ways: `arm64.dmg`, `aarch64.app.tar.gz` and
+        # `macos-aarch64`. The release notes link the first and the updater installs
+        # the second, so a drift between them is a download link to an asset the
+        # release never uploads, and the build stays green.
+        packager = read(PACKAGER)
+        token = re.search(r"const fn architecture\(self\).*?\n        \}", packager, re.DOTALL)
+        self.assertIsNotNone(token, "ReleaseTarget::architecture must declare the token")
+        self.assertIn('Self::MacosAarch64 => "aarch64"', token.group(0))
+        self.assertNotIn("arm64", token.group(0), "the published token is aarch64")
+
+        # Both published macOS names and the fragment name are built from that one
+        # token, so the workflow can assert them from a single matrix value.
+        for built in (
+            '"{PRODUCT_NAME}-{}-{}.dmg"',
+            '"{PRODUCT_NAME}-{}-{}.app.tar.gz"',
+            'format!("{}{UPDATE_FRAGMENT_SUFFIX}", target.manifest_platform())',
+        ):
+            with self.subTest(built=built):
+                self.assertIn(built, packager)
+
+        workflow = read(RELEASE_WORKFLOW)
+        for built in (
+            "BongoCat-$version-${{ matrix.arch }}.dmg",
+            "BongoCat-$version-${{ matrix.arch }}.app.tar.gz",
+        ):
+            with self.subTest(built=built):
+                self.assertIn(built, workflow)
+        self.assertNotIn("matrix.payload_arch", workflow)
+
 
 class WindowsProductIconTests(unittest.TestCase):
     """The shipped executable has to carry the product icon where GPUI reads it.
@@ -192,6 +369,122 @@ class MacosBundleTests(unittest.TestCase):
         self.assertIn("fn build_disk_image(", source)
         self.assertIn('Command::new("hdiutil")', source)
         self.assertIn('symlink("/Applications"', source)
+
+    def test_disk_image_declares_the_window_the_installer_opens_with(self):
+        # The width and the origin are Tauri v2's documented `bundle.macOS.dmg`
+        # defaults; the height and the icon and label sizes are sized for the three
+        # items this product puts in the window. See ADR-0075 and ADR-0076.
+        source = read(PACKAGER)
+        layout = read(FINDER_STORE)
+        for value in (
+            "width: 660",
+            "height: 420",
+            "origin: (10, 60)",
+            "icon_size: 96",
+            "text_size: 13",
+        ):
+            with self.subTest(value=value):
+                self.assertIn(value, layout)
+
+        # The three items, and the inverted triangle they are arranged in.
+        for value in (
+            "finder_store::Item::new(&bundle_name, 175, 110)",
+            "finder_store::Item::new(APPLICATIONS_LINK, 485, 110)",
+            "finder_store::Item::new(REPAIR_COMMAND, 330, 255)",
+        ):
+            with self.subTest(value=value):
+                self.assertIn(value, source)
+
+        self.assertIn("mod finder_store;", source)
+        self.assertIn("finder_store::window(", source)
+        # The layout is written into the volume, not arranged by Finder: driving
+        # Finder needs a graphical session and an Automation consent prompt,
+        # which an unattended release job does not have. The one AppleScript call
+        # in this crate is the shipped repair script closing its own window, so
+        # the invariant is that the build runs none.
+        self.assertNotIn('Command::new("osascript")', source)
+        self.assertNotIn("osascript", layout)
+
+    def test_disk_image_carries_a_repair_command_for_the_installed_copy(self):
+        # A downloaded, unnotarized bundle carries the quarantine attribute
+        # Gatekeeper puts on downloads, and removing it needs a password typed
+        # into a terminal, so the installer ships that as a command script
+        # rather than leaving the reader with a manual command to look up.
+        source = read(PACKAGER)
+        self.assertIn('const REPAIR_COMMAND: &str = "Fix Damaged App";', source)
+        self.assertIn("fn repair_command(app_name: &str) -> String", source)
+        # Both forms, because macOS 15 rejects the recursive one.
+        self.assertIn("sudo xattr -r -d com.apple.quarantine", source)
+        self.assertIn("sudo xattr -d com.apple.quarantine", source)
+        # Nothing here may weaken the machine: the reference tools this one is
+        # modelled on also switch Gatekeeper off system-wide.
+        self.assertNotIn("spctl", source)
+        # It only repairs; re-signing is reported as a manual command instead.
+        self.assertIn("sudo codesign --force --deep --sign -", source)
+
+    def test_the_repair_command_says_what_to_do_when_there_is_nothing_to_repair(self):
+        # A reader who has not installed the app yet should be told to install
+        # it, not told there is nothing wrong: the two states are told apart, and
+        # neither asks for a password it does not need.
+        source = read(PACKAGER)
+        for value in (
+            'if [ ! -d "$app_dir" ]; then',
+            "Drag {app_name} from this disk image into Applications first, then run",
+            "Either that copy is already repaired, or it is not the copy from this",
+            "onto Applications, replacing the copy that is there, then run this again",
+        ):
+            with self.subTest(value=value):
+                self.assertIn(value, source)
+        # The password is only asked for on the branch that needs it.
+        self.assertLess(
+            source.index("if ! xattr -p com.apple.quarantine"),
+            source.index("Enter your Mac login password when asked"),
+        )
+
+    def test_the_repair_command_closes_the_window_it_ran_in(self):
+        # Terminal leaves the window open when the command finishes, so the
+        # prompt's promise is kept by the script. The close waits a second
+        # because Terminal asks before terminating a running process, and it
+        # matches the window by tty and title so a shell in use is not closed.
+        source = read(PACKAGER)
+        for value in (
+            '"${{TERM_PROGRAM:-}}" = "Apple_Terminal"',
+            "Press Enter to close this window...",
+            "sleep 1",
+            "first window whose tty is",
+            "and name contains",
+        ):
+            with self.subTest(value=value):
+                self.assertIn(value, source)
+        # `tty` has to be read in the foreground: bash hands a background job
+        # /dev/null as its input, and `tty` then answers "not a tty" instead of
+        # naming the window. That is the version that silently never closes
+        # anything, and it is invisible to a stubbed run.
+        start = source.index("fn repair_command(app_name: &str) -> String {")
+        command = source[start : source.index("\n}\n", start)]
+        self.assertIn("this_tty=$(tty)", command)
+        self.assertLess(
+            command.index("this_tty=$(tty)"),
+            command.index("\n    ) &\n"),
+            "the tty has to be read before the close is put in the background",
+        )
+
+    def test_disk_image_gives_the_volume_the_application_icon(self):
+        # Finder reads a volume's own icon from `.VolumeIcon.icns` plus a file
+        # attribute on the mounted volume, so the image is built writable and
+        # converted afterwards. See ADR-0075.
+        source = read(PACKAGER)
+        self.assertIn('const VOLUME_ICON_FILE: &str = ".VolumeIcon.icns";', source)
+        self.assertIn("const MACOS_ICON: &str = \"icons/logo-macos.icns\";", source)
+        self.assertIn('args(["-c", "icnC"])', source)
+        self.assertIn('args(["-a", "C"])', source)
+        self.assertIn('args(["-ov", "-format", "UDRW"])', source)
+        self.assertIn('args(["-format", "ULMO", "-o"])', source)
+        # A failed build must not leave the volume mounted, and a mount inside
+        # the build tree leaks a filesystem-events journal into the artifact.
+        self.assertIn("struct MountedImage", source)
+        self.assertIn("impl Drop for MountedImage", source)
+        self.assertIn("tempfile::TempDir::new()", source)
 
 
 class BuildEntryPointTests(unittest.TestCase):
