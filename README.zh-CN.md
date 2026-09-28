@@ -1,4 +1,4 @@
-![BongoCat](https://socialify.git.ci/ayangweb/BongoCat/image?custom_language=Rust&font=JetBrains+Mono&forks=1&issues=1&language=1&logo=https%3A%2F%2Fi0.hdslb.com%2Fbfs%2Fopenplatform%2F8b37066049da62a8e6d105363472ef72fe2e435b.png&name=1&owner=1&pulls=1&stargazers=1&theme=Auto)
+![BongoCat](https://socialify.git.ci/ayangweb/BongoCat/image?font=JetBrains+Mono&forks=1&issues=1&language=1&logo=https%3A%2F%2Fi0.hdslb.com%2Fbfs%2Fopenplatform%2F8b37066049da62a8e6d105363472ef72fe2e435b.png&name=1&owner=1&pattern=Brick+Wall&pulls=1&stargazers=1&theme=Auto)
 
 <div align="center">
 
