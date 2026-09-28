@@ -31,16 +31,13 @@
   </p>
 </div>
 
-| macOS                                                                                        | Windows                                                                                        |
-| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| macOS | Windows |
+| --- | --- |
 | ![macOS](https://i0.hdslb.com/bfs/openplatform/dff276b96d49c5d6c431b74b531aab72191b3d87.png) | ![Windows](https://i0.hdslb.com/bfs/openplatform/a4149b753856ee7f401989da902cf3b5ad35b39e.png) |
 
-BongoCat 是一款面向 Windows 和 macOS 的桌面陪伴应用。一只 Live2D 小猫住在你的屏幕上，眼神和爪子会
-跟着鼠标移动，你按下的每个按键、鼠标键和手柄按键它都会有反应。你可以换上自己的模型，把窗口拖到任何
-位置，需要的时候它就安静地待在一边。
+BongoCat 是一款面向 Windows 和 macOS 的桌面陪伴应用。一只 Live2D 小猫住在你的屏幕上，眼神和爪子会跟着鼠标移动，你按下的每个按键、鼠标键和手柄按键它都会有反应。你可以换上自己的模型，把窗口拖到任何位置，需要的时候它就安静地待在一边。
 
-灵感来自 [MMmmmoko](https://github.com/MMmmmoko) 的
-[Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)。
+灵感来自 [MMmmmoko](https://github.com/MMmmmoko) 的 [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)。
 
 ## 功能介绍
 
@@ -52,8 +49,7 @@ BongoCat 是一款面向 Windows 和 macOS 的桌面陪伴应用。一只 Live2D
 
 ## 更多模型
 
-你可以在 [Awesome-BongoCat](https://github.com/ayangweb/Awesome-BongoCat) 里浏览、下载更多猫咪
-模型，或分享自己的创作。
+你可以在 [Awesome-BongoCat](https://github.com/ayangweb/Awesome-BongoCat) 里浏览、下载更多猫咪模型，或分享自己的创作。
 
 ## 社区交流
 
@@ -120,8 +116,7 @@ BongoCat 是一款面向 Windows 和 macOS 的桌面陪伴应用。一只 Live2D
 
 ## 贡献指南
 
-感谢大家为 BongoCat 做出的贡献！如果也希望为 BongoCat 添砖加瓦，请查阅
-[贡献指南](CONTRIBUTING.zh-CN.md)。
+感谢大家为 BongoCat 做出的贡献！如果也希望为 BongoCat 添砖加瓦，请查阅[贡献指南](CONTRIBUTING.zh-CN.md)。
 
 <a href="https://openomy.com/ayangweb/BongoCat" target="_blank" style="display: block; width: 100%;" align="center">
   <img src="https://openomy.com/svg?repo=ayangweb/BongoCat&chart=bubble" alt="贡献者排行榜" style="display: block; width: 100%;" />

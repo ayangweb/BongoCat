@@ -31,8 +31,8 @@ English | [简体中文](README.zh-CN.md)
   </p>
 </div>
 
-| macOS                                                                                        | Windows                                                                                        |
-| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| macOS | Windows |
+| --- | --- |
 | ![macOS](https://i0.hdslb.com/bfs/openplatform/dff276b96d49c5d6c431b74b531aab72191b3d87.png) | ![Windows](https://i0.hdslb.com/bfs/openplatform/a4149b753856ee7f401989da902cf3b5ad35b39e.png) |
 
 BongoCat is a desktop companion for Windows and macOS. A Live2D cat lives on your screen, its eyes
