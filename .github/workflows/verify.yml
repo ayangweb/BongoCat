@@ -1,24 +1,16 @@
 name: Verify
 
 on:
+  # Pull requests only.
+  #
+  # A `push: master` trigger was tried, so the base branch's cache scope would be
+  # filled and pull requests could restore from it. It did not pay off: the
+  # repository's 10 GB cache budget was already over (10.69 GB across 26
+  # entries), so the two largest entries were evicted as newer ones were written
+  # and the master scope never held them. Pull requests were cold either way, and
+  # the extra run after every merge only read as a second, unexplained
+  # verification. See ADR-0074 for the measurement.
   pull_request:
-  # This is not about verifying master: a pull request has to pass before it
-  # merges, so master is already verified. It is here because GitHub scopes
-  # caches by ref. A pull_request run may only restore caches created on its base
-  # branch, and what it writes lands in `refs/pull/<n>/merge`, which no later run
-  # reads. Measured on three consecutive runs of one pull request: the first
-  # reported `Cache not found` and took 16.9 minutes, the third restored a cache
-  # and took 2.9. So caches are reused within a pull request but never across
-  # them, and without a run on master no pull request can ever start warm. It
-  # also keeps the 10 GB repository budget from filling up with the 7-9 GB of
-  # dead cache each merged pull request leaves behind.
-  push:
-    branches:
-      - master
-
-  # The escape hatch for "I do not believe the documentation filter skipped
-  # enough". Nothing in the pipeline depends on this trigger.
-  workflow_dispatch:
 
 # A superseded run on the same ref can only burn runner minutes: its result is
 # replaced by the next push.

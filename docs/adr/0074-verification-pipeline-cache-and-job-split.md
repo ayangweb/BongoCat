@@ -24,33 +24,40 @@
 
 ## 决策
 
-### 1. `verify.yml` 同时在 `pull_request` 与 `master` push 上运行
+### 1. 只在 `pull_request` 上运行；master push 与手动触发都不保留
 
-**master 的运行不是为了验证 master。** PR 必须通过才能合并，因此 master 上的代码必然已经
-验证过，再跑一遍在验证上是冗余的。它存在的唯一理由是产生 PR 读得到的缓存。
+这一条是**先加上、实测无效、再撤掉**的，过程本身是结论的一部分。
 
-GitHub 的 cache 按 ref 分域，PR 只能读取基线分支（`refs/heads/master`）与自己
-（`refs/pull/<n>/merge`）的条目。合并后该 PR 的条目就留在一个此后无人读取的作用域里。
-实测（`docs/refresh-readme-status-bar` 的三次连续运行）：
+最初加 `push: master` 的理由不是验证 master（PR 必须通过才能合并，那在验证上是冗余的），
+而是缓存：GitHub 的 cache 按 ref 分域，PR 只能读基线分支（`refs/heads/master`）与自己
+（`refs/pull/<n>/merge`）的条目，合并后该 PR 的条目就留在一个此后无人读取的作用域里。
+同一 PR 内部的复用确实有效——`docs/refresh-readme-status-bar` 的三次连续运行里，
+第 1 次 `Cache not found`、`macos-spikes` 16.9 分钟，第 3 次 `Cache restored from key`、
+2.9 分钟——但**跨 PR 无效**，而开发者等待的正是每个新 PR 的第一次运行。
 
-| 运行 | cache 状态 | `macos-spikes` 耗时 |
+**但它没有兑现。** 加了 master 触发之后实测：
+
+| 运行 | `Test workspace (windows)` | 原因 |
 | --- | --- | --- |
-| 该 PR 第 1 次 | `Cache not found` | 16.9 分钟 |
-| 该 PR 第 3 次 | `Cache restored from key` | 2.9 分钟 |
+| 某 PR 的第 2 次（同 PR 作用域有缓存） | 6.4 分钟 | 热 |
+| master push | 19.0 分钟 | master 作用域缺该条目 |
+| 下一个新 PR 的第 1 次 | 19.0 分钟 | 冷 |
 
-即**同一 PR 内部复用有效**（省 14 分钟），**跨 PR 无效**。而开发者等待的正是每个新 PR 的
-第一次运行。没有 master 上的运行，就永远不存在 PR 能读到的作用域，仓库里 20 条 cache
-记录全部挂在 `refs/pull/*/merge`、没有一条在 `master`，就是这一点的直接证据。
+仓库 cache 预算 10 GB，实际占用 **10.69 GB（26 条）**，已超。GitHub 在写入新条目时按 LRU
+逐出，被挤掉的恰好是最大的两条——`Windows-workspace` 1.88 GB 与 `macOS-workspace`
+1.72 GB——它们在 master 作用域里**根本不存在**。而且每个打开的 PR 都会在自己作用域里存一
+整套 master 的副本，占用 ≈ `(1 + PR 数) × 单套大小`，所以同时开两个 PR 就必然再次超预算。
+PR #1061 的 `product-smoke` 日志直接写了 `Cache not found`，尽管 master 作用域里那条
+`Windows-product` 存在：两次运行并发，master 那次还没写完。
 
-这同时解决第二个问题：每个合并的 PR 会在 10 GB 预算里留下 7–9 GB 死条目（Windows 与
-macOS 的 `target/` 各约 3.2 GB，加上 spikes），三条 PR 就占满预算并把其余条目 LRU 挤掉。
-master 键每次运行都被访问，能稳定留在预算里，死条目则被自然淘汰。
+也就是说 master 触发**从未真正交付过预热**，只是让每次合并后多出一轮看起来莫名其妙的验证。
+维护者据此决定撤掉它，接受 PR 冷跑约 20 分钟。`workflow_dispatch` 一并去掉。
 
-代价是每次合并后 master 多消耗一次完整套件的 runner 分钟。该代价由维护者明确接受，且
-不进入任何 PR 的等待时间。
+保留的：`concurrency` + `cancel-in-progress`，同一 PR 上被后续 push 取代的运行不必烧分钟。
 
-同一 ref 上被取代的运行用 `concurrency` + `cancel-in-progress` 取消：它的结果必然被下一
-次 push 覆盖。
+`tools/tests/test_verify_documentation_filter.py` 断言解析出的触发事件**恰好只有
+`pull_request`**——它读的是 YAML 解析结果而不是文件文本，所以记录这段历史的注释可以照常
+提到 `push`。将来若要重新加回，必须是一个有意识的决定。
 
 ### 2. `Test workspace` 拆成四个作业，按产物而非按平台切分
 
@@ -177,25 +184,26 @@ check，Linux 上的一份是严格子集，从 `contract-spikes` 的矩阵里�
 
 ## 影响
 
-- PR 的墙钟时间从"冷编译 + 全部串行"变成"增量编译 + 并行"。首次在一个新分支上运行时
-  仍然是冷的，此时关键路径是 `product-smoke`（两个平台的 release 构建）。
+- PR 的墙钟时间从"冷编译 + 全部串行"变成"冷编译 + 并行"，约 50 分钟降到约 20 分钟。
+  **每个新 PR 的第一次运行都是冷的**，缓存只对同一个 PR 内的后续 push 有效。
 - 拆分后的作业各自 `checkout` 并各自 restore 缓存，runner 分钟数会上升；换来的是墙钟
   时间和每个 PR 的反馈速度。
-- 每次合并到 master 会额外触发一次完整验证。它不增加 PR 等待时间，作用是填充缓存；见
-  决策第 1 条。
-- 13 个作业各自持有失败证据上传，`retention-days: 7` 与脱敏工具不变。
+- 只改文档的改动只跑 `fixtures`，约 16 秒（见决策第 9 条）。
+- 14 个作业各自持有失败证据上传，`retention-days: 7` 与脱敏工具不变。
 - 本 ADR 只改变 CI 的执行方式。`just check`、`just build` 与本地开发流程不变。
 
 ## 已接受的残余风险
 
-1. **依赖版本变化会击穿缓存**：`Cargo.lock` 变化时新键必然冷跑一次，之后由 master 的运行
-   重新填充。这是缓存的固有性质，不是本决策的缺陷。
-2. **master 的重复验证是已知冗余**：PR 通过才合并，master 再验证一次在验证强度上没有
-   增量。保留它是为了缓存，代价是每次合并多一次完整套件的 runner 分钟。
-3. **10 GB 预算是共享的**：其他 workflow（release、`macos-spikes`、`windows-gpui-spikes`）
-   与本流水线的键竞争同一预算。短期 PR 遗留的缓存条目会被 LRU 逐出；稳态下 master 键因
-   每次运行都被访问而保留。若某个作业反复变冷，应当先收缩它的缓存路径（尤其是重复的
-   `~/.cargo/registry`）而不是继续加键。
+1. **PR 冷跑是常态，关键路径约 20 分钟**。曾尝试用 master push 触发预热，实测未兑现
+   （决策第 1 条），维护者接受这个时间。同一 PR 内继续 push 会命中该 PR 自己的作用域，
+   实测 `Test workspace (windows)` 从 19.0 分钟降到 6.4 分钟。
+2. **10 GB 缓存预算已经超**（实测 10.69 GB / 26 条），条目在被写入时 LRU 逐出，最大的两条
+   `*-workspace-*` 反复被挤掉。这是 master 触发失效的直接原因，也意味着**缓存不能作为时间
+   承诺的依据**。若将来要重新尝试预热，必须先缩小单套体积：把重复十几遍的
+   `~/.cargo/registry` 收敛成每个 OS 一条共享键是第一优先，其次是去掉 `workspace` 键里的
+   `target/release`（那两个 release check 的 metadata，值 3.3 分钟）。
+3. **master 没有任何独立验证**：只有 PR 触发，master 也没有分支保护。绕过 PR 直接推
+   master 不会被验证。这是"只保留 PR 触发"的直接代价。
 4. **`packaging-smoke` 不与 `product-smoke` 共享缓存**：它为显式 triple 单独构建，冷跑时
    多花约 9 分钟，但该作业不在关键路径上。
 
@@ -210,14 +218,15 @@ check，Linux 上的一份是严格子集，从 `contract-spikes` 的矩阵里�
   workflow 中，且读取默认 feature 二进制的步骤全部排在 storage 构建之前。
 - `python3 -m unittest discover -s tools/tests -p 'test_*.py'`：73 passed。
 
-### 预期关键路径（以 PR #1055 的冷跑实测步骤耗时推算）
+### 关键路径（实测）
 
-| 作业 | 改动前 | 改动后 |
+| | 改动前 | 改动后 |
 | --- | --- | --- |
-| Windows 关键路径 | `Test workspace (windows-latest)` 53.6 分钟 | `product-smoke (windows-latest)` 约 20 分钟 |
-| macOS 关键路径 | `Test workspace (macos-latest)` 44.9 分钟 | `packaging-smoke` 约 14 分钟 |
+| 冷跑（每个新 PR 的第一次） | `Test workspace (windows-latest)` 53.6 分钟 | 约 20–28 分钟，关键路径 `Smoke product (windows-latest)` |
+| 同一 PR 的后续 push | 53.6 分钟 | 约 20 分钟（该 PR 作用域有缓存） |
+| 只改文档 | 53.6 分钟 | 约 16 秒，只跑 `fixtures` |
 
-推算口径：每个作业的耗时等于其步骤在 PR #1055 中的实测值之和（全部为冷缓存），storage
-构建按本机实测的 8 个 crate + 链接估算。master 缓存预热之后，增量重编的只有本次改动
-触及的 crate，关键路径进一步降到个位数到十分钟量级。实际数字需要在第一次跑出带缓存的
-运行后复核。
+改动前的数字取自 PR #1055 的逐步实测。改动后的冷跑区间来自合并后两次真实运行
+（20.1 与 28.6 分钟），差异来自 10 GB 缓存预算下哪些条目幸存——这正是残余风险第 2 条。
+**不要再把缓存命中当作时间承诺**：只有同一 PR 内的后续 push 才是可预期的，那个场景实测
+`Test workspace (windows)` 为 6.4 分钟。

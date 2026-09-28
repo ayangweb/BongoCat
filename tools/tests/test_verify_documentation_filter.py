@@ -85,10 +85,15 @@ class DocumentationFilterTests(unittest.TestCase):
             self.assertNotIn(
                 forbidden, triggers, f"workflow-level {forbidden} silences the pipeline"
             )
-        self.assertIn("pull_request:", triggers)
-        self.assertIn("push:", triggers)
-        # The manual escape hatch for "the filter skipped too much".
-        self.assertIn("workflow_dispatch:", triggers)
+        # The parsed trigger, not the file text: the comment recording why the
+        # other triggers were dropped has to be able to name them.
+        events = set(yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))[True])
+        self.assertEqual(
+            events,
+            {"pull_request"},
+            "a `push` or `schedule` trigger was measured and dropped; putting one "
+            "back is a deliberate decision",
+        )
 
     def test_the_filter_keeps_its_own_inputs_out_of_the_documentation_set(self):
         """Changing the pipeline must be verified by the pipeline.
