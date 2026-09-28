@@ -4,12 +4,12 @@
 
 本文件只保留**长期有效的约束**。事实来源分工如下，冲突时指出并请求确认，不自行选择：
 
-| 主题 | 事实来源 |
-| --- | --- |
-| 目标架构 | `docs/technical-design.md` |
-| 阶段顺序、完成定义、验收门槛 | `docs/implementation-todo.md` |
-| 单项决策背景与取舍 | `docs/adr/` |
-| 依赖与工具校验 | `deny.toml`、`tools/`、`justfile` |
+| 主题                         | 事实来源                          |
+| ---------------------------- | --------------------------------- |
+| 目标架构                     | `docs/technical-design.md`        |
+| 阶段顺序、完成定义、验收门槛 | `docs/implementation-todo.md`     |
+| 单项决策背景与取舍           | `docs/adr/`                       |
+| 依赖与工具校验               | `deny.toml`、`tools/`、`justfile` |
 
 ## 1. 项目事实
 
@@ -205,6 +205,12 @@ just schema                                             # 从 Rust 类型生成�
 - 冲突按实际语义逐个解决，不用 `checkout --ours/--theirs` 覆盖对方实质改动，解决后确认本任务改动仍在。合并后若出现失败测试，先判断是否由本次改动引入（在纯上游 commit 上单独复跑）；上游自身失败不代为修复，如实报告并交由用户决定。
 - push 前先完成 CHANGELOG 检查。判断范围是待推送 commit（`git log @{u}..HEAD`）及其 diff：存在用户可见的新增、移除、默认值/行为/性能/UI/平台/本地化/配置格式变化或升级注意事项时，同步更新两份 changelog 并沿用现有 section 与文案风格；纯内部重构、测试、CI、格式化、注释、构建、依赖调整和未落地实现跳过，不新增临时 section。CHANGELOG 修改必须先提交再 push，判断结论写入最终报告。
 
-### 10.1 推送代码
+### 10.1 推送代码与 PR
 
-用户明确要求“推送代码”时把流程走完，不要停在 push：推送到功能分支后向上游开 PR（本仓库是主项目，fork 则按常规流程向上游提），完成后切回主分支（默认 `master`）。PR 标题沿用同一 Conventional Commits 标题，正文写改动、验证结果、未运行测试和已知风险。未经明确要求不打 tag、不 release。
+用户明确要求**“推送代码”**时，固定顺序是：fetch → 合入上游 → 完整验证 → 提交 → push → **创建 PR** → **切回主分支**。
+
+- 本仓库是主项目（`ayangweb/BongoCat`）而不是 fork 时，push 到功能分支后**必须**继续创建对应的 Pull Request，不能只完成 push 就停止。
+- 在 fork 上开发时，按正常的 fork/上游协作流程处理：推送到 fork 并向上游开 PR，不在本仓库创建 PR。
+- 完成推送和 PR 创建后 `git switch` 回主分支（默认 `master`），工作树不留在本次开发分支。
+- PR 标题沿用同一 Conventional Commits 标题，正文写清改动、验证结果、未运行测试和已知风险。
+- 未经明确要求不打 tag、不 release。
