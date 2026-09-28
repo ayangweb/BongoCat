@@ -1980,6 +1980,18 @@ Card primitive，设置内容容器使用官方 `GroupBox::outline()`（模型�
     错误使用稳定 settings error code。法律与隐私正文不再由 About 展示，相关合规证据仍由 Phase 0
     与发布文档维护。对应 UI、protocol、app service contract 与 settings smoke 已覆盖，双平台文件
     管理器/系统浏览器和 Retina/DPI 目视验收仍待补。
+  - 补充（2026-09-28）：About 的五个操作按钮此前除「检查更新」外全部是同一个 `secondary` 灰色，
+    竖排一列只能靠文案区分。现在改为三级层次而不是一行一个颜色：「检查更新」是唯一的实心 `primary`，
+    「反馈问题」是唯一需要用户回应的行、用 `danger` 描边，复制软件信息、打开项目主页、打开日志目录
+    三行只是读或打开某个位置，保持组件库默认按钮（不加 variant 也不加 `outline`）。颜色全部来自
+    active theme 而非页面硬编码，浅色/深色都无需分支；没有含义的颜色一律不加。这里的 `danger`
+    表示「需要用户回应」，不表示动作有破坏性；窗口自身的破坏性确认界面仍用 `danger`。
+    settings window smoke 与 `bongocat-ui` 单测通过，双平台目视验收仍并入上面的 Retina/DPI 证据。
+  - 补充（2026-09-28）：About 收紧行描述，与 Updates/Logging/Model window 的「只保留标题和控件」
+    方向一致——项目主页行只显示链接，日志目录行不再有描述；产品信息、软件信息和问题反馈三行保留
+    描述，因为 build 标识、复制内容和「先复制再反馈」都不是标题或按钮能说清的。`about.project.description`
+    与 `about.logs.description` 因此从两个 locale 文件和 `ABOUT_LOCALIZED_KEYS`（17 → 15）中删除，
+    仍被引用的描述不受影响，i18n 双向 key 守门与 locale validator 通过。
 
 ### 6.5 UI 质量
 

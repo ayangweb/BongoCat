@@ -53,6 +53,8 @@
 - The three flip settings are worded as flips and name the axis they flip: flip model horizontally, flip mouse tracking horizontally, and flip mouse tracking vertically.
 - The model window's settings for staying on screen, hiding on mouse hover and its delay, scale, opacity, corner radius and maximum FPS no longer print an explanation under the title; each row shows only its title and control. A hover-hide delay of 0 still hides the window as soon as the mouse rests on it.
 - A long option label in a Settings dropdown, such as a long model name in the two gamepad model choices, now ends in an ellipsis instead of being cut off, and the dropdown is exactly as wide as the control it belongs to.
+- On the About page, "Check for updates" is the one filled button, the read-only actions are plain buttons, and "Report an issue" carries a colour of its own so it stands out from the actions next to it. The colour follows the light or dark theme.
+- "Project home" on the About page now shows only the link, and "Application logs" no longer has a description. Both of their buttons are simply "Open", because the row title already says what is opened.
 
 ### 💻 Support Changes
 

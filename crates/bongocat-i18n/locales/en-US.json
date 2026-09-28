@@ -68,8 +68,7 @@
     },
     "project": {
       "title": "Project home",
-      "description": "View BongoCat's source, releases, and development progress.",
-      "action": "Open project home"
+      "action": "Open"
     },
     "feedback": {
       "title": "Problem feedback",
@@ -78,8 +77,7 @@
     },
     "logs": {
       "title": "Application logs",
-      "description": "Logs stay in the current environment and are size- and retention-limited.",
-      "action": "Open log folder"
+      "action": "Open"
     }
   },
   "models": {
