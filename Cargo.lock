@@ -952,9 +952,11 @@ dependencies = [
  "cargo-packager",
  "cargo-packager-updater",
  "flate2",
+ "plist",
  "serde",
  "serde_json",
  "tar",
+ "tempfile",
  "thiserror 2.0.21",
 ]
 

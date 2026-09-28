@@ -34,6 +34,6 @@
 
 ### 💻 Support Changes
 
-- Supported platforms are Windows 10 1903+ (x64) and macOS 12+ (Intel/Apple silicon).
+- Supported platforms are Windows 10 1903+ (x64) and macOS 12+ (Intel/Apple Silicon).
 - Windows ARM runs the x64 build through emulation.
 - **Windows x86, Windows ARM64 and Linux builds are not provided.**

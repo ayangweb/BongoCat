@@ -62,13 +62,20 @@
 //! Building `.dmg` files is therefore left to the operating system's own
 //! disk-image tooling, which is also what `create-dmg` wraps. This is the
 //! smallest possible step — stage the finished bundle, add the `/Applications`
-//! drop link, compress, sign — and it never touches bundle or installer layout.
+//! drop link, describe the window the installer opens with, compress, sign —
+//! and it never touches bundle or installer layout.
 //!
 //! Exit condition: restore `PackageFormat::Dmg` once `cargo-packager` ships a
 //! `create-dmg` revision that works on the current macOS. See
-//! `docs/adr/0033-build-packaging-and-release-toolchain.md`.
+//! `docs/adr/0033-build-packaging-and-release-toolchain.md` for the toolchain
+//! decision and `docs/adr/0075-dmg-finder-window-layout.md` for the window.
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
+
+// Only the macOS disk image has a Finder window to describe, so the encoder is
+// not compiled into the Windows packaging run.
+#[cfg(unix)]
+mod finder_store;
 
 use std::{
     collections::BTreeMap,
@@ -96,6 +103,11 @@ const APPLICATION_BINARY: &str = "bongocat-app";
 const PRESET_MODELS: [&str; 3] = ["standard", "keyboard", "gamepad"];
 /// Repository-relative directory holding icons and preset models.
 const RESOURCE_DIRECTORY: &str = "resources";
+/// Repository-relative macOS application icon, relative to [`RESOURCE_DIRECTORY`].
+///
+/// The same icon is the disk image's volume icon, so the mounted installer
+/// window carries it in its title bar and its path bar.
+const MACOS_ICON: &str = "icons/logo-macos.icns";
 /// Repository-relative directory holding the three preset models.
 const MODEL_DIRECTORY: &str = "models";
 /// Repository-relative directory holding the macOS `Info.plist` overlay.
@@ -115,6 +127,12 @@ const STAGING_DIRECTORY: &str = "provenance";
 /// workspace's `-D warnings` gate rejects.
 #[cfg(unix)]
 const DISK_IMAGE_STAGING_DIRECTORY: &str = "dmg-stage";
+/// The drop link the installer window offers as the install target.
+#[cfg(unix)]
+const APPLICATIONS_LINK: &str = "Applications";
+/// The icon file Finder reads a volume's own icon from.
+#[cfg(unix)]
+const VOLUME_ICON_FILE: &str = ".VolumeIcon.icns";
 /// Staging directory for the cleaned preset models, relative to the output directory.
 ///
 /// See [`stage_model_resources`].
@@ -197,10 +215,20 @@ impl ReleaseTarget {
         }
     }
 
-    /// Short architecture token used in release artifact file names.
+    /// The architecture token every file name this target publishes is built from.
+    ///
+    /// One token per target, not one per kind of artifact, so the disk image, the
+    /// bundle archive and the installer of a target are named after the same chip and
+    /// a reader cannot end up matching `BongoCat-<version>-aarch64.dmg` against an
+    /// artifact called something else. It is the Rust target architecture, which is
+    /// also what a Homebrew cask writes in its own `arch` line, so a cask pinned to
+    /// this token keeps resolving after the release renames anything.
+    ///
+    /// The full triple is deliberately not used: `-apple-darwin` is the same string on
+    /// both Apple targets and says nothing a reader could act on.
     const fn architecture(self) -> &'static str {
         match self {
-            Self::MacosAarch64 => "arm64",
+            Self::MacosAarch64 => "aarch64",
             Self::MacosX86_64 => "x64",
             Self::WindowsX86_64 => "x64",
         }
@@ -307,22 +335,6 @@ impl ReleaseTarget {
         }
     }
 
-    /// The architecture token this target's update payload is named with.
-    ///
-    /// Deliberately neither [`Self::architecture`] nor the triple. The payload is
-    /// published for the Apple targets only, so the `-apple-darwin` segment the triple
-    /// carried was the same string on both of them and said nothing a reader could act
-    /// on. What is left has to still tell the two apart, and it has to match what a
-    /// Homebrew cask writes in its own `arch` line — so Intel takes the disk image's
-    /// `x64` and Apple silicon takes the architecture name Homebrew and Rust both use
-    /// for it. See [`Self::update_payload_name`].
-    const fn payload_architecture(self) -> &'static str {
-        match self {
-            Self::MacosAarch64 => "aarch64",
-            Self::MacosX86_64 | Self::WindowsX86_64 => "x64",
-        }
-    }
-
     /// The file name this target's update payload is published under.
     ///
     /// The updater takes the payload from the manifest rather than matching an asset
@@ -330,20 +342,17 @@ impl ReleaseTarget {
     /// reuses the installer it already publishes; macOS needs the bundle wrapped in
     /// an archive, because the updater installs a directory.
     ///
-    /// The macOS name carries the architecture and nothing else. It used to carry the
-    /// whole target triple, which made the two published names
-    /// `BongoCat-<version>-aarch64-apple-darwin.app.tar.gz` and
-    /// `BongoCat-<version>-x86_64-apple-darwin.app.tar.gz` — long, and repeating a
-    /// platform suffix on a file that can only exist on that platform. The archive is
-    /// still unambiguous: the extension is unique to the macOS payload, and Windows
-    /// publishes an `.exe` under the installer's own name.
+    /// The macOS name carries [`Self::architecture`] and nothing else, which is the
+    /// same token its disk image is named with. The archive stays unambiguous even
+    /// without the platform: the extension is unique to the macOS payload, and
+    /// Windows publishes an `.exe` under the installer's own name.
     fn update_payload_name(self) -> String {
         match self.installer_file_name() {
             Some(name) => name,
             None => format!(
                 "{PRODUCT_NAME}-{}-{}.app.tar.gz",
                 env!("CARGO_PKG_VERSION"),
-                self.payload_architecture()
+                self.architecture()
             ),
         }
     }
@@ -393,7 +402,9 @@ usage: cargo run -p bongocat-packaging -- [options]
 Builds the Production product and packages the host platform release artifacts.
 
 options:
-  --target <triple>        release target; defaults to the host target
+  --target <triple>        one of aarch64-apple-darwin,
+                            x86_64-apple-darwin, x86_64-pc-windows-msvc;
+                            defaults to the host target
   --environment <name>     development | production (default: production)
   --formats <list>         comma separated subset of the target's release
                            artifacts (app,dmg for macOS; nsis for Windows)
@@ -838,7 +849,7 @@ fn packaging_config(
     config.icons = Some(vec![
         workspace
             .join(RESOURCE_DIRECTORY)
-            .join("icons/logo-macos.icns")
+            .join(MACOS_ICON)
             .display()
             .to_string(),
         workspace
@@ -1227,13 +1238,18 @@ struct ReleaseNoteAppendix {
     downloads_heading: &'static str,
     /// Row label for the Windows installer, and for the macOS row.
     windows_label: &'static str,
+    /// Link text for the Windows installer, naming the one architecture it is built for.
+    windows_architecture_label: &'static str,
     /// Why there is one Windows download and not one per architecture.
     ///
     /// Windows on ARM has no separate build: the release ships x64 only, and the
     /// product runs it there under emulation. A reader on ARM64 therefore has
-    /// nothing to choose between, so the row names no architecture and carries the
-    /// reason instead — otherwise a reader on ARM64 either looks for an ARM64
-    /// download that does not exist or assumes the one offered is not for them.
+    /// nothing to choose between, so its cell is prose rather than a link —
+    /// otherwise a reader on ARM64 either looks for an ARM64 download that does not
+    /// exist or assumes the one offered is not for them.
+    ///
+    /// Both locales carry their own parentheses, so this is a self-contained cell
+    /// rather than an explanation a shared separator has to wrap.
     windows_note: &'static str,
     macos_label: &'static str,
     /// The two macOS variants, which are separate downloads.
@@ -1249,23 +1265,34 @@ struct ReleaseNoteAppendix {
 const APPENDIX_ENGLISH: ReleaseNoteAppendix = ReleaseNoteAppendix {
     changelog_heading: "Changelog",
     downloads_heading: "Downloads",
-    windows_label: "Windows 10 1903+",
-    windows_note: "ARM64 runs the x64 build through emulation",
+    windows_label: "Windows 10+",
+    windows_architecture_label: "x64",
+    windows_note: "ARM64 (runs the x64 build through emulation)",
     macos_label: "macOS 12+",
-    apple_silicon_label: "Apple silicon",
+    apple_silicon_label: "Apple Silicon",
     intel_label: "Intel",
     models_heading: "More models",
     sponsors_heading: "Sponsors",
 };
 
+/// The two locales differ only in their headings and the ARM64 sentence.
+///
+/// `Apple Silicon` and `Intel` are the chip names a reader looks for, and the Chinese
+/// half of the block is read right after the English one. Translating them to
+/// `Apple 芯片` / `Intel 芯片` named one machine three ways in one document: two
+/// different words inside this block, and a third in the job names on the release's
+/// checks. `docs/localization-copy-conventions.md` governs the UI catalog, which this
+/// block is not; the constraint here is that a chip is called the same thing wherever
+/// a reader meets it.
 const APPENDIX_CHINESE: ReleaseNoteAppendix = ReleaseNoteAppendix {
     changelog_heading: "更新日志",
     downloads_heading: "下载地址",
-    windows_label: "Windows 10 1903+",
-    windows_note: "ARM64 可通过仿真运行 x64 版本",
+    windows_label: "Windows 10+",
+    windows_architecture_label: "x64",
+    windows_note: "ARM64（通过仿真运行 x64 版本）",
     macos_label: "macOS 12+",
-    apple_silicon_label: "Apple 芯片",
-    intel_label: "Intel 芯片",
+    apple_silicon_label: "Apple Silicon",
+    intel_label: "Intel",
     models_heading: "更多模型",
     sponsors_heading: "赞助商",
 };
@@ -1370,14 +1397,18 @@ fn release_note_block(entry: &str, appendix: &ReleaseNoteAppendix) -> String {
 ///
 /// Every download row links [`ReleaseTarget::download_asset`], the same function the
 /// build names the artifact with, so a link here cannot point at a file the release
-/// does not upload. The Windows row uses the asset name as its link text because that
-/// is the one name a reader has to match against the release page's attachment list;
-/// the two macOS rows are named by chip, which is how a reader tells them apart.
+/// does not upload.
 ///
-/// Windows gets one row rather than one per architecture, because the release ships no
-/// ARM64 build — see [`ReleaseNoteAppendix::windows_note`]. The separator is a plain em
-/// dash so each row stays a single line, which is the shape this Markdown is rendered
-/// in by the update window and the shape the release page lays out.
+/// Both rows are one shape — `**<system> <oldest supported release>**: [<chip>](…)
+/// | …` — and every cell names a chip rather than a file. Naming a chip is what lets a
+/// reader tell the two macOS downloads apart, and it is the same vocabulary the
+/// release's job names use; restating the artifact's own file name on one row but not
+/// the other made the two rows read as different kinds of list.
+///
+/// Windows gets one cell and not one per architecture because the release ships no
+/// ARM64 build — see [`ReleaseNoteAppendix::windows_note`]. The separator is a plain
+/// vertical bar so each row stays a single line, which is the shape this Markdown is
+/// rendered in by the update window and the shape the release page lays out.
 ///
 /// Only Markdown the update window can render safely: ordinary links and list items,
 /// no images and no raw HTML, both of which `bongocat-ui::update_markdown` deliberately
@@ -1388,8 +1419,9 @@ fn render_release_note_appendix(copy: &ReleaseNoteAppendix) -> String {
     appendix.push_str(&format!("## {}\n\n", copy.downloads_heading));
     let windows = ReleaseTarget::WindowsX86_64.download_asset();
     appendix.push_str(&format!(
-        "- **{}**: [{windows}]({}) — {}\n",
+        "- **{}**: [{}]({}) | {}\n",
         copy.windows_label,
+        copy.windows_architecture_label,
         release_asset_url(&windows),
         copy.windows_note,
     ));
@@ -1888,11 +1920,18 @@ fn build_disk_image(
         fs::remove_dir_all(&staging)?;
     }
     fs::create_dir_all(&staging)?;
+    // The image is attached outside the build tree on purpose. Attaching a
+    // writable volume inside a directory macOS is watching writes a
+    // filesystem-events journal into that volume, and the journal would then
+    // ship inside the published image and differ between machines.
+    let mount = tempfile::TempDir::new()?;
 
     let bundle_name = bundle
         .file_name()
-        .ok_or_else(|| Box::new(Failure(format!("invalid bundle {}", bundle.display()))))?;
-    let staged_bundle = staging.join(bundle_name);
+        .ok_or_else(|| Box::new(Failure(format!("invalid bundle {}", bundle.display()))))?
+        .to_string_lossy()
+        .into_owned();
+    let staged_bundle = staging.join(&bundle_name);
 
     // `ditto` copies the bundle with its extended attributes and signature intact.
     let mut copy = Command::new("ditto");
@@ -1900,11 +1939,53 @@ fn build_disk_image(
     run_command("ditto", &mut copy)?;
 
     // The drop link is what makes the mounted image a drag-to-install installer.
-    std::os::unix::fs::symlink("/Applications", staging.join("Applications"))?;
+    std::os::unix::fs::symlink("/Applications", staging.join(APPLICATIONS_LINK))?;
+
+    // Finder takes the volume's own icon from this file in the volume root, and
+    // the flag set on the mounted volume below points at it. Without them the
+    // window is titled with a generic disk image icon.
+    let volume_icon = staging.join(VOLUME_ICON_FILE);
+    fs::copy(
+        workspace.join(RESOURCE_DIRECTORY).join(MACOS_ICON),
+        &volume_icon,
+    )?;
+    mark_icon_file(&volume_icon)?;
+
+    // The window the mounted image opens with. Writing it is what keeps the
+    // layout out of Finder: `create-dmg` would mount the image and drive Finder
+    // with AppleScript, which needs a graphical session and an Automation
+    // consent prompt, and this build has to run unattended.
+    fs::write(
+        staging.join(finder_store::FILE_NAME),
+        finder_store::window(
+            &finder_store::WindowLayout::default(),
+            &bundle_name,
+            APPLICATIONS_LINK,
+        )
+        .map_err(|error| Box::new(Failure(error.to_string())) as Box<dyn std::error::Error>)?,
+    )?;
 
     if image.exists() {
         fs::remove_file(&image)?;
     }
+    // The image is built read-write, because the volume's custom icon is a
+    // Finder file attribute and only a mounted, writable volume can take one.
+    let writable = image.with_extension("rw.dmg");
+    if writable.exists() {
+        fs::remove_file(&writable)?;
+    }
+    let mut create = Command::new("hdiutil");
+    create
+        .args(["create", "-volname", PRODUCT_NAME, "-srcfolder"])
+        .arg(&staging)
+        .args(["-ov", "-format", "UDRW"])
+        .arg(&writable);
+    run_command("hdiutil", &mut create)?;
+
+    let mounted = MountedImage::attach(&writable, mount.path())?;
+    set_volume_icon(mount.path())?;
+    mounted.detach()?;
+
     // LZFSE rather than zlib or bzip2. The `UDZO` and `UDBZ` formats compress
     // the image in fixed 64 KB blocks, so they cannot see the repeated preset
     // model assets the bundle carries, while `ULMO` compresses the image as one
@@ -1916,13 +1997,14 @@ fn build_disk_image(
     // from; `UDBZ` reads faster still (0.45 s) but is 23% larger. `ULMO` is an
     // Apple read-only compressed format supported well before the macOS 12
     // minimum this product declares.
-    let mut create = Command::new("hdiutil");
-    create
-        .args(["create", "-volname", PRODUCT_NAME, "-srcfolder"])
-        .arg(&staging)
-        .args(["-ov", "-format", "ULMO"])
+    let mut compress = Command::new("hdiutil");
+    compress
+        .arg("convert")
+        .arg(&writable)
+        .args(["-format", "ULMO", "-o"])
         .arg(&image);
-    run_command("hdiutil", &mut create)?;
+    run_command("hdiutil", &mut compress)?;
+    fs::remove_file(&writable)?;
 
     let mut sign = Command::new("codesign");
     sign.args(["--force", "-s", identity]).arg(&image);
@@ -1934,6 +2016,92 @@ fn build_disk_image(
         return failure(format!("disk image was not created: {}", image.display()));
     }
     Ok(image)
+}
+
+/// A disk image attached to a mount point, detached again when it goes out of
+/// scope.
+///
+/// A build that fails between attaching and detaching must not leave a volume
+/// mounted on the machine that ran it, and a build that fails after detaching
+/// must not detach something it no longer owns, so the guard tracks whether the
+/// volume is still attached.
+#[cfg(unix)]
+struct MountedImage {
+    mount_point: PathBuf,
+    attached: bool,
+}
+
+#[cfg(unix)]
+impl MountedImage {
+    /// Attaches `image` to `mount_point`, which has to exist and be empty.
+    fn attach(image: &Path, mount_point: &Path) -> Result<Self> {
+        // The mount point is given rather than parsed out of the attach output:
+        // reading `hdiutil`'s output through a pipe is what breaks the
+        // `create-dmg` script, and a build tool has no business mounting
+        // anything under `/Volumes`.
+        let mut attach = Command::new("hdiutil");
+        attach
+            .args([
+                "attach",
+                "-nobrowse",
+                "-noverify",
+                "-noautoopen",
+                "-mountpoint",
+            ])
+            .arg(mount_point)
+            .arg(image);
+        run_command("hdiutil", &mut attach)?;
+        Ok(Self {
+            mount_point: mount_point.to_path_buf(),
+            attached: true,
+        })
+    }
+
+    /// Detaches the volume, reporting a failure rather than only warning.
+    fn detach(mut self) -> Result<()> {
+        let result = Self::run_detach(&self.mount_point);
+        self.attached = false;
+        result
+    }
+
+    fn run_detach(mount_point: &Path) -> Result<()> {
+        let mut detach = Command::new("hdiutil");
+        detach.arg("detach").arg(mount_point);
+        run_command("hdiutil", &mut detach)
+    }
+}
+
+#[cfg(unix)]
+impl Drop for MountedImage {
+    fn drop(&mut self) {
+        if self.attached {
+            // Only a panic or an early return can get here: [`Self::detach`]
+            // clears the flag before the value is dropped, and its own failure
+            // is already reported to the caller.
+            println!("warning: could not detach {}", self.mount_point.display());
+            let _ = Self::run_detach(&self.mount_point);
+        }
+    }
+}
+
+/// Gives a mounted volume the product icon, so Finder titles the installer
+/// window with it instead of a generic disk image icon.
+#[cfg(unix)]
+fn set_volume_icon(mount: &Path) -> Result<()> {
+    // `SetFile` ships with macOS in `/usr/bin`; it is what `create-dmg` uses for
+    // this too, and nothing in the Command Line Tools is needed.
+    let mut set = Command::new("SetFile");
+    set.args(["-a", "C"]).arg(mount);
+    run_command("SetFile", &mut set)
+}
+
+/// Marks a file as an icon, so Finder reads it as the volume's icon rather than
+/// as an unknown file with an `.icns` name.
+#[cfg(unix)]
+fn mark_icon_file(icon: &Path) -> Result<()> {
+    let mut set = Command::new("SetFile");
+    set.args(["-c", "icnC"]).arg(icon);
+    run_command("SetFile", &mut set)
 }
 
 #[cfg(not(unix))]
@@ -2015,7 +2183,8 @@ fn report(summary: &str, artifacts: &[PathBuf]) {
 #[cfg(test)]
 mod tests {
     use super::{
-        MODEL_DIRECTORY, OUTPUT_DIRECTORY, PRESET_MODELS, ReleaseTarget, is_packaging_junk,
+        MODEL_DIRECTORY, OUTPUT_DIRECTORY, PRESET_MODELS, PRODUCT_NAME, ReleaseTarget,
+        is_packaging_junk,
     };
 
     /// The staged models are only an input to the packager, so packaging must not
@@ -2138,6 +2307,51 @@ mod tests {
         assert!(ReleaseTarget::MacosX86_64.installer_file_name().is_none());
     }
 
+    /// Every published file name carries its target's architecture token, and no other
+    /// spelling of it.
+    ///
+    /// The Apple disk image used to be named `arm64` while the archive beside it was
+    /// named `aarch64` and the manifest key was `macos-aarch64`, so one release
+    /// uploaded `BongoCat-<version>-arm64.dmg`, shipped
+    /// `BongoCat-<version>-aarch64.app.tar.gz` and announced `macos-aarch64` for the
+    /// same machine. Three spellings of one chip, none of which any other layer had to
+    /// agree with. Naming is not cosmetic here: the release notes link these names and
+    /// the release workflow asserts them, so a second spelling produces a download link
+    /// to an asset nobody uploaded and the build stays green.
+    #[test]
+    fn every_published_name_carries_the_targets_architecture_token() {
+        let version = env!("CARGO_PKG_VERSION");
+        for target in ReleaseTarget::ALL {
+            // The separator is per platform, not free: `cargo-packager` hard-codes
+            // `{binary}_{version}_{arch}-setup.exe` for the Windows installer, so the
+            // rename step that drops `-setup` keeps its `_`, while the Apple artifacts
+            // are built here and use `-`. Accepting either separator would let a
+            // rename quietly move a published asset to a name the release notes and
+            // the workflow no longer produce.
+            let separator = if target.is_apple() { "-" } else { "_" };
+            let stem = format!(
+                "{PRODUCT_NAME}{separator}{version}{separator}{}",
+                target.architecture()
+            );
+            for name in [target.download_asset(), target.update_payload_name()] {
+                assert!(
+                    name.starts_with(&stem),
+                    "{target:?} publishes {name}, which does not start with {stem}"
+                );
+                assert!(
+                    !name.contains("arm64"),
+                    "{target:?} publishes {name}; the Rust target architecture is the \
+                     only token a published name may use"
+                );
+                assert!(
+                    !name.contains("-apple-darwin"),
+                    "{target:?} publishes {name}; the platform suffix repeats what the \
+                     extension already says"
+                );
+            }
+        }
+    }
+
     /// The updater installs the installer it downloads, so the update payload and the
     /// published installer are the same file under the same name.
     #[test]
@@ -2168,7 +2382,7 @@ mod tests {
                 "the macOS payload must be an archive, got {name}"
             );
             assert!(
-                name.contains(target.payload_architecture()),
+                name.contains(target.architecture()),
                 "the payload name must name the architecture it was built for, got {name}"
             );
             assert!(
@@ -2631,7 +2845,7 @@ mod tests {
             let intel = ReleaseTarget::MacosX86_64.download_asset();
             format!(
                 "## {downloads}\n\n\
-                 - **{windows_label}**: [{windows}]({windows_url}) — {windows_note}\n\
+                 - **{windows_label}**: [{windows_arch}]({windows_url}) | {windows_note}\n\
                  - **{macos_label}**: [{apple_silicon}]({apple_url}) | [{intel}]({intel_url}) | \
                  [Homebrew](https://github.com/ayangweb/Homebrew-BongoCat)\n\n\
                  ## {models}\n\n\
@@ -2641,6 +2855,7 @@ mod tests {
                  - [ChooseC API](https://api.choosec.cn)",
                 downloads = copy.downloads_heading,
                 windows_label = copy.windows_label,
+                windows_arch = copy.windows_architecture_label,
                 windows_url = super::release_asset_url(&windows),
                 windows_note = copy.windows_note,
                 macos_label = copy.macos_label,

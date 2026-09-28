@@ -358,16 +358,20 @@ fn a_manifest_without_this_platform_stops_the_source_fallback() {
 }
 
 /// The download-URL conversion rewrites exactly the official GitHub URLs, once.
+///
+/// The file name is only there to look like a real asset; the rule under test is
+/// about the host, so it carries no version and no `-setup` suffix, both of which
+/// the packaging entry point has since dropped from the published installer.
 #[test]
 fn download_urls_are_proxied_only_when_official_github() {
     let proxy = Some("https://cdn.gh-proxy.org");
     let github = Url::parse(
-        "https://github.com/ayangweb/BongoCat/releases/download/v0.0.0-test/BongoCat_x64-setup.exe",
+        "https://github.com/ayangweb/BongoCat/releases/download/v0.0.0-test/BongoCat_x64.exe",
     )
     .expect("the announced GitHub URL parses");
     assert_eq!(
         UpdateRuntime::proxied_download_url(proxy, &github).as_str(),
-        "https://cdn.gh-proxy.org/https://github.com/ayangweb/BongoCat/releases/download/v0.0.0-test/BongoCat_x64-setup.exe"
+        "https://cdn.gh-proxy.org/https://github.com/ayangweb/BongoCat/releases/download/v0.0.0-test/BongoCat_x64.exe"
     );
 
     // The official run keeps the announced URL untouched.
@@ -382,8 +386,8 @@ fn download_urls_are_proxied_only_when_official_github() {
     );
 
     // Any other host is left alone.
-    let elsewhere = Url::parse("https://example.invalid/BongoCat_x64-setup.exe")
-        .expect("the foreign URL parses");
+    let elsewhere =
+        Url::parse("https://example.invalid/BongoCat_x64.exe").expect("the foreign URL parses");
     assert_eq!(
         UpdateRuntime::proxied_download_url(proxy, &elsewhere),
         elsewhere
