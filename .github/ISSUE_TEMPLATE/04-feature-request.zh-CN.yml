@@ -1,0 +1,91 @@
+name: 💡 功能建议
+description: 提出 BongoCat 应该支持的新能力
+title: "[feat] "
+labels: ["feature request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你的建议。想让一条功能建议真正有用，需要两件事：
+
+        - 先说**问题**：你现在想做什么，而 BongoCat 让你做不成？
+        - 再说**方案**：你的想法可以很粗略，写下来总比不写好。
+
+        如果 BongoCat 已经有这个功能但表现不对，走[问题反馈](https://github.com/ayangweb/BongoCat/issues/new/choose)会更快修好；如果同样的想法已经有 issue，请在下面补充你的使用场景，不要重复开一个。
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      description: 这个功能面向哪个操作系统？Linux 不在发布范围内，相关建议暂不排期。
+      options:
+        - Windows
+        - macOS
+        - 两个平台都要
+        - Linux（不在发布范围内）
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 建议放在哪一部分？
+      description: 这个功能属于 BongoCat 的哪一部分，便于分流到对应的模块。
+      options:
+        - 模型显示、动作或表情
+        - 模型库：导入、删除或模型状态
+        - 模型窗口：大小、位置、不透明度、鼠标穿透
+        - 输入：键盘
+        - 输入：鼠标
+        - 输入：手柄
+        - 快捷键
+        - 外观与语言
+        - 应用与系统：开机启动、托盘或菜单栏图标、日志
+        - 更新
+        - 设置窗口布局或文案
+        - 安装、启动或权限
+        - 全新的一块
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决的问题
+      description: 你想做什么、哪一步卡住了，以及现在是怎么绕过去的。
+      placeholder: 我录屏做教程，模型窗口每次都会被录进去，只能每次手动隐藏。
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 你设想的方案
+      description: 你希望 BongoCat 变成什么样，一句话或一段草图都可以。
+      placeholder: 录屏进行时自动隐藏模型窗口，录屏结束后自动恢复。
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考虑过的其他方案
+      description: 你试过的其他做法，以及目前可用的临时绕过方式。
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 附加信息
+      description: 截图、草图、你使用的模型或软件，以及大概多久会用到一次这个功能。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索现有 issue 和 pull request，确认这个想法还不在列表里。
+          required: true

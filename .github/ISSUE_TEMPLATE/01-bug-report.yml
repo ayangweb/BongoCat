@@ -1,0 +1,134 @@
+name: 🐞 Bug report
+description: Something does not work the way it is documented
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. BongoCat ships for Windows and macOS.
+
+        Before you send it:
+
+        1. [Search the open issues](https://github.com/ayangweb/BongoCat/issues?q=is%3Aissue) — the bug may already be known or fixed.
+        2. Reproduce it on the [latest release](https://github.com/ayangweb/BongoCat/releases/latest). A problem that only happens on your machine is often an older version.
+        3. Open **Settings > About > Software information**, click **Copy**, and paste the JSON below. It carries the version, the system and the runtime state, and no file path, model name or key sequence, so it is safe to share.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which operating system does this happen on? Linux is not a release target, so those reports are not handled.
+      options:
+        - Windows
+        - macOS
+        - Linux (not a release target)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does it happen?
+      description: Which part of BongoCat this belongs to, so it reaches the right part of triage.
+      options:
+        - Model display, motion, or expression
+        - "Model library: import, delete, or model status"
+        - "Model window: size, position, opacity, click-through"
+        - "Input: keyboard"
+        - "Input: mouse"
+        - "Input: gamepad"
+        - Shortcuts
+        - "Appearance & language"
+        - "App & system: start at login, tray or menu bar icon, logging"
+        - Updates
+        - Settings window layout or wording
+        - Install, launch, or permission prompts
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: software-information
+    attributes:
+      label: Software information
+      description: 'Open **Settings > About**, click **Copy** under Software information, and paste the JSON here. If the settings window will not open, write the version you installed instead.'
+      render: json
+      placeholder: |
+        {
+          "app_version": "2.0.0",
+          "platform": "macos",
+          "runtime_health": "ready"
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you saw, what you expected instead, and any message on screen. Describe the result, not the cause you suspect.
+      placeholder: The cat disappears as soon as I press a key, and the model window is not in the taskbar anymore.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest set of steps that shows the problem again from a fresh start. Note which model you were using.
+      placeholder: |
+        1. Start BongoCat and wait for the model window
+        2. Open Settings > Model window, set Window scale to 50%
+        3. Press the A key
+        4. The model is clipped at the right edge
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Often
+        - Sometimes
+        - Only once
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Application log
+      description: 'Optional but the most useful field for input and rendering problems. Set **Log level** to **Diagnostic details** under **Settings > App & system > Logging**, reproduce the problem once, then open the log folder from **Settings > About > Application logs** and drag today''s log file here. Logs never record key contents, the clipboard or file contents.'
+      render: text
+    validations:
+      required: false
+
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Screenshots or a short recording
+      description: A screenshot of the problem, or a short recording when the cat plays the wrong motion or expression.
+    validations:
+      required: false
+      accept: .png,.jpg,.jpeg,.gif,.webm,.mp4,.mov,.log,.txt,.zip
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: What you were doing around it, other apps involved, or a link to the model you are using.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before sending
+      options:
+        - label: I searched the open issues and this is not a duplicate.
+          required: true
+        - label: I removed private data from this report — file paths, key sequences, clipboard contents, and personal model files.
+          required: true
