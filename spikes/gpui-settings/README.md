@@ -91,5 +91,4 @@ optional Metal Toolchain before building:
 xcodebuild -downloadComponent MetalToolchain
 ```
 
-The validated component version is recorded in
-`docs/phase-0/gpui-settings-spike.md`.
+The validated component version is `17F109`.

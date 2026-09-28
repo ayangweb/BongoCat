@@ -1,8 +1,7 @@
 # 本地化文案书写规范
 
 > **文档性质：规范性约定。** 本文只约束 `crates/bongocat-i18n/locales/*.json` 里的 UI 文案
-> 怎么写。目标架构、工作顺序与验收门槛仍以
-> `docs/technical-design.md`、`docs/implementation-todo.md` 和 `docs/adr/` 为准；
+> 怎么写。目标架构仍以 `docs/technical-design.md` 和 `docs/adr/` 为准；
 > catalog 的结构、key 命名与占位符规则见
 > `docs/adr/0012-json-localization.md`。
 

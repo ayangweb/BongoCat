@@ -47,7 +47,7 @@ readback 证据。
 
 ## 2. Behavior Contracts to Reproduce
 
-| Domain         | Required Rust behavior                                                                                                                                                  | Phase 0 evidence                                                                                                           |
+| Domain         | Required Rust behavior                                                                                                                                                  | Evidence                                                                                                                   |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | model3         | Validate referenced moc, textures, motion groups, expressions, physics, pose, cdi, layout and hit areas before commit                                                   | Existing static fixture plus three real presets; malformed/escaping references remain rejected before Core                 |
 | motion         | Parse curve targets and segments, apply model/parameter/part curves, fade in/out, loop, events, eye blink/lip sync effects and completion at deterministic time         | Golden parameter snapshots at fixed ticks, boundary timestamps and malformed curve cases                                   |

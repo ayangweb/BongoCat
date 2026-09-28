@@ -148,7 +148,7 @@ typed platform snapshot，并仅在显式用户 command 时调用平台 adapter�
 
 `model.play_motion_audio` 默认 `false`。设置页把它呈现为"动作音效"开关，也就是正向字段的直出：
 打开后，带音效资源的 motion 在播放时同时播放该音效；关闭时 runtime 既不预解码也不发布 `Play`。
-默认关闭是对旧版行为的刻意收窄：`docs/phase-0/behavior-inventory.md` 记录的旧版观察是"默认音效开"，
+默认关闭是对旧版行为的刻意收窄：`docs/migration/legacy-behavior-inventory.md` 记录的旧版观察是"默认音效开"，
 因此旧版第一次启动就会出声，用户还没打开过任何设置页面。当前版本把是否出声交给用户，新装或新建的
 配置一律静音，只有显式打开开关之后才会有声音。
 
@@ -198,7 +198,7 @@ source 与独立 overlay run loop 的下一帧间隔，间隔按**帧截止时�
 它不是硬上限：输入边沿可以提前触发一次求值以压低输入延迟，这类帧不消耗周期槽位，被呈现的帧率仍由
 frame source 的节拍决定，与用户设置的差集只体现为多余的、会被 overlay 合并掉的渲染帧。越界值在
 typed command 与配置校验两处都被拒绝并保留旧值。语义来源与参考实现的对照见
-`docs/phase-0/mver-frame-rate-semantics.md`。
+`docs/migration/bongo-cat-mver-frame-rate-semantics.md`。
 
 `shortcuts.commands_enabled` 默认 `true`，是应用级快捷键的同类门禁：关闭时
 `shortcuts.command_bindings` 不进入活动的 `CompiledShortcuts`，绑定同样不被改写或删除，
@@ -213,7 +213,7 @@ typed command 与配置校验两处都被拒绝并保留旧值。语义来源与
 默认关闭是对旧版行为的刻意收窄。旧版在模型加载完成后无条件为每个 motion 和 expression 自动分配
 一整层 `primary + [Shift/Alt] + 数字/字母` 组合键（`pre-refactor:src/composables/useModel.ts` 的
 `getBehaviorShortcut`），用户即使从未打开行为列表也已经背上一批全局快捷键。Native 版本按维护者
-决定移植这套自动分配（`docs/phase-0/behavior-inventory.md` 中该项已上调为 `P0 首发`），但把"是否
+决定移植这套自动分配（`docs/migration/legacy-behavior-inventory.md` 中该项已上调为 `P0 首发`），但把"是否
 让这些组合键真正生效"交给用户：分配照常写入 v1 配置、在快捷键页面可见且可逐项修改，只有开关打开
 后才进入平台匹配表。这与旧版不同——旧版没有这个开关。
 

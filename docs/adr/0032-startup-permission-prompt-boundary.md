@@ -86,7 +86,7 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
 - 与旧 Tauri 行为的已知差异：旧版在 Windows 非管理员时提示后不继续运行，本决策改为用户选择次要按钮
   仍可进入应用；2026-09-15 起收窄为「用户选择设置路径且流程成功时退出」，见「Windows 按钮文案
   修正」。macOS 的「请求 + 再次引导」意图保留，但请求时机收紧到用户点击之后（ADR-0024）。旧版
-  行为对照仍见 `docs/phase-0/behavior-inventory.md`，不在本 ADR 重复维护。
+  行为对照仍见 `docs/migration/legacy-behavior-inventory.md`，不在本 ADR 重复维护。
 
 ## macOS 弹框实现修正（2026-09-14 实机验收）
 

@@ -26,7 +26,7 @@
 格式、shader 数学、背景/按键上传语义或精确像素结果。
 
 项目另行固定了 Cubism Native Framework R5 `5-r.5` 的行为来源
-（`docs/phase-0/cubism-framework-behavior-sources.md`）。其中 OpenGL 参考路径使用普通
+（`docs/cubism/cubism-framework-behavior-sources.md`）。其中 OpenGL 参考路径使用普通
 `GL_RGBA` render target 与 encoded-space shader 颜色处理，但它是独立的 R5 oracle，不是 Mver
 二进制来源的直接证明。
 本 ADR 因用户报告、上述有限 Mver 证据和独立参考路径而选择兼容性方向；来源链和像素等价仍是

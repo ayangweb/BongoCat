@@ -189,7 +189,7 @@ const RECONCILIATION_INTERVAL: Duration = Duration::from_millis(250);
 /// decoding recovers a physical release.
 ///
 /// The product's documented behavior for this key is a brief trigger
-/// (`docs/phase-0/behavior-inventory.md`), so the candidate is released on this
+/// (`docs/migration/legacy-behavior-inventory.md`), so the candidate is released on this
 /// fixed window instead of inventing an edge the platform never sent. This is
 /// deliberately not configurable and is deliberately *not* the retired
 /// `input.keyboard.release_fallback_timeout_ms`: that setting timed out keys
