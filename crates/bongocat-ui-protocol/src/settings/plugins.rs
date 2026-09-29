@@ -50,16 +50,25 @@ pub struct SettingsPlugins {
     pub maximum_active: usize,
     /// The last failure, kept until something replaces it.
     pub last_error: Option<SettingsPluginError>,
+    /// Whether a catalog has been read yet, successfully or not.
+    ///
+    /// The one field that keeps an empty catalog from rendering as a page that is
+    /// still loading. Without it the page cannot answer "is it still reading?" for
+    /// a host that has already looked and found nothing — and a page that says
+    /// "reading" forever is worse than one that says "empty", because it tells the
+    /// user the product is working when it has already finished.
+    pub catalog_read: bool,
 }
 
 impl SettingsPlugins {
-    /// Whether the host has nothing to show and nothing to say.
+    /// Whether the catalog has not been read yet, so there is genuinely nothing to
+    /// show.
     ///
-    /// An empty list with no error and no available host is the one state that means
-    /// "the catalog has not been read yet", and it is rendered as the loading state
-    /// rather than as an empty catalog.
+    /// Deliberately not "the list is empty": an empty list is an answer, and only an
+    /// unread catalog is a question. A read that *failed* is also an answer, and it
+    /// arrives with `last_error` set rather than here.
     pub fn is_pending(&self) -> bool {
-        self.available && !self.busy && self.entries.is_empty() && self.last_error.is_none()
+        self.available && !self.catalog_read && !self.busy
     }
 }
 
@@ -133,21 +142,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_pending_read_is_distinguishable_from_an_empty_catalog() {
-        let mut plugins = SettingsPlugins {
+    fn only_an_unread_catalog_is_pending() {
+        // The distinction the field exists for. "The list is empty" was the old
+        // test, and it made a catalog that had been read and had nothing in it look
+        // like a read still in progress — which is a page that says "loading"
+        // forever.
+        let unread = SettingsPlugins {
             available: true,
             ..SettingsPlugins::default()
         };
-        assert!(plugins.is_pending(), "a read with nothing in it is pending");
+        assert!(unread.is_pending(), "a catalog nobody has read is pending");
 
-        plugins.entries.push(SettingsPluginEntry {
-            id: "pomodoro".to_string(),
-            ..SettingsPluginEntry::default()
-        });
+        let read_and_empty = SettingsPlugins {
+            available: true,
+            catalog_read: true,
+            ..SettingsPlugins::default()
+        };
         assert!(
-            !plugins.is_pending(),
-            "a catalog with a plugin in it is not pending"
+            !read_and_empty.is_pending(),
+            "a read catalog with nothing in it is an answer, not a question"
         );
+
+        // Entries in the list are not what settles the page. Installed plugins are
+        // listed from disk before any catalog is read, so a host with three of them
+        // and no catalog is still waiting for the catalog.
+        let read_with_entries = SettingsPlugins {
+            available: true,
+            catalog_read: true,
+            entries: vec![SettingsPluginEntry {
+                id: "pomodoro".to_string(),
+                ..SettingsPluginEntry::default()
+            }],
+            ..SettingsPlugins::default()
+        };
+        assert!(!read_with_entries.is_pending());
     }
 
     #[test]
@@ -161,13 +189,35 @@ mod tests {
 
     #[test]
     fn a_failed_read_is_never_pending() {
+        // A read that failed *was* a read. Without `catalog_read` on this path the
+        // host would leave it false and the page would show a loading state for a
+        // catalog it had already given up on.
         let plugins = SettingsPlugins {
             available: true,
+            catalog_read: true,
             last_error: Some(SettingsPluginError::new(
                 SettingsPluginErrorCode::CatalogUnavailable,
             )),
             ..SettingsPlugins::default()
         };
         assert!(!plugins.is_pending(), "a failure is shown, not waited on");
+    }
+
+    #[test]
+    fn a_refresh_in_flight_keeps_the_previous_answer_on_screen() {
+        let plugins = SettingsPlugins {
+            available: true,
+            busy: true,
+            catalog_read: true,
+            entries: vec![SettingsPluginEntry {
+                id: "pomodoro".to_string(),
+                ..SettingsPluginEntry::default()
+            }],
+            ..SettingsPlugins::default()
+        };
+        assert!(
+            !plugins.is_pending(),
+            "a refresh is not a pending read; the list the user is reading stays"
+        );
     }
 }

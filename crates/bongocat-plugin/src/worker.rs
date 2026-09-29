@@ -110,6 +110,14 @@ pub struct PluginSnapshot {
     /// The last failure, kept until something replaces it so the center shows it
     /// rather than clearing it on the next poll.
     pub last_error: Option<PluginError>,
+    /// Whether a catalog has been read yet, successfully or not.
+    ///
+    /// Without this the center cannot tell "not looked yet" from "looked and there
+    /// is nothing", and a worker that has not read one — because a read is pending,
+    /// or because the first read has not finished — would render a loading state
+    /// forever. An empty list is an answer, and only an unread catalog is a
+    /// question.
+    pub catalog_read: bool,
 }
 
 impl PluginSnapshot {
@@ -414,9 +422,35 @@ struct Worker {
     runtime: Option<bongocat_runtime::RuntimeClient>,
     state: Arc<Mutex<SharedState>>,
     catalog: Option<crate::LoadedCatalog>,
+    /// Where a catalog is read from. Decided by the product, which knows the build
+    /// environment, and read only here.
+    catalog_mode: CatalogMode,
+    /// Whether a catalog has been read. Mirrors the published snapshot and is kept
+    /// here because a read is the worker's own fact, not something a caller
+    /// reports.
+    catalog_read: bool,
     plugins: BTreeMap<PluginId, Loaded>,
     measured_at: Instant,
     diagnostics: PluginDiagnostics,
+}
+
+/// Where the worker reads its catalog from.
+///
+/// Decided once, by the product, because only it knows the build environment — and
+/// the two environments have no other reason to differ. A Development build has a
+/// directory an author can put a catalog in; a Production build has an empty one
+/// and has to ask the network.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CatalogMode {
+    /// A directory beside the application's data root.
+    ///
+    /// What makes the author → install → see-it loop work with no network and no
+    /// publish step. A directory with no catalog in it is an empty catalog, not a
+    /// failure.
+    Directory,
+    /// The published catalog, fetched through the updater's mirrors in their
+    /// order.
+    Network,
 }
 
 /// Start a worker on a new thread.
@@ -426,6 +460,7 @@ struct Worker {
 pub fn start(
     store: PluginStore,
     catalog_directory: PathBuf,
+    catalog_mode: CatalogMode,
     layer_producer: OverlayLayerProducer,
     clock: Arc<LocalTimeCache>,
     runtime: Option<bongocat_runtime::RuntimeClient>,
@@ -446,6 +481,8 @@ pub fn start(
                 store: thread_store,
                 layer_producer,
                 catalog_directory,
+                catalog_mode,
+                catalog_read: false,
                 clock,
                 runtime,
                 state: thread_state,
@@ -478,6 +515,15 @@ impl Worker {
         // not be drawn until something woke the worker, and a press-driven panel is
         // never woken by a tick.
         self.evaluate(&mut fonts);
+        // The catalog is read after the first evaluation, not before it. A Production
+        // build's read is a network request across several mirrors, and an installed
+        // panel must not wait for it to appear — so the panels are already on the
+        // model window while the page still says it is reading.
+        //
+        // The read is the worker's own thread, so a press that arrives while it is in
+        // flight waits in the command channel rather than being lost; the channel is
+        // bounded and this happens once per run.
+        self.refresh_catalog();
         loop {
             let interval = if self.needs_clock() {
                 EVALUATION_INTERVAL
@@ -555,6 +601,7 @@ impl Worker {
         }
         state.snapshot.entries = entries;
         state.snapshot.active = active;
+        state.snapshot.catalog_read = self.catalog_read;
         state.snapshot.revision = state.snapshot.revision.saturating_add(1);
     }
 
@@ -707,15 +754,38 @@ impl Worker {
         self.publish(Some(PluginPhase::Failed(error.clone())), Some(error));
     }
 
+    /// Read the catalog from wherever this build reads it, and publish the result.
+    ///
+    /// Publishes `catalog_read` on every path, including a failure. A read that
+    /// failed *was* a read: the page's answer is "the catalog could not be read,
+    /// here is why, try again", not "still reading", and a page that cannot tell
+    /// those apart is a page that lies.
     fn refresh_catalog(&mut self) {
         self.publish(Some(PluginPhase::RefreshingCatalog), None);
-        match crate::load_local(&self.catalog_directory) {
+        let read = match self.catalog_mode {
+            CatalogMode::Directory => crate::load_local(&self.catalog_directory),
+            CatalogMode::Network => self.fetch_catalog(),
+        };
+        self.catalog_read = true;
+        match read {
             Ok(catalog) => {
                 self.catalog = Some(catalog);
                 self.publish(Some(PluginPhase::Idle), None);
             }
             Err(error) => self.fail(error),
         }
+    }
+
+    /// The published catalog, through the updater's mirrors in their order.
+    ///
+    /// The agent is built here rather than kept, because one is only worth holding
+    /// for the length of one read and this worker may live for days. A failure to
+    /// build one is a failure to read, and is reported as one — a center that
+    /// silently showed an empty catalog would look like a catalog with nothing in
+    /// it.
+    fn fetch_catalog(&self) -> Result<crate::LoadedCatalog, PluginError> {
+        let agent = crate::agent()?;
+        crate::fetch_catalog(|url, timeout| crate::download_with(url, timeout, &agent))
     }
 
     fn install(&mut self, id: &PluginId, layer_ids: &OverlayLayerIds) {

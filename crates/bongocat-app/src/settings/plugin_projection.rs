@@ -20,6 +20,7 @@ pub(super) fn project_plugins(snapshot: &PluginSnapshot) -> SettingsPlugins {
         active: snapshot.active.len(),
         maximum_active: bongocat_plugin::MAXIMUM_ENABLED_PLUGINS,
         last_error: snapshot.last_error.as_ref().map(project_error),
+        catalog_read: snapshot.catalog_read,
     }
 }
 
@@ -148,6 +149,7 @@ mod tests {
             }],
             active: vec![bongocat_plugin::PluginId::new("pomodoro").expect("id")],
             last_error: None,
+            catalog_read: true,
         };
 
         let plugins = project_plugins(&snapshot);
@@ -187,6 +189,7 @@ mod tests {
             }],
             active: Vec::new(),
             last_error: None,
+            catalog_read: true,
         };
 
         let entry = &project_plugins(&snapshot).entries[0];

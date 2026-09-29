@@ -351,26 +351,13 @@ pub(super) fn groups(
         rows.push(row);
     }
 
+    // The catalog row carries the whole state — loading, empty, failed, ready — in
+    // its description, and the plugin rows follow it when there are any. An empty
+    // state is therefore that one row and no more: a second row repeating the
+    // catalog's own title and description would render the same sentence twice and
+    // make a settled page look like two things happened.
     let mut items = vec![catalog];
-    if rows.is_empty() {
-        // A group with no items does not render its title, so the one line that
-        // explains the absence lives in a row of its own rather than being dropped
-        // on the floor.
-        items.push(
-            SettingItem::new(
-                bongocat_i18n::text(locale, "settings.plugins.catalog.title"),
-                SettingField::element(
-                    |_options: &RenderOptions, _: &mut Window, _app: &mut App| {
-                        div().into_any_element()
-                    },
-                ),
-            )
-            .description(catalog_description(&plugins, language).unwrap_or_default())
-            .disabled(true),
-        );
-    } else {
-        items.extend(rows);
-    }
+    items.extend(rows);
     let catalog_group = SettingGroup::new()
         .title(bongocat_i18n::text(
             locale,
@@ -452,6 +439,10 @@ mod tests {
     fn a_degraded_host_says_so_rather_than_showing_an_empty_catalog() {
         let plugins = SettingsPlugins::default();
         assert!(plugins.entries.is_empty());
+        assert!(
+            !plugins.is_pending(),
+            "no host is a failure to report, not a catalog to wait for"
+        );
         let text = catalog_description(&plugins, SettingsLanguage::English);
         assert!(text.is_some(), "no host is a failure, not an empty catalog");
     }
@@ -462,10 +453,59 @@ mod tests {
             available: true,
             ..SettingsPlugins::default()
         };
+        assert!(pending.is_pending());
         assert!(catalog_description(&pending, SettingsLanguage::English).is_some());
+
+        // The one this page used to get wrong: a catalog that has been read and has
+        // nothing in it is an answer, and answering it "still reading" forever is
+        // what a stuck page looks like.
+        let read_and_empty = SettingsPlugins {
+            available: true,
+            catalog_read: true,
+            ..SettingsPlugins::default()
+        };
+        assert!(
+            !read_and_empty.is_pending(),
+            "a read empty catalog is settled, not loading"
+        );
+        assert!(
+            catalog_description(&read_and_empty, SettingsLanguage::English).is_some(),
+            "and it says so in the empty state's own words"
+        );
+        assert_ne!(
+            bongocat_i18n::text(
+                SettingsLanguage::English.catalog_locale(),
+                "settings.plugins.catalog.loading"
+            ),
+            bongocat_i18n::text(
+                SettingsLanguage::English.catalog_locale(),
+                "settings.plugins.catalog.empty"
+            ),
+            "loading and empty are different sentences, not the same one twice"
+        );
+
+        // A refresh in flight is deliberately *not* pending: the page already has an
+        // answer, and blanking a list the user is reading to show a spinner is worse
+        // than a disabled Refresh button over a list that is a few seconds old.
+        let reading = SettingsPlugins {
+            available: true,
+            busy: true,
+            catalog_read: true,
+            entries: vec![entry(true, true, false)],
+            ..SettingsPlugins::default()
+        };
+        assert!(
+            !reading.is_pending(),
+            "a refresh keeps the previous list on screen rather than blanking it"
+        );
+        assert!(
+            catalog_description(&reading, SettingsLanguage::English).is_none(),
+            "and does not claim to be loading when it is refreshing"
+        );
 
         let empty = SettingsPlugins {
             available: true,
+            catalog_read: true,
             entries: vec![entry(true, true, false)],
             ..SettingsPlugins::default()
         };

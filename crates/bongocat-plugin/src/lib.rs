@@ -67,8 +67,8 @@ pub use store::{
     verify_signature,
 };
 pub use worker::{
-    EVALUATION_INTERVAL, IDLE_EVALUATION_INTERVAL, MAXIMUM_ENABLED_PLUGINS, PluginCommand,
-    PluginDiagnostics, PluginEntry, PluginPhase, PluginPressSink, PluginSnapshot,
+    CatalogMode, EVALUATION_INTERVAL, IDLE_EVALUATION_INTERVAL, MAXIMUM_ENABLED_PLUGINS,
+    PluginCommand, PluginDiagnostics, PluginEntry, PluginPhase, PluginPressSink, PluginSnapshot,
     PluginWorkerEndpoint, PluginWorkerHandle, PluginWorkerJoinError, PluginWorkerReader,
     WorkerStopper, start,
 };

@@ -20,7 +20,7 @@
 
 use bongocat_config::StorageLayout;
 use bongocat_plugin::{
-    LocalTimeCache, PluginWorkerEndpoint, PluginWorkerHandle, PluginWorkerReader,
+    CatalogMode, LocalTimeCache, PluginWorkerEndpoint, PluginWorkerHandle, PluginWorkerReader,
     local_catalog_directory,
 };
 use bongocat_render::{OverlayLayerConsumer, OverlayPressSink};
@@ -66,6 +66,11 @@ impl ProductPluginHost {
         let (handle, endpoint) = bongocat_plugin::start(
             bongocat_plugin::PluginStore::new(layout.plugins.clone()),
             local_catalog_directory(&layout.root),
+            // Only the product knows the build environment, and the two differ in
+            // exactly one way that matters here: a Development build has a catalog
+            // directory an author can write into, and a Production build has an
+            // empty one and has to ask the network.
+            catalog_mode(),
             producer,
             Arc::clone(&clock),
             runtime,
@@ -161,6 +166,19 @@ impl ProductPluginHost {
             return Err("the plugin worker's stop request could not be queued".to_string());
         }
         Ok(())
+    }
+}
+
+/// Where this build reads its plugin catalog from.
+///
+/// The one thing that differs between the two environments, and it is decided here
+/// because this is the only place that knows the build environment. Both read the
+/// same schema, validate the same way, and show the same page; a Development build
+/// just has a directory to read so the author loop needs no network.
+pub(crate) fn catalog_mode() -> CatalogMode {
+    match bongocat_app::BUILD_ENVIRONMENT {
+        bongocat_config::BuildEnvironment::Development => CatalogMode::Directory,
+        bongocat_config::BuildEnvironment::Production => CatalogMode::Network,
     }
 }
 

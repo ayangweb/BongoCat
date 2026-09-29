@@ -812,6 +812,112 @@ fn catalog_bytes() -> Vec<u8> {
     .expect("the catalog serialises")
 }
 
+#[test]
+fn a_worker_reads_its_catalog_at_startup_without_being_asked() {
+    // The bug this exists for: the catalog was only read when the settings window's
+    // Refresh button sent a command, so a product that started and was never opened
+    // had no catalog at all, and the plugin page sat on "reading…" for the whole
+    // run. The read belongs to the worker's start-up, not to a press.
+    let directory = tempfile::tempdir().expect("a temp directory");
+    let catalog_directory = directory.path().join("plugin-catalog");
+    std::fs::create_dir_all(&catalog_directory).expect("the catalog directory");
+    std::fs::write(
+        catalog_directory.join("plugins.json"),
+        format!(
+            r#"{{"schema_version":1,"plugins":[{{
+              "id":"pomodoro","name":"Pomodoro","version":"1.0.0","api_version":1,
+              "downloads":{{"{}":{{"path":"build/pomodoro.zip"}}}}
+            }}]}}"#,
+            super::host_platform()
+        ),
+    )
+    .expect("the catalog writes");
+
+    let (layers, _consumer) = bongocat_render::overlay_layer_channel();
+    let (handle, endpoint) = super::worker::start(
+        PluginStore::new(directory.path().join("plugins")),
+        catalog_directory,
+        super::worker::CatalogMode::Directory,
+        layers,
+        std::sync::Arc::new(super::LocalTimeCache::new()),
+        None,
+    )
+    .expect("the worker starts");
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let snapshot = handle.snapshot();
+        if snapshot.catalog_read {
+            assert!(
+                snapshot.last_error.is_none(),
+                "the catalog beside the worker should have been read: {snapshot:?}"
+            );
+            assert_eq!(
+                snapshot.entries.len(),
+                1,
+                "and the plugin in it should be listed without anything asking"
+            );
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the worker never read the catalog beside it: {snapshot:?}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    handle.stopper(&endpoint).stop();
+    handle
+        .stop_and_join(Duration::from_secs(5))
+        .expect("the worker stops");
+}
+
+#[test]
+fn a_worker_whose_catalog_cannot_be_read_says_so_rather_than_staying_pending() {
+    // The other half of the same bug: a read that *fails* is still a read. A worker
+    // that left `catalog_read` false on a failure would show a loading state
+    // forever for a catalog it had already given up on.
+    let directory = tempfile::tempdir().expect("a temp directory");
+    let catalog_directory = directory.path().join("plugin-catalog");
+    std::fs::create_dir_all(&catalog_directory).expect("the catalog directory");
+    // Not a catalog at all.
+    std::fs::write(catalog_directory.join("plugins.json"), b"{ not json")
+        .expect("the broken catalog writes");
+
+    let (layers, _consumer) = bongocat_render::overlay_layer_channel();
+    let (handle, endpoint) = super::worker::start(
+        PluginStore::new(directory.path().join("plugins")),
+        catalog_directory,
+        super::worker::CatalogMode::Directory,
+        layers,
+        std::sync::Arc::new(super::LocalTimeCache::new()),
+        None,
+    )
+    .expect("the worker starts");
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let snapshot = handle.snapshot();
+        if snapshot.catalog_read {
+            assert!(
+                snapshot.last_error.is_some(),
+                "a failed read is reported, not swallowed into an empty list"
+            );
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the worker never finished trying: {snapshot:?}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    handle.stopper(&endpoint).stop();
+    handle
+        .stop_and_join(Duration::from_secs(5))
+        .expect("the worker stops");
+}
+
 /// A development catalog naming an archive that is already on this machine, which
 /// is the loop the ADR-0078 trust model is built around: author, install, see it
 /// on the model window, with no publish step and no signature.
@@ -840,6 +946,7 @@ fn a_development_catalog_installs_a_plugin_without_a_network_or_a_signature() {
     let (handle, endpoint) = super::worker::start(
         PluginStore::new(directory.path().join("plugins")),
         catalog_directory,
+        super::worker::CatalogMode::Directory,
         layers,
         std::sync::Arc::new(super::LocalTimeCache::new()),
         None,
@@ -1276,6 +1383,7 @@ fn a_worker_starts_empty_and_publishes_a_snapshot() {
     let (handle, endpoint) = super::worker::start(
         store,
         directory.path().join("catalog"),
+        super::worker::CatalogMode::Directory,
         layers,
         std::sync::Arc::new(super::LocalTimeCache::new()),
         None,
@@ -1301,6 +1409,7 @@ fn a_worker_that_was_never_asked_anything_still_reports_its_stopped_state() {
     let (handle, endpoint) = super::worker::start(
         store,
         directory.path().join("catalog"),
+        super::worker::CatalogMode::Directory,
         layers,
         std::sync::Arc::new(super::LocalTimeCache::new()),
         None,
@@ -1355,6 +1464,7 @@ fn an_installed_plugin_appears_in_the_snapshot_and_its_panel_reaches_the_channel
     let (handle, endpoint) = super::worker::start(
         store,
         directory.path().join("catalog"),
+        super::worker::CatalogMode::Directory,
         layers,
         std::sync::Arc::new(super::LocalTimeCache::new()),
         None,
@@ -1440,6 +1550,7 @@ fn a_disabled_plugin_publishes_no_layer() {
     let (handle, endpoint) = super::worker::start(
         store,
         directory.path().join("catalog"),
+        super::worker::CatalogMode::Directory,
         layers,
         std::sync::Arc::new(super::LocalTimeCache::new()),
         None,
@@ -1493,6 +1604,7 @@ fn uninstalling_removes_the_plugin_from_the_snapshot() {
     let (handle, endpoint) = super::worker::start(
         store,
         directory.path().join("catalog"),
+        super::worker::CatalogMode::Directory,
         layers,
         std::sync::Arc::new(super::LocalTimeCache::new()),
         None,
@@ -1535,6 +1647,7 @@ fn a_plugin_the_catalog_offers_appears_in_the_snapshot_with_its_offered_version(
     let (handle, endpoint) = super::worker::start(
         store,
         catalog_directory,
+        super::worker::CatalogMode::Directory,
         layers,
         std::sync::Arc::new(super::LocalTimeCache::new()),
         None,
@@ -1588,6 +1701,7 @@ fn a_press_that_reaches_the_worker_runs_the_actions_behavior() {
     let (handle, endpoint) = super::worker::start(
         store,
         directory.path().join("catalog"),
+        super::worker::CatalogMode::Directory,
         layers,
         std::sync::Arc::new(super::LocalTimeCache::new()),
         None,
@@ -1673,6 +1787,7 @@ fn a_worker_reports_a_stop_and_its_layers_after_the_frame_source_is_done() {
     let (handle, endpoint) = super::worker::start(
         store,
         directory.path().join("catalog"),
+        super::worker::CatalogMode::Directory,
         layers,
         std::sync::Arc::new(super::LocalTimeCache::new()),
         None,
