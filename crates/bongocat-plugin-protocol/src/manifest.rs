@@ -743,8 +743,7 @@ mod tests {
     /// Parsed here rather than only when a developer installs it, because it is the
     /// one manifest a plugin author reads: if it stops being valid, every example
     /// anyone copies is wrong too.
-    const REFERENCE_POMODORO: &str =
-        include_str!("../../../resources/plugins/pomodoro/plugin.json");
+    const REFERENCE_POMODORO: &str = include_str!("../../../plugins/pomodoro/plugin.json");
 
     #[test]
     fn the_shipped_reference_plugin_is_a_valid_manifest() {

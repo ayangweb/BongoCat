@@ -19,18 +19,21 @@ three things and nothing else:
   declares what it wants to know and the host publishes the values.
 - **A scene** — the panel, as a tree of nodes with values bound to those behaviors.
 
-The manifest of the reference plugin this directory ships is
-[`pomodoro/plugin.json`](pomodoro/plugin.json). It is the file to copy: a focus
-timer with a countdown, a progress bar, a progress ring and two buttons.
+The manifest of the reference plugin this repository ships is
+[`plugins/pomodoro/plugin.json`](../plugins/pomodoro/plugin.json). It is the file
+to copy: a focus timer with a countdown, a progress bar, a progress ring and two
+buttons.
 
 ## The whole loop, with nothing published
 
 A Development build reads its catalog from a directory instead of the network, and
-an entry in that catalog may name an archive on the same machine. So the loop is:
+an entry in that catalog may name an archive on the same machine. This repository's
+top-level `plugins/` directory *is* such a catalog: a reference plugin and the
+`plugins.json` that offers it. So the loop is:
 
 ```sh
 # 1. Build the archive. A plugin is one file inside a zip.
-cd resources/plugins
+cd plugins
 zip build/pomodoro.zip pomodoro/plugin.json
 
 # 2. Point the product's data root at this directory, or copy the two files into

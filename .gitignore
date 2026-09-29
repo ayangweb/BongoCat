@@ -2,6 +2,9 @@ logs
 *.log
 target
 
+# 插件开发目录里 `zip build/…` 产出的归档，是本地构建产物而非素材
+plugins/build/
+
 # Editor directories and files
 .idea
 .DS_Store

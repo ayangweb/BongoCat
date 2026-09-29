@@ -342,7 +342,8 @@ BongoCat/
   Cargo.toml                  正式 workspace 根
   Cargo.lock
   rust-toolchain.toml
-  resources/                  随产品打包的模型、产品图标与参考插件
+  resources/                  随产品打包的模型与产品图标
+  plugins/                    参考插件与开发目录（不随产品打包）
   crates/
     bongocat-app/             入口、装配和 shutdown
     bongocat-input/           平台无关输入协议、producer 和 latest-value transport

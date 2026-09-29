@@ -883,7 +883,7 @@ fn a_development_catalog_installs_a_plugin_without_a_network_or_a_signature() {
 }
 
 /// The development catalog this repository ships, beside the reference plugin.
-const DEVELOPMENT_CATALOG: &str = include_str!("../../../resources/plugins/plugins.json");
+const DEVELOPMENT_CATALOG: &str = include_str!("../../../plugins/plugins.json");
 
 #[test]
 fn the_shipped_development_catalog_is_valid() {
@@ -1809,7 +1809,7 @@ fn a_scene_node_default_is_a_spacer_and_a_value_default_is_empty_text() {
 }
 
 /// The reference plugin, at the path a developer reads it from.
-const REFERENCE_POMODORO: &[u8] = include_bytes!("../../../resources/plugins/pomodoro/plugin.json");
+const REFERENCE_POMODORO: &[u8] = include_bytes!("../../../plugins/pomodoro/plugin.json");
 
 #[test]
 fn the_shipped_reference_plugin_loads_and_rasterizes() {
