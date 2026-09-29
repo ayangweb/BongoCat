@@ -1,0 +1,507 @@
+{
+  "_version": 1,
+  "navigation": {
+    "settings": {
+      "title": "Configurações do BongoCat"
+    },
+    "appearance": {
+      "title": "Aparência e idioma"
+    },
+    "model_library": {
+      "title": "Biblioteca de modelos"
+    },
+    "model_behavior": {
+      "title": "Comportamento do modelo"
+    },
+    "model_window": {
+      "title": "Janela do modelo"
+    },
+    "input_interaction": {
+      "title": "Entrada e interação"
+    },
+    "shortcuts": {
+      "title": "Atalhos"
+    },
+    "app_system": {
+      "title": "App e sistema"
+    },
+    "about": {
+      "title": "Sobre"
+    }
+  },
+  "system_menu": {
+    "title": "BongoCat",
+    "open_settings": "Configurações",
+    "quit": "Encerrar o BongoCat"
+  },
+  "startup_permission": {
+    "later": "Configurar depois",
+    "input_monitoring": {
+      "title": "Permissão de monitoramento de entrada necessária",
+      "description": "O BongoCat precisa da permissão de monitoramento de entrada para receber a entrada do teclado e do mouse.\n\nObservação: se o BongoCat já estiver na lista, selecione-o e clique em \"−\" para removê-lo e depois em \"+\" para adicioná-lo novamente. Reinicie o BongoCat depois de conceder a permissão.",
+      "open_settings": "Abrir as configurações do sistema"
+    },
+    "administrator": {
+      "title": "Recomendado executar com acesso de administrador",
+      "description": "O BongoCat precisa de acesso de administrador para continuar recebendo a entrada do teclado e do mouse enquanto outro aplicativo é executado com privilégios de administrador.\n\nPara configurar: clique com o botão direito em BongoCat → Propriedades → Compatibilidade → ative \"Executar este programa como administrador\".",
+      "open_program_folder": "Sair e abrir as configurações"
+    }
+  },
+  "about": {
+    "product_information": {
+      "version": {
+        "title": "Informações da versão",
+        "label": "Versão",
+        "environment": {
+          "development": "Build de desenvolvimento",
+          "release": "Build de lançamento"
+        }
+      }
+    },
+    "software_information": {
+      "title": "Informações do software",
+      "description": "Copie os detalhes da versão, do sistema e do runtime em JSON para um relatório de erro.",
+      "copy": "Copiar",
+      "copy_success": "Informações do software copiadas"
+    },
+    "project": {
+      "title": "Página do projeto",
+      "action": "Abrir"
+    },
+    "feedback": {
+      "title": "Relato de problemas",
+      "description": "Copie primeiro as informações do software e depois cole-as no relatório.",
+      "action": "Relatar um problema"
+    },
+    "logs": {
+      "title": "Registros do aplicativo",
+      "action": "Abrir"
+    }
+  },
+  "models": {
+    "catalog": {
+      "load_failed": "Não foi possível carregar o catálogo de modelos"
+    },
+    "identity": {
+      "title": "Nome do modelo",
+      "source": {
+        "built_in": "Integrado",
+        "imported": "Importado"
+      },
+      "status": {
+        "active": "Em uso",
+        "unavailable": "Indisponível"
+      }
+    },
+    "card": {
+      "cover_missing": "Sem capa"
+    },
+    "edit": {
+      "cover": {
+        "label": "Escolher capa"
+      }
+    },
+    "actions": {
+      "use": "Usar",
+      "edit": "Editar",
+      "open_folder": "Abrir a pasta do modelo",
+      "save": "Salvar",
+      "delete": "Excluir"
+    },
+    "validation": {
+      "package_layout_invalid": "A estrutura do pacote é inválida",
+      "package_safety_limits_exceeded": "O pacote excede os limites de segurança",
+      "model_format_invalid_or_unsupported": "O formato do modelo é inválido ou não é compatível",
+      "texture_invalid": "A textura é inválida",
+      "files_unavailable": "Os arquivos do modelo estão indisponíveis",
+      "resource_invalid": "O recurso do modelo é inválido"
+    },
+    "import": {
+      "success": "Importação do modelo concluída",
+      "failed": "Falha na importação do modelo",
+      "mver_dialog": {
+        "title": "Escolha os modos para converter",
+        "description": "Selecione os modos do BongoCat Mver a importar.",
+        "import": "Importar"
+      },
+      "step": {
+        "choosing": "Abrindo o seletor de arquivos…",
+        "validating_source": "Lendo a pasta do modelo…",
+        "importing": "Importando os arquivos do modelo…",
+        "capturing": "Capturando a capa do modelo…"
+      },
+      "drop": {
+        "ready": {
+          "title": "Solte para importar esta pasta de modelo"
+        },
+        "busy": {
+          "title": "Outra operação de modelo está em andamento"
+        },
+        "invalid": {
+          "title": "Solte apenas uma pasta de modelo por vez"
+        }
+      },
+      "title": "Importar modelo",
+      "hint": "Clique para escolher ou arraste uma pasta de modelo"
+    },
+    "mode": {
+      "standard": "Padrão",
+      "keyboard": "Teclado",
+      "gamepad": "Controle"
+    },
+    "mver": {
+      "mode": {
+        "standard": "Modo Padrão",
+        "keyboard": "Modo Teclado",
+        "gamepad": "Modo Controle"
+      }
+    },
+    "behaviors": {
+      "empty": "Nenhum movimento ou expressão disponível"
+    },
+    "invalid_summary": "%{origin} · %{diagnostic}",
+    "delete_confirmation": "Tem certeza de que deseja excluir este modelo?"
+  },
+  "update": {
+    "window": {
+      "title": "Atualização do BongoCat"
+    },
+    "heading": {
+      "title": "Atualizar o BongoCat"
+    },
+    "current_version": "Versão atual %{version}",
+    "status": {
+      "idle": "Verifique se há uma versão mais recente do BongoCat.",
+      "checking": "Verificando atualizações…",
+      "up_to_date": "O BongoCat %{version} é a versão mais recente.",
+      "available": "O BongoCat %{version} pode ser instalado.",
+      "downloading": "Baixando… %{percent}%",
+      "downloading_unknown": "Baixando…",
+      "downloading_detail": "BongoCat %{version} · %{downloaded} de %{total}",
+      "verifying": "Verificando o BongoCat %{version} baixado…",
+      "installing": "Instalando o BongoCat %{version}…",
+      "installed_restarting": "O BongoCat %{version} foi instalado. Reiniciando…",
+      "installed_relaunching": "O BongoCat %{version} foi instalado. O instalador vai reiniciá-lo agora."
+    },
+    "notes": {
+      "title": "Novidades"
+    },
+    "action": {
+      "check": "Verificar atualizações",
+      "recheck": "Verificar novamente",
+      "install": "Baixar e instalar",
+      "restart": "Reiniciar agora",
+      "view_on_github": "Ver no GitHub"
+    },
+    "error": {
+      "stage": {
+        "check": "Não foi possível verificar se há uma nova versão do BongoCat %{version}.",
+        "download": "Não foi possível baixar o BongoCat %{version}.",
+        "verify": "Não foi possível verificar o BongoCat %{version} baixado.",
+        "install": "Não foi possível instalar o BongoCat %{version}."
+      },
+      "not_configured": "As atualizações não estão habilitadas nesta versão.",
+      "environment_disabled": "Esta versão não pode instalar atualizações.",
+      "signature_key_missing": "Esta versão não pode verificar atualizações, portanto nenhuma foi instalada.",
+      "release_fetch_failed": "Nenhuma informação de lançamento foi encontrada. Tente novamente mais tarde.",
+      "release_manifest_invalid": "As informações de atualização são inválidas ou incompatíveis com esta versão. Tente novamente mais tarde.",
+      "no_matching_asset": "Este lançamento não tem um instalador para este computador.",
+      "download_transport_failed": "O download não foi concluído. Verifique a conexão e tente novamente.",
+      "checksum_mismatch": "A atualização baixada está corrompida ou incompleta.",
+      "signature_invalid": "Não foi possível verificar a atualização e ela não foi instalada.",
+      "archive_invalid": "Não foi possível ler a atualização baixada.",
+      "install_path_not_writable": "O BongoCat não pode ser atualizado no local atual.",
+      "install_failed": "Não foi possível atualizar o BongoCat.",
+      "restart_failed": "Não foi possível reiniciar o BongoCat. Inicie-o novamente para usar a nova versão.",
+      "internal": "A atualização falhou por um motivo inesperado."
+    },
+    "unavailable": {
+      "development_build": "Builds de desenvolvimento não podem instalar atualizações de lançamento.",
+      "signing_key_missing": "Esta versão não pode verificar atualizações, portanto a atualização está desativada."
+    },
+    "about": {
+      "label": "Verificar atualizações"
+    }
+  },
+  "actions": {
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "close": "Fechar"
+  },
+  "shortcuts": {
+    "scopes": {
+      "window": "Atalhos da janela",
+      "model": "Atalhos do comportamento do modelo"
+    },
+    "switches": {
+      "enable_window_shortcuts": {
+        "label": "Ativar atalhos da janela"
+      },
+      "enable_model_behavior_shortcuts": {
+        "label": "Ativar atalhos do comportamento do modelo"
+      }
+    },
+    "actions": {
+      "clear": "Limpar",
+      "play": "Reproduzir"
+    },
+    "capture": {
+      "press_to_record": "Pressione para registrar um atalho",
+      "click_to_record": "Clique para registrar um atalho"
+    },
+    "command_names": {
+      "toggle_model_window": "Mostrar ou ocultar a janela do modelo",
+      "open_settings": "Mostrar ou ocultar a janela de configurações",
+      "toggle_ignore_mouse_input": "Alternar para ignorar a entrada do mouse",
+      "toggle_ignore_keyboard_input": "Alternar para ignorar a entrada do teclado",
+      "toggle_ignore_gamepad_input": "Alternar para ignorar a entrada do controle"
+    },
+    "behavior_names": {
+      "motion": "Movimento %{index}",
+      "expression": "Expressão %{index}"
+    },
+    "errors": {
+      "conflict": "%{shortcut} já está atribuído a outro atalho"
+    }
+  },
+  "errors": {
+    "settings": {
+      "service_unavailable": "O serviço de configurações está indisponível",
+      "snapshot_outdated": "As configurações mudaram em outro lugar. Revise as configurações mais recentes e tente novamente.",
+      "setting_not_applied": "A configuração não teve efeito",
+      "invalid_shortcut_bindings": "As combinações de atalhos são inválidas ou conflitantes",
+      "setting_save_failed": "Não foi possível salvar a configuração",
+      "config_permission_denied": "Não é possível gravar o arquivo de configuração; verifique as permissões e tente novamente",
+      "config_storage_full": "O disco que guarda a configuração está cheio; libere espaço e tente novamente",
+      "config_target_occupied": "O local da configuração está em uso; feche o programa que está usando-o e tente novamente",
+      "configuration_backup_open_failed": "Não foi possível abrir a pasta de backup da configuração",
+      "model_unavailable": "O modelo selecionado está indisponível",
+      "model_activation_failed": "Não foi possível ativar o modelo selecionado",
+      "model_behavior_unavailable": "Essa ação ou expressão pertence a um modelo que não está mais em uso",
+      "model_behavior_play_failed": "Não foi possível reproduzir a ação ou a expressão",
+      "model_name_invalid": "O nome do modelo não pode ser usado",
+      "model_not_found": "O modelo não foi encontrado",
+      "model_cover_invalid": "A imagem da capa precisa ser um arquivo PNG",
+      "model_cover_update_failed": "Não foi possível atualizar a capa do modelo",
+      "model_file_picker_unavailable": "Não foi possível concluir a caixa de diálogo de arquivos. Tente novamente.",
+      "model_folder_open_failed": "Não foi possível abrir a pasta do modelo",
+      "model_id_invalid": "O ID do modelo é inválido",
+      "model_already_installed": "Este modelo já está instalado",
+      "model_import_invalid_package": "O pacote do modelo é inválido",
+      "model_import_drop_invalid": "Solte apenas uma pasta de modelo válida por vez",
+      "model_import_source_invalid": "A pasta selecionada contém o armazenamento de modelos do BongoCat. Escolha uma pasta de modelo individual.",
+      "model_import_source_changed": "A origem do modelo mudou durante a importação",
+      "model_import_source_unsupported": "A origem do modelo contém um arquivo incompatível",
+      "model_import_cancelled": "A importação do modelo foi cancelada",
+      "model_operations_busy": "Outra operação de modelo está em andamento. Tente novamente em um instante.",
+      "model_import_failed": "Não foi possível importar o modelo",
+      "built_in_model_cannot_be_deleted": "Modelos integrados não podem ser excluídos",
+      "model_delete_failed": "Não foi possível excluir o modelo importado",
+      "diagnostics_export_failed": "Não foi possível exportar os diagnósticos",
+      "software_info_copy_failed": "Não foi possível copiar as informações do software",
+      "external_link_open_failed": "Não foi possível abrir o link",
+      "log_location_open_failed": "Não foi possível abrir a pasta de registros do aplicativo",
+      "login_startup_update_failed": "Não foi possível atualizar a configuração de abertura no login",
+      "system_icon_update_failed": "Não foi possível atualizar o ícone do sistema.",
+      "taskbar_icon_update_failed": "Não foi possível atualizar o ícone da barra de tarefas.",
+      "dock_icon_update_failed": "Não foi possível atualizar o ícone do Dock.",
+      "window_hide_failed": "Não foi possível ocultar a janela de configurações",
+      "window_layout_save_failed": "Não foi possível salvar o layout da janela",
+      "application_shutdown_failed": "O BongoCat não pôde ser encerrado por completo"
+    }
+  },
+  "settings": {
+    "appearance": {
+      "theme": {
+        "label": "Tema",
+        "options": {
+          "system": "Sistema",
+          "light": "Claro",
+          "dark": "Escuro"
+        }
+      },
+      "language": {
+        "label": "Idioma",
+        "options": {
+          "system": "Sistema",
+          "chinese_simplified": "简体中文",
+          "chinese_traditional": "繁體中文",
+          "english_united_states": "English",
+          "arabic": "العربية",
+          "vietnamese": "Tiếng Việt",
+          "portuguese_brazil": "Português"
+        }
+      }
+    },
+    "overlay": {
+      "behavior": {
+        "title": "Comportamento da janela"
+      },
+      "appearance": {
+        "title": "Aparência da janela"
+      },
+      "performance": {
+        "title": "Desempenho da janela"
+      },
+      "hide_model_window": {
+        "label": "Ocultar a janela do modelo"
+      },
+      "always_on_top": {
+        "label": "Sempre no topo"
+      },
+      "click_through": {
+        "label": "Cliques atravessam a janela"
+      },
+      "keep_inside_screen": {
+        "label": "Manter na tela"
+      },
+      "hide_on_mouse_hover": {
+        "label": "Ocultar ao passar o mouse"
+      },
+      "hide_on_mouse_hover_delay": {
+        "label": "Atraso para ocultar ao passar o mouse (segundos)"
+      },
+      "scale": {
+        "label": "Escala da janela"
+      },
+      "opacity": {
+        "label": "Opacidade da janela"
+      },
+      "corner_radius": {
+        "label": "Raio dos cantos da janela"
+      },
+      "maximum_fps": {
+        "label": "FPS máximo"
+      }
+    },
+    "models": {
+      "behavior": {
+        "mirror_model": {
+          "label": "Espelhar o modelo horizontalmente"
+        },
+        "motion_audio": {
+          "label": "Reproduzir os sons dos movimentos"
+        },
+        "remember_last_expression": {
+          "label": "Lembrar a última expressão de cada modelo"
+        },
+        "random_behavior_mode": {
+          "label": "Reproduzir movimentos ou expressões aleatoriamente",
+          "options": {
+            "off": "Desativado",
+            "expressions": "Apenas expressões",
+            "motions": "Apenas movimentos",
+            "motions_and_expressions": "Expressões e movimentos"
+          }
+        },
+        "random_behavior_interval": {
+          "label": "Intervalo aleatório de movimento ou expressão (segundos)"
+        }
+      }
+    },
+    "input_interaction": {
+      "mouse": {
+        "title": "Mouse",
+        "mirror_mouse_tracking_horizontal": {
+          "label": "Espelhar o rastreamento do mouse horizontalmente"
+        },
+        "mirror_mouse_tracking_vertical": {
+          "label": "Espelhar o rastreamento do mouse verticalmente"
+        },
+        "ignore_mouse_input": {
+          "label": "Ignorar a entrada do mouse"
+        }
+      },
+      "keyboard": {
+        "title": "Teclado",
+        "ignore_keyboard_input": {
+          "label": "Ignorar a entrada do teclado"
+        }
+      },
+      "gamepad": {
+        "title": "Controle",
+        "auto_switch": {
+          "label": "Trocar de modelo quando um controle for conectado ou desconectado"
+        },
+        "connected_model": {
+          "label": "Modelo usado quando um controle é conectado",
+          "options": {
+            "last_used": "Último modelo de controle usado"
+          }
+        },
+        "disconnected_model": {
+          "label": "Modelo usado quando nenhum controle está conectado",
+          "options": {
+            "last_used": "Último modelo sem controle usado"
+          }
+        },
+        "ignore_gamepad_input": {
+          "label": "Ignorar a entrada do controle"
+        },
+        "stick_dead_zone": {
+          "label": "Zona morta do analógico do controle",
+          "description": "Ignora pequenos movimentos do analógico."
+        },
+        "trigger_dead_zone": {
+          "label": "Zona morta dos gatilhos do controle",
+          "description": "Ignora pequenos movimentos dos gatilhos."
+        }
+      }
+    },
+    "app_system": {
+      "desktop": {
+        "title": "Abertura e área de trabalho"
+      },
+      "updates": {
+        "title": "Atualizações"
+      },
+      "logging": {
+        "title": "Registro",
+        "level": {
+          "label": "Nível de registro",
+          "options": {
+            "error": "Somente erros",
+            "warn": "Erros e avisos",
+            "info": "Detalhes padrão",
+            "debug": "Detalhes de diagnóstico",
+            "trace": "Todos os detalhes"
+          }
+        },
+        "retention_days": {
+          "label": "Manter os registros (dias)"
+        }
+      },
+      "status_icon": {
+        "label": {
+          "macos": "Mostrar o ícone na barra de menus",
+          "windows": "Mostrar o ícone na bandeja do sistema"
+        }
+      },
+      "taskbar_icon": {
+        "label": "Mostrar o ícone na barra de tarefas"
+      },
+      "dock_icon": {
+        "label": "Mostrar o ícone no Dock"
+      },
+      "auto_update": {
+        "label": "Verificar atualizações automaticamente",
+        "interval": {
+          "label": "Intervalo da verificação automática de atualizações (horas)"
+        }
+      },
+      "open_at_login": {
+        "label": "Abrir no login"
+      },
+      "startup": {
+        "checking": "Verificando o item de login…",
+        "unavailable": "Status indisponível; clique no botão para tentar de novo",
+        "stale": "O local salvo do aplicativo mudou; desligue e religue o botão para corrigir",
+        "requires_approval": "Aprove o BongoCat nas configurações do sistema",
+        "not_found": "O item de login está ausente; desligue e religue o botão para corrigir",
+        "unsupported_platform": "A abertura no login não está disponível neste sistema",
+        "unsupported_os": "A abertura no login não está disponível neste sistema operacional",
+        "unsupported_build": "A abertura no login não está disponível em builds de desenvolvimento"
+      }
+    }
+  }
+}

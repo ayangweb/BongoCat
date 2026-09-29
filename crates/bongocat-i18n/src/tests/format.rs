@@ -44,4 +44,12 @@ fn format_text_interpolation_is_available() {
         ),
         "Phiên bản hiện tại 1.2.3"
     );
+    assert_eq!(
+        format_text(
+            "pt-BR",
+            "update.current_version",
+            &[("version", "1.2.3".to_string())],
+        ),
+        "Versão atual 1.2.3"
+    );
 }

@@ -85,6 +85,10 @@ fn missing_locale_text_falls_back_to_english() {
         "Cài đặt BongoCat"
     );
     assert_eq!(
+        text("pt-BR", "navigation.settings.title"),
+        "Configurações do BongoCat"
+    );
+    assert_eq!(
         text("system", "navigation.settings.title"),
         "BongoCat Settings"
     );
@@ -112,6 +116,13 @@ fn a_region_variant_reaches_the_catalog_that_serves_its_language() {
         ("AR-sa", "ar-SA"),
         ("vi", "vi-VN"),
         ("vi-VN", "vi-VN"),
+        // Brazilian Portuguese is the only Portuguese catalog, so a European
+        // machine reaches it on the primary subtag exactly as an Egyptian one
+        // reaches `ar-SA`.
+        ("pt", "pt-BR"),
+        ("pt-BR", "pt-BR"),
+        ("pt-PT", "pt-BR"),
+        ("pt_BR", "pt-BR"),
         ("en", "en-US"),
         ("en-GB", "en-US"),
         ("en_AU", "en-US"),
