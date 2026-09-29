@@ -369,6 +369,198 @@ fn physics_contract_validates_counts_weights_and_vertex_references() {
     assert!(error.detail.contains("VertexIndex"));
 }
 
+/// A physics setting is allowed to declare no output at all.
+///
+/// The published `physics3.json` schema requires the `Output` key and puts no
+/// length requirement on it, and real models are full of settings whose
+/// particles are simulated and then written nowhere — a shipping model measured
+/// during this investigation had 16 such settings out of 32. Rejecting the whole
+/// model over one of them refused a package the old Cubism Framework evaluated
+/// without complaint, and the evaluator here already models the same rule: it
+/// fills the per-setting output buffer from the output list, so an empty list is
+/// inert rather than wrong.
+///
+/// The synthetic rig is two settings, one driven and one inert, because that is
+/// the shape that matters: a package mixing them must still import, and the
+/// setting that does have an output must keep working.
+#[test]
+fn a_physics_setting_without_an_output_is_inert_rather_than_invalid() {
+    let package = tempdir().expect("package");
+    let limits = ModelPackageLimits::default();
+    let physics = package.path().join("model.physics3.json");
+    const MIXED_RIG: &str = r#"{
+      "Version":3,
+      "Meta":{
+        "PhysicsSettingCount":2,"TotalInputCount":2,"TotalOutputCount":1,"VertexCount":4,"Fps":60,
+        "EffectiveForces":{"Gravity":{"X":0,"Y":-1},"Wind":{"X":0,"Y":0}},
+        "PhysicsDictionary":[
+          {"Id":"Physics1","Name":"driven"},
+          {"Id":"Physics2","Name":"inert"}
+        ]
+      },
+      "PhysicsSettings":[
+        {
+          "Id":"Physics1",
+          "Input":[{"Source":{"Target":"Parameter","Id":"ParamAngleX"},"Weight":100,"Type":"X","Reflect":false}],
+          "Output":[{"Destination":{"Target":"Parameter","Id":"ParamHairSide"},"VertexIndex":1,"Scale":1,"Weight":100,"Type":"X","Reflect":false}],
+          "Vertices":[
+            {"Position":{"X":0,"Y":0},"Mobility":0.8,"Delay":0.8,"Acceleration":1,"Radius":0},
+            {"Position":{"X":0,"Y":10},"Mobility":0.8,"Delay":0.8,"Acceleration":1,"Radius":10}
+          ],
+          "Normalization":{"Position":{"Minimum":-10,"Default":0,"Maximum":10},"Angle":{"Minimum":-10,"Default":0,"Maximum":10}}
+        },
+        {
+          "Id":"Physics2",
+          "Input":[{"Source":{"Target":"Parameter","Id":"ParamAngleY"},"Weight":50,"Type":"X","Reflect":false}],
+          "Output":[],
+          "Vertices":[
+            {"Position":{"X":0,"Y":0},"Mobility":1,"Delay":1,"Acceleration":1,"Radius":0},
+            {"Position":{"X":0,"Y":10},"Mobility":0.95,"Delay":1,"Acceleration":1,"Radius":10}
+          ],
+          "Normalization":{"Position":{"Minimum":-10,"Default":0,"Maximum":10},"Angle":{"Minimum":-10,"Default":0,"Maximum":10}}
+        }
+      ]
+    }"#;
+    fs::write(&physics, MIXED_RIG).expect("physics resource with an inert setting");
+    validate_physics_resource(
+        &physics,
+        "model.physics3.json",
+        limits.maximum_json_bytes,
+        limits.maximum_json_depth,
+    )
+    .expect("a setting with no output is valid, not malformed");
+
+    let definition = load_physics_definition(
+        &physics,
+        "model.physics3.json",
+        limits.maximum_json_bytes,
+        limits.maximum_json_depth,
+    )
+    .expect("typed physics definition");
+    assert_eq!(definition.settings.len(), 2);
+    assert_eq!(
+        definition.settings[1].inputs[0].parameter_id, "ParamAngleY",
+        "the inert setting still declares what it reacts to"
+    );
+    assert!(
+        definition.settings[1].outputs.is_empty(),
+        "an inert setting is carried through as one that writes nothing back"
+    );
+    assert_eq!(
+        definition.settings[0].outputs[0].parameter_id, "ParamHairSide",
+        "the driven setting beside it is untouched"
+    );
+
+    // The requirements that are left still have teeth: a setting with no input
+    // has nothing to react to, and one with a single vertex has no pendulum.
+    // Each case is a whole rig rather than an edit of the valid one, so a
+    // negative case cannot silently stop exercising anything.
+    const NO_INPUT: &str = r#"{
+      "Version":3,
+      "Meta":{
+        "PhysicsSettingCount":1,"TotalInputCount":0,"TotalOutputCount":0,"VertexCount":2,"Fps":60,
+        "EffectiveForces":{"Gravity":{"X":0,"Y":-1},"Wind":{"X":0,"Y":0}},
+        "PhysicsDictionary":[{"Id":"Physics1","Name":""}]
+      },
+      "PhysicsSettings":[{
+        "Id":"Physics1",
+        "Input":[],
+        "Output":[],
+        "Vertices":[
+          {"Position":{"X":0,"Y":0},"Mobility":0.8,"Delay":0.8,"Acceleration":1,"Radius":0},
+          {"Position":{"X":0,"Y":10},"Mobility":0.8,"Delay":0.8,"Acceleration":1,"Radius":10}
+        ],
+        "Normalization":{"Position":{"Minimum":-10,"Default":0,"Maximum":10},"Angle":{"Minimum":-10,"Default":0,"Maximum":10}}
+      }]
+    }"#;
+    const ONE_PENDULUM: &str = r#"{
+      "Version":3,
+      "Meta":{
+        "PhysicsSettingCount":1,"TotalInputCount":1,"TotalOutputCount":0,"VertexCount":1,"Fps":60,
+        "EffectiveForces":{"Gravity":{"X":0,"Y":-1},"Wind":{"X":0,"Y":0}},
+        "PhysicsDictionary":[{"Id":"Physics1","Name":""}]
+      },
+      "PhysicsSettings":[{
+        "Id":"Physics1",
+        "Input":[{"Source":{"Target":"Parameter","Id":"ParamInput"},"Weight":100,"Type":"X","Reflect":false}],
+        "Output":[],
+        "Vertices":[
+          {"Position":{"X":0,"Y":0},"Mobility":0.8,"Delay":0.8,"Acceleration":1,"Radius":0}
+        ],
+        "Normalization":{"Position":{"Minimum":-10,"Default":0,"Maximum":10},"Angle":{"Minimum":-10,"Default":0,"Maximum":10}}
+      }]
+    }"#;
+    for invalid in [NO_INPUT, ONE_PENDULUM] {
+        fs::write(&physics, invalid).expect("invalid physics resource");
+        let error = validate_physics_resource(
+            &physics,
+            "model.physics3.json",
+            limits.maximum_json_bytes,
+            limits.maximum_json_depth,
+        )
+        .expect_err("a setting with no input or no pendulum must be rejected");
+        assert_eq!(error.code, ModelDiagnostic::ModelResourceInvalid);
+        assert!(error.detail.contains("require input"), "{}", error.detail);
+    }
+}
+
+/// The same shape, reached the way a user reaches it: as a package whose model3
+/// declares a physics file that writes nothing back at all.
+#[test]
+fn a_package_whose_physics_has_no_outputs_at_all_still_imports() {
+    let package = tempdir().expect("package");
+    let limits = ModelPackageLimits::default();
+    fs::write(package.path().join("model.moc3"), b"moc").expect("moc resource");
+    fs::write(
+        package.path().join("cat.model3.json"),
+        r#"{"Version":3,"FileReferences":{"Moc":"model.moc3","Textures":[],"Physics":"model.physics3.json"}}"#,
+    )
+    .expect("model3 resource");
+    fs::write(
+        package.path().join("model.physics3.json"),
+        r#"{
+          "Version":3,
+          "Meta":{
+            "PhysicsSettingCount":1,"TotalInputCount":1,"TotalOutputCount":0,"VertexCount":2,"Fps":60,
+            "EffectiveForces":{"Gravity":{"X":0,"Y":-1},"Wind":{"X":0,"Y":0}},
+            "PhysicsDictionary":[{"Id":"Physics1","Name":""}]
+          },
+          "PhysicsSettings":[{
+            "Id":"Physics1",
+            "Input":[{"Source":{"Target":"Parameter","Id":"ParamInput"},"Weight":100,"Type":"X","Reflect":false}],
+            "Output":[],
+            "Vertices":[
+              {"Position":{"X":0,"Y":0},"Mobility":0.8,"Delay":0.8,"Acceleration":1,"Radius":0},
+              {"Position":{"X":0,"Y":10},"Mobility":0.8,"Delay":0.8,"Acceleration":1,"Radius":10}
+            ],
+            "Normalization":{"Position":{"Minimum":-10,"Default":0,"Maximum":10},"Angle":{"Minimum":-10,"Default":0,"Maximum":10}}
+          }]
+        }"#,
+    )
+    .expect("physics resource with no outputs at all");
+
+    let prepared = PreparedModel::prepare(
+        ModelId::parse("inert-physics").expect("model id"),
+        package.path(),
+        limits,
+    )
+    .expect("a package whose physics writes nothing back must still be accepted");
+    assert_eq!(
+        prepared.index().physics.as_deref(),
+        Some("model.physics3.json")
+    );
+    assert!(
+        prepared
+            .physics_definition()
+            .expect("prepared physics definition")
+            .expect("declared physics definition")
+            .settings[0]
+            .outputs
+            .is_empty(),
+        "the definition reaches the runtime, which then simulates and discards"
+    );
+}
+
 #[test]
 fn model_user_data_contract_validates_metadata_and_unique_targets() {
     let package = tempdir().expect("package");

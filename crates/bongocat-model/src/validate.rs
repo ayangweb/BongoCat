@@ -383,10 +383,22 @@ pub(crate) fn validate_physics_resource_value(
                 "physics3 setting Id must be non-empty and unique",
             );
         }
-        if setting.inputs.is_empty() || setting.outputs.is_empty() || setting.vertices.len() < 2 {
+        // A setting with no output is legal and inert, not malformed. The
+        // published `physics3.json` schema requires the `Output` key but puts
+        // no length requirement on it, and Cubism Editor writes settings whose
+        // particles are computed and then discarded — a real shipping model has
+        // 16 of 32 that way. The evaluator already models that: it fills the
+        // per-setting output buffer from the output list, so an empty list
+        // simply means the setting writes nothing back. Requiring one here
+        // rejected the whole model over a rig the runtime handles correctly.
+        //
+        // Inputs and vertices are still required. A setting with no input has
+        // nothing to react to and one with fewer than two vertices has no
+        // pendulum, so neither describes a rig anything can evaluate.
+        if setting.inputs.is_empty() || setting.vertices.len() < 2 {
             return invalid_resource(
                 reference,
-                "physics3 settings require input, output, and at least two vertices",
+                "physics3 settings require input and at least two vertices",
             );
         }
         validate_physics_range(setting.normalization.position, reference, "Position")?;
