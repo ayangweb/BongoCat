@@ -9,6 +9,7 @@ pub enum SettingsLanguage {
     #[default]
     System,
     ChineseSimplified,
+    ChineseTraditional,
     English,
     Arabic,
     Vietnamese,
@@ -60,9 +61,10 @@ impl Default for SettingsLogging {
 }
 
 impl SettingsLanguage {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::System,
         Self::ChineseSimplified,
+        Self::ChineseTraditional,
         Self::English,
         Self::Arabic,
         Self::Vietnamese,
@@ -72,6 +74,7 @@ impl SettingsLanguage {
         match self {
             Self::System => "system",
             Self::ChineseSimplified => "zh-CN",
+            Self::ChineseTraditional => "zh-TW",
             Self::English => "en-US",
             Self::Arabic => "ar-SA",
             Self::Vietnamese => "vi-VN",
@@ -86,6 +89,7 @@ impl SettingsLanguage {
     pub const fn catalog_locale(self) -> &'static str {
         match self {
             Self::ChineseSimplified => "zh-CN",
+            Self::ChineseTraditional => "zh-TW",
             Self::Arabic => "ar-SA",
             Self::Vietnamese => "vi-VN",
             Self::System | Self::English => "en-US",

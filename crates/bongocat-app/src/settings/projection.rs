@@ -29,6 +29,7 @@ pub(super) const fn settings_language(language: bongocat_config::Language) -> Se
     match language {
         bongocat_config::Language::System => SettingsLanguage::System,
         bongocat_config::Language::ChineseSimplified => SettingsLanguage::ChineseSimplified,
+        bongocat_config::Language::ChineseTraditional => SettingsLanguage::ChineseTraditional,
         bongocat_config::Language::English => SettingsLanguage::English,
         bongocat_config::Language::Arabic => SettingsLanguage::Arabic,
         bongocat_config::Language::Vietnamese => SettingsLanguage::Vietnamese,
@@ -39,6 +40,7 @@ pub(super) const fn config_language(language: SettingsLanguage) -> bongocat_conf
     match language {
         SettingsLanguage::System => bongocat_config::Language::System,
         SettingsLanguage::ChineseSimplified => bongocat_config::Language::ChineseSimplified,
+        SettingsLanguage::ChineseTraditional => bongocat_config::Language::ChineseTraditional,
         SettingsLanguage::English => bongocat_config::Language::English,
         SettingsLanguage::Arabic => bongocat_config::Language::Arabic,
         SettingsLanguage::Vietnamese => bongocat_config::Language::Vietnamese,

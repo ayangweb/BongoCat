@@ -31,6 +31,14 @@ pub enum Language {
     System,
     #[serde(rename = "zh-CN")]
     ChineseSimplified,
+    // Traditional Chinese. The two Chinese forms are different written forms
+    // rather than regional variants, so each ships its own catalog named after
+    // the region whose copy it was written in: `zh-TW` carries Traditional and
+    // `zh-CN` Simplified. The script subtag (`hant`/`hans`) decides between
+    // them when a platform reports one, and the `TW`/`HK`/`MO` region subtags
+    // decide when it does not.
+    #[serde(rename = "zh-TW")]
+    ChineseTraditional,
     #[serde(rename = "en-US")]
     English,
     // Arabic. The region subtag nominates the primary variety rather than
@@ -55,9 +63,10 @@ pub enum Language {
 }
 
 impl Language {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::System,
         Self::ChineseSimplified,
+        Self::ChineseTraditional,
         Self::English,
         Self::Arabic,
         Self::Vietnamese,
@@ -67,6 +76,7 @@ impl Language {
         match self {
             Self::System => "system",
             Self::ChineseSimplified => "zh-CN",
+            Self::ChineseTraditional => "zh-TW",
             Self::English => "en-US",
             Self::Arabic => "ar-SA",
             Self::Vietnamese => "vi-VN",
@@ -78,20 +88,18 @@ impl Language {
     /// Matching the primary subtag is the RFC 4647 language-subtag fallback:
     /// every region variant of a shipped language reaches the same catalog, so
     /// `ar-EG` and `vi` land where a user expects instead of on the English
-    /// default. Simplified Chinese is the one subtag that cannot decide this
-    /// alone, because Simplified and Traditional are different written forms
-    /// rather than regional variants, and only the Simplified catalog ships.
+    /// default. Chinese is the one subtag that cannot decide this alone, because
+    /// Simplified and Traditional are different written forms rather than
+    /// regional variants, so `zh` resolves by script and region subtag instead.
     pub fn from_system_locale(locale: &str) -> Self {
         let locale = locale.replace('_', "-").to_ascii_lowercase();
         let subtags = locale.split('-').collect::<Vec<_>>();
+        let traditional = subtags
+            .iter()
+            .any(|subtag| matches!(*subtag, "hant" | "tw" | "hk" | "mo"));
         match subtags.first() {
-            Some(&"zh")
-                if !subtags
-                    .iter()
-                    .any(|subtag| matches!(*subtag, "hant" | "tw" | "hk" | "mo")) =>
-            {
-                Self::ChineseSimplified
-            }
+            Some(&"zh") if traditional => Self::ChineseTraditional,
+            Some(&"zh") => Self::ChineseSimplified,
             Some(&"ar") => Self::Arabic,
             Some(&"vi") => Self::Vietnamese,
             _ => Self::English,
@@ -102,11 +110,13 @@ impl Language {
         match self {
             Self::System => match system_language {
                 Self::ChineseSimplified => Self::ChineseSimplified,
+                Self::ChineseTraditional => Self::ChineseTraditional,
                 Self::Arabic => Self::Arabic,
                 Self::Vietnamese => Self::Vietnamese,
                 Self::System | Self::English => Self::English,
             },
             Self::ChineseSimplified => Self::ChineseSimplified,
+            Self::ChineseTraditional => Self::ChineseTraditional,
             Self::English => Self::English,
             Self::Arabic => Self::Arabic,
             Self::Vietnamese => Self::Vietnamese,

@@ -32,6 +32,10 @@ pub(crate) fn settings_language_display_name(
             locale,
             "settings.appearance.language.options.chinese_simplified",
         ),
+        SettingsLanguage::ChineseTraditional => bongocat_i18n::text(
+            locale,
+            "settings.appearance.language.options.chinese_traditional",
+        ),
         SettingsLanguage::English => bongocat_i18n::text(
             locale,
             "settings.appearance.language.options.english_united_states",
@@ -264,6 +268,7 @@ pub(crate) mod tests {
         // option, so it is asserted separately below.
         let endonyms = [
             ("zh-CN", "简体中文"),
+            ("zh-TW", "繁體中文"),
             ("en-US", "English"),
             ("ar-SA", "العربية"),
             ("vi-VN", "Tiếng Việt"),
@@ -297,6 +302,13 @@ pub(crate) mod tests {
                 SettingsLanguage::ChineseSimplified,
             ),
             "跟随系统"
+        );
+        assert_eq!(
+            settings_language_display_name(
+                SettingsLanguage::System,
+                SettingsLanguage::ChineseTraditional,
+            ),
+            "跟隨系統"
         );
         assert_eq!(
             settings_language_display_name(SettingsLanguage::System, SettingsLanguage::Arabic),

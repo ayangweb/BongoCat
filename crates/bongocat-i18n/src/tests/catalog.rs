@@ -75,6 +75,7 @@ fn locale_source_uses_nested_snake_case_keys() {
 #[test]
 fn missing_locale_text_falls_back_to_english() {
     assert_eq!(text("zh-CN", "navigation.settings.title"), "BongoCat 设置");
+    assert_eq!(text("zh-TW", "navigation.settings.title"), "BongoCat 設定");
     assert_eq!(
         text("ar-SA", "navigation.settings.title"),
         "إعدادات BongoCat"
@@ -147,12 +148,13 @@ fn a_language_the_product_does_not_ship_falls_back_to_the_default() {
 
 /// Simplified and Traditional are different scripts, not regional variants.
 ///
-/// The primary subtag cannot separate them — both are `zh` — and the product
-/// ships only the Simplified catalog, so a Traditional tag has to resolve to the
-/// default rather than to `zh-CN`. The Simplified form still resolves however
-/// the platform spells it.
+/// The primary subtag cannot separate them — both are `zh` — so the `zh` branch
+/// decides by script subtag instead, and each form reaches its own catalog. A
+/// Traditional tag must never read the Simplified catalog: the two are different
+/// written forms, and the region subtag is the only thing a platform reports
+/// when it omits `hant`/`hans`, so both spellings have to land correctly.
 #[test]
-fn traditional_chinese_falls_back_rather_than_reading_the_simplified_catalog() {
+fn each_chinese_script_reaches_its_own_catalog() {
     for locale in [
         "zh-TW",
         "zh-HK",
@@ -163,8 +165,13 @@ fn traditional_chinese_falls_back_rather_than_reading_the_simplified_catalog() {
     ] {
         assert_eq!(
             locale_code(locale),
-            DEFAULT,
+            "zh-TW",
             "{locale} is Traditional Chinese"
+        );
+        assert_eq!(
+            text(locale, "navigation.settings.title"),
+            text("zh-TW", "navigation.settings.title"),
+            "{locale} rendered different copy from zh-TW"
         );
     }
     for locale in ["zh", "zh-CN", "zh-Hans", "zh-Hans-CN", "zh_CN"] {
@@ -174,4 +181,9 @@ fn traditional_chinese_falls_back_rather_than_reading_the_simplified_catalog() {
             "{locale} is Simplified Chinese"
         );
     }
+    // The two scripts are different catalogs, not one catalog read two ways.
+    assert_ne!(
+        text("zh-CN", "navigation.settings.title"),
+        text("zh-TW", "navigation.settings.title")
+    );
 }

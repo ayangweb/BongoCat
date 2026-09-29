@@ -134,6 +134,7 @@
       "enum": [
         "system",
         "zh-CN",
+        "zh-TW",
         "en-US",
         "ar-SA",
         "vi-VN"

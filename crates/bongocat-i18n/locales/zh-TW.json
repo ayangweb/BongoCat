@@ -1,0 +1,506 @@
+{
+  "_version": 1,
+  "navigation": {
+    "settings": {
+      "title": "BongoCat 設定"
+    },
+    "appearance": {
+      "title": "外觀與語言"
+    },
+    "model_library": {
+      "title": "模型庫"
+    },
+    "model_behavior": {
+      "title": "模型行為"
+    },
+    "model_window": {
+      "title": "模型視窗"
+    },
+    "input_interaction": {
+      "title": "輸入與互動"
+    },
+    "shortcuts": {
+      "title": "快速鍵"
+    },
+    "app_system": {
+      "title": "應用程式與系統"
+    },
+    "about": {
+      "title": "關於"
+    }
+  },
+  "system_menu": {
+    "title": "BongoCat",
+    "open_settings": "設定",
+    "quit": "結束 BongoCat"
+  },
+  "startup_permission": {
+    "later": "稍後設定",
+    "input_monitoring": {
+      "title": "需要「輸入監控」權限",
+      "description": "BongoCat 需要「輸入監控」權限，才能正常接收鍵盤與滑鼠輸入。\n\n注意事項：如果清單中已有 BongoCat，請先選取並點選「−」移除，再點選「＋」重新加入。授權完成後，請重新啟動 BongoCat。",
+      "open_settings": "開啟系統設定"
+    },
+    "administrator": {
+      "title": "建議以系統管理員身分執行",
+      "description": "BongoCat 需要系統管理員權限，才能在其他應用程式以系統管理員權限執行時繼續接收鍵盤與滑鼠輸入。\n\n設定方式：按右鍵 BongoCat → 內容 → 相容性 → 勾選「以系統管理員身分執行此程式」。",
+      "open_program_folder": "結束並前往設定"
+    }
+  },
+  "about": {
+    "product_information": {
+      "version": {
+        "title": "版本資訊",
+        "label": "版本",
+        "environment": {
+          "development": "開發版",
+          "release": "正式版"
+        }
+      }
+    },
+    "software_information": {
+      "title": "軟體資訊",
+      "description": "以 JSON 複製版本、系統與執行狀態資訊，回報問題時使用。",
+      "copy": "複製",
+      "copy_success": "軟體資訊已複製"
+    },
+    "project": {
+      "title": "專案首頁",
+      "action": "開啟"
+    },
+    "feedback": {
+      "title": "問題回報",
+      "description": "請先複製軟體資訊，再貼到問題回報中。",
+      "action": "回報問題"
+    },
+    "logs": {
+      "title": "軟體記錄檔",
+      "action": "開啟"
+    }
+  },
+  "models": {
+    "catalog": {
+      "load_failed": "無法載入模型清單"
+    },
+    "identity": {
+      "title": "模型名稱",
+      "source": {
+        "built_in": "內建",
+        "imported": "已匯入"
+      },
+      "status": {
+        "active": "使用中",
+        "unavailable": "無法使用"
+      }
+    },
+    "card": {
+      "cover_missing": "尚無封面"
+    },
+    "edit": {
+      "cover": {
+        "label": "選擇封面"
+      }
+    },
+    "actions": {
+      "use": "使用",
+      "edit": "編輯",
+      "open_folder": "開啟模型資料夾",
+      "save": "儲存",
+      "delete": "刪除"
+    },
+    "validation": {
+      "package_layout_invalid": "模型包結構無效",
+      "package_safety_limits_exceeded": "模型包超出安全限制",
+      "model_format_invalid_or_unsupported": "模型格式無效或不支援",
+      "texture_invalid": "模型紋理無效",
+      "files_unavailable": "模型檔案無法使用",
+      "resource_invalid": "模型資源無效"
+    },
+    "import": {
+      "success": "模型匯入完成",
+      "failed": "模型匯入失敗",
+      "mver_dialog": {
+        "title": "選擇要轉換的模式",
+        "description": "請選擇要匯入的 BongoCat Mver 模式。",
+        "import": "匯入"
+      },
+      "step": {
+        "choosing": "正在開啟檔案選取器…",
+        "validating_source": "正在讀取模型資料夾…",
+        "importing": "正在匯入模型…",
+        "capturing": "正在擷取模型封面…"
+      },
+      "drop": {
+        "ready": {
+          "title": "放開滑鼠即可匯入"
+        },
+        "busy": {
+          "title": "正在處理另一個模型操作，請稍候"
+        },
+        "invalid": {
+          "title": "請一次拖曳一個模型資料夾"
+        }
+      },
+      "title": "匯入模型",
+      "hint": "點選選擇或拖曳模型資料夾"
+    },
+    "mode": {
+      "standard": "標準",
+      "keyboard": "鍵盤",
+      "gamepad": "手把"
+    },
+    "mver": {
+      "mode": {
+        "standard": "標準模式",
+        "keyboard": "鍵盤模式",
+        "gamepad": "手把模式"
+      }
+    },
+    "behaviors": {
+      "empty": "沒有可用的動作或表情"
+    },
+    "invalid_summary": "%{origin} · %{diagnostic}",
+    "delete_confirmation": "你確定要刪除這個模型嗎？"
+  },
+  "update": {
+    "window": {
+      "title": "BongoCat 更新"
+    },
+    "heading": {
+      "title": "更新 BongoCat"
+    },
+    "current_version": "目前版本 %{version}",
+    "status": {
+      "idle": "檢查 BongoCat 是否有新版本。",
+      "checking": "正在檢查更新…",
+      "up_to_date": "BongoCat %{version} 已是最新版本。",
+      "available": "BongoCat %{version} 可以安裝。",
+      "downloading": "正在下載… %{percent}%",
+      "downloading_unknown": "正在下載…",
+      "downloading_detail": "BongoCat %{version} · %{downloaded} / %{total}",
+      "verifying": "正在驗證已下載的 BongoCat %{version}…",
+      "installing": "正在安裝 BongoCat %{version}…",
+      "installed_restarting": "BongoCat %{version} 已安裝，正在重新啟動…",
+      "installed_relaunching": "BongoCat %{version} 已安裝，安裝程式將立即重新啟動它。"
+    },
+    "notes": {
+      "title": "更新內容"
+    },
+    "action": {
+      "check": "檢查更新",
+      "recheck": "重新檢查",
+      "install": "下載並安裝",
+      "restart": "立即重新啟動",
+      "view_on_github": "在 GitHub 上檢視"
+    },
+    "error": {
+      "stage": {
+        "check": "無法檢查 BongoCat %{version} 是否有新版本。",
+        "download": "無法下載 BongoCat %{version}。",
+        "verify": "無法驗證已下載的 BongoCat %{version}。",
+        "install": "無法安裝 BongoCat %{version}。"
+      },
+      "not_configured": "目前版本未開啟更新功能。",
+      "environment_disabled": "目前版本無法安裝更新。",
+      "signature_key_missing": "目前版本無法驗證更新套件，因此沒有安裝更新。",
+      "release_fetch_failed": "找不到發布資訊，請稍後再試。",
+      "release_manifest_invalid": "更新資訊無效或與目前版本不相容，請稍後再試。",
+      "no_matching_asset": "該版本沒有提供適用於這台電腦的安裝程式。",
+      "download_transport_failed": "下載未完成，請檢查網路後再試。",
+      "checksum_mismatch": "下載的更新套件已損毀或不完整。",
+      "signature_invalid": "無法驗證該更新套件，已放棄安裝。",
+      "archive_invalid": "無法讀取已下載的更新套件。",
+      "install_path_not_writable": "無法在目前位置更新 BongoCat。",
+      "install_failed": "無法更新 BongoCat。",
+      "restart_failed": "無法重新啟動 BongoCat，請手動啟動以使用新版本。",
+      "internal": "更新因未預期原因失敗。"
+    },
+    "unavailable": {
+      "development_build": "開發版本不會安裝正式版更新。",
+      "signing_key_missing": "目前版本無法驗證更新，因此更新功能已關閉。"
+    },
+    "about": {
+      "label": "檢查更新"
+    }
+  },
+  "actions": {
+    "cancel": "取消",
+    "confirm": "確認",
+    "close": "關閉"
+  },
+  "shortcuts": {
+    "scopes": {
+      "window": "視窗快速鍵",
+      "model": "模型行為快速鍵"
+    },
+    "switches": {
+      "enable_window_shortcuts": {
+        "label": "啟用視窗快速鍵"
+      },
+      "enable_model_behavior_shortcuts": {
+        "label": "啟用模型行為快速鍵"
+      }
+    },
+    "actions": {
+      "clear": "清除",
+      "play": "播放"
+    },
+    "capture": {
+      "press_to_record": "按下組合鍵以錄製",
+      "click_to_record": "點選以錄製快速鍵"
+    },
+    "command_names": {
+      "toggle_model_window": "顯示或隱藏模型視窗",
+      "open_settings": "顯示或隱藏設定視窗",
+      "toggle_ignore_mouse_input": "切換忽略滑鼠輸入",
+      "toggle_ignore_keyboard_input": "切換忽略鍵盤輸入",
+      "toggle_ignore_gamepad_input": "切換忽略手把輸入"
+    },
+    "behavior_names": {
+      "motion": "動作 %{index}",
+      "expression": "表情 %{index}"
+    },
+    "errors": {
+      "conflict": "%{shortcut} 已被其他快速鍵佔用"
+    }
+  },
+  "errors": {
+    "settings": {
+      "service_unavailable": "設定服務無法使用",
+      "snapshot_outdated": "設定已在其他位置變更，請檢視最新設定後再試。",
+      "setting_not_applied": "設定未生效",
+      "invalid_shortcut_bindings": "快速鍵綁定無效或衝突",
+      "setting_save_failed": "無法儲存設定",
+      "config_permission_denied": "無法寫入設定檔；請檢查權限後再試",
+      "config_storage_full": "存放設定的磁碟已滿；請清理空間後再試",
+      "config_target_occupied": "設定位置被佔用；請關閉使用它的程式後再試",
+      "configuration_backup_open_failed": "無法開啟設定備份資料夾",
+      "model_unavailable": "所選模型無法使用",
+      "model_activation_failed": "無法啟用所選模型",
+      "model_behavior_unavailable": "該動作或表情屬於已不再使用的模型",
+      "model_behavior_play_failed": "無法播放該動作或表情",
+      "model_name_invalid": "模型名稱無法使用",
+      "model_not_found": "找不到該模型",
+      "model_cover_invalid": "封面圖片必須是 PNG 檔",
+      "model_cover_update_failed": "模型封面更新失敗",
+      "model_file_picker_unavailable": "無法完成檔案選取，請再試一次。",
+      "model_folder_open_failed": "無法開啟模型資料夾",
+      "model_id_invalid": "模型 ID 無效",
+      "model_already_installed": "該模型已安裝",
+      "model_import_invalid_package": "模型包無效",
+      "model_import_drop_invalid": "請一次拖曳一個有效的模型資料夾",
+      "model_import_source_invalid": "所選資料夾包含 BongoCat 的模型儲存位置；請改選單一模型資料夾。",
+      "model_import_source_changed": "模型來源在匯入期間發生變化",
+      "model_import_source_unsupported": "模型來源中包含不支援的檔案",
+      "model_import_cancelled": "模型匯入已取消",
+      "model_operations_busy": "另一個模型操作正在進行，請稍後再試。",
+      "model_import_failed": "無法匯入模型",
+      "built_in_model_cannot_be_deleted": "無法刪除內建模型",
+      "model_delete_failed": "無法刪除已匯入模型",
+      "diagnostics_export_failed": "無法匯出診斷資訊",
+      "software_info_copy_failed": "無法複製軟體資訊",
+      "external_link_open_failed": "無法開啟連結",
+      "log_location_open_failed": "無法開啟軟體記錄檔資料夾",
+      "login_startup_update_failed": "無法更新登入時啟動設定",
+      "system_icon_update_failed": "無法更新系統圖示。",
+      "taskbar_icon_update_failed": "無法更新工作列圖示。",
+      "dock_icon_update_failed": "無法更新 Dock 圖示。",
+      "window_hide_failed": "無法隱藏設定視窗",
+      "window_layout_save_failed": "無法儲存視窗版面配置",
+      "application_shutdown_failed": "BongoCat 未能完全關閉"
+    }
+  },
+  "settings": {
+    "appearance": {
+      "theme": {
+        "label": "主題",
+        "options": {
+          "system": "跟隨系統",
+          "light": "淺色",
+          "dark": "深色"
+        }
+      },
+      "language": {
+        "label": "語言",
+        "options": {
+          "system": "跟隨系統",
+          "chinese_simplified": "简体中文",
+          "chinese_traditional": "繁體中文",
+          "english_united_states": "English",
+          "arabic": "العربية",
+          "vietnamese": "Tiếng Việt"
+        }
+      }
+    },
+    "overlay": {
+      "behavior": {
+        "title": "視窗行為"
+      },
+      "appearance": {
+        "title": "視窗外觀"
+      },
+      "performance": {
+        "title": "視窗效能"
+      },
+      "hide_model_window": {
+        "label": "隱藏模型視窗"
+      },
+      "always_on_top": {
+        "label": "永遠置頂"
+      },
+      "click_through": {
+        "label": "滑鼠穿透"
+      },
+      "keep_inside_screen": {
+        "label": "保持在螢幕內"
+      },
+      "hide_on_mouse_hover": {
+        "label": "滑鼠停留時隱藏"
+      },
+      "hide_on_mouse_hover_delay": {
+        "label": "滑鼠停留隱藏延遲（秒）"
+      },
+      "scale": {
+        "label": "視窗縮放"
+      },
+      "opacity": {
+        "label": "視窗不透明度"
+      },
+      "corner_radius": {
+        "label": "視窗圓角"
+      },
+      "maximum_fps": {
+        "label": "最大影格率"
+      }
+    },
+    "models": {
+      "behavior": {
+        "mirror_model": {
+          "label": "水平翻轉模型"
+        },
+        "motion_audio": {
+          "label": "播放動作音效"
+        },
+        "remember_last_expression": {
+          "label": "記住每個模型上次使用的表情"
+        },
+        "random_behavior_mode": {
+          "label": "隨機播放動作或表情",
+          "options": {
+            "off": "關閉",
+            "expressions": "僅表情",
+            "motions": "僅動作",
+            "motions_and_expressions": "表情和動作"
+          }
+        },
+        "random_behavior_interval": {
+          "label": "隨機播放動作或表情間隔（秒）"
+        }
+      }
+    },
+    "input_interaction": {
+      "mouse": {
+        "title": "滑鼠",
+        "mirror_mouse_tracking_horizontal": {
+          "label": "水平翻轉滑鼠跟隨"
+        },
+        "mirror_mouse_tracking_vertical": {
+          "label": "垂直翻轉滑鼠跟隨"
+        },
+        "ignore_mouse_input": {
+          "label": "忽略滑鼠輸入"
+        }
+      },
+      "keyboard": {
+        "title": "鍵盤",
+        "ignore_keyboard_input": {
+          "label": "忽略鍵盤輸入"
+        }
+      },
+      "gamepad": {
+        "title": "手把",
+        "auto_switch": {
+          "label": "連接或中斷手把時自動切換模型"
+        },
+        "connected_model": {
+          "label": "連接手把時自動切換的模型",
+          "options": {
+            "last_used": "上次使用的手把模型"
+          }
+        },
+        "disconnected_model": {
+          "label": "中斷手把時自動切換的模型",
+          "options": {
+            "last_used": "上次使用的非手把模型"
+          }
+        },
+        "ignore_gamepad_input": {
+          "label": "忽略手把輸入"
+        },
+        "stick_dead_zone": {
+          "label": "手把搖桿死區",
+          "description": "忽略輕微的搖桿移動。"
+        },
+        "trigger_dead_zone": {
+          "label": "手把扳機死區",
+          "description": "忽略輕微的扳機移動。"
+        }
+      }
+    },
+    "app_system": {
+      "desktop": {
+        "title": "啟動與桌面"
+      },
+      "updates": {
+        "title": "更新"
+      },
+      "logging": {
+        "title": "記錄",
+        "level": {
+          "label": "記錄層級",
+          "options": {
+            "error": "僅錯誤",
+            "warn": "錯誤和警告",
+            "info": "一般資訊",
+            "debug": "診斷資訊",
+            "trace": "全部詳細資訊"
+          }
+        },
+        "retention_days": {
+          "label": "記錄保留天數"
+        }
+      },
+      "status_icon": {
+        "label": {
+          "macos": "顯示選單列圖示",
+          "windows": "顯示系統匣圖示"
+        }
+      },
+      "taskbar_icon": {
+        "label": "顯示工作列圖示"
+      },
+      "dock_icon": {
+        "label": "顯示 Dock 圖示"
+      },
+      "auto_update": {
+        "label": "自動檢查更新",
+        "interval": {
+          "label": "自動檢查更新間隔（小時）"
+        }
+      },
+      "open_at_login": {
+        "label": "登入時啟動"
+      },
+      "startup": {
+        "checking": "正在檢查登入項目…",
+        "unavailable": "暫時無法取得狀態；點選開關重試",
+        "stale": "應用程式位置已變更；重新切換一次開關即可修復",
+        "requires_approval": "請在系統設定中核准 BongoCat",
+        "not_found": "登入項目缺失；重新切換一次開關即可修復",
+        "unsupported_platform": "目前系統不支援登入時啟動",
+        "unsupported_os": "目前作業系統不支援登入時啟動",
+        "unsupported_build": "開發版本不支援登入時啟動"
+      }
+    }
+  }
+}
