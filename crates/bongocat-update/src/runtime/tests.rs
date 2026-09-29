@@ -555,25 +555,28 @@ fn the_release_identity_matches_the_packaging_conventions() {
 /// running image in place.
 ///
 /// This is the regression test for the tray icon disappearing after every update. On
-/// macOS the restart used `exec`, which swaps the process image without terminating
-/// the process, so the PID survives and the replacement image inherits a process whose
-/// menu bar registration was already torn down by the shutdown that runs before the
-/// restart. The new image's `NSStatusItem` is then created without error and even
-/// reports itself visible, but it is never laid out, so the menu bar stays empty until
-/// the user quits and launches the app by hand.
+/// macOS the restart used `exec`, which swaps the process image without terminating the
+/// process, so the PID survives and the replacement image inherits a process whose menu
+/// bar registration was already torn down by the shutdown that runs before the restart.
+/// The new image's `NSStatusItem` is then created without error and even reports itself
+/// visible, but it is never laid out, so the menu bar stays empty until the user quits
+/// and launches the app by hand.
 ///
-/// The deciding fact is the PID, and `spawn` is what changes it. The restart's own
-/// launch step is called here with a stand-in that exits at once, because the real
-/// command is this test binary: starting that with the harness arguments it was given
-/// would re-run the suite, and this test would then start another copy of it.
+/// The deciding fact is the PID, and `spawn` is what changes it. What gets started here
+/// is this very test binary, with a filter that matches no test: it exists on both
+/// shipping platforms, it exits at once, and it cannot recurse into this test the way
+/// the harness arguments it was originally given would.
 #[test]
 fn the_restart_starts_the_updated_build_as_a_new_process() {
-    let mut child = start_updated_build(&mut std::process::Command::new("/bin/sh"))
-        .expect("a restart starts a second process");
-    let child_pid = child.id();
+    let current = std::env::current_exe().expect("the current executable is resolvable");
+    let mut command = std::process::Command::new(&current);
+    command.args(["--exact", "a_test_name_that_matches_nothing"]);
+    command.stdin(std::process::Stdio::null());
+
+    let mut child = start_updated_build(&mut command).expect("a restart starts a second process");
 
     assert_ne!(
-        child_pid,
+        child.id(),
         std::process::id(),
         "the restart must start a process of its own; replacing the image in place \
          keeps this pid and leaves the new build without a menu bar registration, \
