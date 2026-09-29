@@ -309,3 +309,113 @@ fn declared_physics_drives_a_parameter_without_a_model_motion() {
         .expect("physics parameter");
     assert!(output.abs() > 0.1, "physics output: {output}");
 }
+
+/// A setting that writes nothing back is skipped, not misread as an error.
+///
+/// This is the runtime half of the contract `bongocat-model` establishes when it
+/// accepts a physics setting with an empty `Output`: real models carry these
+/// alongside driven ones, and the evaluator has to keep going past them. The
+/// driven setting beside it still has to move, so a broken skip cannot pass as a
+/// no-op.
+#[test]
+fn a_physics_setting_without_an_output_is_skipped_while_the_others_run() {
+    use bongocat_model::{ModelId, ModelPackageLimits, PresetModelCatalog};
+    use serde_json::json;
+    use std::fs;
+    use std::path::Path;
+
+    fn copy_tree(source: &Path, destination: &Path) {
+        fs::create_dir_all(destination).expect("destination directory");
+        for entry in fs::read_dir(source).expect("source directory") {
+            let entry = entry.expect("source entry");
+            let target = destination.join(entry.file_name());
+            if entry.file_type().expect("entry type").is_dir() {
+                copy_tree(&entry.path(), &target);
+            } else {
+                fs::copy(entry.path(), target).expect("copied model file");
+            }
+        }
+    }
+
+    let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("repository root");
+    let package = tempfile::tempdir().expect("temporary package");
+    let source = repository_root.join("resources/models/standard");
+    let catalog_root = package.path().join("catalog");
+    let model_root = catalog_root.join("physics-inert");
+    copy_tree(&source, &model_root);
+    let model_path = model_root.join("cat.model3.json");
+    let mut model_json: serde_json::Value =
+        serde_json::from_slice(&fs::read(&model_path).expect("model3")).expect("model3 JSON");
+    model_json["FileReferences"]["Physics"] = json!("cat.physics3.json");
+    fs::write(
+        &model_path,
+        serde_json::to_vec_pretty(&model_json).expect("model3 JSON serialization"),
+    )
+    .expect("updated model3");
+    // Two settings, driven first and inert second, which is the order a real rig
+    // that mixes them arrives in: the inert one must not stop the loop before the
+    // driven one has been applied, nor make the whole evaluation fail.
+    fs::write(
+        model_root.join("cat.physics3.json"),
+        r#"{
+          "Version":3,
+          "Meta":{
+            "PhysicsSettingCount":2,"TotalInputCount":2,"TotalOutputCount":1,"VertexCount":4,"Fps":60,
+            "EffectiveForces":{"Gravity":{"X":0,"Y":-1},"Wind":{"X":0,"Y":0}},
+            "PhysicsDictionary":[
+              {"Id":"PhysicsSetting1","Name":"driven"},
+              {"Id":"PhysicsSetting2","Name":"inert"}
+            ]
+          },
+          "PhysicsSettings":[
+            {
+              "Id":"PhysicsSetting1",
+              "Input":[{"Source":{"Target":"Parameter","Id":"ParamAngleX"},"Weight":100,"Type":"X","Reflect":false}],
+              "Output":[{"Destination":{"Target":"Parameter","Id":"ParamAngleY"},"VertexIndex":1,"Scale":1,"Weight":100,"Type":"Angle","Reflect":false}],
+              "Vertices":[
+                {"Position":{"X":0,"Y":0},"Mobility":1,"Delay":0,"Acceleration":0,"Radius":0},
+                {"Position":{"X":0,"Y":10},"Mobility":1,"Delay":0,"Acceleration":0,"Radius":10}
+              ],
+              "Normalization":{"Position":{"Minimum":-10,"Default":0,"Maximum":10},"Angle":{"Minimum":-10,"Default":0,"Maximum":10}}
+            },
+            {
+              "Id":"PhysicsSetting2",
+              "Input":[{"Source":{"Target":"Parameter","Id":"ParamAngleX"},"Weight":100,"Type":"X","Reflect":false}],
+              "Output":[],
+              "Vertices":[
+                {"Position":{"X":0,"Y":0},"Mobility":1,"Delay":0,"Acceleration":0,"Radius":0},
+                {"Position":{"X":0,"Y":10},"Mobility":1,"Delay":0,"Acceleration":0,"Radius":10}
+              ],
+              "Normalization":{"Position":{"Minimum":-10,"Default":0,"Maximum":10},"Angle":{"Minimum":-10,"Default":0,"Maximum":10}}
+            }
+          ]
+        }"#,
+    )
+    .expect("physics fixture with an inert setting");
+
+    let committed = PresetModelCatalog::open(&catalog_root, ModelPackageLimits::default())
+        .expect("catalog")
+        .load(&ModelId::parse("physics-inert").expect("model id"))
+        .expect("committed model");
+    let mut model = Live2dModel::load(&committed).expect("Live2D model");
+    model
+        .set_parameter(ProductParameter::AngleX, 30.0)
+        .expect("input");
+    // The evaluation must succeed, and the driven setting must still have moved
+    // its parameter: an inert setting is a setting that writes nothing, not one
+    // that stops the rig.
+    model
+        .apply_physics(std::time::Duration::from_millis(100))
+        .expect("physics evaluation with an inert setting");
+    let output = model
+        .parameter_value_by_id("ParamAngleY")
+        .expect("physics value")
+        .expect("physics parameter");
+    assert!(
+        output.abs() > 0.1,
+        "the driven setting beside an inert one must still run: {output}"
+    );
+}

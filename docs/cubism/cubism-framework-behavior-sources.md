@@ -55,6 +55,12 @@ readback 证据。
 | expression     | Preserve add, multiply and overwrite semantics, fade weight, replacement and overlap behavior                                                                           | Multiple expressions applied in different orders with normalized parameter snapshots                                       |
 | update order   | Make ordering explicit and stable across eye blink, expression, look, breath, physics, lip sync and pose                                                                | One fixture where reordering produces a different result, checked against an approved R5 oracle                            |
 | physics        | Parse physics3 inputs/outputs/vertices, normalize parameter ranges, use deterministic delta time, stabilize and interpolate consistently                                | Temporary standard-package contract plus local imported-model diagnosis; authorized physics3 model sampled across fixed delta sequences and large-frame recovery remains required |
+
+2026-09-29 补充：`PhysicsSettings[].Output` 可以是空数组。官方 `physics3.json` schema
+（`Live2D/CubismSpecs` 的 `FileFormats/physics3.json.md`）把 `Output` 列为 required **键**但
+不约束数组长度，编辑器导出的模型普遍带有模拟了粒子却不写回任何参数的设置项。本仓库曾要求
+非空输出，拒绝了本可用的真实模型；`bongocat-live2d` 的求值器本就按官方语义处理（逐设置
+分配输出缓冲并按输出列表迭代，空列表即无回写），因此校验层与求值层已对齐（ADR-0077）。
 | pose           | Parse groups/links, initialize parts, fade visible parts and copy linked opacity                                                                                        | Authorized pose3 fixture with group switch and exact time checkpoints                                                      |
 | renderer       | Consume Core drawable/offscreen order, texture, opacity, culling, packed color/alpha blend, multiply/screen color and mask/inverted-mask data using premultiplied alpha | D3D11 and Metal capture plus normalized draw/offscreen command trace; platform pixels may differ within declared tolerance |
 | lifecycle      | Keep moc bytes alive through Model, release Model before Moc, and release GPU resources after the last snapshot                                                         | Repeated load/switch/destroy and failed prepare/validate/commit tests                                                      |

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### 🐛 Bug Fixes
+
+- Fixed some models failing to import with an "invalid model package" message.
+
 ### 🌍 Localization
 
 Arabic, Vietnamese, Traditional Chinese, and Portuguese are now available.
