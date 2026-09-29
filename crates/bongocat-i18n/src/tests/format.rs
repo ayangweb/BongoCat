@@ -22,7 +22,7 @@ fn format_text_interpolation_is_available() {
     );
     assert_eq!(
         format_text(
-            "ar",
+            "ar-SA",
             "update.current_version",
             &[("version", "1.2.3".to_string())],
         ),
@@ -30,7 +30,7 @@ fn format_text_interpolation_is_available() {
     );
     assert_eq!(
         format_text(
-            "vi",
+            "vi-VN",
             "update.current_version",
             &[("version", "1.2.3".to_string())],
         ),

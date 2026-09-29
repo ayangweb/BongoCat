@@ -3,8 +3,8 @@ use std::{fs, path::Path};
 const CATALOGS: [&str; 4] = [
     "locales/en-US.json",
     "locales/zh-CN.json",
-    "locales/ar.json",
-    "locales/vi.json",
+    "locales/ar-SA.json",
+    "locales/vi-VN.json",
 ];
 
 fn main() {

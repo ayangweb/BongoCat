@@ -73,8 +73,8 @@ impl SettingsLanguage {
             Self::System => "system",
             Self::ChineseSimplified => "zh-CN",
             Self::EnglishUnitedStates => "en-US",
-            Self::Arabic => "ar",
-            Self::Vietnamese => "vi",
+            Self::Arabic => "ar-SA",
+            Self::Vietnamese => "vi-VN",
         }
     }
 
@@ -86,8 +86,8 @@ impl SettingsLanguage {
     pub const fn catalog_locale(self) -> &'static str {
         match self {
             Self::ChineseSimplified => "zh-CN",
-            Self::Arabic => "ar",
-            Self::Vietnamese => "vi",
+            Self::Arabic => "ar-SA",
+            Self::Vietnamese => "vi-VN",
             Self::System | Self::EnglishUnitedStates => "en-US",
         }
     }

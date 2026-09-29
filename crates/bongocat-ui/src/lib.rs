@@ -265,8 +265,8 @@ pub(crate) mod tests {
         let endonyms = [
             ("zh-CN", "简体中文"),
             ("en-US", "English"),
-            ("ar", "العربية"),
-            ("vi", "Tiếng Việt"),
+            ("ar-SA", "العربية"),
+            ("vi-VN", "Tiếng Việt"),
         ];
         for (language, (code, endonym)) in SettingsLanguage::ALL
             .into_iter()

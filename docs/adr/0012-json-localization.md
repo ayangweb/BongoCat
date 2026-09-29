@@ -4,7 +4,20 @@
 
 ## 决策
 
-BongoCat 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，已落地的语言为 `zh-CN`、`ar` 与 `vi`。
+BongoCat 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，已落地的语言为 `zh-CN`、`ar-SA` 与 `vi-VN`。
+
+**语言命名采用带地区子标签的提名式**，与 `en-US` 一致：一份语言只发一份 catalog，地区子标签提名这份文案所依据的主要变体，并不声称 catalog 未携带的地区特化。`en-US` 本身也是这种名字——它同样服务 `en-GB`。
+
+**解析走 RFC 4647 的 language-subtag fallback**（浏览器 `Intl`、CLDR 与操作系统自身的做法）：
+按 primary subtag 匹配已发布 catalog，`ar`/`ar-EG`/`ar_MA`/`ar-SA` 全部落到 `ar-SA`，`vi` 与
+`vi-VN` 全部落到 `vi-VN`，`en`/`en-GB` 全部落到 `en-US`。因此机器实际上报的 tag 几乎总不是
+catalog 自身的名字，而 primary subtag 匹配让它们收敛到同一份文案，而不是各自回退英文。
+
+`zh` 是唯一不能只看 primary subtag 的情形：简繁是不同书写体系而非地区变体，产品只发简体。
+繁体的 `zh-TW`/`zh-HK`/`zh-MO`/`zh-Hant` 必须在 `zh` 分支内直接返回默认语言，不能落到下面的
+subtag 循环——否则一个报繁体的机器会读到简体文案，而这正是地区子标签无法表达的那件事。
+`bongocat-config` 的 `Language::from_system_locale` 与 `bongocat-i18n::locale_code` 各做一次
+同样的判定：两个 crate 之间不存在依赖方向，不能共用一个 helper，行为必须由测试对齐。
 
 语言文件放在 `crates/bongocat-i18n/locales/`，每种语言一个 JSON 文件，使用 `_version: 1`
 和真正嵌套的领域结构。`rust-i18n` 在编译期将嵌套路径解析为查找 key；JSON 源文件本身不得使用

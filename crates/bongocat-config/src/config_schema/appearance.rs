@@ -33,24 +33,24 @@ pub enum Language {
     ChineseSimplified,
     #[serde(rename = "en-US")]
     EnglishUnitedStates,
-    // Arabic. The stored form is the bare `ar` subtag rather than a
-    // region-qualified one, so a machine reporting `ar-EG`, `ar-SA` or plain
-    // `ar` all resolve here and one catalog serves every Arabic locale.
+    // Arabic. The region subtag nominates the primary variety rather than
+    // claiming a localisation the catalog does not carry, so the name is
+    // `ar-SA` while one catalog serves every Arabic locale — the same
+    // relationship `en-US` already has to `en-GB`. A machine reporting
+    // `ar-EG`, `ar-SA` or plain `ar` all resolve here on their primary subtag.
     //
     // A plain comment rather than a doc comment is deliberate: `schemars`
     // describes a documented variant and leaves the others bare, which turns
     // the generated `Language` schema from a flat `enum` into a `oneOf`. The
     // checked-in schema is a contract other tools read, so it keeps the shape
     // that reads best and the reasoning lives here instead.
-    #[serde(rename = "ar")]
+    #[serde(rename = "ar-SA")]
     Arabic,
-    // Vietnamese. Like Arabic, the stored form is the bare `vi` subtag rather
-    // than a region-qualified one, so a machine reporting `vi-VN` and one
-    // reporting plain `vi` both resolve to the single shipped catalog. The
-    // endonym `Tiếng Việt` is written with its own diacritics in every
-    // catalog, so a reader who cannot read the current window language still
-    // finds their own.
-    #[serde(rename = "vi")]
+    // Vietnamese, the same shape as Arabic: `vi` and `vi-VN` both reach the
+    // one shipped catalog. The endonym `Tiếng Việt` keeps its diacritics in
+    // every catalog, so a reader who cannot read the current window language
+    // still finds their own.
+    #[serde(rename = "vi-VN")]
     Vietnamese,
 }
 
@@ -68,26 +68,33 @@ impl Language {
             Self::System => "system",
             Self::ChineseSimplified => "zh-CN",
             Self::EnglishUnitedStates => "en-US",
-            Self::Arabic => "ar",
-            Self::Vietnamese => "vi",
+            Self::Arabic => "ar-SA",
+            Self::Vietnamese => "vi-VN",
         }
     }
 
+    /// Classify the locale the operating system reports onto a shipped language.
+    ///
+    /// Matching the primary subtag is the RFC 4647 language-subtag fallback:
+    /// every region variant of a shipped language reaches the same catalog, so
+    /// `ar-EG` and `vi` land where a user expects instead of on the English
+    /// default. Simplified Chinese is the one subtag that cannot decide this
+    /// alone, because Simplified and Traditional are different written forms
+    /// rather than regional variants, and only the Simplified catalog ships.
     pub fn from_system_locale(locale: &str) -> Self {
         let locale = locale.replace('_', "-").to_ascii_lowercase();
         let subtags = locale.split('-').collect::<Vec<_>>();
-        if subtags.first() == Some(&"zh")
-            && !subtags
-                .iter()
-                .any(|subtag| matches!(*subtag, "hant" | "tw" | "hk" | "mo"))
-        {
-            Self::ChineseSimplified
-        } else if subtags.first() == Some(&"ar") {
-            Self::Arabic
-        } else if subtags.first() == Some(&"vi") {
-            Self::Vietnamese
-        } else {
-            Self::EnglishUnitedStates
+        match subtags.first() {
+            Some(&"zh")
+                if !subtags
+                    .iter()
+                    .any(|subtag| matches!(*subtag, "hant" | "tw" | "hk" | "mo")) =>
+            {
+                Self::ChineseSimplified
+            }
+            Some(&"ar") => Self::Arabic,
+            Some(&"vi") => Self::Vietnamese,
+            _ => Self::EnglishUnitedStates,
         }
     }
 

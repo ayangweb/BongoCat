@@ -26,7 +26,8 @@ fn system_locale_resolves_to_a_shipped_language() {
     );
     // One catalog serves every Arabic region, so the region subtag is
     // deliberately not part of the match: a machine in Saudi Arabia and one in
-    // Egypt both report a locale the product reads from the same `ar` catalog.
+    // Egypt both report a locale the product reads from the same `ar-SA`
+    // catalog. This is the RFC 4647 language-subtag fallback.
     for locale in ["ar", "ar-EG", "ar-SA", "ar_MA"] {
         assert_eq!(
             Language::from_system_locale(locale),
@@ -34,13 +35,29 @@ fn system_locale_resolves_to_a_shipped_language() {
             "{locale} is an Arabic locale"
         );
     }
-    // Vietnamese takes the same shape: the region subtag is deliberately not part
-    // of the match, so `vi` and `vi-VN` both reach the one shipped catalog.
+    // Vietnamese takes the same shape: `vi` and `vi-VN` both reach the one
+    // shipped catalog, as do the English variants that are not `en-US`.
     for locale in ["vi", "vi-VN", "vi_VN"] {
         assert_eq!(
             Language::from_system_locale(locale),
             Language::Vietnamese,
             "{locale} is a Vietnamese locale"
+        );
+    }
+    for locale in ["en", "en-GB", "en_AU", "en-CA"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::EnglishUnitedStates,
+            "{locale} is an English locale"
+        );
+    }
+    // Traditional Chinese shares the `zh` subtag with the Simplified catalog
+    // but is a different script, so it falls back rather than reading `zh-CN`.
+    for locale in ["zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh-Hant-HK"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::EnglishUnitedStates,
+            "{locale} is Traditional Chinese"
         );
     }
     assert_eq!(
