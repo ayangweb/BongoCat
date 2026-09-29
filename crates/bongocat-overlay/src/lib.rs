@@ -30,6 +30,12 @@ mod resize_drag;
 mod cover;
 pub use cover::ModelCoverCapture;
 
+/// Topmost layers the model window draws above the model and the key overlays,
+/// and the click that decides which one a press belongs to. Gated with the native
+/// sessions for the same reason as [`hover`]: only they present frames, and only
+/// they own a device to upload a layer's pixels to.
+mod layers;
+
 use bongocat_input::{
     CursorProducer, GamepadAxisProducer, InputProducer, PlatformInputDiagnostics,
     PlatformInputDiagnosticsProducer, PlatformInputServiceStatus,

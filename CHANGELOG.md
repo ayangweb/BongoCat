@@ -5,6 +5,9 @@
 ### ✨ Features
 
 - On macOS, the Input Monitoring prompt now opens a guided panel: it takes you to the right System Settings page and shows how to drag BongoCat into the authorization list. The prompt clears BongoCat's Input Monitoring permission first, so the authorization always starts from scratch, and it no longer carries the paragraph that told you to remove and re-add the entry by hand.
+- Settings has a Plugins page that lists every plugin available to this version, with one click to install, update, remove, or show its panel.
+- A plugin adds a panel to the model window — a focus timer, a clock, a counter — and its buttons are pressed on the model window itself, without opening another window.
+- Plugins are downloaded when you install them, so they are not part of the BongoCat installer.
 
 ### 🐛 Bug Fixes
 

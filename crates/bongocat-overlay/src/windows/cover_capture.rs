@@ -74,7 +74,15 @@ impl CoverCaptureSession {
         };
         let frame_interval = frame_interval_for_maximum_fps(options.maximum_fps)
             .expect("cover capture options carry a validated maximum FPS");
-        let mut overlay = match NativeOverlay::create(&initial_frame, options, None, None, None) {
+        let mut overlay = match NativeOverlay::create(
+            &initial_frame,
+            options,
+            None,
+            None,
+            None,
+            PlacedLayers::new(),
+            None,
+        ) {
             Ok(overlay) => overlay,
             Err(error) => {
                 reject_model_commit(&runtime_client, &render_consumer, initial_token)?;

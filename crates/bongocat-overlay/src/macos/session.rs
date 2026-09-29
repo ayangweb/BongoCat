@@ -14,6 +14,18 @@ pub(crate) struct ProductOverlaySession {
     pub(crate) overlay: NativeOverlay,
     pub(crate) runtime_client: RuntimeClient,
     pub(crate) render_consumer: RenderConsumer,
+    /// The topmost layers, drained once per tick.
+    ///
+    /// `Option` because a preview has no plugin worker behind it: the preview
+    /// binary draws a model, not a product, and a channel with nothing publishing
+    /// into it would be a field that is always empty.
+    pub(crate) layer_consumer: Option<bongocat_render::OverlayLayerConsumer>,
+    /// The placement the click monitor hit-tests against, republished every tick.
+    pub(crate) placed_layers: PlacedLayers,
+    /// The sink the click monitor reports to, kept for a replacement panel.
+    pub(crate) press_sink: Option<Arc<dyn bongocat_render::OverlayPressSink>>,
+    /// The left-button monitor, when a plugin worker is behind this session.
+    pub(crate) click_monitor: Option<ClickMonitor>,
     pub(crate) input_service: Option<MacInputService>,
     pub(crate) input_start_error: Option<PlatformInputError>,
     pub(crate) input_diagnostics: Option<PlatformInputDiagnostics>,
@@ -51,7 +63,11 @@ impl ProductOverlaySession {
         let OverlayInteractionSinks {
             context_menu_sender,
             resize_sender,
+            press_sink,
         } = interaction_sinks;
+        // Before the window is created, because the click monitor is installed
+        // against this panel and reads the placement this publishes into.
+        let placed_layers = PlacedLayers::new();
         validate_product_options(options)?;
         let initial_frame = render_consumer
             .take_latest()
@@ -126,11 +142,19 @@ impl ProductOverlaySession {
             context_menu_sender.clone(),
             resize_sender.clone(),
         );
+        let click_monitor =
+            install_panel_click_monitor(mtm, &overlay.panel, &placed_layers, press_sink.as_ref());
         Ok(Self {
             application,
             overlay,
             runtime_client,
             render_consumer,
+            // A preview has no plugin worker behind it; the product passes one in
+            // through `with_layers`.
+            layer_consumer: None,
+            placed_layers,
+            press_sink,
+            click_monitor,
             input_service,
             input_start_error,
             input_diagnostics: None,
@@ -273,7 +297,17 @@ impl ProductOverlaySession {
         if !overlay_visible {
             self.overlay.set_visible(false)?;
         }
-
+        // Layers are placed and uploaded every tick, visible or not: a panel that
+        // appeared the moment the window came back would flash its first frame
+        // after the model, and one that was uploaded while hidden would not have to
+        // wait for a resize to appear at all.
+        self.overlay.set_layers(
+            &self
+                .layer_consumer
+                .as_ref()
+                .map_or_else(Vec::new, bongocat_render::OverlayLayerConsumer::take_latest),
+            &self.placed_layers,
+        );
         if let Some(token) = self.pending_initial_model_commit {
             match self.overlay.draw(true) {
                 Ok(()) => {
@@ -629,10 +663,10 @@ impl ProductOverlaySession {
             .is_some_and(|base| crate::bounds_match_scale(bounds, base, scale_percent))
     }
 
-    /// Re-install the right-button monitor for the current panel.
+    /// Re-install the event monitors for the current panel.
     ///
     /// A replacement window is a different panel with a different window
-    /// number, so the monitor that belonged to the old one is dropped first.
+    /// number, so the monitors that belonged to the old one are dropped first.
     pub(crate) fn refresh_right_button_monitor(&mut self, mtm: MainThreadMarker) {
         self.remove_right_button_monitor();
         self.right_button_monitor = install_context_menu_monitor(
@@ -641,6 +675,13 @@ impl ProductOverlaySession {
             self.resize_base(),
             self.context_menu_sender.clone(),
             self.resize_sender.clone(),
+        );
+        self.remove_click_monitor();
+        self.click_monitor = install_panel_click_monitor(
+            mtm,
+            &self.overlay.panel,
+            &self.placed_layers,
+            self.press_sink.as_ref(),
         );
     }
 
@@ -651,12 +692,42 @@ impl ProductOverlaySession {
             unsafe { NSEvent::removeMonitor(&monitor.token) };
         }
     }
+
+    pub(crate) fn remove_click_monitor(&mut self) {
+        if let Some(monitor) = self.click_monitor.take() {
+            // SAFETY: as for the right-button monitor — removed on the AppKit main
+            // thread before the session's forwarder can go away.
+            unsafe { NSEvent::removeMonitor(&monitor.token) };
+        }
+    }
 }
 
 impl Drop for ProductOverlaySession {
     fn drop(&mut self) {
         self.remove_right_button_monitor();
+        self.remove_click_monitor();
     }
+}
+
+/// Install the left-button monitor for a panel, when a press sink exists.
+///
+/// The two call sites — start-up and a replacement window — differ only in which
+/// panel and which sink they read, so the `Option` folding is here rather than
+/// written twice.
+pub(crate) fn install_panel_click_monitor(
+    mtm: MainThreadMarker,
+    panel: &Retained<NSPanel>,
+    placed: &PlacedLayers,
+    press_sink: Option<&Arc<dyn bongocat_render::OverlayPressSink>>,
+) -> Option<ClickMonitor> {
+    press_sink.and_then(|sink| {
+        install_click_monitor(
+            mtm,
+            Retained::clone(panel),
+            placed.clone(),
+            Arc::clone(sink),
+        )
+    })
 }
 
 pub(crate) fn reject_model_commit(

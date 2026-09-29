@@ -143,7 +143,7 @@ impl Application {
                 return Err(error.into());
             }
         };
-        let window_state_store = WindowStateStore::new(layout);
+        let window_state_store = WindowStateStore::new(layout.clone());
         let window_state_outcome = window_state_store.load_or_default();
         let recovered_window_source = match window_state_outcome.status {
             WindowStateLoadStatus::Loaded | WindowStateLoadStatus::Missing => None,
@@ -308,6 +308,7 @@ impl Application {
         let active_model_id =
             configured_model.and_then(|selected| ModelId::parse(&selected.id).ok());
         let mut application = Self {
+            layout,
             config_store,
             window_state_store,
             window_state,

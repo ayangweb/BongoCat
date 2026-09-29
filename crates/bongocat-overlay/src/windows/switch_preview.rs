@@ -61,6 +61,8 @@ pub(crate) fn run_model_switch_preview(
         None,
         None,
         None,
+        PlacedLayers::new(),
+        None,
     ) {
         Ok(overlay) => overlay,
         Err(error) => {

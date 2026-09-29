@@ -6,8 +6,10 @@
 //! `renderer`, `pipelines` and `textures` own the frame, `resize_monitor` is
 //! the only view of the desktop, and the rest each answer one question.
 
+mod click_monitor;
 mod cover_capture;
 mod geometry;
+mod layer_pass;
 mod pipelines;
 mod renderer;
 mod resize_monitor;
@@ -20,8 +22,10 @@ mod textures;
 // Every module reaches its neighbours through this one prelude rather than
 // naming each of them: the adapter's items are one vocabulary, and a list per
 // module would be the same list eight times.
+pub(crate) use click_monitor::*;
 pub(crate) use cover_capture::*;
 pub(crate) use geometry::*;
+pub(crate) use layer_pass::*;
 pub(crate) use pipelines::*;
 pub(crate) use renderer::*;
 pub(crate) use resize_monitor::*;
@@ -40,6 +44,7 @@ use crate::{
     },
     default_overlay_window_dimensions, drawable_cull_mode,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
+    layers::PlacedLayers,
     model_switch_window_bounds, model_window_dimensions,
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
     resize_drag::{ResizeBase, ResizeDrag, ResizeOutcome},

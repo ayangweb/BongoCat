@@ -22,6 +22,11 @@
       "expected": "reject"
     },
     {
+      "id": "document-without-plugins",
+      "file": "accept-document-without-plugins.json",
+      "expected": "accept"
+    },
+    {
       "id": "corner-radius",
       "file": "accept-corner-radius.json",
       "expected": "accept"

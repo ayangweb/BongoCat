@@ -37,6 +37,9 @@ pub enum SettingsErrorCode {
     PresetModelCannotBeDeleted,
     ModelNotFound,
     ModelDeleteFailed,
+    PluginHostUnavailable,
+    PluginHostBusy,
+    PluginNotFound,
     DiagnosticsExportFailed,
     SoftwareInfoCopyFailed,
     ExternalLinkOpenFailed,
@@ -51,7 +54,7 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 42] = [
+    pub const ALL: [Self; 45] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -83,6 +86,9 @@ impl SettingsErrorCode {
         Self::PresetModelCannotBeDeleted,
         Self::ModelNotFound,
         Self::ModelDeleteFailed,
+        Self::PluginHostUnavailable,
+        Self::PluginHostBusy,
+        Self::PluginNotFound,
         Self::DiagnosticsExportFailed,
         Self::SoftwareInfoCopyFailed,
         Self::ExternalLinkOpenFailed,
@@ -129,6 +135,9 @@ impl SettingsErrorCode {
             Self::PresetModelCannotBeDeleted => "preset_model_cannot_be_deleted",
             Self::ModelNotFound => "model_not_found",
             Self::ModelDeleteFailed => "model_delete_failed",
+            Self::PluginHostUnavailable => "plugin_host_unavailable",
+            Self::PluginHostBusy => "plugin_host_busy",
+            Self::PluginNotFound => "plugin_not_found",
             Self::DiagnosticsExportFailed => "diagnostics_export_failed",
             Self::SoftwareInfoCopyFailed => "software_info_copy_failed",
             Self::ExternalLinkOpenFailed => "external_link_open_failed",
@@ -218,6 +227,11 @@ impl SettingsError {
             SettingsErrorCode::PresetModelCannotBeDeleted => "Built-in models cannot be deleted",
             SettingsErrorCode::ModelNotFound => "The model was not found",
             SettingsErrorCode::ModelDeleteFailed => "The imported model could not be deleted",
+            SettingsErrorCode::PluginHostUnavailable => "Plugins are not running in this session",
+            SettingsErrorCode::PluginHostBusy => {
+                "Another plugin operation is in progress. Try again in a moment."
+            }
+            SettingsErrorCode::PluginNotFound => "That plugin is no longer available",
             SettingsErrorCode::DiagnosticsExportFailed => "Diagnostics could not be exported",
             SettingsErrorCode::SoftwareInfoCopyFailed => "Software information could not be copied",
             SettingsErrorCode::ExternalLinkOpenFailed => "The link could not be opened",

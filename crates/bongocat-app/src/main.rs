@@ -27,6 +27,7 @@ mod overlay_placement;
 mod preset_root;
 mod product_icons;
 mod product_options;
+mod product_plugins;
 mod product_shutdown;
 mod product_windows;
 mod smoke;
@@ -96,6 +97,7 @@ use product_icons::ProductStatusIcon;
 #[cfg(target_os = "windows")]
 use product_icons::ProductTaskbarIcon;
 use product_options::RunOptions;
+use product_plugins::ProductPluginHost;
 #[cfg(target_os = "macos")]
 use product_shutdown::exit_after_automated_smoke;
 use product_shutdown::{
@@ -234,6 +236,10 @@ struct ProductCoordinator {
     /// imported.
     main_thread_signals: bongocat_app::ApplicationMainThreadSignals,
     shortcut_service: Option<bongocat_platform::GlobalShortcutService>,
+    /// The plugin worker, for the settings window's plugin centre and for the frame
+    /// loop's local-clock refresh. `None` when the worker would not start, which is
+    /// a degraded product rather than a failed one.
+    plugin_host: Option<ProductPluginHost>,
     frame_ticks: u64,
     expect_visible_frame: bool,
     failures: Arc<Mutex<Vec<String>>>,
@@ -434,6 +440,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "windows")]
     let shutdown_requested = Arc::new(AtomicBool::new(false));
     let gpui_application = gpui_application().with_assets(AllAssets);
+    // The plugin worker is started before the overlay because it owns the producer
+    // end of the layer channel the overlay consumes. A failure here is a degraded
+    // product, not a failed one: the model window is the product, and a plugin
+    // store that will not open is not a reason to withhold the cat.
+    let mut plugin_host = match ProductPluginHost::start(
+        application.storage_layout(),
+        Some(runtime_client.clone()),
+    ) {
+        Ok(host) => Some(host),
+        Err(error) => {
+            record_failure(&run_failures, format!("start plugin worker: {error}"));
+            None
+        }
+    };
     let reopen_failures = Arc::clone(&run_failures);
     #[cfg(target_os = "macos")]
     let application_reopen_smoke = run_options.application_reopen_smoke;
@@ -465,6 +485,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Err(error) = bongocat_platform::apply_process_theme(initial_native_theme) {
             record_failure(&run_failures, format!("apply startup native theme: {error}"));
         }
+        let layer_consumer = plugin_host
+            .as_mut()
+            .and_then(ProductPluginHost::take_layer_consumer);
+        let press_sink = plugin_host
+            .as_ref()
+            .and_then(ProductPluginHost::press_sink);
         let overlay = match ProductOverlaySession::start_with_interaction_sinks(
             runtime_client,
             input_producer,
@@ -475,11 +501,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             OverlayInteractionSinks {
                 context_menu_sender: Some(context_menu_sender),
                 resize_sender: Some(resize_sender),
+                press_sink,
             },
         ) {
-            Ok(overlay) => overlay,
+            Ok(overlay) => match layer_consumer {
+                Some(consumer) => overlay.with_layers(consumer),
+                None => overlay,
+            },
             Err(error) => {
                 record_failure(&run_failures, error.to_string());
+                product_plugins::stop_plugin_worker(plugin_host, &run_failures);
                 if let Err(error) = application.shutdown() {
                     record_failure(&run_failures, error.to_string());
                 }
@@ -487,6 +518,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
         };
+        // The persisted preference is applied here rather than inside the worker: the
+        // worker has no configuration, and the application is the only owner of it.
+        // Applied after the overlay exists so a panel that is switched off is never
+        // drawn for a frame.
+        if let Some(host) = plugin_host.as_ref() {
+            host.apply_enabled_preference(&application.config().plugins.enabled);
+        }
         let settings_service =
             match bongocat_app::ApplicationSettingsService::start_with_product_capabilities(
                 application,
@@ -497,6 +535,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 taskbar_icon,
                 #[cfg(target_os = "macos")]
                 dock_icon,
+                plugin_host.as_ref().map(ProductPluginHost::reader),
             ) {
                 Ok(service) => service,
                 Err(error) => {
@@ -522,6 +561,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = client.shutdown_blocking();
                 let _ = settings_service.join();
                 let _ = overlay.finish_after_runtime_shutdown();
+                product_plugins::stop_plugin_worker(plugin_host, &run_failures);
                 quit_after_startup_failure(cx, &run_failures);
                 return;
             }
@@ -546,6 +586,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(error) = overlay.finish_after_runtime_shutdown() {
                     record_failure(&run_failures, error.to_string());
                 }
+                product_plugins::stop_plugin_worker(plugin_host, &run_failures);
                 quit_after_startup_failure(cx, &run_failures);
                 return;
             }
@@ -575,6 +616,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(error) = overlay.finish_after_runtime_shutdown() {
                     record_failure(&run_failures, error.to_string());
                 }
+                product_plugins::stop_plugin_worker(plugin_host, &run_failures);
                 quit_after_startup_failure(cx, &run_failures);
                 return;
             }
@@ -616,6 +658,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             frame_source_shutdown: frame_source_shutdown.clone(),
             main_thread_signals: main_thread_signals.clone(),
             shortcut_service,
+            plugin_host,
             frame_ticks: 0,
             expect_visible_frame,
             failures: Arc::clone(&run_failures),
@@ -1148,6 +1191,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if !coordinator.frame_source_running {
                             return (false, None);
                         }
+                        // The plugin worker is a second thread and must not read the
+                        // local wall clock itself — `time` documents the reading as
+                        // sound only with one thread asking. This is the main thread.
+                        // The rate limit is inside the host so the Windows loop, which
+                        // is a different function, refreshes on the same schedule.
+                        if let Some(host) = coordinator.plugin_host.as_mut() {
+                            host.refresh_local_time();
+                        }
                         let result = coordinator
                             .overlay
                             .as_mut()
@@ -1306,6 +1357,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     let (failure, failures, settings_window) = {
                         let coordinator = cx.global_mut::<ProductCoordinator>();
+                        if let Some(host) = coordinator.plugin_host.as_mut() {
+                            host.refresh_local_time();
+                        }
                         match tick_result
                             .take()
                             .expect("a successful window update invokes the frame closure once")

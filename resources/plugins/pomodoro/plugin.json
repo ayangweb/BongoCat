@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "api_version": 1,
+  "id": "pomodoro",
+  "name": "Pomodoro",
+  "version": "1.0.0",
+  "author": "BongoCat",
+  "description": "A focus timer on the model window. Start it, stop it, and let the countdown run while you work.",
+  "overlay": {
+    "anchor": "bottom_left",
+    "margin": [0.03, 0.03],
+    "width_fraction": 0.68,
+    "opacity": 0.94,
+    "size": [240, 132],
+    "behaviors": [
+      {
+        "id": "timer",
+        "kind": "countdown",
+        "duration_seconds": 1500
+      }
+    ],
+    "scene": {
+      "type": "stack",
+      "background": "1b1d22f2",
+      "radius": 14,
+      "padding": [14, 12],
+      "spacing": 8,
+      "children": [
+        {
+          "type": "stack",
+          "axis": "horizontal",
+          "spacing": 10,
+          "cross_align": "center",
+          "children": [
+            {
+              "type": "text",
+              "value": { "binding": "timer.remaining_text", "fallback": "25:00" },
+              "size": 40,
+              "color": "f2f4f8ff"
+            },
+            {
+              "type": "spacer",
+              "grow": 1.0
+            },
+            {
+              "type": "progress_ring",
+              "value": { "fraction": "timer.progress", "fallback": 1.0 },
+              "size": 44,
+              "thickness": 5,
+              "track": "3a3f4bff",
+              "fill": "7fd1a8ff"
+            }
+          ]
+        },
+        {
+          "type": "progress_bar",
+          "value": { "fraction": "timer.progress", "fallback": 1.0 },
+          "height": 6,
+          "radius": 3,
+          "track": "3a3f4bff",
+          "fill": "7fd1a8ff"
+        },
+        {
+          "type": "stack",
+          "axis": "horizontal",
+          "spacing": 8,
+          "children": [
+            {
+              "type": "button",
+              "id": "toggle",
+              "label": "Start",
+              "action": "toggle",
+              "target": "timer",
+              "variant": "primary",
+              "radius": 8
+            },
+            {
+              "type": "button",
+              "id": "reset",
+              "label": "Reset",
+              "action": "reset",
+              "target": "timer",
+              "variant": "secondary",
+              "radius": 8
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

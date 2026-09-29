@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "Sobre"
+    },
+    "plugins": {
+      "title": "Plugins"
     }
   },
   "system_menu": {
@@ -307,7 +310,10 @@
       "dock_icon_update_failed": "Não foi possível atualizar o ícone do Dock.",
       "window_hide_failed": "Não foi possível ocultar a janela de configurações",
       "window_layout_save_failed": "Não foi possível salvar o layout da janela",
-      "application_shutdown_failed": "O BongoCat não pôde ser encerrado por completo"
+      "application_shutdown_failed": "O BongoCat não pôde ser encerrado por completo",
+      "plugin_host_unavailable": "Os plugins não estão em execução nesta sessão",
+      "plugin_host_busy": "Outra operação de plugin está em andamento. Tente de novo em um instante.",
+      "plugin_not_found": "Esse plugin não está mais disponível"
     }
   },
   "settings": {
@@ -502,6 +508,38 @@
         "unsupported_platform": "A abertura no login não está disponível neste sistema",
         "unsupported_os": "A abertura no login não está disponível neste sistema operacional",
         "unsupported_build": "A abertura no login não está disponível em builds de desenvolvimento"
+      }
+    },
+    "plugins": {
+      "catalog": {
+        "title": "Catálogo de plugins",
+        "description": "Plugins acrescentam um painel à janela do modelo. Eles são baixados quando você os instala, e a mesma lista está disponível para todas as versões.",
+        "refresh": "Atualizar",
+        "loading": "Lendo o catálogo de plugins…",
+        "empty": "O catálogo de plugins ainda não tem plugins."
+      },
+      "show_on_window": "Mostrar na janela do modelo",
+      "action": {
+        "install": "Instalar",
+        "update": "Atualizar",
+        "uninstall": "Desinstalar"
+      },
+      "refusal": {
+        "not_published": "Indisponível para esta versão do BongoCat neste sistema."
+      },
+      "error": {
+        "unavailable": "O host de plugins não está em execução, então nenhum plugin pode ser mostrado. Reinicie o BongoCat e tente de novo.",
+        "not_published": "Este plugin não está no catálogo, ou não é oferecido para este sistema.",
+        "already_installed": "Este plugin já está instalado na versão oferecida.",
+        "catalog": "Não foi possível ler o catálogo de plugins. Verifique a conexão de rede e atualize.",
+        "network": "Não foi possível concluir o download. Verifique a conexão de rede e tente de novo.",
+        "checksum": "O plugin baixado não corresponde à soma de verificação do catálogo, então não foi instalado.",
+        "signature": "O plugin baixado não foi assinado pelo BongoCat, então não foi instalado.",
+        "store": "Não foi possível gravar o plugin no disco. Verifique as permissões da pasta e tente de novo.",
+        "too_many": "A janela do modelo já mostra o máximo de painéis. Desligue um antes.",
+        "manifest": "O conteúdo deste plugin não é válido para esta versão do BongoCat.",
+        "render": "Não foi possível desenhar o painel deste plugin.",
+        "other": "A operação de plugin não foi concluída."
       }
     }
   }

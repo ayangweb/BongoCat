@@ -187,6 +187,9 @@ pub enum ApplicationError {
     ModelNotFound(ModelId),
     #[error("model title is not usable")]
     ModelTitleInvalid,
+    /// The preference a plugin switch would write is outside the configured bounds.
+    #[error("plugin switch is outside the configured bound")]
+    PluginPreferenceOutOfBounds,
     #[error("model cover must be a PNG image within the size limit")]
     ModelCoverInvalid,
     #[error("runtime command failed: {0}")]
@@ -226,6 +229,7 @@ impl ApplicationError {
             Self::ModelNotFound(_) => "model_not_found",
             Self::ModelTitleInvalid => "model_title_invalid",
             Self::ModelCoverInvalid => "model_cover_invalid",
+            Self::PluginPreferenceOutOfBounds => "plugin_preference_out_of_bounds",
             Self::RuntimeCommand(_) => "runtime_transport_failed",
             Self::RuntimeCommandFailed(_) => "runtime_command_failed",
             Self::RuntimeDidNotPublish => "runtime_snapshot_timeout",

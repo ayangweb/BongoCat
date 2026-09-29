@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "關於"
+    },
+    "plugins": {
+      "title": "外掛"
     }
   },
   "system_menu": {
@@ -307,7 +310,10 @@
       "dock_icon_update_failed": "無法更新 Dock 圖示。",
       "window_hide_failed": "無法隱藏設定視窗",
       "window_layout_save_failed": "無法儲存視窗版面配置",
-      "application_shutdown_failed": "BongoCat 未能完全關閉"
+      "application_shutdown_failed": "BongoCat 未能完全關閉",
+      "plugin_host_unavailable": "本次執行中外掛服務未啟動",
+      "plugin_host_busy": "另一個外掛操作正在進行，請稍後再試。",
+      "plugin_not_found": "該外掛已無法使用"
     }
   },
   "settings": {
@@ -502,6 +508,38 @@
         "unsupported_platform": "目前系統不支援登入時啟動",
         "unsupported_os": "目前作業系統不支援登入時啟動",
         "unsupported_build": "開發版本不支援登入時啟動"
+      }
+    },
+    "plugins": {
+      "catalog": {
+        "title": "外掛目錄",
+        "description": "外掛會在模型視窗上新增一個面板。外掛於安裝時才下載，所有版本共用同一份清單。",
+        "refresh": "重新整理",
+        "loading": "正在讀取外掛目錄…",
+        "empty": "外掛目錄中還沒有外掛。"
+      },
+      "show_on_window": "在模型視窗上顯示",
+      "action": {
+        "install": "安裝",
+        "update": "更新",
+        "uninstall": "解除安裝"
+      },
+      "refusal": {
+        "not_published": "目前系統上的此版本 BongoCat 未提供該外掛。"
+      },
+      "error": {
+        "unavailable": "外掛服務未執行，無法顯示外掛。請重新啟動 BongoCat 後再試。",
+        "not_published": "外掛目錄中沒有該外掛，或未提供給目前系統。",
+        "already_installed": "已安裝的版本與提供的版本相同。",
+        "catalog": "無法讀取外掛目錄。請檢查網路連線後重新整理。",
+        "network": "下載未能完成。請檢查網路連線後再試。",
+        "checksum": "下載的外掛與目錄中的校驗值不符，因此未安裝。",
+        "signature": "下載的外掛並非由 BongoCat 簽署，因此未安裝。",
+        "store": "無法將外掛寫入磁碟。請檢查資料夾權限後再試。",
+        "too_many": "模型視窗上已顯示可顯示的面板數量上限。請先關閉其中一個。",
+        "manifest": "該外掛的內容不適用於目前版本的 BongoCat。",
+        "render": "無法繪製該外掛的面板。",
+        "other": "外掛操作未能完成。"
       }
     }
   }

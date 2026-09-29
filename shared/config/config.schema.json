@@ -390,6 +390,19 @@
       ],
       "type": "object"
     },
+    "PluginsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "RandomBehaviorConfig": {
       "additionalProperties": false,
       "properties": {
@@ -534,6 +547,12 @@
     },
     "overlay": {
       "$ref": "#/$defs/OverlayConfig"
+    },
+    "plugins": {
+      "$ref": "#/$defs/PluginsConfig",
+      "default": {
+        "enabled": []
+      }
     },
     "schema_version": {
       "const": 1

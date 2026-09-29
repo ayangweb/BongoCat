@@ -67,6 +67,14 @@ pub struct SettingsSnapshot {
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
+    /// What the plugin centre lists.
+    ///
+    /// Carried in the snapshot rather than read separately so a page render is one
+    /// read, but projected from the worker's own revision: a plugin install does not
+    /// change the configuration revision, and making the window wait for a
+    /// configuration change to see its own install land would be a lie about what
+    /// the revision means.
+    pub plugins: SettingsPlugins,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "关于"
+    },
+    "plugins": {
+      "title": "插件"
     }
   },
   "system_menu": {
@@ -307,7 +310,10 @@
       "dock_icon_update_failed": "无法更新程序坞图标。",
       "window_hide_failed": "无法隐藏设置窗口",
       "window_layout_save_failed": "无法保存窗口布局",
-      "application_shutdown_failed": "BongoCat 未能完全关闭"
+      "application_shutdown_failed": "BongoCat 未能完全关闭",
+      "plugin_host_unavailable": "本次运行中插件服务未启动",
+      "plugin_host_busy": "另一个插件操作正在进行，请稍后重试。",
+      "plugin_not_found": "该插件已不可用"
     }
   },
   "settings": {
@@ -502,6 +508,38 @@
         "unsupported_platform": "当前系统不支持登录时启动",
         "unsupported_os": "当前操作系统不支持登录时启动",
         "unsupported_build": "开发版本不支持登录时启动"
+      }
+    },
+    "plugins": {
+      "catalog": {
+        "title": "插件目录",
+        "description": "插件会在模型窗口上添加一个面板。插件在安装时才下载，所有版本共用同一份列表。",
+        "refresh": "刷新",
+        "loading": "正在读取插件目录…",
+        "empty": "插件目录中还没有插件。"
+      },
+      "show_on_window": "在模型窗口上显示",
+      "action": {
+        "install": "安装",
+        "update": "更新",
+        "uninstall": "卸载"
+      },
+      "refusal": {
+        "not_published": "当前系统上的此版本 BongoCat 不提供该插件。"
+      },
+      "error": {
+        "unavailable": "插件服务未运行，无法显示插件。请重启 BongoCat 后重试。",
+        "not_published": "插件目录中没有该插件，或未向当前系统提供。",
+        "already_installed": "已安装的版本与提供的版本相同。",
+        "catalog": "无法读取插件目录。请检查网络连接后刷新。",
+        "network": "下载未能完成。请检查网络连接后重试。",
+        "checksum": "下载的插件与目录中的校验值不符，因此未安装。",
+        "signature": "下载的插件并非由 BongoCat 签名，因此未安装。",
+        "store": "无法将插件写入磁盘。请检查文件夹权限后重试。",
+        "too_many": "模型窗口上已显示最多的面板数量。请先关闭其中一个。",
+        "manifest": "该插件的内容不适用于当前版本的 BongoCat。",
+        "render": "无法绘制该插件的面板。",
+        "other": "插件操作未能完成。"
       }
     }
   }

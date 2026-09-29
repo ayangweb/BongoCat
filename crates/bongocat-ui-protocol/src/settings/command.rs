@@ -231,6 +231,28 @@ pub enum SettingsCommand {
         model: SettingsModelKey,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Re-read the plugin catalog from whichever source this build uses.
+    RefreshPluginCatalog,
+    /// Fetch, verify and install one plugin.
+    InstallPlugin {
+        plugin: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Remove one plugin and its files.
+    UninstallPlugin {
+        plugin: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Show or hide one plugin's panel on the model window.
+    ///
+    /// Persisted, so a panel the user turned off does not come back on the next
+    /// launch. The installed set is not persisted: it is discovered from the store,
+    /// so an uninstalled plugin cannot be resurrected by a stale configuration.
+    SetPluginEnabled {
+        plugin: String,
+        enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     OpenConfigBackupLocation {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },

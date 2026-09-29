@@ -17,7 +17,7 @@ use crate::shortcut_config::active_shortcuts;
 use bongocat_audio::MotionAudioService;
 use bongocat_config::{
     ConfigRevision, ConfigStore, Language, ModelIdentity, ModelInputMode, NativeConfig,
-    ShortcutTable, WindowState, WindowStateStore,
+    ShortcutTable, StorageLayout, WindowState, WindowStateStore,
 };
 use bongocat_input::{CursorProducer, GamepadAxisProducer, InputProducer};
 use bongocat_model::{ModelId, ModelOrigin, PresetModelCatalog};
@@ -39,6 +39,10 @@ mod startup_restore;
 mod window_state;
 
 pub struct Application {
+    /// Where this build's data lives, kept so a subsystem that owns a directory of
+    /// its own — the plugin store, the plugin catalog — is rooted by the same layout
+    /// rather than by re-deriving the environment's path.
+    layout: StorageLayout,
     config_store: ConfigStore,
     window_state_store: WindowStateStore,
     window_state: WindowState,
@@ -80,6 +84,11 @@ pub struct Application {
 }
 
 impl Application {
+    /// Where this build's data lives.
+    pub fn storage_layout(&self) -> &StorageLayout {
+        &self.layout
+    }
+
     pub fn runtime_client(&self) -> RuntimeClient {
         self.runtime.client()
     }

@@ -42,6 +42,8 @@ pub(crate) enum PendingOperation {
     ModelMetadata,
     ModelLocation,
     OpenLogsLocation,
+    /// A plugin install, uninstall, switch or catalog refresh is in flight.
+    PluginOperation,
     SetShortcuts,
     BeginShortcutCapture,
     CancelShortcutCapture,

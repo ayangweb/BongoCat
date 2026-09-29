@@ -13,6 +13,7 @@ mod input;
 mod logging;
 mod model;
 mod overlay;
+mod plugins;
 mod system;
 mod updates;
 
@@ -37,6 +38,7 @@ pub use model::{
     RandomBehaviorMode,
 };
 pub use overlay::{MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS, OverlayConfig};
+pub use plugins::{MAXIMUM_ENABLED_PLUGINS, PluginsConfig};
 pub use system::SystemConfig;
 pub use updates::UpdateConfig;
 
@@ -54,6 +56,15 @@ pub struct NativeConfig {
     pub input: InputConfig,
     pub logging: LoggingConfig,
     pub model: ModelConfig,
+    /// Which plugins show a panel.
+    ///
+    /// `#[serde(default)]` because a configuration written before plugins existed
+    /// must still read: `AGENTS.md` §3.1 requires a new field to be compatible with
+    /// its absence, and a document that fails to parse falls into the recovery
+    /// path and loses the user's settings. A missing field means "no plugin panels",
+    /// which is exactly what such a document meant.
+    #[serde(default)]
+    pub plugins: PluginsConfig,
     pub shortcuts: ShortcutConfig,
     pub system: SystemConfig,
     pub updates: UpdateConfig,
@@ -101,6 +112,7 @@ impl Default for NativeConfig {
                 remember_last_expression: false,
                 last_expressions: Vec::new(),
             },
+            plugins: PluginsConfig::default(),
             shortcuts: ShortcutConfig::default(),
             system: SystemConfig {
                 show_taskbar_icon: false,
@@ -120,6 +132,7 @@ impl NativeConfig {
         if self.schema_version != SCHEMA_VERSION {
             return Err(ConfigError::UnsupportedSchema(self.schema_version));
         }
+        self.plugins.validate()?;
         if !(1..=MAXIMUM_CHECK_FOR_UPDATES_INTERVAL_HOURS)
             .contains(&self.updates.check_interval_hours)
         {

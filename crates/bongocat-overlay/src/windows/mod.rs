@@ -8,6 +8,7 @@
 
 mod cover_capture;
 mod geometry;
+mod layer_pass;
 mod pipelines;
 mod renderer;
 mod session;
@@ -24,6 +25,7 @@ mod window_proc;
 // module would be the same list ten times.
 pub(crate) use cover_capture::*;
 pub(crate) use geometry::*;
+pub(crate) use layer_pass::*;
 pub(crate) use pipelines::*;
 pub(crate) use renderer::*;
 pub(crate) use session::*;
@@ -44,6 +46,7 @@ use crate::{
     },
     default_overlay_window_dimensions, drawable_cull_mode,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
+    layers::PlacedLayers,
     model_switch_window_bounds, model_window_dimensions,
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
     resize_drag::{ResizeBase, ResizeDrag, ResizeOutcome},
@@ -103,11 +106,12 @@ use windows::{
                 D3D11_RASTERIZER_DESC, D3D11_RENDER_TARGET_BLEND_DESC,
                 D3D11_RENDER_TARGET_VIEW_DESC, D3D11_RTV_DIMENSION_TEXTURE2D, D3D11_SAMPLER_DESC,
                 D3D11_SDK_VERSION, D3D11_SUBRESOURCE_DATA, D3D11_TEXTURE_ADDRESS_CLAMP,
-                D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING, D3D11_VIEWPORT,
-                D3D11CreateDevice, ID3D11BlendState, ID3D11Buffer, ID3D11ClassLinkage,
-                ID3D11DepthStencilView, ID3D11Device, ID3D11DeviceContext, ID3D11InputLayout,
-                ID3D11PixelShader, ID3D11RasterizerState, ID3D11RenderTargetView,
-                ID3D11SamplerState, ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
+                D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_IMMUTABLE,
+                D3D11_USAGE_STAGING, D3D11_VIEWPORT, D3D11CreateDevice, ID3D11BlendState,
+                ID3D11Buffer, ID3D11ClassLinkage, ID3D11DepthStencilView, ID3D11Device,
+                ID3D11DeviceContext, ID3D11InputLayout, ID3D11PixelShader, ID3D11RasterizerState,
+                ID3D11RenderTargetView, ID3D11SamplerState, ID3D11ShaderResourceView,
+                ID3D11Texture2D, ID3D11VertexShader,
             },
             DirectComposition::{
                 DCompositionCreateDevice, IDCompositionDevice, IDCompositionEffectGroup,
@@ -127,6 +131,7 @@ use windows::{
             Gdi::{
                 EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST,
                 MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromPoint, MonitorFromRect,
+                ScreenToClient,
             },
         },
         System::{
@@ -143,16 +148,16 @@ use windows::{
             Input::KeyboardAndMouse::{ReleaseCapture, SetCapture},
             WindowsAndMessaging::{
                 CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-                GWL_EXSTYLE, GWLP_USERDATA, GetCursorPos, GetWindowLongPtrW, GetWindowRect,
-                HTCAPTION, HTTRANSPARENT, HWND_NOTOPMOST, HWND_TOPMOST, IsWindowVisible, MSG,
-                PM_REMOVE, PeekMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE,
-                SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-                SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, UnregisterClassW,
-                WINDOW_EX_STYLE, WM_CAPTURECHANGED, WM_CLOSE, WM_CONTEXTMENU, WM_MOUSEMOVE,
-                WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCMOUSEMOVE, WM_NCRBUTTONDOWN,
-                WM_NCRBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_EX_APPWINDOW,
-                WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
-                WS_EX_TRANSPARENT, WS_POPUP,
+                GWL_EXSTYLE, GWLP_USERDATA, GetClientRect, GetCursorPos, GetWindowLongPtrW,
+                GetWindowRect, HTCAPTION, HTCLIENT, HTTRANSPARENT, HWND_NOTOPMOST, HWND_TOPMOST,
+                IsWindowVisible, MSG, PM_REMOVE, PeekMessageW, RegisterClassW, SW_HIDE,
+                SW_SHOWNOACTIVATE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+                SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage,
+                UnregisterClassW, WINDOW_EX_STYLE, WM_CAPTURECHANGED, WM_CLOSE, WM_CONTEXTMENU,
+                WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST,
+                WM_NCMOUSEMOVE, WM_NCRBUTTONDOWN, WM_NCRBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP,
+                WNDCLASSW, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+                WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP,
             },
         },
     },

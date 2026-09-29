@@ -20,6 +20,30 @@ use bongocat_runtime::{
 };
 
 impl Application {
+    /// Record whether a plugin's panel is switched on.
+    ///
+    /// Only the preference is written. Whether the plugin is installed is the
+    /// store's answer, not the document's, so an id that names something uninstalled
+    /// is kept and ignored rather than refused — which is what makes uninstalling a
+    /// plugin not a reason to fail the setting the user just changed.
+    ///
+    /// The bound is checked before the commit rather than after, so a refused press
+    /// leaves the document exactly as it was.
+    pub fn set_plugin_enabled(&mut self, id: &str, enabled: bool) -> Result<(), ApplicationError> {
+        let next = self.config.plugins.with(id, enabled);
+        if next.validate().is_err() {
+            return Err(ApplicationError::PluginPreferenceOutOfBounds);
+        }
+        let mut next_config = self.config.clone();
+        next_config.plugins = next;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
     pub fn set_appearance_theme(&mut self, theme: ConfigTheme) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.appearance.theme = theme;

@@ -185,6 +185,10 @@ pub(crate) mod tests {
                 origin: SettingsModelOrigin::BuiltIn,
             }),
             model_catalog: SettingsModelCatalog::default(),
+            // A snapshot with no plugin host is what a window under test renders
+            // from, so the plugin page's unavailable state is the one under test
+            // unless a test installs a host of its own.
+            plugins: SettingsPlugins::default(),
         }
     }
 

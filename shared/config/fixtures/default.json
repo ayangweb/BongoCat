@@ -48,6 +48,9 @@
     "remember_last_expression": false,
     "last_expressions": []
   },
+  "plugins": {
+    "enabled": []
+  },
   "shortcuts": {
     "commands_enabled": true,
     "command_bindings": [],

@@ -12,6 +12,7 @@ use crate::{
     SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
     SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
     SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
+    SettingsPluginEntry, SettingsPluginErrorCode, SettingsPluginRefusal, SettingsPlugins,
     SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRuntimeErrorCode,
     SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
     SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
@@ -36,6 +37,7 @@ use gpui_kit::component::{
         NumberFieldOptions, RenderOptions, SelectIndex, SettingField, SettingGroup, SettingItem,
         SettingPage, Settings,
     },
+    switch::Switch,
 };
 
 use gpui_kit::{
@@ -68,6 +70,8 @@ mod import;
 mod model_import_card;
 mod model_mver_dialog;
 mod mver;
+mod plugin_commands;
+mod plugins;
 mod row;
 mod source;
 use model_import_card::ModelImportCard;

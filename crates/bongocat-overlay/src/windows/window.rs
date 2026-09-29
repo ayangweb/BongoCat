@@ -37,6 +37,14 @@ pub(crate) struct OverlayWindow {
 pub(crate) struct OverlayWindowState {
     pub(crate) context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     pub(crate) resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    /// The placement a left click is hit-tested against, republished by the frame
+    /// loop once a tick.
+    ///
+    /// The window needs it because `WM_NCHITTEST` is the message whose job is
+    /// deciding what a point means, and it runs before the click exists.
+    pub(crate) placed_layers: PlacedLayers,
+    /// Where a press that landed inside a layer goes. Never blocks.
+    pub(crate) press_sink: Option<Arc<dyn bongocat_render::OverlayPressSink>>,
     /// The logical size `100%` maps to, which is the size the window would be
     /// created with for the current model. It is converted to the window's
     /// physical pixels when a drag begins, so a window that moved to a display
@@ -52,11 +60,23 @@ impl OverlayWindow {
         bounds: Option<OverlayWindowBounds>,
         context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
         resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+        placed_layers: PlacedLayers,
+        press_sink: Option<Arc<dyn bongocat_render::OverlayPressSink>>,
     ) -> Result<Self, OverlayError> {
         // SAFETY: the class and HWND are created and subsequently used only on
         // the current UI thread. No borrowed Win32 pointers escape this owner.
-        unsafe { Self::create_inner(options, canvas, bounds, context_menu_sender, resize_sender) }
-            .map_err(windows_error("create Win32 overlay"))
+        unsafe {
+            Self::create_inner(
+                options,
+                canvas,
+                bounds,
+                context_menu_sender,
+                resize_sender,
+                placed_layers,
+                press_sink,
+            )
+        }
+        .map_err(windows_error("create Win32 overlay"))
     }
 
     pub(crate) unsafe fn create_inner(
@@ -65,6 +85,8 @@ impl OverlayWindow {
         bounds: Option<OverlayWindowBounds>,
         context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
         resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+        placed_layers: PlacedLayers,
+        press_sink: Option<Arc<dyn bongocat_render::OverlayPressSink>>,
     ) -> WindowsResult<Self> {
         // A saved box that no longer touches any display is only restorable when
         // the placement constraint can pull it back onto one. With the
@@ -109,6 +131,8 @@ impl OverlayWindow {
         let mut state = Box::new(OverlayWindowState {
             context_menu_sender,
             resize_sender,
+            placed_layers,
+            press_sink,
             resize_base_logical: (base_width, base_height),
             drag: None,
         });

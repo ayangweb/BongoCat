@@ -301,8 +301,11 @@ Platform input ---> Runtime thread ---> Model/Animation state
 - `live2d-render`：将 `CommittedModel` 的纹理、背景和键位图资源准备为 `RenderResources`，并提供同源的键位图清单与 overlay 解析；不持有 Cubism Core 或 GPU handle。
 - `live2d`：Cubism Core 生命周期、Core parameter/part 写入、motion/expression 到 Core 的适配和不可变 `RenderSnapshot` 生产。
 - `audio`：motion 音效的有序 command、FLAC 解码、唯一 voice、输出设备和 shutdown。
-- `render`：不可变 render snapshot 和 renderer contract。
+- `render`：不可变 render snapshot、renderer contract，以及模型窗口顶层图层词汇（锚点、放置、栅格、NDC 四边形、点击到图层的映射）。
 - `config`：环境隔离、当前 v1 schema、验证、备份和原子提交。
+- `plugin-protocol`：插件作者面对的全部词汇——manifest、场景树、行为、目录条目和错误码；不含渲染或 IO。
+- `plugin-render`：把场景树光栅化为 RGBA 面板，含 CPU 文字排版、按钮命中区域和内容哈希；不含插件语义。
+- `plugin`：插件宿主——已安装集合、原子安装、目录获取、行为求值和 worker 线程。
 
 ### 6.2 依赖方向
 
@@ -321,9 +324,16 @@ ui protocol <------- app -------> runtime <------- platform adapters
                                       +------ live2d-playback
 
                          D3D11 renderer / Metal renderer
+
+  plugin-protocol ----> plugin-render ----> plugin ----> (app 只在装配时接线)
+        ^                    ^               ^
+        |                    |               |
+      render (图层词汇)  <-----+               +----> overlay (面板图层通道)
 ```
 
 业务 crate 不得导入 Win32、Objective-C、GPUI 或 GPU handle。平台实现可以依赖业务定义的 command/event 类型。runtime 可直接使用 `live2d-playback` 的 clip/evaluation 类型和 `live2d-render` 的键位图解析 contract；两层都不读取 runtime command、Core snapshot 或 GPU 资源。
+
+插件链路的依赖方向只有一条：宿主依赖协议，协议不依赖宿主。`plugin` 通过 `render` 发布的图层通道与 overlay 通信，overlay 不认识插件——它只认识图层。`bongocat-plugin-protocol` 依赖 `bongocat-render` 是因为锚点拼写只有一处来源，而不是因为协议需要知道图层是什么。
 
 ## 7. 仓库布局
 
@@ -332,7 +342,7 @@ BongoCat/
   Cargo.toml                  正式 workspace 根
   Cargo.lock
   rust-toolchain.toml
-  resources/                  随产品打包的模型与产品图标
+  resources/                  随产品打包的模型、产品图标与参考插件
   crates/
     bongocat-app/             入口、装配和 shutdown
     bongocat-input/           平台无关输入协议、producer 和 latest-value transport
@@ -346,7 +356,10 @@ BongoCat/
     bongocat-live2d-playback/ motion3/exp3 纯解析、曲线求值和 expression 混合
     bongocat-live2d-render/  模型资源准备、键位图清单和 overlay 解析
     bongocat-audio/           motion 音效队列、解码与设备 owner
-    bongocat-render/          render snapshot/contract
+    bongocat-render/          render snapshot/contract 与模型窗口图层词汇
+    bongocat-plugin-protocol/ 插件 manifest、场景、行为、目录与错误码
+    bongocat-plugin-render/   面板光栅化、文字排版与命中区域
+    bongocat-plugin/          插件宿主：store、目录获取、行为求值与 worker
     bongocat-ui/              GPUI 设置界面和 design system
     bongocat-update/          发布清单读取、版本/target 判定、载荷验签与安装策略
     bongocat-platform/        Windows/macOS 平台服务
@@ -476,7 +489,13 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 - GPUI 拥有平台主事件循环；应用 coordinator 在该主线程调度 overlay `tick`，GPUI
   `Entity` 不持有 renderer、render snapshot 或 frame-loop 状态。
 - shutdown 顺序：阻止新的 frame tick -> 停止输入 -> 确认 frame source 已退出 -> runtime
-  drain/停止 -> 保存配置 -> 停止音频并 join -> 释放 renderer/GPU -> 销毁 overlay -> 关闭 GPUI。
+  drain/停止 -> 保存配置 -> 停止插件 worker 并 join -> 停止音频并 join -> 释放
+  renderer/GPU -> 销毁 overlay -> 关闭 GPUI。
+
+插件 worker 夹在配置与音频之间，而不是最早也不是最晚，两个方向都是必须的：它仍在向
+overlay 消费的通道发布面板，所以必须晚于 frame source 停止；它还在为 renderer 光栅化
+面板，所以必须早于 renderer/GPU 释放。join 有超时并如实上报——未能停止的 worker 是
+shutdown 日志里必须带上的事实，不能当作已经发生。
 
 ### 8.2 输入事件
 
@@ -939,6 +958,51 @@ Linux 阶段再决定增加 Vulkan/OpenGL backend，或基于数据迁移到 wgp
 - motion3 UserData 由 Live2D evaluator 保留并按单调 elapsed 的 `(previous, current]` 区间
   产生强类型 occurrence；循环跨越不重复，时间回退不重放，单 tick 最多发布 256 项并
   对跳过数量计数，避免睡眠恢复后的无界分配。
+
+## 11.4 模型窗口插件
+
+插件是**模型窗口**的能力扩展，不是独立窗口，也不是独立应用。模型窗口的形状
+（点击、拖动、置顶、跟随鼠标淡出）全部复用，插件只在其上叠加一个面板。
+
+一个插件是**数据**：一个 `plugin.json` manifest，没有可执行代码，没有 C ABI，没有
+`unsafe` 边界。manifest 声明三类内容——身份、宿主代跑的行为（countdown、stopwatch、
+local_time、counter）和一棵场景树；宿主负责求值、光栅化和回答按钮点击。详见
+`docs/adr/0078-model-window-plugin-system.md` 与 `docs/plugin-authoring.md`。
+
+```text
+plugin worker thread --(latest-wins 图层通道)--> overlay frame loop
+       |                                                  ^
+       +-- 发布快照 <--(有界命令通道)-- settings service  |
+       |                                                  |
+       +-- 只读 runtime 事实                               +-- OverlayPressSink
+```
+
+三条边界各自承担一件不能合并的事：
+
+- **不在帧通道上。** 面板按自己的节奏变化（计时器一秒一次，计数器从不变），成本是
+  毫秒级光栅化而不是亚毫秒预算；并且生产者可能正在下载。独立的 latest-wins 通道
+  与帧通道同理由，图层迟到即无人看。栅格带内容哈希，像素未变的重绘不重新上传——
+  这是一秒一次与每帧一次的差别。
+- **放置在设备空间，不在模型空间。** 面板是界面装饰：镜像的模型不能把旁边的面板
+  一起镜像，随模型单位缩放的面板也会在用户调整窗口缩放时漂移。以窗口盒的分数计算
+  放置，一次放置在任意窗口尺寸下都成立。
+- **不在 render 线程上求值。** 面板在 worker 线程产出，render 线程只读已发布的不可变
+  图层。可验证的结论是**插件无法拖慢模型**，且不是靠一个被检查的预算，而是因为没有
+  共享资源可争。
+
+点击由 native 窗口自己判定，不由 frame loop 代答：Windows 上「这次点击是拖动窗口
+还是按按钮」在 `WM_NCHITTEST` 里就已经决定，那时承载点击的消息尚未生成。因此 frame
+loop 每 tick 把放置结果发布到一份 copy-on-write 快照，窗口过程在消息里直接命中测试并
+调用 `OverlayPressSink`。这既避免了额外线程，也意味着插件中心不参与点击路径。
+
+墙钟只在主线程读。`time` 文档说明 `current_local_offset` 仅在单线程询问时成立，而插件
+worker 是第二个线程；主线程按固定节奏刷新 `LocalTimeCache`，worker 只读已发布的值。
+
+目录获取沿用更新系统已验证的可达性策略（同一批 proxy 前缀、同一回退顺序）、
+同一把 Minisign 发布密钥和同一套归档解包路径检查，因此没有第二套信任模型需要做对。
+Development 构建改从本地目录读目录，并允许目录条目以**相对路径**指向同一台机器上的
+归档——这就是「作者 → 安装 → 在模型窗口上看到」这一整圈不需要发布步骤也不需要签名的
+原因。网络目录不得携带本地路径，两者在解析期以条目形状区分。
 
 ## 12. 配置、模型与安全
 

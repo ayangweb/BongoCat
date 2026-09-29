@@ -55,6 +55,9 @@ pub(crate) fn snapshot(
             origin: SettingsModelOrigin::BuiltIn,
         }),
         model_catalog: SettingsModelCatalog::default(),
+        // No plugin host: the default is the degraded state, so a protocol test
+        // that does not care about plugins is not asserting anything about them.
+        plugins: SettingsPlugins::default(),
     }
 }
 

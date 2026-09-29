@@ -1,7 +1,10 @@
 use super::*;
 use gpui_kit::{FileDropEvent, canvas};
 
-fn with_search_keywords<I>(items: I, keywords: &[SharedString]) -> impl Iterator<Item = SettingItem>
+pub(super) fn with_search_keywords<I>(
+    items: I,
+    keywords: &[SharedString],
+) -> impl Iterator<Item = SettingItem>
 where
     I: IntoIterator<Item = SettingItem>,
 {
@@ -1358,6 +1361,25 @@ impl Render for SettingsView {
                 ),
             ]);
 
+        // Plugins are a separate destination rather than a group of the system
+        // page: a plugin extends the model window, and mixing a list you install
+        // from into the page that owns startup items and log retention would make
+        // both harder to scan.
+        let plugins_keywords =
+            SettingsNavigationPage::Plugins.search_keywords(language, std::iter::empty());
+        let plugins_page = SettingPage::new(SettingsNavigationPage::Plugins.title(language))
+            .icon(SettingsNavigationPage::Plugins.icon())
+            .title_suffix(page_reporter(
+                SettingsNavigationPage::Plugins,
+                navigation_memory.clone(),
+            ))
+            .groups(plugins::groups(
+                view_entity.clone(),
+                snapshot.as_ref(),
+                language,
+                plugins_keywords,
+            ));
+
         // About is the final normal settings destination. Its operational rows
         // use the same SettingGroup contract as the rest of the settings
         // window; the page intentionally stays focused on product information
@@ -1392,6 +1414,7 @@ impl Render for SettingsView {
                 overlay_page,
                 input_interaction_page,
                 shortcuts_page,
+                plugins_page,
                 app_system_page,
                 about_page,
             ]);

@@ -16,6 +16,7 @@ mod logging;
 mod model_catalog;
 mod model_diagnostic;
 mod model_import;
+mod plugins;
 mod runtime;
 mod snapshot;
 mod startup;
@@ -57,6 +58,10 @@ pub use model_import::{
     SettingsModelImportOperation, SettingsModelImportProgress, SettingsModelImportRequest,
     SettingsModelImportStage, SettingsModelMode, SettingsModelSourceContent, SettingsMverMode,
     SettingsOperationId, model_source_display_name,
+};
+pub use plugins::{
+    SettingsPluginEntry, SettingsPluginError, SettingsPluginErrorCode, SettingsPluginRefusal,
+    SettingsPlugins,
 };
 pub use runtime::{
     RuntimeHealth, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,

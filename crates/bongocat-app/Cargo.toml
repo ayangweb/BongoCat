@@ -27,6 +27,7 @@ bongocat-log.workspace = true
 bongocat-model.workspace = true
 bongocat-overlay.workspace = true
 bongocat-platform.workspace = true
+bongocat-plugin.workspace = true
 bongocat-render.workspace = true
 bongocat-runtime.workspace = true
 bongocat-storage.workspace = true

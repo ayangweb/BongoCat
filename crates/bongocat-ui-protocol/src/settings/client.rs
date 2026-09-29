@@ -512,6 +512,44 @@ impl SettingsClient {
             .await
     }
 
+    /// Re-read the plugin catalog, without waiting for the answer.
+    ///
+    /// Fire-and-forget because the answer is the snapshot rather than a reply: the
+    /// window polls the snapshot revision, and a command that blocked until the
+    /// fetch finished would freeze the page for the length of a network request.
+    pub async fn refresh_plugin_catalog(&self) -> Result<(), SettingsServiceClosed> {
+        self.commands
+            .send(SettingsCommand::RefreshPluginCatalog)
+            .await
+            .map_err(|_| SettingsServiceClosed)
+    }
+
+    pub async fn install_plugin(&self, plugin: String) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::InstallPlugin { plugin, reply })
+            .await
+    }
+
+    pub async fn uninstall_plugin(
+        &self,
+        plugin: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::UninstallPlugin { plugin, reply })
+            .await
+    }
+
+    pub async fn set_plugin_enabled(
+        &self,
+        plugin: String,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetPluginEnabled {
+            plugin,
+            enabled,
+            reply,
+        })
+        .await
+    }
+
     pub async fn open_logs_location(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::OpenLogsLocation { reply })
             .await

@@ -38,6 +38,15 @@ pub struct StorageLayout {
     /// (`<id>/resources/cover.png`), so the settings page reads a cover the
     /// same way whichever origin it came from.
     pub model_overrides: PathBuf,
+    /// One directory per installed plugin version, plus the `current` file that
+    /// says which version is live.
+    ///
+    /// Not in the installer: plugins are fetched on demand, so this is the only
+    /// place a plugin's files exist.
+    pub plugins: PathBuf,
+    /// The catalog the plugin centre reads, whether it was fetched over the
+    /// network or discovered in a development directory.
+    pub plugin_catalog: PathBuf,
     pub backups: PathBuf,
     pub logs: PathBuf,
     pub updates: PathBuf,
@@ -56,6 +65,8 @@ impl StorageLayout {
             window_state: root.join(WINDOW_STATE_FILE_NAME),
             models: root.join("models"),
             model_overrides: root.join("model-overrides"),
+            plugins: root.join("plugins"),
+            plugin_catalog: root.join("plugin-catalog"),
             backups: root.join("backups"),
             logs: root.join("logs"),
             updates: root.join("updates"),
@@ -73,6 +84,8 @@ impl StorageLayout {
         for directory in [
             &self.models,
             &self.model_overrides,
+            &self.plugins,
+            &self.plugin_catalog,
             &self.backups,
             &self.logs,
             &self.updates,

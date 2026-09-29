@@ -14,6 +14,7 @@ use super::error_mapping::*;
 use super::model_projection::*;
 use super::projection::*;
 use super::snapshot::*;
+use bongocat_plugin::{PluginCommand, PluginId};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_service(
@@ -27,8 +28,9 @@ pub(super) fn run_service(
     log_location: Arc<dyn LogLocationCapability>,
     window_state: SettingsWindowState,
     signals: Option<ApplicationMainThreadSignals>,
+    plugins: Option<PluginWorkerReader>,
 ) {
-    let mut clock = SettingsSnapshotClock::new(application.config_revision());
+    let mut clock = SettingsSnapshotClock::new(application.config_revision(), plugins);
     loop {
         let Ok(command) = endpoint.recv_blocking() else {
             if persist_window_state(&mut application, &window_state).is_err() {
@@ -565,6 +567,43 @@ pub(super) fn run_service(
                 });
                 let _ = reply.respond(result);
             }
+            SettingsCommand::RefreshPluginCatalog => {
+                // No revision guard and no reply: reading a catalog changes no
+                // configuration, and the answer is the snapshot the worker publishes,
+                // which the revision poll already watches.
+                let _ = send_plugin_command(&clock, PluginCommand::RefreshCatalog);
+            }
+            SettingsCommand::InstallPlugin { plugin, reply } => {
+                let result = with_plugin_id(&clock, &plugin, |id| {
+                    send_plugin_command(&clock, PluginCommand::Install(id))
+                })
+                .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::UninstallPlugin { plugin, reply } => {
+                let result = with_plugin_id(&clock, &plugin, |id| {
+                    send_plugin_command(&clock, PluginCommand::Uninstall(id))
+                })
+                .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetPluginEnabled {
+                plugin,
+                enabled,
+                reply,
+            } => {
+                // Configuration first, then the worker: a persisted switch with no
+                // panel is a switch the next launch honours, while a panel with no
+                // persisted switch is one the user has to turn off again every run.
+                let result = with_plugin_id(&clock, &plugin, |id| {
+                    application
+                        .set_plugin_enabled(id.as_str(), enabled)
+                        .map_err(map_plugin_error)?;
+                    send_plugin_command(&clock, PluginCommand::SetEnabled { id, enabled })
+                })
+                .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SelectModel {
                 expected_config_revision,
                 model,
@@ -767,6 +806,49 @@ pub(super) fn run_service(
             }
         }
     }
+}
+
+/// Send one command to the plugin worker, reporting a host that is not running.
+///
+/// A dropped command is a settings error rather than a silent no-op: the window's
+/// button would otherwise appear to do nothing at all, which is the failure mode
+/// this exists to avoid.
+pub(super) fn send_plugin_command(
+    clock: &SettingsSnapshotClock,
+    command: PluginCommand,
+) -> Result<(), SettingsError> {
+    clock
+        .plugin_reader()
+        .ok_or_else(|| SettingsError::new(SettingsErrorCode::PluginHostUnavailable))
+        .and_then(|reader| {
+            if reader.send(command) {
+                Ok(())
+            } else {
+                Err(SettingsError::new(SettingsErrorCode::PluginHostBusy))
+            }
+        })
+}
+
+/// Resolve the plugin id a command named, and do the work for it.
+///
+/// The name is validated here rather than in the window because a plugin id is the
+/// host's vocabulary: the window sends what the row it rendered carried, and a row
+/// that named something else must fail as a refused command, not as a panic inside
+/// the host's id type.
+pub(super) fn with_plugin_id<T>(
+    clock: &SettingsSnapshotClock,
+    plugin: &str,
+    work: impl FnOnce(PluginId) -> Result<T, SettingsError>,
+) -> Result<T, SettingsError> {
+    if clock.plugin_reader().is_none() {
+        return Err(SettingsError::new(SettingsErrorCode::PluginHostUnavailable));
+    }
+    // A plugin id is the host's vocabulary, so it is validated here: the window sends
+    // what the row it rendered carried, and a row that named something else has to
+    // fail as a refused command rather than reach the host's id type.
+    let id =
+        PluginId::new(plugin).map_err(|_| SettingsError::new(SettingsErrorCode::PluginNotFound))?;
+    work(id)
 }
 
 pub(super) fn settings_window_placement(

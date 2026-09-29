@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "plugins": [
+    {
+      "id": "pomodoro",
+      "name": "Pomodoro",
+      "version": "1.0.0",
+      "author": "BongoCat",
+      "description": "A focus timer on the model window. Start it, stop it, and let the countdown run while you work.",
+      "api_version": 1,
+      "downloads": {
+        "macos-aarch64": { "path": "build/pomodoro.zip" },
+        "macos-x86_64": { "path": "build/pomodoro.zip" },
+        "windows-x86_64": { "path": "build/pomodoro.zip" }
+      }
+    }
+  ]
+}

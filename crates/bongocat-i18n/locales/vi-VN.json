@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "Giới thiệu"
+    },
+    "plugins": {
+      "title": "Tiện ích"
     }
   },
   "system_menu": {
@@ -307,7 +310,10 @@
       "dock_icon_update_failed": "Không thể cập nhật biểu tượng Dock.",
       "window_hide_failed": "Không thể ẩn cửa sổ cài đặt",
       "window_layout_save_failed": "Không thể lưu bố cục cửa sổ",
-      "application_shutdown_failed": "BongoCat không thể đóng hoàn toàn"
+      "application_shutdown_failed": "BongoCat không thể đóng hoàn toàn",
+      "plugin_host_unavailable": "Tiện ích không chạy trong phiên này",
+      "plugin_host_busy": "Đang có thao tác tiện ích khác. Hãy thử lại sau giây lát.",
+      "plugin_not_found": "Tiện ích đó không còn khả dụng"
     }
   },
   "settings": {
@@ -502,6 +508,38 @@
         "unsupported_platform": "Tính năng mở khi đăng nhập không khả dụng trên hệ thống này",
         "unsupported_os": "Tính năng mở khi đăng nhập không khả dụng trên hệ điều hành này",
         "unsupported_build": "Tính năng mở khi đăng nhập không khả dụng trong bản dựng phát triển"
+      }
+    },
+    "plugins": {
+      "catalog": {
+        "title": "Danh mục tiện ích",
+        "description": "Tiện ích thêm một bảng vào cửa sổ mô hình. Tiện ích được tải xuống khi bạn cài đặt, và mọi bản dựng đều dùng chung một danh sách.",
+        "refresh": "Làm mới",
+        "loading": "Đang đọc danh mục tiện ích…",
+        "empty": "Danh mục tiện ích chưa có tiện ích nào."
+      },
+      "show_on_window": "Hiện trên cửa sổ mô hình",
+      "action": {
+        "install": "Cài đặt",
+        "update": "Cập nhật",
+        "uninstall": "Gỡ cài đặt"
+      },
+      "refusal": {
+        "not_published": "Không có cho phiên bản BongoCat này trên hệ thống này."
+      },
+      "error": {
+        "unavailable": "Tiện trình chủ tiện ích không chạy, nên không thể hiển thị tiện ích. Hãy khởi động lại BongoCat rồi thử lại.",
+        "not_published": "Tiện ích này không có trong danh mục, hoặc không được cung cấp cho hệ thống này.",
+        "already_installed": "Tiện ích này đã được cài đặt ở phiên bản được đề nghị.",
+        "catalog": "Không đọc được danh mục tiện ích. Hãy kiểm tra kết nối mạng rồi làm mới.",
+        "network": "Không hoàn tất tải xuống. Hãy kiểm tra kết nối mạng rồi thử lại.",
+        "checksum": "Tiện ích đã tải xuống không khớp với tổng kiểm của danh mục, nên không được cài đặt.",
+        "signature": "Tiện ích đã tải xuống không được BongoCat ký, nên không được cài đặt.",
+        "store": "Không ghi được tiện ích xên đĩa. Hãy kiểm tra quyền của thư mục rồi thử lại.",
+        "too_many": "Cửa sổ mô hình đã hiển thị đủ số bảng tối đa. Hãy tắt một bảng trước.",
+        "manifest": "Nội dung của tiện ích này không hợp lệ với phiên bản BongoCat này.",
+        "render": "Không vẽ được bảng của tiện ích này.",
+        "other": "Thao tác tiện ích chưa hoàn tất."
       }
     }
   }

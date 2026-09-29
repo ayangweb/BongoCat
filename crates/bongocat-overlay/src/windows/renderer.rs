@@ -88,6 +88,11 @@ pub(crate) struct Renderer {
     pub(crate) model_generation: u64,
     pub(crate) resources: Arc<RenderResources>,
     pub(crate) model: GpuModel,
+    /// The topmost layers, and where they are placed.
+    ///
+    /// On the renderer rather than the session because a layer's texture belongs
+    /// to the device that will sample it, and that device is the renderer's.
+    pub(crate) layers: LayerResources,
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) corner_radius_percent: u8,
@@ -185,6 +190,7 @@ impl Renderer {
             model_generation: frame.model_generation,
             resources: Arc::clone(&frame.resources),
             model,
+            layers: LayerResources::new(),
             width: window.width,
             height: window.height,
             corner_radius_percent: options.corner_radius_percent,
@@ -196,6 +202,22 @@ impl Renderer {
             owner_thread: thread::current().id(),
             _not_send_or_sync: std::marker::PhantomData,
         })
+    }
+
+    /// Place an incoming layer set and upload whatever changed.
+    ///
+    /// Takes `&mut self` because a layer's texture may have to be created, and is
+    /// called once per tick before the draw so the draw pass itself stays
+    /// immutable.
+    pub(crate) fn set_layers(
+        &mut self,
+        layers: &[bongocat_render::OverlayLayer],
+        published: &crate::layers::PlacedLayers,
+    ) -> Result<(), OverlayError> {
+        self.assert_owner_thread();
+        self.layers
+            .set_layers(&self.device, layers, published)
+            .map_err(|error| OverlayError::new(format!("prepare overlay layers: {error}")))
     }
 
     /// Apply the effective presentation opacity to the completed composition
@@ -580,6 +602,16 @@ impl Renderer {
                 self.context.DrawIndexed(6, 0, 0);
             }
         }
+        // Layers are the topmost thing on the window: a panel the user installed has
+        // to be visible, and a panel nobody can see is a panel nobody can use.
+        draw_layers(
+            &self.context,
+            &self.pipelines,
+            &self.model.background_index_buffer,
+            &self.model.empty_mask,
+            &self.layers,
+            self.layers.placed(),
+        )?;
         if verify || capture {
             unsafe {
                 self.context

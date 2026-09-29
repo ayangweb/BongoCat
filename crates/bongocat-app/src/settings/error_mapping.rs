@@ -94,6 +94,19 @@ pub(super) fn map_model_cover_error(error: ApplicationError) -> SettingsError {
     SettingsError::new(code)
 }
 
+/// Map a plugin switch failure.
+///
+/// Its own code rather than the generic one, because "too many panels are already
+/// on the model window" is something the user acts on — by turning one off — and a
+/// generic message would not tell them what to do.
+pub(super) fn map_plugin_error(error: ApplicationError) -> SettingsError {
+    let code = match error {
+        ApplicationError::PluginPreferenceOutOfBounds => SettingsErrorCode::PluginHostBusy,
+        error => return map_application_error(error),
+    };
+    SettingsError::new(code)
+}
+
 pub(super) fn settings_config_error_code(error: &ConfigError) -> Option<SettingsErrorCode> {
     if matches!(error, ConfigError::InvalidValue(field) if field.starts_with("shortcuts.")) {
         return Some(SettingsErrorCode::InvalidShortcutBindings);

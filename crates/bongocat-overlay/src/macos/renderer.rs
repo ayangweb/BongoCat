@@ -25,6 +25,17 @@ pub(crate) struct NativeOverlay {
     pub(crate) resources: Arc<RenderResources>,
     pub(crate) model: GpuModel,
     pub(crate) presentation: OverlayPresentationState,
+    /// The topmost layers, and where they are placed for the current drawable.
+    ///
+    /// On the renderer rather than the session because a layer's texture belongs to
+    /// the device that will sample it, and that device is the renderer's.
+    pub(crate) layers: LayerResources,
+    /// The device the layer textures belong to.
+    ///
+    /// A layer is created from a raster the plugin worker produced and belongs to
+    /// the device that will sample it, which is the renderer's. Held separately so
+    /// a tick can place and upload a layer without borrowing the whole renderer.
+    pub(crate) overlay_device: Device,
     pub(crate) corner_radius_percent: u8,
     /// Window alpha currently applied to the panel, including the hover fade.
     /// It lives here rather than on the session so replacing the native window
@@ -177,6 +188,8 @@ impl NativeOverlay {
             resources: Arc::clone(&frame.resources),
             model,
             presentation: OverlayPresentationState::default(),
+            layers: LayerResources::new(&device)?,
+            overlay_device: device.clone(),
             corner_radius_percent: options.corner_radius_percent,
             applied_alpha: f64::from(options.opacity_percent) / 100.0,
             applied_click_through: options.click_through,
@@ -325,6 +338,19 @@ impl NativeOverlay {
         let captured = autoreleasepool(|_| self.draw_in_autorelease_pool(verify_frame, true))?;
         self.presentation.record_presented_frame();
         captured.ok_or_else(|| OverlayError::new("captured frame was not read back"))
+    }
+
+    /// Place an incoming layer set and upload whatever changed.
+    ///
+    /// Takes `&mut self` because a texture may have to be created, and is called
+    /// once per tick before the draw so the draw pass itself stays immutable.
+    pub(crate) fn set_layers(
+        &mut self,
+        layers: &[bongocat_render::OverlayLayer],
+        published: &crate::layers::PlacedLayers,
+    ) {
+        self.layers
+            .set_layers(&self.overlay_device, layers, published);
     }
 
     pub(crate) fn set_visible(&self, visible: bool) -> Result<(), OverlayError> {
@@ -598,6 +624,16 @@ impl NativeOverlay {
                 0,
             );
         }
+        // Layers are the topmost thing on the window: a panel the user installed has
+        // to be visible, and a panel nobody can see is a panel nobody can use.
+        draw_layers(
+            encoder,
+            &self.pipelines,
+            &self.sampler,
+            &self.model.empty_mask,
+            &self.layers,
+            self.layers.placed(),
+        );
         encoder.end_encoding();
         // Shared per-drawable buffers cannot be rewritten until this frame
         // retires. A later renderer revision will replace this correctness

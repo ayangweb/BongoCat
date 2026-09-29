@@ -11,6 +11,7 @@
 use super::*;
 
 use super::model_projection::*;
+use super::plugin_projection::project_plugins;
 use super::projection::*;
 
 /// How long an input-capability answer stays usable.
@@ -60,10 +61,20 @@ pub(super) struct SettingsSnapshotClock {
     observed_overlay_visible: Option<bool>,
     diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
     input_capability: InputCapabilityCache,
+    /// The plugin worker's own view, and the revision last taken from it.
+    ///
+    /// Held here rather than passed to [`snapshot`] so a plugin install moves the
+    /// snapshot revision the same way every other change does: the window polls one
+    /// revision and does not have to know that a second, independent clock exists.
+    plugins: Option<PluginWorkerReader>,
+    observed_plugin_revision: Option<u64>,
 }
 
 impl SettingsSnapshotClock {
-    pub(super) const fn new(config_revision: Option<u64>) -> Self {
+    pub(super) const fn new(
+        config_revision: Option<u64>,
+        plugins: Option<PluginWorkerReader>,
+    ) -> Self {
         Self {
             revision: 0,
             observed_config_revision: config_revision,
@@ -76,7 +87,44 @@ impl SettingsSnapshotClock {
                 checked_at: None,
                 value: SettingsInputCapability::unobserved(),
             },
+            plugins,
+            observed_plugin_revision: None,
         }
+    }
+
+    /// The plugin centre as the window sees it, advancing the revision when it moved.
+    pub(super) fn plugins(&mut self) -> SettingsPlugins {
+        let Some(reader) = &self.plugins else {
+            // No host is a state the page has to show, not one to hide: a snapshot
+            // with `available: false` and no entries is what makes it say so.
+            return SettingsPlugins {
+                available: false,
+                last_error: Some(SettingsPluginError::new(
+                    SettingsPluginErrorCode::HostUnavailable,
+                )),
+                maximum_active: bongocat_plugin::MAXIMUM_ENABLED_PLUGINS,
+                ..SettingsPlugins::default()
+            };
+        };
+        let plugins = project_plugins(&reader.snapshot());
+        if Some(plugins.revision) != self.observed_plugin_revision {
+            self.observed_plugin_revision = Some(plugins.revision);
+            self.mark_changed();
+        }
+        plugins
+    }
+
+    /// Whether the worker has published something new, without building the page's
+    /// whole projection. Used by the cheap revision poll.
+    pub(super) fn plugins_changed(&self) -> bool {
+        self.plugins
+            .as_ref()
+            .is_some_and(|reader| reader.changed_since(self.observed_plugin_revision.unwrap_or(0)))
+    }
+
+    /// The worker, for a command the window sent.
+    pub(super) fn plugin_reader(&self) -> Option<&PluginWorkerReader> {
+        self.plugins.as_ref()
     }
 
     pub(super) fn input_capability(&mut self) -> SettingsInputCapability {
@@ -252,6 +300,7 @@ pub(super) fn snapshot(
             })
             .or_else(|| configured_model_key(application)),
         model_catalog: settings_model_catalog(application),
+        plugins: clock.plugins(),
     }
 }
 
@@ -370,6 +419,9 @@ pub(super) fn observe_snapshot_state(
     }
     if catalog_changed {
         clock.mark_catalog_changed();
+    }
+    if clock.plugins_changed() {
+        clock.mark_changed();
     }
     clock.coalesce_changes_since(revision_before);
     (runtime, input_diagnostics)

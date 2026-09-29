@@ -18,6 +18,7 @@ pub(super) enum SettingsNavigationPage {
     ModelWindow,
     InputInteraction,
     Shortcuts,
+    Plugins,
     AppSystem,
     About,
 }
@@ -76,18 +77,20 @@ impl SettingsNavigationPage {
             Self::ModelWindow => 3,
             Self::InputInteraction => 4,
             Self::Shortcuts => 5,
-            Self::AppSystem => 6,
-            Self::About => 7,
+            Self::Plugins => 6,
+            Self::AppSystem => 7,
+            Self::About => 8,
         }
     }
 
-    pub(super) const ALL: [Self; 8] = [
+    pub(super) const ALL: [Self; 9] = [
         Self::Appearance,
         Self::ModelLibrary,
         Self::ModelBehavior,
         Self::ModelWindow,
         Self::InputInteraction,
         Self::Shortcuts,
+        Self::Plugins,
         Self::AppSystem,
         Self::About,
     ];
@@ -100,6 +103,7 @@ impl SettingsNavigationPage {
             Self::ModelWindow => "navigation.model_window.title",
             Self::InputInteraction => "navigation.input_interaction.title",
             Self::Shortcuts => "navigation.shortcuts.title",
+            Self::Plugins => "navigation.plugins.title",
             Self::AppSystem => "navigation.app_system.title",
             Self::About => "navigation.about.title",
         }
@@ -117,6 +121,7 @@ impl SettingsNavigationPage {
             Self::ModelWindow => IconName::AppWindow,
             Self::InputInteraction => IconName::MousePointer2,
             Self::Shortcuts => IconName::Keyboard,
+            Self::Plugins => IconName::Blocks,
             Self::AppSystem => IconName::Cog,
             Self::About => IconName::Info,
         }
@@ -163,6 +168,14 @@ impl SettingsNavigationPage {
             Self::ModelWindow => &["Overlay"],
             Self::InputInteraction => &["Interaction", "Input", "交互", "输入"],
             Self::Shortcuts => &[],
+            Self::Plugins => &[
+                "Plugins",
+                "Extensions",
+                "Add-ons",
+                "插件",
+                "扩展",
+                "插件中心",
+            ],
             Self::AppSystem => &[
                 "Application",
                 "应用",
@@ -226,6 +239,7 @@ mod tests {
                 SettingsNavigationPage::ModelWindow,
                 SettingsNavigationPage::InputInteraction,
                 SettingsNavigationPage::Shortcuts,
+                SettingsNavigationPage::Plugins,
                 SettingsNavigationPage::AppSystem,
                 SettingsNavigationPage::About,
             ]

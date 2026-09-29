@@ -15,6 +15,9 @@ members = [
     "crates/bongocat-model",
     "crates/bongocat-overlay",
     "crates/bongocat-packaging",
+    "crates/bongocat-plugin",
+    "crates/bongocat-plugin-protocol",
+    "crates/bongocat-plugin-render",
     "crates/bongocat-platform",
     "crates/bongocat-render",
     "crates/bongocat-runtime",
@@ -32,6 +35,7 @@ repository = "https://github.com/ayangweb/BongoCat"
 publish = false
 
 [workspace.dependencies]
+ab_glyph = "=0.2.32"
 arboard = { version = "=3.6.1", default-features = false }
 async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"
@@ -63,7 +67,7 @@ serde_json = "=1.0.151"
 tar = "=0.4.46"
 tempfile = "=3.27.0"
 thiserror = "=2.0.21"
-time = { version = "=0.3.55", default-features = false, features = ["formatting", "macros", "parsing"] }
+time = { version = "=0.3.55", default-features = false, features = ["formatting", "local-offset", "macros", "parsing"] }
 tray-icon = { version = "=0.25.0", default-features = false }
 url = "=2.5.8"
 walkdir = "=2.5.0"
@@ -81,6 +85,9 @@ bongocat-live2d = { path = "crates/bongocat-live2d" }
 bongocat-log = { path = "crates/bongocat-log" }
 bongocat-model = { path = "crates/bongocat-model" }
 bongocat-overlay = { path = "crates/bongocat-overlay" }
+bongocat-plugin = { path = "crates/bongocat-plugin" }
+bongocat-plugin-protocol = { path = "crates/bongocat-plugin-protocol" }
+bongocat-plugin-render = { path = "crates/bongocat-plugin-render" }
 bongocat-platform = { path = "crates/bongocat-platform" }
 bongocat-render = { path = "crates/bongocat-render" }
 bongocat-runtime = { path = "crates/bongocat-runtime" }

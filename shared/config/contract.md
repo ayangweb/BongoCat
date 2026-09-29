@@ -31,15 +31,22 @@ overlay
 input
 logging
 model
+plugins
 shortcuts
 system
 updates
 ```
 
+`plugins` 是后加的领域，因此带 `#[serde(default)]`：早于它写出的配置必须照常读入。
+缺失该字段的含义是"没有任何插件面板"，这正是那份文档写下时的意思；把它设成必填会让
+旧配置走进恢复流程并丢掉用户的设置。已安装的插件本身不在配置里——那由插件目录的事实
+决定，而不是由一份可能被改过的文档决定。
+
 当前命名基线：
 
 | Section       | Field                                 | Meaning                                |
 | ------------- | ------------------------------------- | -------------------------------------- |
+| `plugins`     | `enabled`                             | 已安装且开启模型窗口面板的插件 id，默认 `[]` |
 | `system`      | `show_taskbar_icon`                   | Windows 模型窗口任务栏按钮可见性，默认 `false` |
 | `system`      | `show_dock_icon`                      | macOS 程序坞图标可见性，默认 `false`    |
 | `system`      | `show_status_icon`                    | 托盘/菜单栏入口可见性                  |

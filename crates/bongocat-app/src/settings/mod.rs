@@ -38,6 +38,7 @@ use bongocat_platform::{
     StartupItemUnsupportedReason, open_directory, set_startup_item_enabled, startup_item_state,
     startup_permission_available,
 };
+use bongocat_plugin::PluginWorkerReader;
 use bongocat_runtime::{
     InputSnapshot, ModelSettings, OverlaySettings, RandomBehaviorSettings, RuntimeRenderErrorCode,
     RuntimeSnapshot, RuntimeState,
@@ -51,7 +52,8 @@ use bongocat_ui_protocol::{
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
     SettingsModelImportStage, SettingsModelKey, SettingsModelMode, SettingsModelSettings,
-    SettingsOverlay, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
+    SettingsOverlay, SettingsPluginEntry, SettingsPluginError, SettingsPluginErrorCode,
+    SettingsPluginRefusal, SettingsPlugins, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
     SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
     SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
     SettingsSnapshot, SettingsStartupItemError, SettingsStartupItemState,
@@ -73,6 +75,7 @@ use std::{
 mod capabilities;
 mod error_mapping;
 mod model_projection;
+mod plugin_projection;
 mod projection;
 mod snapshot;
 #[cfg(test)]
@@ -111,6 +114,7 @@ impl ApplicationSettingsService {
             Arc::new(UnavailableDockIcon),
             None,
             None,
+            None,
         )
     }
 
@@ -125,6 +129,7 @@ impl ApplicationSettingsService {
             Arc::new(UnavailableTaskbarIcon),
             Arc::new(UnavailableDockIcon),
             Some(receiver),
+            None,
             None,
         )
     }
@@ -142,6 +147,7 @@ impl ApplicationSettingsService {
             Arc::new(UnavailableDockIcon),
             Some(receiver),
             Some(signals),
+            None,
         )
     }
 
@@ -152,6 +158,7 @@ impl ApplicationSettingsService {
         status_icon: Arc<dyn StatusIconCapability>,
         #[cfg(target_os = "windows")] taskbar_icon: Arc<dyn TaskbarIconCapability>,
         #[cfg(target_os = "macos")] dock_icon: Arc<dyn DockIconCapability>,
+        plugins: Option<PluginWorkerReader>,
     ) -> Result<Self, SettingsServiceJoinError> {
         #[cfg(not(target_os = "windows"))]
         let taskbar_icon = Arc::new(UnavailableTaskbarIcon);
@@ -165,6 +172,7 @@ impl ApplicationSettingsService {
             dock_icon,
             Some(receiver),
             Some(signals),
+            plugins,
         )
     }
 
@@ -179,6 +187,7 @@ impl ApplicationSettingsService {
             Arc::new(UnavailableStatusIcon),
             Arc::new(UnavailableTaskbarIcon),
             Arc::new(UnavailableDockIcon),
+            None,
             None,
             None,
         )
@@ -197,6 +206,7 @@ impl ApplicationSettingsService {
             Arc::new(UnavailableDockIcon),
             None,
             None,
+            None,
         )
     }
 
@@ -211,6 +221,7 @@ impl ApplicationSettingsService {
             Arc::new(UnavailableStatusIcon),
             taskbar_icon,
             Arc::new(UnavailableDockIcon),
+            None,
             None,
             None,
         )
@@ -229,6 +240,7 @@ impl ApplicationSettingsService {
             dock_icon,
             None,
             None,
+            None,
         )
     }
 
@@ -241,6 +253,7 @@ impl ApplicationSettingsService {
         dock_icon: Arc<dyn DockIconCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
         signals: Option<ApplicationMainThreadSignals>,
+        plugins: Option<PluginWorkerReader>,
     ) -> Result<Self, SettingsServiceJoinError> {
         let backup_location = Arc::new(SystemBackupLocation {
             path: application.config_backup_directory().to_owned(),
@@ -265,6 +278,7 @@ impl ApplicationSettingsService {
             log_location,
             shortcut_receiver,
             signals,
+            plugins,
         )
     }
 
@@ -287,6 +301,7 @@ impl ApplicationSettingsService {
             diagnostics_export,
             Arc::new(UnavailableModelLocation),
             Arc::new(UnavailableLogLocation),
+            None,
             None,
             None,
         )
@@ -318,6 +333,7 @@ impl ApplicationSettingsService {
             log_location,
             None,
             None,
+            None,
         )
     }
 
@@ -347,6 +363,7 @@ impl ApplicationSettingsService {
             Arc::new(UnavailableLogLocation),
             None,
             None,
+            None,
         )
     }
 
@@ -361,6 +378,7 @@ impl ApplicationSettingsService {
         log_location: Arc<dyn LogLocationCapability>,
         shortcut_receiver: Option<ShortcutReceiver<bongocat_config::ShortcutCommand>>,
         signals: Option<ApplicationMainThreadSignals>,
+        plugins: Option<PluginWorkerReader>,
     ) -> Result<Self, SettingsServiceJoinError> {
         let (client, endpoint) = SettingsClient::bounded(SETTINGS_COMMAND_CAPACITY);
         let window_state = client.track_window_state(
@@ -384,6 +402,7 @@ impl ApplicationSettingsService {
                     log_location,
                     worker_window_state,
                     worker_signals,
+                    plugins,
                 )
             })
             .map_err(SettingsServiceJoinError::Spawn)?;

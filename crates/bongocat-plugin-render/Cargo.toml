@@ -1,0 +1,22 @@
+[package]
+name = "bongocat-plugin-render"
+description = "Turning a plugin's declared scene into the pixels the model window draws."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+ab_glyph.workspace = true
+bongocat-plugin-protocol.workspace = true
+bongocat-render.workspace = true
+image.workspace = true
+
+[dev-dependencies]
+ab_glyph.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

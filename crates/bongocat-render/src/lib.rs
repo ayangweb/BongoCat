@@ -35,6 +35,7 @@ mod commit;
 mod geometry;
 mod identity;
 mod key;
+mod overlay_layer;
 mod resources;
 mod snapshot;
 #[cfg(test)]
@@ -53,6 +54,13 @@ pub use identity::TextureId;
 pub use key::{
     FUNCTION_KEY_NAMES, FUNCTION_KEY_USAGES, KeyIdentity, KeyPress, KeyPressSet, KeySide,
     function_key_index, function_key_name,
+};
+pub use overlay_layer::{
+    ClipRect, MAXIMUM_OVERLAY_LAYER_PIXELS, MAXIMUM_OVERLAY_LAYER_SIDE, OverlayAnchor,
+    OverlayLayer, OverlayLayerConsumer, OverlayLayerIds, OverlayLayerPlacement,
+    OverlayLayerPointer, OverlayLayerProducer, OverlayLayerPublishError, OverlayLayerRaster,
+    OverlayLayerTransportDiagnostics, OverlayPressSink, PlacedOverlayLayer, overlay_layer_channel,
+    overlay_layer_clip_rect,
 };
 pub use resources::{BackgroundAsset, KeyAsset, RenderResources, TextureAsset};
 pub use snapshot::{

@@ -74,6 +74,18 @@ pub struct OverlayResizeOutcome {
 pub struct OverlayInteractionSinks {
     pub context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
     pub resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+    /// Where a press that landed inside a layer goes.
+    ///
+    /// The native window answers it, not the frame loop: on Windows the decision
+    /// whether a click drags the window or presses a button is made in
+    /// `WM_NCHITTEST`, and by then the message that carries the click has not been
+    /// generated yet. The window therefore hit-tests against the placement the
+    /// frame loop published and calls this, and the press never leaves the UI
+    /// thread's turn.
+    ///
+    /// `None` for a preview: it draws a model, not a product, so there is nothing
+    /// behind its layers to answer a press.
+    pub press_sink: Option<Arc<dyn bongocat_render::OverlayPressSink>>,
 }
 
 impl ProductOverlaySession {
@@ -95,6 +107,7 @@ impl ProductOverlaySession {
             OverlayInteractionSinks {
                 context_menu_sender: None,
                 resize_sender: None,
+                press_sink: None,
             },
         )
     }
@@ -159,6 +172,26 @@ impl ProductOverlaySession {
         {
             self.inner.tick()
         }
+    }
+
+    /// Give the session the channel its plugin panels arrive on.
+    ///
+    /// Separate from `start` because the channel is half of a pair the product
+    /// owns: the worker holds the producer for its whole life, and handing both
+    /// ends over at start time would mean building the worker before the overlay.
+    /// That is the wrong order — the overlay has to exist before a frame can be
+    /// presented, and a frame has to be presentable before a panel is worth
+    /// showing.
+    pub fn with_layers(mut self, consumer: bongocat_render::OverlayLayerConsumer) -> Self {
+        #[cfg(target_os = "macos")]
+        {
+            self.inner.layer_consumer = Some(consumer);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            self.inner.layer_consumer = Some(consumer);
+        }
+        self
     }
 
     pub fn window_bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {

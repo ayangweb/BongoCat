@@ -177,6 +177,7 @@ pub(crate) struct ProductShutdown {
     pub(crate) overlay: ProductOverlaySession,
     pub(crate) settings_service: bongocat_app::ApplicationSettingsService,
     pub(crate) update_service: Option<bongocat_app::ApplicationUpdateService>,
+    pub(crate) plugin_host: Option<ProductPluginHost>,
 }
 
 impl ProductShutdown {
@@ -218,6 +219,11 @@ impl ProductShutdown {
         if let Err(error) = self.settings_service.join() {
             record_failure(&failures, error.to_string());
         }
+        // The plugin worker is stopped here and not earlier: it publishes into a
+        // channel the overlay is still draining, so it has to outlive the frame
+        // source — and not later, because the next step releases the renderer's
+        // device while the worker is still rasterizing panels for it.
+        product_plugins::stop_plugin_worker(self.plugin_host, &failures);
         match self.overlay.finish_after_runtime_shutdown() {
             Ok(report) if self.coordinator.expect_visible_frame && report.frames_presented == 0 => {
                 record_failure(&failures, "product overlay presented no frames");
@@ -272,11 +278,13 @@ pub(crate) fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
         .take()
         .expect("settings service owner is present");
     let update_service = coordinator.update_service.take();
+    let plugin_host = coordinator.plugin_host.take();
     ProductShutdown {
         coordinator,
         overlay,
         settings_service,
         update_service,
+        plugin_host,
     }
 }
 

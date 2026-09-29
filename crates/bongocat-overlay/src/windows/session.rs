@@ -31,6 +31,8 @@ impl NativeOverlay {
         bounds: Option<OverlayWindowBounds>,
         context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
         resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
+        placed_layers: PlacedLayers,
+        press_sink: Option<Arc<dyn bongocat_render::OverlayPressSink>>,
     ) -> Result<Self, OverlayError> {
         validate_options(options)?;
         let window = OverlayWindow::create(
@@ -39,6 +41,8 @@ impl NativeOverlay {
             bounds,
             context_menu_sender,
             resize_sender,
+            placed_layers,
+            press_sink,
         )?;
         let renderer = Renderer::create(&window, frame, options)?;
         Ok(Self {
@@ -83,6 +87,18 @@ impl NativeOverlay {
     /// What the shell currently shows for this window's taskbar button.
     pub(crate) fn taskbar_icon_is_visible(&self) -> bool {
         self.window.taskbar_icon_is_visible()
+    }
+
+    /// Place the topmost layers and upload whatever changed.
+    ///
+    /// Called every tick, including while the window is hidden, so a panel that
+    /// reappears with the model has its texture ready rather than flashing.
+    pub(crate) fn set_layers(
+        &mut self,
+        layers: &[bongocat_render::OverlayLayer],
+        published: &PlacedLayers,
+    ) -> Result<(), OverlayError> {
+        self.renderer.set_layers(layers, published)
     }
 
     /// Resize the existing native window and its swap-chain-backed renderer.
@@ -176,6 +192,17 @@ pub(crate) struct ProductOverlaySession {
     pub(crate) overlay: NativeOverlay,
     pub(crate) runtime_client: RuntimeClient,
     pub(crate) render_consumer: RenderConsumer,
+    /// The topmost layers, drained once per tick.
+    ///
+    /// `Option` because a preview has no plugin worker behind it: the preview
+    /// binary draws a model, not a product, and a channel with nothing publishing
+    /// into it would be a field that is always empty.
+    pub(crate) layer_consumer: Option<bongocat_render::OverlayLayerConsumer>,
+    /// The placement the window procedure hit-tests a press against, republished
+    /// by `set_layers` once a tick.
+    pub(crate) placed_layers: PlacedLayers,
+    /// Where a press inside a layer goes, kept for a replacement window.
+    pub(crate) press_sink: Option<Arc<dyn bongocat_render::OverlayPressSink>>,
     pub(crate) _com_apartment: ComApartment,
     pub(crate) input_service: Option<WindowsInputService>,
     pub(crate) input_start_error: Option<PlatformInputError>,
@@ -222,7 +249,11 @@ impl ProductOverlaySession {
         let OverlayInteractionSinks {
             context_menu_sender,
             resize_sender,
+            press_sink,
         } = interaction_sinks;
+        // Before the window is created, because the window's procedure hit-tests a
+        // press against the placement this publishes into.
+        let placed_layers = PlacedLayers::new();
         validate_options(options)?;
         let initial_frame = render_consumer
             .take_latest()
@@ -237,6 +268,8 @@ impl ProductOverlaySession {
             options.window_bounds,
             context_menu_sender.clone(),
             resize_sender.clone(),
+            placed_layers.clone(),
+            press_sink.clone(),
         ) {
             Ok(overlay) => overlay,
             Err(error) => {
@@ -272,6 +305,11 @@ impl ProductOverlaySession {
             overlay,
             runtime_client,
             render_consumer,
+            // A preview has no plugin worker behind it; the product passes one in
+            // through `with_layers`.
+            layer_consumer: None,
+            placed_layers,
+            press_sink,
             _com_apartment: com_apartment,
             input_service,
             input_start_error,
@@ -389,6 +427,17 @@ impl ProductOverlaySession {
         if !overlay_visible {
             self.overlay.set_visible(false)?;
         }
+        // Layers are placed and uploaded every tick, visible or not: a panel that
+        // appeared the moment the window came back would flash its first frame
+        // after the model, and one uploaded while hidden would not have to wait
+        // for a resize to appear at all.
+        self.overlay.set_layers(
+            &self
+                .layer_consumer
+                .as_ref()
+                .map_or_else(Vec::new, bongocat_render::OverlayLayerConsumer::take_latest),
+            &self.placed_layers,
+        )?;
         let next_frame = if overlay_visible {
             self.render_consumer.take_latest()
         } else {
@@ -590,8 +639,15 @@ impl ProductOverlaySession {
         context_menu_sender: Option<SyncSender<OverlayContextMenuRequest>>,
         resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
     ) -> Result<NativeOverlay, OverlayError> {
-        let mut overlay =
-            NativeOverlay::create(frame, options, bounds, context_menu_sender, resize_sender)?;
+        let mut overlay = NativeOverlay::create(
+            frame,
+            options,
+            bounds,
+            context_menu_sender,
+            resize_sender,
+            self.placed_layers.clone(),
+            self.press_sink.clone(),
+        )?;
         let alpha = f32::from(options.opacity_percent) / 100.0 * self.hover.visible() as f32;
         overlay.apply_presentation(alpha, options.click_through || self.hover.hidden())?;
         Ok(overlay)

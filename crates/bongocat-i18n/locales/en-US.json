@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "About"
+    },
+    "plugins": {
+      "title": "Plugins"
     }
   },
   "system_menu": {
@@ -307,7 +310,10 @@
       "dock_icon_update_failed": "Could not update the Dock icon.",
       "window_hide_failed": "Settings window could not be hidden",
       "window_layout_save_failed": "The window layout could not be saved",
-      "application_shutdown_failed": "BongoCat could not close completely"
+      "application_shutdown_failed": "BongoCat could not close completely",
+      "plugin_host_unavailable": "Plugins are not running in this session",
+      "plugin_host_busy": "Another plugin operation is in progress. Try again in a moment.",
+      "plugin_not_found": "That plugin is no longer available"
     }
   },
   "settings": {
@@ -502,6 +508,38 @@
         "unsupported_platform": "Login startup is unavailable on this system",
         "unsupported_os": "Login startup is unavailable on this operating system",
         "unsupported_build": "Login startup is unavailable in development builds"
+      }
+    },
+    "plugins": {
+      "catalog": {
+        "title": "Plugin catalog",
+        "description": "Plugins add a panel to the model window. They are downloaded when you install them, and the same list is available to every build.",
+        "refresh": "Refresh",
+        "loading": "Reading the plugin catalog…",
+        "empty": "The plugin catalog has no plugins yet."
+      },
+      "show_on_window": "Show on the model window",
+      "action": {
+        "install": "Install",
+        "update": "Update",
+        "uninstall": "Uninstall"
+      },
+      "refusal": {
+        "not_published": "Not available for this version of BongoCat on this system."
+      },
+      "error": {
+        "unavailable": "The plugin host is not running, so no plugins can be shown. Restart BongoCat to try again.",
+        "not_published": "This plugin is not in the catalog, or is not offered for this system.",
+        "already_installed": "This plugin is already installed at the version on offer.",
+        "catalog": "The plugin catalog could not be read. Check the network connection and refresh.",
+        "network": "The download could not be completed. Check the network connection and try again.",
+        "checksum": "The downloaded plugin did not match the catalog's checksum, so it was not installed.",
+        "signature": "The downloaded plugin was not signed by BongoCat, so it was not installed.",
+        "store": "The plugin could not be written to disk. Check the folder's permissions and retry.",
+        "too_many": "The model window already shows the most panels it can. Switch one off first.",
+        "manifest": "This plugin's contents are not valid for this version of BongoCat.",
+        "render": "This plugin's panel could not be drawn.",
+        "other": "The plugin operation did not complete."
       }
     }
   }
