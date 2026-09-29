@@ -168,14 +168,11 @@ impl SettingsNavigationPage {
             Self::ModelWindow => &["Overlay"],
             Self::InputInteraction => &["Interaction", "Input", "交互", "输入"],
             Self::Shortcuts => &[],
-            Self::Plugins => &[
-                "Plugins",
-                "Extensions",
-                "Add-ons",
-                "插件",
-                "扩展",
-                "插件中心",
-            ],
+            // The page's own title is searched already, so these are the names a
+            // user is likely to type *instead of* it. Not "外挂": in Simplified
+            // Chinese that word means a cheat, and it is what someone looking for
+            // game hacks would type.
+            Self::Plugins => &["Plugins", "Extensions", "Add-ons", "插件", "扩展"],
             Self::AppSystem => &[
                 "Application",
                 "应用",
