@@ -51,7 +51,7 @@ fn system_locale_resolves_to_a_shipped_language() {
     for locale in ["pt", "pt-BR", "pt_BR", "pt-PT"] {
         assert_eq!(
             Language::from_system_locale(locale),
-            Language::PortugueseBrazil,
+            Language::Portuguese,
             "{locale} is a Portuguese locale"
         );
     }
@@ -88,8 +88,8 @@ fn system_locale_resolves_to_a_shipped_language() {
         Language::Vietnamese
     );
     assert_eq!(
-        Language::System.resolve(Language::PortugueseBrazil),
-        Language::PortugueseBrazil
+        Language::System.resolve(Language::Portuguese),
+        Language::Portuguese
     );
     assert_eq!(
         Language::System.resolve(Language::System),
@@ -121,11 +121,11 @@ fn system_locale_resolves_to_a_shipped_language() {
         Language::English
     );
     assert_eq!(
-        Language::PortugueseBrazil.resolve(Language::ChineseSimplified),
-        Language::PortugueseBrazil
+        Language::Portuguese.resolve(Language::ChineseSimplified),
+        Language::Portuguese
     );
     assert_eq!(
-        Language::English.resolve(Language::PortugueseBrazil),
+        Language::English.resolve(Language::Portuguese),
         Language::English
     );
     assert_eq!(

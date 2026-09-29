@@ -36,20 +36,18 @@ pub(crate) fn settings_language_display_name(
             locale,
             "settings.appearance.language.options.chinese_traditional",
         ),
-        SettingsLanguage::English => bongocat_i18n::text(
-            locale,
-            "settings.appearance.language.options.english_united_states",
-        ),
+        SettingsLanguage::English => {
+            bongocat_i18n::text(locale, "settings.appearance.language.options.english")
+        }
         SettingsLanguage::Arabic => {
             bongocat_i18n::text(locale, "settings.appearance.language.options.arabic")
         }
         SettingsLanguage::Vietnamese => {
             bongocat_i18n::text(locale, "settings.appearance.language.options.vietnamese")
         }
-        SettingsLanguage::PortugueseBrazil => bongocat_i18n::text(
-            locale,
-            "settings.appearance.language.options.portuguese_brazil",
-        ),
+        SettingsLanguage::Portuguese => {
+            bongocat_i18n::text(locale, "settings.appearance.language.options.portuguese")
+        }
     }
 }
 
@@ -324,10 +322,7 @@ pub(crate) mod tests {
             "Hệ thống"
         );
         assert_eq!(
-            settings_language_display_name(
-                SettingsLanguage::System,
-                SettingsLanguage::PortugueseBrazil,
-            ),
+            settings_language_display_name(SettingsLanguage::System, SettingsLanguage::Portuguese,),
             "Sistema"
         );
         assert_eq!(

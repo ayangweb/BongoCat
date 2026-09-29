@@ -326,10 +326,10 @@
           "system": "跟隨系統",
           "chinese_simplified": "简体中文",
           "chinese_traditional": "繁體中文",
-          "english_united_states": "English",
+          "english": "English",
           "arabic": "العربية",
           "vietnamese": "Tiếng Việt",
-          "portuguese_brazil": "Português"
+          "portuguese": "Português"
         }
       }
     },

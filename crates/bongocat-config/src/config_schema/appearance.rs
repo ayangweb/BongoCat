@@ -60,12 +60,13 @@ pub enum Language {
     // still finds their own.
     #[serde(rename = "vi-VN")]
     Vietnamese,
-    // Brazilian Portuguese, the same shape as Arabic: `pt` and `pt-PT` both
-    // reach the one shipped catalog. The endonym `Português` keeps its
-    // diacritics in every catalog, so a reader who cannot read the current
-    // window language still finds their own.
+    // Portuguese, the same shape as Arabic: the copy was written for Brazil, so
+    // the name is `pt-BR` while `pt` and `pt-PT` reach it on their primary
+    // subtag. The endonym `Português` keeps its diacritics in every catalog and
+    // carries no region, so a reader who cannot read the current window
+    // language still finds their own.
     #[serde(rename = "pt-BR")]
-    PortugueseBrazil,
+    Portuguese,
 }
 
 impl Language {
@@ -76,7 +77,7 @@ impl Language {
         Self::English,
         Self::Arabic,
         Self::Vietnamese,
-        Self::PortugueseBrazil,
+        Self::Portuguese,
     ];
 
     pub const fn code(self) -> &'static str {
@@ -87,7 +88,7 @@ impl Language {
             Self::English => "en-US",
             Self::Arabic => "ar-SA",
             Self::Vietnamese => "vi-VN",
-            Self::PortugueseBrazil => "pt-BR",
+            Self::Portuguese => "pt-BR",
         }
     }
 
@@ -111,7 +112,7 @@ impl Language {
             Some(&"zh") => Self::ChineseSimplified,
             Some(&"ar") => Self::Arabic,
             Some(&"vi") => Self::Vietnamese,
-            Some(&"pt") => Self::PortugueseBrazil,
+            Some(&"pt") => Self::Portuguese,
             _ => Self::English,
         }
     }
@@ -123,7 +124,7 @@ impl Language {
                 Self::ChineseTraditional => Self::ChineseTraditional,
                 Self::Arabic => Self::Arabic,
                 Self::Vietnamese => Self::Vietnamese,
-                Self::PortugueseBrazil => Self::PortugueseBrazil,
+                Self::Portuguese => Self::Portuguese,
                 Self::System | Self::English => Self::English,
             },
             Self::ChineseSimplified => Self::ChineseSimplified,
@@ -131,7 +132,7 @@ impl Language {
             Self::English => Self::English,
             Self::Arabic => Self::Arabic,
             Self::Vietnamese => Self::Vietnamese,
-            Self::PortugueseBrazil => Self::PortugueseBrazil,
+            Self::Portuguese => Self::Portuguese,
         }
     }
 }

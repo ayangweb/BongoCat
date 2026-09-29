@@ -13,8 +13,14 @@ BongoCat 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源�
 `vi-VN` 全部落到 `vi-VN`，`pt`/`pt-PT`/`pt-BR` 全部落到 `pt-BR`，`en`/`en-GB` 全部落到 `en-US`。
 因此机器实际上报的 tag 几乎总不是 catalog 自身的名字，而 primary subtag 匹配让它们收敛到同一份
 文案，而不是各自回退英文。`pt-BR` 尤其说明这件事的必要性：葡萄牙语没有单一写法，catalog 只发
-一种变体，报 `pt-PT` 的机器读到的也是它。语言下拉里的名称按 endonym 规则写成本地人自称语言的名字，
-不附地区后缀——`Português` 而不是 `Português (Brasil)`，`العربية` 而不是 `العربية (السعودية)`。
+一种变体，报 `pt-PT` 的机器读到的也是它。
+
+**语言枚举的变体名按语言本身命名，不带地区**：`Arabic`、`Vietnamese`、`Portuguese` 各自服务整个
+语言，地区子标签只是提名，`PortugueseBrazil` 这类名字会声称 catalog 并不携带的地区特化。语言下拉
+里的名称按 endonym 规则写成本地人自称语言的名字，同样不附地区后缀——`Português` 而不是
+`Português (Brasil)`，`العربية` 而不是 `العربية (السعودية)`，对应的 i18n key 也只写
+`portuguese`、`arabic`。`ChineseSimplified` 是唯一保留限定词的名字，因为它命中的确实是脚本分叉：
+`zh` 下的简繁是两种书写体系。
 
 `zh` 是唯一不能只看 primary subtag 的情形：简繁是不同书写体系而非地区变体，因此两种写法各发
 一份 catalog（`zh-CN` 简体、`zh-TW` 繁体），并在 `zh` 分支内按书写体系子标签直接分流，不进入
