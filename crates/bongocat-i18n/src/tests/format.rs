@@ -22,6 +22,14 @@ fn format_text_interpolation_is_available() {
     );
     assert_eq!(
         format_text(
+            "zh-TW",
+            "update.current_version",
+            &[("version", "1.2.3".to_string())],
+        ),
+        "目前版本 1.2.3"
+    );
+    assert_eq!(
+        format_text(
             "ar-SA",
             "update.current_version",
             &[("version", "1.2.3".to_string())],

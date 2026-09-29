@@ -14,7 +14,7 @@ fn system_locale_resolves_to_a_shipped_language() {
     );
     assert_eq!(
         Language::from_system_locale("zh_Hant_HK"),
-        Language::English
+        Language::ChineseTraditional
     );
     assert_eq!(Language::from_system_locale("en-GB"), Language::English);
     assert_eq!(Language::from_system_locale("de-DE"), Language::English);
@@ -45,18 +45,32 @@ fn system_locale_resolves_to_a_shipped_language() {
             "{locale} is an English locale"
         );
     }
-    // Traditional Chinese shares the `zh` subtag with the Simplified catalog
-    // but is a different script, so it falls back rather than reading `zh-CN`.
+    // Chinese shares the `zh` subtag across two scripts, so it is the one
+    // language the primary subtag cannot classify. The script subtag decides
+    // when the platform reports one, and the `TW`/`HK`/`MO` region subtags
+    // decide when it does not; both spellings reach the `zh-TW` catalog rather
+    // than reading `zh-CN` or dropping to English.
     for locale in ["zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh-Hant-HK"] {
         assert_eq!(
             Language::from_system_locale(locale),
-            Language::English,
+            Language::ChineseTraditional,
             "{locale} is Traditional Chinese"
+        );
+    }
+    for locale in ["zh", "zh-CN", "zh-Hans", "zh-Hans-CN", "zh_SG"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::ChineseSimplified,
+            "{locale} is Simplified Chinese"
         );
     }
     assert_eq!(
         Language::System.resolve(Language::ChineseSimplified),
         Language::ChineseSimplified
+    );
+    assert_eq!(
+        Language::System.resolve(Language::ChineseTraditional),
+        Language::ChineseTraditional
     );
     assert_eq!(Language::System.resolve(Language::Arabic), Language::Arabic);
     assert_eq!(
@@ -91,6 +105,14 @@ fn system_locale_resolves_to_a_shipped_language() {
     assert_eq!(
         Language::English.resolve(Language::Vietnamese),
         Language::English
+    );
+    assert_eq!(
+        Language::ChineseTraditional.resolve(Language::ChineseSimplified),
+        Language::ChineseTraditional
+    );
+    assert_eq!(
+        Language::ChineseSimplified.resolve(Language::ChineseTraditional),
+        Language::ChineseSimplified
     );
 }
 

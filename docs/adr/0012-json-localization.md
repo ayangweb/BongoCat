@@ -4,7 +4,7 @@
 
 ## 决策
 
-BongoCat 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，已落地的语言为 `zh-CN`、`ar-SA` 与 `vi-VN`。
+BongoCat 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，已落地的语言为 `zh-CN`、`zh-TW`、`ar-SA` 与 `vi-VN`。
 
 **语言命名采用带地区子标签的提名式**，与 `en-US` 一致：一份语言只发一份 catalog，地区子标签提名这份文案所依据的主要变体，并不声称 catalog 未携带的地区特化。`en-US` 本身也是这种名字——它同样服务 `en-GB`。
 
@@ -13,9 +13,10 @@ BongoCat 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源�
 `vi-VN` 全部落到 `vi-VN`，`en`/`en-GB` 全部落到 `en-US`。因此机器实际上报的 tag 几乎总不是
 catalog 自身的名字，而 primary subtag 匹配让它们收敛到同一份文案，而不是各自回退英文。
 
-`zh` 是唯一不能只看 primary subtag 的情形：简繁是不同书写体系而非地区变体，产品只发简体。
-繁体的 `zh-TW`/`zh-HK`/`zh-MO`/`zh-Hant` 必须在 `zh` 分支内直接返回默认语言，不能落到下面的
-subtag 循环——否则一个报繁体的机器会读到简体文案，而这正是地区子标签无法表达的那件事。
+`zh` 是唯一不能只看 primary subtag 的情形：简繁是不同书写体系而非地区变体，因此两种写法各发
+一份 catalog（`zh-CN` 简体、`zh-TW` 繁体），并在 `zh` 分支内按书写体系子标签直接分流，不进入
+下面的 subtag 循环。`hant` 与 `TW`/`HK`/`MO` 判为繁体，`hans` 与其余 `zh` 标签判为简体——两种
+拼写都要覆盖，因为平台只报地区子标签时 `TW`/`HK`/`MO` 是唯一可用的线索。
 `bongocat-config` 的 `Language::from_system_locale` 与 `bongocat-i18n::locale_code` 各做一次
 同样的判定：两个 crate 之间不存在依赖方向，不能共用一个 helper，行为必须由测试对齐。
 

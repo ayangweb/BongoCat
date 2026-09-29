@@ -25,7 +25,7 @@ pub const DEFAULT_LOCALE: &str = "en-US";
 /// was written in, and it does not claim a regional specialisation the catalog
 /// does not carry. `en-US` is the same kind of name — it serves `en-GB` just as
 /// `ar-SA` serves `ar-EG`.
-pub const SHIPPED_LOCALES: [&str; 4] = ["en-US", "zh-CN", "ar-SA", "vi-VN"];
+pub const SHIPPED_LOCALES: [&str; 5] = ["en-US", "zh-CN", "zh-TW", "ar-SA", "vi-VN"];
 
 /// Resolve any locale tag onto the catalog that serves it.
 ///
@@ -36,13 +36,13 @@ pub const SHIPPED_LOCALES: [&str; 4] = ["en-US", "zh-CN", "ar-SA", "vi-VN"];
 /// that same rule, and it is what keeps a machine reporting `vi` or `vi-VN` or
 /// `ar` or `ar-EG` on one catalog instead of four.
 ///
-/// `zh` is the one case that cannot be decided by the primary subtag alone:
+/// `zh` is the one case that cannot be decided by the primary subtag alone.
 /// Simplified and Traditional are different written forms rather than regional
-/// variants, and the product ships only the Simplified one. A Traditional tag
-/// shares the `zh` subtag with the catalog we do ship, so this returns from
-/// inside the `zh` branch instead of letting the subtag loop below claim it.
-/// Letting it fall through would serve Traditional-tagged machines Simplified
-/// copy, which is the one thing the region subtag cannot express.
+/// variants, and both ship their own catalog. Every `zh` tag therefore resolves
+/// from inside the `zh` branch by script subtag, which is the one thing the
+/// region subtag cannot express on its own. Letting it fall through to the
+/// subtag loop would hand Simplified-tagged machines Traditional copy, or the
+/// other way round.
 pub fn locale_code(code: &str) -> &str {
     let normalized = code.replace('_', "-").to_ascii_lowercase();
     let language = normalized.split('-').next().unwrap_or("");
@@ -50,7 +50,7 @@ pub fn locale_code(code: &str) -> &str {
         return if is_simplified_chinese(&normalized) {
             "zh-CN"
         } else {
-            DEFAULT_LOCALE
+            "zh-TW"
         };
     }
     SHIPPED_LOCALES
@@ -64,7 +64,10 @@ pub fn locale_code(code: &str) -> &str {
         .unwrap_or(DEFAULT_LOCALE)
 }
 
-/// Whether a `zh` tag is the Simplified form the product ships.
+/// Whether a `zh` tag names the Simplified script rather than the Traditional one.
+///
+/// The script subtag (`hant`/`hans`) is authoritative when it is present; the
+/// `TW`/`HK`/`MO` region subtags are the spellings platforms use when it is not.
 fn is_simplified_chinese(normalized: &str) -> bool {
     !normalized
         .split('-')
