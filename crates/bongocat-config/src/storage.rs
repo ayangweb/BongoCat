@@ -44,7 +44,7 @@ pub struct StorageLayout {
     /// Not in the installer: plugins are fetched on demand, so this is the only
     /// place a plugin's files exist.
     pub plugins: PathBuf,
-    /// The catalog the plugin centre reads, whether it was fetched over the
+    /// The catalog the plugin center reads, whether it was fetched over the
     /// network or discovered in a development directory.
     pub plugin_catalog: PathBuf,
     pub backups: PathBuf,

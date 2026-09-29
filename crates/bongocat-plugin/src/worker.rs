@@ -2,7 +2,7 @@
 //!
 //! Everything a plugin does happens on this thread — fetching, installing, running
 //! behaviors, rasterizing panels — and nothing it does can reach the render path.
-//! It publishes a snapshot for the plugin centre and a set of layers for the model
+//! It publishes a snapshot for the plugin center and a set of layers for the model
 //! window, both through bounded latest-wins channels, and it takes commands and
 //! presses through one bounded command channel.
 //!
@@ -65,13 +65,13 @@ pub enum PluginPhase {
 }
 
 impl PluginPhase {
-    /// Whether the plugin centre should show a spinner.
+    /// Whether the plugin center should show a spinner.
     pub const fn is_busy(&self) -> bool {
         !matches!(self, Self::Idle)
     }
 }
 
-/// One plugin, as the plugin centre lists it.
+/// One plugin, as the plugin center lists it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PluginEntry {
     pub manifest: PluginManifest,
@@ -86,7 +86,7 @@ pub struct PluginEntry {
 }
 
 impl PluginEntry {
-    /// Whether the centre's button for this plugin says "install".
+    /// Whether the center's button for this plugin says "install".
     pub const fn is_installable(&self) -> bool {
         !self.installed
     }
@@ -97,7 +97,7 @@ impl PluginEntry {
     }
 }
 
-/// Everything the plugin centre renders from.
+/// Everything the plugin center renders from.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct PluginSnapshot {
     pub revision: u64,
@@ -107,7 +107,7 @@ pub struct PluginSnapshot {
     pub entries: Vec<PluginEntry>,
     /// Plugins installed and enabled, as the overlay shows them.
     pub active: Vec<PluginId>,
-    /// The last failure, kept until something replaces it so the centre shows it
+    /// The last failure, kept until something replaces it so the center shows it
     /// rather than clearing it on the next poll.
     pub last_error: Option<PluginError>,
 }
@@ -262,7 +262,7 @@ struct ButtonBinding {
     action: BehaviorAction,
 }
 
-/// State shared with the snapshot reader, so the plugin centre can read a revision
+/// State shared with the snapshot reader, so the plugin center can read a revision
 /// cheaply and take the full snapshot only when it moved.
 #[derive(Debug)]
 struct SharedState {
@@ -284,7 +284,7 @@ pub struct PluginWorkerReader {
 }
 
 impl PluginWorkerReader {
-    /// The current snapshot, for the plugin centre.
+    /// The current snapshot, for the plugin center.
     pub fn snapshot(&self) -> PluginSnapshot {
         self.state
             .lock()
@@ -317,7 +317,7 @@ pub struct PluginWorkerHandle {
 }
 
 impl PluginWorkerHandle {
-    /// The current snapshot, for the plugin centre.
+    /// The current snapshot, for the plugin center.
     pub fn snapshot(&self) -> PluginSnapshot {
         self.snapshot_locked().clone()
     }
@@ -558,7 +558,7 @@ impl Worker {
         state.snapshot.revision = state.snapshot.revision.saturating_add(1);
     }
 
-    /// The plugin centre's list: what the catalog offers, plus what is installed.
+    /// The plugin center's list: what the catalog offers, plus what is installed.
     fn entries(&self) -> Vec<PluginEntry> {
         let mut entries: BTreeMap<PluginId, PluginEntry> = BTreeMap::new();
         for record in self.store.installed() {
@@ -995,7 +995,7 @@ fn proxy_used_for_catalog() -> Option<&'static str> {
 /// A manifest carrying only a catalog entry's identity.
 ///
 /// Used for a plugin the catalog offers and this build has not installed, so the
-/// centre can show a name and a description for it. It has no panel and cannot be
+/// center can show a name and a description for it. It has no panel and cannot be
 /// loaded — its `size` is one pixel, which the manifest bounds would refuse if it
 /// were ever read from disk, so a synthesized entry can never be mistaken for an
 /// installed one.

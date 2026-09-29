@@ -3,7 +3,7 @@
 //! The window's vocabulary is deliberately thinner than the host's: a row, a state,
 //! and a code. Everything the host knows and the window has no use for — a digest, a
 //! directory, a signature, a `PluginId` that validates itself — stops here, which is
-//! what makes the plugin centre unable to grow a dependency on the plugin protocol.
+//! what makes the plugin center unable to grow a dependency on the plugin protocol.
 
 use super::*;
 

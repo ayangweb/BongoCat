@@ -442,7 +442,7 @@ mod tests {
             revision: 42,
             config_revision: Some(7),
             // A diagnostics export is about the product's own state; the plugin
-            // centre's listing is not part of what a support report needs, so it is
+            // center's listing is not part of what a support report needs, so it is
             // left at its default rather than filled in here.
             plugins: Default::default(),
             build_info: SettingsBuildInfo {

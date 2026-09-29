@@ -77,6 +77,6 @@ pub use worker::{
 ///
 /// Generous, and for the same reason the updater's is: the point is to escape a
 /// dead connection, not to police a slow one. A plugin archive is small compared
-/// with a release payload, and the plugin centre is not blocked while one is in
+/// with a release payload, and the plugin center is not blocked while one is in
 /// flight.
 pub const ARCHIVE_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1800);

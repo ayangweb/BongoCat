@@ -236,7 +236,7 @@ struct ProductCoordinator {
     /// imported.
     main_thread_signals: bongocat_app::ApplicationMainThreadSignals,
     shortcut_service: Option<bongocat_platform::GlobalShortcutService>,
-    /// The plugin worker, for the settings window's plugin centre and for the frame
+    /// The plugin worker, for the settings window's plugin center and for the frame
     /// loop's local-clock refresh. `None` when the worker would not start, which is
     /// a degraded product rather than a failed one.
     plugin_host: Option<ProductPluginHost>,

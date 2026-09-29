@@ -15,7 +15,7 @@
 //!   cache and the frame loop calls [`ProductPluginHost::refresh_local_time`].
 //!
 //! A failure to start is a degraded product, not a failed one: the user still gets
-//! the cat, the plugin centre says why, and nothing about the failure is allowed to
+//! the cat, the plugin center says why, and nothing about the failure is allowed to
 //! take the model window with it.
 
 use bongocat_config::StorageLayout;

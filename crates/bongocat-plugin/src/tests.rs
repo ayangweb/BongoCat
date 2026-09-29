@@ -1502,7 +1502,7 @@ fn uninstalling_removes_the_plugin_from_the_snapshot() {
     assert_eq!(handle.snapshot().entries.len(), 1);
 
     assert!(endpoint.send(super::worker::PluginCommand::Uninstall(id.clone())));
-    // The phase is announced before the work so the centre can show a spinner, so
+    // The phase is announced before the work so the center can show a spinner, so
     // the wait is for the *list* to empty rather than for the next revision — the
     // revision that announces the removal still lists the plugin.
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
@@ -1544,7 +1544,7 @@ fn a_plugin_the_catalog_offers_appears_in_the_snapshot_with_its_offered_version(
     let snapshot = wait_for_revision(&handle, 0);
     // The catalog names `pomodoro`; on a host whose platform key it does not
     // announce, the entry is still listed but is refused with a reason, which is
-    // what the centre shows.
+    // what the center shows.
     assert_eq!(snapshot.entries.len(), 1);
     let entry = &snapshot.entries[0];
     assert_eq!(entry.manifest.name, "Pomodoro");
@@ -1846,12 +1846,12 @@ fn the_shipped_reference_plugin_loads_and_rasterizes() {
             .iter()
             .find(|region| region.button == id)
             .unwrap_or_else(|| panic!("the {id} button must be laid out"));
-        let centre = (
+        let center = (
             region.rect.x + region.rect.width / 2.0,
             region.rect.y + region.rect.height / 2.0,
         );
         assert_eq!(
-            panel.hit_test(centre.0, centre.1),
+            panel.hit_test(center.0, center.1),
             Some(id),
             "the {id} button must be pressable where it is drawn"
         );

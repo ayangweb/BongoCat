@@ -124,7 +124,7 @@ fn is_safe_plugin_id(id: &str) -> bool {
 /// A semantic version, ordered well enough to compare two plugin releases.
 ///
 /// Written rather than borrowed from a version crate: the only comparison the
-/// plugin centre needs is "is the catalog's version newer than what is
+/// plugin center needs is "is the catalog's version newer than what is
 /// installed", and a three-number tuple does that without a dependency and
 /// without a pre-release rule nobody would apply to a plugin catalogue anyway.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
@@ -410,7 +410,7 @@ pub struct PluginManifest {
     pub min_app_version: Option<PluginVersion>,
     #[serde(default)]
     pub capabilities: Vec<PluginCapabilities>,
-    /// A PNG under the plugin's own directory, shown in the plugin centre.
+    /// A PNG under the plugin's own directory, shown in the plugin center.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     pub overlay: OverlayContribution,

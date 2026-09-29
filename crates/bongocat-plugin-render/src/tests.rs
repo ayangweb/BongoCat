@@ -87,11 +87,11 @@ fn a_solid_stack_fills_its_whole_box() {
     .expect("a solid stack rasterizes");
     assert_eq!((panel.width, panel.height), (80, 40));
     assert_eq!(panel.pixels.len(), 80 * 40 * 4);
-    // Dead centre is unambiguously inside and unambiguously the fill colour.
+    // Dead center is unambiguously inside and unambiguously the fill colour.
     assert!(alpha_at(&panel.pixels, 80, 40, 20) > 250);
-    let centre = &panel.pixels[(20 * 80 + 40) * 4..(20 * 80 + 40) * 4 + 4];
-    assert!(centre[0] > 250, "red channel is full");
-    assert!(centre[1] < 5 && centre[2] < 5, "and green and blue are not");
+    let center = &panel.pixels[(20 * 80 + 40) * 4..(20 * 80 + 40) * 4 + 4];
+    assert!(center[0] > 250, "red channel is full");
+    assert!(center[1] < 5 && center[2] < 5, "and green and blue are not");
 }
 
 #[test]
@@ -309,7 +309,7 @@ fn a_button_registers_exactly_the_rectangle_it_was_drawn_in() {
     // it rather than at the origin.
     assert!((region.rect.x - 10.0).abs() < 0.001);
     assert!((region.rect.y - 10.0).abs() < 0.001);
-    // A press at the button's centre hits it.
+    // A press at the button's center hits it.
     assert_eq!(
         panel.hit_test(region.rect.x + 1.0, region.rect.y + 1.0),
         Some("go")
@@ -621,11 +621,11 @@ fn a_translucent_surface_composites_over_what_is_already_there() {
         &ImageLibrary::new(),
     )
     .expect("nested translucent stacks rasterize");
-    let centre = &panel.pixels[(20 * 40 + 20) * 4..(20 * 40 + 20) * 4 + 4];
+    let center = &panel.pixels[(20 * 40 + 20) * 4..(20 * 40 + 20) * 4 + 4];
     // Half-white over black is mid grey, and fully opaque because the black below
     // it is.
-    assert!(centre[0] > 100 && centre[0] < 160, "got {}", centre[0]);
-    assert_eq!(centre[3], 255);
+    assert!(center[0] > 100 && center[0] < 160, "got {}", center[0]);
+    assert_eq!(center[3], 255);
 }
 
 #[test]

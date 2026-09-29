@@ -1,7 +1,7 @@
 //! Placement, the click that decides a press, and the texture cache behind both.
 //!
 //! The y-axis reflection is the part worth pinning down: a drawable's origin is its
-//! top left and NDC's is the centre with y up, so the conversion is easy to write
+//! top left and NDC's is the center with y up, so the conversion is easy to write
 //! backwards, and a layer cannot report the mistake — a button at the top of a panel
 //! would simply stop responding.
 
@@ -47,7 +47,7 @@ fn place_drops_a_raster_no_backend_could_upload() {
 #[test]
 fn a_click_inside_a_panel_becomes_a_press_in_the_layers_own_pixels() {
     // A 200x200 drawable with a 100x100 panel in its top left quarter. The panel's
-    // own raster is 20x20, so its centre is 50% of the way across either axis.
+    // own raster is 20x20, so its center is 50% of the way across either axis.
     let placed = place(&[panel(7, 20)]);
     let press = press_at(&placed, 200, 200, 50.0, 50.0).expect("a click inside the panel");
     assert_eq!(press.layer_id, 7);

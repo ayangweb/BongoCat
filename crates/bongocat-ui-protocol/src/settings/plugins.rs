@@ -1,4 +1,4 @@
-//! What the plugin centre shows, and what it can ask for.
+//! What the plugin center shows, and what it can ask for.
 //!
 //! The window never sees a plugin manifest, a file path, a digest or a network
 //! answer. It sees a row, a state, and — when something is wrong — a code it can
@@ -14,7 +14,7 @@
 //!   so a plugin the catalog offers for a platform this host is not still appears —
 //!   greyed, with a reason — instead of silently not existing.
 
-/// One plugin, as the centre lists it.
+/// One plugin, as the center lists it.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SettingsPluginEntry {
     /// The plugin's own identifier, and the only name the window needs to address it.
@@ -34,7 +34,7 @@ pub struct SettingsPluginEntry {
     pub refusal: Option<SettingsPluginRefusal>,
 }
 
-/// The whole plugin centre, as one read.
+/// The whole plugin center, as one read.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SettingsPlugins {
     /// Whether the worker's snapshot has moved since the last read.

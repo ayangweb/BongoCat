@@ -8,7 +8,7 @@
 //! get right.
 //!
 //! What is in an entry is deliberately not what is in a manifest. The catalog
-//! answers three questions the plugin centre has to answer before a user can act:
+//! answers three questions the plugin center has to answer before a user can act:
 //! what is this plugin called, who made it, and where is the archive for *this*
 //! platform. Everything else — the panel, the behaviors, the features needed — is
 //! inside the archive, so a catalog can be generated from a plugin's own metadata
@@ -50,7 +50,7 @@ pub const PLUGIN_CATALOG_REPOSITORY_NAME: &str = "BongoCat";
 ///
 /// A bound rather than a guess: a catalog is parsed into memory and rendered as a
 /// list, and an unbounded document from a reachable endpoint is a way to make the
-/// plugin centre allocate without limit. A few hundred plugins is far past what
+/// plugin center allocate without limit. A few hundred plugins is far past what
 /// this product will ever list.
 pub const MAXIMUM_CATALOG_ENTRIES: usize = 512;
 
@@ -153,7 +153,7 @@ impl PluginDownload {
     }
 }
 
-/// One plugin, as the centre lists it.
+/// One plugin, as the center lists it.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PluginCatalogEntry {
@@ -174,7 +174,7 @@ pub struct PluginCatalogEntry {
     /// One download per `<os>-<arch>` key, spelled the way the update manifest
     /// spells its platform keys so one target triple names both.
     pub downloads: BTreeMap<String, PluginDownload>,
-    /// The icon shown in the centre, over HTTPS, on the same host rule as an
+    /// The icon shown in the center, over HTTPS, on the same host rule as an
     /// archive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon_url: Option<String>,

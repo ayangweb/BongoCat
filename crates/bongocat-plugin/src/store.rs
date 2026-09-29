@@ -81,7 +81,7 @@ impl PluginStore {
 
     /// Every installed plugin, in id order.
     ///
-    /// Sorted so the plugin centre's list is stable between runs: a store read
+    /// Sorted so the plugin center's list is stable between runs: a store read
     /// from a directory is not ordered, and a list that reorders itself on every
     /// refresh is a list nobody can find anything in.
     pub fn installed(&self) -> Vec<InstalledPlugin> {

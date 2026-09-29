@@ -1,4 +1,4 @@
-//! The plugin centre: every plugin there is, and the one control that changes it.
+//! The plugin center: every plugin there is, and the one control that changes it.
 //!
 //! A plugin is a panel on the model window, so this page is about the model window
 //! first. That shapes everything here:

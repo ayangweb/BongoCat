@@ -34,7 +34,7 @@ pub enum OverlayAnchor {
 }
 
 impl OverlayAnchor {
-    /// Every anchor, in the order the plugin centre lists them.
+    /// Every anchor, in the order the plugin center lists them.
     pub const ALL: [Self; 9] = [
         Self::TopLeft,
         Self::TopCenter,
@@ -100,7 +100,7 @@ pub struct OverlayLayerPlacement {
     /// Gap from the window box, as a fraction of its width and height.
     pub margin: [f32; 2],
     /// Additional gap along the axis the anchor does not sit on, as a fraction of
-    /// the layer's own size. Positive is towards the window centre, so a
+    /// the layer's own size. Positive is towards the window center, so a
     /// bottom-left layer can be nudged right without moving it down.
     pub nudge: [f32; 2],
     /// The layer's width as a fraction of the window box.
@@ -210,7 +210,7 @@ pub struct OverlayLayer {
     pub raster: OverlayLayerRaster,
 }
 
-/// A rectangle in normalized device coordinates, y up from the centre.
+/// A rectangle in normalized device coordinates, y up from the center.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ClipRect {
     pub min_x: f32,
@@ -277,15 +277,15 @@ pub fn overlay_layer_clip_rect(placement: OverlayLayerPlacement, aspect: f32) ->
     };
     let placement = placement.sanitized();
     // NDC spans two units across, so a fraction `f` of the window is `2f - 1`
-    // from the centre. Doing the whole placement in the 0..=1 window fraction
+    // from the center. Doing the whole placement in the 0..=1 window fraction
     // first keeps the anchor arithmetic in one place and the conversion in one
     // line.
     let anchor = placement.anchor.normalized();
     let width = placement.width_fraction;
     let height = width / aspect;
     // The anchor names the window *edge* the layer is pinned to, so the layer's
-    // own leading edge sits on it: `anchor * (1 - size)` is 0, the centred value
-    // and `1 - size` for a left, centre and right anchor alike. Working in the
+    // own leading edge sits on it: `anchor * (1 - size)` is 0, the centerd value
+    // and `1 - size` for a left, center and right anchor alike. Working in the
     // window's 0..=1 fraction keeps that one expression true for all nine
     // positions, and the conversion to device space stays a single line below.
     //
@@ -311,7 +311,7 @@ fn to_clip(fraction: f32) -> f32 {
     (fraction * 2.0 - 1.0).clamp(-1.0, 1.0)
 }
 
-/// The vertical counterpart of [`to_clip`]: NDC counts up from the centre while
+/// The vertical counterpart of [`to_clip`]: NDC counts up from the center while
 /// the window's own fraction counts down from the top, so this one is the
 /// reflection. Getting it wrong is silent — a layer is still inside the window,
 /// just at the opposite edge — which is why the two are separate names rather
@@ -698,9 +698,9 @@ mod tests {
         assert_eq!(corner.layer_id, 7);
         assert!((corner.x - 0.0).abs() < 0.001);
         assert!((corner.y - 0.0).abs() < 0.001);
-        let centre = placed.to_layer_pixels(-0.5, 0.75).unwrap();
-        assert!((centre.x - 100.0).abs() < 0.001);
-        assert!((centre.y - 50.0).abs() < 0.001);
+        let center = placed.to_layer_pixels(-0.5, 0.75).unwrap();
+        assert!((center.x - 100.0).abs() < 0.001);
+        assert!((center.y - 50.0).abs() < 0.001);
         assert!(placed.to_layer_pixels(0.9, 0.9).is_none());
     }
 

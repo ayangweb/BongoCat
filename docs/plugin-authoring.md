@@ -52,7 +52,7 @@ document and cannot name a local path at all — see the validation in
 `crates/bongocat-plugin-protocol/src/catalog.rs`.
 
 A Development build reads a catalog with no file as an **empty list**, not an error,
-so the plugin centre is usable before anything is written.
+so the plugin center is usable before anything is written.
 
 ## Behaviors
 

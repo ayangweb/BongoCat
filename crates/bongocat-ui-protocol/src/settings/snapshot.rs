@@ -67,7 +67,7 @@ pub struct SettingsSnapshot {
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
-    /// What the plugin centre lists.
+    /// What the plugin center lists.
     ///
     /// Carried in the snapshot rather than read separately so a page render is one
     /// read, but projected from the worker's own revision: a plugin install does not

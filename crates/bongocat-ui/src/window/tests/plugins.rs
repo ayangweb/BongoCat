@@ -1,4 +1,4 @@
-//! The plugin centre's commands and its page's own contract.
+//! The plugin center's commands and its page's own contract.
 //!
 //! The page's rendering is GPUI's; what is worth a test here is the decision layer
 //! above it — which control a row gets, what a press sends, and that a refused press

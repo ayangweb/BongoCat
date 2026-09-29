@@ -242,7 +242,7 @@ re-derivation and the placement arithmetic exists once, testable, in
   rendering the product did not have: a font is chosen from a fixed per-platform
   candidate list, glyphs are rasterized once per unique string, and the result
   is cached by content.
-- The plugin centre is an ordinary settings page with its own command family,
+- The plugin center is an ordinary settings page with its own command family,
   snapshot section and localized strings in all six catalogs.
 - Agent and coding-tool integrations are not delivered by this ADR. If they are
   wanted, they are host features or a later `api_version`, and either way the

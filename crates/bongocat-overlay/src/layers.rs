@@ -54,7 +54,7 @@ pub fn press_at(
     if drawable_width == 0 || drawable_height == 0 || !x.is_finite() || !y.is_finite() {
         return None;
     }
-    // Device pixels to NDC, with y up from the centre. The drawable's origin is
+    // Device pixels to NDC, with y up from the center. The drawable's origin is
     // its top left, which is the opposite of NDC's y, so y is reflected.
     let ndc_x = (x / drawable_width as f32) * 2.0 - 1.0;
     let ndc_y = 1.0 - (y / drawable_height as f32) * 2.0;

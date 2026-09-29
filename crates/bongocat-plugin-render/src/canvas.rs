@@ -273,7 +273,7 @@ impl Canvas {
         }
     }
 
-    /// Stroke an arc from `start` to `sweep` radians, centred on a point.
+    /// Stroke an arc from `start` to `sweep` radians, centerd on a point.
     ///
     /// Drawn as a fan of short quads, one antialiased pass each. A dedicated arc
     /// rasterizer would be faster and would produce a slightly different edge;

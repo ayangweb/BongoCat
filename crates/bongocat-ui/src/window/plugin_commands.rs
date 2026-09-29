@@ -1,4 +1,4 @@
-//! The plugin centre's commands.
+//! The plugin center's commands.
 //!
 //! Four actions, all immediate and all revision-free: a plugin install changes no
 //! configuration, and a plugin switch is a preference the service owns. They do not

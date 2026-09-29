@@ -281,7 +281,7 @@ use std::io::Read;
 ///
 /// One agent, one connection pool, one set of timeouts. A fresh agent per request
 /// would drop and re-establish TLS for every source in a retry chain, which is
-/// the expensive part of a request — and the plugin centre makes several in a row.
+/// the expensive part of a request — and the plugin center makes several in a row.
 pub fn agent() -> Result<ureq::Agent, PluginError> {
     Ok(ureq::Agent::config_builder()
         .timeout_global(Some(crate::ARCHIVE_REQUEST_TIMEOUT))

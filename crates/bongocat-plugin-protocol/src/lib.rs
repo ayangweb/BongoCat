@@ -37,7 +37,7 @@
 //! * `api_version` — the feature level a plugin needs. A plugin declaring a higher
 //!   one than the host implements is not loaded, rather than loaded with the
 //!   features it asked for quietly missing.
-//! * `version` — the plugin's own release, ordered for the plugin centre's update
+//! * `version` — the plugin's own release, ordered for the plugin center's update
 //!   comparison.
 //! * the catalog's own `schema_version` — the shape of `plugins.json`.
 

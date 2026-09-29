@@ -92,7 +92,7 @@ impl SettingsSnapshotClock {
         }
     }
 
-    /// The plugin centre as the window sees it, advancing the revision when it moved.
+    /// The plugin center as the window sees it, advancing the revision when it moved.
     pub(super) fn plugins(&mut self) -> SettingsPlugins {
         let Some(reader) = &self.plugins else {
             // No host is a state the page has to show, not one to hide: a snapshot
