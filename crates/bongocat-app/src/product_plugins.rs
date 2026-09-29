@@ -19,11 +19,13 @@
 //! take the model window with it.
 
 use bongocat_config::StorageLayout;
+use bongocat_plugin::PLUGIN_CATALOG_FILE_NAME;
 use bongocat_plugin::{
     CatalogMode, LocalTimeCache, PluginWorkerEndpoint, PluginWorkerHandle, PluginWorkerReader,
     local_catalog_directory,
 };
 use bongocat_render::{OverlayLayerConsumer, OverlayPressSink};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -54,9 +56,8 @@ pub(crate) struct ProductPluginHost {
 impl ProductPluginHost {
     /// Start the worker, and hand back the two ends the overlay needs.
     ///
-    /// The catalog directory is the storage layout's own, so a Development build
-    /// reads a catalog a developer put there and a Production build reads one it
-    /// fetched — with nothing in the executable to tell them apart.
+    /// The catalog directory is resolved by [`catalog_directory`], which is the
+    /// only place that decides between the data root and the repository.
     pub(crate) fn start(
         layout: &StorageLayout,
         runtime: Option<bongocat_runtime::RuntimeClient>,
@@ -65,7 +66,7 @@ impl ProductPluginHost {
         let clock = Arc::new(LocalTimeCache::new());
         let (handle, endpoint) = bongocat_plugin::start(
             bongocat_plugin::PluginStore::new(layout.plugins.clone()),
-            local_catalog_directory(&layout.root),
+            catalog_directory(layout),
             // Only the product knows the build environment, and the two differ in
             // exactly one way that matters here: a Development build has a catalog
             // directory an author can write into, and a Production build has an
@@ -167,6 +168,51 @@ impl ProductPluginHost {
         }
         Ok(())
     }
+}
+
+/// The directory this build reads its plugin catalog from.
+///
+/// The data root is the answer for both environments, because a Production build
+/// downloads its catalog and writes it nowhere a Development build would read it.
+///
+/// A **Development** run whose data root holds no catalog falls back to the
+/// repository's own `plugins/` directory, which is what makes the authoring loop
+/// work with no setup at all: clone, run, and the reference plugin is on the
+/// model window. Without this the developer would have to know a directory path,
+/// copy two files into it, and re-run — which is not a loop, it is a setup step.
+///
+/// The fallback is guarded twice on purpose. It only applies to a Development
+/// build, decided at compile time, so a Production binary cannot take this path
+/// even if it was built on a machine that has the repository; and it only applies
+/// when the repository directory actually holds a catalog, so a developer who has
+/// deleted theirs gets an empty catalog rather than a build-time path from
+/// someone else's machine.
+///
+/// The data root still wins when it has a catalog, so a developer testing their
+/// own archive overrides the shipped example without deleting anything.
+pub(crate) fn catalog_directory(layout: &StorageLayout) -> PathBuf {
+    let data = local_catalog_directory(&layout.root);
+    if !data.join(PLUGIN_CATALOG_FILE_NAME).is_file()
+        && matches!(
+            bongocat_app::BUILD_ENVIRONMENT,
+            bongocat_config::BuildEnvironment::Development
+        )
+        && let Some(repository) = repository_plugin_catalog()
+        && repository.join(PLUGIN_CATALOG_FILE_NAME).is_file()
+    {
+        return repository;
+    }
+    data
+}
+
+/// The repository's own `plugins/` directory, when this binary was built in one.
+///
+/// Resolved from the executable's own recorded manifest directory rather than the
+/// working directory, for the same reason the preset models are: the product must
+/// behave the same however it was launched.
+pub(crate) fn repository_plugin_catalog() -> Option<PathBuf> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2)?;
+    Some(root.join("plugins"))
 }
 
 /// Where this build reads its plugin catalog from.

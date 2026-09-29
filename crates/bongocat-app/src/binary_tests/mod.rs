@@ -9,6 +9,7 @@ use crate::gamepad_observer::*;
 use crate::overlay_placement::*;
 use crate::preset_root::*;
 use crate::product_options::*;
+use crate::product_plugins::*;
 use crate::product_shutdown::*;
 // The post-install restart test is the only thing here that reaches
 // `product_windows`, and both the delay it asserts on and that test are macOS
@@ -24,6 +25,7 @@ mod gamepad_observer;
 mod overlay_placement;
 mod preset_root;
 mod product_options;
+mod product_plugins;
 mod product_shutdown;
 mod smoke_status;
 mod taskbar_settle;

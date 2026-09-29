@@ -42,14 +42,13 @@ mod store;
 mod tests;
 mod worker;
 
-/// The protocol's error type, re-exported so a caller needs this crate alone.
-///
+/// The protocol's error type, re-exported so a caller needs this crate alone.///
 /// The plugin vocabulary is the protocol's, not this crate's, but a caller that only
 /// starts a worker and reads its snapshot should not have to depend on the protocol
 /// to name the errors it can be handed.
 pub use bongocat_plugin_protocol::{
-    OverlayContribution, PluginAnchor, PluginError, PluginErrorCode, PluginId, PluginManifest,
-    PluginVersion, SceneNode, SpacerNode,
+    OverlayContribution, PLUGIN_CATALOG_FILE_NAME, PluginAnchor, PluginError, PluginErrorCode,
+    PluginId, PluginManifest, PluginVersion, SceneNode, SpacerNode,
 };
 pub use catalog::{
     CATALOG_REQUEST_TIMEOUT, CatalogSource, LoadedCatalog, MAXIMUM_ARCHIVE_BYTES,
