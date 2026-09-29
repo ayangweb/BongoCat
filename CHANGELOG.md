@@ -4,9 +4,7 @@
 
 ### 🌍 Localization
 
-- Arabic is now available in Settings → Appearance & language. Existing configurations are unaffected and keep the language they already had.
-- Vietnamese is now available in Settings → Appearance & language. Existing configurations are unaffected and keep the language they already had.
-- Traditional Chinese is now available in Settings → Appearance & language. Existing configurations are unaffected and keep the language they already had.
+Arabic, Vietnamese, Traditional Chinese, and Portuguese are now available.
 
 ## 2.0.0 - 2026-09-29
 

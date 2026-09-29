@@ -326,9 +326,10 @@
           "system": "System",
           "chinese_simplified": "简体中文",
           "chinese_traditional": "繁體中文",
-          "english_united_states": "English",
+          "english": "English",
           "arabic": "العربية",
-          "vietnamese": "Tiếng Việt"
+          "vietnamese": "Tiếng Việt",
+          "portuguese": "Português"
         }
       }
     },

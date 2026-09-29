@@ -137,7 +137,8 @@
         "zh-TW",
         "en-US",
         "ar-SA",
-        "vi-VN"
+        "vi-VN",
+        "pt-BR"
       ],
       "type": "string"
     },

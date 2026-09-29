@@ -60,16 +60,24 @@ pub enum Language {
     // still finds their own.
     #[serde(rename = "vi-VN")]
     Vietnamese,
+    // Portuguese, the same shape as Arabic: the copy was written for Brazil, so
+    // the name is `pt-BR` while `pt` and `pt-PT` reach it on their primary
+    // subtag. The endonym `Português` keeps its diacritics in every catalog and
+    // carries no region, so a reader who cannot read the current window
+    // language still finds their own.
+    #[serde(rename = "pt-BR")]
+    Portuguese,
 }
 
 impl Language {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::System,
         Self::ChineseSimplified,
         Self::ChineseTraditional,
         Self::English,
         Self::Arabic,
         Self::Vietnamese,
+        Self::Portuguese,
     ];
 
     pub const fn code(self) -> &'static str {
@@ -80,6 +88,7 @@ impl Language {
             Self::English => "en-US",
             Self::Arabic => "ar-SA",
             Self::Vietnamese => "vi-VN",
+            Self::Portuguese => "pt-BR",
         }
     }
 
@@ -87,10 +96,11 @@ impl Language {
     ///
     /// Matching the primary subtag is the RFC 4647 language-subtag fallback:
     /// every region variant of a shipped language reaches the same catalog, so
-    /// `ar-EG` and `vi` land where a user expects instead of on the English
-    /// default. Chinese is the one subtag that cannot decide this alone, because
-    /// Simplified and Traditional are different written forms rather than
-    /// regional variants, so `zh` resolves by script and region subtag instead.
+    /// `ar-EG`, `vi` and `pt-PT` land where a user expects instead of on the
+    /// English default. Chinese is the one subtag that cannot decide this
+    /// alone, because Simplified and Traditional are different written forms
+    /// rather than regional variants, so `zh` resolves by script and region
+    /// subtag instead.
     pub fn from_system_locale(locale: &str) -> Self {
         let locale = locale.replace('_', "-").to_ascii_lowercase();
         let subtags = locale.split('-').collect::<Vec<_>>();
@@ -102,6 +112,7 @@ impl Language {
             Some(&"zh") => Self::ChineseSimplified,
             Some(&"ar") => Self::Arabic,
             Some(&"vi") => Self::Vietnamese,
+            Some(&"pt") => Self::Portuguese,
             _ => Self::English,
         }
     }
@@ -113,6 +124,7 @@ impl Language {
                 Self::ChineseTraditional => Self::ChineseTraditional,
                 Self::Arabic => Self::Arabic,
                 Self::Vietnamese => Self::Vietnamese,
+                Self::Portuguese => Self::Portuguese,
                 Self::System | Self::English => Self::English,
             },
             Self::ChineseSimplified => Self::ChineseSimplified,
@@ -120,6 +132,7 @@ impl Language {
             Self::English => Self::English,
             Self::Arabic => Self::Arabic,
             Self::Vietnamese => Self::Vietnamese,
+            Self::Portuguese => Self::Portuguese,
         }
     }
 }
