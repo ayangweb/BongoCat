@@ -98,7 +98,7 @@ fn settings_view_with_endpoint(
             SettingsView::new(
                 client,
                 SettingsWindowSeed {
-                    language: SettingsLanguage::EnglishUnitedStates,
+                    language: SettingsLanguage::English,
                     appearance_theme: SettingsTheme::System,
                 },
                 Rc::new(|_| {}),

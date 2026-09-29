@@ -7,7 +7,7 @@ fn settings_error_display_matches_the_english_catalog_copy() {
     for code in SettingsErrorCode::ALL {
         let error = SettingsError::new(code);
         assert_eq!(
-            settings_error(SettingsLanguage::EnglishUnitedStates, error),
+            settings_error(SettingsLanguage::English, error),
             error.to_string(),
             "the protocol error text and catalog drifted for {code:?}"
         );

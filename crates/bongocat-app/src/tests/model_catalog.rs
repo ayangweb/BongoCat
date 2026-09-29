@@ -373,7 +373,7 @@ fn rejected_gpu_model_switch_restores_the_previous_config_selection() {
         layout,
         repository_preset_root().as_path(),
         true,
-        Language::EnglishUnitedStates,
+        Language::English,
     )
     .expect("start rendering application");
     let initial_token = application

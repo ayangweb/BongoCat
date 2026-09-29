@@ -54,7 +54,7 @@ fn model_behavior_rows_are_named_by_flattened_position() {
 
     let english = rows
         .iter()
-        .map(|row| row.name(SettingsLanguage::EnglishUnitedStates))
+        .map(|row| row.name(SettingsLanguage::English))
         .collect::<Vec<_>>();
     assert_eq!(
         english,
@@ -160,7 +160,7 @@ fn app_system_smoke_checks_visible_copy_and_bounds(cx: &mut TestAppContext) {
 fn logging_level_options_use_the_complete_reversible_localized_catalog() {
     let expected = [
         (
-            SettingsLanguage::EnglishUnitedStates,
+            SettingsLanguage::English,
             [
                 "Errors only",
                 "Errors and warnings",
@@ -190,7 +190,7 @@ fn logging_level_options_use_the_complete_reversible_localized_catalog() {
         }
     }
     assert_eq!(
-        logging_level_from_display_name("not a log level", SettingsLanguage::EnglishUnitedStates),
+        logging_level_from_display_name("not a log level", SettingsLanguage::English),
         None
     );
 }
@@ -237,7 +237,7 @@ fn the_two_gamepad_auto_switch_dropdowns_offer_disjoint_model_families() {
             },
         ),
     ];
-    let language = SettingsLanguage::EnglishUnitedStates;
+    let language = SettingsLanguage::English;
 
     let connected =
         gamepad_auto_switch_options(&entries, GamepadConnectionState::Connected, None, language);
@@ -371,7 +371,7 @@ fn logging_retention_is_presented_as_whole_days_from_one_to_thirty() {
 #[test]
 fn appearance_theme_selection_has_stable_indices_and_system_projection() {
     assert_eq!(
-        theme_options(SettingsLanguage::EnglishUnitedStates),
+        theme_options(SettingsLanguage::English),
         ["System", "Light", "Dark"]
     );
     assert_eq!(
@@ -383,7 +383,7 @@ fn appearance_theme_selection_has_stable_indices_and_system_projection() {
         Some(SettingsTheme::Dark)
     );
     assert_eq!(
-        theme_from_display_name("Unknown", SettingsLanguage::EnglishUnitedStates),
+        theme_from_display_name("Unknown", SettingsLanguage::English),
         None
     );
     assert_eq!(theme_index(SettingsTheme::System), 0);

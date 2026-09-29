@@ -114,7 +114,7 @@ pub(super) fn content(
     snapshot: Option<&SettingsSnapshot>,
     tokens: Tokens,
 ) -> Stateful<Div> {
-    let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+    let language = snapshot.map_or(SettingsLanguage::English, |snapshot| {
         snapshot.resolved_language
     });
     // One gate predicate for every page (`SettingsView::editing_blocked`,

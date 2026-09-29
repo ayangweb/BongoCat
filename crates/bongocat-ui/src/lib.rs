@@ -32,7 +32,7 @@ pub(crate) fn settings_language_display_name(
             locale,
             "settings.appearance.language.options.chinese_simplified",
         ),
-        SettingsLanguage::EnglishUnitedStates => bongocat_i18n::text(
+        SettingsLanguage::English => bongocat_i18n::text(
             locale,
             "settings.appearance.language.options.english_united_states",
         ),
@@ -147,7 +147,7 @@ pub(crate) mod tests {
             runtime_diagnostics: SettingsRuntimeDiagnostics::default(),
             appearance_theme: SettingsTheme::System,
             language: SettingsLanguage::System,
-            resolved_language: SettingsLanguage::EnglishUnitedStates,
+            resolved_language: SettingsLanguage::English,
             status_icon_visible: true,
             taskbar_icon_visible: true,
             dock_icon_visible: false,
@@ -288,10 +288,7 @@ pub(crate) mod tests {
             }
         }
         assert_eq!(
-            settings_language_display_name(
-                SettingsLanguage::System,
-                SettingsLanguage::EnglishUnitedStates,
-            ),
+            settings_language_display_name(SettingsLanguage::System, SettingsLanguage::English,),
             "System"
         );
         assert_eq!(
@@ -310,7 +307,7 @@ pub(crate) mod tests {
             "Hệ thống"
         );
         assert_eq!(
-            settings_language_from_display_name("Deutsch", SettingsLanguage::EnglishUnitedStates,),
+            settings_language_from_display_name("Deutsch", SettingsLanguage::English,),
             None
         );
     }

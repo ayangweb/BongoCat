@@ -66,8 +66,7 @@ pub(crate) const ACCEPT_VARIANT: ButtonVariant = ButtonVariant::Primary;
 /// without a language in hand is the catalog's own. Every call site in this app
 /// passes both labels in the resolved language, so this is a safety net rather
 /// than a path anything takes.
-pub(crate) const FALLBACK_LABEL_LOCALE: &str =
-    SettingsLanguage::EnglishUnitedStates.catalog_locale();
+pub(crate) const FALLBACK_LABEL_LOCALE: &str = SettingsLanguage::English.catalog_locale();
 
 /// What the surface reports when its open state changes.
 pub(crate) type OpenChangeCallback = Rc<dyn Fn(&bool, &mut Window, &mut App)>;

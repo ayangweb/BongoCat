@@ -136,7 +136,7 @@ fn harness_started(
             UpdateView::new(
                 client,
                 settings_client,
-                SettingsLanguage::EnglishUnitedStates,
+                SettingsLanguage::English,
                 SettingsTheme::System,
                 start,
                 cx,

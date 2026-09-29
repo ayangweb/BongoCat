@@ -9,7 +9,7 @@ pub enum SettingsLanguage {
     #[default]
     System,
     ChineseSimplified,
-    EnglishUnitedStates,
+    English,
     Arabic,
     Vietnamese,
 }
@@ -63,7 +63,7 @@ impl SettingsLanguage {
     pub const ALL: [Self; 5] = [
         Self::System,
         Self::ChineseSimplified,
-        Self::EnglishUnitedStates,
+        Self::English,
         Self::Arabic,
         Self::Vietnamese,
     ];
@@ -72,7 +72,7 @@ impl SettingsLanguage {
         match self {
             Self::System => "system",
             Self::ChineseSimplified => "zh-CN",
-            Self::EnglishUnitedStates => "en-US",
+            Self::English => "en-US",
             Self::Arabic => "ar-SA",
             Self::Vietnamese => "vi-VN",
         }
@@ -88,7 +88,7 @@ impl SettingsLanguage {
             Self::ChineseSimplified => "zh-CN",
             Self::Arabic => "ar-SA",
             Self::Vietnamese => "vi-VN",
-            Self::System | Self::EnglishUnitedStates => "en-US",
+            Self::System | Self::English => "en-US",
         }
     }
 }

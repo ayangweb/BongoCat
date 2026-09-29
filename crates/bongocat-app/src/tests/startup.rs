@@ -121,7 +121,7 @@ fn a_runtime_motion_audio_opt_in_prepares_the_active_model_without_restarting() 
         layout,
         repository_preset_root().as_path(),
         true,
-        Language::EnglishUnitedStates,
+        Language::English,
     )
     .expect("start rendering application");
     assert!(!application.config().model.play_motion_audio);
@@ -220,14 +220,11 @@ fn system_language_is_resolved_at_start_without_overwriting_the_preference() {
         layout,
         repository_preset_root().as_path(),
         false,
-        Language::EnglishUnitedStates,
+        Language::English,
     )
     .expect("restart with English system language");
     assert_eq!(restarted.config().appearance.language, Language::System);
-    assert_eq!(
-        restarted.effective_language(),
-        Language::EnglishUnitedStates
-    );
+    assert_eq!(restarted.effective_language(), Language::English);
     restarted.shutdown().expect("restart shutdown");
 }
 
@@ -472,7 +469,7 @@ fn application_owns_the_rendering_runtime_and_issues_one_consumer() {
         layout,
         repository_preset_root().as_path(),
         true,
-        Language::EnglishUnitedStates,
+        Language::English,
     )
     .expect("start rendering application");
     let token = application

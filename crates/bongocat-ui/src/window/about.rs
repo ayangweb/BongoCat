@@ -241,7 +241,7 @@ impl SoftwareInformation {
 }
 
 fn product_info_description(snapshot: Option<&SettingsSnapshot>) -> String {
-    let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+    let language = snapshot.map_or(SettingsLanguage::English, |snapshot| {
         snapshot.resolved_language
     });
     snapshot.map_or_else(

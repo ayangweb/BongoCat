@@ -244,7 +244,7 @@ fn a_key_the_active_model_cannot_draw_never_moves_the_paw() {
         layout,
         repository_preset_root().as_path(),
         true,
-        Language::EnglishUnitedStates,
+        Language::English,
     )
     .expect("start rendering application");
     let token = application
@@ -329,7 +329,7 @@ fn gamepad_button_presses_reach_the_render_frame_as_key_overlays() {
         layout,
         repository_preset_root().as_path(),
         true,
-        Language::EnglishUnitedStates,
+        Language::English,
     )
     .expect("start rendering application");
     let token = application
@@ -539,7 +539,7 @@ fn function_key_presses_reach_the_model_snapshot_with_the_left_hand() {
         layout,
         repository_preset_root().as_path(),
         true,
-        Language::EnglishUnitedStates,
+        Language::English,
     )
     .expect("start rendering application");
     let token = application

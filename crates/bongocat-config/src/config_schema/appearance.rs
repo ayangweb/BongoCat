@@ -32,7 +32,7 @@ pub enum Language {
     #[serde(rename = "zh-CN")]
     ChineseSimplified,
     #[serde(rename = "en-US")]
-    EnglishUnitedStates,
+    English,
     // Arabic. The region subtag nominates the primary variety rather than
     // claiming a localisation the catalog does not carry, so the name is
     // `ar-SA` while one catalog serves every Arabic locale — the same
@@ -58,7 +58,7 @@ impl Language {
     pub const ALL: [Self; 5] = [
         Self::System,
         Self::ChineseSimplified,
-        Self::EnglishUnitedStates,
+        Self::English,
         Self::Arabic,
         Self::Vietnamese,
     ];
@@ -67,7 +67,7 @@ impl Language {
         match self {
             Self::System => "system",
             Self::ChineseSimplified => "zh-CN",
-            Self::EnglishUnitedStates => "en-US",
+            Self::English => "en-US",
             Self::Arabic => "ar-SA",
             Self::Vietnamese => "vi-VN",
         }
@@ -94,7 +94,7 @@ impl Language {
             }
             Some(&"ar") => Self::Arabic,
             Some(&"vi") => Self::Vietnamese,
-            _ => Self::EnglishUnitedStates,
+            _ => Self::English,
         }
     }
 
@@ -104,10 +104,10 @@ impl Language {
                 Self::ChineseSimplified => Self::ChineseSimplified,
                 Self::Arabic => Self::Arabic,
                 Self::Vietnamese => Self::Vietnamese,
-                Self::System | Self::EnglishUnitedStates => Self::EnglishUnitedStates,
+                Self::System | Self::English => Self::English,
             },
             Self::ChineseSimplified => Self::ChineseSimplified,
-            Self::EnglishUnitedStates => Self::EnglishUnitedStates,
+            Self::English => Self::English,
             Self::Arabic => Self::Arabic,
             Self::Vietnamese => Self::Vietnamese,
         }
