@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### 🐛 Bug Fixes
+
+- On macOS, the menu bar icon no longer disappears after updating to a new version.
+
 ## 2.0.1 - 2026-09-29
 
 ### 🐛 Bug Fixes

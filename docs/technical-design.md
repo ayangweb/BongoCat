@@ -1279,7 +1279,9 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   直到它被赋予用户可见含义。
 - 安装后是否需要重启进程是**平台事实**：macOS 由库整包替换 `.app`，运行中的进程此后执行已删除的
   文件（预设模型目录是惰性读盘的），因此安装成功后自动重启——先按 §5.3 的顺序完成产品 shutdown，
-  再 `exec` 新构建；Windows 由安装器 `/R` 重启，`Installed` 在该平台不可观测。
+  再以**新进程**启动新构建；Windows 由安装器 `/R` 重启，`Installed` 在该平台不可观测。
+  重启不用 `exec` 替换进程镜像：它不结束进程、PID 不变，而 shutdown 已移除托盘 `NSStatusItem`，
+  替换后的镜像创建的 status item 不会被布局，菜单栏图标因此消失（ADR-0035 §5）。
 - 自动检查由 GPUI 侧调度（开关与间隔只有设置服务读得到）：新配置的
   `updates.check_automatically` 默认为 `false`，不会在启动时主动检查；用户打开后，
   启动后等 10 秒首次检查，之后按 `updates.check_interval_hours` 等待下一次检查；该整小时字段默认 `24`、范围为
