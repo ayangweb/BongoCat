@@ -12,10 +12,12 @@ use crate::{
     SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
     SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
     SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
-    SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRuntimeErrorCode,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRemoteCatalogStatus,
+    SettingsRemoteImageFormat, SettingsRemoteModelEntry, SettingsRemoteModelFailure,
+    SettingsRemoteModelStatus, SettingsRemoteModels, SettingsRemotePreview,
+    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -76,6 +78,7 @@ mod models;
 mod navigation;
 pub use navigation::SettingsNavigationMemory;
 use navigation::{SettingsNavigationPage, model_library_search_keywords};
+mod remote_models;
 mod render;
 mod setting_gate;
 use setting_gate::SettingGate;
@@ -249,6 +252,10 @@ pub struct SettingsView {
     /// Whether the unreadable-catalog notification has already been pushed for
     /// the current failure, so it is not repeated on every snapshot.
     pub(crate) model_catalog_error_reported: bool,
+    /// Whether this window has already asked the service for the remote model
+    /// library once. The page fetches its catalog on first render — one kick per
+    /// window, not per frame — and a manual refresh is the user's own gesture.
+    pub(crate) remote_models_kick: bool,
     pub(crate) shortcut_capture: Option<ShortcutCapture>,
     pub(crate) shortcut_capture_blur_subscription: Option<gpui_kit::Subscription>,
     pub(crate) shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,

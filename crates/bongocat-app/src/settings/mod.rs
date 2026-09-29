@@ -51,12 +51,13 @@ use bongocat_ui_protocol::{
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
     SettingsModelImportStage, SettingsModelKey, SettingsModelMode, SettingsModelSettings,
-    SettingsOverlay, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
-    SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
-    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
-    SettingsSnapshot, SettingsStartupItemError, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsOverlay, SettingsRandomBehavior, SettingsRemoteModelFailure,
+    SettingsRemoteModelImportRequest, SettingsRemoteModelStatus, SettingsRemoteModels,
+    SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
+    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemError,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_update::UpdateDiagnostics;
 use std::{
@@ -93,10 +94,16 @@ use worker::{run_service, settings_window_placement};
 
 const SETTINGS_COMMAND_CAPACITY: usize = 16;
 
+/// How many remote-model jobs may wait for the worker at once. A refresh and a
+/// download are the only kinds; anything past this is a runaway caller.
+const REMOTE_MODELS_JOB_CAPACITY: usize = 8;
+
 pub struct ApplicationSettingsService {
     client: SettingsClient,
     window_state: SettingsWindowState,
     worker: Option<thread::JoinHandle<()>>,
+    remote_worker: Option<thread::JoinHandle<()>>,
+    remote_worker_stop: Arc<AtomicBool>,
     shortcut_forwarder: Option<thread::JoinHandle<()>>,
     shortcut_forwarder_stop: Arc<AtomicBool>,
 }
@@ -370,6 +377,20 @@ impl ApplicationSettingsService {
         );
         let worker_window_state = window_state.clone();
         let worker_signals = signals.clone();
+        let (remote_jobs, remote_worker_jobs) = async_channel::bounded(REMOTE_MODELS_JOB_CAPACITY);
+        let remote_models = crate::remote_models::RemoteModelsState::default();
+        let remote_downloads_root = application.remote_models_directory();
+        let remote_worker_log = application.remote_models_log_handle();
+        let remote_worker_stop = Arc::new(AtomicBool::new(false));
+        let remote_worker = crate::remote_models::spawn_remote_worker(
+            remote_downloads_root.clone(),
+            remote_worker_jobs,
+            remote_models.clone(),
+            client.clone(),
+            remote_worker_log,
+            Arc::clone(&remote_worker_stop),
+        )
+        .map_err(SettingsServiceJoinError::Spawn)?;
         let worker = thread::Builder::new()
             .name("bongocat-settings-service".to_owned())
             .spawn(move || {
@@ -384,6 +405,9 @@ impl ApplicationSettingsService {
                     log_location,
                     worker_window_state,
                     worker_signals,
+                    remote_models,
+                    remote_jobs,
+                    remote_downloads_root,
                 )
             })
             .map_err(SettingsServiceJoinError::Spawn)?;
@@ -421,6 +445,8 @@ impl ApplicationSettingsService {
             client,
             window_state,
             worker: Some(worker),
+            remote_worker: Some(remote_worker),
+            remote_worker_stop,
             shortcut_forwarder,
             shortcut_forwarder_stop,
         })
@@ -441,6 +467,13 @@ impl ApplicationSettingsService {
         }
     }
 
+    fn stop_remote_worker(&mut self) {
+        self.remote_worker_stop.store(true, Ordering::Release);
+        if let Some(remote_worker) = self.remote_worker.take() {
+            let _ = remote_worker.join();
+        }
+    }
+
     pub fn join(mut self) -> Result<(), SettingsServiceJoinError> {
         let worker_result = self
             .worker
@@ -448,6 +481,7 @@ impl ApplicationSettingsService {
             .expect("settings service worker is present")
             .join()
             .map_err(|_| SettingsServiceJoinError::Panicked);
+        self.stop_remote_worker();
         self.stop_shortcut_forwarder();
         worker_result
     }
@@ -459,6 +493,7 @@ impl Drop for ApplicationSettingsService {
             let _ = self.client.shutdown_blocking();
             let _ = worker.join();
         }
+        self.stop_remote_worker();
         self.stop_shortcut_forwarder();
     }
 }

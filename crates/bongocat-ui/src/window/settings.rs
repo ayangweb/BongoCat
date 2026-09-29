@@ -80,6 +80,20 @@ impl SettingsView {
         if self.refresh_is_disabled() {
             return;
         }
+        // The remote catalog is fetched once per window, on the window's first
+        // refresh, so the Model library page lands with its content ready. It
+        // rides its own command rather than the refresh's snapshot: a failure
+        // leaves the local page untouched and the section reports the failure
+        // itself. A busy window skips the kick and catches it on a later
+        // refresh, which is why the flag is set only on the send.
+        if !self.remote_models_kick
+            && self.snapshot.as_ref().is_none_or(|snapshot| {
+                snapshot.remote_models.catalog == SettingsRemoteCatalogStatus::Unloaded
+            })
+        {
+            self.remote_models_kick = true;
+            self.request_remote_models_refresh(cx);
+        }
         self.start_request(PendingOperation::Refresh, None, cx);
     }
 

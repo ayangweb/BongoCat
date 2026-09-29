@@ -58,12 +58,17 @@ pub(super) struct SettingsSnapshotClock {
     observed_input_diagnostics: Option<SettingsInputDiagnostics>,
     observed_startup_item: Option<SettingsStartupItemStatus>,
     observed_overlay_visible: Option<bool>,
+    observed_remote_models_version: Option<u64>,
+    remote_models: crate::remote_models::RemoteModelsState,
     diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
     input_capability: InputCapabilityCache,
 }
 
 impl SettingsSnapshotClock {
-    pub(super) const fn new(config_revision: Option<u64>) -> Self {
+    pub(super) fn new(
+        config_revision: Option<u64>,
+        remote_models: crate::remote_models::RemoteModelsState,
+    ) -> Self {
         Self {
             revision: 0,
             observed_config_revision: config_revision,
@@ -71,6 +76,8 @@ impl SettingsSnapshotClock {
             observed_input_diagnostics: None,
             observed_startup_item: None,
             observed_overlay_visible: None,
+            observed_remote_models_version: None,
+            remote_models,
             diagnostics_export: None,
             input_capability: InputCapabilityCache {
                 checked_at: None,
@@ -143,6 +150,23 @@ impl SettingsSnapshotClock {
             self.mark_changed();
             self.diagnostics_export = Some(status);
         }
+    }
+
+    /// Observes the remote model library's published version.
+    ///
+    /// The worker publishes download progress on its own cadence, so a quiet
+    /// progress bar must still reach the revision probe the same way a config
+    /// change does — the version is the cheap "did anything move" answer.
+    pub(super) fn observe_remote_models(&mut self) {
+        let version = self.remote_models.version();
+        if self.observed_remote_models_version != Some(version) {
+            self.mark_changed();
+            self.observed_remote_models_version = Some(version);
+        }
+    }
+
+    pub(super) fn remote_models_snapshot(&self) -> SettingsRemoteModels {
+        self.remote_models.snapshot()
     }
 
     pub(super) fn coalesce_changes_since(&mut self, revision: u64) {
@@ -252,6 +276,7 @@ pub(super) fn snapshot(
             })
             .or_else(|| configured_model_key(application)),
         model_catalog: settings_model_catalog(application),
+        remote_models: clock.remote_models_snapshot(),
     }
 }
 
@@ -277,6 +302,7 @@ pub(super) fn observe_snapshot_state(
         clock.input_capability(),
     );
     clock.observe_config(application.config_revision());
+    clock.observe_remote_models();
     let runtime_diagnostics = settings_runtime_diagnostics(&runtime);
     if let Some(previous) = clock.observe_runtime_diagnostics(runtime_diagnostics) {
         match (previous.render_error, runtime_diagnostics.render_error) {

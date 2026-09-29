@@ -144,6 +144,34 @@
       "title": "Import model",
       "hint": "Click to choose or drag a model folder"
     },
+    "remote": {
+      "title": "Remote model library",
+      "catalog": {
+        "loading": "Loading the remote model library…",
+        "failed": "The remote model library could not be loaded",
+        "empty": "The remote model library is empty"
+      },
+      "preview": {
+        "pending": "Loading preview…",
+        "unavailable": "No preview"
+      },
+      "actions": {
+        "download": "Download",
+        "retry": "Retry",
+        "refresh": "Refresh"
+      },
+      "status": {
+        "downloading": "Downloading %{percent}%",
+        "downloading_unknown": "Downloading %{megabytes} MB",
+        "importing": "Importing…",
+        "installed": "Installed",
+        "failed": {
+          "download": "Download failed",
+          "too_large": "The model package exceeds the size limit",
+          "import": "The model could not be imported"
+        }
+      }
+    },
     "mode": {
       "standard": "Standard",
       "keyboard": "Keyboard",
@@ -307,7 +335,8 @@
       "dock_icon_update_failed": "Could not update the Dock icon.",
       "window_hide_failed": "Settings window could not be hidden",
       "window_layout_save_failed": "The window layout could not be saved",
-      "application_shutdown_failed": "BongoCat could not close completely"
+      "application_shutdown_failed": "BongoCat could not close completely",
+      "remote_model_busy": "Another remote model is downloading. Try again in a moment."
     }
   },
   "settings": {

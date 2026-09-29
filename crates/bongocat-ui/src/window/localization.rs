@@ -136,6 +136,7 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::WindowHideFailed => "errors.settings.window_hide_failed",
         SettingsErrorCode::WindowStatePersistFailed => "errors.settings.window_layout_save_failed",
         SettingsErrorCode::ShutdownFailed => "errors.settings.application_shutdown_failed",
+        SettingsErrorCode::RemoteModelBusy => "errors.settings.remote_model_busy",
     };
     // The catalog is compile-time embedded; the returned string is leaked and
     // cached by the i18n facade just like every other UI message.

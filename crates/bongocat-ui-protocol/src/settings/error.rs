@@ -48,10 +48,11 @@ pub enum SettingsErrorCode {
     WindowHideFailed,
     WindowStatePersistFailed,
     ShutdownFailed,
+    RemoteModelBusy,
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 42] = [
+    pub const ALL: [Self; 43] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -94,6 +95,7 @@ impl SettingsErrorCode {
         Self::WindowHideFailed,
         Self::WindowStatePersistFailed,
         Self::ShutdownFailed,
+        Self::RemoteModelBusy,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -140,6 +142,7 @@ impl SettingsErrorCode {
             Self::WindowHideFailed => "window_hide_failed",
             Self::WindowStatePersistFailed => "window_state_persist_failed",
             Self::ShutdownFailed => "shutdown_failed",
+            Self::RemoteModelBusy => "remote_model_busy",
         }
     }
 }
@@ -233,6 +236,9 @@ impl SettingsError {
             SettingsErrorCode::WindowHideFailed => "Settings window could not be hidden",
             SettingsErrorCode::WindowStatePersistFailed => "The window layout could not be saved",
             SettingsErrorCode::ShutdownFailed => "BongoCat could not close completely",
+            SettingsErrorCode::RemoteModelBusy => {
+                "Another remote model is downloading. Try again in a moment."
+            }
         }
     }
 }

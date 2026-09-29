@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### ✨ Features
+
+- The model library gains a remote model library: entries published in the Awesome-BongoCat catalog can be previewed there, downloaded with a progress bar, and imported automatically.
+
 ## 2.0.0 - 2026-09-29
 
 ### ⚠️ Upgrade Notice

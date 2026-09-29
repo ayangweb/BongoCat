@@ -13,6 +13,7 @@ production = []
 storage-test-injection = []
 
 [dependencies]
+async-channel.workspace = true
 async-io.workspace = true
 atomic-write-file.workspace = true
 bongocat-audio.workspace = true
@@ -37,7 +38,8 @@ gpui-kit.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-zip.workspace = true
+ureq.workspace = true
+zip = { workspace = true, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile.workspace = true

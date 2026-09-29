@@ -32,6 +32,7 @@ mod expression_memory;
 mod model_activation;
 mod model_catalog;
 mod model_import;
+mod remote_models;
 mod settings_commands;
 mod shutdown;
 mod startup;

@@ -330,6 +330,33 @@ impl SettingsClient {
             .map_err(|_| SettingsServiceClosed)
     }
 
+    /// Tell the settings service that the remote worker has a package ready to
+    /// import.
+    ///
+    /// The caller is the remote worker, and there is no reply: the import runs
+    /// on the settings thread and its outcome is the entry's status in the next
+    /// snapshot. A closed channel is the only failure.
+    pub fn notify_remote_model_downloaded(
+        &self,
+        request: SettingsRemoteModelImportRequest,
+    ) -> Result<(), SettingsServiceClosed> {
+        self.commands
+            .try_send(SettingsCommand::RemoteModelDownloaded { request })
+            .map_err(|_| SettingsServiceClosed)
+    }
+
+    /// Ask the remote worker to re-read the remote model library document.
+    pub async fn refresh_remote_models(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::RefreshRemoteModels { reply })
+            .await
+    }
+
+    /// Download one remote model catalog entry; the import follows on its own.
+    pub async fn download_remote_model(&self, id: u64) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::DownloadRemoteModel { id, reply })
+            .await
+    }
+
     pub async fn set_logging_settings(
         &self,
         expected_config_revision: u64,

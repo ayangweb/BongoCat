@@ -303,6 +303,12 @@ pub(super) fn content(
                 grid_children
             },
         ))
+        // The remote library rides under the local catalog in the same scroll:
+        // one page answers "what can this cat wear", wherever the model comes
+        // from, and the section's own header keeps the two origins distinct.
+        .child(remote_models::remote_content(
+            view, window, cx, snapshot, tokens,
+        ))
 }
 
 /// The cover area of a card: the image when the package ships one, and an

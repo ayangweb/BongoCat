@@ -27,8 +27,12 @@ pub(super) fn run_service(
     log_location: Arc<dyn LogLocationCapability>,
     window_state: SettingsWindowState,
     signals: Option<ApplicationMainThreadSignals>,
+    remote_models: crate::remote_models::RemoteModelsState,
+    remote_jobs: async_channel::Sender<crate::remote_models::RemoteModelsJob>,
+    remote_downloads_root: PathBuf,
 ) {
-    let mut clock = SettingsSnapshotClock::new(application.config_revision());
+    let mut clock =
+        SettingsSnapshotClock::new(application.config_revision(), remote_models.clone());
     loop {
         let Ok(command) = endpoint.recv_blocking() else {
             if persist_window_state(&mut application, &window_state).is_err() {
@@ -699,6 +703,120 @@ pub(super) fn run_service(
                     .map(|_| snapshot(&application, &mut clock, true, startup_item.state()))
                     .map_err(map_model_delete_error);
                 let _ = reply.respond(result);
+            }
+            SettingsCommand::RefreshRemoteModels { reply } => {
+                let result = remote_jobs
+                    .try_send(crate::remote_models::RemoteModelsJob::Refresh)
+                    .map(|()| snapshot(&application, &mut clock, false, startup_item.state()))
+                    .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::DownloadRemoteModel { id, reply } => {
+                let result = match remote_models
+                    .snapshot()
+                    .entry(id)
+                    .map(|entry| &entry.status)
+                {
+                    Some(status) if status.is_downloadable() => {
+                        let restored = status.clone();
+                        // The worker publishes its first progress soon after;
+                        // this immediate write is what the reply's snapshot
+                        // shows so the card never reads as idle after a click.
+                        remote_models.set_entry_status(
+                            id,
+                            SettingsRemoteModelStatus::Downloading {
+                                downloaded_bytes: 0,
+                                total_bytes: None,
+                            },
+                        );
+                        if remote_jobs
+                            .try_send(crate::remote_models::RemoteModelsJob::Download { id })
+                            .is_err()
+                        {
+                            // The job never reached the worker, so the card
+                            // must return to what the user actually clicked
+                            // on instead of waiting for progress that will
+                            // never come.
+                            remote_models.set_entry_status(id, restored);
+                            Err(SettingsError::new(SettingsErrorCode::ServiceUnavailable))
+                        } else {
+                            Ok(snapshot(
+                                &application,
+                                &mut clock,
+                                false,
+                                startup_item.state(),
+                            ))
+                        }
+                    }
+                    Some(_) => Err(SettingsError::new(SettingsErrorCode::RemoteModelBusy)),
+                    None => Err(SettingsError::new(SettingsErrorCode::ModelUnavailable)),
+                };
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::RemoteModelDownloaded { request } => {
+                let SettingsRemoteModelImportRequest {
+                    id,
+                    title,
+                    source_root,
+                } = request;
+                remote_models.set_entry_status(
+                    id,
+                    SettingsRemoteModelStatus::Importing(SettingsModelImportStage::Preparing),
+                );
+                // The import runs here, on the thread that owns the model store,
+                // exactly as a local import does; the remote worker only ever
+                // hands over a path. Every mode a converted source carries is
+                // selected: the catalog names one model, and whichever modes it
+                // actually carries are what land in the store.
+                let progress = remote_models.clone();
+                match application.import_models_with_selected_modes_with_observer(
+                    title,
+                    &source_root,
+                    MverInputMode::ALL.to_vec(),
+                    |update| {
+                        progress.set_entry_status(
+                            id,
+                            SettingsRemoteModelStatus::Importing(
+                                settings_import_progress(update).stage,
+                            ),
+                        );
+                    },
+                    || false,
+                ) {
+                    Ok(installed) => {
+                        // A remote import earns its cover the same way a local
+                        // one does: rendered from the model on a thread that
+                        // owns a window, not from the package's placeholder.
+                        if let Some(signals) = signals.as_ref() {
+                            for model in installed {
+                                let key = SettingsModelKey {
+                                    id: model.id().as_str().to_owned(),
+                                    origin: settings_origin_from_model(ModelOrigin::Installed),
+                                };
+                                signals
+                                    .request_model_cover_capture(key, CommittedModel::from(model));
+                            }
+                        }
+                        remote_models.set_entry_status(id, SettingsRemoteModelStatus::Installed);
+                    }
+                    Err(error) => {
+                        application.record_log(
+                            ApplicationLogEvent::new(ApplicationLogCode::ModelOperationFailed)
+                                .with_context(ApplicationLogContext::Operation(
+                                    "remote_model_import",
+                                ))
+                                .with_context(ApplicationLogContext::Reason(error.stable_code())),
+                        );
+                        remote_models.set_entry_status(
+                            id,
+                            SettingsRemoteModelStatus::Failed(
+                                SettingsRemoteModelFailure::ImportFailed,
+                            ),
+                        );
+                    }
+                }
+                let _ = std::fs::remove_dir_all(remote_downloads_root.join(id.to_string()));
+                clock.mark_changed();
             }
             SettingsCommand::OpenConfigBackupLocation { reply } => {
                 let result = backup_location

@@ -26,6 +26,7 @@ mod limits;
 mod package;
 mod raw;
 mod reference;
+mod remote_library;
 mod schema;
 mod snapshot;
 #[cfg(test)]
@@ -55,6 +56,9 @@ pub use limits::{
     PACKAGE_RESOURCES_DIRECTORY, package_cover_path,
 };
 pub use reference::{normalize_reference, path_from_reference};
+pub use remote_library::{
+    REMOTE_LIBRARY_MAXIMUM_ENTRIES, RemoteModelEntry, entry_id, parse_remote_library,
+};
 pub use schema::{
     ImageResource, ModelGroup, ModelPackageIndex, MotionGroup, MotionResource, PhysicsChannel,
     PhysicsDefinition, PhysicsInput, PhysicsOutput, PhysicsRange, PhysicsSetting, PhysicsVector,

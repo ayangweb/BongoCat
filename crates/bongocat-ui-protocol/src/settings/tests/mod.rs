@@ -55,6 +55,7 @@ pub(crate) fn snapshot(
             origin: SettingsModelOrigin::BuiltIn,
         }),
         model_catalog: SettingsModelCatalog::default(),
+        remote_models: SettingsRemoteModels::default(),
     }
 }
 

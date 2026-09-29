@@ -244,6 +244,30 @@ pub enum SettingsCommand {
     OpenLogsLocation {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Ask the remote worker to re-read the remote model library document.
+    ///
+    /// The reply carries the snapshot with the catalog back in its loading state;
+    /// the fetched entries arrive through later snapshot revisions, like every
+    /// other projection the window does not compute itself.
+    RefreshRemoteModels {
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Download a remote model catalog entry and import it when it lands.
+    ///
+    /// The reply reports that the operation was accepted; its progress and its
+    /// outcome travel through the entry's status in later snapshot revisions.
+    DownloadRemoteModel {
+        id: u64,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// The remote worker has a downloaded package unpacked and ready.
+    ///
+    /// Only the remote worker sends this: the settings service owns the model
+    /// store, so the import itself runs on the settings thread. There is no
+    /// reply — the outcome is the entry's status in the next snapshot.
+    RemoteModelDownloaded {
+        request: SettingsRemoteModelImportRequest,
+    },
     Shutdown {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },

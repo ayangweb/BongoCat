@@ -67,6 +67,9 @@ pub struct SettingsSnapshot {
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
+    /// The remote model library projection, published by the remote worker and
+    /// observed by the snapshot clock like every other derived input.
+    pub remote_models: SettingsRemoteModels,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

@@ -350,6 +350,7 @@ impl SettingsView {
             model_row_focus: BTreeMap::new(),
             model_edit: None,
             model_catalog_error_reported: false,
+            remote_models_kick: false,
             shortcut_capture: None,
             shortcut_capture_blur_subscription: None,
             shortcut_row_focus: BTreeMap::new(),

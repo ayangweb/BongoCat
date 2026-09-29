@@ -169,6 +169,7 @@ pub(crate) mod tests {
                 origin: SettingsModelOrigin::BuiltIn,
             }),
             model_catalog: SettingsModelCatalog::default(),
+            remote_models: SettingsRemoteModels::default(),
         }
     }
 

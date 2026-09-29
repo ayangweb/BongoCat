@@ -424,9 +424,9 @@ mod tests {
         SettingsInputCapability, SettingsLanguage, SettingsLogging, SettingsModelBehavior,
         SettingsModelCatalog, SettingsModelDiagnostic, SettingsModelEntry, SettingsModelKey,
         SettingsModelMode, SettingsModelSettings, SettingsOverlay, SettingsRandomBehavior,
-        SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
-        SettingsRuntimeDiagnostics, SettingsShortcuts, SettingsStartupItemState,
-        SettingsStartupItemStatus, SettingsTheme,
+        SettingsRemoteModels, SettingsRuntimeCommandFailure,
+        SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics, SettingsShortcuts,
+        SettingsStartupItemState, SettingsStartupItemStatus, SettingsTheme,
     };
     use std::path::PathBuf;
     use tempfile::tempdir;
@@ -536,6 +536,7 @@ mod tests {
                 ],
                 error: None,
             },
+            remote_models: SettingsRemoteModels::default(),
         };
 
         let status = export_diagnostics_file(

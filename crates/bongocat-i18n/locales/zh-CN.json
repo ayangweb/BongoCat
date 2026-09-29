@@ -144,6 +144,34 @@
       "title": "导入模型",
       "hint": "点击选择或拖入模型文件夹"
     },
+    "remote": {
+      "title": "远程模型库",
+      "catalog": {
+        "loading": "正在加载远程模型库…",
+        "failed": "无法加载远程模型库",
+        "empty": "远程模型库暂无内容"
+      },
+      "preview": {
+        "pending": "正在加载预览…",
+        "unavailable": "暂无预览"
+      },
+      "actions": {
+        "download": "下载",
+        "retry": "重试",
+        "refresh": "刷新"
+      },
+      "status": {
+        "downloading": "正在下载 %{percent}%",
+        "downloading_unknown": "正在下载 %{megabytes} MB",
+        "importing": "正在导入…",
+        "installed": "已安装",
+        "failed": {
+          "download": "下载失败",
+          "too_large": "模型包超出大小限制",
+          "import": "模型导入失败"
+        }
+      }
+    },
     "mode": {
       "standard": "标准",
       "keyboard": "键盘",
@@ -307,7 +335,8 @@
       "dock_icon_update_failed": "无法更新程序坞图标。",
       "window_hide_failed": "无法隐藏设置窗口",
       "window_layout_save_failed": "无法保存窗口布局",
-      "application_shutdown_failed": "BongoCat 未能完全关闭"
+      "application_shutdown_failed": "BongoCat 未能完全关闭",
+      "remote_model_busy": "另一个远程模型正在下载，请稍后再试"
     }
   },
   "settings": {

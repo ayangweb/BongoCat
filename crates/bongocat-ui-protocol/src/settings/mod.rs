@@ -16,6 +16,7 @@ mod logging;
 mod model_catalog;
 mod model_diagnostic;
 mod model_import;
+mod remote_models;
 mod runtime;
 mod snapshot;
 mod startup;
@@ -57,6 +58,11 @@ pub use model_import::{
     SettingsModelImportOperation, SettingsModelImportProgress, SettingsModelImportRequest,
     SettingsModelImportStage, SettingsModelMode, SettingsModelSourceContent, SettingsMverMode,
     SettingsOperationId, model_source_display_name,
+};
+pub use remote_models::{
+    SettingsRemoteCatalogStatus, SettingsRemoteImageFormat, SettingsRemoteModelEntry,
+    SettingsRemoteModelFailure, SettingsRemoteModelImportRequest, SettingsRemoteModelStatus,
+    SettingsRemoteModels, SettingsRemotePreview, SettingsRemotePreviewImage,
 };
 pub use runtime::{
     RuntimeHealth, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
