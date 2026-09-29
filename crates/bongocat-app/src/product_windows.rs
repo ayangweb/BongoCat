@@ -304,13 +304,18 @@ pub(crate) fn poll_update_restart(cx: &mut App) -> bool {
     true
 }
 
-/// Replace this process with the build that was just installed.
+/// Restart into the build that was just installed.
 ///
 /// The install already deleted the previous release from disk, so the running process
 /// is executing files that no longer exist and everything that reads the installation
 /// lazily would fail. The product is therefore shut down in the documented order
-/// first, and only then is the process image replaced; the new build starts from a
-/// complete, quiesced state.
+/// first, and only then is the new build started; it starts from a complete, quiesced
+/// state.
+///
+/// The new build is a new process rather than a replaced image: `bongocat-update`
+/// spawns it and this process exits. That is what keeps the tray icon working across
+/// an update — see `restart_current_process` for why replacing the image would drop
+/// it.
 #[cfg(target_os = "macos")]
 pub(crate) fn restart_after_update(cx: &mut App) {
     if !cx.has_global::<ProductCoordinator>() {
@@ -328,8 +333,8 @@ pub(crate) fn restart_after_update(cx: &mut App) {
                 let _ = writeln!(stderr, "bongocat: {failure}");
             }
         }
-        // `exec` replaces the process image and only returns on failure, so reaching
-        // the next line means the new build could not be started.
+        // `restart` spawns the new build and exits this process, so reaching the next
+        // line means the new build could not be started.
         let _ = bongocat_update::UpdateRuntime::for_current_build(
             bongocat_app::BUILD_ENVIRONMENT,
             bongocat_app::PRODUCT_VERSION,

@@ -81,7 +81,13 @@ install(bytes)                           写入安装位置
 - **macOS**：库整包替换 `.app`（`remove_dir_all` + `rename`），运行中的进程此后执行的是已被删除的
   文件。`preset_root()` 虽然只在启动时读取，但 `PresetModelCatalog::list/load` 是**惰性读盘**的，
   所以继续运行会让预设模型切换直接失败。因此 macOS 在安装成功后**自动重启**：先按 §5.3 的顺序
-  完成产品 shutdown，再 `exec` 新的可执行文件。
+  完成产品 shutdown，再**以新进程**启动新的可执行文件。
+
+  重启必须是新进程，不能用 `exec` 替换进程镜像。`exec` 不结束进程，PID 不变，而 shutdown 序列在
+  重启前已经移除了托盘 `NSStatusItem`；替换后的镜像随后创建的 `NSStatusItem` 创建成功、也自报
+  visible，但窗口从不被布局，菜单栏里什么都没有——只有用户手动退出再启动才恢复。改为 `spawn`
+  之后新进程拿到干净的注册，图标正常出现。`restart_current_process` 的注释记录了完整原因，
+  `the_restart_starts_the_updated_build_as_a_new_process` 守住这条不变量。
 - **Windows**：库把载荷交给 NSIS 安装器后立即 `process::exit(0)`，`Installed` 在本平台不可观测；
   安装器的 `/R` 负责重启。窗口因此没有重启按钮。
 
@@ -162,7 +168,7 @@ install(bytes)                           写入安装位置
 本实现把协调放在**载荷安装完成之后、替换进程之前**：
 
 ```text
-check → download → verify → install → 按 §5.3 顺序 shutdown → exec 新构建
+check → download → verify → install → 按 §5.3 顺序 shutdown → 以新进程启动新构建
 ```
 
 理由是三条同时成立的观察：
@@ -228,8 +234,9 @@ check → download → verify → install → 按 §5.3 顺序 shutdown → exec
    其余状态由离线脚本化 engine 测试覆盖，真实链路仍见 ADR-0034 待验证项 1。
 2. **Windows 安装路径未在本机验证**：本机是 macOS。`Installed` 在 Windows 不可观测这一点来自源码
    阅读，未实测；窗口在该平台的 `installed_relaunching` 文案因此也未被真实观察到。
-3. **macOS 自动重启未实测**：`exec` 新构建这条路径需要一次真实安装才能验证；`exec` 失败时进程
-   以退出码 1 结束并写 stderr，用户需要手动启动。
+3. **macOS 自动重启未随真实安装端到端验证**：重启已从 `exec` 改为 `spawn`（见 §5，附托盘图标消失的
+   原因与不变量测试），但「安装成功 → 自动重启 → 托盘图标仍在」这条完整链路仍需要一次真实安装
+   才能确认。启动新构建失败时进程以退出码 1 结束并写 stderr，用户需要手动启动。
 4. **发布说明注入未在真实发布中跑过**：`gh api .../generate-notes` 的形状、`--notes-file` 与
    manifest `notes` 的一致性只有单元测试与工作流静态检查，没有真实 tag 发布证据。说明来源已于
    2026-09-16 改为 changelog 提取（见 §7 补充），本项仍未消除：`just release-notes` →

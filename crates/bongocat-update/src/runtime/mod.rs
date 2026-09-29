@@ -452,33 +452,53 @@ impl UpdateRuntime {
     }
 }
 
-/// Re-run the current executable with the same arguments, replacing the process.
-#[cfg(unix)]
+/// Re-run the current executable with the same arguments in a new process.
+///
+/// The updated build is started with `spawn` and this process then exits, on every
+/// platform. `exec` would be the more direct reading of "replace the running build",
+/// and it is wrong on macOS: it swaps the process image without ever terminating the
+/// process, so the PID is unchanged and the new image inherits a system whose
+/// per-process state was already torn down. The tray icon is exactly that state — the
+/// shutdown sequence removes the `NSStatusItem` before the update restarts the process
+/// (see `bongocat-app`'s product shutdown), and the replacement image's freshly created
+/// `NSStatusItem` is then adopted into a menu bar that no longer accepts it: it is
+/// created without error and reports itself visible, but its window is never laid out
+/// and nothing appears in the menu bar. Only quitting and launching again brings the
+/// icon back, because that is what rebuilds the registration. A new process gets a
+/// clean one, so the restart spawns on macOS as it already did on Windows.
+///
+/// On success this does not return.
 pub(crate) fn restart_current_process() -> Result<std::convert::Infallible, UpdateError> {
-    use std::os::unix::process::CommandExt;
-
-    let executable = std::env::current_exe()
-        .map_err(|_| UpdateError::at(UpdateStage::Install, UpdateErrorCode::RestartFailed))?;
-    let mut command = std::process::Command::new(executable);
-    command.args(std::env::args_os().skip(1));
-    // `exec` replaces the current process image and only returns on failure.
-    let _ = command.exec();
-    Err(UpdateError::at(
-        UpdateStage::Install,
-        UpdateErrorCode::RestartFailed,
-    ))
+    // The handle is dropped on the way to `exit`: dropping a `Child` does not stop the
+    // process it started, and this process is leaving immediately anyway, so the new
+    // build is reparented to the system and reaped there.
+    let _child = start_updated_build(&mut restart_command()?)?;
+    std::process::exit(0);
 }
 
-/// See the unix version above; Windows has no `exec`, so the updated executable is
-/// spawned as a new process and the current one exits.
-#[cfg(windows)]
-pub(crate) fn restart_current_process() -> Result<std::convert::Infallible, UpdateError> {
+/// The command that starts the updated build, carrying the arguments this process
+/// was given.
+///
+/// Split out of [`restart_current_process`] so a test can check what the restart runs
+/// without starting it: the restart exits the process, so the command is the only part
+/// of it that can be inspected.
+fn restart_command() -> Result<std::process::Command, UpdateError> {
     let executable = std::env::current_exe()
         .map_err(|_| UpdateError::at(UpdateStage::Install, UpdateErrorCode::RestartFailed))?;
     let mut command = std::process::Command::new(executable);
     command.args(std::env::args_os().skip(1));
+    Ok(command)
+}
+
+/// Start `command` as a second process and hand back the handle to it.
+///
+/// Every restart goes through here, and it is deliberately a `spawn`. The returned
+/// handle is what makes the difference from `exec` observable: a spawned build has a
+/// pid of its own, which is what the new menu bar registration hangs off.
+fn start_updated_build(
+    command: &mut std::process::Command,
+) -> Result<std::process::Child, UpdateError> {
     command
         .spawn()
-        .map_err(|_| UpdateError::at(UpdateStage::Install, UpdateErrorCode::RestartFailed))?;
-    std::process::exit(0);
+        .map_err(|_| UpdateError::at(UpdateStage::Install, UpdateErrorCode::RestartFailed))
 }

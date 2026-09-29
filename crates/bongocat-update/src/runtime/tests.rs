@@ -9,7 +9,7 @@ use super::{
     RELEASE_MANIFEST_NAME, RELEASE_REPOSITORY_NAME, RELEASE_REPOSITORY_OWNER, RELEASE_SIGNING_KEY,
     UPDATE_MANIFEST_REQUEST_TIMEOUT, UPDATE_REQUEST_TIMEOUT, UpdateError, UpdateErrorCode,
     UpdateOutcome, UpdateProgress, UpdateRelease, UpdateRuntime, UpdateStage, UpdateUnavailability,
-    configured_signing_key,
+    configured_signing_key, restart_command, start_updated_build,
 };
 use crate::diagnostics::UpdateDiagnosticsTracker;
 use crate::release::{ReleaseChannel, ReleaseConfiguration, UpdateTargetTriple};
@@ -549,4 +549,56 @@ fn unavailability_names_the_gate_that_closed() {
 fn the_release_identity_matches_the_packaging_conventions() {
     assert_eq!(RELEASE_BINARY_NAME, "bongocat-app");
     assert_eq!(RELEASE_BUNDLE_NAME, "BongoCat.app");
+}
+
+/// The restart must start the updated build as a **new process**, not replace the
+/// running image in place.
+///
+/// This is the regression test for the tray icon disappearing after every update. On
+/// macOS the restart used `exec`, which swaps the process image without terminating the
+/// process, so the PID survives and the replacement image inherits a process whose menu
+/// bar registration was already torn down by the shutdown that runs before the restart.
+/// The new image's `NSStatusItem` is then created without error and even reports itself
+/// visible, but it is never laid out, so the menu bar stays empty until the user quits
+/// and launches the app by hand.
+///
+/// The deciding fact is the PID, and `spawn` is what changes it. What gets started here
+/// is this very test binary, with a filter that matches no test: it exists on both
+/// shipping platforms, it exits at once, and it cannot recurse into this test the way
+/// the harness arguments it was originally given would.
+#[test]
+fn the_restart_starts_the_updated_build_as_a_new_process() {
+    let current = std::env::current_exe().expect("the current executable is resolvable");
+    let mut command = std::process::Command::new(&current);
+    command.args(["--exact", "a_test_name_that_matches_nothing"]);
+    command.stdin(std::process::Stdio::null());
+
+    let mut child = start_updated_build(&mut command).expect("a restart starts a second process");
+
+    assert_ne!(
+        child.id(),
+        std::process::id(),
+        "the restart must start a process of its own; replacing the image in place \
+         keeps this pid and leaves the new build without a menu bar registration, \
+         which is why the tray icon vanished after every update"
+    );
+
+    let _ = child.wait();
+}
+
+/// The restart runs the executable that was just updated, in place, and carries over
+/// the arguments this process was given.
+///
+/// A new build that came up without the arguments it was launched with would drop the
+/// options the current session is running under, so the restart has to forward them.
+#[test]
+fn the_restart_runs_the_updated_executable_with_this_process_arguments() {
+    let command = restart_command().expect("the current executable is resolvable");
+
+    let current = std::env::current_exe().expect("the current executable is resolvable");
+    assert_eq!(command.get_program(), current.as_os_str());
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        std::env::args_os().skip(1).collect::<Vec<_>>(),
+    );
 }
