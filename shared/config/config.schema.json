@@ -134,7 +134,8 @@
       "enum": [
         "system",
         "zh-CN",
-        "en-US"
+        "en-US",
+        "ar"
       ],
       "type": "string"
     },

@@ -32,13 +32,33 @@ fn flatten(value: &serde_json::Value, prefix: &str, out: &mut BTreeMap<String, S
     }
 }
 
-fn messages(locale: &str) -> BTreeMap<String, String> {
-    let value: serde_json::Value = serde_json::from_str(match locale {
+/// Every catalog the crate ships, in a fixed order.
+///
+/// The tests that compare catalogs read this instead of repeating the list. A
+/// locale added to `locales/` and to the `messages` match below but not here
+/// would leave every comparison silently covering one catalog fewer, which is
+/// exactly the failure this constant exists to make impossible.
+pub(super) const LOCALES: [&str; 3] = ["en-US", "zh-CN", "ar"];
+
+/// The locale every other catalog is compared against.
+pub(super) const DEFAULT: &str = "en-US";
+
+/// The catalog file a locale is compiled from, embedded at build time.
+///
+/// Every test that reads a catalog goes through here, so `LOCALES` and this
+/// match cannot disagree: a locale listed in one and absent from the other is a
+/// compile error in `messages` rather than a silently uncovered catalog.
+fn source(locale: &str) -> &'static str {
+    match locale {
         "en-US" => include_str!("../../locales/en-US.json"),
         "zh-CN" => include_str!("../../locales/zh-CN.json"),
+        "ar" => include_str!("../../locales/ar.json"),
         _ => panic!("unsupported test locale"),
-    })
-    .expect("valid locale JSON");
+    }
+}
+
+fn messages(locale: &str) -> BTreeMap<String, String> {
+    let value: serde_json::Value = serde_json::from_str(source(locale)).expect("valid locale JSON");
     let mut messages = BTreeMap::new();
     flatten(&value, "", &mut messages);
     messages

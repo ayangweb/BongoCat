@@ -41,7 +41,7 @@ fn source_referenced_keys_exist_in_the_catalog() {
     );
 
     let mut catalogs = Vec::new();
-    for locale in ["en-US", "zh-CN"] {
+    for locale in LOCALES {
         catalogs.push((locale, Catalog::load(locale)));
     }
     let lookups = [
@@ -127,7 +127,7 @@ fn catalog_keys_are_referenced_by_source() {
     }
 
     let mut unreferenced = BTreeSet::new();
-    for locale in ["en-US", "zh-CN"] {
+    for locale in LOCALES {
         for key in Catalog::load(locale).leaves {
             if literals.contains(&key) {
                 continue;

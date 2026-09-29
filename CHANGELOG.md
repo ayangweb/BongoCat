@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### 🌍 Localization
+
+- Arabic is now available in Settings → Appearance & language. Existing configurations are unaffected and keep the language they already had.
+
 ## 2.0.0 - 2026-09-29
 
 ### ⚠️ Upgrade Notice

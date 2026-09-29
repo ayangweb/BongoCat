@@ -4,12 +4,18 @@
 
 ## 决策
 
-BongoCat 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，当前首批迁移语言为 `zh-CN`。
+BongoCat 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，已落地的语言为 `zh-CN` 与 `ar`。
 
 语言文件放在 `crates/bongocat-i18n/locales/`，每种语言一个 JSON 文件，使用 `_version: 1`
 和真正嵌套的领域结构。`rust-i18n` 在编译期将嵌套路径解析为查找 key；JSON 源文件本身不得使用
 点号分隔的扁平 key。Rust UI 在文案实际使用处直接引用稳定的领域路径，不内嵌翻译文本或维护
 enum 到 key 的集中映射。
+
+新增一种语言是一次**数据加注册**的改动，不改变本 ADR 的任何结构决定：写一份与 `en-US` 同
+key、同占位符的 JSON，然后在 `build.rs` 的 `CATALOGS`、`Language`/`SettingsLanguage` 两个
+枚举及其 `code`/`catalog_locale`/`from_system_locale`/`resolve`、`settings_language_display_name`
+和 `tools/validate-locales.py` 的 `EXPECTED_LOCALES` 中各加一项。语言下拉里每种语言用自身
+文字书写（endonym），而不是当前窗口语言的名字。
 
 ## 约束
 
@@ -22,6 +28,8 @@ enum 到 key 的集中映射。
 - `bongocat-i18n` 是唯一调用 `rust_i18n::i18n!` 的 catalog owner。UI 使用其 `text(locale, key)`
   facade，并在使用点写出 key；不得为 UI crate 再初始化同一份 catalog 或依赖全局 locale。
 - 测试/CI 必须检查 JSON 可解析、语言 key 集合相同、值为非空字符串且占位符集合一致。
+  语言清单只在 `crates/bongocat-i18n/src/tests/mod.rs` 的 `LOCALES` 一处枚举，各条比较型测试
+  都遍历它，因此新增语言不会让某条比较悄悄少覆盖一种语言。
 - UI 文案的书写约定见 `docs/localization-copy-conventions.md`。当前已落地的一条：**省略号一律写
   单个 `…`（U+2026，视觉上是三个点）**，禁止中文排版习惯的 `……`（六个点）与拉丁写法的 ASCII
   `...`——同一个 key 由所有语言共用，写法必须与语言无关。该规则由 `tools/validate-locales.py`

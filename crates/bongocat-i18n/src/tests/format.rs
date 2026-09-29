@@ -20,4 +20,12 @@ fn format_text_interpolation_is_available() {
         ),
         "当前版本 1.2.3"
     );
+    assert_eq!(
+        format_text(
+            "ar",
+            "update.current_version",
+            &[("version", "1.2.3".to_string())],
+        ),
+        "الإصدار الحالي 1.2.3"
+    );
 }
