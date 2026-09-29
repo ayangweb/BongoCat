@@ -15,7 +15,7 @@ fn activating_a_model_fills_in_the_legacy_default_behavior_shortcuts() {
         layout,
         repository_preset_root().as_path(),
         true,
-        Language::EnglishUnitedStates,
+        Language::English,
     )
     .expect("start rendering application");
     assert!(

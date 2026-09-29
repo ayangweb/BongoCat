@@ -251,11 +251,11 @@ mod tests {
     #[test]
     fn model_library_and_model_behavior_are_independent_destinations() {
         assert_eq!(
-            SettingsNavigationPage::ModelLibrary.title(SettingsLanguage::EnglishUnitedStates),
+            SettingsNavigationPage::ModelLibrary.title(SettingsLanguage::English),
             "Model library"
         );
         assert_eq!(
-            SettingsNavigationPage::ModelBehavior.title(SettingsLanguage::EnglishUnitedStates),
+            SettingsNavigationPage::ModelBehavior.title(SettingsLanguage::English),
             "Model behavior"
         );
         assert_eq!(
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn search_includes_the_page_group_and_previous_page_name() {
         let keywords = SettingsNavigationPage::InputInteraction.search_keywords(
-            SettingsLanguage::EnglishUnitedStates,
+            SettingsLanguage::English,
             ["settings.input_interaction.mouse.title"],
         );
         assert!(
@@ -286,10 +286,8 @@ mod tests {
 
     #[test]
     fn model_library_search_includes_visible_model_names() {
-        let keywords = model_library_search_keywords(
-            SettingsLanguage::EnglishUnitedStates,
-            ["standard", "Keyboard mode"],
-        );
+        let keywords =
+            model_library_search_keywords(SettingsLanguage::English, ["standard", "Keyboard mode"]);
         assert!(
             keywords
                 .iter()

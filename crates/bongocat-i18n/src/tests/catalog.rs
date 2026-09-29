@@ -75,7 +75,14 @@ fn locale_source_uses_nested_snake_case_keys() {
 #[test]
 fn missing_locale_text_falls_back_to_english() {
     assert_eq!(text("zh-CN", "navigation.settings.title"), "BongoCat 设置");
-    assert_eq!(text("ar", "navigation.settings.title"), "إعدادات BongoCat");
+    assert_eq!(
+        text("ar-SA", "navigation.settings.title"),
+        "إعدادات BongoCat"
+    );
+    assert_eq!(
+        text("vi-VN", "navigation.settings.title"),
+        "Cài đặt BongoCat"
+    );
     assert_eq!(
         text("system", "navigation.settings.title"),
         "BongoCat Settings"
@@ -86,21 +93,85 @@ fn missing_locale_text_falls_back_to_english() {
     );
 }
 
-/// A locale the product never asks for must resolve to the default catalog.
+/// Every region variant of a shipped language reaches that language's catalog.
 ///
-/// `text` takes a free-form locale string, so a code the crate does not ship —
-/// a regional variant, or a typo in a `code()` arm — silently falls through to
-/// the default. That is the intended fallback, and the two assertions above
-/// already cover it; this one pins the answer for the regional Arabic codes a
-/// machine may report, so a future `ar-SA` catalog cannot appear without this
-/// test being updated to say which one the product intends.
+/// The catalogs are named after one primary variety each — `ar-SA`, `vi-VN`,
+/// `en-US` — so the codes a machine actually reports are almost never the
+/// shipped name itself. This is the RFC 4647 language-subtag fallback that
+/// browsers' `Intl`, CLDR and the operating system all perform, and it is what
+/// keeps an Egyptian or Saudi machine, a machine reporting a bare `ar` and a
+/// machine reporting `vi` all landing on the same catalog instead of silently
+/// dropping to English.
 #[test]
-fn a_regional_locale_the_product_does_not_ship_falls_back_to_the_default() {
-    for locale in ["de-DE", "ar-SA", "ar-EG"] {
+fn a_region_variant_reaches_the_catalog_that_serves_its_language() {
+    for (locale, shipped) in [
+        ("ar", "ar-SA"),
+        ("ar-EG", "ar-SA"),
+        ("ar_EG", "ar-SA"),
+        ("AR-sa", "ar-SA"),
+        ("vi", "vi-VN"),
+        ("vi-VN", "vi-VN"),
+        ("en", "en-US"),
+        ("en-GB", "en-US"),
+        ("en_AU", "en-US"),
+    ] {
+        assert_eq!(
+            locale_code(locale),
+            shipped,
+            "{locale} should resolve to the {shipped} catalog"
+        );
+        assert_eq!(
+            text(locale, "navigation.settings.title"),
+            text(shipped, "navigation.settings.title"),
+            "{locale} rendered different copy from {shipped}"
+        );
+    }
+}
+
+/// A language the product does not ship falls back to the default catalog.
+///
+/// `locale_code` takes a free-form tag, so a language we ship no catalog for —
+/// or a typo in a `code()` arm — lands on the default. That is the intended
+/// fallback, and it is the only outcome for a tag whose primary subtag matches
+/// nothing the product ships.
+#[test]
+fn a_language_the_product_does_not_ship_falls_back_to_the_default() {
+    for locale in ["de-DE", "fr", "ja-JP", "ko-KR", "ru-RU"] {
         assert_eq!(
             text(locale, "navigation.settings.title"),
             text(DEFAULT, "navigation.settings.title"),
-            "{locale} is not a catalog this product ships"
+            "{locale} is not a language this product ships"
+        );
+    }
+}
+
+/// Simplified and Traditional are different scripts, not regional variants.
+///
+/// The primary subtag cannot separate them — both are `zh` — and the product
+/// ships only the Simplified catalog, so a Traditional tag has to resolve to the
+/// default rather than to `zh-CN`. The Simplified form still resolves however
+/// the platform spells it.
+#[test]
+fn traditional_chinese_falls_back_rather_than_reading_the_simplified_catalog() {
+    for locale in [
+        "zh-TW",
+        "zh-HK",
+        "zh-MO",
+        "zh-Hant",
+        "zh-Hant-HK",
+        "zh_Hant_TW",
+    ] {
+        assert_eq!(
+            locale_code(locale),
+            DEFAULT,
+            "{locale} is Traditional Chinese"
+        );
+    }
+    for locale in ["zh", "zh-CN", "zh-Hans", "zh-Hans-CN", "zh_CN"] {
+        assert_eq!(
+            locale_code(locale),
+            "zh-CN",
+            "{locale} is Simplified Chinese"
         );
     }
 }

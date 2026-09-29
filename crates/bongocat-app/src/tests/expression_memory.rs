@@ -89,7 +89,7 @@ fn start_with_pumped_overlay(
         layout.clone(),
         repository_preset_root().as_path(),
         true,
-        Language::EnglishUnitedStates,
+        Language::English,
     )
     .expect("start rendering application");
     let token = application
@@ -184,7 +184,7 @@ fn each_model_returns_to_the_expression_the_user_last_chose_for_it() {
         layout.clone(),
         repository_preset_root().as_path(),
         true,
-        Language::EnglishUnitedStates,
+        Language::English,
     )
     .expect("restart rendering application");
     assert!(restarted.config().model.remember_last_expression);

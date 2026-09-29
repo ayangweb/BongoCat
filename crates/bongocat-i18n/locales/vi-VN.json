@@ -1,0 +1,505 @@
+{
+  "_version": 1,
+  "navigation": {
+    "settings": {
+      "title": "Cài đặt BongoCat"
+    },
+    "appearance": {
+      "title": "Giao diện & ngôn ngữ"
+    },
+    "model_library": {
+      "title": "Thư viện mô hình"
+    },
+    "model_behavior": {
+      "title": "Hành vi mô hình"
+    },
+    "model_window": {
+      "title": "Cửa sổ mô hình"
+    },
+    "input_interaction": {
+      "title": "Đầu vào & tương tác"
+    },
+    "shortcuts": {
+      "title": "Phím tắt"
+    },
+    "app_system": {
+      "title": "Ứng dụng & hệ thống"
+    },
+    "about": {
+      "title": "Giới thiệu"
+    }
+  },
+  "system_menu": {
+    "title": "BongoCat",
+    "open_settings": "Cài đặt",
+    "quit": "Thoát BongoCat"
+  },
+  "startup_permission": {
+    "later": "Thiết lập sau",
+    "input_monitoring": {
+      "title": "Cần cấp quyền Giám sát đầu vào",
+      "description": "BongoCat cần quyền Giám sát đầu vào để nhận thông tin từ bàn phím và chuột.\n\nLưu ý: nếu BongoCat đã có trong danh sách, hãy chọn nó rồi nhấn \"−\" để gỡ bỏ, sau đó nhấn \"+\" để thêm lại. Hãy khởi động lại BongoCat sau khi cấp quyền.",
+      "open_settings": "Mở Cài đặt hệ thống"
+    },
+    "administrator": {
+      "title": "Khuyến nghị chạy với quyền quản trị",
+      "description": "BongoCat cần quyền quản trị để tiếp tục nhận thông tin từ bàn phím và chuột khi một ứng dụng khác đang chạy với đặc quyền quản trị.\n\nĐể thiết lập: nhấp phải vào BongoCat → Thuộc tính → Tương thích → bật \"Chạy chương trình này với tư cách quản trị viên\".",
+      "open_program_folder": "Thoát và mở Cài đặt"
+    }
+  },
+  "about": {
+    "product_information": {
+      "version": {
+        "title": "Thông tin phiên bản",
+        "label": "Phiên bản",
+        "environment": {
+          "development": "Bản dựng phát triển",
+          "release": "Bản phát hành"
+        }
+      }
+    },
+    "software_information": {
+      "title": "Thông tin phần mềm",
+      "description": "Sao chép thông tin phiên bản, hệ thống và môi trường chạy dưới dạng JSON để đưa vào báo cáo lỗi.",
+      "copy": "Sao chép",
+      "copy_success": "Đã sao chép thông tin phần mềm"
+    },
+    "project": {
+      "title": "Trang chủ dự án",
+      "action": "Mở"
+    },
+    "feedback": {
+      "title": "Góp ý vấn đề",
+      "description": "Hãy sao chép thông tin phần mềm trước, rồi dán vào báo cáo.",
+      "action": "Báo cáo sự cố"
+    },
+    "logs": {
+      "title": "Nhật ký ứng dụng",
+      "action": "Mở"
+    }
+  },
+  "models": {
+    "catalog": {
+      "load_failed": "Không thể tải danh mục mô hình"
+    },
+    "identity": {
+      "title": "Tên mô hình",
+      "source": {
+        "built_in": "Tích hợp",
+        "imported": "Đã nhập"
+      },
+      "status": {
+        "active": "Đang dùng",
+        "unavailable": "Không khả dụng"
+      }
+    },
+    "card": {
+      "cover_missing": "Không có ảnh bìa"
+    },
+    "edit": {
+      "cover": {
+        "label": "Chọn ảnh bìa"
+      }
+    },
+    "actions": {
+      "use": "Dùng",
+      "edit": "Sửa",
+      "open_folder": "Mở thư mục mô hình",
+      "save": "Lưu",
+      "delete": "Xóa"
+    },
+    "validation": {
+      "package_layout_invalid": "Bố cục gói không hợp lệ",
+      "package_safety_limits_exceeded": "Gói vượt quá giới hạn an toàn",
+      "model_format_invalid_or_unsupported": "Định dạng mô hình không hợp lệ hoặc không được hỗ trợ",
+      "texture_invalid": "Kết cấu bề mặt không hợp lệ",
+      "files_unavailable": "Không có tệp mô hình",
+      "resource_invalid": "Tài nguyên mô hình không hợp lệ"
+    },
+    "import": {
+      "success": "Đã nhập mô hình",
+      "failed": "Nhập mô hình thất bại",
+      "mver_dialog": {
+        "title": "Chọn chế độ cần chuyển đổi",
+        "description": "Chọn các chế độ BongoCat Mver cần nhập.",
+        "import": "Nhập"
+      },
+      "step": {
+        "choosing": "Đang mở trình chọn tệp…",
+        "validating_source": "Đang đọc thư mục mô hình…",
+        "importing": "Đang nhập tệp mô hình…",
+        "capturing": "Đang tạo ảnh bìa mô hình…"
+      },
+      "drop": {
+        "ready": {
+          "title": "Thả ra để nhập thư mục mô hình này"
+        },
+        "busy": {
+          "title": "Một thao tác mô hình khác đang chạy"
+        },
+        "invalid": {
+          "title": "Vui lòng thả từng thư mục mô hình một"
+        }
+      },
+      "title": "Nhập mô hình",
+      "hint": "Nhấn để chọn hoặc kéo một thư mục mô hình vào"
+    },
+    "mode": {
+      "standard": "Tiêu chuẩn",
+      "keyboard": "Bàn phím",
+      "gamepad": "Tay cầm"
+    },
+    "mver": {
+      "mode": {
+        "standard": "Chế độ tiêu chuẩn",
+        "keyboard": "Chế độ bàn phím",
+        "gamepad": "Chế độ tay cầm"
+      }
+    },
+    "behaviors": {
+      "empty": "Không có chuyển động hay biểu cảm nào"
+    },
+    "invalid_summary": "%{origin} · %{diagnostic}",
+    "delete_confirmation": "Bạn có chắc muốn xóa mô hình này không?"
+  },
+  "update": {
+    "window": {
+      "title": "Cập nhật BongoCat"
+    },
+    "heading": {
+      "title": "Cập nhật BongoCat"
+    },
+    "current_version": "Phiên bản hiện tại %{version}",
+    "status": {
+      "idle": "Kiểm tra xem BongoCat có bản mới hơn không.",
+      "checking": "Đang kiểm tra cập nhật…",
+      "up_to_date": "BongoCat %{version} là bản mới nhất.",
+      "available": "Có thể cài đặt BongoCat %{version}.",
+      "downloading": "Đang tải… %{percent}%",
+      "downloading_unknown": "Đang tải…",
+      "downloading_detail": "BongoCat %{version} · %{downloaded} trên %{total}",
+      "verifying": "Đang xác minh BongoCat %{version} đã tải…",
+      "installing": "Đang cài đặt BongoCat %{version}…",
+      "installed_restarting": "Đã cài đặt BongoCat %{version}. Đang khởi động lại…",
+      "installed_relaunching": "Đã cài đặt BongoCat %{version}. Trình cài đặt sẽ khởi động lại ngay."
+    },
+    "notes": {
+      "title": "Có gì mới"
+    },
+    "action": {
+      "check": "Kiểm tra cập nhật",
+      "recheck": "Kiểm tra lại",
+      "install": "Tải và cài đặt",
+      "restart": "Khởi động lại ngay",
+      "view_on_github": "Xem trên GitHub"
+    },
+    "error": {
+      "stage": {
+        "check": "Không thể kiểm tra bản mới của BongoCat %{version}.",
+        "download": "Không thể tải BongoCat %{version}.",
+        "verify": "Không thể xác minh BongoCat %{version} đã tải.",
+        "install": "Không thể cài đặt BongoCat %{version}."
+      },
+      "not_configured": "Phiên bản này không bật cập nhật.",
+      "environment_disabled": "Phiên bản này không thể cài đặt bản cập nhật.",
+      "signature_key_missing": "Phiên bản này không thể xác minh bản cập nhật nên không có bản nào được cài đặt.",
+      "release_fetch_failed": "Không tìm thấy thông tin bản phát hành. Hãy thử lại sau.",
+      "release_manifest_invalid": "Thông tin cập nhật không hợp lệ hoặc không tương thích với phiên bản này. Hãy thử lại sau.",
+      "no_matching_asset": "Bản phát hành này không có trình cài đặt cho máy tính này.",
+      "download_transport_failed": "Tải xuống chưa hoàn tất. Hãy kiểm tra kết nối và thử lại.",
+      "checksum_mismatch": "Bản cập nhật đã tải bị hỏng hoặc không đầy đủ.",
+      "signature_invalid": "Không thể xác minh bản cập nhật nên chưa được cài đặt.",
+      "archive_invalid": "Không thể đọc bản cập nhật đã tải.",
+      "install_path_not_writable": "Không thể cập nhật BongoCat tại vị trí hiện tại.",
+      "install_failed": "Không thể cập nhật BongoCat.",
+      "restart_failed": "Không thể khởi động lại BongoCat. Hãy mở lại ứng dụng để dùng phiên bản mới.",
+      "internal": "Cập nhật thất bại vì lý do không mong muốn."
+    },
+    "unavailable": {
+      "development_build": "Bản dựng phát triển không thể cài đặt bản cập nhật phát hành.",
+      "signing_key_missing": "Phiên bản này không thể xác minh bản cập nhật nên tính năng cập nhật đã bị tắt."
+    },
+    "about": {
+      "label": "Kiểm tra cập nhật"
+    }
+  },
+  "actions": {
+    "cancel": "Hủy",
+    "confirm": "Xác nhận",
+    "close": "Đóng"
+  },
+  "shortcuts": {
+    "scopes": {
+      "window": "Phím tắt cửa sổ",
+      "model": "Phím tắt hành vi mô hình"
+    },
+    "switches": {
+      "enable_window_shortcuts": {
+        "label": "Bật phím tắt cửa sổ"
+      },
+      "enable_model_behavior_shortcuts": {
+        "label": "Bật phím tắt hành vi mô hình"
+      }
+    },
+    "actions": {
+      "clear": "Xóa",
+      "play": "Phát"
+    },
+    "capture": {
+      "press_to_record": "Nhấn phím để ghi lại phím tắt",
+      "click_to_record": "Nhấp chuột để ghi lại phím tắt"
+    },
+    "command_names": {
+      "toggle_model_window": "Hiện hoặc ẩn cửa sổ mô hình",
+      "open_settings": "Hiện hoặc ẩn cửa sổ cài đặt",
+      "toggle_ignore_mouse_input": "Bật hoặc tắt việc bỏ qua đầu vào chuột",
+      "toggle_ignore_keyboard_input": "Bật hoặc tắt việc bỏ qua đầu vào bàn phím",
+      "toggle_ignore_gamepad_input": "Bật hoặc tắt việc bỏ qua đầu vào tay cầm"
+    },
+    "behavior_names": {
+      "motion": "Chuyển động %{index}",
+      "expression": "Biểu cảm %{index}"
+    },
+    "errors": {
+      "conflict": "%{shortcut} đã được gán cho một phím tắt khác"
+    }
+  },
+  "errors": {
+    "settings": {
+      "service_unavailable": "Dịch vụ cài đặt không khả dụng",
+      "snapshot_outdated": "Cài đặt đã thay đổi ở nơi khác. Hãy xem lại cài đặt mới nhất rồi thử lại.",
+      "setting_not_applied": "Cài đặt không có hiệu lực",
+      "invalid_shortcut_bindings": "Phím tắt không hợp lệ hoặc bị trùng",
+      "setting_save_failed": "Không thể lưu cài đặt",
+      "config_permission_denied": "Không thể ghi tệp cấu hình; hãy kiểm tra quyền và thử lại",
+      "config_storage_full": "Ổ đĩa lưu cấu hình đã đầy; hãy giải phóng dung lượng và thử lại",
+      "config_target_occupied": "Vị trí cấu hình đang được dùng; hãy đóng chương trình đang dùng nó và thử lại",
+      "configuration_backup_open_failed": "Không thể mở thư mục sao lưu cấu hình",
+      "model_unavailable": "Mô hình đã chọn không khả dụng",
+      "model_activation_failed": "Không thể kích hoạt mô hình đã chọn",
+      "model_behavior_unavailable": "Hành động hoặc biểu cảm đó thuộc về một mô hình không còn được dùng",
+      "model_behavior_play_failed": "Không thể phát hành động hoặc biểu cảm",
+      "model_name_invalid": "Tên mô hình không dùng được",
+      "model_not_found": "Không tìm thấy mô hình",
+      "model_cover_invalid": "Ảnh bìa phải là tệp PNG",
+      "model_cover_update_failed": "Không thể cập nhật ảnh bìa mô hình",
+      "model_file_picker_unavailable": "Không thể hoàn tất hộp thoại chọn tệp. Hãy thử lại.",
+      "model_folder_open_failed": "Không thể mở thư mục mô hình",
+      "model_id_invalid": "Mã mô hình không hợp lệ",
+      "model_already_installed": "Mô hình này đã được cài đặt",
+      "model_import_invalid_package": "Gói mô hình không hợp lệ",
+      "model_import_drop_invalid": "Hãy thả từng thư mục mô hình hợp lệ một",
+      "model_import_source_invalid": "Thư mục đã chọn chứa nơi lưu mô hình của BongoCat. Hãy chọn một thư mục mô hình riêng lẻ thay thế.",
+      "model_import_source_changed": "Nguồn mô hình đã thay đổi trong khi nhập",
+      "model_import_source_unsupported": "Nguồn mô hình chứa tệp không được hỗ trợ",
+      "model_import_cancelled": "Đã hủy nhập mô hình",
+      "model_operations_busy": "Một thao tác mô hình khác đang chạy. Hãy thử lại sau ít phút.",
+      "model_import_failed": "Không thể nhập mô hình",
+      "built_in_model_cannot_be_deleted": "Không thể xóa mô hình tích hợp",
+      "model_delete_failed": "Không thể xóa mô hình đã nhập",
+      "diagnostics_export_failed": "Không thể xuất chẩn đoán",
+      "software_info_copy_failed": "Không thể sao chép thông tin phần mềm",
+      "external_link_open_failed": "Không thể mở liên kết",
+      "log_location_open_failed": "Không thể mở thư mục nhật ký ứng dụng",
+      "login_startup_update_failed": "Không thể cập nhật cài đặt mở khi đăng nhập",
+      "system_icon_update_failed": "Không thể cập nhật biểu tượng hệ thống.",
+      "taskbar_icon_update_failed": "Không thể cập nhật biểu tượng thanh tác vụ.",
+      "dock_icon_update_failed": "Không thể cập nhật biểu tượng Dock.",
+      "window_hide_failed": "Không thể ẩn cửa sổ cài đặt",
+      "window_layout_save_failed": "Không thể lưu bố cục cửa sổ",
+      "application_shutdown_failed": "BongoCat không thể đóng hoàn toàn"
+    }
+  },
+  "settings": {
+    "appearance": {
+      "theme": {
+        "label": "Giao diện",
+        "options": {
+          "system": "Hệ thống",
+          "light": "Sáng",
+          "dark": "Tối"
+        }
+      },
+      "language": {
+        "label": "Ngôn ngữ",
+        "options": {
+          "system": "Hệ thống",
+          "chinese_simplified": "简体中文",
+          "english_united_states": "English",
+          "arabic": "العربية",
+          "vietnamese": "Tiếng Việt"
+        }
+      }
+    },
+    "overlay": {
+      "behavior": {
+        "title": "Hành vi cửa sổ"
+      },
+      "appearance": {
+        "title": "Giao diện cửa sổ"
+      },
+      "performance": {
+        "title": "Hiệu năng cửa sổ"
+      },
+      "hide_model_window": {
+        "label": "Ẩn cửa sổ mô hình"
+      },
+      "always_on_top": {
+        "label": "Luôn ở trên cùng"
+      },
+      "click_through": {
+        "label": "Chuột xuyên qua cửa sổ"
+      },
+      "keep_inside_screen": {
+        "label": "Giữ trong màn hình"
+      },
+      "hide_on_mouse_hover": {
+        "label": "Ẩn khi rê chuột"
+      },
+      "hide_on_mouse_hover_delay": {
+        "label": "Độ trễ ẩn khi rê chuột (giây)"
+      },
+      "scale": {
+        "label": "Tỉ lệ cửa sổ"
+      },
+      "opacity": {
+        "label": "Độ mờ cửa sổ"
+      },
+      "corner_radius": {
+        "label": "Bo góc cửa sổ"
+      },
+      "maximum_fps": {
+        "label": "FPS tối đa"
+      }
+    },
+    "models": {
+      "behavior": {
+        "mirror_model": {
+          "label": "Lật mô hình theo chiều ngang"
+        },
+        "motion_audio": {
+          "label": "Phát âm thanh của chuyển động"
+        },
+        "remember_last_expression": {
+          "label": "Ghi nhớ biểu cảm cuối cùng của mỗi mô hình"
+        },
+        "random_behavior_mode": {
+          "label": "Phát ngẫu nhiên chuyển động hoặc biểu cảm",
+          "options": {
+            "off": "Tắt",
+            "expressions": "Chỉ biểu cảm",
+            "motions": "Chỉ chuyển động",
+            "motions_and_expressions": "Biểu cảm và chuyển động"
+          }
+        },
+        "random_behavior_interval": {
+          "label": "Khoảng thời gian ngẫu nhiên giữa các chuyển động hoặc biểu cảm (giây)"
+        }
+      }
+    },
+    "input_interaction": {
+      "mouse": {
+        "title": "Chuột",
+        "mirror_mouse_tracking_horizontal": {
+          "label": "Lật theo dõi chuột theo chiều ngang"
+        },
+        "mirror_mouse_tracking_vertical": {
+          "label": "Lật theo dõi chuột theo chiều dọc"
+        },
+        "ignore_mouse_input": {
+          "label": "Bỏ qua đầu vào chuột"
+        }
+      },
+      "keyboard": {
+        "title": "Bàn phím",
+        "ignore_keyboard_input": {
+          "label": "Bỏ qua đầu vào bàn phím"
+        }
+      },
+      "gamepad": {
+        "title": "Tay cầm",
+        "auto_switch": {
+          "label": "Đổi mô hình khi tay cầm được kết nối hoặc ngắt kết nối"
+        },
+        "connected_model": {
+          "label": "Mô hình dùng khi tay cầm được kết nối",
+          "options": {
+            "last_used": "Mô hình tay cầm dùng gần nhất"
+          }
+        },
+        "disconnected_model": {
+          "label": "Mô hình dùng khi không có tay cầm nào kết nối",
+          "options": {
+            "last_used": "Mô hình không dùng tay cầm gần nhất"
+          }
+        },
+        "ignore_gamepad_input": {
+          "label": "Bỏ qua đầu vào tay cầm"
+        },
+        "stick_dead_zone": {
+          "label": "Vùng chết cần điều khiển",
+          "description": "Bỏ qua chuyển động nhỏ của cần analog."
+        },
+        "trigger_dead_zone": {
+          "label": "Vùng chết nút bấm",
+          "description": "Bỏ qua chuyển động nhỏ của nút bấm."
+        }
+      }
+    },
+    "app_system": {
+      "desktop": {
+        "title": "Khởi động & màn hình chính"
+      },
+      "updates": {
+        "title": "Cập nhật"
+      },
+      "logging": {
+        "title": "Nhật ký",
+        "level": {
+          "label": "Mức nhật ký",
+          "options": {
+            "error": "Chỉ lỗi",
+            "warn": "Lỗi và cảnh báo",
+            "info": "Thông tin tiêu chuẩn",
+            "debug": "Thông tin chẩn đoán",
+            "trace": "Mọi chi tiết"
+          }
+        },
+        "retention_days": {
+          "label": "Giữ nhật ký (ngày)"
+        }
+      },
+      "status_icon": {
+        "label": {
+          "macos": "Hiện biểu tượng trên thanh menu",
+          "windows": "Hiện biểu tượng trên thanh hệ thống"
+        }
+      },
+      "taskbar_icon": {
+        "label": "Hiện biểu tượng trên thanh tác vụ"
+      },
+      "dock_icon": {
+        "label": "Hiện biểu tượng trên Dock"
+      },
+      "auto_update": {
+        "label": "Tự động kiểm tra cập nhật",
+        "interval": {
+          "label": "Khoảng thời gian tự kiểm tra cập nhật (giờ)"
+        }
+      },
+      "open_at_login": {
+        "label": "Mở khi đăng nhập"
+      },
+      "startup": {
+        "checking": "Đang kiểm tra mục khởi động…",
+        "unavailable": "Không lấy được trạng thái; nhấn công tắc để thử lại",
+        "stale": "Vị trí ứng dụng đã lưu đã thay đổi; hãy tắt rồi bật lại công tắc để sửa",
+        "requires_approval": "Cấp quyền cho BongoCat trong Cài đặt hệ thống",
+        "not_found": "Thiếu mục khởi động; hãy tắt rồi bật lại công tắc để sửa",
+        "unsupported_platform": "Tính năng mở khi đăng nhập không khả dụng trên hệ thống này",
+        "unsupported_os": "Tính năng mở khi đăng nhập không khả dụng trên hệ điều hành này",
+        "unsupported_build": "Tính năng mở khi đăng nhập không khả dụng trong bản dựng phát triển"
+      }
+    }
+  }
+}

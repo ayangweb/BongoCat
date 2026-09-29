@@ -46,7 +46,7 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
 
     for (status, enabled, action) in cases {
         let presentation =
-            startup_item_presentation(Some(status), false, SettingsLanguage::EnglishUnitedStates);
+            startup_item_presentation(Some(status), false, SettingsLanguage::English);
         assert_eq!(presentation.enabled, enabled);
         assert_eq!(presentation.action, action);
         // The switch position answers the two steady states, so they are the only
@@ -73,13 +73,12 @@ fn startup_item_presentations_cover_every_platform_state_and_retry() {
             "{status:?} must grey the whole row exactly when the build cannot offer login startup"
         );
         assert_eq!(
-            startup_item_presentation(Some(status), true, SettingsLanguage::EnglishUnitedStates,)
-                .action,
+            startup_item_presentation(Some(status), true, SettingsLanguage::English,).action,
             StartupItemAction::None
         );
     }
     assert_eq!(
-        startup_item_presentation(None, false, SettingsLanguage::EnglishUnitedStates).action,
+        startup_item_presentation(None, false, SettingsLanguage::English).action,
         StartupItemAction::None
     );
     assert_eq!(
@@ -148,7 +147,7 @@ fn the_startup_row_is_disabled_exactly_where_the_build_cannot_offer_it() {
     for status in statuses {
         for blocked in [false, true] {
             let presentation =
-                startup_item_presentation(status, blocked, SettingsLanguage::EnglishUnitedStates);
+                startup_item_presentation(status, blocked, SettingsLanguage::English);
             let build_cannot_offer_it = matches!(
                 status,
                 Some(SettingsStartupItemStatus::State(
@@ -197,7 +196,7 @@ fn the_startup_row_stays_operable_in_every_actionable_state() {
         let presentation = startup_item_presentation(
             Some(SettingsStartupItemStatus::State(status)),
             false,
-            SettingsLanguage::EnglishUnitedStates,
+            SettingsLanguage::English,
         );
         assert!(!presentation.disabled);
         assert_eq!(presentation.action, StartupItemAction::SetEnabled(expected));

@@ -123,7 +123,7 @@ fn the_conversion_dialog_needs_one_checked_mode_to_confirm() {
 #[test]
 fn the_conversion_mode_labels_come_from_the_shared_legacy_keys() {
     for locale in [
-        SettingsLanguage::EnglishUnitedStates,
+        SettingsLanguage::English,
         SettingsLanguage::ChineseSimplified,
     ] {
         for mode in [
@@ -146,7 +146,7 @@ fn every_model_card_mode_has_a_visible_localized_label() {
         SettingsModelMode::Gamepad,
     ] {
         for locale in [
-            SettingsLanguage::EnglishUnitedStates,
+            SettingsLanguage::English,
             SettingsLanguage::ChineseSimplified,
         ] {
             let label = bongocat_i18n::text(
@@ -254,7 +254,7 @@ fn the_mver_dialog_can_open_during_the_settings_render(cx: &mut TestAppContext) 
             SettingsView::new(
                 client,
                 SettingsWindowSeed {
-                    language: SettingsLanguage::EnglishUnitedStates,
+                    language: SettingsLanguage::English,
                     appearance_theme: SettingsTheme::System,
                 },
                 Rc::new(|_| {}),
@@ -311,9 +311,7 @@ fn the_import_card_never_contains_the_selected_path() {
             state,
             ..ModelImportDraft::default()
         };
-        for step in super::models::import_card_step(&draft, SettingsLanguage::EnglishUnitedStates)
-            .into_iter()
-        {
+        for step in super::models::import_card_step(&draft, SettingsLanguage::English).into_iter() {
             assert!(
                 !step.contains("private") && !step.contains("secret"),
                 "a step label must not name the source path: {step}"
@@ -336,7 +334,7 @@ fn an_open_picker_blocks_starting_another_import() {
     // A dialog cannot be cancelled from the card, so it offers no control.
     assert!(!draft.shows_cancel());
     assert_eq!(
-        super::models::import_card_step(&draft, SettingsLanguage::EnglishUnitedStates).as_deref(),
+        super::models::import_card_step(&draft, SettingsLanguage::English).as_deref(),
         Some("Opening the file picker…"),
         "an open dialog is the step the card reports"
     );
@@ -360,8 +358,7 @@ fn picker_and_drop_paths_share_the_folder_reading_step() {
             "picker and drop sources must use the same folder-reading copy"
         );
         assert_eq!(
-            super::models::import_card_step(&draft, SettingsLanguage::EnglishUnitedStates)
-                .as_deref(),
+            super::models::import_card_step(&draft, SettingsLanguage::English).as_deref(),
             Some("Reading the model folder…")
         );
     }

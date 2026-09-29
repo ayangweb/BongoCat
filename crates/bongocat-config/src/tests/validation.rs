@@ -14,24 +14,44 @@ fn system_locale_resolves_to_a_shipped_language() {
     );
     assert_eq!(
         Language::from_system_locale("zh_Hant_HK"),
-        Language::EnglishUnitedStates
+        Language::English
     );
-    assert_eq!(
-        Language::from_system_locale("en-GB"),
-        Language::EnglishUnitedStates
-    );
-    assert_eq!(
-        Language::from_system_locale("de-DE"),
-        Language::EnglishUnitedStates
-    );
+    assert_eq!(Language::from_system_locale("en-GB"), Language::English);
+    assert_eq!(Language::from_system_locale("de-DE"), Language::English);
     // One catalog serves every Arabic region, so the region subtag is
     // deliberately not part of the match: a machine in Saudi Arabia and one in
-    // Egypt both report a locale the product reads from the same `ar` catalog.
+    // Egypt both report a locale the product reads from the same `ar-SA`
+    // catalog. This is the RFC 4647 language-subtag fallback.
     for locale in ["ar", "ar-EG", "ar-SA", "ar_MA"] {
         assert_eq!(
             Language::from_system_locale(locale),
             Language::Arabic,
             "{locale} is an Arabic locale"
+        );
+    }
+    // Vietnamese takes the same shape: `vi` and `vi-VN` both reach the one
+    // shipped catalog, as do the English variants that are not `en-US`.
+    for locale in ["vi", "vi-VN", "vi_VN"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::Vietnamese,
+            "{locale} is a Vietnamese locale"
+        );
+    }
+    for locale in ["en", "en-GB", "en_AU", "en-CA"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::English,
+            "{locale} is an English locale"
+        );
+    }
+    // Traditional Chinese shares the `zh` subtag with the Simplified catalog
+    // but is a different script, so it falls back rather than reading `zh-CN`.
+    for locale in ["zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh-Hant-HK"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::English,
+            "{locale} is Traditional Chinese"
         );
     }
     assert_eq!(
@@ -40,25 +60,37 @@ fn system_locale_resolves_to_a_shipped_language() {
     );
     assert_eq!(Language::System.resolve(Language::Arabic), Language::Arabic);
     assert_eq!(
+        Language::System.resolve(Language::Vietnamese),
+        Language::Vietnamese
+    );
+    assert_eq!(
         Language::System.resolve(Language::System),
-        Language::EnglishUnitedStates
+        Language::English
     );
     assert_eq!(
-        Language::EnglishUnitedStates.resolve(Language::ChineseSimplified),
-        Language::EnglishUnitedStates
+        Language::English.resolve(Language::ChineseSimplified),
+        Language::English
     );
     assert_eq!(
-        Language::ChineseSimplified.resolve(Language::EnglishUnitedStates),
+        Language::ChineseSimplified.resolve(Language::English),
         Language::ChineseSimplified
     );
     // An explicit choice never follows the system, in either direction.
     assert_eq!(
-        Language::EnglishUnitedStates.resolve(Language::Arabic),
-        Language::EnglishUnitedStates
+        Language::English.resolve(Language::Arabic),
+        Language::English
     );
     assert_eq!(
         Language::Arabic.resolve(Language::ChineseSimplified),
         Language::Arabic
+    );
+    assert_eq!(
+        Language::Vietnamese.resolve(Language::ChineseSimplified),
+        Language::Vietnamese
+    );
+    assert_eq!(
+        Language::English.resolve(Language::Vietnamese),
+        Language::English
     );
 }
 

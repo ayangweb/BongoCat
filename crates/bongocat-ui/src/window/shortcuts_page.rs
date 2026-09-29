@@ -208,7 +208,7 @@ pub(super) fn content(
     gate: SettingGate,
     tokens: Tokens,
 ) -> Stateful<Div> {
-    let language = snapshot.map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+    let language = snapshot.map_or(SettingsLanguage::English, |snapshot| {
         snapshot.resolved_language
     });
     div()

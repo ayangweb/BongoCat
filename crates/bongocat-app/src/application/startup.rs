@@ -57,7 +57,7 @@ impl Application {
             layout,
             repository_preset_root().as_path(),
             false,
-            Language::EnglishUnitedStates,
+            Language::English,
         )
     }
 

@@ -469,7 +469,7 @@ mod tests {
             },
             appearance_theme: SettingsTheme::System,
             language: SettingsLanguage::System,
-            resolved_language: SettingsLanguage::EnglishUnitedStates,
+            resolved_language: SettingsLanguage::English,
             status_icon_visible: true,
             taskbar_icon_visible: true,
             dock_icon_visible: false,

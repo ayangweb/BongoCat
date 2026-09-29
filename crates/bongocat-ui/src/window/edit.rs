@@ -40,7 +40,7 @@ impl SettingsView {
         let language = self
             .snapshot
             .as_ref()
-            .map_or(SettingsLanguage::EnglishUnitedStates, |snapshot| {
+            .map_or(SettingsLanguage::English, |snapshot| {
                 snapshot.resolved_language
             });
         let placeholder = bongocat_i18n::text(language.catalog_locale(), "models.identity.title");

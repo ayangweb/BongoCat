@@ -253,11 +253,13 @@ typed command 与配置校验两处都被拒绝并保留旧值。语义来源与
 `P0 首发`，作为当前 v1 字段进入初始版本。这不引入迁移或兼容逻辑：初始版本仍是全新首版，
 三个字段直接写在当前 v1 schema、默认值、fixture 与实现中。
 
-`appearance.language` 是严格的三值枚举：`system`、`zh-CN` 和 `en-US`，默认 `system`；未知值
-由当前 v1 解析入口直接拒绝，不提供 alias、迁移或 fallback。`system` 在每次启动时读取平台首选
-locale：简体中文 locale 映射为 `zh-CN`，英语和所有其它 locale 都映射为 `en-US`。其中
-`zh-Hant` 与 `TW`/`HK`/`MO` 不属于当前支持的简体中文，按统一规则回退英文。系统解析结果只决定
-实际显示语言，不覆写持久化偏好；显式选择 `zh-CN` 或 `en-US` 时不受系统 locale 影响。
+`appearance.language` 是严格的五值枚举：`system`、`zh-CN`、`en-US`、`ar-SA` 和 `vi-VN`，默认
+`system`；未知值由当前 v1 解析入口直接拒绝，不提供 alias、迁移或 fallback。`system` 在每次
+启动时读取平台首选 locale，按 primary subtag 归类（RFC 4647 language-subtag fallback）：
+`ar`、`ar-EG`、`ar-SA` 等阿拉伯语 locale 映射为 `ar-SA`，`vi` 与 `vi-VN` 等越南语 locale 映射为
+`vi-VN`，英语和所有其它 locale 都映射为 `en-US`。其中 `zh-Hant` 与 `TW`/`HK`/`MO` 不属于当前
+支持的简体中文，按统一规则回退英文。系统解析结果只决定实际显示语言，不覆写持久化偏好；显式
+选择 `zh-CN`、`en-US`、`ar-SA` 或 `vi-VN` 时不受系统 locale 影响。
 
 捕获的键盘按键没有超时配置，`input` 因此只有 `gamepad` 一个命名空间。清除一个已按下
 control 的路径是且只有三条：可靠的 KeyUp、平台 pressed-set 校正触发的 reconciliation，

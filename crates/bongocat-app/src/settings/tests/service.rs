@@ -99,10 +99,7 @@ fn service_persists_and_projects_the_selected_language() {
 
     let initial = client.read_snapshot_blocking().expect("initial snapshot");
     assert_eq!(initial.language, SettingsLanguage::System);
-    assert_eq!(
-        initial.resolved_language,
-        SettingsLanguage::EnglishUnitedStates
-    );
+    assert_eq!(initial.resolved_language, SettingsLanguage::English);
     let updated = client
         .set_language_blocking(
             initial.config_revision.expect("config revision"),
@@ -120,7 +117,7 @@ fn service_persists_and_projects_the_selected_language() {
     let stale = client
         .set_language_blocking(
             initial.config_revision.expect("config revision"),
-            SettingsLanguage::EnglishUnitedStates,
+            SettingsLanguage::English,
         )
         .expect_err("reject stale language update");
     assert_eq!(stale.code(), SettingsErrorCode::SnapshotOutdated);

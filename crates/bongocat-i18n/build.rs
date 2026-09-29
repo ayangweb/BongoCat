@@ -1,9 +1,10 @@
 use std::{fs, path::Path};
 
-const CATALOGS: [&str; 3] = [
+const CATALOGS: [&str; 4] = [
     "locales/en-US.json",
     "locales/zh-CN.json",
-    "locales/ar.json",
+    "locales/ar-SA.json",
+    "locales/vi-VN.json",
 ];
 
 fn main() {
