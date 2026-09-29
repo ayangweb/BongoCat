@@ -135,7 +135,8 @@
         "system",
         "zh-CN",
         "en-US",
-        "ar"
+        "ar",
+        "vi"
       ],
       "type": "string"
     },

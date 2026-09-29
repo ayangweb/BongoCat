@@ -76,6 +76,7 @@ fn locale_source_uses_nested_snake_case_keys() {
 fn missing_locale_text_falls_back_to_english() {
     assert_eq!(text("zh-CN", "navigation.settings.title"), "BongoCat 设置");
     assert_eq!(text("ar", "navigation.settings.title"), "إعدادات BongoCat");
+    assert_eq!(text("vi", "navigation.settings.title"), "Cài đặt BongoCat");
     assert_eq!(
         text("system", "navigation.settings.title"),
         "BongoCat Settings"
@@ -91,12 +92,12 @@ fn missing_locale_text_falls_back_to_english() {
 /// `text` takes a free-form locale string, so a code the crate does not ship —
 /// a regional variant, or a typo in a `code()` arm — silently falls through to
 /// the default. That is the intended fallback, and the two assertions above
-/// already cover it; this one pins the answer for the regional Arabic codes a
-/// machine may report, so a future `ar-SA` catalog cannot appear without this
-/// test being updated to say which one the product intends.
+/// already cover it; this one pins the answer for the regional codes a machine
+/// may report, so a future `ar-SA` or `vi-VN` catalog cannot appear without
+/// this test being updated to say which one the product intends.
 #[test]
 fn a_regional_locale_the_product_does_not_ship_falls_back_to_the_default() {
-    for locale in ["de-DE", "ar-SA", "ar-EG"] {
+    for locale in ["de-DE", "ar-SA", "ar-EG", "vi-VN"] {
         assert_eq!(
             text(locale, "navigation.settings.title"),
             text(DEFAULT, "navigation.settings.title"),

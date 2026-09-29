@@ -39,6 +39,9 @@ pub(crate) fn settings_language_display_name(
         SettingsLanguage::Arabic => {
             bongocat_i18n::text(locale, "settings.appearance.language.options.arabic")
         }
+        SettingsLanguage::Vietnamese => {
+            bongocat_i18n::text(locale, "settings.appearance.language.options.vietnamese")
+        }
     }
 }
 
@@ -263,6 +266,7 @@ pub(crate) mod tests {
             ("zh-CN", "简体中文"),
             ("en-US", "English"),
             ("ar", "العربية"),
+            ("vi", "Tiếng Việt"),
         ];
         for (language, (code, endonym)) in SettingsLanguage::ALL
             .into_iter()
@@ -300,6 +304,10 @@ pub(crate) mod tests {
         assert_eq!(
             settings_language_display_name(SettingsLanguage::System, SettingsLanguage::Arabic),
             "حسب النظام"
+        );
+        assert_eq!(
+            settings_language_display_name(SettingsLanguage::System, SettingsLanguage::Vietnamese),
+            "Hệ thống"
         );
         assert_eq!(
             settings_language_from_display_name("Deutsch", SettingsLanguage::EnglishUnitedStates,),

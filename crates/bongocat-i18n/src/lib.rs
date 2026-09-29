@@ -24,6 +24,7 @@ pub fn locale_code(code: &str) -> &str {
     match code {
         "zh-CN" => "zh-CN",
         "ar" => "ar",
+        "vi" => "vi",
         "en-US" | "system" => DEFAULT_LOCALE,
         _ => DEFAULT_LOCALE,
     }

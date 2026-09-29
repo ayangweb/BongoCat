@@ -44,14 +44,23 @@ pub enum Language {
     // that reads best and the reasoning lives here instead.
     #[serde(rename = "ar")]
     Arabic,
+    // Vietnamese. Like Arabic, the stored form is the bare `vi` subtag rather
+    // than a region-qualified one, so a machine reporting `vi-VN` and one
+    // reporting plain `vi` both resolve to the single shipped catalog. The
+    // endonym `Tiếng Việt` is written with its own diacritics in every
+    // catalog, so a reader who cannot read the current window language still
+    // finds their own.
+    #[serde(rename = "vi")]
+    Vietnamese,
 }
 
 impl Language {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::System,
         Self::ChineseSimplified,
         Self::EnglishUnitedStates,
         Self::Arabic,
+        Self::Vietnamese,
     ];
 
     pub const fn code(self) -> &'static str {
@@ -60,6 +69,7 @@ impl Language {
             Self::ChineseSimplified => "zh-CN",
             Self::EnglishUnitedStates => "en-US",
             Self::Arabic => "ar",
+            Self::Vietnamese => "vi",
         }
     }
 
@@ -74,6 +84,8 @@ impl Language {
             Self::ChineseSimplified
         } else if subtags.first() == Some(&"ar") {
             Self::Arabic
+        } else if subtags.first() == Some(&"vi") {
+            Self::Vietnamese
         } else {
             Self::EnglishUnitedStates
         }
@@ -84,11 +96,13 @@ impl Language {
             Self::System => match system_language {
                 Self::ChineseSimplified => Self::ChineseSimplified,
                 Self::Arabic => Self::Arabic,
+                Self::Vietnamese => Self::Vietnamese,
                 Self::System | Self::EnglishUnitedStates => Self::EnglishUnitedStates,
             },
             Self::ChineseSimplified => Self::ChineseSimplified,
             Self::EnglishUnitedStates => Self::EnglishUnitedStates,
             Self::Arabic => Self::Arabic,
+            Self::Vietnamese => Self::Vietnamese,
         }
     }
 }

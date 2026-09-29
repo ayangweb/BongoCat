@@ -34,11 +34,24 @@ fn system_locale_resolves_to_a_shipped_language() {
             "{locale} is an Arabic locale"
         );
     }
+    // Vietnamese takes the same shape: the region subtag is deliberately not part
+    // of the match, so `vi` and `vi-VN` both reach the one shipped catalog.
+    for locale in ["vi", "vi-VN", "vi_VN"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::Vietnamese,
+            "{locale} is a Vietnamese locale"
+        );
+    }
     assert_eq!(
         Language::System.resolve(Language::ChineseSimplified),
         Language::ChineseSimplified
     );
     assert_eq!(Language::System.resolve(Language::Arabic), Language::Arabic);
+    assert_eq!(
+        Language::System.resolve(Language::Vietnamese),
+        Language::Vietnamese
+    );
     assert_eq!(
         Language::System.resolve(Language::System),
         Language::EnglishUnitedStates
@@ -59,6 +72,14 @@ fn system_locale_resolves_to_a_shipped_language() {
     assert_eq!(
         Language::Arabic.resolve(Language::ChineseSimplified),
         Language::Arabic
+    );
+    assert_eq!(
+        Language::Vietnamese.resolve(Language::ChineseSimplified),
+        Language::Vietnamese
+    );
+    assert_eq!(
+        Language::EnglishUnitedStates.resolve(Language::Vietnamese),
+        Language::EnglishUnitedStates
     );
 }
 

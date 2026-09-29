@@ -4,7 +4,7 @@
 
 ## 决策
 
-BongoCat 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，已落地的语言为 `zh-CN` 与 `ar`。
+BongoCat 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，已落地的语言为 `zh-CN`、`ar` 与 `vi`。
 
 语言文件放在 `crates/bongocat-i18n/locales/`，每种语言一个 JSON 文件，使用 `_version: 1`
 和真正嵌套的领域结构。`rust-i18n` 在编译期将嵌套路径解析为查找 key；JSON 源文件本身不得使用
