@@ -39,7 +39,8 @@
     "input_monitoring": {
       "title": "Permissão de monitoramento de entrada necessária",
       "description": "O BongoCat precisa da permissão de monitoramento de entrada para receber a entrada do teclado e do mouse.\n\nObservação: se o BongoCat já estiver na lista, selecione-o e clique em \"−\" para removê-lo e depois em \"+\" para adicioná-lo novamente. Reinicie o BongoCat depois de conceder a permissão.",
-      "open_settings": "Abrir as configurações do sistema"
+      "open_settings": "Abrir as configurações do sistema",
+      "view_guide": "Ver instruções"
     },
     "administrator": {
       "title": "Recomendado executar com acesso de administrador",

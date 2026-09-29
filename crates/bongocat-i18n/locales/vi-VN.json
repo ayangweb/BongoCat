@@ -39,7 +39,8 @@
     "input_monitoring": {
       "title": "Cần cấp quyền Giám sát đầu vào",
       "description": "BongoCat cần quyền Giám sát đầu vào để nhận thông tin từ bàn phím và chuột.\n\nLưu ý: nếu BongoCat đã có trong danh sách, hãy chọn nó rồi nhấn \"−\" để gỡ bỏ, sau đó nhấn \"+\" để thêm lại. Hãy khởi động lại BongoCat sau khi cấp quyền.",
-      "open_settings": "Mở Cài đặt hệ thống"
+      "open_settings": "Mở Cài đặt hệ thống",
+      "view_guide": "Xem hướng dẫn"
     },
     "administrator": {
       "title": "Khuyến nghị chạy với quyền quản trị",

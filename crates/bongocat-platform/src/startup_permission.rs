@@ -39,6 +39,8 @@ pub struct StartupPermissionPrompt {
     pub primary: String,
     /// Label of the button that dismisses the prompt and keeps the product starting.
     pub secondary: String,
+    #[cfg(target_os = "macos")]
+    pub view_guide: String,
 }
 
 /// Outcome of one startup permission check.
@@ -119,6 +121,7 @@ mod platform {
     /// `NSPanel.h` instead, which `-runModal` does not return for custom buttons, so they must
     /// not be used here (verified against the macOS SDK header, 2026-09-18).
     const ALERT_FIRST_BUTTON_RESPONSE: NSModalResponse = 1000;
+    const ALERT_GUIDE_BUTTON_RESPONSE: NSModalResponse = 1002;
 
     pub const CAPABILITY: &str = "input_monitoring";
 
@@ -131,10 +134,11 @@ mod platform {
         let description = prompt.description.clone();
         let primary = prompt.primary.clone();
         let secondary = prompt.secondary.clone();
+        let view_guide = prompt.view_guide.clone();
         // `runModal` runs from a main-queue block, which AppKit dispatches between GPUI
         // events — never nested inside a GPUI event handler, which is the reentrancy that
         // forced the model pickers to require a sheet parent (ADR-0032).
-        dispatch2::run_on_main(move |mtm| {
+        let response = dispatch2::run_on_main(move |mtm| {
             // The prompt asks for a user decision at first start, when another application is
             // usually the active one; without this the modal alert can sit behind it. The
             // selector exists on every supported release while the replacement `-activate` is
@@ -149,14 +153,22 @@ mod platform {
             // dismiss button second.
             alert.addButtonWithTitle(&NSString::from_str(&primary));
             alert.addButtonWithTitle(&NSString::from_str(&secondary));
-            if alert.runModal() == ALERT_FIRST_BUTTON_RESPONSE {
-                // The adapter-internal contract with `check_startup_permission` stays the rfd
-                // result type so both platforms map through the same code below.
-                rfd::MessageDialogResult::Custom(primary)
-            } else {
-                rfd::MessageDialogResult::Cancel
+            alert.addButtonWithTitle(&NSString::from_str(&view_guide));
+            alert.runModal()
+        });
+        if response == ALERT_FIRST_BUTTON_RESPONSE {
+            // The adapter-internal contract with `check_startup_permission` stays the rfd
+            // result type so both platforms map through the same code below.
+            return rfd::MessageDialogResult::Custom(prompt.primary.clone());
+        }
+        if response == ALERT_GUIDE_BUTTON_RESPONSE {
+            let path = std::env::temp_dir().join("bongocat-macos-input-monitoring.png");
+            let image = include_bytes!("../../../resources/guides/macos-input-monitoring.png");
+            if std::fs::write(&path, image).is_ok() {
+                let _ = opener::open(path);
             }
-        })
+        }
+        rfd::MessageDialogResult::Cancel
     }
 
     /// Runs the user-initiated permission flow.
@@ -288,6 +300,8 @@ mod tests {
             description: "description".to_owned(),
             primary: "primary".to_owned(),
             secondary: "secondary".to_owned(),
+            #[cfg(target_os = "macos")]
+            view_guide: String::new(),
         }
     }
 

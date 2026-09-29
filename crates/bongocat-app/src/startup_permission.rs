@@ -26,6 +26,8 @@ mod keys {
     pub(super) const DESCRIPTION: &str = "startup_permission.input_monitoring.description";
     #[cfg(target_os = "macos")]
     pub(super) const PRIMARY: &str = "startup_permission.input_monitoring.open_settings";
+    #[cfg(target_os = "macos")]
+    pub(super) const VIEW_GUIDE: &str = "startup_permission.input_monitoring.view_guide";
 
     #[cfg(target_os = "windows")]
     pub(super) const TITLE: &str = "startup_permission.administrator.title";
@@ -49,6 +51,8 @@ pub fn ensure_startup_permission(language: Language) -> bongocat_platform::Start
         description: text(keys::DESCRIPTION),
         primary: text(keys::PRIMARY),
         secondary: text(keys::SECONDARY),
+        #[cfg(target_os = "macos")]
+        view_guide: text(keys::VIEW_GUIDE),
     })
 }
 

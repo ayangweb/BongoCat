@@ -39,7 +39,8 @@
     "input_monitoring": {
       "title": "Input Monitoring Permission Required",
       "description": "BongoCat needs Input Monitoring permission to receive keyboard and mouse input.\n\nNote: if BongoCat is already in the list, select it and click \"−\" to remove it, then click \"+\" to add it again. Restart BongoCat after granting the permission.",
-      "open_settings": "Open System Settings"
+      "open_settings": "Open System Settings",
+      "view_guide": "View Instructions"
     },
     "administrator": {
       "title": "Recommend running with administrator access",
