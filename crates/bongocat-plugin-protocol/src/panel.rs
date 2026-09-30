@@ -32,6 +32,17 @@ pub struct PanelUpdate {
 }
 
 impl PanelUpdate {
+    /// Read and check one panel message.
+    ///
+    /// The one entry point a host uses on a message from a process, so a panel
+    /// cannot reach a renderer without every bound in this file being applied to it.
+    pub fn parse(line: &[u8]) -> Result<Self, PluginError> {
+        let update: Self = serde_json::from_slice(line)
+            .map_err(|error| PluginError::with_detail(PluginErrorCode::ProtocolInvalid, error))?;
+        update.validate()?;
+        Ok(update)
+    }
+
     pub fn validate(&self) -> Result<(), PluginError> {
         self.placement.validate()?;
         let mut inspector = super::scene::inspect::Inspector::new();
@@ -313,7 +324,7 @@ mod tests {
     #[test]
     fn sanitizing_keeps_a_valid_placement_and_clamps_an_invalid_one() {
         let valid = PanelPlacement {
-            anchor: PluginAnchor::BottomRight,
+            anchor: super::super::PluginAnchor::BottomRight,
             margin: [0.03, 0.05],
             width_fraction: 0.5,
             opacity: 0.9,

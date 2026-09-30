@@ -47,6 +47,16 @@ pub struct StorageLayout {
     /// The catalog the plugin center reads, whether it was fetched over the
     /// network or discovered in a development directory.
     pub plugin_catalog: PathBuf,
+    /// Where a plugin's own state lives: its settings, its counters, whatever else
+    /// it remembers between runs.
+    ///
+    /// Separate from `plugins` on purpose. `plugins` holds what a *release* shipped —
+    /// a version directory per id and the `current` file naming the live one — and it
+    /// is replaced wholesale by an update. This holds what a plugin *wrote*, and an
+    /// update must not touch it: a plugin that kept a running total for a month keeps
+    /// it across a version bump. The host creates each plugin's directory and never
+    /// writes inside it; everything in here belongs to the plugin.
+    pub plugin_data: PathBuf,
     pub backups: PathBuf,
     pub logs: PathBuf,
     pub updates: PathBuf,
@@ -67,6 +77,7 @@ impl StorageLayout {
             model_overrides: root.join("model-overrides"),
             plugins: root.join("plugins"),
             plugin_catalog: root.join("plugin-catalog"),
+            plugin_data: root.join("plugin-data"),
             backups: root.join("backups"),
             logs: root.join("logs"),
             updates: root.join("updates"),
@@ -86,6 +97,7 @@ impl StorageLayout {
             &self.model_overrides,
             &self.plugins,
             &self.plugin_catalog,
+            &self.plugin_data,
             &self.backups,
             &self.logs,
             &self.updates,

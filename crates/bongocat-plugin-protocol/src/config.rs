@@ -66,18 +66,60 @@ pub const MAXIMUM_CHOICE_TEXT_BYTES: usize = 128;
 /// it parses — which is the right place for it: the plugin is the only side that
 /// knows what the value is for.
 ///
-/// Adjacently tagged rather than internally, so it reads `{"type":"integer",
-/// "value":25}` rather than `{"integer":25}`. An internally tagged newtype cannot
-/// hold a bare scalar at all — there is nowhere to put the tag — and a settings
-/// value that cannot be written as a number in its own file is not a number the
-/// plugin's author would recognise.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+/// # How a value is written
+///
+/// As the bare JSON scalar it is, and read back by what that scalar is:
+/// `true`, `25`, `0.5`, `"meow"`. That is what makes a plugin's own `config.json`
+/// a file a person can read and edit, and it round-trips exactly because a JSON
+/// number with no fractional part and one with a fractional part are distinguishable.
+///
+/// The obvious alternative — a tag beside the value, `{"type":"integer","value":25}`
+/// — is refused here on purpose. It is more explicit, and it would mean that reading
+/// a field is ambiguous for any consumer that does not already hold the schema,
+/// which is every consumer that is not the settings window. The kind is not
+/// redundant information in practice: a plugin declares one kind per field, and the
+/// schema is what the host checks a value against.
+#[derive(Clone, Debug, PartialEq)]
 pub enum ConfigValue {
     Bool(bool),
     Integer(i64),
     Decimal(f64),
     Text(String),
+}
+
+impl Serialize for ConfigValue {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Bool(value) => serializer.serialize_bool(*value),
+            Self::Integer(value) => serializer.serialize_i64(*value),
+            Self::Decimal(value) => serializer.serialize_f64(*value),
+            Self::Text(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ConfigValue {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // `serde_json::Value` first rather than an untagged enum, because an untagged
+        // one tries its arms in order and `Integer` would swallow a float on a
+        // permissive number format. Reading the number's own text decides instead.
+        match serde_json::Value::deserialize(deserializer)? {
+            serde_json::Value::Bool(value) => Ok(Self::Bool(value)),
+            serde_json::Value::String(value) => Ok(Self::Text(value)),
+            serde_json::Value::Number(number) => {
+                if number.is_f64() && number.as_f64().is_some_and(|value| value.fract() != 0.0) {
+                    return Ok(Self::Decimal(number.as_f64().unwrap_or_default()));
+                }
+                match number.as_i64() {
+                    Some(value) => Ok(Self::Integer(value)),
+                    None => Ok(Self::Decimal(number.as_f64().unwrap_or_default())),
+                }
+            }
+            other => Err(serde::de::Error::custom(format!(
+                "a setting must be a number, a string or true/false, not {other}"
+            ))),
+        }
+    }
 }
 
 impl ConfigValue {
@@ -110,22 +152,16 @@ impl ConfigValue {
             )
         };
         match (&field.control, self) {
-            (ConfigControl::Toggle { .. }, Self::Bool(value)) => {
-                Ok(Self::Bool(*value))
-            }
+            (ConfigControl::Toggle { .. }, Self::Bool(value)) => Ok(Self::Bool(*value)),
             (
                 ConfigControl::Integer {
-                    minimum,
-                    maximum,
-                    ..
+                    minimum, maximum, ..
                 },
                 Self::Integer(value),
             ) => Ok(Self::Integer((*value).clamp(*minimum, *maximum))),
             (
                 ConfigControl::Decimal {
-                    minimum,
-                    maximum,
-                    ..
+                    minimum, maximum, ..
                 },
                 Self::Decimal(value),
             ) => {
@@ -159,10 +195,7 @@ impl ConfigValue {
                 }
                 Ok(Self::Text(fitted))
             }
-            (
-                ConfigControl::Choice { options, .. },
-                Self::Text(value),
-            ) => {
+            (ConfigControl::Choice { options, .. }, Self::Text(value)) => {
                 if options.iter().any(|option| option.value == *value) {
                     Ok(Self::Text(value.clone()))
                 } else {
@@ -337,12 +370,7 @@ impl ConfigControl {
                 maximum,
                 step,
                 ..
-            } => {
-                minimum <= maximum
-                    && *step > 0
-                    && *default >= *minimum
-                    && *default <= *maximum
-            }
+            } => minimum <= maximum && *step > 0 && *default >= *minimum && *default <= *maximum,
             Self::Decimal {
                 default,
                 minimum,
@@ -365,9 +393,8 @@ impl ConfigControl {
                 ..
             } => {
                 default.len() <= MAXIMUM_CONFIG_TEXT_BYTES
-                    && maximum_length.is_none_or(|limit| {
-                        limit > 0 && limit <= MAXIMUM_CONFIG_TEXT_BYTES
-                    })
+                    && maximum_length
+                        .is_none_or(|limit| limit > 0 && limit <= MAXIMUM_CONFIG_TEXT_BYTES)
                     && maximum_length.is_none_or(|limit| default.chars().count() <= limit)
             }
             Self::Choice { default, options } => {
@@ -450,9 +477,7 @@ impl ConfigSchema {
     /// Check a schema, refusing what the settings window cannot draw.
     pub fn validate(&self) -> Result<(), PluginError> {
         if self.schema_version != CONFIG_SCHEMA_VERSION {
-            return Err(PluginError::new(
-                PluginErrorCode::UnsupportedSchemaVersion,
-            ));
+            return Err(PluginError::new(PluginErrorCode::UnsupportedSchemaVersion));
         }
         if self.fields.len() > MAXIMUM_CONFIG_FIELDS {
             return Err(PluginError::new(PluginErrorCode::TooManyEnabled));
@@ -510,7 +535,12 @@ impl ConfigSchema {
         ConfigDocument(
             self.fields
                 .iter()
-                .filter_map(|field| field.default_value().ok().map(|value| (field.key.clone(), value)))
+                .filter_map(|field| {
+                    field
+                        .default_value()
+                        .ok()
+                        .map(|value| (field.key.clone(), value))
+                })
                 .collect(),
         )
     }
@@ -651,7 +681,9 @@ mod tests {
 
     #[test]
     fn a_schema_of_ordinary_fields_validates() {
-        schema(vec![toggle(), minutes(), sound()]).validate().unwrap();
+        schema(vec![toggle(), minutes(), sound()])
+            .validate()
+            .unwrap();
     }
 
     #[test]
@@ -749,17 +781,11 @@ mod tests {
     #[test]
     fn a_value_of_the_wrong_kind_is_refused() {
         assert_eq!(
-            minutes()
-                .fit(&ConfigValue::Bool(true))
-                .unwrap_err()
-                .code(),
+            minutes().fit(&ConfigValue::Bool(true)).unwrap_err().code(),
             PluginErrorCode::InvalidConfigValue
         );
         assert_eq!(
-            toggle()
-                .fit(&ConfigValue::Integer(1))
-                .unwrap_err()
-                .code(),
+            toggle().fit(&ConfigValue::Integer(1)).unwrap_err().code(),
             PluginErrorCode::InvalidConfigValue
         );
     }
@@ -793,7 +819,9 @@ mod tests {
             },
         };
         assert_eq!(
-            field.fit(&ConfigValue::Text("abcdefgh".to_string())).unwrap(),
+            field
+                .fit(&ConfigValue::Text("abcdefgh".to_string()))
+                .unwrap(),
             ConfigValue::Text("abcd".to_string())
         );
         assert_eq!(
@@ -838,7 +866,11 @@ mod tests {
         values.insert("removed_setting".to_string(), ConfigValue::Bool(true));
         let document = ConfigDocument(values);
         assert_eq!(
-            document.completed_with(&schema).keys().cloned().collect::<Vec<_>>(),
+            document
+                .completed_with(&schema)
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>(),
             vec!["minutes".to_string()]
         );
     }

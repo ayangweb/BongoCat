@@ -1,9 +1,10 @@
 //! The plugin center's commands.
 //!
-//! Four actions, all immediate and all revision-free: a plugin install changes no
+//! Five actions, all immediate and all revision-free: a plugin install changes no
 //! configuration, and a plugin switch is a preference the service owns. They do not
 //! go through the window's pending/debounce machinery, which exists for controls
-//! that send a command per keystroke — a plugin button is pressed once.
+//! that send a command per keystroke — a plugin button is pressed once, and a plugin's
+//! own settings go the whole way at once rather than one field per press.
 //!
 //! Each one marks the page busy through [`PendingOperation::PluginOperation`]
 //! rather than a separate flag, so a second press while an install is in flight is
@@ -91,6 +92,104 @@ impl SettingsView {
             move |client| Box::pin(async move { client.set_plugin_enabled(plugin, enabled).await }),
             cx,
         );
+    }
+
+    /// Whether one plugin's own settings are expanded under its card.
+    pub(super) fn plugin_settings_are_open(&self, id: &str) -> bool {
+        self.plugin_settings
+            .as_ref()
+            .is_some_and(|draft| draft.plugin == id)
+    }
+
+    /// Expand or collapse one plugin's own settings.
+    ///
+    /// Under the card rather than in a dialog, and for the reason a card is a card: a
+    /// dialog has to be opened, sized, closed and reopened, and a settings form that
+    /// appears where the user pressed the button is a form they can see the rest of
+    /// the page beside. The rows come from the schema the *running* plugin declared,
+    /// so a plugin that improved its settings in a later version is configured against
+    /// the version that is actually running.
+    pub(super) fn toggle_plugin_settings(&mut self, plugin: String, cx: &mut Context<Self>) {
+        if self.plugin_settings_are_open(&plugin) {
+            self.plugin_settings = None;
+            cx.notify();
+            return;
+        }
+        let Some(entry) = self.plugin_entry(&plugin).cloned() else {
+            // A press for a plugin the page has stopped listing is a press that
+            // arrived after an uninstall; ignoring it is the same answer the host
+            // gives for a press on a panel that is gone.
+            return;
+        };
+        if entry.fields.is_empty() {
+            return;
+        }
+        self.plugin_settings = Some(PluginSettingsDraft {
+            plugin,
+            values: entry.values.clone(),
+        });
+        cx.notify();
+    }
+
+    /// Set one of a plugin's own settings.
+    ///
+    /// The draft is kept here and sent as a whole document, because the plugin writes
+    /// its own file atomically and a patch would have to be merged by a side that does
+    /// not own the file. The value is fitted to the field the plugin declared before
+    /// it goes out, so the window cannot put a number where a menu belongs.
+    pub(super) fn set_plugin_field(
+        &mut self,
+        plugin: &str,
+        key: &str,
+        value: SettingsFieldValue,
+        cx: &mut Context<Self>,
+    ) {
+        // The field is read first and the draft second, because the two live in
+        // different places: a field belongs to the snapshot and a value to the draft,
+        // and borrowing both at once would be the borrow checker telling the truth
+        // about a design that has one too many owners.
+        let Some(kind) = self
+            .plugin_entry(plugin)
+            .and_then(|entry| entry.fields.iter().find(|field| field.key == key))
+            .map(|field| field.kind)
+        else {
+            // A key this build's schema does not name is a control the window drew
+            // from a stale snapshot; the next snapshot will not draw it.
+            return;
+        };
+        if !value.fits(kind) {
+            return;
+        }
+        let Some(draft) = self
+            .plugin_settings
+            .as_mut()
+            .filter(|draft| draft.plugin == plugin)
+        else {
+            return;
+        };
+        draft.values.insert(key.to_string(), value);
+        let plugin = draft.plugin.clone();
+        let values = draft.values.clone();
+        self.send_plugin_config(&plugin, values, cx);
+    }
+
+    /// Hand the plugin its whole settings document.
+    fn send_plugin_config(
+        &mut self,
+        plugin: &str,
+        values: BTreeMap<String, SettingsFieldValue>,
+        cx: &mut Context<Self>,
+    ) {
+        let plugin = plugin.to_string();
+        let client = self.client.clone();
+        cx.spawn(async move |_this, cx| {
+            // The reply is deliberately ignored: the plugin writes its own file and
+            // the next snapshot is what shows the new value, so a dialog that closes
+            // on the user's next click does not need to wait for a round trip.
+            let _ = client.set_plugin_config(plugin, values).await;
+            let _ = cx;
+        })
+        .detach();
     }
 
     /// Whether another settings change is already in flight.

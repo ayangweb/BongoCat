@@ -523,7 +523,8 @@
       "action": {
         "install": "Cài đặt",
         "update": "Cập nhật",
-        "uninstall": "Gỡ cài đặt"
+        "uninstall": "Gỡ cài đặt",
+        "configure": "Cài đặt"
       },
       "refusal": {
         "not_published": "Không có cho phiên bản BongoCat này trên hệ thống này."
@@ -540,7 +541,12 @@
         "too_many": "Cửa sổ mô hình đã hiển thị đủ số bảng tối đa. Hãy tắt một bảng trước.",
         "manifest": "Nội dung của tiện ích này không hợp lệ với phiên bản BongoCat này.",
         "render": "Không vẽ được bảng của tiện ích này.",
-        "other": "Thao tác tiện ích chưa hoàn tất."
+        "other": "Thao tác tiện ích chưa hoàn tất.",
+        "plugin": "Không khởi động được tiện ích này."
+      },
+      "state": {
+        "running": "Đang chạy",
+        "stopped": "Đã dừng"
       }
     }
   }

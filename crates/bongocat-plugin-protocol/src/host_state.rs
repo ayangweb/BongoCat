@@ -45,10 +45,7 @@ pub enum InputEvent {
     /// A key came up.
     KeyUp { control: String },
     /// A mouse button went down or up.
-    MouseButton {
-        button: String,
-        pressed: bool,
-    },
+    MouseButton { button: String, pressed: bool },
     /// The pointer moved. `distance` is in the model's own normalized units, so it
     /// is the same number whatever the model window's size or scale is — a counter
     /// in one model and a counter in another agree.
@@ -203,9 +200,67 @@ impl ModelRequest {
     }
 }
 
+/// Which half of the model a request named.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelRequestKind {
+    Motion,
+    Expression,
+}
+
+/// Whether a model request did what it asked.
+///
+/// Every model request carries an id and gets one of these back, because a refusal
+/// is a normal answer rather than an error the plugin has to anticipate: a model
+/// with no motion called "thinking" is a fact the plugin may want to show, and
+/// only the plugin knows what to do about it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "result", rename_all = "snake_case")]
+pub enum ModelOutcome {
+    /// The host carried the request out.
+    Done,
+    /// The active model has no motion or expression by that name.
+    ///
+    /// Named rather than a bare failure, because "this model has no such motion"
+    /// is something a plugin can act on — show a different label, fall back to the
+    /// default animation — while "the request failed" is not.
+    NotInModel { kind: ModelRequestKind },
+    /// The plugin did not subscribe to model requests, so the host did not act.
+    NotSubscribed,
+    /// The model window is hidden, so nothing would have been seen.
+    OverlayHidden,
+    /// The product has no command that would do what was asked.
+    ///
+    /// Distinct from `NotInModel` because the two call for different responses: a
+    /// motion the model does not have is something the plugin can fall back from, and
+    /// a capability the product lacks is something no amount of retrying will produce.
+    /// Saying "not in this model" for the second would send a plugin looking for a
+    /// motion that is not the problem.
+    HostCannot,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_outcome_survives_the_wire() {
+        for outcome in [
+            ModelOutcome::Done,
+            ModelOutcome::NotInModel {
+                kind: ModelRequestKind::Motion,
+            },
+            ModelOutcome::NotSubscribed,
+            ModelOutcome::OverlayHidden,
+            ModelOutcome::HostCannot,
+        ] {
+            let line = serde_json::to_vec(&outcome).expect("serializes");
+            assert_eq!(
+                serde_json::from_slice::<ModelOutcome>(&line).expect("parses"),
+                outcome
+            );
+        }
+    }
 
     #[test]
     fn an_auto_repeated_key_does_not_count_as_another_keystroke() {
@@ -232,7 +287,9 @@ mod tests {
     fn an_input_event_that_names_no_field_is_refused() {
         // A typo in a plugin is a plugin that stops counting, which is quieter than
         // a load failure — so the wire shape denies unknown fields.
-        assert!(serde_json::from_str::<InputEvent>(r#"{"kind":"key_dn","control":"KeyA"}"#).is_err());
+        assert!(
+            serde_json::from_str::<InputEvent>(r#"{"kind":"key_dn","control":"KeyA"}"#).is_err()
+        );
     }
 
     #[test]
@@ -244,7 +301,9 @@ mod tests {
             "a blank name is not a model called blank"
         );
         assert_eq!(
-            HostState::new(Some("Cat".to_string()), true).model_name.as_deref(),
+            HostState::new(Some("Cat".to_string()), true)
+                .model_name
+                .as_deref(),
             Some("Cat")
         );
     }

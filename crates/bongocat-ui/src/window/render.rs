@@ -1378,6 +1378,14 @@ impl Render for SettingsView {
                 snapshot.as_ref(),
                 language,
                 plugins_keywords,
+                // Which plugin's settings are open is the view's own state, read here
+                // because a card cannot read the entity it is being rendered from — and
+                // read off `self` rather than off `view_entity`, because `render` is
+                // already holding `self` and a second borrow of the same entity while
+                // it is being updated is what GPUI refuses.
+                self.plugin_settings
+                    .as_ref()
+                    .map(|draft| draft.plugin.clone()),
             ));
 
         // About is the final normal settings destination. Its operational rows

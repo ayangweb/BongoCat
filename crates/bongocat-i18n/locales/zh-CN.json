@@ -523,7 +523,8 @@
       "action": {
         "install": "安装",
         "update": "更新",
-        "uninstall": "卸载"
+        "uninstall": "卸载",
+        "configure": "设置"
       },
       "refusal": {
         "not_published": "当前系统上的此版本 BongoCat 不提供该插件。"
@@ -540,7 +541,12 @@
         "too_many": "模型窗口上已显示最多的面板数量。请先关闭其中一个。",
         "manifest": "该插件的内容不适用于当前版本的 BongoCat。",
         "render": "无法绘制该插件的面板。",
-        "other": "插件操作未能完成。"
+        "other": "插件操作未能完成。",
+        "plugin": "无法启动此插件。"
+      },
+      "state": {
+        "running": "运行中",
+        "stopped": "已停止"
       }
     }
   }

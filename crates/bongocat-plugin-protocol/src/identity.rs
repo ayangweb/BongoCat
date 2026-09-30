@@ -99,7 +99,7 @@ fn is_safe_plugin_id(id: &str) -> bool {
 /// plugin center needs is "is the catalog's version newer than what is
 /// installed", and a three-number tuple does that without a dependency and
 /// without a pre-release rule nobody would apply to a plugin catalogue anyway.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(from = "String", into = "String")]
 pub struct PluginVersion {
     pub major: u64,
@@ -168,7 +168,8 @@ pub struct InstalledPlugin {
 impl InstalledPlugin {
     /// The descriptor inside this version's directory.
     pub fn manifest_path(&self) -> PathBuf {
-        self.directory.join(super::descriptor::PLUGIN_MANIFEST_FILE_NAME)
+        self.directory
+            .join(super::descriptor::PLUGIN_MANIFEST_FILE_NAME)
     }
 }
 

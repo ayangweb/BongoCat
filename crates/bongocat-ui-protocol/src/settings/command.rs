@@ -4,6 +4,7 @@
 //! variant and one match rather than a new trait object the client has to carry.
 
 use super::*;
+use std::collections::BTreeMap;
 
 pub struct SettingsReply<T>(pub(crate) Sender<T>);
 
@@ -251,6 +252,17 @@ pub enum SettingsCommand {
     SetPluginEnabled {
         plugin: String,
         enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Set one of a plugin's own settings.
+    ///
+    /// The whole document rather than one field, because the plugin writes its own
+    /// file atomically and a patch would have to be merged by a side that does not own
+    /// the file. The host checks each value against the field the plugin declared and
+    /// sends the document on; the plugin decides what it means and persists it.
+    SetPluginConfig {
+        plugin: String,
+        config: BTreeMap<String, SettingsFieldValue>,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
     OpenConfigBackupLocation {

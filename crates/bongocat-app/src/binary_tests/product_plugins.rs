@@ -32,7 +32,7 @@ fn a_data_root_catalog_is_never_overridden_by_the_repository() {
     // The data root is where a developer's own archive goes, and it has to win: a
     // developer testing their plugin against the shipped example would otherwise
     // never see theirs.
-    let mut layout = test_layout();
+    let mut layout = test_layout("data-root-wins");
     let data = local_catalog_directory(&layout.root);
     std::fs::create_dir_all(&data).expect("the data catalog directory");
     std::fs::write(data.join(PLUGIN_CATALOG_FILE_NAME), "{}").expect("a catalog is written");
@@ -43,12 +43,14 @@ fn a_data_root_catalog_is_never_overridden_by_the_repository() {
         resolved, data,
         "a catalog in the data root is the developer's own and outranks the example"
     );
+    // Left in place rather than cleaned up: the layout is this test's own directory,
+    // and removing it here would only be undone by the next run's own cleanup.
     layout.root = PathBuf::from("/nonexistent");
 }
 
 #[test]
 fn an_empty_data_root_falls_back_to_the_repository() {
-    let layout = test_layout();
+    let layout = test_layout("repository-fallback");
     // Deliberately not created: the data root has no catalog, which is what a
     // developer who has never touched a plugin looks like.
     assert_eq!(
@@ -58,9 +60,16 @@ fn an_empty_data_root_falls_back_to_the_repository() {
     );
 }
 
-fn test_layout() -> bongocat_config::StorageLayout {
+/// A storage layout rooted at a directory this test alone owns.
+///
+/// Named per test rather than shared, because the three tests above deliberately put
+/// *different* things in the data root — one writes a catalog and two assert there is
+/// none — and a shared root would have them overwrite each other's answer. Cargo runs
+/// a binary's tests on parallel threads, so that is a real flake and not a theoretical
+/// one.
+fn test_layout(name: &str) -> bongocat_config::StorageLayout {
     let root = std::env::temp_dir().join(format!(
-        "bongocat-plugin-catalog-test-{}",
+        "bongocat-plugin-catalog-test-{}-{name}",
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&root);

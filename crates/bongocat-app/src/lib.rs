@@ -48,7 +48,7 @@ pub(crate) use config_projection::{
 };
 pub use settings::{
     ApplicationSettingsService, DockIconCapability, SettingsServiceJoinError, StatusIconCapability,
-    TaskbarIconCapability,
+    TaskbarIconCapability, plugin_locale,
 };
 pub use shortcuts::application_shortcut_dispatcher;
 pub use startup_permission::ensure_startup_permission;

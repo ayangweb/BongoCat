@@ -364,10 +364,12 @@ mod tests {
         // The old vocabulary let a scene ask the host to run one of six verbs. A
         // press is now answered to the plugin, which decides what it means — so a
         // scene carrying one is a plugin built against the old host.
-        assert!(serde_json::from_str::<SceneNode>(
-            r#"{"type":"button","id":"go","action":"toggle","target":"timer"}"#
-        )
-        .is_err());
+        assert!(
+            serde_json::from_str::<SceneNode>(
+                r#"{"type":"button","id":"go","action":"toggle","target":"timer"}"#
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -46,14 +46,15 @@ use bongocat_runtime::{
 use bongocat_ui_protocol::{
     AutomaticUpdateSettings, RuntimeHealth, SettingsApplicationShortcut, SettingsBuildEnvironment,
     SettingsBuildInfo, SettingsClient, SettingsCommand, SettingsDiagnosticsExportStatus,
-    SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings,
-    SettingsInputCapability, SettingsInputDiagnostics, SettingsInputServiceStatus,
-    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
-    SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelMode, SettingsModelSettings,
-    SettingsOverlay, SettingsPluginEntry, SettingsPluginError, SettingsPluginErrorCode,
-    SettingsPluginRefusal, SettingsPlugins, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
+    SettingsError, SettingsErrorCode, SettingsFieldKind, SettingsFieldOption, SettingsFieldValue,
+    SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsInputCapability,
+    SettingsInputDiagnostics, SettingsInputServiceStatus, SettingsLanguage,
+    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
+    SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelMode,
+    SettingsModelSettings, SettingsOverlay, SettingsPluginEntry, SettingsPluginError,
+    SettingsPluginErrorCode, SettingsPluginField, SettingsPluginIcon, SettingsPluginRefusal,
+    SettingsPlugins, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
     SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
     SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
     SettingsSnapshot, SettingsStartupItemError, SettingsStartupItemState,
@@ -91,6 +92,7 @@ use capabilities::{
 pub use capabilities::{DockIconCapability, StatusIconCapability, TaskbarIconCapability};
 #[cfg(test)]
 use capabilities::{UnavailableLogLocation, UnavailableModelLocation};
+pub use projection::plugin_locale;
 use projection::settings_shortcut;
 use worker::{run_service, settings_window_placement};
 

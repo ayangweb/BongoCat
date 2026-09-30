@@ -167,11 +167,7 @@ fn cross_axis_extent(stack: &StackNode, available: f32, measured: &f32) -> f32 {
     if grows { available } else { *measured }
 }
 
-fn measure_text(
-    text: &TextNode,
-    measurer: &mut TextMeasurer,
-    theme: &Theme,
-) -> Extent {
+fn measure_text(text: &TextNode, measurer: &mut TextMeasurer, theme: &Theme) -> Extent {
     let _ = theme;
     let style = TextStyle {
         size: text.size.max(1.0),
@@ -476,12 +472,7 @@ fn draw_divider(canvas: &mut Canvas, divider: &DividerNode, rect: RoundedRect, t
     );
 }
 
-fn draw_bar(
-    canvas: &mut Canvas,
-    bar: &ProgressBarNode,
-    rect: RoundedRect,
-    theme: &Theme,
-) {
+fn draw_bar(canvas: &mut Canvas, bar: &ProgressBarNode, rect: RoundedRect, theme: &Theme) {
     let fraction = bar.value;
     let height = bar.height.max(1.0);
     let track = RoundedRect {
@@ -500,12 +491,7 @@ fn draw_bar(
     }
 }
 
-fn draw_ring(
-    canvas: &mut Canvas,
-    ring: &ProgressRingNode,
-    rect: RoundedRect,
-    theme: &Theme,
-) {
+fn draw_ring(canvas: &mut Canvas, ring: &ProgressRingNode, rect: RoundedRect, theme: &Theme) {
     let fraction = ring.value;
     let size = ring.size.max(1.0);
     let center = (rect.x + rect.width * 0.5, rect.y + rect.height * 0.5);

@@ -1022,6 +1022,8 @@ name = "bongocat-plugin"
 version = "2.0.1"
 dependencies = [
  "bongocat-config",
+ "bongocat-log",
+ "bongocat-model",
  "bongocat-plugin-protocol",
  "bongocat-plugin-render",
  "bongocat-render",
@@ -1058,6 +1060,17 @@ dependencies = [
  "bongocat-render",
  "image",
  "serde_json",
+]
+
+[[package]]
+name = "bongocat-plugin-sdk"
+version = "2.0.1"
+dependencies = [
+ "bongocat-plugin-protocol",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

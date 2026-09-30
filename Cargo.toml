@@ -18,6 +18,7 @@ members = [
     "crates/bongocat-plugin",
     "crates/bongocat-plugin-protocol",
     "crates/bongocat-plugin-render",
+    "crates/bongocat-plugin-sdk",
     "crates/bongocat-platform",
     "crates/bongocat-render",
     "crates/bongocat-runtime",
@@ -25,6 +26,12 @@ members = [
     "crates/bongocat-ui",
     "crates/bongocat-update",
 ]
+# `plugins/` is its own Cargo workspace, on purpose. A plugin is built and
+# versioned on its own, so nothing about it may reach into this manifest: adding a
+# plugin must not touch `Cargo.lock` next to BongoCat itself, because that is the
+# only way "adding a plugin does not grow the app" is a fact rather than a promise.
+# See `docs/adr/0079-plugins-are-independent-processes.md`.
+exclude = ["plugins"]
 
 [workspace.package]
 version = "2.0.1"
@@ -87,6 +94,7 @@ bongocat-model = { path = "crates/bongocat-model" }
 bongocat-overlay = { path = "crates/bongocat-overlay" }
 bongocat-plugin = { path = "crates/bongocat-plugin" }
 bongocat-plugin-protocol = { path = "crates/bongocat-plugin-protocol" }
+bongocat-plugin-sdk = { path = "crates/bongocat-plugin-sdk" }
 bongocat-plugin-render = { path = "crates/bongocat-plugin-render" }
 bongocat-platform = { path = "crates/bongocat-platform" }
 bongocat-render = { path = "crates/bongocat-render" }

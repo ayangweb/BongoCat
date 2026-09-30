@@ -537,6 +537,24 @@ impl SettingsClient {
             .await
     }
 
+    /// Set one of a plugin's own settings.
+    ///
+    /// The whole document rather than one field, because the plugin writes its own
+    /// file atomically and a patch would have to be merged by a side that does not own
+    /// the file.
+    pub async fn set_plugin_config(
+        &self,
+        plugin: String,
+        config: std::collections::BTreeMap<String, SettingsFieldValue>,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetPluginConfig {
+            plugin,
+            config,
+            reply,
+        })
+        .await
+    }
+
     pub async fn set_plugin_enabled(
         &self,
         plugin: String,

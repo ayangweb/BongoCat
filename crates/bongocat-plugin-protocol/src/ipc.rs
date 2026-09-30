@@ -30,7 +30,7 @@
 use super::config::{ConfigDocument, ConfigSchema};
 use super::descriptor::PluginDescriptor;
 use super::error::{PluginError, PluginErrorCode};
-use super::host_state::{HostState, InputEvent};
+use super::host_state::{HostState, InputEvent, ModelOutcome, ModelRequest};
 use super::identity::{PluginId, PluginVersion};
 use super::panel::PanelUpdate;
 use serde::{Deserialize, Serialize};
@@ -110,6 +110,16 @@ pub enum PluginMessage {
     ConfigChanged { config: ConfigDocument },
     /// Something worth logging, at a level the host maps onto its own.
     Log { level: LogLevel, message: String },
+    /// Ask the model window's owner to do something, by name.
+    ///
+    /// This is the one thing a plugin asks *for* rather than reports, so it travels
+    /// outward. `id` is the plugin's own counter, echoed back in the answer. Nothing
+    /// about it is interpreted by the host beyond being a key, which is what lets a
+    /// plugin keep a table of what it asked for without the host holding any state
+    /// on its behalf.
+    Request { id: u64, request: Box<ModelRequest> },
+    /// The host's answer to one model request the plugin made.
+    Answer(ModelAnswer),
     /// The plugin failed in a way the user should see.
     ///
     /// Carries the plugin's own code so the settings window can name it, and the
@@ -141,6 +151,52 @@ impl LogLevel {
     }
 }
 
+/// The answer to one model request.
+///
+/// Carries the id the request was made with, so a plugin can keep a table of what
+/// it asked for without the host holding any state on its behalf.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelAnswer {
+    /// The id the request carried.
+    pub id: u64,
+    pub outcome: ModelOutcome,
+}
+
+/// The user's local wall clock, as a reading of hours, minutes and seconds.
+///
+/// Three fields and nothing else, on purpose: a plugin formats this and cannot ask
+/// for a date, a timezone or a locale, because the protocol has no way to name one.
+/// That is what keeps a clock panel the same picture on every machine.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct WallClock {
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+}
+
+impl WallClock {
+    pub const fn new(hour: u8, minute: u8, second: u8) -> Self {
+        Self {
+            hour,
+            minute,
+            second,
+        }
+    }
+
+    /// This reading as `HH:MM:SS`, written once here so every clock a plugin shows is
+    /// spelled the same way.
+    pub fn to_hms(self) -> String {
+        format!("{:02}:{:02}:{:02}", self.hour, self.minute, self.second)
+    }
+
+    /// This reading as `HH:MM`.
+    pub fn to_hm(self) -> String {
+        format!("{:02}:{:02}", self.hour, self.minute)
+    }
+}
+
 /// What the host says to a running plugin.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
@@ -157,6 +213,12 @@ pub enum HostMessage {
     Tick {
         elapsed_ms: u64,
         state: HostState,
+        /// The user's local wall clock, read by the host's main thread.
+        ///
+        /// Republished on every tick rather than fetched by the plugin, and that is
+        /// not an oversight: reading the local UTC offset is only sound when one
+        /// thread at a time asks, and the plugin worker's thread is not that one.
+        clock: WallClock,
     },
     /// Something happened, for a plugin that asked for the feed.
     Input { events: Vec<InputEvent> },
@@ -171,6 +233,12 @@ pub enum HostMessage {
     /// writes its file atomically and a patch would have to be merged by a side
     /// that does not own the file.
     ConfigChanged { config: ConfigDocument },
+    /// The host's answer to a model request this plugin made.
+    ///
+    /// Only ever delivered to a plugin that asked, and matched by the plugin's own
+    /// id — a refusal is a normal answer rather than an error, because a model with
+    /// no motion called "thinking" is a fact only the plugin can act on.
+    ModelAnswer { id: u64, outcome: ModelOutcome },
     /// The host is stopping the plugin, and will close the pipes after this line.
     ///
     /// Sent before the pipes close so a plugin can flush its own state on the way
@@ -253,7 +321,7 @@ pub struct PluginRuntimeStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ConfigField, ConfigControl};
+    use crate::config::{ConfigControl, ConfigField};
     use crate::descriptor::LocalizedText;
 
     fn descriptor() -> PluginDescriptor {
@@ -296,6 +364,7 @@ mod tests {
             HostMessage::Tick {
                 elapsed_ms: 1234,
                 state: HostState::new(Some("Cat".to_string()), true),
+                clock: WallClock::new(9, 5, 3),
             },
             HostMessage::Input {
                 events: vec![InputEvent::KeyDown {
@@ -307,7 +376,10 @@ mod tests {
                 id: "toggle".to_string(),
             },
             HostMessage::ConfigChanged {
-                config: ConfigDocument::single("auto_start", crate::config::ConfigValue::Bool(true)),
+                config: ConfigDocument::single(
+                    "auto_start",
+                    crate::config::ConfigValue::Bool(true),
+                ),
             },
             HostMessage::Shutdown,
         ];
@@ -325,6 +397,17 @@ mod tests {
                 descriptor: descriptor(),
             },
             PluginMessage::HidePanel,
+            PluginMessage::Request {
+                id: 7,
+                request: Box::new(ModelRequest::PlayMotion {
+                    name: "wave".to_string(),
+                    restart: false,
+                }),
+            },
+            PluginMessage::Answer(ModelAnswer {
+                id: 7,
+                outcome: ModelOutcome::Done,
+            }),
             PluginMessage::Log {
                 level: LogLevel::Warn,
                 message: "slow".to_string(),
@@ -381,7 +464,8 @@ mod tests {
             descriptor: descriptor(),
         };
         let line = write_message(&message).expect("serializes");
-        let PluginMessage::Ready { descriptor: read } = parse_plugin_message(&line).expect("parses")
+        let PluginMessage::Ready { descriptor: read } =
+            parse_plugin_message(&line).expect("parses")
         else {
             panic!("expected a ready message");
         };

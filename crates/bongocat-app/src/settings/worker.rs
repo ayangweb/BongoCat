@@ -15,6 +15,7 @@ use super::model_projection::*;
 use super::projection::*;
 use super::snapshot::*;
 use bongocat_plugin::{PluginCommand, PluginId};
+use std::collections::BTreeMap;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_service(
@@ -187,14 +188,26 @@ pub(super) fn run_service(
                 language,
                 reply,
             } => {
-                let result = check_revision(&application, expected_config_revision)
-                    .and_then(|()| {
+                let result =
+                    check_revision(&application, expected_config_revision).and_then(|()| {
                         application
                             .set_language(config_language(language))
                             .map_err(map_application_error)
-                    })
-                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
-                let _ = reply.respond(result);
+                    });
+                if result.is_ok() {
+                    // A plugin resolves its own strings against the locale the host
+                    // hands it, so a user who switches language expects the panels
+                    // beside the cat to switch with them. Sent here rather than only at
+                    // startup because the worker outlives a language change.
+                    send_plugin_locale(
+                        &clock,
+                        &settings_language(application.effective_language()),
+                    );
+                }
+                let _ = reply.respond(
+                    result
+                        .map(|()| snapshot(&application, &mut clock, false, startup_item.state())),
+                );
             }
             SettingsCommand::SetStatusIconVisible {
                 expected_config_revision,
@@ -604,6 +617,20 @@ pub(super) fn run_service(
                 .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetPluginConfig {
+                plugin,
+                config,
+                reply,
+            } => {
+                // The document travels to the plugin, which writes its own file. The
+                // host checks each value against the field the plugin declared and the
+                // plugin decides what it means — so nothing here interprets a value,
+                // and `config.json` has no plugin section to drift out of step.
+                let result =
+                    with_plugin_id(&clock, &plugin, |id| send_plugin_config(&clock, id, config))
+                        .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SelectModel {
                 expected_config_revision,
                 model,
@@ -827,6 +854,83 @@ pub(super) fn send_plugin_command(
                 Err(SettingsError::new(SettingsErrorCode::PluginHostBusy))
             }
         })
+}
+
+/// Tell every plugin which language the user now reads.
+///
+/// Best-effort in the strict sense: a queue that is full means the worker is busy
+/// with something the user asked for first, and the next tick carries the locale
+/// anyway — so a dropped command costs a panel one tick of English, not a panel stuck
+/// in the wrong language. Failing the language change over it would be worse than the
+/// panel the user is already looking at.
+fn send_plugin_locale(clock: &SettingsSnapshotClock, language: &SettingsLanguage) {
+    let Some(reader) = clock.plugin_reader() else {
+        return;
+    };
+    let _ = reader.send(PluginCommand::SetLocale {
+        locale: language.catalog_locale().to_string(),
+    });
+}
+
+/// Hand one plugin the settings the user just changed.
+///
+/// The values are fitted to the schema the plugin *running* declared before they go
+/// out, so the host's check is made against the same field the window drew rather than
+/// against the archive's metadata — and a plugin that improved its settings in a later
+/// version is configured against the version that is actually running.
+pub(super) fn send_plugin_config(
+    clock: &SettingsSnapshotClock,
+    id: PluginId,
+    values: BTreeMap<String, SettingsFieldValue>,
+) -> Result<(), SettingsError> {
+    let reader = clock
+        .plugin_reader()
+        .ok_or_else(|| SettingsError::new(SettingsErrorCode::PluginHostUnavailable))?;
+    let snapshot = reader.snapshot();
+    let entry = snapshot
+        .entry(&id)
+        .ok_or_else(|| SettingsError::new(SettingsErrorCode::PluginNotFound))?;
+    let descriptor = entry.descriptor.as_ref().ok_or_else(|| {
+        // A plugin that is listed but has no running process has not declared a
+        // schema this host could draw — its archive's `plugin.json` carries metadata
+        // only, because a *running* plugin is what sends its settings. So the command
+        // refuses rather than guessing a form from the archive.
+        SettingsError::new(SettingsErrorCode::PluginNotFound)
+    })?;
+    let mut document = descriptor.config.defaults();
+    for (key, value) in values {
+        let Some(field) = descriptor.config.field(&key) else {
+            // A key the running plugin does not declare is dropped rather than
+            // refused: it is a field a newer version of that same plugin wrote, and
+            // the plugin is the only side that can decide what to do about it.
+            continue;
+        };
+        let Ok(value) = field.fit(&protocol_value(&value)) else {
+            continue;
+        };
+        document.0.insert(key, value);
+    }
+    send_plugin_command(
+        clock,
+        PluginCommand::SetConfig {
+            id,
+            config: document,
+        },
+    )
+}
+
+/// The window's value, as the protocol's own.
+///
+/// The one conversion at this boundary, and it is exhaustive on purpose: a control
+/// produces one of four kinds and the window's enum has exactly those four, so a fifth
+/// would be a compile error here rather than a value silently read as something else.
+fn protocol_value(value: &SettingsFieldValue) -> bongocat_plugin::ConfigValue {
+    match value {
+        SettingsFieldValue::Bool(value) => bongocat_plugin::ConfigValue::Bool(*value),
+        SettingsFieldValue::Integer(value) => bongocat_plugin::ConfigValue::Integer(*value),
+        SettingsFieldValue::Decimal(value) => bongocat_plugin::ConfigValue::Decimal(*value),
+        SettingsFieldValue::Text(value) => bongocat_plugin::ConfigValue::Text(value.clone()),
+    }
 }
 
 /// Resolve the plugin id a command named, and do the work for it.

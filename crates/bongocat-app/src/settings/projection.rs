@@ -25,6 +25,16 @@ pub(super) const fn config_theme(theme: SettingsTheme) -> bongocat_config::Theme
     }
 }
 
+/// The catalog locale the user actually reads.
+///
+/// A plugin resolves its own copy against this and nothing else, so it is what a
+/// plugin's handshake and every tick carry. Exposed to `main` because the plugin
+/// worker starts before the settings window does and needs it at startup rather
+/// than on the first command.
+pub fn plugin_locale(language: bongocat_config::Language) -> &'static str {
+    settings_language(language).catalog_locale()
+}
+
 pub(super) const fn settings_language(language: bongocat_config::Language) -> SettingsLanguage {
     match language {
         bongocat_config::Language::System => SettingsLanguage::System,

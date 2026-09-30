@@ -274,9 +274,7 @@ impl Subscription {
     }
 
     pub fn parse(value: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|entry| entry.as_str() == value)
+        Self::ALL.into_iter().find(|entry| entry.as_str() == value)
     }
 }
 
@@ -475,25 +473,26 @@ mod tests {
         let text = LocalizedText::from("x".repeat(MAXIMUM_LABEL_CHARS + 40));
         let bounded = text.resolve_bounded("en-US");
         assert_eq!(bounded.chars().count(), MAXIMUM_LABEL_CHARS + 1);
-        assert!(bounded.ends_with('…'), "and it is one ellipsis, not three dots");
+        assert!(
+            bounded.ends_with('…'),
+            "and it is one ellipsis, not three dots"
+        );
     }
 
     #[test]
     fn a_descriptor_that_disagrees_with_its_archive_is_refused() {
         let manifest = PluginManifest::parse(MINIMAL.as_bytes()).unwrap();
-        let other: PluginDescriptor = serde_json::from_str(
-            r#"{"id":"pomodoro","name":"Pomodoro","version":"2.0.0"}"#,
-        )
-        .unwrap();
+        let other: PluginDescriptor =
+            serde_json::from_str(r#"{"id":"pomodoro","name":"Pomodoro","version":"2.0.0"}"#)
+                .unwrap();
         assert_eq!(
             other.agrees_with(&manifest).unwrap_err().code(),
             PluginErrorCode::PluginHandshakeFailed
         );
 
-        let renamed: PluginDescriptor = serde_json::from_str(
-            r#"{"id":"pomodoro","name":"Renamed","version":"1.0.0"}"#,
-        )
-        .unwrap();
+        let renamed: PluginDescriptor =
+            serde_json::from_str(r#"{"id":"pomodoro","name":"Renamed","version":"1.0.0"}"#)
+                .unwrap();
         assert!(
             renamed.agrees_with(&manifest).is_ok(),
             "a plugin may reword its own card without becoming unloadable"

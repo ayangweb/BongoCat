@@ -93,7 +93,7 @@ impl SettingsSnapshotClock {
     }
 
     /// The plugin center as the window sees it, advancing the revision when it moved.
-    pub(super) fn plugins(&mut self) -> SettingsPlugins {
+    pub(super) fn plugins(&mut self, language: SettingsLanguage) -> SettingsPlugins {
         let Some(reader) = &self.plugins else {
             // No host is a state the page has to show, not one to hide: a snapshot
             // with `available: false` and no entries is what makes it say so.
@@ -106,7 +106,7 @@ impl SettingsSnapshotClock {
                 ..SettingsPlugins::default()
             };
         };
-        let plugins = project_plugins(&reader.snapshot());
+        let plugins = project_plugins(&reader.snapshot(), language);
         if Some(plugins.revision) != self.observed_plugin_revision {
             self.observed_plugin_revision = Some(plugins.revision);
             self.mark_changed();
@@ -300,7 +300,7 @@ pub(super) fn snapshot(
             })
             .or_else(|| configured_model_key(application)),
         model_catalog: settings_model_catalog(application),
-        plugins: clock.plugins(),
+        plugins: clock.plugins(settings_language(application.effective_language())),
     }
 }
 

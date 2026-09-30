@@ -490,7 +490,9 @@ mod tests {
             children: vec![SceneNode::Spacer(SpacerNode { grow: 1.0 })],
             ..StackNode::default()
         });
-        let a = render(one.clone(), [120, 40]).expect("rasterizes").to_raster();
+        let a = render(one.clone(), [120, 40])
+            .expect("rasterizes")
+            .to_raster();
         let b = render(one, [120, 40]).expect("rasterizes").to_raster();
         let c = render(two, [120, 40]).expect("rasterizes").to_raster();
         assert_eq!(

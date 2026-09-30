@@ -69,27 +69,26 @@ pub use catalog::{
 pub use color::{Color, ColorError};
 pub use config::{
     CONFIG_SCHEMA_VERSION, ChoiceOption, ConfigControl, ConfigDocument, ConfigField, ConfigKind,
-    ConfigValue, MAXIMUM_CHOICE_OPTIONS, MAXIMUM_CONFIG_FIELDS, MAXIMUM_CONFIG_KEY_BYTES,
-    MAXIMUM_CONFIG_TEXT_BYTES, MAXIMUM_CONFIG_TEXT_BYTES as MAXIMUM_TEXT_VALUE_BYTES,
+    ConfigSchema, ConfigValue, MAXIMUM_CHOICE_OPTIONS, MAXIMUM_CONFIG_FIELDS,
+    MAXIMUM_CONFIG_KEY_BYTES, MAXIMUM_CONFIG_TEXT_BYTES,
 };
 pub use descriptor::{
     LocalizedText, MAXIMUM_BUTTON_ID_BYTES, MAXIMUM_BUTTONS_PER_PANEL,
-    MAXIMUM_PLUGIN_DESCRIPTION_CHARS,
-    MAXIMUM_PLUGIN_NAME_CHARS, PLUGIN_MANIFEST_FILE_NAME, PluginDescriptor, PluginIcon,
-    PluginManifest, Subscription,
+    MAXIMUM_PLUGIN_DESCRIPTION_CHARS, MAXIMUM_PLUGIN_NAME_CHARS, PLUGIN_MANIFEST_FILE_NAME,
+    PluginDescriptor, PluginIcon, PluginManifest, Subscription,
 };
 pub use error::{PluginError, PluginErrorCode};
 pub use host_state::{
     HostState, InputEvent, MAXIMUM_BUBBLE_CHARS, MAXIMUM_BUBBLE_MILLIS, MAXIMUM_MOUSE_STEP,
-    MINIMUM_BUBBLE_MILLIS, ModelRequest,
+    MINIMUM_BUBBLE_MILLIS, ModelOutcome, ModelRequest, ModelRequestKind,
 };
-pub use identity::{
-    InstalledPlugin, MAXIMUM_PLUGIN_ID_BYTES, PluginId, PluginVersion,
-};
+pub use identity::{InstalledPlugin, MAXIMUM_PLUGIN_ID_BYTES, PluginId, PluginVersion};
 pub use ipc::{
     Hello, HostMessage, LogLevel, MAXIMUM_MESSAGE_BYTES, PROTOCOL_VERSION, PluginMessage,
-    PluginRuntimeStatus, check_line_length, parse_host_message, parse_plugin_message, write_message,
+    PluginRuntimeStatus, check_line_length, parse_host_message, parse_plugin_message,
+    write_message,
 };
+pub use ipc::{ModelAnswer, WallClock};
 pub use panel::{PanelPlacement, PanelUpdate, PluginAnchor};
 pub use scene::{
     Align, ButtonNode, ButtonVariant, DividerNode, ImageNode, MAXIMUM_SCENE_DEPTH,

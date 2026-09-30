@@ -110,7 +110,6 @@ impl PluginStore {
                 id,
                 version,
                 directory,
-                enabled: true,
             });
         }
         installed.sort_by(|left, right| left.id.cmp(&right.id));

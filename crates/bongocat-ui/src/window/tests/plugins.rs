@@ -5,6 +5,7 @@
 //! leaves the page showing what the host actually says.
 
 use super::*;
+use bongocat_ui_protocol::SettingsPluginIcon;
 
 fn snapshot_with_plugins(plugins: SettingsPlugins) -> SettingsSnapshot {
     let mut snapshot = crate::tests::snapshot(7, true, true);
@@ -19,12 +20,21 @@ fn entry(id: &str, installed: bool, enabled: bool) -> SettingsPluginEntry {
         name: format!("{id} name"),
         description: String::new(),
         author: String::new(),
+        icon: SettingsPluginIcon::default(),
         installed_version: installed.then(|| "1.0.0".to_string()),
         available_version: Some("1.0.0".to_string()),
         installed,
         enabled,
+        // A test entry has no process, so it is never running — which is the state a
+        // card shows before the worker has said otherwise, and the one a test of the
+        // command layer should not depend on.
+        running: false,
         update_available: false,
+        fields: Vec::new(),
+        values: Default::default(),
+        log: Vec::new(),
         refusal: None,
+        failure: None,
     }
 }
 

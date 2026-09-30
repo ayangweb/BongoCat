@@ -60,8 +60,9 @@ pub use model_import::{
     SettingsOperationId, model_source_display_name,
 };
 pub use plugins::{
-    SettingsPluginEntry, SettingsPluginError, SettingsPluginErrorCode, SettingsPluginRefusal,
-    SettingsPlugins,
+    SettingsFieldKind, SettingsFieldOption, SettingsFieldValue, SettingsPluginEntry,
+    SettingsPluginError, SettingsPluginErrorCode, SettingsPluginField, SettingsPluginIcon,
+    SettingsPluginRefusal, SettingsPlugins,
 };
 pub use runtime::{
     RuntimeHealth, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,

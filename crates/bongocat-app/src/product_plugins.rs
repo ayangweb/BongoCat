@@ -58,9 +58,14 @@ impl ProductPluginHost {
     ///
     /// The catalog directory is resolved by [`catalog_directory`], which is the
     /// only place that decides between the data root and the repository.
+    /// `locale` is the user's language as a locale tag, handed to every plugin so a
+    /// plugin can pick its own copy before it draws its first panel. It is a starting
+    /// value rather than the only one: [`Self::apply_locale`] republishes it when the
+    /// user changes language, and a plugin sees the new value on its next tick.
     pub(crate) fn start(
         layout: &StorageLayout,
         runtime: Option<bongocat_runtime::RuntimeClient>,
+        locale: &str,
     ) -> Result<Self, bongocat_plugin::PluginError> {
         let (producer, consumer) = bongocat_render::overlay_layer_channel();
         let clock = Arc::new(LocalTimeCache::new());
@@ -75,6 +80,12 @@ impl ProductPluginHost {
             producer,
             Arc::clone(&clock),
             runtime,
+            // A plugin's own state lives beside the plugin store rather than inside
+            // it, so an update that replaces a version directory cannot replace what
+            // the plugin remembered.
+            layout.plugin_data.clone(),
+            bongocat_app::PRODUCT_VERSION.to_string(),
+            locale.to_string(),
         )?;
         let press_sink = Arc::new(endpoint.press_sink());
         Ok(Self {

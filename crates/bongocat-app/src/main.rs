@@ -447,6 +447,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut plugin_host = match ProductPluginHost::start(
         application.storage_layout(),
         Some(runtime_client.clone()),
+        bongocat_app::plugin_locale(application.effective_language()),
     ) {
         Ok(host) => Some(host),
         Err(error) => {

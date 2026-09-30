@@ -1,66 +1,107 @@
-//! The plugin worker: one thread that owns the installed set and the panels.
+//! The plugin worker: one thread that owns the installed set and every session.
 //!
-//! Everything a plugin does happens on this thread — fetching, installing, running
-//! behaviors, rasterizing panels — and nothing it does can reach the render path.
-//! It publishes a snapshot for the plugin center and a set of layers for the model
-//! window, both through bounded latest-wins channels, and it takes commands and
-//! presses through one bounded command channel.
+//! Everything that happens to a plugin happens on this thread — fetching, installing,
+//! starting processes, reading their messages, rasterizing their panels — and none
+//! of it can reach the render path. It publishes a snapshot for the plugin center and
+//! a set of layers for the model window, both through bounded latest-wins channels,
+//! and it takes commands through one bounded command channel.
 //!
-//! # Why this is a worker and not a callback
+//! # Why a worker and not a callback
 //!
-//! A panel changes on its own cadence and its work is milliseconds of
-//! rasterization. Calling into it from the render thread would mean either
-//! stalling a frame or copying a whole raster per frame; a worker means the render
-//! thread only ever reads an already-published layer. The cost is that a panel lags
-//! by up to one evaluation, which at the cadence a panel needs — once a second for
-//! a countdown, not sixty times — is not perceptible.
+//! A panel changes on its own cadence and its work is milliseconds of rasterization
+//! plus a pipe write. Calling into a plugin from the render thread would mean either
+//! stalling a frame or copying a raster per frame; a worker means the render thread
+//! only ever reads an already-published layer. The cost is that a panel lags by up to
+//! one evaluation, which at the cadence a panel needs — once a second for a countdown,
+//! never for a tally — is not perceptible.
+//!
+//! # The loop
+//!
+//! Four steps, in this order, every turn:
+//!
+//! 1. **Drain each session's messages.** Non-blocking, so a plugin that is silent
+//!    costs nothing.
+//! 2. **Publish the layers.** The only place a raster becomes a layer, so the panel
+//!    channel is written from exactly one place.
+//! 3. **Wait**, on the command channel, for a bounded interval.
+//! 4. **Advance.** Ticks to plugins, the input feed, and the bubbles' lifetimes.
+//!
+//! The wait is the interesting part. A worker whose plugins have nothing to say does
+//! not need to run at all, so the interval is short only while something is
+//! clock-driven — and a press wakes it immediately, so the response is still
+//! instant.
 
-use crate::LocalTimeCache;
-use crate::engine::PluginInstance;
+use crate::bubble::BubbleSet;
 use crate::host::HostFacts;
+use crate::input_feed::FeedSet;
+use crate::local_time::LocalTimeCache;
+use crate::model_request::ModelRequestRouter;
+use crate::session::{HANDSHAKE_TIMEOUT, Incoming, Session, SessionOutcome, SessionState};
 use crate::store::PluginStore;
 use bongocat_plugin_protocol::{
-    BehaviorAction, BehaviorId, InstalledPlugin, PluginCatalogEntry, PluginError, PluginErrorCode,
-    PluginId, PluginManifest, SceneNode, SpacerNode,
-};
-use bongocat_plugin_render::{
-    DecodedImage, FontBook, ImageLibrary, RenderedPanel, TextMeasurer, render_contribution,
+    ConfigDocument, InstalledPlugin, LogLevel, ModelRequest, PluginCatalogEntry, PluginError,
+    PluginErrorCode, PluginId, PluginManifest, Subscription,
 };
 use bongocat_render::{OverlayLayer, OverlayLayerIds, OverlayLayerProducer};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// The cadence a worker evaluates at when something needs the clock.
-pub const EVALUATION_INTERVAL: Duration = Duration::from_millis(200);
-
-/// The cadence a worker evaluates at when only presses can change anything.
+/// The shortest interval a worker waits between evaluations.
 ///
-/// A panel of nothing but counters is not re-evaluated sixty times a second to
-/// produce sixty identical rasters, so a worker whose panels are all press-driven
-/// sleeps on its command channel instead. A press wakes it, so the response is
-/// still immediate.
+/// Short enough that a countdown is not visibly behind and a press is answered
+/// immediately, long enough that the loop is not a busy wait on a machine with four
+/// idle plugins.
+pub const EVALUATION_INTERVAL: Duration = Duration::from_millis(100);
+
+/// The interval a worker waits when nothing it runs can change without a command.
+///
+/// A panel of nothing but a tally is not re-evaluated sixty times a second to produce
+/// sixty identical rasters, so a worker whose panels are all press-driven sleeps on
+/// its command channel instead. A press wakes it, so the response is still immediate.
 pub const IDLE_EVALUATION_INTERVAL: Duration = Duration::from_secs(3600);
+
+/// How many ticks a plugin may skip between two of them.
+///
+/// The host's own cadence is bounded at 240 Hz and a plugin does not need one message
+/// per tick; this keeps the pipe from being the bottleneck on a fast machine while a
+/// panel still gets a tick often enough to count seconds.
+pub const MAXIMUM_TICK_INTERVAL: Duration = Duration::from_millis(250);
 
 /// The most plugins that may be enabled at once.
 ///
 /// A bound rather than a preference: every enabled plugin is a layer on the model
 /// window and layers overlap, so past a handful the model is not visible — which
-/// defeats the point of a panel that sits beside it.
+/// defeats the point of a panel that sits beside it. It is also a bound on the number
+/// of processes this worker is responsible for.
 pub const MAXIMUM_ENABLED_PLUGINS: usize = 4;
 
 /// How many commands may be queued before a send is dropped.
 const COMMAND_CAPACITY: usize = 32;
+
+/// The raster scale panels are drawn at.
+///
+/// One device pixel per logical pixel. A plugin's panel is authored in logical pixels
+/// so it is the same size relative to the window at every display scale, and the
+/// renderer's own scale would double that work for a panel whose text is already
+/// rasterized at the display's own resolution. Clamped by the renderer's bounds
+/// rather than here, because those are the ones a texture has to satisfy.
+pub const RASTER_SCALE: f32 = 1.0;
 
 /// What the worker is doing right now.
 #[derive(Clone, Debug, PartialEq)]
 pub enum PluginPhase {
     /// Working, with no operation in progress.
     Idle,
+    /// Re-reading the catalog.
     RefreshingCatalog,
+    /// Fetching and installing one plugin.
     Installing(PluginId),
+    /// Removing one plugin and its files.
     Removing(PluginId),
+    /// The last thing that happened went wrong.
     Failed(PluginError),
 }
 
@@ -74,15 +115,39 @@ impl PluginPhase {
 /// One plugin, as the plugin center lists it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PluginEntry {
+    /// The id, and the version, as the archive the store holds or the catalog offers.
     pub manifest: PluginManifest,
+    /// What the running plugin says about itself.
+    ///
+    /// [`None`] for a plugin that is not running — not installed, or installed and
+    /// not yet started — and that is why the manifest is kept alongside it: the center
+    /// can show a plugin whose process has not started yet.
+    pub descriptor: Option<bongocat_plugin_protocol::PluginDescriptor>,
     pub installed: bool,
     pub enabled: bool,
+    /// Whether the process is alive right now.
+    pub running: bool,
+    /// The plugin's own settings, as its file holds them.
+    pub config: ConfigDocument,
     /// The version the catalog offers, when it offers one for this host.
     pub available_version: Option<bongocat_plugin_protocol::PluginVersion>,
     /// Whether an installed version is older than the one on offer.
     pub update_available: bool,
     /// Why this plugin cannot be installed here, when it cannot.
     pub refusal: Option<PluginError>,
+    /// Why the plugin is not running, when it is not.
+    pub failure: Option<PluginError>,
+    /// How many times its process has been restarted this run.
+    pub restarts: u32,
+    /// The feeds it asked for.
+    pub subscriptions: Vec<Subscription>,
+    /// What this plugin has written this run, oldest first.
+    ///
+    /// Shown on the card rather than in the product's log file, because the product's
+    /// log is a closed vocabulary of event codes and a plugin's arbitrary text would
+    /// either need a code per plugin or an escape hatch, and both weaken a log the
+    /// product reads by machine.
+    pub log: Vec<crate::plugin_log::Line>,
 }
 
 impl PluginEntry {
@@ -94,6 +159,18 @@ impl PluginEntry {
     /// Whether it says "update".
     pub const fn is_updatable(&self) -> bool {
         self.update_available
+    }
+
+    /// The icon to show on this plugin's card.
+    ///
+    /// The running plugin's own icon when it is running, because a plugin may improve
+    /// the emoji it ships in a later version, and the archive's otherwise — which is
+    /// what a plugin the user has not installed has.
+    pub fn icon(&self) -> bongocat_plugin_protocol::PluginIcon {
+        self.descriptor
+            .as_ref()
+            .map(|descriptor| descriptor.icon.clone())
+            .unwrap_or_else(|| self.manifest.display_icon())
     }
 }
 
@@ -115,8 +192,7 @@ pub struct PluginSnapshot {
     /// Without this the center cannot tell "not looked yet" from "looked and there
     /// is nothing", and a worker that has not read one — because a read is pending,
     /// or because the first read has not finished — would render a loading state
-    /// forever. An empty list is an answer, and only an unread catalog is a
-    /// question.
+    /// forever. An empty list is an answer, and only an unread catalog is a question.
     pub catalog_read: bool,
 }
 
@@ -125,6 +201,17 @@ impl PluginSnapshot {
     pub fn entry(&self, id: &PluginId) -> Option<&PluginEntry> {
         self.entries.iter().find(|entry| &entry.manifest.id == id)
     }
+
+    /// The settings of one plugin, for the configuration panel.
+    ///
+    /// `None` for a plugin with no settings at all, which is the panel's own empty
+    /// state — a panel that is not shown because there is nothing to change in it.
+    pub fn settings_of(&self, id: &PluginId) -> Option<&bongocat_plugin_protocol::ConfigSchema> {
+        self.entry(id)
+            .and_then(|entry| entry.descriptor.as_ref())
+            .map(|descriptor| &descriptor.config)
+            .filter(|schema| !schema.fields.is_empty())
+    }
 }
 
 /// What the worker reports about itself, for a log line or a diagnostics export.
@@ -132,9 +219,34 @@ impl PluginSnapshot {
 pub struct PluginDiagnostics {
     pub evaluations: u64,
     pub layers_published: u64,
+    pub sessions_started: u64,
+    pub session_failures: u64,
     pub raster_failures: u64,
     pub presses_ignored: u64,
     pub presses_handled: u64,
+    pub input_dropped: u64,
+    pub model_requests: u64,
+    /// Model requests the product could not carry out, so a plugin that keeps asking
+    /// for a motion this model does not have is visible rather than merely absent.
+    pub model_requests_refused: u64,
+    pub bubbles_shown: u64,
+}
+
+impl PluginDiagnostics {
+    /// Every counter, summed, for the run's total.
+    pub fn total(&self) -> u64 {
+        self.evaluations
+            + self.layers_published
+            + self.sessions_started
+            + self.session_failures
+            + self.raster_failures
+            + self.presses_ignored
+            + self.presses_handled
+            + self.input_dropped
+            + self.model_requests
+            + self.model_requests_refused
+            + self.bubbles_shown
+    }
 }
 
 /// A request the worker takes.
@@ -151,18 +263,34 @@ pub enum PluginCommand {
     /// A press inside a layer, in that layer's own raster pixels.
     ///
     /// Addressed by layer rather than by plugin id: the overlay's hit test knows
-    /// which layer was hit and nothing else, and the layer ids are this worker's
-    /// own allocation, so it is the only thing that can turn one back into a
-    /// plugin. A layer id that names no loaded plugin is a press for a panel that
-    /// has since been switched off, and is counted as ignored.
+    /// which layer was hit and nothing else, and the layer ids are this worker's own
+    /// allocation, so it is the only thing that can turn one back into a plugin. A
+    /// layer id that names no loaded plugin is a press for a panel that has since
+    /// been switched off, and is counted as ignored.
     Press { layer: u64, x: f32, y: f32 },
+    /// The user's language changed.
+    ///
+    /// Republished on every tick rather than only at the handshake, because a plugin
+    /// resolves its own strings against the locale it was handed and a user who
+    /// switches language expects a panel that is in it to switch with them. A plugin
+    /// running when this arrives sees the new value on its next tick.
+    SetLocale { locale: String },
+    /// The user changed one of a plugin's settings.
+    ///
+    /// The whole document rather than one field, because the plugin writes its own
+    /// file atomically and a patch would have to be merged by a side that does not
+    /// own the file.
+    SetConfig {
+        id: PluginId,
+        config: ConfigDocument,
+    },
     /// Stop the worker.
     ///
     /// An explicit command rather than "the endpoint was dropped", because the
-    /// product holds the endpoint for the whole run and the shutdown order needs
-    /// the worker to stop *before* the renderer's GPU resources are released —
-    /// a thread that stopped because its last handle went away would stop at an
-    /// arbitrary point in that order.
+    /// product holds the endpoint for the whole run and the shutdown order needs the
+    /// worker to stop *before* the renderer's GPU resources are released — a thread
+    /// that stopped because its last handle went away would stop at an arbitrary
+    /// point in that order.
     Shutdown,
 }
 
@@ -194,9 +322,9 @@ impl PluginWorkerEndpoint {
 /// The model window's presses, turned into worker commands.
 ///
 /// The overlay holds one of these from the moment the overlay starts until it is
-/// dropped, and the endpoint inside it keeps the worker's command channel open
-/// for the whole run — so the sink going away is a window being replaced, not a
-/// worker stopping. The worker stops on an explicit `Shutdown`.
+/// dropped, and the endpoint inside it keeps the worker's command channel open for
+/// the whole run — so the sink going away is a window being replaced, not a worker
+/// stopping. The worker stops on an explicit `Shutdown`.
 #[derive(Clone, Debug)]
 pub struct PluginPressSink {
     endpoint: PluginWorkerEndpoint,
@@ -248,28 +376,6 @@ pub enum PluginWorkerJoinError {
     Panicked(String),
 }
 
-/// One loaded plugin, with everything the worker needs to draw and press it.
-struct Loaded {
-    manifest: PluginManifest,
-    instance: PluginInstance,
-    enabled: bool,
-    images: ImageLibrary,
-    /// Stable while the plugin is loaded, so the overlay can keep one texture for
-    /// it across content changes.
-    layer_id: u64,
-    /// The panel as last drawn, which is what a press is tested against.
-    panel: Option<RenderedPanel>,
-    /// The buttons this scene declared, in scene order.
-    buttons: Vec<ButtonBinding>,
-}
-
-#[derive(Clone)]
-struct ButtonBinding {
-    id: String,
-    target: Option<BehaviorId>,
-    action: BehaviorAction,
-}
-
 /// State shared with the snapshot reader, so the plugin center can read a revision
 /// cheaply and take the full snapshot only when it moved.
 #[derive(Debug)]
@@ -282,9 +388,9 @@ struct SharedState {
 /// commands.
 ///
 /// Deliberately not the handle: joining the thread is a shutdown decision the
-/// product makes at one point in its own order, and a reader that could also stop
-/// the worker would let a settings-window button take the process's shutdown
-/// hostage. Two objects, one owner each, is what keeps that impossible.
+/// product makes at one point in its own order, and a reader that could also stop the
+/// worker would let a settings-window button take the process's shutdown hostage.
+/// Two objects, one owner each, is what keeps that impossible.
 #[derive(Clone, Debug)]
 pub struct PluginWorkerReader {
     endpoint: PluginWorkerEndpoint,
@@ -340,11 +446,10 @@ impl PluginWorkerHandle {
 
     /// A command channel that asks this worker to stop when it is dropped.
     ///
-    /// The product's shutdown order needs the worker stopped *before* the
-    /// renderer's GPU resources are released, and it holds the endpoint for the
-    /// whole run — so stopping has to be something it asks for, at the point in the
-    /// order where it wants it, rather than something that happens when the last
-    /// handle goes away.
+    /// The product's shutdown order needs the worker stopped *before* the renderer's
+    /// GPU resources are released, and it holds the endpoint for the whole run — so
+    /// stopping has to be something it asks for, at the point in the order where it
+    /// wants it, rather than something that happens when the last handle goes away.
     pub fn stopper(&self, endpoint: &PluginWorkerEndpoint) -> WorkerStopper {
         WorkerStopper {
             endpoint: endpoint.clone(),
@@ -408,33 +513,7 @@ impl PluginWorkerHandle {
     }
 }
 
-/// Everything the worker needs to run.
-struct Worker {
-    store: PluginStore,
-    layer_producer: OverlayLayerProducer,
-    catalog_directory: PathBuf,
-    /// The local time, published by the main thread. The worker reads it and
-    /// never asks the operating system itself — see `local_time`.
-    clock: Arc<LocalTimeCache>,
-    /// The runtime, read once per evaluation for the facts a panel may show.
-    /// Reading a snapshot is a lock and a copy; it is not on the render path, and
-    /// a plugin that shows the active model needs it.
-    runtime: Option<bongocat_runtime::RuntimeClient>,
-    state: Arc<Mutex<SharedState>>,
-    catalog: Option<crate::LoadedCatalog>,
-    /// Where a catalog is read from. Decided by the product, which knows the build
-    /// environment, and read only here.
-    catalog_mode: CatalogMode,
-    /// Whether a catalog has been read. Mirrors the published snapshot and is kept
-    /// here because a read is the worker's own fact, not something a caller
-    /// reports.
-    catalog_read: bool,
-    plugins: BTreeMap<PluginId, Loaded>,
-    measured_at: Instant,
-    diagnostics: PluginDiagnostics,
-}
-
-/// Where the worker reads its catalog from.
+/// Where a worker reads its catalog from.
 ///
 /// Decided once, by the product, because only it knows the build environment — and
 /// the two environments have no other reason to differ. A Development build has a
@@ -448,8 +527,7 @@ pub enum CatalogMode {
     /// publish step. A directory with no catalog in it is an empty catalog, not a
     /// failure.
     Directory,
-    /// The published catalog, fetched through the updater's mirrors in their
-    /// order.
+    /// The published catalog, fetched through the updater's mirrors in their order.
     Network,
 }
 
@@ -457,6 +535,13 @@ pub enum CatalogMode {
 ///
 /// The thread is named so a hang or a crash names the thing that caused it in a
 /// stack dump or a task manager, which is the only clue available afterwards.
+/// Start a worker on a new thread.
+///
+/// Every argument is a fact only the product knows — where its storage is, which
+/// environment it was built for, what version it is, which language the user reads —
+/// which is the point: the worker decides *how* plugins run and the product decides
+/// *for whom*.
+#[allow(clippy::too_many_arguments)]
 pub fn start(
     store: PluginStore,
     catalog_directory: PathBuf,
@@ -464,6 +549,12 @@ pub fn start(
     layer_producer: OverlayLayerProducer,
     clock: Arc<LocalTimeCache>,
     runtime: Option<bongocat_runtime::RuntimeClient>,
+    // Where plugins keep the state they wrote, what version this build is, and which
+    // language the user reads — all three facts only the product holds, and all three
+    // handed to plugins rather than invented here.
+    plugin_data: PathBuf,
+    app_version: String,
+    locale: String,
 ) -> Result<(PluginWorkerHandle, PluginWorkerEndpoint), PluginError> {
     store.create()?;
     let (commands, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);
@@ -484,11 +575,18 @@ pub fn start(
                 catalog_mode,
                 catalog_read: false,
                 clock,
+                router: ModelRequestRouter::new(runtime.clone()),
                 runtime,
+                plugin_data,
+                app_version,
                 state: thread_state,
                 catalog: None,
-                plugins: BTreeMap::new(),
-                measured_at: Instant::now(),
+                sessions: BTreeMap::new(),
+                feeds: FeedSet::new(),
+                bubbles: BubbleSet::new(),
+                started: Instant::now(),
+                last_tick: Instant::now(),
+                locale,
                 diagnostics: PluginDiagnostics::default(),
             };
             worker.run(receiver, &layer_ids);
@@ -506,39 +604,81 @@ pub fn start(
     ))
 }
 
+/// Everything the worker needs to run.
+struct Worker {
+    store: PluginStore,
+    layer_producer: OverlayLayerProducer,
+    catalog_directory: PathBuf,
+    /// The local time, published by the main thread. The worker reads it and never
+    /// asks the operating system itself — see `local_time`.
+    clock: Arc<LocalTimeCache>,
+    /// The runtime, read once per evaluation for the facts a plugin may show.
+    runtime: Option<bongocat_runtime::RuntimeClient>,
+    /// Where plugins keep the state they wrote.
+    ///
+    /// A directory the host creates per plugin and never writes inside: everything in
+    /// it belongs to the plugin, which is what keeps an update from replacing it.
+    plugin_data: PathBuf,
+    /// Where a plugin's model requests go.
+    router: ModelRequestRouter,
+    /// The application version, sent in each plugin's handshake.
+    app_version: String,
+    /// The user's language, republished to plugins on every tick.
+    locale: String,
+    state: Arc<Mutex<SharedState>>,
+    catalog: Option<crate::LoadedCatalog>,
+    /// Where a catalog is read from. Decided by the product, which knows the build
+    /// environment, and read only here.
+    catalog_mode: CatalogMode,
+    /// Whether a catalog has been read. Mirrors the published snapshot and is kept
+    /// here because a read is the worker's own fact, not something a caller reports.
+    catalog_read: bool,
+    /// The running plugins, by id.
+    sessions: BTreeMap<PluginId, Session>,
+    /// Each plugin's input queue, for the plugins that asked for one.
+    feeds: FeedSet,
+    /// The bubbles currently showing, by layer.
+    bubbles: BubbleSet,
+    /// When this worker started, which is what a plugin's `elapsed_ms` counts from.
+    started: Instant,
+    /// When a tick was last sent, so the interval is bounded without depending on how
+    /// often the loop happens to run.
+    last_tick: Instant,
+    diagnostics: PluginDiagnostics,
+}
+
 impl Worker {
     fn run(&mut self, receiver: mpsc::Receiver<PluginCommand>, layer_ids: &OverlayLayerIds) {
+        let mut fonts = bongocat_plugin_render::TextMeasurer::new(
+            bongocat_plugin_render::FontBook::load_system(),
+        );
         self.reload(layer_ids);
-        let mut fonts = TextMeasurer::new(FontBook::load_system());
-        // One evaluation before the first wait, so a panel whose behaviors are all
-        // press-driven still appears at start-up. Without it a stopped timer would
-        // not be drawn until something woke the worker, and a press-driven panel is
-        // never woken by a tick.
-        self.evaluate(&mut fonts);
-        // The catalog is read after the first evaluation, not before it. A Production
-        // build's read is a network request across several mirrors, and an installed
-        // panel must not wait for it to appear — so the panels are already on the
-        // model window while the page still says it is reading.
+        // The catalog is read after the installed set is loaded, not before it. A
+        // Production build's read is a network request across several mirrors, and an
+        // installed panel must not wait for it to appear — so the panels are already
+        // on the model window while the page still says it is reading.
         //
         // The read is the worker's own thread, so a press that arrives while it is in
         // flight waits in the command channel rather than being lost; the channel is
         // bounded and this happens once per run.
         self.refresh_catalog();
         loop {
-            let interval = if self.needs_clock() {
-                EVALUATION_INTERVAL
-            } else {
-                IDLE_EVALUATION_INTERVAL
-            };
-            match receiver.recv_timeout(interval) {
-                Ok(PluginCommand::Shutdown) => break,
-                Ok(command) => self.handle(command, &mut fonts, layer_ids),
-                Err(mpsc::RecvTimeoutError::Timeout) => self.evaluate(&mut fonts),
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            let outcome = self.turn(&mut fonts, layer_ids);
+            match outcome {
+                Turn::Wait(duration) => match receiver.recv_timeout(duration) {
+                    Ok(PluginCommand::Shutdown) => break,
+                    Ok(command) => self.handle(command, &mut fonts, layer_ids),
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                },
             }
         }
-        // Nothing is published after this point: the render thread may already be
-        // releasing the GPU.
+        // Every plugin is stopped before this thread ends, so nothing can still be
+        // writing to a renderer that is about to be released.
+        for session in self.sessions.values() {
+            session.stop();
+        }
+        self.sessions.clear();
         self.layer_producer.close();
         self.state
             .lock()
@@ -546,17 +686,345 @@ impl Worker {
             .stopped = true;
     }
 
-    /// Whether any panel can change without a press.
+    /// One pass: drain, publish, decide whether to keep waiting.
+    fn turn(
+        &mut self,
+        fonts: &mut bongocat_plugin_render::TextMeasurer,
+        layer_ids: &OverlayLayerIds,
+    ) -> Turn {
+        self.drain(fonts, layer_ids);
+        self.publish_layers(layer_ids);
+        if self.needs_clock() {
+            self.advance(layer_ids);
+            self.drain(fonts, layer_ids);
+            self.publish_layers(layer_ids);
+            return Turn::Wait(EVALUATION_INTERVAL);
+        }
+        // Nothing a plugin is running can change without a command. A press, a
+        // configuration change or a catalog refresh all arrive on the command channel
+        // and wake this, so the long wait costs nothing but a tick the panel did not
+        // need.
+        Turn::Wait(IDLE_EVALUATION_INTERVAL)
+    }
+
+    /// Whether anything a plugin is running can change without a command.
     fn needs_clock(&self) -> bool {
-        self.plugins
+        self.sessions.values().any(|session| session.is_running())
+    }
+
+    /// Read every session's messages and act on them.
+    ///
+    /// Two passes, because the things acted on — the feeds, the bubbles, the model
+    /// router — belong to the worker while the messages belong to a session. Taking
+    /// everything first and deciding afterwards is what keeps one borrow from
+    /// excluding the other, and it has the useful side effect that the order in which
+    /// sessions are read does not depend on which of them had something to say.
+    fn drain(
+        &mut self,
+        fonts: &mut bongocat_plugin_render::TextMeasurer,
+        layer_ids: &OverlayLayerIds,
+    ) {
+        let mut pending: Vec<(PluginId, Incoming)> = Vec::new();
+        for session in self.sessions.values_mut() {
+            session.reap();
+            while let Some(message) = session.take_message() {
+                pending.push((session.id().clone(), message));
+            }
+        }
+        for (id, message) in pending {
+            let Some(session) = self.sessions.get_mut(&id) else {
+                // The plugin was uninstalled between taking the message and acting on
+                // it, which can only happen for a message read on the same turn as an
+                // uninstall — and a message for a plugin that is gone has nowhere to go.
+                continue;
+            };
+            match message {
+                Incoming::Message(message) => {
+                    let outcome = session.on_child_message(message, fonts, RASTER_SCALE);
+                    self.on_outcome(&id, outcome, layer_ids);
+                }
+                Incoming::Stderr(line) => {
+                    // Recorded on the worker's own thread rather than the reader's,
+                    // because a plugin's log ring is thread-local and this is the
+                    // thread the center reads it back from.
+                    crate::plugin_log::record(&id, LogLevel::Info, &line);
+                }
+                Incoming::Exited(code) => {
+                    session.on_exit(code);
+                    self.diagnostics.session_failures =
+                        self.diagnostics.session_failures.saturating_add(1);
+                    // Its queue belongs to a process that no longer exists, and
+                    // carrying it forward would show a tally that includes events from
+                    // before the plugin restarted.
+                    self.feeds.feed_mut(&id).clear();
+                }
+                Incoming::Refused(error) => session.on_refused(error),
+            }
+        }
+    }
+
+    /// Apply what one message from a plugin meant.
+    fn on_outcome(
+        &mut self,
+        plugin: &PluginId,
+        outcome: SessionOutcome,
+        layer_ids: &OverlayLayerIds,
+    ) {
+        let id = plugin;
+        match outcome {
+            SessionOutcome::Ready => {
+                self.diagnostics.sessions_started =
+                    self.diagnostics.sessions_started.saturating_add(1);
+                if self
+                    .sessions
+                    .get(id)
+                    .is_some_and(|session| session.wants(Subscription::Input))
+                {
+                    // A feed exists only for a plugin that asked, which is what makes
+                    // asking a statement of intent rather than a hint.
+                    let _ = self.feeds.feed_mut(id);
+                }
+                self.publish(None, None);
+            }
+            SessionOutcome::ModelRequested { id, request } => {
+                self.route_model_request(plugin, id, &request, layer_ids);
+            }
+            SessionOutcome::ConfigChanged | SessionOutcome::Failed(_) => {
+                self.publish(None, None);
+            }
+            _ => {}
+        }
+    }
+
+    /// Advance time: tick every plugin, deliver input, expire bubbles.
+    fn advance(&mut self, layer_ids: &OverlayLayerIds) {
+        let now = Instant::now();
+        let elapsed_ms = now
+            .saturating_duration_since(self.started)
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64;
+        let facts = self.facts();
+        let state = facts.to_host_state(&self.locale, &self.app_version);
+        let ticked = now.saturating_duration_since(self.last_tick) >= MAXIMUM_TICK_INTERVAL;
+        if ticked {
+            self.last_tick = now;
+        }
+
+        let mut running: Vec<PluginId> = self
+            .sessions
             .values()
-            .any(|plugin| plugin.enabled && plugin.instance.is_clock_driven())
+            .filter(|session| session.is_running())
+            .map(|session| session.id().clone())
+            .collect();
+        let expired = self.bubbles.take_expired(now);
+        if !expired.is_empty() {
+            // A bubble that has been up long enough is withdrawn, and the channel is
+            // the only way to say so — republishing without it is that withdrawal.
+            self.publish_layers(layer_ids);
+        }
+        // A plugin that has not said hello in time is stopped rather than waited on
+        // for ever: it is a process the host is responsible for, and a session that
+        // never completes is a plugin that will never contribute anything.
+        let mut abandoned: Vec<PluginId> = self
+            .sessions
+            .iter()
+            .filter(|(_, session)| {
+                session.state() == SessionState::Starting
+                    && now.saturating_duration_since(session.started_at()) >= HANDSHAKE_TIMEOUT
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in abandoned.drain(..) {
+            if let Some(session) = self.sessions.get_mut(&id) {
+                session.give_up_handshake();
+            }
+            self.publish(
+                None,
+                Some(PluginError::with_detail(
+                    PluginErrorCode::PluginHandshakeFailed,
+                    format!(
+                        "the plugin did not announce itself within {} seconds",
+                        HANDSHAKE_TIMEOUT.as_secs()
+                    ),
+                )),
+            );
+        }
+        // A plugin that ended is started again, up to a budget: a genuine crash should
+        // not need the user to restart the app, and a plugin that cannot start at all
+        // must not become a loop of processes.
+        let mut restartable: Vec<PluginId> = self
+            .sessions
+            .iter()
+            .filter(|(_, session)| session.state() == SessionState::Exited)
+            .filter(|(_, session)| crate::restart_is_allowed(session.restarts()))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in restartable.drain(..) {
+            self.restart(&id, layer_ids);
+        }
+        for id in running.drain(..) {
+            let wants_input = self
+                .sessions
+                .get(&id)
+                .is_some_and(|session| session.wants(Subscription::Input));
+            let batch = if wants_input {
+                self.feeds.feed_mut(&id).drain()
+            } else {
+                Vec::new()
+            };
+            if let Some(session) = self.sessions.get(&id) {
+                if ticked {
+                    session.tick(elapsed_ms, &state, self.clock.read());
+                }
+                if !batch.is_empty() {
+                    session.send_input(batch);
+                }
+            }
+        }
+    }
+
+    /// Start one plugin's process again after it ended.
+    ///
+    /// The previous one is stopped and dropped first, so a plugin that leaked a
+    /// process of its own is not joined to a second copy of itself: the host reaps the
+    /// old handle and starts a new one, and the budget is what stops that becoming a
+    /// loop.
+    fn restart(&mut self, id: &PluginId, layer_ids: &OverlayLayerIds) {
+        let Some(record) = self
+            .store
+            .installed()
+            .into_iter()
+            .find(|record| &record.id == id)
+        else {
+            // It was uninstalled while it was running; nothing to restart.
+            self.sessions.remove(id);
+            return;
+        };
+        let previous = self.sessions.remove(id);
+        let restarts = previous
+            .as_ref()
+            .map_or(0, |session| session.restarts().saturating_add(1));
+        if let Some(previous) = previous {
+            previous.stop();
+        }
+        match self.start_session(&record, layer_ids) {
+            Ok(mut session) => {
+                session.set_restarts(restarts);
+                self.sessions.insert(id.clone(), session);
+                self.publish(None, None);
+            }
+            Err(error) => {
+                crate::plugin_log::record(
+                    id,
+                    bongocat_plugin_protocol::LogLevel::Warn,
+                    &format!("it could not be started again: {error}"),
+                );
+                self.publish(None, Some(error));
+            }
+        }
+    }
+
+    /// Carry out one plugin's request, or answer why not.
+    ///
+    /// Two owners, decided here rather than inside either: a bubble is chrome drawn on
+    /// the layer channel and belongs to this worker, and everything else is the model
+    /// itself and belongs to the runtime through the router. The split is by *system*
+    /// rather than by request kind, which is why it is one test rather than two
+    /// code paths — and it is checked in the same place the request arrived, so a
+    /// plugin's own id is the id its answer carries.
+    fn route_model_request(
+        &mut self,
+        plugin: &PluginId,
+        request_id: u64,
+        request: &ModelRequest,
+        layer_ids: &OverlayLayerIds,
+    ) {
+        let Some(session) = self.sessions.get(plugin) else {
+            return;
+        };
+        if crate::bubble::is_bubble_request(request) {
+            self.show_bubble(plugin, request, request_id, layer_ids);
+            return;
+        }
+        if !crate::ModelRequestRouter::routes_here(request) {
+            return;
+        }
+        let subscribed = session.wants(Subscription::ModelReaction);
+        let answer = self.router.answer(request_id, request, subscribed);
+        self.diagnostics.model_requests = self.diagnostics.model_requests.saturating_add(1);
+        if !matches!(answer.outcome, bongocat_plugin_protocol::ModelOutcome::Done) {
+            self.diagnostics.model_requests_refused =
+                self.diagnostics.model_requests_refused.saturating_add(1);
+        }
+        if let Some(session) = self.sessions.get_mut(plugin) {
+            session.write_answer(answer.id, answer.outcome);
+        }
+    }
+
+    /// Show one bubble on a plugin's own layer, and answer the request.
+    ///
+    /// The layer is the plugin's, so two plugins can each have a bubble without either
+    /// silencing the other, and a bubble outlives no plugin: taking it down is the
+    /// layer going away, not a plugin being told to stop.
+    fn show_bubble(
+        &mut self,
+        plugin: &PluginId,
+        request: &ModelRequest,
+        request_id: u64,
+        layer_ids: &OverlayLayerIds,
+    ) {
+        let Some(session) = self.sessions.get(plugin) else {
+            return;
+        };
+        let layer = session.layer_id();
+        let outcome = match crate::bubble::bubble_from(request, &self.locale, Instant::now()) {
+            Some(bubble) => {
+                self.bubbles.show(layer, bubble);
+                self.diagnostics.bubbles_shown = self.diagnostics.bubbles_shown.saturating_add(1);
+                bongocat_plugin_protocol::ModelOutcome::Done
+            }
+            // A hide, or anything this worker cannot make a bubble from. Answered
+            // rather than dropped: a plugin that asked and got nothing would have to
+            // time out to learn the answer.
+            None => {
+                self.bubbles.hide(layer);
+                bongocat_plugin_protocol::ModelOutcome::Done
+            }
+        };
+        if let Some(session) = self.sessions.get_mut(plugin) {
+            session.write_answer(request_id, outcome);
+        }
+        self.publish_layers(layer_ids);
+    }
+
+    /// Publish one layer per panel, plus one per bubble.
+    fn publish_layers(&mut self, layer_ids: &OverlayLayerIds) {
+        let mut layers: Vec<OverlayLayer> = Vec::new();
+        let mut used: Vec<u64> = Vec::new();
+        for session in self.sessions.values() {
+            let layer_id = session.layer_id();
+            if let Some(rendered) = session.rendered() {
+                layers.push(OverlayLayer {
+                    id: layer_id,
+                    placement: rendered.to_placement(),
+                    raster: rendered.to_raster(),
+                });
+                used.push(layer_id);
+            }
+        }
+        for layer in self.bubbles.layer_ids() {
+            used.push(layer);
+        }
+        if self.layer_producer.publish_checked(layers).is_ok() {
+            self.diagnostics.layers_published = self.diagnostics.layers_published.saturating_add(1);
+        }
+        let _ = layer_ids;
     }
 
     fn handle(
         &mut self,
         command: PluginCommand,
-        fonts: &mut TextMeasurer,
+        fonts: &mut bongocat_plugin_render::TextMeasurer,
         layer_ids: &OverlayLayerIds,
     ) {
         match command {
@@ -565,12 +1033,18 @@ impl Worker {
             PluginCommand::Uninstall(id) => self.uninstall(&id),
             PluginCommand::SetEnabled { id, enabled } => {
                 self.set_enabled(&id, enabled, layer_ids);
-                self.evaluate(fonts);
+                self.drain(fonts, layer_ids);
             }
             PluginCommand::Press { layer, x, y } => {
                 if self.press(layer, x, y) {
-                    self.evaluate(fonts);
+                    self.drain(fonts, layer_ids);
+                    self.publish_layers(layer_ids);
                 }
+            }
+            PluginCommand::SetConfig { id, config } => self.set_config(&id, config),
+            PluginCommand::SetLocale { locale } => {
+                self.locale = locale;
+                self.publish(None, None);
             }
             // Handled in `run`, which is where the loop breaks. Reaching it here
             // would mean a command was queued after the loop had already read a
@@ -584,10 +1058,10 @@ impl Worker {
     fn publish(&mut self, phase: Option<PluginPhase>, last_error: Option<PluginError>) {
         let entries = self.entries();
         let active = self
-            .plugins
+            .sessions
             .values()
-            .filter(|plugin| plugin.enabled)
-            .map(|plugin| plugin.manifest.id.clone())
+            .filter(|session| session.is_running())
+            .map(|session| session.id().clone())
             .collect();
         let mut state = self
             .state
@@ -609,56 +1083,70 @@ impl Worker {
     fn entries(&self) -> Vec<PluginEntry> {
         let mut entries: BTreeMap<PluginId, PluginEntry> = BTreeMap::new();
         for record in self.store.installed() {
-            let Some(manifest) = self
-                .plugins
-                .get(&record.id)
-                .map(|plugin| plugin.manifest.clone())
-                .or_else(|| self.store.manifest(&record).ok())
-            else {
-                // A record whose manifest will not parse is not listed. The
-                // failure was reported when it was loaded; listing it here would
-                // show a row with nothing in it.
+            let Ok(manifest) = self.store.manifest(&record) else {
+                // A record whose manifest will not parse is not listed. The failure was
+                // reported when it was read; listing it here would show a row with
+                // nothing in it.
                 continue;
             };
+            let session = self.sessions.get(&record.id);
+            let facts = session.map(|session| session.facts());
             entries.insert(
                 record.id.clone(),
                 PluginEntry {
-                    enabled: self
-                        .plugins
-                        .get(&record.id)
-                        .is_some_and(|plugin| plugin.enabled),
+                    enabled: session.is_some(),
                     installed: true,
                     manifest,
+                    descriptor: facts.as_ref().and_then(|facts| facts.descriptor.clone()),
+                    running: facts.as_ref().is_some_and(|facts| facts.running),
+                    config: facts
+                        .as_ref()
+                        .map(|facts| facts.config.clone())
+                        .unwrap_or_default(),
                     available_version: None,
                     update_available: false,
                     refusal: None,
+                    failure: facts.as_ref().and_then(|facts| facts.failure.clone()),
+                    restarts: facts.as_ref().map_or(0, |facts| facts.restarts),
+                    subscriptions: facts.map(|facts| facts.subscriptions).unwrap_or_default(),
+                    log: crate::plugin_log::lines_for(&record.id),
                 },
             );
         }
         if let Some(catalog) = &self.catalog {
             for offer in &catalog.catalog.plugins {
-                let installed_entry = entries.remove(&offer.id);
+                let installed = entries.remove(&offer.id);
                 let downloadable = offer.download_for(crate::host_platform());
+                let installed_version = installed.as_ref().map(|entry| &entry.manifest.version);
                 entries.insert(
                     offer.id.clone(),
                     PluginEntry {
-                        manifest: installed_entry.as_ref().map_or_else(
+                        manifest: installed.as_ref().map_or_else(
                             || manifest_from_catalog(offer),
                             |entry| entry.manifest.clone(),
                         ),
-                        installed: installed_entry.is_some(),
-                        enabled: self
-                            .plugins
-                            .get(&offer.id)
-                            .is_some_and(|plugin| plugin.enabled),
-                        available_version: downloadable
+                        installed: installed.is_some(),
+                        enabled: installed.as_ref().is_some_and(|entry| entry.enabled),
+                        descriptor: installed
                             .as_ref()
-                            .ok()
-                            .map(|_| offer.version.clone()),
-                        update_available: installed_entry.as_ref().is_some_and(|entry| {
-                            downloadable.is_ok() && offer.version > entry.manifest.version
+                            .and_then(|entry| entry.descriptor.clone()),
+                        running: installed.as_ref().is_some_and(|entry| entry.running),
+                        config: installed
+                            .as_ref()
+                            .map(|entry| entry.config.clone())
+                            .unwrap_or_default(),
+                        available_version: downloadable.as_ref().ok().map(|_| offer.version),
+                        update_available: installed_version.is_some_and(|version| {
+                            downloadable.is_ok() && offer.version > *version
                         }),
                         refusal: downloadable.as_ref().err().cloned(),
+                        failure: installed.as_ref().and_then(|entry| entry.failure.clone()),
+                        restarts: installed.as_ref().map_or(0, |entry| entry.restarts),
+                        subscriptions: installed
+                            .as_ref()
+                            .map(|entry| entry.subscriptions.clone())
+                            .unwrap_or_default(),
+                        log: installed.map(|entry| entry.log).unwrap_or_default(),
                     },
                 );
             }
@@ -666,19 +1154,24 @@ impl Worker {
         entries.into_values().collect()
     }
 
-    /// Read the installed set from disk and load every plugin.
+    /// Read the installed set from disk and start every plugin.
     fn reload(&mut self, layer_ids: &OverlayLayerIds) {
-        self.plugins.clear();
+        for session in self.sessions.values() {
+            session.stop();
+        }
+        self.sessions.clear();
+        self.feeds = FeedSet::new();
+        self.bubbles.clear();
         let mut first_error = None;
         for record in self.store.installed() {
-            match self.load(&record, layer_ids) {
-                Ok(loaded) => {
-                    self.plugins.insert(record.id.clone(), loaded);
+            match self.start_session(&record, layer_ids) {
+                Ok(session) => {
+                    self.sessions.insert(record.id.clone(), session);
                 }
                 Err(error) => {
-                    // A plugin that will not load is reported and skipped. The
-                    // others still run: one broken plugin must not empty the model
-                    // window of every other panel.
+                    // A plugin that will not start is reported and skipped. The others
+                    // still run: one broken plugin must not empty the model window of
+                    // every other panel.
                     first_error.get_or_insert(error);
                 }
             }
@@ -686,64 +1179,21 @@ impl Worker {
         self.publish(Some(PluginPhase::Idle), first_error);
     }
 
-    fn load(
+    /// Start one plugin's process.
+    fn start_session(
         &self,
         record: &InstalledPlugin,
         layer_ids: &OverlayLayerIds,
-    ) -> Result<Loaded, PluginError> {
-        let manifest = self.store.manifest(record)?;
-        let instance = PluginInstance::new(manifest.id.clone(), &manifest.overlay.behaviors)?;
-        let mut inspector = bongocat_plugin_protocol::scene::inspect::Inspector::new();
-        bongocat_plugin_protocol::scene::inspect::walk(&manifest.overlay.scene, 1, &mut inspector)?;
-        crate::validate_bindings(&manifest.overlay.behaviors, &inspector.bindings)?;
-        for binding in &inspector.bindings {
-            let Some((source, _)) = binding.split_once('.') else {
-                continue;
-            };
-            if source == crate::HOST_PREFIX
-                && !bongocat_plugin_protocol::HOST_BINDING_PATHS.contains(&binding.as_str())
-            {
-                return Err(PluginError::with_detail(
-                    PluginErrorCode::UnknownBinding,
-                    binding.clone(),
-                ));
-            }
-        }
-        let mut images = ImageLibrary::new();
-        for asset in &inspector.assets {
-            if images.get(asset).is_some() {
-                continue;
-            }
-            if let Ok(path) = manifest.asset_path(&record.directory, asset)
-                && let Ok(image) = DecodedImage::read_png(&path)
-            {
-                // A missing image leaves its node empty at draw time, which the
-                // render pass handles. Reading it here is only so the bytes are not
-                // re-read on every evaluation.
-                images.insert(asset.clone(), image);
-            }
-        }
-        let buttons = inspector
-            .actions
-            .iter()
-            .map(|action| ButtonBinding {
-                id: action.button.clone(),
-                target: action.target.clone(),
-                // A button's action is declared, so it is used as declared. A
-                // button with no target is a decoration: pressing it counts as
-                // ignored rather than changing anything.
-                action: action.action,
-            })
-            .collect();
-        Ok(Loaded {
-            layer_id: layer_ids.allocate(),
-            manifest,
-            instance,
-            enabled: true,
-            images,
-            panel: None,
-            buttons,
-        })
+    ) -> Result<Session, PluginError> {
+        let data_directory = self.plugin_data.join(record.id.as_str());
+        Session::start(
+            record.id.clone(),
+            record.directory.clone(),
+            data_directory,
+            self.app_version.clone(),
+            self.locale.clone(),
+            layer_ids.allocate(),
+        )
     }
 
     /// Publish a failure, as the phase and as the last error.
@@ -781,8 +1231,7 @@ impl Worker {
     /// The agent is built here rather than kept, because one is only worth holding
     /// for the length of one read and this worker may live for days. A failure to
     /// build one is a failure to read, and is reported as one — a center that
-    /// silently showed an empty catalog would look like a catalog with nothing in
-    /// it.
+    /// silently showed an empty catalog would look like a catalog with nothing in it.
     fn fetch_catalog(&self) -> Result<crate::LoadedCatalog, PluginError> {
         let agent = crate::agent()?;
         crate::fetch_catalog(|url, timeout| crate::download_with(url, timeout, &agent))
@@ -882,9 +1331,13 @@ impl Worker {
 
     fn uninstall(&mut self, id: &PluginId) {
         self.publish(Some(PluginPhase::Removing(id.clone())), None);
-        // The running instance goes first, so a failed delete leaves a plugin that
-        // is no longer drawn rather than one drawn from files on their way out.
-        self.plugins.remove(id);
+        // The running process goes first, so a failed delete leaves a plugin that is
+        // no longer drawn rather than one drawn from files on their way out.
+        if let Some(session) = self.sessions.remove(id) {
+            session.stop();
+        }
+        self.feeds.remove(id);
+        crate::plugin_log::forget(id);
         match self.store.uninstall(id) {
             Ok(()) => self.publish(Some(PluginPhase::Idle), None),
             Err(error) => {
@@ -896,19 +1349,21 @@ impl Worker {
 
     fn set_enabled(&mut self, id: &PluginId, enabled: bool, layer_ids: &OverlayLayerIds) {
         if !enabled {
-            // A disabled plugin is unloaded rather than flagged, so its images and
-            // its manifest are released rather than held for a panel nobody sees.
-            self.plugins.remove(id);
+            // A disabled plugin's process is stopped rather than flagged, so its memory
+            // and its files are released rather than held for a plugin nobody sees.
+            if let Some(session) = self.sessions.remove(id) {
+                session.stop();
+            }
+            self.feeds.remove(id);
             return;
         }
-        if self.plugins.contains_key(id) {
+        if self.sessions.contains_key(id) {
             return;
         }
-        let enabled_count = self.plugins.len();
-        if enabled_count >= MAXIMUM_ENABLED_PLUGINS {
+        if self.sessions.len() >= MAXIMUM_ENABLED_PLUGINS {
             // Refused rather than admitted: the bound is about the model staying
-            // visible, and quietly exceeding it would make every panel smaller than
-            // it declared.
+            // visible, and quietly exceeding it would make every panel smaller than it
+            // declared.
             let error = PluginError::new(PluginErrorCode::TooManyEnabled);
             self.publish(Some(PluginPhase::Failed(error.clone())), Some(error));
             return;
@@ -921,10 +1376,9 @@ impl Worker {
         else {
             return;
         };
-        match self.load(&record, layer_ids) {
-            Ok(mut loaded) => {
-                loaded.enabled = true;
-                self.plugins.insert(id.clone(), loaded);
+        match self.start_session(&record, layer_ids) {
+            Ok(session) => {
+                self.sessions.insert(id.clone(), session);
             }
             Err(error) => {
                 let code = error;
@@ -933,116 +1387,66 @@ impl Worker {
         }
     }
 
-    /// Resolve a press to a button and run the action it names.
+    /// Hand a plugin the settings the user just changed.
     ///
-    /// Reports whether anything changed, so a press that hit nothing does not
+    /// The whole document, and the plugin writes it — which is what keeps a plugin's
+    /// configuration a thing its own author owns rather than a section of the
+    /// application's.
+    fn set_config(&mut self, id: &PluginId, config: ConfigDocument) {
+        let Some(session) = self.sessions.get(id) else {
+            return;
+        };
+        session.send_config(config);
+    }
+
+    /// Resolve a press to a button and hand it to the plugin that declared it.
+    ///
+    /// Reports whether anything was delivered, so a press that hit nothing does not
     /// force a re-rasterization of every other panel.
     fn press(&mut self, layer: u64, x: f32, y: f32) -> bool {
         let Some(id) = self
-            .plugins
-            .iter()
-            .find(|(_, plugin)| plugin.layer_id == layer)
-            .map(|(id, _)| id.clone())
+            .sessions
+            .values()
+            .find(|session| session.layer_id() == layer)
+            .map(|session| session.id().clone())
         else {
             // A press for a layer that is not loaded: the panel was switched off
             // between the click and the command being read, or the overlay's hit
-            // test answered a layer whose plugin has been uninstalled.
-            return false;
-        };
-        let Some(plugin) = self.plugins.get_mut(&id) else {
-            return false;
-        };
-        if !plugin.enabled {
-            self.diagnostics.presses_ignored = self.diagnostics.presses_ignored.saturating_add(1);
-            return false;
-        }
-        // Tested against the panel that was published, not a freshly laid out one:
-        // a press lands on what the user could see, and a layout that moved since
-        // the last evaluation would otherwise make a button pressable somewhere it
-        // is not drawn.
-        let Some(button) = plugin
-            .panel
-            .as_ref()
-            .and_then(|panel| panel.hit_test(x, y))
-            .map(str::to_string)
-        else {
+            // test answered a layer whose plugin has since been uninstalled.
             self.diagnostics.presses_ignored = self.diagnostics.presses_ignored.saturating_add(1);
             return false;
         };
-        let Some(binding) = plugin
-            .buttons
-            .iter()
-            .find(|candidate| candidate.id == button)
-            .cloned()
-        else {
+        let Some(session) = self.sessions.get(&id) else {
             return false;
         };
-        let Some(target) = binding.target.clone() else {
-            // A button with no target draws and does nothing. Refusing it at load
-            // would be stricter, but a panel that shows a pressable-looking
-            // placeholder is a legitimate thing for a plugin to want.
+        let Some(button) = session.press(x, y) else {
             self.diagnostics.presses_ignored = self.diagnostics.presses_ignored.saturating_add(1);
             return false;
         };
-        plugin.instance.apply(&target, binding.action);
+        session.press_button(&button);
         self.diagnostics.presses_handled = self.diagnostics.presses_handled.saturating_add(1);
         true
     }
 
-    /// What the runtime currently says, for the facts a panel may show.
+    /// What the runtime currently says, for the facts a plugin may show.
     ///
     /// A worker with no runtime client — one started before the runtime was up, or
-    /// in a test — reads nothing, so every `host.` binding falls back to the empty
-    /// reading rather than panicking. That is the same picture a runtime in
-    /// `Starting` produces, which is the honest answer for a panel shown before the
-    /// model is.
+    /// in a test — reads nothing, so every plugin sees the hidden-window answer
+    /// rather than a panic. That is the same picture a runtime in `Starting`
+    /// produces, which is the honest answer for a panel shown before the model is.
     fn facts(&self) -> HostFacts {
         self.runtime
             .as_ref()
             .map_or_else(HostFacts::default, |client| {
-                let snapshot = client.snapshot();
-                HostFacts::from_runtime(&snapshot)
+                HostFacts::from_runtime(&client.snapshot())
             })
     }
+}
 
-    /// Advance every plugin and publish the layers.
-    fn evaluate(&mut self, fonts: &mut TextMeasurer) {
-        let now = Instant::now();
-        let elapsed = now.saturating_duration_since(self.measured_at);
-        self.measured_at = now;
-        let clock = self.clock.read();
-        let facts = self.facts();
-        let mut layers = Vec::new();
-        for plugin in self.plugins.values_mut() {
-            if !plugin.enabled {
-                continue;
-            }
-            let mut table = plugin.instance.evaluate(elapsed, clock);
-            facts.write_into(&mut table);
-            match render_contribution(&plugin.manifest.overlay, &table, 1.0, fonts, &plugin.images)
-            {
-                Ok(panel) => {
-                    if !panel.pixels.is_empty() {
-                        layers.push(OverlayLayer {
-                            id: plugin.layer_id,
-                            placement: panel.to_placement(),
-                            raster: panel.to_raster(),
-                        });
-                    }
-                    plugin.panel = Some(panel);
-                }
-                Err(_) => {
-                    self.diagnostics.raster_failures =
-                        self.diagnostics.raster_failures.saturating_add(1);
-                }
-            }
-        }
-        self.diagnostics.evaluations = self.diagnostics.evaluations.saturating_add(1);
-        if self.layer_producer.publish_checked(layers).is_ok() {
-            self.diagnostics.layers_published = self.diagnostics.layers_published.saturating_add(1);
-        }
-        self.publish(None, None);
-    }
+/// What one turn of the loop decided to do next.
+enum Turn {
+    /// Keep waiting this long.
+    Wait(Duration),
 }
 
 /// The proxy prefix a network catalog was fetched through, if any.
@@ -1065,30 +1469,20 @@ fn proxy_used_for_catalog() -> Option<&'static str> {
 /// A manifest carrying only a catalog entry's identity.
 ///
 /// Used for a plugin the catalog offers and this build has not installed, so the
-/// center can show a name and a description for it. It has no panel and cannot be
-/// loaded — its `size` is one pixel, which the manifest bounds would refuse if it
-/// were ever read from disk, so a synthesized entry can never be mistaken for an
-/// installed one.
+/// center can show a name, a description and an icon for it. It has no executable
+/// and cannot be started — its `executable` is the id, which is not a file — so a
+/// synthesized entry can never be mistaken for an installed one.
 fn manifest_from_catalog(entry: &PluginCatalogEntry) -> PluginManifest {
     PluginManifest {
         schema_version: bongocat_plugin_protocol::PLUGIN_SCHEMA_VERSION,
         api_version: entry.api_version,
         id: entry.id.clone(),
         name: entry.name.clone(),
-        version: entry.version.clone(),
+        version: entry.version,
+        min_app_version: entry.min_app_version,
         author: entry.author.clone(),
         description: entry.description.clone(),
-        min_app_version: entry.min_app_version.clone(),
-        capabilities: Vec::new(),
-        icon: None,
-        overlay: bongocat_plugin_protocol::OverlayContribution {
-            anchor: bongocat_plugin_protocol::PluginAnchor::BottomLeft,
-            margin: [0.02, 0.02],
-            width_fraction: 0.72,
-            opacity: 1.0,
-            size: [1, 1],
-            behaviors: Vec::new(),
-            scene: SceneNode::Spacer(SpacerNode { grow: 1.0 }),
-        },
+        icon: bongocat_plugin_protocol::PluginIcon::default(),
+        executable: entry.id.as_str().to_string(),
     }
 }

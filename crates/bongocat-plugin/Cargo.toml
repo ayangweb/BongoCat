@@ -1,6 +1,6 @@
 [package]
 name = "bongocat-plugin"
-description = "The plugin host: where plugins come from, what is installed, and what a panel shows right now."
+description = "The plugin host: running plugin processes, and what they show on the model window."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,6 +10,8 @@ publish.workspace = true
 
 [dependencies]
 bongocat-config.workspace = true
+bongocat-log.workspace = true
+bongocat-model.workspace = true
 bongocat-plugin-protocol.workspace = true
 bongocat-plugin-render.workspace = true
 bongocat-render.workspace = true

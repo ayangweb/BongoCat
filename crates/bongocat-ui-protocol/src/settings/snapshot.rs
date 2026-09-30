@@ -20,7 +20,10 @@ pub struct AutomaticUpdateSettings {
     pub interval_hours: u16,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+// Not `Eq`: a plugin's own settings may carry a real number, which is not an
+// equivalence class. Everything else in this document is, and the one that is not is
+// the one a plugin declared.
+#[derive(Clone, Debug, PartialEq)]
 pub struct SettingsSnapshot {
     pub revision: u64,
     pub config_revision: Option<u64>,

@@ -6,17 +6,17 @@
 
 use crate::{
     SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsError, SettingsErrorCode,
-    SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel,
-    SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
-    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
-    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
-    SettingsPluginEntry, SettingsPluginErrorCode, SettingsPluginRefusal, SettingsPlugins,
-    SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRuntimeErrorCode,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsFieldKind, SettingsFieldValue, SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings,
+    SettingsLanguage, SettingsLogLevel, SettingsLogging, SettingsModelAvailability,
+    SettingsModelBehavior, SettingsModelBehaviorBinding, SettingsModelDiagnostic,
+    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
+    SettingsModelImportRequest, SettingsModelKey, SettingsModelMode, SettingsModelOrigin,
+    SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode, SettingsOperationId,
+    SettingsOverlay, SettingsPluginEntry, SettingsPluginErrorCode, SettingsPluginField,
+    SettingsPluginRefusal, SettingsPlugins, SettingsRandomBehavior, SettingsRandomBehaviorMode,
+    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -25,6 +25,7 @@ use bongocat_platform::{
 };
 use gpui_kit::component::{
     ActiveTheme, Disableable, Icon, IndexPath, Root, Theme, ThemeMode, ThemeStyled, WindowExt,
+    badge::Badge,
     button::{Button, ButtonVariant, ButtonVariants},
     checkbox::Checkbox,
     dialog::{Dialog, DialogButtonProps},
@@ -38,6 +39,7 @@ use gpui_kit::component::{
         SettingPage, Settings,
     },
     switch::Switch,
+    tag::Tag,
 };
 
 use gpui_kit::{
@@ -71,11 +73,13 @@ mod model_import_card;
 mod model_mver_dialog;
 mod mver;
 mod plugin_commands;
+mod plugin_settings;
 mod plugins;
 mod row;
 mod source;
 use model_import_card::ModelImportCard;
 use model_mver_dialog::build_mver_mode_dialog;
+use plugin_settings::PluginSettingsDraft;
 mod models;
 mod navigation;
 pub use navigation::SettingsNavigationMemory;
@@ -267,6 +271,22 @@ pub struct SettingsView {
     pub(crate) window_hidden: bool,
     pub(crate) navigation_memory: SettingsNavigationMemory,
     pub(crate) applied_theme: Option<SettingsTheme>,
+    /// Which plugin's own settings are open, and the values in them.
+    ///
+    /// Held here rather than in the dialog because the dialog is rebuilt on every
+    /// frame: a draft that lived in its builder would be rebuilt from nothing each
+    /// time. `None` is the closed state, which is also what hides a card's configure
+    /// button for a plugin with nothing to change.
+    /// Which plugin's own settings are expanded under its card.
+    ///
+    /// Held here rather than in the card because a card is rebuilt on every render: a
+    /// draft that lived in the card would be rebuilt from nothing each time. `None`
+    /// is the closed state, which is also what a card's configure button toggles.
+    ///
+    /// The values are a copy of the host's completed document, so a plugin's form
+    /// shows what its own file holds; a change goes out through
+    /// [`Self::set_plugin_field`] and comes back on the next snapshot.
+    pub(crate) plugin_settings: Option<PluginSettingsDraft>,
     pub(crate) language_select: Entity<LanguageSelectState>,
     pub(crate) theme_select: Entity<ThemeSelectState>,
     pub(crate) logging_level_select: Entity<LoggingLevelSelectState>,

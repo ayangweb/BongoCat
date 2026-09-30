@@ -523,7 +523,8 @@
       "action": {
         "install": "Instalar",
         "update": "Atualizar",
-        "uninstall": "Desinstalar"
+        "uninstall": "Desinstalar",
+        "configure": "Configurações"
       },
       "refusal": {
         "not_published": "Indisponível para esta versão do BongoCat neste sistema."
@@ -540,7 +541,12 @@
         "too_many": "A janela do modelo já mostra o máximo de painéis. Desligue um antes.",
         "manifest": "O conteúdo deste plugin não é válido para esta versão do BongoCat.",
         "render": "Não foi possível desenhar o painel deste plugin.",
-        "other": "A operação de plugin não foi concluída."
+        "other": "A operação de plugin não foi concluída.",
+        "plugin": "Não foi possível iniciar este plugin."
+      },
+      "state": {
+        "running": "Em execução",
+        "stopped": "Parado"
       }
     }
   }

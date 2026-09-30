@@ -192,7 +192,9 @@ mod tests {
             let document = format!(r#"{{"type":"button","id":{id:?}}}"#);
             let mut inspector = Inspector::new();
             assert_eq!(
-                walk(&node(&document), 1, &mut inspector).unwrap_err().code(),
+                walk(&node(&document), 1, &mut inspector)
+                    .unwrap_err()
+                    .code(),
                 PluginErrorCode::InvalidButtonId,
                 "{id:?} must be refused"
             );
@@ -213,7 +215,10 @@ mod tests {
             &mut inspector,
         )
         .unwrap();
-        assert_eq!(inspector.assets, vec!["a.png".to_string(), "a.png".to_string()]);
+        assert_eq!(
+            inspector.assets,
+            vec!["a.png".to_string(), "a.png".to_string()]
+        );
         // The caller deduplicates; the inspector reports what the scene said rather
         // than making a second decision about it.
     }

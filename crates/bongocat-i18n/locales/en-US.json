@@ -523,7 +523,8 @@
       "action": {
         "install": "Install",
         "update": "Update",
-        "uninstall": "Uninstall"
+        "uninstall": "Uninstall",
+        "configure": "Settings"
       },
       "refusal": {
         "not_published": "Not available for this version of BongoCat on this system."
@@ -540,7 +541,12 @@
         "too_many": "The model window already shows the most panels it can. Switch one off first.",
         "manifest": "This plugin's contents are not valid for this version of BongoCat.",
         "render": "This plugin's panel could not be drawn.",
-        "other": "The plugin operation did not complete."
+        "other": "The plugin operation did not complete.",
+        "plugin": "This plugin could not be started."
+      },
+      "state": {
+        "running": "Running",
+        "stopped": "Stopped"
       }
     }
   }
