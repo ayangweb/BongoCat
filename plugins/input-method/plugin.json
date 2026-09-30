@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "api_version": 1,
+  "id": "input-method",
+  "name": "Input Method",
+  "version": "1.0.0",
+  "author": "BongoCat",
+  "description": "Shows which keyboard input method is selected.",
+  "icon": {
+    "emoji": "⌨️"
+  },
+  "executable": "input-method"
+}

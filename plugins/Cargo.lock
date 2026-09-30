@@ -16,6 +16,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bongocat-plugin-input-method"
+version = "1.0.0"
+dependencies = [
+ "bongocat-plugin-sdk",
+]
+
+[[package]]
 name = "bongocat-plugin-key-stats"
 version = "1.0.0"
 dependencies = [

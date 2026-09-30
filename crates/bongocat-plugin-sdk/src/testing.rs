@@ -254,6 +254,27 @@ impl Inbox {
         self
     }
 
+    /// Queue a tick whose host state carries this keyboard input method.
+    ///
+    /// The input method is a field of the host's state rather than a message of its own, so
+    /// a test that wants a plugin to react to one builds a tick carrying it. `None` is a
+    /// real answer and not a default: "this platform does not report an input method" and
+    /// "the input method has no name" are different facts, and a test that means the first
+    /// one has to be able to say it.
+    ///
+    /// Everything else is what [`Inbox::tick`] means — the window is visible and no model
+    /// is loaded — because that is the case a panel is written against.
+    pub fn tick_with_input_method(
+        self,
+        elapsed_ms: u64,
+        method: Option<bongocat_plugin_protocol::InputMethod>,
+    ) -> Self {
+        self.tick_with(
+            elapsed_ms,
+            bongocat_plugin_protocol::HostState::new(None, true).with_input_method(method),
+        )
+    }
+
     /// Queue one input event.
     pub fn input(mut self, event: bongocat_plugin_protocol::InputEvent) -> Self {
         self.messages.push(HostMessage::Input {

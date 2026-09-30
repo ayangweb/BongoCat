@@ -76,6 +76,25 @@
           "path": "build/key-stats.zip"
         }
       }
+    },
+    {
+      "id": "input-method",
+      "name": "Input Method",
+      "version": "1.0.0",
+      "author": "BongoCat",
+      "description": "Shows which keyboard input method is selected.",
+      "api_version": 1,
+      "downloads": {
+        "macos-aarch64": {
+          "path": "build/input-method.zip"
+        },
+        "macos-x86_64": {
+          "path": "build/input-method.zip"
+        },
+        "windows-x86_64": {
+          "path": "build/input-method.zip"
+        }
+      }
     }
   ]
 }

@@ -74,6 +74,39 @@ impl InputEvent {
     }
 }
 
+/// Which keyboard input source the system is using.
+///
+/// Three fields, and each answers a question a plugin actually has:
+///
+/// * `id` is what a plugin *matches on* — "only while a Chinese method is selected".
+///   It is the source's own identifier and is the same in every language.
+/// * `name` is what a plugin *shows*, and it is the system's own name in the user's
+///   language. That is the whole reason it is carried rather than derived: a plugin that
+///   shortened the identifier itself would need a translation table for every input method
+///   on earth, and would be wrong about all the ones it had not heard of.
+/// * `ascii_capable` is what a mode indicator is *about*. It is the difference between
+///   "you are typing English" and "you have a method selected that produces something
+///   else", and it is a property of the source rather than a guess from its name.
+///
+/// A platform with no such concept sends nothing at all, rather than sending an empty one:
+/// "there is no input method here" and "the input method has no name" are different facts
+/// and a plugin can tell them apart.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct InputMethod {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub ascii_capable: bool,
+}
+
+impl InputMethod {
+    /// Whether this source types Latin letters directly.
+    pub const fn types_latin(&self) -> bool {
+        self.ascii_capable
+    }
+}
+
 /// The facts about the product a plugin may show.
 ///
 /// Read-only, closed, and deliberately small: the active model's display name,
@@ -95,6 +128,14 @@ pub struct HostState {
     /// The application version, for a panel that shows one.
     #[serde(default)]
     pub app_version: String,
+    /// The keyboard input source the system is using, when the platform has one.
+    ///
+    /// Republished on every tick for the same reason the model name is: a plugin that has
+    /// to notice a change by polling would have to guess how often to look, and a plugin
+    /// whose panel is a mode indicator is a panel that has to be right the moment the user
+    /// switches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_method: Option<InputMethod>,
 }
 
 impl HostState {
@@ -110,6 +151,18 @@ impl HostState {
             overlay_visible,
             ..Self::default()
         }
+    }
+
+    /// This state, with the keyboard input source the host read.
+    ///
+    /// Takes the protocol's own type rather than the platform crate's, because this is
+    /// where the two meet: the product reads a framework's answer and hands over the fact
+    /// in the shape a plugin can receive over a pipe.
+    pub fn with_input_method(mut self, method: Option<InputMethod>) -> Self {
+        // An answer with nothing in it is no answer: a blank name is a panel with a hole
+        // in it, and `None` is the honest "this platform has no input methods".
+        self.input_method = method.filter(|method| !method.id.is_empty());
+        self
     }
 
     pub fn with_locale(mut self, locale: impl Into<String>) -> Self {
@@ -242,6 +295,67 @@ pub enum ModelOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_input_method_a_plugin_asked_for_reaches_it_intact() {
+        // The whole path for this fact is: the platform reads it, the product publishes it,
+        // the worker puts it on every tick, and the plugin reads it. Nothing between those
+        // four points can be checked here, but the wire can — and the wire is where a
+        // renamed field would silently become "no input method" rather than an error.
+        let state = HostState::new(Some("cat.model3.json".to_owned()), true)
+            .with_locale("zh-CN")
+            .with_input_method(Some(InputMethod {
+                id: "com.tencent.inputmethod.wetype.pinyin".to_owned(),
+                name: "微信输入法".to_owned(),
+                ascii_capable: false,
+            }));
+        let line = serde_json::to_vec(&state).expect("serializes");
+        let back: HostState = serde_json::from_slice(&line).expect("parses");
+        let method = back.input_method.as_ref().expect("the method arrived");
+        assert_eq!(method.id, "com.tencent.inputmethod.wetype.pinyin");
+        assert_eq!(
+            method.name, "微信输入法",
+            "in the system's own words rather than in a plugin's, because the name is what a \
+             reader recognises and the system is the only thing that has one for every method"
+        );
+        assert!(!method.types_latin());
+        assert_eq!(
+            back.locale, "zh-CN",
+            "and the rest of the state is untouched"
+        );
+    }
+
+    #[test]
+    fn a_platform_with_no_input_methods_is_absent_rather_than_present_and_blank() {
+        // The two are different facts and a plugin can tell them apart: one means "this
+        // platform has no such concept", the other would mean "the method has no name",
+        // and a panel drawing the second when the truth is the first is a panel lying.
+        let line = serde_json::to_vec(&HostState::new(None, true).with_input_method(None))
+            .expect("serializes");
+        assert!(
+            !String::from_utf8_lossy(&line).contains("input_method"),
+            "so the field is left out entirely rather than sent as null: {line:?}"
+        );
+
+        let blank = HostState::new(None, true).with_input_method(Some(InputMethod::default()));
+        assert_eq!(
+            blank.input_method, None,
+            "and a method with no identifier is not a method: it is the same blank with a \
+             field around it"
+        );
+    }
+
+    #[test]
+    fn a_state_from_before_the_input_method_existed_still_parses() {
+        // An older host talking to a newer plugin, or a plugin's fixture: the field is
+        // additive, so its absence has to mean "nothing to report" rather than a refusal.
+        let older: HostState = serde_json::from_str(
+            r#"{"model_name":"cat.model3.json","overlay_visible":true,"locale":"zh-CN","app_version":"1.0.0"}"#,
+        )
+        .expect("a state written before the input method existed");
+        assert_eq!(older.input_method, None);
+        assert!(older.overlay_visible);
+    }
 
     #[test]
     fn an_outcome_survives_the_wire() {

@@ -158,6 +158,25 @@ impl Host {
         self.last_clock
     }
 
+    /// The keyboard input source the system is using, when the platform has one.
+    ///
+    /// `None` on a platform that has no such concept, and `None` again if the system will
+    /// not say — which is a different thing from a source with no name, and a plugin can
+    /// tell them apart.
+    pub fn input_method(&self) -> Option<&bongocat_plugin_protocol::InputMethod> {
+        self.state.input_method.as_ref()
+    }
+
+    /// Whether the current input source types Latin letters directly.
+    ///
+    /// The question a mode indicator is about, and the one that is true when there is no
+    /// input method to speak of: a system with no input methods is not typing anything
+    /// unusual.
+    pub fn types_latin(&self) -> bool {
+        self.input_method()
+            .is_none_or(bongocat_plugin_protocol::InputMethod::types_latin)
+    }
+
     /// The user's language, as a locale tag.
     pub fn locale(&self) -> &str {
         if self.state.locale.is_empty() {

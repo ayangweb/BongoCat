@@ -14,6 +14,7 @@
 - A second plugin, Key Display, shows the keys you are holding on the model window as keycaps, in the order you pressed them. It can show the mouse buttons too, and can get out of the way when you are not typing.
 - A third plugin, Typing Sound, gives the cat a voice while you type: each key plays one of your model's own motions, and the model's own sound for it. You choose the motion, the shortest gap between two sounds, and whether a held key counts once or many times.
 - A fourth plugin, Key Stats, counts the keys you press and how far the pointer travels, per day, and keeps the tally in its own files so it survives a restart. Distance is shown in screen widths, which are exact, or in centimetres, which assume a 24-inch screen and say so.
+- A fifth plugin, Input Method, shows which keyboard input method is selected, using the name your system already has for it in your own language. It stays out of the way while you type English unless you ask it not to, and can have the cat react when you switch.
 
 ### 🐛 Bug Fixes
 

@@ -12,7 +12,7 @@
 //!   [`crate::product_shutdown::ProductShutdown::finish`], and nowhere else.
 //! * The local clock is read on the main thread, because `time` documents
 //!   `current_local_offset` as sound only with one thread asking. The host owns the
-//!   cache and the frame loop calls [`ProductPluginHost::refresh_local_time`].
+//!   cache and the frame loop calls [`ProductPluginHost::refresh_host_facts`].
 //!
 //! A failure to start is a degraded product, not a failed one: the user still gets
 //! the cat, the plugin center says why, and nothing about the failure is allowed to
@@ -29,12 +29,14 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// How often the main thread re-reads the local clock.
+/// How often the main thread re-reads the process-wide facts.
 ///
-/// A clock panel shows seconds, so a reading that is at most this stale is
-/// indistinguishable from a live one — and the question itself is a process-wide
-/// read that has no business running at the frame rate.
-pub(crate) const LOCAL_TIME_REFRESH_INTERVAL: Duration = Duration::from_millis(500);
+/// The clock is the reason for the number: a clock panel shows seconds, so a reading that is
+/// at most this stale is indistinguishable from a live one. The input method changes only
+/// when a person switches keyboards, so it would tolerate a much longer interval — it comes
+/// along because asking it here costs nothing next to the clock read that is happening
+/// anyway.
+pub(crate) const HOST_FACTS_REFRESH_INTERVAL: Duration = Duration::from_millis(500);
 
 /// How long shutdown waits for the worker before reporting that it did not stop.
 ///
@@ -46,6 +48,8 @@ pub(crate) struct ProductPluginHost {
     handle: PluginWorkerHandle,
     endpoint: PluginWorkerEndpoint,
     clock: Arc<LocalTimeCache>,
+    /// The keyboard input method, read by the same main-thread pass as the clock.
+    input_method: Arc<bongocat_plugin::InputMethodCache>,
     /// The channel the overlay drains, and the sink it reports presses to.
     consumer: Option<OverlayLayerConsumer>,
     press_sink: Option<Arc<dyn OverlayPressSink>>,
@@ -69,6 +73,7 @@ impl ProductPluginHost {
     ) -> Result<Self, bongocat_plugin::PluginError> {
         let (producer, consumer) = bongocat_render::overlay_layer_channel();
         let clock = Arc::new(LocalTimeCache::new());
+        let input_method = Arc::new(bongocat_plugin::InputMethodCache::new());
         let (handle, endpoint) = bongocat_plugin::start(
             bongocat_plugin::PluginStore::new(layout.plugins.clone()),
             catalog_directory(layout),
@@ -79,6 +84,7 @@ impl ProductPluginHost {
             catalog_mode(),
             producer,
             Arc::clone(&clock),
+            Arc::clone(&input_method),
             runtime,
             // A plugin's own state lives beside the plugin store rather than inside
             // it, so an update that replaces a version directory cannot replace what
@@ -92,6 +98,7 @@ impl ProductPluginHost {
             handle,
             endpoint,
             clock,
+            input_method,
             consumer: Some(consumer),
             press_sink: Some(press_sink),
             last_refresh: std::time::Instant::now(),
@@ -159,18 +166,38 @@ impl ProductPluginHost {
         }
     }
 
-    /// Re-read the local clock if the interval has passed.
+    /// Re-read the process-wide facts if the interval has passed.
     ///
-    /// Called from the frame loop, which runs on the main thread. The rate limit is
-    /// here rather than in the loop because there are two frame loops — one per
-    /// platform — and a clock that is read at the frame rate on one and not the
-    /// other is a difference nobody would notice until they did.
-    pub(crate) fn refresh_local_time(&mut self) {
-        if self.last_refresh.elapsed() < LOCAL_TIME_REFRESH_INTERVAL {
+    /// Called from the frame loop, which runs on the main thread, and it reads two things:
+    /// the local clock and the keyboard input method. Both are process-wide questions that
+    /// only one thread may ask — the offset database because the documentation says so, the
+    /// input source because two threads calling it abort inside Core Foundation — so they
+    /// are asked together, here, by the thread that is allowed to.
+    ///
+    /// The rate limit is here rather than in the loop because there are two frame loops —
+    /// one per platform — and a fact read at the frame rate on one and not the other is a
+    /// difference nobody would notice until they did. Half a second is short enough that a
+    /// clock panel is not visibly behind and long enough that neither read is a per-frame
+    /// cost.
+    pub(crate) fn refresh_host_facts(&mut self) {
+        if self.last_refresh.elapsed() < HOST_FACTS_REFRESH_INTERVAL {
             return;
         }
         self.last_refresh = std::time::Instant::now();
         self.clock.refresh();
+        // Translated here rather than in the plugin host, because this is the crate that
+        // owns the platform: the framework's answer comes out as the platform crate's type
+        // and goes in as the protocol's.
+        self.input_method
+            .publish(
+                bongocat_platform::input_method::current_input_method().map(|method| {
+                    bongocat_plugin::InputMethod {
+                        id: method.id,
+                        name: method.name,
+                        ascii_capable: method.ascii_capable,
+                    }
+                }),
+            );
     }
 
     /// Ask the worker to stop, and wait for it.
