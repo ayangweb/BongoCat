@@ -326,6 +326,24 @@
       ],
       "type": "string"
     },
+    "MultiplayerConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "nickname": {
+          "maxLength": 96,
+          "type": "string"
+        },
+        "server_url": {
+          "maxLength": 2048,
+          "type": "string"
+        }
+      },
+      "required": [
+        "server_url",
+        "nickname"
+      ],
+      "type": "object"
+    },
     "OverlayConfig": {
       "additionalProperties": false,
       "properties": {
@@ -526,6 +544,13 @@
     },
     "model": {
       "$ref": "#/$defs/ModelConfig"
+    },
+    "multiplayer": {
+      "$ref": "#/$defs/MultiplayerConfig",
+      "default": {
+        "nickname": "",
+        "server_url": ""
+      }
     },
     "overlay": {
       "$ref": "#/$defs/OverlayConfig"

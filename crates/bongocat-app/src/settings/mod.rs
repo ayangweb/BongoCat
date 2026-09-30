@@ -43,21 +43,22 @@ use bongocat_runtime::{
     RuntimeSnapshot, RuntimeState,
 };
 use bongocat_ui_protocol::{
-    AutomaticUpdateSettings, RuntimeHealth, SettingsApplicationShortcut, SettingsBuildEnvironment,
-    SettingsBuildInfo, SettingsClient, SettingsCommand, SettingsDiagnosticsExportStatus,
-    SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings,
-    SettingsInputCapability, SettingsInputDiagnostics, SettingsInputServiceStatus,
-    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
-    SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
-    SettingsModelImportStage, SettingsModelKey, SettingsModelMode, SettingsModelSettings,
-    SettingsOverlay, SettingsRandomBehavior, SettingsRemoteModelFailure,
-    SettingsRemoteModelImportRequest, SettingsRemoteModelStatus, SettingsRemoteModels,
-    SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
-    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemError,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
-    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
+    AutomaticUpdateSettings, MAXIMUM_CHAT_CONTENT_CHARS, RuntimeHealth,
+    SettingsApplicationShortcut, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
+    SettingsCommand, SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode,
+    SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsInputCapability,
+    SettingsInputDiagnostics, SettingsInputServiceStatus, SettingsLanguage,
+    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
+    SettingsModelCatalog, SettingsModelCatalogError, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportProgress, SettingsModelImportStage, SettingsModelKey, SettingsModelMode,
+    SettingsModelSettings, SettingsMultiplayer, SettingsMultiplayerStatus, SettingsOverlay,
+    SettingsRandomBehavior, SettingsRemoteModelFailure, SettingsRemoteModelImportRequest,
+    SettingsRemoteModelStatus, SettingsRemoteModels, SettingsRuntimeCommandFailure,
+    SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
+    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
+    SettingsSnapshot, SettingsStartupItemError, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_update::UpdateDiagnostics;
 use std::{
@@ -97,6 +98,7 @@ const SETTINGS_COMMAND_CAPACITY: usize = 16;
 /// How many remote-model jobs may wait for the worker at once. A refresh and a
 /// download are the only kinds; anything past this is a runaway caller.
 const REMOTE_MODELS_JOB_CAPACITY: usize = 8;
+const MULTIPLAYER_JOB_CAPACITY: usize = 8;
 
 pub struct ApplicationSettingsService {
     client: SettingsClient,
@@ -104,6 +106,8 @@ pub struct ApplicationSettingsService {
     worker: Option<thread::JoinHandle<()>>,
     remote_worker: Option<thread::JoinHandle<()>>,
     remote_worker_stop: Arc<AtomicBool>,
+    multiplayer_worker: Option<thread::JoinHandle<()>>,
+    multiplayer_worker_stop: Arc<AtomicBool>,
     shortcut_forwarder: Option<thread::JoinHandle<()>>,
     shortcut_forwarder_stop: Arc<AtomicBool>,
 }
@@ -391,6 +395,20 @@ impl ApplicationSettingsService {
             Arc::clone(&remote_worker_stop),
         )
         .map_err(SettingsServiceJoinError::Spawn)?;
+        let (multiplayer_jobs, multiplayer_worker_jobs) =
+            async_channel::bounded(MULTIPLAYER_JOB_CAPACITY);
+        let multiplayer_state = crate::multiplayer::MultiplayerState::default();
+        let multiplayer_runtime = application.runtime_client();
+        let multiplayer_log = application.multiplayer_log_handle();
+        let multiplayer_worker_stop = Arc::new(AtomicBool::new(false));
+        let multiplayer_worker = crate::multiplayer::spawn_multiplayer_worker(
+            multiplayer_worker_jobs,
+            multiplayer_state.clone(),
+            multiplayer_runtime,
+            multiplayer_log,
+            Arc::clone(&multiplayer_worker_stop),
+        )
+        .map_err(SettingsServiceJoinError::Spawn)?;
         let worker = thread::Builder::new()
             .name("bongocat-settings-service".to_owned())
             .spawn(move || {
@@ -408,6 +426,8 @@ impl ApplicationSettingsService {
                     remote_models,
                     remote_jobs,
                     remote_downloads_root,
+                    multiplayer_state,
+                    multiplayer_jobs,
                 )
             })
             .map_err(SettingsServiceJoinError::Spawn)?;
@@ -447,6 +467,8 @@ impl ApplicationSettingsService {
             worker: Some(worker),
             remote_worker: Some(remote_worker),
             remote_worker_stop,
+            multiplayer_worker: Some(multiplayer_worker),
+            multiplayer_worker_stop,
             shortcut_forwarder,
             shortcut_forwarder_stop,
         })
@@ -474,6 +496,13 @@ impl ApplicationSettingsService {
         }
     }
 
+    fn stop_multiplayer_worker(&mut self) {
+        self.multiplayer_worker_stop.store(true, Ordering::Release);
+        if let Some(multiplayer_worker) = self.multiplayer_worker.take() {
+            let _ = multiplayer_worker.join();
+        }
+    }
+
     pub fn join(mut self) -> Result<(), SettingsServiceJoinError> {
         let worker_result = self
             .worker
@@ -481,6 +510,7 @@ impl ApplicationSettingsService {
             .expect("settings service worker is present")
             .join()
             .map_err(|_| SettingsServiceJoinError::Panicked);
+        self.stop_multiplayer_worker();
         self.stop_remote_worker();
         self.stop_shortcut_forwarder();
         worker_result
@@ -493,6 +523,7 @@ impl Drop for ApplicationSettingsService {
             let _ = self.client.shutdown_blocking();
             let _ = worker.join();
         }
+        self.stop_multiplayer_worker();
         self.stop_remote_worker();
         self.stop_shortcut_forwarder();
     }

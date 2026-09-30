@@ -6,18 +6,19 @@
 
 use crate::{
     SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsError, SettingsErrorCode,
-    SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel,
-    SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsLanguage, SettingsLobbyStatus,
+    SettingsLogLevel, SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
     SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
     SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
-    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
-    SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRemoteCatalogStatus,
-    SettingsRemoteImageFormat, SettingsRemoteModelEntry, SettingsRemoteModelFailure,
-    SettingsRemoteModelStatus, SettingsRemoteModels, SettingsRemotePreview,
-    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
-    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
+    SettingsModelSourceContent, SettingsMultiplayer, SettingsMultiplayerStatus, SettingsMverMode,
+    SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode,
+    SettingsRemoteCatalogStatus, SettingsRemoteImageFormat, SettingsRemoteModelEntry,
+    SettingsRemoteModelFailure, SettingsRemoteModelStatus, SettingsRemoteModels,
+    SettingsRemotePreview, SettingsRoomView, SettingsRuntimeErrorCode, SettingsShortcutBinding,
+    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -41,10 +42,10 @@ use gpui_kit::component::{
 };
 
 use gpui_kit::{
-    Anchor, App, AppContext, Bounds, Context, DisplayId, Div, DragMoveEvent, ElementId, Entity,
-    ExternalPaths, FocusHandle, Focusable, Hsla, ImageSource, KeyDownEvent, KeyUpEvent, Modifiers,
-    MouseButton, ObjectFit, Pixels, Render, SharedString, Stateful, TitlebarOptions, VisualContext,
-    WeakEntity, Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions,
+    Anchor, App, AppContext, Axis, Bounds, Context, DisplayId, Div, DragMoveEvent, ElementId,
+    Entity, ExternalPaths, FocusHandle, Focusable, Hsla, ImageSource, KeyDownEvent, KeyUpEvent,
+    Modifiers, MouseButton, ObjectFit, Pixels, Render, SharedString, Stateful, TitlebarOptions,
+    VisualContext, WeakEntity, Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions,
     base::StyledExt, div, img, point, prelude::*, px, size,
 };
 use std::{
@@ -75,6 +76,7 @@ mod source;
 use model_import_card::ModelImportCard;
 use model_mver_dialog::build_mver_mode_dialog;
 mod models;
+mod multiplayer_room;
 mod navigation;
 pub use navigation::SettingsNavigationMemory;
 use navigation::{SettingsNavigationPage, model_library_search_keywords};
@@ -124,6 +126,10 @@ struct ModelImportSuccessNotification;
 
 /// Marks the confirmation shown after the About page copies software info.
 struct AboutCopySuccessNotification;
+
+/// Marks the notification pushed when a multiplayer operation fails after the
+/// command was accepted: the server's refusal, a disconnect, a kick.
+struct MultiplayerErrorNotification;
 
 /// Marks the notification pushed when a model could not be prepared for
 /// display. It is a failure of the import itself, not of a later command: the
@@ -256,6 +262,20 @@ pub struct SettingsView {
     /// library once. The page fetches its catalog on first render — one kick per
     /// window, not per frame — and a manual refresh is the user's own gesture.
     pub(crate) remote_models_kick: bool,
+    /// The last multiplayer error sequence the window has already shown, so a
+    /// server refusal notifies once instead of once per snapshot.
+    pub(crate) multiplayer_error_seq_seen: u64,
+    /// Set when the projection reports a new error; consumed by the next frame
+    /// as a notification, never page state.
+    pub(crate) multiplayer_error_pending: Option<SettingsErrorCode>,
+    /// The last configured service URL for which automatic connection was attempted.
+    pub(crate) multiplayer_auto_connect_url: Option<String>,
+    pub(crate) multiplayer_server_input: Entity<InputState>,
+    pub(crate) multiplayer_nickname_input: Entity<InputState>,
+    pub(crate) multiplayer_room_name_input: Entity<InputState>,
+    pub(crate) multiplayer_password_input: Entity<InputState>,
+    pub(crate) multiplayer_room_id_input: Entity<InputState>,
+    pub(crate) multiplayer_chat_input: Entity<InputState>,
     pub(crate) shortcut_capture: Option<ShortcutCapture>,
     pub(crate) shortcut_capture_blur_subscription: Option<gpui_kit::Subscription>,
     pub(crate) shortcut_row_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,

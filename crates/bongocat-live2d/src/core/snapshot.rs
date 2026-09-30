@@ -182,6 +182,7 @@ impl CoreModel {
             model_opacity: 1.0,
             mirror_horizontal: false,
             drawables,
+            chat_bubble: None,
         })
     }
 }

@@ -415,6 +415,92 @@ fn check_for_updates_interval_defaults_to_24_hours_and_accepts_whole_hours() {
 }
 
 #[test]
+fn multiplayer_section_defaults_to_unconfigured_and_bounds_its_values() {
+    let default = MultiplayerConfig::default();
+    assert_eq!(default.server_url, "");
+    assert_eq!(default.nickname, "");
+    assert!(!default.is_configured());
+
+    let mut config = NativeConfig::default();
+    assert!(
+        config.validate().is_ok(),
+        "default multiplayer must validate"
+    );
+
+    for accepted in [
+        "",
+        "http://192.168.1.10:3000",
+        "https://rooms.example.com",
+        "  https://rooms.example.com  ",
+    ] {
+        config.multiplayer.server_url = accepted.to_owned();
+        config.multiplayer.nickname = "小明".to_owned();
+        assert!(
+            config.validate().is_ok(),
+            "server url {accepted:?} must be accepted"
+        );
+    }
+    for accepted in [
+        "".to_owned(),
+        "小明".to_owned(),
+        "a".to_owned(),
+        "x".repeat(MAXIMUM_MULTIPLAYER_NICKNAME_CHARS),
+    ] {
+        config.multiplayer.server_url = String::new();
+        config.multiplayer.nickname = accepted.clone();
+        assert!(
+            config.validate().is_ok(),
+            "nickname {:?} must be accepted",
+            config.multiplayer.nickname
+        );
+    }
+
+    for rejected in [
+        "ftp://rooms.example.com",
+        "rooms.example.com",
+        "http://rooms.example.com/sub",
+        "https://rooms.example.com/?x=1",
+        "https://rooms.example.com/#frag",
+        "not a url",
+    ] {
+        config.multiplayer.server_url = rejected.to_owned();
+        config.multiplayer.nickname = "小明".to_owned();
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue("multiplayer.server_url"))
+        ));
+    }
+    for rejected in [
+        "x".repeat(MAXIMUM_MULTIPLAYER_NICKNAME_CHARS + 1),
+        "line1\nline2".to_owned(),
+        "tab\tstop".to_owned(),
+    ] {
+        config.multiplayer.server_url = String::new();
+        config.multiplayer.nickname = rejected;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue("multiplayer.nickname"))
+        ));
+    }
+}
+
+/// A configuration written before the multiplayer section existed must keep
+/// parsing and land on the unconfigured defaults: old data is never a reason
+/// for a startup failure.
+#[test]
+fn config_without_multiplayer_section_parses_with_defaults() {
+    let fixture =
+        include_str!("../../../../shared/config/fixtures/accept-without-multiplayer.json");
+    let raw: serde_json::Value = serde_json::from_str(fixture).expect("fixture value");
+    assert!(!raw.as_object().expect("object").contains_key("multiplayer"));
+
+    let parsed = parse_config(fixture.as_bytes())
+        .expect("legacy fixture parses")
+        .0;
+    assert_eq!(parsed.multiplayer, MultiplayerConfig::default());
+}
+
+#[test]
 fn logging_settings_use_the_closed_level_set_and_bounded_retention() {
     assert_eq!(LoggingConfig::default().level, LoggingLevel::Info);
     assert_eq!(

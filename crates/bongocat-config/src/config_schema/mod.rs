@@ -12,6 +12,7 @@ mod appearance;
 mod input;
 mod logging;
 mod model;
+mod multiplayer;
 mod overlay;
 mod system;
 mod updates;
@@ -36,6 +37,9 @@ pub use model::{
     ModelExpressionMemory, ModelIdentity, ModelInputMode, ModelSource, RandomBehaviorConfig,
     RandomBehaviorMode,
 };
+pub use multiplayer::{
+    MAXIMUM_MULTIPLAYER_NICKNAME_CHARS, MAXIMUM_MULTIPLAYER_SERVER_URL_BYTES, MultiplayerConfig,
+};
 pub use overlay::{MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS, OverlayConfig};
 pub use system::SystemConfig;
 pub use updates::UpdateConfig;
@@ -57,6 +61,11 @@ pub struct NativeConfig {
     pub shortcuts: ShortcutConfig,
     pub system: SystemConfig,
     pub updates: UpdateConfig,
+    /// Written before this section existed, configurations keep parsing
+    /// without it and land on the unconfigured default. New fields inside the
+    /// section must in turn carry their own defaults.
+    #[serde(default)]
+    pub multiplayer: MultiplayerConfig,
 }
 
 impl Default for NativeConfig {
@@ -111,6 +120,7 @@ impl Default for NativeConfig {
                 check_automatically: false,
                 check_interval_hours: DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
             },
+            multiplayer: MultiplayerConfig::default(),
         }
     }
 }
@@ -124,6 +134,33 @@ impl NativeConfig {
             .contains(&self.updates.check_interval_hours)
         {
             return Err(ConfigError::InvalidValue("updates.check_interval_hours"));
+        }
+        // An empty server URL is the unconfigured steady state. Anything else
+        // must name a scheme and a host and nothing beyond them, because the
+        // room service is reached at its root and a stray path would only
+        // produce a connection the user cannot explain.
+        if !self.multiplayer.server_url.trim().is_empty() {
+            let url = self.multiplayer.server_url.trim();
+            if url.len() > MAXIMUM_MULTIPLAYER_SERVER_URL_BYTES {
+                return Err(ConfigError::InvalidValue("multiplayer.server_url"));
+            }
+            match url::Url::parse(url) {
+                Ok(parsed)
+                    if matches!(parsed.scheme(), "http" | "https")
+                        && matches!(parsed.path(), "/" | "")
+                        && parsed.host_str().is_some_and(|host| !host.is_empty())
+                        && parsed.query().is_none()
+                        && parsed.fragment().is_none() => {}
+                _ => return Err(ConfigError::InvalidValue("multiplayer.server_url")),
+            }
+        }
+        // An empty nickname is the unconfigured steady state; the multiplayer
+        // page requires one before joining. A stored nickname may not carry
+        // control characters, and its trimmed length is what other members see.
+        if self.multiplayer.nickname.chars().any(char::is_control)
+            || self.multiplayer.nickname.trim().chars().count() > MAXIMUM_MULTIPLAYER_NICKNAME_CHARS
+        {
+            return Err(ConfigError::InvalidValue("multiplayer.nickname"));
         }
         if !(25..=400).contains(&self.overlay.scale_percent) {
             return Err(ConfigError::InvalidValue("overlay.scale_percent"));

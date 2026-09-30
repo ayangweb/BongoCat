@@ -42,6 +42,7 @@ clap = { version = "=4.6.7", default-features = false, features = ["std", "help"
 dirs = "=6.0.0"
 embed-resource = "=3.0.11"
 flate2 = "=1.1.10"
+fontdue = "=0.9.4"
 global-hotkey = "=0.8.0"
 gpui-kit = "=0.7.0"
 gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "e69f1083d1a13a234513cb360c3d9d8abe5ea025", default-features = false }
@@ -56,6 +57,7 @@ proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 raw-window-handle = "=0.6.2"
 rfd = { version = "=0.17.2", default-features = false, features = ["common-controls-v6"] }
 rodio = { version = "=0.22.2", default-features = false, features = ["playback", "flac"] }
+rust_socketio = { version = "=0.6.0", default-features = false }
 schemars = { version = "=1.2.2", features = ["derive"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"

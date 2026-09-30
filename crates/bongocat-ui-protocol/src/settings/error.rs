@@ -49,10 +49,22 @@ pub enum SettingsErrorCode {
     WindowStatePersistFailed,
     ShutdownFailed,
     RemoteModelBusy,
+    MultiplayerNotConfigured,
+    MultiplayerConnectFailed,
+    MultiplayerRoomNotFound,
+    MultiplayerRoomFull,
+    MultiplayerRoomPasswordWrong,
+    MultiplayerAlreadyInRoom,
+    MultiplayerNotInRoom,
+    MultiplayerKicked,
+    MultiplayerChatRateLimited,
+    MultiplayerServerRefused,
+    MultiplayerResponseInvalid,
+    MultiplayerInvalidInput,
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 43] = [
+    pub const ALL: [Self; 55] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -96,6 +108,18 @@ impl SettingsErrorCode {
         Self::WindowStatePersistFailed,
         Self::ShutdownFailed,
         Self::RemoteModelBusy,
+        Self::MultiplayerNotConfigured,
+        Self::MultiplayerConnectFailed,
+        Self::MultiplayerRoomNotFound,
+        Self::MultiplayerRoomFull,
+        Self::MultiplayerRoomPasswordWrong,
+        Self::MultiplayerAlreadyInRoom,
+        Self::MultiplayerNotInRoom,
+        Self::MultiplayerKicked,
+        Self::MultiplayerChatRateLimited,
+        Self::MultiplayerServerRefused,
+        Self::MultiplayerResponseInvalid,
+        Self::MultiplayerInvalidInput,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -143,6 +167,18 @@ impl SettingsErrorCode {
             Self::WindowStatePersistFailed => "window_state_persist_failed",
             Self::ShutdownFailed => "shutdown_failed",
             Self::RemoteModelBusy => "remote_model_busy",
+            Self::MultiplayerNotConfigured => "multiplayer_not_configured",
+            Self::MultiplayerConnectFailed => "multiplayer_connect_failed",
+            Self::MultiplayerRoomNotFound => "multiplayer_room_not_found",
+            Self::MultiplayerRoomFull => "multiplayer_room_full",
+            Self::MultiplayerRoomPasswordWrong => "multiplayer_room_password_wrong",
+            Self::MultiplayerAlreadyInRoom => "multiplayer_already_in_room",
+            Self::MultiplayerNotInRoom => "multiplayer_not_in_room",
+            Self::MultiplayerKicked => "multiplayer_kicked",
+            Self::MultiplayerChatRateLimited => "multiplayer_chat_rate_limited",
+            Self::MultiplayerServerRefused => "multiplayer_server_refused",
+            Self::MultiplayerResponseInvalid => "multiplayer_response_invalid",
+            Self::MultiplayerInvalidInput => "multiplayer_invalid_input",
         }
     }
 }
@@ -239,6 +275,26 @@ impl SettingsError {
             SettingsErrorCode::RemoteModelBusy => {
                 "Another remote model is downloading. Try again in a moment."
             }
+            SettingsErrorCode::MultiplayerNotConfigured => {
+                "Set the room service address and a nickname first"
+            }
+            SettingsErrorCode::MultiplayerConnectFailed => "The room service could not be reached",
+            SettingsErrorCode::MultiplayerRoomNotFound => "That room does not exist",
+            SettingsErrorCode::MultiplayerRoomFull => "That room is full",
+            SettingsErrorCode::MultiplayerRoomPasswordWrong => "The room password is wrong",
+            SettingsErrorCode::MultiplayerAlreadyInRoom => {
+                "Leave the current room before joining another one"
+            }
+            SettingsErrorCode::MultiplayerNotInRoom => "You are not in a room",
+            SettingsErrorCode::MultiplayerKicked => "You were removed from the room",
+            SettingsErrorCode::MultiplayerChatRateLimited => {
+                "Messages are being sent too quickly. Try again in a moment."
+            }
+            SettingsErrorCode::MultiplayerServerRefused => "The room service refused the request",
+            SettingsErrorCode::MultiplayerResponseInvalid => {
+                "The room service sent an unreadable answer"
+            }
+            SettingsErrorCode::MultiplayerInvalidInput => "The input is not usable",
         }
     }
 }

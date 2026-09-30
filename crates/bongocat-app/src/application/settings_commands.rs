@@ -92,6 +92,40 @@ impl Application {
         Ok(())
     }
 
+    /// Persist the multiplayer room service URL. The stored value is trimmed;
+    /// whether it is a usable address is the configuration's own validation,
+    /// and the multiplayer page refuses room operations while it is empty.
+    pub fn set_multiplayer_server_url(&mut self, server_url: &str) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.multiplayer.server_url = server_url.trim().to_owned();
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    /// Persist the nickname shown to other room members. The stored value is
+    /// trimmed; the multiplayer page requires it before joining.
+    pub fn set_multiplayer_nickname(&mut self, nickname: &str) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.multiplayer.nickname = nickname.trim().to_owned();
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    /// The application log handle the multiplayer worker records its failures
+    /// into, the same way the remote worker does: the page only ever says
+    /// "failed" and the evidence belongs in the log.
+    pub(crate) fn multiplayer_log_handle(&self) -> crate::app_log::ApplicationLogHandle {
+        self.application_log.clone()
+    }
+
     pub fn set_language(&mut self, language: Language) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.appearance.language = language;

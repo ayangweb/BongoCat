@@ -31,6 +31,7 @@ fn frame(number: u64) -> RenderFrame {
             model_opacity: 1.0,
             mirror_horizontal: false,
             drawables: vec![],
+            chat_bubble: None,
         }),
     }
 }
@@ -95,6 +96,7 @@ fn validated_snapshot() -> RenderSnapshot {
             ],
             indices: vec![0, 1, 2],
         }],
+        chat_bubble: None,
     }
 }
 

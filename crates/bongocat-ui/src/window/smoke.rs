@@ -100,6 +100,14 @@ impl SettingsView {
             "settings.app_system.desktop.title",
             "settings.app_system.updates.title",
             "settings.app_system.logging.title",
+            "settings.multiplayer_room.status.title",
+            "settings.multiplayer_room.server_url.title",
+            "settings.multiplayer_room.nickname.title",
+            "settings.multiplayer_room.room.create.title",
+            "settings.multiplayer_room.room.join.title",
+            "settings.multiplayer_room.lobby.title",
+            "settings.multiplayer_room.chat.title",
+            "settings.multiplayer_room.chat.hint",
         ] {
             if bongocat_i18n::text(language.catalog_locale(), key).is_empty() {
                 return Err(format!(

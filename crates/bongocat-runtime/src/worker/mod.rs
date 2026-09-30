@@ -660,6 +660,15 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             });
                         }
                     }
+                    WorkerCommand::Product(RuntimeCommand::ShowChatBubble { sender, content }) => {
+                        if let Some(renderer) = &mut renderer {
+                            renderer.chat_bubble.show(&sender, &content, clock.now());
+                        }
+                        publish(&snapshot, |current| {
+                            current.last_command_failure = None;
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
                     WorkerCommand::Shutdown => {
                         if !shutdown_delay.is_zero() {
                             thread::sleep(shutdown_delay);

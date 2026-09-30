@@ -141,6 +141,8 @@ impl RuntimeRenderer {
         })?;
         snapshot.active_keys = resolve_key_overlays(&active.resources, input.key_presses);
         snapshot.mirror_horizontal = self.model_settings.mirror;
+        let bubble = self.chat_bubble.snapshot(now, snapshot.bounds);
+        snapshot.chat_bubble = bubble;
         self.producer
             .publish(RenderFrame {
                 transport_sequence: self.next_transport_sequence,

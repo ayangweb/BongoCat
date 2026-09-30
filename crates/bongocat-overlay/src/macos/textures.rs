@@ -24,6 +24,24 @@ pub(crate) struct GpuModel {
     pub(crate) mirror_horizontal: bool,
     pub(crate) active_keys: Vec<KeyOverlay>,
     pub(crate) masked_drawable_count: usize,
+    pub(crate) bubble: Option<BubbleGpu>,
+}
+
+/// The chat bubble's GPU residency: the rasterized texture, the quad that maps
+/// it above the model's head, and the snapshot identity that decides when the
+/// texture must be re-uploaded.
+pub(crate) struct BubbleGpu {
+    pub(crate) texture: Texture,
+    pub(crate) vertex_buffer: Buffer,
+    pub(crate) index_buffer: Buffer,
+    /// Pointer identity of the runtime's rasterized texture; a new Arc means a
+    /// new message and a new upload.
+    pub(crate) source: Arc<ChatBubbleTexture>,
+    pub(crate) anchor: [f32; 2],
+    pub(crate) size: [f32; 2],
+    /// This frame's fade opacity, updated on every sync while the texture and
+    /// quad themselves stay put.
+    pub(crate) opacity: f32,
 }
 
 impl GpuModel {
@@ -152,6 +170,10 @@ impl GpuModel {
             })
             .collect::<Vec<_>>();
         meshes.sort_by_key(|mesh| (mesh.render_order, mesh.id));
+        let bubble = match &snapshot.chat_bubble {
+            Some(bubble) => Some(create_bubble(device, bubble)),
+            None => None,
+        };
         Ok(Self {
             textures,
             key_textures,
@@ -177,10 +199,15 @@ impl GpuModel {
                 .iter()
                 .filter(|drawable| !drawable.masks.is_empty())
                 .count(),
+            bubble,
         })
     }
 
-    pub(crate) fn sync_snapshot(&mut self, snapshot: &RenderSnapshot) -> Result<(), OverlayError> {
+    pub(crate) fn sync_snapshot(
+        &mut self,
+        device: &Device,
+        snapshot: &RenderSnapshot,
+    ) -> Result<(), OverlayError> {
         if !snapshot.model_opacity.is_finite() || !(0.0..=1.0).contains(&snapshot.model_opacity) {
             return Err(OverlayError::new("model opacity is outside [0, 1]"));
         }
@@ -236,7 +263,33 @@ impl GpuModel {
         self.active_keys.clone_from(&snapshot.active_keys);
         self.model_opacity = snapshot.model_opacity;
         self.mirror_horizontal = snapshot.mirror_horizontal;
+        self.sync_bubble(device, snapshot);
         Ok(())
+    }
+
+    /// Bring the bubble's GPU residency in line with the frame. The texture is
+    /// uploaded only when the runtime rasterized a new message (pointer
+    /// identity), and the quad only when the bubble moved or resized.
+    fn sync_bubble(&mut self, device: &Device, snapshot: &RenderSnapshot) {
+        let Some(bubble) = &snapshot.chat_bubble else {
+            self.bubble = None;
+            return;
+        };
+        match &mut self.bubble {
+            Some(existing) if Arc::ptr_eq(&existing.source, &bubble.texture) => {
+                existing.opacity = bubble.opacity;
+                if existing.anchor != bubble.anchor || existing.size != bubble.size {
+                    let (vertex_buffer, index_buffer) = bubble_quad_buffers(device, bubble);
+                    existing.vertex_buffer = vertex_buffer;
+                    existing.index_buffer = index_buffer;
+                    existing.anchor = bubble.anchor;
+                    existing.size = bubble.size;
+                }
+            }
+            _ => {
+                self.bubble = Some(create_bubble(device, bubble));
+            }
+        }
     }
 
     /// Re-create every mask target at a new drawable size.
@@ -253,6 +306,80 @@ impl GpuModel {
             }
         }
     }
+}
+
+/// The bubble's texture and its canvas-space quad, created together because a
+/// new message always needs both.
+pub(crate) fn create_bubble(device: &Device, bubble: &ChatBubbleSnapshot) -> BubbleGpu {
+    let descriptor = TextureDescriptor::new();
+    descriptor.set_texture_type(MTLTextureType::D2);
+    descriptor.set_pixel_format(MODEL_TEXTURE_FORMAT);
+    descriptor.set_width(u64::from(bubble.texture.width));
+    descriptor.set_height(u64::from(bubble.texture.height));
+    descriptor.set_storage_mode(MTLStorageMode::Shared);
+    descriptor.set_usage(MTLTextureUsage::ShaderRead);
+    let texture = device.new_texture(&descriptor);
+    texture.replace_region(
+        MTLRegion {
+            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+            size: MTLSize {
+                width: u64::from(bubble.texture.width),
+                height: u64::from(bubble.texture.height),
+                depth: 1,
+            },
+        },
+        0,
+        bubble.texture.rgba.as_ptr().cast(),
+        u64::from(bubble.texture.width) * 4,
+    );
+    let (vertex_buffer, index_buffer) = bubble_quad_buffers(device, bubble);
+    BubbleGpu {
+        texture,
+        vertex_buffer,
+        index_buffer,
+        source: Arc::clone(&bubble.texture),
+        anchor: bubble.anchor,
+        size: bubble.size,
+        opacity: bubble.opacity,
+    }
+}
+
+/// Four corners around the bubble's bottom-center anchor, uv-mapped like the
+/// background quad so the shader's v flip lands the texture upright.
+fn bubble_quad_buffers(device: &Device, bubble: &ChatBubbleSnapshot) -> (Buffer, Buffer) {
+    let [anchor_x, anchor_y] = bubble.anchor;
+    let [width, height] = bubble.size;
+    let half_width = width / 2.0;
+    let vertices = [
+        bongocat_render::Vertex {
+            position: [anchor_x - half_width, anchor_y],
+            uv: [0.0, 0.0],
+        },
+        bongocat_render::Vertex {
+            position: [anchor_x + half_width, anchor_y],
+            uv: [1.0, 0.0],
+        },
+        bongocat_render::Vertex {
+            position: [anchor_x + half_width, anchor_y + height],
+            uv: [1.0, 1.0],
+        },
+        bongocat_render::Vertex {
+            position: [anchor_x - half_width, anchor_y + height],
+            uv: [0.0, 1.0],
+        },
+    ];
+    let indices = [0_u16, 1, 2, 0, 2, 3];
+    let vertex_buffer = device.new_buffer_with_data(
+        vertices.as_ptr().cast(),
+        std::mem::size_of_val(&vertices) as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+    let index_buffer = device.new_buffer_with_data(
+        indices.as_ptr().cast(),
+        std::mem::size_of_val(&indices) as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+    (vertex_buffer, index_buffer)
 }
 
 pub(crate) fn upload_slice<T>(

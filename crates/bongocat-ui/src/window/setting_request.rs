@@ -134,6 +134,22 @@ impl SettingsView {
                         )
                         .await
                 }
+                Some(SettingValue::MultiplayerServerUrl {
+                    expected_config_revision,
+                    server_url,
+                }) => {
+                    client
+                        .set_multiplayer_server_url(expected_config_revision, server_url)
+                        .await
+                }
+                Some(SettingValue::MultiplayerNickname {
+                    expected_config_revision,
+                    nickname,
+                }) => {
+                    client
+                        .set_multiplayer_nickname(expected_config_revision, nickname)
+                        .await
+                }
                 Some(SettingValue::LoggingSettings {
                     expected_config_revision,
                     settings,

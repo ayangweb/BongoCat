@@ -30,9 +30,14 @@ pub(super) fn run_service(
     remote_models: crate::remote_models::RemoteModelsState,
     remote_jobs: async_channel::Sender<crate::remote_models::RemoteModelsJob>,
     remote_downloads_root: PathBuf,
+    multiplayer: crate::multiplayer::MultiplayerState,
+    multiplayer_jobs: async_channel::Sender<crate::multiplayer::MultiplayerJob>,
 ) {
-    let mut clock =
-        SettingsSnapshotClock::new(application.config_revision(), remote_models.clone());
+    let mut clock = SettingsSnapshotClock::new(
+        application.config_revision(),
+        remote_models.clone(),
+        multiplayer.clone(),
+    );
     loop {
         let Ok(command) = endpoint.recv_blocking() else {
             if persist_window_state(&mut application, &window_state).is_err() {
@@ -818,6 +823,156 @@ pub(super) fn run_service(
                 let _ = std::fs::remove_dir_all(remote_downloads_root.join(id.to_string()));
                 clock.mark_changed();
             }
+            SettingsCommand::SetMultiplayerServerUrl {
+                expected_config_revision,
+                server_url,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_multiplayer_server_url(&server_url)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetMultiplayerNickname {
+                expected_config_revision,
+                nickname,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_multiplayer_nickname(&nickname)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::ConnectMultiplayerService { reply } => {
+                let config = application.config();
+                let server_url = config.multiplayer.server_url.trim();
+                let nickname = config.multiplayer.nickname.trim();
+                let result = if server_url.is_empty() {
+                    Err(SettingsError::new(
+                        SettingsErrorCode::MultiplayerNotConfigured,
+                    ))
+                } else if multiplayer.snapshot().is_connecting() {
+                    Err(SettingsError::new(
+                        SettingsErrorCode::MultiplayerConnectFailed,
+                    ))
+                } else {
+                    enqueue_multiplayer(
+                        &multiplayer_jobs,
+                        crate::multiplayer::MultiplayerJob::Connect {
+                            server_url: server_url.to_owned(),
+                            nickname: nickname.to_owned(),
+                        },
+                    )
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
+                };
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::DisconnectMultiplayerService { reply } => {
+                let result = enqueue_multiplayer(
+                    &multiplayer_jobs,
+                    crate::multiplayer::MultiplayerJob::Disconnect,
+                )
+                .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::RefreshMultiplayerLobby { reply } => {
+                let config = application.config();
+                let result = enqueue_multiplayer(
+                    &multiplayer_jobs,
+                    crate::multiplayer::MultiplayerJob::RefreshLobby {
+                        server_url: config.multiplayer.server_url.trim().to_owned(),
+                        nickname: config.multiplayer.nickname.trim().to_owned(),
+                    },
+                )
+                .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::CreateMultiplayerRoom {
+                room_name,
+                password,
+                reply,
+            } => {
+                let result =
+                    multiplayer_room_job(&application, &multiplayer, |server_url, nickname| {
+                        crate::multiplayer::MultiplayerJob::CreateRoom {
+                            server_url,
+                            nickname,
+                            room_name: room_name.trim().to_owned(),
+                            password: password.trim().to_owned(),
+                        }
+                    })
+                    .and_then(|job| enqueue_room_job(&multiplayer, &multiplayer_jobs, job))
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::JoinMultiplayerRoom {
+                room_id,
+                password,
+                reply,
+            } => {
+                let result =
+                    multiplayer_room_job(&application, &multiplayer, |server_url, nickname| {
+                        crate::multiplayer::MultiplayerJob::JoinRoom {
+                            server_url,
+                            nickname,
+                            room_id: room_id.trim().to_owned(),
+                            password: password.trim().to_owned(),
+                        }
+                    })
+                    .and_then(|job| enqueue_room_job(&multiplayer, &multiplayer_jobs, job))
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::LeaveMultiplayerRoom { reply } => {
+                let result = enqueue_multiplayer(
+                    &multiplayer_jobs,
+                    crate::multiplayer::MultiplayerJob::LeaveRoom,
+                )
+                .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SendMultiplayerChat { content, reply } => {
+                let trimmed = content.trim();
+                let result =
+                    if trimmed.is_empty() || trimmed.chars().count() > MAXIMUM_CHAT_CONTENT_CHARS {
+                        Err(SettingsError::new(
+                            SettingsErrorCode::MultiplayerInvalidInput,
+                        ))
+                    } else {
+                        enqueue_multiplayer(
+                            &multiplayer_jobs,
+                            crate::multiplayer::MultiplayerJob::SendChat {
+                                content: trimmed.to_owned(),
+                            },
+                        )
+                        .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
+                    };
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::KickMultiplayerMember { member_id, reply } => {
+                let result = if member_id.trim().is_empty() {
+                    Err(SettingsError::new(
+                        SettingsErrorCode::MultiplayerInvalidInput,
+                    ))
+                } else {
+                    enqueue_multiplayer(
+                        &multiplayer_jobs,
+                        crate::multiplayer::MultiplayerJob::KickMember {
+                            member_id: member_id.trim().to_owned(),
+                        },
+                    )
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
+                };
+                let _ = reply.respond(result);
+            }
             SettingsCommand::OpenConfigBackupLocation { reply } => {
                 let result = backup_location
                     .open()
@@ -919,4 +1074,62 @@ pub(super) fn persist_window_state(
         Err(ApplicationError::WindowState(WindowStateError::UnsupportedSchema(_))) => Ok(()),
         result => result,
     }
+}
+
+/// Validate a create/join request against the persisted multiplayer settings
+/// and hand back the job that carries what the user had when the command was
+/// accepted.
+fn multiplayer_room_job(
+    application: &Application,
+    multiplayer: &crate::multiplayer::MultiplayerState,
+    build: impl FnOnce(String, String) -> crate::multiplayer::MultiplayerJob,
+) -> Result<crate::multiplayer::MultiplayerJob, SettingsError> {
+    let config = application.config();
+    let server_url = config.multiplayer.server_url.trim();
+    let nickname = config.multiplayer.nickname.trim();
+    if server_url.is_empty() || nickname.is_empty() {
+        return Err(SettingsError::new(
+            SettingsErrorCode::MultiplayerNotConfigured,
+        ));
+    }
+    // While a connect attempt is already running, a second room operation
+    // would race the connection it depends on.
+    if multiplayer.snapshot().is_connecting() {
+        return Err(SettingsError::new(
+            SettingsErrorCode::MultiplayerConnectFailed,
+        ));
+    }
+    Ok(build(server_url.to_owned(), nickname.to_owned()))
+}
+
+/// Queue a room operation, showing "connecting" immediately when the worker
+/// will have to dial first. A refused queue is restored, so the page never
+/// waits for an outcome that cannot arrive.
+fn enqueue_room_job(
+    multiplayer: &crate::multiplayer::MultiplayerState,
+    multiplayer_jobs: &async_channel::Sender<crate::multiplayer::MultiplayerJob>,
+    job: crate::multiplayer::MultiplayerJob,
+) -> Result<(), SettingsError> {
+    let previous = multiplayer.snapshot().status;
+    if matches!(
+        previous,
+        SettingsMultiplayerStatus::Disconnected | SettingsMultiplayerStatus::Failed(_)
+    ) {
+        multiplayer.set_status(SettingsMultiplayerStatus::Connecting);
+    }
+    multiplayer_jobs.try_send(job).map_err(|_| {
+        multiplayer.set_status(previous);
+        SettingsError::new(SettingsErrorCode::ServiceUnavailable)
+    })
+}
+
+/// Queue one of the connection-light operations (lobby refresh, leave, chat,
+/// kick). A refused queue means the worker is gone; the reply says so.
+fn enqueue_multiplayer(
+    multiplayer_jobs: &async_channel::Sender<crate::multiplayer::MultiplayerJob>,
+    job: crate::multiplayer::MultiplayerJob,
+) -> Result<(), SettingsError> {
+    multiplayer_jobs
+        .try_send(job)
+        .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))
 }

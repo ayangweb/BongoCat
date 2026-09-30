@@ -144,6 +144,32 @@ impl SettingsView {
                 }
             });
         }
+        // The two committed-on-Enter inputs follow the configuration only when
+        // the user is not editing them, so a snapshot that lands mid-typing
+        // never rewrites what is in the field.
+        self.multiplayer_server_input.update(cx, |input, cx| {
+            if !input.focus_handle(cx).is_focused(window) {
+                input.set_value(snapshot.multiplayer_server_url.as_str(), window, cx);
+            }
+        });
+        self.multiplayer_nickname_input.update(cx, |input, cx| {
+            if !input.focus_handle(cx).is_focused(window) {
+                input.set_value(snapshot.multiplayer_nickname.as_str(), window, cx);
+            }
+        });
+        let server_url = snapshot.multiplayer_server_url.trim();
+        if server_url.is_empty() {
+            self.multiplayer_auto_connect_url = None;
+        } else if self.multiplayer_auto_connect_url.as_deref() != Some(server_url)
+            && !matches!(
+                snapshot.multiplayer.status,
+                SettingsMultiplayerStatus::Connected
+            )
+            && !snapshot.multiplayer.is_connecting()
+        {
+            self.multiplayer_auto_connect_url = Some(server_url.to_owned());
+            self.connect_multiplayer_service(cx);
+        }
         self.syncing_component_inputs = false;
     }
 
@@ -315,6 +341,61 @@ impl SettingsView {
             )
             .detach();
         }
+        let multiplayer_locale = seed.language.catalog_locale();
+        let multiplayer_server_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(bongocat_i18n::text(
+                multiplayer_locale,
+                "settings.multiplayer_room.server_url.placeholder",
+            ))
+        });
+        let multiplayer_nickname_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(bongocat_i18n::text(
+                multiplayer_locale,
+                "settings.multiplayer_room.nickname.placeholder",
+            ))
+        });
+        let multiplayer_room_name_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(bongocat_i18n::text(
+                multiplayer_locale,
+                "settings.multiplayer_room.room.create.name_placeholder",
+            ))
+        });
+        let multiplayer_password_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(bongocat_i18n::text(
+                multiplayer_locale,
+                "settings.multiplayer_room.room.password.placeholder",
+            ))
+        });
+        let multiplayer_room_id_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(bongocat_i18n::text(
+                multiplayer_locale,
+                "settings.multiplayer_room.room.room_id.placeholder",
+            ))
+        });
+        let multiplayer_chat_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(bongocat_i18n::text(
+                multiplayer_locale,
+                "settings.multiplayer_room.chat.placeholder",
+            ))
+        });
+        cx.subscribe(
+            &multiplayer_server_input,
+            |view, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    view.commit_multiplayer_server_url(cx);
+                }
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &multiplayer_nickname_input,
+            |view, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    view.commit_multiplayer_nickname(cx);
+                }
+            },
+        )
+        .detach();
         Self {
             client,
             seed,
@@ -324,6 +405,15 @@ impl SettingsView {
             model_import_success_pending: false,
             model_import_failed_pending: false,
             about_copy_success_pending: false,
+            multiplayer_error_seq_seen: 0,
+            multiplayer_error_pending: None,
+            multiplayer_auto_connect_url: None,
+            multiplayer_server_input,
+            multiplayer_nickname_input,
+            multiplayer_room_name_input,
+            multiplayer_password_input,
+            multiplayer_room_id_input,
+            multiplayer_chat_input,
             model_import: ModelImportDraft::default(),
             model_drag: None,
             check_for_updates_interval_debouncer: crate::SettingsPatchDebouncer::default(),

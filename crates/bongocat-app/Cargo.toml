@@ -35,6 +35,7 @@ bongocat-ui.workspace = true
 bongocat-update.workspace = true
 clap.workspace = true
 gpui-kit.workspace = true
+rust_socketio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

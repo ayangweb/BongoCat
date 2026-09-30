@@ -212,6 +212,18 @@ impl Render for SettingsView {
                 cx,
             );
         }
+        if let Some(code) = self.multiplayer_error_pending.take() {
+            window.push_notification(
+                Notification::new()
+                    .id::<MultiplayerErrorNotification>()
+                    .message(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        settings_error(language, SettingsError::new(code)),
+                    ))
+                    .with_type(NotificationType::Error),
+                cx,
+            );
+        }
         self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, editing_blocked, cx);
         let view_entity = cx.entity();
         let navigation_memory = self.navigation_memory.clone();
@@ -1378,6 +1390,24 @@ impl Render for SettingsView {
                 self.request_update.clone(),
             ));
 
+        // Keep connection, room actions, and chat in separate groups so the
+        // multiplayer page remains scannable at the compact settings width.
+        let multiplayer_keywords =
+            SettingsNavigationPage::MultiplayerRoom.search_keywords(language, std::iter::empty());
+        let multiplayer_room_page =
+            SettingPage::new(SettingsNavigationPage::MultiplayerRoom.title(language))
+                .icon(SettingsNavigationPage::MultiplayerRoom.icon())
+                .title_suffix(page_reporter(
+                    SettingsNavigationPage::MultiplayerRoom,
+                    navigation_memory.clone(),
+                ))
+                .groups(multiplayer_room::groups(
+                    view_entity.clone(),
+                    snapshot.as_ref(),
+                    language,
+                    multiplayer_keywords,
+                ));
+
         let settings = Settings::new("bongocat-settings")
             .sidebar_width(px(220.0))
             .default_selected_index(SelectIndex {
@@ -1391,6 +1421,7 @@ impl Render for SettingsView {
                 model_behavior_page,
                 overlay_page,
                 input_interaction_page,
+                multiplayer_room_page,
                 shortcuts_page,
                 app_system_page,
                 about_page,

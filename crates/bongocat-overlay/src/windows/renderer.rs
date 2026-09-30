@@ -315,8 +315,11 @@ impl Renderer {
         }
         // SAFETY: buffer sizes and topology are checked before UpdateSubresource
         // copies from immutable snapshot slices into device-owned buffers.
-        unsafe { self.model.sync_snapshot(&self.context, &frame.snapshot) }
-            .map_err(windows_error("update D3D11 model snapshot"))?;
+        unsafe {
+            self.model
+                .sync_snapshot(&self.device, &self.context, &frame.snapshot)
+        }
+        .map_err(windows_error("update D3D11 model snapshot"))?;
         Ok(false)
     }
 
@@ -574,6 +577,53 @@ impl Renderer {
                     0,
                     Some(&[
                         Some(texture.shader_resource.clone()),
+                        Some(self.model.empty_mask.shader_resource.clone()),
+                    ]),
+                );
+                self.context.DrawIndexed(6, 0, 0);
+            }
+        }
+        // The chat bubble rides above everything, like a speech balloon over
+        // the scene rather than a part of it. It carries its own fade opacity
+        // and disables the window-corner SDF the same way the mask pass does.
+        if let Some(bubble) = &self.model.bubble {
+            let uniforms = Uniforms {
+                scale_offset,
+                multiply_color: [1.0; 4],
+                screen_color: [0.0; 4],
+                mask_settings: [0.0; 4],
+                corner_radius: [0.0; 4],
+                opacity: bubble.opacity,
+                padding: [0.0; 3],
+            };
+            unsafe {
+                self.context.RSSetState(&self.pipelines.rasterizer);
+                self.context
+                    .OMSetBlendState(&self.pipelines.normal_blend, None, u32::MAX);
+                self.context.UpdateSubresource(
+                    &self.pipelines.constant_buffer,
+                    0,
+                    None,
+                    std::ptr::from_ref(&uniforms).cast(),
+                    0,
+                    0,
+                );
+                let vertex_buffer = Some(bubble.vertex_buffer.clone());
+                let stride = size_of::<bongocat_render::Vertex>() as u32;
+                let offset = 0_u32;
+                self.context.IASetVertexBuffers(
+                    0,
+                    1,
+                    Some(&raw const vertex_buffer),
+                    Some(&raw const stride),
+                    Some(&raw const offset),
+                );
+                self.context
+                    .IASetIndexBuffer(&bubble.index_buffer, DXGI_FORMAT_R16_UINT, 0);
+                self.context.PSSetShaderResources(
+                    0,
+                    Some(&[
+                        Some(bubble.texture.shader_resource.clone()),
                         Some(self.model.empty_mask.shader_resource.clone()),
                     ]),
                 );

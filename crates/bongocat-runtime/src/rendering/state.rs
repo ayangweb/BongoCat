@@ -22,6 +22,7 @@ pub(crate) struct RuntimeRenderer {
     pub(crate) next_transport_sequence: u64,
     pub(crate) active: Option<ActiveRenderModel>,
     pub(crate) pending: Option<ActiveRenderModel>,
+    pub(crate) chat_bubble: ChatBubbleState,
 }
 
 pub(crate) struct RuntimeRenderBootstrap {

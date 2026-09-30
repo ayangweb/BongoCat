@@ -25,6 +25,7 @@ fn preset_model(id: &str) -> CommittedModel {
 }
 
 mod automatic;
+mod chat_bubble;
 mod error;
 mod evaluate;
 mod model;

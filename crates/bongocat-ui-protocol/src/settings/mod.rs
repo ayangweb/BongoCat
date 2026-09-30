@@ -16,6 +16,7 @@ mod logging;
 mod model_catalog;
 mod model_diagnostic;
 mod model_import;
+mod multiplayer;
 mod remote_models;
 mod runtime;
 mod snapshot;
@@ -58,6 +59,12 @@ pub use model_import::{
     SettingsModelImportOperation, SettingsModelImportProgress, SettingsModelImportRequest,
     SettingsModelImportStage, SettingsModelMode, SettingsModelSourceContent, SettingsMverMode,
     SettingsOperationId, model_source_display_name,
+};
+pub use multiplayer::{
+    CHAT_HISTORY_LIMIT, MAXIMUM_CHAT_CONTENT_CHARS, MAXIMUM_ROOM_NAME_CHARS,
+    MAXIMUM_ROOM_PASSWORD_CHARS, SettingsChatMessage, SettingsLobbyRoom, SettingsLobbyStatus,
+    SettingsMultiplayer, SettingsMultiplayerError, SettingsMultiplayerStatus, SettingsRoomMember,
+    SettingsRoomView,
 };
 pub use remote_models::{
     SettingsRemoteCatalogStatus, SettingsRemoteImageFormat, SettingsRemoteModelEntry,

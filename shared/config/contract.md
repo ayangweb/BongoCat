@@ -34,6 +34,7 @@ model
 shortcuts
 system
 updates
+multiplayer
 ```
 
 当前命名基线：
@@ -45,6 +46,8 @@ updates
 | `system`      | `show_status_icon`                    | 托盘/菜单栏入口可见性                  |
 | `updates`     | `check_automatically`                 | 自动检查更新，默认 `false`              |
 | `updates`     | `check_interval_hours`                | 自动检查间隔小时数，`[1, 8760]`         |
+| `multiplayer` | `server_url`                          | 联机房间服务根 URL，空串表示未配置      |
+| `multiplayer` | `nickname`                            | 房间内昵称，空串表示未配置              |
 | `appearance`  | `theme`                               | `system`、`light` 或 `dark`            |
 | `appearance`  | `language`                            | UI locale                              |
 | `overlay`     | `click_through`                       | 指针事件是否穿透                       |
@@ -100,6 +103,12 @@ typed settings command 修改该值后，仍按配置 revision 原子提交并�
 `updates.check_interval_hours` 以整小时存储，默认 `24`，接受 `1..=8760`。
 关闭 `updates.check_automatically` 只会停止调度，不清空已保存的间隔；重新开启后继续使用该值。
 该字段只控制自动检查，不改变手动检查入口。
+
+`multiplayer.server_url` 是联机房间服务的根 URL，例如 `http://192.168.1.10:3000`。空串表示未配置；
+非空时 scheme 必须是 `http` 或 `https`，且不得携带 path、query 或 fragment（服务在其根路径提供）。
+`multiplayer.nickname` 是加入房间时向其他成员展示的昵称，空串表示未配置；存储值不得包含控制字符，
+trim 后长度上限为 24 个字符。两个字段是否已配置由多人房间页面在加入前校验，配置层只做形状约束。
+整个 `multiplayer` section 在文档上带字段级默认：缺少该 section 的既有配置仍按未配置默认值解析。
 
 Overlay 可见性是 runtime 会话状态，不写入 `config.json`。每次启动都以可见状态创建 overlay；设置页使用
 `settings.overlay.hide_model_window.label` 将状态投影为“隐藏模型窗口”开关，开关选中表示已隐藏且默认未选中。
@@ -340,8 +349,8 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
 ## Initial Version Boundary
 
 - 初始版本是全新的。当前完整配置直接定义为 `schema_version: 1`，包括
-  `appearance`、`overlay`、`input`、`logging`、`model`、`shortcuts`、`system`、`updates`
-  和本文件列出的全部现有字段。overlay 可见性是 runtime 会话状态，不属于配置。
+  `appearance`、`overlay`、`input`、`logging`、`model`、`shortcuts`、`system`、`updates`、
+  `multiplayer` 和本文件列出的全部现有字段。overlay 可见性是 runtime 会话状态，不属于配置。
 - 开发期间新增字段直接修改 v1 的 Rust 类型、JSON Schema、默认值和 fixture；不保留开发
   中间结构，不实现 migration、字段 alias、旧数据转换或历史版本判断。
 - 解析入口只接受完整 v1，并明确拒绝其他版本且不改写原文件。该入口为首次正式发布后的迁移机制

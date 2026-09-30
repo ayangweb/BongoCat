@@ -137,6 +137,26 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::WindowStatePersistFailed => "errors.settings.window_layout_save_failed",
         SettingsErrorCode::ShutdownFailed => "errors.settings.application_shutdown_failed",
         SettingsErrorCode::RemoteModelBusy => "errors.settings.remote_model_busy",
+        SettingsErrorCode::MultiplayerNotConfigured => "errors.settings.multiplayer_not_configured",
+        SettingsErrorCode::MultiplayerConnectFailed => "errors.settings.multiplayer_connect_failed",
+        SettingsErrorCode::MultiplayerRoomNotFound => "errors.settings.multiplayer_room_not_found",
+        SettingsErrorCode::MultiplayerRoomFull => "errors.settings.multiplayer_room_full",
+        SettingsErrorCode::MultiplayerRoomPasswordWrong => {
+            "errors.settings.multiplayer_room_password_wrong"
+        }
+        SettingsErrorCode::MultiplayerAlreadyInRoom => {
+            "errors.settings.multiplayer_already_in_room"
+        }
+        SettingsErrorCode::MultiplayerNotInRoom => "errors.settings.multiplayer_not_in_room",
+        SettingsErrorCode::MultiplayerKicked => "errors.settings.multiplayer_kicked",
+        SettingsErrorCode::MultiplayerChatRateLimited => {
+            "errors.settings.multiplayer_chat_rate_limited"
+        }
+        SettingsErrorCode::MultiplayerServerRefused => "errors.settings.multiplayer_server_refused",
+        SettingsErrorCode::MultiplayerResponseInvalid => {
+            "errors.settings.multiplayer_response_invalid"
+        }
+        SettingsErrorCode::MultiplayerInvalidInput => "errors.settings.multiplayer_invalid_input",
     };
     // The catalog is compile-time embedded; the returned string is leaked and
     // cached by the i18n facade just like every other UI message.

@@ -60,6 +60,8 @@ pub(super) struct SettingsSnapshotClock {
     observed_overlay_visible: Option<bool>,
     observed_remote_models_version: Option<u64>,
     remote_models: crate::remote_models::RemoteModelsState,
+    observed_multiplayer_version: Option<u64>,
+    multiplayer: crate::multiplayer::MultiplayerState,
     diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
     input_capability: InputCapabilityCache,
 }
@@ -68,6 +70,7 @@ impl SettingsSnapshotClock {
     pub(super) fn new(
         config_revision: Option<u64>,
         remote_models: crate::remote_models::RemoteModelsState,
+        multiplayer: crate::multiplayer::MultiplayerState,
     ) -> Self {
         Self {
             revision: 0,
@@ -78,6 +81,8 @@ impl SettingsSnapshotClock {
             observed_overlay_visible: None,
             observed_remote_models_version: None,
             remote_models,
+            observed_multiplayer_version: None,
+            multiplayer,
             diagnostics_export: None,
             input_capability: InputCapabilityCache {
                 checked_at: None,
@@ -167,6 +172,21 @@ impl SettingsSnapshotClock {
 
     pub(super) fn remote_models_snapshot(&self) -> SettingsRemoteModels {
         self.remote_models.snapshot()
+    }
+
+    /// Observes the multiplayer worker's published version, the same way the
+    /// remote library's is: a socket broadcast the user is watching must reach
+    /// the revision probe without waiting for anything else to move.
+    pub(super) fn observe_multiplayer(&mut self) {
+        let version = self.multiplayer.version();
+        if self.observed_multiplayer_version != Some(version) {
+            self.mark_changed();
+            self.observed_multiplayer_version = Some(version);
+        }
+    }
+
+    pub(super) fn multiplayer_snapshot(&self) -> SettingsMultiplayer {
+        self.multiplayer.snapshot()
     }
 
     pub(super) fn coalesce_changes_since(&mut self, revision: u64) {
@@ -277,6 +297,9 @@ pub(super) fn snapshot(
             .or_else(|| configured_model_key(application)),
         model_catalog: settings_model_catalog(application),
         remote_models: clock.remote_models_snapshot(),
+        multiplayer_server_url: application.config().multiplayer.server_url.clone(),
+        multiplayer_nickname: application.config().multiplayer.nickname.clone(),
+        multiplayer: clock.multiplayer_snapshot(),
     }
 }
 
@@ -303,6 +326,7 @@ pub(super) fn observe_snapshot_state(
     );
     clock.observe_config(application.config_revision());
     clock.observe_remote_models();
+    clock.observe_multiplayer();
     let runtime_diagnostics = settings_runtime_diagnostics(&runtime);
     if let Some(previous) = clock.observe_runtime_diagnostics(runtime_diagnostics) {
         match (previous.render_error, runtime_diagnostics.render_error) {

@@ -28,6 +28,7 @@ mod model_identity;
 mod model_input;
 mod model_listing;
 mod model_titles;
+mod multiplayer;
 mod remote_models;
 mod settings;
 mod shortcut_config;

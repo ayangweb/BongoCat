@@ -303,7 +303,7 @@ impl NativeOverlay {
                 "render resources changed within one model generation",
             ));
         }
-        self.model.sync_snapshot(&frame.snapshot)?;
+        self.model.sync_snapshot(&self.device, &frame.snapshot)?;
         Ok(false)
     }
 
@@ -595,6 +595,43 @@ impl NativeOverlay {
                 6,
                 MTLIndexType::UInt16,
                 &self.model.background_index_buffer,
+                0,
+            );
+        }
+        // The chat bubble rides above everything, like a speech balloon over
+        // the scene rather than a part of it. It carries its own fade opacity
+        // and disables the window-corner SDF the same way the mask pass does.
+        if let Some(bubble) = &self.model.bubble {
+            encoder.set_cull_mode(MTLCullMode::None);
+            let uniforms = Uniforms {
+                scale_offset,
+                multiply_color: [1.0; 4],
+                screen_color: [0.0; 4],
+                mask_settings: [0.0; 4],
+                corner_radius: [0.0; 4],
+                opacity: bubble.opacity,
+                padding: [0.0; 3],
+            };
+            encoder.set_render_pipeline_state(&self.pipelines.normal);
+            encoder.set_vertex_buffer(0, Some(&bubble.vertex_buffer), 0);
+            encoder.set_vertex_bytes(
+                1,
+                size_of::<Uniforms>() as u64,
+                std::ptr::from_ref(&uniforms).cast(),
+            );
+            encoder.set_fragment_bytes(
+                1,
+                size_of::<Uniforms>() as u64,
+                std::ptr::from_ref(&uniforms).cast(),
+            );
+            encoder.set_fragment_texture(0, Some(&bubble.texture));
+            encoder.set_fragment_texture(1, Some(&self.model.empty_mask));
+            encoder.set_fragment_sampler_state(0, Some(&self.sampler));
+            encoder.draw_indexed_primitives(
+                MTLPrimitiveType::Triangle,
+                6,
+                MTLIndexType::UInt16,
+                &bubble.index_buffer,
                 0,
             );
         }

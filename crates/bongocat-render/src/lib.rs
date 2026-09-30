@@ -56,7 +56,8 @@ pub use key::{
 };
 pub use resources::{BackgroundAsset, KeyAsset, RenderResources, TextureAsset};
 pub use snapshot::{
-    BlendMode, DrawableDynamicFlags, DrawableSnapshot, KeyAssetId, KeyOverlay, RenderSnapshot,
+    BlendMode, ChatBubbleSnapshot, ChatBubbleTexture, DrawableDynamicFlags, DrawableSnapshot,
+    KeyAssetId, KeyOverlay, RenderSnapshot,
 };
 pub use transport::{ModelCommitFeedbackError, RenderPublishError, RenderTransportDiagnostics};
 pub use validate::{RenderSnapshotValidationError, validate_render_snapshot};

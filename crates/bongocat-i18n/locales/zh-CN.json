@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "关于"
+    },
+    "multiplayer_room": {
+      "title": "多人房间"
     }
   },
   "system_menu": {
@@ -336,7 +339,19 @@
       "window_hide_failed": "无法隐藏设置窗口",
       "window_layout_save_failed": "无法保存窗口布局",
       "application_shutdown_failed": "BongoCat 未能完全关闭",
-      "remote_model_busy": "另一个远程模型正在下载，请稍后再试"
+      "remote_model_busy": "另一个远程模型正在下载，请稍后再试",
+      "multiplayer_not_configured": "请先填写服务地址和昵称",
+      "multiplayer_connect_failed": "无法连接房间服务",
+      "multiplayer_room_not_found": "该房间不存在",
+      "multiplayer_room_full": "该房间已满员",
+      "multiplayer_room_password_wrong": "房间密码错误",
+      "multiplayer_already_in_room": "请先退出当前房间再加入其他房间",
+      "multiplayer_not_in_room": "你还没有加入房间",
+      "multiplayer_kicked": "你已被移出房间",
+      "multiplayer_chat_rate_limited": "发送太频繁，请稍后再试",
+      "multiplayer_server_refused": "房间服务拒绝了该请求",
+      "multiplayer_response_invalid": "房间服务返回了无法识别的应答",
+      "multiplayer_invalid_input": "输入内容不可用"
     }
   },
   "settings": {
@@ -526,6 +541,93 @@
         "unsupported_platform": "当前系统不支持登录时启动",
         "unsupported_os": "当前操作系统不支持登录时启动",
         "unsupported_build": "开发版本不支持登录时启动"
+      }
+    },
+    "multiplayer_room": {
+      "sections": {
+        "connection": {
+          "title": "连接设置"
+        },
+        "room": {
+          "title": "房间",
+          "in_room": "当前房间与成员",
+          "outside_room": "创建新房间，或从开放房间中加入"
+        },
+        "chat": {
+          "title": "聊天"
+        }
+      },
+      "status": {
+        "title": "状态",
+        "disconnected": "未连接",
+        "connecting": "连接中…",
+        "connected": "已连接",
+        "failed": "连接失败"
+      },
+      "server_url": {
+        "title": "服务地址",
+        "placeholder": "http://192.168.1.10:3000"
+      },
+      "nickname": {
+        "title": "昵称",
+        "placeholder": "其他成员看到的名字"
+      },
+      "connection": {
+        "description": "地址和昵称只保存在本机；输入后按%{action}即可保存。",
+        "enter": "回车",
+        "action": "连接",
+        "disconnect": "断开"
+      },
+      "room": {
+        "create": {
+          "title": "创建房间",
+          "action": "创建",
+          "name_placeholder": "房间名（可选）"
+        },
+        "join": {
+          "title": "加入房间",
+          "action": "加入"
+        },
+        "room_id": {
+          "placeholder": "房间号"
+        },
+        "password": {
+          "placeholder": "密码（无密码可留空）"
+        },
+        "info": "房间号 %{id} · %{count}",
+        "leave": {
+          "action": "断开"
+        }
+      },
+      "lobby": {
+        "title": "开放房间",
+        "action": "刷新",
+        "empty_title": "暂无开放房间",
+        "empty_description": "当前服务还没有可加入的房间。",
+        "empty_hint": "刷新即可看到该服务上的房间。",
+        "loading": "正在获取…",
+        "failed": "房间列表获取失败",
+        "row": "%{count}/%{max} 人 · 房主 %{host}",
+        "join": {
+          "action": "加入"
+        }
+      },
+      "members": {
+        "title": "成员",
+        "count": "%{count} 名成员",
+        "host": "房主",
+        "you": "你",
+        "model": "模型：%{model}",
+        "kick": "移出"
+      },
+      "chat": {
+        "title": "聊天",
+        "input": {
+          "title": "聊天"
+        },
+        "placeholder": "说点什么…",
+        "action": "发送",
+        "hint": "加入房间后即可聊天；消息会以气泡形式显示在猫的头顶。"
       }
     }
   }

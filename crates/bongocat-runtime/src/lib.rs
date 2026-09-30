@@ -432,6 +432,14 @@ pub enum RuntimeCommand {
     /// current run, so a later stop for the same ID intentionally targets it.
     StopMotion(MotionId),
     SetExpression(ExpressionId),
+    /// Show one multiplayer chat line as a speech bubble above the model.
+    ///
+    /// The runtime rasterizes the line once and owns the bubble until it fades
+    /// out; a second message while one is showing replaces it.
+    ShowChatBubble {
+        sender: String,
+        content: String,
+    },
 }
 
 impl ShortcutAction {

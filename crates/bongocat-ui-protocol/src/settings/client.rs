@@ -357,6 +357,105 @@ impl SettingsClient {
             .await
     }
 
+    /// Persist the multiplayer room service URL.
+    pub async fn set_multiplayer_server_url(
+        &self,
+        expected_config_revision: u64,
+        server_url: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetMultiplayerServerUrl {
+            expected_config_revision,
+            server_url,
+            reply,
+        })
+        .await
+    }
+
+    /// Persist the nickname shown to other room members.
+    pub async fn set_multiplayer_nickname(
+        &self,
+        expected_config_revision: u64,
+        nickname: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetMultiplayerNickname {
+            expected_config_revision,
+            nickname,
+            reply,
+        })
+        .await
+    }
+
+    /// Refresh the lobby room list; the rows arrive through later revisions.
+    pub async fn connect_multiplayer_service(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::ConnectMultiplayerService { reply })
+            .await
+    }
+
+    /// Disconnect from the room service and leave the current room.
+    pub async fn disconnect_multiplayer_service(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::DisconnectMultiplayerService { reply })
+            .await
+    }
+
+    pub async fn refresh_multiplayer_lobby(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::RefreshMultiplayerLobby { reply })
+            .await
+    }
+
+    /// Create a room and join it as its host; the outcome travels through the
+    /// multiplayer projection.
+    pub async fn create_multiplayer_room(
+        &self,
+        room_name: String,
+        password: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::CreateMultiplayerRoom {
+            room_name,
+            password,
+            reply,
+        })
+        .await
+    }
+
+    /// Join an existing room; the outcome travels through the multiplayer
+    /// projection.
+    pub async fn join_multiplayer_room(
+        &self,
+        room_id: String,
+        password: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::JoinMultiplayerRoom {
+            room_id,
+            password,
+            reply,
+        })
+        .await
+    }
+
+    /// Leave the current room.
+    pub async fn leave_multiplayer_room(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::LeaveMultiplayerRoom { reply })
+            .await
+    }
+
+    /// Send one chat line to the room.
+    pub async fn send_multiplayer_chat(
+        &self,
+        content: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SendMultiplayerChat { content, reply })
+            .await
+    }
+
+    /// Remove one member from the current room.
+    pub async fn kick_multiplayer_member(
+        &self,
+        member_id: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::KickMultiplayerMember { member_id, reply })
+            .await
+    }
+
     pub async fn set_logging_settings(
         &self,
         expected_config_revision: u64,
@@ -954,6 +1053,76 @@ impl SettingsClient {
 
     pub fn shutdown_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::Shutdown { reply })
+    }
+
+    pub fn set_multiplayer_server_url_blocking(
+        &self,
+        expected_config_revision: u64,
+        server_url: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetMultiplayerServerUrl {
+            expected_config_revision,
+            server_url,
+            reply,
+        })
+    }
+
+    pub fn set_multiplayer_nickname_blocking(
+        &self,
+        expected_config_revision: u64,
+        nickname: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetMultiplayerNickname {
+            expected_config_revision,
+            nickname,
+            reply,
+        })
+    }
+
+    pub fn refresh_multiplayer_lobby_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::RefreshMultiplayerLobby { reply })
+    }
+
+    pub fn create_multiplayer_room_blocking(
+        &self,
+        room_name: String,
+        password: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::CreateMultiplayerRoom {
+            room_name,
+            password,
+            reply,
+        })
+    }
+
+    pub fn join_multiplayer_room_blocking(
+        &self,
+        room_id: String,
+        password: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::JoinMultiplayerRoom {
+            room_id,
+            password,
+            reply,
+        })
+    }
+
+    pub fn leave_multiplayer_room_blocking(&self) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::LeaveMultiplayerRoom { reply })
+    }
+
+    pub fn send_multiplayer_chat_blocking(
+        &self,
+        content: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SendMultiplayerChat { content, reply })
+    }
+
+    pub fn kick_multiplayer_member_blocking(
+        &self,
+        member_id: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::KickMultiplayerMember { member_id, reply })
     }
 
     pub(crate) async fn request(

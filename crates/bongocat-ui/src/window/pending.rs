@@ -20,6 +20,8 @@ pub(crate) enum PendingOperation {
     DockIconVisibility,
     AutomaticUpdateCheck,
     CheckForUpdatesIntervalHours,
+    MultiplayerServerUrl,
+    MultiplayerNickname,
     LoggingSettings,
     OverlayVisibility,
     OverlaySettings,
@@ -78,6 +80,14 @@ pub(crate) enum SettingValue {
     CheckForUpdatesIntervalHours {
         expected_config_revision: u64,
         interval_hours: u16,
+    },
+    MultiplayerServerUrl {
+        expected_config_revision: u64,
+        server_url: String,
+    },
+    MultiplayerNickname {
+        expected_config_revision: u64,
+        nickname: String,
     },
     LoggingSettings {
         expected_config_revision: u64,

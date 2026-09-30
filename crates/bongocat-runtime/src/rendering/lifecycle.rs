@@ -22,6 +22,7 @@ impl RuntimeRenderer {
             next_transport_sequence: 0,
             active: None,
             pending: None,
+            chat_bubble: ChatBubbleState::new(),
         }
     }
 }

@@ -70,6 +70,13 @@ pub struct SettingsSnapshot {
     /// The remote model library projection, published by the remote worker and
     /// observed by the snapshot clock like every other derived input.
     pub remote_models: SettingsRemoteModels,
+    /// The persisted multiplayer connection settings, projected from the
+    /// configuration like every other editable setting.
+    pub multiplayer_server_url: String,
+    pub multiplayer_nickname: String,
+    /// The live multiplayer room projection, published by the multiplayer
+    /// worker and observed by the snapshot clock.
+    pub multiplayer: SettingsMultiplayer,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

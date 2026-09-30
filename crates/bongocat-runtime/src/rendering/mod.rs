@@ -26,6 +26,7 @@ pub(crate) struct RenderEvaluation {
 }
 
 mod automatic;
+mod chat_bubble;
 mod error;
 mod evaluate;
 mod expression;
@@ -38,6 +39,7 @@ mod state;
 mod tests;
 
 pub(crate) use automatic::*;
+pub(crate) use chat_bubble::*;
 pub(crate) use error::*;
 pub(crate) use model_input::*;
 pub(crate) use state::*;

@@ -54,6 +54,48 @@ pub struct RenderSnapshot {
     pub model_opacity: f32,
     pub mirror_horizontal: bool,
     pub drawables: Vec<DrawableSnapshot>,
+    /// The multiplayer chat bubble floating above the model, when one is
+    /// showing. The runtime owns the message and its lifetime; the renderer
+    /// only blits the rasterized texture.
+    pub chat_bubble: Option<ChatBubbleSnapshot>,
+}
+
+/// One rasterized chat bubble, ready to upload as a texture.
+///
+/// The pixels are straight (non-premultiplied) RGBA8, top row first: both
+/// overlay shaders multiply the color by alpha themselves, so the texture must
+/// not arrive premultiplied.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ChatBubbleTexture {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
+/// Where and how strongly the bubble shows in this frame.
+///
+/// `anchor` is the bubble's bottom-center in canvas space (the same space the
+/// snapshot's drawables use), and `size` is the bubble rectangle in canvas
+/// units, so the renderer can build the quad with the transform it already
+/// applies to the model.
+#[derive(Clone, Debug)]
+pub struct ChatBubbleSnapshot {
+    pub texture: Arc<ChatBubbleTexture>,
+    pub anchor: [f32; 2],
+    pub size: [f32; 2],
+    pub opacity: f32,
+}
+
+impl PartialEq for ChatBubbleSnapshot {
+    fn eq(&self, other: &Self) -> bool {
+        self.anchor == other.anchor
+            && self.size == other.size
+            && self.opacity == other.opacity
+            && (Arc::ptr_eq(&self.texture, &other.texture)
+                || self.texture.width == other.texture.width
+                    && self.texture.height == other.texture.height
+                    && self.texture.rgba == other.texture.rgba)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

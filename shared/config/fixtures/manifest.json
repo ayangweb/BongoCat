@@ -210,6 +210,36 @@
       "id": "last-expression-model-id",
       "file": "invalid-last-expression-model-id.json",
       "expected": "reject"
+    },
+    {
+      "id": "without-multiplayer",
+      "file": "accept-without-multiplayer.json",
+      "expected": "accept"
+    },
+    {
+      "id": "multiplayer",
+      "file": "accept-multiplayer.json",
+      "expected": "accept"
+    },
+    {
+      "id": "multiplayer-server-url-scheme",
+      "file": "invalid-multiplayer-server-url.json",
+      "expected": "reject"
+    },
+    {
+      "id": "multiplayer-server-url-path",
+      "file": "invalid-multiplayer-server-url-path.json",
+      "expected": "reject"
+    },
+    {
+      "id": "multiplayer-nickname-too-long",
+      "file": "invalid-multiplayer-nickname.json",
+      "expected": "reject"
+    },
+    {
+      "id": "multiplayer-missing-nickname",
+      "file": "invalid-multiplayer-missing-nickname.json",
+      "expected": "reject"
     }
   ]
 }

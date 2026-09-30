@@ -413,13 +413,14 @@ impl SettingsView {
         .detach();
     }
 
-    fn apply_snapshot_if_newer(&mut self, snapshot: SettingsSnapshot) {
+    pub(super) fn apply_snapshot_if_newer(&mut self, snapshot: SettingsSnapshot) {
         if self
             .snapshot
             .as_ref()
             .is_none_or(|current| snapshot.revision >= current.revision)
         {
             self.snapshot = Some(snapshot);
+            self.observe_multiplayer_error();
         }
     }
 }

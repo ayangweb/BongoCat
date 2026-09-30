@@ -62,9 +62,5 @@
   "updates": {
     "check_automatically": false,
     "check_interval_hours": 24
-  },
-  "multiplayer": {
-    "server_url": "",
-    "nickname": ""
   }
 }

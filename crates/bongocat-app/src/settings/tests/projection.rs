@@ -130,8 +130,11 @@ fn input_diagnostics_projection_is_complete_and_advances_its_own_revision() {
     assert_eq!(projected.transport_recovered_after_overflow, 18);
     assert_eq!(projected.transport_runtime_stopped, 19);
 
-    let mut clock =
-        SettingsSnapshotClock::new(Some(7), crate::remote_models::RemoteModelsState::default());
+    let mut clock = SettingsSnapshotClock::new(
+        Some(7),
+        crate::remote_models::RemoteModelsState::default(),
+        crate::multiplayer::MultiplayerState::default(),
+    );
     let _ = clock.observe_input_diagnostics(projected);
     assert_eq!(clock.revision, 0);
     let changed = SettingsInputDiagnostics {
@@ -184,8 +187,11 @@ fn runtime_shutdown_diagnostics_projection_preserves_snapshot_values() {
 fn snapshot_clock_coalesces_changes_observed_in_one_snapshot() {
     let diagnostics = SettingsInputDiagnostics::default();
     let startup = SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled);
-    let mut clock =
-        SettingsSnapshotClock::new(Some(7), crate::remote_models::RemoteModelsState::default());
+    let mut clock = SettingsSnapshotClock::new(
+        Some(7),
+        crate::remote_models::RemoteModelsState::default(),
+        crate::multiplayer::MultiplayerState::default(),
+    );
     clock.observe_config(Some(8));
     let _ = clock.observe_input_diagnostics(diagnostics);
     let _ = clock.observe_startup_item(startup);

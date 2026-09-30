@@ -268,6 +268,67 @@ pub enum SettingsCommand {
     RemoteModelDownloaded {
         request: SettingsRemoteModelImportRequest,
     },
+    /// Persist the multiplayer room service URL. Empty means unconfigured, and
+    /// the multiplayer page refuses room operations until a URL is set.
+    SetMultiplayerServerUrl {
+        expected_config_revision: u64,
+        server_url: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Persist the nickname shown to other room members.
+    SetMultiplayerNickname {
+        expected_config_revision: u64,
+        nickname: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Connect to the configured room service and load its lobby.
+    ConnectMultiplayerService {
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Disconnect from the room service and leave the current room.
+    DisconnectMultiplayerService {
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Refresh the lobby room list over the service's REST document.
+    ///
+    /// The reply carries the list back in its loading state; the rows arrive
+    /// through later snapshot revisions.
+    RefreshMultiplayerLobby {
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Create a room and join it as its host.
+    ///
+    /// The reply reports that the request was accepted; the room itself, a
+    /// server-side refusal or a connection failure arrive through later
+    /// snapshot revisions, because the settings thread never blocks on the
+    /// network.
+    CreateMultiplayerRoom {
+        room_name: String,
+        password: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Join an existing room by its id, with its password when it has one.
+    JoinMultiplayerRoom {
+        room_id: String,
+        password: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Leave the current room, handing the host role over server-side.
+    LeaveMultiplayerRoom {
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Send one chat line to the room. The overlay bubble and the chat history
+    /// both come from the server's broadcast, including for the sender.
+    SendMultiplayerChat {
+        content: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Remove one member from the current room. Only the host may ask, and the
+    /// server decides; the removal arrives through the member list.
+    KickMultiplayerMember {
+        member_id: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     Shutdown {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },

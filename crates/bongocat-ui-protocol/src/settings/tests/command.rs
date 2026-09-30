@@ -567,3 +567,118 @@ fn command_shortcuts_command_preserves_typed_state() {
     assert!(!result.command_shortcuts_enabled);
     worker.join().expect("worker join");
 }
+
+#[test]
+fn multiplayer_commands_preserve_typed_requests_and_carry_the_projection() {
+    let (client, endpoint) = SettingsClient::bounded(8);
+    let worker = thread::spawn(move || {
+        let SettingsCommand::SetMultiplayerServerUrl {
+            expected_config_revision,
+            server_url,
+            reply,
+        } = endpoint.recv_blocking().expect("server url command")
+        else {
+            panic!("unexpected command");
+        };
+        assert_eq!(expected_config_revision, 4);
+        assert_eq!(server_url, "https://rooms.example.com");
+        let mut result = snapshot(5, true, true);
+        result.multiplayer_server_url = server_url;
+        reply.respond(Ok(result)).expect("server url reply");
+
+        let SettingsCommand::JoinMultiplayerRoom {
+            room_id,
+            password,
+            reply,
+        } = endpoint.recv_blocking().expect("join command")
+        else {
+            panic!("unexpected command");
+        };
+        assert_eq!(room_id, "K7XQ2M");
+        assert_eq!(password, "1234");
+        let mut result = snapshot(6, true, true);
+        result.multiplayer.room = Some(SettingsRoomView {
+            room_id,
+            name: "测试房".to_owned(),
+            member_count: 1,
+            max_members: 8,
+            has_password: true,
+            members: vec![SettingsRoomMember {
+                id: "socket-1".to_owned(),
+                name: "小明".to_owned(),
+                model_name: Some("cat-v1.glb".to_owned()),
+                is_host: true,
+                is_self: true,
+            }],
+        });
+        reply.respond(Ok(result)).expect("join reply");
+
+        let SettingsCommand::SendMultiplayerChat { content, reply } =
+            endpoint.recv_blocking().expect("chat command")
+        else {
+            panic!("unexpected command");
+        };
+        assert_eq!(content, "大家好");
+        let mut result = snapshot(7, true, true);
+        result.multiplayer.room = Some(SettingsRoomView {
+            room_id: "K7XQ2M".to_owned(),
+            name: "测试房".to_owned(),
+            member_count: 1,
+            max_members: 8,
+            has_password: true,
+            members: vec![SettingsRoomMember {
+                id: "socket-1".to_owned(),
+                name: "小明".to_owned(),
+                model_name: Some("cat-v1.glb".to_owned()),
+                is_host: true,
+                is_self: true,
+            }],
+        });
+        result.multiplayer.push_chat(SettingsChatMessage {
+            sender: "小明".to_owned(),
+            content,
+            sent_at: 1_759_197_000_000,
+            is_self: true,
+        });
+        reply.respond(Ok(result)).expect("chat reply");
+    });
+
+    let joined = client
+        .set_multiplayer_server_url_blocking(4, "https://rooms.example.com".to_owned())
+        .expect("server url snapshot");
+    assert_eq!(joined.multiplayer_server_url, "https://rooms.example.com");
+
+    client
+        .join_multiplayer_room_blocking("K7XQ2M".to_owned(), "1234".to_owned())
+        .expect("join snapshot");
+
+    let chatted = client
+        .send_multiplayer_chat_blocking("大家好".to_owned())
+        .expect("chat snapshot");
+    let room = chatted.multiplayer.room.expect("joined room");
+    assert_eq!(room.room_id, "K7XQ2M");
+    assert_eq!(room.members.len(), 1);
+    assert!(room.members[0].is_self);
+    assert_eq!(chatted.multiplayer.chat.len(), 1);
+    assert_eq!(chatted.multiplayer.chat[0].sender, "小明");
+    worker.join().expect("worker join");
+}
+
+#[test]
+fn chat_history_stays_bounded_and_order_is_stable() {
+    let mut multiplayer = SettingsMultiplayer::default();
+    for index in 0..(CHAT_HISTORY_LIMIT as u64 + 10) {
+        multiplayer.push_chat(SettingsChatMessage {
+            sender: format!("m{index}"),
+            content: "hello".to_owned(),
+            sent_at: index,
+            is_self: false,
+        });
+    }
+    assert_eq!(multiplayer.chat.len(), CHAT_HISTORY_LIMIT);
+    assert_eq!(multiplayer.chat[0].sender, "m10");
+    assert_eq!(
+        multiplayer.chat.last().expect("last line").sent_at,
+        CHAT_HISTORY_LIMIT as u64 + 9
+    );
+}

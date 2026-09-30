@@ -64,7 +64,7 @@
     "check_interval_hours": 24
   },
   "multiplayer": {
-    "server_url": "",
-    "nickname": ""
+    "server_url": "http://rooms.example.com/sub",
+    "nickname": "小明"
   }
 }

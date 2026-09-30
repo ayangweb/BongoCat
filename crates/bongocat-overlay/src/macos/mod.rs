@@ -51,9 +51,10 @@ use bongocat_platform::{
     MacInputService, PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus,
 };
 use bongocat_render::{
-    BlendMode, CanvasInfo, DrawableId, KeyAssetId, KeyOverlay, ModelBounds, ModelCommitErrorCode,
-    ModelCommitFeedback, ModelCommitOutcome, ModelCommitToken, RenderConsumer, RenderFrame,
-    RenderResources, RenderSnapshot, TextureAsset, TextureId, validate_render_snapshot,
+    BlendMode, CanvasInfo, ChatBubbleSnapshot, ChatBubbleTexture, DrawableId, KeyAssetId,
+    KeyOverlay, ModelBounds, ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome,
+    ModelCommitToken, RenderConsumer, RenderFrame, RenderResources, RenderSnapshot, TextureAsset,
+    TextureId, validate_render_snapshot,
 };
 use bongocat_runtime::{
     CursorPosition, CursorProducer, CursorSample, CursorViewport, GamepadAxisProducer,

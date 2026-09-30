@@ -27,6 +27,9 @@
     },
     "about": {
       "title": "About"
+    },
+    "multiplayer_room": {
+      "title": "Multiplayer room"
     }
   },
   "system_menu": {
@@ -336,7 +339,19 @@
       "window_hide_failed": "Settings window could not be hidden",
       "window_layout_save_failed": "The window layout could not be saved",
       "application_shutdown_failed": "BongoCat could not close completely",
-      "remote_model_busy": "Another remote model is downloading. Try again in a moment."
+      "remote_model_busy": "Another remote model is downloading. Try again in a moment.",
+      "multiplayer_not_configured": "Set the service address and a nickname first",
+      "multiplayer_connect_failed": "The room service could not be reached",
+      "multiplayer_room_not_found": "That room does not exist",
+      "multiplayer_room_full": "That room is full",
+      "multiplayer_room_password_wrong": "The room password is wrong",
+      "multiplayer_already_in_room": "Leave the current room before joining another one",
+      "multiplayer_not_in_room": "You are not in a room",
+      "multiplayer_kicked": "You were removed from the room",
+      "multiplayer_chat_rate_limited": "Messages are being sent too quickly. Try again in a moment.",
+      "multiplayer_server_refused": "The room service refused the request",
+      "multiplayer_response_invalid": "The room service sent an unreadable answer",
+      "multiplayer_invalid_input": "The input is not usable"
     }
   },
   "settings": {
@@ -526,6 +541,93 @@
         "unsupported_platform": "Login startup is unavailable on this system",
         "unsupported_os": "Login startup is unavailable on this operating system",
         "unsupported_build": "Login startup is unavailable in development builds"
+      }
+    },
+    "multiplayer_room": {
+      "sections": {
+        "connection": {
+          "title": "Connection"
+        },
+        "room": {
+          "title": "Room",
+          "in_room": "Current room and members",
+          "outside_room": "Create a room or join one from the lobby"
+        },
+        "chat": {
+          "title": "Chat"
+        }
+      },
+      "status": {
+        "title": "Status",
+        "disconnected": "Not connected",
+        "connecting": "Connecting…",
+        "connected": "Connected",
+        "failed": "Connection failed"
+      },
+      "server_url": {
+        "title": "Service address",
+        "placeholder": "http://192.168.1.10:3000"
+      },
+      "nickname": {
+        "title": "Nickname",
+        "placeholder": "What other members will call you"
+      },
+      "connection": {
+        "description": "The address and the nickname are saved on this device; press %{action} to save one.",
+        "enter": "Enter",
+        "action": "Connect",
+        "disconnect": "Disconnect"
+      },
+      "room": {
+        "create": {
+          "title": "Create a room",
+          "action": "Create",
+          "name_placeholder": "Room name (optional)"
+        },
+        "join": {
+          "title": "Join a room",
+          "action": "Join"
+        },
+        "room_id": {
+          "placeholder": "Room ID"
+        },
+        "password": {
+          "placeholder": "Password (leave empty if none)"
+        },
+        "info": "Room ID %{id} · %{count}",
+        "leave": {
+          "action": "Disconnect"
+        }
+      },
+      "lobby": {
+        "title": "Open rooms",
+        "action": "Refresh",
+        "empty_title": "No open rooms",
+        "empty_description": "There are no rooms available to join on this service.",
+        "empty_hint": "Refresh to see the rooms on this service.",
+        "loading": "Loading…",
+        "failed": "Could not load the room list",
+        "row": "%{count}/%{max} members · host %{host}",
+        "join": {
+          "action": "Join"
+        }
+      },
+      "members": {
+        "title": "Members",
+        "count": "%{count} members",
+        "host": "host",
+        "you": "you",
+        "model": "Model: %{model}",
+        "kick": "Remove"
+      },
+      "chat": {
+        "title": "Chat",
+        "input": {
+          "title": "Chat"
+        },
+        "placeholder": "Say something…",
+        "action": "Send",
+        "hint": "Join a room to chat. Messages show as bubbles above the cat."
       }
     }
   }
