@@ -965,10 +965,17 @@ Linux 阶段再决定增加 Vulkan/OpenGL backend，或基于数据迁移到 wgp
 插件是**模型窗口**的能力扩展，不是独立窗口，也不是独立应用。模型窗口的形状
 （点击、拖动、置顶、跟随鼠标淡出）全部复用，插件只在其上叠加一个面板。
 
-一个插件是**数据**：一个 `plugin.json` manifest，没有可执行代码，没有 C ABI，没有
-`unsafe` 边界。manifest 声明三类内容——身份、宿主代跑的行为（countdown、stopwatch、
-local_time、counter）和一棵场景树；宿主负责求值、光栅化和回答按钮点击。详见
-`docs/adr/0078-model-window-plugin-system.md` 与 `docs/plugin-authoring.md`。
+一个插件是**独立进程**：一个可执行文件加一份 `plugin.json` manifest，不是宿主加载的
+库，也不是宿主解释的 manifest，没有 C ABI，没有 `unsafe` 边界。宿主用 stdin/stdout
+传递行分隔 JSON 的会话协议启动它、维持它并停止它；面板、动作、状态与配置全部在插件
+自己的进程里。插件只依赖 `bongocat-plugin-sdk`，因此**新增插件不改动产品的
+`Cargo.lock`**，安装包体积不随插件数量增长；插件崩溃也不带走应用。详见
+`docs/adr/0079-plugins-are-independent-processes.md` 与 `docs/plugin-authoring.md`。
+
+会话协议按用途分路：身份与描述、配置、宿主事实、输入、面板、场景、模型请求与目录。
+场景携带具体值而不是 binding，宿主只回答"哪个按钮被按下"，其余由插件自己决定。配置
+面板由插件声明 schema、宿主用通用控件渲染，值由插件自己持久化，`config.json` 里没有
+插件段。宿主发布的事实只有五项：模型名、窗口是否可见、语言、版本和当前键盘输入法。
 
 ```text
 plugin worker thread --(latest-wins 图层通道)--> overlay frame loop
@@ -996,8 +1003,22 @@ plugin worker thread --(latest-wins 图层通道)--> overlay frame loop
 loop 每 tick 把放置结果发布到一份 copy-on-write 快照，窗口过程在消息里直接命中测试并
 调用 `OverlayPressSink`。这既避免了额外线程，也意味着插件中心不参与点击路径。
 
-墙钟只在主线程读。`time` 文档说明 `current_local_offset` 仅在单线程询问时成立，而插件
-worker 是第二个线程；主线程按固定节奏刷新 `LocalTimeCache`，worker 只读已发布的值。
+进程级的事实只在主线程读，插件 worker 是第二个线程，只读已发布的值。
+
+墙钟是其中之一：`time` 文档说明 `current_local_offset` 仅在单线程询问时成立，主线程按
+固定节奏刷新 `LocalTimeCache`。
+
+当前键盘输入法是其中之二：`TISCopyCurrentKeyboardInputSource` 在两个线程同时调用时会在
+Core Foundation 内部中止且无任何消息——这是实测的，不是推测（八个线程循环调用每次
+都中止，单线程连续调用两次从不中止）。因此它与墙钟在同一次主线程刷新里一起读，写进
+`InputMethodCache`，worker 每次 tick 把它放进 `HostState`。三件事必须由产品承担而不是
+插件：读取是 HIToolbox 的 C 函数，插件工作区禁止 `unsafe`；读取不是线程安全的；以及
+系统自带本地化名称（`微信输入法`、`かな`、`ABC`），插件自己缩写标识符就需要一份全世界的
+输入法翻译表，并且对它没听说过的那些全部是错的。宿主读一次并作为事实交给插件，
+插件要显示输入法就写一个插件，产品不为它增加任何逻辑。
+
+插件自己的状态——计数、提醒、事件队列——全部写在握手交给它的数据目录里。宿主创建那个
+目录，从不往里写，因此替换插件的程序不会替换它记住的东西。
 
 目录获取沿用更新系统已验证的可达性策略（同一批 proxy 前缀、同一回退顺序）、
 同一把 Minisign 发布密钥和同一套归档解包路径检查，因此没有第二套信任模型需要做对。

@@ -1,6 +1,12 @@
 # 0078 — A model-window plugin system, and why a plugin is data
 
-**Status:** accepted
+**Status:** superseded in part by ADR-0079
+
+A plugin is no longer *data*. The catalog, the store, the trust model, the layer
+channel and the plugin center all survive from this decision and are still the
+design; the behavior engine, the binding vocabulary and the declarative panel do
+not. Read this ADR for why a plugin is an extension of the model window rather
+than its own window, and ADR-0079 for what a plugin *is*.
 
 ## Context
 
