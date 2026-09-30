@@ -128,6 +128,7 @@ pub(super) fn settings_error(language: SettingsLanguage, error: SettingsError) -
         SettingsErrorCode::PluginHostUnavailable => "errors.settings.plugin_host_unavailable",
         SettingsErrorCode::PluginHostBusy => "errors.settings.plugin_host_busy",
         SettingsErrorCode::PluginNotFound => "errors.settings.plugin_not_found",
+        SettingsErrorCode::PluginPanelLimitReached => "errors.settings.plugin_panel_limit_reached",
         SettingsErrorCode::DiagnosticsExportFailed => "errors.settings.diagnostics_export_failed",
         SettingsErrorCode::SoftwareInfoCopyFailed => "errors.settings.software_info_copy_failed",
         SettingsErrorCode::ExternalLinkOpenFailed => "errors.settings.external_link_open_failed",

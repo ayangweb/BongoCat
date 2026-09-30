@@ -101,7 +101,7 @@ pub(super) fn map_model_cover_error(error: ApplicationError) -> SettingsError {
 /// generic message would not tell them what to do.
 pub(super) fn map_plugin_error(error: ApplicationError) -> SettingsError {
     let code = match error {
-        ApplicationError::PluginPreferenceOutOfBounds => SettingsErrorCode::PluginHostBusy,
+        ApplicationError::PluginPreferenceOutOfBounds => SettingsErrorCode::PluginPanelLimitReached,
         error => return map_application_error(error),
     };
     SettingsError::new(code)

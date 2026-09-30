@@ -141,9 +141,34 @@ pub struct NativeConfig {
     pub input: InputConfig,
     pub logging: LoggingConfig,
     pub model: ModelConfig,
+    /// Which plugins show a panel.
+    ///
+    /// `#[serde(default)]` for the same reason the product's own `NativeConfig`
+    /// carries it: a configuration written before plugins existed must still read,
+    /// and making the section required would send an old document into recovery.
+    #[serde(default)]
+    pub plugins: PluginsConfig,
     pub shortcuts: ShortcutConfig,
     pub system: SystemConfig,
     pub updates: UpdateConfig,
+}
+
+/// The plugin section the spike mirrors from the product contract.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PluginsConfig {
+    /// Ids whose panels the user has switched on. Empty by default, which is what
+    /// "no plugin panels" meant to a document written before the section existed.
+    #[serde(default)]
+    pub enabled: Vec<String>,
+}
+
+impl Default for PluginsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -428,6 +453,7 @@ impl Default for NativeConfig {
                 remember_last_expression: false,
                 last_expressions: Vec::new(),
             },
+            plugins: PluginsConfig::default(),
             shortcuts: ShortcutConfig::default(),
             system: SystemConfig {
                 show_taskbar_icon: false,

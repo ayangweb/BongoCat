@@ -10,7 +10,6 @@ publish.workspace = true
 
 [dependencies]
 bongocat-config.workspace = true
-bongocat-log.workspace = true
 bongocat-plugin-protocol.workspace = true
 bongocat-plugin-render.workspace = true
 bongocat-render.workspace = true
@@ -23,7 +22,7 @@ serde_json.workspace = true
 sha2 = "=0.11.0"
 thiserror.workspace = true
 time.workspace = true
-ureq = "=3.4.2"
+ureq = "=2.12.1"
 zip.workspace = true
 
 [dev-dependencies]

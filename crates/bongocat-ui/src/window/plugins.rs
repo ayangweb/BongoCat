@@ -60,8 +60,21 @@ pub(super) const PLUGINS_LOCALIZED_KEYS: [&str; 22] = [
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PluginRowAction {
     Install,
-    Show { enabled: bool },
-    ShowAndUpdate { enabled: bool },
+    Show {
+        enabled: bool,
+    },
+    ShowAndUpdate {
+        enabled: bool,
+    },
+    /// A switch that is on screen but refuses a press, because the model window
+    /// already shows as many panels as it allows.
+    ///
+    /// A distinct variant rather than a `Show` with a separate flag, so a row that
+    /// can be pressed and a row that cannot are different values and the control
+    /// builder cannot render one as the other by forgetting a check.
+    ShowDisabled {
+        enabled: bool,
+    },
 }
 
 impl PluginRowAction {
@@ -85,10 +98,19 @@ impl PluginRowAction {
         .gate(switch_live)
     }
 
+    /// Apply the panel bound to a row that already has a switch.
+    ///
+    /// The switch stays and is marked unpressable rather than being replaced by an
+    /// Install button: the row describes a plugin that *is* installed, so an Install
+    /// button on it would describe a different action, and pressing it would send
+    /// `InstallPlugin` for a plugin the store already holds. Turning one panel off
+    /// is the action that frees a slot, and only a switch can express that.
     const fn gate(self, live: bool) -> Self {
-        match (self, live) {
-            (Self::Show { .. } | Self::ShowAndUpdate { .. }, false) => Self::Install,
-            (control, _) => control,
+        match self {
+            Self::Show { enabled } | Self::ShowAndUpdate { enabled } if !live => {
+                Self::ShowDisabled { enabled }
+            }
+            control => control,
         }
     }
 }
@@ -216,9 +238,14 @@ fn row_control(
         bongocat_i18n::text(locale, "settings.plugins.show_on_window").into();
     let show = matches!(
         action,
-        PluginRowAction::Show { .. } | PluginRowAction::ShowAndUpdate { .. }
+        PluginRowAction::Show { .. }
+            | PluginRowAction::ShowAndUpdate { .. }
+            | PluginRowAction::ShowDisabled { .. }
     );
     let update = matches!(action, PluginRowAction::ShowAndUpdate { .. });
+    // The row already decided this, from the same snapshot the switch reads its
+    // own value out of, so the control does not re-derive it.
+    let switch_live = !matches!(action, PluginRowAction::ShowDisabled { .. });
     SettingField::element(
         move |options: &RenderOptions, _: &mut Window, app: &mut App| {
             let size = options.size();
@@ -242,7 +269,7 @@ fn row_control(
                 .label(show_label.clone())
                 .checked(checked)
                 .with_size(size)
-                .disabled(!view.read(app).plugin_switch_is_live())
+                .disabled(!switch_live)
                 .on_click(move |_checked, _window, app| {
                     let plugin = switch_id.to_string();
                     switch_view.update(app, |view, cx| view.toggle_plugin_enabled(plugin, cx));
@@ -407,17 +434,61 @@ mod tests {
     }
 
     #[test]
-    fn the_panel_bound_greys_the_switch_instead_of_hiding_it() {
+    fn the_panel_bound_greys_the_switch_instead_of_offering_an_install() {
+        // A row whose plugin *is* installed must never present an Install button at
+        // the bound: it would describe the wrong action, and pressing it would send
+        // `InstallPlugin` for something the store already holds.
+        for (installed, update) in [(true, false), (true, true)] {
+            let plugins = SettingsPlugins {
+                active: 4,
+                maximum_active: 4,
+                ..SettingsPlugins::default()
+            };
+            assert!(!switch_is_live(&plugins));
+            let action = PluginRowAction::for_entry(
+                &entry(installed, false, update),
+                switch_is_live(&plugins),
+            );
+            assert!(
+                !matches!(action, PluginRowAction::Install),
+                "an installed row must not offer Install at the bound, got {action:?}"
+            );
+            assert_eq!(
+                action,
+                PluginRowAction::ShowDisabled { enabled: false },
+                "and it keeps a switch that is on screen but refuses the press"
+            );
+        }
+    }
+
+    #[test]
+    fn an_installed_row_keeps_its_update_and_uninstall_at_the_bound() {
+        // Only the switch is affected by the bound. Update and uninstall do not add
+        // a panel, so they stay live — otherwise a user at the bound could not free
+        // a slot by removing a plugin.
         let plugins = SettingsPlugins {
             active: 4,
             maximum_active: 4,
             ..SettingsPlugins::default()
         };
-        assert!(!switch_is_live(&plugins));
+        let action =
+            PluginRowAction::for_entry(&entry(true, false, true), switch_is_live(&plugins));
+        assert_eq!(action, PluginRowAction::ShowDisabled { enabled: false });
+    }
+
+    #[test]
+    fn a_not_installed_row_still_offers_install_at_the_bound() {
+        // The bound governs panels that are *showing*, and installing a plugin does
+        // not show its panel until the switch is turned on. Refusing the install here
+        // would leave a user with no way to acquire a plugin at all.
+        let plugins = SettingsPlugins {
+            active: 4,
+            maximum_active: 4,
+            ..SettingsPlugins::default()
+        };
         assert_eq!(
-            PluginRowAction::for_entry(&entry(true, false, false), switch_is_live(&plugins)),
+            PluginRowAction::for_entry(&entry(false, false, false), switch_is_live(&plugins)),
             PluginRowAction::Install,
-            "at the bound the row is read-only rather than offering a refused press"
         );
     }
 

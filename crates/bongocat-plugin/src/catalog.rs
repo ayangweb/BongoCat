@@ -243,6 +243,13 @@ pub fn fetch_archive(
 ///
 /// This is the one place that knows about an HTTP client, so everything above it
 /// is testable without one.
+///
+/// `timeout` is applied **per call** rather than being read off `agent`, because
+/// one agent serves both kinds of request and the two bounds differ by a factor of
+/// sixty. A bound that lives only on the agent is the *archive* bound, so a hung
+/// mirror would hold the worker thread for the transfer timeout instead of the
+/// catalog one — once per source, across every source in the retry chain — and the
+/// worker is the thread that answers panel presses and takes the stop request.
 pub fn download_with(
     url: &str,
     timeout: Duration,
@@ -253,12 +260,12 @@ pub fn download_with(
     // connects, and a rule that is only enforced at parse time is a rule that a
     // future code path can forget.
     bongocat_plugin_protocol::validate_release_url(url)?;
-    let _ = timeout;
     let response = agent
         .get(url)
+        .timeout(timeout)
         .call()
         .map_err(|error| PluginError::with_detail(PluginErrorCode::DownloadFailed, error))?;
-    let reader = response.into_body().into_reader();
+    let reader = response.into_reader();
     let mut bytes = Vec::new();
     // Bounded while reading rather than after: a response that keeps producing
     // bytes is stopped at the bound instead of filling memory first.
@@ -279,12 +286,13 @@ use std::io::Read;
 
 /// The agent every download uses.
 ///
-/// One agent, one connection pool, one set of timeouts. A fresh agent per request
-/// would drop and re-establish TLS for every source in a retry chain, which is
-/// the expensive part of a request — and the plugin center makes several in a row.
+/// One agent, one connection pool, so the retry chain does not re-establish TLS for
+/// every source it tries. The agent's own global timeout is a ceiling that no
+/// caller can raise; the *effective* bound is the smaller of it and the per-call
+/// timeout [`download_with`] applies, which is how the catalog's 30 s bound and the
+/// archive's transfer bound both hold from one agent.
 pub fn agent() -> Result<ureq::Agent, PluginError> {
-    Ok(ureq::Agent::config_builder()
-        .timeout_global(Some(crate::ARCHIVE_REQUEST_TIMEOUT))
-        .build()
-        .into())
+    Ok(ureq::builder()
+        .timeout(crate::ARCHIVE_REQUEST_TIMEOUT)
+        .build())
 }

@@ -313,7 +313,8 @@
       "application_shutdown_failed": "O BongoCat não pôde ser encerrado por completo",
       "plugin_host_unavailable": "Os plugins não estão em execução nesta sessão",
       "plugin_host_busy": "Outra operação de plugin está em andamento. Tente de novo em um instante.",
-      "plugin_not_found": "Esse plugin não está mais disponível"
+      "plugin_not_found": "Esse plugin não está mais disponível",
+      "plugin_panel_limit_reached": "A janela do modelo já mostra o máximo de painéis de plugin que pode. Desligue um antes."
     }
   },
   "settings": {

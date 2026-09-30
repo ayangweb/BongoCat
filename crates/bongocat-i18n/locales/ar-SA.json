@@ -313,7 +313,8 @@
       "application_shutdown_failed": "تعذّر إغلاق BongoCat بالكامل",
       "plugin_host_unavailable": "الإضافات غير مشغّلة في هذه الجلسة",
       "plugin_host_busy": "هناك عملية إضافة أخرى قيد التنفيذ. أعد المحاولة بعد قليل.",
-      "plugin_not_found": "هذه الإضافة لم تعد متاحة"
+      "plugin_not_found": "هذه الإضافة لم تعد متاحة",
+      "plugin_panel_limit_reached": "نافذة النموذج تعرض بالفعل أكبر عدد من لوحات الإضافات. أوقف لوحة واحدة أولًا."
     }
   },
   "settings": {

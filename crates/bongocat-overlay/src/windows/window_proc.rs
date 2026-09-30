@@ -76,56 +76,79 @@ pub(crate) fn requests_context_menu(message: u32) -> bool {
 
 /// Whether the message begins a left-button press on the client area.
 ///
-/// The client form only: `WM_NCHITTEST` answers `HTCLIENT` for a point inside a
-/// layer, so a press that landed on a panel arrives here and a press anywhere else
-/// arrives as `WM_NCLBUTTONDOWN` and becomes a window drag.
+/// The client form only, and that is what makes it a reliable signal: `WM_NCHITTEST`
+/// answers `HTCLIENT` for a point inside a layer and `HTCAPTION` for a point outside
+/// one, so a press that landed on a panel arrives as `WM_LBUTTONDOWN` and a press
+/// anywhere else is promoted to `WM_NCLBUTTONDOWN` and becomes a window drag before
+/// it ever reaches the dispatch below. Its `lparam` is therefore a client point.
 pub(crate) fn begins_layer_press(message: u32) -> bool {
     matches!(message, WM_LBUTTONDOWN)
 }
 
+/// Where a message's packed `lparam` point is expressed.
+///
+/// The two callers do not agree, and treating them as if they did is what makes a
+/// Windows press land somewhere other than where the panel was drawn.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PointSpace {
+    /// `WM_NCHITTEST` carries a **screen** point, so it must be converted.
+    Screen,
+    /// `WM_LBUTTONDOWN` and the other client-area mouse messages already carry a
+    /// **client** point, so converting it subtracts the window origin a second time.
+    Client,
+}
+
 /// The press a left-button message carries, in the window's own client pixels.
 ///
-/// The point in `lparam` is screen coordinates. The model window is borderless and
-/// draws its client area at the window origin, so the screen point is already a
-/// client point — it is converted with `ScreenToClient` rather than by subtracting
-/// the window origin because a DirectComposition visual and the window's frame can
-/// disagree by a rounding error at some display scales, and the hit test measures
-/// against the client rect the frame loop just drew.
-pub(crate) fn client_click(hwnd: HWND, lparam: LPARAM) -> Option<(f32, f32)> {
+/// `lparam` is read as the space `space` names. For a client message the packed pair
+/// is already relative to the client area and is used as it stands; for a
+/// non-client message it is a screen point and is converted with `ScreenToClient`
+/// rather than by subtracting the window origin, because a DirectComposition visual
+/// and the window's frame can disagree by a rounding error at some display scales
+/// and the hit test measures against the client rect the frame loop just drew.
+///
+/// The packed pair is signed 16-bit and read as signed rather than discarded, so a
+/// point left of or above the window is still refused by the hit test for being
+/// outside the drawable, rather than not reported at all.
+pub(crate) fn client_click(hwnd: HWND, lparam: LPARAM, space: PointSpace) -> Option<(f32, f32)> {
     let packed = lparam.0 as i32;
-    let mut point = POINT {
-        x: packed & 0xFFFF,
-        y: (packed >> 16) & 0xFFFF,
-    };
-    // SAFETY: the HWND is live and read on its owner thread, and `point` is a live
-    // POINT the call writes into.
-    let converted = unsafe { ScreenToClient(hwnd, &mut point) }.as_bool();
-    let (x, y) = if converted {
-        (point.x as f32, point.y as f32)
-    } else {
-        // The packed pair is signed 16-bit. Read as signed rather than discarded,
-        // so a press above or left of the window is still refused by the hit test
-        // for being outside the drawable, rather than not reported at all.
-        (
-            (packed & 0xFFFF) as i16 as f32,
-            ((packed >> 16) & 0xFFFF) as i16 as f32,
-        )
+    let raw = (
+        (packed & 0xFFFF) as i16 as f32,
+        ((packed >> 16) & 0xFFFF) as i16 as f32,
+    );
+    let (x, y) = match space {
+        PointSpace::Client => raw,
+        PointSpace::Screen => {
+            let mut point = POINT {
+                x: raw.0 as i32,
+                y: raw.1 as i32,
+            };
+            // SAFETY: the HWND is live and read on its owner thread, and `point` is a
+            // live POINT the call writes into.
+            if unsafe { ScreenToClient(hwnd, &mut point) }.as_bool() {
+                (point.x as f32, point.y as f32)
+            } else {
+                raw
+            }
+        }
     };
     (x.is_finite() && y.is_finite()).then_some((x, y))
 }
 
 /// The press a point in a window message lands on, if it lands on one at all.
 ///
-/// `lparam` carries a *screen* point, which is converted against the client rect
-/// here rather than in the caller: the two call sites — the hit test and the click
-/// itself — must agree about which space the answer is in, or a press would be
-/// accepted for one point and drawn for another.
+/// The client rect is measured and the point is read in the same call so the two
+/// call sites — the hit test and the click itself — cannot disagree about which
+/// space the answer is in, or a press would be accepted for one point and drawn for
+/// another. `space` is the caller's to name, because only the caller knows which
+/// message it is answering.
 ///
 /// SAFETY: the caller holds the live boxed state for this HWND on its owner thread.
 pub(crate) unsafe fn layer_press(
     state: &OverlayWindowState,
     hwnd: HWND,
     lparam: LPARAM,
+    space: PointSpace,
 ) -> Option<bongocat_render::OverlayLayerPointer> {
     // SAFETY: the HWND is live and read on its owner thread.
     let mut rect = RECT::default();
@@ -138,7 +161,7 @@ pub(crate) unsafe fn layer_press(
         (rect.right - rect.left).max(0) as u32,
         (rect.bottom - rect.top).max(0) as u32,
     );
-    let (x, y) = client_click(hwnd, lparam)?;
+    let (x, y) = client_click(hwnd, lparam, space)?;
     state.placed_layers.press(width, height, x, y)
 }
 
@@ -177,7 +200,9 @@ pub(crate) unsafe extern "system" fn window_proc(
             // left click at all.
             // SAFETY: userdata is the live boxed state for this HWND, and the hit
             // test only reads it on the dispatch thread.
-            if !state.is_null() && unsafe { layer_press(&*state, hwnd, lparam) }.is_some() {
+            if !state.is_null()
+                && unsafe { layer_press(&*state, hwnd, lparam, PointSpace::Screen) }.is_some()
+            {
                 return LRESULT(HTCLIENT as isize);
             }
             return LRESULT(HTCAPTION as isize);
@@ -276,7 +301,7 @@ pub(crate) unsafe extern "system" fn window_proc(
             // `DefWindowProcW` would give the window a capture it never gives back
             // for the rest of the click.
             // SAFETY: the state belongs to this HWND on its owner thread.
-            if let Some(press) = unsafe { layer_press(state, hwnd, lparam) }
+            if let Some(press) = unsafe { layer_press(state, hwnd, lparam, PointSpace::Client) }
                 && let Some(sink) = &state.press_sink
             {
                 sink.press(press.layer_id, press.x, press.y);

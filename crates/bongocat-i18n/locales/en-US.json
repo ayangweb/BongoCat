@@ -313,7 +313,8 @@
       "application_shutdown_failed": "BongoCat could not close completely",
       "plugin_host_unavailable": "Plugins are not running in this session",
       "plugin_host_busy": "Another plugin operation is in progress. Try again in a moment.",
-      "plugin_not_found": "That plugin is no longer available"
+      "plugin_not_found": "That plugin is no longer available",
+      "plugin_panel_limit_reached": "The model window already shows the most plugin panels it can. Switch one off first."
     }
   },
   "settings": {

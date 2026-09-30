@@ -313,7 +313,8 @@
       "application_shutdown_failed": "BongoCat không thể đóng hoàn toàn",
       "plugin_host_unavailable": "Tiện ích không chạy trong phiên này",
       "plugin_host_busy": "Đang có thao tác tiện ích khác. Hãy thử lại sau giây lát.",
-      "plugin_not_found": "Tiện ích đó không còn khả dụng"
+      "plugin_not_found": "Tiện ích đó không còn khả dụng",
+      "plugin_panel_limit_reached": "Cửa sổ mô hình đã hiển thị đủ số bảng tiện ích tối đa. Hãy tắt một bảng trước."
     }
   },
   "settings": {

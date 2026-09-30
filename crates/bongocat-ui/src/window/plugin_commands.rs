@@ -44,13 +44,6 @@ impl SettingsView {
         self.plugin_entry(id).is_some_and(|entry| entry.enabled)
     }
 
-    /// Whether the model window still has room for one more panel.
-    pub(super) fn plugin_switch_is_live(&self) -> bool {
-        self.snapshot
-            .as_ref()
-            .is_some_and(|snapshot| snapshot.plugins.active < snapshot.plugins.maximum_active)
-    }
-
     fn plugin_entry(&self, id: &str) -> Option<&SettingsPluginEntry> {
         self.snapshot
             .as_ref()?

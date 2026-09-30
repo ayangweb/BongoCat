@@ -40,6 +40,14 @@ pub enum SettingsErrorCode {
     PluginHostUnavailable,
     PluginHostBusy,
     PluginNotFound,
+    /// The model window already shows as many plugin panels as it allows.
+    ///
+    /// Its own code rather than `PluginHostBusy`, because the two ask the user for
+    /// opposite things: this one is answered by switching a panel off and stays
+    /// refused until they do, while "busy" is answered by waiting and clears on its
+    /// own. Telling a user at the panel bound to "try again in a moment" sends them
+    /// to wait for something that will not change.
+    PluginPanelLimitReached,
     DiagnosticsExportFailed,
     SoftwareInfoCopyFailed,
     ExternalLinkOpenFailed,
@@ -54,7 +62,7 @@ pub enum SettingsErrorCode {
 }
 
 impl SettingsErrorCode {
-    pub const ALL: [Self; 45] = [
+    pub const ALL: [Self; 46] = [
         Self::ServiceUnavailable,
         Self::SnapshotOutdated,
         Self::RuntimeUnavailable,
@@ -89,6 +97,7 @@ impl SettingsErrorCode {
         Self::PluginHostUnavailable,
         Self::PluginHostBusy,
         Self::PluginNotFound,
+        Self::PluginPanelLimitReached,
         Self::DiagnosticsExportFailed,
         Self::SoftwareInfoCopyFailed,
         Self::ExternalLinkOpenFailed,
@@ -138,6 +147,7 @@ impl SettingsErrorCode {
             Self::PluginHostUnavailable => "plugin_host_unavailable",
             Self::PluginHostBusy => "plugin_host_busy",
             Self::PluginNotFound => "plugin_not_found",
+            Self::PluginPanelLimitReached => "plugin_panel_limit_reached",
             Self::DiagnosticsExportFailed => "diagnostics_export_failed",
             Self::SoftwareInfoCopyFailed => "software_info_copy_failed",
             Self::ExternalLinkOpenFailed => "external_link_open_failed",
@@ -232,6 +242,9 @@ impl SettingsError {
                 "Another plugin operation is in progress. Try again in a moment."
             }
             SettingsErrorCode::PluginNotFound => "That plugin is no longer available",
+            SettingsErrorCode::PluginPanelLimitReached => {
+                "The model window already shows the most plugin panels it can. Switch one off first."
+            }
             SettingsErrorCode::DiagnosticsExportFailed => "Diagnostics could not be exported",
             SettingsErrorCode::SoftwareInfoCopyFailed => "Software information could not be copied",
             SettingsErrorCode::ExternalLinkOpenFailed => "The link could not be opened",

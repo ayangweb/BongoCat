@@ -313,7 +313,8 @@
       "application_shutdown_failed": "BongoCat 未能完全關閉",
       "plugin_host_unavailable": "本次執行中外掛服務未啟動",
       "plugin_host_busy": "另一個外掛操作正在進行，請稍後再試。",
-      "plugin_not_found": "該外掛已無法使用"
+      "plugin_not_found": "該外掛已無法使用",
+      "plugin_panel_limit_reached": "模型視窗上已顯示可顯示的外掛面板數量上限。請先關閉其中一個。"
     }
   },
   "settings": {

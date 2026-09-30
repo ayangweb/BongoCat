@@ -1022,7 +1022,6 @@ name = "bongocat-plugin"
 version = "2.0.1"
 dependencies = [
  "bongocat-config",
- "bongocat-log",
  "bongocat-plugin-protocol",
  "bongocat-plugin-render",
  "bongocat-render",
@@ -1036,7 +1035,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "time",
- "ureq 3.4.2",
+ "ureq",
  "zip 8.6.0",
 ]
 
@@ -1281,7 +1280,7 @@ dependencies = [
  "time",
  "toml 0.9.12+spec-1.1.0",
  "tracing",
- "ureq 2.12.1",
+ "ureq",
  "uuid",
  "walkdir",
  "windows-registry 0.5.3",
@@ -8816,41 +8815,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
 dependencies = [
  "base64 0.22.1",
+ "flate2",
  "log",
  "once_cell",
  "rustls",
  "rustls-pki-types",
  "url",
  "webpki-roots 0.26.11",
-]
-
-[[package]]
-name = "ureq"
-version = "3.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a7ac20be9b7726e0bbdbf974c059676d9acb1cd414961f570a4e8231cacd7fc"
-dependencies = [
- "base64 0.23.1",
- "flate2",
- "log",
- "percent-encoding",
- "rustls",
- "rustls-pki-types",
- "ureq-proto",
- "utf8-zero",
- "webpki-roots 1.0.9",
-]
-
-[[package]]
-name = "ureq-proto"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f86fd172ccca569e458f61b6bdd6220965a9ef36e672a6852953b51a0e1583be"
-dependencies = [
- "base64 0.23.1",
- "http",
- "httparse",
- "log",
 ]
 
 [[package]]
@@ -8925,12 +8896,6 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
-
-[[package]]
-name = "utf8-zero"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8c0a043c9540bae7c578c88f91dda8bd82e59ae27c21baca69c8b191aaf5a6e"
 
 [[package]]
 name = "utf8_iter"
