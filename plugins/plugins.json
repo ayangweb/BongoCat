@@ -95,6 +95,25 @@
           "path": "build/input-method.zip"
         }
       }
+    },
+    {
+      "id": "agent-watch",
+      "name": "AI Watch",
+      "version": "1.0.0",
+      "author": "BongoCat",
+      "description": "Watches what an AI coding tool is doing from its hook events.",
+      "api_version": 1,
+      "downloads": {
+        "macos-aarch64": {
+          "path": "build/agent-watch.zip"
+        },
+        "macos-x86_64": {
+          "path": "build/agent-watch.zip"
+        },
+        "windows-x86_64": {
+          "path": "build/agent-watch.zip"
+        }
+      }
     }
   ]
 }

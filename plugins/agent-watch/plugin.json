@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "api_version": 1,
+  "id": "agent-watch",
+  "name": "AI Watch",
+  "version": "1.0.0",
+  "author": "BongoCat",
+  "description": "Watches what an AI coding tool is doing from its hook events.",
+  "icon": {
+    "emoji": "👀"
+  },
+  "executable": "agent-watch"
+}

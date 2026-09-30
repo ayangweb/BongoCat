@@ -9,6 +9,7 @@ members = [
     "typing-sound",
     "key-stats",
     "input-method",
+    "agent-watch",
 ]
 # The plugins workspace is deliberately its own. A plugin is built, versioned and
 # shipped on its own, and nothing here may reach into the application's manifest:

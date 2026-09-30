@@ -16,6 +16,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bongocat-plugin-agent-watch"
+version = "1.0.0"
+dependencies = [
+ "bongocat-plugin-sdk",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "bongocat-plugin-input-method"
 version = "1.0.0"
 dependencies = [

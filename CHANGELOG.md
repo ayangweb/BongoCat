@@ -15,6 +15,7 @@
 - A third plugin, Typing Sound, gives the cat a voice while you type: each key plays one of your model's own motions, and the model's own sound for it. You choose the motion, the shortest gap between two sounds, and whether a held key counts once or many times.
 - A fourth plugin, Key Stats, counts the keys you press and how far the pointer travels, per day, and keeps the tally in its own files so it survives a restart. Distance is shown in screen widths, which are exact, or in centimetres, which assume a 24-inch screen and say so.
 - A fifth plugin, Input Method, shows which keyboard input method is selected, using the name your system already has for it in your own language. It stays out of the way while you type English unless you ask it not to, and can have the cat react when you switch.
+- A sixth plugin, AI Watch, watches what an AI coding tool is doing from its hook events and has the cat react — reading, writing, running, searching, asking, finished, broken. It follows several conversations at once, and every state can be given its own motion and words. It listens to nothing and sends nothing: it reads a file in its own directory, and only a tool's name and a state ever reach that file.
 
 ### 🐛 Bug Fixes
 
