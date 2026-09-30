@@ -57,6 +57,25 @@
           "path": "build/typing-sound.zip"
         }
       }
+    },
+    {
+      "id": "key-stats",
+      "name": "Key Stats",
+      "version": "1.0.0",
+      "author": "BongoCat",
+      "description": "Counts the keys you press and how far the pointer travels, per day.",
+      "api_version": 1,
+      "downloads": {
+        "macos-aarch64": {
+          "path": "build/key-stats.zip"
+        },
+        "macos-x86_64": {
+          "path": "build/key-stats.zip"
+        },
+        "windows-x86_64": {
+          "path": "build/key-stats.zip"
+        }
+      }
     }
   ]
 }

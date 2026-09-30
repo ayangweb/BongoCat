@@ -103,7 +103,8 @@ pub mod testing;
 
 pub use bongocat_plugin_protocol::{
     ConfigDocument, ConfigKind, ConfigSchema, ConfigValue, HostMessage, InputEvent, LocalizedText,
-    ModelOutcome, ModelRequest, ModelRequestKind, PluginAnchor, Subscription, control_label,
+    LogLevel, ModelOutcome, ModelRequest, ModelRequestKind, PluginAnchor, PluginMessage,
+    Subscription, control_label,
 };
 pub use host::{Host, Identity, Outcome};
 pub use panel::{
@@ -133,7 +134,7 @@ pub mod prelude {
         Choice, Decimal, Field, Integer, Option_, Settings, Store, TextField, Toggle, Values,
     };
     pub use crate::{
-        ConfigDocument, ConfigKind, ConfigValue, HostMessage, InputEvent, LocalizedText,
+        ConfigDocument, ConfigKind, ConfigValue, HostMessage, InputEvent, LocalizedText, LogLevel,
         ModelRequest, Subscription, control_label,
     };
     pub use bongocat_plugin_protocol::{

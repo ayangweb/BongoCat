@@ -13,6 +13,7 @@
 - The first plugin is a Pomodoro timer: pick how long a round lasts, what follows it, and whether the next round starts itself. When a round ends the cat reacts and says so.
 - A second plugin, Key Display, shows the keys you are holding on the model window as keycaps, in the order you pressed them. It can show the mouse buttons too, and can get out of the way when you are not typing.
 - A third plugin, Typing Sound, gives the cat a voice while you type: each key plays one of your model's own motions, and the model's own sound for it. You choose the motion, the shortest gap between two sounds, and whether a held key counts once or many times.
+- A fourth plugin, Key Stats, counts the keys you press and how far the pointer travels, per day, and keeps the tally in its own files so it survives a restart. Distance is shown in screen widths, which are exact, or in centimetres, which assume a 24-inch screen and say so.
 
 ### 🐛 Bug Fixes
 

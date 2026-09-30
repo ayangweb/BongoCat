@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "api_version": 1,
+  "id": "key-stats",
+  "name": "Key Stats",
+  "version": "1.0.0",
+  "author": "BongoCat",
+  "description": "Counts the keys you press and how far the pointer travels, per day, on the model window.",
+  "icon": {
+    "emoji": "📊"
+  },
+  "executable": "key-stats"
+}
