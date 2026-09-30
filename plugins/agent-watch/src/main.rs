@@ -941,7 +941,9 @@ mod tests {
              for: {labels:?}"
         );
         assert!(
-            labels.iter().all(|label| !label.starts_with("2 sessions ·")),
+            labels
+                .iter()
+                .all(|label| !label.starts_with("2 sessions ·")),
             "and the busy count is not said when it is the same number twice: {labels:?}"
         );
     }

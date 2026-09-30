@@ -1,0 +1,32 @@
+[package]
+name = "bongocat-plugin-cat-skills"
+description = "Lets the cat do things: runs a command you choose, shows the answer, and reminds you when you ask it to."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "cat-skills"
+path = "src/main.rs"
+
+[dependencies]
+# One dependency a plugin may have. This plugin needs no more: it runs a command with the
+# standard library, remembers a reminder in a file of its own, and asks the product for a
+# motion and a bubble. There is no crate here for an agent client, because the agent is
+# whatever command the user names — which is the point, and the reason adding an ability does
+# not add a line to the product's dependency graph.
+bongocat-plugin-sdk.workspace = true
+# A reminder is three facts that have to survive the app closing, so they go in a file, and
+# a file that outlives a version of this plugin needs a codec that tolerates a version that
+# knew fewer fields. That is the whole of what this is for.
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

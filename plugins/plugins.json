@@ -114,6 +114,25 @@
           "path": "build/agent-watch.zip"
         }
       }
+    },
+    {
+      "id": "cat-skills",
+      "name": "Cat Skills",
+      "version": "1.0.0",
+      "author": "BongoCat",
+      "description": "Runs a command you choose, shows the answer, and reminds you when you ask.",
+      "api_version": 1,
+      "downloads": {
+        "macos-aarch64": {
+          "path": "build/cat-skills.zip"
+        },
+        "macos-x86_64": {
+          "path": "build/cat-skills.zip"
+        },
+        "windows-x86_64": {
+          "path": "build/cat-skills.zip"
+        }
+      }
     }
   ]
 }

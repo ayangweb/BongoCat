@@ -16,6 +16,7 @@
 - A fourth plugin, Key Stats, counts the keys you press and how far the pointer travels, per day, and keeps the tally in its own files so it survives a restart. Distance is shown in screen widths, which are exact, or in centimetres, which assume a 24-inch screen and say so.
 - A fifth plugin, Input Method, shows which keyboard input method is selected, using the name your system already has for it in your own language. It stays out of the way while you type English unless you ask it not to, and can have the cat react when you switch.
 - A sixth plugin, AI Watch, watches what an AI coding tool is doing from its hook events and has the cat react — reading, writing, running, searching, asking, finished, broken. It follows several conversations at once, and every state can be given its own motion and words. It listens to nothing and sends nothing: it reads a file in its own directory, and only a tool's name and a state ever reach that file.
+- A seventh plugin, Cat Skills, lets the cat do things. Give it a command and a question and it runs them, says what came back and moves; point it at the weather service, at your own AI command-line tool, or at a script you wrote. It also reminds you of something at a time you choose, and keeps that reminder in its own file so it survives a restart. Nothing runs until you fill in a command, nothing goes through a shell, and the wait and the output are both bounded.
 
 ### 🐛 Bug Fixes
 

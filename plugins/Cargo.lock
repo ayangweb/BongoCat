@@ -25,6 +25,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bongocat-plugin-cat-skills"
+version = "1.0.0"
+dependencies = [
+ "bongocat-plugin-sdk",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "bongocat-plugin-input-method"
 version = "1.0.0"
 dependencies = [

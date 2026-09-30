@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "api_version": 1,
+  "id": "cat-skills",
+  "name": "Cat Skills",
+  "version": "1.0.0",
+  "author": "BongoCat",
+  "description": "Runs a command you choose, shows the answer, and reminds you when you ask it to.",
+  "icon": {
+    "emoji": "🐈"
+  },
+  "executable": "cat-skills"
+}
