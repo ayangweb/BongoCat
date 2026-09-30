@@ -987,17 +987,10 @@ fn swift_resource_bundle(workspace: &Path, target: ReleaseTarget) -> Result<Path
         {
             continue;
         }
-        let products = entry
-            .path()
-            .join("out/swift-rs/PermissionFlowShimFFI/out/Products");
-        let Ok(configurations) = fs::read_dir(products) else {
-            continue;
-        };
-        for configuration in configurations.flatten() {
-            let candidate = configuration.path().join(SWIFT_RESOURCE_BUNDLE);
-            if candidate.is_dir() {
-                return Ok(candidate);
-            }
+        if let Some(bundle) =
+            find_swift_resource_bundle(&entry.path().join("out/swift-rs/PermissionFlowShimFFI"))
+        {
+            return Ok(bundle);
         }
     }
     failure(format!(
@@ -1005,6 +998,40 @@ fn swift_resource_bundle(workspace: &Path, target: ReleaseTarget) -> Result<Path
          resolve its strings without it",
         build.display()
     ))
+}
+
+/// Finds the resource bundle below the build path `swift-rs` gave to SwiftPM.
+///
+/// That layout has already changed once, and this repository is built with more than one toolchain:
+/// before Xcode 27 SwiftPM wrote products to `<arch>-apple-macosx/<Configuration>` under the build
+/// path, and since then to `[out/]Products/<Configuration>`, and Xcode 27 keeps the older directory
+/// around as well. A search pinned to the shape the local machine happens to produce passes here
+/// and fails in CI, so the bundle is looked up by walking the package's own build path. The walk is
+/// depth-bounded because the deepest layout in use puts the bundle three levels down, and a
+/// packaging step has no reason to crawl an unbounded tree.
+fn find_swift_resource_bundle(build_path: &Path) -> Option<PathBuf> {
+    const MAX_DEPTH: usize = 3;
+
+    let mut pending = vec![(build_path.to_path_buf(), 0usize)];
+    while let Some((directory, depth)) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path
+                .file_name()
+                .is_some_and(|name| name == SWIFT_RESOURCE_BUNDLE)
+                && path.is_dir()
+            {
+                return Some(path);
+            }
+            if depth < MAX_DEPTH && path.is_dir() {
+                pending.push((path, depth + 1));
+            }
+        }
+    }
+    None
 }
 
 /// The staging root for packaged resources, under the output directory.
@@ -2532,6 +2559,68 @@ mod tests {
             !name.contains("-setup"),
             "the published installer must not keep the packaging suffix: {name}"
         );
+    }
+
+    /// Packaging fails outright when the Swift resource bundle is missing, so the
+    /// search has to cover every layout SwiftPM has used for a `--build-path`
+    /// build. This repository is built with more than one Xcode, and a search
+    /// pinned to the shape the local machine produces passes here while failing
+    /// in CI, which is exactly how the `out/Products`-only search got in.
+    #[test]
+    fn the_swift_resource_bundle_is_found_in_every_products_layout() {
+        for products in [
+            "out/Products/Release",
+            "Products/Release",
+            "release",
+            "arm64-apple-macosx/release",
+        ] {
+            let root = std::env::temp_dir().join("bongocat-packaging-swift-bundle");
+            let _ = std::fs::remove_dir_all(&root);
+            let package = root
+                .join("target")
+                .join(ReleaseTarget::MacosAarch64.triple())
+                .join("release")
+                .join("build")
+                .join("permission-flow-0123456789abcdef/out/swift-rs/PermissionFlowShimFFI");
+            let expected = package.join(products).join(super::SWIFT_RESOURCE_BUNDLE);
+            std::fs::create_dir_all(&expected).expect("products directory");
+
+            assert_eq!(
+                super::swift_resource_bundle(&root, ReleaseTarget::MacosAarch64)
+                    .expect("the bundle is present"),
+                expected,
+                "the {products} layout must be searched"
+            );
+
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// A build whose Swift package produced no bundle has to fail with the reason
+    /// rather than ship an app whose panel aborts the process on first use.
+    #[test]
+    fn a_build_without_the_swift_resource_bundle_fails_with_the_reason() {
+        let root = std::env::temp_dir().join("bongocat-packaging-swift-bundle-missing");
+        let _ = std::fs::remove_dir_all(&root);
+        let package = root
+            .join("target")
+            .join(ReleaseTarget::MacosAarch64.triple())
+            .join("release")
+            .join("build")
+            .join("permission-flow-0123456789abcdef/out/swift-rs/PermissionFlowShimFFI");
+        // The build script's own `build` entry exists and carries no Swift output.
+        std::fs::create_dir_all(&package).expect("build directory");
+
+        let error = super::swift_resource_bundle(&root, ReleaseTarget::MacosAarch64)
+            .expect_err("a build without the bundle must not package")
+            .to_string();
+
+        assert!(
+            error.contains(super::SWIFT_RESOURCE_BUNDLE),
+            "the failure has to name the bundle it could not find: {error}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

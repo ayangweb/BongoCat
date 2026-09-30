@@ -372,22 +372,48 @@ mod platform {
     /// `permission-flow` owns two `build` entries: the build script's own directory, which has no
     /// Swift output, and the one holding its `OUT_DIR`. A missing directory skips to the next entry
     /// instead of ending the search.
-    fn built_resource_bundle(executable_dir: &Path) -> Option<PathBuf> {
+    pub(super) fn built_resource_bundle(executable_dir: &Path) -> Option<PathBuf> {
         for entry in fs::read_dir(executable_dir.join("build")).ok()?.flatten() {
             let name = entry.file_name();
             if !name.to_string_lossy().starts_with("permission-flow-") {
                 continue;
             }
-            let products = entry
-                .path()
-                .join("out/swift-rs/PermissionFlowShimFFI/out/Products");
-            let Ok(configurations) = fs::read_dir(products) else {
+            let build_path = entry.path().join("out/swift-rs/PermissionFlowShimFFI");
+            if let Some(bundle) = find_resource_bundle(&build_path) {
+                return Some(bundle);
+            }
+        }
+        None
+    }
+
+    /// Finds the resource bundle below the build path `swift-rs` gave to SwiftPM.
+    ///
+    /// That layout has already changed once: before Xcode 27 SwiftPM wrote products to
+    /// `<arch>-apple-macosx/<Configuration>` under the build path, and since then to
+    /// `[out/]Products/<Configuration>`, with Xcode 27 keeping the older directory around as well.
+    /// A search pinned to one shape silently finds nothing on the other toolchain, which here means
+    /// the panel never opens and the user gets the old prompt with no explanation. The bundle is
+    /// therefore looked up by walking the package's own build path, bounded because the deepest
+    /// layout in use puts it three levels down.
+    fn find_resource_bundle(build_path: &Path) -> Option<PathBuf> {
+        const MAX_DEPTH: usize = 3;
+
+        let mut pending = vec![(build_path.to_path_buf(), 0usize)];
+        while let Some((directory, depth)) = pending.pop() {
+            let Ok(entries) = fs::read_dir(&directory) else {
                 continue;
             };
-            for configuration in configurations.flatten() {
-                let candidate = configuration.path().join(RESOURCE_BUNDLE_NAME);
-                if candidate.is_dir() {
-                    return Some(candidate);
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path
+                    .file_name()
+                    .is_some_and(|name| name == RESOURCE_BUNDLE_NAME)
+                    && path.is_dir()
+                {
+                    return Some(path);
+                }
+                if depth < MAX_DEPTH && path.is_dir() {
+                    pending.push((path, depth + 1));
                 }
             }
         }
@@ -630,6 +656,59 @@ mod tests {
                  process aborts before `main`"
             );
         }
+    }
+
+    /// A development binary has to find the resource bundle in every layout SwiftPM has used for a
+    /// `--build-path` build.
+    ///
+    /// The lookup that used to be pinned to Xcode 27's `[out/]Products` shape is what made
+    /// packaging fail in CI, and here the same mistake is silent: the bundle is not found, the
+    /// panel never starts, and the user is left with the old prompt instead of the guided one.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_development_copy_finds_the_bundle_in_every_products_layout() {
+        use super::platform::built_resource_bundle;
+
+        for products in [
+            "out/Products/Debug",
+            "Products/Debug",
+            "debug",
+            "aarch64-apple-macosx/debug",
+        ] {
+            let root = std::env::temp_dir().join("bongocat-startup-permission-bundle");
+            let _ = std::fs::remove_dir_all(&root);
+            let expected = root
+                .join("build/permission-flow-0123456789abcdef/out/swift-rs/PermissionFlowShimFFI")
+                .join(products)
+                .join("PermissionFlow_PermissionFlow.bundle");
+            std::fs::create_dir_all(&expected).expect("products directory");
+
+            assert_eq!(
+                built_resource_bundle(&root),
+                Some(expected),
+                "the {products} layout must be searched"
+            );
+
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// A profile directory with no Swift output at all is the state of a build that never ran the
+    /// guide, and it has to read as "not found" so the caller falls back instead of guessing.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_profile_directory_without_swift_output_reports_no_bundle() {
+        use super::platform::built_resource_bundle;
+
+        let root = std::env::temp_dir().join("bongocat-startup-permission-no-bundle");
+        let _ = std::fs::remove_dir_all(&root);
+        // The build script's own `build` entry exists and carries no Swift output.
+        std::fs::create_dir_all(root.join("build/permission-flow-0123456789abcdef"))
+            .expect("entry");
+
+        assert_eq!(built_resource_bundle(&root), None);
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
