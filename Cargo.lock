@@ -5923,7 +5923,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "permission-flow"
 version = "0.1.40"
-source = "git+https://github.com/ayangweb/permission-flow?rev=1737e048dba489cf0aa74059d5278594334c36a8#1737e048dba489cf0aa74059d5278594334c36a8"
+source = "git+https://github.com/ayangweb/permission-flow?rev=fad0354d960cf775ac332e6375916f7cc6424c7b#fad0354d960cf775ac332e6375916f7cc6424c7b"
 dependencies = [
  "swift-rs",
 ]

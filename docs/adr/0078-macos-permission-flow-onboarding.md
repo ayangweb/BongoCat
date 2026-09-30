@@ -151,13 +151,16 @@ Swift 侧会把非 `.app` 项过滤掉，因此开发二进制得到一个空的
 
 macOS 12 支持只能先落在 fork（上游 PR <https://github.com/veecore/permission-flow/pull/2>）：
 
-- fork `ayangweb/permission-flow` 的 `feat/macos-12-support`，rev `1737e048dba489cf0aa74059d5278594334c36a8`。
+- fork `ayangweb/permission-flow` 的 `feat/macos-12-support`，rev `fad0354d960cf775ac332e6375916f7cc6424c7b`。
 - 根 `Cargo.toml` 的 `permission-flow` 暂时写成 `{ git = …, rev = … }`；`deny.toml` 的 `allow-git`
   相应增加该来源。`required-git-spec = "rev"` 保证不会漂到分支上。
-- fork 里的改动只有降版本相关的四类：`MINIMUM_MACOS_VERSION` 与两处 `Package.swift` 的
+- fork 里的改动只有 macOS 12 相关这几类：`MINIMUM_MACOS_VERSION` 与两处 `Package.swift` 的
   `.macOS(.v12)`、全部 `@available(macOS 12.0, *)`、`PermissionFlowLocalizer` 在 12 上按 region
-  推断 script（`Locale.Language` 是 13+）、`SettingsNavigator` 兼容 System Preferences 的旧路径。
-  `PermissionFlowButton` 仍是 13+，因为它用 `LocalizedStringResource`。
+  推断 script（`Locale.Language` 是 13+）、`SettingsNavigator` 兼容 System Preferences 的旧路径，
+  以及隐私面板 deeplink 的面板标识按系统版本切换（macOS 12 只认
+  `com.apple.preference.security`，13+ 才是 `com.apple.settings.PrivacySecurity.extension`；
+  这一点是实机验证 macOS 12 时发现的）。`PermissionFlowButton` 仍是 13+，因为它用
+  `LocalizedStringResource`。
 - 上游合并并发布后必须改回 crates.io 精确 pin，并从 `allow-git` 删掉这一行；在此之前
   `Cargo.lock` 记录的是 git source，`cargo deny check sources` 是这一项的守门。
 
@@ -165,8 +168,10 @@ macOS 12 支持只能先落在 fork（上游 PR <https://github.com/veecore/perm
 
 - **上游 Rust 接口仍没有 locale 参数**：语言对齐继续依赖决策第 5 条的两半机制，等上游加参数后
   移除。
-- **macOS 12 未实机验证**：适配只在 macOS 27 + Xcode 27 上以 `arm64-apple-macos12.0` 目标编译与
-  跑通上游测试，12 上的运行时行为（浮动面板拖拽、System Preferences 定位、窗口几何）仍需真机确认。
+- **macOS 12 只验证了一部分**：实机（macOS 12）确认面板、拖拽卡片与资源包都正常，并因此发现
+  deeplink 的面板标识问题（已在上游 PR #2 修掉）。仍未实机确认：修正后的 deeplink 是否落到
+  「安全性与隐私 → 输入监控」、以及浮动面板的拖拽引导在 macOS 12 的复选框列表上是否可用——
+  macOS 12 的隐私面板不接受拖拽，只提供「+」按钮，面板文案目前没有为该系统区分。
 - **上游 PR 合并前依赖来源是 fork**：见决策第 7 条，合并发布后必须切回上游版本。
 - **`x86_64-apple-darwin` 无法交叉编译**：`swift-rs` 让 swiftc 按**宿主架构**编译，所以在
   arm64 机器上构建该目标会链接失败（`_permission_flow_*` 未定义符号）。release workflow 已改为
