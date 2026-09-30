@@ -1,6 +1,6 @@
 # ADR-0078: macOS 输入监控引导采用 permission-flow（第二个厂商 FFI 例外）
 
-状态：已接受（2026-09-30）；上游 0.1.40 已接入产品，fork、macOS 12 适配与实机验收未完成，见「未完成项」
+状态：已接受（2026-09-30）；上游 0.1.40 已接入产品，macOS 12 适配落在 fork 的 rev 上（上游 PR #2 未合并），locale 参数与实机验收未完成，见「未完成项」
 
 补充：ADR-0005（Cubism Core FFI 边界）、ADR-0024（macOS TCC 能力边界）、ADR-0032（启动权限
 提示边界）、ADR-0008（应用身份与存储环境）、ADR-0030（实现决策阶梯）
@@ -147,12 +147,27 @@ Swift 侧会把非 `.app` 项过滤掉，因此开发二进制得到一个空的
   引导面板，退回 ADR-0032 的原有动作——Swift 面板在找不到资源包时会 abort 整个进程，崩溃不是可
   接受的降级方式。
 
+### 7. 依赖来源：临时固定在 fork 的 rev
+
+macOS 12 支持只能先落在 fork（上游 PR <https://github.com/veecore/permission-flow/pull/2>）：
+
+- fork `ayangweb/permission-flow` 的 `feat/macos-12-support`，rev `1737e048dba489cf0aa74059d5278594334c36a8`。
+- 根 `Cargo.toml` 的 `permission-flow` 暂时写成 `{ git = …, rev = … }`；`deny.toml` 的 `allow-git`
+  相应增加该来源。`required-git-spec = "rev"` 保证不会漂到分支上。
+- fork 里的改动只有降版本相关的四类：`MINIMUM_MACOS_VERSION` 与两处 `Package.swift` 的
+  `.macOS(.v12)`、全部 `@available(macOS 12.0, *)`、`PermissionFlowLocalizer` 在 12 上按 region
+  推断 script（`Locale.Language` 是 13+）、`SettingsNavigator` 兼容 System Preferences 的旧路径。
+  `PermissionFlowButton` 仍是 13+，因为它用 `LocalizedStringResource`。
+- 上游合并并发布后必须改回 crates.io 精确 pin，并从 `allow-git` 删掉这一行；在此之前
+  `Cargo.lock` 记录的是 git source，`cargo deny check sources` 是这一项的守门。
+
 ## 未完成项
 
-- **fork 未开始**：上游 Rust 接口仍没有 locale 参数，macOS 12 也不支持。
-- **macOS 12 缺口**：`LSMinimumSystemVersion` 仍是 `12.0`，而 Swift 代码按 13.0 构建。在 fork 把
-  `MINIMUM_MACOS_VERSION` 与两处 `.macOS(.v13)` 降到 12.0 之前，含此功能的构建不应发给 macOS 12
-  用户。
+- **上游 Rust 接口仍没有 locale 参数**：语言对齐继续依赖决策第 5 条的两半机制，等上游加参数后
+  移除。
+- **macOS 12 未实机验证**：适配只在 macOS 27 + Xcode 27 上以 `arm64-apple-macos12.0` 目标编译与
+  跑通上游测试，12 上的运行时行为（浮动面板拖拽、System Preferences 定位、窗口几何）仍需真机确认。
+- **上游 PR 合并前依赖来源是 fork**：见决策第 7 条，合并发布后必须切回上游版本。
 - **`x86_64-apple-darwin` 无法打包**：在 arm64 宿主上 `just build` 的该目标会链接失败，需要 fork
   修 `swift-rs` 的 `--arch` 取值或换构建宿主。在这之前 macOS 只产出 arm64 包。
 - **重新授权后输入服务不会自动重启**：见决策第 3 条。
@@ -169,6 +184,10 @@ Swift 侧会把非 `.app` 项过滤掉，因此开发二进制得到一个空的
   `rfd::MessageDialog::new` 与 `AsyncMessageDialog` 断言不变。
 - 打包验证：`verify_app_bundle` 断言 `Contents/Resources/PermissionFlow_PermissionFlow.bundle`
   存在。
+- fork 侧的 macOS 12 验证：`swift build -Xswiftc -target -Xswiftc arm64-apple-macos12.0`（含
+  `--build-tests`）无 error 无 warning，`swift test` 5 passed，`cargo fmt --all --check` /
+  `cargo clippy --workspace --all-targets -- -D warnings` / `cargo test --workspace --lib` 通过，
+  `otool -l libPermissionFlowShimFFI.a` 显示 `minos 12.0`。
 - 可重复的人工验收命令：`cargo run -p bongocat-app -- --run-seconds 0`，在未授权时应出现提示，
   点主按钮后应依次看到 TCC 授权被清除、系统设置打开到「输入监控」、以及浮动的拖拽引导面板。
   `--startup-permission-smoke` 仍然只输出能力状态，不弹框。
@@ -181,4 +200,5 @@ controller 槽、资源包与语言处理）、`crates/bongocat-app/build.rs` �
 时必须复验：`MINIMUM_MACOS_VERSION`、`SwiftLinker` 的 `--arch` 是否改为跟随 Rust target、
 `Bundle.module` 的查找路径、`PermissionFlowConfiguration` 的 locale 字段、上游 catalog 的语言
 集合，以及 Swift 工具链最低版本（上游 `swift-tools-version` 为 6.0 / 6.1，不在
-`rust-toolchain.toml` 覆盖范围内，CI 需显式提供）。
+`rust-toolchain.toml` 覆盖范围内，CI 需显式提供）。上游合并发布后，替换点还包括依赖来源本身：
+`Cargo.toml` 的 git rev 与 `deny.toml` 的 `allow-git` 条目。

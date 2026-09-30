@@ -5923,8 +5923,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "permission-flow"
 version = "0.1.40"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f79163d8f080a44a947f1f646a26280f12993285a96a2b4e4297dba964c4bdc3"
+source = "git+https://github.com/ayangweb/permission-flow?rev=1737e048dba489cf0aa74059d5278594334c36a8#1737e048dba489cf0aa74059d5278594334c36a8"
 dependencies = [
  "swift-rs",
 ]

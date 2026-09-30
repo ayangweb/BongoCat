@@ -39,5 +39,6 @@ unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
     "https://github.com/ayangweb/gilrs",
+    "https://github.com/ayangweb/permission-flow",
 ]
 required-git-spec = "rev"
