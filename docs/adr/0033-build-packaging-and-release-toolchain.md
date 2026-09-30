@@ -124,11 +124,11 @@ DMG 压缩格式选 `ULMO`（LZFSE）而不是默认的 `UDZO`（zlib）。`UDZO
 `just build`：
 
 - `windows-latest` → `just build`（NSIS 安装器）
-- `macos-latest` → `just build --target aarch64-apple-darwin` 与
-  `just build --target x86_64-apple-darwin`（两种架构的 `.app` + `.dmg`）
+- `macos-latest` → `just build --target aarch64-apple-darwin`（`.app` + `.dmg`）
+- `macos-26-intel` → `just build --target x86_64-apple-darwin`（`.app` + `.dmg`）
 
-macOS 两种架构在同一个 runner 上构建，保证 SDK、工具链与配置完全一致；两个架构都用
-`--target` 显式指定，因此产物集合不依赖 runner 恰好是哪一种架构。
+两个架构都用 `--target` 显式指定，因此产物集合不依赖 runner 恰好是哪一种架构。runner 则
+按目标架构分开，修订见文末「macOS 两条 leg 分 runner 构建（2026-09-30，ADR-0078）」。
 
 ## 备选方案
 
@@ -206,3 +206,27 @@ macOS 两种架构在同一个 runner 上构建，保证 SDK、工具链与配�
 3. 原生 Intel 机器与干净 Windows 10 1903+ / Windows 11 profile 上的安装、升级、
    卸载与回滚验证。
 4. 上报 `create-dmg` / `cargo-packager` 的 `hdiutil` 解析缺陷。
+
+## macOS 两条 leg 分 runner 构建（2026-09-30，ADR-0078）
+
+本 ADR 决策第 5 条原本让两种 macOS 架构在同一个 `macos-latest` 上构建，理由是 SDK、工具链与
+配置完全一致。ADR-0078 接入 macOS 输入监控引导面板后这个前提不再成立，而那一段本身要按本节
+修订：
+
+- 引导面板链接一个 Swift 静态库，产出它的 build script（`swift-rs`）取的是**宿主架构**而不是
+  Rust 目标架构，并且把 macOS 永远当成非交叉编译。因此在 arm64 runner 上构建
+  `x86_64-apple-darwin`，链接进二进制的是 arm64 目标文件，链接失败在
+  `_permission_flow_*` 未定义符号上；把 runner 换成 x64 则同一问题出现在
+  `aarch64-apple-darwin` 那条 leg 上。
+- 因此两条 leg 各用一台与目标同架构的 runner：Apple Silicon 用 `macos-latest`
+  （`macos-26-arm64`），Intel 用 `macos-26-intel`（同为 macOS 26 的 x64 镜像）。两者
+  macOS 版本相同，Xcode 与 Swift 工具链仍对齐，「配置完全一致」的原意得以保留。
+- `rustup target add ${{ matrix.triple }}` 保留：它针对的是 `rust-toolchain.toml` 固定的
+  工具链，而不是交叉编译——两条 leg 现在构建的都是各自 runner 的宿主 target。
+- 代价：本机在 Apple Silicon 上 `just build --target x86_64-apple-darwin` 仍然打不出来，
+  Intel 产物只能由 release workflow 或一台 Intel 机器产出。要恢复「单 runner 出两个包」，
+  需要 `swift-rs` 让 `--arch` 跟随 Rust 目标（上游仓库 `Brendonovich/swift-rs`），见
+  ADR-0078 的「未完成项」。
+- 本 ADR「验证与已知限制」第 3 条（`x86_64-apple-darwin` 产物在 CI 中不被原生执行）仍然成立：
+  Intel 那条 leg 换成 x64 runner 后，CI 里的构建与结构校验都发生在目标架构上，但应用本身
+  仍然只在本机（Apple Silicon）运行过。

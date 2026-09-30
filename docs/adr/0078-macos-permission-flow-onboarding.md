@@ -168,8 +168,11 @@ macOS 12 支持只能先落在 fork（上游 PR <https://github.com/veecore/perm
 - **macOS 12 未实机验证**：适配只在 macOS 27 + Xcode 27 上以 `arm64-apple-macos12.0` 目标编译与
   跑通上游测试，12 上的运行时行为（浮动面板拖拽、System Preferences 定位、窗口几何）仍需真机确认。
 - **上游 PR 合并前依赖来源是 fork**：见决策第 7 条，合并发布后必须切回上游版本。
-- **`x86_64-apple-darwin` 无法打包**：在 arm64 宿主上 `just build` 的该目标会链接失败，需要 fork
-  修 `swift-rs` 的 `--arch` 取值或换构建宿主。在这之前 macOS 只产出 arm64 包。
+- **`x86_64-apple-darwin` 无法交叉编译**：`swift-rs` 让 swiftc 按**宿主架构**编译，所以在
+  arm64 机器上构建该目标会链接失败（`_permission_flow_*` 未定义符号）。release workflow 已改为
+  两条 macOS leg 各用一台同架构 runner（ADR-0033 修订节），发布不受影响；但本机
+  `just build --target x86_64-apple-darwin` 仍打不出来。治本要 `swift-rs` 的 `--arch` 跟随
+  Rust target（上游 `Brendonovich/swift-rs`，1.0.8 是当前最新版，尚无此改动）。
 - **重新授权后输入服务不会自动重启**：见决策第 3 条。
 - **实机验收未做**：面板外观、拖拽引导是否可用、以及它与 `GPUIApplication`（ADR-0032「macOS 弹框
   实现修正」记录的 `Ivar platform not found on class NSApplication` 崩溃类别）共存时是否安全，都

@@ -134,7 +134,7 @@ jobs:
 
   macos:
     name: Build macOS ${{ matrix.label }}
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runs_on }}
     env:
       SIGNING_PRIVATE_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
       SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -147,16 +147,29 @@ jobs:
         # disk image and the update payload below are named after the same value
         # rather than each restating their own.
         #
+        # `runs_on` is deliberately not a shared `macos-latest`. The macOS input
+        # monitoring panel links a Swift static library, and the build script that
+        # produces it takes the architecture from the machine it runs on rather
+        # than from the target being built, so a leg that crosses architectures
+        # links an arm64 archive into an x86_64 binary and fails on undefined
+        # symbols. Each leg therefore runs on a runner of its own architecture —
+        # `macos-26-intel` is the x64 image of the same macOS 26 release as
+        # `macos-latest`, so both legs also build against the same Xcode. Until
+        # that build script follows the Rust target, this repository cannot
+        # produce both packages from one runner (ADR-0078).
+        #
         # The job name deliberately does not name the artifact. This target
         # publishes a bundle and a disk image, the Windows job publishes an
         # installer, and a reader who needs to know which is which follows the
         # download link in the release notes, where the file name is spelled out.
         include:
           - label: Apple Silicon
+            runs_on: macos-latest
             triple: aarch64-apple-darwin
             platform: macos-aarch64
             arch: aarch64
           - label: Intel
+            runs_on: macos-26-intel
             triple: x86_64-apple-darwin
             platform: macos-x86_64
             arch: x64
@@ -167,10 +180,9 @@ jobs:
           targets: ${{ matrix.triple }}
       # The action installs the target for `stable`, but `rust-toolchain.toml` pins
       # the toolchain that actually compiles in this workspace, so the target has to
-      # be installed for the pinned toolchain too. `aarch64-apple-darwin` is the
-      # runner's host and is covered either way; the `x86_64-apple-darwin` leg of
-      # this matrix is the one that cross-compiles, and it fails with
-      # `can't find crate for 'std'` without this.
+      # be installed for the pinned toolchain too. Each leg now runs on a runner
+      # of its own architecture, so this is the host target either way and the
+      # step is about the pinned toolchain, not about cross-compiling.
       - name: Install the target for the pinned toolchain
         run: rustup target add ${{ matrix.triple }}
       - uses: taiki-e/install-action@just
