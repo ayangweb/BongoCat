@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCALE_DIR = ROOT / "crates" / "bongocat-i18n" / "locales"
-EXPECTED_LOCALES = ("en-US", "zh-CN", "zh-TW", "ar-SA", "vi-VN", "pt-BR")
+EXPECTED_LOCALES = ("en-US", "zh-CN", "zh-TW", "ar-SA", "vi-VN", "pt-BR", "ko-KR")
 PLACEHOLDER = re.compile(r"%\{([A-Za-z][A-Za-z0-9_]*)\}")
 # The copy convention for an ellipsis is a single `…` (U+2026), which reads as
 # three dots in both locales. The six-dot Chinese form `……` and the ASCII form

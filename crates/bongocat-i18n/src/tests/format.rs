@@ -52,4 +52,12 @@ fn format_text_interpolation_is_available() {
         ),
         "Versão atual 1.2.3"
     );
+    assert_eq!(
+        format_text(
+            "ko-KR",
+            "update.current_version",
+            &[("version", "1.2.3".to_string())],
+        ),
+        "현재 버전 1.2.3"
+    );
 }

@@ -1,0 +1,508 @@
+{
+  "_version": 1,
+  "navigation": {
+    "settings": {
+      "title": "BongoCat 설정"
+    },
+    "appearance": {
+      "title": "외관 및 언어"
+    },
+    "model_library": {
+      "title": "모델 라이브러리"
+    },
+    "model_behavior": {
+      "title": "모델 동작"
+    },
+    "model_window": {
+      "title": "모델 창"
+    },
+    "input_interaction": {
+      "title": "입력 및 상호작용"
+    },
+    "shortcuts": {
+      "title": "단축키"
+    },
+    "app_system": {
+      "title": "앱 및 시스템"
+    },
+    "about": {
+      "title": "정보"
+    }
+  },
+  "system_menu": {
+    "title": "BongoCat",
+    "open_settings": "설정",
+    "quit": "BongoCat 종료"
+  },
+  "startup_permission": {
+    "later": "나중에 설정",
+    "input_monitoring": {
+      "title": "입력 모니터링 권한 필요",
+      "description": "키보드와 마우스 입력을 받으려면 BongoCat에 입력 모니터링 권한이 필요합니다.",
+      "open_settings": "시스템 설정 열기"
+    },
+    "administrator": {
+      "title": "관리자 권한으로 실행을 권장합니다",
+      "description": "다른 앱이 관리자 권한으로 실행 중일 때에도 BongoCat이 키보드와 마우스 입력을 계속 받으려면 관리자 권한이 필요합니다.\n\n설정 방법: BongoCat을 마우스 오른쪽 버튼으로 클릭 → 속성 → 호환성 → \"이 프로그램을 관리자 권한으로 실행\"을 켭니다.",
+      "open_program_folder": "종료 후 설정 열기"
+    }
+  },
+  "about": {
+    "product_information": {
+      "version": {
+        "title": "버전 정보",
+        "label": "버전",
+        "environment": {
+          "development": "개발 빌드",
+          "release": "릴리스 빌드"
+        }
+      }
+    },
+    "software_information": {
+      "title": "소프트웨어 정보",
+      "description": "버전, 시스템, 런타임 정보를 JSON으로 복사해 버그 제보에 사용하세요.",
+      "copy": "복사",
+      "copy_success": "소프트웨어 정보를 복사했습니다"
+    },
+    "project": {
+      "title": "프로젝트 홈페이지",
+      "action": "열기"
+    },
+    "feedback": {
+      "title": "문제 제보",
+      "description": "소프트웨어 정보를 먼저 복사한 뒤 보고서에 붙여 넣어 주세요.",
+      "action": "문제 제보하기"
+    },
+    "logs": {
+      "title": "애플리케이션 로그",
+      "action": "열기"
+    }
+  },
+  "models": {
+    "catalog": {
+      "load_failed": "모델 카탈로그를 불러오지 못했습니다"
+    },
+    "identity": {
+      "title": "모델 이름",
+      "source": {
+        "built_in": "기본 제공",
+        "imported": "가져온 모델"
+      },
+      "status": {
+        "active": "사용 중",
+        "unavailable": "사용할 수 없음"
+      }
+    },
+    "card": {
+      "cover_missing": "커버 없음"
+    },
+    "edit": {
+      "cover": {
+        "label": "커버 선택"
+      }
+    },
+    "actions": {
+      "use": "사용",
+      "edit": "편집",
+      "open_folder": "모델 폴더 열기",
+      "save": "저장",
+      "delete": "삭제"
+    },
+    "validation": {
+      "package_layout_invalid": "패키지 구조가 올바르지 않습니다",
+      "package_safety_limits_exceeded": "패키지가 안전 한도를 초과했습니다",
+      "model_format_invalid_or_unsupported": "모델 형식이 올바르지 않거나 지원되지 않습니다",
+      "texture_invalid": "텍스처가 올바르지 않습니다",
+      "files_unavailable": "모델 파일을 사용할 수 없습니다",
+      "resource_invalid": "모델 리소스가 올바르지 않습니다"
+    },
+    "import": {
+      "success": "모델 가져오기가 완료되었습니다",
+      "failed": "모델을 가져오지 못했습니다",
+      "mver_dialog": {
+        "title": "변환할 모드 선택",
+        "description": "가져올 BongoCat Mver 모드를 선택하세요.",
+        "import": "가져오기"
+      },
+      "step": {
+        "choosing": "파일 선택기를 여는 중…",
+        "validating_source": "모델 폴더를 읽는 중…",
+        "importing": "모델 파일을 가져오는 중…",
+        "capturing": "모델 커버를 캡처하는 중…"
+      },
+      "drop": {
+        "ready": {
+          "title": "놓으면 이 모델 폴더를 가져옵니다"
+        },
+        "busy": {
+          "title": "다른 모델 작업이 진행 중입니다"
+        },
+        "invalid": {
+          "title": "한 번에 모델 폴더 하나만 놓아 주세요"
+        }
+      },
+      "title": "모델 가져오기",
+      "hint": "클릭해 선택하거나 모델 폴더를 끌어다 놓으세요"
+    },
+    "mode": {
+      "standard": "표준",
+      "keyboard": "키보드",
+      "gamepad": "게임패드"
+    },
+    "mver": {
+      "mode": {
+        "standard": "표준 모드",
+        "keyboard": "키보드 모드",
+        "gamepad": "게임패드 모드"
+      }
+    },
+    "behaviors": {
+      "empty": "사용 가능한 모션이나 표현식이 없습니다"
+    },
+    "invalid_summary": "%{origin} · %{diagnostic}",
+    "delete_confirmation": "이 모델을 삭제하시겠습니까?"
+  },
+  "update": {
+    "window": {
+      "title": "BongoCat 업데이트"
+    },
+    "heading": {
+      "title": "BongoCat 업데이트"
+    },
+    "current_version": "현재 버전 %{version}",
+    "status": {
+      "idle": "새로운 BongoCat 버전을 확인하세요.",
+      "checking": "업데이트를 확인하는 중…",
+      "up_to_date": "최신 버전은 BongoCat %{version}입니다.",
+      "available": "설치할 수 있는 버전은 BongoCat %{version}입니다.",
+      "downloading": "내려받는 중… %{percent}%",
+      "downloading_unknown": "내려받는 중…",
+      "downloading_detail": "BongoCat %{version} · %{downloaded} / %{total}",
+      "verifying": "내려받은 BongoCat %{version} 버전을 확인하는 중…",
+      "installing": "BongoCat %{version} 버전을 설치하는 중…",
+      "installed_restarting": "BongoCat %{version} 버전을 설치했습니다. 다시 시작하는 중…",
+      "installed_relaunching": "BongoCat %{version} 버전을 설치했습니다. 설치 프로그램이 지금 다시 실행합니다."
+    },
+    "notes": {
+      "title": "새로운 기능"
+    },
+    "action": {
+      "check": "업데이트 확인",
+      "recheck": "다시 확인",
+      "install": "내려받아 설치",
+      "restart": "지금 다시 시작",
+      "view_on_github": "GitHub에서 보기"
+    },
+    "error": {
+      "stage": {
+        "check": "새로운 BongoCat %{version} 버전을 확인하지 못했습니다.",
+        "download": "BongoCat %{version} 버전을 내려받지 못했습니다.",
+        "verify": "내려받은 BongoCat %{version} 버전을 확인하지 못했습니다.",
+        "install": "BongoCat %{version} 버전을 설치하지 못했습니다."
+      },
+      "not_configured": "이 버전에서는 업데이트가 설정되어 있지 않습니다.",
+      "environment_disabled": "이 버전은 업데이트를 설치할 수 없습니다.",
+      "signature_key_missing": "이 버전은 업데이트를 확인할 수 없어 설치하지 않았습니다.",
+      "release_fetch_failed": "릴리스 정보를 찾을 수 없습니다. 나중에 다시 시도하세요.",
+      "release_manifest_invalid": "업데이트 정보가 올바르지 않거나 이 버전과 호환되지 않습니다. 나중에 다시 시도하세요.",
+      "no_matching_asset": "이 릴리스에는 이 컴퓨터에 맞는 설치 파일이 없습니다.",
+      "download_transport_failed": "내려받기가 완료되지 않았습니다. 연결 상태를 확인한 뒤 다시 시도하세요.",
+      "checksum_mismatch": "내려받은 업데이트가 손상되었거나 불완전합니다.",
+      "signature_invalid": "업데이트를 확인하지 못해 설치하지 않았습니다.",
+      "archive_invalid": "내려받은 업데이트를 읽을 수 없습니다.",
+      "install_path_not_writable": "현재 위치에서는 BongoCat을 업데이트할 수 없습니다.",
+      "install_failed": "BongoCat을 업데이트할 수 없습니다.",
+      "restart_failed": "BongoCat을 다시 시작하지 못했습니다. 새 버전을 사용하려면 다시 실행하세요.",
+      "internal": "예기치 못한 이유로 업데이트에 실패했습니다."
+    },
+    "unavailable": {
+      "development_build": "개발 빌드는 릴리스 업데이트를 설치할 수 없습니다.",
+      "signing_key_missing": "이 버전은 업데이트를 확인할 수 없어 업데이트가 비활성화되어 있습니다."
+    },
+    "about": {
+      "label": "업데이트 확인"
+    }
+  },
+  "actions": {
+    "cancel": "취소",
+    "confirm": "확인",
+    "close": "닫기"
+  },
+  "shortcuts": {
+    "scopes": {
+      "window": "창 단축키",
+      "model": "모델 동작 단축키"
+    },
+    "switches": {
+      "enable_window_shortcuts": {
+        "label": "창 단축키 사용"
+      },
+      "enable_model_behavior_shortcuts": {
+        "label": "모델 동작 단축키 사용"
+      }
+    },
+    "actions": {
+      "clear": "지우기",
+      "play": "재생"
+    },
+    "capture": {
+      "press_to_record": "누르면 단축키를 기록합니다",
+      "click_to_record": "클릭하면 단축키를 기록합니다"
+    },
+    "command_names": {
+      "toggle_model_window": "모델 창 표시 또는 숨기기",
+      "open_settings": "설정 창 표시 또는 숨기기",
+      "toggle_ignore_mouse_input": "마우스 입력 무시 켜기 또는 끄기",
+      "toggle_ignore_keyboard_input": "키보드 입력 무시 켜기 또는 끄기",
+      "toggle_ignore_gamepad_input": "게임패드 입력 무시 켜기 또는 끄기"
+    },
+    "behavior_names": {
+      "motion": "모션 %{index}",
+      "expression": "표현식 %{index}"
+    },
+    "errors": {
+      "conflict": "이미 다른 단축키에 할당되어 있습니다: %{shortcut}"
+    }
+  },
+  "errors": {
+    "settings": {
+      "service_unavailable": "설정 서비스를 사용할 수 없습니다",
+      "snapshot_outdated": "다른 곳에서 설정이 변경되었습니다. 최신 설정을 확인한 뒤 다시 시도하세요.",
+      "setting_not_applied": "설정이 적용되지 않았습니다",
+      "invalid_shortcut_bindings": "단축키 설정이 올바르지 않거나 충돌합니다",
+      "setting_save_failed": "설정을 저장할 수 없습니다",
+      "config_permission_denied": "설정 파일을 쓸 수 없습니다. 권한을 확인한 뒤 다시 시도하세요",
+      "config_storage_full": "설정이 저장된 디스크의 공간이 부족합니다. 공간을 확보한 뒤 다시 시도하세요",
+      "config_target_occupied": "설정 위치를 다른 프로그램이 사용 중입니다. 해당 프로그램을 닫은 뒤 다시 시도하세요",
+      "configuration_backup_open_failed": "설정 백업 폴더를 열 수 없습니다",
+      "model_unavailable": "선택한 모델을 사용할 수 없습니다",
+      "model_activation_failed": "선택한 모델을 활성화할 수 없습니다",
+      "model_behavior_unavailable": "해당 동작이나 표현식은 더 이상 사용하지 않는 모델에 속합니다",
+      "model_behavior_play_failed": "동작이나 표현식을 재생할 수 없습니다",
+      "model_name_invalid": "모델 이름을 사용할 수 없습니다",
+      "model_not_found": "모델을 찾을 수 없습니다",
+      "model_cover_invalid": "커버 이미지는 PNG 파일이어야 합니다",
+      "model_cover_update_failed": "모델 커버를 업데이트할 수 없습니다",
+      "model_file_picker_unavailable": "파일 대화 상자를 완료할 수 없습니다. 다시 시도하세요.",
+      "model_folder_open_failed": "모델 폴더를 열 수 없습니다",
+      "model_id_invalid": "모델 ID가 올바르지 않습니다",
+      "model_already_installed": "이 모델은 이미 설치되어 있습니다",
+      "model_import_invalid_package": "모델 패키지가 올바르지 않습니다",
+      "model_import_drop_invalid": "한 번에 올바른 모델 폴더 하나만 놓아 주세요",
+      "model_import_source_invalid": "선택한 폴더에 BongoCat의 모델 저장소가 있습니다. 개별 모델 폴더를 선택하세요.",
+      "model_import_source_changed": "가져오는 도중 모델 원본이 변경되었습니다",
+      "model_import_source_unsupported": "모델 원본에 지원하지 않는 파일이 있습니다",
+      "model_import_cancelled": "모델 가져오기가 취소되었습니다",
+      "model_operations_busy": "다른 모델 작업이 진행 중입니다. 잠시 후 다시 시도하세요.",
+      "model_import_failed": "모델을 가져오지 못했습니다",
+      "built_in_model_cannot_be_deleted": "기본 제공 모델은 삭제할 수 없습니다",
+      "model_delete_failed": "가져온 모델을 삭제할 수 없습니다",
+      "diagnostics_export_failed": "진단 정보를 내보낼 수 없습니다",
+      "software_info_copy_failed": "소프트웨어 정보를 복사할 수 없습니다",
+      "external_link_open_failed": "링크를 열 수 없습니다",
+      "log_location_open_failed": "애플리케이션 로그 폴더를 열 수 없습니다",
+      "login_startup_update_failed": "로그인 시 실행 설정을 변경할 수 없습니다",
+      "system_icon_update_failed": "시스템 아이콘을 변경할 수 없습니다.",
+      "taskbar_icon_update_failed": "작업 표시줄 아이콘을 변경할 수 없습니다.",
+      "dock_icon_update_failed": "Dock 아이콘을 변경할 수 없습니다.",
+      "window_hide_failed": "설정 창을 숨길 수 없습니다",
+      "window_layout_save_failed": "창 배치를 저장할 수 없습니다",
+      "application_shutdown_failed": "BongoCat을 완전히 종료할 수 없습니다"
+    }
+  },
+  "settings": {
+    "appearance": {
+      "theme": {
+        "label": "테마",
+        "options": {
+          "system": "시스템",
+          "light": "밝게",
+          "dark": "어둡게"
+        }
+      },
+      "language": {
+        "label": "언어",
+        "options": {
+          "system": "시스템",
+          "chinese_simplified": "简体中文",
+          "chinese_traditional": "繁體中文",
+          "english": "English",
+          "arabic": "العربية",
+          "vietnamese": "Tiếng Việt",
+          "portuguese": "Português",
+          "korean": "한국어"
+        }
+      }
+    },
+    "overlay": {
+      "behavior": {
+        "title": "창 동작"
+      },
+      "appearance": {
+        "title": "창 외관"
+      },
+      "performance": {
+        "title": "창 성능"
+      },
+      "hide_model_window": {
+        "label": "모델 창 숨기기"
+      },
+      "always_on_top": {
+        "label": "항상 맨 위"
+      },
+      "click_through": {
+        "label": "마우스 클릭 통과"
+      },
+      "keep_inside_screen": {
+        "label": "화면 안에 유지"
+      },
+      "hide_on_mouse_hover": {
+        "label": "마우스를 올리면 숨기기"
+      },
+      "hide_on_mouse_hover_delay": {
+        "label": "마우스 올림 숨김 지연 시간(초)"
+      },
+      "scale": {
+        "label": "창 크기 배율"
+      },
+      "opacity": {
+        "label": "창 불투명도"
+      },
+      "corner_radius": {
+        "label": "창 모서리 둥글기"
+      },
+      "maximum_fps": {
+        "label": "최대 FPS"
+      }
+    },
+    "models": {
+      "behavior": {
+        "mirror_model": {
+          "label": "모델 좌우 반전"
+        },
+        "motion_audio": {
+          "label": "모션 소리 재생"
+        },
+        "remember_last_expression": {
+          "label": "각 모델의 마지막 표현식 기억"
+        },
+        "random_behavior_mode": {
+          "label": "모션이나 표현식을 무작위로 재생",
+          "options": {
+            "off": "끄기",
+            "expressions": "표현식만",
+            "motions": "모션만",
+            "motions_and_expressions": "표현식과 모션"
+          }
+        },
+        "random_behavior_interval": {
+          "label": "무작위 모션 또는 표현식 간격(초)"
+        }
+      }
+    },
+    "input_interaction": {
+      "mouse": {
+        "title": "마우스",
+        "mirror_mouse_tracking_horizontal": {
+          "label": "마우스 추적 좌우 반전"
+        },
+        "mirror_mouse_tracking_vertical": {
+          "label": "마우스 추적 상하 반전"
+        },
+        "ignore_mouse_input": {
+          "label": "마우스 입력 무시"
+        }
+      },
+      "keyboard": {
+        "title": "키보드",
+        "ignore_keyboard_input": {
+          "label": "키보드 입력 무시"
+        }
+      },
+      "gamepad": {
+        "title": "게임패드",
+        "auto_switch": {
+          "label": "게임패드가 연결되거나 분리될 때 모델 전환"
+        },
+        "connected_model": {
+          "label": "게임패드가 연결될 때 사용할 모델",
+          "options": {
+            "last_used": "마지막으로 사용한 게임패드 모델"
+          }
+        },
+        "disconnected_model": {
+          "label": "게임패드가 연결되지 않았을 때 사용할 모델",
+          "options": {
+            "last_used": "마지막으로 사용한 비게임패드 모델"
+          }
+        },
+        "ignore_gamepad_input": {
+          "label": "게임패드 입력 무시"
+        },
+        "stick_dead_zone": {
+          "label": "게임패드 스틱 데드 존",
+          "description": "조작 스틱의 작은 움직임을 무시합니다."
+        },
+        "trigger_dead_zone": {
+          "label": "게임패드 트리거 데드 존",
+          "description": "트리거의 작은 움직임을 무시합니다."
+        }
+      }
+    },
+    "app_system": {
+      "desktop": {
+        "title": "자동 실행 및 데스크톱"
+      },
+      "updates": {
+        "title": "업데이트"
+      },
+      "logging": {
+        "title": "로그",
+        "level": {
+          "label": "로그 수준",
+          "options": {
+            "error": "오류만",
+            "warn": "오류와 경고",
+            "info": "기본 정보",
+            "debug": "진단 정보",
+            "trace": "전체 정보"
+          }
+        },
+        "retention_days": {
+          "label": "로그 보관 기간(일)"
+        }
+      },
+      "status_icon": {
+        "label": {
+          "macos": "메뉴 막대 아이콘 표시",
+          "windows": "시스템 트레이 아이콘 표시"
+        }
+      },
+      "taskbar_icon": {
+        "label": "작업 표시줄 아이콘 표시"
+      },
+      "dock_icon": {
+        "label": "Dock 아이콘 표시"
+      },
+      "auto_update": {
+        "label": "자동으로 업데이트 확인",
+        "interval": {
+          "label": "자동 업데이트 확인 간격(시간)"
+        }
+      },
+      "open_at_login": {
+        "label": "로그인 시 실행"
+      },
+      "startup": {
+        "checking": "로그인 항목을 확인하는 중…",
+        "unavailable": "상태를 확인할 수 없습니다. 스위치를 눌러 다시 시도하세요",
+        "stale": "저장된 앱 위치가 변경되었습니다. 스위치를 껐다 켜서 복구하세요",
+        "requires_approval": "시스템 설정에서 BongoCat을 승인하세요",
+        "not_found": "로그인 항목이 없습니다. 스위치를 껐다 켜서 복구하세요",
+        "unsupported_platform": "이 시스템에서는 로그인 시 실행을 사용할 수 없습니다",
+        "unsupported_os": "이 운영체제에서는 로그인 시 실행을 사용할 수 없습니다",
+        "unsupported_build": "개발 빌드에서는 로그인 시 실행을 사용할 수 없습니다"
+      }
+    }
+  }
+}

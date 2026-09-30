@@ -25,7 +25,9 @@ pub const DEFAULT_LOCALE: &str = "en-US";
 /// was written in, and it does not claim a regional specialisation the catalog
 /// does not carry. `en-US` is the same kind of name — it serves `en-GB` just as
 /// `ar-SA` serves `ar-EG`.
-pub const SHIPPED_LOCALES: [&str; 6] = ["en-US", "zh-CN", "zh-TW", "ar-SA", "vi-VN", "pt-BR"];
+pub const SHIPPED_LOCALES: [&str; 7] = [
+    "en-US", "zh-CN", "zh-TW", "ar-SA", "vi-VN", "pt-BR", "ko-KR",
+];
 
 /// Resolve any locale tag onto the catalog that serves it.
 ///
@@ -34,7 +36,7 @@ pub const SHIPPED_LOCALES: [&str; 6] = ["en-US", "zh-CN", "zh-TW", "ar-SA", "vi-
 /// right-to-left until a known tag is hit, so `ar-EG` falls back to `ar` rather
 /// than to English. Matching the primary subtag against the shipped catalogs is
 /// that same rule, and it is what keeps a machine reporting `vi` or `vi-VN` or
-/// `ar` or `ar-EG` or `pt` or `pt-PT` on one catalog instead of six.
+/// `ar` or `ar-EG` or `pt` or `pt-PT` or `ko` on one catalog instead of seven.
 ///
 /// `zh` is the one case that cannot be decided by the primary subtag alone.
 /// Simplified and Traditional are different written forms rather than regional
