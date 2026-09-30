@@ -177,6 +177,7 @@ impl PluginStore {
                 "the archive declares a different id",
             ));
         }
+        mark_executable(&manifest, &directory)?;
         Ok(directory)
     }
 
@@ -226,6 +227,42 @@ impl PluginStore {
 
 fn store_error(error: io::Error) -> PluginError {
     PluginError::with_detail(PluginErrorCode::StoreWriteFailed, error)
+}
+
+/// Make the file the manifest names as its executable runnable.
+///
+/// The host is about to run exactly that file, so whether it *can* be run is the store's
+/// business rather than the archive author's. Every file an unpack writes is private
+/// (`0600`), and a zip does not reliably carry a Unix mode — an archive built on Windows,
+/// or by a packer that did not set one, arrives with nothing at all. Without this the
+/// session starts, the handshake never happens, and the only symptom is a card that says
+/// a plugin could not be started.
+///
+/// Marked rather than checked: a plugin that shipped an executable bit and a plugin that
+/// did not both end up runnable, and there is nothing to refuse here. The manifest's
+/// `executable` is still validated as a plain relative name before this point, so the
+/// file being marked is inside this directory.
+fn mark_executable(manifest: &PluginManifest, directory: &Path) -> Result<(), PluginError> {
+    let path = manifest
+        .executable_path(directory)
+        .map_err(|error| PluginError::with_detail(PluginErrorCode::ArchiveInvalid, error))?;
+    if !path.is_file() {
+        // An archive with a manifest and no program in it is not refused here. Starting
+        // one is what refuses it, with a message that names the file that is not there —
+        // and an unpack that failed would have deleted the directory the message is about.
+        return Ok(());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).map_err(store_error)?;
+    }
+    #[cfg(windows)]
+    {
+        // Windows has no executable bit: a file is runnable or it is not, and it is here.
+        let _ = path;
+    }
+    Ok(())
 }
 
 /// The most members one archive may contain.

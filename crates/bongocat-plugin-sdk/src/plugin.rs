@@ -26,8 +26,8 @@
 use crate::settings::Settings;
 use crate::{Host, Result};
 use bongocat_plugin_protocol::{
-    ConfigSchema, InputEvent, MAXIMUM_PLUGIN_DESCRIPTION_CHARS, MAXIMUM_PLUGIN_NAME_CHARS,
-    ModelOutcome, Subscription,
+    ConfigSchema, InputEvent, LocalizedText, MAXIMUM_PLUGIN_DESCRIPTION_CHARS,
+    MAXIMUM_PLUGIN_NAME_CHARS, ModelOutcome, Subscription,
 };
 
 /// What the host tells a plugin on a tick.
@@ -245,10 +245,10 @@ pub trait Plugin {
 #[derive(Clone, Debug)]
 pub struct Descriptor {
     id: String,
-    name: String,
+    name: LocalizedText,
     version: bongocat_plugin_protocol::PluginVersion,
     author: String,
-    description: String,
+    description: LocalizedText,
     icon: bongocat_plugin_protocol::PluginIcon,
     settings: Settings,
     subscriptions: Vec<Subscription>,
@@ -264,10 +264,10 @@ impl Descriptor {
     pub fn new(id: &str, name: &str) -> Self {
         Self {
             id: id.to_string(),
-            name: name.to_string(),
+            name: name.into(),
             version: bongocat_plugin_protocol::PluginVersion::new(1, 0, 0),
             author: String::new(),
-            description: String::new(),
+            description: LocalizedText::default(),
             icon: bongocat_plugin_protocol::PluginIcon::default(),
             settings: Settings::new(),
             subscriptions: Vec::new(),
@@ -288,7 +288,23 @@ impl Descriptor {
 
     /// This plugin, described in one sentence.
     pub fn description(mut self, description: &str) -> Self {
-        self.description = description.to_string();
+        self.description = description.into();
+        self
+    }
+
+    /// This plugin, under the name it uses in the languages it has copy for.
+    ///
+    /// Separate from [`Self::name`] because a name is usually a proper noun that is the
+    /// same in every language, and a description is almost never — so a plugin whose
+    /// name needs no translation should not have to say so twice.
+    pub fn named(mut self, name: LocalizedText) -> Self {
+        self.name = name;
+        self
+    }
+
+    /// This plugin, described in the languages it has copy for.
+    pub fn described(mut self, description: LocalizedText) -> Self {
+        self.description = description;
         self
     }
 
@@ -333,9 +349,18 @@ impl Descriptor {
         &self.id
     }
 
-    /// This plugin's name.
-    pub fn name(&self) -> &str {
+    /// This plugin's name, unresolved.
+    ///
+    /// The text itself rather than a resolved string, because the host is the side that
+    /// knows the user's language and a plugin cannot resolve its own name for a card it
+    /// does not draw.
+    pub fn name(&self) -> &LocalizedText {
         &self.name
+    }
+
+    /// This plugin's description, unresolved.
+    pub fn description_text(&self) -> &LocalizedText {
+        &self.description
     }
 
     /// This plugin's version.
@@ -392,7 +417,9 @@ impl Descriptor {
 
 impl std::fmt::Display for Descriptor {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{} {}", self.name, self.version)
+        // The default, because a `Display` has no user's language to resolve against.
+        // A card resolves the descriptor through the host, which does know it.
+        write!(formatter, "{} {}", self.name.resolve(""), self.version)
     }
 }
 
@@ -441,7 +468,7 @@ mod tests {
     fn a_two_call_descriptor_is_a_whole_plugin() {
         let descriptor = Descriptor::new("pomodoro", "Pomodoro");
         assert_eq!(descriptor.id(), "pomodoro");
-        assert_eq!(descriptor.name(), "Pomodoro");
+        assert_eq!(descriptor.name().resolve("zh-CN"), "Pomodoro");
         assert_eq!(
             *descriptor.plugin_version(),
             bongocat_plugin_protocol::PluginVersion::new(1, 0, 0)

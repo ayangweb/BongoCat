@@ -1,0 +1,25 @@
+[package]
+name = "bongocat-plugin-pomodoro"
+description = "A focus timer on the BongoCat model window: start it, stop it, and let the countdown run while you work."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "pomodoro"
+path = "src/main.rs"
+
+# The SDK, and nothing else. Not even `serde`: this plugin's settings are three
+# switches read through the SDK's own typed accessors, and a plugin that does not need
+# a serialization library should not pull one in to prove it. No GPUI, no platform
+# code, no renderer, and nothing that belongs to the application — that is the whole
+# of what it means for a plugin to be independent, and a plugin author needs to know
+# nothing about the product to write one.
+[dependencies]
+bongocat-plugin-sdk.workspace = true
+
+[lints]
+workspace = true

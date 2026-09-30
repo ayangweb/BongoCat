@@ -76,6 +76,7 @@
 // not compiled into the Windows packaging run.
 #[cfg(unix)]
 mod finder_store;
+mod plugin;
 
 use std::{
     collections::BTreeMap,
@@ -408,6 +409,8 @@ enum Invocation {
     ExtractReleaseNotes(PathBuf),
     /// Generate the Minisign key pair that signs update payloads.
     GenerateSigningKey(PathBuf),
+    /// Build and pack one plugin from the plugins workspace.
+    PackPlugin { id: String, triple: Option<String> },
 }
 
 /// Options for one packaging run.
@@ -447,6 +450,9 @@ options:
                            generate a new Minisign key pair for signing update
                            payloads, written to <file> and <file>.pub, instead of
                            packaging; takes no other option
+  --pack-plugin <id>       build one plugin from the plugins workspace and pack it
+                           into <plugins>/build/<id>.zip, which the repository's own
+                           plugin catalog already points at; takes no other option
   --print-version          print the product version and exit
   -h, --help               print this help
 
@@ -462,6 +468,8 @@ environment:
         let mut release_notes: Option<PathBuf> = None;
         let mut extract_notes: Option<PathBuf> = None;
         let mut key_output: Option<PathBuf> = None;
+        let mut pack_plugin: Option<String> = None;
+        let mut plugin_target: Option<String> = None;
         let mut fragments = Vec::new();
 
         let mut arguments = arguments.into_iter();
@@ -501,6 +509,14 @@ environment:
                     let file = next_value(&mut arguments, "--generate-signing-key")?;
                     key_output = Some(PathBuf::from(file));
                 }
+                "--pack-plugin" => {
+                    let id = next_value(&mut arguments, "--pack-plugin")?;
+                    pack_plugin = Some(id);
+                }
+                "--plugin-target" => {
+                    let triple = next_value(&mut arguments, "--plugin-target")?;
+                    plugin_target = Some(triple);
+                }
                 "--print-version" => {
                     // Cargo resolved the single product version source before this
                     // process started, so the release pipeline never re-parses it.
@@ -527,6 +543,44 @@ environment:
         // build is a mistake rather than a no-op, and the two alternatives are mutually
         // exclusive.
         let build_option = target.is_some() || environment.is_some() || formats.is_some();
+
+        // Packing a plugin is its own mode with its own target, because it builds a
+        // different workspace: a plugin's own lockfile, its own dependency graph, and no
+        // line in the product's. `--target` is the product's and `--plugin-target` is
+        // the plugin's, and conflating them is the mistake this refuses.
+        if let Some(id) = pack_plugin {
+            if build_option
+                || merge_directory.is_some()
+                || release_notes.is_some()
+                || extract_notes.is_some()
+                || key_output.is_some()
+            {
+                return failure(
+                    "--pack-plugin cannot be combined with --target, --environment, --formats, \
+                     --merge-manifests, --release-notes, --extract-release-notes or \
+                     --generate-signing-key",
+                );
+            }
+            if let Some(triple) = &plugin_target
+                && ReleaseTarget::parse(triple).is_err()
+            {
+                return failure(format!(
+                    "--plugin-target {triple} is not a target this product ships; pass one of {}",
+                    ReleaseTarget::ALL
+                        .iter()
+                        .map(|target| target.triple())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+            return Ok(Self::PackPlugin {
+                id,
+                triple: plugin_target,
+            });
+        }
+        if plugin_target.is_some() {
+            return failure("--plugin-target is only valid with --pack-plugin");
+        }
         if let Some(file) = key_output {
             if build_option || merge_directory.is_some() || release_notes.is_some() {
                 return failure(
@@ -629,7 +683,60 @@ fn execute(invocation: Invocation) -> Result<(&'static str, Vec<PathBuf>)> {
             .map(|artifacts| ("Release notes composed successfully.", artifacts)),
         Invocation::GenerateSigningKey(path) => generate_signing_key(&path)
             .map(|artifacts| ("Signing key generated successfully.", artifacts)),
+        Invocation::PackPlugin { id, triple } => pack_plugin(&id, triple.as_deref())
+            .map(|artifacts| ("Plugin packed successfully.", artifacts)),
     }
+}
+
+/// Build one plugin and pack it into the archive the store installs.
+///
+/// The crate name is derived from the id rather than asked for, so the author types one
+/// thing. `bongocat-plugin-<id>` is the convention every plugin in the workspace already
+/// follows, and a plugin that broke it is a plugin whose build fails with a message from
+/// Cargo rather than one this step has to second-guess.
+fn pack_plugin(id: &str, triple: Option<&str>) -> Result<Vec<PathBuf>> {
+    let workspace = workspace_root()?;
+    let plugins = workspace.join(plugin::PLUGINS_DIRECTORY);
+    if !plugins.join("Cargo.toml").is_file() {
+        return failure(format!(
+            "{} is not a workspace, so there is no plugin to build",
+            plugins.display()
+        ));
+    }
+    let crate_name = format!("bongocat-plugin-{id}");
+    build_plugin(&plugins, &crate_name, triple)?;
+    let archive = plugin::pack(&plugins, id, triple)
+        .map_err(|error| Box::new(Failure(error.to_string())) as Box<dyn std::error::Error>)?;
+    println!("Packed {id} into {}", archive.display());
+    println!("Install it from Settings → Plugins, or bump its version and install again.");
+    Ok(vec![archive])
+}
+
+/// Compile one plugin, from the plugins workspace rather than the product's.
+///
+/// The whole of what keeps "adding a plugin does not grow the app" true: this runs Cargo
+/// in a different workspace with a different lockfile, so nothing a plugin depends on can
+/// reach the product's dependency graph, and the product's own build never has to know
+/// the plugin exists.
+fn build_plugin(plugins: &Path, crate_name: &str, triple: Option<&str>) -> Result<()> {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut command = Command::new(&cargo);
+    command
+        .current_dir(plugins)
+        .args(["build", "--release", "-p", crate_name]);
+    if let Some(triple) = triple {
+        command.args(["--target", triple]);
+    }
+    let status = command.status().map_err(|error| {
+        Box::new(Failure(format!(
+            "could not run {}: {error}",
+            Path::new(&cargo).display()
+        ))) as Box<dyn std::error::Error>
+    })?;
+    if !status.success() {
+        return failure(format!("cargo build for {crate_name} failed with {status}"));
+    }
+    Ok(())
 }
 
 fn package(options: Options) -> Result<Vec<PathBuf>> {

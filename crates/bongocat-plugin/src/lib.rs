@@ -77,8 +77,8 @@ pub use local_time::{LocalTimeCache, WallClock};
 pub use model_request::ModelRequestRouter;
 pub use plugin_log::Line;
 pub use session::{
-    HANDSHAKE_TIMEOUT, MAXIMUM_RESTARTS, Session, SessionDiagnostics, SessionFacts, SessionOutcome,
-    SessionState, restart_is_allowed,
+    HANDSHAKE_TIMEOUT, Incoming, MAXIMUM_RESTARTS, Session, SessionDiagnostics, SessionFacts,
+    SessionOutcome, SessionState, restart_is_allowed,
 };
 pub use store::{
     CURRENT_VERSION_FILE, MAXIMUM_RETAINED_VERSIONS, PluginStore, digest_hex, digest_matches,

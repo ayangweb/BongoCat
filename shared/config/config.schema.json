@@ -393,6 +393,13 @@
     "PluginsConfig": {
       "additionalProperties": false,
       "properties": {
+        "disabled": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "enabled": {
           "default": [],
           "items": {
@@ -551,6 +558,7 @@
     "plugins": {
       "$ref": "#/$defs/PluginsConfig",
       "default": {
+        "disabled": [],
         "enabled": []
       }
     },

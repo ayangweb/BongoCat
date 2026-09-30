@@ -25,8 +25,8 @@ use crate::Identity;
 use crate::panel::Panel;
 use crate::settings::Values;
 use bongocat_plugin_protocol::{
-    ConfigSchema, HostMessage, PluginId, PluginMessage, PluginVersion, SceneNode, Subscription,
-    write_message,
+    ConfigDocument, ConfigSchema, HostMessage, PluginId, PluginMessage, PluginVersion, SceneNode,
+    Subscription, write_message,
 };
 use std::collections::BTreeMap;
 use std::io::{self, Write};
@@ -303,6 +303,15 @@ impl Inbox {
 /// A schema and its defaults, for a test that wants values without a file.
 pub fn values(schema: &ConfigSchema) -> Values {
     crate::settings::fit(&schema.defaults(), schema)
+}
+
+/// A schema and a document the test chose, fitted to it.
+///
+/// The same fitting the run loop does, so a test that asks "what does my plugin do with
+/// this value" is asking through the path the value actually arrives by — including the
+/// clamping, which is part of what the plugin is entitled to rely on.
+pub fn values_from(document: &ConfigDocument, schema: &ConfigSchema) -> Values {
+    crate::settings::fit(document, schema)
 }
 
 /// A one-field schema, for a test whose only setting is a switch.

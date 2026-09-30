@@ -49,6 +49,7 @@
     "last_expressions": []
   },
   "plugins": {
+    "disabled": [],
     "enabled": []
   },
   "shortcuts": {

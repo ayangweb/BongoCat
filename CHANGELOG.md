@@ -8,6 +8,9 @@
 - Settings has a Plugins page that lists every plugin available to this version, with one click to install, update, remove, or show its panel.
 - A plugin adds a panel to the model window — a focus timer, a clock, a counter — and its buttons are pressed on the model window itself, without opening another window.
 - Plugins are downloaded when you install them, so they are not part of the BongoCat installer.
+- A plugin is now its own program, installed from a download and started when you switch it on. A plugin that stops responding costs its own card and nothing else, and adding a plugin never changes the BongoCat installer.
+- Every plugin has its own settings, on its own page section, with its own labels in your language — a plugin that is not running cannot be configured, and a plugin nobody is running changes nothing.
+- The first plugin is a Pomodoro timer: pick how long a round lasts, what follows it, and whether the next round starts itself. When a round ends the cat reacts and says so.
 
 ### 🐛 Bug Fixes
 
@@ -17,6 +20,8 @@
 - On Windows, analog sticks and triggers on controllers that Windows reads as raw HID devices no longer report wrong values: a stick at rest read as full deflection in one direction, half its travel was clamped there, and an analog trigger at rest sat exactly on the press threshold so it could flicker. This affected Switch-mode, DS4-mode and other non-Xbox controller modes.
 - A plugin panel's buttons now respond to clicks on the Windows model window.
 - The plugin catalog is no longer read with the download timeout, so an unreachable mirror no longer stalls the model window.
+- A plugin you install now shows its panel straight away, instead of waiting for you to switch it on.
+- A plugin installed from an archive built on another operating system now starts, instead of failing with no explanation.
 
 ### 🌍 Localization
 

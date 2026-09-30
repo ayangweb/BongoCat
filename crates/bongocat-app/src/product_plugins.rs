@@ -118,12 +118,18 @@ impl ProductPluginHost {
 
     /// Apply the persisted preference to what the worker just loaded.
     ///
-    /// The worker starts with every installed plugin switched on, because a plugin
-    /// the user installed and never touched is on. This is where the stored
-    /// preference is applied, and it only ever *switches off*: an id the
-    /// configuration names that is not installed is ignored until it is, which is
-    /// what makes an uninstalled plugin not a configuration error.
-    pub(crate) fn apply_enabled_preference(&self, enabled: &[String]) {
+    /// The worker starts with every installed plugin switched on, because a plugin the
+    /// user installed and never touched is on. This is where the stored preference is
+    /// applied, and it only ever *switches off*: an id the configuration names that is
+    /// not installed is ignored until it is, which is what makes an uninstalled plugin
+    /// not a configuration error.
+    ///
+    /// The list is the ids the user switched **off**, not the ones they switched on, and
+    /// the difference is the whole of this function: an on-list that is empty means the
+    /// same thing as "I have decided about nothing" and would switch off every installed
+    /// plugin on a fresh configuration — so a plugin somebody had just installed would
+    /// draw nothing and say nothing.
+    pub(crate) fn apply_disabled_preference(&self, disabled: &[String]) {
         for entry in self
             .handle
             .snapshot()
@@ -132,7 +138,7 @@ impl ProductPluginHost {
             .filter(|entry| entry.installed)
         {
             let id = &entry.manifest.id;
-            if enabled.iter().any(|wanted| wanted == id.as_str()) {
+            if !disabled.iter().any(|unwanted| unwanted == id.as_str()) {
                 continue;
             }
             // A dropped command means the queue is full of work the user asked for

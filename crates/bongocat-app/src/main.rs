@@ -524,7 +524,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Applied after the overlay exists so a panel that is switched off is never
         // drawn for a frame.
         if let Some(host) = plugin_host.as_ref() {
-            host.apply_enabled_preference(&application.config().plugins.enabled);
+            host.apply_disabled_preference(&application.config().plugins.disabled);
         }
         let settings_service =
             match bongocat_app::ApplicationSettingsService::start_with_product_capabilities(

@@ -55,18 +55,77 @@ pub const MAXIMUM_LABEL_CHARS: usize = 120;
 /// localize them for it. What the host can do is hold a default and a table, ask
 /// for one locale, and fall back — which is the whole of what a language switch
 /// needs here.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+///
+/// # Two spellings on the wire, one in memory
+///
+/// `Deserialize` is written out rather than derived because a string is the obvious
+/// way to say "one language" and a table is the obvious way to say "several", and a
+/// plugin should not have to write `{"default": "Start"}` for the six words it has not
+/// translated. Reading accepts either; writing always produces the table, so a
+/// document the host stores is one shape rather than two.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct LocalizedText {
     /// What to show when the table has nothing for the user's language.
     pub default: String,
     /// BCP-47-ish tags to text, e.g. `"zh-CN"`. Matched by the host, never by the
     /// plugin, so a plugin cannot decide which of its strings the user sees.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub by_locale: BTreeMap<String, String>,
 }
 
+/// What one string looks like on the wire, in either of its two spellings.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum LocalizedTextWire {
+    /// The one-language spelling, and the only one a plugin with a single language
+    /// ever has to write.
+    One(String),
+    /// The table, for a plugin that has more than one language.
+    Table {
+        default: String,
+        #[serde(default)]
+        by_locale: BTreeMap<String, String>,
+    },
+}
+
+impl<'de> Deserialize<'de> for LocalizedText {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(match LocalizedTextWire::deserialize(deserializer)? {
+            LocalizedTextWire::One(default) => Self {
+                default,
+                by_locale: BTreeMap::new(),
+            },
+            LocalizedTextWire::Table { default, by_locale } => Self { default, by_locale },
+        })
+    }
+}
+
 impl LocalizedText {
+    /// One string, with no translations yet.
+    ///
+    /// The starting point for writing a plugin's own copy, so a language that has no
+    /// entry yet is a string rather than an empty table — and so adding a language is
+    /// one [`Self::with_locale`] call per string rather than a rewrite.
+    pub fn new(default: impl Into<String>) -> Self {
+        Self {
+            default: default.into(),
+            by_locale: BTreeMap::new(),
+        }
+    }
+
+    /// This string, with a translation for one language.
+    ///
+    /// Keyed by a language tag and matched by [`Self::resolve`], so `"zh"` covers
+    /// `zh-CN` and `zh-TW` and a plugin that has written Traditional Chinese is not
+    /// obliged to invent a Simplified one.
+    pub fn with_locale(mut self, tag: &str, text: impl Into<String>) -> Self {
+        self.by_locale.insert(tag.to_string(), text.into());
+        self
+    }
+
     /// The text for `locale`, falling back to the default.
     ///
     /// Matched on the full tag first and then on the primary subtag, so a plugin
@@ -87,6 +146,21 @@ impl LocalizedText {
             return matched;
         }
         &self.default
+    }
+
+    /// The most characters any of this text's languages needs.
+    ///
+    /// The bound a descriptor is checked against, and deliberately the *longest* rather
+    /// than the default: a plugin that keeps its default short and writes a sentence for
+    /// one language must not be able to put an unbounded label past a check that only
+    /// ever looked at the default.
+    pub fn longest_characters(&self) -> usize {
+        self.by_locale
+            .values()
+            .map(|text| text.chars().count())
+            .chain(std::iter::once(self.default.chars().count()))
+            .max()
+            .unwrap_or(0)
     }
 
     /// The resolved text, cut to the length a label may occupy.
@@ -283,12 +357,20 @@ impl Subscription {
 #[serde(deny_unknown_fields)]
 pub struct PluginDescriptor {
     pub id: PluginId,
-    pub name: String,
+    /// What the plugin calls itself, in the languages it has copy for.
+    ///
+    /// Localized rather than a plain string, and it is the running process's own copy
+    /// rather than the archive's: a plugin the user has installed should read as the
+    /// build that is actually running, in the language the user actually reads. The
+    /// archive's `name` stays a plain string because it is metadata the store compares
+    /// and a card falls back to when no process has answered yet.
+    pub name: LocalizedText,
     pub version: PluginVersion,
     #[serde(default)]
     pub author: String,
+    /// One sentence about what the plugin does, in the plugin's own languages.
     #[serde(default)]
-    pub description: String,
+    pub description: LocalizedText,
     #[serde(default)]
     pub icon: PluginIcon,
     /// The settings the plugin wants the user to be able to change.
@@ -307,10 +389,12 @@ impl PluginDescriptor {
     /// asks for a feed the host does not implement is a plugin built against a
     /// different host, and half of it working is worse than a clear refusal.
     pub fn validate(&self) -> Result<(), PluginError> {
-        if self.name.trim().is_empty() || self.name.chars().count() > MAXIMUM_PLUGIN_NAME_CHARS {
+        if self.name.default.trim().is_empty()
+            || self.name.longest_characters() > MAXIMUM_PLUGIN_NAME_CHARS
+        {
             return Err(PluginError::new(PluginErrorCode::InvalidPluginName));
         }
-        if self.description.chars().count() > MAXIMUM_PLUGIN_DESCRIPTION_CHARS {
+        if self.description.longest_characters() > MAXIMUM_PLUGIN_DESCRIPTION_CHARS {
             return Err(PluginError::new(PluginErrorCode::InvalidPluginDescription));
         }
         if self.id.as_str().len() > MAXIMUM_PLUGIN_ID_BYTES {
@@ -466,6 +550,67 @@ mod tests {
         assert_eq!(text.resolve("zh-TW"), "中文", "falls back to the language");
         assert_eq!(text.resolve("ja"), "Timer", "and to the default");
         assert_eq!(text.resolve("en-US"), "Timer");
+    }
+
+    #[test]
+    fn a_string_is_read_as_one_language_and_a_table_as_several() {
+        // A plugin with one language should not have to write a table for it, and a
+        // plugin with several should not have to repeat the default in every field.
+        let one: LocalizedText = serde_json::from_str(r#""Start""#).unwrap();
+        assert_eq!(one.resolve("zh-CN"), "Start");
+        assert!(one.by_locale.is_empty());
+
+        let several: LocalizedText =
+            serde_json::from_str(r#"{"default":"Start","by_locale":{"zh-CN":"开始"}}"#).unwrap();
+        assert_eq!(several.resolve("zh-CN"), "开始");
+        assert_eq!(several.resolve("en-US"), "Start");
+
+        // Writing always produces the table, so a stored document is one shape rather
+        // than whichever spelling the plugin that wrote it happened to prefer.
+        let written = serde_json::to_string(&one).unwrap();
+        assert_eq!(written, r#"{"default":"Start"}"#);
+        assert_eq!(
+            serde_json::from_str::<LocalizedText>(&written)
+                .unwrap()
+                .resolve("en-US"),
+            "Start",
+            "and what was written reads back as itself"
+        );
+    }
+
+    #[test]
+    fn a_descriptor_is_bounded_by_its_longest_language_not_by_its_default() {
+        // Otherwise a plugin keeps its default short, writes a sentence for one
+        // language, and puts an unbounded label past a check that only read the default.
+        fn a_descriptor() -> PluginDescriptor {
+            PluginDescriptor {
+                id: PluginId::new("pomodoro").expect("valid"),
+                name: "P".into(),
+                version: PluginVersion::new(1, 0, 0),
+                author: String::new(),
+                description: Default::default(),
+                icon: Default::default(),
+                config: Default::default(),
+                subscriptions: Vec::new(),
+            }
+        }
+
+        let mut long = a_descriptor();
+        long.name =
+            LocalizedText::new("P").with_locale("zh-CN", "x".repeat(MAXIMUM_PLUGIN_NAME_CHARS + 1));
+        assert_eq!(
+            long.validate().unwrap_err().code(),
+            PluginErrorCode::InvalidPluginName,
+            "a name that is only too long in one language is still too long"
+        );
+
+        let mut described = a_descriptor();
+        described.description = LocalizedText::new("")
+            .with_locale("zh-CN", "x".repeat(MAXIMUM_PLUGIN_DESCRIPTION_CHARS + 1));
+        assert_eq!(
+            described.validate().unwrap_err().code(),
+            PluginErrorCode::InvalidPluginDescription
+        );
     }
 
     #[test]

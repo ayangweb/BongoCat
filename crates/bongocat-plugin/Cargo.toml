@@ -27,8 +27,18 @@ time.workspace = true
 ureq = "=2.12.1"
 zip.workspace = true
 
+# `harness = false` because this file's plugin half writes the protocol to stdout from
+# inside a child process of the very test that starts it — and `libtest` captures a
+# running test's output and prints it when the test ends, so a `#[test]` would have had
+# every message swallowed. A plain `main` is what a plugin is.
+[[test]]
+name = "process_session"
+harness = false
+
 [dev-dependencies]
+serde_json.workspace = true
 tempfile.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true

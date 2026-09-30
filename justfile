@@ -58,6 +58,18 @@ build *args:
 keygen file:
     cargo run --locked -p bongocat-packaging -- --generate-signing-key {{file}}
 
+# Build one plugin from the plugins workspace and pack it into
+# <plugins>/build/<id>.zip, which the repository's own plugin catalog already points at:
+#
+#   just plugin pomodoro
+#   just plugin pomodoro --plugin-target x86_64-pc-windows-msvc
+#
+# The build runs in `plugins/`, which is its own Cargo workspace with its own lockfile,
+# so nothing a plugin depends on reaches the product's dependency graph. Install the
+# result from Settings → Plugins; the app runs the same unpack a release would.
+plugin id *args:
+    cargo run --locked -p bongocat-packaging -- --pack-plugin {{id}} {{args}}
+
 # Each `just build` writes one manifest fragment per target, but the updater requests a
 # single shared manifest, so a multi-target release merges the fragments once before
 # publishing:

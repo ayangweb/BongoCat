@@ -61,8 +61,22 @@ fn project_entry(entry: &PluginEntry, language: SettingsLanguage) -> SettingsPlu
         .unwrap_or_default();
     SettingsPluginEntry {
         id: entry.manifest.id.as_str().to_owned(),
-        name: entry.manifest.name.clone(),
-        description: entry.manifest.description.clone(),
+        // A running plugin's own name and description, in the user's language, over the
+        // archive's. Same rule as the icon: the card describes the build that is
+        // drawing the panel, and the archive's copy is what a plugin nobody has started
+        // yet has to be described with.
+        name: entry
+            .descriptor
+            .as_ref()
+            .map(|descriptor| descriptor.name.resolve_bounded(locale))
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| entry.manifest.name.clone()),
+        description: entry
+            .descriptor
+            .as_ref()
+            .map(|descriptor| descriptor.description.resolve_bounded(locale))
+            .filter(|description| !description.trim().is_empty())
+            .unwrap_or_else(|| entry.manifest.description.clone()),
         author: entry.manifest.author.clone(),
         icon: project_icon(&entry.icon()),
         installed_version: entry
@@ -319,10 +333,10 @@ mod tests {
     fn descriptor(schema: ConfigSchema) -> bongocat_plugin::PluginDescriptor {
         bongocat_plugin::PluginDescriptor {
             id: bongocat_plugin::PluginId::new("pomodoro").expect("valid"),
-            name: "Pomodoro".to_string(),
+            name: "Pomodoro".into(),
             version: bongocat_plugin::PluginVersion::new(1, 0, 0),
             author: String::new(),
-            description: String::new(),
+            description: Default::default(),
             icon: PluginIcon {
                 emoji: Some("🍅".to_string()),
                 image: None,

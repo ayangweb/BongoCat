@@ -97,7 +97,14 @@ impl Hello {
 pub enum PluginMessage {
     /// The answer to the host's `hello`. The first message, and the only one that
     /// may not be repeated.
-    Ready { descriptor: PluginDescriptor },
+    ///
+    /// Boxed, and for a size reason rather than a stylistic one: a descriptor carries the
+    /// plugin's whole settings schema inline, which makes it several times larger than
+    /// any other message, and `PluginMessage` is what the reader thread moves once per
+    /// line for the life of a session. A plugin sends this once; everything after it is a
+    /// panel or an answer, and those stay small. The wire format is unchanged — `Box` is
+    /// transparent to `serde`.
+    Ready { descriptor: Box<PluginDescriptor> },
     /// A panel to draw on the model window.
     Panel(Box<PanelUpdate>),
     /// Take the panel down without stopping the plugin.
@@ -327,10 +334,10 @@ mod tests {
     fn descriptor() -> PluginDescriptor {
         PluginDescriptor {
             id: PluginId::new("pomodoro").expect("valid"),
-            name: "Pomodoro".to_string(),
+            name: "Pomodoro".into(),
             version: PluginVersion::new(1, 0, 0),
             author: String::new(),
-            description: String::new(),
+            description: LocalizedText::default(),
             icon: Default::default(),
             config: ConfigSchema {
                 schema_version: crate::config::CONFIG_SCHEMA_VERSION,
@@ -394,7 +401,7 @@ mod tests {
 
         let messages = vec![
             PluginMessage::Ready {
-                descriptor: descriptor(),
+                descriptor: Box::new(descriptor()),
             },
             PluginMessage::HidePanel,
             PluginMessage::Request {
@@ -461,7 +468,7 @@ mod tests {
     #[test]
     fn a_descriptor_survives_the_wire_with_its_config_schema_intact() {
         let message = PluginMessage::Ready {
-            descriptor: descriptor(),
+            descriptor: Box::new(descriptor()),
         };
         let line = write_message(&message).expect("serializes");
         let PluginMessage::Ready { descriptor: read } =
@@ -469,7 +476,7 @@ mod tests {
         else {
             panic!("expected a ready message");
         };
-        assert_eq!(read, descriptor());
+        assert_eq!(*read, descriptor());
         assert!(read.wants(crate::descriptor::Subscription::Input));
     }
 }

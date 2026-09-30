@@ -101,9 +101,10 @@ fn announce(
     output: &mut impl Write,
     descriptor: bongocat_plugin_protocol::PluginDescriptor,
 ) -> Result<()> {
-    let line = write_message(&PluginMessage::Ready { descriptor }).ok_or_else(|| {
-        Error::Protocol("this plugin's descriptor could not be written".to_string())
-    })?;
+    let line = write_message(&PluginMessage::Ready {
+        descriptor: Box::new(descriptor),
+    })
+    .ok_or_else(|| Error::Protocol("this plugin's descriptor could not be written".to_string()))?;
     write_line(output, &line)
 }
 

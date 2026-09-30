@@ -128,7 +128,7 @@ pub struct Field {
 impl Field {
     /// A field with an explicit control, for the cases the named constructors do
     /// not cover.
-    pub fn new(key: &str, label: &str, control: ConfigControl) -> Self {
+    pub fn new(key: &str, label: impl Into<LocalizedText>, control: ConfigControl) -> Self {
         Self {
             key: key.to_string(),
             label: label.into(),
@@ -138,7 +138,7 @@ impl Field {
     }
 
     /// This field, with a line explaining it under the control.
-    pub fn described(mut self, description: &str) -> Self {
+    pub fn described(mut self, description: impl Into<LocalizedText>) -> Self {
         self.description = Some(description.into());
         self
     }
@@ -192,7 +192,7 @@ pub struct Toggle {
 
 impl Toggle {
     /// A switch that starts off.
-    pub fn new(key: &str, label: &str) -> Self {
+    pub fn new(key: &str, label: impl Into<LocalizedText>) -> Self {
         Self {
             key: key.to_string(),
             label: label.into(),
@@ -210,7 +210,7 @@ impl Toggle {
     }
 
     /// This switch, with a line explaining it.
-    pub fn described(mut self, description: &str) -> Self {
+    pub fn described(mut self, description: impl Into<LocalizedText>) -> Self {
         self.description = Some(description.into());
         self
     }
@@ -248,7 +248,7 @@ impl Integer {
     /// Almost always the wrong thing: a boundless spinner is a number whose
     /// meaning only the plugin knows, so prefer [`Self::ranged`] unless the value
     /// genuinely has no upper limit.
-    pub fn new(key: &str, label: &str) -> Self {
+    pub fn new(key: &str, label: impl Into<LocalizedText>) -> Self {
         Self {
             key: key.to_string(),
             label: label.into(),
@@ -266,7 +266,13 @@ impl Integer {
     /// The order is default first because it is the one the author is thinking
     /// about: "twenty-five minutes, and it can be anything from one to a hundred
     /// and twenty".
-    pub fn ranged(key: &str, label: &str, default: i64, minimum: i64, maximum: i64) -> Self {
+    pub fn ranged(
+        key: &str,
+        label: impl Into<LocalizedText>,
+        default: i64,
+        minimum: i64,
+        maximum: i64,
+    ) -> Self {
         Self {
             key: key.to_string(),
             label: label.into(),
@@ -292,13 +298,13 @@ impl Integer {
     }
 
     /// A suffix shown after the number, in the plugin's own copy.
-    pub fn with_unit(mut self, unit: &str) -> Self {
+    pub fn with_unit(mut self, unit: impl Into<LocalizedText>) -> Self {
         self.unit = Some(unit.into());
         self
     }
 
     /// This setting, with a line explaining it.
-    pub fn described(mut self, description: &str) -> Self {
+    pub fn described(mut self, description: impl Into<LocalizedText>) -> Self {
         self.description = Some(description.into());
         self
     }
@@ -336,7 +342,13 @@ pub struct Decimal {
 
 impl Decimal {
     /// A real number between `minimum` and `maximum`, starting at `default`.
-    pub fn ranged(key: &str, label: &str, default: f64, minimum: f64, maximum: f64) -> Self {
+    pub fn ranged(
+        key: &str,
+        label: impl Into<LocalizedText>,
+        default: f64,
+        minimum: f64,
+        maximum: f64,
+    ) -> Self {
         Self {
             key: key.to_string(),
             label: label.into(),
@@ -356,13 +368,13 @@ impl Decimal {
     }
 
     /// A suffix shown after the number.
-    pub fn with_unit(mut self, unit: &str) -> Self {
+    pub fn with_unit(mut self, unit: impl Into<LocalizedText>) -> Self {
         self.unit = Some(unit.into());
         self
     }
 
     /// This setting, with a line explaining it.
-    pub fn described(mut self, description: &str) -> Self {
+    pub fn described(mut self, description: impl Into<LocalizedText>) -> Self {
         self.description = Some(description.into());
         self
     }
@@ -399,7 +411,7 @@ pub struct TextField {
 
 impl TextField {
     /// A single line, empty.
-    pub fn new(key: &str, label: &str) -> Self {
+    pub fn new(key: &str, label: impl Into<LocalizedText>) -> Self {
         Self {
             key: key.to_string(),
             label: label.into(),
@@ -419,7 +431,7 @@ impl TextField {
 
     /// A hint shown while the field is empty. Never a value: a placeholder that
     /// looked like data would be saved as data.
-    pub fn placeholder(mut self, placeholder: &str) -> Self {
+    pub fn placeholder(mut self, placeholder: impl Into<LocalizedText>) -> Self {
         self.placeholder = Some(placeholder.into());
         self
     }
@@ -437,7 +449,7 @@ impl TextField {
     }
 
     /// This setting, with a line explaining it.
-    pub fn described(mut self, description: &str) -> Self {
+    pub fn described(mut self, description: impl Into<LocalizedText>) -> Self {
         self.description = Some(description.into());
         self
     }
@@ -473,7 +485,7 @@ pub struct Option_ {
 }
 
 impl Option_ {
-    pub fn new(value: &str, label: &str) -> Self {
+    pub fn new(value: &str, label: impl Into<LocalizedText>) -> Self {
         Self {
             value: value.to_string(),
             label: label.into(),
@@ -503,7 +515,7 @@ impl Choice {
     /// The first option is the default because a menu whose default is not in it is
     /// a schema the host refuses, and a plugin author writing the list top to
     /// bottom means the first one.
-    pub fn new(key: &str, label: &str, options: Vec<Option_>) -> Self {
+    pub fn new(key: &str, label: impl Into<LocalizedText>, options: Vec<Option_>) -> Self {
         Self {
             key: key.to_string(),
             label: label.into(),
@@ -523,7 +535,7 @@ impl Choice {
     }
 
     /// This menu, with a line explaining it.
-    pub fn described(mut self, description: &str) -> Self {
+    pub fn described(mut self, description: impl Into<LocalizedText>) -> Self {
         self.description = Some(description.into());
         self
     }

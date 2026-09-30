@@ -62,6 +62,13 @@ const OUTBOUND_CAPACITY: usize = 32;
 /// a plugin that writes an enormous line must not make the host allocate one.
 const MAXIMUM_LINE_BYTES: usize = bongocat_plugin_protocol::MAXIMUM_MESSAGE_BYTES;
 
+/// How long the writer waits for a message before looking at the stop flag.
+///
+/// Short enough that a session's writer is gone within a tenth of a second of the host
+/// asking it to stop, which is what closes the plugin's end of the pipe; long enough that
+/// a plugin receiving one message a second costs one wake-up rather than sixty-four.
+const WRITE_POLL: Duration = Duration::from_millis(100);
+
 /// The most restarts of one plugin in a run, after which it is left alone.
 ///
 /// A plugin that crashes on start, is restarted, crashes again is a plugin that will
@@ -388,12 +395,24 @@ impl Session {
         &self.images
     }
 
-    /// Feed the reader thread's messages in.
+    /// Hand the child's output to the worker, and its input to the plugin.
     ///
-    /// The reader is a thread of its own so nothing here blocks: it drains the
-    /// child's stdout and stderr and the outbound queue, and hands each result over a
-    /// bounded channel. This side is the worker's own evaluation, which is where a
-    /// panel is rasterized and a message is acted on.
+    /// One thread for each direction, plus one per stream, because the three cannot share
+    /// a thread and the reason is worth writing down because getting it wrong is silent:
+    ///
+    /// * **The writer runs on its own, and runs first.** A plugin that has not been sent
+    ///   its `hello` has no identity, no data directory and no protocol version, so it
+    ///   cannot say anything — and it will never say anything, because it is waiting for a
+    ///   message that is queued behind a write that has not happened. An earlier shape
+    ///   started writing only after both readers had ended, which meant no plugin ever
+    ///   received a handshake and every session sat in `Starting` until the host gave up.
+    /// * **The readers are separate from each other.** A plugin that fills its stderr
+    ///   pipe while the host reads only stdout would deadlock, and a plugin that logs is
+    ///   exactly the case where that happens.
+    ///
+    /// The writer waits with a timeout rather than blocking forever on the queue, so it
+    /// notices a stop: a thread that outlives the session would be a thread nothing joins
+    /// at shutdown.
     fn start_reader(
         &mut self,
         outbound_rx: Receiver<HostMessage>,
@@ -411,22 +430,45 @@ impl Session {
         // A named thread so a hang or a crash names the plugin that caused it, which
         // is the only clue available afterwards.
         let _ = std::thread::Builder::new().name(name).spawn(move || {
+            let mut readers = Vec::new();
+            if let Some(stdout) = stdout {
+                let inbound = inbound_tx.clone();
+                readers.push(std::thread::spawn(move || {
+                    read_lines(stdout, LineKind::Protocol, &inbound)
+                }));
+            }
+            if let Some(stderr) = stderr {
+                let inbound = inbound_tx.clone();
+                readers.push(std::thread::spawn(move || {
+                    read_lines(stderr, LineKind::Diagnostic, &inbound)
+                }));
+            }
+            drop(inbound_tx);
+
             let mut writer: Option<ChildStdin> = stdin;
-            read_child(stdout, stderr, &inbound_tx);
-            // The child is gone, so anything still queued for it will never be
-            // delivered; draining is what keeps the writer's own errors from
-            // being mistaken for the plugin having misbehaved.
-            while let Ok(message) = outbound_rx.try_recv() {
-                if !write_line(&mut writer, &message) {
-                    break;
+            loop {
+                match outbound_rx.recv_timeout(WRITE_POLL) {
+                    Ok(message) => {
+                        if !write_line(&mut writer, &message) {
+                            break;
+                        }
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        // A stop is a message *and* a close, and the message is queued
+                        // just before `stopping` is set — so it has already gone out, and
+                        // this is where the writer ends. Dropping the pipe is what tells
+                        // the plugin the session is over, so a writer that waited for
+                        // another message would wait forever.
+                        if stopping.load(Ordering::Acquire) {
+                            break;
+                        }
+                    }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 }
             }
-            while let Ok(message) = outbound_rx.try_recv() {
-                if !write_line(&mut writer, &message) {
-                    break;
-                }
+            for reader in readers {
+                let _ = reader.join();
             }
-            stopping.store(true, Ordering::Release);
         });
     }
 
@@ -547,7 +589,7 @@ impl Session {
     ) -> SessionOutcome {
         self.diagnostics.messages_received = self.diagnostics.messages_received.saturating_add(1);
         match message {
-            PluginMessage::Ready { descriptor } => self.on_ready(descriptor),
+            PluginMessage::Ready { descriptor } => self.on_ready(*descriptor),
             PluginMessage::Panel(update) => {
                 if self.accept_panel(*update, fonts, scale) {
                     SessionOutcome::PanelChanged
@@ -893,61 +935,53 @@ fn write_line(writer: &mut Option<ChildStdin>, message: &HostMessage) -> bool {
     matches!(writer.write_all(&line), Ok(())) && matches!(writer.flush(), Ok(()))
 }
 
-/// Read the child's stdout and stderr until it ends.
+/// Read one of the child's streams until it ends.
 ///
-/// Two threads, because a plugin that fills its stderr pipe while the host reads only
-/// stdout would deadlock — and a plugin that logs is exactly the case where that
-/// happens. Each line is length-checked before it is parsed, so a plugin cannot make
-/// the host allocate without bound.
-fn read_child(
-    stdout: Option<std::process::ChildStdout>,
-    stderr: Option<std::process::ChildStderr>,
-    inbound: &SyncSender<Incoming>,
-) {
-    let mut readers: Vec<std::thread::JoinHandle<()>> = Vec::new();
-    if let Some(stdout) = stdout {
-        let inbound = inbound.clone();
-        readers.push(std::thread::spawn(move || {
-            for line in BufReader::new(stdout).lines() {
-                let Ok(line) = line else {
-                    break;
-                };
-                let event = if line.len() > MAXIMUM_LINE_BYTES {
-                    Incoming::Refused(PluginError::with_detail(
-                        PluginErrorCode::ProtocolInvalid,
-                        format!("a protocol line is longer than {MAXIMUM_LINE_BYTES} bytes"),
-                    ))
-                } else {
-                    match bongocat_plugin_protocol::parse_plugin_message(line.as_bytes()) {
-                        Ok(message) => Incoming::Message(message),
-                        Err(error) => Incoming::Refused(error),
-                    }
-                };
-                if inbound.send(event).is_err() {
-                    break;
+/// `Protocol` lines are length-checked and parsed; `Diagnostic` lines are forwarded as
+/// they are. The two are not the same kind of thing — one is the wire and one is the
+/// plugin talking to itself — and treating them alike is either how a plugin's own log
+/// line becomes a refused protocol line, or how a protocol line becomes a log entry.
+fn read_lines<R: std::io::Read>(stream: R, kind: LineKind, inbound: &SyncSender<Incoming>) {
+    for line in BufReader::new(stream).lines() {
+        let Ok(line) = line else {
+            break;
+        };
+        let event = match kind {
+            LineKind::Protocol if line.len() > MAXIMUM_LINE_BYTES => {
+                Incoming::Refused(PluginError::with_detail(
+                    PluginErrorCode::ProtocolInvalid,
+                    format!("a protocol line is longer than {MAXIMUM_LINE_BYTES} bytes"),
+                ))
+            }
+            LineKind::Protocol => {
+                match bongocat_plugin_protocol::parse_plugin_message(line.as_bytes()) {
+                    Ok(message) => Incoming::Message(message),
+                    Err(error) => Incoming::Refused(error),
                 }
             }
-            let _ = inbound.send(Incoming::Exited(None));
-        }));
+            // Forwarded rather than parsed: stderr is the plugin's own log, and the
+            // host's answer is to write it down, not to interpret it.
+            LineKind::Diagnostic => Incoming::Stderr(line),
+        };
+        if inbound.send(event).is_err() {
+            break;
+        }
     }
-    if let Some(stderr) = stderr {
-        let inbound = inbound.clone();
-        readers.push(std::thread::spawn(move || {
-            for line in BufReader::new(stderr).lines() {
-                let Ok(line) = line else {
-                    break;
-                };
-                // Forwarded rather than parsed: stderr is the plugin's own log, and
-                // the host's answer is to write it down, not to interpret it.
-                if inbound.send(Incoming::Stderr(line)).is_err() {
-                    break;
-                }
-            }
-        }));
+    if matches!(kind, LineKind::Protocol) {
+        // The end of a plugin's stdout is the end of the plugin, and it is reported once
+        // however many lines came before it. The exit code arrives separately, from the
+        // worker's own `reap`.
+        let _ = inbound.send(Incoming::Exited(None));
     }
-    for reader in readers {
-        let _ = reader.join();
-    }
+}
+
+/// Which of a plugin's two output streams a line came from.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LineKind {
+    /// stdout: the protocol, and the only stream whose end ends the session.
+    Protocol,
+    /// stderr: the plugin's own log, forwarded and never interpreted.
+    Diagnostic,
 }
 
 /// Whether a restart is still allowed, and why not when it is not.
@@ -964,10 +998,10 @@ mod tests {
     fn a_descriptor() -> PluginDescriptor {
         PluginDescriptor {
             id: PluginId::new("key-stats").expect("valid"),
-            name: "Key stats".to_string(),
+            name: "Key stats".into(),
             version: PluginVersion::new(1, 0, 0),
             author: String::new(),
-            description: String::new(),
+            description: Default::default(),
             icon: Default::default(),
             config: Default::default(),
             subscriptions: vec![Subscription::Input],
@@ -1005,7 +1039,7 @@ mod tests {
     #[test]
     fn a_descriptor_validates_before_a_session_accepts_it() {
         let mut descriptor = a_descriptor();
-        descriptor.name = "  ".to_string();
+        descriptor.name = "  ".into();
         assert_eq!(
             descriptor.validate().unwrap_err().code(),
             PluginErrorCode::InvalidPluginName

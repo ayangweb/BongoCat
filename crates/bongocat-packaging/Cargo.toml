@@ -17,6 +17,7 @@ serde_json.workspace = true
 tar.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+zip.workspace = true
 
 [dev-dependencies]
 cargo-packager-updater.workspace = true

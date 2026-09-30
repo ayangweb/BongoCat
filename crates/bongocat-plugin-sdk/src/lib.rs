@@ -102,8 +102,8 @@ mod settings;
 pub mod testing;
 
 pub use bongocat_plugin_protocol::{
-    ConfigKind, ConfigSchema, ConfigValue, InputEvent, LocalizedText, ModelRequest,
-    ModelRequestKind, PluginAnchor, Subscription,
+    ConfigDocument, ConfigKind, ConfigSchema, ConfigValue, HostMessage, InputEvent, LocalizedText,
+    ModelRequest, ModelRequestKind, PluginAnchor, Subscription,
 };
 pub use host::{Host, Identity, Outcome};
 pub use panel::{
@@ -111,7 +111,7 @@ pub use panel::{
     muted, panel_surface, ring, spacer, spacer_share, text, text_colored,
 };
 pub use plugin::{Descriptor, Event, Plugin, Tick};
-pub use run::run;
+pub use run::{Session, run};
 pub use settings::{
     Choice, Decimal, Field, Integer, Option_, Settings, Store, TextField, Toggle, Values,
 };
@@ -128,11 +128,13 @@ pub mod prelude {
         image, muted, panel_surface, ring, spacer, spacer_share, text, text_colored,
     };
     pub use crate::plugin::{Descriptor, Event, Limits, Plugin, Tick};
+    pub use crate::run::Session;
     pub use crate::settings::{
         Choice, Decimal, Field, Integer, Option_, Settings, Store, TextField, Toggle, Values,
     };
     pub use crate::{
-        ConfigKind, ConfigValue, InputEvent, LocalizedText, ModelRequest, Subscription,
+        ConfigDocument, ConfigKind, ConfigValue, HostMessage, InputEvent, LocalizedText,
+        ModelRequest, Subscription,
     };
     pub use bongocat_plugin_protocol::{
         MAXIMUM_BUBBLE_MILLIS, MINIMUM_BUBBLE_MILLIS, ModelOutcome, ModelRequestKind, PluginAnchor,

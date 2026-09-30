@@ -1,12 +1,10 @@
 [workspace]
 resolver = "3"
+# One member, added one issue at a time. A plugin that is not written yet is not a
+# half-written member of this list: an empty crate is scaffolding, and a crate that
+# does not work is worse than one that does not exist.
 members = [
     "pomodoro",
-    "keyboard-display",
-    "key-stats",
-    "typing-sound",
-    "input-method",
-    "agent-watch",
 ]
 # The plugins workspace is deliberately its own. A plugin is built, versioned and
 # shipped on its own, and nothing here may reach into the application's manifest:
@@ -26,7 +24,7 @@ publish = false
 # The only crate a plugin is allowed to depend on. It brings `serde` and the
 # protocol with it and nothing else — no GPUI, no platform code, no renderer — so a
 # plugin author needs to know nothing about the product's internals to write one.
-bongocat-plugin-sdk = { path = "../../crates/bongocat-plugin-sdk" }
+bongocat-plugin-sdk = { path = "../crates/bongocat-plugin-sdk" }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 
