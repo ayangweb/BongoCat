@@ -1,99 +1,101 @@
-//! What a plugin is, and what the host lets it put on the model window.
+//! What a plugin is, and the whole contract between a plugin and BongoCat.
 //!
-//! This crate is the whole contract between a plugin and BongoCat. It depends on
-//! `serde` and on the render vocabulary — and on nothing else. It has no idea how
-//! a plugin is found, downloaded, laid out on screen or driven; those decisions
-//! belong to the crates above it, and a plugin author needs none of them to write
-//! a valid `plugin.json`.
+//! This crate is the contract. It depends on `serde` and on the render
+//! vocabulary — and on nothing else. It has no idea how a plugin is found,
+//! downloaded, started, laid out on screen or driven; those decisions belong to
+//! the crates above it, and a plugin author needs none of them.
 //!
 //! # The shape of the system
 //!
-//! A plugin is **data, not code**. It declares a *manifest* and a *scene*: a tree
-//! of panels, text, bars, rings and buttons, plus a set of *behaviors* the host
-//! runs on its own clock and maps into values the scene binds to. Nothing a
-//! plugin ships is executed. That is the decision the rest of the design rests
-//! on, and it is recorded in ADR-0078 together with what it costs and what a
-//! later `api_version` is expected to add.
+//! A plugin is **a program**. It is its own executable, in its own directory,
+//! with its own dependencies and its own data, and the host starts it and speaks
+//! a versioned line protocol over its pipes. Nothing a plugin ships is loaded into
+//! the host's address space, so there is no `unsafe` boundary to keep and a plugin
+//! that faults takes only itself down.
 //!
-//! Being data has consequences that are deliberate rather than incidental:
+//! What the host keeps is the *appearance*: a plugin sends a scene, and the same
+//! layout, font, theme and raster the product already has turn it into the pixels
+//! the model window draws. So a plugin computes and the host draws, which is why a
+//! panel looks like part of the product without the plugin knowing what a theme
+//! is.
 //!
-//! * A plugin cannot read a file, open a socket or run a process, because it has
-//!   no way to ask for one. There is no permission system to get wrong, and no
-//!   native code to keep the `unsafe` boundary of ADR-0005 out of.
-//! * Everything a plugin can do is bounded by a constant declared right here, so
-//!   the host can enforce it before the plugin is loaded rather than after it
-//!   has drawn something.
-//! * The model window is rendered by the host, so a panel is consistent with the
-//!   rest of the product and follows the user's theme and scale without the
-//!   plugin knowing they exist.
+//! `docs/adr/0079-plugins-are-independent-processes.md` is the decision this
+//! implements, and it is the place to look for why a plugin is a process and not a
+//! library, a document, or a WebAssembly component.
+//!
+//! # What a plugin owns, and what it does not
+//!
+//! Owned by the plugin: its logic, its state, its persistence, its copy, its
+//! dependencies, its dependencies' versions. Not owned by the plugin: the panel's
+//! look, the font, the placement arithmetic, the model window, the config file it
+//! is given a schema for. The line is drawn once, in the ADR, because getting it
+//! wrong in either direction is a mistake the type system cannot catch.
 //!
 //! # Versions
 //!
 //! Four version numbers, all distinct, and all of them strict:
 //!
-//! * `schema_version` — the shape of `plugin.json`. Like `config.json` it is a
-//!   single accepted version with no migration, so a manifest the host does not
-//!   recognise is refused rather than half-read.
+//! * `schema_version` — the shape of `plugin.json`, and of a configuration
+//!   schema. Like `config.json` it is a single accepted version with no
+//!   migration, so a document the host does not recognise is refused rather than
+//!   half-read.
 //! * `api_version` — the feature level a plugin needs. A plugin declaring a higher
 //!   one than the host implements is not loaded, rather than loaded with the
 //!   features it asked for quietly missing.
+//! * `PROTOCOL_VERSION` — the shape of the messages in both directions. Checked on
+//!   the first message each way, so a mismatch is a refusal rather than a host
+//!   writing a document a plugin will read as something else.
 //! * `version` — the plugin's own release, ordered for the plugin center's update
 //!   comparison.
-//! * the catalog's own `schema_version` — the shape of `plugins.json`.
 
 #![forbid(unsafe_code)]
 
-mod behavior;
 mod catalog;
 mod color;
+mod config;
+mod descriptor;
 mod error;
-mod manifest;
+mod host_state;
+mod identity;
+mod ipc;
+mod panel;
 pub mod scene;
 
-pub use behavior::{
-    BehaviorAction, BehaviorId, BehaviorSpec, CountdownSpec, CounterSpec, LocalTimeSpec,
-    MAXIMUM_BEHAVIORS_PER_PLUGIN, MAXIMUM_TIMER_SECONDS, StopwatchSpec,
-};
 pub use catalog::{
     MAXIMUM_CATALOG_ENTRIES, PLUGIN_CATALOG_FILE_NAME, PLUGIN_CATALOG_REPOSITORY_NAME,
     PLUGIN_CATALOG_REPOSITORY_OWNER, PLUGIN_CATALOG_SCHEMA_VERSION, PLUGIN_SCHEMA_VERSION,
     PluginCatalog, PluginCatalogEntry, PluginDownload, SUPPORTED_PLUGIN_API_VERSION,
 };
 pub use color::{Color, ColorError};
-pub use error::{PluginError, PluginErrorCode};
-pub use manifest::{
-    InstalledPlugin, MAXIMUM_BEHAVIOR_ID_BYTES, MAXIMUM_BINDINGS_PER_PLUGIN,
-    MAXIMUM_BUTTON_ID_BYTES, MAXIMUM_PLUGIN_DESCRIPTION_CHARS, MAXIMUM_PLUGIN_ID_BYTES,
-    MAXIMUM_PLUGIN_NAME_CHARS, NamedBehavior, OverlayContribution, PLUGIN_MANIFEST_FILE_NAME,
-    PluginAnchor, PluginCapabilities, PluginId, PluginManifest, PluginVersion,
+pub use config::{
+    CONFIG_SCHEMA_VERSION, ChoiceOption, ConfigControl, ConfigDocument, ConfigField, ConfigKind,
+    ConfigValue, MAXIMUM_CHOICE_OPTIONS, MAXIMUM_CONFIG_FIELDS, MAXIMUM_CONFIG_KEY_BYTES,
+    MAXIMUM_CONFIG_TEXT_BYTES, MAXIMUM_CONFIG_TEXT_BYTES as MAXIMUM_TEXT_VALUE_BYTES,
 };
-pub use scene::value::{BindingTable, BindingValue, ResolvedValue, SceneValue};
+pub use descriptor::{
+    LocalizedText, MAXIMUM_BUTTON_ID_BYTES, MAXIMUM_BUTTONS_PER_PANEL,
+    MAXIMUM_PLUGIN_DESCRIPTION_CHARS,
+    MAXIMUM_PLUGIN_NAME_CHARS, PLUGIN_MANIFEST_FILE_NAME, PluginDescriptor, PluginIcon,
+    PluginManifest, Subscription,
+};
+pub use error::{PluginError, PluginErrorCode};
+pub use host_state::{
+    HostState, InputEvent, MAXIMUM_BUBBLE_CHARS, MAXIMUM_BUBBLE_MILLIS, MAXIMUM_MOUSE_STEP,
+    MINIMUM_BUBBLE_MILLIS, ModelRequest,
+};
+pub use identity::{
+    InstalledPlugin, MAXIMUM_PLUGIN_ID_BYTES, PluginId, PluginVersion,
+};
+pub use ipc::{
+    Hello, HostMessage, LogLevel, MAXIMUM_MESSAGE_BYTES, PROTOCOL_VERSION, PluginMessage,
+    PluginRuntimeStatus, check_line_length, parse_host_message, parse_plugin_message, write_message,
+};
+pub use panel::{PanelPlacement, PanelUpdate, PluginAnchor};
 pub use scene::{
     Align, ButtonNode, ButtonVariant, DividerNode, ImageNode, MAXIMUM_SCENE_DEPTH,
     MAXIMUM_SCENE_NODES, ProgressBarNode, ProgressRingNode, SceneNode, SpacerNode, StackAxis,
     StackNode, TextNode, TextWeight,
 };
-
-/// The longest binding path a scene may name, in bytes.
-///
-/// A binding is `<behavior id>.<field>`, and the source is either a behavior the
-/// manifest declared or the reserved word `host`. The bound exists so a scene
-/// cannot name a path long enough to be worth interning at every redraw, and so a
-/// malformed scene is refused rather than resolving to a lookup that misses every
-/// time.
-pub const MAXIMUM_BINDING_PATH_BYTES: usize = 96;
-
-/// The binding paths the host itself provides.
-///
-/// The list is closed and lives here rather than in the engine, so adding a host
-/// fact is a change to the product's surface and has to be made in one place where
-/// a reviewer will see it. A behavior id may not contain a `.`, so no behavior can
-/// collide with the `host` source.
-pub const HOST_BINDING_PATHS: &[&str] = &[
-    "host.overlay_visible",
-    "host.model_name",
-    "host.pressed_key_count",
-];
 
 /// The longest a panel's logical side may be, in pixels.
 ///
@@ -110,10 +112,11 @@ pub const MINIMUM_PANEL_SIDE: u32 = 32;
 
 /// Check a path a plugin named, before it is joined to anything.
 ///
-/// One check for every path a plugin can name — its icon, its images — because
-/// the ways out of a plugin's own directory are worth enumerating once: `..`, an
-/// absolute path, a Windows drive letter, a UNC prefix, an empty component, and a
-/// NUL byte that would truncate the name on the way to the filesystem.
+/// One check for every path a plugin can name — its icon, its images, its
+/// executable — because the ways out of a plugin's own directory are worth
+/// enumerating once: `..`, an absolute path, a Windows drive letter, a UNC prefix,
+/// an empty component, and a NUL byte that would truncate the name on the way to
+/// the filesystem.
 ///
 /// The rule is deliberately narrow rather than clever: a relative path with
 /// forward slashes, no `.` or `..` component, and no prefix of any kind. A
@@ -190,82 +193,13 @@ pub const GITHUB_PROXY_HOSTS: &[&str] = &[
     "v4.gh-proxy.org",
 ];
 
-/// Check a behavior's own values.
-///
-/// Only a clock format is refused here. Everything else a behavior can declare
-/// out of range is *clamped* by [`clamp_behavior_spec`] rather than refused,
-/// because a panel with a zero-second duration is still the panel its author
-/// meant to write and the one-line mistake is cheaper to survive than to report.
-/// A clock format is different: there is no sensible default for a format that
-/// is not a subset of `HH`/`MM`/`SS`, and guessing one would show a time nobody
-/// asked for.
-pub fn validate_behavior_spec(spec: &BehaviorSpec) -> Result<(), PluginError> {
-    if let BehaviorSpec::LocalTime(clock) = spec {
-        validate_time_format(&clock.format)?;
-    }
-    Ok(())
-}
-
-/// Whether `format` is a run of `HH`, `MM` and `SS` separated by non-alphabetic
-/// characters.
-///
-/// A closed subset on purpose. The alternative — handing the format to a general
-/// date library — would let a plugin ask for a month name in a locale it never
-/// named, and the host would have to pick one.
-pub fn validate_time_format(format: &str) -> Result<(), PluginError> {
-    if format.is_empty() || format.len() > 32 {
-        return Err(PluginError::new(PluginErrorCode::InvalidTimeFormat));
-    }
-    let bytes = format.as_bytes();
-    let mut index = 0;
-    while index < bytes.len() {
-        let rest = &bytes[index..];
-        if rest.starts_with(b"HH") || rest.starts_with(b"MM") || rest.starts_with(b"SS") {
-            index += 2;
-        } else if rest[0].is_ascii_alphanumeric() {
-            return Err(PluginError::new(PluginErrorCode::InvalidTimeFormat));
-        } else {
-            index += 1;
-        }
-    }
-    Ok(())
-}
-
-/// Bring a behavior's own values into range.
-///
-/// Called once, when a plugin is loaded, so every consumer of a behavior can
-/// assume its values are in range and none of them has to clamp.
-pub fn clamp_behavior_spec(spec: &mut BehaviorSpec) {
-    use BehaviorSpec::{Countdown, Counter, LocalTime, Stopwatch};
-    match spec {
-        Countdown(countdown) => {
-            countdown.duration_seconds = countdown.duration_seconds.clamp(1, MAXIMUM_TIMER_SECONDS);
-        }
-        Stopwatch(stopwatch) => {
-            stopwatch.period_seconds = stopwatch
-                .period_seconds
-                .map(|period| period.clamp(1, MAXIMUM_TIMER_SECONDS));
-        }
-        LocalTime(_) => {}
-        Counter(counter) => {
-            if counter.step == 0 {
-                counter.step = 1;
-            }
-            if counter.minimum > counter.maximum {
-                std::mem::swap(&mut counter.minimum, &mut counter.maximum);
-            }
-            counter.initial = counter.initial.clamp(counter.minimum, counter.maximum);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn a_plain_relative_path_is_accepted() {
-        for path in ["icon.png", "assets/icon.png", "a/b/c.png"] {
+        for path in ["icon.png", "assets/icon.png", "a/b/c.png", "pomodoro"] {
             assert!(validate_relative_asset_path(path).is_ok(), "{path}");
         }
     }
@@ -314,48 +248,9 @@ mod tests {
     }
 
     #[test]
-    fn a_counter_with_no_step_or_an_inverted_range_is_brought_into_range() {
-        let mut spec = BehaviorSpec::Counter(CounterSpec {
-            initial: 50,
-            minimum: 10,
-            maximum: 0,
-            step: 0,
-            loop_back: false,
-        });
-        clamp_behavior_spec(&mut spec);
-        let BehaviorSpec::Counter(counter) = spec else {
-            panic!("expected a counter");
-        };
-        assert_eq!(counter.step, 1);
-        assert_eq!(counter.minimum, 0);
-        assert_eq!(counter.maximum, 10);
-        assert_eq!(counter.initial, 10);
-    }
-
-    #[test]
-    fn a_zero_duration_countdown_is_brought_into_range() {
-        let mut spec = BehaviorSpec::Countdown(CountdownSpec {
-            duration_seconds: 0,
-            auto_start: false,
-            auto_repeat: false,
-        });
-        clamp_behavior_spec(&mut spec);
-        let BehaviorSpec::Countdown(countdown) = spec else {
-            panic!("expected a countdown");
-        };
-        assert_eq!(countdown.duration_seconds, 1);
-    }
-
-    #[test]
-    fn an_absurd_period_is_brought_into_range() {
-        let mut spec = BehaviorSpec::Stopwatch(StopwatchSpec {
-            auto_start: false,
-            period_seconds: Some(u32::MAX),
-        });
-        clamp_behavior_spec(&mut spec);
-        let BehaviorSpec::Stopwatch(stopwatch) = spec else {
-            panic!("expected a stopwatch");
-        };
-        assert_eq!(stopwatch.period_seconds, Some(MAXIMUM_TIMER_SECONDS));
+    fn an_anchor_spells_the_same_way_in_the_protocol_and_the_renderer() {
+        for anchor in PluginAnchor::ALL {
+            assert!(bongocat_render::OverlayAnchor::parse(anchor.as_str()).is_some());
+        }
     }
 }

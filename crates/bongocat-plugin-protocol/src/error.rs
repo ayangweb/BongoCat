@@ -18,10 +18,10 @@ pub struct PluginError {
 }
 
 /// Every way a plugin can be refused.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginErrorCode {
-    /// The manifest is not readable JSON, or is not the shape this host knows.
+    /// `plugin.json` is not readable JSON, or is not the shape this host knows.
     ManifestInvalid,
     /// The manifest's `schema_version` is not the one this host accepts.
     UnsupportedSchemaVersion,
@@ -36,34 +36,38 @@ pub enum PluginErrorCode {
     /// A path the plugin named is absolute, escapes its directory or is not a
     /// plain file name.
     InvalidAssetPath,
-    /// A capability the manifest declared and the host does not grant.
-    CapabilityNotGranted,
-    /// More behaviors than the bound allows.
-    TooManyBehaviors,
-    /// A behavior id is empty, too long or not a plain identifier.
-    InvalidBehaviorId,
-    /// Two behaviors share a name.
-    DuplicateBehaviorId,
-    /// A behavior's own values are out of range.
-    InvalidBehaviorSpec,
     /// More scene nodes than the bound allows.
     SceneTooLarge,
     /// Nested deeper than the bound allows.
     SceneTooDeep,
-    /// A binding names no source, or a path longer than the bound allows.
-    InvalidBinding,
-    /// A binding or a button target names a behavior that was not declared.
-    UnknownBinding,
     /// A button id is empty or too long.
     InvalidButtonId,
     /// Two buttons share an id, so a press would be ambiguous.
     DuplicateButtonId,
-    /// A clock format is not a subset of `HH`/`MM`/`SS` and separators.
-    InvalidTimeFormat,
     /// The panel's logical size is zero or past the bound.
     InvalidPanelSize,
     /// The panel's placement is not one the model window can honour.
     InvalidPanelPlacement,
+    /// The configuration schema the plugin declared is not one the host can show.
+    InvalidConfigSchema,
+    /// A configuration value does not fit the field the plugin declared for it.
+    InvalidConfigValue,
+    /// A line on the wire was not a message this host knows.
+    ProtocolInvalid,
+    /// The plugin speaks a protocol version this host does not implement.
+    ProtocolVersionMismatch,
+    /// The plugin's process could not be started.
+    PluginSpawnFailed,
+    /// The plugin started but never announced itself, or announced something the
+    /// host would not accept.
+    PluginHandshakeFailed,
+    /// The plugin's process ended. Not always a failure — `shutdown` exits zero —
+    /// but always a fact the center has to show.
+    PluginExited,
+    /// The plugin asked the host for something the host cannot do.
+    HostCommandUnavailable,
+    /// The plugin named a motion or an expression the active model does not have.
+    ModelRequestUnknown,
     /// The plugin's own directory is missing or unreadable.
     PluginDirectoryUnreadable,
     /// The archive is not a readable zip, or a member inside it is not safe.
@@ -101,7 +105,7 @@ pub enum PluginErrorCode {
 }
 
 impl PluginErrorCode {
-    pub const ALL: [Self; 36] = [
+    pub const ALL: [Self; 37] = [
         Self::ManifestInvalid,
         Self::UnsupportedSchemaVersion,
         Self::UnsupportedApiVersion,
@@ -109,20 +113,21 @@ impl PluginErrorCode {
         Self::InvalidPluginName,
         Self::InvalidPluginDescription,
         Self::InvalidAssetPath,
-        Self::CapabilityNotGranted,
-        Self::TooManyBehaviors,
-        Self::InvalidBehaviorId,
-        Self::DuplicateBehaviorId,
-        Self::InvalidBehaviorSpec,
         Self::SceneTooLarge,
         Self::SceneTooDeep,
-        Self::InvalidBinding,
-        Self::UnknownBinding,
         Self::InvalidButtonId,
         Self::DuplicateButtonId,
-        Self::InvalidTimeFormat,
         Self::InvalidPanelSize,
         Self::InvalidPanelPlacement,
+        Self::InvalidConfigSchema,
+        Self::InvalidConfigValue,
+        Self::ProtocolInvalid,
+        Self::ProtocolVersionMismatch,
+        Self::PluginSpawnFailed,
+        Self::PluginHandshakeFailed,
+        Self::PluginExited,
+        Self::HostCommandUnavailable,
+        Self::ModelRequestUnknown,
         Self::PluginDirectoryUnreadable,
         Self::ArchiveInvalid,
         Self::ChecksumMismatch,
@@ -151,20 +156,21 @@ impl PluginErrorCode {
             Self::InvalidPluginName => "invalid_plugin_name",
             Self::InvalidPluginDescription => "invalid_plugin_description",
             Self::InvalidAssetPath => "invalid_asset_path",
-            Self::CapabilityNotGranted => "capability_not_granted",
-            Self::TooManyBehaviors => "too_many_behaviors",
-            Self::InvalidBehaviorId => "invalid_behavior_id",
-            Self::DuplicateBehaviorId => "duplicate_behavior_id",
-            Self::InvalidBehaviorSpec => "invalid_behavior_spec",
             Self::SceneTooLarge => "scene_too_large",
             Self::SceneTooDeep => "scene_too_deep",
-            Self::InvalidBinding => "invalid_binding",
-            Self::UnknownBinding => "unknown_binding",
             Self::InvalidButtonId => "invalid_button_id",
             Self::DuplicateButtonId => "duplicate_button_id",
-            Self::InvalidTimeFormat => "invalid_time_format",
             Self::InvalidPanelSize => "invalid_panel_size",
             Self::InvalidPanelPlacement => "invalid_panel_placement",
+            Self::InvalidConfigSchema => "invalid_config_schema",
+            Self::InvalidConfigValue => "invalid_config_value",
+            Self::ProtocolInvalid => "protocol_invalid",
+            Self::ProtocolVersionMismatch => "protocol_version_mismatch",
+            Self::PluginSpawnFailed => "plugin_spawn_failed",
+            Self::PluginHandshakeFailed => "plugin_handshake_failed",
+            Self::PluginExited => "plugin_exited",
+            Self::HostCommandUnavailable => "host_command_unavailable",
+            Self::ModelRequestUnknown => "model_request_unknown",
             Self::PluginDirectoryUnreadable => "plugin_directory_unreadable",
             Self::ArchiveInvalid => "archive_invalid",
             Self::ChecksumMismatch => "checksum_mismatch",
@@ -243,9 +249,6 @@ mod tests {
 
     #[test]
     fn the_all_list_covers_every_variant() {
-        // `ALL` is hand-written, so a new variant that nobody added here would
-        // make the settings window unable to name it. Comparing the two lists is
-        // the only thing that catches that.
         let declared = PluginErrorCode::ALL.len();
         let mut seen = BTreeSet::new();
         for code in PluginErrorCode::ALL {

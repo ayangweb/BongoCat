@@ -1,31 +1,35 @@
 //! What a plugin puts on the model window.
 //!
 //! A scene is a tree of nodes the host lays out and rasterizes. It is not a
-//! general UI toolkit and deliberately does not grow into one: a node draws,
-//! binds a value, or asks for an action when it is pressed. Everything about it
-//! is bounded by a constant in this file, so a scene that parses is a scene the
-//! host can lay out without asking a question first.
+//! general UI toolkit and deliberately does not grow into one: a node draws, or is
+//! pressed. Everything about it is bounded by a constant in this file, so a scene
+//! that parses is a scene the host can lay out without asking a question first.
 //!
 //! Layout is a stack, and only a stack. A plugin that wants two things side by
 //! side nests two children; a plugin that wants a grid declares it as a nested
 //! pair of stacks. That keeps the layout pass small enough to reason about and
 //! means a scene's size is knowable without running it — which is what lets the
 //! host decide whether a panel still fits the model window before drawing it.
+//!
+//! Every value here is concrete. A node's text is a string, a bar's fill is a
+//! fraction, and a button's enabled state is a flag: the plugin computed them, on
+//! its own clock, in its own process. That is the whole difference from the
+//! binding vocabulary ADR-0078 defined, and it is why a plugin that wants to show
+//! something the host has no behavior for can.
 
 pub mod inspect;
-pub mod value;
 
 pub use inspect::{Inspector, SceneAction};
 
-use super::{BehaviorId, Color};
+use super::color::Color;
 use serde::{Deserialize, Serialize};
 
 /// The most nodes one scene may contain, at any depth.
 ///
-/// A scene is rasterized on a worker thread and re-rasterized whenever a bound
-/// value changes, so the bound is on work per redraw rather than on safety. It
-/// is set high enough that no real panel reaches it and low enough that a scene
-/// trying to reach it is refused before it is rasterized rather than after.
+/// A scene is rasterized on a worker thread and re-rasterized whenever it changes,
+/// so the bound is on work per redraw rather than on safety. It is set high enough
+/// that no real panel reaches it and low enough that a scene trying to reach it is
+/// refused before it is rasterized rather than after.
 pub const MAXIMUM_SCENE_NODES: usize = 512;
 
 /// The deepest a scene may nest.
@@ -142,11 +146,11 @@ pub enum TextWeight {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextNode {
-    /// Defaults to a literal empty string. A text node with no value is a label
-    /// whose content is decided elsewhere, and refusing to parse it would only
-    /// mean its author had to write `"value": ""` to say nothing.
-    #[serde(default = "empty_value")]
-    pub value: super::scene::value::SceneValue,
+    /// Defaults to an empty string. A text node with no value is a label whose
+    /// content is decided elsewhere, and refusing to parse it would only mean its
+    /// author had to write `"value": ""` to say nothing.
+    #[serde(default)]
+    pub value: String,
     /// Cap height in logical pixels.
     #[serde(default = "default_text_size")]
     pub size: f32,
@@ -168,11 +172,7 @@ const fn default_text_size() -> f32 {
     14.0
 }
 
-fn empty_value() -> super::scene::value::SceneValue {
-    super::scene::value::SceneValue::Text(String::new())
-}
-
-const fn is_zero(value: &u16) -> bool {
+fn is_zero(value: &u16) -> bool {
     *value == 0
 }
 
@@ -206,7 +206,7 @@ const fn one_pixel() -> f32 {
 #[serde(deny_unknown_fields)]
 pub struct ProgressBarNode {
     /// The proportion to fill, in `[0, 1]`.
-    pub value: super::scene::value::SceneValue,
+    pub value: f32,
     #[serde(default = "default_bar_height")]
     pub height: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -224,7 +224,8 @@ const fn default_bar_height() -> f32 {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgressRingNode {
-    pub value: super::scene::value::SceneValue,
+    /// The proportion to fill, in `[0, 1]`.
+    pub value: f32,
     /// Outer diameter in logical pixels.
     #[serde(default = "default_ring_size")]
     pub size: f32,
@@ -272,28 +273,27 @@ pub enum ButtonVariant {
     Primary,
     Secondary,
     /// No chrome of its own: an invisible pressable area. For a panel that wants
-    /// its own look and only needs the press target and the action.
+    /// its own look and only needs the press target.
     Transparent,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ButtonNode {
     /// Identifies the button when the host reports a press. Unique within one
-    /// scene; the loader refuses a scene that names the same button twice.
+    /// scene; the host refuses a scene that names the same button twice, because
+    /// the press comes back as this string and two buttons sharing one would make
+    /// the answer ambiguous.
     pub id: String,
-    pub label: super::scene::value::SceneValue,
-    /// What a press runs. The host owns what that means, so a button cannot ask
-    /// for anything the behaviors did not already declare.
-    pub action: super::BehaviorAction,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<BehaviorId>,
+    /// What the button shows. A string the plugin computed.
+    #[serde(default)]
+    pub label: String,
     #[serde(default)]
     pub variant: ButtonVariant,
-    /// Whether the press is currently ignored. Bound so a button can grey out
-    /// while the behavior it drives cannot act.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub disabled: Option<super::scene::value::SceneValue>,
+    /// Whether the press is currently ignored. Concrete rather than bound: a
+    /// plugin that wants a greyed button sets the flag in the panel it sends.
+    #[serde(default)]
+    pub disabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<Color>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -305,7 +305,6 @@ pub struct ButtonNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::SceneValue;
 
     #[test]
     fn a_node_names_its_own_kind_in_the_file() {
@@ -342,22 +341,33 @@ mod tests {
     fn a_bar_requires_a_value() {
         assert!(serde_json::from_str::<SceneNode>(r#"{"type":"progress_bar"}"#).is_err());
         assert!(
-            serde_json::from_str::<SceneNode>(
-                r#"{"type":"progress_bar","value":{"fraction":"t.p","fallback":0}}"#
-            )
-            .is_ok()
+            serde_json::from_str::<SceneNode>(r#"{"type":"progress_bar","value":0.5}"#).is_ok()
         );
     }
 
     #[test]
-    fn a_button_requires_an_id_a_label_and_an_action() {
-        assert!(serde_json::from_str::<SceneNode>(r#"{"type":"button","id":"a"}"#).is_err());
-        assert!(
-            serde_json::from_str::<SceneNode>(
-                r#"{"type":"button","id":"a","label":"Go","action":"toggle"}"#
-            )
-            .is_ok()
-        );
+    fn a_button_needs_only_an_id() {
+        // Everything else has a default, because a plugin's panel is built in
+        // code where an empty label and a primary variant are the common case.
+        let node: SceneNode = serde_json::from_str(r#"{"type":"button","id":"go"}"#).unwrap();
+        let SceneNode::Button(button) = node else {
+            panic!("expected a button");
+        };
+        assert_eq!(button.id, "go");
+        assert!(button.label.is_empty());
+        assert_eq!(button.variant, ButtonVariant::Primary);
+        assert!(!button.disabled);
+    }
+
+    #[test]
+    fn a_button_cannot_name_an_action_anymore() {
+        // The old vocabulary let a scene ask the host to run one of six verbs. A
+        // press is now answered to the plugin, which decides what it means — so a
+        // scene carrying one is a plugin built against the old host.
+        assert!(serde_json::from_str::<SceneNode>(
+            r#"{"type":"button","id":"go","action":"toggle","target":"timer"}"#
+        )
+        .is_err());
     }
 
     #[test]
@@ -367,11 +377,18 @@ mod tests {
     }
 
     #[test]
-    fn a_literal_value_round_trips_as_a_string() {
+    fn a_text_value_is_a_string_rather_than_a_binding() {
         let node: SceneNode = serde_json::from_str(r#"{"type":"text","value":"Focus"}"#).unwrap();
         let SceneNode::Text(text) = node else {
             panic!("expected a text node");
         };
-        assert_eq!(text.value, SceneValue::Text("Focus".to_string()));
+        assert_eq!(text.value, "Focus");
+        assert!(
+            serde_json::from_str::<SceneNode>(
+                r#"{"type":"text","value":{"binding":"timer.remaining_text","fallback":"25:00"}}"#
+            )
+            .is_err(),
+            "the binding vocabulary is gone, and a document using it is refused rather than half-read"
+        );
     }
 }

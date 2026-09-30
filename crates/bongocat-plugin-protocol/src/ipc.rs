@@ -1,0 +1,391 @@
+//! The wire between a plugin and the host.
+//!
+//! One JSON document per line, in both directions, over the plugin's stdin and
+//! stdout. There is no framing header, no length prefix and no handshake beyond
+//! the first message, and that is the point: a plugin author can start one of
+//! these by hand with `echo` and see what happens, and the transport is something
+//! `std::io` already does on every platform.
+//!
+//! # Why not a socket, a pipe with a length prefix, or a shared file
+//!
+//! A socket needs a port, which means a port collision, a firewall question on
+//! two platforms, and a way for a plugin to be reached by anything else on the
+//! machine. A length prefix is a framing bug waiting to happen. A file needs a
+//! watcher and a lock. The child's own pipes are created by `std::process`, are
+//! private to that process pair, and end when either side exits — which is the
+//! lifetime a plugin session actually wants.
+//!
+//! # The two rules that keep this honest
+//!
+//! 1. **stderr is the plugin's log, stdout is the protocol.** The host reads
+//!    stderr and forwards it to its own log. A plugin that prints a diagnostic to
+//!    stdout breaks the protocol, which is a visible failure rather than a silent
+//!    one — and the SDK routes its own logging to stderr so an author does not have
+//!    to remember.
+//! 2. **Neither side reads the other's mind.** Every message is one of these
+//!    variants, and a line that is not one is refused rather than skipped. A
+//!    refused line is counted; a skipped one would let a version mismatch look
+//!    like a plugin that is simply quiet.
+
+use super::config::{ConfigDocument, ConfigSchema};
+use super::descriptor::PluginDescriptor;
+use super::error::{PluginError, PluginErrorCode};
+use super::host_state::{HostState, InputEvent};
+use super::identity::{PluginId, PluginVersion};
+use super::panel::PanelUpdate;
+use serde::{Deserialize, Serialize};
+
+/// The protocol version this host speaks.
+///
+/// Checked on the first message in each direction. A mismatch is refused before
+/// anything is loaded rather than half-understood, because the alternative is a
+/// host writing a document a plugin will read as a different shape — which is
+/// the one failure mode a version number exists to prevent.
+pub const PROTOCOL_VERSION: u32 = 1;
+
+/// The most bytes one protocol line may be.
+///
+/// A panel update is the largest message and it is a scene document; a megabyte
+/// is far past any panel and small enough that a plugin cannot make the host
+/// allocate without limit by writing one enormous line.
+pub const MAXIMUM_MESSAGE_BYTES: usize = 1024 * 1024;
+
+/// The first thing the host sends, and the first thing a plugin sends.
+///
+/// The host's `hello` carries the protocol version, the plugin's own identity as
+/// the store holds it, the two directories it owns, and the locale. The plugin's
+/// `ready` answers with its descriptor. Neither side proceeds until it has the
+/// other's, which is what makes "the card says one version and the process runs
+/// another" a refusal rather than a mystery.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Hello {
+    pub protocol_version: u32,
+    pub app_version: String,
+    /// The id the store installed this plugin under.
+    pub id: PluginId,
+    /// The version the store installed.
+    pub version: PluginVersion,
+    /// The plugin's own directory, absolute. The plugin may read its assets here.
+    pub plugin_dir: String,
+    /// The plugin's own data directory, absolute. The plugin owns everything in
+    /// it; the host creates it and never writes inside it.
+    pub data_dir: String,
+    /// The user's locale, so a plugin can pick its own copy before its first frame.
+    #[serde(default)]
+    pub locale: String,
+}
+
+impl Hello {
+    pub fn check_version(&self) -> Result<(), PluginError> {
+        if self.protocol_version != PROTOCOL_VERSION {
+            return Err(PluginError::with_detail(
+                PluginErrorCode::ProtocolVersionMismatch,
+                format!(
+                    "this host speaks protocol {PROTOCOL_VERSION}, the plugin speaks {}",
+                    self.protocol_version
+                ),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// What a running plugin says.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PluginMessage {
+    /// The answer to the host's `hello`. The first message, and the only one that
+    /// may not be repeated.
+    Ready { descriptor: PluginDescriptor },
+    /// A panel to draw on the model window.
+    Panel(Box<PanelUpdate>),
+    /// Take the panel down without stopping the plugin.
+    HidePanel,
+    /// The plugin's configuration changed and the host should re-read it.
+    ///
+    /// The document travels with the message rather than being pulled, so the
+    /// settings window never shows a value the plugin has not already written to
+    /// its own file.
+    ConfigChanged { config: ConfigDocument },
+    /// Something worth logging, at a level the host maps onto its own.
+    Log { level: LogLevel, message: String },
+    /// The plugin failed in a way the user should see.
+    ///
+    /// Carries the plugin's own code so the settings window can name it, and the
+    /// detail is for the host's log rather than for the user — the same rule every
+    /// other error in this system follows.
+    Failed { error: PluginError },
+    /// The plugin is exiting on purpose.
+    Shutdown,
+}
+
+/// How loud a plugin's own log line is.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogLevel {
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+impl LogLevel {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Debug => "debug",
+            Self::Info => "info",
+            Self::Warn => "warn",
+            Self::Error => "error",
+        }
+    }
+}
+
+/// What the host says to a running plugin.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HostMessage {
+    /// The first message. See [`Hello`].
+    Hello(Hello),
+    /// Time passed and the host's facts may have changed.
+    ///
+    /// One message at the host's own cadence, carrying both: a plugin that wants
+    /// seconds gets them, and a plugin that wants the model name gets a fresh
+    /// answer without a second message type. `elapsed_ms` is monotonic since the
+    /// session started, so a plugin's own clock needs no wall time and cannot
+    /// disagree with the host's.
+    Tick {
+        elapsed_ms: u64,
+        state: HostState,
+    },
+    /// Something happened, for a plugin that asked for the feed.
+    Input { events: Vec<InputEvent> },
+    /// A press inside the plugin's own panel, as the id the scene named.
+    ///
+    /// By id and not by position, because the plugin built the scene and knows
+    /// what the rectangle meant. A press outside every button produces no message
+    /// at all — the host drops it rather than reporting a miss the plugin would
+    /// have to interpret.
+    Press { id: String },
+    /// The user changed a setting. Carries the whole document, because a plugin
+    /// writes its file atomically and a patch would have to be merged by a side
+    /// that does not own the file.
+    ConfigChanged { config: ConfigDocument },
+    /// The host is stopping the plugin, and will close the pipes after this line.
+    ///
+    /// Sent before the pipes close so a plugin can flush its own state on the way
+    /// out; a plugin that ignores it and exits anyway is not an error.
+    Shutdown,
+}
+
+impl HostMessage {
+    /// Check the parts of a message that are about this host rather than about the
+    /// plugin.
+    pub fn check(&self) -> Result<(), PluginError> {
+        if let Self::Hello(hello) = self {
+            hello.check_version()?;
+        }
+        Ok(())
+    }
+}
+
+/// One line's ceiling, applied before a line is parsed.
+///
+/// Checked on the bytes rather than after the parse, so a plugin cannot make the
+/// host build a document of any size by writing one enormous line.
+pub fn check_line_length(line: &[u8]) -> Result<(), PluginError> {
+    if line.len() > MAXIMUM_MESSAGE_BYTES {
+        return Err(PluginError::with_detail(
+            PluginErrorCode::ProtocolInvalid,
+            format!("a protocol line is longer than {MAXIMUM_MESSAGE_BYTES} bytes"),
+        ));
+    }
+    Ok(())
+}
+
+/// Read one message from a line.
+///
+/// A line that is not a message this host knows is refused rather than skipped:
+/// a version mismatch has to look like a version mismatch, not like a plugin that
+/// has gone quiet.
+pub fn parse_host_message(line: &[u8]) -> Result<HostMessage, PluginError> {
+    check_line_length(line)?;
+    let message: HostMessage = serde_json::from_slice(line)
+        .map_err(|error| PluginError::with_detail(PluginErrorCode::ProtocolInvalid, error))?;
+    message.check()?;
+    Ok(message)
+}
+
+/// Read one message from a line, as a plugin reads it.
+pub fn parse_plugin_message(line: &[u8]) -> Result<PluginMessage, PluginError> {
+    check_line_length(line)?;
+    let message: PluginMessage = serde_json::from_slice(line)
+        .map_err(|error| PluginError::with_detail(PluginErrorCode::ProtocolInvalid, error))?;
+    Ok(message)
+}
+
+/// Turn one message into the line that carries it.
+///
+/// Returns `None` for a message that cannot be written — which in practice means
+/// a value that is not representable in JSON, and the caller's answer is to log
+/// and carry on rather than to stop a plugin over one message it could not have
+/// been read from anyway.
+pub fn write_message<T: Serialize>(message: &T) -> Option<Vec<u8>> {
+    serde_json::to_vec(message).ok()
+}
+
+/// What a plugin is running, as the plugin center shows it.
+///
+/// The plugin's own descriptor, plus what the host observed about the process:
+/// whether it is alive, and the last thing it said about itself. `running` is a
+/// fact rather than an absence, because "this plugin is installed and its process
+/// is not running" is a state the user has to be able to see — it is what a crash
+/// looks like from outside.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PluginRuntimeStatus {
+    pub id: PluginId,
+    pub descriptor: PluginDescriptor,
+    pub running: bool,
+    pub config: ConfigSchema,
+    pub values: ConfigDocument,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{ConfigField, ConfigControl};
+    use crate::descriptor::LocalizedText;
+
+    fn descriptor() -> PluginDescriptor {
+        PluginDescriptor {
+            id: PluginId::new("pomodoro").expect("valid"),
+            name: "Pomodoro".to_string(),
+            version: PluginVersion::new(1, 0, 0),
+            author: String::new(),
+            description: String::new(),
+            icon: Default::default(),
+            config: ConfigSchema {
+                schema_version: crate::config::CONFIG_SCHEMA_VERSION,
+                fields: vec![ConfigField {
+                    key: "auto_start".to_string(),
+                    label: LocalizedText::from("Auto start"),
+                    description: None,
+                    control: ConfigControl::Toggle { default: false },
+                }],
+            },
+            subscriptions: vec![crate::descriptor::Subscription::Input],
+        }
+    }
+
+    fn hello() -> Hello {
+        Hello {
+            protocol_version: PROTOCOL_VERSION,
+            app_version: "2.0.1".to_string(),
+            id: PluginId::new("pomodoro").expect("valid"),
+            version: PluginVersion::new(1, 0, 0),
+            plugin_dir: "/tmp/p".to_string(),
+            data_dir: "/tmp/d".to_string(),
+            locale: "en-US".to_string(),
+        }
+    }
+
+    #[test]
+    fn every_message_round_trips_through_one_line() {
+        let messages = vec![
+            HostMessage::Hello(hello()),
+            HostMessage::Tick {
+                elapsed_ms: 1234,
+                state: HostState::new(Some("Cat".to_string()), true),
+            },
+            HostMessage::Input {
+                events: vec![InputEvent::KeyDown {
+                    control: "KeyA".to_string(),
+                    repeat: false,
+                }],
+            },
+            HostMessage::Press {
+                id: "toggle".to_string(),
+            },
+            HostMessage::ConfigChanged {
+                config: ConfigDocument::single("auto_start", crate::config::ConfigValue::Bool(true)),
+            },
+            HostMessage::Shutdown,
+        ];
+        for message in messages {
+            let line = write_message(&message).expect("serializes");
+            assert!(
+                !line.contains(&b'\n'),
+                "a message must be one line, or the framing has stopped being a line"
+            );
+            assert_eq!(parse_host_message(&line).expect("parses"), message);
+        }
+
+        let messages = vec![
+            PluginMessage::Ready {
+                descriptor: descriptor(),
+            },
+            PluginMessage::HidePanel,
+            PluginMessage::Log {
+                level: LogLevel::Warn,
+                message: "slow".to_string(),
+            },
+            PluginMessage::Failed {
+                error: PluginError::new(PluginErrorCode::RenderFailed),
+            },
+            PluginMessage::Shutdown,
+        ];
+        for message in messages {
+            let line = write_message(&message).expect("serializes");
+            assert_eq!(parse_plugin_message(&line).expect("parses"), message);
+        }
+    }
+
+    #[test]
+    fn a_protocol_version_this_host_does_not_speak_is_refused_before_anything_else() {
+        let mut hello = hello();
+        hello.protocol_version = PROTOCOL_VERSION + 1;
+        let line = write_message(&HostMessage::Hello(hello)).expect("serializes");
+        assert_eq!(
+            parse_host_message(&line).unwrap_err().code(),
+            PluginErrorCode::ProtocolVersionMismatch
+        );
+    }
+
+    #[test]
+    fn a_line_that_is_not_a_message_is_refused_rather_than_skipped() {
+        assert_eq!(
+            parse_host_message(b"not json").unwrap_err().code(),
+            PluginErrorCode::ProtocolInvalid
+        );
+        assert_eq!(
+            parse_host_message(br#"{"type":"something_new"}"#)
+                .unwrap_err()
+                .code(),
+            PluginErrorCode::ProtocolInvalid,
+            "an unknown variant has to look like a mismatch, not like silence"
+        );
+    }
+
+    #[test]
+    fn an_oversized_line_is_refused_on_its_bytes() {
+        let line = vec![b'a'; MAXIMUM_MESSAGE_BYTES + 1];
+        assert_eq!(
+            parse_host_message(&line).unwrap_err().code(),
+            PluginErrorCode::ProtocolInvalid
+        );
+    }
+
+    #[test]
+    fn a_descriptor_survives_the_wire_with_its_config_schema_intact() {
+        let message = PluginMessage::Ready {
+            descriptor: descriptor(),
+        };
+        let line = write_message(&message).expect("serializes");
+        let PluginMessage::Ready { descriptor: read } = parse_plugin_message(&line).expect("parses")
+        else {
+            panic!("expected a ready message");
+        };
+        assert_eq!(read, descriptor());
+        assert!(read.wants(crate::descriptor::Subscription::Input));
+    }
+}

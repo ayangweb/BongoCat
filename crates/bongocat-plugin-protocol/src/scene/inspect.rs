@@ -1,14 +1,15 @@
 //! What a scene names, read before anything is drawn.
 //!
-//! The overlay cannot run a plugin, so a scene's problems have to be found in
-//! the file rather than at layout time. This pass walks the tree once at load and
-//! reports the three things a scene gets wrong: more nodes or more depth than the
-//! bounds allow, a binding to a path nothing produces, and two buttons sharing an
-//! id so a press would be ambiguous.
+//! A scene arrives from another process, so its problems have to be found in the
+//! document rather than at layout time. This pass walks the tree once and reports
+//! the two things a scene gets wrong: more nodes or more depth than the bounds
+//! allow, and two buttons sharing an id so a press would be ambiguous. An image
+//! path is checked here for the same reason — it is a path from a document that
+//! becomes a file read.
 //!
 //! It deliberately does not check geometry. Layout knows the panel's size and can
-//! clip what does not fit, and a panel that overflows is a panel the user can
-//! see is wrong — which is a better report than a refusal nobody can act on.
+//! clip what does not fit, and a panel that overflows is a panel the user can see
+//! is wrong — which is a better report than a refusal nobody can act on.
 
 use super::{
     ButtonNode, DividerNode, ImageNode, MAXIMUM_SCENE_DEPTH, MAXIMUM_SCENE_NODES, ProgressBarNode,
@@ -16,18 +17,14 @@ use super::{
 };
 use crate::{PluginError, PluginErrorCode};
 
-/// One button a scene declared.
+/// One press a scene can produce.
+///
+/// Recorded rather than re-read from the scene at press time, so the host does not
+/// walk the scene on every press. The label is deliberately not recorded: a label
+/// changes on every frame and resolving it belongs to the draw pass, not here.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SceneAction {
     pub button: String,
-    pub target: Option<crate::BehaviorId>,
-    /// What a press on it runs.
-    ///
-    /// Recorded rather than re-read from the scene at press time, so the host does
-    /// not walk the scene on every press. The button's label is deliberately not
-    /// recorded: a label is a binding that changes, and resolving it belongs to the
-    /// draw pass, not to the press.
-    pub action: crate::BehaviorAction,
 }
 
 /// What a scene names, gathered in one pass.
@@ -35,8 +32,6 @@ pub struct SceneAction {
 pub struct Inspector {
     pub nodes: usize,
     pub deepest: usize,
-    /// Every binding path the scene reads, in the order it reads them.
-    pub bindings: Vec<String>,
     /// Every button id, in scene order.
     pub buttons: Vec<String>,
     /// Every press the scene can produce.
@@ -49,14 +44,6 @@ impl Inspector {
     pub fn new() -> Self {
         Self::default()
     }
-}
-
-macro_rules! record_binding {
-    ($value:expr, $inspector:expr) => {
-        if let Some(binding) = binding_of($value) {
-            $inspector.bindings.push(binding?.to_string());
-        }
-    };
 }
 
 /// Walk `node`, adding what it names to `inspector`.
@@ -79,58 +66,24 @@ pub fn walk(node: &SceneNode, depth: usize, inspector: &mut Inspector) -> Result
                 walk(child, depth + 1, inspector)?;
             }
         }
-        SceneNode::Text(text) => record_binding!(&text.value, inspector),
-        SceneNode::ProgressBar(ProgressBarNode { value, .. })
-        | SceneNode::ProgressRing(ProgressRingNode { value, .. }) => {
-            record_binding!(value, inspector);
-        }
         SceneNode::Image(image) => {
             crate::validate_relative_asset_path(&image.asset)?;
             inspector.assets.push(image.asset.clone());
         }
-        SceneNode::Button(ButtonNode {
-            id,
-            label,
-            action,
-            target,
-            disabled,
-            ..
-        }) => {
+        SceneNode::Button(ButtonNode { id, .. }) => {
             if id.is_empty() || id.len() > crate::MAXIMUM_BUTTON_ID_BYTES {
                 return Err(PluginError::new(PluginErrorCode::InvalidButtonId));
             }
-            record_binding!(label, inspector);
-            if let Some(disabled) = disabled {
-                record_binding!(disabled, inspector);
-            }
             inspector.buttons.push(id.clone());
-            inspector.actions.push(SceneAction {
-                button: id.clone(),
-                target: target.clone(),
-                action: *action,
-            });
+            inspector.actions.push(SceneAction { button: id.clone() });
         }
-        SceneNode::Spacer(SpacerNode { .. }) | SceneNode::Divider(DividerNode { .. }) => {}
+        SceneNode::Text(_)
+        | SceneNode::ProgressBar(ProgressBarNode { .. })
+        | SceneNode::ProgressRing(ProgressRingNode { .. })
+        | SceneNode::Spacer(SpacerNode { .. })
+        | SceneNode::Divider(DividerNode { .. }) => {}
     }
     Ok(())
-}
-
-/// The path a value binds to, or `None` for a literal.
-///
-/// The length is checked here rather than at resolve time so a scene with an
-/// absurd path is refused at load, and so no consumer of a binding has to know
-/// there is a bound as well as a shape.
-fn binding_of(value: &crate::SceneValue) -> Option<Result<&str, PluginError>> {
-    let path = match value {
-        crate::SceneValue::Text(_) => return None,
-        crate::SceneValue::Binding { binding, .. }
-        | crate::SceneValue::Fraction { binding, .. }
-        | crate::SceneValue::Flag { binding, .. } => binding,
-    };
-    if path.is_empty() || path.len() > crate::MAXIMUM_BINDING_PATH_BYTES {
-        return Some(Err(PluginError::new(PluginErrorCode::InvalidBinding)));
-    }
-    Some(Ok(path))
 }
 
 impl ImageNode {
@@ -146,20 +99,6 @@ mod tests {
 
     fn node(text: &str) -> SceneNode {
         serde_json::from_str(text).unwrap()
-    }
-
-    #[test]
-    fn a_flat_text_scene_names_one_binding() {
-        let mut inspector = Inspector::new();
-        walk(
-            &node(r#"{"type":"text","value":{"binding":"a.b","fallback":""}}"#),
-            1,
-            &mut inspector,
-        )
-        .unwrap();
-        assert_eq!(inspector.bindings, vec!["a.b".to_string()]);
-        assert_eq!(inspector.nodes, 1);
-        assert_eq!(inspector.deepest, 1);
     }
 
     #[test]
@@ -229,13 +168,13 @@ mod tests {
     }
 
     #[test]
-    fn every_button_and_target_is_collected_in_scene_order() {
+    fn every_button_is_collected_in_scene_order() {
         let mut inspector = Inspector::new();
         walk(
             &node(
                 r#"{"type":"stack","children":[
-                    {"type":"button","id":"a","label":"A","action":"toggle","target":"t"},
-                    {"type":"button","id":"b","label":"B","action":"reset"}
+                    {"type":"button","id":"a","label":"A"},
+                    {"type":"button","id":"b","label":"B","variant":"secondary"}
                 ]}"#,
             ),
             1,
@@ -244,25 +183,38 @@ mod tests {
         .unwrap();
         assert_eq!(inspector.buttons, vec!["a".to_string(), "b".to_string()]);
         assert_eq!(inspector.actions.len(), 2);
-        assert_eq!(
-            inspector.actions[0].target.as_ref().map(|id| id.as_str()),
-            Some("t")
-        );
-        assert_eq!(inspector.actions[1].target, None);
+        assert_eq!(inspector.actions[1].button, "b");
     }
 
     #[test]
-    fn a_disabled_binding_is_named_like_any_other() {
+    fn a_button_with_an_unusable_id_is_refused() {
+        for id in ["", &"x".repeat(crate::MAXIMUM_BUTTON_ID_BYTES + 1)] {
+            let document = format!(r#"{{"type":"button","id":{id:?}}}"#);
+            let mut inspector = Inspector::new();
+            assert_eq!(
+                walk(&node(&document), 1, &mut inspector).unwrap_err().code(),
+                PluginErrorCode::InvalidButtonId,
+                "{id:?} must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn an_image_asset_is_named_once_per_node_so_a_repeated_one_is_read_once() {
         let mut inspector = Inspector::new();
         walk(
             &node(
-                r#"{"type":"button","id":"a","label":"A","action":"toggle",
-                    "disabled":{"flag":"t.busy","fallback":false}}"#,
+                r#"{"type":"stack","children":[
+                    {"type":"image","asset":"a.png"},
+                    {"type":"image","asset":"a.png"}
+                ]}"#,
             ),
             1,
             &mut inspector,
         )
         .unwrap();
-        assert!(inspector.bindings.contains(&"t.busy".to_string()));
+        assert_eq!(inspector.assets, vec!["a.png".to_string(), "a.png".to_string()]);
+        // The caller deduplicates; the inspector reports what the scene said rather
+        // than making a second decision about it.
     }
 }

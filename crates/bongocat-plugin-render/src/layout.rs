@@ -15,7 +15,7 @@ use crate::error::{PluginRenderError, PluginRenderErrorCode};
 use crate::font::{FontWeight, TextMeasurer, TextStyle};
 use crate::{HitRegion, ImageLibrary, RenderedPanel, Theme};
 use bongocat_plugin_protocol::{
-    Align, BindingTable, ButtonNode, ButtonVariant, Color, DividerNode, ImageNode, ProgressBarNode,
+    Align, ButtonNode, ButtonVariant, Color, DividerNode, ImageNode, ProgressBarNode,
     ProgressRingNode, SceneNode, SpacerNode, StackAxis, StackNode, TextNode, TextWeight,
 };
 
@@ -51,14 +51,13 @@ pub(crate) struct Extent {
 pub(crate) fn measure(
     node: &SceneNode,
     available: f32,
-    values: &BindingTable,
     measurer: &mut TextMeasurer,
     images: &ImageLibrary,
     theme: &Theme,
 ) -> Extent {
     match node {
-        SceneNode::Stack(stack) => measure_stack(stack, available, values, measurer, images, theme),
-        SceneNode::Text(text) => measure_text(text, values, measurer, theme),
+        SceneNode::Stack(stack) => measure_stack(stack, available, measurer, images, theme),
+        SceneNode::Text(text) => measure_text(text, measurer, theme),
         SceneNode::Spacer(_) => Extent::default(),
         SceneNode::Divider(divider) => Extent {
             width: available.max(0.0),
@@ -80,14 +79,13 @@ pub(crate) fn measure(
                 height: size,
             }
         }
-        SceneNode::Button(button) => measure_button(button, available, values, measurer, theme),
+        SceneNode::Button(button) => measure_button(button, available, measurer, theme),
     }
 }
 
 fn measure_stack(
     stack: &StackNode,
     available: f32,
-    values: &BindingTable,
     measurer: &mut TextMeasurer,
     images: &ImageLibrary,
     theme: &Theme,
@@ -117,7 +115,7 @@ fn measure_stack(
             grow_total += grow.max(0.0);
             continue;
         }
-        let extent = measure(child, across, values, measurer, images, theme);
+        let extent = measure(child, across, measurer, images, theme);
         let main = if vertical {
             extent.height
         } else {
@@ -171,11 +169,9 @@ fn cross_axis_extent(stack: &StackNode, available: f32, measured: &f32) -> f32 {
 
 fn measure_text(
     text: &TextNode,
-    values: &BindingTable,
     measurer: &mut TextMeasurer,
     theme: &Theme,
 ) -> Extent {
-    let resolved = values.resolve(&text.value);
     let _ = theme;
     let style = TextStyle {
         size: text.size.max(1.0),
@@ -184,7 +180,7 @@ fn measure_text(
             _ => FontWeight::Regular,
         },
     };
-    let measured = measurer.measure(&resolved.as_text(), style);
+    let measured = measurer.measure(&text.value, style);
     match measured {
         Some(line) if !line.glyphs.is_empty() => Extent {
             width: line.width(),
@@ -207,17 +203,15 @@ fn measure_bar(bar: &ProgressBarNode, available: f32) -> Extent {
 fn measure_button(
     button: &ButtonNode,
     available: f32,
-    values: &BindingTable,
     measurer: &mut TextMeasurer,
     _theme: &Theme,
 ) -> Extent {
-    let label = values.resolve(&button.label).as_text();
     let style = TextStyle {
         size: BUTTON_TEXT_SIZE,
         weight: FontWeight::Regular,
     };
     let text_width = measurer
-        .measure(&label, style)
+        .measure(&button.label, style)
         .map_or(0.0, |line| line.width());
     // The minimum press size is a floor, not a guarantee: a panel too small to
     // hold it gets what it has. A button taller than the panel it is in would be
@@ -237,16 +231,15 @@ fn measure_button(
 pub(crate) fn draw(
     canvas: &mut Canvas,
     node: &SceneNode,
-    values: &BindingTable,
     rect: RoundedRect,
     measurer: &mut TextMeasurer,
     images: &ImageLibrary,
     theme: &Theme,
 ) -> Result<HitOutcome, PluginRenderError> {
     match node {
-        SceneNode::Stack(stack) => draw_stack(canvas, stack, values, rect, measurer, images, theme),
+        SceneNode::Stack(stack) => draw_stack(canvas, stack, rect, measurer, images, theme),
         SceneNode::Text(text) => {
-            draw_text(canvas, text, values, rect, measurer, theme);
+            draw_text(canvas, text, rect, measurer, theme);
             Ok(HitOutcome::none())
         }
         SceneNode::Spacer(_) => Ok(HitOutcome::none()),
@@ -255,18 +248,18 @@ pub(crate) fn draw(
             Ok(HitOutcome::none())
         }
         SceneNode::ProgressBar(bar) => {
-            draw_bar(canvas, bar, values, rect, theme);
+            draw_bar(canvas, bar, rect, theme);
             Ok(HitOutcome::none())
         }
         SceneNode::ProgressRing(ring) => {
-            draw_ring(canvas, ring, values, rect, theme);
+            draw_ring(canvas, ring, rect, theme);
             Ok(HitOutcome::none())
         }
         SceneNode::Image(image) => {
             draw_image(canvas, image, rect, images);
             Ok(HitOutcome::none())
         }
-        SceneNode::Button(button) => draw_button(canvas, button, values, rect, measurer, theme),
+        SceneNode::Button(button) => draw_button(canvas, button, rect, measurer, theme),
     }
 }
 
@@ -298,7 +291,6 @@ impl HitOutcome {
 fn draw_stack(
     canvas: &mut Canvas,
     stack: &StackNode,
-    values: &BindingTable,
     rect: RoundedRect,
     measurer: &mut TextMeasurer,
     images: &ImageLibrary,
@@ -338,7 +330,7 @@ fn draw_stack(
             continue;
         }
         let across = if vertical { inner.width } else { inner.height };
-        let extent = measure(child, across, values, measurer, images, theme);
+        let extent = measure(child, across, measurer, images, theme);
         used += if vertical {
             extent.height
         } else {
@@ -396,7 +388,7 @@ fn draw_stack(
                 height: cross,
             }
         };
-        let child_outcome = draw(canvas, child, values, child_rect, measurer, images, theme)?;
+        let child_outcome = draw(canvas, child, child_rect, measurer, images, theme)?;
         outcome.absorb(child_outcome);
         pen += main;
     }
@@ -431,12 +423,10 @@ fn cross_for(
 fn draw_text(
     canvas: &mut Canvas,
     text: &TextNode,
-    values: &BindingTable,
     rect: RoundedRect,
     measurer: &mut TextMeasurer,
     theme: &Theme,
 ) {
-    let resolved = values.resolve(&text.value);
     let style = TextStyle {
         size: text.size.max(1.0),
         weight: match text.weight {
@@ -448,7 +438,7 @@ fn draw_text(
     // canvas needs the face to rasterize the outline and the measurer owns it.
     // A measurement is a few glyphs and two metrics, so the copy is cheaper than
     // the borrow conflict it avoids.
-    let Some(line) = measurer.measure(&resolved.as_text(), style).cloned() else {
+    let Some(line) = measurer.measure(&text.value, style).cloned() else {
         // No face: the node contributes its height and no marks. This is the
         // whole degradation path, and it is why a missing font is not an error.
         return;
@@ -489,11 +479,10 @@ fn draw_divider(canvas: &mut Canvas, divider: &DividerNode, rect: RoundedRect, t
 fn draw_bar(
     canvas: &mut Canvas,
     bar: &ProgressBarNode,
-    values: &BindingTable,
     rect: RoundedRect,
     theme: &Theme,
 ) {
-    let fraction = values.resolve(&bar.value).as_fraction();
+    let fraction = bar.value;
     let height = bar.height.max(1.0);
     let track = RoundedRect {
         x: rect.x,
@@ -514,11 +503,10 @@ fn draw_bar(
 fn draw_ring(
     canvas: &mut Canvas,
     ring: &ProgressRingNode,
-    values: &BindingTable,
     rect: RoundedRect,
     theme: &Theme,
 ) {
-    let fraction = values.resolve(&ring.value).as_fraction();
+    let fraction = ring.value;
     let size = ring.size.max(1.0);
     let center = (rect.x + rect.width * 0.5, rect.y + rect.height * 0.5);
     let radius = (size.min(rect.width).min(rect.height)) * 0.5;
@@ -562,15 +550,11 @@ fn draw_image(canvas: &mut Canvas, image: &ImageNode, rect: RoundedRect, images:
 fn draw_button(
     canvas: &mut Canvas,
     button: &ButtonNode,
-    values: &BindingTable,
     rect: RoundedRect,
     measurer: &mut TextMeasurer,
     theme: &Theme,
 ) -> Result<HitOutcome, PluginRenderError> {
-    let disabled = button
-        .disabled
-        .as_ref()
-        .is_some_and(|value| values.resolve(value).as_flag());
+    let disabled = button.disabled;
     let radius = button.radius.max(0.0);
     match button.variant {
         ButtonVariant::Primary => {
@@ -588,7 +572,6 @@ fn draw_button(
         }
         ButtonVariant::Transparent => {}
     }
-    let label = values.resolve(&button.label).as_text();
     let style = TextStyle {
         size: BUTTON_TEXT_SIZE,
         weight: FontWeight::Regular,
@@ -597,7 +580,7 @@ fn draw_button(
         ButtonVariant::Primary => Color::WHITE,
         _ => theme.button_text,
     });
-    if let Some(line) = measurer.measure(&label, style).cloned()
+    if let Some(line) = measurer.measure(&button.label, style).cloned()
         && !line.glyphs.is_empty()
     {
         let start_x = rect.x + ((rect.width - line.width()) * 0.5).max(0.0);

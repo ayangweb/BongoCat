@@ -33,10 +33,8 @@ mod canvas;
 mod error;
 mod font;
 mod layout;
-#[cfg(test)]
-mod tests;
 
-use bongocat_plugin_protocol::{BindingTable, Color, SceneNode};
+use bongocat_plugin_protocol::{Color, SceneNode};
 use bongocat_render::{OverlayAnchor, OverlayLayerPlacement, OverlayLayerRaster};
 use std::sync::Arc;
 
@@ -139,31 +137,26 @@ pub fn content_hash(pixels: &[u8]) -> u64 {
     hash
 }
 
-/// Rasterize one panel from a validated manifest's contribution.
+/// Rasterize one panel from the update a plugin sent.
 ///
-/// This is the entry point the product uses: it takes the anchor, size and scene
-/// exactly as the manifest declared them, so nothing about a panel's placement
-/// passes through this crate's judgement.
-pub fn render_contribution(
-    contribution: &bongocat_plugin_protocol::OverlayContribution,
-    values: &BindingTable,
+/// This is the entry point the product uses: it takes the placement and the scene
+/// exactly as the plugin declared them, so nothing about a panel's appearance
+/// passes through this crate's judgement. The placement is *sanitized* rather than
+/// trusted because it came from another process — but the protocol already
+/// validated it, so this is the second line rather than the first.
+pub fn render_update(
+    update: &bongocat_plugin_protocol::PanelUpdate,
     scale: f32,
     measurer: &mut TextMeasurer,
     images: &ImageLibrary,
 ) -> Result<RenderedPanel, PluginRenderError> {
-    let panel = render_panel(
-        &contribution.scene,
-        values,
-        contribution.size,
-        scale,
-        measurer,
-        images,
-    )?;
+    let placement = update.placement.sanitized();
+    let panel = render_panel(&update.scene, placement.size, scale, measurer, images)?;
     Ok(RenderedPanel {
-        anchor: contribution.anchor.to_overlay_anchor(),
-        margin: contribution.margin,
-        width_fraction: contribution.width_fraction,
-        opacity: contribution.opacity,
+        anchor: placement.anchor.to_overlay_anchor(),
+        margin: placement.margin,
+        width_fraction: placement.width_fraction,
+        opacity: placement.opacity,
         ..panel
     })
 }
@@ -173,9 +166,11 @@ pub fn render_contribution(
 /// `scale` is device pixels per logical pixel; see [`MINIMUM_RASTER_SCALE`].
 /// `images` supplies the plugin's own PNGs by the relative path its scene named,
 /// so this function performs no file access and is fully testable from a map.
+///
+/// A scene carries concrete values rather than bindings, so there is nothing to
+/// resolve here: the plugin computed every number before it sent the tree.
 pub fn render_panel(
     scene: &SceneNode,
-    values: &BindingTable,
     logical_size: [u32; 2],
     scale: f32,
     measurer: &mut TextMeasurer,
@@ -194,7 +189,6 @@ pub fn render_panel(
     let root = layout::draw(
         &mut canvas,
         scene,
-        values,
         RoundedRect {
             x: 0.0,
             y: 0.0,
@@ -205,6 +199,8 @@ pub fn render_panel(
         images,
         &Theme::default(),
     )?;
+    // The placement is applied by `render_update`; a bare panel carries none, so
+    // the renderer's own defaults stand in here.
     let mut panel = layout::finish(canvas, root, OverlayAnchor::TopLeft, [0.0, 0.0], 0.72, 1.0)?;
     panel.hit_regions.shrink_to_fit();
     panel.disabled_regions.shrink_to_fit();
@@ -297,4 +293,256 @@ pub fn from_protocol(error: bongocat_plugin_protocol::PluginError) -> PluginRend
     let code_name = error.code().as_str();
     let detail = error.detail.unwrap_or_else(|| code_name.to_string());
     PluginRenderError::new(code, detail)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bongocat_plugin_protocol::{
+        ButtonNode, ButtonVariant, Color, PanelPlacement, PanelUpdate, PluginAnchor, SceneNode,
+        SpacerNode, StackNode, TextNode,
+    };
+
+    /// A measurer with no face, so a test needs no font file and no machine.
+    ///
+    /// Text then contributes no marks and no width, which is the renderer's own
+    /// documented degradation path — a machine with no readable system font. Every
+    /// geometry below comes from the node's own box rather than from a glyph, so
+    /// these tests are testing layout and hit regions rather than the font book,
+    /// which `font`'s own tests cover.
+    fn measurer() -> TextMeasurer {
+        TextMeasurer::empty()
+    }
+
+    fn render(scene: SceneNode, size: [u32; 2]) -> Result<RenderedPanel, PluginRenderError> {
+        render_panel(&scene, size, 1.0, &mut measurer(), &ImageLibrary::new())
+    }
+
+    #[test]
+    fn a_panel_rasterizes_to_exactly_the_size_it_was_asked_for() {
+        let scene = SceneNode::Stack(StackNode {
+            background: Some(Color::rgb(20, 20, 24)),
+            padding: [8.0, 8.0],
+            children: vec![SceneNode::Text(TextNode {
+                value: "25:00".to_string(),
+                size: 24.0,
+                ..TextNode::default()
+            })],
+            ..StackNode::default()
+        });
+        let panel = render(scene, [200, 60]).expect("a panel rasterizes");
+        assert_eq!(panel.width, 200);
+        assert_eq!(panel.height, 60);
+        assert_eq!(panel.pixels.len(), 200 * 60 * 4);
+        assert!(
+            panel.pixels.chunks(4).any(|pixel| pixel[3] > 0),
+            "the background reached the canvas, so the stack drew something"
+        );
+    }
+
+    #[test]
+    fn a_panel_with_no_pressables_reports_no_hit_regions() {
+        let scene = SceneNode::Text(TextNode {
+            value: "hi".to_string(),
+            ..TextNode::default()
+        });
+        let panel = render(scene, [120, 40]).expect("a panel rasterizes");
+        assert!(panel.hit_regions.is_empty());
+        assert!(panel.hit_test(10.0, 10.0).is_none());
+    }
+
+    #[test]
+    fn a_button_is_hit_only_inside_the_rectangle_it_was_drawn_in() {
+        let scene = SceneNode::Stack(StackNode {
+            padding: [4.0, 4.0],
+            children: vec![SceneNode::Button(ButtonNode {
+                id: "toggle".to_string(),
+                label: "Start".to_string(),
+                variant: ButtonVariant::Primary,
+                radius: 6.0,
+                ..ButtonNode::default()
+            })],
+            ..StackNode::default()
+        });
+        let panel = render(scene, [200, 60]).expect("a panel rasterizes");
+        let region = panel
+            .hit_regions
+            .first()
+            .expect("the button was drawn, so it has a region");
+        assert_eq!(region.button, "toggle");
+        let (cx, cy) = region.rect.center();
+        assert_eq!(panel.hit_test(cx, cy), Some("toggle"));
+        assert_eq!(
+            panel.hit_test(region.rect.x - 1.0, cy),
+            None,
+            "a pixel outside the rectangle is not the button"
+        );
+    }
+
+    #[test]
+    fn a_button_still_gets_a_press_target_when_no_font_loaded() {
+        // The minimum press size is a floor rather than a function of the label, so
+        // a panel on a machine with no readable font is still pressable. That is
+        // what makes the empty measurer a legitimate thing for a test to use.
+        let scene = SceneNode::Button(ButtonNode {
+            id: "toggle".to_string(),
+            ..ButtonNode::default()
+        });
+        let panel = render(scene, [120, 40]).expect("a panel rasterizes");
+        let region = panel.hit_regions.first().expect("a region");
+        assert!(region.rect.width >= MINIMUM_BUTTON_SIZE);
+        assert!(region.rect.height >= MINIMUM_BUTTON_SIZE);
+    }
+
+    #[test]
+    fn a_disabled_button_is_drawn_greyed_and_reported_separately() {
+        let scene = SceneNode::Stack(StackNode {
+            children: vec![SceneNode::Button(ButtonNode {
+                id: "toggle".to_string(),
+                label: "Start".to_string(),
+                disabled: true,
+                ..ButtonNode::default()
+            })],
+            ..StackNode::default()
+        });
+        let panel = render(scene, [200, 60]).expect("a panel rasterizes");
+        assert!(
+            panel
+                .disabled_regions
+                .iter()
+                .any(|region| region.button == "toggle"),
+            "a plugin that greys a button has to be able to see that it did"
+        );
+    }
+
+    #[test]
+    fn a_later_button_wins_where_two_overlap() {
+        // Layout never overlaps two buttons, so this is built directly: the
+        // ordering rule is about what a press *means* when regions do share a
+        // point, and a press that resolved to the button underneath would be a
+        // silent wrong answer rather than a visible failure.
+        let panel = RenderedPanel {
+            pixels: Vec::new(),
+            width: 100,
+            height: 100,
+            anchor: OverlayAnchor::TopLeft,
+            margin: [0.0, 0.0],
+            width_fraction: 0.5,
+            opacity: 1.0,
+            hit_regions: vec![
+                HitRegion {
+                    button: "under".to_string(),
+                    rect: RoundedRect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 100.0,
+                        height: 100.0,
+                    },
+                },
+                HitRegion {
+                    button: "over".to_string(),
+                    rect: RoundedRect {
+                        x: 50.0,
+                        y: 50.0,
+                        width: 50.0,
+                        height: 50.0,
+                    },
+                },
+            ],
+            disabled_regions: Vec::new(),
+        };
+        assert_eq!(
+            panel.hit_test(75.0, 75.0),
+            Some("over"),
+            "the region drawn last is the one the press belongs to"
+        );
+        assert_eq!(panel.hit_test(10.0, 10.0), Some("under"));
+        assert_eq!(panel.hit_test(200.0, 200.0), None);
+    }
+
+    #[test]
+    fn a_raster_past_the_layer_pixel_bound_is_refused_rather_than_allocated() {
+        // The per-side bound belongs to the protocol, which is the only place a
+        // document arrives from; what this asserts is the renderer's own bound —
+        // a canvas bigger than a layer may carry is refused here, with a reason,
+        // rather than becoming a texture the overlay has to drop.
+        let scene = SceneNode::Spacer(SpacerNode { grow: 1.0 });
+        let side = bongocat_render::MAXIMUM_OVERLAY_LAYER_SIDE;
+        assert!(
+            render(scene.clone(), [side + 1, side]).is_err(),
+            "the bound is exclusive, and a raster one pixel past it is refused"
+        );
+        assert!(
+            render(scene, [side, side]).is_ok(),
+            "and the largest raster the bound allows is exactly at it"
+        );
+    }
+
+    #[test]
+    fn a_raster_carries_a_content_hash_that_tracks_the_pixels() {
+        let one = SceneNode::Stack(StackNode {
+            background: Some(Color::rgb(10, 20, 30)),
+            children: vec![SceneNode::Spacer(SpacerNode { grow: 1.0 })],
+            ..StackNode::default()
+        });
+        let two = SceneNode::Stack(StackNode {
+            background: Some(Color::rgb(30, 20, 10)),
+            children: vec![SceneNode::Spacer(SpacerNode { grow: 1.0 })],
+            ..StackNode::default()
+        });
+        let a = render(one.clone(), [120, 40]).expect("rasterizes").to_raster();
+        let b = render(one, [120, 40]).expect("rasterizes").to_raster();
+        let c = render(two, [120, 40]).expect("rasterizes").to_raster();
+        assert_eq!(
+            a.content, b.content,
+            "the same scene rasterizes to the same hash, which is what keeps an unchanged panel from being re-uploaded"
+        );
+        assert_ne!(a.content, c.content);
+    }
+
+    #[test]
+    fn an_update_carries_its_placement_into_the_rendered_panel() {
+        let update = PanelUpdate {
+            placement: PanelPlacement {
+                anchor: PluginAnchor::BottomRight,
+                margin: [0.03, 0.05],
+                width_fraction: 0.5,
+                opacity: 0.8,
+                size: [200, 80],
+            },
+            scene: SceneNode::Text(TextNode {
+                value: "hi".to_string(),
+                ..TextNode::default()
+            }),
+        };
+        let panel =
+            render_update(&update, 1.0, &mut measurer(), &ImageLibrary::new()).expect("rasterizes");
+        assert_eq!(panel.anchor, OverlayAnchor::BottomRight);
+        assert_eq!(panel.margin, [0.03, 0.05]);
+        assert_eq!(panel.width_fraction, 0.5);
+        assert_eq!(panel.opacity, 0.8);
+        assert_eq!((panel.width, panel.height), (200, 80));
+    }
+
+    #[test]
+    fn a_non_finite_scale_becomes_the_minimum_rather_than_reaching_every_coordinate() {
+        let scene = SceneNode::Stack(StackNode {
+            background: Some(Color::rgb(1, 2, 3)),
+            children: vec![SceneNode::Spacer(SpacerNode { grow: 1.0 })],
+            ..StackNode::default()
+        });
+        let panel = render_panel(
+            &scene,
+            [100, 50],
+            f32::NAN,
+            &mut measurer(),
+            &ImageLibrary::new(),
+        )
+        .expect("rasterizes");
+        assert_eq!(
+            (panel.width, panel.height),
+            (100, 50),
+            "the logical size still decides the panel; the scale only multiplies"
+        );
+    }
 }

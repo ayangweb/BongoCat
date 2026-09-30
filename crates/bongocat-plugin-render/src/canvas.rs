@@ -34,6 +34,15 @@ impl RoundedRect {
     /// button's boundary belongs to the button, and at a model window's usual
     /// size the difference between "on the edge" and "one pixel inside" is the
     /// difference between a button that works and one that does not.
+    /// The middle of the rectangle.
+    ///
+    /// For tests and for a caller that wants a point known to be inside without
+    /// knowing the box's extent — a hit test wants "somewhere in here", not
+    /// "somewhere near the top left".
+    pub fn center(self) -> (f32, f32) {
+        (self.x + self.width / 2.0, self.y + self.height / 2.0)
+    }
+
     pub fn contains(self, x: f32, y: f32) -> bool {
         x >= self.x && x <= self.x + self.width && y >= self.y && y <= self.y + self.height
     }

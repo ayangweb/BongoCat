@@ -14,7 +14,7 @@
 //! inside the archive, so a catalog can be generated from a plugin's own metadata
 //! without a second file to keep in step.
 
-use super::manifest::{PluginId, PluginVersion};
+use super::identity::{PluginId, PluginVersion};
 use super::{PluginError, PluginErrorCode};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -244,11 +244,11 @@ impl PluginCatalog {
 impl PluginCatalogEntry {
     fn validate(&self) -> Result<(), PluginError> {
         if self.name.trim().is_empty()
-            || self.name.chars().count() > super::manifest::MAXIMUM_PLUGIN_NAME_CHARS
+            || self.name.chars().count() > super::descriptor::MAXIMUM_PLUGIN_NAME_CHARS
         {
             return Err(PluginError::new(PluginErrorCode::InvalidPluginName));
         }
-        if self.description.chars().count() > super::manifest::MAXIMUM_PLUGIN_DESCRIPTION_CHARS {
+        if self.description.chars().count() > super::descriptor::MAXIMUM_PLUGIN_DESCRIPTION_CHARS {
             return Err(PluginError::new(PluginErrorCode::InvalidPluginDescription));
         }
         if self.api_version == 0 || self.api_version > SUPPORTED_PLUGIN_API_VERSION {
