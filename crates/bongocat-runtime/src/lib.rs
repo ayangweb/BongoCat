@@ -11,6 +11,7 @@
 
 mod client;
 mod input_state;
+mod input_tap;
 mod owner;
 mod pacing;
 mod random_behavior;
@@ -54,6 +55,8 @@ use bongocat_input::{CursorSmoother, DEFAULT_GAMEPAD_AXIS_CAPACITY};
 pub use client::RuntimeClient;
 use input_state::{InputDisposition, InputState};
 pub use input_state::{InputSnapshot, ModelInputSnapshot};
+pub use input_tap::{InputSubscription, SUBSCRIPTION_CAPACITY, Wait};
+use input_tap::{Subscribers, TappingSubmitter};
 pub use owner::RuntimeOwner;
 pub use pacing::{
     FramePacer, MonotonicClock, frame_interval_for_maximum_fps, frame_interval_for_runtime,

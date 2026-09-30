@@ -98,6 +98,11 @@ impl ProductPluginHost {
         })
     }
 
+    /// The endpoint, for the input forwarder and anything else that is not a snapshot.
+    pub(crate) fn endpoint(&self) -> &PluginWorkerEndpoint {
+        &self.endpoint
+    }
+
     /// The channel the overlay drains for panels.
     ///
     /// Taken rather than borrowed, so the overlay is the only reader and a channel

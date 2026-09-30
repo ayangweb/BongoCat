@@ -17,11 +17,28 @@ pub struct RuntimeClient {
     pub(crate) platform_input_diagnostics: PlatformInputDiagnosticsProducer,
     pub(crate) motion_audio: MotionAudioClient,
     pub(crate) shutdown_diagnostics: Arc<ShutdownDiagnosticsCounters>,
+    /// Everybody who asked to see the input stream.
+    pub(crate) input_subscribers: Arc<Subscribers>,
 }
 
 impl RuntimeClient {
     pub fn send(&self, command: RuntimeCommand) -> Result<u64, SendError> {
         self.producer.send(command)
+    }
+
+    /// Watch the input stream, without asking the runtime to do anything with it.
+    ///
+    /// For a consumer that needs every event rather than a summary: a plugin counting
+    /// keystrokes, a plugin showing the keys you are holding. The runtime's own snapshot
+    /// cannot serve that, because a snapshot is a tally of what is held rather than a
+    /// record of what happened.
+    ///
+    /// The subscription is fed from the same producer the runtime reads, so a subscriber
+    /// sees events in publication order and sees each one whether or not the runtime
+    /// applied it. Movement is not included: it arrives on its own latest-value channel,
+    /// and folding two samples into one is decided where that channel is drained.
+    pub fn subscribe_input(&self) -> InputSubscription {
+        self.input_subscribers.subscribe()
     }
 
     pub fn trigger_shortcut(&self, action: ShortcutAction) -> Result<u64, SendError> {

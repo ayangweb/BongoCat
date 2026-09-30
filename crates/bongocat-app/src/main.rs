@@ -27,6 +27,7 @@ mod overlay_placement;
 mod preset_root;
 mod product_icons;
 mod product_options;
+mod product_plugin_input;
 mod product_plugins;
 mod product_shutdown;
 mod product_windows;
@@ -240,6 +241,13 @@ struct ProductCoordinator {
     /// loop's local-clock refresh. `None` when the worker would not start, which is
     /// a degraded product rather than a failed one.
     plugin_host: Option<ProductPluginHost>,
+    /// The thread carrying the runtime's input to the plugins that asked for it.
+    ///
+    /// Stopped with the worker rather than before it, and for the same reason the worker
+    /// outlives the frame source: a forwarder that outlived the worker would keep queueing
+    /// commands into a channel nobody reads, and one that stopped before it would drop the
+    /// last few keystrokes on the way out.
+    plugin_input: Option<product_plugin_input::InputForwarderStop>,
     frame_ticks: u64,
     expect_visible_frame: bool,
     failures: Arc<Mutex<Vec<String>>>,
@@ -455,6 +463,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
     };
+    // Started after the worker and before the overlay, because it publishes into the
+    // worker's command channel and reads the runtime's input stream. A plugin that asked
+    // for input and gets none is a plugin whose tally is short, so this is part of
+    // starting the plugin system rather than an extra.
+    let plugin_input = plugin_host
+        .as_ref()
+        .map(|host| product_plugin_input::start(runtime_client.clone(), host.endpoint().clone()));
     let reopen_failures = Arc::clone(&run_failures);
     #[cfg(target_os = "macos")]
     let application_reopen_smoke = run_options.application_reopen_smoke;
@@ -660,6 +675,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             main_thread_signals: main_thread_signals.clone(),
             shortcut_service,
             plugin_host,
+            plugin_input,
             frame_ticks: 0,
             expect_visible_frame,
             failures: Arc::clone(&run_failures),

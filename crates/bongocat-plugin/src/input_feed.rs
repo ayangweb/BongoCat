@@ -285,6 +285,15 @@ impl FeedSet {
         !self.feeds.is_empty()
     }
 
+    /// Every open feed, for a publish that fans out to all of them.
+    ///
+    /// A method rather than an exposed map so the fan-out cannot be done one plugin at a
+    /// time by a caller, which is the mistake that would make one keystroke cost one queue
+    /// operation per installed plugin.
+    pub fn feeds_mut(&mut self) -> impl Iterator<Item = &mut Feed> {
+        self.feeds.values_mut()
+    }
+
     /// How many plugins have a feed.
     pub fn len(&self) -> usize {
         self.feeds.len()

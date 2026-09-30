@@ -178,6 +178,8 @@ pub(crate) struct ProductShutdown {
     pub(crate) settings_service: bongocat_app::ApplicationSettingsService,
     pub(crate) update_service: Option<bongocat_app::ApplicationUpdateService>,
     pub(crate) plugin_host: Option<ProductPluginHost>,
+    /// The input forwarder, stopped with the worker and not before it.
+    pub(crate) plugin_input: Option<crate::product_plugin_input::InputForwarderStop>,
 }
 
 impl ProductShutdown {
@@ -223,6 +225,12 @@ impl ProductShutdown {
         // channel the overlay is still draining, so it has to outlive the frame
         // source — and not later, because the next step releases the renderer's
         // device while the worker is still rasterizing panels for it.
+        // The forwarder first, then the worker: the forwarder only queues commands, so
+        // stopping it first loses nothing and stops the queue growing while the worker
+        // drains what is already in it.
+        if let Some(forwarder) = &self.plugin_input {
+            forwarder.stop();
+        }
         product_plugins::stop_plugin_worker(self.plugin_host, &failures);
         match self.overlay.finish_after_runtime_shutdown() {
             Ok(report) if self.coordinator.expect_visible_frame && report.frames_presented == 0 => {
@@ -279,12 +287,14 @@ pub(crate) fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
         .expect("settings service owner is present");
     let update_service = coordinator.update_service.take();
     let plugin_host = coordinator.plugin_host.take();
+    let plugin_input = coordinator.plugin_input.take();
     ProductShutdown {
         coordinator,
         overlay,
         settings_service,
         update_service,
         plugin_host,
+        plugin_input,
     }
 }
 

@@ -263,9 +263,17 @@ impl RuntimeOwner {
             command_transport: Arc::clone(&command_transport),
             accepting: Arc::clone(&accepting),
         });
-        let input_producer = InputProducer::new(Arc::new(RuntimeInputSubmitter {
-            producer: Arc::clone(&producer),
-        }));
+        // One registry for the whole run, tapped into the producer rather than read from
+        // the runtime's own consumption: a subscriber that learned about an event from the
+        // dispatch would see it after the runtime had decided what to do with it, and two
+        // consumers reading the same stream at different points in it is two orderings.
+        let input_subscribers = Arc::new(Subscribers::default());
+        let input_producer = InputProducer::new(Arc::new(TappingSubmitter::new(
+            Arc::new(RuntimeInputSubmitter {
+                producer: Arc::clone(&producer),
+            }),
+            Arc::clone(&input_subscribers),
+        )));
         let cursor_producer = CursorProducer::new();
         let gamepad_axis_producer =
             GamepadAxisProducer::with_capacity(DEFAULT_GAMEPAD_AXIS_CAPACITY);
@@ -280,6 +288,7 @@ impl RuntimeOwner {
             platform_input_diagnostics,
             motion_audio: motion_audio.clone(),
             shutdown_diagnostics: Arc::clone(&shutdown_diagnostics),
+            input_subscribers,
         };
         let worker = thread::Builder::new()
             .name("bongocat-runtime".into())

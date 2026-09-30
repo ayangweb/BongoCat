@@ -268,6 +268,16 @@ pub enum PluginCommand {
     /// layer id that names no loaded plugin is a press for a panel that has since
     /// been switched off, and is counted as ignored.
     Press { layer: u64, x: f32, y: f32 },
+    /// Input events, for the plugins that asked for the feed.
+    ///
+    /// Not addressed by plugin, because a subscription is not a per-plugin channel: one
+    /// publish fans out to every feed, and a plugin that did not ask is never sent
+    /// anything. The alternative — the product asking which plugins want input and
+    /// building a message per plugin — would make the host's cost depend on the number of
+    /// plugins, and would mean the same keystroke is queued N times.
+    Input {
+        events: Vec<bongocat_plugin_protocol::InputEvent>,
+    },
     /// The user's language changed.
     ///
     /// Republished on every tick rather than only at the handshake, because a plugin
@@ -317,6 +327,13 @@ impl PluginWorkerEndpoint {
             endpoint: self.clone(),
         }
     }
+
+    /// This endpoint as the sink the runtime's input stream is published through.
+    pub fn input_sink(&self) -> PluginInputSink {
+        PluginInputSink {
+            endpoint: self.clone(),
+        }
+    }
 }
 
 /// The model window's presses, turned into worker commands.
@@ -337,6 +354,30 @@ impl bongocat_render::OverlayPressSink for PluginPressSink {
             x,
             y,
         });
+    }
+}
+
+/// The product's way of handing input to the plugins that asked for it.
+///
+/// A sink rather than a method on the endpoint, for the same reason presses are: the thing
+/// that produces input is the runtime, on the platform layer's thread, and it must not
+/// know what a plugin is. A sink is the whole of what it needs.
+#[derive(Clone, Debug)]
+pub struct PluginInputSink {
+    endpoint: PluginWorkerEndpoint,
+}
+
+impl PluginInputSink {
+    /// Publish events to every plugin that asked for the feed.
+    ///
+    /// Returns whether the batch was queued. A dropped batch is counted by the feed rather
+    /// than here: the events are real edges the platform layer has already accepted, and
+    /// the count that matters is the per-plugin one a plugin's own diagnostics report.
+    pub fn publish(&self, events: Vec<bongocat_plugin_protocol::InputEvent>) -> bool {
+        if events.is_empty() {
+            return true;
+        }
+        self.endpoint.send(PluginCommand::Input { events })
     }
 }
 
@@ -1042,6 +1083,21 @@ impl Worker {
                 }
             }
             PluginCommand::SetConfig { id, config } => self.set_config(&id, config),
+            PluginCommand::Input { events } => {
+                for feed in self.feeds.feeds_mut() {
+                    for event in &events {
+                        if !feed.offer(event.clone()) {
+                            // An edge that did not fit is a keystroke a plugin will never
+                            // see, and the feed counts it. The product's own answer is not
+                            // to grow the queue: a plugin that generates thousands of edges
+                            // a second is not displaying them, and a host thread that
+                            // blocked on one would be a model window that stopped.
+                            self.diagnostics.input_dropped =
+                                self.diagnostics.input_dropped.saturating_add(1);
+                        }
+                    }
+                }
+            }
             PluginCommand::SetLocale { locale } => {
                 self.locale = locale;
                 self.publish(None, None);

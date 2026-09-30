@@ -60,9 +60,9 @@ mod worker;
 /// the protocol rather than the host — depends on `bongocat-plugin-protocol` directly.
 pub use bongocat_plugin_protocol::{
     CONFIG_SCHEMA_VERSION, ChoiceOption, ConfigControl, ConfigDocument, ConfigField, ConfigKind,
-    ConfigSchema, ConfigValue, HostState, LocalizedText, LogLevel, ModelOutcome, ModelRequest,
-    PLUGIN_CATALOG_FILE_NAME, PLUGIN_SCHEMA_VERSION, PluginAnchor, PluginDescriptor, PluginError,
-    PluginErrorCode, PluginIcon, PluginId, PluginManifest, PluginVersion,
+    ConfigSchema, ConfigValue, HostState, InputEvent, LocalizedText, LogLevel, ModelOutcome,
+    ModelRequest, PLUGIN_CATALOG_FILE_NAME, PLUGIN_SCHEMA_VERSION, PluginAnchor, PluginDescriptor,
+    PluginError, PluginErrorCode, PluginIcon, PluginId, PluginManifest, PluginVersion,
     SUPPORTED_PLUGIN_API_VERSION, Subscription,
 };
 pub use bubble::{Bubble, BubbleSet};
@@ -86,8 +86,8 @@ pub use store::{
 };
 pub use worker::{
     CatalogMode, MAXIMUM_ENABLED_PLUGINS, PluginCommand, PluginDiagnostics, PluginEntry,
-    PluginPhase, PluginPressSink, PluginSnapshot, PluginWorkerEndpoint, PluginWorkerHandle,
-    PluginWorkerJoinError, PluginWorkerReader, WorkerStopper, start,
+    PluginInputSink, PluginPhase, PluginPressSink, PluginSnapshot, PluginWorkerEndpoint,
+    PluginWorkerHandle, PluginWorkerJoinError, PluginWorkerReader, WorkerStopper, start,
 };
 
 /// How long one archive transfer may take.
