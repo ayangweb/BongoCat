@@ -44,6 +44,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bongocat-plugin-typing-sound"
+version = "1.0.0"
+dependencies = [
+ "bongocat-plugin-sdk",
+]
+
+[[package]]
 name = "bongocat-render"
 version = "2.0.1"
 dependencies = [

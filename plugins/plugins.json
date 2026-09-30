@@ -38,6 +38,25 @@
           "path": "build/keyboard-display.zip"
         }
       }
+    },
+    {
+      "id": "typing-sound",
+      "name": "Typing Sound",
+      "version": "1.0.0",
+      "author": "BongoCat",
+      "description": "Gives the cat a voice while you type.",
+      "api_version": 1,
+      "downloads": {
+        "macos-aarch64": {
+          "path": "build/typing-sound.zip"
+        },
+        "macos-x86_64": {
+          "path": "build/typing-sound.zip"
+        },
+        "windows-x86_64": {
+          "path": "build/typing-sound.zip"
+        }
+      }
     }
   ]
 }

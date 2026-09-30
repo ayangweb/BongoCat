@@ -1,0 +1,20 @@
+[package]
+name = "bongocat-plugin-typing-sound"
+description = "Gives the BongoCat cat a voice while you type."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "typing-sound"
+path = "src/main.rs"
+
+# The SDK, and nothing else.
+[dependencies]
+bongocat-plugin-sdk.workspace = true
+
+[lints]
+workspace = true

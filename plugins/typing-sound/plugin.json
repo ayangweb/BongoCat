@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "api_version": 1,
+  "id": "typing-sound",
+  "name": "Typing Sound",
+  "version": "1.0.0",
+  "author": "BongoCat",
+  "description": "Gives the cat a voice while you type: each key plays one of the model's own motions, and the model's sound for it.",
+  "icon": {
+    "emoji": "🔊"
+  },
+  "executable": "typing-sound"
+}

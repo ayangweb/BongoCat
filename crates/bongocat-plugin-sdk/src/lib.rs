@@ -103,7 +103,7 @@ pub mod testing;
 
 pub use bongocat_plugin_protocol::{
     ConfigDocument, ConfigKind, ConfigSchema, ConfigValue, HostMessage, InputEvent, LocalizedText,
-    ModelRequest, ModelRequestKind, PluginAnchor, Subscription, control_label,
+    ModelOutcome, ModelRequest, ModelRequestKind, PluginAnchor, Subscription, control_label,
 };
 pub use host::{Host, Identity, Outcome};
 pub use panel::{
@@ -137,8 +137,7 @@ pub mod prelude {
         ModelRequest, Subscription, control_label,
     };
     pub use bongocat_plugin_protocol::{
-        MAXIMUM_BUBBLE_MILLIS, MINIMUM_BUBBLE_MILLIS, ModelOutcome, ModelRequestKind, PluginAnchor,
-        SceneNode,
+        MAXIMUM_BUBBLE_MILLIS, MINIMUM_BUBBLE_MILLIS, ModelRequestKind, PluginAnchor, SceneNode,
     };
 }
 

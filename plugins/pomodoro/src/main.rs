@@ -70,10 +70,12 @@ const NOTICE_MILLIS: u32 = 2_500;
 /// The motion asked for when a round ends.
 ///
 /// A name rather than a motion id, because a model chooses its own motions and the only
-/// honest thing to ask for is the one a model of this sort has. A model without one
-/// answers "not in model" and the panel still says what happened, so the request is a
-/// nicety and never a dependency.
-const FINISHED_MOTION: &str = "wave";
+/// honest thing to ask for is one a model of this sort has. The spelling is the model's own:
+/// a group name and an index, `Group.index`, which is the protocol's whole motion
+/// vocabulary. The shipped BongoCat models call their first group `CAT_motion`, so this
+/// resolves against them; a model without it answers `NotInModel` and the panel and the
+/// bubble still say what happened, so the request is a nicety and never a dependency.
+const FINISHED_MOTION: &str = "CAT_motion.0";
 
 /// The press id of the one button that starts and stops the round.
 const TOGGLE: &str = "toggle";
