@@ -22,5 +22,22 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <!--
+      The languages the bundle declares. macOS resolves a bundle's preferred localizations from
+      this list intersected with the user's language preference, and a bundle nested inside the
+      application follows the application's answer. The guided permission flow's Swift panel is
+      such a bundle and ships the same languages, so without this list it would always fall back
+      to its development region regardless of the language the product is running in (ADR-0078).
+      The tags are the ones the Swift panel ships catalogues for; the product's own catalogues are
+      named differently and are resolved by `bongocat-i18n` instead.
+    -->
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>ar</string>
+        <string>en</string>
+        <string>pt</string>
+        <string>zh-Hans</string>
+        <string>zh-Hant</string>
+    </array>
 </dict>
 </plist>

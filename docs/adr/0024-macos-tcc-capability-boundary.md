@@ -34,3 +34,19 @@ VoiceOver 等辅助技术公开自身的可访问语义。两种能力不能因�
   拒绝时 overlay/settings 保持可用。
 - 后续 TCC UI 刷新实现必须分别测试 permission snapshot 与 service status，确保授权变化不会被误报为
   已运行的 event tap。
+
+## 引导流程与逐次重置（2026-09-30，ADR-0078）
+
+ADR-0078 把 macOS 的引导动作换成 `permission-flow` 的浮动面板，并在**每次进入授权流程前**执行
+`tccutil reset ListenEvent com.ayangweb.bongo-cat`。本 ADR 的 Input Monitoring 边界因此有两处修订：
+
+- 「只在由用户发起的明确设置操作中允许调用 `CGRequestListenEventAccess`」仍然成立，且引导流程
+  整体位于用户点击之后，没有引入启动或轮询路径上的 TCC 请求。
+- 但「不重复请求」的语义改变了：逐次重置会主动把已有授权清回未授权，因此用户每次进入引导都要重新
+  授权。这是产品明确要求的行为，不是实现偏差。
+- 「权限拒绝或撤销必须让输入服务进入匿名 `PermissionDenied` 状态并可靠 Reset」中，**进入
+  `PermissionDenied` 这一半已有覆盖**（tap 被禁用 → 重启 → 进程内 `CGPreflightListenEventAccess`
+  复查 → `PermissionDenied`），但**重新授权之后没有自动重启输入服务的触发点**：重置使运行中的
+  tap 失效，用户重新授权后输入要等应用重启才恢复。这一缺口记录在 ADR-0078 的「未完成项」。
+- 能力面保持最小：`permission-flow` 虽然暴露 8 类权限，但产品只使用 `INPUT_MONITORING` 一项，
+  且其类型不离开 `bongocat-platform` 的私有 adapter。

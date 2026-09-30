@@ -10,9 +10,11 @@
 //! capability is never asked. The decision is always the current platform state, never product
 //! state (ADR-0032).
 //!
-//! Both platforms present the prompt through a native dialog owned by the platform: macOS an
-//! `NSAlert` on the main thread, which follows the application appearance (ADR-0048), Windows an
-//! `rfd` message dialog, which maps to a Task Dialog. No product UI is built for this.
+//! macOS presents the prompt itself through an `NSAlert` on the main thread, which follows the
+//! application appearance (ADR-0048), and then hands the user to the guided flow from
+//! `permission-flow` (ADR-0078): a floating panel that opens the Input Monitoring pane and shows
+//! the drag guidance. Windows presents an `rfd` message dialog, which maps to a Task Dialog, and
+//! reveals the running executable. No product UI is built for either.
 
 /// Whether the operating system currently grants the input capability the
 /// product needs before global input works.
@@ -39,6 +41,12 @@ pub struct StartupPermissionPrompt {
     pub primary: String,
     /// Label of the button that dismisses the prompt and keeps the product starting.
     pub secondary: String,
+    /// The locale the copy above was written in.
+    ///
+    /// The macOS guided flow is a Swift panel with its own catalog, so the adapter needs the
+    /// product language to make the panel and the prompt agree. It is the same value the caller
+    /// resolved the copy from, which keeps the two from drifting apart.
+    pub locale: String,
 }
 
 /// Outcome of one startup permission check.
@@ -81,7 +89,9 @@ pub fn check_startup_permission(prompt: &StartupPermissionPrompt) -> StartupPerm
     if !requested_permission_flow(&result, &prompt.primary) {
         return StartupPermissionStatus::Deferred;
     }
-    StartupPermissionStatus::PermissionFlowRequested(platform::request_permission_flow())
+    StartupPermissionStatus::PermissionFlowRequested(platform::request_permission_flow(
+        &prompt.locale,
+    ))
 }
 
 /// Presents the startup prompt and blocks the calling thread until the user answers it.
@@ -106,8 +116,16 @@ mod platform {
         InputPermission, StartupPermissionPrompt, input_monitoring_permission,
         request_input_monitoring_permission,
     };
+    use objc2::{rc::Retained, runtime::AnyObject};
     use objc2_app_kit::{NSAlert, NSAlertStyle, NSApplication, NSModalResponse};
-    use objc2_foundation::NSString;
+    use objc2_foundation::{NSArray, NSString, NSUserDefaults};
+    use permission_flow::{AppPath, Permission, PermissionFlowController, StartFlowOptions};
+    use std::{
+        cell::RefCell,
+        fs,
+        path::{Path, PathBuf},
+        process::Command,
+    };
 
     /// System Settings → Privacy & Security → Input Monitoring.
     const INPUT_MONITORING_SETTINGS_URL: &str =
@@ -119,6 +137,34 @@ mod platform {
     /// `NSPanel.h` instead, which `-runModal` does not return for custom buttons, so they must
     /// not be used here (verified against the macOS SDK header, 2026-09-18).
     const ALERT_FIRST_BUTTON_RESPONSE: NSModalResponse = 1000;
+
+    /// `tccutil`, the only supported way to clear a TCC grant from inside the product.
+    const TCCUTIL: &str = "/usr/bin/tccutil";
+
+    /// The TCC service behind the Input Monitoring pane.
+    const LISTEN_EVENT_SERVICE: &str = "ListenEvent";
+
+    /// The bundle identifier every build environment shares (ADR-0008), which is therefore also
+    /// the TCC subject the guided flow resets.
+    const PRODUCT_BUNDLE_IDENTIFIER: &str = "com.ayangweb.bongo-cat";
+
+    /// The resource bundle the vendored Swift package resolves its strings from.
+    const RESOURCE_BUNDLE_NAME: &str = "PermissionFlow_PermissionFlow.bundle";
+
+    /// The preference macOS resolves a bundle's `.lproj` catalogue from.
+    const APPLE_LANGUAGES_KEY: &str = "AppleLanguages";
+
+    thread_local! {
+        /// The guided flow's controller.
+        ///
+        /// `PermissionFlowController` is neither `Send` nor `Sync` and may only be created, used
+        /// and dropped on the macOS main thread, so it lives in a main-thread-local slot instead
+        /// of travelling back to the worker that asked for the flow. Keeping it alive is what
+        /// keeps the floating panel on screen; starting another flow replaces it, and its `Drop`
+        /// closes the panel.
+        static FLOW_CONTROLLER: RefCell<Option<PermissionFlowController>> =
+            const { RefCell::new(None) };
+    }
 
     pub const CAPABILITY: &str = "input_monitoring";
 
@@ -161,13 +207,36 @@ mod platform {
 
     /// Runs the user-initiated permission flow.
     ///
-    /// Requesting access first is what registers the product in the Input Monitoring list; opening
-    /// the pane afterwards takes the user to the exact switch. ADR-0024 only allows the TCC
-    /// request API inside a user-initiated setting action, which is why this runs after the prompt
-    /// and never at start, on a poll or during service recovery.
-    pub fn request_permission_flow() -> bool {
-        let _ = request_input_monitoring_permission();
-        open_input_monitoring_settings()
+    /// The order is the one the flow was asked for (ADR-0078): clear the grant, make sure the
+    /// panel's strings can be resolved, put the panel in the product's language, and only then
+    /// open the pane and show the drag guidance.
+    ///
+    /// The fallback path is the pre-ADR-0078 behaviour and exists for one case: the Swift panel
+    /// aborts the process on its first localized string when its resource bundle is missing, so a
+    /// build whose bundle cannot be resolved opens the pane without the guidance rather than
+    /// crashing. Packaging verifies the bundle is present, which is where a mistake has to fail.
+    pub fn request_permission_flow(locale: &str) -> bool {
+        reset_input_monitoring_grant();
+        if !ensure_resource_bundle_available() {
+            let _ = request_input_monitoring_permission();
+            return open_input_monitoring_settings();
+        }
+        apply_flow_language(locale);
+        start_guided_flow()
+    }
+
+    /// Clears the Input Monitoring grant before the guided flow starts.
+    ///
+    /// The product asks for this on every entry into the flow, so the flow always begins from a
+    /// not-granted state. Consequences that ADR-0078 records rather than hides: every build
+    /// environment shares one bundle identifier, so this also clears the grant of an installed
+    /// build, and a running event tap loses its grant and enters the `PermissionDenied` recovery
+    /// path. The result is deliberately ignored — `tccutil` reports failure for a bundle the
+    /// system has no entry for, which is the same state this is trying to reach.
+    fn reset_input_monitoring_grant() {
+        let _ = Command::new(TCCUTIL)
+            .args(["reset", LISTEN_EVENT_SERVICE, PRODUCT_BUNDLE_IDENTIFIER])
+            .status();
     }
 
     /// Opens the Input Monitoring pane.
@@ -184,6 +253,187 @@ mod platform {
             return false;
         };
         NSWorkspace::sharedWorkspace().openURL(&url)
+    }
+
+    /// Starts the guided flow and keeps its controller alive.
+    ///
+    /// `PermissionFlowController::new` asserts the macOS main thread, and the controller is
+    /// neither `Send` nor `Sync`, so the whole sequence runs inside one main-queue block and the
+    /// controller is parked in the main thread's slot before the block returns.
+    fn start_guided_flow() -> bool {
+        let target = guidance_target();
+        dispatch2::run_on_main(move |_mtm| {
+            let Ok(path) = AppPath::try_from(target.as_path()) else {
+                return false;
+            };
+            let Ok(controller) = PermissionFlowController::new() else {
+                return false;
+            };
+            if controller
+                .start_flow(StartFlowOptions::new(Permission::INPUT_MONITORING, path))
+                .is_err()
+            {
+                return false;
+            }
+            FLOW_CONTROLLER.with(|slot| *slot.borrow_mut() = Some(controller));
+            true
+        })
+    }
+
+    /// The bundle the panel asks the user to drag into the authorization list.
+    ///
+    /// The executable's own bundle when there is one, and the executable otherwise. Upstream's
+    /// helper that guesses the host application from the launch context is deliberately not used:
+    /// it falls back to the parent process chain, so a development build would ask the user to
+    /// grant whichever application launched it (the contract test below keeps that out). The Swift
+    /// panel filters the list down to `.app` bundles, so a development binary yields an empty drag
+    /// target and the panel keeps showing the pane guidance.
+    fn guidance_target() -> PathBuf {
+        let Ok(executable) = std::env::current_exe() else {
+            return PathBuf::new();
+        };
+        enclosing_bundle(&executable).unwrap_or(executable)
+    }
+
+    /// The application bundle an executable lives inside, if any.
+    fn enclosing_bundle(executable: &Path) -> Option<PathBuf> {
+        executable
+            .ancestors()
+            .find(|ancestor| {
+                ancestor
+                    .extension()
+                    .is_some_and(|extension| extension == "app")
+            })
+            .map(Path::to_path_buf)
+    }
+
+    /// Makes the Swift panel resolve its strings in the product's language.
+    ///
+    /// The vendored Swift package ships eleven `.lproj` catalogues and chooses one through
+    /// `Bundle.preferredLocalizations`, which for a bundle nested in an application follows the
+    /// application's own preferred localizations — that is, `AppleLanguages` in this application's
+    /// preference domain, which the application bundle has to declare through
+    /// `CFBundleLocalizations`. Upstream's Rust API has no locale parameter at all (the Swift side
+    /// has one the shim never passes), so this preference is the only lever before the fork adds
+    /// it. It is also the behaviour a language setting is expected to have: the app's other AppKit
+    /// surfaces follow the same value.
+    ///
+    /// `vi-VN` has no upstream catalogue and resolves to English, which ADR-0078 records.
+    fn apply_flow_language(locale: &str) {
+        let languages = NSArray::from_retained_slice(&[NSString::from_str(locale)]);
+        // SAFETY: `NSArray` is an Objective-C object and `AnyObject` is the top type every object
+        // can be viewed as, which is the type `setObject:forKey:` takes. The value is an array of
+        // strings, which is what `AppleLanguages` holds.
+        let languages = unsafe { Retained::cast_unchecked::<AnyObject>(languages) };
+        let key = NSString::from_str(APPLE_LANGUAGES_KEY);
+        // SAFETY: the key is a plain string and the value has the type the preference expects.
+        unsafe {
+            NSUserDefaults::standardUserDefaults().setObject_forKey(Some(&languages), &key);
+        }
+    }
+
+    /// Makes sure the Swift package's resource bundle is where `Bundle.module` looks for it.
+    ///
+    /// `swift-rs` builds the bundle into its own `OUT_DIR` and never publishes it, and the accessor
+    /// SwiftPM generates calls `fatalError("unable to find bundle named …")` when none of its
+    /// candidates contains it — `Bundle.main.resourceURL`, the framework resource URL and
+    /// `Bundle.main.bundleURL`. Packaging places the bundle in `Contents/Resources` for a release
+    /// artifact, so only a development binary has work to do here, and for it the executable's own
+    /// directory is the candidate that matches. Returns whether the bundle can now be resolved;
+    /// nothing is written into an application bundle, which would invalidate its signature.
+    fn ensure_resource_bundle_available() -> bool {
+        let Ok(executable) = std::env::current_exe() else {
+            return false;
+        };
+        let Some(executable_dir) = executable.parent() else {
+            return false;
+        };
+        if let Some(bundle) = enclosing_bundle(&executable)
+            && bundle
+                .join("Contents/Resources")
+                .join(RESOURCE_BUNDLE_NAME)
+                .is_dir()
+        {
+            return true;
+        }
+        let destination = executable_dir.join(RESOURCE_BUNDLE_NAME);
+        if destination.is_dir() {
+            return true;
+        }
+        let Some(source) = built_resource_bundle(executable_dir) else {
+            return false;
+        };
+        copy_dir(&source, &destination);
+        destination.is_dir()
+    }
+
+    /// Finds the resource bundle `swift-rs` built, under the Cargo profile directory.
+    ///
+    /// `permission-flow` owns two `build` entries: the build script's own directory, which has no
+    /// Swift output, and the one holding its `OUT_DIR`. A missing directory skips to the next entry
+    /// instead of ending the search.
+    pub(super) fn built_resource_bundle(executable_dir: &Path) -> Option<PathBuf> {
+        for entry in fs::read_dir(executable_dir.join("build")).ok()?.flatten() {
+            let name = entry.file_name();
+            if !name.to_string_lossy().starts_with("permission-flow-") {
+                continue;
+            }
+            let build_path = entry.path().join("out/swift-rs/PermissionFlowShimFFI");
+            if let Some(bundle) = find_resource_bundle(&build_path) {
+                return Some(bundle);
+            }
+        }
+        None
+    }
+
+    /// Finds the resource bundle below the build path `swift-rs` gave to SwiftPM.
+    ///
+    /// That layout has already changed once: before Xcode 27 SwiftPM wrote products to
+    /// `<arch>-apple-macosx/<Configuration>` under the build path, and since then to
+    /// `[out/]Products/<Configuration>`, with Xcode 27 keeping the older directory around as well.
+    /// A search pinned to one shape silently finds nothing on the other toolchain, which here means
+    /// the panel never opens and the user gets the old prompt with no explanation. The bundle is
+    /// therefore looked up by walking the package's own build path, bounded because the deepest
+    /// layout in use puts it three levels down.
+    fn find_resource_bundle(build_path: &Path) -> Option<PathBuf> {
+        const MAX_DEPTH: usize = 3;
+
+        let mut pending = vec![(build_path.to_path_buf(), 0usize)];
+        while let Some((directory, depth)) = pending.pop() {
+            let Ok(entries) = fs::read_dir(&directory) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path
+                    .file_name()
+                    .is_some_and(|name| name == RESOURCE_BUNDLE_NAME)
+                    && path.is_dir()
+                {
+                    return Some(path);
+                }
+                if depth < MAX_DEPTH && path.is_dir() {
+                    pending.push((path, depth + 1));
+                }
+            }
+        }
+        None
+    }
+
+    fn copy_dir(from: &Path, to: &Path) {
+        let Ok(entries) = fs::read_dir(from) else {
+            return;
+        };
+        let _ = fs::create_dir_all(to);
+        for entry in entries.flatten() {
+            let source = entry.path();
+            let destination = to.join(entry.file_name());
+            if source.is_dir() {
+                copy_dir(&source, &destination);
+            } else {
+                let _ = fs::copy(&source, &destination);
+            }
+        }
     }
 }
 
@@ -219,8 +469,9 @@ mod platform {
     ///
     /// There is no in-place elevation: ADR-0023 keeps the per-user installer and the product
     /// unprivileged by default. The standard path is the compatibility flag, so the flow only
-    /// reveals the running executable for the user to open its properties dialog.
-    pub fn request_permission_flow() -> bool {
+    /// reveals the running executable for the user to open its properties dialog. The locale is a
+    /// macOS concern: this path shows no panel of its own.
+    pub fn request_permission_flow(_locale: &str) -> bool {
         let Ok(executable) = std::env::current_exe() else {
             return false;
         };
@@ -288,6 +539,7 @@ mod tests {
             description: "description".to_owned(),
             primary: "primary".to_owned(),
             secondary: "secondary".to_owned(),
+            locale: "en-US".to_owned(),
         }
     }
 
@@ -324,7 +576,7 @@ mod tests {
         ));
     }
 
-    /// Pins the two macOS dialog constraints.
+    /// Pins the three macOS flow constraints.
     ///
     /// 1. `rfd`'s *synchronous* message dialog is still banned: it builds its `NSAlert` plumbing
     ///    (`PolicyManager`/`FocusManager`) on the calling thread, and a historical pre-GPUI caller
@@ -336,6 +588,9 @@ mod tests {
     ///    may only be built there, and `runModal` must run between GPUI events instead of inside
     ///    one of its handlers. The behaviour itself needs a human to answer a real system alert,
     ///    which no automated test can do, so this contract pins the implementation.
+    /// 3. The guided flow's drag target must come from this executable, never from
+    ///    `AppPath::suggested_host_app`: that helper walks the parent process chain, so a
+    ///    development build would ask the user to grant whichever application launched it.
     #[cfg(target_os = "macos")]
     #[test]
     fn macos_prompt_keeps_the_appkit_free_dialog_path() {
@@ -363,6 +618,97 @@ mod tests {
             "the macOS startup prompt must not go back to rfd's parentless CFUserNotification: it \
              does not follow the application appearance (ADR-0048)"
         );
+        assert!(
+            !macos_module.contains("suggested_host_app"),
+            "the macOS guided flow must resolve its drag target from this executable: \
+             `AppPath::suggested_host_app` falls back to the parent process chain and would ask \
+             the user to grant the application that launched the build"
+        );
+    }
+
+    /// Pins the two macOS prerequisites the guided flow cannot start without.
+    ///
+    /// Both are supplied outside this module — the rpath by the build scripts and the resource
+    /// bundle by packaging — so nothing else would fail until a user pressed the button.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_guided_flow_declares_its_build_prerequisites() {
+        let source = include_str!("startup_permission.rs");
+        assert!(
+            source.contains("ListenEvent"),
+            "the guided flow must reset the Input Monitoring grant through tccutil"
+        );
+        // Every package whose binaries link this one carries the flag, because a library
+        // dependency's `rustc-link-arg` does not reach the binary that finally links.
+        for (package, build_script) in [
+            ("bongocat-platform", include_str!("../build.rs")),
+            (
+                "bongocat-overlay",
+                include_str!("../../bongocat-overlay/build.rs"),
+            ),
+            ("bongocat-ui", include_str!("../../bongocat-ui/build.rs")),
+            ("bongocat-app", include_str!("../../bongocat-app/build.rs")),
+        ] {
+            assert!(
+                build_script.contains("-Wl,-rpath,/usr/lib/swift"),
+                "{package} must put the Swift runtime on the loader path of its binaries: \
+                 permission-flow's own build script cannot pass the flag on, and without it the \
+                 process aborts before `main`"
+            );
+        }
+    }
+
+    /// A development binary has to find the resource bundle in every layout SwiftPM has used for a
+    /// `--build-path` build.
+    ///
+    /// The lookup that used to be pinned to Xcode 27's `[out/]Products` shape is what made
+    /// packaging fail in CI, and here the same mistake is silent: the bundle is not found, the
+    /// panel never starts, and the user is left with the old prompt instead of the guided one.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_development_copy_finds_the_bundle_in_every_products_layout() {
+        use super::platform::built_resource_bundle;
+
+        for products in [
+            "out/Products/Debug",
+            "Products/Debug",
+            "debug",
+            "aarch64-apple-macosx/debug",
+        ] {
+            let root = std::env::temp_dir().join("bongocat-startup-permission-bundle");
+            let _ = std::fs::remove_dir_all(&root);
+            let expected = root
+                .join("build/permission-flow-0123456789abcdef/out/swift-rs/PermissionFlowShimFFI")
+                .join(products)
+                .join("PermissionFlow_PermissionFlow.bundle");
+            std::fs::create_dir_all(&expected).expect("products directory");
+
+            assert_eq!(
+                built_resource_bundle(&root),
+                Some(expected),
+                "the {products} layout must be searched"
+            );
+
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// A profile directory with no Swift output at all is the state of a build that never ran the
+    /// guide, and it has to read as "not found" so the caller falls back instead of guessing.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_profile_directory_without_swift_output_reports_no_bundle() {
+        use super::platform::built_resource_bundle;
+
+        let root = std::env::temp_dir().join("bongocat-startup-permission-no-bundle");
+        let _ = std::fs::remove_dir_all(&root);
+        // The build script's own `build` entry exists and carries no Swift output.
+        std::fs::create_dir_all(root.join("build/permission-flow-0123456789abcdef"))
+            .expect("entry");
+
+        assert_eq!(built_resource_bundle(&root), None);
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

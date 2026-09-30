@@ -628,6 +628,12 @@ checksum = "a3a647dce9631f152a99ec16cfc09267ae55fe280d5dc288964027d458076323"
 
 [[package]]
 name = "base64"
+version = "0.21.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
+
+[[package]]
+name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
@@ -983,6 +989,7 @@ dependencies = [
  "objc2-core-graphics",
  "objc2-foundation 0.3.2",
  "opener",
+ "permission-flow",
  "raw-window-handle",
  "rfd",
  "sys-locale",
@@ -5914,6 +5921,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
+name = "permission-flow"
+version = "0.1.40"
+source = "git+https://github.com/ayangweb/permission-flow?rev=fad0354d960cf775ac332e6375916f7cc6424c7b#fad0354d960cf775ac332e6375916f7cc6424c7b"
+dependencies = [
+ "swift-rs",
+]
+
+[[package]]
 name = "pest"
 version = "2.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7883,6 +7898,17 @@ dependencies = [
  "skrifa 0.44.0",
  "yazi",
  "zeno",
+]
+
+[[package]]
+name = "swift-rs"
+version = "1.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e45c444e496845d3f2a351146bff59aae4975b2280238df1dfaa0c7d1846f38e"
+dependencies = [
+ "base64 0.21.7",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -2,6 +2,8 @@ import re
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_DIRECTORY = ROOT / ".github" / "workflows"
@@ -34,6 +36,50 @@ class ReleaseTargetTests(unittest.TestCase):
         for target in SHIPPED_TARGETS:
             with self.subTest(target=target):
                 self.assertIn(target, source)
+
+    def test_every_macos_release_leg_runs_on_a_runner_of_its_own_architecture(self):
+        """A macOS leg may not build for an architecture its runner is not.
+
+        The macOS input monitoring panel links a Swift static library whose
+        build script compiles for the machine it runs on rather than the target
+        being built, and it never treats macOS as a cross build. Both macOS legs
+        on one runner therefore cannot both link: the leg that does not match
+        the runner's architecture fails in the release job, on undefined
+        `_permission_flow_*` symbols, with every other check green (ADR-0078,
+        ADR-0033).
+
+        Nothing in the workflow itself notices this, and the failure only shows
+        up on a tagged run, so the architecture each runner label stands for is
+        pinned here instead. GitHub's macOS images are published per
+        architecture; the labels below are the ones the workflow relies on.
+        """
+        apple_runners = {
+            "macos-latest": "arm64",
+            "macos-26": "arm64",
+            "macos-15": "arm64",
+            "macos-26-intel": "x86_64",
+            "macos-26-large": "x86_64",
+            "macos-15-intel": "x86_64",
+            "macos-15-large": "x86_64",
+        }
+        job = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))["jobs"]["macos"]
+        self.assertIn("matrix.runs_on", job["runs-on"], "each macOS leg declares its own runner")
+
+        for leg in job["strategy"]["matrix"]["include"]:
+            with self.subTest(leg=leg["label"]):
+                runner = leg["runs_on"]
+                self.assertIn(
+                    runner,
+                    apple_runners,
+                    f"{runner} is not a documented macOS runner label, so its architecture "
+                    "cannot be checked",
+                )
+                self.assertEqual(
+                    apple_runners[runner],
+                    "arm64" if leg["triple"].startswith("aarch64") else "x86_64",
+                    f"the {leg['label']} leg builds {leg['triple']} on {runner}, whose "
+                    "architecture does not match it",
+                )
 
     def test_active_ci_still_builds_windows_x64(self):
         source = CI_WORKFLOW.read_text(encoding="utf-8")

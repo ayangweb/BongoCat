@@ -38,7 +38,7 @@
     "later": "Thiết lập sau",
     "input_monitoring": {
       "title": "Cần cấp quyền Giám sát đầu vào",
-      "description": "BongoCat cần quyền Giám sát đầu vào để nhận thông tin từ bàn phím và chuột.\n\nLưu ý: nếu BongoCat đã có trong danh sách, hãy chọn nó rồi nhấn \"−\" để gỡ bỏ, sau đó nhấn \"+\" để thêm lại. Hãy khởi động lại BongoCat sau khi cấp quyền.",
+      "description": "BongoCat cần quyền Giám sát đầu vào để nhận thông tin từ bàn phím và chuột.",
       "open_settings": "Mở Cài đặt hệ thống"
     },
     "administrator": {

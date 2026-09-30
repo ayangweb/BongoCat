@@ -49,6 +49,10 @@ pub fn ensure_startup_permission(language: Language) -> bongocat_platform::Start
         description: text(keys::DESCRIPTION),
         primary: text(keys::PRIMARY),
         secondary: text(keys::SECONDARY),
+        // The macOS guided flow is a Swift panel with its own catalog, so the adapter needs the
+        // product language to make the panel and this prompt agree (ADR-0078). It is the same
+        // resolved locale the copy above came from.
+        locale: locale.to_owned(),
     })
 }
 
@@ -89,6 +93,29 @@ mod tests {
                 bongocat_i18n::text(locale, keys::PRIMARY),
                 bongocat_i18n::text(locale, keys::SECONDARY),
                 "{code}"
+            );
+        }
+    }
+
+    /// The macOS description is one purpose sentence, not a how-to.
+    ///
+    /// It used to end with a second paragraph telling the user to remove BongoCat from the Input
+    /// Monitoring list and add it again. The guided flow clears the grant through `tccutil` before
+    /// the panel opens, so that entry is gone by the time the user looks at the list, and the
+    /// paragraph only described work the product already did. A blank line is how a second
+    /// paragraph would come back, which is what this pins. The Windows prompt keeps its own setup
+    /// instructions — nothing else on that platform explains the compatibility flag — so the rule
+    /// is macOS-only.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_macos_prompt_description_is_a_single_paragraph() {
+        for language in Language::ALL {
+            let locale = bongocat_i18n::locale_code(language.code());
+            let description = bongocat_i18n::text(locale, keys::DESCRIPTION);
+            assert!(
+                !description.contains("\n\n"),
+                "{}: the macOS prompt description grew a second paragraph again: {description}",
+                language.code()
             );
         }
     }
