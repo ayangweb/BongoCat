@@ -1,0 +1,21 @@
+[package]
+name = "bongocat-plugin-keyboard-display"
+description = "Shows the keys you are holding on the BongoCat model window."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "keyboard-display"
+path = "src/main.rs"
+
+# The SDK, and nothing else — see `plugins/pomodoro/Cargo.toml` for why a plugin that does
+# not need `serde` should not depend on it.
+[dependencies]
+bongocat-plugin-sdk.workspace = true
+
+[lints]
+workspace = true

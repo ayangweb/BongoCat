@@ -103,12 +103,12 @@ pub mod testing;
 
 pub use bongocat_plugin_protocol::{
     ConfigDocument, ConfigKind, ConfigSchema, ConfigValue, HostMessage, InputEvent, LocalizedText,
-    ModelRequest, ModelRequestKind, PluginAnchor, Subscription,
+    ModelRequest, ModelRequestKind, PluginAnchor, Subscription, control_label,
 };
 pub use host::{Host, Identity, Outcome};
 pub use panel::{
-    Panel, SceneBuilder, bar, button, button_disabled, button_secondary, divider, heading, image,
-    muted, panel_surface, ring, spacer, spacer_share, text, text_colored,
+    Panel, SceneBuilder, bar, button, button_disabled, button_secondary, chip, divider, heading,
+    image, muted, panel_surface, ring, spacer, spacer_share, text, text_colored,
 };
 pub use plugin::{Descriptor, Event, Plugin, Tick};
 pub use run::{Session, run};
@@ -124,8 +124,8 @@ pub use settings::{
 pub mod prelude {
     pub use crate::host::{Host, Identity, Outcome};
     pub use crate::panel::{
-        Panel, SceneBuilder, bar, button, button_disabled, button_secondary, divider, heading,
-        image, muted, panel_surface, ring, spacer, spacer_share, text, text_colored,
+        Panel, SceneBuilder, bar, button, button_disabled, button_secondary, chip, divider,
+        heading, image, muted, panel_surface, ring, spacer, spacer_share, text, text_colored,
     };
     pub use crate::plugin::{Descriptor, Event, Limits, Plugin, Tick};
     pub use crate::run::Session;
@@ -134,7 +134,7 @@ pub mod prelude {
     };
     pub use crate::{
         ConfigDocument, ConfigKind, ConfigValue, HostMessage, InputEvent, LocalizedText,
-        ModelRequest, Subscription,
+        ModelRequest, Subscription, control_label,
     };
     pub use bongocat_plugin_protocol::{
         MAXIMUM_BUBBLE_MILLIS, MINIMUM_BUBBLE_MILLIS, ModelOutcome, ModelRequestKind, PluginAnchor,

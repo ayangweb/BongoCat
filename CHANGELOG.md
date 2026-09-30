@@ -11,6 +11,7 @@
 - A plugin is now its own program, installed from a download and started when you switch it on. A plugin that stops responding costs its own card and nothing else, and adding a plugin never changes the BongoCat installer.
 - Every plugin has its own settings, on its own page section, with its own labels in your language — a plugin that is not running cannot be configured, and a plugin nobody is running changes nothing.
 - The first plugin is a Pomodoro timer: pick how long a round lasts, what follows it, and whether the next round starts itself. When a round ends the cat reacts and says so.
+- A second plugin, Key Display, shows the keys you are holding on the model window as keycaps, in the order you pressed them. It can show the mouse buttons too, and can get out of the way when you are not typing.
 
 ### 🐛 Bug Fixes
 

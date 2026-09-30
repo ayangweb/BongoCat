@@ -10,6 +10,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bongocat-plugin-keyboard-display"
+version = "1.0.0"
+dependencies = [
+ "bongocat-plugin-sdk",
+]
+
+[[package]]
 name = "bongocat-plugin-pomodoro"
 version = "1.0.0"
 dependencies = [

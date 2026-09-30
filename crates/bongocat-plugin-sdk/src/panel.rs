@@ -295,6 +295,18 @@ impl SceneBuilder {
         self.push(divider());
     }
 
+    /// A filled rounded box with a label in it: one key on a keyboard, one value in a
+    /// counter, one state in a status row.
+    ///
+    /// A shape rather than a decoration, and it is in the SDK because three different
+    /// plugins want it and none of them should have to know that a `StackNode` with a
+    /// background and a `TextNode` inside it is how the product draws a chip. The colour is
+    /// the panel's own surface, so a chip reads as part of the panel rather than as a
+    /// rectangle somebody drew on top of it.
+    pub fn chip(&mut self, label: &str, size: f32, padding: [f32; 2], radius: f32) {
+        self.push(chip(label, size, padding, radius));
+    }
+
     /// This builder's tree.
     pub fn into_scene(self) -> SceneNode {
         SceneNode::Stack(StackNode {
@@ -437,6 +449,24 @@ pub fn divider() -> SceneNode {
     SceneNode::Divider(DividerNode {
         thickness: 1.0,
         color: Some(Color::rgba(255, 255, 255, 32)),
+    })
+}
+
+/// A filled rounded box with a label in it.
+///
+/// The free-function form of [`SceneBuilder::chip`], for the case where the name reads
+/// better than a method inside a closure.
+pub fn chip(label: &str, size: f32, padding: [f32; 2], radius: f32) -> SceneNode {
+    let text = heading(label, size);
+    SceneNode::Stack(StackNode {
+        padding,
+        background: Some(panel_surface()),
+        radius,
+        border: Some(Color::rgba(255, 255, 255, 26)),
+        border_width: 1.0,
+        cross_align: Some(bongocat_plugin_protocol::Align::Center),
+        children: vec![text],
+        ..StackNode::default()
     })
 }
 
@@ -631,6 +661,43 @@ mod tests {
             ring.value, 0.0,
             "and a fraction below zero becomes zero, which is a rule the renderer can rely on"
         );
+    }
+
+    #[test]
+    fn a_chip_is_a_filled_box_with_a_label_in_it() {
+        // The shape three plugins want and none of them should have to know the node
+        // vocabulary for. Its own test here because a chip is the SDK's idea, not a
+        // plugin's: a plugin that drew its own would draw a different chip.
+        let mut panel = Panel::new(240, 90);
+        panel.rebuild(|p| {
+            p.surface(6.0, [14.0, 12.0], |content| {
+                content.row_spaced(6.0, |row| {
+                    row.chip("A", 13.0, [10.0, 6.0], 6.0);
+                    row.chip("Shift", 13.0, [10.0, 6.0], 6.0);
+                });
+            })
+        });
+        update_of(&panel)
+            .validate()
+            .expect("a chip is a shape the host accepts");
+        let SceneNode::Stack(root) = panel.scene() else {
+            panic!("the root is a stack");
+        };
+        let SceneNode::Stack(surface) = &root.children[0] else {
+            panic!("the first child is the surface");
+        };
+        let SceneNode::Stack(row) = &surface.children[0] else {
+            panic!("the surface's first child is the row");
+        };
+        let SceneNode::Stack(first) = &row.children[0] else {
+            panic!("the row's first child is a chip");
+        };
+        assert!(first.background.is_some(), "a chip is filled");
+        assert!(
+            first.border.is_some(),
+            "and outlined, or it reads as a hole"
+        );
+        assert_eq!(first.children.len(), 1, "and holds exactly its label");
     }
 
     #[test]

@@ -5,6 +5,7 @@ resolver = "3"
 # does not work is worse than one that does not exist.
 members = [
     "pomodoro",
+    "keyboard-display",
 ]
 # The plugins workspace is deliberately its own. A plugin is built, versioned and
 # shipped on its own, and nothing here may reach into the application's manifest:

@@ -128,7 +128,10 @@ impl AfterRound {
     /// form owns the value and this plugin only reads it. It is here because a test that
     /// stands in for the form needs to write one, and a hand-written string in every such
     /// test is a second spelling of the menu waiting to drift.
-    #[cfg_attr(not(test), allow(dead_code, reason = "the settings form owns this value"))]
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "the settings form owns this value")
+    )]
     const fn as_setting(self) -> &'static str {
         match self {
             Self::Focus => "focus",
@@ -391,7 +394,12 @@ impl Pomodoro {
     pub fn draw(&mut self, host: &mut Host) -> bool {
         let seconds = self.round.seconds_left(self.now_ms);
         let toggle = self.button();
-        if self.painted == Some(Painted { seconds, button: toggle }) {
+        if self.painted
+            == Some(Painted {
+                seconds,
+                button: toggle,
+            })
+        {
             return false;
         }
         let countdown = format_seconds(seconds);
@@ -583,14 +591,13 @@ mod tests {
     }
 
     /// The document the settings form would send for these settings.
-    fn configured(
-        focus_minutes: i64,
-        after_round: AfterRound,
-        auto_start: bool,
-    ) -> ConfigDocument {
+    fn configured(focus_minutes: i64, after_round: AfterRound, auto_start: bool) -> ConfigDocument {
         document(
             [
-                ("focus_minutes".to_string(), ConfigValue::Integer(focus_minutes)),
+                (
+                    "focus_minutes".to_string(),
+                    ConfigValue::Integer(focus_minutes),
+                ),
                 (
                     "after_round".to_string(),
                     ConfigValue::Text(after_round.as_setting().to_string()),
@@ -626,7 +633,11 @@ mod tests {
             Inbox::new().into_messages(),
         );
         let drawn = panels(&written);
-        assert_eq!(drawn.len(), 1, "one panel, from `on_ready` and with no tick");
+        assert_eq!(
+            drawn.len(),
+            1,
+            "one panel, from `on_ready` and with no tick"
+        );
         let labels = labels_in(&drawn[0].scene);
         assert!(
             labels.contains(&"45:00".to_string()),
@@ -766,7 +777,11 @@ mod tests {
                 .into_messages(),
         );
         let labels = labels_in(&panels(&written).last().expect("a panel").scene);
-        assert_eq!(plugin.button(), Button::Pause, "a resumed round is a running one");
+        assert_eq!(
+            plugin.button(),
+            Button::Pause,
+            "a resumed round is a running one"
+        );
         assert_eq!(
             plugin.round.remaining_ms(minutes(20)),
             minutes(15),
@@ -894,7 +909,11 @@ mod tests {
         // The one thing that could otherwise drift: what the settings form writes, and what
         // this plugin answers to.
         let schema = declared_settings().to_schema().expect("a valid schema");
-        for choice in [AfterRound::Focus, AfterRound::ShortBreak, AfterRound::LongBreak] {
+        for choice in [
+            AfterRound::Focus,
+            AfterRound::ShortBreak,
+            AfterRound::LongBreak,
+        ] {
             assert_eq!(AfterRound::from_setting(choice.as_setting()), choice);
             let values = values_from(&configured(30, choice, true), &schema);
             let preferences = Preferences::read(&values);
@@ -942,8 +961,7 @@ mod tests {
         );
         let preferences = Preferences::read(&values);
         assert_eq!(
-            preferences.focus_minutes,
-            DEFAULT_FOCUS_MINUTES,
+            preferences.focus_minutes, DEFAULT_FOCUS_MINUTES,
             "a switch where a number was declared is a document the host would not send; reading \
              the default is the honest answer"
         );

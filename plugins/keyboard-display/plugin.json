@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "api_version": 1,
+  "id": "keyboard-display",
+  "name": "Key Display",
+  "version": "1.0.0",
+  "author": "BongoCat",
+  "description": "Shows the keys you are holding, in the corner of the model window, so a screencast does not need a second window to prove which key you pressed.",
+  "icon": {
+    "emoji": "⌨️"
+  },
+  "executable": "keyboard-display"
+}

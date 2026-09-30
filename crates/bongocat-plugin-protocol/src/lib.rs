@@ -53,6 +53,7 @@
 mod catalog;
 mod color;
 mod config;
+mod control;
 mod descriptor;
 mod error;
 mod host_state;
@@ -72,6 +73,7 @@ pub use config::{
     ConfigSchema, ConfigValue, MAXIMUM_CHOICE_OPTIONS, MAXIMUM_CONFIG_FIELDS,
     MAXIMUM_CONFIG_KEY_BYTES, MAXIMUM_CONFIG_TEXT_BYTES,
 };
+pub use control::{control_label, keypad_label};
 pub use descriptor::{
     LocalizedText, MAXIMUM_BUTTON_ID_BYTES, MAXIMUM_BUTTONS_PER_PANEL,
     MAXIMUM_PLUGIN_DESCRIPTION_CHARS, MAXIMUM_PLUGIN_NAME_CHARS, PLUGIN_MANIFEST_FILE_NAME,

@@ -143,7 +143,9 @@ impl Round {
         let Some(paused_at) = self.paused_at_ms.take() else {
             return;
         };
-        self.started_ms = self.started_ms.saturating_add(elapsed_ms.saturating_sub(paused_at));
+        self.started_ms = self
+            .started_ms
+            .saturating_add(elapsed_ms.saturating_sub(paused_at));
         self.phase = Phase::Counting;
     }
 
@@ -201,8 +203,16 @@ mod tests {
     fn the_last_second_reads_as_one_second_because_a_timer_showing_zero_early_is_wrong() {
         let round = at(1);
         assert_eq!(round.seconds_left(59_000), 1, "one second left reads as 1");
-        assert_eq!(round.seconds_left(59_999), 1, "even at the last millisecond");
-        assert_eq!(round.seconds_left(60_000), 0, "and zero once it is truly over");
+        assert_eq!(
+            round.seconds_left(59_999),
+            1,
+            "even at the last millisecond"
+        );
+        assert_eq!(
+            round.seconds_left(60_000),
+            0,
+            "and zero once it is truly over"
+        );
     }
 
     #[test]
@@ -235,7 +245,10 @@ mod tests {
              itself changes: {}",
             minute.len()
         );
-        assert!((minute[0] - 1.0).abs() < 1e-6, "a full round is a full ring");
+        assert!(
+            (minute[0] - 1.0).abs() < 1e-6,
+            "a full round is a full ring"
+        );
         assert!((minute[60] - 0.0).abs() < 1e-6, "and an empty one is empty");
     }
 
@@ -310,7 +323,10 @@ mod tests {
         let mut round = Round::new(RoundKind::LongBreak, minutes(15), 0, 3);
         round.restart(minutes(30));
         assert_eq!(round.kind, RoundKind::LongBreak);
-        assert_eq!(round.completed_rounds, 3, "three rounds are still three rounds");
+        assert_eq!(
+            round.completed_rounds, 3,
+            "three rounds are still three rounds"
+        );
         assert_eq!(round.remaining_ms(minutes(30)), minutes(15));
     }
 }

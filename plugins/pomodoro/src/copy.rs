@@ -24,8 +24,14 @@ pub fn plugin_description() -> LocalizedText {
         "A focus timer on the model window. Start it, stop it, and let the countdown run while \
          you work.",
     )
-    .with_locale("zh-CN", "模型窗口上的专注计时器。开始、暂停，让倒计时在你工作期间继续走。")
-    .with_locale("zh-TW", "模型視窗上的專注計時器。開始、暫停，讓倒數計時在你工作期間繼續走。")
+    .with_locale(
+        "zh-CN",
+        "模型窗口上的专注计时器。开始、暂停，让倒计时在你工作期间继续走。",
+    )
+    .with_locale(
+        "zh-TW",
+        "模型視窗上的專注計時器。開始、暫停，讓倒數計時在你工作期間繼續走。",
+    )
 }
 
 /// The plugin's own emoji, which is the card's icon.
@@ -33,7 +39,9 @@ pub const ICON: &str = "🍅";
 
 /// What a focus round is for.
 pub fn focus() -> LocalizedText {
-    LocalizedText::new("Focus").with_locale("zh-CN", "专注").with_locale("zh-TW", "專注")
+    LocalizedText::new("Focus")
+        .with_locale("zh-CN", "专注")
+        .with_locale("zh-TW", "專注")
 }
 
 /// A short pause.
@@ -59,22 +67,30 @@ pub fn paused() -> LocalizedText {
 
 /// The button that starts a stopped timer.
 pub fn start() -> LocalizedText {
-    LocalizedText::new("Start").with_locale("zh-CN", "开始").with_locale("zh-TW", "開始")
+    LocalizedText::new("Start")
+        .with_locale("zh-CN", "开始")
+        .with_locale("zh-TW", "開始")
 }
 
 /// The button that stops a running timer.
 pub fn pause() -> LocalizedText {
-    LocalizedText::new("Pause").with_locale("zh-CN", "暂停").with_locale("zh-TW", "暫停")
+    LocalizedText::new("Pause")
+        .with_locale("zh-CN", "暂停")
+        .with_locale("zh-TW", "暫停")
 }
 
 /// The button that starts a stopped one again.
 pub fn resume() -> LocalizedText {
-    LocalizedText::new("Resume").with_locale("zh-CN", "继续").with_locale("zh-TW", "繼續")
+    LocalizedText::new("Resume")
+        .with_locale("zh-CN", "继续")
+        .with_locale("zh-TW", "繼續")
 }
 
 /// The button that throws the current round away.
 pub fn reset() -> LocalizedText {
-    LocalizedText::new("Reset").with_locale("zh-CN", "重置").with_locale("zh-TW", "重設")
+    LocalizedText::new("Reset")
+        .with_locale("zh-CN", "重置")
+        .with_locale("zh-TW", "重設")
 }
 
 /// Said when a stretch of work ends.
@@ -93,7 +109,9 @@ pub fn break_over() -> LocalizedText {
 
 /// The label on the round-length setting.
 pub fn focus_minutes_label() -> LocalizedText {
-    LocalizedText::new("Focus round").with_locale("zh-CN", "专注时长").with_locale("zh-TW", "專注時長")
+    LocalizedText::new("Focus round")
+        .with_locale("zh-CN", "专注时长")
+        .with_locale("zh-TW", "專注時長")
 }
 
 /// What the round-length setting is.
@@ -105,7 +123,9 @@ pub fn focus_minutes_help() -> LocalizedText {
 
 /// The suffix on the round-length number.
 pub fn minutes_unit() -> LocalizedText {
-    LocalizedText::new("min").with_locale("zh-CN", "分钟").with_locale("zh-TW", "分鐘")
+    LocalizedText::new("min")
+        .with_locale("zh-CN", "分钟")
+        .with_locale("zh-TW", "分鐘")
 }
 
 /// The label on the "what follows a round" setting.
