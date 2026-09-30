@@ -323,3 +323,21 @@ adapter 之外不得依赖 `rfd` 类型。升级 `objc2-app-kit` 时必须复验
 `-runModal` 实际返回值不符（当前不符，crate 内用 `NSAlert.h` 的 1000/1001 自有常量）。
 若升级 `gpui-kit`/`gpui-pre-macos`，必须复验 `GPUIApplication` 子类与 `platform` ivar 的约束是否
 仍然成立：一旦 GPUI 不再依赖该 ivar，本 ADR 的 macOS 同步/异步选择可以重新评估。
+
+## macOS 引导流程换成 permission-flow（2026-09-30，ADR-0078）
+
+提示壳不变：仍是主线程 `NSAlert`，文案仍由 `bongocat-app` 从翻译目录构造，worker 生命周期、
+「不做任何持久化」「已授权则不提示」的判定依据都不变。变化只有三处：
+
+- macOS 的「授权/去设置」动作由「`CGRequestListenEventAccess` + `NSWorkspace` 打开输入监控面板」
+  换成 `permission-flow` 的 `INPUT_MONITORING` 引导面板（带拖拽引导）。`CGRequestListenEventAccess`
+  不再由本路径调用：注册到输入监控列表这一步改由面板引导用户完成。
+- 该动作前增加一次 `tccutil reset ListenEvent com.ayangweb.bongo-cat`。这使「已授权则完全不提示」
+  在流程入口侧被反向使用：每次进入流程都会把授权清回未授权，因此每次都要重新授权，即使此前已授权。
+  同时因为 Bundle ID 全环境共用（ADR-0008），它也会清掉已安装 Production 构建的授权。
+- `StartupPermissionPrompt` 增加 `locale` 字段，把产品语言交给 adapter，供 macOS 引导面板对齐语言
+  （ADR-0078 决策第 5 条）。Windows 侧接受并忽略该参数。
+
+已知后果：重置会让运行中的事件 tap 失效并进入 `PermissionDenied`，而用户重新授权后没有自动重启
+输入服务的触发点，输入要等应用重启才恢复；见 ADR-0078 的「未完成项」。本 ADR 原「决策」表中
+macOS 一行的「授权/去设置」动作以本节为准。

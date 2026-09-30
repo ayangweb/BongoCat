@@ -38,7 +38,7 @@
     "later": "稍后设置",
     "input_monitoring": {
       "title": "需要「输入监控」权限",
-      "description": "BongoCat 需要「输入监控」权限，才能正常接收键盘和鼠标输入。\n\n注意事项：如果列表中已有 BongoCat，请先选中并点击「−」移除，再点击「＋」重新添加。授权完成后，请重启 BongoCat。",
+      "description": "BongoCat 需要「输入监控」权限，才能正常接收键盘和鼠标输入。",
       "open_settings": "打开系统设置"
     },
     "administrator": {

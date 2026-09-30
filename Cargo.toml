@@ -51,6 +51,7 @@ libc = "=0.2.189"
 muda = { version = "=0.20.0", default-features = false }
 opener = { version = "=0.8.5", features = ["reveal"] }
 oxipng = { version = "=10.2.1", default-features = false }
+permission-flow = "=0.1.40"
 plist = "=1.10.1"
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 raw-window-handle = "=0.6.2"

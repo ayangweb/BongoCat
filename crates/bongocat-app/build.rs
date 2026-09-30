@@ -10,6 +10,7 @@ const WINDOWS_RESOURCE_FILE: &str = "windows/bongocat-app.rc";
 
 fn main() {
     println!("cargo::rerun-if-changed=src/product_icon_contract.rs");
+    link_swift_runtime();
 
     let manifest_dir = PathBuf::from(
         std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo must provide CARGO_MANIFEST_DIR"),
@@ -55,6 +56,22 @@ fn main() {
         embed_resource::compile(WINDOWS_RESOURCE_FILE, version_parameters)
             .manifest_required()
             .unwrap_or_else(|error| panic!("Windows product resource compilation failed: {error}"));
+    }
+}
+
+/// Puts the Swift runtime on the loader path of this package's binaries.
+///
+/// The macOS permission flow links a Swift static library, and every binary that links it needs
+/// `@rpath/libswift_Concurrency.dylib` and friends at load time. `permission-flow`'s own build
+/// script emits the same flag, but a library dependency's `rustc-link-arg` does not reach the
+/// binary that finally links, so each package whose binaries link it has to add it — see
+/// `tools/tests/test_swift_runtime_rpath.py`. Without it the process aborts before `main`:
+///
+///   dyld: Library not loaded: @rpath/libswift_Concurrency.dylib
+///   Reason: no LC_RPATH's found
+fn link_swift_runtime() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo::rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
     }
 }
 

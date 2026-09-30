@@ -31,6 +31,12 @@ just build
 just schema
 ```
 
+Building on macOS also needs an Xcode Swift toolchain, because the guided Input Monitoring flow
+links a Swift static library (ADR-0078). SwiftPM refuses to load a package whose manifest declares a
+newer tools version than the installed toolchain, and that package asks for 6.1. The Rust toolchain
+file does not cover it, so keep Xcode up to date — the failure otherwise appears as a `swift build`
+error inside `permission-flow`'s build script.
+
 Use `just dev-smoke` to exercise the settings-window lifecycle. Run `just schema` after changing the
 configuration or window-state types; it regenerates the checked-in JSON Schema contracts.
 Platform-specific changes must also be verified on every affected operating system; a build or test

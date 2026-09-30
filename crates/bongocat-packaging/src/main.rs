@@ -110,6 +110,12 @@ const RESOURCE_DIRECTORY: &str = "resources";
 const MACOS_ICON: &str = "icons/logo-macos.icns";
 /// Repository-relative directory holding the three preset models.
 const MODEL_DIRECTORY: &str = "models";
+/// Resource bundle the macOS guided permission flow resolves its strings from.
+///
+/// `swift-rs` builds it inside `permission-flow`'s own `OUT_DIR` and never publishes it, while the
+/// accessor SwiftPM generates looks for it in `Contents/Resources` among other places and aborts
+/// the process when it is absent (ADR-0078).
+const SWIFT_RESOURCE_BUNDLE: &str = "PermissionFlow_PermissionFlow.bundle";
 /// Repository-relative directory holding the macOS `Info.plist` overlay.
 const MACOS_INFO_PLIST: &str = "macos/Info.plist";
 /// Repository-relative build provenance generator.
@@ -668,12 +674,19 @@ fn package(options: Options) -> Result<Vec<PathBuf>> {
         environment_features(&options.environment),
     )?;
     let models = stage_model_resources(&workspace)?;
+    // Resolved after `build_application`, which is what produces the Swift bundle.
+    let swift_bundle = if target.is_apple() {
+        Some(swift_resource_bundle(&workspace, target)?)
+    } else {
+        None
+    };
 
     let config = packaging_config(
         &workspace,
         target,
         &provenance,
         &models,
+        swift_bundle.as_deref(),
         &packager_formats(&requested),
     )?;
     let packages = cargo_packager::package(&config)?;
@@ -847,6 +860,7 @@ fn packaging_config(
     target: ReleaseTarget,
     provenance: &Path,
     models: &Path,
+    swift_bundle: Option<&Path>,
     formats: &[PackageFormat],
 ) -> Result<Config> {
     let mut config = Config::default();
@@ -884,7 +898,7 @@ fn packaging_config(
     config.out_dir = workspace.join(OUTPUT_DIRECTORY);
     config.target_triple = Some(target.triple().to_owned());
     config.formats = Some(formats.to_vec());
-    config.resources = Some(resources(target, models, provenance));
+    config.resources = Some(resources(target, models, provenance, swift_bundle));
 
     if target.is_apple() {
         let mut macos = MacOsConfig::new();
@@ -916,13 +930,18 @@ fn packaging_config(
 ///
 /// `models` is the staged copy from [`stage_model_resources`], not the working
 /// tree's `resources/models`.
-fn resources(target: ReleaseTarget, models: &Path, provenance: &Path) -> Vec<Resource> {
+fn resources(
+    target: ReleaseTarget,
+    models: &Path,
+    provenance: &Path,
+    swift_bundle: Option<&Path>,
+) -> Vec<Resource> {
     let prefix = if target.is_apple() {
         String::new()
     } else {
         format!("{RESOURCE_DIRECTORY}/")
     };
-    vec![
+    let mut resources = vec![
         Resource::Mapped {
             src: models.display().to_string(),
             target: PathBuf::from(format!("{prefix}{MODEL_DIRECTORY}")),
@@ -931,7 +950,61 @@ fn resources(target: ReleaseTarget, models: &Path, provenance: &Path) -> Vec<Res
             src: provenance.display().to_string(),
             target: PathBuf::from(format!("{prefix}{PROVENANCE_FILE}")),
         },
-    ]
+    ];
+    if let Some(swift_bundle) = swift_bundle {
+        resources.push(Resource::Mapped {
+            src: swift_bundle.display().to_string(),
+            target: PathBuf::from(SWIFT_RESOURCE_BUNDLE),
+        });
+    }
+    resources
+}
+
+/// Locates the Swift resource bundle `swift-rs` built for the guided permission flow.
+///
+/// The bundle stays in `permission-flow`'s own `OUT_DIR`, and SwiftPM's generated accessor aborts
+/// the process when it cannot find it, so the package has to carry a copy. The only place to read
+/// it from is the Cargo profile directory of the target being packaged, and the build script's own
+/// `build` entry has no Swift output at all, so a directory that is missing skips to the next one
+/// rather than ending the search.
+fn swift_resource_bundle(workspace: &Path, target: ReleaseTarget) -> Result<PathBuf> {
+    let build = workspace
+        .join("target")
+        .join(target.triple())
+        .join("release")
+        .join("build");
+    let Ok(entries) = fs::read_dir(&build) else {
+        return failure(format!(
+            "could not read {} to locate {SWIFT_RESOURCE_BUNDLE}",
+            build.display()
+        ));
+    };
+    for entry in entries.flatten() {
+        if !entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("permission-flow-")
+        {
+            continue;
+        }
+        let products = entry
+            .path()
+            .join("out/swift-rs/PermissionFlowShimFFI/out/Products");
+        let Ok(configurations) = fs::read_dir(products) else {
+            continue;
+        };
+        for configuration in configurations.flatten() {
+            let candidate = configuration.path().join(SWIFT_RESOURCE_BUNDLE);
+            if candidate.is_dir() {
+                return Ok(candidate);
+            }
+        }
+    }
+    failure(format!(
+        "missing {SWIFT_RESOURCE_BUNDLE} under {}: the macOS guided permission flow cannot \
+         resolve its strings without it",
+        build.display()
+    ))
 }
 
 /// The staging root for packaged resources, under the output directory.
@@ -2283,9 +2356,13 @@ fn verify_app_bundle(target: ReleaseTarget, bundle: &Path) -> Result<()> {
         contents.join("Info.plist"),
         contents.join("MacOS").join(APPLICATION_BINARY),
         contents.join("Resources").join(PROVENANCE_FILE),
+        // The guided permission flow aborts the process when SwiftPM's accessor cannot find this
+        // bundle, so a package that lost it would fail in a user's hands rather than here.
+        contents.join("Resources").join(SWIFT_RESOURCE_BUNDLE),
     ];
     for path in expected {
-        if !path.is_file() {
+        // The Swift resource bundle is a directory; the rest are files.
+        if !path.exists() {
             return failure(format!(
                 "{} is missing inside {}",
                 path.strip_prefix(bundle)

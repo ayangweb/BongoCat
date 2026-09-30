@@ -580,14 +580,20 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   `OpenConfigBackupLocation` 与 `ExportDiagnostics` 仍是 settings service 的强类型排障
   command，不从常规 UI 触发；About 的日志动作只打开应用自有目录，不暴露诊断内容。Development、Production
   和 smoke 的设置窗口使用同一套可见页面、分组和按钮组成；smoke 只改变驱动方式，不额外显示“重置偏好设置”等产品窗口没有的控件。
-- 产品启动时以只读 `CGPreflightListenEventAccess` 检查 Input Monitoring，缺失时用 `rfd` 的原生
-  系统弹框引导用户前往「系统设置 → 隐私与安全性 → 输入监控」。检查非阻塞：主线程完成窗口、
-  菜单栏等正常初始化后，由专用 worker 线程执行检查与提示，提示未应答或被关闭不影响任何产品
-  窗口的显示与使用（ADR-0032「非阻塞执行修正」）。提示不写配置、不写 window state、不缓存
-  「稍后」，每次启动重新读取平台真实状态；提示本身不调用 TCC request，`CGRequestListenEventAccess`
-  仍只在用户点击引导按钮后发生（ADR-0032）。实现必须使用 `rfd` 无父窗口的**异步**消息框：同步路径
-  会在调用线程上构造 `PolicyManager`/`FocusManager` 并触碰共享 `NSApplication`，而 `gpui_macos` 的
-  `MacPlatform::run` 需要该实例是自带 `platform` ivar 的 `GPUIApplication` 子类（ADR-0032「macOS 弹框实现修正」）。
+- 产品启动时以只读 `CGPreflightListenEventAccess` 检查 Input Monitoring，缺失时用原生系统弹框
+  引导用户。检查非阻塞：主线程完成窗口、菜单栏等正常初始化后，由专用 worker 线程执行检查与提示，
+  提示未应答或被关闭不影响任何产品窗口的显示与使用（ADR-0032「非阻塞执行修正」）。提示不写配置、
+  不写 window state、不缓存「稍后」，每次启动重新读取平台真实状态；提示本身不调用 TCC request
+  （ADR-0032）。实现必须使用 `rfd` 无父窗口的**异步**消息框：同步路径会在调用线程上构造
+  `PolicyManager`/`FocusManager` 并触碰共享 `NSApplication`，而 `gpui_macos` 的 `MacPlatform::run`
+  需要该实例是自带 `platform` ivar 的 `GPUIApplication` 子类（ADR-0032「macOS 弹框实现修正」）。
+- macOS 的「授权/去设置」动作在 ADR-0078 之后是 `permission-flow` 的 `INPUT_MONITORING` 引导
+  面板：它把用户送到「系统设置 → 隐私与安全性 → 输入监控」并显示拖拽授权引导。该动作前先执行
+  `tccutil reset ListenEvent com.ayangweb.bongo-cat`，因此每次进入流程都从「未授权」开始。面板的
+  语言跟随产品语言（`CFBundleLocalizations` + 本应用域的 `AppleLanguages`），拖拽目标取自当前
+  可执行文件所在的 bundle。`permission-flow` 的 Swift 静态库带来两项构建前提：链接它的每个包都要
+  在自己的 build script 里加 Swift 运行时 rpath，打包要把 `PermissionFlow_PermissionFlow.bundle`
+  放进 `Contents/Resources`。以上细节与未完成项见 ADR-0078。
 - 监听 tap 被系统禁用、超时和 session 变化，并自动重建。
 - listen-only tap 必须创建在 `kCGHIDEventTap` 的 `kCGHeadInsertEventTap` 位置（与 rdev 的 listen 一致），不得使用 session 层 tail append。实测 macOS 26.5.2：session tail 位置收不到右 Shift 的释放 `FlagsChanged`，且重复按下事件 flags 逐字节相同；同一台机器的 HID head 位置能收到全部修饰键的完整 press/release 对。tap 是 listen-only，只观察不修改、不吞事件；HID 层事件流跨用户会话可见，锁屏/快速用户切换仍依赖既有 session 生命周期 Reset 清空 pressed state。
 - `FlagsChanged` 的 down/up 方向必须在 callback 中冻结，按优先级依次使用：事件 flags 相对上一个 `FlagsChanged` 事件的**设备位**跳变（flags 低 8 位中每个物理修饰键有独立 bit，左右天然区分，同侧兄弟键按住时家族 flag 不清零也不影响）、家族 flag 位跳变（rdev `LAST_FLAGS` 同思路）、按 callback 记录的前一边沿交替。HID head tap 下设备位跳变覆盖全部常规修饰键事件；session tail 上观察到的右 Shift 事件缺失/不变序列由交替回退兜底。decoder 状态不属于 runtime pressed state，并随任何 `Reset` 清空，周期校正强制释放候选时必须同步清除 decoder 记录。不得等到 consumer drain 时用较新的全局状态反推旧事件，无法识别的修饰键必须触发可观测 `Reset`。

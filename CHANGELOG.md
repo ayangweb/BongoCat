@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### ✨ Features
+
+- On macOS, the Input Monitoring prompt now opens a guided panel: it takes you to the right System Settings page and shows how to drag BongoCat into the authorization list. The prompt clears BongoCat's Input Monitoring permission first, so the authorization always starts from scratch, and it no longer carries the paragraph that told you to remove and re-add the entry by hand.
+
 ### 🐛 Bug Fixes
 
 - On macOS, the menu bar icon no longer disappears after updating to a new version.
