@@ -29,7 +29,9 @@
 //! those things is believed, started, drawn, pressed and stopped.
 
 use bongocat_plugin::{
-    Incoming, PluginId, PluginStore, PluginVersion, Session, SessionOutcome, SessionState,
+    CatalogMode, Incoming, InputMethodCache, LocalTimeCache, PluginCommand, PluginEntry, PluginId,
+    PluginSnapshot, PluginStore, PluginVersion, PluginWorkerReader, Session, SessionOutcome,
+    SessionState,
 };
 use bongocat_plugin_protocol::{
     ButtonNode, ConfigDocument, ConfigValue, HostMessage, PanelPlacement, PanelUpdate,
@@ -40,6 +42,7 @@ use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// The id this binary's plugin half answers to, and the directory it is unpacked into.
@@ -92,6 +95,10 @@ const CASES: &[(&str, fn())] = &[
     (
         "a process that is asked to stop ends on its own and loses its panel",
         a_process_stops_on_its_own,
+    ),
+    (
+        "a switch the settings window draws reaches the plugin center",
+        a_switch_turned_off_is_published,
     ),
     (
         "an unpacked executable is made runnable even when the archive carried no mode",
@@ -335,11 +342,15 @@ enum Step {
 
 /// Whether this binary was started as a plugin rather than run as the test suite.
 ///
-/// The host sets [`SPAWNED_AS`] in every child it starts, and the value is the directory
-/// the plugin was unpacked into — which is the plugin's id. One variable, so the child
-/// needs no arguments and the host needs no special case.
+/// The host sets [`SPAWNED_AS`] in every child it starts, and its **presence** is the
+/// whole of the test. The value is the name of the directory the plugin was unpacked
+/// into, which is the plugin's id only for a plugin this file put there itself: the
+/// store's own layout names that directory after the version, so a case that installs
+/// this binary the way the product does hands its child `1.0.0` rather than `probe`.
+/// Comparing the value would therefore let that child run this suite — which starts a
+/// plugin, whose child would do the same, without end.
 fn spawned_as_plugin() -> bool {
-    std::env::var(SPAWNED_AS).as_deref() == Ok(ID)
+    std::env::var_os(SPAWNED_AS).is_some()
 }
 
 /// The manifest a probe plugin ships: the smallest one the store accepts.
@@ -585,6 +596,127 @@ fn a_process_stops_on_its_own() {
         probe.session().panel().is_none(),
         "and its panel is off the model window rather than a stale texture nobody can explain"
     );
+}
+
+/// The switch on a plugin's card reaches the plugin center.
+///
+/// The published snapshot is the only thing the plugin page reads, and an entry's
+/// `enabled` is read out of the worker's own session map when that snapshot is built.
+/// So a stop that did not publish left the card's switch on for a plugin whose process
+/// was already gone, and left the revision where it was — which is the one thing the
+/// settings window's poll watches. The press then looked like it had done nothing at
+/// all, and the page only corrected itself the next time an unrelated command happened
+/// to publish.
+///
+/// A real [`bongocat_plugin::start`]ed worker rather than a stand-in, because the
+/// publish is the worker's own and nothing above it can be asked about it: a double
+/// running the loop itself would assert that the double publishes, which is the one
+/// thing in question.
+fn a_switch_turned_off_is_published() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let store = PluginStore::new(root.path().join("store"));
+    let id = PluginId::new(ID).expect("a valid id");
+    let version = PluginVersion::new(1, 0, 0);
+    // The manifest through the store's own path, and the program beside it afterwards:
+    // the store refuses a member over four megabytes and this binary is far past it,
+    // which is the same reason `Probe::on_disk` puts the executable in place by hand.
+    let directory = store
+        .unpack(&id, &version, &archive())
+        .expect("the archive this file wrote unpacks");
+    std::fs::copy(current_executable(), directory.join(binary_name()))
+        .expect("puts the executable the manifest names beside it");
+    store
+        .set_current(&id, &version)
+        .expect("and makes it the installed version");
+
+    // A directory with no catalog in it is an empty catalog, so this worker never
+    // reaches the network: what is under test is a switch, not a download.
+    let (producer, _consumer) = bongocat_render::overlay_layer_channel();
+    let (handle, endpoint) = bongocat_plugin::start(
+        store,
+        root.path().join("catalog"),
+        CatalogMode::Directory,
+        producer,
+        Arc::new(LocalTimeCache::new()),
+        Arc::new(InputMethodCache::new()),
+        None,
+        root.path().join("data"),
+        "0.0.0-test".to_string(),
+        "en-US".to_string(),
+    )
+    .expect("a worker starts over a store with one plugin in it");
+    let reader = handle.reader();
+
+    // The handshake first, so the press below is about a plugin the center really is
+    // showing as on rather than about one whose process is still starting.
+    let on = await_published(&reader, &id, "the plugin announced itself", |entry| {
+        entry.enabled && entry.running && entry.descriptor.is_some()
+    });
+
+    assert!(
+        endpoint.send(PluginCommand::SetEnabled {
+            id: id.clone(),
+            enabled: false,
+        }),
+        "the switch's command is queued"
+    );
+
+    let off = await_published(&reader, &id, "the plugin was switched off", |entry| {
+        !entry.enabled
+    });
+    assert!(
+        off.revision > on.revision,
+        "and the published revision moved with it: a snapshot that changed without moving \
+         the revision is a page that never redraws, which is what the switch looked like"
+    );
+    assert!(
+        !off.active.contains(&id),
+        "and the panel is off the model window, which is what the switch says"
+    );
+
+    let mut stopper = handle.stopper(&endpoint);
+    stopper.stop();
+    handle
+        .stop_and_join(Duration::from_secs(5))
+        .expect("the worker stops rather than running on for the rest of the suite");
+}
+
+/// Wait for one plugin's published entry to satisfy a predicate, and hand back the
+/// snapshot it was read from.
+///
+/// The snapshot rather than the entry, because the revision is half of what a case here
+/// asserts — it is the only signal the settings window polls — and a deadline rather
+/// than a sleep, because a worker that never publishes has to fail the case instead of
+/// stalling the suite.
+fn await_published(
+    reader: &PluginWorkerReader,
+    id: &PluginId,
+    what: &str,
+    until: impl Fn(&PluginEntry) -> bool,
+) -> PluginSnapshot {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        // A snapshot read before the worker's first publish is an empty one, so a
+        // plugin that is not on it yet is a question rather than a failure.
+        let snapshot = reader.snapshot();
+        if let Some(entry) = snapshot.entry(id)
+            && until(entry)
+        {
+            return snapshot;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{what} within {PATIENCE:?}; the last published snapshot was revision {} listing \
+             {:?}",
+            snapshot.revision,
+            snapshot
+                .entries
+                .iter()
+                .map(|entry| entry.manifest.id.as_str())
+                .collect::<Vec<_>>(),
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }
 
 /// The store has to make the file it is about to run runnable.

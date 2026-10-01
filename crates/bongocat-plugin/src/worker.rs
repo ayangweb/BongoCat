@@ -1471,14 +1471,44 @@ impl Worker {
         }
     }
 
+    /// Turn one plugin's panel on or off, and publish what changed.
+    ///
+    /// The two directions reach the published snapshot by different routes, and only
+    /// one of them is a route. Switching **on** starts a process, and a process that
+    /// starts says hello — so the handshake's own [`Self::on_outcome`] publishes, with
+    /// the descriptor and the schema the plugin declared, whether it got that far or
+    /// gave up. Switching **off** has no such voice: the session is removed and the
+    /// process is told to stop, so nothing is left that will ever publish on this
+    /// plugin's behalf.
+    ///
+    /// That asymmetry is the whole bug this comment exists for. An entry's `enabled` is
+    /// read out of [`Self::sessions`] when the snapshot is built, so a stop that does
+    /// not publish leaves the plugin center describing a plugin that is no longer
+    /// there, and leaves the revision where it was — which is what the settings
+    /// window's poll watches. The switch on the card therefore stayed on after the
+    /// press that turned it off, and stayed on until some unrelated command happened
+    /// to publish and the page redrew itself around a state the user had already
+    /// reached.
+    ///
+    /// Published only when a session was actually there. A press for a plugin that was
+    /// already off changed nothing, and a revision that moves for nothing costs the
+    /// settings window a full snapshot — model catalog scan included — for a page that
+    /// is not going to look different.
     fn set_enabled(&mut self, id: &PluginId, enabled: bool, layer_ids: &OverlayLayerIds) {
         if !enabled {
             // A disabled plugin's process is stopped rather than flagged, so its memory
             // and its files are released rather than held for a plugin nobody sees.
-            if let Some(session) = self.sessions.remove(id) {
-                session.stop();
-            }
+            let stopped = match self.sessions.remove(id) {
+                Some(session) => {
+                    session.stop();
+                    true
+                }
+                None => false,
+            };
             self.feeds.remove(id);
+            if stopped {
+                self.publish(None, None);
+            }
             return;
         }
         if self.sessions.contains_key(id) {
