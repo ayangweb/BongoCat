@@ -55,6 +55,16 @@ fn system_locale_resolves_to_a_shipped_language() {
             "{locale} is a Portuguese locale"
         );
     }
+    // Korean takes the same shape: the copy was written for South Korea, and a
+    // machine reporting plain `ko` reaches it on the primary subtag rather than
+    // falling back to English.
+    for locale in ["ko", "ko-KR", "ko_KR", "ko-KP"] {
+        assert_eq!(
+            Language::from_system_locale(locale),
+            Language::Korean,
+            "{locale} is a Korean locale"
+        );
+    }
     // Chinese shares the `zh` subtag across two scripts, so it is the one
     // language the primary subtag cannot classify. The script subtag decides
     // when the platform reports one, and the `TW`/`HK`/`MO` region subtags
@@ -91,6 +101,7 @@ fn system_locale_resolves_to_a_shipped_language() {
         Language::System.resolve(Language::Portuguese),
         Language::Portuguese
     );
+    assert_eq!(Language::System.resolve(Language::Korean), Language::Korean);
     assert_eq!(
         Language::System.resolve(Language::System),
         Language::English
@@ -126,6 +137,14 @@ fn system_locale_resolves_to_a_shipped_language() {
     );
     assert_eq!(
         Language::English.resolve(Language::Portuguese),
+        Language::English
+    );
+    assert_eq!(
+        Language::Korean.resolve(Language::ChineseSimplified),
+        Language::Korean
+    );
+    assert_eq!(
+        Language::English.resolve(Language::Korean),
         Language::English
     );
     assert_eq!(

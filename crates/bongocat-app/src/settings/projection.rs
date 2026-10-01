@@ -34,6 +34,7 @@ pub(super) const fn settings_language(language: bongocat_config::Language) -> Se
         bongocat_config::Language::Arabic => SettingsLanguage::Arabic,
         bongocat_config::Language::Vietnamese => SettingsLanguage::Vietnamese,
         bongocat_config::Language::Portuguese => SettingsLanguage::Portuguese,
+        bongocat_config::Language::Korean => SettingsLanguage::Korean,
     }
 }
 
@@ -46,6 +47,7 @@ pub(super) const fn config_language(language: SettingsLanguage) -> bongocat_conf
         SettingsLanguage::Arabic => bongocat_config::Language::Arabic,
         SettingsLanguage::Vietnamese => bongocat_config::Language::Vietnamese,
         SettingsLanguage::Portuguese => bongocat_config::Language::Portuguese,
+        SettingsLanguage::Korean => bongocat_config::Language::Korean,
     }
 }
 

@@ -88,6 +88,7 @@ fn missing_locale_text_falls_back_to_english() {
         text("pt-BR", "navigation.settings.title"),
         "Configurações do BongoCat"
     );
+    assert_eq!(text("ko-KR", "navigation.settings.title"), "BongoCat 설정");
     assert_eq!(
         text("system", "navigation.settings.title"),
         "BongoCat Settings"
@@ -123,6 +124,13 @@ fn a_region_variant_reaches_the_catalog_that_serves_its_language() {
         ("pt-BR", "pt-BR"),
         ("pt-PT", "pt-BR"),
         ("pt_BR", "pt-BR"),
+        // Korean is the only Korean catalog, so a machine reporting a bare
+        // `ko` or a `ko-KP` region reaches it on the primary subtag exactly as
+        // an Egyptian one reaches `ar-SA`.
+        ("ko", "ko-KR"),
+        ("ko-KR", "ko-KR"),
+        ("ko-KP", "ko-KR"),
+        ("ko_KR", "ko-KR"),
         ("en", "en-US"),
         ("en-GB", "en-US"),
         ("en_AU", "en-US"),
@@ -148,7 +156,7 @@ fn a_region_variant_reaches_the_catalog_that_serves_its_language() {
 /// nothing the product ships.
 #[test]
 fn a_language_the_product_does_not_ship_falls_back_to_the_default() {
-    for locale in ["de-DE", "fr", "ja-JP", "ko-KR", "ru-RU"] {
+    for locale in ["de-DE", "fr", "ja-JP", "ru-RU"] {
         assert_eq!(
             text(locale, "navigation.settings.title"),
             text(DEFAULT, "navigation.settings.title"),

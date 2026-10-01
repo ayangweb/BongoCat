@@ -139,12 +139,12 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   `appearance_changed` 中更新；也不复用 gpui 的外观名映射，因为它不识别
   `AccessibilityHighContrastDarkAqua`，会把开启「提高对比度」的暗色系统判成浅色。主题失败一律
   降级为该表面保持系统外观，不报错、不改配置、不阻止启动。
-- `appearance.language` 只接受 `system`、`zh-CN`、`zh-TW`、`en-US`、`ar-SA`、`vi-VN` 和 `pt-BR` 七个当前 v1 值，默认 `system`。
+- `appearance.language` 只接受 `system`、`zh-CN`、`zh-TW`、`en-US`、`ar-SA`、`vi-VN`、`pt-BR` 和 `ko-KR` 八个当前 v1 值，默认 `system`。
   平台 adapter 在启动时读取系统首选 locale，并按 primary subtag 归类（RFC 4647 language-subtag
   fallback）：`ar`、`ar-EG`、`ar-SA` 等阿拉伯语 locale 归为 `ar-SA`，`vi` 与 `vi-VN` 归为 `vi-VN`，
-  `pt` 与 `pt-PT` 归为 `pt-BR`，简繁之外的英语 locale 归为 `en-US`。`zh` 是 primary subtag 唯一
-  无法判定的情形：简繁是不同书写体系而非地区变体，因此 `zh-Hant` 与 `TW`/`HK`/`MO` 归为 `zh-TW`，
-  其余 `zh` 标签归为 `zh-CN`。
+  `pt` 与 `pt-PT` 归为 `pt-BR`，`ko` 归为 `ko-KR`，简繁之外的英语 locale 归为 `en-US`。`zh` 是
+  primary subtag 唯一无法判定的情形：简繁是不同书写体系而非地区变体，因此 `zh-Hant` 与 `TW`/`HK`/`MO`
+  归为 `zh-TW`，其余 `zh` 标签归为 `zh-CN`。
   其它 locale 也回退 `en-US`，不把解析结果写回配置。UI 通过独立 `SettingsLanguage`、revision-checked typed
   command 和 GPUI Kit `Select` 修改并立即刷新窗口标题、导航和当前可见文案。
   未知持久化值直接拒绝，不增加 alias、开发中间版本兼容或旧配置导入。

@@ -10,6 +10,10 @@
 
 - On macOS, the menu bar icon no longer disappears after updating to a new version.
 
+### 🌍 Localization
+
+Korean is now available in Settings → Appearance & language. Existing configurations are unaffected and keep the language they already had.
+
 ## 2.0.1 - 2026-09-29
 
 ### 🐛 Bug Fixes

@@ -67,10 +67,19 @@ pub enum Language {
     // language still finds their own.
     #[serde(rename = "pt-BR")]
     Portuguese,
+    // Korean, the same shape as Arabic: Korean has no regional split in the way
+    // the catalog names languages, so the subtag nominates the country the copy
+    // was written in and the one catalog serves every Korean locale. A machine
+    // reporting `ko`, `ko-KR` or `ko-KP` all resolve here on their primary
+    // subtag. The endonym `한국어` keeps its Hangul spelling in every catalog
+    // and carries no region, so a reader who cannot read the current window
+    // language still finds their own.
+    #[serde(rename = "ko-KR")]
+    Korean,
 }
 
 impl Language {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::System,
         Self::ChineseSimplified,
         Self::ChineseTraditional,
@@ -78,6 +87,7 @@ impl Language {
         Self::Arabic,
         Self::Vietnamese,
         Self::Portuguese,
+        Self::Korean,
     ];
 
     pub const fn code(self) -> &'static str {
@@ -89,6 +99,7 @@ impl Language {
             Self::Arabic => "ar-SA",
             Self::Vietnamese => "vi-VN",
             Self::Portuguese => "pt-BR",
+            Self::Korean => "ko-KR",
         }
     }
 
@@ -96,8 +107,8 @@ impl Language {
     ///
     /// Matching the primary subtag is the RFC 4647 language-subtag fallback:
     /// every region variant of a shipped language reaches the same catalog, so
-    /// `ar-EG`, `vi` and `pt-PT` land where a user expects instead of on the
-    /// English default. Chinese is the one subtag that cannot decide this
+    /// `ar-EG`, `vi`, `pt-PT` and `ko` land where a user expects instead of on
+    /// the English default. Chinese is the one subtag that cannot decide this
     /// alone, because Simplified and Traditional are different written forms
     /// rather than regional variants, so `zh` resolves by script and region
     /// subtag instead.
@@ -113,6 +124,7 @@ impl Language {
             Some(&"ar") => Self::Arabic,
             Some(&"vi") => Self::Vietnamese,
             Some(&"pt") => Self::Portuguese,
+            Some(&"ko") => Self::Korean,
             _ => Self::English,
         }
     }
@@ -125,6 +137,7 @@ impl Language {
                 Self::Arabic => Self::Arabic,
                 Self::Vietnamese => Self::Vietnamese,
                 Self::Portuguese => Self::Portuguese,
+                Self::Korean => Self::Korean,
                 Self::System | Self::English => Self::English,
             },
             Self::ChineseSimplified => Self::ChineseSimplified,
@@ -133,6 +146,7 @@ impl Language {
             Self::Arabic => Self::Arabic,
             Self::Vietnamese => Self::Vietnamese,
             Self::Portuguese => Self::Portuguese,
+            Self::Korean => Self::Korean,
         }
     }
 }

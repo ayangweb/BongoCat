@@ -138,7 +138,8 @@
         "en-US",
         "ar-SA",
         "vi-VN",
-        "pt-BR"
+        "pt-BR",
+        "ko-KR"
       ],
       "type": "string"
     },
