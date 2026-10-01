@@ -560,7 +560,9 @@ impl Plugin for Pomodoro {
         // host applies it when the layer is published. Without it the panel would still
         // draw — in the corner this plugin asked for — but the user would be offered no
         // position to move it to.
-        SELF.descriptor().subscribe(Subscription::HostState)
+        SELF.descriptor()
+            .draws_panel()
+            .subscribe(Subscription::HostState)
     }
 
     fn settings(&mut self) -> Settings {
@@ -1270,6 +1272,23 @@ mod tests {
             copy::finished(RoundKind::LongBreak).resolve("en-US"),
             "and the two pauses are named differently, because their lengths differ"
         );
+    }
+
+    #[test]
+    fn this_plugin_asks_for_a_position_in_the_model_window() {
+        // A countdown is a panel the user placed somewhere, so it asks for one. The half a
+        // plugin cannot see is whether the host honoured it — a plugin that forgot this call
+        // would still draw its panel, in the corner it asked for, and would simply have no
+        // position to be moved to, which is a card that looks configured and is not.
+        let plugin = Pomodoro::new(Preferences::default());
+        let descriptor = plugin.descriptor();
+        assert!(
+            descriptor.has_panel(),
+            "a timer on the model window is something a user chooses where to put"
+        );
+        descriptor
+            .check()
+            .expect("and the descriptor is one the host accepts");
     }
 
     #[test]

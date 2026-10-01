@@ -1028,6 +1028,7 @@ dependencies = [
  "bongocat-model",
  "bongocat-plugin-protocol",
  "bongocat-plugin-render",
+ "bongocat-plugin-sdk",
  "bongocat-render",
  "bongocat-runtime",
  "bongocat-storage",

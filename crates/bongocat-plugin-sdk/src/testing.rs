@@ -456,6 +456,19 @@ pub fn is_ready(message: &PluginMessage) -> bool {
     matches!(message, PluginMessage::Ready { .. })
 }
 
+/// The descriptor a plugin announced, from what it wrote.
+pub fn announced_descriptor(
+    written: &WrittenMessages,
+) -> Option<bongocat_plugin_protocol::PluginDescriptor> {
+    written
+        .messages()
+        .into_iter()
+        .find_map(|message| match message {
+            PluginMessage::Ready { descriptor } => Some(*descriptor),
+            _ => None,
+        })
+}
+
 /// The panel messages a plugin sent, in order.
 pub fn panels(written: &WrittenMessages) -> Vec<bongocat_plugin_protocol::PanelUpdate> {
     written

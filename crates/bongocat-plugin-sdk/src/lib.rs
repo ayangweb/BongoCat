@@ -78,11 +78,13 @@
 //!   plugin's stdin, delivered to [`Plugin::on_tick`], [`Plugin::on_input`],
 //!   [`Plugin::on_press`] and [`Plugin::on_config_changed`].
 //!
-//! The plugin's own diagnostics go to **stderr**, which the host forwards to its
-//! log. The SDK routes [`Host::log`] there, so an author never has to remember
-//! which stream is which — and printing to stdout by hand is the one mistake that
-//! breaks the protocol, which is why it is a visible failure rather than a silent
-//! one.
+//! A plugin's own diagnostics travel as [`Host::log`], which is a `Log` **message** on
+//! that same wire rather than a bare print, and the host forwards it to its log. A
+//! plugin therefore never has to remember which stream is which: there is one stream
+//! for the protocol, and the SDK owns every line written to it. Printing to stdout by
+//! hand is the one mistake that breaks the protocol, which is why it is a visible
+//! failure rather than a silent one — and `eprintln!` remains available for a
+//! developer's own debugging, which the host also forwards.
 //!
 //! # Testing a plugin
 //!

@@ -89,7 +89,7 @@ fn handshake(mut input: impl BufRead + 'static, plugin: &mut impl Plugin) -> Res
         locale: hello.locale,
     };
     let _ = protocol_descriptor;
-    let host = Host::new(Box::new(StderrForwarding), identity, schema, values)?;
+    let host = Host::new(Box::new(StdoutForwarding), identity, schema, values)?;
     Ok(Session::new(host).reading(input))
 }
 
@@ -157,21 +157,30 @@ fn write_line(output: &mut impl Write, line: &[u8]) -> Result<()> {
 
 /// A writer that forwards everything to stderr.
 ///
-/// The host's end of the plugin's protocol is stdout, so the SDK cannot use stdout
-/// for its own messages — and [`crate::Host::log`] routes a plugin's diagnostics to
-/// stderr so an author never has to remember which stream is which. Printing to
-/// stdout by hand remains possible and remains a visible failure, which is the
-/// point: a protocol that silently tolerated junk would be a protocol nobody could
-/// debug.
-struct StderrForwarding;
+/// The host's end of the plugin's protocol: one stream, and it is stdout.
+///
+/// The host reads this plugin's stdout and nothing else, so every message the plugin
+/// sends — the announcement, a panel, a control, an answer, and a log line, which is a
+/// `Log` *message* rather than a bare print — goes here. The SDK used to hand the host
+/// connection a **stderr** writer on the reasoning that diagnostics belong on stderr,
+/// and that sent every panel, control and answer a plugin produced to a stream the host
+/// never reads. A plugin announced itself and then went silent for the rest of its
+/// life.
+///
+/// Locked per write rather than held for the session, so a plugin that logs from a
+/// callback cannot deadlock against a plugin that is also drawing. A raw `eprintln!`
+/// still goes to stderr and is still the host's to forward; what it must not do is
+/// compete with the protocol, and a line of JSON on the wrong stream is a visible
+/// failure rather than a silent one.
+struct StdoutForwarding;
 
-impl Write for StderrForwarding {
+impl Write for StdoutForwarding {
     fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        std::io::stderr().write(buffer)
+        std::io::stdout().lock().write(buffer)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        std::io::stderr().flush()
+        std::io::stdout().lock().flush()
     }
 }
 
@@ -228,8 +237,26 @@ impl Session {
     /// The output is a separate argument because it is the host's pipe and the
     /// session does not own it — a test that wants to see the announcement supplies
     /// its own.
+    /// The plugin's own words, from the plugin.
+    ///
+    /// The descriptor and the settings are announced as one document, and this is the line
+    /// that makes them one. They used to be two: `Plugin::descriptor` carried the identity
+    /// and the host was told a plugin had no fields at all, while the schema the plugin read
+    /// its own values against was built separately and never left this process. Every
+    /// settings form in the product was therefore empty, and a plugin's own test could not
+    /// see it — a test that builds the schema and asserts on it is asserting on the plugin's
+    /// own view of its settings, not on what the host was told.
+    ///
+    /// Both are now the one declaration, asked of the one function: the host's schema and
+    /// the host's form are the same fields, and a plugin cannot answer twice and disagree.
     pub fn announce(&mut self, output: &mut impl Write, plugin: &mut impl Plugin) -> Result<()> {
-        announce(output, plugin.descriptor().to_protocol()?)?;
+        announce(
+            output,
+            plugin
+                .descriptor()
+                .settings(plugin.settings())
+                .to_protocol()?,
+        )?;
         plugin.on_ready(&mut self.host)
     }
 
@@ -496,6 +523,45 @@ mod tests {
         assert_eq!(
             crate::testing::labels_in(&panels[0].scene),
             vec!["ready".to_string()]
+        );
+    }
+
+    #[test]
+    fn the_settings_a_plugin_declares_reach_the_host_in_its_announcement() {
+        // The bug this exists for, and it was invisible from inside a plugin: the
+        // descriptor and the settings were two separate declarations, and only the settings
+        // were asked for when building the store the plugin reads its own values from. The
+        // host was told a plugin had no fields at all, so every settings form in the
+        // product drew an empty panel — while each plugin's own tests passed, because they
+        // asserted on the schema the plugin built for itself rather than on the one the
+        // host was given.
+        //
+        // So the assertion is deliberately about the *written bytes*: a plugin's test has to
+        // be able to see what the host would see, or a disagreement between the two cannot
+        // be found from either side.
+        let written = WrittenMessages::new();
+        let host = host(&schema(), &written);
+        let mut plugin = Recorder::default();
+        Session::new(host)
+            .announce(&mut written.writer(), &mut plugin)
+            .expect("announced");
+        let descriptor = crate::testing::announced_descriptor(&written).expect("an announcement");
+        assert_eq!(
+            descriptor
+                .config
+                .fields
+                .iter()
+                .map(|field| field.key.as_str())
+                .collect::<Vec<_>>(),
+            ["flag"],
+            "the host reads `descriptor.config` and nothing else, so a schema that does not \
+             reach it is a settings form that renders nothing"
+        );
+        assert_eq!(
+            descriptor.config,
+            schema(),
+            "and it is the same schema the plugin read its values against, so the two cannot \
+             drift"
         );
     }
 

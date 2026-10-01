@@ -37,6 +37,11 @@ name = "process_session"
 harness = false
 
 [dev-dependencies]
+# The SDK, so one case in this file can be a plugin written the way a plugin author
+# writes one rather than a hand-rolled imitation of the protocol. Without it the SDK's own
+# half of the boundary is untested from the outside, which is how a writer pointed at the
+# wrong stream survived a file whose whole subject is that the two sides talk.
+bongocat-plugin-sdk.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 zip.workspace = true

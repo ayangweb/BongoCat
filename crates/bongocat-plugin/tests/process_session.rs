@@ -47,6 +47,16 @@ use std::time::{Duration, Instant};
 /// The id this binary's plugin half answers to, and the directory it is unpacked into.
 const ID: &str = "probe";
 
+/// The id of the plugin half that speaks through the **SDK** rather than by hand.
+///
+/// A second identity because the host sets `BONGOCAT_PLUGIN_ID` to the directory a plugin
+/// was unpacked into, and the child's environment is otherwise the host's own and
+/// unmodified — so this is the one signal a child can read to know which half it is. It
+/// matters because the two halves test different things and only one of them was ever
+/// checked: the hand-written one proves the *host* is right about the protocol, and
+/// nothing proved the *SDK* was.
+const SDK_ID: &str = "sdk-probe";
+
 /// The environment variable the host sets in every child, and the only thing that tells
 /// this binary it was started as a plugin rather than run as the test suite.
 const SPAWNED_AS: &str = "BONGOCAT_PLUGIN_ID";
@@ -74,6 +84,10 @@ const CASES: &[(&str, fn())] = &[
     (
         "a process that announces itself is believed and named by its own words",
         a_process_is_believed,
+    ),
+    (
+        "a plugin written through the SDK draws its panel and declares its settings",
+        an_sdk_plugin_draws_a_panel,
     ),
     (
         "a panel a process drew is rasterized and its button is pressable",
@@ -111,8 +125,17 @@ const CASES: &[(&str, fn())] = &[
 
 fn main() -> std::process::ExitCode {
     if spawned_as_plugin() {
-        speak();
-        return std::process::ExitCode::SUCCESS;
+        // Two halves, and the second is the one that used to be untested. The
+        // hand-written `speak` proves this host is right about the protocol; nothing
+        // proved the SDK every real plugin is written against was right about *it* — and
+        // it was not: it announced a plugin and then wrote the rest of its life to a
+        // stream the host never reads.
+        return if sdk_probe() {
+            serve_through_the_sdk()
+        } else {
+            speak();
+            std::process::ExitCode::SUCCESS
+        };
     }
     // Nothing is printed. The repository denies both `clippy::print_stdout` and
     // `clippy::print_stderr`, and the rule is right: on the product side a line on either
@@ -185,6 +208,16 @@ impl Probe {
     /// child — and the guard costs one line here rather than one in each of the six cases
     /// that follow.
     fn on_disk() -> Self {
+        Self::on_disk_as(ID, "Probe")
+    }
+
+    /// The same, for a plugin with a different id and name.
+    ///
+    /// Generalized because the SDK half needs an id of its own, and the reason is written
+    /// on [`SDK_ID`]: the child is told which half it is by the directory it was unpacked
+    /// into, and there is no other signal — the host hands a plugin the host's own
+    /// environment rather than one it has rewritten.
+    fn on_disk_as(id: &str, name: &str) -> Self {
         assert!(
             !spawned_as_plugin(),
             "a plugin process must not start another one: the recursion guard in `main` is what \\
@@ -192,10 +225,13 @@ impl Probe {
              without bound"
         );
         let root = tempfile::tempdir().expect("a temporary directory");
-        let directory = root.path().join(ID);
+        let directory = root.path().join(id);
         std::fs::create_dir_all(&directory).expect("a plugin directory");
-        std::fs::write(directory.join("plugin.json"), manifest().as_bytes())
-            .expect("writes the manifest");
+        std::fs::write(
+            directory.join("plugin.json"),
+            manifest_for(id, name).as_bytes(),
+        )
+        .expect("writes the manifest");
         std::fs::copy(current_executable(), directory.join(binary_name()))
             .expect("puts the executable beside it");
         Self {
@@ -214,8 +250,14 @@ impl Probe {
     /// Standing in for the worker is the point — a test that reached past the public API
     /// would not be testing the path the product runs.
     fn started(&mut self) -> &mut Self {
+        let id = self
+            .directory
+            .file_name()
+            .expect("a directory")
+            .to_string_lossy()
+            .into_owned();
         let session = Session::start(
-            PluginId::new(ID).expect("a valid id"),
+            PluginId::new(id.clone()).expect("a valid id"),
             self.directory.clone(),
             self.data.clone(),
             "2.0.1".to_string(),
@@ -228,8 +270,11 @@ impl Probe {
         let deadline = Instant::now() + PATIENCE;
         while Instant::now() < deadline {
             match self.step(&mut fonts) {
-                Step::Said(id) => {
-                    assert_eq!(id, ID, "the plugin announced the id it was started as");
+                Step::Said(announced) => {
+                    assert_eq!(
+                        announced, id,
+                        "the plugin announced the id it was started as"
+                    );
                     return self;
                 }
                 Step::Exited(code) => panic!(
@@ -348,6 +393,71 @@ enum Step {
 /// this binary the way the product does hands its child `1.0.0` rather than `probe`.
 /// Comparing the value would therefore let that child run this suite — which starts a
 /// plugin, whose child would do the same, without end.
+/// Whether this child is the SDK half rather than the hand-written one.
+fn sdk_probe() -> bool {
+    std::env::var("BONGOCAT_PLUGIN_ID").as_deref() == Ok(SDK_ID)
+}
+
+/// A plugin written the way a plugin author writes one: through the SDK, with nothing
+/// this file knows about the protocol.
+///
+/// The point of [`SDK_ID`]'s existence. Every other case in this file drives a child that
+/// speaks JSON by hand, which is a faithful test double for a plugin and a useless one for
+/// the SDK: a bug in the SDK is invisible to a double, because the double does not use it.
+fn serve_through_the_sdk() -> std::process::ExitCode {
+    use bongocat_plugin_sdk::prelude::*;
+    use bongocat_plugin_sdk::{Descriptor, Host, Plugin, Settings, Subscription, Tick};
+    // The SDK's own `Result`, named so it does not shadow the standard one this file uses
+    // to report a failing case.
+    use bongocat_plugin_sdk::Result as SdkResult;
+
+    /// The smallest plugin that draws something and declares something.
+    struct SdkProbe {
+        panel: Panel,
+    }
+
+    impl Plugin for SdkProbe {
+        fn descriptor(&self) -> Descriptor {
+            Descriptor::new(SDK_ID, "SDK probe")
+                .subscribe(Subscription::HostState)
+                .draws_panel()
+        }
+
+        fn settings(&mut self) -> Settings {
+            Settings::new().with(Toggle::new("flag", "Flag").into())
+        }
+
+        fn on_ready(&mut self, host: &mut Host) -> SdkResult<()> {
+            self.panel = Panel::new(PANEL_SIZE[0], PANEL_SIZE[1]).anchored(PluginAnchor::TopLeft);
+            // A surface rather than a line of text, and the reason is what this case
+            // asserts. The test's own text measurer carries no fonts — there are no font
+            // files to load in a test — so a scene of nothing but text rasterizes to
+            // nothing, and "the panel arrived" and "the panel has pixels in it" would be
+            // the same claim. A surface is a filled shape, so the pixels are its own.
+            self.panel.rebuild(|panel| {
+                panel.surface(6.0, [8.0, 8.0], |content| {
+                    content.text("drawn through the SDK", 12.0);
+                });
+            });
+            host.show(&mut self.panel);
+            Ok(())
+        }
+
+        fn on_tick(&mut self, _tick: Tick, host: &mut Host) {
+            // A redraw on every tick, so the stream this half uses is exercised long after
+            // the handshake rather than only by the announcement.
+            host.panel(&mut self.panel);
+        }
+    }
+
+    SdkProbe {
+        panel: Panel::new(PANEL_SIZE[0], PANEL_SIZE[1]),
+    }
+    .run()
+    .map(|()| std::process::ExitCode::SUCCESS)
+    .unwrap_or(std::process::ExitCode::FAILURE)
+}
+
 fn spawned_as_plugin() -> bool {
     std::env::var_os(SPAWNED_AS).is_some()
 }
@@ -358,8 +468,13 @@ fn spawned_as_plugin() -> bool {
 /// plugin's manifest has to get right about its own build — the name is a plain relative
 /// path into the plugin's own directory, and the host runs exactly what it says.
 fn manifest() -> String {
+    manifest_for(ID, "Probe")
+}
+
+/// The same document, for a plugin of another name and id.
+fn manifest_for(id: &str, name: &str) -> String {
     format!(
-        r#"{{"schema_version":1,"api_version":1,"id":"{ID}","name":"Probe","version":"1.0.0","executable":"{executable}"}}"#,
+        r#"{{"schema_version":1,"api_version":1,"id":"{id}","name":"{name}","version":"1.0.0","executable":"{executable}"}}"#,
         executable = binary_name()
     )
 }
@@ -460,6 +575,61 @@ fn a_process_is_believed() {
         "and the feeds it asked for are the feeds it is recorded as wanting"
     );
     assert!(facts.failure.is_none(), "{:?}", facts.failure);
+}
+
+/// The case this file was missing: a plugin that uses the SDK, over the same pipes.
+///
+/// Everything else here drives a child that writes the protocol by hand, which proves the
+/// *host* is right about it and says nothing about the *SDK* — and the SDK was wrong in
+/// the one way that cannot be seen from inside a plugin's own tests. It handed its host
+/// connection a stderr writer, so the announcement went to stdout and then every panel,
+/// control and answer went to a stream the host never reads: a plugin that introduced
+/// itself and then went silent for the rest of its life, while its own unit tests passed.
+///
+/// A plugin's own tests cannot catch this. They supply an in-memory host whose writes are
+/// captured, so the stream is not part of what they exercise, and a test that asserted
+/// "a panel was sent" would have been asserting about a buffer rather than about the pipe
+/// the product reads. So the assertion here is deliberately about the far end: a child
+/// process, real pipes, and a host that has to see the pixels.
+fn an_sdk_plugin_draws_a_panel() {
+    let mut probe = Probe::on_disk_as(SDK_ID, "SDK probe");
+    probe.started();
+
+    let facts = probe.session().facts();
+    assert!(
+        facts.failure.is_none(),
+        "an SDK plugin that cannot announce itself never gets far enough to be wrong later: \
+         {:?}",
+        facts.failure
+    );
+    assert!(
+        facts.draws_panel,
+        "so the flag the SDK carries reached the host, which is how a panel is told from a \
+         sound"
+    );
+    let schema = facts
+        .descriptor
+        .as_ref()
+        .map(|descriptor| &descriptor.config)
+        .expect("a descriptor");
+    assert_eq!(
+        schema
+            .fields
+            .iter()
+            .map(|field| field.key.as_str())
+            .collect::<Vec<_>>(),
+        ["flag"],
+        "and the settings reached it too — the host reads the descriptor and nothing else, so \
+         a schema the SDK did not put there is a settings form that renders nothing"
+    );
+
+    let panel = probe.await_panel();
+    assert!(
+        !panel.pixels.is_empty(),
+        "the panel the SDK drew arrived on the pipe the host reads, and was rasterized: {}",
+        probe.said(20)
+    );
+    let _ = panel;
 }
 
 fn a_panel_is_pressable() {

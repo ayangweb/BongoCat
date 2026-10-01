@@ -19,6 +19,8 @@
 ### 🐛 Bug Fixes
 
 - On Windows, BongoCat no longer freezes and quits when you click a link that opens an external website, such as "Report an issue" under Settings → About. The window also keeps painting while the browser starts.
+- Plugins draw on the model window again. A plugin announced itself and then wrote everything else — its panel, its buttons, its answers — to a stream the host never reads, so a plugin that introduced itself went silent for the rest of its life. No plugin had ever appeared on the model window, and the two bugs behind it could not be seen from inside a plugin's own tests.
+- A plugin's settings appear on its card again. The form was drawn from what the host was told, and the host was told a plugin had no settings at all, because the schema a plugin declared for itself never left its own process. Every settings form in the product was an empty panel.
 - On macOS, the menu bar icon no longer disappears after updating to a new version.
 - On Windows, an Xbox-mode controller no longer stops responding while another window has focus. BongoCat was reading controllers through a Windows gaming input interface that Windows only delivers to the app that currently owns the foreground window, so gamepad input only arrived while a BongoCat window was focused. Controllers Windows reads as raw HID devices, such as DS4 and Switch modes, were not affected.
 - On Windows, analog sticks and triggers on controllers that Windows reads as raw HID devices no longer report wrong values: a stick at rest read as full deflection in one direction, half its travel was clamped there, and an analog trigger at rest sat exactly on the press threshold so it could flicker. This affected Switch-mode, DS4-mode and other non-Xbox controller modes.
@@ -36,6 +38,9 @@ Korean is now available in Settings → Appearance & language. Existing configur
 ## 2.0.1 - 2026-09-29
 
 ### 🐛 Bug Fixes
+
+- Plugins draw on the model window again. A plugin announced itself and then wrote everything else — its panel, its buttons, its answers — to a stream the host never reads, so a plugin that introduced itself went silent for the rest of its life. No plugin had ever appeared on the model window, and the two bugs behind it could not be seen from inside a plugin's own tests.
+- A plugin's settings appear on its card again. The form was drawn from what the host was told, and the host was told a plugin had no settings at all, because the schema a plugin declared for itself never left its own process. Every settings form in the product was an empty panel.
 
 - Fixed some models failing to import with an "invalid model package" message.
 
@@ -66,6 +71,9 @@ Arabic, Vietnamese, Traditional Chinese, and Portuguese are now available.
 - Window shortcuts and model-behaviour shortcuts have separate switches.
 
 ### 🐛 Bug Fixes
+
+- Plugins draw on the model window again. A plugin announced itself and then wrote everything else — its panel, its buttons, its answers — to a stream the host never reads, so a plugin that introduced itself went silent for the rest of its life. No plugin had ever appeared on the model window, and the two bugs behind it could not be seen from inside a plugin's own tests.
+- A plugin's settings appear on its card again. The form was drawn from what the host was told, and the host was told a plugin had no settings at all, because the schema a plugin declared for itself never left its own process. Every settings form in the product was an empty panel.
 
 - Held keys and gamepad buttons no longer stay stuck after device, lock, sleep and permission changes.
 - Switching models or resizing the window no longer leaves the model window black, transparent or flickering.
