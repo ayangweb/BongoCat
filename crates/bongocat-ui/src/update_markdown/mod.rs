@@ -92,11 +92,15 @@ pub(crate) fn render(notes: &str) -> TextView {
         .markdown_extensions(extensions())
         .scrollable(false)
         .text_xs()
-        .on_link_click(|url, _, _, _| {
+        .on_link_click(|url, _, _, cx| {
             // The URL that reaches here is the one `gpui-kit` resolved, which for a link
             // *reference* is only knowable at this point. The opener re-checks the scheme
             // regardless, so this is the second of two independent refusals rather than
             // the only one.
-            let _ = bongocat_platform::open_external_url(url.as_ref());
+            //
+            // The hand-off goes to a background executor because `ShellExecuteW` pumps this
+            // process's message queue, and pumping re-enters GPUI's foreground tasks while
+            // they are inside the `App` borrow this callback is holding (issue #1081).
+            crate::external_link::open(url.to_string(), cx.background_executor()).detach();
         })
 }

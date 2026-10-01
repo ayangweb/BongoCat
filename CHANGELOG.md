@@ -8,6 +8,7 @@
 
 ### 🐛 Bug Fixes
 
+- On Windows, BongoCat no longer freezes and quits when you click a link that opens an external website, such as "Report an issue" under Settings → About. The window also keeps painting while the browser starts.
 - On macOS, the menu bar icon no longer disappears after updating to a new version.
 
 ### 🌍 Localization

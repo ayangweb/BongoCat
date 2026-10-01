@@ -21,6 +21,26 @@ impl ExternalUrlOpenError {
     }
 }
 
+/// Ask the operating system to open an HTTPS URL, and report whether it took it.
+///
+/// The call is synchronous and it **must not be made from a GUI callback that is
+/// holding the framework's application state**, which is a property of the
+/// platform rather than of this adapter, so it is stated here rather than left
+/// for a caller to discover:
+///
+/// * Windows resolves the URL with `ShellExecuteW`, which **pumps the calling
+///   process's message queue** before it returns (issue #1081). The pump
+///   delivers the messages a GUI framework's own windows handle, and handling
+///   them runs that framework's pending tasks on this thread, inside the
+///   callback. Those tasks ask for the application's state, which the callback is
+///   still holding. The macOS path runs the `open` command and pumps nothing,
+///   which is why the identical control was fine there.
+/// * Both platforms block until the browser they started has taken the URL, so
+///   the call has no place on a thread that has to keep painting either.
+///
+/// The caller therefore owns the threading and must run this off the thread that
+/// asked for the link. `bongocat_ui::external_link` is the one place in the
+/// product that does; nothing else should call this from a view callback.
 pub fn open_external_url(value: &str) -> Result<(), ExternalUrlOpenError> {
     open_external_url_with(value, launch_url)
 }
