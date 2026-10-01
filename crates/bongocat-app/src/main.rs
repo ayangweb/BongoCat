@@ -541,6 +541,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // drawn for a frame.
         if let Some(host) = plugin_host.as_ref() {
             host.apply_disabled_preference(&application.config().plugins.disabled);
+            // The user's arrangement, handed over the same way and for the same reason: the
+            // worker is the only thing that can use it, and a position for a plugin that is
+            // not drawing anything is kept so a plugin switched off and back on returns
+            // where it was.
+            host.apply_position_preference(&application.plugin_positions());
         }
         let settings_service =
             match bongocat_app::ApplicationSettingsService::start_with_product_capabilities(

@@ -546,6 +546,19 @@
       "state": {
         "running": "运行中",
         "stopped": "已停止"
+      },
+      "position_label": "显示位置",
+      "position_help": "该插件的面板在模型窗口中的位置。已被其他插件占用的位置不会出现。",
+      "position": {
+        "top_left": "左上",
+        "top": "上",
+        "top_right": "右上",
+        "left": "左",
+        "center": "中间",
+        "right": "右",
+        "bottom_left": "左下",
+        "bottom": "下",
+        "bottom_right": "右下"
       }
     }
   }

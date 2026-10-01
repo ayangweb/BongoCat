@@ -156,6 +156,22 @@ pub struct SettingsPluginField {
     pub options: Vec<SettingsFieldOption>,
 }
 
+/// One place a panel can go in the model window, as the settings form offers it.
+///
+/// A position is the *host's* to place and the user's to choose, so the window owns the
+/// words and the protocol owns the names: a plugin says it draws a panel, the host allocates
+/// one position per plugin, and the window shows a menu of the positions that are still
+/// free. A position another plugin holds is not on the list at all — a menu that offers a
+/// position and then refuses it is a control that lies.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SettingsPluginPosition {
+    /// The position's name in the plugin protocol's spelling, which is what the command
+    /// sends back. Never localized.
+    pub value: String,
+    /// What the user sees, in their own language.
+    pub label: String,
+}
+
 /// One control a plugin wants drawn, as the card draws it.
 ///
 /// The label is already resolved for the user's language, for the reason every other
@@ -251,6 +267,15 @@ pub struct SettingsPluginEntry {
     pub refusal: Option<SettingsPluginRefusal>,
     /// Why the plugin is not running, when it is not.
     pub failure: Option<SettingsPluginError>,
+    /// Where this plugin's panel is drawn, and where the user may move it.
+    ///
+    /// `None` for a plugin that draws no panel — a sound, a tally — and the position form is
+    /// not offered at all, because there is nothing on the model window to move. Otherwise
+    /// `value` is the position it is at right now and `options` is the menu: its own
+    /// position first, then the free ones, in the window's own order.
+    pub position: Option<SettingsPluginPosition>,
+    /// The positions this plugin may be moved to, its own first.
+    pub positions: Vec<SettingsPluginPosition>,
 }
 
 impl SettingsPluginEntry {

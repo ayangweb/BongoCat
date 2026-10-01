@@ -251,6 +251,10 @@ impl Plugin for TypingSound {
         // keeps its metadata in its own `plugin.json` is then a change to that one file, and
         // a card that said one thing before the plugin started and another after is not
         // expressible.
+        // No `draws_panel`, and deliberately: this plugin's output is a sound. The chip it
+        // puts up for a moment is a courtesy rather than something the user placed, and
+        // offering a position for it would be a control that changes where a notification
+        // lands for nine-tenths of a second.
         SELF.descriptor()
             // Input for the keystrokes, and model reactions for the answer: without the
             // second the plugin could ask a question and never learn whether it worked.

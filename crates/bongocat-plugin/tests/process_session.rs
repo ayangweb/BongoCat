@@ -875,6 +875,7 @@ fn speak() {
         description: "A test double.".into(),
         icon: Default::default(),
         config: Default::default(),
+        draws_panel: true,
         subscriptions: vec![Subscription::HostState],
     };
     send(

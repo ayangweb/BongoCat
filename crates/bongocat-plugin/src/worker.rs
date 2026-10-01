@@ -40,8 +40,8 @@ use crate::session::{HANDSHAKE_TIMEOUT, Incoming, Session, SessionOutcome, Sessi
 use crate::store::PluginStore;
 use bongocat_audio::MotionAudioClient;
 use bongocat_plugin_protocol::{
-    ConfigDocument, InstalledPlugin, LogLevel, ModelRequest, PluginCatalogEntry, PluginError,
-    PluginErrorCode, PluginId, PluginManifest, Subscription,
+    ConfigDocument, InstalledPlugin, LogLevel, ModelRequest, PluginAnchor, PluginCatalogEntry,
+    PluginError, PluginErrorCode, PluginId, PluginManifest, Subscription,
 };
 use bongocat_render::{OverlayLayer, OverlayLayerIds, OverlayLayerProducer};
 use std::collections::BTreeMap;
@@ -73,11 +73,19 @@ pub const MAXIMUM_TICK_INTERVAL: Duration = Duration::from_millis(250);
 
 /// The most plugins that may be enabled at once.
 ///
-/// A bound rather than a preference: every enabled plugin is a layer on the model
-/// window and layers overlap, so past a handful the model is not visible — which
-/// defeats the point of a panel that sits beside it. It is also a bound on the number
-/// of processes this worker is responsible for.
-pub const MAXIMUM_ENABLED_PLUGINS: usize = 4;
+/// The number of positions the model window has, read from the protocol rather than
+/// written here, and that is the whole of why: **one plugin per position.** The bound
+/// used to be four, a guess at how many panels a person could stand to look at, and it
+/// refused the fifth plugin for a reason that had nothing to do with the window — two of
+/// the plugins already installed could not run at the same time, which is not a limit
+/// anybody would accept if it were a limit of the product's rather than of a number
+/// somebody typed.
+///
+/// It is still a bound, and still needed: an enabled plugin is a process this worker is
+/// responsible for, and nothing bounds that but this. What changed is that the number now
+/// means something — it is what the model window can show without two panels landing on the
+/// same corner — rather than what a designer guessed about legibility.
+pub const MAXIMUM_ENABLED_PLUGINS: usize = crate::POSITIONS.len();
 
 /// How many commands may be queued before a send is dropped.
 const COMMAND_CAPACITY: usize = 32;
@@ -142,6 +150,20 @@ pub struct PluginEntry {
     pub restarts: u32,
     /// The feeds it asked for.
     pub subscriptions: Vec<Subscription>,
+    /// Where this plugin's panel is drawn, and whether the user put it there.
+    ///
+    /// `None` for a plugin that draws no panel at all, and for one that has not drawn one
+    /// yet — a position needs a panel to be a position of, and offering a menu of nine for a
+    /// sound plugin would be a control that changes nothing.
+    pub position: Option<crate::Placed>,
+    /// The positions this plugin may be moved to, its own first.
+    ///
+    /// Carried beside [`Self::position`] rather than derived from it, because a position
+    /// alone cannot say which of the other eight are free: that is a fact about every other
+    /// plugin, and a caller that had to work it out would be reimplementing the allocation.
+    /// A position another plugin holds is *absent* from this list rather than marked
+    /// unavailable, so a menu built from it offers nothing that would be refused.
+    pub positions: Vec<PluginAnchor>,
     /// The controls it wants the host to draw on its card, newest list first.
     ///
     /// Empty for a plugin that offered none, for one that is not running, and for one
@@ -314,6 +336,15 @@ pub enum PluginCommand {
     /// switches language expects a panel that is in it to switch with them. A plugin
     /// running when this arrives sees the new value on its next tick.
     SetLocale { locale: String },
+    /// The user moved one plugin's panel.
+    ///
+    /// A preference rather than a command to draw: it is applied when the next layer is
+    /// published, and it does not ask the plugin to redraw, because a corner is the model's
+    /// arrangement and the panel's own pixels do not change when it moves.
+    SetPosition {
+        id: PluginId,
+        anchor: bongocat_plugin_protocol::PluginAnchor,
+    },
     /// The user changed one of a plugin's settings.
     ///
     /// The whole document rather than one field, because the plugin writes its own
@@ -657,6 +688,7 @@ pub fn start(
                 sessions: BTreeMap::new(),
                 feeds: FeedSet::new(),
                 bubbles: BubbleSet::new(),
+                positions: BTreeMap::new(),
                 started: Instant::now(),
                 last_tick: Instant::now(),
                 locale,
@@ -712,6 +744,12 @@ struct Worker {
     feeds: FeedSet,
     /// The bubbles currently showing, by layer.
     bubbles: BubbleSet,
+    /// Where the user put each plugin's panel, by id.
+    ///
+    /// A preference rather than a reservation: a position named here for a plugin that is
+    /// not drawing anything right now is not held, so switching a plugin off frees its
+    /// corner for somebody else without the file being edited.
+    positions: BTreeMap<PluginId, bongocat_plugin_protocol::PluginAnchor>,
     /// When this worker started, which is what a plugin's `elapsed_ms` counts from.
     started: Instant,
     /// When a tick was last sent, so the interval is bounded without depending on how
@@ -1126,12 +1164,22 @@ impl Worker {
     fn publish_layers(&mut self, layer_ids: &OverlayLayerIds) {
         let mut layers: Vec<OverlayLayer> = Vec::new();
         let mut used: Vec<u64> = Vec::new();
+        let placements = self.placements();
         for session in self.sessions.values() {
             let layer_id = session.layer_id();
             if let Some(rendered) = session.rendered() {
+                let mut placement = rendered.to_placement();
+                // The host owns where a panel goes: the plugin said which corner it would
+                // prefer, the user may have moved it, and one plugin holds each position —
+                // so the anchor is read here rather than taken from the panel. Everything
+                // else in the placement stays the plugin's, because a panel's size and
+                // opacity are its business and a corner is the model's.
+                if let Some(placed) = placements.of(session.id()) {
+                    placement.anchor = placed.anchor.to_overlay_anchor();
+                }
                 layers.push(OverlayLayer {
                     id: layer_id,
-                    placement: rendered.to_placement(),
+                    placement,
                     raster: rendered.to_raster(),
                 });
                 used.push(layer_id);
@@ -1182,6 +1230,14 @@ impl Worker {
                     self.diagnostics.presses_ignored =
                         self.diagnostics.presses_ignored.saturating_add(1);
                 }
+            }
+            PluginCommand::SetPosition { id, anchor } => {
+                self.positions.insert(id, anchor);
+                // Published because a card reads the position and the settings form offers
+                // it; publishing without republishing the layers would move the panel a
+                // frame later than the control that moved it.
+                self.publish_layers(layer_ids);
+                self.publish(None, None);
             }
             PluginCommand::SetConfig { id, config } => self.set_config(&id, config),
             PluginCommand::Input { events } => {
@@ -1269,6 +1325,8 @@ impl Worker {
                         .as_ref()
                         .map(|facts| facts.subscriptions.clone())
                         .unwrap_or_default(),
+                    position: self.position_of(&record.id),
+                    positions: self.positions_for(&record.id),
                     actions: facts
                         .as_ref()
                         .map(|facts| facts.actions.clone())
@@ -1310,6 +1368,8 @@ impl Worker {
                             .as_ref()
                             .map(|entry| entry.subscriptions.clone())
                             .unwrap_or_default(),
+                        position: self.position_of(&offer.id),
+                        positions: self.positions_for(&offer.id),
                         actions: installed
                             .as_ref()
                             .map(|entry| entry.actions.clone())
@@ -1646,6 +1706,39 @@ impl Worker {
         }
         self.diagnostics.presses_handled = self.diagnostics.presses_handled.saturating_add(1);
         true
+    }
+
+    /// Where every plugin's panel is drawn, right now.
+    ///
+    /// Computed on demand rather than cached, so there is no map to forget to update when a
+    /// plugin starts, stops, draws its first panel or changes the corner it would prefer.
+    /// The cost is a handful of comparisons per published snapshot, against a bug class —
+    /// a card, a form and a layer disagreeing about where a panel is — that no test of the
+    /// allocator alone would find.
+    fn placements(&self) -> crate::Placements {
+        let wanted: Vec<(PluginId, bongocat_plugin_protocol::PluginAnchor)> = self
+            .sessions
+            .values()
+            .filter(|session| session.is_running() && session.draws_panel())
+            .map(|session| {
+                let preferred = session
+                    .panel()
+                    .map(|panel| panel.placement.anchor)
+                    .unwrap_or_default();
+                (session.id().clone(), preferred)
+            })
+            .collect();
+        crate::Placements::allocate(&wanted, &self.positions)
+    }
+
+    /// One plugin's position, for the snapshot.
+    fn position_of(&self, id: &PluginId) -> Option<crate::Placed> {
+        self.placements().of(id)
+    }
+
+    /// The positions one plugin may be moved to, for the snapshot.
+    fn positions_for(&self, id: &PluginId) -> Vec<PluginAnchor> {
+        self.placements().available_for(id)
     }
 
     /// What the runtime currently says, for the facts a plugin may show.

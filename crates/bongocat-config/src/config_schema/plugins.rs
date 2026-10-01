@@ -11,22 +11,42 @@
 //! `schema_version` gate rather than half-read.
 
 use super::*;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The most plugins that may be switched on at once.
 ///
-/// The same bound the plugin worker enforces, recorded here so the settings window
-/// can grey out the last switch rather than accepting a press that would be
-/// refused. Two bounds in two places is a duplication; the one that decides is the
-/// worker's, and this one exists so the user learns about the limit before
-/// pressing the button.
-pub const MAXIMUM_ENABLED_PLUGINS: usize = 4;
+/// The number of positions the model window has, and the same bound the plugin worker
+/// enforces. It used to be four — a guess at how many panels a person could stand to
+/// look at — and a guess is exactly what this is not any more: **a plugin costs a position,
+/// and a position is all there is.** One plugin per corner means nine is the most that can
+/// be drawn without two of them overlapping, and a tenth would be a plugin the model window
+/// has no room for rather than a panel the user can see.
+///
+/// Recorded here as well as in the worker so the settings window can grey out the last
+/// switch instead of accepting a press that would be refused. Two bounds in two places is a
+/// duplication; the one that decides is the worker's, and this one exists so the user learns
+/// about the limit before pressing the button.
+pub const MAXIMUM_ENABLED_PLUGINS: usize = 9;
 
 /// The longest a plugin id may be in this document, in bytes.
 ///
 /// Matches the protocol's own bound, so an id that could not be a directory name
 /// cannot be recorded here either.
 pub const MAXIMUM_PLUGIN_ID_BYTES: usize = 64;
+
+/// The longest a position's name may be in this document, in bytes.
+///
+/// The longest the protocol's own names are, with room to spare, so a name that cannot be a
+/// position is caught here rather than reaching the host as a string nothing will match.
+pub const MAXIMUM_POSITION_BYTES: usize = 32;
+
+/// The most plugins this document may place.
+///
+/// The number of positions the model window has, and the same bound the worker enforces on
+/// the enabled set: a plugin costs a position, so this cannot be larger than there are
+/// positions, and a value that is only ever checked by the worker would be a switch the
+/// settings window greys out for a reason it cannot explain.
+pub const MAXIMUM_PLUGINS: usize = 9;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
@@ -54,6 +74,25 @@ pub struct PluginsConfig {
     /// is a file whose author can be told which one is wrong.
     #[serde(default)]
     pub disabled: Vec<String>,
+    /// Where the user put each plugin's panel, by plugin id.
+    ///
+    /// A third list rather than a field on the two above, and the reason is the same as the
+    /// one that put `disabled` beside `enabled`: a plugin nobody has moved is not at any
+    /// position the user chose, and a document whose every row is a decision cannot say
+    /// "nothing has been decided".
+    ///
+    /// The value is a position's name in the plugin protocol's own spelling. This crate
+    /// checks that the value is a usable name and not that it is one this build has: the
+    /// protocol owns the vocabulary, and a name a newer build wrote is read as "the plugin's
+    /// own corner" rather than refused, because refusing it would drop a panel over a
+    /// spelling this build has not heard of.
+    ///
+    /// Two entries may name the same position. That is a file a person edited, not a
+    /// contradiction the product can resolve at load — the plugin worker allocates one plugin
+    /// per position and gives the other its own corner, so the duplicate costs nothing and is
+    /// visible in the settings form as the position one of them actually got.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub positions: BTreeMap<String, String>,
 }
 
 impl PluginsConfig {
@@ -99,7 +138,34 @@ impl PluginsConfig {
         Self {
             enabled: on,
             disabled: off,
+            positions: self.positions.clone(),
         }
+    }
+
+    /// This arrangement with one plugin's position set, in the protocol's spelling.
+    ///
+    /// Sorted by the map's own key, so the document is stable: a file whose ordering
+    /// changes on every write is a file that shows a diff the user did not make.
+    pub fn with_position(&self, id: &str, position: Option<&str>) -> Self {
+        let mut positions = self.positions.clone();
+        match position {
+            Some(position) => {
+                positions.insert(id.to_owned(), position.to_owned());
+            }
+            None => {
+                positions.remove(id);
+            }
+        }
+        Self {
+            enabled: self.enabled.clone(),
+            disabled: self.disabled.clone(),
+            positions,
+        }
+    }
+
+    /// Where the user put this plugin's panel, when they have.
+    pub fn position_of(&self, id: &str) -> Option<&str> {
+        self.positions.get(id).map(String::as_str)
     }
 
     /// The first problem with these lists, or `None`.
@@ -128,6 +194,27 @@ impl PluginsConfig {
         {
             return Err(ConfigError::InvalidValue("plugins.disabled"));
         }
+        if self.positions.len() > MAXIMUM_PLUGINS {
+            return Err(ConfigError::InvalidValue("plugins.positions"));
+        }
+        for (id, position) in &self.positions {
+            if id.is_empty() || id.len() > MAXIMUM_PLUGIN_ID_BYTES {
+                return Err(ConfigError::InvalidValue("plugins.positions"));
+            }
+            if position.is_empty() || position.len() > MAXIMUM_POSITION_BYTES {
+                return Err(ConfigError::InvalidValue("plugins.positions"));
+            }
+            // The protocol owns the vocabulary of positions, so what this can check is that
+            // the value is a name rather than a sentence — a hand-edited path or a stray
+            // paste. Whether it is a position this build has is the host's to say, and it
+            // says it by falling back rather than by refusing the file.
+            if !position
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+            {
+                return Err(ConfigError::InvalidValue("plugins.positions"));
+            }
+        }
         Ok(())
     }
 }
@@ -140,6 +227,7 @@ mod tests {
         PluginsConfig {
             enabled: enabled.iter().map(|id| (*id).to_owned()).collect(),
             disabled: disabled.iter().map(|id| (*id).to_owned()).collect(),
+            positions: BTreeMap::new(),
         }
     }
 
@@ -206,6 +294,114 @@ mod tests {
                 .is_ok(),
             "and a file the product wrote itself is always one of the answers"
         );
+    }
+
+    #[test]
+    fn a_position_a_plugin_was_moved_to_is_remembered_and_can_be_forgotten() {
+        let after = PluginsConfig::default()
+            .with_position("pomodoro", Some("bottom_left"))
+            .with_position("typing-sound", Some("top_right"));
+        assert_eq!(after.position_of("pomodoro"), Some("bottom_left"));
+        assert_eq!(after.position_of("typing-sound"), Some("top_right"));
+        assert_eq!(
+            after.position_of("keyboard-display"),
+            None,
+            "and a plugin nobody moved reads as having no position, which is what lets its \
+             own corner be the answer"
+        );
+
+        let moved = after.with_position("pomodoro", Some("top_center"));
+        assert_eq!(moved.position_of("pomodoro"), Some("top_center"));
+        assert!(
+            moved.validate().is_ok(),
+            "and moving it leaves one position per plugin, not two"
+        );
+
+        let forgotten = after.with_position("pomodoro", None);
+        assert_eq!(forgotten.position_of("pomodoro"), None);
+        assert_eq!(
+            forgotten.position_of("typing-sound"),
+            Some("top_right"),
+            "while the others keep theirs"
+        );
+    }
+
+    #[test]
+    fn switching_a_plugin_off_keeps_where_it_was() {
+        // The position is a preference, not a reservation: a plugin switched off and back on
+        // should come back where it was, and its corner should be free in the meantime —
+        // which the worker's allocation decides, not this document.
+        let after = PluginsConfig::default()
+            .with_position("pomodoro", Some("bottom_left"))
+            .with("pomodoro", false);
+        assert_eq!(
+            after.position_of("pomodoro"),
+            Some("bottom_left"),
+            "because the two lists are two different decisions"
+        );
+    }
+
+    #[test]
+    fn two_plugins_naming_the_same_position_is_a_file_and_not_a_failure() {
+        // A hand-edited document, and the product's rule is one plugin per position. The
+        // worker resolves it — the first by id keeps it and the other takes its own corner —
+        // so refusing the file here would drop a panel over a duplicate line the user can
+        // see and fix in the settings form.
+        let duplicate = PluginsConfig {
+            positions: BTreeMap::from([
+                ("pomodoro".to_owned(), "top_left".to_owned()),
+                ("typing-sound".to_owned(), "top_left".to_owned()),
+            ]),
+            ..PluginsConfig::default()
+        };
+        assert!(duplicate.validate().is_ok());
+    }
+
+    #[test]
+    fn a_position_that_is_not_a_name_is_refused() {
+        for (id, position) in [
+            ("pomodoro", ""),
+            ("pomodoro", "../somewhere"),
+            ("pomodoro", "Top Left"),
+            ("pomodoro", &"x".repeat(MAXIMUM_POSITION_BYTES + 1)),
+            ("", "top_left"),
+        ] {
+            let document = PluginsConfig {
+                positions: BTreeMap::from([(id.to_owned(), position.to_owned())]),
+                ..PluginsConfig::default()
+            };
+            assert!(
+                document.validate().is_err(),
+                "{id:?} -> {position:?} is not a place a panel can be"
+            );
+        }
+    }
+
+    #[test]
+    fn more_positions_than_the_window_has_is_refused() {
+        let document = PluginsConfig {
+            positions: (0..=MAXIMUM_PLUGINS)
+                .map(|index| (format!("plugin-{index}"), "top_left".to_owned()))
+                .collect(),
+            ..PluginsConfig::default()
+        };
+        assert!(
+            document.validate().is_err(),
+            "because the model window has {MAXIMUM_PLUGINS} positions and one is for one plugin"
+        );
+    }
+
+    #[test]
+    fn a_document_written_before_positions_existed_reads_unchanged() {
+        // The compatibility that matters: a configuration from a build that had no positions
+        // has no such field, and it must read with every position free rather than failing
+        // or inventing one.
+        let read: PluginsConfig =
+            serde_json::from_str(r#"{"enabled":["pomodoro"],"disabled":["typing-sound"]}"#)
+                .expect("a document from before positions existed");
+        assert!(read.positions.is_empty());
+        assert!(read.validate().is_ok());
+        assert!(read.is_enabled("pomodoro"));
     }
 
     #[test]

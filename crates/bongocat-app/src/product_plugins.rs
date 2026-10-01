@@ -165,6 +165,30 @@ impl ProductPluginHost {
         }
     }
 
+    /// Apply the persisted preference to where each plugin's panel sits.
+    ///
+    /// Sent as commands rather than pushed into the worker, for the same reason
+    /// [`Self::apply_disabled_preference`] is: the worker is the only thing that can use it,
+    /// and the command channel is how the product reaches it.
+    ///
+    /// A position for a plugin that is not drawing anything is kept anyway — the file says
+    /// where the user put it, and a plugin switched off and back on should come back where
+    /// it was. Whether the position is *held* while the plugin is off is the allocator's
+    /// decision, not this one's.
+    pub(crate) fn apply_position_preference(
+        &self,
+        positions: &[(bongocat_plugin::PluginId, bongocat_plugin::PluginAnchor)],
+    ) {
+        for (id, anchor) in positions {
+            let _ = self
+                .endpoint
+                .send(bongocat_plugin::PluginCommand::SetPosition {
+                    id: id.clone(),
+                    anchor: *anchor,
+                });
+        }
+    }
+
     /// Re-read the local clock if the interval has passed.
     ///
     /// Called from the frame loop, which runs on the main thread. The rate limit is here

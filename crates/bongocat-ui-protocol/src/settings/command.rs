@@ -265,6 +265,26 @@ pub enum SettingsCommand {
         config: BTreeMap<String, SettingsFieldValue>,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Move one plugin's panel to another place in the model window.
+    ///
+    /// Separate from [`Self::SetPluginConfig`] because the position is not the plugin's:
+    /// it is the host's arrangement of the model window, kept in the product's own
+    /// configuration and never sent to the plugin, which does not even know it moved. One
+    /// command per position rather than a document, so a second position the same plugin
+    /// does not hold is refused at the press rather than written and quietly ignored.
+    SetPluginPosition {
+        plugin: String,
+        /// The position's name in the plugin protocol's spelling. Absent would mean "no
+        /// position", so an empty string is not one: the window sends [`None`] instead, to
+        /// put the panel back in its plugin's own corner.
+        position: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
+    /// Put one plugin's panel back in its own corner, forgetting where the user moved it.
+    ClearPluginPosition {
+        plugin: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     /// Press one of the controls a plugin offered for the host to draw.
     ///
     /// `action` is the id the plugin declared, which is the same id vocabulary a panel

@@ -368,6 +368,7 @@ mod tests {
                     control: ConfigControl::Toggle { default: false },
                 }],
             },
+            draws_panel: true,
             subscriptions: vec![crate::descriptor::Subscription::Input],
         }
     }

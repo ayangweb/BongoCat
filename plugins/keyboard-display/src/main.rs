@@ -262,7 +262,14 @@ impl Plugin for KeyDisplay {
         // keeps its metadata in its own `plugin.json` is then a change to that one file, and
         // a card that said one thing before the plugin started and another after is not
         // expressible.
-        SELF.descriptor().subscribe(Subscription::Input)
+        // `draws_panel` says this plugin *has* a place in the model window, not where the
+        // place is: one plugin holds each of the nine positions, the user chooses, and the
+        // host applies it when the layer is published. Without it the panel would still
+        // draw — in the corner this plugin asked for — but the user would be offered no
+        // position to move it to.
+        SELF.descriptor()
+            .draws_panel()
+            .subscribe(Subscription::Input)
     }
 
     fn settings(&mut self) -> Settings {
@@ -1025,6 +1032,23 @@ mod tests {
             !descriptor.subscribes_to(Subscription::HostState),
             "and it has no use for the model's name or the window's visibility"
         );
+    }
+
+    #[test]
+    fn this_plugin_asks_for_a_position_and_the_sound_one_does_not() {
+        // Placement is the host's — one plugin per corner, the user chooses — so a plugin
+        // says only that it *has* a place. A plugin that draws a panel without saying so
+        // still draws it, in the corner it asked for, but the user is offered no position
+        // to move it to, which is the half of the mechanism a plugin can be silent about.
+        let plugin = KeyDisplay::new(Preferences::default());
+        assert!(
+            plugin.descriptor().has_panel(),
+            "a display of held keys is a panel on the model window"
+        );
+        plugin
+            .descriptor()
+            .check()
+            .expect("and it is a descriptor the host accepts");
     }
 
     #[test]

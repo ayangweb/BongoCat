@@ -64,25 +64,83 @@ impl PluginSettingsDraft {
 pub(super) fn field_rows(
     entry: &SettingsPluginEntry,
     view: Entity<SettingsView>,
+    language: SettingsLanguage,
 ) -> Vec<SettingItem> {
     // Every value is cloned into its control's getter, so a row owns its own copy of
     // what it draws. That is what lets a `SettingItem` outlive the borrow of the
     // snapshot it was built from — which it must, because the page holds rows across
     // a snapshot that will be replaced under it.
-    entry
-        .fields
+    let mut rows = position_row(entry, view.clone(), language);
+    rows.extend(entry.fields.iter().map(|field| {
+        let mut row = SettingItem::new(
+            SharedString::from(field.label.clone()),
+            field_control(entry, field, view.clone()),
+        );
+        if let Some(description) = &field.description {
+            row = row.description(SharedString::from(description.clone()));
+        }
+        row
+    }));
+    rows
+}
+
+/// The row that says where this plugin's panel is, for a plugin that draws one.
+///
+/// First, because it is the one thing on the form that is not the plugin's: placement is
+/// the host's — one plugin per corner of the model window, chosen by the user — and a row
+/// about the model's own arrangement belongs above the plugin's own settings rather than
+/// among them.
+///
+/// Absent for a plugin that draws no panel, which is the whole of how a sound plugin stays
+/// out of this: there is nothing on the model window to move, so there is no row to offer.
+/// The menu carries only the positions that are free, because a menu that offered a corner
+/// and then refused it would be a control that lies.
+fn position_row(
+    entry: &SettingsPluginEntry,
+    view: Entity<SettingsView>,
+    language: SettingsLanguage,
+) -> Vec<SettingItem> {
+    let Some(current) = entry.position.clone() else {
+        return Vec::new();
+    };
+    let options: Vec<(SharedString, SharedString)> = entry
+        .positions
         .iter()
-        .map(|field| {
-            let mut row = SettingItem::new(
-                SharedString::from(field.label.clone()),
-                field_control(entry, field, view.clone()),
-            );
-            if let Some(description) = &field.description {
-                row = row.description(SharedString::from(description.clone()));
-            }
-            row
+        .map(|position| {
+            (
+                SharedString::from(position.value.clone()),
+                SharedString::from(position.label.clone()),
+            )
         })
-        .collect()
+        .collect();
+    let current = SharedString::from(current.value);
+    let plugin = entry.id.clone();
+    let control = AnyField::dropdown(SettingField::dropdown(
+        options,
+        move |_app| current.clone(),
+        {
+            let plugin = plugin.clone();
+            let view = view.clone();
+            move |value, app| {
+                view.update(app, |view, cx| {
+                    view.set_plugin_position(&plugin, &value, cx);
+                });
+            }
+        },
+    ));
+    vec![
+        SettingItem::new(
+            SharedString::from(bongocat_i18n::text(
+                language.catalog_locale(),
+                "settings.plugins.position_label",
+            )),
+            control,
+        )
+        .description(SharedString::from(bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.plugins.position_help",
+        ))),
+    ]
 }
 
 /// One plugin's open settings, as the page's items: the header, then the fields.
@@ -101,7 +159,7 @@ pub(super) fn panel(
     language: SettingsLanguage,
 ) -> Vec<SettingItem> {
     let mut items = vec![header(entry.clone(), view.clone(), language)];
-    items.extend(field_rows(entry, view));
+    items.extend(field_rows(entry, view, language));
     items
 }
 

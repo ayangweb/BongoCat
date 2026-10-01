@@ -44,6 +44,65 @@ impl Application {
         Ok(())
     }
 
+    /// Record where the user put one plugin's panel.
+    ///
+    /// Only the preference is written, for the same reason [`Self::set_plugin_enabled`]
+    /// only writes the preference: whether the plugin is installed, and whether the position
+    /// is free, are the worker's answers rather than the document's. A position for a plugin
+    /// that is not drawing anything is kept — the user put it there, and a plugin switched
+    /// off and back on should come back where it was — and the worker frees the corner in
+    /// the meantime.
+    ///
+    /// `None` forgets the position, which is what the settings form sends when a plugin goes
+    /// back to its own corner. `Some` is checked against the protocol's own spelling before
+    /// the commit, so a name this build has no position for is refused here — at the press —
+    /// rather than written and read back as a corner the user cannot see.
+    pub fn set_plugin_position(
+        &mut self,
+        id: &str,
+        position: Option<&str>,
+    ) -> Result<(), ApplicationError> {
+        if let Some(position) = position
+            && bongocat_plugin::parse_anchor(position).is_none()
+        {
+            return Err(ApplicationError::PluginPreferenceOutOfBounds);
+        }
+        let next = self.config.plugins.with_position(id, position);
+        if next.validate().is_err() {
+            return Err(ApplicationError::PluginPreferenceOutOfBounds);
+        }
+        let mut next_config = self.config.clone();
+        next_config.plugins = next;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
+    }
+
+    /// Every plugin's position, in the worker's own vocabulary.
+    ///
+    /// For the worker at startup, and the one place the document's strings become anchors:
+    /// an id or a position this build does not recognise is left out rather than refused, so
+    /// a configuration written by a newer version starts with the plugins it can place and
+    /// the rest in their own corners.
+    pub fn plugin_positions(
+        &self,
+    ) -> Vec<(bongocat_plugin::PluginId, bongocat_plugin::PluginAnchor)> {
+        self.config
+            .plugins
+            .positions
+            .iter()
+            .filter_map(|(id, position)| {
+                Some((
+                    bongocat_plugin::PluginId::new(id.clone()).ok()?,
+                    bongocat_plugin::parse_anchor(position)?,
+                ))
+            })
+            .collect()
+    }
+
     pub fn set_appearance_theme(&mut self, theme: ConfigTheme) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.appearance.theme = theme;

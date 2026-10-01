@@ -301,6 +301,29 @@ impl SettingsView {
         .detach();
     }
 
+    /// Move one plugin's panel to another corner of the model window.
+    ///
+    /// A press through the same operation gate as everything else on this page, and
+    /// fire-and-forget like a configuration change rather than a plugin action: the panel
+    /// moves because the host applied it, and the position the plugin *actually* got is on
+    /// the next snapshot — which is the answer, because another plugin may already hold the
+    /// corner that was asked for.
+    pub(super) fn set_plugin_position(
+        &mut self,
+        plugin: &str,
+        position: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let plugin = plugin.to_string();
+        let position = position.to_string();
+        let client = self.client.clone();
+        cx.spawn(async move |_this, cx| {
+            let _ = client.set_plugin_position(plugin, position).await;
+            let _ = cx;
+        })
+        .detach();
+    }
+
     /// Whether another settings change is already in flight.
     ///
     /// The same gate every other page uses, deliberately: a plugin download is slow,

@@ -406,6 +406,12 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "positions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
         }
       },
       "type": "object"

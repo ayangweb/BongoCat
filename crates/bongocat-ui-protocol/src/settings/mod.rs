@@ -62,7 +62,8 @@ pub use model_import::{
 pub use plugins::{
     SettingsActionGlyph, SettingsFieldKind, SettingsFieldOption, SettingsFieldValue,
     SettingsPluginAction, SettingsPluginEntry, SettingsPluginError, SettingsPluginErrorCode,
-    SettingsPluginField, SettingsPluginIcon, SettingsPluginRefusal, SettingsPlugins,
+    SettingsPluginField, SettingsPluginIcon, SettingsPluginPosition, SettingsPluginRefusal,
+    SettingsPlugins,
 };
 pub use runtime::{
     RuntimeHealth, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,

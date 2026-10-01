@@ -546,6 +546,19 @@
         "render": "이 플러그인의 패널을 그릴 수 없습니다.",
         "plugin": "이 플러그인을 시작할 수 없습니다.",
         "other": "플러그인 작업이 완료되지 않았습니다."
+      },
+      "position_label": "표시 위치",
+      "position_help": "이 플러그인의 패널이 모델 창에서 놓일 위치입니다. 다른 플러그인이 사용 중인 위치는 목록에 나타나지 않습니다.",
+      "position": {
+        "top_left": "왼쪽 위",
+        "top": "위",
+        "top_right": "오른쪽 위",
+        "left": "왼쪽",
+        "center": "가운데",
+        "right": "오른쪽",
+        "bottom_left": "왼쪽 아래",
+        "bottom": "아래",
+        "bottom_right": "오른쪽 아래"
       }
     }
   }

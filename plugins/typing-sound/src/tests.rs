@@ -814,6 +814,19 @@ fn the_descriptor_is_valid_before_the_plugin_talks_to_anybody() {
 }
 
 #[test]
+fn this_plugin_asks_for_no_position() {
+    // A sound has no place in the model window, and the chip this plugin puts up for a
+    // moment is a courtesy rather than something a user would place. Asking for a position
+    // would offer a control that changes where a notification lands for nine-tenths of a
+    // second, and would take a corner away from a plugin that does show something.
+    let plugin = TypingSound::new(Preferences::default());
+    assert!(
+        !plugin.descriptor().has_panel(),
+        "so the settings form is offered no display position for this plugin"
+    );
+}
+
+#[test]
 fn a_panel_this_plugin_builds_is_one_the_host_accepts() {
     let written = harness();
     let mut plugin = TypingSound::new(Preferences::default());

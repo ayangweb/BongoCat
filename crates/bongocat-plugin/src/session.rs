@@ -92,6 +92,8 @@ pub struct SessionFacts {
     pub restarts: u32,
     /// Whether the plugin wants each feed. A plugin that did not ask is not sent one.
     pub subscriptions: Vec<Subscription>,
+    /// Whether the plugin asked for a position of its own in the model window.
+    pub draws_panel: bool,
     /// The controls the plugin last asked the host to draw on its card.
     ///
     /// Empty for a plugin that offered none, and for one that has not run yet — the
@@ -437,6 +439,19 @@ impl Session {
         self.state.is_alive()
     }
 
+    /// Whether this plugin asked for a position of its own in the model window.
+    ///
+    /// False before the handshake, which is deliberate: a plugin is placed from the moment it
+    /// is enabled rather than from the moment it says hello, so a panel that arrives first
+    /// still gets a corner nobody else holds. And a panel a plugin draws without asking
+    /// still sits where its own anchor puts it, because this decides only whether the *user*
+    /// is offered a position to move.
+    pub fn draws_panel(&self) -> bool {
+        self.descriptor
+            .as_ref()
+            .is_some_and(|descriptor| descriptor.draws_panel)
+    }
+
     /// What this session has to say about its plugin.
     pub fn facts(&self) -> SessionFacts {
         SessionFacts {
@@ -446,6 +461,10 @@ impl Session {
             config: self.config.clone(),
             failure: self.failure.clone(),
             restarts: self.restarts,
+            draws_panel: self
+                .descriptor
+                .as_ref()
+                .is_some_and(|descriptor| descriptor.draws_panel),
             subscriptions: self
                 .descriptor
                 .as_ref()
@@ -1119,6 +1138,7 @@ mod tests {
             description: Default::default(),
             icon: Default::default(),
             config: Default::default(),
+            draws_panel: true,
             subscriptions: vec![Subscription::Input],
         }
     }

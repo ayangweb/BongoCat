@@ -251,6 +251,7 @@ pub struct Descriptor {
     description: LocalizedText,
     icon: bongocat_plugin_protocol::PluginIcon,
     settings: Settings,
+    draws_panel: bool,
     subscriptions: Vec<Subscription>,
 }
 
@@ -270,6 +271,7 @@ impl Descriptor {
             description: LocalizedText::default(),
             icon: bongocat_plugin_protocol::PluginIcon::default(),
             settings: Settings::new(),
+            draws_panel: false,
             subscriptions: Vec::new(),
         }
     }
@@ -343,6 +345,26 @@ impl Descriptor {
         self
     }
 
+    /// This plugin draws a panel the user can place in the model window.
+    ///
+    /// Says the plugin *has* a place, not where the place is: one plugin per position, the
+    /// user chooses, and the host applies it when the layer is published. A plugin with
+    /// nothing visual — a sound, a tally that only speaks through its card — leaves this
+    /// alone and is offered no position to move.
+    ///
+    /// A plugin that draws a panel without saying so still works: its panel sits where its
+    /// own anchor puts it. The flag is what makes the position *editable*, not what makes
+    /// the panel appear.
+    pub fn draws_panel(mut self) -> Self {
+        self.draws_panel = true;
+        self
+    }
+
+    /// Whether this plugin asked for a position of its own.
+    pub fn has_panel(&self) -> bool {
+        self.draws_panel
+    }
+
     /// Ask for a feed.
     ///
     /// Without a subscription a plugin is never sent input events at all, so a tally
@@ -408,6 +430,7 @@ impl Descriptor {
             description: self.description.clone(),
             icon: self.icon.clone(),
             config: self.settings.to_schema()?,
+            draws_panel: self.draws_panel,
             subscriptions: self.subscriptions.clone(),
         };
         descriptor.validate().map_err(invalid)?;

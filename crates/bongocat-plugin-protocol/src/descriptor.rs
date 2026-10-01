@@ -408,6 +408,20 @@ pub struct PluginDescriptor {
     /// The settings the plugin wants the user to be able to change.
     #[serde(default)]
     pub config: ConfigSchema,
+    /// Whether this plugin's output is a panel the user can place in the model window.
+    ///
+    /// The plugin says it *has* a place; it does not say where the place is. Placement is
+    /// the host's — one plugin per position, chosen by the user, applied when the layer is
+    /// published — and this flag is what lets the host tell a plugin that has a place from
+    /// one that has none, so a sound or a tally is offered no position to move and a
+    /// countdown is.
+    ///
+    /// A panel a plugin draws without saying so is drawn where its own anchor puts it and
+    /// takes part in no placement at all. That is a safe default for a plugin that did not
+    /// know about the flag, and it is why the flag is additive: a plugin built against an
+    /// older host keeps working, it just is not offered a position.
+    #[serde(default)]
+    pub draws_panel: bool,
     /// The feeds it wants.
     #[serde(default)]
     pub subscriptions: Vec<Subscription>,
@@ -623,6 +637,7 @@ mod tests {
                 description: Default::default(),
                 icon: Default::default(),
                 config: Default::default(),
+                draws_panel: false,
                 subscriptions: Vec::new(),
             }
         }
@@ -674,6 +689,23 @@ mod tests {
             renamed.agrees_with(&manifest).is_ok(),
             "a plugin may reword its own card without becoming unloadable"
         );
+    }
+
+    #[test]
+    fn a_descriptor_that_draws_no_panel_reads_as_one_that_does_not() {
+        // The flag is additive and defaults off, so a plugin built against a host that did
+        // not have it still starts — it just is not offered a position to move, which is the
+        // right answer for a plugin that does not know positions exist. A panel it draws
+        // anyway sits where its own anchor puts it.
+        let without: PluginDescriptor =
+            serde_json::from_str(r#"{"id":"pomodoro","name":"P","version":"1.0.0"}"#)
+                .expect("a descriptor from before the flag existed reads");
+        assert!(!without.draws_panel);
+        let with: PluginDescriptor = serde_json::from_str(
+            r#"{"id":"pomodoro","name":"P","version":"1.0.0","draws_panel":true}"#,
+        )
+        .expect("a descriptor with the flag reads");
+        assert!(with.draws_panel);
     }
 
     #[test]

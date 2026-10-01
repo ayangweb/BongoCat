@@ -631,6 +631,38 @@ pub(super) fn run_service(
                         .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetPluginPosition {
+                plugin,
+                position,
+                reply,
+            } => {
+                // Configuration first, then the worker, for the same reason the enabled
+                // switch does it in this order: a position the user chose and the window
+                // forgets is one they chose twice, while a panel that moved and the file did
+                // not is one that moves back on the next launch.
+                let result = with_plugin_id(&clock, &plugin, |id| {
+                    application
+                        .set_plugin_position(id.as_str(), Some(&position))
+                        .map_err(map_plugin_error)?;
+                    send_plugin_position(&clock, id, &position)
+                })
+                .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::ClearPluginPosition { plugin, reply } => {
+                let result = with_plugin_id(&clock, &plugin, |id| {
+                    application
+                        .set_plugin_position(id.as_str(), None)
+                        .map_err(map_plugin_error)?;
+                    // Nothing is sent to the worker: forgetting is the absence of a
+                    // preference, and the worker already answers every request it makes
+                    // with the position it actually got — which is the plugin's own corner
+                    // again the moment the preference is gone.
+                    Ok(())
+                })
+                .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::PressPluginAction {
                 plugin,
                 action,
@@ -869,6 +901,23 @@ pub(super) fn send_plugin_command(
                 Err(SettingsError::new(SettingsErrorCode::PluginHostBusy))
             }
         })
+}
+
+/// Move one plugin's panel, with the position named the way the protocol names it.
+///
+/// The name is checked here as well as in the configuration, because the two are the same
+/// fact in two places: the window sends what the menu it drew carried, and a menu from a
+/// stale snapshot could name a position this build has no corner for. Refused at the press
+/// rather than written, so a press that could not happen does not leave a file behind.
+pub(super) fn send_plugin_position(
+    clock: &SettingsSnapshotClock,
+    id: PluginId,
+    position: &str,
+) -> Result<(), SettingsError> {
+    let Some(anchor) = bongocat_plugin::parse_anchor(position) else {
+        return Err(SettingsError::new(SettingsErrorCode::PluginNotFound));
+    };
+    send_plugin_command(clock, PluginCommand::SetPosition { id, anchor })
 }
 
 /// Tell every plugin which language the user now reads.

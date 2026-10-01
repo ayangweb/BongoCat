@@ -546,6 +546,19 @@
       "state": {
         "running": "Em execução",
         "stopped": "Parado"
+      },
+      "position_label": "Posição",
+      "position_help": "Onde a janela deste plugin fica na janela do modelo. Uma posição em uso por outro plugin não é oferecida.",
+      "position": {
+        "top_left": "Superior esquerdo",
+        "top": "Superior",
+        "top_right": "Superior direito",
+        "left": "Esquerdo",
+        "center": "Centro",
+        "right": "Direito",
+        "bottom_left": "Inferior esquerdo",
+        "bottom": "Inferior",
+        "bottom_right": "Inferior direito"
       }
     }
   }

@@ -66,7 +66,9 @@ impl PanelUpdate {
 /// The same nine positions the overlay's layer placement uses, spelled the same
 /// way, so a plugin author's choice reads identically in a panel message and in
 /// the renderer that places it.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginAnchor {
     #[default]

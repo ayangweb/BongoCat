@@ -108,6 +108,8 @@ fn entry(id: &str, installed: bool, enabled: bool) -> SettingsPluginEntry {
         fields: Vec::new(),
         actions: Vec::new(),
         values: Default::default(),
+        position: None,
+        positions: Vec::new(),
         log: Vec::new(),
         refusal: None,
         failure: None,

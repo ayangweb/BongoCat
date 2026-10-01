@@ -926,10 +926,15 @@ pub(super) fn group(
     let plugins = snapshot.map_or_else(SettingsPlugins::default, |snapshot| {
         snapshot.plugins.clone()
     });
+    // Open for a panel that has *anything* to show: a plugin's own settings, or a display
+    // position for a plugin that draws a panel and declares no settings of its own. The
+    // filter used to be the fields alone, which meant a plugin with a position and nothing
+    // else could not be configured at all — and the position is a control, so a form that
+    // had one and refused to open was a control a user could not reach.
     let open_entry = expanded
         .as_deref()
         .and_then(|id| plugins.entries.iter().find(|entry| entry.id == id))
-        .filter(|entry| !entry.fields.is_empty());
+        .filter(|entry| !entry.fields.is_empty() || entry.position.is_some());
     // The cards are one item, so searching the page matches the plugin names and
     // the page's own words rather than each card separately — and when a panel is
     // open its field labels join them, so a search for one of a plugin's settings
@@ -941,6 +946,9 @@ pub(super) fn group(
     }
     if let Some(entry) = open_entry {
         search.extend(entry.fields.iter().map(|field| field.label.clone().into()));
+        if let Some(position) = &entry.position {
+            search.push(position.label.clone().into());
+        }
     }
 
     let body_view = view.clone();
@@ -994,6 +1002,11 @@ mod tests {
             log: Vec::new(),
             refusal: None,
             failure: None,
+            // No process and no panel, so there is no position to move — the state a card
+            // shows for a plugin that has not started, and the one a test of the grid
+            // should not depend on.
+            position: None,
+            positions: Vec::new(),
         }
     }
 

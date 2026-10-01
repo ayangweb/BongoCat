@@ -107,7 +107,12 @@ fn project_entry(entry: &PluginEntry, language: SettingsLanguage) -> SettingsPlu
         // installed-but-stopped plugin has none — and the card's answer has to be that
         // its settings button opens the plugin rather than that the button is missing,
         // because a control that vanishes is a control a user cannot ask about.
-        settings_available: entry.running && !schema.fields.is_empty(),
+        // A position counts as something to configure. A plugin that draws a panel and
+        // declares no settings of its own still has a form, with one row on it — and the
+        // flag that used to answer `running && !fields.is_empty()` hid it behind a settings
+        // button that opened nothing.
+        settings_available: entry.running
+            && (!schema.fields.is_empty() || entry.position.is_some()),
         fields: project_schema(&schema, locale),
         values: project_values(&schema, &entry.config),
         log: entry
@@ -121,6 +126,44 @@ fn project_entry(entry: &PluginEntry, language: SettingsLanguage) -> SettingsPlu
             detail: error.detail.clone(),
         }),
         failure: entry.failure.as_ref().map(project_error),
+        // The position form, and the menu behind it. `None` for a plugin that draws no
+        // panel — a sound has nothing on the model window to move — and for one whose
+        // process has not said hello yet, because a position needs a panel to be a
+        // position of. The labels are the *window's* copy: placement is the host's and
+        // the user's, not a plugin's, so these are the product's words rather than a
+        // plugin's.
+        position: entry
+            .position
+            .map(|placed| project_position(placed.anchor, locale)),
+        positions: entry
+            .positions
+            .iter()
+            .map(|anchor| project_position(*anchor, locale))
+            .collect(),
+    }
+}
+
+/// One position, as the form offers it.
+fn project_position(anchor: bongocat_plugin::PluginAnchor, locale: &str) -> SettingsPluginPosition {
+    SettingsPluginPosition {
+        value: anchor.as_str().to_owned(),
+        label: bongocat_i18n::text(locale, position_key(anchor)).to_owned(),
+    }
+}
+
+/// The window's own key for one position.
+fn position_key(anchor: bongocat_plugin::PluginAnchor) -> &'static str {
+    use bongocat_plugin::PluginAnchor as Anchor;
+    match anchor {
+        Anchor::TopLeft => "settings.plugins.position.top_left",
+        Anchor::TopCenter => "settings.plugins.position.top",
+        Anchor::TopRight => "settings.plugins.position.top_right",
+        Anchor::CenterLeft => "settings.plugins.position.left",
+        Anchor::Center => "settings.plugins.position.center",
+        Anchor::CenterRight => "settings.plugins.position.right",
+        Anchor::BottomLeft => "settings.plugins.position.bottom_left",
+        Anchor::BottomCenter => "settings.plugins.position.bottom",
+        Anchor::BottomRight => "settings.plugins.position.bottom_right",
     }
 }
 
@@ -374,6 +417,7 @@ mod tests {
                 image: None,
             },
             config: schema,
+            draws_panel: true,
             subscriptions: Vec::new(),
         }
     }
@@ -443,8 +487,56 @@ mod tests {
             restarts: 0,
             subscriptions: Vec::new(),
             actions: offered_actions(),
+            // A running plugin that asked for a position, sitting in the top left with
+            // the eight others free — the fixture every position assertion reads, because
+            // a projection test that built "no position" could not tell a row that is
+            // missing from a row that is wrongly absent.
+            position: Some(bongocat_plugin::Placed {
+                anchor: bongocat_plugin::PluginAnchor::TopLeft,
+                chosen: false,
+            }),
+            positions: bongocat_plugin::POSITIONS.to_vec(),
             log: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_plugin_that_draws_a_panel_gets_a_position_menu_and_one_that_does_not_gets_nothing() {
+        // The whole of the row's existence. A sound or a tally has nothing on the model
+        // window to move, so it is offered no position at all — and a menu of nine for a
+        // plugin that draws nothing is a control that changes nothing.
+        let drawing = project_entry(&entry(), SettingsLanguage::English);
+        let position = drawing.position.expect("a running panel has a position");
+        assert_eq!(position.value, "top_left");
+        assert_eq!(position.label, "Top left");
+        assert_eq!(
+            drawing.positions.len(),
+            bongocat_plugin::POSITIONS.len(),
+            "and every position is free in this fixture, so all nine are offered"
+        );
+
+        let mut silent = entry();
+        silent.position = None;
+        silent.positions = Vec::new();
+        let silent = project_entry(&silent, SettingsLanguage::English);
+        assert!(silent.position.is_none());
+        assert!(
+            silent.positions.is_empty(),
+            "so a plugin with no panel is offered no position to move"
+        );
+    }
+
+    #[test]
+    fn the_position_menu_speaks_the_readers_language() {
+        // Placement is the host's and the user's, so these are the product's words rather
+        // than a plugin's — and they are resolved here, where the reader's language is
+        // known, for the same reason every other string on the card is.
+        let chinese = project_entry(&entry(), SettingsLanguage::ChineseSimplified);
+        assert_eq!(chinese.position.expect("a position").label, "左上");
+        assert_eq!(
+            chinese.positions[4].label, "中间",
+            "and every position in the menu is translated, not only the current one"
+        );
     }
 
     /// The controls a running plugin offered, as one renamed control.
@@ -511,17 +603,22 @@ mod tests {
     }
 
     #[test]
-    fn a_running_plugin_with_an_empty_schema_has_no_form_and_does_not_need_one() {
-        // Distinct from the case above, and the card has to tell them apart: enabled with
-        // no schema is a plugin with nothing to configure, so pressing its settings button
-        // correctly does nothing. Promising a "turn it on" hint here would be telling a
-        // user to do something that cannot help.
+    fn a_running_plugin_with_nothing_to_configure_has_no_form() {
+        // Distinct from the case above, and the card has to tell them apart: enabled, with
+        // no schema and no panel, is a plugin with nothing to configure, so pressing its
+        // settings button correctly does nothing. Promising a "turn it on" hint here would
+        // be telling a user to do something that cannot help.
         let mut nothing_to_configure = entry();
         nothing_to_configure
             .descriptor
             .as_mut()
             .expect("a descriptor")
             .config = bongocat_plugin::ConfigSchema::default();
+        // The other half of "nothing": a plugin that says it has no place in the model
+        // window. A schema with no fields and a position is a form with one row on it, and
+        // a schema with neither is a plugin with nothing to show.
+        nothing_to_configure.position = None;
+        nothing_to_configure.positions = Vec::new();
         let projected = project_plugins(
             &PluginSnapshot {
                 entries: vec![nothing_to_configure],
@@ -532,9 +629,38 @@ mod tests {
         let pomodoro = projected.entries.first().expect("a card");
         assert!(
             !pomodoro.settings_available,
-            "a plugin that declared no settings has no form, running or not"
+            "a plugin with neither settings nor a panel has no form, running or not"
         );
         assert!(pomodoro.enabled);
+    }
+
+    #[test]
+    fn a_panel_with_no_settings_of_its_own_still_has_a_form() {
+        // The case the flag used to hide. A plugin that draws a panel and declares no
+        // settings is still configurable — in one respect, the one that has nothing to do
+        // with the plugin: where its panel sits in the model window.
+        let mut only_a_position = entry();
+        only_a_position
+            .descriptor
+            .as_mut()
+            .expect("a descriptor")
+            .config = bongocat_plugin::ConfigSchema::default();
+        let projected = project_plugins(
+            &PluginSnapshot {
+                entries: vec![only_a_position],
+                ..PluginSnapshot::default()
+            },
+            SettingsLanguage::English,
+        );
+        let pomodoro = projected.entries.first().expect("a card");
+        assert!(
+            pomodoro.settings_available,
+            "so its settings button opens a form rather than doing nothing"
+        );
+        assert!(
+            pomodoro.fields.is_empty() && pomodoro.position.is_some(),
+            "and that form is one row: the position, and nothing the plugin declared"
+        );
     }
 
     #[test]
@@ -800,6 +926,8 @@ mod tests {
                 restarts: 0,
                 subscriptions: Vec::new(),
                 actions: Vec::new(),
+                position: None,
+                positions: Vec::new(),
                 log: Vec::new(),
             }],
             active: Vec::new(),
@@ -986,6 +1114,8 @@ mod tests {
                 restarts: 0,
                 subscriptions: Vec::new(),
                 actions: Vec::new(),
+                position: None,
+                positions: Vec::new(),
                 log: Vec::new(),
             }],
             catalog_read: true,

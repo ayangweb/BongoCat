@@ -568,6 +568,33 @@ impl SettingsClient {
         .await
     }
 
+    /// Move one plugin's panel to another place in the model window.
+    ///
+    /// A press rather than a fire-and-forget, for the same reason [`Self::press_plugin_action`]
+    /// is: the answer carries the position the plugin actually got, which is not always the
+    /// one that was asked for — another plugin may already hold that corner.
+    pub async fn set_plugin_position(
+        &self,
+        plugin: String,
+        position: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetPluginPosition {
+            plugin,
+            position,
+            reply,
+        })
+        .await
+    }
+
+    /// Put one plugin's panel back in its own corner.
+    pub async fn clear_plugin_position(
+        &self,
+        plugin: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::ClearPluginPosition { plugin, reply })
+            .await
+    }
+
     /// Press one of the controls a plugin offered for the host to draw.
     ///
     /// Not a fire-and-forget like [`Self::refresh_plugin_catalog`], and the difference

@@ -43,6 +43,7 @@ mod host;
 mod input_feed;
 mod local_time;
 mod model_request;
+mod placement;
 mod plugin_log;
 mod session;
 mod sound;
@@ -77,6 +78,7 @@ pub use host::HostFacts;
 pub use input_feed::{Feed, FeedDiagnostics, FeedSet};
 pub use local_time::{LocalTimeCache, WallClock};
 pub use model_request::ModelRequestRouter;
+pub use placement::{POSITIONS, Placed, Placements, parse_anchor};
 pub use plugin_log::Line;
 pub use session::{
     HANDSHAKE_TIMEOUT, Incoming, MAXIMUM_RESTARTS, Session, SessionDiagnostics, SessionFacts,

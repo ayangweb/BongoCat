@@ -546,6 +546,19 @@
       "state": {
         "running": "Running",
         "stopped": "Stopped"
+      },
+      "position_label": "Position",
+      "position_help": "Where this plugin's panel sits in the model window. A position another plugin is using is not offered.",
+      "position": {
+        "top_left": "Top left",
+        "top": "Top",
+        "top_right": "Top right",
+        "left": "Left",
+        "center": "Middle",
+        "right": "Right",
+        "bottom_left": "Bottom left",
+        "bottom": "Bottom",
+        "bottom_right": "Bottom right"
       }
     }
   }

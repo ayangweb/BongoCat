@@ -215,6 +215,16 @@
       "id": "last-expression-model-id",
       "file": "invalid-last-expression-model-id.json",
       "expected": "reject"
+    },
+    {
+      "id": "plugin-positions",
+      "file": "accept-plugin-positions.json",
+      "expected": "accept"
+    },
+    {
+      "id": "plugin-position",
+      "file": "invalid-plugin-position.json",
+      "expected": "reject"
     }
   ]
 }

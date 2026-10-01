@@ -546,6 +546,19 @@
       "state": {
         "running": "Đang chạy",
         "stopped": "Đã dừng"
+      },
+      "position_label": "Vị trí",
+      "position_help": "Nơi bảng của plugin này nằm trong cửa sổ mô hình. Vị trí đang được plugin khác dùng sẽ không xuất hiện.",
+      "position": {
+        "top_left": "Góc trên bên trái",
+        "top": "Giữa cạnh trên",
+        "top_right": "Góc trên bên phải",
+        "left": "Giữa cạnh trái",
+        "center": "Chính giữa",
+        "right": "Giữa cạnh phải",
+        "bottom_left": "Góc dưới bên trái",
+        "bottom": "Giữa cạnh dưới",
+        "bottom_right": "Góc dưới bên phải"
       }
     }
   }

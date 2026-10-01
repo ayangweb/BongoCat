@@ -745,33 +745,38 @@ fn pack_plugins(id: Option<&str>, triple: Option<&str>) -> Result<Vec<PathBuf>> 
         ));
     }
 
-    // One Cargo run for everything that needs building, rather than one per plugin: the
-    // plugins share this workspace's target directory and its dependency graph, so
-    // three separate invocations would serialize the same work three times over.
+    // Every plugin is built, every time, and only the *packing* is skipped for one whose
+    // sources have not moved. The distinction is not a detail: Cargo is the only thing that
+    // knows whether a source file changed, and a comparison of file times inside this
+    // workspace cannot see a change to the SDK, which lives outside it. So asking "is the
+    // archive current?" before running Cargo would answer about a binary that has not been
+    // rebuilt yet — and a plugin whose source was edited would keep its old binary and
+    // report itself up to date, which is the one answer this whole step exists to avoid.
+    //
+    // Cargo is incremental, so an unchanged plugin costs one no-op run in a single shared
+    // invocation rather than a compile.
+    let binaries: Vec<String> = ids
+        .iter()
+        .map(|id| {
+            plugin::Manifest::read(&plugins.join(id))
+                .map(|manifest| manifest.executable)
+                .map_err(|error| Box::new(Failure(error)) as Box<dyn std::error::Error>)
+        })
+        .collect::<Result<_>>()?;
+    build_plugins(&plugins, &binaries, triple)?;
+
     let stale: Vec<&String> = ids
         .iter()
         .filter(|id| !plugin::is_packed_up_to_date(&plugins, id, triple))
         .collect();
-    if !stale.is_empty() {
-        let binaries: Vec<String> = stale
-            .iter()
-            .map(|id| {
-                plugin::Manifest::read(&plugins.join(id))
-                    .map(|manifest| manifest.executable)
-                    .map_err(|error| Box::new(Failure(error)) as Box<dyn std::error::Error>)
-            })
-            .collect::<Result<_>>()?;
-        build_plugins(&plugins, &binaries, triple)?;
-        for id in &stale {
-            // The binary is what the archive holds, so this is the step that can fail
-            // after a *successful* compile: a plugin that declares an executable Cargo
-            // did not build, or a manifest that will not parse.
-            let archive = plugin::pack(&plugins, id, triple).map_err(|error| {
-                Box::new(Failure(error.to_string())) as Box<dyn std::error::Error>
-            })?;
-            println!("Packed {id} into {}", archive.display());
-            println!("Install it from Settings → Plugins, or bump its version and install again.");
-        }
+    for id in &stale {
+        // The binary is what the archive holds, so this is the step that can fail after a
+        // *successful* compile: a plugin that declares an executable Cargo did not build, or
+        // a manifest that will not parse.
+        let archive = plugin::pack(&plugins, id, triple)
+            .map_err(|error| Box::new(Failure(error.to_string())) as Box<dyn std::error::Error>)?;
+        println!("Packed {id} into {}", archive.display());
+        println!("Install it from Settings → Plugins, or bump its version and install again.");
     }
     for id in &ids {
         if stale.contains(&id) {

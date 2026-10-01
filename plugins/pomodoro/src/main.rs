@@ -555,6 +555,11 @@ impl Plugin for Pomodoro {
         // that keeps its metadata in its own `plugin.json` is then a change to that one
         // file, and a card that said one thing before the plugin started and another
         // after is not expressible.
+        // `draws_panel` says this plugin *has* a place in the model window, not where the
+        // place is: one plugin holds each of the nine positions, the user chooses, and the
+        // host applies it when the layer is published. Without it the panel would still
+        // draw — in the corner this plugin asked for — but the user would be offered no
+        // position to move it to.
         SELF.descriptor().subscribe(Subscription::HostState)
     }
 
