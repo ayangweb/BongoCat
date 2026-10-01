@@ -36,12 +36,25 @@ zip.workspace = true
 name = "process_session"
 harness = false
 
+# `harness = false` for the same reason as the file above, and it has the same other half:
+# this one's plugin is also this binary, run under four different ids so one worker can be
+# watched managing several sessions at once.
+[[test]]
+name = "several_plugins"
+harness = false
+
 [dev-dependencies]
 # The SDK, so one case in this file can be a plugin written the way a plugin author
 # writes one rather than a hand-rolled imitation of the protocol. Without it the SDK's own
 # half of the boundary is untested from the outside, which is how a writer pointed at the
 # wrong stream survived a file whose whole subject is that the two sides talk.
 bongocat-plugin-sdk.workspace = true
+# The worker's own dependencies, so a case can start a real worker without the test
+# declaring the layers, the store, the clock and the audio client itself: those are the
+# product's arguments, and a test that assembled them differently would be testing a
+# worker nobody ships.
+bongocat-audio.workspace = true
+bongocat-render.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 zip.workspace = true

@@ -688,6 +688,7 @@ pub fn start(
                 sessions: BTreeMap::new(),
                 feeds: FeedSet::new(),
                 bubbles: BubbleSet::new(),
+                start_failures: BTreeMap::new(),
                 positions: BTreeMap::new(),
                 started: Instant::now(),
                 last_tick: Instant::now(),
@@ -744,12 +745,24 @@ struct Worker {
     feeds: FeedSet,
     /// The bubbles currently showing, by layer.
     bubbles: BubbleSet,
+    /// Why each plugin could not be started, by id.
+    ///
+    /// A plugin that failed to start has no session, and a session is where
+    /// [`PluginEntry::failure`] comes from — so without this the card of a plugin whose
+    /// manifest would not parse, or whose process never said hello, would show no reason at
+    /// all. The page-level error says *something* went wrong without saying which plugin,
+    /// and one slot for every plugin means the second failure replaces the first.
+    ///
+    /// Cleared as soon as the plugin starts, because a start that worked is the end of the
+    /// story and a stale reason beside a working plugin is its own kind of lie.
+    start_failures: BTreeMap<PluginId, PluginError>,
     /// Where the user put each plugin's panel, by id.
     ///
     /// A preference rather than a reservation: a position named here for a plugin that is
     /// not drawing anything right now is not held, so switching a plugin off frees its
     /// corner for somebody else without the file being edited.
     positions: BTreeMap<PluginId, bongocat_plugin_protocol::PluginAnchor>,
+
     /// When this worker started, which is what a plugin's `elapsed_ms` counts from.
     started: Instant,
     /// When a tick was last sent, so the interval is bounded without depending on how
@@ -868,6 +881,19 @@ impl Worker {
                     // carrying it forward would show a tally that includes events from
                     // before the plugin restarted.
                     self.feeds.feed_mut(&id).clear();
+                    // Published here, and this used to be missing. The exit changes what
+                    // the center says about this plugin — its panel is gone and it is no
+                    // longer running — and a snapshot that is only refreshed by *other*
+                    // plugins' activity is a snapshot that goes on claiming a dead plugin is
+                    // alive until something unrelated happens. A plugin that crashes
+                    // quietly on a machine running one plugin would sit there marked
+                    // running for the rest of the session, with no panel and no reason.
+                    //
+                    // Restarting publishes again a moment later, so this is a moment where
+                    // the center is honest about a plugin being down rather than a state a
+                    // user can see for long. Two publishes for one crash is the right price
+                    // for a card that never lies about its own process.
+                    self.publish(None, None);
                 }
                 Incoming::Refused(error) => session.on_refused(error),
             }
@@ -1026,6 +1052,7 @@ impl Worker {
         match self.start_session(&record, layer_ids) {
             Ok(mut session) => {
                 session.set_restarts(restarts);
+                self.start_failures.remove(id);
                 self.sessions.insert(id.clone(), session);
                 self.publish(None, None);
             }
@@ -1319,7 +1346,14 @@ impl Worker {
                     available_version: None,
                     update_available: false,
                     refusal: None,
-                    failure: facts.as_ref().and_then(|facts| facts.failure.clone()),
+                    // A session's own failure first, then a start that never produced one.
+                    // The order matters: a plugin that ran and then died has a session to
+                    // say so, and the reason it is down is more use than why it could not
+                    // start last time.
+                    failure: facts
+                        .as_ref()
+                        .and_then(|facts| facts.failure.clone())
+                        .or_else(|| self.start_failures.get(&record.id).cloned()),
                     restarts: facts.as_ref().map_or(0, |facts| facts.restarts),
                     subscriptions: facts
                         .as_ref()
@@ -1610,7 +1644,17 @@ impl Worker {
                 None => false,
             };
             self.feeds.remove(id);
-            if stopped {
+            // The reason it could not be started belongs to being asked for it. Leaving it
+            // behind would put a start failure on a card for a plugin the user has just
+            // switched off, which is not what happened.
+            //
+            // And the publish counts the clearing, not just the stop. A plugin that could
+            // not start has no session, so switching it off stops nothing — and a snapshot
+            // published only on a stop would leave the reason on the card for as long as the
+            // settings window was open, which is the same "stale until something else
+            // happens" this loop has now had to be corrected for twice.
+            let cleared = self.start_failures.remove(id).is_some();
+            if stopped || cleared {
                 self.publish(None, None);
             }
             return;
@@ -1644,11 +1688,12 @@ impl Worker {
         };
         match self.start_session(&record, layer_ids) {
             Ok(session) => {
+                self.start_failures.remove(id);
                 self.sessions.insert(id.clone(), session);
             }
             Err(error) => {
-                let code = error;
-                self.publish(Some(PluginPhase::Failed(code.clone())), Some(code))
+                self.start_failures.insert(id.clone(), error.clone());
+                self.publish(Some(PluginPhase::Failed(error.clone())), Some(error))
             }
         }
     }

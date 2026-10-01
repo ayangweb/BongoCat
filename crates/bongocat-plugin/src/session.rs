@@ -249,7 +249,7 @@ impl Session {
         let (inbound_tx, inbound_rx) = mpsc::sync_channel(64);
         let stopping = Arc::new(AtomicBool::new(false));
 
-        let (child, stdin) = spawn(&executable, &directory, &data_directory, &stopping)?;
+        let (child, stdin) = spawn(&id, &executable, &directory, &data_directory, &stopping)?;
         let hello = Hello {
             protocol_version: bongocat_plugin_protocol::PROTOCOL_VERSION,
             app_version: app_version.clone(),
@@ -1008,7 +1008,17 @@ fn read_manifest(
 /// its **environment** is the host's, unmodified: a plugin that shells out to `git`
 /// or `node` needs a real `PATH`, and rewriting one would be the host deciding what
 /// a plugin may run.
+///
+/// The two variables the host *does* set are facts about this plugin, and they are passed
+/// in rather than derived from the directory. `BONGOCAT_PLUGIN_ID` used to be the
+/// directory's own file name, which is a shortcut that is true for a directory named after
+/// its plugin and false for a real installation: the store lays plugins out as
+/// `plugins/<id>/<version>/`, so a shipped plugin was told it was called `1.0.0`. Nothing
+/// in the product read the variable, so no symptom showed it — but it is named as an id
+/// and a plugin author is entitled to believe it is one, and the `hello` on this session's
+/// stdin says the same thing correctly.
 fn spawn(
+    id: &PluginId,
     executable: &Path,
     directory: &Path,
     data_directory: &Path,
@@ -1017,13 +1027,7 @@ fn spawn(
     let mut command = Command::new(executable);
     command
         .current_dir(directory)
-        .env(
-            "BONGOCAT_PLUGIN_ID",
-            directory
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or_default(),
-        )
+        .env("BONGOCAT_PLUGIN_ID", id.as_str())
         .env("BONGOCAT_PLUGIN_DATA", data_directory)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
