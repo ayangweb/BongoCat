@@ -119,28 +119,6 @@
         "ko-KR": "초기화"
       }
     },
-    "round_finished": {
-      "default": "Round finished",
-      "by_locale": {
-        "zh-CN": "本轮完成",
-        "zh-TW": "本輪完成",
-        "ar-SA": "انتهت الجولة",
-        "vi-VN": "Đã xong vòng",
-        "pt-BR": "Rodada concluída",
-        "ko-KR": "한 주기 완료"
-      }
-    },
-    "break_over": {
-      "default": "Break over",
-      "by_locale": {
-        "zh-CN": "休息结束",
-        "zh-TW": "休息結束",
-        "ar-SA": "انتهت الاستراحة",
-        "vi-VN": "Hết giờ nghỉ",
-        "pt-BR": "Pausa encerrada",
-        "ko-KR": "휴식 종료"
-      }
-    },
     "focus_minutes_label": {
       "default": "Focus round",
       "by_locale": {
@@ -161,6 +139,50 @@
         "vi-VN": "Một khoảng tập trung kéo dài bao lâu.",
         "pt-BR": "Quanto dura um período contínuo de trabalho.",
         "ko-KR": "한 번의 집중 구간이 얼마나 이어질지 정합니다."
+      }
+    },
+    "short_break_minutes_label": {
+      "default": "Short break",
+      "by_locale": {
+        "zh-CN": "短休息时长",
+        "zh-TW": "短休息時長",
+        "ar-SA": "مدة الاستراحة القصيرة",
+        "vi-VN": "Thời lượng nghỉ ngắn",
+        "pt-BR": "Duração da pausa curta",
+        "ko-KR": "짧은 휴식 시간"
+      }
+    },
+    "short_break_minutes_help": {
+      "default": "How long the short pause lasts.",
+      "by_locale": {
+        "zh-CN": "短暂休息持续多久。",
+        "zh-TW": "短暫休息持續多久。",
+        "ar-SA": "المدة التي تستغرقها الاستراحة القصيرة.",
+        "vi-VN": "Nghỉ ngắn kéo dài bao lâu.",
+        "pt-BR": "Quanto dura a pausa curta.",
+        "ko-KR": "짧은 휴식이 얼마나 이어질지 정합니다."
+      }
+    },
+    "long_break_minutes_label": {
+      "default": "Long break",
+      "by_locale": {
+        "zh-CN": "长休息时长",
+        "zh-TW": "長休息時長",
+        "ar-SA": "مدة الاستراحة الطويلة",
+        "vi-VN": "Thời lượng nghỉ dài",
+        "pt-BR": "Duração da pausa longa",
+        "ko-KR": "긴 휴식 시간"
+      }
+    },
+    "long_break_minutes_help": {
+      "default": "How long the long pause lasts, the one that follows every fourth round.",
+      "by_locale": {
+        "zh-CN": "长休息持续多久，每第四轮结束后会出现。",
+        "zh-TW": "長休息持續多久，每第四輪結束後會出現。",
+        "ar-SA": "المدة التي تستغرقها الاستراحة الطويلة، وهي التي تأتي بعد كل جولة رابعة.",
+        "vi-VN": "Nghỉ dài kéo dài bao lâu, sau mỗi bốn vòng.",
+        "pt-BR": "Quanto dura a pausa longa, que vem após cada quarta rodada.",
+        "ko-KR": "긴 휴식이 얼마나 이어질지 정합니다. 네 번째 주기마다 나타납니다."
       }
     },
     "minutes_unit": {
@@ -249,6 +271,61 @@
         "vi-VN": "Tắt điều này để bạn tự quyết định mỗi vòng.",
         "pt-BR": "Desative para decidir cada rodada você mesmo.",
         "ko-KR": "끄면 매 주기를 직접 시작할 수 있습니다."
+      }
+    },
+    "round_finished": {
+      "default": "Round finished",
+      "by_locale": {
+        "zh-CN": "本轮完成",
+        "zh-TW": "本輪完成",
+        "ar-SA": "انتهت الجولة",
+        "vi-VN": "Đã xong vòng",
+        "pt-BR": "Rodada concluída",
+        "ko-KR": "한 주기 완료"
+      }
+    },
+    "break_over": {
+      "default": "Break over",
+      "by_locale": {
+        "zh-CN": "休息结束",
+        "zh-TW": "休息結束",
+        "ar-SA": "انتهت الاستراحة",
+        "vi-VN": "Hết giờ nghỉ",
+        "pt-BR": "Pausa encerrada",
+        "ko-KR": "휴식 종료"
+      }
+    },
+    "round_finished_short": {
+      "default": "Focus round finished",
+      "by_locale": {
+        "zh-CN": "本轮专注完成",
+        "zh-TW": "本輪專注完成",
+        "ar-SA": "انتهت جولة التركيز",
+        "vi-VN": "Đã xong một vòng tập trung",
+        "pt-BR": "Rodada de foco concluída",
+        "ko-KR": "집중 주기 완료"
+      }
+    },
+    "break_finished_short": {
+      "default": "Short break over",
+      "by_locale": {
+        "zh-CN": "短休息结束",
+        "zh-TW": "短休息結束",
+        "ar-SA": "انتهت الاستراحة القصيرة",
+        "vi-VN": "Hết giờ nghỉ ngắn",
+        "pt-BR": "Pausa curta encerrada",
+        "ko-KR": "짧은 휴식 종료"
+      }
+    },
+    "break_finished_long": {
+      "default": "Long break over",
+      "by_locale": {
+        "zh-CN": "长休息结束",
+        "zh-TW": "長休息結束",
+        "ar-SA": "انتهت الاستراحة الطويلة",
+        "vi-VN": "Hết giờ nghỉ dài",
+        "pt-BR": "Pausa longa encerrada",
+        "ko-KR": "긴 휴식 종료"
       }
     }
   }

@@ -58,11 +58,30 @@ const MINIMUM_ROUND_MINUTES: i64 = 1;
 /// spinner that can count to a day is a spinner nobody believes.
 const MAXIMUM_ROUND_MINUTES: i64 = 120;
 
-/// A short break's length.
-const SHORT_BREAK_MINUTES: i64 = 5;
+/// A short break's length when the user has not chosen.
+///
+/// Five minutes, because a break shorter than that is a sip of coffee and one longer is
+/// the end of the session rather than a pause inside it.
+const DEFAULT_SHORT_BREAK_MINUTES: i64 = 5;
 
-/// A long break's length.
-const LONG_BREAK_MINUTES: i64 = 15;
+/// A long break's length when the user has not chosen.
+///
+/// Fifteen minutes, twice the short one — the shape the name comes from, and a person can
+/// tell at a glance that a long break is worth getting up for.
+const DEFAULT_LONG_BREAK_MINUTES: i64 = 15;
+
+/// The shortest a pause may be.
+///
+/// The same floor as a round, and for the same reason: a pause of zero seconds is a round
+/// that ended and immediately began again, which the "what follows a round" setting is
+/// there to express instead.
+const MINIMUM_BREAK_MINUTES: i64 = 1;
+
+/// The longest a pause may be.
+///
+/// Shorter than a round's ceiling, because a break past an hour is not a break in a
+/// session of work — it is a second session that happens to count down.
+const MAXIMUM_BREAK_MINUTES: i64 = 60;
 
 /// How many focus rounds a long break follows.
 ///
@@ -163,6 +182,8 @@ impl AfterRound {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Preferences {
     pub focus_minutes: i64,
+    pub short_break_minutes: i64,
+    pub long_break_minutes: i64,
     pub after_round: AfterRound,
     pub auto_start: bool,
 }
@@ -171,6 +192,8 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             focus_minutes: DEFAULT_FOCUS_MINUTES,
+            short_break_minutes: DEFAULT_SHORT_BREAK_MINUTES,
+            long_break_minutes: DEFAULT_LONG_BREAK_MINUTES,
             after_round: AfterRound::default(),
             auto_start: false,
         }
@@ -188,6 +211,12 @@ impl Preferences {
             focus_minutes: values
                 .integer("focus_minutes")
                 .clamp(MINIMUM_ROUND_MINUTES, MAXIMUM_ROUND_MINUTES),
+            short_break_minutes: values
+                .integer("short_break_minutes")
+                .clamp(MINIMUM_BREAK_MINUTES, MAXIMUM_BREAK_MINUTES),
+            long_break_minutes: values
+                .integer("long_break_minutes")
+                .clamp(MINIMUM_BREAK_MINUTES, MAXIMUM_BREAK_MINUTES),
             after_round: AfterRound::from_setting(&values.text("after_round")),
             auto_start: values.flag("auto_start"),
         }
@@ -196,6 +225,19 @@ impl Preferences {
     /// The focus round's length in milliseconds.
     fn focus_length_ms(self) -> u64 {
         minutes(self.focus_minutes)
+    }
+
+    /// A pause's length in milliseconds, from the pause it is.
+    ///
+    /// One function rather than a match at each of the two call sites, so the two pauses
+    /// cannot end up reading each other's setting — which is the mistake a long break makes
+    /// the moment somebody adds a third kind of round.
+    fn break_length_ms(self, kind: RoundKind) -> u64 {
+        match kind {
+            RoundKind::ShortBreak => minutes(self.short_break_minutes),
+            RoundKind::LongBreak => minutes(self.long_break_minutes),
+            RoundKind::Focus => self.focus_length_ms(),
+        }
     }
 }
 
@@ -217,6 +259,32 @@ pub fn declared_settings() -> Settings {
             .stepping(1)
             .with_unit(copy::minutes_unit())
             .described(copy::focus_minutes_help())
+            .into(),
+        )
+        .with(
+            Integer::ranged(
+                "short_break_minutes",
+                copy::short_break_minutes_label(),
+                DEFAULT_SHORT_BREAK_MINUTES,
+                MINIMUM_BREAK_MINUTES,
+                MAXIMUM_BREAK_MINUTES,
+            )
+            .stepping(1)
+            .with_unit(copy::minutes_unit())
+            .described(copy::short_break_minutes_help())
+            .into(),
+        )
+        .with(
+            Integer::ranged(
+                "long_break_minutes",
+                copy::long_break_minutes_label(),
+                DEFAULT_LONG_BREAK_MINUTES,
+                MINIMUM_BREAK_MINUTES,
+                MAXIMUM_BREAK_MINUTES,
+            )
+            .stepping(5)
+            .with_unit(copy::minutes_unit())
+            .described(copy::long_break_minutes_help())
             .into(),
         )
         .with(
@@ -307,19 +375,26 @@ impl Pomodoro {
     /// `completed` is how many focus rounds have *finished*, not how many rounds have
     /// been shown, because that is the number a long break is really about.
     fn next_round(&self, started_ms: u64, completed: u32) -> Round {
-        let (kind, length_ms) = match self.preferences.after_round {
-            AfterRound::Focus => (RoundKind::Focus, self.preferences.focus_length_ms()),
-            AfterRound::ShortBreak => (RoundKind::ShortBreak, minutes(SHORT_BREAK_MINUTES)),
-            AfterRound::LongBreak if long_break_follows(completed) => {
-                (RoundKind::LongBreak, minutes(LONG_BREAK_MINUTES))
-            }
+        // The kind first and the length second, so the length is read for the round that
+        // was actually chosen. Deriving them together in one match would work too and would
+        // put the two settings next to each other — which is where a reader looks for them,
+        // and where a change to one without the other is visible.
+        let kind = match self.preferences.after_round {
+            AfterRound::Focus => RoundKind::Focus,
+            AfterRound::ShortBreak => RoundKind::ShortBreak,
             // A long break only follows a *fourth* round, which is what the name means.
             // Breaking after every round would leave two lengths that differ only in size,
             // and the setting would be a preference about minutes rather than about when
             // to stop.
-            AfterRound::LongBreak => (RoundKind::ShortBreak, minutes(SHORT_BREAK_MINUTES)),
+            AfterRound::LongBreak if long_break_follows(completed) => RoundKind::LongBreak,
+            AfterRound::LongBreak => RoundKind::ShortBreak,
         };
-        Round::new(kind, length_ms, started_ms, completed)
+        Round::new(
+            kind,
+            self.preferences.break_length_ms(kind),
+            started_ms,
+            completed,
+        )
     }
 
     /// The line under the countdown: what this round is for.
@@ -434,7 +509,7 @@ impl Pomodoro {
         let fraction = self.round.fraction_left(self.now_ms);
         let over = self.round.phase == Phase::Over;
         let finished = if over {
-            copy::say(host, &copy::round_finished())
+            copy::say(host, &copy::finished(self.round.kind))
         } else {
             String::new()
         };
@@ -514,12 +589,7 @@ impl Plugin for Pomodoro {
             // bubble already say what happened — so a model that cannot wave does not
             // stop the countdown from being announced.
             host.play_motion(FINISHED_MOTION);
-            let text = if kind.is_focus() {
-                copy::round_finished()
-            } else {
-                copy::break_over()
-            };
-            host.bubble(&copy::say(host, &text), NOTICE_MILLIS);
+            host.bubble(&copy::say(host, &copy::finished(kind)), NOTICE_MILLIS);
         }
         // **After** the round-end check, not before it. `notice_if_over` is what moves a
         // round from counting to over, and over is the state whose button says "Start" —
@@ -623,18 +693,39 @@ mod tests {
             plugin,
             written,
             "en-US",
-            configured(DEFAULT_FOCUS_MINUTES, AfterRound::default(), false),
+            configured(Preferences::default()),
             messages,
         );
     }
 
     /// The document the settings form would send for these settings.
-    fn configured(focus_minutes: i64, after_round: AfterRound, auto_start: bool) -> ConfigDocument {
+    ///
+    /// One function taking the whole [`Preferences`] rather than a positional list, because
+    /// the list is now five fields long and a test that reads `configured(25, ...)` cannot
+    /// tell which is the focus round and which is a break. Every field named, including the
+    /// ones a test did not change, because a partial document is a document the product
+    /// never sends: the form always sends the whole thing.
+    fn configured(preferences: Preferences) -> ConfigDocument {
+        let Preferences {
+            focus_minutes,
+            short_break_minutes,
+            long_break_minutes,
+            after_round,
+            auto_start,
+        } = preferences;
         document(
             [
                 (
                     "focus_minutes".to_string(),
                     ConfigValue::Integer(focus_minutes),
+                ),
+                (
+                    "short_break_minutes".to_string(),
+                    ConfigValue::Integer(short_break_minutes),
+                ),
+                (
+                    "long_break_minutes".to_string(),
+                    ConfigValue::Integer(long_break_minutes),
                 ),
                 (
                     "after_round".to_string(),
@@ -647,14 +738,37 @@ mod tests {
         )
     }
 
-    /// A one-minute round, which is the shortest this plugin will run.
-    fn a_minute() -> ConfigDocument {
-        configured(MINIMUM_ROUND_MINUTES, AfterRound::ShortBreak, false)
+    /// A document with the settings a test changes and the rest left alone.
+    ///
+    /// Takes a [`Preferences`] and mutates it rather than a positional list, so a test reads
+    /// as the one thing it is about: `with(|p| p.focus_minutes = 5)`. Every field it does
+    /// not touch is the default, which is the state a user is in after installing the plugin
+    /// and changing one thing.
+    fn with(change: impl FnOnce(&mut Preferences)) -> ConfigDocument {
+        let mut preferences = Preferences::default();
+        change(&mut preferences);
+        configured(preferences)
     }
 
-    /// A one-minute round that rolls on by itself.
+    /// A one-minute round, which is the shortest this plugin will run.
+    ///
+    /// Followed by a short break, which is what the shortest round is for: a test that
+    /// wanted to reach a *long* break would need four rounds first, and one that wanted a
+    /// focus round would say so.
+    fn a_minute() -> ConfigDocument {
+        with(|preferences| {
+            preferences.focus_minutes = MINIMUM_ROUND_MINUTES;
+            preferences.after_round = AfterRound::ShortBreak;
+        })
+    }
+
+    /// The same round, rolling on by itself.
     fn a_minute_on_auto() -> ConfigDocument {
-        configured(MINIMUM_ROUND_MINUTES, AfterRound::ShortBreak, true)
+        with(|preferences| {
+            preferences.focus_minutes = MINIMUM_ROUND_MINUTES;
+            preferences.after_round = AfterRound::ShortBreak;
+            preferences.auto_start = true;
+        })
     }
 
     #[test]
@@ -667,7 +781,7 @@ mod tests {
             &mut plugin,
             &written,
             "en-US",
-            configured(45, AfterRound::default(), false),
+            with(|preferences| preferences.focus_minutes = 45),
             Inbox::new().into_messages(),
         );
         let drawn = panels(&written);
@@ -886,7 +1000,7 @@ mod tests {
             &mut plugin,
             &written,
             "zh-CN",
-            configured(DEFAULT_FOCUS_MINUTES, AfterRound::default(), false),
+            configured(Preferences::default()),
             Inbox::new().into_messages(),
         );
         let labels = labels_in(&panels(&written).last().expect("a panel").scene);
@@ -905,7 +1019,7 @@ mod tests {
             &mut plugin,
             &written,
             "ja-JP",
-            configured(DEFAULT_FOCUS_MINUTES, AfterRound::default(), false),
+            configured(Preferences::default()),
             Inbox::new().into_messages(),
         );
         let labels = labels_in(&panels(&written).last().expect("a panel").scene);
@@ -924,7 +1038,11 @@ mod tests {
             &written,
             Inbox::new()
                 .tick(minutes(10))
-                .config(configured(5, AfterRound::Focus, true))
+                .config(with(|preferences| {
+                    preferences.focus_minutes = 5;
+                    preferences.after_round = AfterRound::Focus;
+                    preferences.auto_start = true;
+                }))
                 .into_messages(),
         );
         assert_eq!(
@@ -953,7 +1071,14 @@ mod tests {
             AfterRound::LongBreak,
         ] {
             assert_eq!(AfterRound::from_setting(choice.as_setting()), choice);
-            let values = values_from(&configured(30, choice, true), &schema);
+            let values = values_from(
+                &with(|preferences| {
+                    preferences.focus_minutes = 30;
+                    preferences.after_round = choice;
+                    preferences.auto_start = true;
+                }),
+                &schema,
+            );
             let preferences = Preferences::read(&values);
             assert_eq!(preferences.focus_minutes, 30);
             assert_eq!(preferences.after_round, choice);
@@ -1029,6 +1154,120 @@ mod tests {
     }
 
     #[test]
+    fn a_pause_is_as_long_as_the_user_said_it_is() {
+        // The two new settings, end to end: a short break and a long break each read from
+        // their own field, so a user who wants a five-minute pause and a twenty-minute one
+        // gets both rather than one setting that moved both.
+        let plugin = Pomodoro::new(Preferences::default());
+        assert_eq!(
+            plugin.preferences.break_length_ms(RoundKind::ShortBreak),
+            minutes(DEFAULT_SHORT_BREAK_MINUTES)
+        );
+        assert_eq!(
+            plugin.preferences.break_length_ms(RoundKind::LongBreak),
+            minutes(DEFAULT_LONG_BREAK_MINUTES)
+        );
+
+        let schema = declared_settings().to_schema().expect("a valid schema");
+        let values = values_from(
+            &with(|preferences| {
+                preferences.short_break_minutes = 3;
+                preferences.long_break_minutes = 20;
+            }),
+            &schema,
+        );
+        let preferences = Preferences::read(&values);
+        assert_eq!(
+            preferences.break_length_ms(RoundKind::ShortBreak),
+            minutes(3)
+        );
+        assert_eq!(
+            preferences.break_length_ms(RoundKind::LongBreak),
+            minutes(20),
+            "and the long pause is the long one, not the short field read twice"
+        );
+    }
+
+    #[test]
+    fn a_long_pause_that_is_not_earned_is_a_short_one() {
+        // The fourth-round rule, with the two lengths now being the user's: asking for a
+        // long break after the first round still gives a short one, because the setting is
+        // about when to stop rather than about how long a pause is.
+        let plugin = Pomodoro::new(Preferences {
+            after_round: AfterRound::LongBreak,
+            short_break_minutes: 4,
+            long_break_minutes: 25,
+            ..Preferences::default()
+        });
+        let early = plugin.next_round(0, 1);
+        assert_eq!(early.kind, RoundKind::ShortBreak);
+        assert_eq!(early.length_ms, minutes(4));
+
+        let earned = plugin.next_round(0, ROUNDS_PER_LONG_BREAK);
+        assert_eq!(earned.kind, RoundKind::LongBreak);
+        assert_eq!(
+            earned.length_ms,
+            minutes(25),
+            "and the earned one is the length the user chose for it"
+        );
+    }
+
+    #[test]
+    fn a_hand_written_file_cannot_ask_for_a_pause_of_no_length() {
+        // Unreachable through the product — the host fits the document to the schema first —
+        // and here so a `Values` built any other way cannot produce a pause that ends in the
+        // same tick it began, which is a round that never ran.
+        let schema = declared_settings().to_schema().expect("a valid schema");
+        for field in ["short_break_minutes", "long_break_minutes"] {
+            for written in [i64::MIN, -10, 0, 10_000, i64::MAX] {
+                let settings = document(
+                    [(field.to_string(), ConfigValue::Integer(written))]
+                        .into_iter()
+                        .collect(),
+                );
+                let values = values_from(&settings, &schema);
+                let preferences = Preferences::read(&values);
+                let kind = if field.starts_with("short") {
+                    RoundKind::ShortBreak
+                } else {
+                    RoundKind::LongBreak
+                };
+                let length = preferences.break_length_ms(kind);
+                assert!(
+                    (minutes(MINIMUM_BREAK_MINUTES)..=minutes(MAXIMUM_BREAK_MINUTES))
+                        .contains(&length),
+                    "{field} = {written} became {length}ms, which is inside the range this \
+                     plugin declares"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_finished_pause_says_which_pause_it_was() {
+        // The panel and the bubble both name the kind that ended, because a pause's length is
+        // the user's choice now and "Break over" would describe neither the five-minute one
+        // nor the twenty-minute one.
+        for kind in [
+            RoundKind::Focus,
+            RoundKind::ShortBreak,
+            RoundKind::LongBreak,
+        ] {
+            let said = copy::finished(kind);
+            let text = said.resolve("en-US").to_owned();
+            assert!(
+                !text.trim().is_empty() && !text.contains('_'),
+                "{kind:?} resolves to a sentence rather than to a key: {text:?}"
+            );
+        }
+        assert_ne!(
+            copy::finished(RoundKind::ShortBreak).resolve("en-US"),
+            copy::finished(RoundKind::LongBreak).resolve("en-US"),
+            "and the two pauses are named differently, because their lengths differ"
+        );
+    }
+
+    #[test]
     fn the_settings_the_plugin_declares_are_the_settings_form_and_nothing_else() {
         let schema = declared_settings().to_schema().expect("a valid schema");
         assert_eq!(
@@ -1037,12 +1276,20 @@ mod tests {
                 .iter()
                 .map(|field| field.key.as_str())
                 .collect::<Vec<_>>(),
-            ["focus_minutes", "after_round", "auto_start"],
-            "in the order the form shows them, because the headline is first"
+            [
+                "focus_minutes",
+                "short_break_minutes",
+                "long_break_minutes",
+                "after_round",
+                "auto_start"
+            ],
+            "in the order the form shows them, because the order is the order somebody sets \
+             this plugin up in: how long a round, how long each pause, what follows, and \
+             whether it starts itself"
         );
         assert_eq!(
             declared_settings().len(),
-            3,
+            5,
             "and the count is the count, so a field added here is a row a user will see"
         );
     }
@@ -1055,7 +1302,7 @@ mod tests {
         });
         let next = plugin.next_round(1_000, 1);
         assert_eq!(next.kind, RoundKind::ShortBreak);
-        assert_eq!(next.length_ms, minutes(SHORT_BREAK_MINUTES));
+        assert_eq!(next.length_ms, minutes(DEFAULT_SHORT_BREAK_MINUTES));
     }
 
     #[test]
@@ -1242,7 +1489,7 @@ mod tests {
             &mut plugin,
             &written,
             "zh-CN",
-            configured(DEFAULT_FOCUS_MINUTES, AfterRound::default(), false),
+            configured(Preferences::default()),
             Inbox::new().into_messages(),
         );
         assert_eq!(

@@ -18,6 +18,7 @@
 use bongocat_plugin_sdk::{Action, ActionGlyph, Host, LocalizedText, SelfDescription, describe};
 use std::sync::LazyLock;
 
+use crate::timer::RoundKind;
 use crate::{Button, TOGGLE};
 
 /// This plugin's own manifest, embedded at compile time.
@@ -28,9 +29,6 @@ use crate::{Button, TOGGLE};
 static SELF: LazyLock<SelfDescription> = LazyLock::new(|| {
     describe(include_str!("../plugin.json")).expect("this plugin's own manifest is readable")
 });
-
-/// The plugin's own emoji, which is the card's icon.
-pub const ICON: &str = "🍅";
 
 /// What a focus round is for.
 pub fn focus() -> LocalizedText {
@@ -72,14 +70,18 @@ pub fn reset() -> LocalizedText {
     SELF.label("reset")
 }
 
-/// Said when a stretch of work ends.
-pub fn round_finished() -> LocalizedText {
-    SELF.label("round_finished")
-}
-
-/// Said when a pause ends.
-pub fn break_over() -> LocalizedText {
-    SELF.label("break_over")
+/// Said when a round of this kind ends.
+///
+/// One function rather than a call site per kind, for the reason the two pauses are two
+/// settings: a break's length is now the user's choice, so "Break over" alone no longer
+/// says which break ended, and a panel that said "Break over" after a fifteen-minute pause
+/// and again after a five-minute one would be describing neither.
+pub fn finished(kind: RoundKind) -> LocalizedText {
+    match kind {
+        RoundKind::Focus => SELF.label("round_finished"),
+        RoundKind::ShortBreak => SELF.label("break_finished_short"),
+        RoundKind::LongBreak => SELF.label("break_finished_long"),
+    }
 }
 
 /// The label on the round-length setting.
@@ -95,6 +97,26 @@ pub fn focus_minutes_help() -> LocalizedText {
 /// The suffix on the round-length number.
 pub fn minutes_unit() -> LocalizedText {
     SELF.label("minutes_unit")
+}
+
+/// The label on the short-break setting.
+pub fn short_break_minutes_label() -> LocalizedText {
+    SELF.label("short_break_minutes_label")
+}
+
+/// What the short-break setting is.
+pub fn short_break_minutes_help() -> LocalizedText {
+    SELF.label("short_break_minutes_help")
+}
+
+/// The label on the long-break setting.
+pub fn long_break_minutes_label() -> LocalizedText {
+    SELF.label("long_break_minutes_label")
+}
+
+/// What the long-break setting is.
+pub fn long_break_minutes_help() -> LocalizedText {
+    SELF.label("long_break_minutes_help")
 }
 
 /// The label on the "what follows a round" setting.
@@ -201,7 +223,8 @@ mod tests {
             "resume",
             "reset",
             "round_finished",
-            "break_over",
+            "break_finished_short",
+            "break_finished_long",
             "focus_minutes_label",
             "focus_minutes_help",
             "minutes_unit",
@@ -228,7 +251,7 @@ mod tests {
         assert_eq!(manifest().id(), "pomodoro");
         assert_eq!(manifest().version(), "1.0.0");
         assert_eq!(manifest().author(), "BongoCat");
-        assert_eq!(manifest().emoji(), Some(ICON));
+        assert_eq!(manifest().emoji(), Some("🍅"));
         assert_eq!(manifest().name().resolve("zh-CN"), "番茄钟");
     }
 
