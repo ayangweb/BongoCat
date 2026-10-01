@@ -135,6 +135,11 @@ that the two agree on id and version before showing it. A descriptor that
 disagrees is refused rather than displayed, because a card that says one version
 and runs another is worse than a plugin that will not start.
 
+**Amended by ADR-0082.** The two documents are no longer written separately: a
+plugin's descriptor is a *projection* of its own manifest, and a development
+catalog is derived from the plugin directories rather than kept in a file. The
+agreement check stays, because the archive and the binary are still two files.
+
 ## What this costs, stated plainly
 
 - A plugin is a program, so shipping one means shipping a binary per platform,
@@ -145,8 +150,12 @@ and runs another is worse than a plugin that will not start.
   a JSON line, and a panel update is a scene document. At a panel's cadence —
   once a second, not sixty times — that is not measurable, and the host coalesces
   updates per evaluation rather than forwarding every one.
-- Development is a build step instead of a file edit. `just plugin <id>` builds
-  the plugin and packs the archive the development catalog names.
+- Development is a build step instead of a file edit. `just plugins` builds every
+  plugin and packs the ones whose sources have moved, and `just dev` runs it
+  first — so a plugin's edit is on the model window after one launch rather than
+  after a second command the author has to remember. The development catalog is
+  derived from the plugin directories (ADR-0082), so adding a plugin is adding a
+  directory and there is no list to keep in step.
 
 ## Consequences
 

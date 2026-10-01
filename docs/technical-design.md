@@ -977,6 +977,24 @@ Linux 阶段再决定增加 Vulkan/OpenGL backend，或基于数据迁移到 wgp
 面板由插件声明 schema、宿主用通用控件渲染，值由插件自己持久化，`config.json` 里没有
 插件段。宿主发布的事实只有五项：模型名、窗口是否可见、语言、版本和当前键盘输入法。
 
+插件的**身份与文案只有一份**：`plugin.json` 同时携带名称、简介、图标和一张 `copy`
+文案表，插件用 SDK 的 `SelfDescription` 在编译期内嵌读取自己的 manifest。宿主不保存
+插件的翻译，只在绘制时按用户语言解析——因为只有宿主知道用户读什么，而画是宿主的
+事。开发目录的插件列表由**扫描插件目录**得出，因此新增插件就是新增一个目录，没有
+集中式列表需要维护。详见 `docs/adr/0082-a-plugin-is-described-by-its-own-manifest.md`。
+
+面板的**位置由宿主与用户决定，不由插件决定**：模型窗口有九个位置，一个位置只放一个
+插件，插件只声明"我有一个面板"（`draws_panel`）并给出自己偏好的角落，宿主按"用户
+的选择 → 插件的偏好 → 第一个空位"分配，并把锚点覆盖到发布的图层上。被占用的位置
+根本不出现在菜单里。`config.json` 的 `plugins.positions` 记录用户的摆放，关闭插件
+会释放位置但保留摆放。详见
+`docs/adr/0083-one-plugin-per-place-in-the-model-window.md`。
+
+插件**不能自己发出声音**：`PlaySound` 请求把一个路径交给宿主，由产品唯一的音频通道
+播放。宿主先检查它是一个文件、不超过四兆、且不是 URL 才入队；声音插件的音量被夹取
+而非拒绝。两个进程同时打开输出设备是操作系统仲裁不好的事，用户听到的是卡顿。详见
+`docs/adr/0084-a-plugin-asks-the-host-to-play-a-sound.md`。
+
 ```text
 plugin worker thread --(latest-wins 图层通道)--> overlay frame loop
        |                                                  ^

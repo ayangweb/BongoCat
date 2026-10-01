@@ -11,9 +11,14 @@ depends on the plugin's state:
 
 | State | Where the card's copy comes from |
 | --- | --- |
-| Not installed | the catalog entry (`plugins.json`) |
+| Not installed | the catalog entry, projected from the plugin's own `plugin.json` |
 | Installed, not running | the archive's `plugin.json` |
 | Running | the process's own descriptor |
+
+**Amended by ADR-0082.** The first and second rows are now one document: a
+development catalog is *derived* from the plugin directories, projecting each
+plugin's own manifest, so a plugin's name and sentence are written once. The
+precedence rule below is unchanged.
 
 The precedence was right — a running plugin may improve the sentence on its card in
 a later version, so the running copy wins. The problem was that **only the third

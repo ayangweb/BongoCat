@@ -162,6 +162,13 @@ The window's corner radius is deliberately not applied to a panel. A panel is no
 the window, and a panel that inherited the window's rounding would show a second
 rounded edge inside the first.
 
+**The anchor you write is a default, not a decision.** One plugin holds each of the
+nine positions, the user chooses, and the host applies the choice when the layer is
+published — so a panel's corner is the one thing about its placement the plugin does
+not own. Say `draws_panel()` on your descriptor to be offered the position, and the
+corner you ask for is where you sit until the user moves you *or* until something
+else has taken it. See `docs/adr/0083-one-plugin-per-place-in-the-model-window.md`.
+
 ## What a plugin cannot do
 
 - **Touch the product's memory.** There is no shared library, no ABI, and no
