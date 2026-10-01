@@ -1790,8 +1790,19 @@ impl Worker {
     }
 
     /// The positions one plugin may be moved to, for the snapshot.
+    ///
+    /// Empty for a plugin with no place, and that is the only correct answer for it. A
+    /// plugin that did not declare a panel has no position, so it appears in no allocation
+    /// and holds none — and offering it the free positions would be a menu where every
+    /// choice does the same thing, which is none. The choice would be recorded in the
+    /// preferences and then ignored, because the allocation only ever considers plugins that
+    /// asked for a place: a control that takes a setting and never applies it.
     fn positions_for(&self, id: &PluginId) -> Vec<PluginAnchor> {
-        self.placements().available_for(id)
+        let placements = self.placements();
+        if placements.of(id).is_none() {
+            return Vec::new();
+        }
+        placements.available_for(id)
     }
 
     /// What the runtime currently says, for the facts a plugin may show.

@@ -57,6 +57,8 @@ const BETA: &str = "tally-beta";
 const GAMMA: &str = "tally-gamma";
 /// Announces itself, draws, and then exits — a plugin that dies mid-session.
 const DELTA: &str = "tally-delta";
+/// Draws a panel and says it has no place in the model window.
+const ECHO: &str = "tally-echo";
 
 /// How long a case waits for the worker to publish something.
 const PATIENCE: Duration = Duration::from_secs(30);
@@ -70,8 +72,19 @@ fn character_of(id: &str) -> (PluginAnchor, [u32; 2], &'static str, &'static str
         // The one that does not survive the session, so the case can watch the others
         // carry on without it.
         DELTA => (PluginAnchor::CenterLeft, [220, 110], "Delta", "delta_flag"),
+        // A corner that ALPHA also prefers, which is the point: a plugin that has no place
+        // must not be able to take one away from a plugin that has one.
+        ECHO => (PluginAnchor::TopLeft, [260, 130], "Echo", "echo_flag"),
         other => panic!("{other} is not a plugin this file knows how to be"),
     }
+}
+
+/// Whether this plugin tells the host it has a place in the model window.
+///
+/// Everything in this file does except [`ECHO`], and the two facts are separate on purpose:
+/// a plugin that draws is not thereby a plugin the user places.
+fn asks_for_a_place(id: &str) -> bool {
+    id != ECHO
 }
 
 /// The cases, and the plain claim each one makes.
@@ -80,7 +93,7 @@ fn character_of(id: &str) -> (PluginAnchor, [u32; 2], &'static str, &'static str
 /// and a case that reports by panicking. A panic is the only report available here, because
 /// the repository denies printing — and the rule is right for the same reason the plugin
 /// half is a plain function: on the plugin side stdout *is* the wire.
-const CASES: [(&str, fn()); 4] = [
+const CASES: [(&str, fn()); 5] = [
     (
         "three plugins run at once, each with its own settings, panel and place",
         several_run_at_once,
@@ -96,6 +109,10 @@ const CASES: [(&str, fn()); 4] = [
     (
         "a plugin that cannot start says so on its own card",
         a_plugin_that_cannot_start_says_so,
+    ),
+    (
+        "a plugin with no place keeps its own corner and holds none",
+        a_plugin_with_no_place_keeps_its_corner,
     ),
 ];
 
@@ -723,6 +740,65 @@ fn a_plugin_that_cannot_start_says_so() {
     );
 }
 
+/// A plugin that says it has no place keeps its own corner, and holds none.
+///
+/// Two halves that only make sense together. The first is that the panel is still drawn —
+/// `draws_panel` is what makes a position *editable*, not what makes a panel appear, so a
+/// plugin that omits it keeps working in the corner it asked for. The second is that it
+/// holds no corner: `ECHO` prefers the same anchor as `ALPHA`, and if it were counted, the
+/// two would collide and one of them would be moved out of the place its author chose.
+///
+/// The typed-sound plugin is the shipped case: a keystroke sound with a chip that is up for
+/// a moment. The chip is drawn where the plugin put it, and a menu of nine places for a
+/// notification that is gone in half a second would be a control that changes nothing.
+fn a_plugin_with_no_place_keeps_its_corner() {
+    let ids = [ALPHA, ECHO];
+    let worker = Several::with(&ids);
+    for id in ids {
+        worker.send(PluginCommand::SetEnabled {
+            id: Several::id(id),
+            enabled: true,
+        });
+    }
+    let snapshot = worker.await_running(&ids);
+
+    let alpha = snapshot.entry(&Several::id(ALPHA)).expect("an entry");
+    assert_eq!(
+        alpha.position.as_ref().map(|placed| placed.anchor),
+        Some(character_of(ALPHA).0),
+        "the plugin that asked for a place has it, even though another plugin prefers the \
+         same corner: only a plugin that asked is holding one"
+    );
+
+    let echo = snapshot.entry(&Several::id(ECHO)).expect("an entry");
+    assert!(
+        echo.position.is_none(),
+        "and the plugin that asked for none has none — {:?}",
+        echo.position
+    );
+    assert!(
+        echo.positions.is_empty(),
+        "so it is offered no menu of nine: there is nothing on the model window the user \
+         chose to move, so there is no choice to offer. Got {:?}",
+        echo.positions
+    );
+
+    // And its panel is on the window anyway, at its own size — the flag was about editing,
+    // not about drawing.
+    let layers = worker.layers(2);
+    assert!(
+        layers.iter().any(|layer| {
+            (layer.raster.width, layer.raster.height)
+                == (character_of(ECHO).1[0], character_of(ECHO).1[1])
+        }),
+        "a plugin with no place still draws, in the corner it asked for: {:?}",
+        layers
+            .iter()
+            .map(|layer| (layer.raster.width, layer.raster.height))
+            .collect::<Vec<_>>(),
+    );
+}
+
 fn describe_places(snapshot: &PluginSnapshot, ids: &[&str]) -> Vec<(String, Option<PluginAnchor>)> {
     ids.iter()
         .map(|id| {
@@ -813,7 +889,7 @@ fn serve() -> std::process::ExitCode {
                         control: bongocat_plugin_protocol::ConfigControl::Toggle { default: true },
                     }],
                 },
-                draws_panel: true,
+                draws_panel: asks_for_a_place(&id),
                 subscriptions: vec![Subscription::HostState],
             }),
         },
