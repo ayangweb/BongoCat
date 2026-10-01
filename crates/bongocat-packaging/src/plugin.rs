@@ -368,19 +368,110 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_archive_lands_where_the_repositorys_own_catalog_looks_for_it() {
-        // The development loop has no publish step, so the name here and the `path` in
-        // `plugins.json` are one fact written down twice. This is the check that says so.
+    /// Every plugin's own `plugins.json` entry, parsed rather than pattern-matched, so
+    /// the checks below read the document the product actually reads.
+    fn repository_catalog() -> serde_json::Value {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(2)
             .expect("inside a workspace");
-        let catalog: serde_json::Value = serde_json::from_slice(
+        serde_json::from_slice(
             &fs::read(root.join(PLUGINS_DIRECTORY).join("plugins.json"))
                 .expect("the repository ships a catalog"),
         )
-        .expect("valid JSON");
+        .expect("valid JSON")
+    }
+
+    #[test]
+    fn a_catalog_entry_and_the_archive_it_points_at_say_the_same_thing() {
+        // The card's copy is drawn from three documents that are written separately:
+        // the catalog entry (uninstalled), the `plugin.json` inside the archive
+        // (installed, not running) and the running process's own descriptor
+        // (running). The last one wins, so if the first two disagree then the card's
+        // text *changes* when a plugin is started — a sentence that appears and
+        // disappears with a lifecycle rather than describing the plugin.
+        //
+        // This is not hypothetical: the three had already drifted, one plugin carrying
+        // three different English sentences for one description.
+        let catalog = repository_catalog();
+        let entries = catalog["plugins"]
+            .as_array()
+            .expect("the catalog is a list")
+            .clone();
+        assert!(!entries.is_empty(), "the repository ships plugins");
+        for entry in entries {
+            let id = entry["id"].as_str().expect("an entry names its id");
+            let manifest: serde_json::Value = serde_json::from_slice(
+                &fs::read(
+                    Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .ancestors()
+                        .nth(2)
+                        .expect("inside a workspace")
+                        .join(PLUGINS_DIRECTORY)
+                        .join(id)
+                        .join(MANIFEST),
+                )
+                .expect("the plugin ships its own manifest"),
+            )
+            .expect("valid JSON");
+            for field in ["name", "description", "icon"] {
+                assert_eq!(
+                    manifest[field], entry[field],
+                    "{id}: the archive's {field} and the catalog's disagree, so the card's text \
+                     changes when the plugin starts"
+                );
+            }
+            assert_eq!(
+                manifest["version"], entry["version"],
+                "{id}: versions disagree"
+            );
+            assert_eq!(
+                manifest["author"], entry["author"],
+                "{id}: authors disagree"
+            );
+        }
+    }
+
+    #[test]
+    fn every_catalog_entry_speaks_the_languages_the_product_ships() {
+        // A localized field that carries only a default is not localized, it is a
+        // string that happens to be in a table — and nothing else in the repository
+        // would notice. Chinese is the check because it is the language this bug was
+        // reported in: a card reading English on a Chinese page.
+        for entry in repository_catalog()["plugins"].as_array().expect("a list") {
+            let id = entry["id"].as_str().expect("an entry names its id");
+            for field in ["name", "description"] {
+                let text = &entry[field];
+                let by_locale = text["by_locale"]
+                    .as_object()
+                    .unwrap_or_else(|| panic!("{id}: {field} carries no translations"));
+                let default = text["default"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("{id}: {field} has no default to fall back to"));
+                for locale in ["zh-CN", "zh-TW"] {
+                    let translation = by_locale
+                        .get(locale)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_else(|| panic!("{id}: {field} has no {locale} copy"));
+                    assert!(
+                        !translation.trim().is_empty() && translation != default,
+                        "{id}: {field} in {locale} is empty or just the English again"
+                    );
+                }
+            }
+            assert!(
+                entry["icon"]["emoji"].is_string(),
+                "{id}: a card with no icon is a letter, and this catalog has an icon for every \
+                 plugin the repository ships"
+            );
+        }
+    }
+
+    #[test]
+    fn the_archive_lands_where_the_repositorys_own_catalog_looks_for_it() {
+        // The development loop has no publish step, so the name here and the `path` in
+        // `plugins.json` are one fact written down twice. This is the check that says so.
+        let catalog = repository_catalog();
         let entry = catalog["plugins"]
             .as_array()
             .expect("a list")

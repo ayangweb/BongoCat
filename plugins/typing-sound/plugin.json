@@ -2,10 +2,22 @@
   "schema_version": 1,
   "api_version": 1,
   "id": "typing-sound",
-  "name": "Typing Sound",
+  "name": {
+    "default": "Typing Sound",
+    "by_locale": {
+      "zh-CN": "打字音效",
+      "zh-TW": "打字音效"
+    }
+  },
+  "description": {
+    "default": "Gives the cat a voice while you type: each key plays one of the model's own motions, and the model's sound for it.",
+    "by_locale": {
+      "zh-CN": "打字时让猫发出声音：每按一个键就播放模型自带的一个动作，以及该动作自带的声音。",
+      "zh-TW": "打字時讓貓發出聲音：每按一個鍵就播放模型自帶的一個動作，以及該動作自帶的聲音。"
+    }
+  },
   "version": "1.0.0",
   "author": "BongoCat",
-  "description": "Gives the cat a voice while you type: each key plays one of the model's own motions, and the model's sound for it.",
   "icon": {
     "emoji": "🔊"
   },

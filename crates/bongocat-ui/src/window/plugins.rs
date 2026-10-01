@@ -362,31 +362,54 @@ fn card_control(
         .into_any_element()
 }
 
-/// The badge that says whether a plugin's process is alive.
+/// The two facts a card's state badge is decided from.
+///
+/// A copy rather than a reference into the entry, because the badge is rebuilt on
+/// every render and a rendered element cannot be built once and kept. Two bools is
+/// the whole of it, and it is deliberately not the whole entry: anything else a card
+/// shows is read where the row is built, where the view is not already borrowed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CardState {
+    installed: bool,
+    running: bool,
+}
+
+/// The badge that says whether a plugin's process is alive, or that there is none.
 ///
 /// Separate from the switch because the two answer different questions: the switch is
 /// what the user asked for and the badge is what happened. A card whose plugin is
 /// switched on and not running is the state that needs saying out loud, because it is
 /// what a crash looks like from outside.
-fn running_badge(running: bool, locale: &'static str) -> AnyElement {
-    let key = if running {
+///
+/// **Nothing at all** for a plugin that is not installed, and that is the whole reason
+/// this takes the entry rather than a bool. There is no process to have stopped: the
+/// badge was answering a question about something that does not exist yet, and every
+/// uninstalled card in a list said "Stopped" — a row of plugins the user had not
+/// asked for, all reporting a state none of them was in.
+fn state_badge(state: CardState, locale: &'static str) -> Option<AnyElement> {
+    if !state.installed {
+        return None;
+    }
+    let key = if state.running {
         "settings.plugins.state.running"
     } else {
         "settings.plugins.state.stopped"
     };
-    let style = if running {
+    let style = if state.running {
         Tag::secondary()
     } else {
         Tag::new().outline()
     };
-    Badge::new()
-        .child(
-            style
-                .small()
-                .rounded_full()
-                .child(bongocat_i18n::text(locale, key)),
-        )
-        .into_any_element()
+    Some(
+        Badge::new()
+            .child(
+                style
+                    .small()
+                    .rounded_full()
+                    .child(bongocat_i18n::text(locale, key)),
+            )
+            .into_any_element(),
+    )
 }
 
 /// One card's body: its state on the left and its own controls on the right.
@@ -397,8 +420,16 @@ fn card_body(
     view: Entity<SettingsView>,
     language: SettingsLanguage,
 ) -> SettingItem {
-    let running = entry.running;
     let locale = language.catalog_locale();
+    // Read before any row is built, and kept as the two facts rather than as a
+    // rendered element: a card's closure runs again on every render, and a rendered
+    // element cannot be built once and reused. Which badge this is — none, "running",
+    // "stopped" — is therefore decided from these two inside the closure, which is
+    // one cheap comparison rather than a second source of truth.
+    let state = CardState {
+        installed: entry.installed,
+        running: entry.running,
+    };
     let id: SharedString = entry.id.clone().into();
     // A plugin with settings offers a button that opens its own form, which is a
     // second thing beside the switch rather than a control in place of it: a plugin
@@ -415,7 +446,13 @@ fn card_body(
                 .gap_2()
                 .items_center()
                 .justify_between()
-                .child(running_badge(running, locale))
+                // The badge, or a growing spacer in its place: without it the row's
+                // `justify_between` would put the controls on the *left*, so an
+                // install button would sit under the title instead of under the
+                // install button on the card below it.
+                .child(
+                    state_badge(state, locale).unwrap_or_else(|| div().flex_1().into_any_element()),
+                )
                 .child(card_control(
                     options,
                     action,
@@ -822,6 +859,40 @@ mod tests {
             "so its card offers the configure button"
         );
         assert!(entry(true, true, false).fields.is_empty());
+    }
+
+    #[test]
+    fn only_an_installed_plugin_is_running_or_stopped() {
+        let locale = SettingsLanguage::English.catalog_locale();
+
+        // The bug the screenshot showed: a list of plugins the user had not installed,
+        // every card reporting "Stopped". There is no process to have stopped, so the
+        // badge had no sentence to say and said the wrong one anyway.
+        let uninstalled = CardState {
+            installed: false,
+            running: false,
+        };
+        let running = CardState {
+            installed: true,
+            running: true,
+        };
+        let stopped = CardState {
+            installed: true,
+            running: false,
+        };
+        assert!(
+            state_badge(uninstalled, locale).is_none(),
+            "a plugin that is not installed has no process, so its card says nothing about one"
+        );
+        assert!(
+            state_badge(running, locale).is_some(),
+            "an installed, running plugin does have a process to report on"
+        );
+        assert!(
+            state_badge(stopped, locale).is_some(),
+            "and so does an installed one that is not running — that is the crash a user \
+             has to be able to see"
+        );
     }
 
     #[test]

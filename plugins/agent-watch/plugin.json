@@ -2,10 +2,22 @@
   "schema_version": 1,
   "api_version": 1,
   "id": "agent-watch",
-  "name": "AI Watch",
+  "name": {
+    "default": "AI Watch",
+    "by_locale": {
+      "zh-CN": "AI 监控",
+      "zh-TW": "AI 監控"
+    }
+  },
+  "description": {
+    "default": "Watches what an AI coding tool is doing from its hook events, and has the cat react: reading, writing, running, asking, finished, broken.",
+    "by_locale": {
+      "zh-CN": "通过 AI 编码工具的 hook 事件观察它正在做什么，并让猫做出反应：读、写、运行、询问、完成、出错。",
+      "zh-TW": "透過 AI 編碼工具的 hook 事件觀察它正在做什麼，並讓貓做出反應：讀、寫、執行、詢問、完成、出錯。"
+    }
+  },
   "version": "1.0.0",
   "author": "BongoCat",
-  "description": "Watches what an AI coding tool is doing from its hook events.",
   "icon": {
     "emoji": "👀"
   },

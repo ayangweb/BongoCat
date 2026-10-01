@@ -3,10 +3,25 @@
   "plugins": [
     {
       "id": "pomodoro",
-      "name": "Pomodoro",
+      "name": {
+        "default": "Pomodoro",
+        "by_locale": {
+          "zh-CN": "番茄钟",
+          "zh-TW": "番茄鐘"
+        }
+      },
       "version": "1.0.0",
       "author": "BongoCat",
-      "description": "A focus timer on the model window. Start it, stop it, and let the countdown run while you work.",
+      "description": {
+        "default": "A focus timer on the model window. Start it, stop it, and let the countdown run while you work.",
+        "by_locale": {
+          "zh-CN": "模型窗口上的专注计时器。开始、暂停，让倒计时在你工作期间继续走。",
+          "zh-TW": "模型視窗上的專注計時器。開始、暫停，讓倒數計時在你工作期間繼續走。"
+        }
+      },
+      "icon": {
+        "emoji": "🍅"
+      },
       "api_version": 1,
       "downloads": {
         "macos-aarch64": {
@@ -22,10 +37,25 @@
     },
     {
       "id": "keyboard-display",
-      "name": "Key Display",
+      "name": {
+        "default": "Key Display",
+        "by_locale": {
+          "zh-CN": "按键显示",
+          "zh-TW": "按鍵顯示"
+        }
+      },
       "version": "1.0.0",
       "author": "BongoCat",
-      "description": "Shows the keys you are holding on the model window.",
+      "description": {
+        "default": "Shows the keys you are holding, in the corner of the model window, so a screencast does not need a second window to prove which key you pressed.",
+        "by_locale": {
+          "zh-CN": "在模型窗口角落显示你正在按的键，录屏时不必再开一个窗口来证明按了哪个键。",
+          "zh-TW": "在模型視窗角落顯示你正在按的鍵，錄影時不必再開一個視窗來證明按了哪個鍵。"
+        }
+      },
+      "icon": {
+        "emoji": "⌨️"
+      },
       "api_version": 1,
       "downloads": {
         "macos-aarch64": {
@@ -41,10 +71,25 @@
     },
     {
       "id": "typing-sound",
-      "name": "Typing Sound",
+      "name": {
+        "default": "Typing Sound",
+        "by_locale": {
+          "zh-CN": "打字音效",
+          "zh-TW": "打字音效"
+        }
+      },
       "version": "1.0.0",
       "author": "BongoCat",
-      "description": "Gives the cat a voice while you type.",
+      "description": {
+        "default": "Gives the cat a voice while you type: each key plays one of the model's own motions, and the model's sound for it.",
+        "by_locale": {
+          "zh-CN": "打字时让猫发出声音：每按一个键就播放模型自带的一个动作，以及该动作自带的声音。",
+          "zh-TW": "打字時讓貓發出聲音：每按一個鍵就播放模型自帶的一個動作，以及該動作自帶的聲音。"
+        }
+      },
+      "icon": {
+        "emoji": "🔊"
+      },
       "api_version": 1,
       "downloads": {
         "macos-aarch64": {
@@ -60,10 +105,25 @@
     },
     {
       "id": "key-stats",
-      "name": "Key Stats",
+      "name": {
+        "default": "Key Stats",
+        "by_locale": {
+          "zh-CN": "按键统计",
+          "zh-TW": "按鍵統計"
+        }
+      },
       "version": "1.0.0",
       "author": "BongoCat",
-      "description": "Counts the keys you press and how far the pointer travels, per day.",
+      "description": {
+        "default": "Counts the keys you press and how far the pointer travels, per day, on the model window. The tally is the plugin's own and stays in the plugin's own files.",
+        "by_locale": {
+          "zh-CN": "在模型窗口上按天统计你按下的按键与指针移动距离。记录由插件自己维护，保存在插件自己的文件里。",
+          "zh-TW": "在模型視窗上按天統計你按下的按鍵與指標移動距離。記錄由插件自己維護，存放在插件自己的檔案裡。"
+        }
+      },
+      "icon": {
+        "emoji": "📊"
+      },
       "api_version": 1,
       "downloads": {
         "macos-aarch64": {
@@ -79,10 +139,25 @@
     },
     {
       "id": "input-method",
-      "name": "Input Method",
+      "name": {
+        "default": "Input Method",
+        "by_locale": {
+          "zh-CN": "输入法",
+          "zh-TW": "輸入法"
+        }
+      },
       "version": "1.0.0",
       "author": "BongoCat",
-      "description": "Shows which keyboard input method is selected.",
+      "description": {
+        "default": "Shows which keyboard input method is selected, so you can see whether you are typing English or something else without opening the menu.",
+        "by_locale": {
+          "zh-CN": "显示当前选中的键盘输入法，让你不用打开菜单就知道自己在打英文还是别的。",
+          "zh-TW": "顯示目前選取的鍵盤輸入法，讓你不用打開選單就知道自己在打英文還是別的。"
+        }
+      },
+      "icon": {
+        "emoji": "⌨️"
+      },
       "api_version": 1,
       "downloads": {
         "macos-aarch64": {
@@ -98,10 +173,25 @@
     },
     {
       "id": "agent-watch",
-      "name": "AI Watch",
+      "name": {
+        "default": "AI Watch",
+        "by_locale": {
+          "zh-CN": "AI 监控",
+          "zh-TW": "AI 監控"
+        }
+      },
       "version": "1.0.0",
       "author": "BongoCat",
-      "description": "Watches what an AI coding tool is doing from its hook events.",
+      "description": {
+        "default": "Watches what an AI coding tool is doing from its hook events, and has the cat react: reading, writing, running, asking, finished, broken.",
+        "by_locale": {
+          "zh-CN": "通过 AI 编码工具的 hook 事件观察它正在做什么，并让猫做出反应：读、写、运行、询问、完成、出错。",
+          "zh-TW": "透過 AI 編碼工具的 hook 事件觀察它正在做什麼，並讓貓做出反應：讀、寫、執行、詢問、完成、出錯。"
+        }
+      },
+      "icon": {
+        "emoji": "👀"
+      },
       "api_version": 1,
       "downloads": {
         "macos-aarch64": {
@@ -117,10 +207,25 @@
     },
     {
       "id": "cat-skills",
-      "name": "Cat Skills",
+      "name": {
+        "default": "Cat Skills",
+        "by_locale": {
+          "zh-CN": "小猫技能",
+          "zh-TW": "小貓技能"
+        }
+      },
       "version": "1.0.0",
       "author": "BongoCat",
-      "description": "Runs a command you choose, shows the answer, and reminds you when you ask.",
+      "description": {
+        "default": "Lets the cat do things: run a command you choose and show what it said, and remind you of something when the time comes.",
+        "by_locale": {
+          "zh-CN": "让猫去做事：运行你选择的命令并显示它的回复，并在时间到了的时候提醒你。",
+          "zh-TW": "讓貓去做事：執行你選擇的命令並顯示它的回覆，並在時間到了的時候提醒你。"
+        }
+      },
+      "icon": {
+        "emoji": "🐈"
+      },
       "api_version": 1,
       "downloads": {
         "macos-aarch64": {

@@ -236,6 +236,27 @@ impl PluginIcon {
             None => Ok(None),
         }
     }
+
+    /// Whether this icon names nothing at all.
+    ///
+    /// For skipping the field on the wire: a catalog entry with no icon and one with
+    /// an empty `"icon": {}` are the same document, and writing the second would put
+    /// a null in every entry of a published catalog for no reader to notice.
+    pub fn is_default(&self) -> bool {
+        self.emoji.is_none() && self.image.is_none()
+    }
+
+    /// This icon, with only the parts a host can show.
+    ///
+    /// The emoji cut to the length a card can draw and the image path *not* checked
+    /// here: checking is the reader's job, because an unchecked path that reached a
+    /// filesystem would be the bug, not the omission.
+    pub fn display_icon(&self) -> PluginIcon {
+        PluginIcon {
+            emoji: self.emoji_text(),
+            image: self.image.clone(),
+        }
+    }
 }
 
 /// The archive's own metadata.
@@ -252,15 +273,24 @@ pub struct PluginManifest {
     /// The feature level this plugin needs from the host.
     pub api_version: u32,
     pub id: PluginId,
-    pub name: String,
+    /// What the plugin calls itself, in the languages it has copy for.
+    ///
+    /// Localized for the same reason [`PluginDescriptor::name`] is, and this is the
+    /// field that decides it: a card falls back to the manifest whenever no process
+    /// has answered, so a plain string here is a card that reads in the author's
+    /// language rather than the reader's for exactly as long as the plugin stays
+    /// uninstalled or stopped. A plain string is still accepted on the wire, so
+    /// every `plugin.json` already written reads unchanged.
+    pub name: LocalizedText,
     pub version: PluginVersion,
     /// The oldest BongoCat that can run this plugin.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_app_version: Option<PluginVersion>,
     #[serde(default)]
     pub author: String,
+    /// One sentence about what the plugin does, in the plugin's own languages.
     #[serde(default)]
-    pub description: String,
+    pub description: LocalizedText,
     #[serde(default)]
     pub icon: PluginIcon,
     /// The file to execute, relative to this plugin's own directory.
@@ -288,10 +318,12 @@ impl PluginManifest {
         {
             return Err(PluginError::new(PluginErrorCode::UnsupportedApiVersion));
         }
-        if self.name.trim().is_empty() || self.name.chars().count() > MAXIMUM_PLUGIN_NAME_CHARS {
+        if self.name.default.trim().is_empty()
+            || self.name.longest_characters() > MAXIMUM_PLUGIN_NAME_CHARS
+        {
             return Err(PluginError::new(PluginErrorCode::InvalidPluginName));
         }
-        if self.description.chars().count() > MAXIMUM_PLUGIN_DESCRIPTION_CHARS {
+        if self.description.longest_characters() > MAXIMUM_PLUGIN_DESCRIPTION_CHARS {
             return Err(PluginError::new(PluginErrorCode::InvalidPluginDescription));
         }
         self.icon.image_path()?;
@@ -362,8 +394,8 @@ pub struct PluginDescriptor {
     /// Localized rather than a plain string, and it is the running process's own copy
     /// rather than the archive's: a plugin the user has installed should read as the
     /// build that is actually running, in the language the user actually reads. The
-    /// archive's `name` stays a plain string because it is metadata the store compares
-    /// and a card falls back to when no process has answered yet.
+    /// archive's `name` is localized too, for the same reason — it is the copy a card
+    /// falls back to, and a fallback in one language is a card in one language.
     pub name: LocalizedText,
     pub version: PluginVersion,
     #[serde(default)]

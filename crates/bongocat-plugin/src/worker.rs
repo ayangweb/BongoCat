@@ -1541,6 +1541,13 @@ fn proxy_used_for_catalog() -> Option<&'static str> {
 /// center can show a name, a description and an icon for it. It has no executable
 /// and cannot be started — its `executable` is the id, which is not a file — so a
 /// synthesized entry can never be mistaken for an installed one.
+///
+/// The name and description are the catalog's, in every language the catalog has
+/// them in, because they are the only copy a card has before the plugin has ever
+/// run: the running process's own [`bongocat_plugin_protocol::PluginDescriptor`]
+/// does not exist yet, and a synthesized manifest is exactly the fallback the
+/// projection reaches for. The icon comes along for the same reason — a catalog
+/// entry with no icon would show the user a letter for a plugin that has one.
 fn manifest_from_catalog(entry: &PluginCatalogEntry) -> PluginManifest {
     PluginManifest {
         schema_version: bongocat_plugin_protocol::PLUGIN_SCHEMA_VERSION,
@@ -1551,7 +1558,7 @@ fn manifest_from_catalog(entry: &PluginCatalogEntry) -> PluginManifest {
         min_app_version: entry.min_app_version,
         author: entry.author.clone(),
         description: entry.description.clone(),
-        icon: bongocat_plugin_protocol::PluginIcon::default(),
+        icon: entry.icon.display_icon(),
         executable: entry.id.as_str().to_string(),
     }
 }

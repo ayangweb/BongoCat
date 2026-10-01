@@ -14,6 +14,7 @@
 //! inside the archive, so a catalog can be generated from a plugin's own metadata
 //! without a second file to keep in step.
 
+use super::descriptor::{LocalizedText, PluginIcon};
 use super::identity::{PluginId, PluginVersion};
 use super::{PluginError, PluginErrorCode};
 use serde::{Deserialize, Serialize};
@@ -158,12 +159,21 @@ impl PluginDownload {
 #[serde(deny_unknown_fields)]
 pub struct PluginCatalogEntry {
     pub id: PluginId,
-    pub name: String,
+    /// What the plugin is called, in every language it has copy for.
+    ///
+    /// Localized for the same reason the descriptor's name is: a card is shown
+    /// before the plugin has ever run, so this string is the *only* copy a user
+    /// sees before installing — and a catalog that could only say it in English
+    /// would show an English name on a Chinese page for as long as the plugin
+    /// stayed uninstalled. A plain string is still accepted, so a catalog written
+    /// before this field was localized reads exactly as it did.
+    pub name: LocalizedText,
     pub version: PluginVersion,
     #[serde(default)]
     pub author: String,
+    /// One sentence about what the plugin does, in the languages it has copy for.
     #[serde(default)]
-    pub description: String,
+    pub description: LocalizedText,
     /// The feature level the archive's manifest needs. Checked against the
     /// installed manifest as well as the catalog, so an entry cannot offer a
     /// plugin this build cannot run.
@@ -174,8 +184,20 @@ pub struct PluginCatalogEntry {
     /// One download per `<os>-<arch>` key, spelled the way the update manifest
     /// spells its platform keys so one target triple names both.
     pub downloads: BTreeMap<String, PluginDownload>,
-    /// The icon shown in the center, over HTTPS, on the same host rule as an
-    /// archive.
+    /// The card's icon, for a plugin the user has not installed yet.
+    ///
+    /// The archive's own manifest carries one too, and the archive's wins once it
+    /// is there — so this is what a card shows *before* the install. A catalog that
+    /// declares no icon gives the card a letter rather than a blank, which is the
+    /// same fallback an installed plugin with no icon gets.
+    #[serde(default, skip_serializing_if = "PluginIcon::is_default")]
+    pub icon: PluginIcon,
+    /// A picture icon fetched over HTTPS, on the same host rule as an archive.
+    ///
+    /// Reserved rather than read: a card draws an emoji today, and a URL is how a
+    /// picture arrives when the emoji is not enough. It is validated here so a
+    /// catalog naming an arbitrary host is refused at parse time rather than at the
+    /// moment something decides to fetch it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon_url: Option<String>,
 }
@@ -243,12 +265,19 @@ impl PluginCatalog {
 
 impl PluginCatalogEntry {
     fn validate(&self) -> Result<(), PluginError> {
-        if self.name.trim().is_empty()
-            || self.name.chars().count() > super::descriptor::MAXIMUM_PLUGIN_NAME_CHARS
+        // The *longest* of every language, not the default: a catalog that keeps
+        // its default short and writes a sentence for one language must not put an
+        // unbounded name past a check that only ever looked at the default. The
+        // descriptor's own check already works this way, and a card is drawn from
+        // either.
+        if self.name.default.trim().is_empty()
+            || self.name.longest_characters() > super::descriptor::MAXIMUM_PLUGIN_NAME_CHARS
         {
             return Err(PluginError::new(PluginErrorCode::InvalidPluginName));
         }
-        if self.description.chars().count() > super::descriptor::MAXIMUM_PLUGIN_DESCRIPTION_CHARS {
+        if self.description.longest_characters()
+            > super::descriptor::MAXIMUM_PLUGIN_DESCRIPTION_CHARS
+        {
             return Err(PluginError::new(PluginErrorCode::InvalidPluginDescription));
         }
         if self.api_version == 0 || self.api_version > SUPPORTED_PLUGIN_API_VERSION {
@@ -374,6 +403,79 @@ mod tests {
         assert_eq!(
             PluginCatalog::parse(json.as_bytes()).unwrap_err().code(),
             PluginErrorCode::CatalogInvalid
+        );
+    }
+
+    #[test]
+    fn an_entry_speaks_the_readers_language_before_the_plugin_has_ever_run() {
+        // The bug this field exists for: a card is drawn for a plugin nobody has
+        // installed, from this entry alone, so a catalog that could only say its name
+        // in English showed an English name on a Chinese page until the install.
+        let json = r#"{"schema_version":1,"plugins":[{
+            "id":"agent-watch",
+            "name":{"default":"AI Watch","by_locale":{"zh-CN":"AI 监控","zh-TW":"AI 監控"}},
+            "description":{
+                "default":"Watches what an AI coding tool is doing.",
+                "by_locale":{"zh-CN":"观察 AI 编码工具在做什么。"}
+            },
+            "icon":{"emoji":"👀"},
+            "version":"1.0.0","api_version":1,
+            "downloads":{"macos-aarch64":{"path":"build/agent-watch.zip"}}
+        }]}"#;
+        let catalog = PluginCatalog::parse(json.as_bytes()).expect("a localized entry reads");
+        let entry = &catalog.plugins[0];
+        assert_eq!(entry.name.resolve("zh-CN"), "AI 监控");
+        assert_eq!(entry.name.resolve("zh-TW"), "AI 監控");
+        assert_eq!(
+            entry.description.resolve("zh-CN"),
+            "观察 AI 编码工具在做什么。"
+        );
+        assert_eq!(
+            entry.name.resolve("fr-FR"),
+            "AI Watch",
+            "and a language the entry has no copy for is the default, not a blank"
+        );
+        assert_eq!(
+            entry.icon.emoji_text().as_deref(),
+            Some("👀"),
+            "because before the archive arrives this is the only icon there is"
+        );
+    }
+
+    #[test]
+    fn a_catalog_written_before_entries_were_localized_still_reads() {
+        // The compatibility that matters: `LocalizedText` takes a bare string on the
+        // wire, so every catalog already written parses unchanged. This is the
+        // regression that would break a user's existing catalog — a data root one
+        // included — the moment the field changed type.
+        let catalog = PluginCatalog::parse(catalog_json("").as_bytes()).expect("reads");
+        assert_eq!(catalog.plugins[0].name.resolve("zh-CN"), "Pomodoro");
+        assert_eq!(
+            catalog.plugins[0].description.resolve("zh-CN"),
+            "A focus timer."
+        );
+        assert!(
+            catalog.plugins[0].icon.is_default(),
+            "and an entry with no icon is an entry with no icon, not a missing field"
+        );
+    }
+
+    #[test]
+    fn a_name_that_is_long_only_in_one_language_is_refused() {
+        // The bound has to be the *longest* rather than the default, or a catalog
+        // could keep `"default": "K"` and write a paragraph for one language straight
+        // past a check that only ever looked at the short one.
+        let json = catalog_json("").replace(
+            r#""name":"Pomodoro""#,
+            &format!(
+                r#""name":{{"default":"K","by_locale":{{"zh-CN":"{}"}}}}"#,
+                "长".repeat(crate::descriptor::MAXIMUM_PLUGIN_NAME_CHARS + 1)
+            ),
+        );
+        assert_eq!(
+            PluginCatalog::parse(json.as_bytes()).unwrap_err().code(),
+            PluginErrorCode::InvalidPluginName,
+            "because the name the reader actually sees is the long one"
         );
     }
 

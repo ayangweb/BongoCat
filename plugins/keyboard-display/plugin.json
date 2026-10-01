@@ -2,10 +2,22 @@
   "schema_version": 1,
   "api_version": 1,
   "id": "keyboard-display",
-  "name": "Key Display",
+  "name": {
+    "default": "Key Display",
+    "by_locale": {
+      "zh-CN": "按键显示",
+      "zh-TW": "按鍵顯示"
+    }
+  },
+  "description": {
+    "default": "Shows the keys you are holding, in the corner of the model window, so a screencast does not need a second window to prove which key you pressed.",
+    "by_locale": {
+      "zh-CN": "在模型窗口角落显示你正在按的键，录屏时不必再开一个窗口来证明按了哪个键。",
+      "zh-TW": "在模型視窗角落顯示你正在按的鍵，錄影時不必再開一個視窗來證明按了哪個鍵。"
+    }
+  },
   "version": "1.0.0",
   "author": "BongoCat",
-  "description": "Shows the keys you are holding, in the corner of the model window, so a screencast does not need a second window to prove which key you pressed.",
   "icon": {
     "emoji": "⌨️"
   },

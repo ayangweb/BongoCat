@@ -2,10 +2,22 @@
   "schema_version": 1,
   "api_version": 1,
   "id": "pomodoro",
-  "name": "Pomodoro",
+  "name": {
+    "default": "Pomodoro",
+    "by_locale": {
+      "zh-CN": "番茄钟",
+      "zh-TW": "番茄鐘"
+    }
+  },
+  "description": {
+    "default": "A focus timer on the model window. Start it, stop it, and let the countdown run while you work.",
+    "by_locale": {
+      "zh-CN": "模型窗口上的专注计时器。开始、暂停，让倒计时在你工作期间继续走。",
+      "zh-TW": "模型視窗上的專注計時器。開始、暫停，讓倒數計時在你工作期間繼續走。"
+    }
+  },
   "version": "1.0.0",
   "author": "BongoCat",
-  "description": "A focus timer on the model window. Start it, stop it, and let the countdown run while you work.",
   "icon": {
     "emoji": "🍅"
   },

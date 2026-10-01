@@ -14,7 +14,10 @@ shared library.
 Two things, both inside one directory:
 
 - **A manifest** — `plugin.json`, carrying the identity: id, name, version, author,
-  description, an icon, and the name of the executable beside it.
+  description, an icon, and the name of the executable beside it. `name` and
+  `description` are localized — either a plain string or
+  `{ "default": …, "by_locale": { "zh-CN": … } }` — because this is what a card shows
+  when the plugin is installed but not yet running.
 - **An executable** — the plugin's own program, which is where all of its logic,
   state and configuration live.
 
@@ -104,6 +107,33 @@ document and cannot name a local path at all — see the validation in
 
 A Development build reads a catalog with no file as an **empty list**, not an error,
 so the plugin center is usable before anything is written.
+
+## A card is drawn before the plugin has run
+
+A card's copy comes from one of three documents, depending on the plugin's state:
+
+| State | Where the copy comes from |
+| -------------------- | ------------------------- |
+| Not installed       | the catalog entry         |
+| Installed, stopped  | the archive's `plugin.json` |
+| Running             | the process's descriptor  |
+
+The running copy wins, because a plugin may improve the sentence on its card in a
+later version. That makes the other two the copy a user reads **before** they have
+installed anything, so both carry the plugin's own translations and its icon — a
+catalog that could only say its name in English would show an English name on a
+non-English page for as long as the plugin stayed uninstalled.
+
+The three are written separately and are checked against each other rather than
+trusted: `just plugin <id>` refuses to pack an archive whose `name`, `description`
+or `icon` disagrees with the catalog entry that points at it. That check exists
+because the drift is visible — a card's sentence changing when a plugin starts is a
+sentence describing a lifecycle rather than a plugin. It also means **changing a
+plugin's card copy is a change in two files**, `copy.rs` and `plugin.json` plus the
+catalog entry, and the packaging test is what says so if one is missed.
+
+A plugin that ships no translations is not an error: a language the plugin has no
+copy for shows its `default`.
 
 ## The panel
 

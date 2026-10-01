@@ -61,22 +61,27 @@ fn project_entry(entry: &PluginEntry, language: SettingsLanguage) -> SettingsPlu
         .unwrap_or_default();
     SettingsPluginEntry {
         id: entry.manifest.id.as_str().to_owned(),
-        // A running plugin's own name and description, in the user's language, over the
-        // archive's. Same rule as the icon: the card describes the build that is
-        // drawing the panel, and the archive's copy is what a plugin nobody has started
-        // yet has to be described with.
+        // A running plugin's own name and description, in the user's language, over
+        // the archive's. Same rule as the icon: the card describes the build that is
+        // drawing the panel, and the archive's copy is what a plugin nobody has
+        // started yet has to be described with.
+        //
+        // The archive's copy is *itself* localized, which is what makes an
+        // uninstalled plugin's card read in the user's language: a catalog entry and
+        // a `plugin.json` both carry every language the plugin has, so the fallback
+        // below is a translated sentence rather than the English one.
         name: entry
             .descriptor
             .as_ref()
             .map(|descriptor| descriptor.name.resolve_bounded(locale))
             .filter(|name| !name.trim().is_empty())
-            .unwrap_or_else(|| entry.manifest.name.clone()),
+            .unwrap_or_else(|| entry.manifest.name.resolve_bounded(locale)),
         description: entry
             .descriptor
             .as_ref()
             .map(|descriptor| descriptor.description.resolve_bounded(locale))
             .filter(|description| !description.trim().is_empty())
-            .unwrap_or_else(|| entry.manifest.description.clone()),
+            .unwrap_or_else(|| entry.manifest.description.resolve_bounded(locale)),
         author: entry.manifest.author.clone(),
         icon: project_icon(&entry.icon()),
         installed_version: entry
@@ -317,11 +322,11 @@ mod tests {
             schema_version: 1,
             api_version: 1,
             id: bongocat_plugin::PluginId::new(id).expect("a valid id"),
-            name: format!("{id} name"),
+            name: LocalizedText::from(format!("{id} name")),
             version: bongocat_plugin::PluginVersion::new(1, 0, 0),
             min_app_version: None,
             author: "someone".to_string(),
-            description: format!("{id} description"),
+            description: LocalizedText::from(format!("{id} description")),
             icon: PluginIcon {
                 emoji: Some("🍅".to_string()),
                 image: None,
@@ -756,6 +761,74 @@ mod tests {
                 "{code:?} has a code of its own and should not fall through"
             );
         }
+    }
+
+    #[test]
+    fn an_uninstalled_plugin_is_described_in_the_readers_language() {
+        // The one the screenshot showed: a card for a plugin that was never installed
+        // said its English name and its English sentence on a Chinese page, because
+        // the only copy there was the archive's and the archive's was English. The
+        // archive's copy is now the plugin's own table, so the fallback resolves too.
+        let mut entry = entry();
+        entry.descriptor = None;
+        entry.installed = false;
+        entry.running = false;
+        entry.manifest.name = LocalizedText::new("Pomodoro")
+            .with_locale("zh-CN", "番茄钟")
+            .with_locale("zh-TW", "番茄鐘");
+        entry.manifest.description =
+            LocalizedText::new("A focus timer.").with_locale("zh-CN", "一个专注计时器。");
+
+        let chinese = project_plugins(
+            &PluginSnapshot {
+                entries: vec![entry.clone()],
+                ..PluginSnapshot::default()
+            },
+            SettingsLanguage::ChineseSimplified,
+        );
+        assert_eq!(chinese.entries[0].name, "番茄钟");
+        assert_eq!(chinese.entries[0].description, "一个专注计时器。");
+
+        let traditional = project_plugins(
+            &PluginSnapshot {
+                entries: vec![entry.clone()],
+                ..PluginSnapshot::default()
+            },
+            SettingsLanguage::ChineseTraditional,
+        );
+        assert_eq!(traditional.entries[0].name, "番茄鐘");
+
+        // A language the plugin has no copy for is its default, which is the point of
+        // a default: the card is never blank because a translation is missing.
+        let english = project_plugins(
+            &PluginSnapshot {
+                entries: vec![entry],
+                ..PluginSnapshot::default()
+            },
+            SettingsLanguage::English,
+        );
+        assert_eq!(english.entries[0].name, "Pomodoro");
+    }
+
+    #[test]
+    fn a_running_plugins_own_copy_still_wins_over_the_archives() {
+        let mut running = entry();
+        running.manifest.name = LocalizedText::new("Archive name");
+        running.manifest.description = LocalizedText::new("Archive sentence.");
+        running.descriptor.as_mut().expect("running").name =
+            LocalizedText::new("Descriptor name").with_locale("zh-CN", "运行中的名字");
+
+        let chinese = project_plugins(
+            &PluginSnapshot {
+                entries: vec![running],
+                ..PluginSnapshot::default()
+            },
+            SettingsLanguage::ChineseSimplified,
+        );
+        assert_eq!(
+            chinese.entries[0].name, "运行中的名字",
+            "because the card describes the build that is drawing the panel"
+        );
     }
 
     #[test]
