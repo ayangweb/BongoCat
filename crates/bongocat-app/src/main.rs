@@ -456,6 +456,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         application.storage_layout(),
         Some(runtime_client.clone()),
         bongocat_app::plugin_locale(application.effective_language()),
+        application.motion_audio_client(),
     ) {
         Ok(host) => Some(host),
         Err(error) => {

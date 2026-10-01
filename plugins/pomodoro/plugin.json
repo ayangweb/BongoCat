@@ -2,24 +2,254 @@
   "schema_version": 1,
   "api_version": 1,
   "id": "pomodoro",
+  "version": "1.0.0",
+  "author": "BongoCat",
   "name": {
     "default": "Pomodoro",
     "by_locale": {
       "zh-CN": "番茄钟",
-      "zh-TW": "番茄鐘"
+      "zh-TW": "番茄鐘",
+      "ar-SA": "بومودورو",
+      "vi-VN": "Pomodoro",
+      "pt-BR": "Pomodoro",
+      "ko-KR": "뽀모도로"
     }
   },
   "description": {
     "default": "A focus timer on the model window. Start it, stop it, and let the countdown run while you work.",
     "by_locale": {
       "zh-CN": "模型窗口上的专注计时器。开始、暂停，让倒计时在你工作期间继续走。",
-      "zh-TW": "模型視窗上的專注計時器。開始、暫停，讓倒數計時在你工作期間繼續走。"
+      "zh-TW": "模型視窗上的專注計時器。開始、暫停，讓倒數計時在你工作期間繼續走。",
+      "ar-SA": "مؤقّت تركيز على نافذة النموذج. ابدأه وأوقفه ودع العد التنازلي يعمل أثناء عملك.",
+      "vi-VN": "Bộ đếm thời gian tập trung trên cửa sổ mô hình. Bắt đầu, tạm dừng, và để đồng hồ đếm ngược chạy suốt khi bạn làm việc.",
+      "pt-BR": "Um temporizador de foco na janela do modelo. Inicie, pause e deixe a contagem regressiva rodar enquanto você trabalha.",
+      "ko-KR": "모델 창 위의 집중 타이머. 시작하고 멈추면, 작업하는 동안 카운트다운이 계속 흐릅니다."
     }
   },
-  "version": "1.0.0",
-  "author": "BongoCat",
   "icon": {
     "emoji": "🍅"
   },
-  "executable": "pomodoro"
+  "executable": "pomodoro",
+  "copy": {
+    "focus": {
+      "default": "Focus",
+      "by_locale": {
+        "zh-CN": "专注",
+        "zh-TW": "專注",
+        "ar-SA": "تركيز",
+        "vi-VN": "Tập trung",
+        "pt-BR": "Foco",
+        "ko-KR": "집중"
+      }
+    },
+    "short_break": {
+      "default": "Short break",
+      "by_locale": {
+        "zh-CN": "短休息",
+        "zh-TW": "短休息",
+        "ar-SA": "استراحة قصيرة",
+        "vi-VN": "Nghỉ ngắn",
+        "pt-BR": "Pausa curta",
+        "ko-KR": "짧은 휴식"
+      }
+    },
+    "long_break": {
+      "default": "Long break",
+      "by_locale": {
+        "zh-CN": "长休息",
+        "zh-TW": "長休息",
+        "ar-SA": "استراحة طويلة",
+        "vi-VN": "Nghỉ dài",
+        "pt-BR": "Pausa longa",
+        "ko-KR": "긴 휴식"
+      }
+    },
+    "paused": {
+      "default": "Paused",
+      "by_locale": {
+        "zh-CN": "已暂停",
+        "zh-TW": "已暫停",
+        "ar-SA": "متوقف مؤقتًا",
+        "vi-VN": "Đã tạm dừng",
+        "pt-BR": "Pausado",
+        "ko-KR": "일시 정지"
+      }
+    },
+    "start": {
+      "default": "Start",
+      "by_locale": {
+        "zh-CN": "开始",
+        "zh-TW": "開始",
+        "ar-SA": "ابدأ",
+        "vi-VN": "Bắt đầu",
+        "pt-BR": "Iniciar",
+        "ko-KR": "시작"
+      }
+    },
+    "pause": {
+      "default": "Pause",
+      "by_locale": {
+        "zh-CN": "暂停",
+        "zh-TW": "暫停",
+        "ar-SA": "إيقاف مؤقت",
+        "vi-VN": "Tạm dừng",
+        "pt-BR": "Pausar",
+        "ko-KR": "일시 정지"
+      }
+    },
+    "resume": {
+      "default": "Resume",
+      "by_locale": {
+        "zh-CN": "继续",
+        "zh-TW": "繼續",
+        "ar-SA": "استئناف",
+        "vi-VN": "Tiếp tục",
+        "pt-BR": "Retomar",
+        "ko-KR": "계속"
+      }
+    },
+    "reset": {
+      "default": "Reset",
+      "by_locale": {
+        "zh-CN": "重置",
+        "zh-TW": "重設",
+        "ar-SA": "إعادة ضبط",
+        "vi-VN": "Đặt lại",
+        "pt-BR": "Reiniciar",
+        "ko-KR": "초기화"
+      }
+    },
+    "round_finished": {
+      "default": "Round finished",
+      "by_locale": {
+        "zh-CN": "本轮完成",
+        "zh-TW": "本輪完成",
+        "ar-SA": "انتهت الجولة",
+        "vi-VN": "Đã xong vòng",
+        "pt-BR": "Rodada concluída",
+        "ko-KR": "한 주기 완료"
+      }
+    },
+    "break_over": {
+      "default": "Break over",
+      "by_locale": {
+        "zh-CN": "休息结束",
+        "zh-TW": "休息結束",
+        "ar-SA": "انتهت الاستراحة",
+        "vi-VN": "Hết giờ nghỉ",
+        "pt-BR": "Pausa encerrada",
+        "ko-KR": "휴식 종료"
+      }
+    },
+    "focus_minutes_label": {
+      "default": "Focus round",
+      "by_locale": {
+        "zh-CN": "专注时长",
+        "zh-TW": "專注時長",
+        "ar-SA": "مدة جولة التركيز",
+        "vi-VN": "Thời lượng tập trung",
+        "pt-BR": "Duração do foco",
+        "ko-KR": "집중 시간"
+      }
+    },
+    "focus_minutes_help": {
+      "default": "How long one stretch of work lasts.",
+      "by_locale": {
+        "zh-CN": "每一段专注持续多久。",
+        "zh-TW": "每一段專注持續多久。",
+        "ar-SA": "المدة التي تستغرقها فترة عمل واحدة.",
+        "vi-VN": "Một khoảng tập trung kéo dài bao lâu.",
+        "pt-BR": "Quanto dura um período contínuo de trabalho.",
+        "ko-KR": "한 번의 집중 구간이 얼마나 이어질지 정합니다."
+      }
+    },
+    "minutes_unit": {
+      "default": "min",
+      "by_locale": {
+        "zh-CN": "分钟",
+        "zh-TW": "分鐘",
+        "ar-SA": "دقيقة",
+        "vi-VN": "phút",
+        "pt-BR": "min",
+        "ko-KR": "분"
+      }
+    },
+    "after_round_label": {
+      "default": "After a round",
+      "by_locale": {
+        "zh-CN": "一轮结束后",
+        "zh-TW": "一輪結束後",
+        "ar-SA": "بعد الجولة",
+        "vi-VN": "Sau một vòng",
+        "pt-BR": "Após uma rodada",
+        "ko-KR": "한 주기 뒤"
+      }
+    },
+    "after_round_help": {
+      "default": "What happens when the timer reaches zero.",
+      "by_locale": {
+        "zh-CN": "计时归零时会发生什么。",
+        "zh-TW": "計時歸零時會發生什麼。",
+        "ar-SA": "ماذا يحدث عندما يصل المؤقّت إلى الصفر.",
+        "vi-VN": "Điều gì xảy ra khi bộ đếm về 0.",
+        "pt-BR": "O que acontece quando o temporizador chega a zero.",
+        "ko-KR": "타이머가 0이 되면 무엇을 할지 정합니다."
+      }
+    },
+    "then_focus": {
+      "default": "Another round straight away",
+      "by_locale": {
+        "zh-CN": "直接开始下一轮",
+        "zh-TW": "直接開始下一輪",
+        "ar-SA": "جولة أخرى فورًا",
+        "vi-VN": "Vòng tiếp theo ngay",
+        "pt-BR": "Outra rodada em seguida",
+        "ko-KR": "바로 다음 주기"
+      }
+    },
+    "then_short_break": {
+      "default": "A short break",
+      "by_locale": {
+        "zh-CN": "短休息",
+        "zh-TW": "短休息",
+        "ar-SA": "استراحة قصيرة",
+        "vi-VN": "Nghỉ ngắn",
+        "pt-BR": "Uma pausa curta",
+        "ko-KR": "짧은 휴식"
+      }
+    },
+    "then_long_break": {
+      "default": "A long break",
+      "by_locale": {
+        "zh-CN": "长休息",
+        "zh-TW": "長休息",
+        "ar-SA": "استراحة طويلة",
+        "vi-VN": "Nghỉ dài",
+        "pt-BR": "Uma pausa longa",
+        "ko-KR": "긴 휴식"
+      }
+    },
+    "auto_start_label": {
+      "default": "Start the next round automatically",
+      "by_locale": {
+        "zh-CN": "自动开始下一轮",
+        "zh-TW": "自動開始下一輪",
+        "ar-SA": "ابدأ الجولة التالية تلقائيًا",
+        "vi-VN": "Tự động bắt đầu vòng tiếp theo",
+        "pt-BR": "Iniciar a próxima rodada automaticamente",
+        "ko-KR": "다음 주기를 자동으로 시작"
+      }
+    },
+    "auto_start_help": {
+      "default": "Turn this off to decide each round yourself.",
+      "by_locale": {
+        "zh-CN": "关闭后每一轮都由你决定何时开始。",
+        "zh-TW": "關閉後每一輪都由你決定何時開始。",
+        "ar-SA": "أوقفه لتقرر أنت متى تبدأ كل جولة.",
+        "vi-VN": "Tắt điều này để bạn tự quyết định mỗi vòng.",
+        "pt-BR": "Desative para decidir cada rodada você mesmo.",
+        "ko-KR": "끄면 매 주기를 직접 시작할 수 있습니다."
+      }
+    }
+  }
 }

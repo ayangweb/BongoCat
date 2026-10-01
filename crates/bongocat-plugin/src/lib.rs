@@ -45,6 +45,7 @@ mod local_time;
 mod model_request;
 mod plugin_log;
 mod session;
+mod sound;
 mod store;
 
 mod worker;
@@ -67,9 +68,10 @@ pub use bongocat_plugin_protocol::{
 };
 pub use bubble::{Bubble, BubbleSet};
 pub use catalog::{
-    CATALOG_REQUEST_TIMEOUT, CatalogSource, LoadedCatalog, MAXIMUM_ARCHIVE_BYTES,
-    MAXIMUM_CATALOG_BYTES, agent, catalog_sources, catalog_url, download_with, fetch_archive,
-    fetch_catalog, host_platform, load_local, local_catalog_directory, proxied_catalog_url,
+    CATALOG_REQUEST_TIMEOUT, CatalogSource, LOCAL_BUILD_DIRECTORY, LoadedCatalog,
+    MAXIMUM_ARCHIVE_BYTES, MAXIMUM_CATALOG_BYTES, agent, catalog_sources, catalog_url,
+    download_with, fetch_archive, fetch_catalog, host_platform, load_local,
+    local_catalog_directory, local_plugin_directories, proxied_catalog_url,
 };
 pub use host::HostFacts;
 pub use input_feed::{Feed, FeedDiagnostics, FeedSet};
@@ -80,6 +82,7 @@ pub use session::{
     HANDSHAKE_TIMEOUT, Incoming, MAXIMUM_RESTARTS, Session, SessionDiagnostics, SessionFacts,
     SessionOutcome, SessionState, restart_is_allowed,
 };
+pub use sound::{MAXIMUM_SOUND_BYTES, Refusal, SoundOutcome};
 pub use store::{
     CURRENT_VERSION_FILE, MAXIMUM_RETAINED_VERSIONS, PluginStore, digest_hex, digest_matches,
     verify_signature,

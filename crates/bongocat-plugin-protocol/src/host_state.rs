@@ -125,11 +125,11 @@ impl HostState {
 
 /// A request a plugin makes of the model window's owner.
 ///
-/// Three things, because three things are what a plugin on the model window has
-/// ever needed to say: show something, play a motion, set an expression. Both
-/// model requests name something by name rather than by parameter, so the plugin
-/// cannot reach into the model: it asks for "the thinking motion" and either the
-/// model has one or the host says it does not.
+/// Four things, because four things are what a plugin on the model window has
+/// ever needed to say: show something, play a motion, set an expression, or make
+/// a noise. Both model requests name something by name rather than by parameter, so
+/// the plugin cannot reach into the model: it asks for "the thinking motion" and
+/// either the model has one or the host says it does not.
 ///
 /// Every request may be refused, and refusal is a normal answer rather than an
 /// error the plugin has to handle specially — the host has the model, the plugin
@@ -161,7 +161,28 @@ pub enum ModelRequest {
     },
     /// Take the bubble down now.
     HideBubble,
+    /// Play an audio file on this machine, at a volume.
+    ///
+    /// The only request that names a path, and it exists because a plugin cannot make a
+    /// noise any other way: the audio device belongs to the product, so a second process
+    /// with it open is a thing the operating system arbitrates badly and users hear as a
+    /// stutter. A plugin that wants a click asks for one, and the host is the only side
+    /// that knows which files it will open — so the path is bounded here, checked there,
+    /// and a file the host will not play is answered `HostCannot` like any other thing the
+    /// product has no command for.
+    ///
+    /// The path is the user's own, from a setting the user typed: a plugin cannot choose
+    /// it, and a plugin that has been given one by a hand-edited file gets a path the
+    /// host's own check applies exactly as it would to any other.
+    PlaySound { path: String, volume: f32 },
 }
+
+/// The longest a sound path may be, in bytes.
+///
+/// The same bound a text setting carries, and for the same reason: it is a string in a
+/// JSON document, and a path longer than this is not a path on either platform this
+/// product ships.
+pub const MAXIMUM_SOUND_PATH_BYTES: usize = 4096;
 
 /// The longest a bubble may be, in characters.
 pub const MAXIMUM_BUBBLE_CHARS: usize = 120;
@@ -196,7 +217,30 @@ impl ModelRequest {
                     .collect(),
             };
         }
+        if let Self::PlaySound { path, volume } = &mut self {
+            *path = path.chars().take(MAXIMUM_SOUND_PATH_BYTES).collect();
+            // A volume is a multiplier, so the useful range is 0 to 1 and anything past the
+            // top is clamped rather than refused: a plugin that asked for 1.5 — or for an
+            // infinity — wanted "as loud as possible" more than it wanted to be told no.
+            // `NaN` is the one value clamping cannot read, and it becomes silence, which is
+            // the safe reading of a request that carries no meaning at all.
+            *volume = if volume.is_nan() {
+                0.0
+            } else {
+                volume.clamp(0.0, 1.0)
+            };
+        }
         self
+    }
+
+    /// Whether this request is one the worker draws rather than one the runtime carries.
+    ///
+    /// The split is by *owner*: a bubble is chrome on the layer channel and belongs to the
+    /// worker, and a sound is the audio device and belongs to the product's audio service.
+    /// Both are the worker's business to recognise so that everything else can be handed to
+    /// the runtime without this match appearing in two places.
+    pub const fn is_drawn_not_acted(&self) -> bool {
+        matches!(self, Self::ShowBubble { .. } | Self::HideBubble)
     }
 }
 

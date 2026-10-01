@@ -280,6 +280,16 @@ impl Descriptor {
         self
     }
 
+    /// This plugin, at this version, as the protocol spells it.
+    ///
+    /// For a plugin that keeps its version in its own manifest and reads it from there,
+    /// rather than writing the three numbers here as well — which is the duplication
+    /// [`crate::SelfDescription`] exists to remove.
+    pub fn at(mut self, version: bongocat_plugin_protocol::PluginVersion) -> Self {
+        self.version = version;
+        self
+    }
+
     /// This plugin, by this author.
     pub fn author(mut self, author: &str) -> Self {
         self.author = author.to_string();

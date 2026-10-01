@@ -2,24 +2,177 @@
   "schema_version": 1,
   "api_version": 1,
   "id": "keyboard-display",
+  "version": "1.0.0",
+  "author": "BongoCat",
   "name": {
     "default": "Key Display",
     "by_locale": {
       "zh-CN": "按键显示",
-      "zh-TW": "按鍵顯示"
+      "zh-TW": "按鍵顯示",
+      "ar-SA": "عرض المفاتيح",
+      "vi-VN": "Hiển thị phím",
+      "pt-BR": "Exibição de teclas",
+      "ko-KR": "키 표시"
     }
   },
   "description": {
-    "default": "Shows the keys you are holding, in the corner of the model window, so a screencast does not need a second window to prove which key you pressed.",
+    "default": "Shows the keys you are holding, in a corner of the model window, so a screencast does not need a second window to prove which key you pressed.",
     "by_locale": {
       "zh-CN": "在模型窗口角落显示你正在按的键，录屏时不必再开一个窗口来证明按了哪个键。",
-      "zh-TW": "在模型視窗角落顯示你正在按的鍵，錄影時不必再開一個視窗來證明按了哪個鍵。"
+      "zh-TW": "在模型視窗角落顯示你正在按的鍵，錄影時不必再開一個視窗來證明按了哪個鍵。",
+      "ar-SA": "يعرض المفاتيح التي ضغطتها في زاوية نافذة النموذج، فلا تحتاج تسجيل الشاشة إلى نافذة ثانية لإثبات أي مفتاح ضغطت.",
+      "vi-VN": "Hiển thị các phím bạn đang giữ ở một góc cửa sổ mô hình, nên khi quay màn hình không cần mở thêm một cửa sổ để chứng minh đã bấm phím nào.",
+      "pt-BR": "Mostra as teclas que você está pressionando, em um canto da janela do modelo, então uma gravação de tela não precisa de uma segunda janela para provar qual tecla foi pressionada.",
+      "ko-KR": "누르고 있는 키를 모델 창 한쪽에 보여 줍니다. 화면 녹화할 때 어떤 키를 눌렀는지 보이기 위해 창을 하나 더 열 필요가 없습니다."
     }
   },
-  "version": "1.0.0",
-  "author": "BongoCat",
   "icon": {
     "emoji": "⌨️"
   },
-  "executable": "keyboard-display"
+  "executable": "keyboard-display",
+  "copy": {
+    "idle": {
+      "default": "No keys held",
+      "by_locale": {
+        "zh-CN": "未按任何键",
+        "zh-TW": "未按任何鍵",
+        "ar-SA": "لا مفاتيح مضغوطة",
+        "vi-VN": "Chưa giữ phím nào",
+        "pt-BR": "Nenhuma tecla pressionada",
+        "ko-KR": "누른 키 없음"
+      }
+    },
+    "maximum_keys_label": {
+      "default": "Keys shown at once",
+      "by_locale": {
+        "zh-CN": "同时显示的按键数",
+        "zh-TW": "同時顯示的按鍵數",
+        "ar-SA": "عدد المفاتيح الظاهرة في وقت واحد",
+        "vi-VN": "Số phím hiển thị cùng lúc",
+        "pt-BR": "Teclas mostradas ao mesmo tempo",
+        "ko-KR": "한 번에 표시할 키 개수"
+      }
+    },
+    "maximum_keys_help": {
+      "default": "The newest keys are the ones that stay when you are holding more than this.",
+      "by_locale": {
+        "zh-CN": "按下的按键超过这个数量时，保留最新的那些。",
+        "zh-TW": "按下的按鍵超過這個數量時，保留最新的那些。",
+        "ar-SA": "عند تجاوز العدد تبقى المفاتيح الأحدث.",
+        "vi-VN": "Khi giữ nhiều hơn số này, các phím mới nhất được giữ lại.",
+        "pt-BR": "Quando você segura mais que isso, as teclas mais recentes são as que ficam.",
+        "ko-KR": "이보다 많은 키를 누르면 가장 최근에 누른 키만 남습니다."
+      }
+    },
+    "font_size_label": {
+      "default": "Font size",
+      "by_locale": {
+        "zh-CN": "字体大小",
+        "zh-TW": "字型大小",
+        "ar-SA": "حجم الخط",
+        "vi-VN": "Cỡ chữ",
+        "pt-BR": "Tamanho da fonte",
+        "ko-KR": "글자 크기"
+      }
+    },
+    "font_size_help": {
+      "default": "How large each key is drawn. The panel grows to fit, so a larger size shows fewer keys per row.",
+      "by_locale": {
+        "zh-CN": "每个按键绘制得多大。面板会随之变大，所以字体越大每行显示的按键越少。",
+        "zh-TW": "每個按鍵繪製得多大。面板會隨之變大，所以字型越大每行顯示的按鍵越少。",
+        "ar-SA": "كم يُرسم كل مفتاح كبيرًا. تكبر اللوحة تبعًا لذلك، فيعرض كل صف مفاتيح أقل.",
+        "vi-VN": "Mỗi phím được vẽ lớn đến mức nào. Bảng sẽ lớn theo, nên cỡ chữ lớn hơn là mỗi hàng hiện ít phím hơn.",
+        "pt-BR": "Quão grande cada tecla é desenhada. A janela cresce junto, então um tamanho maior mostra menos teclas por linha.",
+        "ko-KR": "각 키를 얼마나 크게 그릴지 정합니다. 패널도 함께 커지므로 글자가 크면 한 줄에 보이는 키가 줄어듭니다."
+      }
+    },
+    "font_weight_label": {
+      "default": "Font weight",
+      "by_locale": {
+        "zh-CN": "字体粗细",
+        "zh-TW": "字型粗細",
+        "ar-SA": "سماكة الخط",
+        "vi-VN": "Độ đậm của chữ",
+        "pt-BR": "Espessura da fonte",
+        "ko-KR": "글자 굵기"
+      }
+    },
+    "font_weight_help": {
+      "default": "Whether the keys are drawn bold.",
+      "by_locale": {
+        "zh-CN": "按键文字是否加粗显示。",
+        "zh-TW": "按鍵文字是否加粗顯示。",
+        "ar-SA": "هل تُرسم المفاتيح بخط عريض.",
+        "vi-VN": "Phím có được vẽ đậm hay không.",
+        "pt-BR": "Se as teclas são desenhadas em negrito.",
+        "ko-KR": "키를 굵게 표시할지 정합니다."
+      }
+    },
+    "regular": {
+      "default": "Regular",
+      "by_locale": {
+        "zh-CN": "常规",
+        "zh-TW": "常規",
+        "ar-SA": "عادي",
+        "vi-VN": "Thường",
+        "pt-BR": "Normal",
+        "ko-KR": "일반"
+      }
+    },
+    "bold": {
+      "default": "Bold",
+      "by_locale": {
+        "zh-CN": "加粗",
+        "zh-TW": "粗體",
+        "ar-SA": "عريض",
+        "vi-VN": "Đậm",
+        "pt-BR": "Negrito",
+        "ko-KR": "굵게"
+      }
+    },
+    "mouse_label": {
+      "default": "Show the mouse buttons too",
+      "by_locale": {
+        "zh-CN": "同时显示鼠标按键",
+        "zh-TW": "同時顯示滑鼠按鍵",
+        "ar-SA": "أظهر أزرار الفأرة أيضًا",
+        "vi-VN": "Hiện cả nút chuột",
+        "pt-BR": "Mostrar também os botões do mouse",
+        "ko-KR": "마우스 버튼도 표시"
+      }
+    },
+    "mouse_help": {
+      "default": "Turn this off for a keyboard-only display.",
+      "by_locale": {
+        "zh-CN": "关闭后只显示键盘按键。",
+        "zh-TW": "關閉後只顯示鍵盤按鍵。",
+        "ar-SA": "أوقفه لعرض لوحة المفاتيح وحدها.",
+        "vi-VN": "Tắt điều này để chỉ hiện bàn phím.",
+        "pt-BR": "Desative para exibir apenas o teclado.",
+        "ko-KR": "끄면 키보드만 표시합니다."
+      }
+    },
+    "hide_when_idle_label": {
+      "default": "Hide the panel when nothing is held",
+      "by_locale": {
+        "zh-CN": "没有按键时隐藏面板",
+        "zh-TW": "沒有按鍵時隱藏面板",
+        "ar-SA": "أخفِ اللوحة عندما لا يكون أي مفتاح مضغوطًا",
+        "vi-VN": "Ẩn bảng khi không giữ phím nào",
+        "pt-BR": "Ocultar a janela quando nada está pressionado",
+        "ko-KR": "누른 키가 없으면 패널 숨기기"
+      }
+    },
+    "hide_when_idle_help": {
+      "default": "A panel that says nothing is a box on your desktop.",
+      "by_locale": {
+        "zh-CN": "什么都不显示的面板只是桌面上一个空盒子。",
+        "zh-TW": "什麼都不顯示的面板只是桌面上一個空盒子。",
+        "ar-SA": "اللوحة التي لا تقول شيئًا مجرد مربع على سطح مكتبك.",
+        "vi-VN": "Một bảng không nói gì chỉ là một hộp trên màn hình của bạn.",
+        "pt-BR": "Uma janela que nada diz é apenas uma caixa na sua área de trabalho.",
+        "ko-KR": "아무 말도 하지 않는 패널은 바탕화면 위의 상자일 뿐입니다."
+      }
+    }
+  }
 }

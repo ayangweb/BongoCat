@@ -2,24 +2,254 @@
   "schema_version": 1,
   "api_version": 1,
   "id": "typing-sound",
+  "version": "1.0.0",
+  "author": "BongoCat",
   "name": {
     "default": "Typing Sound",
     "by_locale": {
       "zh-CN": "打字音效",
-      "zh-TW": "打字音效"
+      "zh-TW": "打字音效",
+      "ar-SA": "صوت الكتابة",
+      "vi-VN": "Âm thanh gõ phím",
+      "pt-BR": "Som de digitação",
+      "ko-KR": "타이핑 소리"
     }
   },
   "description": {
-    "default": "Gives the cat a voice while you type: each key plays one of the model's own motions, and the model's sound for it.",
+    "default": "Gives the cat a voice while you type: each key plays a sound, from the model itself or from an audio file you choose.",
     "by_locale": {
-      "zh-CN": "打字时让猫发出声音：每按一个键就播放模型自带的一个动作，以及该动作自带的声音。",
-      "zh-TW": "打字時讓貓發出聲音：每按一個鍵就播放模型自帶的一個動作，以及該動作自帶的聲音。"
+      "zh-CN": "打字时让猫发出声音：每按一个键都会发声，可以来自模型自带的声音，也可以来自你选择的音频文件。",
+      "zh-TW": "打字時讓貓發出聲音：每按一個鍵都會發聲，可以來自模型自帶的聲音，也可以來自你選擇的音訊檔案。",
+      "ar-SA": "يمنح القط صوتًا أثناء الكتابة: كل ضغطة مفتاح تُصدر صوتًا، من النموذج نفسه أو من ملف صوتي تختاره.",
+      "vi-VN": "Cho mèo một giọng nói khi bạn gõ: mỗi lần gõ phím đều phát ra âm thanh, từ chính mô hình hoặc từ tệp âm thanh bạn chọn.",
+      "pt-BR": "Dá voz ao gato enquanto você digita: cada tecla toca um som, do próprio modelo ou de um arquivo de áudio escolhido por você.",
+      "ko-KR": "타이핑하는 동안 고양이에게 음성을 줍니다. 키를 누를 때마다 소리가 나며, 모델 자체 소리이거나 직접 고른 오디오 파일입니다."
     }
   },
-  "version": "1.0.0",
-  "author": "BongoCat",
   "icon": {
     "emoji": "🔊"
   },
-  "executable": "typing-sound"
+  "executable": "typing-sound",
+  "copy": {
+    "no_such_motion": {
+      "default": "This model has no motion by that name",
+      "by_locale": {
+        "zh-CN": "这个模型没有同名动作",
+        "zh-TW": "這個模型沒有同名動作",
+        "ar-SA": "لا يوجد في هذا النموذج حركة بهذا الاسم",
+        "vi-VN": "Mô hình này không có chuyển động tên đó",
+        "pt-BR": "Este modelo não tem um movimento com esse nome",
+        "ko-KR": "이 모델에는 해당 이름의 동작이 없습니다"
+      }
+    },
+    "sound_source_label": {
+      "default": "Sound",
+      "by_locale": {
+        "zh-CN": "音效",
+        "zh-TW": "音效",
+        "ar-SA": "الصوت",
+        "vi-VN": "Âm thanh",
+        "pt-BR": "Som",
+        "ko-KR": "사운드"
+      }
+    },
+    "sound_source_help": {
+      "default": "Play the model's own sound for a keystroke, or an audio file of your own.",
+      "by_locale": {
+        "zh-CN": "使用模型自带的声音，还是你自己选择的音频文件。",
+        "zh-TW": "使用模型自帶的聲音，還是你自己選擇的音訊檔案。",
+        "ar-SA": "شغّل صوت النموذج عند كل ضغطة مفتاح، أو ملف صوتي تختاره أنت.",
+        "vi-VN": "Phát âm thanh của mô hình khi gõ phím, hoặc một tệp âm thanh do bạn chọn.",
+        "pt-BR": "Toque o som do próprio modelo a cada tecla, ou um arquivo de áudio escolhido por você.",
+        "ko-KR": "키를 누를 때 모델 자체 소리를 재생하거나, 직접 고른 오디오 파일을 재생합니다."
+      }
+    },
+    "model_sound": {
+      "default": "The model's own sound",
+      "by_locale": {
+        "zh-CN": "模型自带的声音",
+        "zh-TW": "模型自帶的聲音",
+        "ar-SA": "صوت النموذج نفسه",
+        "vi-VN": "Âm thanh của mô hình",
+        "pt-BR": "O som do próprio modelo",
+        "ko-KR": "모델 자체 소리"
+      }
+    },
+    "custom_sound": {
+      "default": "An audio file",
+      "by_locale": {
+        "zh-CN": "音频文件",
+        "zh-TW": "音訊檔案",
+        "ar-SA": "ملف صوتي",
+        "vi-VN": "Tệp âm thanh",
+        "pt-BR": "Um arquivo de áudio",
+        "ko-KR": "오디오 파일"
+      }
+    },
+    "sound_path_label": {
+      "default": "Audio file",
+      "by_locale": {
+        "zh-CN": "音频文件",
+        "zh-TW": "音訊檔案",
+        "ar-SA": "الملف الصوتي",
+        "vi-VN": "Tệp âm thanh",
+        "pt-BR": "Arquivo de áudio",
+        "ko-KR": "오디오 파일"
+      }
+    },
+    "sound_path_help": {
+      "default": "The full path to an audio file, such as /Users/you/sounds/click.mp3. Leave it empty to use the model's own sound.",
+      "by_locale": {
+        "zh-CN": "音频文件的完整路径，例如 /Users/you/sounds/click.mp3。留空则使用模型自带的声音。",
+        "zh-TW": "音訊檔案的完整路徑，例如 /Users/you/sounds/click.mp3。留空則使用模型自帶的聲音。",
+        "ar-SA": "المسار الكامل إلى ملف صوتي، مثل ‎/Users/you/sounds/click.mp3. اتركه فارغًا لاستخدام صوت النموذج.",
+        "vi-VN": "Đường dẫn đầy đủ tới một tệp âm thanh, ví dụ /Users/you/sounds/click.mp3. Để trống để dùng âm thanh của mô hình.",
+        "pt-BR": "O caminho completo até um arquivo de áudio, como /Users/you/sounds/click.mp3. Deixe vazio para usar o som do próprio modelo.",
+        "ko-KR": "오디오 파일의 전체 경로입니다. 예를 들어 /Users/you/sounds/click.mp3. 비워 두면 모델 자체 소리를 사용합니다."
+      }
+    },
+    "no_such_sound_file": {
+      "default": "That audio file could not be read",
+      "by_locale": {
+        "zh-CN": "无法读取该音频文件",
+        "zh-TW": "無法讀取該音訊檔案",
+        "ar-SA": "تعذّرت قراءة ملف الصوت هذا",
+        "vi-VN": "Không đọc được tệp âm thanh đó",
+        "pt-BR": "Não foi possível ler esse arquivo de áudio",
+        "ko-KR": "해당 오디오 파일을 읽을 수 없습니다"
+      }
+    },
+    "volume_label": {
+      "default": "Volume",
+      "by_locale": {
+        "zh-CN": "音量",
+        "zh-TW": "音量",
+        "ar-SA": "مستوى الصوت",
+        "vi-VN": "Âm lượng",
+        "pt-BR": "Volume",
+        "ko-KR": "음량"
+      }
+    },
+    "volume_help": {
+      "default": "How loud a keystroke is.",
+      "by_locale": {
+        "zh-CN": "每次按键的声音有多响。",
+        "zh-TW": "每次按鍵的聲音有多響。",
+        "ar-SA": "مدى ارتفاع الصوت عند كل ضغطة مفتاح.",
+        "vi-VN": "Âm lượng của mỗi lần gõ phím.",
+        "pt-BR": "Quão alto toca cada tecla.",
+        "ko-KR": "키를 누를 때 어느 정도의 소리로 낼지 정합니다."
+      }
+    },
+    "interval_label": {
+      "default": "Shortest gap between two sounds",
+      "by_locale": {
+        "zh-CN": "两次声音的最短间隔",
+        "zh-TW": "兩次聲音的最短間隔",
+        "ar-SA": "أقصر فاصل بين صوتين",
+        "vi-VN": "Khoảng nghỉ ngắn nhất giữa hai âm thanh",
+        "pt-BR": "Menor intervalo entre dois sons",
+        "ko-KR": "두 소리 사이의 최소 간격"
+      }
+    },
+    "interval_help": {
+      "default": "Raising this turns a burst of typing into a rhythm instead of one long sound.",
+      "by_locale": {
+        "zh-CN": "调高后，一串快速输入会变成有节奏的声音，而不是一个长音。",
+        "zh-TW": "調高後，一串快速輸入會變成有節奏的聲音，而不是一個長音。",
+        "ar-SA": "رفع هذا يحوّل连串 ضغطات المفاتيح إلى إيقاع بدل صوت واحد طويل.",
+        "vi-VN": "Tăng giá trị này để một loạt phím gõ thành nhịp điệu thay vì một tiếng kéo dài.",
+        "pt-BR": "Aumentar isso transforma uma sequência de teclas em um ritmo, em vez de um som só.",
+        "ko-KR": "이를 키우면 연속 입력 소리가 하나의 길은 소리가 아니라 리듬이 됩니다."
+      }
+    },
+    "repeat_label": {
+      "default": "Ignore a key the keyboard is repeating",
+      "by_locale": {
+        "zh-CN": "忽略键盘的自动重复",
+        "zh-TW": "忽略鍵盤的自動重複",
+        "ar-SA": "تجاهل المفتاح الذي يكرره لوحة المفاتيح",
+        "vi-VN": "Bỏ qua phím do bàn phím tự lặp lại",
+        "pt-BR": "Ignorar a tecla que o teclado repete",
+        "ko-KR": "키보드가 반복하는 키는 무시"
+      }
+    },
+    "repeat_help": {
+      "default": "A held key is one key, so a held key should be one sound rather than a dozen.",
+      "by_locale": {
+        "zh-CN": "按住一个键只是一个键，所以应该只响一次而不是十几次。",
+        "zh-TW": "按住一個鍵只是一個鍵，所以應該只響一次而不是十幾次。",
+        "ar-SA": "المفتاح المضغوط مفتاح واحد، فيجب أن يكون صوتًا واحدًا لا اثني عشر.",
+        "vi-VN": "Một phím được giữ vẫn là một phím, nên nó nên phát ra một âm thanh chứ không phải mười hai.",
+        "pt-BR": "Uma tecla pressionada é uma tecla, então deveria tocar um som, não uma dúzia.",
+        "ko-KR": "길게 누른 키도 하나의 키이므로 소리도 한 번만 나야 합니다."
+      }
+    },
+    "mouse_label": {
+      "default": "Play a sound for the mouse buttons too",
+      "by_locale": {
+        "zh-CN": "鼠标按键也播放声音",
+        "zh-TW": "滑鼠按鍵也播放聲音",
+        "ar-SA": "شغّل صوتًا لأزرار الفأرة أيضًا",
+        "vi-VN": "Phát âm thanh cho cả nút chuột",
+        "pt-BR": "Tocar um som também para os botões do mouse",
+        "ko-KR": "마우스 버튼에도 소리 재생"
+      }
+    },
+    "mouse_help": {
+      "default": "Turn this off for keys only.",
+      "by_locale": {
+        "zh-CN": "关闭后只对键盘按键发声。",
+        "zh-TW": "關閉後只對鍵盤按鍵發聲。",
+        "ar-SA": "أوقفه لتقييد الصوت على لوحة المفاتيح فقط.",
+        "vi-VN": "Tắt điều này để chỉ áp dụng cho bàn phím.",
+        "pt-BR": "Desative para aplicar apenas ao teclado.",
+        "ko-KR": "끄면 키보드에만 적용됩니다."
+      }
+    },
+    "play_on_release_label": {
+      "default": "Play when a key is released",
+      "by_locale": {
+        "zh-CN": "按键松开时播放",
+        "zh-TW": "按鍵鬆開時播放",
+        "ar-SA": "شغّل عند رفع المفتاح",
+        "vi-VN": "Phát khi thả phím",
+        "pt-BR": "Tocar ao soltar a tecla",
+        "ko-KR": "키를 놓을 때 재생"
+      }
+    },
+    "play_on_release_help": {
+      "default": "Turn this off to sound on the key going down instead.",
+      "by_locale": {
+        "zh-CN": "关闭后在按键按下时发声。",
+        "zh-TW": "關閉後在按鍵按下時發聲。",
+        "ar-SA": "أوقفه ليصوت عند ضغط المفتاح بدلًا من رفعه.",
+        "vi-VN": "Tắt điều này để phát âm khi nhấn phím xuống thay vì khi thả.",
+        "pt-BR": "Desative para o som tocar ao pressionar a tecla em vez de soltá-la.",
+        "ko-KR": "끄면 키를 누르는 순간에 소리를 냅니다."
+      }
+    },
+    "press_edge": {
+      "default": "As the key goes down",
+      "by_locale": {
+        "zh-CN": "按键按下时",
+        "zh-TW": "按鍵按下時",
+        "ar-SA": "عند ضغط المفتاح",
+        "vi-VN": "Khi nhấn phím xuống",
+        "pt-BR": "Ao pressionar a tecla",
+        "ko-KR": "키를 누를 때"
+      }
+    },
+    "release_edge": {
+      "default": "As the key comes up",
+      "by_locale": {
+        "zh-CN": "按键松开时",
+        "zh-TW": "按鍵鬆開時",
+        "ar-SA": "عند رفع المفتاح",
+        "vi-VN": "Khi thả phím",
+        "pt-BR": "Ao soltar a tecla",
+        "ko-KR": "키를 놓을 때"
+      }
+    }
+  }
 }

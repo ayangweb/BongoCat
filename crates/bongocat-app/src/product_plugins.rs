@@ -18,11 +18,11 @@
 //! the cat, the plugin center says why, and nothing about the failure is allowed to
 //! take the model window with it.
 
+use bongocat_audio::MotionAudioClient;
 use bongocat_config::StorageLayout;
-use bongocat_plugin::PLUGIN_CATALOG_FILE_NAME;
 use bongocat_plugin::{
     CatalogMode, LocalTimeCache, PluginWorkerEndpoint, PluginWorkerHandle, PluginWorkerReader,
-    local_catalog_directory,
+    local_catalog_directory, local_plugin_directories,
 };
 use bongocat_render::{OverlayLayerConsumer, OverlayPressSink};
 use std::path::{Path, PathBuf};
@@ -66,6 +66,7 @@ impl ProductPluginHost {
         layout: &StorageLayout,
         runtime: Option<bongocat_runtime::RuntimeClient>,
         locale: &str,
+        audio: MotionAudioClient,
     ) -> Result<Self, bongocat_plugin::PluginError> {
         let (producer, consumer) = bongocat_render::overlay_layer_channel();
         let clock = Arc::new(LocalTimeCache::new());
@@ -86,6 +87,11 @@ impl ProductPluginHost {
             layout.plugin_data.clone(),
             bongocat_app::PRODUCT_VERSION.to_string(),
             locale.to_string(),
+            // The product's one voice, handed over rather than opened here: a plugin that
+            // made a noise by opening the output device of its own would be a second
+            // process on it, and two output streams stutter in a way users hear as the
+            // product's fault.
+            audio,
         )?;
         let press_sink = Arc::new(endpoint.press_sink());
         Ok(Self {
@@ -197,30 +203,30 @@ impl ProductPluginHost {
 /// The data root is the answer for both environments, because a Production build
 /// downloads its catalog and writes it nowhere a Development build would read it.
 ///
-/// A **Development** run whose data root holds no catalog falls back to the
+/// A **Development** run whose data root holds no plugin falls back to the
 /// repository's own `plugins/` directory, which is what makes the authoring loop
-/// work with no setup at all: clone, run, and the reference plugin is on the
+/// work with no setup at all: clone, run, and the reference plugins are on the
 /// model window. Without this the developer would have to know a directory path,
-/// copy two files into it, and re-run — which is not a loop, it is a setup step.
+/// copy files into it, and re-run — which is not a loop, it is a setup step.
 ///
 /// The fallback is guarded twice on purpose. It only applies to a Development
 /// build, decided at compile time, so a Production binary cannot take this path
 /// even if it was built on a machine that has the repository; and it only applies
-/// when the repository directory actually holds a catalog, so a developer who has
-/// deleted theirs gets an empty catalog rather than a build-time path from
-/// someone else's machine.
+/// when the repository directory actually holds plugins, so a developer who has
+/// deleted theirs gets an empty list rather than a build-time path from someone
+/// else's machine.
 ///
-/// The data root still wins when it has a catalog, so a developer testing their
-/// own archive overrides the shipped example without deleting anything.
+/// The data root still wins when it holds a plugin, so a developer testing their
+/// own archive overrides the shipped ones without deleting anything.
 pub(crate) fn catalog_directory(layout: &StorageLayout) -> PathBuf {
     let data = local_catalog_directory(&layout.root);
-    if !data.join(PLUGIN_CATALOG_FILE_NAME).is_file()
+    if local_plugin_directories(&data).is_empty()
         && matches!(
             bongocat_app::BUILD_ENVIRONMENT,
             bongocat_config::BuildEnvironment::Development
         )
         && let Some(repository) = repository_plugin_catalog()
-        && repository.join(PLUGIN_CATALOG_FILE_NAME).is_file()
+        && !local_plugin_directories(&repository).is_empty()
     {
         return repository;
     }

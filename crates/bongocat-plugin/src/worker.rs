@@ -38,6 +38,7 @@ use crate::local_time::LocalTimeCache;
 use crate::model_request::ModelRequestRouter;
 use crate::session::{HANDSHAKE_TIMEOUT, Incoming, Session, SessionOutcome, SessionState};
 use crate::store::PluginStore;
+use bongocat_audio::MotionAudioClient;
 use bongocat_plugin_protocol::{
     ConfigDocument, InstalledPlugin, LogLevel, ModelRequest, PluginCatalogEntry, PluginError,
     PluginErrorCode, PluginId, PluginManifest, Subscription,
@@ -235,6 +236,12 @@ pub struct PluginDiagnostics {
     /// Model requests the product could not carry out, so a plugin that keeps asking
     /// for a motion this model does not have is visible rather than merely absent.
     pub model_requests_refused: u64,
+    /// Audio files a plugin asked for that the product played.
+    ///
+    /// Its own counter rather than a fold into `model_requests`, because a sound is not a
+    /// model reaction and a diagnostic that conflated them could not answer the question a
+    /// user actually asks of it: "is the typing-sound plugin working?"
+    pub sounds_played: u64,
     pub bubbles_shown: u64,
 }
 
@@ -251,6 +258,7 @@ impl PluginDiagnostics {
             + self.input_dropped
             + self.model_requests
             + self.model_requests_refused
+            + self.sounds_played
             + self.bubbles_shown
     }
 }
@@ -611,12 +619,15 @@ pub fn start(
     layer_producer: OverlayLayerProducer,
     clock: Arc<LocalTimeCache>,
     runtime: Option<bongocat_runtime::RuntimeClient>,
-    // Where plugins keep the state they wrote, what version this build is, and which
-    // language the user reads — all three facts only the product holds, and all three
-    // handed to plugins rather than invented here.
+    // Where plugins keep the state they wrote, what version this build is, which language
+    // the user reads, and which voice a plugin's sound request goes through — all four
+    // facts only the product holds, and all four handed to plugins rather than invented
+    // here. The audio client is [`MotionAudioClient::unavailable`] on a build with no audio
+    // service, so this worker needs no knowledge of whether there is one.
     plugin_data: PathBuf,
     app_version: String,
     locale: String,
+    audio: MotionAudioClient,
 ) -> Result<(PluginWorkerHandle, PluginWorkerEndpoint), PluginError> {
     store.create()?;
     let (commands, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);
@@ -637,7 +648,7 @@ pub fn start(
                 catalog_mode,
                 catalog_read: false,
                 clock,
-                router: ModelRequestRouter::new(runtime.clone()),
+                router: ModelRequestRouter::new(runtime.clone()).with_audio(audio),
                 runtime,
                 plugin_data,
                 app_version,
@@ -1013,10 +1024,18 @@ impl Worker {
             self.show_bubble(plugin, request, request_id, layer_ids);
             return;
         }
+        let subscribed = session.wants(Subscription::ModelReaction);
+        if crate::sound::is_sound_request(request) {
+            // A sound is the audio device rather than the model, so it gets its own path
+            // through here even though both are "a request the router answers": the sound
+            // has a file to check and a queue to publish to, and neither is a thing the
+            // runtime's snapshot has an opinion about.
+            self.play_sound(plugin, request, request_id, subscribed);
+            return;
+        }
         if !crate::ModelRequestRouter::routes_here(request) {
             return;
         }
-        let subscribed = session.wants(Subscription::ModelReaction);
         let answer = self.router.answer(request_id, request, subscribed);
         self.diagnostics.model_requests = self.diagnostics.model_requests.saturating_add(1);
         if !matches!(answer.outcome, bongocat_plugin_protocol::ModelOutcome::Done) {
@@ -1025,6 +1044,45 @@ impl Worker {
         }
         if let Some(session) = self.sessions.get_mut(plugin) {
             session.write_answer(answer.id, answer.outcome);
+        }
+    }
+
+    /// Play the audio file a plugin named, and answer the request.
+    ///
+    /// The refusal is recorded on the plugin's own log rather than the product's, for the
+    /// reason the plugin log exists at all: "the file you chose is not there" is a fact
+    /// about one plugin's configuration, and it is the only thing that tells a user why
+    /// their click made no noise. The product's log is a closed vocabulary of event codes
+    /// and this would need a code per reason.
+    fn play_sound(
+        &mut self,
+        plugin: &PluginId,
+        request: &ModelRequest,
+        request_id: u64,
+        subscribed: bool,
+    ) {
+        let outcome = self.router.play_sound(request, subscribed);
+        self.diagnostics.model_requests = self.diagnostics.model_requests.saturating_add(1);
+        match &outcome {
+            crate::SoundOutcome::Queued => {
+                self.diagnostics.sounds_played = self.diagnostics.sounds_played.saturating_add(1);
+            }
+            crate::SoundOutcome::Refused(refusal) => {
+                self.diagnostics.model_requests_refused =
+                    self.diagnostics.model_requests_refused.saturating_add(1);
+                crate::plugin_log::record(
+                    plugin,
+                    bongocat_plugin_protocol::LogLevel::Warn,
+                    &format!("it could not play a sound: {}", refusal.as_str()),
+                );
+            }
+            crate::SoundOutcome::NotSubscribed => {
+                self.diagnostics.model_requests_refused =
+                    self.diagnostics.model_requests_refused.saturating_add(1);
+            }
+        }
+        if let Some(session) = self.sessions.get_mut(plugin) {
+            session.write_answer(request_id, outcome.outcome());
         }
     }
 

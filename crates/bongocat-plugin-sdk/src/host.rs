@@ -373,7 +373,36 @@ impl Host {
         self.request(ModelRequest::HideBubble)
     }
 
-    fn request(&mut self, request: ModelRequest) -> u64 {
+    /// Play an audio file on this machine, at a volume.
+    ///
+    /// The one request that names a path, and the reason a plugin asks rather than opening
+    /// the output device itself: two processes with the device open is a thing the operating
+    /// system arbitrates badly, and users hear the result as a stutter. The host is the only
+    /// side that knows which files it will open, so it is the side that checks — and a file
+    /// it will not play comes back as [`ModelOutcome::HostCannot`] rather than as silence,
+    /// so a plugin can tell a user their file is not there.
+    ///
+    /// `volume` is a multiplier from nothing to one, clamped by the protocol, so a plugin
+    /// that multiplies its own setting by a factor cannot exceed the device.
+    ///
+    /// The path is the user's own, from a setting they typed. A plugin chooses the value in
+    /// its own file; what the host does with it is checked on this side of the boundary.
+    pub fn play_sound(&mut self, path: &str, volume: f32) -> u64 {
+        self.request(ModelRequest::PlaySound {
+            path: path.to_string(),
+            volume,
+        })
+    }
+
+    /// Ask for something the host may carry out, with a request the caller built.
+    ///
+    /// The public door behind [`Self::play_motion`], [`Self::bubble`] and the rest, for a
+    /// plugin that has one [`ModelRequest`] in hand rather than a name to type. Everything
+    /// those methods do is allocate an id and write one line, so a plugin that needs a
+    /// request shape the SDK does not name yet can build it and send it here — and the id
+    /// still comes from the same counter, so the answer comes back the way every other
+    /// answer does.
+    pub fn request(&mut self, request: ModelRequest) -> u64 {
         let id = self.next_request_id;
         self.next_request_id = self.next_request_id.wrapping_add(1);
         self.write(&bongocat_plugin_protocol::PluginMessage::Request {

@@ -93,6 +93,20 @@ impl Application {
         self.runtime.client()
     }
 
+    /// The product's one audio voice, for anything that is not the model itself.
+    ///
+    /// A plugin asking for a sound goes through this rather than opening the output device
+    /// of its own, which is the whole reason a plugin asks: two processes with the device
+    /// open is a thing the operating system arbitrates badly and users hear as a stutter.
+    /// A build with no audio service answers with the unavailable client, so a caller does
+    /// not have to distinguish "no voice" from "no service" before it tries.
+    pub fn motion_audio_client(&self) -> bongocat_audio::MotionAudioClient {
+        self.motion_audio
+            .as_ref()
+            .map(bongocat_audio::MotionAudioService::client)
+            .unwrap_or_else(bongocat_audio::MotionAudioClient::unavailable)
+    }
+
     pub fn config_revision(&self) -> Option<u64> {
         self.config_revision.map(ConfigRevision::value)
     }

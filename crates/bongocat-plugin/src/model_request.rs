@@ -16,6 +16,8 @@
 //! timeout is neither. So there is no path where a request produces no answer, and
 //! the four refusals name four different things a plugin might do about them.
 
+use crate::sound::{self, SoundOutcome};
+use bongocat_audio::{MotionAudioClient, MotionAudioCommand, MotionAudioVolume};
 use bongocat_model::ModelBehaviorSnapshot;
 use bongocat_plugin_protocol::{ModelAnswer, ModelOutcome, ModelRequest, ModelRequestKind};
 use bongocat_runtime::{ExpressionId, MotionId, MotionPriority, RuntimeClient, ShortcutAction};
@@ -29,6 +31,13 @@ use bongocat_runtime::{ExpressionId, MotionId, MotionPriority, RuntimeClient, Sh
 #[derive(Clone, Default)]
 pub struct ModelRequestRouter {
     client: Option<RuntimeClient>,
+    /// The product's one audio voice.
+    ///
+    /// A sound a plugin asks for goes through the same queue and the same voice as a model's
+    /// own, which is the whole reason a plugin asks rather than opening the device: one
+    /// voice means a plugin's click and a model's motion cannot overlap into the stutter two
+    /// output streams produce.
+    audio: Option<MotionAudioClient>,
 }
 
 impl std::fmt::Debug for ModelRequestRouter {
@@ -36,6 +45,7 @@ impl std::fmt::Debug for ModelRequestRouter {
         formatter
             .debug_struct("ModelRequestRouter")
             .field("attached", &self.client.is_some())
+            .field("audio", &self.audio.is_some())
             .finish()
     }
 }
@@ -47,7 +57,10 @@ impl ModelRequestRouter {
     /// is answered `OverlayHidden` rather than dropped, so a plugin can tell "there is
     /// nothing to show it on" from "nobody answered".
     pub fn new(client: Option<RuntimeClient>) -> Self {
-        Self { client }
+        Self {
+            client,
+            audio: None,
+        }
     }
 
     /// Whether a runtime is behind this router.
@@ -58,6 +71,26 @@ impl ModelRequestRouter {
     /// Attach or replace the runtime behind this router.
     pub fn set_client(&mut self, client: Option<RuntimeClient>) {
         self.client = client;
+    }
+
+    /// This router, with an audio service behind it.
+    ///
+    /// A builder rather than a setter because the worker builds its router once, at start,
+    /// from a value the product handed it: there is no moment after which the audio service
+    /// appears or disappears, and a `set_` here would suggest there were.
+    pub fn with_audio(mut self, audio: MotionAudioClient) -> Self {
+        self.audio = Some(audio);
+        self
+    }
+
+    /// Attach or replace the audio service behind this router.
+    pub fn set_audio(&mut self, audio: Option<MotionAudioClient>) {
+        self.audio = audio;
+    }
+
+    /// Whether an audio service is behind this router.
+    pub fn has_audio(&self) -> bool {
+        self.audio.is_some()
     }
 
     /// The active model's motions, as `(group, index, name)`.
@@ -128,17 +161,55 @@ impl ModelRequestRouter {
         }
     }
 
-    /// Whether a request is one this router answers, rather than one the worker takes.
+    /// Whether a request is one this router answers, rather than one the worker draws.
     ///
-    /// The split is by *owner*: a bubble belongs to the worker, which draws it as a
-    /// layer, and everything else belongs to the runtime. Two places rather than one
-    /// because the two are different systems — a bubble is chrome above the model on
-    /// the layer channel, and a motion is the model itself.
+    /// The split is by *owner*: a bubble is chrome above the model on the layer channel and
+    /// belongs to the worker, and everything else is the model itself or the audio device
+    /// and belongs here. One predicate rather than two lists of variants, because a
+    /// variant added to the protocol and forgotten in a hand-written match is a request
+    /// that silently goes nowhere.
     pub const fn routes_here(request: &ModelRequest) -> bool {
-        !matches!(
-            request,
-            ModelRequest::ShowBubble { .. } | ModelRequest::HideBubble
-        )
+        !request.is_drawn_not_acted()
+    }
+
+    /// Play an audio file a plugin named, and say whether it was played.
+    ///
+    /// The subscription is checked first for the same reason it is for a motion: a plugin
+    /// that did not ask for model reactions is never handed one, whatever the model happens
+    /// to be doing. The path is checked by [`sound::resolve`] and the command is published
+    /// to the product's own queue — a plugin never touches the audio device itself.
+    ///
+    /// A refused publication is `HostCannot` rather than `Done`, which is the honest answer:
+    /// the audio queue refused the command, nothing was played, and a plugin told `Done`
+    /// would believe otherwise.
+    pub fn play_sound(&self, request: &ModelRequest, subscribed: bool) -> SoundOutcome {
+        if !subscribed {
+            return SoundOutcome::NotSubscribed;
+        }
+        let Some(audio) = &self.audio else {
+            return SoundOutcome::Refused(sound::Refusal::NoVoice);
+        };
+        let (path, volume) = match sound::resolve(request) {
+            Ok(resolved) => resolved,
+            // The refusal is the path's own, so the log says which of the four it was
+            // rather than collapsing every bad path into one reason.
+            Err(SoundOutcome::Refused(refusal)) => return SoundOutcome::Refused(refusal),
+            Err(other) => return other,
+        };
+        let Some(volume) = MotionAudioVolume::new(volume) else {
+            return SoundOutcome::Refused(sound::Refusal::TooLarge);
+        };
+        match audio.try_publish_with_sequence(|sequence| MotionAudioCommand::Play {
+            sequence,
+            path,
+            volume,
+        }) {
+            Ok(_) => SoundOutcome::Queued,
+            // A queue that is full, recovering, or stopped is the same fact to a plugin:
+            // this sound did not happen. Which of the four it was is in the audio service's
+            // own diagnostics, which is where a refused publication is counted.
+            Err(_) => SoundOutcome::Refused(sound::Refusal::NoVoice),
+        }
     }
 
     /// The outcome alone, for a caller that is counting rather than answering.
@@ -190,11 +261,13 @@ impl ModelRequestRouter {
             },
             // Unreachable: cleared above, before the runtime is consulted.
             ModelRequest::ClearExpression => ModelOutcome::HostCannot,
-            // A bubble is drawn by the worker, not by the runtime, so it never
-            // reaches this function: the worker takes it out of the message before
-            // asking. Reaching here means a bubble was routed the wrong way, and
+            // A bubble is drawn by the worker and a sound goes to the audio service, so
+            // neither reaches this function: the worker takes both out of the message
+            // before asking. Reaching here means one was routed the wrong way, and
             // answering "the host cannot do this" is the safe reading.
-            ModelRequest::ShowBubble { .. } | ModelRequest::HideBubble => ModelOutcome::HostCannot,
+            ModelRequest::ShowBubble { .. }
+            | ModelRequest::HideBubble
+            | ModelRequest::PlaySound { .. } => ModelOutcome::HostCannot,
         }
     }
 

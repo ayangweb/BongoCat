@@ -107,6 +107,19 @@ impl Panel {
         self.size
     }
 
+    /// This panel, at a new logical size.
+    ///
+    /// For a panel whose size follows something the user changed. A panel's size is part of
+    /// what the host lays its tree out in, so a plugin that rebuilds its tree at a new font
+    /// size has to resize the panel too — and doing it through the builder alone would leave
+    /// the host laying the tree out for the old box and clipping the new one, which the
+    /// plugin cannot see.
+    ///
+    /// A no-op when the size is unchanged, so this is safe to call on every draw.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.size = [width, height];
+    }
+
     /// This panel's tree, as the protocol's update message.
     pub fn to_update(&self) -> bongocat_plugin_protocol::PanelUpdate {
         bongocat_plugin_protocol::PanelUpdate {

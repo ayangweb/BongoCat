@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+bongocat-audio.workspace = true
 bongocat-config.workspace = true
 bongocat-log.workspace = true
 bongocat-model.workspace = true

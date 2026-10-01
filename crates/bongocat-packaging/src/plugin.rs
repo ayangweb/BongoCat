@@ -35,9 +35,11 @@ pub const PLUGINS_DIRECTORY: &str = "plugins";
 
 /// Where a packed archive is written, relative to the plugins workspace.
 ///
-/// The name the repository's own `plugins.json` already points its downloads at, so a
-/// development build finds a freshly packed archive with nothing rewritten and nothing
-/// published.
+/// The name the host's derived development catalog looks in, so a freshly packed archive is
+/// found with nothing rewritten and nothing published. It is a second copy of a fact the two
+/// sides cannot share — this tool and the host are different crates with different reasons to
+/// exist — and `bongocat_plugin::catalog`'s test for the same name is where the two are
+/// checked against each other.
 pub const BUILD_DIRECTORY: &str = "build";
 
 /// The manifest inside a plugin's own directory, and the one this step rewrites.
@@ -605,5 +607,181 @@ mod tests {
             !archive_path(plugins.path(), "pomodoro", None).exists(),
             "and no half-written archive is left where the next run would find it"
         );
+    }
+    /// The repository's own `plugins/` directory.
+    fn repository_plugins() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("inside a workspace")
+            .join(PLUGINS_DIRECTORY)
+    }
+
+    /// Every plugin the repository ships, as `(id, manifest)` pairs.
+    fn repository_plugins_with_manifests() -> Vec<(String, serde_json::Value)> {
+        let plugins = repository_plugins();
+        let ids = plugin_ids(&plugins);
+        assert!(!ids.is_empty(), "the repository ships plugins");
+        ids.into_iter()
+            .map(|id| {
+                let manifest: serde_json::Value = serde_json::from_slice(
+                    &fs::read(plugins.join(&id).join(MANIFEST))
+                        .expect("the plugin ships its own manifest"),
+                )
+                .expect("valid JSON");
+                (id, manifest)
+            })
+            .collect()
+    }
+
+    /// The language a plugin's `default` is the copy for.
+    ///
+    /// Written here rather than read out of `bongocat-i18n` because that crate is the
+    /// application's and this one is a build tool: a plugin's own table has a default
+    /// rather than an entry for every language, and the language that default is *for*
+    /// is the one the host resolves first. It is also the check that would notice the
+    /// product changing its default language, because a plugin whose default were still
+    /// English would then be a plugin with no copy in the reader's language at all.
+    const DEFAULT_LOCALE: &str = "en-US";
+
+    /// Every language the application's own catalogs ship, except the default.
+    ///
+    /// Read from `crates/bongocat-i18n/locales/` rather than written out here, because a
+    /// list in a test is a list that goes stale the day a language is added: the test
+    /// would keep passing on the languages it already knew about while the product grew
+    /// a seventh and every plugin silently stopped covering it.
+    fn translated_locales() -> Vec<String> {
+        let root = repository_plugins()
+            .parent()
+            .expect("the repository root is above plugins/")
+            .join("crates/bongocat-i18n/locales");
+        let mut locales: Vec<String> = fs::read_dir(&root)
+            .expect("the application ships locale catalogs")
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "json")
+            })
+            .filter_map(|path| {
+                path.file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .map(str::to_owned)
+            })
+            .filter(|locale| locale != DEFAULT_LOCALE)
+            .collect();
+        locales.sort();
+        assert!(
+            locales.len() >= 2,
+            "the product ships more than one language beyond the default"
+        );
+        locales
+    }
+
+    #[test]
+    fn every_plugin_ships_a_manifest_that_names_its_own_directory() {
+        // The one rule a plugin directory has to follow, checked over the repository's
+        // own rather than over a fixture: it is what lets `just plugins` find a plugin by
+        // looking at the tree, and what stops two plugins from disagreeing about an id.
+        for (id, manifest) in repository_plugins_with_manifests() {
+            assert_eq!(
+                manifest["id"].as_str(),
+                Some(id.as_str()),
+                "{id}: the manifest's id and its directory name have to agree"
+            );
+            assert!(
+                manifest["executable"].is_string(),
+                "{id}: a manifest names the file to execute"
+            );
+        }
+    }
+
+    #[test]
+    fn every_plugin_speaks_every_language_the_application_ships() {
+        // The bug this check exists for: a plugin's own copy carried a default and two
+        // Chinese entries, so a user on the other five languages read a plugin center
+        // that was partly translated — or English, with a table around it. Nothing else
+        // in the repository would notice, because the application's own catalogs are
+        // complete and the plugin's are a different mechanism entirely.
+        let locales = translated_locales();
+        for (id, manifest) in repository_plugins_with_manifests() {
+            for field in ["name", "description"] {
+                assert_localized(&id, &manifest[field], field, &locales);
+            }
+        }
+    }
+
+    /// One localized field carries a default and an entry for every other language.
+    ///
+    /// The two halves check different things, and neither substitutes for the other. An
+    /// entry per language is what stops a field from being silently skipped when a new
+    /// one ships; and a table that is not a verbatim copy of the default is what stops
+    /// "translated" from meaning "the same English string written seven times" — which is
+    /// what a mechanical pass over the keys produces, and which no reader can tell from
+    /// a real translation by counting entries.
+    ///
+    /// Individual languages are allowed to equal the default, because plenty of words are
+    /// the same in two languages: a product's own name, and most of Simplified and
+    /// Traditional Chinese. Refusing that would make the check wrong often enough that
+    /// it would be turned off.
+    fn assert_localized(id: &str, field: &serde_json::Value, name: &str, locales: &[String]) {
+        let default = field["default"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{id}: {name} has no default to fall back to"));
+        assert!(
+            !default.trim().is_empty(),
+            "{id}: {name}'s default is empty"
+        );
+        let by_locale = field["by_locale"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{id}: {name} carries no translations"));
+        for locale in locales {
+            let translation = by_locale
+                .get(locale)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_else(|| panic!("{id}: {name} has no {locale} copy"));
+            assert!(
+                !translation.trim().is_empty(),
+                "{id}: {name} in {locale} is empty"
+            );
+        }
+        assert!(
+            locales.iter().any(
+                |locale| by_locale.get(locale).and_then(serde_json::Value::as_str) != Some(default)
+            ),
+            "{id}: {name} is the {DEFAULT_LOCALE} copy repeated under every language, which is \
+             a string that happens to be in a table rather than a translation"
+        );
+    }
+
+    #[test]
+    fn every_plugin_ships_an_icon_because_a_card_with_none_shows_a_letter() {
+        for (id, manifest) in repository_plugins_with_manifests() {
+            assert!(
+                manifest["icon"]["emoji"].is_string() || manifest["icon"]["image"].is_string(),
+                "{id}: a card with no icon is a letter, and every plugin the repository ships has \
+                 one"
+            );
+        }
+    }
+
+    #[test]
+    fn every_plugin_ships_its_own_copy_in_every_language_the_application_ships() {
+        // A plugin's own words — the labels on its settings, the names of its choices,
+        // the text on its panel — are the plugin's, and they live in the plugin's own
+        // manifest rather than in a table the application maintains on its behalf. A
+        // plugin that shipped only some of the application's languages reads as a plugin
+        // with a translation rather than as a plugin with all of its strings, and
+        // nothing else in the repository would notice.
+        let locales = translated_locales();
+        for (id, manifest) in repository_plugins_with_manifests() {
+            let copy = manifest["copy"]
+                .as_object()
+                .unwrap_or_else(|| panic!("{id}: the manifest carries no copy"));
+            assert!(!copy.is_empty(), "{id}: the copy is empty");
+            for (key, text) in copy {
+                assert_localized(&id, text, key, &locales);
+            }
+        }
     }
 }

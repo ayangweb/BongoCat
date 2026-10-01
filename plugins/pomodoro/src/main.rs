@@ -28,7 +28,17 @@ mod copy;
 mod timer;
 
 use bongocat_plugin_sdk::prelude::*;
+use std::sync::LazyLock;
 use timer::{Phase, Round, RoundKind, format_seconds, minutes};
+
+/// This plugin's own manifest, embedded at compile time.
+///
+/// One document for the identity the card shows and the words the panel draws. See
+/// [`bongocat_plugin_sdk::SelfDescription`] for why it is embedded rather than read, and
+/// [`copy`] for the words themselves.
+static SELF: LazyLock<SelfDescription> = LazyLock::new(|| {
+    describe(include_str!("../plugin.json")).expect("this plugin's own manifest is readable")
+});
 
 /// How long a round lasts when the user has not chosen.
 ///
@@ -465,13 +475,12 @@ impl Pomodoro {
 
 impl Plugin for Pomodoro {
     fn descriptor(&self) -> Descriptor {
-        Descriptor::new("pomodoro", copy::plugin_name().resolve(""))
-            .version(1, 0, 0)
-            .author("BongoCat")
-            .named(copy::plugin_name())
-            .described(copy::plugin_description())
-            .icon(copy::ICON)
-            .subscribe(Subscription::HostState)
+        // The manifest says who this plugin is, and the descriptor is a projection of it
+        // rather than a second place spelling the same six fields out. Adding a plugin
+        // that keeps its metadata in its own `plugin.json` is then a change to that one
+        // file, and a card that said one thing before the plugin started and another
+        // after is not expressible.
+        SELF.descriptor().subscribe(Subscription::HostState)
     }
 
     fn settings(&mut self) -> Settings {
@@ -1160,10 +1169,7 @@ mod tests {
         serve_default(
             &mut plugin,
             &written,
-            Inbox::new()
-                .tick(minutes(1))
-                .press(TOGGLE)
-                .into_messages(),
+            Inbox::new().tick(minutes(1)).press(TOGGLE).into_messages(),
         );
         let offered = offered_controls(&written);
         assert_eq!(
@@ -1193,10 +1199,7 @@ mod tests {
         serve_default(
             &mut plugin,
             &written,
-            Inbox::new()
-                .tick(minutes(5))
-                .press(TOGGLE)
-                .into_messages(),
+            Inbox::new().tick(minutes(5)).press(TOGGLE).into_messages(),
         );
         assert_eq!(plugin.round.phase, Phase::Paused);
         assert_eq!(
@@ -1222,7 +1225,9 @@ mod tests {
             Inbox::new().tick(minutes(1)).into_messages(),
         );
         assert_eq!(
-            offered_labels(&written).last().expect("a control was offered"),
+            offered_labels(&written)
+                .last()
+                .expect("a control was offered"),
             "Start",
             "so the button offers to start the next round rather than to pause one that has \
              already stopped"

@@ -96,6 +96,7 @@
 
 mod action;
 mod host;
+mod manifest;
 mod panel;
 mod plugin;
 mod run;
@@ -109,6 +110,7 @@ pub use bongocat_plugin_protocol::{
     PluginAction, PluginAnchor, PluginMessage, Subscription, control_label,
 };
 pub use host::{Host, Identity, Outcome};
+pub use manifest::{ANCHORS, MANIFEST_FILE_NAME, SelfDescription, describe};
 pub use panel::{
     Panel, SceneBuilder, bar, button, button_disabled, button_secondary, chip, divider, heading,
     image, muted, panel_surface, ring, spacer, spacer_share, text, text_colored,
@@ -138,7 +140,8 @@ pub mod prelude {
     };
     pub use crate::{
         ActionGlyph, ConfigDocument, ConfigKind, ConfigValue, HostMessage, HostState, InputEvent,
-        LocalizedText, LogLevel, ModelRequest, Subscription, control_label,
+        LocalizedText, LogLevel, ModelRequest, SelfDescription, Subscription, control_label,
+        describe,
     };
     pub use bongocat_plugin_protocol::{
         MAXIMUM_BUBBLE_MILLIS, MINIMUM_BUBBLE_MILLIS, ModelRequestKind, PluginAnchor, SceneNode,

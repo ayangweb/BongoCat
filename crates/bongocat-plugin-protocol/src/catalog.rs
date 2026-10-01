@@ -228,7 +228,14 @@ impl PluginCatalog {
         Ok(catalog)
     }
 
-    fn validate(&self) -> Result<(), PluginError> {
+    /// Check the whole list, not one entry at a time.
+    ///
+    /// Public because not every catalog arrives as bytes: a development build *derives* its
+    /// list from the plugin directories beside it rather than reading a document, and the
+    /// bounds that matter here — how many, and no id twice — are properties of the list
+    /// rather than of an entry. Building a catalog in memory and shipping it unchecked
+    /// would be the same document a published one is refused for.
+    pub fn validate(&self) -> Result<(), PluginError> {
         if self.schema_version != PLUGIN_CATALOG_SCHEMA_VERSION {
             return Err(PluginError::new(PluginErrorCode::UnsupportedSchemaVersion));
         }

@@ -1,189 +1,138 @@
-//! The words this plugin says, in the user's language.
+//! The words this plugin says, read from the `plugin.json` it ships.
 //!
-//! Every string a pomodoro shows or a settings form labels lives here, with its own
-//! translations, and the application never learns what any of them are called. That is
-//! the point of a plugin owning its copy: adding a language is a change to this file
-//! and to nothing else in the repository.
+//! Every string a pomodoro shows or a settings form labels is a key in the `copy` table
+//! of the manifest this plugin ships, with its own translations. The application never
+//! learns what any of them are called: it resolves a string against the language the user
+//! reads and draws the result, which is drawing, and drawing is the host's job.
+//!
+//! The copy lives in the manifest rather than in this file for the reason that made it
+//! move. It used to be written twice — once here for the panel and once in `plugin.json`
+//! for the card — and the two drifted, so a card changed its own text when the plugin
+//! started. One document is the whole of the fix, and [`SELF`] is the one place a plugin
+//! reads it from.
 //!
 //! The host's locale is the only one used. A plugin that picked its own would show one
 //! language on one panel and another on the next, and the user would have no way to
 //! tell which of the two is wrong.
 
-use bongocat_plugin_sdk::{Action, ActionGlyph, Host, LocalizedText};
+use bongocat_plugin_sdk::{Action, ActionGlyph, Host, LocalizedText, SelfDescription, describe};
+use std::sync::LazyLock;
 
 use crate::{Button, TOGGLE};
 
-/// The card's name.
-pub fn plugin_name() -> LocalizedText {
-    LocalizedText::new("Pomodoro")
-        .with_locale("zh-CN", "番茄钟")
-        .with_locale("zh-TW", "番茄鐘")
-}
-
-/// The card's one-sentence description.
-pub fn plugin_description() -> LocalizedText {
-    LocalizedText::new(
-        "A focus timer on the model window. Start it, stop it, and let the countdown run while \
-         you work.",
-    )
-    .with_locale(
-        "zh-CN",
-        "模型窗口上的专注计时器。开始、暂停，让倒计时在你工作期间继续走。",
-    )
-    .with_locale(
-        "zh-TW",
-        "模型視窗上的專注計時器。開始、暫停，讓倒數計時在你工作期間繼續走。",
-    )
-}
+/// This plugin's own manifest, embedded at compile time.
+///
+/// `include_str!` rather than a read at startup, so the copy is part of the binary: it
+/// cannot go missing, and a plugin that ships a manifest its own code contradicts is a
+/// plugin whose card and panel disagree with no way for either to notice.
+static SELF: LazyLock<SelfDescription> = LazyLock::new(|| {
+    describe(include_str!("../plugin.json")).expect("this plugin's own manifest is readable")
+});
 
 /// The plugin's own emoji, which is the card's icon.
 pub const ICON: &str = "🍅";
 
 /// What a focus round is for.
 pub fn focus() -> LocalizedText {
-    LocalizedText::new("Focus")
-        .with_locale("zh-CN", "专注")
-        .with_locale("zh-TW", "專注")
+    SELF.label("focus")
 }
 
 /// A short pause.
 pub fn short_break() -> LocalizedText {
-    LocalizedText::new("Short break")
-        .with_locale("zh-CN", "短休息")
-        .with_locale("zh-TW", "短休息")
+    SELF.label("short_break")
 }
 
 /// A long pause.
 pub fn long_break() -> LocalizedText {
-    LocalizedText::new("Long break")
-        .with_locale("zh-CN", "长休息")
-        .with_locale("zh-TW", "長休息")
+    SELF.label("long_break")
 }
 
 /// A round that is not running.
 pub fn paused() -> LocalizedText {
-    LocalizedText::new("Paused")
-        .with_locale("zh-CN", "已暂停")
-        .with_locale("zh-TW", "已暫停")
+    SELF.label("paused")
 }
 
 /// The button that starts a stopped timer.
 pub fn start() -> LocalizedText {
-    LocalizedText::new("Start")
-        .with_locale("zh-CN", "开始")
-        .with_locale("zh-TW", "開始")
+    SELF.label("start")
 }
 
 /// The button that stops a running timer.
 pub fn pause() -> LocalizedText {
-    LocalizedText::new("Pause")
-        .with_locale("zh-CN", "暂停")
-        .with_locale("zh-TW", "暫停")
+    SELF.label("pause")
 }
 
 /// The button that starts a stopped one again.
 pub fn resume() -> LocalizedText {
-    LocalizedText::new("Resume")
-        .with_locale("zh-CN", "继续")
-        .with_locale("zh-TW", "繼續")
+    SELF.label("resume")
 }
 
 /// The button that throws the current round away.
 pub fn reset() -> LocalizedText {
-    LocalizedText::new("Reset")
-        .with_locale("zh-CN", "重置")
-        .with_locale("zh-TW", "重設")
+    SELF.label("reset")
 }
 
 /// Said when a stretch of work ends.
 pub fn round_finished() -> LocalizedText {
-    LocalizedText::new("Round finished")
-        .with_locale("zh-CN", "本轮完成")
-        .with_locale("zh-TW", "本輪完成")
+    SELF.label("round_finished")
 }
 
 /// Said when a pause ends.
 pub fn break_over() -> LocalizedText {
-    LocalizedText::new("Break over")
-        .with_locale("zh-CN", "休息结束")
-        .with_locale("zh-TW", "休息結束")
+    SELF.label("break_over")
 }
 
 /// The label on the round-length setting.
 pub fn focus_minutes_label() -> LocalizedText {
-    LocalizedText::new("Focus round")
-        .with_locale("zh-CN", "专注时长")
-        .with_locale("zh-TW", "專注時長")
+    SELF.label("focus_minutes_label")
 }
 
 /// What the round-length setting is.
 pub fn focus_minutes_help() -> LocalizedText {
-    LocalizedText::new("How long one stretch of work lasts.")
-        .with_locale("zh-CN", "每一段专注持续多久。")
-        .with_locale("zh-TW", "每一段專注持續多久。")
+    SELF.label("focus_minutes_help")
 }
 
 /// The suffix on the round-length number.
 pub fn minutes_unit() -> LocalizedText {
-    LocalizedText::new("min")
-        .with_locale("zh-CN", "分钟")
-        .with_locale("zh-TW", "分鐘")
+    SELF.label("minutes_unit")
 }
 
 /// The label on the "what follows a round" setting.
 pub fn after_round_label() -> LocalizedText {
-    LocalizedText::new("After a round")
-        .with_locale("zh-CN", "一轮结束后")
-        .with_locale("zh-TW", "一輪結束後")
+    SELF.label("after_round_label")
 }
 
 /// What the "what follows a round" setting is.
 pub fn after_round_help() -> LocalizedText {
-    LocalizedText::new("What happens when the timer reaches zero.")
-        .with_locale("zh-CN", "计时归零时会发生什么。")
-        .with_locale("zh-TW", "計時歸零時會發生什麼。")
+    SELF.label("after_round_help")
 }
 
 /// The first option: keep working.
 pub fn then_focus() -> LocalizedText {
-    LocalizedText::new("Another round straight away")
-        .with_locale("zh-CN", "直接开始下一轮")
-        .with_locale("zh-TW", "直接開始下一輪")
+    SELF.label("then_focus")
 }
 
 /// The second option: a short pause.
 pub fn then_short_break() -> LocalizedText {
-    LocalizedText::new("A short break")
-        .with_locale("zh-CN", "短休息")
-        .with_locale("zh-TW", "短休息")
+    SELF.label("then_short_break")
 }
 
 /// The third option: a long pause.
 pub fn then_long_break() -> LocalizedText {
-    LocalizedText::new("A long break")
-        .with_locale("zh-CN", "长休息")
-        .with_locale("zh-TW", "長休息")
+    SELF.label("then_long_break")
 }
 
 /// The label on the automatic-start setting.
 pub fn auto_start_label() -> LocalizedText {
-    LocalizedText::new("Start the next round automatically")
-        .with_locale("zh-CN", "自动开始下一轮")
-        .with_locale("zh-TW", "自動開始下一輪")
+    SELF.label("auto_start_label")
 }
 
 /// What the automatic-start setting is.
 pub fn auto_start_help() -> LocalizedText {
-    LocalizedText::new("Turn this off to decide each round yourself.")
-        .with_locale("zh-CN", "关闭后每一轮都由你决定何时开始。")
-        .with_locale("zh-TW", "關閉後每一輪都由你決定何時開始。")
+    SELF.label("auto_start_help")
 }
 
 /// One of this plugin's strings, in the language the user reads.
-///
-/// `resolve` rather than a match on the tag, because a plugin that wrote Traditional
-/// Chinese for `zh-TW` and Simplified for `zh-CN` must not have to answer "which of
-/// the ten tags is this?" before it can show a word.
 pub fn say(host: &Host, text: &LocalizedText) -> String {
     text.resolve_bounded(host.locale())
 }
@@ -225,4 +174,76 @@ pub fn toggle_glyph(button: Button) -> ActionGlyph {
 /// either place reaches one handler and the two cannot drift apart.
 pub fn toggle_action(button: Button, host: &Host) -> Action {
     Action::new(TOGGLE, say(host, &toggle_label(button))).glyph(toggle_glyph(button))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The manifest, read without the `LazyLock`, so a test can say what it is asserting
+    /// about rather than about a static that happens to be initialised already.
+    fn manifest() -> &'static SelfDescription {
+        &SELF
+    }
+
+    #[test]
+    fn every_string_this_plugin_asks_for_is_one_it_ships() {
+        // The failure this catches is a renamed key: a function that asks for `focus`
+        // when the manifest says `focus_label` resolves to the key itself, which draws
+        // the word "focus" on a panel instead of "Focus". Nothing else would notice.
+        for key in [
+            "focus",
+            "short_break",
+            "long_break",
+            "paused",
+            "start",
+            "pause",
+            "resume",
+            "reset",
+            "round_finished",
+            "break_over",
+            "focus_minutes_label",
+            "focus_minutes_help",
+            "minutes_unit",
+            "after_round_label",
+            "after_round_help",
+            "then_focus",
+            "then_short_break",
+            "then_long_break",
+            "auto_start_label",
+            "auto_start_help",
+        ] {
+            assert!(
+                manifest().has(key),
+                "this plugin asks for {key:?}, which it does not ship"
+            );
+        }
+    }
+
+    #[test]
+    fn the_card_and_the_panel_read_one_document() {
+        // The bug the copy table exists to end: the card's sentence and the panel's words
+        // used to be written in two files, and a card changed its own text when the
+        // plugin started.
+        assert_eq!(manifest().id(), "pomodoro");
+        assert_eq!(manifest().version(), "1.0.0");
+        assert_eq!(manifest().author(), "BongoCat");
+        assert_eq!(manifest().emoji(), Some(ICON));
+        assert_eq!(manifest().name().resolve("zh-CN"), "番茄钟");
+    }
+
+    #[test]
+    fn this_plugin_speaks_every_language_the_product_ships() {
+        // Checked here rather than only in the packaging crate's repository-wide test,
+        // because this is the plugin that fails first if somebody adds a language: the
+        // keys are the ones *this* file asks for, so a manifest entry added for someone
+        // else and a missing one for this string are the same shape of mistake.
+        for locale in ["zh-CN", "zh-TW", "ar-SA", "vi-VN", "pt-BR", "ko-KR"] {
+            assert_eq!(
+                focus().resolve(locale),
+                manifest().text("focus", locale),
+                "and the label the panel draws is the manifest's own {locale} copy"
+            );
+        }
+    }
 }

@@ -1,90 +1,144 @@
-//! The words this plugin shows.
+//! The words this plugin shows, read from the `plugin.json` it ships.
 //!
 //! A keycap is not a word, so almost nothing here needs translating — the letters and the
 //! arrows are the same in every language this product ships. What does need it is the
 //! little bit of prose around them: the line shown when nothing is held, and the setting
 //! labels, which the settings window renders in the user's own language.
+//!
+//! The copy lives in the manifest rather than in this file for the reason that made it
+//! move. It used to be written twice — once here for the panel and once in `plugin.json`
+//! for the card — and the two drifted, so a card changed its own text when the plugin
+//! started.
 
-use bongocat_plugin_sdk::{Host, LocalizedText};
+use bongocat_plugin_sdk::{Host, LocalizedText, SelfDescription, describe};
+use std::sync::LazyLock;
 
-/// The card's name.
-pub fn plugin_name() -> LocalizedText {
-    LocalizedText::new("Key Display")
-        .with_locale("zh-CN", "按键显示")
-        .with_locale("zh-TW", "按鍵顯示")
-}
-
-/// The card's one-sentence description.
-pub fn plugin_description() -> LocalizedText {
-    LocalizedText::new(
-        "Shows the keys you are holding, in the corner of the model window, so a screencast \\
-         does not need a second window to prove which key you pressed.",
-    )
-    .with_locale(
-        "zh-CN",
-        "在模型窗口角落显示你正在按的键，录屏时不必再开一个窗口来证明按了哪个键。",
-    )
-    .with_locale(
-        "zh-TW",
-        "在模型視窗角落顯示你正在按的鍵，錄影時不必再開一個視窗來證明按了哪個鍵。",
-    )
-}
-
-/// The plugin's own emoji, which is the card's icon.
-pub const ICON: &str = "⌨️";
+/// This plugin's own manifest, embedded at compile time.
+static SELF: LazyLock<SelfDescription> = LazyLock::new(|| {
+    describe(include_str!("../plugin.json")).expect("this plugin's own manifest is readable")
+});
 
 /// The line shown when nothing is held.
 pub fn idle() -> LocalizedText {
-    LocalizedText::new("No keys held")
-        .with_locale("zh-CN", "未按任何键")
-        .with_locale("zh-TW", "未按任何鍵")
+    SELF.label("idle")
 }
 
 /// The label on the "how many keys" setting.
 pub fn maximum_keys_label() -> LocalizedText {
-    LocalizedText::new("Keys shown at once")
-        .with_locale("zh-CN", "同时显示的按键数")
-        .with_locale("zh-TW", "同時顯示的按鍵數")
+    SELF.label("maximum_keys_label")
 }
 
 /// What the "how many keys" setting is.
 pub fn maximum_keys_help() -> LocalizedText {
-    LocalizedText::new(
-        "The newest keys are the ones that stay when you are holding more than this.",
-    )
-    .with_locale("zh-CN", "按下的按键超过这个数量时，保留最新的那些。")
-    .with_locale("zh-TW", "按下的按鍵超過這個數量時，保留最新的那些。")
+    SELF.label("maximum_keys_help")
+}
+
+/// The label on the font-size setting.
+pub fn font_size_label() -> LocalizedText {
+    SELF.label("font_size_label")
+}
+
+/// What the font-size setting is.
+pub fn font_size_help() -> LocalizedText {
+    SELF.label("font_size_help")
+}
+
+/// The label on the font-weight setting.
+pub fn font_weight_label() -> LocalizedText {
+    SELF.label("font_weight_label")
+}
+
+/// What the font-weight setting is.
+pub fn font_weight_help() -> LocalizedText {
+    SELF.label("font_weight_help")
+}
+
+/// The first weight option: the product's normal weight.
+pub fn regular() -> LocalizedText {
+    SELF.label("regular")
+}
+
+/// The second weight option: bold.
+pub fn bold() -> LocalizedText {
+    SELF.label("bold")
 }
 
 /// The label on the "include the mouse" setting.
 pub fn mouse_label() -> LocalizedText {
-    LocalizedText::new("Show the mouse buttons too")
-        .with_locale("zh-CN", "同时显示鼠标按键")
-        .with_locale("zh-TW", "同時顯示滑鼠按鍵")
+    SELF.label("mouse_label")
 }
 
 /// What the "include the mouse" setting is.
 pub fn mouse_help() -> LocalizedText {
-    LocalizedText::new("Turn this off for a keyboard-only display.")
-        .with_locale("zh-CN", "关闭后只显示键盘按键。")
-        .with_locale("zh-TW", "關閉後只顯示鍵盤按鍵。")
+    SELF.label("mouse_help")
 }
 
 /// The label on the "hide when nothing is held" setting.
 pub fn hide_when_idle_label() -> LocalizedText {
-    LocalizedText::new("Hide the panel when nothing is held")
-        .with_locale("zh-CN", "没有按键时隐藏面板")
-        .with_locale("zh-TW", "沒有按鍵時隱藏面板")
+    SELF.label("hide_when_idle_label")
 }
 
 /// What the "hide when nothing is held" setting is.
 pub fn hide_when_idle_help() -> LocalizedText {
-    LocalizedText::new("A panel that says nothing is a box on your desktop.")
-        .with_locale("zh-CN", "什么都不显示的面板只是桌面上一个空盒子。")
-        .with_locale("zh-TW", "什麼都不顯示的面板只是桌面上一個空盒子。")
+    SELF.label("hide_when_idle_help")
 }
 
 /// One of this plugin's strings, in the language the user reads.
 pub fn say(host: &Host, text: &LocalizedText) -> String {
     text.resolve_bounded(host.locale())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The manifest, read without the `LazyLock`, so a test can say what it is asserting
+    /// about rather than about a static that happens to be initialised already.
+    fn manifest() -> &'static SelfDescription {
+        &SELF
+    }
+
+    #[test]
+    fn every_string_this_plugin_asks_for_is_one_it_ships() {
+        for key in [
+            "idle",
+            "maximum_keys_label",
+            "maximum_keys_help",
+            "font_size_label",
+            "font_size_help",
+            "font_weight_label",
+            "font_weight_help",
+            "regular",
+            "bold",
+            "mouse_label",
+            "mouse_help",
+            "hide_when_idle_label",
+            "hide_when_idle_help",
+        ] {
+            assert!(
+                manifest().has(key),
+                "this plugin asks for {key:?}, which it does not ship"
+            );
+        }
+    }
+
+    #[test]
+    fn the_card_and_the_panel_read_one_document() {
+        assert_eq!(manifest().id(), "keyboard-display");
+        assert_eq!(manifest().version(), "1.0.0");
+        assert_eq!(manifest().author(), "BongoCat");
+        assert_eq!(manifest().emoji(), Some("⌨️"));
+        assert_eq!(manifest().name().resolve("zh-CN"), "按键显示");
+    }
+
+    #[test]
+    fn this_plugin_speaks_every_language_the_product_ships() {
+        for locale in ["zh-CN", "zh-TW", "ar-SA", "vi-VN", "pt-BR", "ko-KR"] {
+            assert_eq!(
+                idle().resolve(locale),
+                manifest().text("idle", locale),
+                "so the one line of prose the panel draws is in the reader's own language"
+            );
+        }
+    }
 }

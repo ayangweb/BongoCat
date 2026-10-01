@@ -641,6 +641,10 @@ fn a_switch_turned_off_is_published() {
         root.path().join("data"),
         "0.0.0-test".to_string(),
         "en-US".to_string(),
+        // No audio service behind this test, which is the same shape as a build whose
+        // output device would not open: a plugin's sound request is answered rather than
+        // dropped, and nothing here is about sound.
+        bongocat_audio::MotionAudioClient::unavailable(),
     )
     .expect("a worker starts over a store with one plugin in it");
     let reader = handle.reader();

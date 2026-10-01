@@ -19,91 +19,45 @@
 //! process ending, and those are the only three ways it can end.
 
 mod copy;
+mod layout;
+mod settings;
 
 use bongocat_plugin_sdk::prelude::*;
+use layout::Keycap;
+use settings::Preferences;
+use std::sync::LazyLock;
 
-/// The keys shown when the user has not chosen.
+/// This plugin's own manifest, embedded at compile time.
 ///
-/// Eight, because that is two tidy rows on a panel of this size and because a display that
-/// has to scroll to show what your hands are doing is a display you cannot read while
-/// typing.
-const DEFAULT_MAXIMUM_KEYS: i64 = 8;
+/// One document for the identity the card shows and the words the panel draws. See
+/// [`bongocat_plugin_sdk::SelfDescription`] for why it is embedded rather than read, and
+/// [`copy`] for the words themselves.
+static SELF: LazyLock<SelfDescription> = LazyLock::new(|| {
+    describe(include_str!("../plugin.json")).expect("this plugin's own manifest is readable")
+});
 
-/// The most keys this plugin will show.
+/// The gap between the panel's edge and the first key, in logical pixels.
 ///
-/// A bound rather than a preference: a hundred keycaps is a hundred labels, the panel
-/// would be taller than the model window, and the host would be laying out a scene with a
-/// thousand nodes at a hundred and twenty times a second. Sixteen is past what a person's
-/// hands cover and short of what a window cannot show.
-const MAXIMUM_KEYS: i64 = 16;
-
-/// How many keys fit on one row.
-///
-/// Derived from the panel's width and one key's width, both of which are this plugin's
-/// numbers: the panel is this plugin's, and the keycap is the product's font at the size
-/// this plugin chose. A host that decided it would mean a host that had to know what a
-/// keycap is.
-const PANEL_WIDTH: f32 = 260.0;
-const KEY_WIDTH: f32 = 34.0;
+/// The panel's own, and not the keycap's: it is the gap between the panel and its
+/// contents, which belongs to the panel the way the keycap's own padding belongs to the
+/// keycap.
 const PANEL_PADDING: f32 = 14.0;
-const PANEL_HEIGHT: u32 = 150;
 
-/// What the user configured.
+/// The gap between two keycaps, in logical pixels.
+const KEY_GAP: f32 = 4.0;
+
+/// The keycap's padding, as a multiple of the font size.
 ///
-/// Read through the SDK's typed accessors, so a field nobody has touched reads as its own
-/// default and there is no `unwrap_or` written twice.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Preferences {
-    pub maximum_keys: usize,
-    pub include_mouse: bool,
-    pub hide_when_idle: bool,
-}
+/// Derived rather than a constant so the cap keeps its proportions at every size: a
+/// keycap with the same absolute padding at a large font is a letter in a letterbox, and
+/// one at a small font is a keycap that is mostly padding.
+const PADDING_RATIO: f32 = 0.62;
 
-impl Default for Preferences {
-    fn default() -> Self {
-        Self {
-            maximum_keys: DEFAULT_MAXIMUM_KEYS as usize,
-            include_mouse: true,
-            hide_when_idle: false,
-        }
-    }
-}
+/// The keycap's corner radius, as a multiple of the font size.
+const RADIUS_RATIO: f32 = 0.31;
 
-impl Preferences {
-    fn read(values: &Values) -> Self {
-        Self {
-            maximum_keys: values.integer("maximum_keys").clamp(1, MAXIMUM_KEYS) as usize,
-            include_mouse: values.flag("include_mouse"),
-            hide_when_idle: values.flag("hide_when_idle"),
-        }
-    }
-}
-
-/// The settings this plugin declares, which *are* the settings panel.
-pub fn declared_settings() -> Settings {
-    Settings::new()
-        .with(
-            Integer::ranged(
-                "maximum_keys",
-                copy::maximum_keys_label(),
-                DEFAULT_MAXIMUM_KEYS,
-                1,
-                MAXIMUM_KEYS,
-            )
-            .described(copy::maximum_keys_help())
-            .into(),
-        )
-        .with(
-            Toggle::new("include_mouse", copy::mouse_label())
-                .described(copy::mouse_help())
-                .into(),
-        )
-        .with(
-            Toggle::new("hide_when_idle", copy::hide_when_idle_label())
-                .described(copy::hide_when_idle_help())
-                .into(),
-        )
-}
+/// The settings this plugin declares, re-exported for the tests that assert on them.
+use settings::declared_settings;
 
 /// The whole plugin.
 pub struct KeyDisplay {
@@ -125,9 +79,15 @@ pub struct KeyDisplay {
 
 impl KeyDisplay {
     /// A display at rest, with a starting guess at the user's settings.
+    ///
+    /// The panel is sized from the settings rather than fixed, because the font size is a
+    /// setting: a panel sized for one font and drawn at another is either a keycap with
+    /// space around it or a keycap with its letter cut off, and neither is a display
+    /// anybody asked for.
     pub fn new(preferences: Preferences) -> Self {
+        let panel = Self::panel_box(&preferences, 0);
         Self {
-            panel: Panel::new(PANEL_WIDTH as u32, PANEL_HEIGHT)
+            panel: Panel::new(panel.width, panel.height)
                 .anchored(PluginAnchor::BottomRight)
                 .with_margin(0.03, 0.03)
                 .with_width_fraction(0.30)
@@ -136,6 +96,19 @@ impl KeyDisplay {
             preferences,
             showing: false,
             painted: None,
+        }
+    }
+
+    /// The panel these settings need for this many keys.
+    fn panel_box(preferences: &Preferences, keys: usize) -> layout::PanelBox {
+        layout::panel_for(preferences, keys)
+    }
+
+    /// The keycap these settings draw.
+    fn keycap(&self) -> Keycap {
+        Keycap {
+            font_size: self.preferences.font_size,
+            bold: self.preferences.bold,
         }
     }
 
@@ -211,12 +184,12 @@ impl KeyDisplay {
 
     /// How many keycaps fit on one row of this panel.
     ///
-    /// Arithmetic rather than a constant, because both numbers are this plugin's: the panel
-    /// is this plugin's and the keycap is the product's font at the size this plugin chose.
-    /// A host that decided it would be a host that had to know what a keycap is.
+    /// Read off [`layout::panel_for`] rather than computed here, so the number of columns
+    /// the panel was *sized* for is the number of columns the panel is *drawn* with. Two
+    /// calculations of the same thing would agree until the font size changed, and then
+    /// disagree in exactly the way that puts a keycap off the edge.
     fn columns(&self) -> usize {
-        let usable = PANEL_WIDTH - PANEL_PADDING * 2.0;
-        ((usable / KEY_WIDTH).floor() as usize).max(1)
+        Self::panel_box(&self.preferences, self.held.len().max(1)).columns
     }
 
     /// Rebuild the panel if what it would show has changed, and put it up or take it down.
@@ -241,16 +214,22 @@ impl KeyDisplay {
             String::new()
         };
         let columns = self.columns();
+        let box_ = Self::panel_box(&self.preferences, labels.len());
+        // Resized before the tree is built, because a panel's size is part of what the host
+        // lays the tree out in: a tree laid out for a narrower panel than the one it is drawn
+        // in is a tree the host clips, and the clip is invisible to this plugin.
+        self.panel.resize(box_.width, box_.height);
+        let cap = self.keycap();
         self.panel.rebuild(|panel| {
             panel.surface(6.0, [PANEL_PADDING, 10.0], |content| {
                 if idle {
-                    content.push(muted(&note, 12.0));
+                    content.push(muted(&note, self.preferences.font_size));
                     return;
                 }
                 for row in labels.chunks(columns) {
-                    content.row_spaced(4.0, |line| {
+                    content.row_spaced(KEY_GAP, |line| {
                         for key in row {
-                            line.push(key_cap(key));
+                            line.push(key_cap(key, cap));
                         }
                     });
                 }
@@ -268,19 +247,22 @@ impl KeyDisplay {
 /// A keycap rather than a label: the point of the display is that it reads as *the key you
 /// are pressing*, and a bare word in a row is a list of words. A small surface with the
 /// letter centred in it is the difference between a caption and a keyboard.
-fn key_cap(label: &str) -> SceneNode {
-    chip(label, 13.0, [10.0, 6.0], 6.0)
+///
+/// The size, the padding and the radius all come from [`Keycap`], so the cap the panel was
+/// sized for and the cap the panel draws are the same cap — see [`layout`].
+fn key_cap(label: &str, cap: Keycap) -> SceneNode {
+    let padding = cap.padding();
+    chip(label, cap.font_size, [padding, padding], cap.radius())
 }
 
 impl Plugin for KeyDisplay {
     fn descriptor(&self) -> Descriptor {
-        Descriptor::new("keyboard-display", copy::plugin_name().resolve(""))
-            .version(1, 0, 0)
-            .author("BongoCat")
-            .named(copy::plugin_name())
-            .described(copy::plugin_description())
-            .icon(copy::ICON)
-            .subscribe(Subscription::Input)
+        // The manifest says who this plugin is, and the descriptor is a projection of it
+        // rather than a second place spelling the same six fields out. Adding a plugin that
+        // keeps its metadata in its own `plugin.json` is then a change to that one file, and
+        // a card that said one thing before the plugin started and another after is not
+        // expressible.
+        SELF.descriptor().subscribe(Subscription::Input)
     }
 
     fn settings(&mut self) -> Settings {
@@ -323,6 +305,9 @@ impl Plugin for KeyDisplay {
         if !self.preferences.include_mouse {
             self.held.retain(|control| !is_mouse_button(control));
         }
+        // A font change moves every keycap, so the last thing drawn is not a thing that can
+        // be compared against: keeping it would let the panel skip the redraw that the new
+        // font makes necessary, and the user would see the old size until the next keypress.
         self.painted = None;
         self.draw(host);
     }
@@ -348,6 +333,7 @@ mod tests {
         IdentityBuilder, Inbox, WrittenMessages, document, labels_in, panels, values_from,
     };
     use bongocat_plugin_sdk::{ConfigSchema, Host, Session};
+    use settings::{DEFAULT_FONT_SIZE, DEFAULT_MAXIMUM_KEYS, MAXIMUM_FONT_SIZE, MAXIMUM_KEYS};
 
     fn harness() -> WrittenMessages {
         // A schema is built per `serve` call, because a plugin's own test has no reason to
@@ -380,12 +366,39 @@ mod tests {
         session.serve(plugin, messages).expect("served");
     }
 
+    /// The document the settings form would send for these settings.
+    ///
+    /// Every field named, including the ones this plugin did not change in a test, because
+    /// a test that built a partial document would be testing a document the product never
+    /// sends: the form always sends the whole thing.
     fn configured(maximum_keys: i64, include_mouse: bool, hide_when_idle: bool) -> ConfigDocument {
+        with_font(
+            maximum_keys,
+            DEFAULT_FONT_SIZE as f64,
+            settings::REGULAR,
+            include_mouse,
+            hide_when_idle,
+        )
+    }
+
+    /// The same document, with the two font settings the user can change.
+    fn with_font(
+        maximum_keys: i64,
+        font_size: f64,
+        font_weight: &str,
+        include_mouse: bool,
+        hide_when_idle: bool,
+    ) -> ConfigDocument {
         document(
             [
                 (
                     "maximum_keys".to_string(),
                     ConfigValue::Integer(maximum_keys),
+                ),
+                ("font_size".to_string(), ConfigValue::Decimal(font_size)),
+                (
+                    "font_weight".to_string(),
+                    ConfigValue::Text(font_weight.to_string()),
                 ),
                 (
                     "include_mouse".to_string(),
@@ -713,16 +726,204 @@ mod tests {
 
     #[test]
     fn the_row_breaks_where_the_panel_is_too_narrow_for_another_keycap() {
-        // The host's layout has no notion of wrapping, so the plugin counts. Both numbers
-        // are this plugin's: the panel is this plugin's, and the keycap is the product's
-        // font at the size this plugin chose.
+        // The host's layout has no notion of wrapping, so the plugin counts — and the count
+        // has to come from the same arithmetic the panel's width came from, or a larger font
+        // would size a panel for three keycaps and then try to draw five.
         let plugin = KeyDisplay::new(Preferences::default());
         let columns = plugin.columns();
-        assert!(
-            (4..=6).contains(&columns),
-            "so a panel of {PANEL_WIDTH}px holds {columns} keycaps of {KEY_WIDTH}px and not a \\
-             keycap that would be cut off"
+        let cap = plugin.keycap();
+        let fits = (((plugin.panel.size()[0] as f32 - PANEL_PADDING * 2.0 + KEY_GAP)
+            / (cap.width() + KEY_GAP))
+            .floor()) as usize;
+        assert_eq!(
+            columns,
+            fits,
+            "so the panel is drawn with exactly the keycaps it is wide enough for: {columns} \
+             columns in {}px with a {:.0}px cap",
+            plugin.panel.size()[0],
+            cap.width()
         );
+    }
+
+    #[test]
+    fn a_bigger_font_draws_a_bigger_keycap_and_a_panel_that_fits_it() {
+        // The whole of the two font settings, end to end: the cap grows, the panel grows,
+        // and the number of keycaps per row falls. A user who turns the size up is asking
+        // for fewer, larger keys, and a plugin that grew the cap but not the panel would
+        // draw the right keycaps off the edge of a box that did not move.
+        for size in [
+            settings::MINIMUM_FONT_SIZE,
+            DEFAULT_FONT_SIZE,
+            MAXIMUM_FONT_SIZE,
+        ] {
+            let written = harness();
+            let mut plugin = KeyDisplay::new(Preferences::default());
+            let mut inbox = Inbox::new();
+            for key in ["KeyA", "KeyB", "KeyC", "KeyD", "KeyE", "KeyF"] {
+                inbox = inbox.input(a_key(key));
+            }
+            serve(
+                &mut plugin,
+                &written,
+                "en-US",
+                with_font(MAXIMUM_KEYS, size as f64, settings::REGULAR, false, false),
+                inbox.into_messages(),
+            );
+            let panel = plugin.panel.size();
+            let cap = plugin.keycap();
+            assert!(
+                panel[0] as f32 >= cap.width(),
+                "at {size}px the panel is {panel:?} and one cap is {:.0}px",
+                cap.width()
+            );
+            for drawn in panels(&written) {
+                drawn
+                    .validate()
+                    .expect("a panel this plugin builds is one the host accepts");
+            }
+        }
+    }
+
+    #[test]
+    fn a_bold_key_is_wider_than_a_normal_one_at_the_same_size() {
+        // The weight setting has to reach the cap, not just the number: a cap sized for the
+        // normal letter and drawn with a bold one is a keycap with its last letter clipped.
+        let written = harness();
+        let mut regular = KeyDisplay::new(Preferences::default());
+        let mut bold = KeyDisplay::new(Preferences::default());
+        let mut inbox = Inbox::new();
+        for key in ["KeyA", "KeyB"] {
+            inbox = inbox.input(a_key(key));
+        }
+        serve(
+            &mut regular,
+            &written,
+            "en-US",
+            with_font(
+                MAXIMUM_KEYS,
+                DEFAULT_FONT_SIZE as f64,
+                settings::REGULAR,
+                false,
+                false,
+            ),
+            Inbox::new().into_messages(),
+        );
+        serve(
+            &mut bold,
+            &written,
+            "en-US",
+            with_font(
+                MAXIMUM_KEYS,
+                DEFAULT_FONT_SIZE as f64,
+                settings::BOLD,
+                false,
+                false,
+            ),
+            inbox.into_messages(),
+        );
+        assert_eq!(
+            regular.preferences.font_size, bold.preferences.font_size,
+            "so the only difference between the two is the weight"
+        );
+        assert!(
+            bold.keycap().width() > regular.keycap().width(),
+            "and the bold cap is the wider one, which is why the panel has to grow with it"
+        );
+    }
+
+    #[test]
+    fn a_font_size_the_form_would_never_send_still_produces_a_drawable_keycap() {
+        // The clamp is unreachable through the product — the host fits every document to the
+        // schema — and it is here so that a `Values` built any other way cannot produce a
+        // zero-sized cap, which is a panel that draws nothing at all.
+        let schema: ConfigSchema = declared_settings().to_schema().expect("a valid schema");
+        for size in [0.0, -10.0, 1.0, 1_000.0, f64::NAN] {
+            let values = values_from(
+                &document(
+                    [("font_size".to_string(), ConfigValue::Decimal(size))]
+                        .into_iter()
+                        .collect(),
+                ),
+                &schema,
+            );
+            let preferences = Preferences::read(&values);
+            let cap = Keycap {
+                font_size: preferences.font_size,
+                bold: preferences.bold,
+            };
+            assert!(
+                cap.width().is_finite() && cap.width() > 0.0 && cap.height() > 0.0,
+                "{size} became a cap of {}x{}",
+                cap.width(),
+                cap.height()
+            );
+            let panel = KeyDisplay::panel_box(&preferences, 8);
+            assert!(
+                panel.width > 0 && panel.height > 0,
+                "{size} produced {panel:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_font_weight_this_build_does_not_know_reads_as_the_ordinary_one() {
+        // A value written by a newer version is not this build's to interpret, and the
+        // ordinary weight is the reading it was most likely written as.
+        let schema: ConfigSchema = declared_settings().to_schema().expect("a valid schema");
+        let values = values_from(
+            &document(
+                [(
+                    "font_weight".to_string(),
+                    ConfigValue::Text("something_newer".to_string()),
+                )]
+                .into_iter()
+                .collect(),
+            ),
+            &schema,
+        );
+        assert!(!Preferences::read(&values).bold);
+    }
+
+    #[test]
+    fn the_settings_the_plugin_declares_are_the_settings_form_and_nothing_else() {
+        let schema = declared_settings().to_schema().expect("a valid schema");
+        assert_eq!(
+            schema
+                .fields
+                .iter()
+                .map(|field| field.key.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "maximum_keys",
+                "font_size",
+                "font_weight",
+                "include_mouse",
+                "hide_when_idle"
+            ],
+            "in the order the form shows them, because the order is the order somebody sets \
+             this plugin up in"
+        );
+    }
+
+    #[test]
+    fn the_value_the_form_sends_is_the_value_the_plugin_reads() {
+        // The one thing that could otherwise drift: what the settings form writes, and what
+        // this plugin answers to.
+        let schema = declared_settings().to_schema().expect("a valid schema");
+        for size in [
+            settings::MINIMUM_FONT_SIZE,
+            DEFAULT_FONT_SIZE,
+            MAXIMUM_FONT_SIZE,
+        ] {
+            for weight in [settings::REGULAR, settings::BOLD] {
+                let values = values_from(&with_font(5, size as f64, weight, true, true), &schema);
+                let preferences = Preferences::read(&values);
+                assert_eq!(preferences.maximum_keys, 5);
+                assert_eq!(preferences.font_size, size as f32);
+                assert_eq!(preferences.bold, weight == settings::BOLD);
+                assert!(preferences.include_mouse && preferences.hide_when_idle);
+            }
+        }
     }
 
     #[test]
