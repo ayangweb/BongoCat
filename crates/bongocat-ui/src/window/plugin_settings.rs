@@ -84,6 +84,23 @@ pub(super) fn field_rows(
     rows
 }
 
+/// The labels this plugin's form shows, in order.
+///
+/// The same list the panel draws, built from the same two functions, so a test asserting
+/// on it is asserting on the panel rather than on a description of it.
+#[cfg(test)]
+pub(super) fn row_labels(entry: &SettingsPluginEntry, language: SettingsLanguage) -> Vec<String> {
+    let mut labels: Vec<String> = Vec::new();
+    if entry.position.is_some() {
+        labels.push(
+            bongocat_i18n::text(language.catalog_locale(), "settings.plugins.position_label")
+                .to_owned(),
+        );
+    }
+    labels.extend(entry.fields.iter().map(|field| field.label.clone()));
+    labels
+}
+
 /// The row that says where this plugin's panel is, for a plugin that draws one.
 ///
 /// First, because it is the one thing on the form that is not the plugin's: placement is

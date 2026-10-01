@@ -506,6 +506,77 @@ fn a_cards_settings_control_opens_a_panel_that_closes_again(cx: &mut TestAppCont
     );
 }
 
+/// The position row is above the plugin's own settings, and a plugin that draws no panel
+/// has none.
+///
+/// Placement is the host's — one plugin per corner, chosen by the user — so the row is the
+/// one thing on the form that is not the plugin's, and it belongs first. A plugin that says
+/// it has no place in the model window is offered no row at all, which is how a sound stays
+/// out of this: there is nothing on the window to move.
+#[gpui_kit::test]
+fn the_position_row_is_the_first_thing_a_drawing_plugins_form_offers(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let mut drawing = entry_with_fields("pomodoro", true, true);
+    drawing.position = Some(bongocat_ui_protocol::SettingsPluginPosition {
+        value: "bottom_left".to_string(),
+        label: "Bottom left".to_string(),
+    });
+    drawing.positions = ["bottom_left", "center"]
+        .into_iter()
+        .map(|value| bongocat_ui_protocol::SettingsPluginPosition {
+            value: value.to_string(),
+            label: format!("{value} label"),
+        })
+        .collect();
+    let seeded = snapshot_with_plugins(SettingsPlugins {
+        available: true,
+        catalog_read: true,
+        entries: vec![drawing],
+        ..SettingsPlugins::default()
+    });
+    let (view, visual) = page_over(cx, client, seeded);
+
+    visual.update(|window, cx| window.click(ElementId::from("plugin-configure-pomodoro"), cx));
+    let rows = view.read_with(visual, |view, _| {
+        view.plugin_settings_row_labels("pomodoro")
+    });
+    assert_eq!(
+        rows.first().map(String::as_str),
+        Some("Position"),
+        "because where a panel sits in the model window is not the plugin's own setting, \
+         and a row about the window's arrangement reads better above the plugin's than \
+         among them"
+    );
+    assert!(
+        rows.iter().any(|label| label == "Minutes"),
+        "and the plugin's own settings follow it, unchanged"
+    );
+
+    // A plugin that draws nothing is offered no position at all: a menu of nine for a
+    // sound is a control that changes nothing.
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let mut silent = entry_with_fields("typing-sound", true, true);
+    silent.position = None;
+    silent.positions = Vec::new();
+    let seeded = snapshot_with_plugins(SettingsPlugins {
+        available: true,
+        catalog_read: true,
+        entries: vec![silent],
+        ..SettingsPlugins::default()
+    });
+    let (view, visual) = page_over(cx, client, seeded);
+    visual.update(|window, cx| window.click(ElementId::from("plugin-configure-typing-sound"), cx));
+    let rows = view.read_with(visual, |view, _| {
+        view.plugin_settings_row_labels("typing-sound")
+    });
+    assert_eq!(
+        rows.first().map(String::as_str),
+        Some("Minutes"),
+        "so its form starts with the plugin's own settings"
+    );
+}
+
 /// The cards are a grid, not a column of sections.
 ///
 /// This is the page's shape, and it is what `gpui-kit` cannot express for us: the

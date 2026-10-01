@@ -1619,10 +1619,18 @@ impl Worker {
             return;
         }
         if self.sessions.len() >= MAXIMUM_ENABLED_PLUGINS {
-            // Refused rather than admitted: the bound is about the model staying
-            // visible, and quietly exceeding it would make every panel smaller than it
-            // declared.
-            let error = PluginError::new(PluginErrorCode::TooManyEnabled);
+            // Refused rather than admitted. The bound is the number of positions the model
+            // window has, so exceeding it would mean a panel with nowhere to go: two of
+            // them would be drawn on one corner, which is the thing the whole placement
+            // rule exists to prevent — and admitting one quietly would turn a limit the
+            // user can see into an overlap they cannot.
+            let error = PluginError::with_detail(
+                PluginErrorCode::TooManyEnabled,
+                format!(
+                    "the model window has {MAXIMUM_ENABLED_PLUGINS} places for a panel, and \
+                     they are all in use"
+                ),
+            );
             self.publish(Some(PluginPhase::Failed(error.clone())), Some(error));
             return;
         }

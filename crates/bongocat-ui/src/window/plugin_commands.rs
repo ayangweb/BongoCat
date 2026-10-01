@@ -126,6 +126,32 @@ impl SettingsView {
             .is_some_and(|draft| draft.plugin == id)
     }
 
+    /// The labels this plugin's open form shows, in order.
+    ///
+    /// Read by the page's own tests rather than by painting them: the decision worth
+    /// asserting is *which rows the form offers and in what order*, and a rendered frame
+    /// cannot say that as plainly as a list can.
+    #[cfg(test)]
+    pub(super) fn plugin_settings_row_labels(&self, id: &str) -> Vec<String> {
+        let Some(entry) = self.plugin_entry(id) else {
+            return Vec::new();
+        };
+        if !self.plugin_settings_are_open(id) {
+            return Vec::new();
+        }
+        plugin_settings::row_labels(entry, self.plugin_language())
+    }
+
+    /// The language the user reads, as the page's own copy is resolved against it.
+    #[cfg(test)]
+    pub(super) fn plugin_language(&self) -> SettingsLanguage {
+        self.snapshot
+            .as_ref()
+            .map_or(SettingsLanguage::default(), |snapshot| {
+                snapshot.resolved_language
+            })
+    }
+
     /// Whether the page is waiting for a stopped plugin to start so it can open its
     /// settings form.
     ///
