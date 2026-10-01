@@ -93,7 +93,7 @@ fn asks_for_a_place(id: &str) -> bool {
 /// and a case that reports by panicking. A panic is the only report available here, because
 /// the repository denies printing — and the rule is right for the same reason the plugin
 /// half is a plain function: on the plugin side stdout *is* the wire.
-const CASES: [(&str, fn()); 5] = [
+const CASES: [(&str, fn()); 6] = [
     (
         "three plugins run at once, each with its own settings, panel and place",
         several_run_at_once,
@@ -113,6 +113,10 @@ const CASES: [(&str, fn()); 5] = [
     (
         "a plugin with no place keeps its own corner and holds none",
         a_plugin_with_no_place_keeps_its_corner,
+    ),
+    (
+        "uninstalling a plugin frees its place for somebody else",
+        uninstalling_frees_a_place,
     ),
 ];
 
@@ -796,6 +800,91 @@ fn a_plugin_with_no_place_keeps_its_corner() {
             .iter()
             .map(|layer| (layer.raster.width, layer.raster.height))
             .collect::<Vec<_>>(),
+    );
+}
+
+/// Uninstalling a plugin frees its place, the same way switching it off does.
+///
+/// Switched off and uninstalled are two different events — one leaves the files, one
+/// removes them — and the requirement asks about both. What they must agree on is the
+/// place, because the place belongs to the window rather than to the plugin, and a corner
+/// nobody can get back until the application restarts is a corner wasted.
+///
+/// The *preference* is deliberately not cleared, and that is the other half: a plugin that
+/// is put back comes back where it was, which is the same rule switching it off follows. So
+/// "frees the place" and "forgets where it was" are separate, and this case checks the first
+/// without asserting the second is gone — the two being confused in either direction is
+/// the bug.
+fn uninstalling_frees_a_place() {
+    let ids = [ALPHA, BETA];
+    let worker = Several::with(&ids);
+    let snapshot = worker.enable_all(&ids);
+    let alpha_anchor = snapshot
+        .entry(&Several::id(ALPHA))
+        .and_then(|entry| entry.position)
+        .expect("alpha has a place")
+        .anchor;
+    assert_eq!(
+        alpha_anchor,
+        character_of(ALPHA).0,
+        "and it is the corner alpha's author chose, so the corner freed below is that one"
+    );
+    assert!(
+        !snapshot
+            .entry(&Several::id(BETA))
+            .is_some_and(|entry| entry.positions.contains(&alpha_anchor)),
+        "which beta is not offered while alpha holds it"
+    );
+
+    worker.send(PluginCommand::Uninstall(Several::id(ALPHA)));
+
+    // Alpha is gone from the list entirely — not a row that says it is off — and beta's
+    // menu now includes the corner.
+    let snapshot = await_snapshot(
+        &worker,
+        |snapshot| {
+            snapshot.entry(&Several::id(ALPHA)).is_none()
+                && snapshot
+                    .entry(&Several::id(BETA))
+                    .is_some_and(|entry| entry.positions.contains(&alpha_anchor))
+        },
+        "alpha gone and its corner offered to beta",
+    );
+    assert!(
+        snapshot.entry(&Several::id(ALPHA)).is_none(),
+        "an uninstalled plugin is not a row saying it is switched off: there are no files \
+         behind it and there is nothing to switch on"
+    );
+    assert!(
+        snapshot
+            .entry(&Several::id(BETA))
+            .is_some_and(|entry| entry.running),
+        "and the plugin that was still installed is untouched: uninstalling one plugin is \
+         not an operation on the others"
+    );
+
+    // And the corner is genuinely usable, not merely listed.
+    worker.send(PluginCommand::SetPosition {
+        id: Several::id(BETA),
+        anchor: alpha_anchor,
+    });
+    let snapshot = await_snapshot(
+        &worker,
+        |snapshot| {
+            snapshot
+                .entry(&Several::id(BETA))
+                .and_then(|entry| entry.position)
+                .is_some_and(|placed| placed.anchor == alpha_anchor)
+        },
+        "beta moved into the corner alpha left",
+    );
+    assert_eq!(
+        snapshot
+            .entry(&Several::id(BETA))
+            .and_then(|entry| entry.position)
+            .map(|placed| placed.chosen),
+        Some(true),
+        "as the user's own choice, so nothing that arrives later can take it"
     );
 }
 

@@ -38,7 +38,7 @@ pub use model::{
     RandomBehaviorMode,
 };
 pub use overlay::{MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS, OverlayConfig};
-pub use plugins::{MAXIMUM_ENABLED_PLUGINS, PluginsConfig};
+pub use plugins::{MAXIMUM_PLUGINS, PluginsConfig};
 pub use system::SystemConfig;
 pub use updates::UpdateConfig;
 

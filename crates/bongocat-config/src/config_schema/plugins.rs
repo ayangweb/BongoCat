@@ -19,15 +19,6 @@ use std::collections::{BTreeMap, BTreeSet};
 /// enforces. It used to be four — a guess at how many panels a person could stand to
 /// look at — and a guess is exactly what this is not any more: **a plugin costs a position,
 /// and a position is all there is.** One plugin per corner means nine is the most that can
-/// be drawn without two of them overlapping, and a tenth would be a plugin the model window
-/// has no room for rather than a panel the user can see.
-///
-/// Recorded here as well as in the worker so the settings window can grey out the last
-/// switch instead of accepting a press that would be refused. Two bounds in two places is a
-/// duplication; the one that decides is the worker's, and this one exists so the user learns
-/// about the limit before pressing the button.
-pub const MAXIMUM_ENABLED_PLUGINS: usize = 9;
-
 /// The longest a plugin id may be in this document, in bytes.
 ///
 /// Matches the protocol's own bound, so an id that could not be a directory name
@@ -40,12 +31,19 @@ pub const MAXIMUM_PLUGIN_ID_BYTES: usize = 64;
 /// position is caught here rather than reaching the host as a string nothing will match.
 pub const MAXIMUM_POSITION_BYTES: usize = 32;
 
-/// The most plugins this document may place.
+/// The most plugins this document may switch on, and the most it may place.
 ///
-/// The number of positions the model window has, and the same bound the worker enforces on
-/// the enabled set: a plugin costs a position, so this cannot be larger than there are
-/// positions, and a value that is only ever checked by the worker would be a switch the
-/// settings window greys out for a reason it cannot explain.
+/// One constant for both, because they are one fact: **the number of places the model
+/// window has.** A plugin costs a place, so the enabled set and the positions map are
+/// bounded by the same nine. They were two constants with the same number written twice,
+/// which is a bound that can agree with itself while disagreeing with the protocol — the
+/// worker reads its own from [`PluginAnchor::ALL`], so nothing would have complained until
+/// a tenth position existed and this document refused a plugin the window could have shown.
+///
+/// The number cannot be *read* from the protocol here, because this crate sits below the
+/// plugin layer and does not depend on it. So `bongocat-plugin`, which can see both, asserts
+/// that this equals the protocol's count — which turns the layering's cost into a failing
+/// test instead of a silent disagreement.
 pub const MAXIMUM_PLUGINS: usize = 9;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -170,7 +168,7 @@ impl PluginsConfig {
 
     /// The first problem with these lists, or `None`.
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.enabled.len() > MAXIMUM_ENABLED_PLUGINS {
+        if self.enabled.len() > MAXIMUM_PLUGINS {
             return Err(ConfigError::InvalidValue("plugins.enabled"));
         }
         for (ids, field) in [

@@ -403,4 +403,37 @@ mod tests {
         assert_eq!(parse_anchor(""), None);
         assert_eq!(parse_anchor("TOP_LEFT"), None, "and the spelling is exact");
     }
+
+    /// The three places that must agree on how many panels the model window holds.
+    ///
+    /// The protocol owns the count — it is the length of [`PluginAnchor::ALL`] — the worker
+    /// reads it from there rather than writing it down, and the configuration document
+    /// bounds its own `enabled` list and `positions` map with a number it cannot *read*
+    /// from the protocol, because that crate sits below the plugin layer.
+    ///
+    /// Which leaves a number written down twice and read from once, and nothing to notice
+    /// when they part: a tenth position would be added to the protocol, the worker would
+    /// cheerfully run ten plugins, and the configuration document would refuse the tenth —
+    /// so a user could not switch a plugin on even though the window had somewhere to put
+    /// it. This is the one place that can see all three, so this is where the agreement is
+    /// checked. It costs one assertion and it is the whole of the drift protection.
+    #[test]
+    fn the_configurations_own_bound_is_the_number_of_places_the_window_has() {
+        assert_eq!(
+            bongocat_config::MAXIMUM_PLUGINS,
+            POSITIONS.len(),
+            "a document that bounds itself at a different number than the window has places \
+             either refuses a plugin the window could show, or allows one it cannot"
+        );
+        assert_eq!(
+            crate::MAXIMUM_ENABLED_PLUGINS,
+            POSITIONS.len(),
+            "and the worker agrees with the same count"
+        );
+        assert_eq!(
+            bongocat_plugin_protocol::PluginAnchor::ALL.len(),
+            POSITIONS.len(),
+            "while the protocol's own list is where both of those numbers come from"
+        );
+    }
 }
