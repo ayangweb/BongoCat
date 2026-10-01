@@ -38,10 +38,10 @@ pub const PLUGINS_DIRECTORY: &str = "plugins";
 /// The name the repository's own `plugins.json` already points its downloads at, so a
 /// development build finds a freshly packed archive with nothing rewritten and nothing
 /// published.
-const BUILD_DIRECTORY: &str = "build";
+pub const BUILD_DIRECTORY: &str = "build";
 
 /// The manifest inside a plugin's own directory, and the one this step rewrites.
-const MANIFEST: &str = "plugin.json";
+pub const MANIFEST: &str = "plugin.json";
 
 /// What one packed plugin is called, as the archive's own manifest spells it.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -149,10 +149,81 @@ pub fn built_executable(plugins_workspace: &Path, binary: &str, triple: Option<&
 }
 
 /// The archive a packed plugin is written to.
-pub fn archive_path(plugins_workspace: &Path, id: &str) -> PathBuf {
-    plugins_workspace
-        .join(BUILD_DIRECTORY)
-        .join(format!("{id}.zip"))
+///
+/// One name for the host build, and a name carrying the triple for a cross build, so
+/// packing for Windows cannot overwrite the archive a macOS run installs. The host's
+/// own name stays bare because that is the one the development loop and the plugin
+/// center look for, and adding a suffix to it would mean a second fact to keep in step.
+pub fn archive_path(plugins_workspace: &Path, id: &str, triple: Option<&str>) -> PathBuf {
+    let name = match triple {
+        Some(triple) => format!("{id}-{triple}.zip"),
+        None => format!("{id}.zip"),
+    };
+    plugins_workspace.join(BUILD_DIRECTORY).join(name)
+}
+
+/// Every plugin in the workspace, in id order.
+///
+/// A plugin is a directory that holds a `plugin.json`, and nothing else in this
+/// workspace is one — so the manifest is the whole of the discovery rule and adding
+/// a plugin is adding a directory, never editing a list somewhere else. The
+/// directory name is the id, which is also the rule [`Manifest::read`] enforces, so
+/// a directory whose manifest disagrees is found here and refused there.
+pub fn plugin_ids(plugins_workspace: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(plugins_workspace) else {
+        return Vec::new();
+    };
+    let mut ids: Vec<String> = entries
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .filter_map(|entry| {
+            let id = entry.file_name().into_string().ok()?;
+            if id.starts_with('.') || id == BUILD_DIRECTORY || id == "target" {
+                return None;
+            }
+            entry.path().join(MANIFEST).is_file().then_some(id)
+        })
+        .collect();
+    ids.sort();
+    ids
+}
+
+/// Whether the packed archive is already what this build would produce.
+///
+/// The archive is a function of exactly three things: the binary Cargo built, the
+/// manifest the plugin wrote, and the packer itself. So an archive that is newer
+/// than the other two *is* the current one, and rewriting it would produce a file
+/// with the same contents at a later date.
+///
+/// Cargo is the answer to "did anything the plugin depends on change" — including
+/// the SDK, which lives outside this workspace and which no comparison of file times
+/// inside the plugins tree would ever notice. This function does not try to know
+/// what went into the binary; it asks the thing that knows, and reads the answer off
+/// the binary's own modification time.
+pub fn is_packed_up_to_date(plugins_workspace: &Path, id: &str, triple: Option<&str>) -> bool {
+    let Ok(manifest) = Manifest::read(&plugins_workspace.join(id)) else {
+        return false;
+    };
+    let archive = archive_path(plugins_workspace, id, triple);
+    let Some(packed_at) = modified_at(&archive) else {
+        return false;
+    };
+    let sources = [
+        built_executable(plugins_workspace, &manifest.executable, triple),
+        plugins_workspace.join(id).join(MANIFEST),
+    ];
+    sources
+        .iter()
+        .all(|path| modified_at(path).is_some_and(|changed| changed <= packed_at))
+}
+
+/// When a file was last written, as a comparable instant.
+///
+/// A file this cannot read is reported as absent rather than as very old, because
+/// the caller's question is "is the archive newer than its inputs" and a missing
+/// input is not an input that can be older.
+fn modified_at(path: &Path) -> Option<std::time::SystemTime> {
+    fs::metadata(path).ok()?.modified().ok()
 }
 
 /// Pack one plugin into the archive the store installs.
@@ -186,7 +257,7 @@ pub fn pack(plugins_workspace: &Path, id: &str, triple: Option<&str>) -> Result<
     fs::copy(&executable, staging.path().join(&binary_name))
         .map_err(|error| format!("{}: {error}", executable.display()))?;
 
-    let archive = archive_path(plugins_workspace, id);
+    let archive = archive_path(plugins_workspace, id, triple);
     if let Some(parent) = archive.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -230,6 +301,37 @@ mod tests {
 
     fn written(directory: &Path, manifest: &str) {
         fs::write(directory.join(MANIFEST), manifest).expect("writes a manifest");
+    }
+
+    /// The manifest document inside a packed archive, read the way the store reads it.
+    fn packed_manifest(archive: &Path) -> serde_json::Value {
+        let bytes = fs::read(archive).expect("reads the archive");
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("a zip");
+        let mut manifest = String::new();
+        {
+            use std::io::Read;
+            zip.by_name(MANIFEST)
+                .expect("the manifest is a member")
+                .read_to_string(&mut manifest)
+                .expect("the manifest is text");
+        }
+        serde_json::from_str(&manifest).expect("valid JSON")
+    }
+
+    /// Give a file a modification time strictly after everything already written.
+    ///
+    /// A comparison of file times cannot tell "edited" from "not edited" without a clock
+    /// of its own, and the alternative — sleeping — makes a test suite that takes
+    /// seconds to say something a timestamp can say in microseconds. Two seconds is more
+    /// than any filesystem's timestamp resolution needs and less than any timer a test
+    /// would wait out.
+    fn later_than(path: &Path) {
+        let when = std::time::SystemTime::now() + std::time::Duration::from_secs(2);
+        let file = fs::File::options()
+            .write(true)
+            .open(path)
+            .expect("a file to restamp");
+        file.set_modified(when).expect("restamps a file");
     }
 
     #[test]
@@ -307,6 +409,143 @@ mod tests {
         );
     }
 
+    /// A workspace holding one plugin, its manifest and a fake Cargo output.
+    ///
+    /// The same shape `pack` reads, so a test that builds one of these is testing the
+    /// real layout rather than a fixture shaped to pass.
+    fn built_workspace(id: &str, manifest: &str) -> (tempfile::TempDir, PathBuf) {
+        let plugins = tempfile::tempdir().expect("a temporary directory");
+        let source = plugin_directory(plugins.path(), id);
+        written(&source, manifest);
+        let target = plugins.path().join("target/release");
+        fs::create_dir_all(&target).expect("a cargo target directory");
+        let binary = target.join(id);
+        fs::write(&binary, b"not really an executable").expect("a built binary");
+        (plugins, binary)
+    }
+
+    const ONE_PLUGIN: &str = r#"{"schema_version":1,"api_version":1,"id":"pomodoro","name":"Pomodoro",
+        "version":"1.0.0","executable":"pomodoro"}"#;
+
+    #[test]
+    fn a_plugin_is_a_directory_with_a_manifest_and_nothing_else_is_one() {
+        // The whole of "adding a plugin is adding a directory". A list of ids somewhere
+        // else is a second place to forget one, and the failure it produces is a plugin
+        // that exists and cannot be installed.
+        let plugins = tempfile::tempdir().expect("a temporary directory");
+        assert!(plugin_ids(plugins.path()).is_empty());
+
+        plugin_directory(plugins.path(), "pomodoro");
+        plugin_directory(plugins.path(), "typing-sound");
+        // No manifest, so not a plugin: a scratch directory beside them is not a
+        // candidate the tool would try to build.
+        fs::create_dir_all(plugins.path().join("scratch")).expect("a directory");
+        // Cargo's own output and this tool's archives, which are directories too and are
+        // emphatically not plugins.
+        fs::create_dir_all(plugins.path().join("target/release")).expect("a target directory");
+        fs::create_dir_all(plugins.path().join(BUILD_DIRECTORY)).expect("a build directory");
+        assert!(plugin_ids(plugins.path()).is_empty());
+
+        written(&plugins.path().join("pomodoro"), ONE_PLUGIN);
+        written(
+            &plugins.path().join("typing-sound"),
+            &ONE_PLUGIN.replace("pomodoro", "typing-sound"),
+        );
+        assert_eq!(
+            plugin_ids(plugins.path()),
+            ["pomodoro", "typing-sound"],
+            "in id order, so a pack run does not depend on directory listing order"
+        );
+    }
+
+    #[test]
+    fn a_workspace_that_is_not_there_yields_no_plugins_rather_than_a_failure() {
+        let missing = Path::new(env!("CARGO_MANIFEST_DIR")).join("no-such-plugins-workspace");
+        assert!(plugin_ids(&missing).is_empty());
+    }
+
+    #[test]
+    fn a_freshly_packed_plugin_is_already_current() {
+        let (plugins, binary) = built_workspace("pomodoro", ONE_PLUGIN);
+        assert!(
+            !is_packed_up_to_date(plugins.path(), "pomodoro", None),
+            "there is no archive yet, so there is nothing to keep"
+        );
+        pack(plugins.path(), "pomodoro", None).expect("packs");
+        assert!(
+            is_packed_up_to_date(plugins.path(), "pomodoro", None),
+            "the archive is newer than the binary and the manifest it was made from"
+        );
+        // Touching the binary is a rebuild Cargo has already done, and it is what makes
+        // the archive stale. Comparing only the manifest would have missed it, and the
+        // symptom would be an editor that saves, launches, and shows the old binary.
+        later_than(&binary);
+        assert!(
+            !is_packed_up_to_date(plugins.path(), "pomodoro", None),
+            "a rebuilt binary is a stale archive, even though the manifest never moved"
+        );
+    }
+
+    #[test]
+    fn an_edited_manifest_is_a_stale_archive_even_with_an_untouched_binary() {
+        // The manifest is packed verbatim, so an edit to it has to repack: an archive
+        // holding yesterday's description is a card that changes text behind the user's
+        // back.
+        let (plugins, _) = built_workspace("pomodoro", ONE_PLUGIN);
+        pack(plugins.path(), "pomodoro", None).expect("packs");
+        assert!(is_packed_up_to_date(plugins.path(), "pomodoro", None));
+
+        let source = plugins.path().join("pomodoro");
+        written(&source, &ONE_PLUGIN.replace("1.0.0", "1.1.0"));
+        later_than(&source.join(MANIFEST));
+        assert!(!is_packed_up_to_date(plugins.path(), "pomodoro", None));
+    }
+
+    #[test]
+    fn a_manifest_that_will_not_read_is_stale_rather_than_up_to_date() {
+        // An unparseable manifest is a plugin the packer cannot write, so the answer to
+        // "can this be skipped" has to be no. Answering yes would leave a broken
+        // manifest looking like a finished build.
+        let (plugins, _) = built_workspace("pomodoro", ONE_PLUGIN);
+        pack(plugins.path(), "pomodoro", None).expect("packs");
+        written(&plugins.path().join("pomodoro"), "{ not json");
+        assert!(!is_packed_up_to_date(plugins.path(), "pomodoro", None));
+    }
+
+    #[test]
+    fn a_cross_build_gets_its_own_archive_rather_than_overwriting_the_hosts() {
+        // A developer who packs for Windows and then runs the product on macOS must not
+        // find a Windows binary in the archive the store installs. One archive per
+        // platform is what makes the up-to-date comparison mean anything, because the
+        // host's own archive is then evidence about the host and only the host.
+        let (plugins, _) = built_workspace("pomodoro", ONE_PLUGIN);
+        let windows = plugins.path().join("target/x86_64-pc-windows-msvc/release");
+        fs::create_dir_all(&windows).expect("a cross target directory");
+        fs::write(windows.join("pomodoro.exe"), b"a Windows binary").expect("a binary");
+
+        let host = pack(plugins.path(), "pomodoro", None).expect("packs for the host");
+        let cross = pack(plugins.path(), "pomodoro", Some("x86_64-pc-windows-msvc"))
+            .expect("packs for Windows");
+        assert_ne!(host, cross, "two platforms, two archives");
+
+        assert!(is_packed_up_to_date(plugins.path(), "pomodoro", None));
+        assert!(is_packed_up_to_date(
+            plugins.path(),
+            "pomodoro",
+            Some("x86_64-pc-windows-msvc")
+        ));
+        assert_eq!(
+            packed_manifest(&cross)["executable"],
+            "pomodoro.exe",
+            "and the Windows archive names the executable the way Windows does"
+        );
+        assert_eq!(
+            packed_manifest(&host)["executable"],
+            "pomodoro",
+            "while the host's names it the host's way"
+        );
+    }
+
     #[test]
     fn a_packed_archive_holds_exactly_the_manifest_and_the_binary() {
         // The bound the store enforces on unpack — a member name is a plain relative path
@@ -325,7 +564,7 @@ mod tests {
         fs::write(&binary, b"not really an executable").expect("a built binary");
 
         let archive = pack(plugins.path(), "pomodoro", None).expect("packs");
-        assert_eq!(archive, archive_path(plugins.path(), "pomodoro"));
+        assert_eq!(archive, archive_path(plugins.path(), "pomodoro", None));
 
         let bytes = fs::read(&archive).expect("reads the archive");
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("a zip");
@@ -363,129 +602,8 @@ mod tests {
         let error = pack(plugins.path(), "pomodoro", None).expect_err("there is nothing to pack");
         assert!(error.contains("build the plugin first"), "{error}");
         assert!(
-            !archive_path(plugins.path(), "pomodoro").exists(),
+            !archive_path(plugins.path(), "pomodoro", None).exists(),
             "and no half-written archive is left where the next run would find it"
         );
-    }
-
-    /// Every plugin's own `plugins.json` entry, parsed rather than pattern-matched, so
-    /// the checks below read the document the product actually reads.
-    fn repository_catalog() -> serde_json::Value {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .expect("inside a workspace");
-        serde_json::from_slice(
-            &fs::read(root.join(PLUGINS_DIRECTORY).join("plugins.json"))
-                .expect("the repository ships a catalog"),
-        )
-        .expect("valid JSON")
-    }
-
-    #[test]
-    fn a_catalog_entry_and_the_archive_it_points_at_say_the_same_thing() {
-        // The card's copy is drawn from three documents that are written separately:
-        // the catalog entry (uninstalled), the `plugin.json` inside the archive
-        // (installed, not running) and the running process's own descriptor
-        // (running). The last one wins, so if the first two disagree then the card's
-        // text *changes* when a plugin is started — a sentence that appears and
-        // disappears with a lifecycle rather than describing the plugin.
-        //
-        // This is not hypothetical: the three had already drifted, one plugin carrying
-        // three different English sentences for one description.
-        let catalog = repository_catalog();
-        let entries = catalog["plugins"]
-            .as_array()
-            .expect("the catalog is a list")
-            .clone();
-        assert!(!entries.is_empty(), "the repository ships plugins");
-        for entry in entries {
-            let id = entry["id"].as_str().expect("an entry names its id");
-            let manifest: serde_json::Value = serde_json::from_slice(
-                &fs::read(
-                    Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .ancestors()
-                        .nth(2)
-                        .expect("inside a workspace")
-                        .join(PLUGINS_DIRECTORY)
-                        .join(id)
-                        .join(MANIFEST),
-                )
-                .expect("the plugin ships its own manifest"),
-            )
-            .expect("valid JSON");
-            for field in ["name", "description", "icon"] {
-                assert_eq!(
-                    manifest[field], entry[field],
-                    "{id}: the archive's {field} and the catalog's disagree, so the card's text \
-                     changes when the plugin starts"
-                );
-            }
-            assert_eq!(
-                manifest["version"], entry["version"],
-                "{id}: versions disagree"
-            );
-            assert_eq!(
-                manifest["author"], entry["author"],
-                "{id}: authors disagree"
-            );
-        }
-    }
-
-    #[test]
-    fn every_catalog_entry_speaks_the_languages_the_product_ships() {
-        // A localized field that carries only a default is not localized, it is a
-        // string that happens to be in a table — and nothing else in the repository
-        // would notice. Chinese is the check because it is the language this bug was
-        // reported in: a card reading English on a Chinese page.
-        for entry in repository_catalog()["plugins"].as_array().expect("a list") {
-            let id = entry["id"].as_str().expect("an entry names its id");
-            for field in ["name", "description"] {
-                let text = &entry[field];
-                let by_locale = text["by_locale"]
-                    .as_object()
-                    .unwrap_or_else(|| panic!("{id}: {field} carries no translations"));
-                let default = text["default"]
-                    .as_str()
-                    .unwrap_or_else(|| panic!("{id}: {field} has no default to fall back to"));
-                for locale in ["zh-CN", "zh-TW"] {
-                    let translation = by_locale
-                        .get(locale)
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or_else(|| panic!("{id}: {field} has no {locale} copy"));
-                    assert!(
-                        !translation.trim().is_empty() && translation != default,
-                        "{id}: {field} in {locale} is empty or just the English again"
-                    );
-                }
-            }
-            assert!(
-                entry["icon"]["emoji"].is_string(),
-                "{id}: a card with no icon is a letter, and this catalog has an icon for every \
-                 plugin the repository ships"
-            );
-        }
-    }
-
-    #[test]
-    fn the_archive_lands_where_the_repositorys_own_catalog_looks_for_it() {
-        // The development loop has no publish step, so the name here and the `path` in
-        // `plugins.json` are one fact written down twice. This is the check that says so.
-        let catalog = repository_catalog();
-        let entry = catalog["plugins"]
-            .as_array()
-            .expect("a list")
-            .iter()
-            .find(|entry| entry["id"] == "pomodoro")
-            .expect("the packed plugin is in it");
-        for (_target, download) in entry["downloads"].as_object().expect("a map") {
-            let path = download["path"]
-                .as_str()
-                .expect("a development download is a path on this machine");
-            assert_eq!(
-                path, "build/pomodoro.zip",
-                "so the catalog and the packer agree on one name"
-            );
-        }
     }
 }

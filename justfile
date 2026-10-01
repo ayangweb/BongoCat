@@ -11,11 +11,16 @@ default:
     @just --list
 
 # Run the Development product until explicitly quit.
-dev:
+#
+# The plugins are built and packed first, so a plugin's edit is on the model window
+# after one launch rather than after a second command the author has to remember. A
+# plugin whose sources have not moved since it was last packed is skipped, so this
+# costs one file-time comparison per plugin rather than a compile and a zip.
+dev: plugins
     cargo run --locked -p bongocat-app --release -- --run-seconds 0
 
 # Exercise settings close, reopen, and runtime continuity.
-dev-smoke:
+dev-smoke: plugins
     cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
 
 # Run a deterministic Live2D diagnostic preview.
@@ -58,15 +63,27 @@ build *args:
 keygen file:
     cargo run --locked -p bongocat-packaging -- --generate-signing-key {{file}}
 
-# Build one plugin from the plugins workspace and pack it into
-# <plugins>/build/<id>.zip, which the repository's own plugin catalog already points at:
+# Build every plugin in `plugins/` whose sources changed since it was last packed, and
+# pack it into <plugins>/build/<id>.zip. One plugin is named in the development catalog
+# by that archive and in nothing else, so this is the whole of what a plugin author runs:
+#
+#   just plugins
+#   just plugins --plugin-target x86_64-pc-windows-msvc
+#
+# The build runs in `plugins/`, which is its own Cargo workspace with its own lockfile,
+# so nothing a plugin depends on reaches the product's dependency graph. `just dev` runs
+# this first; install the result from Settings → Plugins, and the app performs the same
+# unpack a release would.
+plugins *args:
+    cargo run --locked -p bongocat-packaging -- --pack-plugins {{args}}
+
+# Build and pack one plugin by id, for when you want to hear about one:
 #
 #   just plugin pomodoro
 #   just plugin pomodoro --plugin-target x86_64-pc-windows-msvc
 #
-# The build runs in `plugins/`, which is its own Cargo workspace with its own lockfile,
-# so nothing a plugin depends on reaches the product's dependency graph. Install the
-# result from Settings → Plugins; the app runs the same unpack a release would.
+# Same workspace, same lockfile and same archive as `plugins` above; the difference is
+# that this names one, so a compile error in an unrelated plugin is not in the way.
 plugin id *args:
     cargo run --locked -p bongocat-packaging -- --pack-plugin {{id}} {{args}}
 

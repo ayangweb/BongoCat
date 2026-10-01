@@ -409,8 +409,14 @@ enum Invocation {
     ExtractReleaseNotes(PathBuf),
     /// Generate the Minisign key pair that signs update payloads.
     GenerateSigningKey(PathBuf),
-    /// Build and pack one plugin from the plugins workspace.
-    PackPlugin { id: String, triple: Option<String> },
+    /// Build and pack plugins from the plugins workspace.
+    ///
+    /// `id` of `None` is every plugin in the workspace, and it is the mode a build step
+    /// runs before every launch: a list of ids is a second place to forget one.
+    PackPlugins {
+        id: Option<String>,
+        triple: Option<String>,
+    },
 }
 
 /// Options for one packaging run.
@@ -451,8 +457,11 @@ options:
                            payloads, written to <file> and <file>.pub, instead of
                            packaging; takes no other option
   --pack-plugin <id>       build one plugin from the plugins workspace and pack it
-                           into <plugins>/build/<id>.zip, which the repository's own
-                           plugin catalog already points at; takes no other option
+                           into <plugins>/build/<id>.zip, which the development
+                           plugin catalog finds beside it; takes no other option
+  --pack-plugins           build and pack every plugin whose sources changed since
+                           it was last packed, and skip the ones that did not,
+                           instead of packaging; takes no other option
   --print-version          print the product version and exit
   -h, --help               print this help
 
@@ -469,6 +478,7 @@ environment:
         let mut extract_notes: Option<PathBuf> = None;
         let mut key_output: Option<PathBuf> = None;
         let mut pack_plugin: Option<String> = None;
+        let mut pack_plugins = false;
         let mut plugin_target: Option<String> = None;
         let mut fragments = Vec::new();
 
@@ -513,6 +523,9 @@ environment:
                     let id = next_value(&mut arguments, "--pack-plugin")?;
                     pack_plugin = Some(id);
                 }
+                "--pack-plugins" => {
+                    pack_plugins = true;
+                }
                 "--plugin-target" => {
                     let triple = next_value(&mut arguments, "--plugin-target")?;
                     plugin_target = Some(triple);
@@ -544,11 +557,11 @@ environment:
         // exclusive.
         let build_option = target.is_some() || environment.is_some() || formats.is_some();
 
-        // Packing a plugin is its own mode with its own target, because it builds a
+        // Packing plugins is its own mode with its own target, because it builds a
         // different workspace: a plugin's own lockfile, its own dependency graph, and no
         // line in the product's. `--target` is the product's and `--plugin-target` is
         // the plugin's, and conflating them is the mistake this refuses.
-        if let Some(id) = pack_plugin {
+        if pack_plugin.is_some() || pack_plugins {
             if build_option
                 || merge_directory.is_some()
                 || release_notes.is_some()
@@ -573,8 +586,15 @@ environment:
                         .join(", ")
                 ));
             }
-            return Ok(Self::PackPlugin {
-                id,
+            return Ok(Self::PackPlugins {
+                // `None` is every plugin rather than none of them: a mode with no
+                // argument is the one a build step runs before every launch, and
+                // "everything that changed" is the only question such a step can ask.
+                id: match (pack_plugin, pack_plugins) {
+                    (Some(id), _) => Some(id),
+                    (None, true) => None,
+                    (None, false) => unreachable!("the branch is only taken when one is set"),
+                },
                 triple: plugin_target,
             });
         }
@@ -683,18 +703,20 @@ fn execute(invocation: Invocation) -> Result<(&'static str, Vec<PathBuf>)> {
             .map(|artifacts| ("Release notes composed successfully.", artifacts)),
         Invocation::GenerateSigningKey(path) => generate_signing_key(&path)
             .map(|artifacts| ("Signing key generated successfully.", artifacts)),
-        Invocation::PackPlugin { id, triple } => pack_plugin(&id, triple.as_deref())
-            .map(|artifacts| ("Plugin packed successfully.", artifacts)),
+        Invocation::PackPlugins { id, triple } => pack_plugins(id.as_deref(), triple.as_deref())
+            .map(|artifacts| ("Plugins packed successfully.", artifacts)),
     }
 }
 
-/// Build one plugin and pack it into the archive the store installs.
+/// Build and pack plugins into the archives the store installs.
 ///
-/// The crate name is derived from the id rather than asked for, so the author types one
-/// thing. `bongocat-plugin-<id>` is the convention every plugin in the workspace already
-/// follows, and a plugin that broke it is a plugin whose build fails with a message from
-/// Cargo rather than one this step has to second-guess.
-fn pack_plugin(id: &str, triple: Option<&str>) -> Result<Vec<PathBuf>> {
+/// `id` names one plugin; `None` means every plugin in the workspace, which is the mode
+/// `just dev` runs before it launches the product. In that mode a plugin whose sources
+/// have not moved since it was last packed is skipped, so an unchanged plugin costs one
+/// file-time comparison rather than a compile and a zip — and the skip is decided here,
+/// where the archive and the inputs are both visible, rather than by a build script that
+/// would have to reimplement the same comparison somewhere else.
+fn pack_plugins(id: Option<&str>, triple: Option<&str>) -> Result<Vec<PathBuf>> {
     let workspace = workspace_root()?;
     let plugins = workspace.join(plugin::PLUGINS_DIRECTORY);
     if !plugins.join("Cargo.toml").is_file() {
@@ -703,27 +725,87 @@ fn pack_plugin(id: &str, triple: Option<&str>) -> Result<Vec<PathBuf>> {
             plugins.display()
         ));
     }
-    let crate_name = format!("bongocat-plugin-{id}");
-    build_plugin(&plugins, &crate_name, triple)?;
-    let archive = plugin::pack(&plugins, id, triple)
-        .map_err(|error| Box::new(Failure(error.to_string())) as Box<dyn std::error::Error>)?;
-    println!("Packed {id} into {}", archive.display());
-    println!("Install it from Settings → Plugins, or bump its version and install again.");
-    Ok(vec![archive])
+    let ids: Vec<String> = match id {
+        Some(id) => vec![id.to_owned()],
+        None => plugin::plugin_ids(&plugins),
+    };
+    if ids.is_empty() {
+        return failure(format!(
+            "{} holds no plugin, and a plugin is a directory with a {} in it",
+            plugins.display(),
+            plugin::MANIFEST
+        ));
+    }
+    if let Some(id) = id
+        && !plugin::plugin_ids(&plugins).iter().any(|known| known == id)
+    {
+        return failure(format!(
+            "{id} is not a plugin in {}, so there is nothing to build",
+            plugins.display()
+        ));
+    }
+
+    // One Cargo run for everything that needs building, rather than one per plugin: the
+    // plugins share this workspace's target directory and its dependency graph, so
+    // three separate invocations would serialize the same work three times over.
+    let stale: Vec<&String> = ids
+        .iter()
+        .filter(|id| !plugin::is_packed_up_to_date(&plugins, id, triple))
+        .collect();
+    if !stale.is_empty() {
+        let binaries: Vec<String> = stale
+            .iter()
+            .map(|id| {
+                plugin::Manifest::read(&plugins.join(id))
+                    .map(|manifest| manifest.executable)
+                    .map_err(|error| Box::new(Failure(error)) as Box<dyn std::error::Error>)
+            })
+            .collect::<Result<_>>()?;
+        build_plugins(&plugins, &binaries, triple)?;
+        for id in &stale {
+            // The binary is what the archive holds, so this is the step that can fail
+            // after a *successful* compile: a plugin that declares an executable Cargo
+            // did not build, or a manifest that will not parse.
+            let archive = plugin::pack(&plugins, id, triple).map_err(|error| {
+                Box::new(Failure(error.to_string())) as Box<dyn std::error::Error>
+            })?;
+            println!("Packed {id} into {}", archive.display());
+            println!("Install it from Settings → Plugins, or bump its version and install again.");
+        }
+    }
+    for id in &ids {
+        if stale.contains(&id) {
+            continue;
+        }
+        let archive = plugin::archive_path(&plugins, id, triple);
+        println!("{id} is unchanged, keeping {}", archive.display());
+    }
+    Ok(ids
+        .iter()
+        .map(|id| plugin::archive_path(&plugins, id, triple))
+        .collect())
 }
 
-/// Compile one plugin, from the plugins workspace rather than the product's.
+/// Compile plugins, from the plugins workspace rather than the product's.
 ///
 /// The whole of what keeps "adding a plugin does not grow the app" true: this runs Cargo
 /// in a different workspace with a different lockfile, so nothing a plugin depends on can
 /// reach the product's dependency graph, and the product's own build never has to know
 /// the plugin exists.
-fn build_plugin(plugins: &Path, crate_name: &str, triple: Option<&str>) -> Result<()> {
+///
+/// Selected by binary name rather than by crate name, because the binary name is what
+/// the plugin's own `plugin.json` declares and this step already has to read that file to
+/// pack the result. A crate-name convention would be a second fact to keep in step, and a
+/// plugin whose crate and binary are named differently is not a mistake worth refusing.
+fn build_plugins(plugins: &Path, binaries: &[String], triple: Option<&str>) -> Result<()> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let mut command = Command::new(&cargo);
     command
         .current_dir(plugins)
-        .args(["build", "--release", "-p", crate_name]);
+        .args(["build", "--release", "--locked"]);
+    for binary in binaries {
+        command.args(["--bin", binary]);
+    }
     if let Some(triple) = triple {
         command.args(["--target", triple]);
     }
@@ -734,7 +816,10 @@ fn build_plugin(plugins: &Path, crate_name: &str, triple: Option<&str>) -> Resul
         ))) as Box<dyn std::error::Error>
     })?;
     if !status.success() {
-        return failure(format!("cargo build for {crate_name} failed with {status}"));
+        return failure(format!(
+            "cargo build for {} failed with {status}",
+            binaries.join(", ")
+        ));
     }
     Ok(())
 }
