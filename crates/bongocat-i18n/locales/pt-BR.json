@@ -513,8 +513,6 @@
     },
     "plugins": {
       "catalog": {
-        "title": "Catálogo de plugins",
-        "description": "Plugins acrescentam um painel à janela do modelo. Eles são baixados quando você os instala, e a mesma lista está disponível para todas as versões.",
         "refresh": "Atualizar",
         "loading": "Lendo o catálogo de plugins…",
         "empty": "O catálogo de plugins ainda não tem plugins."

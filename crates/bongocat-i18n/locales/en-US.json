@@ -513,8 +513,6 @@
     },
     "plugins": {
       "catalog": {
-        "title": "Plugin catalog",
-        "description": "Plugins add a panel to the model window. They are downloaded when you install them, and the same list is available to every build.",
         "refresh": "Refresh",
         "loading": "Reading the plugin catalog…",
         "empty": "The plugin catalog has no plugins yet."

@@ -1365,6 +1365,12 @@ impl Render for SettingsView {
         // page: a plugin extends the model window, and mixing a list you install
         // from into the page that owns startup items and log retention would make
         // both harder to scan.
+        //
+        // One group, and no group title: `gpui-kit` renders every titled group of
+        // a page with more than one group as a second-level entry in the sidebar,
+        // so a group per plugin made this destination a menu of plugin names
+        // rather than a grid of cards. The cards are drawn by the page itself, the
+        // way the model library draws its own.
         let plugins_keywords =
             SettingsNavigationPage::Plugins.search_keywords(language, std::iter::empty());
         let plugins_page = SettingPage::new(SettingsNavigationPage::Plugins.title(language))
@@ -1373,7 +1379,7 @@ impl Render for SettingsView {
                 SettingsNavigationPage::Plugins,
                 navigation_memory.clone(),
             ))
-            .groups(plugins::groups(
+            .group(plugins::group(
                 view_entity.clone(),
                 snapshot.as_ref(),
                 language,

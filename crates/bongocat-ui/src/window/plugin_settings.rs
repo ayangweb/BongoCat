@@ -20,10 +20,11 @@
 //! refused at load time rather than shown as a hole.
 
 use super::*;
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::setting::{AnySettingField, SettingFieldType};
 use std::collections::BTreeMap;
 
-/// One plugin's expanded settings, as the card holds them.
+/// One plugin's open settings, as the page's panel holds them.
 ///
 /// The values are a copy of the host's completed document, so a plugin's form shows
 /// what its own file holds rather than a draft that could drift from it. A change goes
@@ -40,24 +41,24 @@ pub(crate) struct PluginSettingsDraft {
 impl PluginSettingsDraft {
     /// Whether there is anything to show.
     ///
-    /// A card that grew by nothing is a card the user pressed a button on and saw no
-    /// change, which is worse than a button that was not there.
+    /// A panel that grew by nothing is a panel the user opened and saw no change,
+    /// which is worse than a control that was not there.
     #[allow(
         dead_code,
-        reason = "read by the card once a plugin has a field it cannot draw"
+        reason = "read by the page once a plugin has a field it cannot draw"
     )]
     pub(crate) fn is_empty(&self) -> bool {
         self.values.is_empty()
     }
 }
 
-/// Every field of a plugin, as the rows the dialog draws.
+/// Every field of a plugin, as the rows the panel draws.
 ///
 /// One row per field rather than a tabbed form: a settings form with more than a dozen
 /// fields is a page the user scrolls rather than a page they navigate, and the scroll
 /// is one control instead of a tab bar the plugin would also have to order.
 ///
-/// Every control is a `SettingField`, so the dialog is made of exactly the same parts
+/// Every control is a `SettingField`, so the panel is made of exactly the same parts
 /// as the rest of the settings window. That is the point of a schema-driven form: a
 /// plugin's panel is not a different kind of panel.
 pub(super) fn field_rows(
@@ -82,6 +83,96 @@ pub(super) fn field_rows(
             row
         })
         .collect()
+}
+
+/// One plugin's open settings, as the page's items: the header, then the fields.
+///
+/// The panel is a sibling of the card grid rather than a section of one card,
+/// because `gpui-kit` renders a `SettingItem` only inside a `SettingGroup` — a card
+/// cannot host a field row at all. So the page holds one panel, under the grid, for
+/// whichever plugin is open, and the header is what says whose it is.
+///
+/// The rows come from the schema the *running* plugin declared, so a plugin that
+/// improved its settings in a later version is configured against the version that
+/// is actually running.
+pub(super) fn panel(
+    entry: &SettingsPluginEntry,
+    view: Entity<SettingsView>,
+    language: SettingsLanguage,
+) -> Vec<SettingItem> {
+    let mut items = vec![header(entry.clone(), view.clone(), language)];
+    items.extend(field_rows(entry, view));
+    items
+}
+
+/// The row that names the plugin whose settings are open, and closes them.
+///
+/// It carries the rule above it as well as the name, because the panel appears under
+/// a grid of cards rather than in a place of its own: without the rule, the first
+/// field row would read as another row of the page instead of the start of
+/// something.
+///
+/// The close control is a ghost button at the trailing edge, beside the name it
+/// belongs to, so the panel is dismissed from where it was opened rather than from
+/// somewhere below it.
+fn header(
+    entry: SettingsPluginEntry,
+    view: Entity<SettingsView>,
+    language: SettingsLanguage,
+) -> SettingItem {
+    let close_label: SharedString =
+        bongocat_i18n::text(language.catalog_locale(), "actions.close").into();
+    SettingItem::render(move |_: &RenderOptions, _: &mut Window, app: &mut App| {
+        let tokens = Tokens::from_theme(app);
+        let close_view = view.clone();
+        let close_id = entry.id.clone();
+        div()
+            .id(SharedString::from(format!(
+                "plugin-settings-header-{close_id}"
+            )))
+            .w_full()
+            .mt_4()
+            .pt_4()
+            .border_t_1()
+            .border_color(tokens.border)
+            // Observed so a test can tell an open panel from a closed one: the panel's
+            // whole shape is that these rows appear and go away with the view's state.
+            .test_support()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap_3()
+            .child(
+                div()
+                    .min_w_0()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(super::plugins::card_icon(&entry, tokens))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .text_sm()
+                            .font_semibold()
+                            .truncate()
+                            .child(super::plugins::card_heading(&entry)),
+                    ),
+            )
+            .child(
+                Button::new(SharedString::from(format!(
+                    "plugin-settings-close-{close_id}"
+                )))
+                .icon(gpui_kit::assets::IconName::X)
+                .tooltip(close_label.clone())
+                .with_variant(ButtonVariant::Ghost)
+                .on_click(move |_, _, app| {
+                    let plugin = close_id.to_string();
+                    close_view.update(app, |view, cx| {
+                        view.toggle_plugin_settings(plugin, cx);
+                    });
+                }),
+            )
+    })
 }
 
 /// The control one field is edited with, whichever kind that is.
@@ -541,10 +632,10 @@ mod tests {
     }
 
     #[test]
-    fn a_plugin_with_no_fields_expands_to_nothing() {
-        // The configure button is hidden for a plugin with nothing to change, and this
-        // is the check behind that: an expanded card with no rows in it is a card that
-        // grew by nothing.
+    fn a_plugin_with_no_fields_has_no_panel_to_open() {
+        // The settings control is hidden for a plugin with nothing to change, and this
+        // is the check behind that: a panel with no rows in it is a panel that grew by
+        // nothing.
         let empty = PluginSettingsDraft {
             plugin: "pomodoro".to_string(),
             values: BTreeMap::new(),

@@ -513,8 +513,6 @@
     },
     "plugins": {
       "catalog": {
-        "title": "Danh mục tiện ích",
-        "description": "Tiện ích thêm một bảng vào cửa sổ mô hình. Tiện ích được tải xuống khi bạn cài đặt, và mọi bản dựng đều dùng chung một danh sách.",
         "refresh": "Làm mới",
         "loading": "Đang đọc danh mục tiện ích…",
         "empty": "Danh mục tiện ích chưa có tiện ích nào."

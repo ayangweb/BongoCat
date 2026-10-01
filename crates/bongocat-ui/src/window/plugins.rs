@@ -1,39 +1,54 @@
-//! The plugin center: a card per plugin, and the settings the plugin declared.
+//! The plugin center: a grid of cards, one per plugin, and the settings the
+//! plugin that is open declared.
 //!
-//! A plugin is a program with its own logic, its own state and its own settings, and
-//! this page is where the product meets that. Three decisions shape everything here,
-//! and each one exists because the alternative was tried:
+//! A plugin is a program with its own logic, its own state and its own settings,
+//! and this page is where the product meets that. Four decisions shape
+//! everything here, and each one exists because the alternative was tried:
 //!
-//! * **A card, not a row.** A plugin is a thing a user *installs*, and an install list
-//!   of one-line rows reads as a list of switches. A card carries an icon, a name, a
-//!   version, a sentence, whether its process is alive, and its own controls.
-//! * **An icon the plugin declares.** An emoji today and a PNG beside it tomorrow,
-//!   drawn by the host either way. The plugin says *what the icon is*; the host draws
-//!   it, which is the same division the panel follows.
-//! * **A settings form built from a schema.** Every control in
-//!   [`super::plugin_settings`] is chosen by a field's `kind`, not by the plugin's
-//!   name. Nothing on this page knows what a pomodoro is, and adding a plugin that
-//!   wants a switch, a number, a line of text and a menu adds no code to the window.
-//!   The form expands under its own card rather than opening somewhere else, so the
-//!   card stays a card and the user can see the rest of the page beside it.
+//! * **A card, not a row.** A plugin is a thing a user *installs*, and an install
+//!   list of one-line rows reads as a list of switches. A card carries an icon, a
+//!   name, a version, a sentence, whether its process is alive, and its own
+//!   controls.
+//! * **A grid of cards, not a section each.** `gpui-kit` renders every *titled*
+//!   group of a page that has more than one group as a second-level entry in the
+//!   sidebar, so a titled group per plugin turned this destination into a menu of
+//!   plugin names: the cards were all reachable, but as a submenu rather than as
+//!   the page. The page therefore owns exactly one untitled group and draws its
+//!   cards itself — the same shape the model library uses, and the reason a plugin
+//!   is a cell in a grid rather than a section in a list.
+//! * **A card that is not a model card.** A model is a picture with a name, so a
+//!   model card leads with its cover. A plugin is a program with a sentence, so
+//!   its card leads with its icon and its name, keeps the sentence, and puts its
+//!   state control and its actions underneath — no artwork, and none of the
+//!   heights a cover forces on every cell in the row.
+//! * **An icon the plugin declares.** An emoji today and a PNG beside it
+//!   tomorrow, drawn by the host either way. The plugin says *what the icon is*;
+//!   the host draws it, which is the same division the panel follows.
 //!
-//! Four states are rendered distinctly and none of them is an empty list: a host that
-//! is not running, a catalog that has not been read yet, a catalog with nothing in it,
-//! and a catalog with cards in it.
+//! One plugin's own settings open as a panel under the grid rather than inside
+//! its card: a field row is a `SettingItem`, and `gpui-kit` only renders those
+//! inside a `SettingGroup`, which a card cannot host. Every control in
+//! [`super::plugin_settings`] is still chosen by a field's `kind`, not by the
+//! plugin's name — adding a plugin that wants a switch, a number, a line of text
+//! and a menu adds no code to the window.
+//!
+//! Four states are rendered distinctly and none of them is an empty list: a host
+//! that is not running, a catalog that has not been read yet, a catalog with
+//! nothing in it, and a catalog with cards in it.
 
 use super::*;
 use gpui_kit::AnyElement;
-use gpui_kit::component::Sizable as _;
+use gpui_kit::assets::IconName;
+use gpui_kit::base::TestSupportExt as _;
+use gpui_kit::component::{Sizable as _, Size};
 
-/// Every user-visible string on the plugin page and in its settings dialog.
+/// Every user-visible string on the plugin page and in its settings panel.
 ///
-/// The page's own copy contract: a key it renders but does not declare here is one the
-/// catalogs can lose without anything noticing, and a declared key with no copy in
-/// some language renders as the key itself.
+/// The page's own copy contract: a key it renders but does not declare here is
+/// one the catalogs can lose without anything noticing, and a declared key with
+/// no copy in some language renders as the key itself.
 #[cfg(test)]
-pub(super) const PLUGINS_LOCALIZED_KEYS: [&str; 26] = [
-    "settings.plugins.catalog.title",
-    "settings.plugins.catalog.description",
+pub(super) const PLUGINS_LOCALIZED_KEYS: [&str; 24] = [
     "settings.plugins.catalog.refresh",
     "settings.plugins.catalog.loading",
     "settings.plugins.catalog.empty",
@@ -60,21 +75,68 @@ pub(super) const PLUGINS_LOCALIZED_KEYS: [&str; 26] = [
     "settings.plugins.error.other",
 ];
 
+/// The narrowest column the plugin grid allows. The number of columns is the
+/// width divided by this floor, up to [`PLUGIN_GRID_MAX_COLUMNS`].
+///
+/// Narrower than a model card's floor on purpose: a plugin card is a tile of
+/// icon, name and controls rather than a picture with a caption, so two or three
+/// of them fit a settings window where one model cover and a half would.
+pub(super) const PLUGIN_CARD_MIN_WIDTH: f32 = 260.0;
+/// The grid never spreads past this many columns, even on a very wide window.
+///
+/// Three is the count that keeps a card's sentence readable — a fourth column on
+/// a wide display would break every description into four words a line — and it
+/// is the cap that keeps the second column from becoming a very wide card with
+/// one sentence on it.
+pub(super) const PLUGIN_GRID_MAX_COLUMNS: usize = 3;
+/// Horizontal chrome between the settings window and the plugin grid: the
+/// resizable sidebar and the page and group padding the grid sits inside.
+/// Column selection only needs the grid's approximate width; the row grid still
+/// stretches exactly to the space it is given.
+const PLUGIN_GRID_WINDOW_CHROME: f32 = 284.0;
+/// The edge of the tile that carries the icon the plugin declared.
+const PLUGIN_CARD_ICON_SIZE: f32 = 32.0;
+/// The size every control on a card is built from.
+///
+/// One value rather than the page's own `RenderOptions`: a card is drawn here,
+/// outside the settings component's row layout, and a card whose controls changed
+/// size with the window's density setting would be the only place in the window
+/// where that happened.
+const PLUGIN_CARD_SIZE: Size = Size::Medium;
+
+/// How many columns the plugin grid uses at a usable width.
+///
+/// Two at the narrowest desktop window, then one more per
+/// [`PLUGIN_CARD_MIN_WIDTH`] of room until the cap. The count is derived from the
+/// same width the column floor came from, so the columns stay square-necked: they
+/// neither balloon on a wide window nor fall below a card that fits its sentence.
+pub(super) fn plugin_grid_columns(width: Pixels) -> usize {
+    let fit = (f32::from(width) / PLUGIN_CARD_MIN_WIDTH).floor().max(2.0);
+    (fit as usize).clamp(2, PLUGIN_GRID_MAX_COLUMNS)
+}
+
+/// Select the column count from the settings window's available width.
+pub(super) fn plugin_grid_columns_for_window(width: Pixels) -> usize {
+    plugin_grid_columns(px((f32::from(width) - PLUGIN_GRID_WINDOW_CHROME).max(0.0)))
+}
+
 /// What one card offers, decided from the card's own state.
 ///
-/// Two variants and three facts rather than four variants: the facts are independent
-/// — installed, updatable, pressable — and a variant per combination would be eight
-/// arms of which the compiler can prove four unreachable. An earlier shape had one
-/// variant for "installed" and a separate one for "installed but at the panel bound",
-/// which could not say "installed, updatable *and* at the bound" and therefore dropped
-/// the update button on exactly the card that needed it.
+/// Two variants and three facts rather than four variants: the facts are
+/// independent — installed, updatable, pressable — and a variant per combination
+/// would be eight arms of which the compiler can prove four unreachable. An
+/// earlier shape had one variant for "installed" and a separate one for "installed
+/// but at the panel bound", which could not say "installed, updatable *and* at the
+/// bound" and therefore dropped the update button on exactly the card that needed
+/// it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CardAction {
     /// Nothing is installed, so the card offers the one action that changes that.
     ///
-    /// The panel bound does not apply here, and deliberately: installing a plugin does
-    /// not show its panel until the switch is turned on, so refusing the install would
-    /// leave a user at the bound with no way to acquire a plugin at all.
+    /// The panel bound does not apply here, and deliberately: installing a plugin
+    /// does not show its panel until the switch is turned on, so refusing the
+    /// install would leave a user at the bound with no way to acquire a plugin at
+    /// all.
     Install,
     Show {
         enabled: bool,
@@ -83,9 +145,9 @@ enum CardAction {
         /// Whether the switch accepts a press.
         ///
         /// False at the panel bound. The switch stays on screen and is marked
-        /// unpressable rather than being replaced by an install button, because the card
-        /// describes a plugin that *is* installed and an install button on it would
-        /// describe a different action.
+        /// unpressable rather than being replaced by an install button, because
+        /// the card describes a plugin that *is* installed and an install button
+        /// on it would describe a different action.
         live: bool,
     },
 }
@@ -119,10 +181,10 @@ impl CardAction {
 
     /// Whether the card's switch is switched on.
     ///
-    /// The card reads the switch's own state out of the view rather than from this,
-    /// because the host is the only side that knows it — a refused press moves the
-    /// host's answer and the switch follows on the next render. This is what a *test*
-    /// reads, which is why it exists rather than being a field.
+    /// The card reads the switch's own state out of the view rather than from
+    /// this, because the host is the only side that knows it — a refused press
+    /// moves the host's answer and the switch follows on the next render. This is
+    /// what a *test* reads, which is why it exists rather than being a field.
     #[allow(
         dead_code,
         reason = "read by the card's own tests, which pin what the switch says"
@@ -140,8 +202,8 @@ fn switch_is_live(plugins: &SettingsPlugins) -> bool {
 /// The sentence for one plugin failure, as a catalog key.
 ///
 /// Exhaustive over the protocol's codes with no catch-all, so a code the host can
-/// report and this page cannot name is a compile error here rather than a blank line in
-/// a user's settings window.
+/// report and this page cannot name is a compile error here rather than a blank
+/// line in a user's settings window.
 fn error_key(code: SettingsPluginErrorCode) -> &'static str {
     match code {
         SettingsPluginErrorCode::HostUnavailable => "settings.plugins.error.unavailable",
@@ -163,9 +225,9 @@ fn error_key(code: SettingsPluginErrorCode) -> &'static str {
 /// Why one plugin cannot be installed here, in the window's language.
 ///
 /// A refusal on a card is always about the *platform* in practice — the catalog
-/// publishes per-target archives and this host is not one of them — so the whole set
-/// maps onto the one sentence that is true. A refusal is not an error, so it gets its
-/// own line rather than the page's error line.
+/// publishes per-target archives and this host is not one of them — so the whole
+/// set maps onto the one sentence that is true. A refusal is not an error, so it
+/// gets its own line rather than the page's error line.
 fn refusal_text(_refusal: &SettingsPluginRefusal, language: SettingsLanguage) -> SharedString {
     bongocat_i18n::text(
         language.catalog_locale(),
@@ -174,44 +236,58 @@ fn refusal_text(_refusal: &SettingsPluginRefusal, language: SettingsLanguage) ->
     .into()
 }
 
-/// A card's title, with the icon the plugin declared in front of it.
+/// A card's name: the plugin's own, or its id when it declared none.
 ///
-/// Emoji today and a PNG beside it tomorrow, and the title is where both land: it is
-/// the one piece of a card that is already a label, so an icon costs no new component
-/// and a plugin that ships a picture is one replacement of this function rather than a
-/// change to the page. A plugin that declared neither gets a letter, because a grid of
-/// cards with a blank where the icon goes is a grid of blanks.
-fn card_title(entry: &SettingsPluginEntry) -> SharedString {
-    let name = if entry.name.is_empty() {
-        entry.id.as_str()
+/// The icon no longer rides in this string. It is a tile beside the name rather
+/// than a character in front of it, which is what lets a grid of cards line their
+/// names up — a row of titles each starting with its own glyph starts them at as
+/// many different offsets as there are glyphs. The settings panel reads the same
+/// name, so a form names its plugin the way its card does.
+pub(super) fn card_heading(entry: &SettingsPluginEntry) -> SharedString {
+    if entry.name.is_empty() {
+        entry.id.clone().into()
     } else {
-        entry.name.as_str()
-    };
-    if let Some(emoji) = &entry.icon.emoji {
-        return format!("{emoji} {name}").into();
+        entry.name.clone().into()
     }
-    format!("{} {name}", entry.initial()).into()
 }
 
-/// The one line under a card's name.
+/// The tile that carries the icon the plugin declared.
 ///
-/// The failure first, then the refusal, then the description, then author and version.
-/// The failure leads because a card that looks fine and is not running is the state a
-/// user cannot work out from a sentence about its author.
-fn card_description(
-    entry: &SettingsPluginEntry,
-    language: SettingsLanguage,
-) -> Option<SharedString> {
-    let locale = language.catalog_locale();
-    if let Some(failure) = &entry.failure {
-        return Some(bongocat_i18n::text(locale, error_key(failure.code)).into());
-    }
-    if let Some(refusal) = &entry.refusal {
-        return Some(refusal_text(refusal, language));
-    }
-    if !entry.description.is_empty() {
-        return Some(entry.description.clone().into());
-    }
+/// Emoji today and a PNG beside it tomorrow, and the tile is where both land: it
+/// is a fixed square, so a picture replacing the glyph changes nothing about the
+/// card's shape. A plugin that declared neither gets a letter, because a grid of
+/// cards with a blank where the icon goes is a grid of blanks.
+///
+/// The same tile heads the settings panel, so a form names its plugin with the
+/// mark the rest of the page uses for it rather than with text alone.
+pub(super) fn card_icon(entry: &SettingsPluginEntry, tokens: Tokens) -> Div {
+    let glyph = match &entry.icon.emoji {
+        Some(emoji) => div().text_lg().child(emoji.clone()),
+        None => div()
+            .text_sm()
+            .font_semibold()
+            .text_color(tokens.muted)
+            .child(entry.initial()),
+    };
+    div()
+        .flex_none()
+        .size(px(PLUGIN_CARD_ICON_SIZE))
+        .rounded_md()
+        .border_1()
+        .border_color(tokens.border)
+        .bg(tokens.overlay)
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(glyph)
+}
+
+/// The quiet line under a card's name: who made it and which version is here.
+///
+/// Not a sentence and not a state — the identity of the thing, for a card whose
+/// plugin did not describe itself. A card with neither says nothing at all rather
+/// than saying a bullet on its own.
+fn card_meta(entry: &SettingsPluginEntry) -> Option<SharedString> {
     let mut parts: Vec<&str> = Vec::new();
     if !entry.author.is_empty() {
         parts.push(entry.author.as_str());
@@ -225,141 +301,30 @@ fn card_description(
     Some(parts.join(" · ").into())
 }
 
-/// The page's own line: the catalog's state, or the last failure.
+/// The sentence under a card's meta line.
 ///
-/// A plugin operation that failed leaves its reason here rather than in a
-/// notification: the failure is a property of the catalog the page is showing, so a
-/// notification would vanish and leave the page looking healthy.
-fn catalog_description(
-    plugins: &SettingsPlugins,
+/// The failure first, then the refusal, then the description. The failure leads
+/// because a card that looks fine and is not running is the state a user cannot
+/// work out from a sentence about its author, and it is drawn in the text colour
+/// rather than the muted one so the card says so without a badge of its own.
+fn card_summary(
+    entry: &SettingsPluginEntry,
     language: SettingsLanguage,
-) -> Option<SharedString> {
+) -> Option<(SharedString, bool)> {
     let locale = language.catalog_locale();
-    if let Some(error) = &plugins.last_error {
-        return Some(bongocat_i18n::text(locale, error_key(error.code)).into());
+    if let Some(failure) = &entry.failure {
+        return Some((
+            bongocat_i18n::text(locale, error_key(failure.code)).into(),
+            true,
+        ));
     }
-    if !plugins.available {
-        return Some(bongocat_i18n::text(locale, "settings.plugins.error.unavailable").into());
+    if let Some(refusal) = &entry.refusal {
+        return Some((refusal_text(refusal, language), false));
     }
-    if plugins.is_pending() {
-        return Some(bongocat_i18n::text(locale, "settings.plugins.catalog.loading").into());
-    }
-    if plugins.entries.is_empty() {
-        return Some(bongocat_i18n::text(locale, "settings.plugins.catalog.empty").into());
+    if !entry.description.is_empty() {
+        return Some((entry.description.clone().into(), false));
     }
     None
-}
-
-/// One card's controls, as one element.
-///
-/// Built inside the card's own render rather than as a `SettingField`, because a card
-/// is not a settings *row*: its controls sit beside its state rather than beside a
-/// title, and a `SettingField` can only ever render beside a title. The switch reads
-/// its own value out of the view at render time, so a refused press — the panel bound,
-/// a host that is not running — puts the switch back where the host actually is
-/// without the page keeping a copy of the truth.
-#[allow(clippy::too_many_arguments)]
-fn card_control(
-    options: &RenderOptions,
-    action: CardAction,
-    configurable: bool,
-    id: SharedString,
-    view: Entity<SettingsView>,
-    language: SettingsLanguage,
-    _window: &mut Window,
-    app: &mut App,
-) -> AnyElement {
-    let locale = language.catalog_locale();
-    let size = options.size();
-    let install_label: SharedString =
-        bongocat_i18n::text(locale, "settings.plugins.action.install").into();
-    let update_label: SharedString =
-        bongocat_i18n::text(locale, "settings.plugins.action.update").into();
-    let uninstall_label: SharedString =
-        bongocat_i18n::text(locale, "settings.plugins.action.uninstall").into();
-    let configure_label: SharedString =
-        bongocat_i18n::text(locale, "settings.plugins.action.configure").into();
-    // The switch is the one control whose meaning is not obvious from the card's
-    // title: "Pomodoro" beside a switch reads as "is this one active", which is a
-    // question about the plugin rather than about the model window.
-    let show_label: SharedString =
-        bongocat_i18n::text(locale, "settings.plugins.show_on_window").into();
-
-    if !action.shows_switch() {
-        let install_view = view.clone();
-        let install_id = id.clone();
-        return Button::new(install_id.clone())
-            .label(install_label)
-            .with_size(size)
-            .with_variant(ButtonVariant::Default)
-            .on_click(move |_, _, app| {
-                let plugin = install_id.to_string();
-                install_view.update(app, |view, cx| view.install_plugin(plugin, cx));
-            })
-            .into_any_element();
-    }
-
-    let checked = view.read(app).plugin_is_enabled(id.as_ref());
-    let switch_view = view.clone();
-    let switch_id = id.clone();
-    let mut controls = div().flex().flex_row().items_center().gap_2().child(
-        Switch::new(format!("plugin-show-{switch_id}"))
-            .label(show_label)
-            .checked(checked)
-            .with_size(size)
-            .disabled(!action.switch_is_live())
-            .on_click(move |_checked, _window, app| {
-                let plugin = switch_id.to_string();
-                switch_view.update(app, |view, cx| view.toggle_plugin_enabled(plugin, cx));
-            }),
-    );
-    if action.shows_update() {
-        let update_view = view.clone();
-        let update_id = id.clone();
-        controls = controls.child(
-            Button::new(format!("plugin-update-{update_id}"))
-                .label(update_label)
-                .with_size(size)
-                .with_variant(ButtonVariant::Default)
-                .on_click(move |_, _, app| {
-                    let plugin = update_id.to_string();
-                    update_view.update(app, |view, cx| view.install_plugin(plugin, cx));
-                }),
-        );
-    }
-    // A plugin with settings offers a button that opens its own form, which is a
-    // second thing beside the switch rather than a control in place of it: a plugin
-    // that is switched off still has settings worth changing.
-    if configurable {
-        let configure_view = view.clone();
-        let configure_id = id.clone();
-        controls = controls.child(
-            Button::new(format!("plugin-configure-{configure_id}"))
-                .label(configure_label)
-                .with_size(size)
-                .with_variant(ButtonVariant::Secondary)
-                .on_click(move |_, _window, app| {
-                    let plugin = configure_id.to_string();
-                    configure_view.update(app, |view, cx| {
-                        view.toggle_plugin_settings(plugin, cx);
-                    });
-                }),
-        );
-    }
-    let uninstall_view = view.clone();
-    let uninstall_id = id.clone();
-    controls
-        .child(
-            Button::new(format!("plugin-uninstall-{uninstall_id}"))
-                .label(uninstall_label)
-                .with_size(size)
-                .with_variant(ButtonVariant::Ghost)
-                .on_click(move |_, _, app| {
-                    let plugin = uninstall_id.to_string();
-                    uninstall_view.update(app, |view, cx| view.uninstall_plugin(plugin, cx));
-                }),
-        )
-        .into_any_element()
 }
 
 /// The two facts a card's state badge is decided from.
@@ -367,7 +332,7 @@ fn card_control(
 /// A copy rather than a reference into the entry, because the badge is rebuilt on
 /// every render and a rendered element cannot be built once and kept. Two bools is
 /// the whole of it, and it is deliberately not the whole entry: anything else a card
-/// shows is read where the row is built, where the view is not already borrowed.
+/// shows is read where the card is built, where the view is not already borrowed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct CardState {
     installed: bool,
@@ -376,8 +341,8 @@ struct CardState {
 
 /// The badge that says whether a plugin's process is alive, or that there is none.
 ///
-/// Separate from the switch because the two answer different questions: the switch is
-/// what the user asked for and the badge is what happened. A card whose plugin is
+/// Separate from the switch because the two answer different questions: the switch
+/// is what the user asked for and the badge is what happened. A card whose plugin is
 /// switched on and not running is the state that needs saying out loud, because it is
 /// what a crash looks like from outside.
 ///
@@ -412,160 +377,489 @@ fn state_badge(state: CardState, locale: &'static str) -> Option<AnyElement> {
     )
 }
 
-/// One card's body: its state on the left and its own controls on the right.
-fn card_body(
-    entry: &SettingsPluginEntry,
-    action: CardAction,
-    keywords: Vec<SharedString>,
+/// The page's own line: the catalog's state, or nothing at all.
+///
+/// A plugin operation that failed leaves its reason here rather than in a
+/// notification: the failure is a property of the catalog the page is showing, so a
+/// notification would vanish and leave the page looking healthy. A catalog that is
+/// simply fine says nothing — the cards below are the answer, and a settled page
+/// with a paragraph above its list is a page that reads as unfinished.
+fn catalog_description(
+    plugins: &SettingsPlugins,
+    language: SettingsLanguage,
+) -> Option<SharedString> {
+    let locale = language.catalog_locale();
+    if let Some(error) = &plugins.last_error {
+        return Some(bongocat_i18n::text(locale, error_key(error.code)).into());
+    }
+    if !plugins.available {
+        return Some(bongocat_i18n::text(locale, "settings.plugins.error.unavailable").into());
+    }
+    if plugins.is_pending() {
+        return Some(bongocat_i18n::text(locale, "settings.plugins.catalog.loading").into());
+    }
+    if plugins.entries.is_empty() {
+        return Some(bongocat_i18n::text(locale, "settings.plugins.catalog.empty").into());
+    }
+    None
+}
+
+/// The row above the grid: what the catalog last said, and the one control that
+/// re-reads it.
+///
+/// One sentence and one button, and the sentence is absent whenever the catalog has
+/// nothing to report — a refresh in flight is a disabled button over the cards the
+/// user is already reading, not a blanked page.
+fn catalog_toolbar(
+    plugins: &SettingsPlugins,
+    language: SettingsLanguage,
+    view: Entity<SettingsView>,
+    tokens: Tokens,
+) -> impl IntoElement {
+    let locale = language.catalog_locale();
+    let description = catalog_description(plugins, language);
+    let refresh_view = view.clone();
+    div()
+        .id("plugin-catalog-toolbar")
+        .w_full()
+        .flex()
+        .items_start()
+        .justify_between()
+        .gap_3()
+        .child(description.map_or_else(
+            || div().flex_1(),
+            |description| {
+                div()
+                    .min_w_0()
+                    .text_sm()
+                    .text_color(tokens.muted)
+                    .child(description)
+            },
+        ))
+        .child(
+            Button::new("plugin-catalog-refresh")
+                .label(bongocat_i18n::text(
+                    locale,
+                    "settings.plugins.catalog.refresh",
+                ))
+                .icon(IconName::RefreshCw)
+                .with_size(PLUGIN_CARD_SIZE)
+                .with_variant(ButtonVariant::Secondary)
+                .disabled(plugins.busy)
+                .on_click(move |_, _, app| {
+                    refresh_view.update(app, |view, cx| view.refresh_plugin_catalog(cx));
+                }),
+        )
+}
+
+/// The switch row: what the plugin contributes to the model window, and whether it
+/// is contributing.
+///
+/// The label is the window's own and it sits beside an unlabelled switch rather than
+/// inside one, because a card is narrow: a switch carrying "Show on the model window"
+/// as its own text would either wrap or shrink the control, and the rest of this
+/// window already reads as label on the left and control on the right.
+///
+/// The switch reads its own state out of the view at build time, so a refused press —
+/// the panel bound, a host that is not running — puts the switch back where the host
+/// actually is without the page keeping a copy of the truth.
+fn card_switch(
+    id: &str,
+    enabled: bool,
+    live: bool,
     view: Entity<SettingsView>,
     language: SettingsLanguage,
-) -> SettingItem {
+    tokens: Tokens,
+) -> impl IntoElement {
+    let switch_view = view.clone();
+    let switch_id = id.to_string();
+    div()
+        .w_full()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap_2()
+        .child(
+            div()
+                .min_w_0()
+                .text_sm()
+                .text_color(tokens.muted)
+                .truncate()
+                .child(bongocat_i18n::text(
+                    language.catalog_locale(),
+                    "settings.plugins.show_on_window",
+                )),
+        )
+        .child(
+            Switch::new(SharedString::from(format!("plugin-show-{switch_id}")))
+                .checked(enabled)
+                .with_size(PLUGIN_CARD_SIZE)
+                .disabled(!live)
+                .on_click(move |_checked, _window, app| {
+                    let plugin = switch_id.to_string();
+                    switch_view.update(app, |view, cx| view.toggle_plugin_enabled(plugin, cx));
+                }),
+        )
+}
+
+/// The card's own buttons: one labelled action when there is nothing installed, and
+/// the icon actions of an installed plugin otherwise.
+///
+/// Icons rather than four labels, because a card in a grid has room for one line of
+/// controls and a switch already has a sentence above it. Every icon control carries
+/// its name as a tooltip, which is the only thing that names it.
+///
+/// Uninstall is the one destructive control here and it asks for nothing first, on
+/// purpose: a plugin the catalog offers is one press away from being installed
+/// again, so the cost of a mispress is a download rather than a loss.
+fn card_actions(
+    entry: &SettingsPluginEntry,
+    action: CardAction,
+    settings_open: bool,
+    view: Entity<SettingsView>,
+    language: SettingsLanguage,
+) -> AnyElement {
     let locale = language.catalog_locale();
-    // Read before any row is built, and kept as the two facts rather than as a
-    // rendered element: a card's closure runs again on every render, and a rendered
-    // element cannot be built once and reused. Which badge this is — none, "running",
-    // "stopped" — is therefore decided from these two inside the closure, which is
-    // one cheap comparison rather than a second source of truth.
+    let id = entry.id.clone();
+    if !action.shows_switch() {
+        let install_view = view.clone();
+        let install_id = id.clone();
+        return Button::new(SharedString::from(format!("plugin-install-{install_id}")))
+            .label(bongocat_i18n::text(
+                locale,
+                "settings.plugins.action.install",
+            ))
+            .icon(IconName::Download)
+            .with_size(PLUGIN_CARD_SIZE)
+            .with_variant(ButtonVariant::Primary)
+            .w_full()
+            .on_click(move |_, _, app| {
+                let plugin = install_id.to_string();
+                install_view.update(app, |view, cx| view.install_plugin(plugin, cx));
+            })
+            .into_any_element();
+    }
+
+    // The plugin's own settings, which are open for exactly one plugin at a time —
+    // so this control is the one that carries the open state, marked by the same
+    // `toggled` the rest of the window uses for a control that is on.
+    let mut row = div().w_full().flex().items_center().justify_end().gap_1();
+    if !entry.fields.is_empty() {
+        let configure_view = view.clone();
+        let configure_id = id.clone();
+        row = row.child(
+            Button::new(SharedString::from(format!(
+                "plugin-configure-{configure_id}"
+            )))
+            .icon(IconName::SlidersHorizontal)
+            .tooltip(bongocat_i18n::text(
+                locale,
+                "settings.plugins.action.configure",
+            ))
+            .toggled(settings_open)
+            .with_size(PLUGIN_CARD_SIZE)
+            .with_variant(ButtonVariant::Ghost)
+            .on_click(move |_, _, app| {
+                let plugin = configure_id.to_string();
+                configure_view.update(app, |view, cx| view.toggle_plugin_settings(plugin, cx));
+            }),
+        );
+    }
+    if action.shows_update() {
+        let update_view = view.clone();
+        let update_id = id.clone();
+        row = row.child(
+            Button::new(SharedString::from(format!("plugin-update-{update_id}")))
+                .icon(IconName::RefreshCw)
+                .tooltip(bongocat_i18n::text(
+                    locale,
+                    "settings.plugins.action.update",
+                ))
+                .with_size(PLUGIN_CARD_SIZE)
+                .with_variant(ButtonVariant::Ghost)
+                .on_click(move |_, _, app| {
+                    let plugin = update_id.to_string();
+                    update_view.update(app, |view, cx| view.install_plugin(plugin, cx));
+                }),
+        );
+    }
+    let uninstall_view = view;
+    let uninstall_id = id;
+    row.child(
+        Button::new(SharedString::from(format!(
+            "plugin-uninstall-{uninstall_id}"
+        )))
+        .icon(IconName::Trash)
+        .tooltip(bongocat_i18n::text(
+            locale,
+            "settings.plugins.action.uninstall",
+        ))
+        .with_size(PLUGIN_CARD_SIZE)
+        .with_variant(ButtonVariant::Ghost)
+        .on_click(move |_, _, app| {
+            let plugin = uninstall_id.to_string();
+            uninstall_view.update(app, |view, cx| view.uninstall_plugin(plugin, cx));
+        }),
+    )
+    .into_any_element()
+}
+
+/// One plugin, as one cell of the grid.
+///
+/// Three blocks top to bottom: the mark, the name and the sentence; then whatever
+/// the card controls, pushed to the bottom edge so that every card in a row lines
+/// its controls up whatever its own sentence turned out to be worth.
+#[allow(clippy::too_many_arguments)]
+fn plugin_card(
+    entry: &SettingsPluginEntry,
+    action: CardAction,
+    enabled: bool,
+    settings_open: bool,
+    index: usize,
+    view: Entity<SettingsView>,
+    language: SettingsLanguage,
+    tokens: Tokens,
+) -> impl IntoElement {
+    let locale = language.catalog_locale();
     let state = CardState {
         installed: entry.installed,
         running: entry.running,
     };
-    let id: SharedString = entry.id.clone().into();
-    // A plugin with settings offers a button that opens its own form, which is a
-    // second thing beside the switch rather than a control in place of it: a plugin
-    // that is switched off still has settings worth changing.
-    let configurable = entry.installed && !entry.fields.is_empty();
-    // A whole card in one item, because a card *is* the unit: a title, a sentence, a
-    // state and its own controls. Splitting it across a group's rows would put the
-    // controls a screen away from the name they belong to.
-    SettingItem::render(
-        move |options: &RenderOptions, window: &mut Window, app: &mut App| {
+    let heading = card_heading(entry);
+    let meta = card_meta(entry);
+    let summary = card_summary(entry, language);
+    // The badge, or nothing at all in its place: a card whose plugin is not
+    // installed has no process to report on, and an empty box there would be a
+    // hole in the middle of every card in the catalog the user has not installed.
+    let badge = state_badge(state, locale).unwrap_or_else(|| div().flex_none().into_any_element());
+    let identity = div()
+        .min_w_0()
+        .flex_1()
+        .child(div().text_sm().font_semibold().truncate().child(heading));
+    let identity = match meta {
+        Some(meta) => identity.child(
             div()
+                .min_w_0()
+                .text_sm()
+                .text_color(tokens.muted)
+                .truncate()
+                .child(meta),
+        ),
+        None => identity,
+    };
+    let mut controls = div().w_full().flex().flex_col().gap_2().mt_auto();
+    if action.shows_switch() {
+        controls = controls.child(card_switch(
+            &entry.id,
+            enabled,
+            action.switch_is_live(),
+            view.clone(),
+            language,
+            tokens,
+        ));
+    }
+    let actions = card_actions(entry, action, settings_open, view, language);
+
+    div()
+        .id(("plugin-card", index))
+        .w_full()
+        .h_full()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .p_3()
+        .rounded_lg()
+        .border_1()
+        .border_color(tokens.border)
+        .bg(tokens.canvas)
+        // Observed so a test can read the cell the card really occupies: that cards
+        // share a row, and that a row is as tall as its tallest card, are the two
+        // claims the grid's whole shape rests on.
+        .test_support()
+        .child(
+            div()
+                .w_full()
                 .flex()
-                .flex_row()
-                .gap_2()
                 .items_center()
-                .justify_between()
-                // The badge, or a growing spacer in its place: without it the row's
-                // `justify_between` would put the controls on the *left*, so an
-                // install button would sit under the title instead of under the
-                // install button on the card below it.
-                .child(
-                    state_badge(state, locale).unwrap_or_else(|| div().flex_1().into_any_element()),
-                )
-                .child(card_control(
-                    options,
-                    action,
-                    configurable,
-                    id.clone(),
-                    view.clone(),
-                    language,
-                    window,
-                    app,
-                ))
-                .into_any_element()
-        },
-    )
-    .keywords(keywords)
-    .disabled(false)
+                .gap_2()
+                .child(card_icon(entry, tokens))
+                .child(identity)
+                .child(badge),
+        )
+        .child(summary.map_or_else(
+            || div().flex_1(),
+            |(text, failed)| {
+                div()
+                    .min_w_0()
+                    .text_sm()
+                    .text_color(if failed { tokens.text } else { tokens.muted })
+                    .line_clamp(3)
+                    .child(text)
+            },
+        ))
+        .child(controls.child(actions))
 }
 
-/// The whole page body: the catalog's own row, then a card per plugin.
-/// `expanded` is which plugin's settings are open, read by the caller.
+/// The grid itself: rows of cards, each row as wide as the page.
 ///
-/// A parameter rather than a view read because a card's render closure runs while the
-/// view is already borrowed: the one thing the page needs from the view has to be
-/// decided before any row is built, and a card that asked for it would be asking the
-/// entity it belongs to from inside its own render.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn groups(
+/// Every row keeps the full column template, so a short final row leaves its unused
+/// columns empty instead of stretching one card across the whole width. The grid
+/// does not scroll itself — the page's own list does — so a plugin's settings can
+/// open under it without two scroll regions fighting over the same wheel.
+fn plugin_grid(columns: usize, children: impl IntoIterator<Item: IntoElement>) -> Div {
+    let columns = columns.clamp(2, PLUGIN_GRID_MAX_COLUMNS);
+    let mut children = children.into_iter();
+    let mut rows = Vec::new();
+    loop {
+        let row = children.by_ref().take(columns).collect::<Vec<_>>();
+        if row.is_empty() {
+            break;
+        }
+        rows.push(
+            div()
+                .w_full()
+                .grid()
+                .grid_cols(u16::try_from(columns).expect("the column cap fits in u16"))
+                .gap_3()
+                .children(row),
+        );
+    }
+
+    div()
+        .w_full()
+        .min_w_0()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .children(rows)
+}
+
+/// The page's whole body: the catalog's own toolbar, then a card per plugin.
+pub(super) fn content(
+    view: &mut SettingsView,
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+    snapshot: Option<&SettingsSnapshot>,
+    tokens: Tokens,
+) -> Stateful<Div> {
+    let language = snapshot.map_or(SettingsLanguage::English, |snapshot| {
+        snapshot.resolved_language
+    });
+    let plugins = snapshot.map_or_else(SettingsPlugins::default, |snapshot| {
+        snapshot.plugins.clone()
+    });
+    let switch_live = switch_is_live(&plugins);
+    let cards_view = cx.entity();
+    // Read here, before any card exists: a card is built while this function
+    // already holds the view, so the two facts a card needs from it — what its
+    // switch says and whether its settings are open — have to be decided now
+    // rather than asked for from inside the card.
+    let cards = plugins
+        .entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            let action = CardAction::for_entry(entry, switch_live);
+            let enabled = view.plugin_is_enabled(entry.id.as_str());
+            let settings_open = view.plugin_settings_are_open(entry.id.as_str());
+            plugin_card(
+                entry,
+                action,
+                enabled,
+                settings_open,
+                index,
+                cards_view.clone(),
+                language,
+                tokens,
+            )
+            .into_any_element()
+        })
+        .collect::<Vec<_>>();
+
+    div()
+        .id("plugins-content")
+        .w_full()
+        .min_w_0()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .text_color(tokens.text)
+        .child(catalog_toolbar(&plugins, language, cards_view, tokens))
+        .child(
+            div()
+                .id("plugin-grid")
+                // Observed so a test can read the width the grid was laid out at: the
+                // column count is the window's decision, and asserting it from the
+                // rendered width is what keeps the two in step.
+                .test_support()
+                .child(plugin_grid(
+                    plugin_grid_columns_for_window(window.viewport_size().width),
+                    cards,
+                )),
+        )
+}
+
+/// The page's one group: the cards, and the open plugin's settings under them.
+///
+/// **One** group, and that is the whole of the page's shape: `gpui-kit` turns every
+/// titled group of a multi-group page into a second-level sidebar entry, so a group
+/// per plugin is what made this destination a menu of plugin names. The group's
+/// surface is dropped for the same reason the model library drops it — the cards
+/// draw their own borders, and a card grid inside a card is a card in a card.
+///
+/// The settings panel is a sibling of the grid rather than a section of it, because
+/// `gpui-kit` renders a `SettingItem` only inside a group: a card cannot host a
+/// field row. It is built here rather than inside the grid for the same reason the
+/// grid itself is — the body is drawn while the view is already borrowed, so what
+/// the page needs from the view is decided before any element exists and handed in.
+pub(super) fn group(
     view: Entity<SettingsView>,
     snapshot: Option<&SettingsSnapshot>,
     language: SettingsLanguage,
     keywords: Vec<SharedString>,
     expanded: Option<String>,
-) -> Vec<SettingGroup> {
-    let locale = language.catalog_locale();
+) -> SettingGroup {
     let plugins = snapshot.map_or_else(SettingsPlugins::default, |snapshot| {
         snapshot.plugins.clone()
     });
-    let busy = plugins.busy;
-    // Read once, before any row is built: a card's render closure runs while the view
-    // is already borrowed, so the one thing it needs from the view has to be decided
-    // here rather than asked for inside it.
-
-    // The catalog row is above the cards because it is what they are: a button that
-    // re-reads the catalog, and the line that says what happened last time. Its
-    // control takes its own handle, so the cards below still have one to build from.
-    let catalog_view = view.clone();
-    let catalog = SettingItem::new(
-        bongocat_i18n::text(locale, "settings.plugins.catalog.title"),
-        SettingField::element(
-            move |options: &RenderOptions, _: &mut Window, _app: &mut App| {
-                let view = catalog_view.clone();
-                Button::new("plugin-catalog-refresh")
-                    .label(bongocat_i18n::text(
-                        locale,
-                        "settings.plugins.catalog.refresh",
-                    ))
-                    .with_size(options.size())
-                    .with_variant(ButtonVariant::Default)
-                    .disabled(busy)
-                    .on_click(move |_, _, app| {
-                        view.update(app, |view, cx| view.refresh_plugin_catalog(cx));
-                    })
-            },
-        ),
-    )
-    .description(catalog_description(&plugins, language).unwrap_or_else(|| {
-        bongocat_i18n::text(locale, "settings.plugins.catalog.description").into()
-    }))
-    .keywords(keywords.clone());
-
-    // The catalog row carries the whole state — loading, empty, failed, ready — in its
-    // description, and the cards follow it when there are any. An empty state is
-    // therefore that one row and no more: a second row repeating the catalog's own
-    // title and description would render the same sentence twice and make a settled
-    // page look like two things happened.
-    let mut groups = vec![
-        SettingGroup::new()
-            .title(bongocat_i18n::text(
-                locale,
-                "settings.plugins.catalog.title",
-            ))
-            .items(vec![catalog]),
-    ];
-
-    // One group per plugin, so a card is a card: its own surface, its own title with
-    // its icon, its own sentence and its own controls. A single group with every card
-    // in it would read as one long list, which is what this page stopped being.
-    let switch_live = switch_is_live(&plugins);
+    let open_entry = expanded
+        .as_deref()
+        .and_then(|id| plugins.entries.iter().find(|entry| entry.id == id))
+        .filter(|entry| !entry.fields.is_empty());
+    // The cards are one item, so searching the page matches the plugin names and
+    // the page's own words rather than each card separately — and when a panel is
+    // open its field labels join them, so a search for one of a plugin's settings
+    // still finds the page it lives on.
+    let mut search = keywords;
     for entry in &plugins.entries {
-        let action = CardAction::for_entry(entry, switch_live);
-        // The control closure takes ownership of its own handle, so the loop keeps the
-        // one it needs for the next card rather than reusing a moved value.
-        let card_view = view.clone();
-        let card = card_body(entry, action, keywords.clone(), card_view, language);
-        let description = card_description(entry, language);
-        let mut group = SettingGroup::new()
-            .title(card_title(entry))
-            .variant(GroupBoxVariant::Outline);
-        if let Some(description) = description {
-            group = group.description(description);
-        }
-        let mut items = vec![card];
-        // The plugin's own settings, expanded under the card that owns them.
-        //
-        // Which plugin is expanded is the *view's* state rather than this function's,
-        // because a card cannot read the view while it is being rendered — so the rows
-        // are chosen here from a flag the render closure was handed, and the flag
-        // itself comes from the draft the view holds.
-        if expanded.as_deref() == Some(entry.id.as_str()) && !entry.fields.is_empty() {
-            items.extend(plugin_settings::field_rows(entry, view.clone()));
-        }
-        groups.push(group.items(items));
+        search.push(entry.name.clone().into());
+        search.push(entry.id.clone().into());
     }
-    groups
+    if let Some(entry) = open_entry {
+        search.extend(entry.fields.iter().map(|field| field.label.clone().into()));
+    }
+
+    let body_view = view.clone();
+    let body = SettingItem::render(
+        move |_: &RenderOptions, window: &mut Window, app: &mut App| {
+            let snapshot = body_view.read(app).snapshot.clone();
+            let tokens = Tokens::from_theme(app);
+            body_view
+                .update(app, move |view, cx| {
+                    content(view, window, cx, snapshot.as_ref(), tokens)
+                })
+                .into_any_element()
+        },
+    )
+    .keywords(search);
+
+    let mut items = vec![body];
+    if let Some(entry) = open_entry {
+        items.extend(plugin_settings::panel(entry, view, language));
+    }
+    SettingGroup::new()
+        .variant(GroupBoxVariant::Normal)
+        .items(items)
 }
 
 #[cfg(test)]
@@ -743,6 +1037,31 @@ mod tests {
     }
 
     #[test]
+    fn the_grid_is_two_columns_at_the_narrowest_window_and_never_wider_than_three() {
+        // The window's own floor: the sidebar and the page padding leave about 516px
+        // for the grid at 800px wide, which is two cards and not one, and which is
+        // also not three.
+        let narrow = plugin_grid_columns_for_window(px(800.0));
+        assert_eq!(narrow, 2);
+
+        // Three cards from the width three floors need, and never four: a fourth
+        // column would break every description into four words a line.
+        let three = PLUGIN_CARD_MIN_WIDTH * 3.0;
+        assert_eq!(
+            plugin_grid_columns_for_window(px(three + PLUGIN_GRID_WINDOW_CHROME)),
+            3
+        );
+        assert_eq!(
+            plugin_grid_columns_for_window(px(3840.0)),
+            PLUGIN_GRID_MAX_COLUMNS
+        );
+
+        // And the floor itself, so a card is never narrower than its own sentence.
+        assert_eq!(plugin_grid_columns(px(PLUGIN_CARD_MIN_WIDTH * 2.0)), 2);
+        assert_eq!(plugin_grid_columns(px(0.0)), 2);
+    }
+
+    #[test]
     fn a_degraded_host_says_so_rather_than_showing_an_empty_catalog() {
         let plugins = SettingsPlugins::default();
         assert!(plugins.entries.is_empty());
@@ -823,32 +1142,64 @@ mod tests {
     }
 
     #[test]
-    fn a_cards_description_leads_with_its_failure_then_its_description() {
+    fn a_cards_summary_leads_with_its_failure_then_its_description() {
         let mut failing = entry(true, true, false);
         failing.failure = Some(SettingsPluginError {
             code: SettingsPluginErrorCode::PluginFailed,
             detail: None,
         });
         failing.description = "A focus timer.".to_string();
+        let (text, failed) = card_summary(&failing, SettingsLanguage::English).expect("a failure");
         assert_eq!(
-            card_description(&failing, SettingsLanguage::English).as_deref(),
-            Some(bongocat_i18n::text(
+            text.as_ref(),
+            bongocat_i18n::text(
                 SettingsLanguage::English.catalog_locale(),
                 "settings.plugins.error.plugin"
-            )),
+            ),
             "because a card that looks fine and is not running is the state a user cannot work \
              out from a sentence about its author"
         );
-        // With nothing wrong and nothing to say, the version is the one line that
-        // still tells the user what they have — so a settled card is not silent, and a
-        // card with neither a version nor a failure says nothing at all.
+        assert!(
+            failed,
+            "and it is drawn in the text colour rather than the muted one, because that sentence \
+             is the card's own news"
+        );
+
+        let described = entry(true, true, false);
+        let mut described = described;
+        described.description = "A focus timer.".to_string();
         assert_eq!(
-            card_description(&entry(true, true, false), SettingsLanguage::English).as_deref(),
+            card_summary(&described, SettingsLanguage::English),
+            Some(("A focus timer.".to_string().into(), false)),
+        );
+
+        // With nothing wrong and nothing to say, the version is the meta line that
+        // still tells the user what they have — so a settled card is not silent, and
+        // a card with neither a version nor a sentence says nothing at all.
+        assert_eq!(
+            card_meta(&entry(true, true, false)).as_deref(),
             Some("1.0.0")
         );
         let mut bare = entry(true, true, false);
         bare.installed_version = None;
-        assert_eq!(card_description(&bare, SettingsLanguage::English), None);
+        assert_eq!(card_meta(&bare), None);
+        assert_eq!(card_summary(&bare, SettingsLanguage::English), None);
+    }
+
+    #[test]
+    fn a_cards_meta_line_names_its_author_and_its_version() {
+        let mut authored = entry(true, true, false);
+        authored.author = "BongoCat".to_string();
+        assert_eq!(card_meta(&authored).as_deref(), Some("BongoCat · 1.0.0"));
+
+        let mut versionless = entry(false, false, false);
+        versionless.author = "BongoCat".to_string();
+        assert_eq!(
+            card_meta(&versionless).as_deref(),
+            Some("BongoCat"),
+            "a plugin the catalog only offers has no version on disk, so it names its author alone \
+             rather than a bullet with nothing after it"
+        );
     }
 
     #[test]
@@ -896,22 +1247,31 @@ mod tests {
     }
 
     #[test]
-    fn a_cards_title_carries_the_icon_the_plugin_declared() {
+    fn a_cards_name_is_the_plugins_own_and_its_id_when_it_declared_none() {
+        assert_eq!(card_heading(&entry(true, true, false)), "Pomodoro");
+        let mut nameless = entry(true, true, false);
+        nameless.name = String::new();
+        assert_eq!(card_heading(&nameless), "pomodoro");
+    }
+
+    #[test]
+    fn a_card_with_no_icon_gets_a_letter_rather_than_a_blank() {
+        let bare = entry(true, true, false);
+        assert!(bare.icon.is_empty());
+        assert_eq!(
+            bare.initial(),
+            "P",
+            "and a plugin that declared no icon gets a letter, because a grid of cards with a \
+             blank where the icon goes is a grid of blanks"
+        );
+
         let mut emoji = entry(true, true, false);
         emoji.icon = SettingsPluginIcon {
             emoji: Some("🍅".to_string()),
             image: None,
         };
-        assert_eq!(card_title(&emoji), "🍅 Pomodoro");
-
-        let bare = entry(true, true, false);
-        assert!(bare.icon.is_empty());
-        assert_eq!(
-            card_title(&bare),
-            "P Pomodoro",
-            "and a plugin that declared no icon gets a letter, because a grid of cards with a \\
-             blank where the icon goes is a grid of blanks"
-        );
+        assert_eq!(emoji.initial(), "P");
+        assert_eq!(emoji.icon.emoji.as_deref(), Some("🍅"));
 
         let mut image = entry(true, true, false);
         image.icon = SettingsPluginIcon {
@@ -919,18 +1279,11 @@ mod tests {
             image: Some("icon.png".to_string()),
         };
         assert_eq!(
-            card_title(&image),
-            "P Pomodoro",
-            "an image falls back to the letter today, and the field it travels in is already the \\
+            image.initial(),
+            "P",
+            "an image falls back to the letter today, and the field it travels in is already the \
              one the host reads"
         );
-    }
-
-    #[test]
-    fn a_card_with_no_name_uses_its_id() {
-        let mut nameless = entry(true, true, false);
-        nameless.name = String::new();
-        assert_eq!(card_title(&nameless), "P pomodoro");
     }
 
     #[test]

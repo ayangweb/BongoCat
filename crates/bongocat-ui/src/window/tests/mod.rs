@@ -182,6 +182,48 @@ impl Render for WrappedModelsPageHarness {
     }
 }
 
+/// The plugins page, as the settings window really builds it.
+///
+/// The page only renders through `SettingItem::render`, which runs for the page the
+/// settings component has selected, so this harness builds the same single
+/// `SettingPage` + `SettingGroup` the window does and hosts it in a `Settings`
+/// component. The wrapper matters: a grid that measured correctly on its own could
+/// still collapse inside the group box the product puts it in.
+struct PluginsPageHarness {
+    view: Entity<SettingsView>,
+}
+
+impl Render for PluginsPageHarness {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Read here rather than seeded into the harness: the panel's open state is
+        // the view's, and a harness that froze it would draw the grid again after
+        // every press — which is exactly the bug this page's test exists to catch.
+        let view = self.view.clone();
+        let (snapshot, expanded) = self.view.update(cx, |view, _| {
+            (
+                view.snapshot.clone(),
+                view.plugin_settings
+                    .as_ref()
+                    .map(|draft| draft.plugin.clone()),
+            )
+        });
+        let page = SettingPage::new("Plugins").group(super::plugins::group(
+            view,
+            snapshot.as_ref(),
+            SettingsLanguage::English,
+            vec!["Plugins".into()],
+            expanded,
+        ));
+
+        div().size_full().child(
+            Settings::new("wrapped-plugins-page")
+                .sidebar_width(px(220.0))
+                .with_group_variant(GroupBoxVariant::Outline)
+                .page(page),
+        )
+    }
+}
+
 /// The bounds an element was painted at.
 fn rendered_bounds(visual: &mut VisualTestContext, id: ElementId) -> Bounds<Pixels> {
     visual.update(|window, _| {
