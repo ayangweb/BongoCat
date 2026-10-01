@@ -417,10 +417,27 @@ mod tests {
     fn descriptor(schema: ConfigSchema) -> bongocat_plugin::PluginDescriptor {
         bongocat_plugin::PluginDescriptor {
             id: bongocat_plugin::PluginId::new("pomodoro").expect("valid"),
-            name: "Pomodoro".into(),
+            name: LocalizedText {
+                default: "Pomodoro".to_string(),
+                by_locale: [
+                    ("zh-CN".to_string(), "番茄钟".to_string()),
+                    ("ko-KR".to_string(), "뽀모도로".to_string()),
+                ]
+                .into(),
+            },
             version: bongocat_plugin::PluginVersion::new(1, 0, 0),
             author: String::new(),
-            description: Default::default(),
+            description: LocalizedText {
+                default: "A focus timer on the model window.".to_string(),
+                by_locale: [
+                    ("zh-CN".to_string(), "模型窗口上的专注计时器。".to_string()),
+                    (
+                        "ko-KR".to_string(),
+                        "모델 창에 있는 집중 타이머.".to_string(),
+                    ),
+                ]
+                .into(),
+            },
             icon: PluginIcon {
                 emoji: Some("🍅".to_string()),
                 image: None,
@@ -439,7 +456,11 @@ mod tests {
                     key: "minutes".to_string(),
                     label: LocalizedText {
                         default: "Minutes".to_string(),
-                        by_locale: [("zh-CN".to_string(), "分钟".to_string())].into(),
+                        by_locale: [
+                            ("zh-CN".to_string(), "分钟".to_string()),
+                            ("ko-KR".to_string(), "분".to_string()),
+                        ]
+                        .into(),
                     },
                     description: Some(LocalizedText {
                         default: "How long a round is.".to_string(),
@@ -841,6 +862,69 @@ mod tests {
             toggle.minimum.is_none(),
             "and a switch carries no bounds, because a settings row that has to ask 'does this one \
              have a minimum?' is a settings row that can render a spinner for a toggle"
+        );
+    }
+
+    #[test]
+    fn changing_the_language_changes_every_word_a_plugin_contributed() {
+        // The whole of "switch language and the plugin text switches with it", and it is
+        // two claims rather than one because the words come from three places that were
+        // once three documents: the card's name and description are the running plugin's,
+        // the settings labels are its schema, and the position names are the host's own.
+        //
+        // Projecting the *same* snapshot twice is what makes it a test rather than a
+        // demonstration. A projection that read the language from the snapshot, or that
+        // cached a resolved string beside the entry, would pass a test asserting each
+        // language separately and fail this one — which is why both are asserted here
+        // against one fixture rather than each language getting a fixture of its own.
+        let snapshot = PluginSnapshot {
+            entries: vec![entry()],
+            ..PluginSnapshot::default()
+        };
+        let in_english = project_plugins(&snapshot, SettingsLanguage::English);
+        let in_chinese = project_plugins(&snapshot, SettingsLanguage::ChineseSimplified);
+        let in_korean = project_plugins(&snapshot, SettingsLanguage::Korean);
+
+        for (language, projected, name, label) in [
+            (
+                SettingsLanguage::English,
+                &in_english,
+                "Pomodoro",
+                "Minutes",
+            ),
+            (
+                SettingsLanguage::ChineseSimplified,
+                &in_chinese,
+                "番茄钟",
+                "分钟",
+            ),
+            (SettingsLanguage::Korean, &in_korean, "뽀모도로", "분"),
+        ] {
+            let entry = &projected.entries[0];
+            assert_eq!(entry.name, name, "the card's name in {language:?}");
+            assert_eq!(
+                entry.fields[0].label, label,
+                "and the settings form's own first label in {language:?}"
+            );
+            assert_eq!(
+                entry
+                    .position
+                    .as_ref()
+                    .map(|position| position.label.as_str()),
+                Some(match language {
+                    SettingsLanguage::ChineseSimplified => "左上",
+                    SettingsLanguage::Korean => "왼쪽 위",
+                    _ => "Top left",
+                }),
+                "and the host's own position names, which are not the plugin's and would \
+                 have gone stale on a language switch if they were resolved once"
+            );
+        }
+
+        assert_ne!(
+            in_english.entries[0].description, in_chinese.entries[0].description,
+            "and the sentence under the name follows too, because a card whose title \
+             changed and whose sentence did not is half-translated"
         );
     }
 

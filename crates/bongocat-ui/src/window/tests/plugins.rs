@@ -577,6 +577,88 @@ fn the_position_row_is_the_first_thing_a_drawing_plugins_form_offers(cx: &mut Te
     );
 }
 
+/// The window's own plugin strings follow the language, and a plugin's own do not.
+///
+/// Two halves that are easy to confuse. A plugin's name and its settings labels arrive
+/// already resolved — the app resolves them against the reader's language when it projects
+/// the worker's snapshot — so the window is handed one string per field and there is
+/// nothing for it to translate. The words the *window* owns are the other half: the
+/// Settings button, the Position row, the nine position names. Those are looked up while
+/// the page draws, so they follow the language.
+///
+/// **One page, switched three times.** That is the whole difference from building three
+/// pages, and it is the difference between this being a test and this being a
+/// demonstration: anything resolved once per page — a cached label, a string built when
+/// the card was made — would answer correctly here for English and then keep saying
+/// English, and building a fresh page per language would hide exactly that.
+#[gpui_kit::test]
+fn the_windows_own_plugin_words_follow_the_language(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let mut drawing = entry_with_fields("pomodoro", true, true);
+    drawing.position = Some(bongocat_ui_protocol::SettingsPluginPosition {
+        value: "top_left".to_string(),
+        label: "Top left".to_string(),
+    });
+    drawing.positions = ["bottom_left"]
+        .into_iter()
+        .map(|value| bongocat_ui_protocol::SettingsPluginPosition {
+            value: value.to_string(),
+            label: format!("{value} label"),
+        })
+        .collect();
+    let plugins = SettingsPlugins {
+        available: true,
+        catalog_read: true,
+        entries: vec![drawing],
+        ..SettingsPlugins::default()
+    };
+    let mut seeded = snapshot_with_plugins(plugins);
+    seeded.resolved_language = SettingsLanguage::English;
+    let (view, visual) = page_over(cx, client, seeded);
+
+    for (language, position_row) in [
+        (SettingsLanguage::English, "Position"),
+        (SettingsLanguage::ChineseSimplified, "显示位置"),
+        (SettingsLanguage::Korean, "표시 위치"),
+    ] {
+        // The switch, on the page that is already open: one new snapshot, nothing else
+        // different, because a language change reaches a window as a snapshot like any
+        // other and the window has to redraw itself from it.
+        view.update(visual, |view, cx| {
+            if let Some(snapshot) = view.snapshot.as_mut() {
+                snapshot.resolved_language = language;
+            }
+            cx.notify();
+        });
+        // The Settings button toggles, so it is pressed only when the form is shut: a
+        // language switch is not supposed to close a form the user has open, and pressing
+        // again would test the toggle instead of the redraw.
+        if !view.read_with(visual, |view, _| view.plugin_settings_are_open("pomodoro")) {
+            visual.update(|window, cx| {
+                window.click(ElementId::from("plugin-configure-pomodoro"), cx)
+            });
+        }
+
+        let rows = view.read_with(visual, |view, _| {
+            view.plugin_settings_row_labels("pomodoro")
+        });
+        assert_eq!(
+            rows.first().map(String::as_str),
+            Some(position_row),
+            "the position row is the host's own word, and says itself in {language:?}"
+        );
+        assert_eq!(
+            rows.get(1).map(String::as_str),
+            Some("Minutes"),
+            "while the plugin's own row keeps the string the app resolved for it, which is \
+             the same in every language because the plugin's copy arrived resolved: the \
+             window is handed one string, and translating it again would be the window \
+             guessing at a language the plugin already answered in"
+        );
+    }
+}
+
 /// A file field is a path and a button, and the button's answer reaches the plugin.
 ///
 /// The requirement is that a user chooses a file rather than knowing a path, and the only
