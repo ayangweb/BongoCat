@@ -19,6 +19,7 @@
 ### 🐛 Bug Fixes
 
 - On Windows, BongoCat no longer freezes and quits when you click a link that opens an external website, such as "Report an issue" under Settings → About. The window also keeps painting while the browser starts.
+- A plugin that plays a sound of your own can now have you choose the file. Its settings show the file it will play, with a button that opens your computer's own file picker — offering the formats the plugin asked for — instead of asking you to know where you put it.
 - Plugins draw on the model window again. A plugin announced itself and then wrote everything else — its panel, its buttons, its answers — to a stream the host never reads, so a plugin that introduced itself went silent for the rest of its life. No plugin had ever appeared on the model window, and the two bugs behind it could not be seen from inside a plugin's own tests.
 - A plugin's settings appear on its card again. The form was drawn from what the host was told, and the host was told a plugin had no settings at all, because the schema a plugin declared for itself never left its own process. Every settings form in the product was an empty panel.
 - On macOS, the menu bar icon no longer disappears after updating to a new version.
@@ -39,6 +40,7 @@ Korean is now available in Settings → Appearance & language. Existing configur
 
 ### 🐛 Bug Fixes
 
+- A plugin that plays a sound of your own can now have you choose the file. Its settings show the file it will play, with a button that opens your computer's own file picker — offering the formats the plugin asked for — instead of asking you to know where you put it.
 - Plugins draw on the model window again. A plugin announced itself and then wrote everything else — its panel, its buttons, its answers — to a stream the host never reads, so a plugin that introduced itself went silent for the rest of its life. No plugin had ever appeared on the model window, and the two bugs behind it could not be seen from inside a plugin's own tests.
 - A plugin's settings appear on its card again. The form was drawn from what the host was told, and the host was told a plugin had no settings at all, because the schema a plugin declared for itself never left its own process. Every settings form in the product was an empty panel.
 
@@ -72,6 +74,7 @@ Arabic, Vietnamese, Traditional Chinese, and Portuguese are now available.
 
 ### 🐛 Bug Fixes
 
+- A plugin that plays a sound of your own can now have you choose the file. Its settings show the file it will play, with a button that opens your computer's own file picker — offering the formats the plugin asked for — instead of asking you to know where you put it.
 - Plugins draw on the model window again. A plugin announced itself and then wrote everything else — its panel, its buttons, its answers — to a stream the host never reads, so a plugin that introduced itself went silent for the rest of its life. No plugin had ever appeared on the model window, and the two bugs behind it could not be seen from inside a plugin's own tests.
 - A plugin's settings appear on its card again. The form was drawn from what the host was told, and the host was told a plugin had no settings at all, because the schema a plugin declared for itself never left its own process. Every settings form in the product was an empty panel.
 

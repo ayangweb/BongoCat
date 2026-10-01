@@ -162,6 +162,11 @@ The window's corner radius is deliberately not applied to a panel. A panel is no
 the window, and a panel that inherited the window's rounding would show a second
 rounded edge inside the first.
 
+A `FileField` is the one field the user picks rather than types: the window shows the path
+and opens the platform's own dialog, offering the extensions you declared. Declare a plain
+`TextField` if you genuinely want an editable line — the path is then the user's to type and
+you will have to cope with whatever they type.
+
 **The anchor you write is a default, not a decision.** One plugin holds each of the
 nine positions, the user chooses, and the host applies the choice when the layer is
 published — so a panel's corner is the one thing about its placement the plugin does

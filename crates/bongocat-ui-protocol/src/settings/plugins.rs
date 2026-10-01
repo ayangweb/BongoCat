@@ -46,31 +46,59 @@ impl SettingsPluginIcon {
 }
 
 /// Which control one setting is edited with.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+///
+/// Not `Copy` any more, and only because of one arm: a file field carries the extensions
+/// its dialog should offer. The other five carry nothing, and it would be nice for them
+/// to stay `Copy`; the alternative was a second list of extensions parallel to the kind,
+/// which is a thing to keep in step.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SettingsFieldKind {
     Toggle,
     Integer,
     Decimal,
     Text,
     Choice,
+    /// A file, chosen from the platform's own dialog rather than typed.
+    ///
+    /// Carries the extensions the plugin asked to be offered, because the dialog is a
+    /// filter and the plugin is the only side that knows what it will use the file for.
+    /// The window draws the path and a button; it does not open a second editor for the
+    /// same value, because two controls for one setting is a form with a question mark in
+    /// it.
+    File {
+        accept: Vec<String>,
+    },
 }
 
 impl SettingsFieldKind {
-    pub const ALL: [Self; 5] = [
-        Self::Toggle,
-        Self::Integer,
-        Self::Decimal,
-        Self::Text,
-        Self::Choice,
-    ];
+    /// One of each kind, for a caller that wants to know the vocabulary.
+    ///
+    /// A function rather than a constant because the file arm owns a vector, and a
+    /// `const` array of them cannot be built. The file arm is spelled with no extensions,
+    /// which is the honest "the host's own list".
+    pub fn all() -> Vec<Self> {
+        vec![
+            Self::Toggle,
+            Self::Integer,
+            Self::Decimal,
+            Self::Text,
+            Self::Choice,
+            Self::File { accept: Vec::new() },
+        ]
+    }
 
-    pub const fn as_str(self) -> &'static str {
+    /// The kind's name in the plugin's own vocabulary.
+    ///
+    /// By reference rather than by value, which is a consequence of the file arm owning
+    /// a vector: a `const fn` cannot take a value that has a destructor.
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Toggle => "toggle",
             Self::Integer => "integer",
             Self::Decimal => "decimal",
             Self::Text => "text",
             Self::Choice => "choice",
+            Self::File { .. } => "file",
         }
     }
 }
@@ -90,12 +118,19 @@ pub enum SettingsFieldValue {
 }
 
 impl SettingsFieldValue {
-    pub const fn kind(&self) -> SettingsFieldKind {
+    /// The kind a value of this shape would be edited with, absent a field saying
+    /// otherwise.
+    ///
+    /// `None` for a text value rather than a guess, because a text value is three kinds
+    /// at once — a line, a menu's value, a path — and only the field knows which. The one
+    /// caller that wanted a guess was a form that draws before the host has checked
+    /// anything, and it now waits.
+    pub const fn shape(&self) -> Option<SettingsFieldKind> {
         match self {
-            Self::Bool(_) => SettingsFieldKind::Toggle,
-            Self::Integer(_) => SettingsFieldKind::Integer,
-            Self::Decimal(_) => SettingsFieldKind::Decimal,
-            Self::Text(_) => SettingsFieldKind::Text,
+            Self::Bool(_) => Some(SettingsFieldKind::Toggle),
+            Self::Integer(_) => Some(SettingsFieldKind::Integer),
+            Self::Decimal(_) => Some(SettingsFieldKind::Decimal),
+            Self::Text(_) => None,
         }
     }
 
@@ -104,12 +139,14 @@ impl SettingsFieldValue {
     /// A choice reads back as text, which is exactly why the kind is read from the
     /// *field* rather than from the value's shape: a text value and a choice's value
     /// are the same bytes, and only the field knows which it is.
-    pub fn fits(&self, kind: SettingsFieldKind) -> bool {
+    pub fn fits(&self, kind: &SettingsFieldKind) -> bool {
         match kind {
             SettingsFieldKind::Toggle => matches!(self, Self::Bool(_)),
             SettingsFieldKind::Integer => matches!(self, Self::Integer(_)),
             SettingsFieldKind::Decimal => matches!(self, Self::Decimal(_)),
-            SettingsFieldKind::Text | SettingsFieldKind::Choice => {
+            SettingsFieldKind::Text
+            | SettingsFieldKind::Choice
+            | SettingsFieldKind::File { .. } => {
                 matches!(self, Self::Text(_))
             }
         }
@@ -437,13 +474,13 @@ mod tests {
             key: key.to_string(),
             label: key.to_string(),
             description: None,
-            kind,
             default: match kind {
                 SettingsFieldKind::Toggle => SettingsFieldValue::Bool(false),
                 SettingsFieldKind::Integer => SettingsFieldValue::Integer(1),
                 SettingsFieldKind::Decimal => SettingsFieldValue::Decimal(0.5),
                 _ => SettingsFieldValue::Text(String::new()),
             },
+            kind,
             minimum: None,
             maximum: None,
             step: None,
@@ -595,12 +632,12 @@ mod tests {
             label: "Meow".to_string(),
         }];
         assert!(
-            SettingsFieldValue::Text("meow".to_string()).fits(choice.kind),
+            SettingsFieldValue::Text("meow".to_string()).fits(&choice.kind),
             "a choice reads back as text, which is why the kind is read from the field rather \\
              than from the value's shape"
         );
         assert!(
-            !SettingsFieldValue::Integer(1).fits(choice.kind),
+            !SettingsFieldValue::Integer(1).fits(&choice.kind),
             "and a number is not a choice"
         );
     }

@@ -373,7 +373,7 @@ fn selecting_a_folder_enters_the_shared_source_reading_state(cx: &mut TestAppCon
     view.update(visual, |view, cx| {
         view.model_import.state = ModelImportState::Picking;
         let source_root = view
-            .apply_model_source_result(Ok(ModelSourcePickerOutcome::Selected(source.clone())))
+            .apply_model_source_result(Ok(FilePickerOutcome::Selected(source.clone())))
             .expect("the picker result should produce a source");
         assert!(matches!(view.model_import.state, ModelImportState::Picking));
 

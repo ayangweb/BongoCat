@@ -79,14 +79,14 @@ impl SettingsView {
                     return;
                 }
                 match result {
-                    Ok(ModelSourcePickerOutcome::Selected(source_root)) => {
-                        if let Some(source_root) = view.apply_model_source_result(Ok(
-                            ModelSourcePickerOutcome::Selected(source_root),
-                        )) {
+                    Ok(FilePickerOutcome::Selected(source_root)) => {
+                        if let Some(source_root) = view
+                            .apply_model_source_result(Ok(FilePickerOutcome::Selected(source_root)))
+                        {
                             view.inspect_model_source(source_root, cx);
                         }
                     }
-                    Ok(ModelSourcePickerOutcome::Cancelled) => view.model_import.reset(),
+                    Ok(FilePickerOutcome::Cancelled) => view.model_import.reset(),
                     Err(_) => {
                         view.model_import.reset();
                         view.pending_notification = Some(SettingsError::new(

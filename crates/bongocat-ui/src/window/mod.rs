@@ -21,8 +21,7 @@ use crate::{
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
-    ModelSourcePickerError, ModelSourcePickerOutcome, pick_model_cover, pick_model_folder,
-    validate_model_folder,
+    FilePickerError, FilePickerOutcome, pick_model_cover, pick_model_folder, validate_model_folder,
 };
 use gpui_kit::component::{
     ActiveTheme, Disableable, Icon, IndexPath, Root, Theme, ThemeMode, ThemeStyled, WindowExt,
@@ -299,6 +298,15 @@ pub struct SettingsView {
     /// about the switch — so the page has to remember what it was waiting for and settle
     /// it off the snapshot poll.
     pub(crate) plugin_settings_pending: Option<String>,
+    /// The plugin file field whose native dialog is open, as the plugin and the key.
+    ///
+    /// Two things at once rather than one flag, and both are needed: a second press must
+    /// be refused while a dialog is up — the platform owns one modal panel at a time and
+    /// a second request would be a dialog behind a dialog — and the result has to know
+    /// *which* field to write, which a flag cannot say. Taken when the result arrives, so
+    /// a result that arrives after the form was closed is a no-op rather than a write
+    /// into somebody else's settings.
+    pub(crate) plugin_file_picking: Option<(String, String)>,
     pub(crate) language_select: Entity<LanguageSelectState>,
     pub(crate) theme_select: Entity<ThemeSelectState>,
     pub(crate) logging_level_select: Entity<LoggingLevelSelectState>,

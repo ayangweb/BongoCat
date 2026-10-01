@@ -71,23 +71,36 @@ reading of a request that carries no meaning at all.
   keystroke sound during a model's own motion is cut short rather than layered. That is the
   cost of one device and one writer, and it is the same behaviour a single model sound
   already had.
-- An audio file is named by path, not uploaded. A plugin has no notion of an upload, and a
-  desktop user already has the file on the machine; the setting is a path with the
-  protocol's own text bound, and a value too long to be a path is refused by the host
-  before the plugin sees it.
+- An audio file is chosen from the machine, not uploaded. A plugin has no notion of an
+  upload, and a desktop user already has the file. The setting is a `File` field, which the
+  window draws as the path plus the platform's own dialog — so a person picks a file rather
+  than knowing where they put it, and the extensions the dialog offers are the plugin's own
+  declaration rather than a list the host keeps. Typing a path is not offered for this
+  field, and a plugin that genuinely wants an editable line declares a `Text` field: two
+  controls for one value is a form with a question mark in it.
 - The format list is a convenience, not the decision. A file with no extension is not
   refused for that alone, because the decoder knows more than a list of extensions does.
 
 ## Consequences
 
-- `bongocat-plugin-protocol` gains the request, the path bound, and a `sanitized` arm that
-  clamps the volume.
+- `bongocat-plugin-protocol` gains the request, the path bound, a `sanitized` arm that
+  clamps the volume, and a `File` config control whose extensions are validated as
+  extensions — a filter the dialog cannot use is a declaration that silently did nothing.
 - `bongocat-plugin` gains the sound check, its refusals and a counter of its own — a sound
   is not a model reaction, and a diagnostic that conflated them could not answer the
   question a user actually asks of it: "is the typing-sound plugin working?"
-- `bongocat-plugin-sdk` gains `Host::play_sound` and a public `Host::request`, so a plugin
-  that has a request in hand rather than a name to type can send it and still get its
-  answer back on the same counter.
+- `bongocat-plugin-sdk` gains `Host::play_sound`, a public `Host::request` so a plugin that
+  has a request in hand rather than a name to type can send it and still get its answer
+  back on the same counter, and a `FileField` builder so a plugin declares the file rather
+  than hand-building a control.
+- `bongocat-platform` gains `pick_audio_file` beside the two model pickers, and the module
+  is renamed `file_picker` with its outcome types renamed to match: three dialogs are one
+  capability, and a module named for the first thing it was used for is a place the next
+  one does not get put.
+- The window's file row and its dialog are two steps — *is this request taken* and *open the
+  panel* — because a machine with no file panel answers the second with an error. Keeping
+  them together would make the part worth checking (which requests are taken, and what the
+  answer does to the value) reachable only on a machine that has a desktop.
 - The worker is handed the product's audio client at start. A build with no audio service
   answers with the unavailable client, so the worker needs no knowledge of whether there is
   one.

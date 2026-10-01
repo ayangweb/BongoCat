@@ -49,6 +49,23 @@ pub const MAXIMUM_CONFIG_KEY_BYTES: usize = 64;
 /// The longest a text value or placeholder may be, in bytes.
 pub const MAXIMUM_CONFIG_TEXT_BYTES: usize = 4096;
 
+/// The longest a file path may be, in bytes.
+///
+/// Its own bound rather than the text one, and larger: a path is longer than a label, and
+/// a Windows path under `MAXIMUM_CONFIG_TEXT_BYTES` is a path somebody could genuinely
+/// have. Still finite, because it is a string in a JSON document and the host is about to
+/// resolve it against the filesystem.
+pub const MAXIMUM_CONFIG_PATH_BYTES: usize = 4096;
+
+/// The most extensions one file field may ask the dialog to offer.
+///
+/// A filter list, not a list a person reads: past a handful the dialog stops narrowing
+/// anything, which is the same reason [`MAXIMUM_CHOICE_OPTIONS`] exists for a menu.
+pub const MAXIMUM_FILE_EXTENSIONS: usize = 16;
+
+/// The longest one extension in a dialog filter may be.
+pub const MAXIMUM_FILE_EXTENSION_BYTES: usize = 16;
+
 /// The most choices one field may offer.
 ///
 /// A `Select` is a menu; a list long enough to need a search field is a different
@@ -195,6 +212,18 @@ impl ConfigValue {
                 }
                 Ok(Self::Text(fitted))
             }
+            // A path is bounded like any other text, and a newline in one is a space
+            // rather than a refused value: a path cannot contain a line break, and a value
+            // carrying one was never a path anybody typed. Nothing here checks that the
+            // file exists — a path is what the plugin will use, possibly after the user
+            // moves the file, and refusing a setting because the file is not there *yet*
+            // would make the control impossible to set up.
+            (ConfigControl::File { .. }, Self::Text(value)) => {
+                if value.len() > MAXIMUM_CONFIG_PATH_BYTES {
+                    return Err(wrong_kind());
+                }
+                Ok(Self::Text(value.replace(['\n', '\r'], " ")))
+            }
             (ConfigControl::Choice { options, .. }, Self::Text(value)) => {
                 if options.iter().any(|option| option.value == *value) {
                     Ok(Self::Text(value.clone()))
@@ -223,15 +252,17 @@ pub enum ConfigKind {
     Decimal,
     Text,
     Choice,
+    File,
 }
 
 impl ConfigKind {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Toggle,
         Self::Integer,
         Self::Decimal,
         Self::Text,
         Self::Choice,
+        Self::File,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -241,6 +272,7 @@ impl ConfigKind {
             Self::Decimal => "decimal",
             Self::Text => "text",
             Self::Choice => "choice",
+            Self::File => "file",
         }
     }
 }
@@ -312,6 +344,33 @@ pub enum ConfigControl {
         default: String,
         options: Vec<ChoiceOption>,
     },
+    /// A file on this machine, which the user can type the path of or pick from a dialog.
+    ///
+    /// A text field that opens a dialog, which is the whole of what it adds over
+    /// [`Self::Text`]. The two facts are separated deliberately: **the value is a path the
+    /// host never interprets, and the extensions are a filter for the dialog rather than a
+    /// rule.** A plugin declaring `mp3` is asking to be offered mp3s, not asserting that
+    /// the product can decode one — what can be decoded is the host's judgement when the
+    /// file is actually used, and a file the dialog let through and the host cannot play
+    /// is a file the user chose and was told about, rather than a file the plugin was
+    /// stopped from naming.
+    ///
+    /// The host does check one thing about a path it is asked to act on: whether it is
+    /// inside a directory it is willing to open. A plugin cannot make the product fetch a
+    /// URL, and a path is the only thing it can name.
+    File {
+        #[serde(default)]
+        default: String,
+        /// Extensions the dialog offers, without a leading dot. Empty means the host's own
+        /// list for the kind of file, which is better than an unfiltered dialog showing
+        /// every file on the machine.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        accept: Vec<String>,
+        /// A hint shown while the field is empty, in the plugin's own copy. Never a value:
+        /// a placeholder that looked like data would be saved as data.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        placeholder: Option<LocalizedText>,
+    },
 }
 
 fn default_zero() -> i64 {
@@ -341,6 +400,7 @@ impl ConfigControl {
             Self::Decimal { .. } => ConfigKind::Decimal,
             Self::Text { .. } => ConfigKind::Text,
             Self::Choice { .. } => ConfigKind::Choice,
+            Self::File { .. } => ConfigKind::File,
         }
     }
 
@@ -357,6 +417,7 @@ impl ConfigControl {
             Self::Decimal { default, .. } => ConfigValue::Decimal(*default),
             Self::Text { default, .. } => ConfigValue::Text(default.clone()),
             Self::Choice { default, .. } => ConfigValue::Text(default.clone()),
+            Self::File { default, .. } => ConfigValue::Text(default.clone()),
         }
     }
 
@@ -364,6 +425,20 @@ impl ConfigControl {
     pub fn bounds_are_sane(&self) -> bool {
         match self {
             Self::Toggle { .. } => true,
+            // Every extension is checked rather than bounded as a list, because a filter
+            // the dialog cannot use is a declaration that silently did nothing: a list of
+            // extensions containing a path separator or a newline is a plugin that asked
+            // for something that is not an extension.
+            Self::File { accept, .. } => {
+                accept.len() <= MAXIMUM_FILE_EXTENSIONS
+                    && accept.iter().all(|extension| {
+                        !extension.is_empty()
+                            && extension.len() <= MAXIMUM_FILE_EXTENSION_BYTES
+                            && extension
+                                .bytes()
+                                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+                    })
+            }
             Self::Integer {
                 default,
                 minimum,
@@ -672,6 +747,23 @@ mod tests {
         }
     }
 
+    /// A file field, the way a plugin that plays a sound of the user's own declares one.
+    fn sound_file(accept: &[&str]) -> ConfigField {
+        ConfigField {
+            key: "sound_path".to_string(),
+            label: "Audio file".into(),
+            description: None,
+            control: ConfigControl::File {
+                default: String::new(),
+                accept: accept
+                    .iter()
+                    .map(|extension| (*extension).to_owned())
+                    .collect(),
+                placeholder: None,
+            },
+        }
+    }
+
     fn schema(fields: Vec<ConfigField>) -> ConfigSchema {
         ConfigSchema {
             schema_version: CONFIG_SCHEMA_VERSION,
@@ -855,6 +947,128 @@ mod tests {
             complete.get("auto_start"),
             Some(&ConfigValue::Bool(false)),
             "a field with no value has the plugin's own default, not an absence"
+        );
+    }
+
+    #[test]
+    fn a_file_field_is_a_path_the_host_does_not_interpret() {
+        // The whole of what the kind adds: a path, bounded like text, with nothing checked
+        // about whether the file is there. A file the user has not chosen yet, or one they
+        // will choose after setting this up, is a path like any other — refusing it because
+        // the bytes are not on the machine right now would make the control impossible to
+        // set up at all.
+        let field = sound_file(&["mp3", "flac"]);
+        let document = ConfigDocument(
+            [(
+                "sound_path".to_string(),
+                ConfigValue::Text("/Users/you/sounds/click.mp3".to_string()),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert_eq!(
+            document
+                .completed_with(&schema(vec![field.clone()]))
+                .get("sound_path"),
+            Some(&ConfigValue::Text(
+                "/Users/you/sounds/click.mp3".to_string()
+            ))
+        );
+        assert_eq!(field.control.kind(), ConfigKind::File);
+    }
+
+    #[test]
+    fn an_empty_path_is_a_value_rather_than_a_missing_setting() {
+        // The empty case is real: "use the model's own sound" is a path that is blank, and
+        // a form that dropped the field would leave the plugin reading a default it never
+        // showed the user.
+        let document = ConfigDocument(
+            [("sound_path".to_string(), ConfigValue::Text(String::new()))]
+                .into_iter()
+                .collect(),
+        );
+        assert_eq!(
+            document
+                .completed_with(&schema(vec![sound_file(&["mp3"])]))
+                .get("sound_path"),
+            Some(&ConfigValue::Text(String::new()))
+        );
+    }
+
+    #[test]
+    fn a_path_longer_than_a_path_can_be_is_refused_rather_than_stored() {
+        let field_default = ConfigValue::Text(String::new());
+        let document = ConfigDocument(
+            [(
+                "sound_path".to_string(),
+                ConfigValue::Text("a".repeat(MAXIMUM_CONFIG_PATH_BYTES + 1)),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert_eq!(
+            document
+                .completed_with(&schema(vec![sound_file(&["mp3"])]))
+                .get("sound_path"),
+            Some(&field_default),
+            "because the host is about to resolve it against the filesystem and a megabyte of \
+             path is not one — and a refused value reads as the field's own default rather \
+             than as a missing setting, which is the same answer as one the user never typed"
+        );
+    }
+
+    #[test]
+    fn a_newline_in_a_path_is_a_space_rather_than_a_line_break() {
+        // A path cannot contain a line break, so a value carrying one was never a path
+        // anybody typed — and a settings file is a line-oriented document, where a raw
+        // newline in a value is a document that cannot be read back.
+        let document = ConfigDocument(
+            [(
+                "sound_path".to_string(),
+                ConfigValue::Text("/Users/you/click\n.mp3".to_string()),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert_eq!(
+            document
+                .completed_with(&schema(vec![sound_file(&["mp3"])]))
+                .get("sound_path"),
+            Some(&ConfigValue::Text("/Users/you/click .mp3".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_filter_that_is_not_a_list_of_extensions_is_refused() {
+        // A filter the dialog cannot use is a declaration that silently did nothing, and a
+        // list containing a separator or a newline is a plugin that asked for something
+        // that is not an extension at all. It is refused rather than dropped, so the author
+        // finds out at load.
+        for unusable in [
+            vec![""],
+            vec!["mp3", ""],
+            vec!["../etc"],
+            vec!["a/b"],
+            vec!["a\nb"],
+            vec![&"x".repeat(MAXIMUM_FILE_EXTENSION_BYTES + 1)],
+            vec!["mp3"; MAXIMUM_FILE_EXTENSIONS + 1],
+        ] {
+            let schema = schema(vec![sound_file(&unusable)]);
+            assert!(
+                schema.validate().is_err(),
+                "{unusable:?} is not a list of file extensions"
+            );
+        }
+        assert!(
+            schema(vec![sound_file(&["mp3", "flac", "mp3"])])
+                .validate()
+                .is_ok(),
+            "while a list the dialog can use is accepted, and repetition is not a reason to \
+             refuse a declaration"
+        );
+        assert!(
+            schema(vec![sound_file(&[])]).validate().is_ok(),
+            "and an empty list is the host's own rather than an unfiltered dialog"
         );
     }
 

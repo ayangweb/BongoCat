@@ -120,7 +120,7 @@ pub use panel::{
 pub use plugin::{Descriptor, Event, Plugin, Tick};
 pub use run::{Session, run};
 pub use settings::{
-    Choice, Decimal, Field, Integer, Option_, Settings, Store, TextField, Toggle, Values,
+    Choice, Decimal, Field, FileField, Integer, Option_, Settings, Store, TextField, Toggle, Values,
 };
 
 /// Everything a plugin normally names, in one `use`.
@@ -138,7 +138,8 @@ pub mod prelude {
     pub use crate::plugin::{Descriptor, Event, Limits, Plugin, Tick};
     pub use crate::run::Session;
     pub use crate::settings::{
-        Choice, Decimal, Field, Integer, Option_, Settings, Store, TextField, Toggle, Values,
+        Choice, Decimal, Field, FileField, Integer, Option_, Settings, Store, TextField, Toggle,
+        Values,
     };
     pub use crate::{
         ActionGlyph, ConfigDocument, ConfigKind, ConfigValue, HostMessage, HostState, InputEvent,

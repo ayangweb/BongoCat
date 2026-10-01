@@ -577,6 +577,122 @@ fn the_position_row_is_the_first_thing_a_drawing_plugins_form_offers(cx: &mut Te
     );
 }
 
+/// A file field is a path and a button, and the button's answer reaches the plugin.
+///
+/// The requirement is that a user chooses a file rather than knowing a path, and the only
+/// half of that a test can check without opening a real file panel is what happens to the
+/// answer — so the dialog is injected, exactly as the model cover picker is, and the
+/// assertions are about the value that goes to the plugin.
+#[gpui_kit::test]
+fn a_file_field_takes_the_path_the_dialog_answered(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let mut entry = entry_with_fields("typing-sound", true, true);
+    let sound = SettingsPluginField {
+        key: "sound_path".to_string(),
+        label: "Audio file".to_string(),
+        description: None,
+        kind: SettingsFieldKind::File {
+            accept: vec!["mp3".to_string()],
+        },
+        default: SettingsFieldValue::Text(String::new()),
+        minimum: None,
+        maximum: None,
+        step: None,
+        unit: None,
+        placeholder: None,
+        multiline: false,
+        options: Vec::new(),
+    };
+    entry.fields.push(sound.clone());
+    entry
+        .values
+        .insert(sound.key.clone(), sound.default.clone());
+    let seeded = snapshot_with_plugins(SettingsPlugins {
+        available: true,
+        catalog_read: true,
+        entries: vec![entry],
+        ..SettingsPlugins::default()
+    });
+    let (view, visual) = page_over(cx, client, seeded);
+    visual.update(|window, cx| window.click(ElementId::from("plugin-configure-typing-sound"), cx));
+
+    // Asking for the dialog records which field asked, because a result has nowhere to
+    // go without it — and a second ask while one is up is refused rather than opening a
+    // panel behind a panel.
+    let picking = view.update(visual, |view, cx| {
+        view.choose_plugin_file("typing-sound", "sound_path", cx)
+    });
+    assert!(
+        picking,
+        "the first press asks for the dialog and remembers the field"
+    );
+    assert_eq!(
+        view.read_with(visual, |view, _| view.plugin_file_picking.clone()),
+        Some(("typing-sound".to_string(), "sound_path".to_string())),
+        "as the plugin and the key, because that is what a result has to be written to"
+    );
+    let refused = view.update(visual, |view, cx| {
+        view.choose_plugin_file("typing-sound", "sound_path", cx)
+    });
+    assert!(!refused, "and a second press while it is up is refused");
+
+    // The chosen file is what the plugin is told.
+    view.update(visual, |view, cx| {
+        view.apply_plugin_file_result(
+            Ok(bongocat_platform::FilePickerOutcome::Selected(
+                PathBuf::from("/Users/you/click.mp3"),
+            )),
+            cx,
+        )
+    });
+    assert_eq!(
+        view.read_with(visual, |view, _| view
+            .plugin_settings
+            .as_ref()
+            .and_then(|draft| draft.values.get("sound_path").cloned())),
+        Some(SettingsFieldValue::Text("/Users/you/click.mp3".to_string())),
+        "a chosen file becomes the value the plugin is handed, which is the whole point of \
+         the row"
+    );
+    assert_eq!(
+        view.read_with(visual, |view, _| view.plugin_file_picking.clone()),
+        None,
+        "and the field is no longer waiting, so the button works again"
+    );
+
+    // A cancel is not a change and gets no message: the user closed the panel because
+    // they read what was already set and were happy with it.
+    assert!(view.update(visual, |view, cx| {
+        view.choose_plugin_file("typing-sound", "sound_path", cx)
+    }));
+    view.update(visual, |view, cx| {
+        view.apply_plugin_file_result(Ok(bongocat_platform::FilePickerOutcome::Cancelled), cx)
+    });
+    assert_eq!(
+        view.read_with(visual, |view, _| view
+            .plugin_settings
+            .as_ref()
+            .and_then(|draft| draft.values.get("sound_path").cloned())),
+        Some(SettingsFieldValue::Text("/Users/you/click.mp3".to_string())),
+        "so the file the user already chose survives a dialog they backed out of"
+    );
+    assert_eq!(
+        view.read_with(visual, |view, _| view.pending_notification),
+        None,
+        "and nothing is reported as an error, because nothing went wrong"
+    );
+
+    // A field the open form does not have is refused rather than opened: a dialog that
+    // came back with a file and nowhere to put it would eat the user's click.
+    assert!(
+        !view.update(visual, |view, cx| {
+            view.choose_plugin_file("typing-sound", "no_such_field", cx)
+        }),
+        "a field this form does not show is refused before a dialog is opened"
+    );
+}
+
 /// The cards are a grid, not a column of sections.
 ///
 /// This is the page's shape, and it is what `gpui-kit` cannot express for us: the

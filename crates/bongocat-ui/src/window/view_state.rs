@@ -360,6 +360,7 @@ impl SettingsView {
             applied_theme: None,
             plugin_settings: None,
             plugin_settings_pending: None,
+            plugin_file_picking: None,
             language_select,
             theme_select,
             logging_level_select,

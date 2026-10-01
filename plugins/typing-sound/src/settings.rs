@@ -140,8 +140,13 @@ pub fn declared_settings() -> Settings {
             .into(),
         )
         .with(
-            TextField::new("sound_path", copy::sound_path_label())
-                .defaulting("")
+            // A file field rather than a line of text, and the difference is the whole
+            // reason this kind exists: a path a person has to know is not a path a person
+            // can choose. The extensions are what the dialog offers — a request, not a
+            // rule, because whether the bytes can be played is the host's judgement when
+            // the sound is asked for.
+            FileField::new("sound_path", copy::sound_path_label())
+                .accepting(&["mp3", "wav", "flac", "m4a"])
                 .described(copy::sound_path_help())
                 .into(),
         )

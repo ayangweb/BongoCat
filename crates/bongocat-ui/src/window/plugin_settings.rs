@@ -22,6 +22,7 @@
 use super::*;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::setting::{AnySettingField, SettingFieldType};
+use gpui_kit::component::{Sizable as _, Size};
 use std::collections::BTreeMap;
 
 /// One plugin's open settings, as the page's panel holds them.
@@ -74,7 +75,7 @@ pub(super) fn field_rows(
     rows.extend(entry.fields.iter().map(|field| {
         let mut row = SettingItem::new(
             SharedString::from(field.label.clone()),
-            field_control(entry, field, view.clone()),
+            field_control(entry, field, view.clone(), language),
         );
         if let Some(description) = &field.description {
             row = row.description(SharedString::from(description.clone()));
@@ -370,6 +371,13 @@ impl AnySettingField for AnyField {
     }
 }
 
+/// The button size every control in a plugin's form uses.
+///
+/// The same size the plugin center's own buttons are, rather than a second size for
+/// "buttons inside a form": two sizes for the same action in one window is a window where
+/// the user has to work out which buttons matter.
+const PLUGIN_FIELD_SIZE: Size = Size::Medium;
+
 /// One field's control, chosen by the field's own kind.
 ///
 /// Exhaustive on purpose: a sixth kind without an arm here would be a field that
@@ -381,14 +389,16 @@ fn field_control(
     entry: &SettingsPluginEntry,
     field: &SettingsPluginField,
     view: Entity<SettingsView>,
+    language: SettingsLanguage,
 ) -> AnyField {
     let plugin = entry.id.clone();
     let key = field.key.clone();
+    let kind = field.kind.clone();
     let value = entry
         .value_of(&field.key)
         .cloned()
         .unwrap_or_else(|| field.default.clone());
-    match (control_kind(field.kind, &value), value) {
+    match (control_kind(&kind, &value), value) {
         (ControlKind::Toggle, SettingsFieldValue::Bool(current)) => AnyField::toggle(
             SettingField::switch(move |_app| current, report_flag(&plugin, &key, view)),
         ),
@@ -452,6 +462,99 @@ fn field_control(
                 report(&plugin, &key, view),
             ))
         }
+        (ControlKind::File, SettingsFieldValue::Text(current)) => {
+            // A path beside a button, not a text box beside a button: two controls for
+            // one setting is a form with a question mark in it. The path is shown rather
+            // than edited because a person picks a file rather than typing where it is,
+            // and because a path typed by hand is the one case where the value the dialog
+            // cannot produce is still legal — which a plugin that wants can declare as a
+            // plain `Text` field instead.
+            let locale = language.catalog_locale();
+            let unset = field.placeholder.clone().unwrap_or_else(|| {
+                bongocat_i18n::text(locale, "settings.plugins.file.unset").to_string()
+            });
+            let browse_label =
+                bongocat_i18n::text(locale, "settings.plugins.file.browse").to_string();
+            let clear_label =
+                bongocat_i18n::text(locale, "settings.plugins.file.clear").to_string();
+            let accept = match &kind {
+                SettingsFieldKind::File { accept } => accept.clone(),
+                _ => Vec::new(),
+            };
+            let browse = view.clone();
+            let clear = view.clone();
+            AnyField::empty(SettingField::render(move |_options, _window, app| {
+                let theme = ActiveTheme::theme(app);
+                let shown = if current.is_empty() {
+                    unset.clone()
+                } else {
+                    current.clone()
+                };
+                let muted = current.is_empty();
+                div()
+                    .flex()
+                    .flex_col()
+                    .w_full()
+                    .items_start()
+                    .child(
+                        div()
+                            .w_full()
+                            .truncate()
+                            .text_sm()
+                            .when(muted, |this| this.text_color(theme.muted_foreground))
+                            .when(!muted, |this| this.text_color(theme.foreground))
+                            .child(SharedString::from(shown)),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .mt_1()
+                            .gap_2()
+                            .child(
+                                Button::new(SharedString::from(format!(
+                                    "plugin-file-browse-{plugin}-{key}"
+                                )))
+                                .label(browse_label.clone())
+                                .with_size(PLUGIN_FIELD_SIZE)
+                                .on_click({
+                                    let (plugin, key) = (plugin.clone(), key.clone());
+                                    let accept = accept.clone();
+                                    let browse = browse.clone();
+                                    move |_, _, app| {
+                                        browse.update(app, |view, cx| {
+                                            if view.choose_plugin_file(&plugin, &key, cx) {
+                                                view.open_plugin_file_picker(accept.clone(), cx);
+                                            }
+                                        });
+                                    }
+                                }),
+                            )
+                            .when(!current.is_empty(), |this| {
+                                this.child(
+                                    Button::new(SharedString::from(format!(
+                                        "plugin-file-clear-{plugin}-{key}"
+                                    )))
+                                    .label(clear_label.clone())
+                                    .with_size(PLUGIN_FIELD_SIZE)
+                                    .on_click({
+                                        let (plugin, key) = (plugin.clone(), key.clone());
+                                        let clear = clear.clone();
+                                        move |_, _, app| {
+                                            clear.update(app, |view, cx| {
+                                                view.set_plugin_field(
+                                                    &plugin,
+                                                    &key,
+                                                    SettingsFieldValue::Text(String::new()),
+                                                    cx,
+                                                );
+                                            });
+                                        }
+                                    }),
+                                )
+                            }),
+                    )
+            }))
+        }
         (ControlKind::Empty, _) => AnyField::empty(SettingField::element(
             |_: &RenderOptions, _: &mut Window, _: &mut App| div().into_any_element(),
         )),
@@ -470,12 +573,13 @@ fn field_control(
 /// Split from the control itself so the mapping can be asserted without a view: the
 /// kind is the whole of the decision, and the arms below are the four controls the
 /// settings window already has.
-fn control_kind(kind: SettingsFieldKind, value: &SettingsFieldValue) -> ControlKind {
+fn control_kind(kind: &SettingsFieldKind, value: &SettingsFieldValue) -> ControlKind {
     match (kind, value) {
         (SettingsFieldKind::Toggle, SettingsFieldValue::Bool(_)) => ControlKind::Toggle,
         (SettingsFieldKind::Integer | SettingsFieldKind::Decimal, _) => ControlKind::Number,
         (SettingsFieldKind::Choice, SettingsFieldValue::Text(_)) => ControlKind::Choice,
         (SettingsFieldKind::Text, SettingsFieldValue::Text(_)) => ControlKind::Input,
+        (SettingsFieldKind::File { .. }, SettingsFieldValue::Text(_)) => ControlKind::File,
         _ => ControlKind::Empty,
     }
 }
@@ -487,6 +591,12 @@ enum ControlKind {
     Number,
     Choice,
     Input,
+    /// A path, chosen from the platform's own dialog rather than typed.
+    ///
+    /// Its own kind rather than a flag on [`ControlKind::Input`] because the two rows are
+    /// not the same row: a file is a read-only path beside a button, and an editable text
+    /// box next to a button would be two controls for one setting.
+    File,
     Empty,
 }
 
@@ -568,7 +678,6 @@ mod tests {
             key: "setting".to_string(),
             label: "Setting".to_string(),
             description: None,
-            kind,
             default: match kind {
                 SettingsFieldKind::Toggle => SettingsFieldValue::Bool(false),
                 SettingsFieldKind::Integer => SettingsFieldValue::Integer(1),
@@ -576,6 +685,7 @@ mod tests {
                 _ => SettingsFieldValue::Text(String::new()),
             },
             minimum: None,
+            kind,
             maximum: None,
             step: None,
             unit: None,
@@ -627,7 +737,12 @@ mod tests {
         // The mapping is the whole of a schema-driven form, so a kind with no arm here
         // would be a field that renders with nothing on its right. This asserts the
         // decision rather than the widget, because the widget is gpui-kit's business.
-        assert_eq!(SettingsFieldKind::ALL.len(), 5);
+        assert_eq!(
+            SettingsFieldKind::all().len(),
+            6,
+            "and every kind in that list has an arm in the match below, or this test is \
+             counting a kind nothing draws"
+        );
         let expected = [
             (
                 SettingsFieldKind::Toggle,
@@ -654,10 +769,17 @@ mod tests {
                 SettingsFieldValue::Text(String::new()),
                 ControlKind::Choice,
             ),
+            (
+                SettingsFieldKind::File {
+                    accept: vec!["mp3".to_string()],
+                },
+                SettingsFieldValue::Text("/Users/you/click.mp3".to_string()),
+                ControlKind::File,
+            ),
         ];
         for (kind, value, control) in expected {
             assert_eq!(
-                control_kind(kind, &value),
+                control_kind(&kind, &value),
                 control,
                 "{kind:?} holding a value of its own kind reaches {control:?}"
             );
@@ -672,13 +794,13 @@ mod tests {
         let wrong = SettingsFieldValue::Integer(1);
         for kind in [SettingsFieldKind::Choice, SettingsFieldKind::Text] {
             assert_eq!(
-                control_kind(kind, &wrong),
+                control_kind(&kind, &wrong),
                 ControlKind::Empty,
                 "{kind:?} holding a number draws nothing"
             );
         }
         assert_eq!(
-            control_kind(SettingsFieldKind::Toggle, &wrong),
+            control_kind(&SettingsFieldKind::Toggle, &wrong),
             ControlKind::Empty,
             "and so does a switch holding one"
         );

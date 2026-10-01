@@ -525,6 +525,11 @@
         "uninstall": "Gỡ cài đặt",
         "configure": "Cài đặt"
       },
+      "file": {
+        "unset": "Chưa chọn tệp nào",
+        "browse": "Chọn tệp…",
+        "clear": "Xóa"
+      },
       "refusal": {
         "not_published": "Không có cho phiên bản BongoCat này trên hệ thống này."
       },

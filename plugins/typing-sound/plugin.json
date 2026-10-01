@@ -98,14 +98,14 @@
       }
     },
     "sound_path_help": {
-      "default": "The full path to an audio file, such as /Users/you/sounds/click.mp3. Leave it empty to use the model's own sound.",
+      "default": "A sound file of your own, chosen from your computer. Leave this empty to use the model's own sound.",
       "by_locale": {
-        "zh-CN": "音频文件的完整路径，例如 /Users/you/sounds/click.mp3。留空则使用模型自带的声音。",
-        "zh-TW": "音訊檔案的完整路徑，例如 /Users/you/sounds/click.mp3。留空則使用模型自帶的聲音。",
-        "ar-SA": "المسار الكامل إلى ملف صوتي، مثل ‎/Users/you/sounds/click.mp3. اتركه فارغًا لاستخدام صوت النموذج.",
-        "vi-VN": "Đường dẫn đầy đủ tới một tệp âm thanh, ví dụ /Users/you/sounds/click.mp3. Để trống để dùng âm thanh của mô hình.",
-        "pt-BR": "O caminho completo até um arquivo de áudio, como /Users/you/sounds/click.mp3. Deixe vazio para usar o som do próprio modelo.",
-        "ko-KR": "오디오 파일의 전체 경로입니다. 예를 들어 /Users/you/sounds/click.mp3. 비워 두면 모델 자체 소리를 사용합니다."
+        "zh-CN": "你自己电脑上的声音文件，从文件选择器中挑选。留空则使用模型自带的声音。",
+        "zh-TW": "你自己電腦上的聲音檔案，從檔案選擇器中挑選。留空則使用模型自帶的聲音。",
+        "ar-SA": "ملف صوتي من عندك، تختاره من حاسوبك. اتركه فارغًا لاستخدام صوت النموذج.",
+        "vi-VN": "Tệp âm thanh của bạn, chọn từ máy tính của bạn. Để trống để dùng âm thanh của mô hình.",
+        "pt-BR": "Um arquivo de áudio seu, escolhido no seu computador. Deixe vazio para usar o som do próprio modelo.",
+        "ko-KR": "내 컴퓨터에서 고른 나만의 소리 파일입니다. 비워 두면 모델 자체 소리를 사용합니다."
       }
     },
     "no_such_sound_file": {

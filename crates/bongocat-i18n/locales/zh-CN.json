@@ -525,6 +525,11 @@
         "uninstall": "卸载",
         "configure": "设置"
       },
+      "file": {
+        "unset": "尚未选择文件",
+        "browse": "选择文件…",
+        "clear": "清除"
+      },
       "refusal": {
         "not_published": "当前系统上的此版本 BongoCat 不提供该插件。"
       },

@@ -27,8 +27,8 @@ use bongocat_plugin::{PluginErrorCode, PluginVersion};
 use std::collections::BTreeMap;
 
 use bongocat_plugin::{
-    ConfigControl, ConfigDocument, ConfigField, ConfigKind, ConfigSchema, ConfigValue,
-    LocalizedText, PluginIcon,
+    ConfigControl, ConfigDocument, ConfigField, ConfigSchema, ConfigValue, LocalizedText,
+    PluginIcon,
 };
 
 /// Project one worker snapshot.
@@ -232,12 +232,19 @@ fn project_field(field: &ConfigField, locale: &str) -> SettingsPluginField {
 }
 
 fn project_kind(control: &ConfigControl) -> SettingsFieldKind {
-    match control.kind() {
-        ConfigKind::Toggle => SettingsFieldKind::Toggle,
-        ConfigKind::Integer => SettingsFieldKind::Integer,
-        ConfigKind::Decimal => SettingsFieldKind::Decimal,
-        ConfigKind::Text => SettingsFieldKind::Text,
-        ConfigKind::Choice => SettingsFieldKind::Choice,
+    match control {
+        ConfigControl::Toggle { .. } => SettingsFieldKind::Toggle,
+        ConfigControl::Integer { .. } => SettingsFieldKind::Integer,
+        ConfigControl::Decimal { .. } => SettingsFieldKind::Decimal,
+        ConfigControl::Text { .. } => SettingsFieldKind::Text,
+        ConfigControl::Choice { .. } => SettingsFieldKind::Choice,
+        // The extensions travel with the kind rather than in a list beside it, because a
+        // filter the dialog cannot use is a declaration that silently did nothing: a
+        // window holding a separate list would be a second thing to keep in step with the
+        // control it belongs to.
+        ConfigControl::File { accept, .. } => SettingsFieldKind::File {
+            accept: accept.clone(),
+        },
     }
 }
 
@@ -312,7 +319,9 @@ fn unit_of(control: &ConfigControl) -> Option<&LocalizedText> {
 
 fn placeholder_of(control: &ConfigControl) -> Option<&LocalizedText> {
     match control {
-        ConfigControl::Text { placeholder, .. } => placeholder.as_ref(),
+        ConfigControl::Text { placeholder, .. } | ConfigControl::File { placeholder, .. } => {
+            placeholder.as_ref()
+        }
         _ => None,
     }
 }

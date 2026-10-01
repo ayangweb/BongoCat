@@ -14,7 +14,7 @@
 //! Windows that flag only covers the cancellation path: an accepted run selects
 //! the folder by hand and uses `--expect-selected`.
 
-use bongocat_platform::{ModelSourcePickerOutcome, pick_model_folder};
+use bongocat_platform::{FilePickerOutcome, pick_model_folder};
 use std::{
     env,
     error::Error,
@@ -76,9 +76,7 @@ fn prepare_native_application() -> NativeApplication {
 
 #[cfg(target_os = "macos")]
 fn start_native_picker(
-    sender: mpsc::SyncSender<
-        Result<ModelSourcePickerOutcome, bongocat_platform::ModelSourcePickerError>,
-    >,
+    sender: mpsc::SyncSender<Result<FilePickerOutcome, bongocat_platform::FilePickerError>>,
 ) {
     use dispatch2::DispatchQueue;
 
@@ -306,15 +304,15 @@ fn run_native_picker_smoke() -> Result<(), Box<dyn Error>> {
             .map_err(|_| io::Error::other("model source picker automation panicked"))??;
     }
     match (options.expected, actual) {
-        (ExpectedOutcome::Cancelled, ModelSourcePickerOutcome::Cancelled) => Ok(()),
-        (ExpectedOutcome::Selected(expected), ModelSourcePickerOutcome::Selected(actual))
+        (ExpectedOutcome::Cancelled, FilePickerOutcome::Cancelled) => Ok(()),
+        (ExpectedOutcome::Selected(expected), FilePickerOutcome::Selected(actual))
             if actual == expected =>
         {
             Ok(())
         }
         // The picker promises one shape: a real directory. What that directory
         // contains is the model store's decision, not the dialog's.
-        (ExpectedOutcome::SelectedAny, ModelSourcePickerOutcome::Selected(actual))
+        (ExpectedOutcome::SelectedAny, FilePickerOutcome::Selected(actual))
             if actual.is_absolute() && actual.is_dir() =>
         {
             Ok(())

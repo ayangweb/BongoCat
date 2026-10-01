@@ -6,7 +6,7 @@
 //! that was actually drawn, and a function that returned before the frame arrived
 //! would save an empty image.
 
-use super::model_actions::model_source_picker_error;
+use super::model_actions::file_picker_error;
 use super::*;
 
 impl SettingsView {
@@ -114,7 +114,7 @@ impl SettingsView {
             let result = receiver
                 .recv()
                 .await
-                .unwrap_or(Err(ModelSourcePickerError::BackendUnavailable));
+                .unwrap_or(Err(FilePickerError::BackendUnavailable));
             let _ = this.update(cx, |view, cx| {
                 view.apply_model_cover_result(result);
                 cx.notify();
@@ -133,16 +133,16 @@ impl SettingsView {
     /// really did choose because a later dialog misfired would lose work.
     pub(super) fn apply_model_cover_result(
         &mut self,
-        result: Result<ModelSourcePickerOutcome, ModelSourcePickerError>,
+        result: Result<FilePickerOutcome, FilePickerError>,
     ) {
         let Some(draft) = self.model_edit.as_mut() else {
             return;
         };
         draft.picking = false;
         match result {
-            Ok(ModelSourcePickerOutcome::Selected(cover)) => draft.cover = Some(cover),
-            Ok(ModelSourcePickerOutcome::Cancelled) => {}
-            Err(error) => self.pending_notification = Some(model_source_picker_error(error)),
+            Ok(FilePickerOutcome::Selected(cover)) => draft.cover = Some(cover),
+            Ok(FilePickerOutcome::Cancelled) => {}
+            Err(error) => self.pending_notification = Some(file_picker_error(error)),
         }
     }
 }

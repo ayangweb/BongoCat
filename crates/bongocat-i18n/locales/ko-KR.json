@@ -520,6 +520,11 @@
         "uninstall": "제거",
         "configure": "설정"
       },
+      "file": {
+        "unset": "선택된 파일 없음",
+        "browse": "파일 선택…",
+        "clear": "지우기"
+      },
       "state": {
         "running": "실행 중",
         "stopped": "중지됨"

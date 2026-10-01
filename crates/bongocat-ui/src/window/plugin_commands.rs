@@ -10,7 +10,9 @@
 //! rather than a separate flag, so a second press while an install is in flight is
 //! refused the same way every other in-flight operation is.
 
+use super::model_actions::file_picker_error;
 use super::*;
+use bongocat_platform::pick_audio_file;
 
 impl SettingsView {
     /// Re-read the catalog from whichever source this build uses.
@@ -272,6 +274,112 @@ impl SettingsView {
     /// its own file atomically and a patch would have to be merged by a side that does
     /// not own the file. The value is fitted to the field the plugin declared before
     /// it goes out, so the window cannot put a number where a menu belongs.
+    /// Open the platform's own file dialog for one plugin's file field.
+    ///
+    /// Refused while another dialog is up, because the platform has one modal panel at a
+    /// time and a second request would open a panel behind a panel. Refused for a form
+    /// that is not open, and for a field that is not in it, because a dialog that came
+    /// back with a file and nowhere to put it would have to be thrown away — which is
+    /// exactly what the user would experience as a dialog that ate their click.
+    ///
+    /// Whether the request was taken. A refusal is the one outcome here a caller has to be
+    /// able to *see*, because a button that does nothing and a button that was refused are
+    /// the same thing to a user.
+    ///
+    /// The gate and nothing else — it does not open a panel. Opening one is
+    /// [`Self::open_plugin_file_picker`], and the split is not tidiness: a machine with no
+    /// file panel answers the *open* with an error, so a test that could only reach the
+    /// behaviour by opening one would be a test of whether the machine has a desktop. What
+    /// is worth checking here is which requests are taken, and that is a question about
+    /// the form rather than about the platform.
+    #[must_use]
+    pub(super) fn choose_plugin_file(
+        &mut self,
+        plugin: &str,
+        key: &str,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.pending.is_some() || self.plugin_file_picking.is_some() {
+            return false;
+        }
+        let belongs_to_open_form = self
+            .plugin_settings
+            .as_ref()
+            .is_some_and(|draft| draft.plugin == plugin && draft.values.contains_key(key));
+        if !belongs_to_open_form {
+            return false;
+        }
+        self.plugin_file_picking = Some((plugin.to_string(), key.to_string()));
+        cx.notify();
+        true
+    }
+
+    /// Open the platform's file panel for a field that has already been accepted.
+    ///
+    /// The extensions come from the plugin's own schema rather than from here, so what the
+    /// dialog offers is the plugin's declaration and this is only where it becomes a
+    /// filter. The plugin and key are *not* taken again: the accepted request is already
+    /// recorded in [`Self::plugin_file_picking`], and a second copy of it would be a
+    /// second thing that could disagree about which field is waiting.
+    pub(super) fn open_plugin_file_picker(&mut self, accept: Vec<String>, cx: &mut Context<Self>) {
+        let (sender, receiver) = async_channel::bounded(1);
+        let picking = move |result| {
+            let _ = sender.try_send(result);
+        };
+        if let Err(error) = pick_audio_file(&accept, picking) {
+            self.apply_plugin_file_result(Err(error), cx);
+            cx.notify();
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            let result = receiver
+                .recv()
+                .await
+                .unwrap_or(Err(FilePickerError::BackendUnavailable));
+            let _ = this.update(cx, |view, cx| {
+                view.apply_plugin_file_result(result, cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Apply what the file dialog answered, for the field that asked.
+    ///
+    /// Split from the press so a test can say what the dialog returned without opening
+    /// one — the same split the model cover picker has, and for the same reason: the
+    /// interesting behaviour is what happens to the *value*, and a test that had to open a
+    /// real panel to reach it would be a test of the operating system.
+    pub(super) fn apply_plugin_file_result(
+        &mut self,
+        result: Result<FilePickerOutcome, FilePickerError>,
+        cx: &mut Context<Self>,
+    ) {
+        // Taken first, so a second application is a no-op rather than a second write, and
+        // so a result that arrives after the form was closed has nowhere to go.
+        let Some((plugin, key)) = self.plugin_file_picking.take() else {
+            return;
+        };
+        match result {
+            Ok(FilePickerOutcome::Selected(path)) => {
+                let path = path.to_string_lossy().into_owned();
+                let Some(draft) = self.plugin_settings.as_ref() else {
+                    return;
+                };
+                // The form may have closed while the dialog was up, in which case the
+                // value goes nowhere rather than into the next plugin's settings.
+                if draft.plugin != plugin || !draft.values.contains_key(&key) {
+                    return;
+                }
+                self.set_plugin_field(&plugin, &key, SettingsFieldValue::Text(path), cx);
+            }
+            // A cancel is not a failure and gets no message: the user closed the panel
+            // because they read what was already set and were happy with it.
+            Ok(FilePickerOutcome::Cancelled) => {}
+            Err(error) => self.pending_notification = Some(file_picker_error(error)),
+        }
+    }
+
     pub(super) fn set_plugin_field(
         &mut self,
         plugin: &str,
@@ -286,13 +394,13 @@ impl SettingsView {
         let Some(kind) = self
             .plugin_entry(plugin)
             .and_then(|entry| entry.fields.iter().find(|field| field.key == key))
-            .map(|field| field.kind)
+            .map(|field| field.kind.clone())
         else {
             // A key this build's schema does not name is a control the window drew
             // from a stale snapshot; the next snapshot will not draw it.
             return;
         };
-        if !value.fits(kind) {
+        if !value.fits(&kind) {
             return;
         }
         let Some(draft) = self

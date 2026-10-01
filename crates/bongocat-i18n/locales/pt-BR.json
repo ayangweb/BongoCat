@@ -525,6 +525,11 @@
         "uninstall": "Desinstalar",
         "configure": "Configurações"
       },
+      "file": {
+        "unset": "Nenhum arquivo escolhido",
+        "browse": "Escolher arquivo…",
+        "clear": "Limpar"
+      },
       "refusal": {
         "not_published": "Indisponível para esta versão do BongoCat neste sistema."
       },

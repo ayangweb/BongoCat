@@ -11,8 +11,8 @@ pub use input_error::PlatformInputError;
 mod installation;
 pub use installation::InstallationLayout;
 
-mod model_source_picker;
-pub use model_source_picker::{ModelSourcePickerError, ModelSourcePickerOutcome};
+mod file_picker;
+pub use file_picker::{FilePickerError, FilePickerOutcome};
 
 mod directory_opener;
 pub use directory_opener::{DirectoryOpenError, open_directory};
@@ -100,9 +100,9 @@ pub use windows::{
 /// (ADR-0036 已撤回), so a dialog that returned any file would promise a source
 /// the rest of this path cannot accept.
 pub fn pick_model_folder(
-    on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
-) -> Result<(), ModelSourcePickerError> {
-    model_source_picker::pick_model_folder(on_complete)
+    on_complete: impl FnOnce(Result<FilePickerOutcome, FilePickerError>) + Send + 'static,
+) -> Result<(), FilePickerError> {
+    file_picker::pick_model_folder(on_complete)
 }
 
 /// Revalidate and canonicalize a model folder supplied by a non-dialog source.
@@ -110,10 +110,8 @@ pub fn pick_model_folder(
 /// File drops bypass the native picker, but they must not bypass its filesystem
 /// boundary. Callers run this away from a UI executor; it performs metadata and
 /// canonicalization I/O before returning the same stable selection vocabulary.
-pub fn validate_model_folder(
-    selected: PathBuf,
-) -> Result<ModelSourcePickerOutcome, ModelSourcePickerError> {
-    model_source_picker::validate_selected_folder(selected)
+pub fn validate_model_folder(selected: PathBuf) -> Result<FilePickerOutcome, FilePickerError> {
+    file_picker::validate_selected_folder(selected)
 }
 
 /// Let the user choose the image that replaces a model's cover.
@@ -122,9 +120,28 @@ pub fn validate_model_folder(
 /// a dialog can produce are properties of the dialog, and the settings service
 /// reports its own stable code when the chosen bytes are not a cover.
 pub fn pick_model_cover(
-    on_complete: impl FnOnce(Result<ModelSourcePickerOutcome, ModelSourcePickerError>) + Send + 'static,
-) -> Result<(), ModelSourcePickerError> {
-    model_source_picker::pick_model_cover(on_complete)
+    on_complete: impl FnOnce(Result<FilePickerOutcome, FilePickerError>) + Send + 'static,
+) -> Result<(), FilePickerError> {
+    file_picker::pick_model_cover(on_complete)
+}
+
+/// Let the user choose an audio file, for a plugin that declared a file setting.
+///
+/// The third dialog in one module, and the reason the module is named for what it does
+/// rather than for the first thing it was used for: a plugin's sound file is the same
+/// decision about a different kind of file, and typing an absolute path is not something
+/// a person does.
+///
+/// `extensions` is the filter the plugin's own schema asked for, and an empty list — or
+/// one with nothing usable in it — means the product's own list rather than an unfiltered
+/// dialog. The dialog narrows what a person scrolls through and nothing more: whether the
+/// bytes can be played is the host's judgement when the sound is asked for, and it
+/// reports its own stable diagnostic.
+pub fn pick_audio_file(
+    extensions: &[String],
+    on_complete: impl FnOnce(Result<FilePickerOutcome, FilePickerError>) + Send + 'static,
+) -> Result<(), FilePickerError> {
+    file_picker::pick_audio_file(extensions, on_complete)
 }
 
 pub fn startup_item_state(

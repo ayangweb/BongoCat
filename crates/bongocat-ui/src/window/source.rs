@@ -5,7 +5,7 @@
 //! was being chosen. The page therefore reports them the same way too, and the
 //! helper that maps them is shared rather than duplicated per picker.
 
-use super::model_actions::model_source_picker_error;
+use super::model_actions::file_picker_error;
 use super::*;
 
 impl SettingsView {
@@ -50,7 +50,7 @@ impl SettingsView {
             let result = receiver
                 .recv()
                 .await
-                .unwrap_or(Err(ModelSourcePickerError::BackendUnavailable));
+                .unwrap_or(Err(FilePickerError::BackendUnavailable));
             let _ = this.update(cx, |view, cx| {
                 if let Some(source_root) = view.apply_model_source_result(result) {
                     // Classification comes before conversion: a package starts
@@ -77,20 +77,20 @@ impl SettingsView {
     /// decided until the store answers.
     pub(super) fn apply_model_source_result(
         &mut self,
-        result: Result<ModelSourcePickerOutcome, ModelSourcePickerError>,
+        result: Result<FilePickerOutcome, FilePickerError>,
     ) -> Option<PathBuf> {
         match result {
-            Ok(ModelSourcePickerOutcome::Selected(source_root)) => {
+            Ok(FilePickerOutcome::Selected(source_root)) => {
                 self.model_import.source_root = Some(source_root.clone());
                 Some(source_root)
             }
-            Ok(ModelSourcePickerOutcome::Cancelled) => {
+            Ok(FilePickerOutcome::Cancelled) => {
                 self.model_import.reset();
                 None
             }
             Err(error) => {
                 self.model_import.reset();
-                self.pending_notification = Some(model_source_picker_error(error));
+                self.pending_notification = Some(file_picker_error(error));
                 None
             }
         }

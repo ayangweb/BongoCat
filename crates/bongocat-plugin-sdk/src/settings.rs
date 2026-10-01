@@ -499,6 +499,97 @@ impl From<&str> for Option_ {
     }
 }
 
+/// A file on this machine, which the user can type the path of or pick from a dialog.
+///
+/// Named for what it is rather than for the control it draws, because the control is a
+/// text field with a button beside it and the *field* is a path. A plugin that wants the
+/// path typed and nothing else declares [`TextField`]; one that wants the user to be able
+/// to browse for the file declares this, and the difference is a dialog rather than a
+/// different kind of value.
+///
+/// The extensions are what the dialog offers, and they are a request rather than a rule:
+/// the host still checks what it will open when the file is used, so a plugin that declares
+/// an extension the decoder cannot read has a file the user may choose and the host will
+/// then decline — which is the same thing as any other file the user picked that does not
+/// work out.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FileField {
+    key: String,
+    label: LocalizedText,
+    description: Option<LocalizedText>,
+    default: String,
+    accept: Vec<String>,
+    placeholder: Option<LocalizedText>,
+}
+
+impl FileField {
+    /// A file field starting empty, which is the common case: the user has not chosen a
+    /// file yet, and the plugin's own default for "no file" is whatever it reads for a
+    /// blank path.
+    pub fn new(key: &str, label: impl Into<LocalizedText>) -> Self {
+        Self {
+            key: key.to_string(),
+            label: label.into(),
+            description: None,
+            default: String::new(),
+            accept: Vec::new(),
+            placeholder: None,
+        }
+    }
+
+    /// The extensions the dialog offers, without leading dots.
+    ///
+    /// Empty — the default — means the host's own list for the kind of file, which is
+    /// better than an unfiltered dialog showing every file on the machine.
+    pub fn accepting(mut self, extensions: &[&str]) -> Self {
+        self.accept = extensions
+            .iter()
+            .map(|extension| extension.trim_start_matches('.').to_string())
+            .collect();
+        self
+    }
+
+    /// The path this field starts at.
+    pub fn defaulting(mut self, path: &str) -> Self {
+        self.default = path.to_string();
+        self
+    }
+
+    /// A hint shown while the field is empty, in the plugin's own copy.
+    pub fn hinted(mut self, hint: impl Into<LocalizedText>) -> Self {
+        self.placeholder = Some(hint.into());
+        self
+    }
+
+    /// One line explaining the field, in the plugin's own copy.
+    pub fn described(mut self, description: impl Into<LocalizedText>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    fn into_field(self) -> Field {
+        let field = Field::new(
+            &self.key,
+            self.label,
+            bongocat_plugin_protocol::ConfigControl::File {
+                default: self.default,
+                accept: self.accept,
+                placeholder: self.placeholder,
+            },
+        );
+        match self.description {
+            Some(description) => field.described(description),
+            None => field,
+        }
+    }
+}
+
+impl From<FileField> for Field {
+    fn from(field: FileField) -> Self {
+        field.into_field()
+    }
+}
+
 /// A menu of named options.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Choice {

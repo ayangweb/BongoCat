@@ -4,7 +4,7 @@
 //! failures are properties of opening a dialog rather than of what was being
 //! chosen, so the page reports them the same way.
 
-use bongocat_platform::ModelSourcePickerError;
+use bongocat_platform::FilePickerError;
 
 use super::SettingsError;
 use super::SettingsErrorCode;
@@ -14,6 +14,6 @@ use super::SettingsErrorCode;
 /// The model folder picker and the cover picker share their result vocabulary
 /// because their failures are properties of opening a native dialog, not of what
 /// was being chosen; the page therefore reports them the same way too.
-pub(crate) fn model_source_picker_error(_error: ModelSourcePickerError) -> SettingsError {
+pub(crate) fn file_picker_error(_error: FilePickerError) -> SettingsError {
     SettingsError::new(SettingsErrorCode::ModelSourcePickerUnavailable)
 }
