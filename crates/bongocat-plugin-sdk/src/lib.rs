@@ -105,7 +105,7 @@ pub mod testing;
 pub use action::Action;
 pub use bongocat_plugin_protocol::{
     ActionGlyph, ConfigDocument, ConfigKind, ConfigSchema, ConfigValue, HostMessage, HostState,
-    InputEvent, InputMethod, LocalizedText, LogLevel, ModelOutcome, ModelRequest, ModelRequestKind,
+    InputEvent, LocalizedText, LogLevel, ModelOutcome, ModelRequest, ModelRequestKind,
     PluginAction, PluginAnchor, PluginMessage, Subscription, control_label,
 };
 pub use host::{Host, Identity, Outcome};
@@ -138,7 +138,7 @@ pub mod prelude {
     };
     pub use crate::{
         ActionGlyph, ConfigDocument, ConfigKind, ConfigValue, HostMessage, HostState, InputEvent,
-        InputMethod, LocalizedText, LogLevel, ModelRequest, Subscription, control_label,
+        LocalizedText, LogLevel, ModelRequest, Subscription, control_label,
     };
     pub use bongocat_plugin_protocol::{
         MAXIMUM_BUBBLE_MILLIS, MINIMUM_BUBBLE_MILLIS, ModelRequestKind, PluginAnchor, SceneNode,

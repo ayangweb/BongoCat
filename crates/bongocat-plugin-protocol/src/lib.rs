@@ -83,8 +83,8 @@ pub use descriptor::{
 };
 pub use error::{PluginError, PluginErrorCode};
 pub use host_state::{
-    HostState, InputEvent, InputMethod, MAXIMUM_BUBBLE_CHARS, MAXIMUM_BUBBLE_MILLIS,
-    MAXIMUM_MOUSE_STEP, MINIMUM_BUBBLE_MILLIS, ModelOutcome, ModelRequest, ModelRequestKind,
+    HostState, InputEvent, MAXIMUM_BUBBLE_CHARS, MAXIMUM_BUBBLE_MILLIS, MAXIMUM_MOUSE_STEP,
+    MINIMUM_BUBBLE_MILLIS, ModelOutcome, ModelRequest, ModelRequestKind,
 };
 pub use identity::{InstalledPlugin, MAXIMUM_PLUGIN_ID_BYTES, PluginId, PluginVersion};
 pub use ipc::{

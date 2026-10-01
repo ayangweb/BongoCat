@@ -9,6 +9,9 @@
 //! runtime — and a plugin that wanted more than this is a plugin that wants to be the
 //! application. What a panel actually displays is its *own* state; the host's job is
 //! only to say which model is on screen and which language the user reads.
+//!
+//! Both facts are extracted from the runtime rather than read here, so this file is a
+//! pure function over a snapshot and needs nothing started to be checked.
 
 use bongocat_plugin_protocol::HostState;
 
@@ -51,115 +54,6 @@ impl HostFacts {
         HostState::new(self.model_name.clone(), self.overlay_visible)
             .with_locale(locale)
             .with_app_version(app_version)
-    }
-}
-
-/// What a plugin is told the host knows, assembled from both places it can come from.
-///
-/// Two sources, and the split between them is the design: the facts about the *product*
-/// come from the runtime, and the facts about the *machine* come from the main thread's
-/// published readings. A plugin gets all of it on every tick, because a plugin whose panel
-/// is a mode indicator is a panel that has to be right the moment the user switches — and
-/// the reading it must be right about is one only the main thread is allowed to make.
-///
-/// A free function rather than a method on the worker so the *composition* — the one part
-/// that is neither a runtime extraction nor a cache read, and therefore the one part
-/// neither of those two sets of tests covers — can be checked against a cache a test filled
-/// itself. It is a plain function over three arguments; nothing is started.
-pub fn host_state(
-    facts: &HostFacts,
-    locale: &str,
-    app_version: &str,
-    input_method: &crate::InputMethodCache,
-) -> HostState {
-    facts
-        .to_host_state(locale, app_version)
-        .with_input_method(input_method.read())
-}
-
-#[cfg(test)]
-mod composition_tests {
-    use super::*;
-    use bongocat_plugin_protocol::InputMethod;
-
-    fn a_cache_reporting(id: &str, name: &str, latin: bool) -> crate::InputMethodCache {
-        let cache = crate::InputMethodCache::new();
-        cache.publish(Some(InputMethod {
-            id: id.to_owned(),
-            name: name.to_owned(),
-            ascii_capable: latin,
-        }));
-        cache
-    }
-
-    #[test]
-    fn what_a_plugin_is_told_carries_the_keyboard_the_main_thread_last_read() {
-        // The one link in the chain nothing else covers: the runtime knows nothing about the
-        // keyboard, the platform read happens on another thread, and this is where the two
-        // meet. A plugin waiting for a mode indicator waits on exactly this.
-        let state = host_state(
-            &HostFacts {
-                overlay_visible: true,
-                model_name: Some("cat.model3.json".to_owned()),
-            },
-            "zh-CN",
-            "1.0.0",
-            &a_cache_reporting("com.tencent.inputmethod.wetype.pinyin", "微信输入法", false),
-        );
-        let method = state
-            .input_method
-            .as_ref()
-            .expect("the keyboard is in the state");
-        assert_eq!(method.id, "com.tencent.inputmethod.wetype.pinyin");
-        assert_eq!(method.name, "微信输入法");
-        assert!(!method.types_latin());
-        // And the runtime's own facts are still there, because a plugin wants both.
-        assert_eq!(state.model_name.as_deref(), Some("cat.model3.json"));
-        assert!(state.overlay_visible);
-        assert_eq!(state.locale, "zh-CN");
-        assert_eq!(state.app_version, "1.0.0");
-    }
-
-    #[test]
-    fn a_main_thread_that_has_not_answered_yet_leaves_the_field_absent() {
-        // The window between startup and the first half-second tick: the platform has not
-        // been asked, so there is nothing to say, and a plugin must be able to tell that
-        // from an answer that says "there is no keyboard".
-        let state = host_state(
-            &HostFacts::default(),
-            "en-US",
-            "1.0.0",
-            &crate::InputMethodCache::new(),
-        );
-        assert_eq!(state.input_method, None);
-    }
-
-    #[test]
-    fn the_keyboard_a_plugin_is_told_follows_the_keyboard_the_main_thread_reads() {
-        // Republished on every tick, so the answer has to be the *latest* one rather than
-        // the first: a panel that showed the method from when the app started would be
-        // showing the wrong keyboard after the user switched.
-        let cache = a_cache_reporting("a.pinyin", "拼音", false);
-        assert_eq!(
-            host_state(&HostFacts::default(), "zh-CN", "1.0.0", &cache)
-                .input_method
-                .as_ref()
-                .map(|method| method.id.as_str()),
-            Some("a.pinyin")
-        );
-        cache.publish(Some(InputMethod {
-            id: "a.kana".to_owned(),
-            name: "かな".to_owned(),
-            ascii_capable: false,
-        }));
-        assert_eq!(
-            host_state(&HostFacts::default(), "zh-CN", "1.0.0", &cache)
-                .input_method
-                .as_ref()
-                .map(|method| method.id.as_str()),
-            Some("a.kana"),
-            "so a plugin's panel is right the moment the user switches"
-        );
     }
 }
 

@@ -29,9 +29,8 @@
 //! those things is believed, started, drawn, pressed and stopped.
 
 use bongocat_plugin::{
-    CatalogMode, Incoming, InputMethodCache, LocalTimeCache, PluginCommand, PluginEntry, PluginId,
-    PluginSnapshot, PluginStore, PluginVersion, PluginWorkerReader, Session, SessionOutcome,
-    SessionState,
+    CatalogMode, Incoming, LocalTimeCache, PluginCommand, PluginEntry, PluginId, PluginSnapshot,
+    PluginStore, PluginVersion, PluginWorkerReader, Session, SessionOutcome, SessionState,
 };
 use bongocat_plugin_protocol::{
     ButtonNode, ConfigDocument, ConfigValue, HostMessage, PanelPlacement, PanelUpdate,
@@ -638,7 +637,6 @@ fn a_switch_turned_off_is_published() {
         CatalogMode::Directory,
         producer,
         Arc::new(LocalTimeCache::new()),
-        Arc::new(InputMethodCache::new()),
         None,
         root.path().join("data"),
         "0.0.0-test".to_string(),

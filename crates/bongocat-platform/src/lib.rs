@@ -6,7 +6,6 @@ mod display;
 pub use display::DisplayBounds;
 
 mod input_error;
-pub mod input_method;
 pub use input_error::PlatformInputError;
 
 mod installation;

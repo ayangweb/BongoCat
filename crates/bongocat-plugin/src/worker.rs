@@ -610,10 +610,6 @@ pub fn start(
     catalog_mode: CatalogMode,
     layer_producer: OverlayLayerProducer,
     clock: Arc<LocalTimeCache>,
-    // The keyboard input method, as the main thread last read it. Taken here rather than
-    // read by the worker because the framework call is not thread-safe — see
-    // `input_method`.
-    input_method: Arc<crate::InputMethodCache>,
     runtime: Option<bongocat_runtime::RuntimeClient>,
     // Where plugins keep the state they wrote, what version this build is, and which
     // language the user reads — all three facts only the product holds, and all three
@@ -641,7 +637,6 @@ pub fn start(
                 catalog_mode,
                 catalog_read: false,
                 clock,
-                input_method,
                 router: ModelRequestRouter::new(runtime.clone()),
                 runtime,
                 plugin_data,
@@ -679,10 +674,6 @@ struct Worker {
     /// The local time, published by the main thread. The worker reads it and never
     /// asks the operating system itself — see `local_time`.
     clock: Arc<LocalTimeCache>,
-    /// The keyboard input method, published by the main thread for the same reason: the
-    /// framework call is not thread-safe, and two threads making it abort. See
-    /// `input_method`.
-    input_method: Arc<crate::InputMethodCache>,
     /// The runtime, read once per evaluation for the facts a plugin may show.
     runtime: Option<bongocat_runtime::RuntimeClient>,
     /// Where plugins keep the state they wrote.
@@ -880,12 +871,7 @@ impl Worker {
             .saturating_duration_since(self.started)
             .as_millis()
             .min(u128::from(u64::MAX)) as u64;
-        let state = crate::host::host_state(
-            &self.facts(),
-            &self.locale,
-            &self.app_version,
-            &self.input_method,
-        );
+        let state = self.facts().to_host_state(&self.locale, &self.app_version);
         let ticked = now.saturating_duration_since(self.last_tick) >= MAXIMUM_TICK_INTERVAL;
         if ticked {
             self.last_tick = now;

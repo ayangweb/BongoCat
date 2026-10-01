@@ -1214,7 +1214,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // The rate limit is inside the host so the Windows loop, which
                         // is a different function, refreshes on the same schedule.
                         if let Some(host) = coordinator.plugin_host.as_mut() {
-                            host.refresh_host_facts();
+                            host.refresh_local_time();
                         }
                         let result = coordinator
                             .overlay
@@ -1375,7 +1375,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let (failure, failures, settings_window) = {
                         let coordinator = cx.global_mut::<ProductCoordinator>();
                         if let Some(host) = coordinator.plugin_host.as_mut() {
-                            host.refresh_host_facts();
+                            host.refresh_local_time();
                         }
                         match tick_result
                             .take()

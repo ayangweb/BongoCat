@@ -12,7 +12,7 @@
 //! The host could read the buttons out of a panel it already has. It does not, for
 //! three reasons, and the first is the one that decides it:
 //!
-//! 1. **A panel's layout is not an inventory of what a plugin can do.** Key Stats
+//! 1. **A panel's layout is not an inventory of what a plugin can do.** Key Display
 //!    draws a row of keys; asking for those as application controls is asking for
 //!    forty-odd buttons the user did not want. An action is something a plugin
 //!    *chooses* to offer, and it can offer it whether or not it ever draws a panel.

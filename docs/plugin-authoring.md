@@ -191,7 +191,7 @@ is plugin-specific: it is the one the updater already gets right.
 
 ## The plugins in this repository
 
-Seven, each one an issue turned into a program. They are deliberately small, and
+Three, each one an issue turned into a program. They are deliberately small, and
 none of them depends on another.
 
 | `id`             | What it does                                              |
@@ -199,7 +199,3 @@ none of them depends on another.
 | `pomodoro`      | A focus timer with a break                                 |
 | `typing-sound`  | A model's own motions and sounds, per keystroke            |
 | `keyboard-display` | The keys you are pressing, on the model window          |
-| `key-stats`     | Keys and pointer distance per day, in its own files        |
-| `input-method`  | Which keyboard input method is selected                   |
-| `agent-watch`   | What an AI coding tool is doing, from its hook events      |
-| `cat-skills`    | Runs a command you choose, and reminds you                 |

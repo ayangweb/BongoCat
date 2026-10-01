@@ -41,7 +41,6 @@ mod bubble;
 mod catalog;
 mod host;
 mod input_feed;
-mod input_method;
 mod local_time;
 mod model_request;
 mod plugin_log;
@@ -61,11 +60,10 @@ mod worker;
 /// the protocol rather than the host — depends on `bongocat-plugin-protocol` directly.
 pub use bongocat_plugin_protocol::{
     ActionGlyph, CONFIG_SCHEMA_VERSION, ChoiceOption, ConfigControl, ConfigDocument, ConfigField,
-    ConfigKind, ConfigSchema, ConfigValue, HostState, InputEvent, InputMethod, LocalizedText,
-    LogLevel, MAXIMUM_ACTIONS, ModelOutcome, ModelRequest, PLUGIN_CATALOG_FILE_NAME,
-    PLUGIN_SCHEMA_VERSION, PluginAction, PluginAnchor, PluginDescriptor, PluginError,
-    PluginErrorCode, PluginIcon, PluginId, PluginManifest, PluginVersion,
-    SUPPORTED_PLUGIN_API_VERSION, Subscription,
+    ConfigKind, ConfigSchema, ConfigValue, HostState, InputEvent, LocalizedText, LogLevel,
+    MAXIMUM_ACTIONS, ModelOutcome, ModelRequest, PLUGIN_CATALOG_FILE_NAME, PLUGIN_SCHEMA_VERSION,
+    PluginAction, PluginAnchor, PluginDescriptor, PluginError, PluginErrorCode, PluginIcon,
+    PluginId, PluginManifest, PluginVersion, SUPPORTED_PLUGIN_API_VERSION, Subscription,
 };
 pub use bubble::{Bubble, BubbleSet};
 pub use catalog::{
@@ -73,9 +71,8 @@ pub use catalog::{
     MAXIMUM_CATALOG_BYTES, agent, catalog_sources, catalog_url, download_with, fetch_archive,
     fetch_catalog, host_platform, load_local, local_catalog_directory, proxied_catalog_url,
 };
-pub use host::{HostFacts, host_state};
+pub use host::HostFacts;
 pub use input_feed::{Feed, FeedDiagnostics, FeedSet};
-pub use input_method::InputMethodCache;
 pub use local_time::{LocalTimeCache, WallClock};
 pub use model_request::ModelRequestRouter;
 pub use plugin_log::Line;
