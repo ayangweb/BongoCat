@@ -517,7 +517,8 @@
         "loading": "正在读取插件目录…",
         "empty": "插件目录中还没有插件。"
       },
-      "show_on_window": "在模型窗口上显示",
+      "enable": "启用",
+      "configure_needs_running": "启用后可修改设置",
       "action": {
         "install": "安装",
         "update": "更新",

@@ -517,7 +517,8 @@
         "loading": "正在讀取外掛目錄…",
         "empty": "外掛目錄中還沒有外掛。"
       },
-      "show_on_window": "在模型視窗上顯示",
+      "enable": "啟用",
+      "configure_needs_running": "啟用後可修改設定",
       "action": {
         "install": "安裝",
         "update": "更新",

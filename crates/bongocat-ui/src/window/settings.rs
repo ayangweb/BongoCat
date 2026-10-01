@@ -83,6 +83,27 @@ impl SettingsView {
         self.start_request(PendingOperation::Refresh, None, cx);
     }
 
+    /// Adopt a snapshot, and settle anything on this page that was waiting for one.
+    ///
+    /// The settling is here rather than inside the plugin page because **no single
+    /// request can be for it**: a settings panel waiting on a plugin's handshake has to
+    /// open when *that* arrives, and the handshake's answer is a poll — a second
+    /// command whose only job would be to ask a question the snapshot already carries.
+    /// Every path that adopts a snapshot goes through here, so no path can forget.
+    ///
+    /// Returns whether adopting this snapshot moved anything a caller has to redraw for.
+    /// `false` does **not** mean the page is unchanged: a settings form can open off a
+    /// snapshot identical to the last one, because a plugin's handshake advances the
+    /// host's revision without changing a single field this page reads. So the caller
+    /// must notify whenever this returns `true`, and may not skip notifying when it
+    /// returns `false`.
+    pub(super) fn adopt_snapshot(&mut self, snapshot: SettingsSnapshot) -> bool {
+        let changed = self.snapshot.as_ref() != Some(&snapshot);
+        self.snapshot = Some(snapshot);
+        self.refresh_after_plugin_snapshot();
+        changed || self.plugin_settings.is_some()
+    }
+
     pub(super) fn refresh_is_disabled(&self) -> bool {
         matches!(self.pending, Some(PendingOperation::Refresh))
             || self.model_import.is_running()

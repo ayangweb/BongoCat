@@ -50,6 +50,7 @@
 
 #![forbid(unsafe_code)]
 
+mod action;
 mod catalog;
 mod color;
 mod config;
@@ -62,6 +63,7 @@ mod ipc;
 mod panel;
 pub mod scene;
 
+pub use action::{ActionGlyph, MAXIMUM_ACTIONS, PluginAction, check_actions};
 pub use catalog::{
     MAXIMUM_CATALOG_ENTRIES, PLUGIN_CATALOG_FILE_NAME, PLUGIN_CATALOG_REPOSITORY_NAME,
     PLUGIN_CATALOG_REPOSITORY_OWNER, PLUGIN_CATALOG_SCHEMA_VERSION, PLUGIN_SCHEMA_VERSION,

@@ -335,12 +335,23 @@ impl Pomodoro {
     }
 
     fn button_label(&self, host: &Host, button: Button) -> String {
-        let text = match button {
-            Button::Start => copy::start(),
-            Button::Pause => copy::pause(),
-            Button::Resume => copy::resume(),
-        };
-        copy::say(host, &text)
+        copy::say(host, &copy::toggle_label(button))
+    }
+
+    /// Tell the host what this button would do, so the settings window can draw it.
+    ///
+    /// The one control a person reaches for often enough that hunting for it inside a
+    /// 260-pixel panel on the model window is the wrong way round: a pomodoro is set up
+    /// in the settings window and then started from it, and the old arrangement made the
+    /// second step a thing you had to go and find on your desktop.
+    ///
+    /// Re-offered whenever the button changes meaning, which is the whole point of the
+    /// control travelling live rather than being declared once: the label is what the
+    /// user reads to decide what a press will do, so a card still saying "Start" over a
+    /// counting round would say the opposite of the truth. [`Host::offer_action`] skips
+    /// the write when nothing changed, so this is safe to call from every tick.
+    fn publish_action(&mut self, host: &mut Host) {
+        host.offer_action(copy::toggle_action(self.button(), host).to_protocol());
     }
 
     /// The press on the one button, as one meaning.
@@ -478,6 +489,10 @@ impl Plugin for Pomodoro {
             self.now_ms,
             0,
         );
+        // The control is offered before the first panel, and for the same reason: a
+        // button that appears one frame after the timer does is a button the user has to
+        // look for, and the settings window cannot draw what it has not been told about.
+        self.publish_action(host);
         self.draw(host);
         Ok(())
     }
@@ -497,6 +512,13 @@ impl Plugin for Pomodoro {
             };
             host.bubble(&copy::say(host, &text), NOTICE_MILLIS);
         }
+        // **After** the round-end check, not before it. `notice_if_over` is what moves a
+        // round from counting to over, and over is the state whose button says "Start" —
+        // so offering the control before that check would republish the button that was
+        // already on the card and leave the card offering "Pause" over a timer that has
+        // stopped. The label has to describe the phase this tick produced, and this is
+        // the tick that produces it.
+        self.publish_action(host);
         self.draw(host);
     }
 
@@ -508,6 +530,11 @@ impl Plugin for Pomodoro {
         } else {
             return;
         }
+        // Re-offered after every press, because a press is the one thing that changes
+        // what the button means — and the press may have come from the settings window's
+        // own button, which is drawn from what was last offered. Re-offering here is what
+        // makes that button rename itself to what it now does.
+        self.publish_action(host);
         self.draw(host);
     }
 
@@ -543,7 +570,7 @@ mod tests {
         IdentityBuilder, Inbox, WrittenMessages, document, labels_in, model_requests, panels,
         values_from,
     };
-    use bongocat_plugin_sdk::{Host, Session};
+    use bongocat_plugin_sdk::{ActionGlyph, Host, PluginAction, PluginMessage, Session};
 
     /// The record of what a session wrote.
     ///
@@ -1066,6 +1093,176 @@ mod tests {
             next.length_ms,
             minutes(DEFAULT_FOCUS_MINUTES),
             "a zero that means 'no break' is a value two settings would disagree about"
+        );
+    }
+
+    /// Every label this plugin offered, in the order it offered them.
+    ///
+    /// Resolved against the default language rather than a host, because the label is
+    /// what these tests are about and the language they run in is the default one. The
+    /// test that is about *language* reads the same field through
+    /// [`LocalizedText::resolve`] for the tag it cares about.
+    fn offered_labels(written: &WrittenMessages) -> Vec<String> {
+        offered_controls(written)
+            .into_iter()
+            .map(|action| action.label.resolve("en-US").to_string())
+            .collect()
+    }
+
+    /// Every control this plugin offered, across a whole session, newest last.
+    fn offered_controls(written: &WrittenMessages) -> Vec<PluginAction> {
+        written
+            .messages()
+            .into_iter()
+            .filter_map(|message| match message {
+                PluginMessage::Actions { actions } => Some(actions),
+                _ => None,
+            })
+            .flatten()
+            .collect()
+    }
+
+    #[test]
+    fn the_settings_window_gets_the_button_the_round_is_actually_in() {
+        // The reason this plugin offers a control at all: a pomodoro is configured in
+        // the settings window, so that is where it has to be controllable from. Before
+        // this, the only way to start or stop one was to find a small button inside a
+        // panel on the model window.
+        //
+        // "Pause" rather than "Start", and that is the honest answer rather than a
+        // surprise: a round begins counting the moment the plugin starts, so the first
+        // thing that button can do is stop it. `Round::new` is in `Counting`, and a
+        // control that said "Start" here would be describing a round that is already
+        // running.
+        let written = harness();
+        let mut plugin = Pomodoro::new(Preferences::default());
+        serve_default(&mut plugin, &written, Inbox::new().into_messages());
+        assert_eq!(plugin.round.phase, Phase::Counting);
+        let offered = offered_controls(&written);
+        assert_eq!(offered.len(), 1, "one control, offered once");
+        assert_eq!(offered[0].id, TOGGLE);
+        assert_eq!(offered_labels(&written), ["Pause"]);
+        assert_eq!(
+            offered[0].glyph,
+            ActionGlyph::Pause,
+            "and the icon agrees with the label"
+        );
+    }
+
+    #[test]
+    fn that_button_says_what_pressing_it_now_does() {
+        // The whole reason an action is a message rather than a declaration made once. A
+        // card still reading "Pause" over a stopped round says the opposite of what the
+        // press will do, and a user who trusts it is looking at a timer that is not
+        // running.
+        let written = harness();
+        let mut plugin = Pomodoro::new(Preferences::default());
+        serve_default(
+            &mut plugin,
+            &written,
+            Inbox::new()
+                .tick(minutes(1))
+                .press(TOGGLE)
+                .into_messages(),
+        );
+        let offered = offered_controls(&written);
+        assert_eq!(
+            offered.len(),
+            2,
+            "the button's meaning changed once — counting, then paused"
+        );
+        assert_eq!(
+            offered_labels(&written),
+            ["Pause", "Resume"],
+            "so what a press will do is what the label says at the moment it is read"
+        );
+        assert_eq!(
+            offered[1].glyph,
+            ActionGlyph::Play,
+            "and Resume gets the play glyph, not the pause one it is named after — the press sets \
+             a stopped round running again, it does not suspend anything"
+        );
+    }
+
+    #[test]
+    fn a_press_from_the_settings_window_stops_the_round_exactly_as_one_on_the_panel_does() {
+        // One press vocabulary for both: an action's id is a panel button's id, so the
+        // plugin's handler is the handler for both and neither can drift from the other.
+        let written = harness();
+        let mut plugin = Pomodoro::new(Preferences::default());
+        serve_default(
+            &mut plugin,
+            &written,
+            Inbox::new()
+                .tick(minutes(5))
+                .press(TOGGLE)
+                .into_messages(),
+        );
+        assert_eq!(plugin.round.phase, Phase::Paused);
+        assert_eq!(
+            plugin.round.remaining_ms(minutes(5)),
+            minutes(20),
+            "so the round stopped with the five minutes already served deducted — the same \
+             arithmetic a press on the panel's own button goes through"
+        );
+    }
+
+    #[test]
+    fn a_round_that_ends_on_its_own_offers_start_again_rather_than_pause() {
+        // Auto start off: the timer stops at zero, and the card's button has to say so in
+        // the tick that did it. This is the tick ordering — the control is re-offered
+        // before the round-end check — so the label cannot lag the panel by a frame.
+        let written = harness();
+        let mut plugin = Pomodoro::new(Preferences::default());
+        serve(
+            &mut plugin,
+            &written,
+            "en-US",
+            a_minute(),
+            Inbox::new().tick(minutes(1)).into_messages(),
+        );
+        assert_eq!(
+            offered_labels(&written).last().expect("a control was offered"),
+            "Start",
+            "so the button offers to start the next round rather than to pause one that has \
+             already stopped"
+        );
+    }
+
+    #[test]
+    fn the_control_answers_in_the_language_the_user_reads() {
+        let written = harness();
+        let mut plugin = Pomodoro::new(Preferences::default());
+        serve(
+            &mut plugin,
+            &written,
+            "zh-CN",
+            configured(DEFAULT_FOCUS_MINUTES, AfterRound::default(), false),
+            Inbox::new().into_messages(),
+        );
+        assert_eq!(
+            offered_controls(&written)[0].label.resolve("zh-CN"),
+            "暂停",
+            "the plugin's own copy, in the user's language, with the application knowing none \
+             of these words"
+        );
+    }
+
+    #[test]
+    fn an_unchanged_control_is_not_re_offered_every_tick() {
+        // Otherwise a timer would write a protocol line sixty times a second to say the
+        // same word, and those lines are what the host's reader thread wakes up for.
+        let written = harness();
+        let mut plugin = Pomodoro::new(Preferences::default());
+        let mut inbox = Inbox::new();
+        for frame in 0..120 {
+            inbox = inbox.tick(frame * 8);
+        }
+        serve_default(&mut plugin, &written, inbox.into_messages());
+        assert_eq!(
+            offered_controls(&written).len(),
+            1,
+            "a second of ticks at 125 Hz, and the button's meaning never changed"
         );
     }
 

@@ -156,6 +156,47 @@ pub struct SettingsPluginField {
     pub options: Vec<SettingsFieldOption>,
 }
 
+/// One control a plugin wants drawn, as the card draws it.
+///
+/// The label is already resolved for the user's language, for the reason every other
+/// string on this card is: the plugin ships its own copy and the window is the only
+/// side that knows which language the user reads.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SettingsPluginAction {
+    /// The id a press sends back to the plugin. Opaque to the window.
+    pub id: String,
+    pub label: String,
+    /// Which of the window's own icons stands for this control.
+    pub glyph: SettingsActionGlyph,
+    /// Whether the control is present but not pressable.
+    pub disabled: bool,
+}
+
+/// Which icon a control wears, from the closed set the protocol defines.
+///
+/// A protocol enum rather than a string or a third name for it: the window's icon set
+/// is the product's, and mapping a plugin's meaning onto it is a decision that belongs
+/// in one place. Adding an icon here is a change to what every plugin can be offered,
+/// so it happens in the protocol next to the set it maps from.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SettingsActionGlyph {
+    /// No icon. The label is the whole control.
+    #[default]
+    None,
+    Play,
+    Pause,
+    Reset,
+}
+
+impl SettingsActionGlyph {
+    pub const ALL: [Self; 4] = [Self::None, Self::Play, Self::Pause, Self::Reset];
+
+    /// Whether this asks for an icon at all.
+    pub const fn is_none(self) -> bool {
+        matches!(self, Self::None)
+    }
+}
+
 /// One plugin, as the center lists it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SettingsPluginEntry {
@@ -181,6 +222,21 @@ pub struct SettingsPluginEntry {
     pub running: bool,
     /// Whether the installed version is older than the one on offer.
     pub update_available: bool,
+    /// The controls this plugin wants the host to draw, in the order it wants them.
+    ///
+    /// Empty for a plugin that offered none, for one that is not running, and for one
+    /// that is not installed — a control is something a running process asked for, so
+    /// a card with these on it has a live button the user can press.
+    pub actions: Vec<SettingsPluginAction>,
+    /// Whether this plugin's settings form is available right now.
+    ///
+    /// The one fact the card needs that `fields` cannot answer. A plugin's schema
+    /// arrives with its handshake, so a stopped plugin has no `fields` — and a card
+    /// that hid its settings button in that case left a user who had just installed a
+    /// plugin with a delete button and nothing else, and no way to find out why. With
+    /// this flag the button is always there and this says whether pressing it will
+    /// show a form or turn the plugin on first.
+    pub settings_available: bool,
     /// The settings this plugin declared, in the order it declared them.
     pub fields: Vec<SettingsPluginField>,
     /// The current value of every field, defaults filled in.

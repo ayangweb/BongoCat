@@ -94,6 +94,7 @@
 
 #![forbid(unsafe_code)]
 
+mod action;
 mod host;
 mod panel;
 mod plugin;
@@ -101,10 +102,11 @@ mod run;
 mod settings;
 pub mod testing;
 
+pub use action::Action;
 pub use bongocat_plugin_protocol::{
-    ConfigDocument, ConfigKind, ConfigSchema, ConfigValue, HostMessage, HostState, InputEvent,
-    InputMethod, LocalizedText, LogLevel, ModelOutcome, ModelRequest, ModelRequestKind,
-    PluginAnchor, PluginMessage, Subscription, control_label,
+    ActionGlyph, ConfigDocument, ConfigKind, ConfigSchema, ConfigValue, HostMessage, HostState,
+    InputEvent, InputMethod, LocalizedText, LogLevel, ModelOutcome, ModelRequest, ModelRequestKind,
+    PluginAction, PluginAnchor, PluginMessage, Subscription, control_label,
 };
 pub use host::{Host, Identity, Outcome};
 pub use panel::{
@@ -123,6 +125,7 @@ pub use settings::{
 /// re-exported from the crate root, so a plugin that would rather be explicit
 /// about what it uses can be.
 pub mod prelude {
+    pub use crate::action::Action;
     pub use crate::host::{Host, Identity, Outcome};
     pub use crate::panel::{
         Panel, SceneBuilder, bar, button, button_disabled, button_secondary, chip, divider,
@@ -134,8 +137,8 @@ pub mod prelude {
         Choice, Decimal, Field, Integer, Option_, Settings, Store, TextField, Toggle, Values,
     };
     pub use crate::{
-        ConfigDocument, ConfigKind, ConfigValue, HostMessage, HostState, InputEvent, InputMethod,
-        LocalizedText, LogLevel, ModelRequest, Subscription, control_label,
+        ActionGlyph, ConfigDocument, ConfigKind, ConfigValue, HostMessage, HostState, InputEvent,
+        InputMethod, LocalizedText, LogLevel, ModelRequest, Subscription, control_label,
     };
     pub use bongocat_plugin_protocol::{
         MAXIMUM_BUBBLE_MILLIS, MINIMUM_BUBBLE_MILLIS, ModelRequestKind, PluginAnchor, SceneNode,

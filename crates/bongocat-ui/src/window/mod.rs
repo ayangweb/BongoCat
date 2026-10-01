@@ -5,18 +5,19 @@
 //! path are the modules under `window/`.
 
 use crate::{
-    SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsError, SettingsErrorCode,
-    SettingsFieldKind, SettingsFieldValue, SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings,
-    SettingsLanguage, SettingsLogLevel, SettingsLogging, SettingsModelAvailability,
-    SettingsModelBehavior, SettingsModelBehaviorBinding, SettingsModelDiagnostic,
-    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
-    SettingsModelImportRequest, SettingsModelKey, SettingsModelMode, SettingsModelOrigin,
-    SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode, SettingsOperationId,
-    SettingsOverlay, SettingsPluginEntry, SettingsPluginErrorCode, SettingsPluginField,
-    SettingsPluginRefusal, SettingsPlugins, SettingsRandomBehavior, SettingsRandomBehaviorMode,
-    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
-    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
+    SettingsActionGlyph, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
+    SettingsError, SettingsErrorCode, SettingsFieldKind, SettingsFieldValue,
+    SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel,
+    SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
+    SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
+    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
+    SettingsPluginEntry, SettingsPluginErrorCode, SettingsPluginField, SettingsPluginRefusal,
+    SettingsPlugins, SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRuntimeErrorCode,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -287,6 +288,17 @@ pub struct SettingsView {
     /// shows what its own file holds; a change goes out through
     /// [`Self::set_plugin_field`] and comes back on the next snapshot.
     pub(crate) plugin_settings: Option<PluginSettingsDraft>,
+    /// The plugin whose settings form was asked for while it was switched off, and is
+    /// waiting for its handshake.
+    ///
+    /// Set by [`Self::toggle_plugin_settings`] when it enables a plugin instead of
+    /// opening a form, and cleared by
+    /// [`SettingsView::refresh_after_plugin_snapshot`](super::settings::SettingsView::refresh_after_plugin_snapshot)
+    /// once that handshake arrives. It exists because the answer to "has the plugin
+    /// started yet" is not in the reply to the command that enabled it — that reply is
+    /// about the switch — so the page has to remember what it was waiting for and settle
+    /// it off the snapshot poll.
+    pub(crate) plugin_settings_pending: Option<String>,
     pub(crate) language_select: Entity<LanguageSelectState>,
     pub(crate) theme_select: Entity<ThemeSelectState>,
     pub(crate) logging_level_select: Entity<LoggingLevelSelectState>,

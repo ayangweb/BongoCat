@@ -517,7 +517,8 @@
         "loading": "Đang đọc danh mục tiện ích…",
         "empty": "Danh mục tiện ích chưa có tiện ích nào."
       },
-      "show_on_window": "Hiện trên cửa sổ mô hình",
+      "enable": "Đã bật",
+      "configure_needs_running": "Bật lên để thay đổi cài đặt",
       "action": {
         "install": "Cài đặt",
         "update": "Cập nhật",

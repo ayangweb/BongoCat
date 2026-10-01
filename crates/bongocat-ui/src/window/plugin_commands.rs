@@ -94,11 +94,54 @@ impl SettingsView {
         );
     }
 
+    /// Press one of the controls a plugin offered the host to draw.
+    ///
+    /// Goes through [`Self::run_plugin_operation`] rather than the fire-and-forget a
+    /// field change uses, and the difference is the answer: a press is what makes a
+    /// timer say "Pause" instead of "Start", and the snapshot that comes back is what
+    /// tells this page the button's own label changed. A fire-and-forget here would
+    /// leave the card offering a control whose label no longer says what it will do —
+    /// the one wrong answer this whole mechanism exists to prevent.
+    ///
+    /// The id is sent as it arrived rather than checked here. The host checks it against
+    /// what the plugin is *currently* offering, which is the only side that knows: a
+    /// button on this page was drawn from a snapshot, and a plugin may have withdrawn
+    /// the control since, so a check here would answer from a value already stale.
+    pub(super) fn press_plugin_action(
+        &mut self,
+        plugin: String,
+        action: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.run_plugin_operation(
+            move |client| Box::pin(async move { client.press_plugin_action(plugin, action).await }),
+            cx,
+        );
+    }
+
     /// Whether one plugin's own settings are expanded under its card.
     pub(super) fn plugin_settings_are_open(&self, id: &str) -> bool {
         self.plugin_settings
             .as_ref()
             .is_some_and(|draft| draft.plugin == id)
+    }
+
+    /// Whether the page is waiting for a stopped plugin to start so it can open its
+    /// settings form.
+    ///
+    /// Read by the card's settings button, which is the one control whose meaning
+    /// differs between a running plugin and a stopped one — so it says so rather than
+    /// looking the same either way, and marks itself unpressable rather than queueing a
+    /// second enable behind the first.
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "read by the card's own tests, which pin that a waiting card says so"
+        )
+    )]
+    pub(super) fn plugin_awaiting_settings(&self, id: &str) -> bool {
+        self.plugin_settings_pending.as_deref() == Some(id)
     }
 
     /// Expand or collapse one plugin's own settings.
@@ -109,6 +152,15 @@ impl SettingsView {
     /// the page beside. The rows come from the schema the *running* plugin declared,
     /// so a plugin that improved its settings in a later version is configured against
     /// the version that is actually running.
+    ///
+    /// **A plugin that is switched off is turned on rather than refused.** The form is
+    /// the running process's to declare, so there is nothing to open — and the old
+    /// answer, which was to do nothing at all, is what left a card with a delete button
+    /// and no way to configure anything. Enabling is the only action that can make the
+    /// form exist, it is what pressing a settings button is asking for, and it is
+    /// reversible with the switch the card is showing. The panel opens when the plugin's
+    /// handshake arrives rather than here, because the handshake is the moment the schema
+    /// exists — opening a form now would open an empty one.
     pub(super) fn toggle_plugin_settings(&mut self, plugin: String, cx: &mut Context<Self>) {
         if self.plugin_settings_are_open(&plugin) {
             self.plugin_settings = None;
@@ -121,14 +173,71 @@ impl SettingsView {
             // gives for a press on a panel that is gone.
             return;
         };
-        if entry.fields.is_empty() {
+        if entry.settings_available {
+            self.plugin_settings = Some(PluginSettingsDraft {
+                plugin,
+                values: entry.values.clone(),
+            });
+            cx.notify();
             return;
         }
-        self.plugin_settings = Some(PluginSettingsDraft {
-            plugin,
-            values: entry.values.clone(),
-        });
-        cx.notify();
+        if entry.enabled {
+            // Enabled and still no form: the process is running and declared no
+            // settings, which is a plugin with nothing to configure. There is nothing
+            // to open and nothing to say — an empty panel would be a heading with no
+            // fields under it.
+            return;
+        }
+        self.open_settings_by_enabling(plugin, cx);
+    }
+
+    /// Turn a plugin on so its settings form becomes something that can be opened.
+    ///
+    /// The request is marked before the command goes out, because the panel cannot open
+    /// until the plugin's handshake answers and the page has to remember it was asked.
+    /// [`Self::refresh_after_plugin_snapshot`] is what opens it.
+    fn open_settings_by_enabling(&mut self, plugin: String, cx: &mut Context<Self>) {
+        if self.plugin_operation_in_flight() {
+            return;
+        }
+        self.plugin_settings_pending = Some(plugin.clone());
+        self.run_plugin_operation(
+            move |client| Box::pin(async move { client.set_plugin_enabled(plugin, true).await }),
+            cx,
+        );
+    }
+
+    /// Open a settings form that was waiting on a plugin to start, now that it can be.
+    ///
+    /// Called from the snapshot poll rather than from the enable command's own reply,
+    /// because the answer to "did the plugin start" is not in that reply — it is in
+    /// whatever the plugin's own handshake produces afterwards, which may be a moment
+    /// later or never. Polling is what makes both cases work without a second command
+    /// whose only job would be to ask a question the snapshot already answers.
+    pub(super) fn refresh_after_plugin_snapshot(&mut self) {
+        let Some(plugin) = self.plugin_settings_pending.clone() else {
+            return;
+        };
+        // The values are taken before the request is cleared, because the draft owns a
+        // copy and clearing the request is what lets a later press start over. Cloning
+        // here rather than holding the borrow is the cost of a page that owns its own
+        // state, and it is the same copy every other draft in this file makes.
+        let Some(values) = self
+            .plugin_entry(&plugin)
+            .filter(|entry| entry.settings_available)
+            .map(|entry| entry.values.clone())
+        else {
+            // Either the plugin has not answered yet — the ordinary case, and the reason
+            // this runs on every snapshot — or it went away while it was starting, which
+            // is the one case worth clearing: waiting for a handshake that is never
+            // coming would leave the card claiming to be opening a form forever.
+            if self.plugin_entry(&plugin).is_none() {
+                self.plugin_settings_pending = None;
+            }
+            return;
+        };
+        self.plugin_settings_pending = None;
+        self.plugin_settings = Some(PluginSettingsDraft { plugin, values });
     }
 
     /// Set one of a plugin's own settings.

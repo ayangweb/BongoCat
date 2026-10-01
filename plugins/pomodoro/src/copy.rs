@@ -9,7 +9,9 @@
 //! language on one panel and another on the next, and the user would have no way to
 //! tell which of the two is wrong.
 
-use bongocat_plugin_sdk::{Host, LocalizedText};
+use bongocat_plugin_sdk::{Action, ActionGlyph, Host, LocalizedText};
+
+use crate::{Button, TOGGLE};
 
 /// The card's name.
 pub fn plugin_name() -> LocalizedText {
@@ -184,4 +186,43 @@ pub fn auto_start_help() -> LocalizedText {
 /// the ten tags is this?" before it can show a word.
 pub fn say(host: &Host, text: &LocalizedText) -> String {
     text.resolve_bounded(host.locale())
+}
+
+/// What the one button is called, from the round's phase.
+///
+/// The single source for both places the word appears. The panel's button and the
+/// settings window's button are one control to a person — a timer that said "Start" on
+/// the model window and "Pause" in the settings window would be two controls disagreeing
+/// about the same round — so both read this, and the glyph rides along with the word
+/// rather than being decided separately.
+///
+/// One function returning both is what makes them impossible to disagree. Two functions
+/// returning a word and an icon, matched on the same enum, would drift the first time
+/// somebody added a phase and updated one of them.
+pub fn toggle_label(button: Button) -> LocalizedText {
+    match button {
+        Button::Start => start(),
+        Button::Pause => pause(),
+        Button::Resume => resume(),
+    }
+}
+
+/// The icon for the one button, from the round's phase.
+///
+/// `Resume` gets the play glyph rather than the pause one it is named after: the press
+/// does not suspend anything, it sets a stopped round running again, and an icon that
+/// contradicts what the button does is the same lie as a stale label.
+pub fn toggle_glyph(button: Button) -> ActionGlyph {
+    match button {
+        Button::Pause => ActionGlyph::Pause,
+        Button::Start | Button::Resume => ActionGlyph::Play,
+    }
+}
+
+/// The control the settings window draws for the one button.
+///
+/// Its id is [`TOGGLE`] — the same id the panel's own button carries — so a press from
+/// either place reaches one handler and the two cannot drift apart.
+pub fn toggle_action(button: Button, host: &Host) -> Action {
+    Action::new(TOGGLE, say(host, &toggle_label(button))).glyph(toggle_glyph(button))
 }

@@ -517,7 +517,8 @@
         "loading": "Lendo o catálogo de plugins…",
         "empty": "O catálogo de plugins ainda não tem plugins."
       },
-      "show_on_window": "Mostrar na janela do modelo",
+      "enable": "Ativado",
+      "configure_needs_running": "Ative para alterar as configurações",
       "action": {
         "install": "Instalar",
         "update": "Atualizar",

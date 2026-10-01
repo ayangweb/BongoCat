@@ -16,7 +16,7 @@ use crate::settings::{Store, Values};
 use crate::{Error, Result};
 use bongocat_plugin_protocol::{
     ConfigDocument, ConfigSchema, Hello, HostMessage, LocalizedText, LogLevel, ModelAnswer,
-    ModelRequest, PanelUpdate, PluginId, PluginVersion, SceneNode, write_message,
+    ModelRequest, PanelUpdate, PluginAction, PluginId, PluginVersion, SceneNode, write_message,
 };
 use std::io::Write;
 use std::path::PathBuf;
@@ -48,6 +48,8 @@ pub struct Host {
     last_clock: bongocat_plugin_protocol::WallClock,
     /// The host's most recent facts.
     state: bongocat_plugin_protocol::HostState,
+    /// The controls last offered to the host, so an unchanged re-offer sends nothing.
+    offered_actions: Vec<PluginAction>,
     /// Answers to the plugin's own model requests, waiting to be drained by the
     /// callback that asked.
     answers: Receiver<ModelAnswer>,
@@ -102,6 +104,7 @@ impl Host {
             last_elapsed_ms: 0,
             last_clock: bongocat_plugin_protocol::WallClock::default(),
             state: bongocat_plugin_protocol::HostState::default(),
+            offered_actions: Vec::new(),
             answers,
             answers_tx,
             next_request_id: 1,
@@ -273,6 +276,65 @@ impl Host {
         self.write(&bongocat_plugin_protocol::PluginMessage::Panel(Box::new(
             update.clone(),
         )))
+    }
+
+    /// Offer the host a set of controls to draw on this plugin's own card.
+    ///
+    /// For a plugin whose main control the user reaches for often enough that
+    /// hunting for it inside a panel on the model window is the wrong way round: the
+    /// host draws these with the settings window's own buttons, in the window the
+    /// plugin was configured in.
+    ///
+    /// **Send the whole set every time, not a patch.** The host replaces its list with
+    /// whatever arrived, which is what stops a plugin leaving behind a control it has
+    /// stopped wanting, and it is what makes a press of an id that is no longer
+    /// offered ignored rather than delivered to a plugin that has forgotten what it
+    /// meant.
+    ///
+    /// A plugin whose control changes meaning — a timer whose button says "Start" and
+    /// then "Pause" — re-sends. The label is the user's only clue to what a press will
+    /// do, and a stale one is worse than no button. [`Panel`]'s own send-if-changed
+    /// check is the right model to copy here: compare against what you last sent and
+    /// skip the write when nothing changed, so a plugin calling this every tick does
+    /// not write a line every tick.
+    ///
+    /// A press of any of these arrives in [`Plugin::on_press`](crate::Plugin::on_press)
+    /// with the same `id`, so there is no second handler to write.
+    pub fn offer_actions(&mut self, actions: &[PluginAction]) -> bool {
+        // Checked here rather than left to the host's refusal: the host's answer to an
+        // invalid list is to ignore it and log, and a plugin author testing against the
+        // SDK should learn about it from a `false` rather than from a card that quietly
+        // has no buttons on it.
+        if bongocat_plugin_protocol::check_actions(actions).is_err() {
+            return false;
+        }
+        // The unchanged case sends nothing, exactly as [`Host::panel`] does for a scene
+        // that came out the same. A plugin that derives its action from its own state
+        // would otherwise write a protocol line every tick to say the same word, and
+        // those lines are what the host's reader thread wakes up for.
+        if self.offered_actions == actions {
+            return true;
+        }
+        let sent = self.write(&bongocat_plugin_protocol::PluginMessage::Actions {
+            actions: actions.to_vec(),
+        });
+        // Recorded on the outcome rather than before it: a failed write means the host
+        // never got these, so the next call has to try again rather than believe the
+        // list is already there.
+        if sent {
+            self.offered_actions = actions.to_vec();
+        }
+        sent
+    }
+
+    /// Offer one control, in place of any previously offered set.
+    ///
+    /// The shape most plugins want: one control, rebuilt whenever its label or glyph
+    /// changed. [`Self::offer_actions`] is the same call for a plugin with more than
+    /// one, and is spelled that way so a plugin never has to write a one-element slice
+    /// to get a single button onto its card.
+    pub fn offer_action(&mut self, action: PluginAction) -> bool {
+        self.offer_actions(std::slice::from_ref(&action))
     }
 
     /// Ask the model to play a motion, by its name in the model.
@@ -452,9 +514,10 @@ pub type Outcome = bongocat_plugin_protocol::ModelOutcome;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Action;
     use crate::settings::{Integer, Settings, Toggle};
     use crate::testing::{IdentityBuilder, WrittenMessages};
-    use bongocat_plugin_protocol::ModelOutcome;
+    use bongocat_plugin_protocol::{ActionGlyph, ModelOutcome};
 
     fn host() -> (Host, WrittenMessages) {
         let schema = Settings::new()
@@ -509,6 +572,78 @@ mod tests {
             written.messages()[0],
             bongocat_plugin_protocol::PluginMessage::HidePanel
         ));
+    }
+
+    #[test]
+    fn an_offered_action_is_sent_once_and_the_rest_of_the_time_sends_nothing() {
+        // The panel's own rule, applied to a control the host draws. A plugin whose
+        // action label comes from its own state would otherwise write a line every tick
+        // to say the same word, and those lines are what the host's reader wakes for.
+        let (mut host, written) = host();
+        let action = Action::new("toggle", "Start").glyph(ActionGlyph::Play);
+        let offered = [action.to_protocol()];
+        assert!(host.offer_actions(&offered));
+        assert!(host.offer_actions(&offered));
+        assert!(host.offer_actions(&offered));
+        assert_eq!(
+            written.messages().len(),
+            1,
+            "three offers of the same control, one line out"
+        );
+
+        // A changed label is a change, and is sent.
+        let renamed = [Action::new("toggle", "Pause")
+            .glyph(ActionGlyph::Pause)
+            .to_protocol()];
+        assert!(host.offer_actions(&renamed));
+        assert_eq!(
+            written.messages().len(),
+            2,
+            "so a timer that renamed its control tells the host rather than leaving the card \
+             saying what it used to do"
+        );
+        let bongocat_plugin_protocol::PluginMessage::Actions { actions } = &written.messages()[1]
+        else {
+            panic!("an actions message");
+        };
+        assert_eq!(actions, &renamed);
+    }
+
+    #[test]
+    fn a_list_the_host_would_refuse_is_refused_here_too() {
+        // Checked by the SDK rather than left to the host's silent refusal, so a plugin
+        // author finds out from the `false` instead of from a card with no buttons.
+        let (mut host, written) = host();
+        let two_with_one_id = [
+            Action::new("go", "Go").to_protocol(),
+            Action::new("go", "Go again").to_protocol(),
+        ];
+        assert!(
+            !host.offer_actions(&two_with_one_id),
+            "two controls sharing an id would make a press ambiguous"
+        );
+        assert!(
+            written.messages().is_empty(),
+            "and nothing reached the wire"
+        );
+    }
+
+    #[test]
+    fn a_closed_host_does_not_remember_an_offer_it_never_sent() {
+        // Otherwise a plugin whose first offer failed would never send it again: the
+        // comparison would say "already sent" for a list the host has never seen.
+        let schema = Settings::new().to_schema().expect("valid");
+        let written = WrittenMessages::new();
+        let mut host = Host::new(
+            written.failing_writer(),
+            IdentityBuilder::new().build(),
+            schema.clone(),
+            crate::settings::fit(&schema.defaults(), &schema),
+        )
+        .expect("a host");
+        let offered = [Action::new("toggle", "Start").to_protocol()];
+        assert!(!host.offer_actions(&offered), "the write failed");
+        assert!(!host.is_connected());
     }
 
     #[test]

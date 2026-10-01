@@ -517,7 +517,8 @@
         "loading": "Reading the plugin catalog…",
         "empty": "The plugin catalog has no plugins yet."
       },
-      "show_on_window": "Show on the model window",
+      "enable": "Enabled",
+      "configure_needs_running": "Turn this on to change its settings",
       "action": {
         "install": "Install",
         "update": "Update",

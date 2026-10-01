@@ -411,6 +411,11 @@ impl SettingsView {
                 if sent_logging_settings.is_none() && view.logging_settings_debouncer.is_pending() {
                     view.schedule_logging_settings_flush(cx);
                 }
+                // Both adoption paths below go through `adopt_snapshot`, which also
+                // settles anything waiting on this snapshot arriving — a settings panel
+                // opening off a plugin's handshake. That work is not specific to this
+                // request, so it does not belong to whichever request happened to
+                // deliver the snapshot.
                 if let Some(snapshot) = refreshed
                     && accepts_snapshot_revision(
                         view.snapshot.as_ref().map(|current| current.revision),
@@ -418,7 +423,7 @@ impl SettingsView {
                     )
                     && view.snapshot.as_ref() != Some(&snapshot)
                 {
-                    view.snapshot = Some(snapshot);
+                    view.adopt_snapshot(snapshot);
                     snapshot_changed = true;
                 }
                 match result {
@@ -429,8 +434,7 @@ impl SettingsView {
                         ) =>
                     {
                         if view.snapshot.as_ref() != Some(snapshot) {
-                            view.snapshot = Some(snapshot.clone());
-                            snapshot_changed = true;
+                            snapshot_changed |= view.adopt_snapshot(snapshot.clone());
                         }
                     }
                     Ok(_) => {}

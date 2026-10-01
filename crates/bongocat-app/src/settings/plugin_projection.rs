@@ -92,6 +92,22 @@ fn project_entry(entry: &PluginEntry, language: SettingsLanguage) -> SettingsPlu
         enabled: entry.enabled,
         running: entry.running,
         update_available: entry.update_available,
+        actions: entry
+            .actions
+            .iter()
+            .map(|action| SettingsPluginAction {
+                id: action.id.clone(),
+                label: action.label.resolve_bounded(locale),
+                glyph: project_glyph(action.glyph),
+                disabled: action.disabled,
+            })
+            .collect(),
+        // Whether the form can be shown *now*, which is not the same question as whether
+        // there are any fields. A plugin declares its schema with its handshake, so an
+        // installed-but-stopped plugin has none — and the card's answer has to be that
+        // its settings button opens the plugin rather than that the button is missing,
+        // because a control that vanishes is a control a user cannot ask about.
+        settings_available: entry.running && !schema.fields.is_empty(),
         fields: project_schema(&schema, locale),
         values: project_values(&schema, &entry.config),
         log: entry
@@ -105,6 +121,17 @@ fn project_entry(entry: &PluginEntry, language: SettingsLanguage) -> SettingsPlu
             detail: error.detail.clone(),
         }),
         failure: entry.failure.as_ref().map(project_error),
+    }
+}
+
+/// A control's icon, as the window's own icon.
+fn project_glyph(glyph: bongocat_plugin::ActionGlyph) -> SettingsActionGlyph {
+    use bongocat_plugin::ActionGlyph as Protocol;
+    match glyph {
+        Protocol::None => SettingsActionGlyph::None,
+        Protocol::Play => SettingsActionGlyph::Play,
+        Protocol::Pause => SettingsActionGlyph::Pause,
+        Protocol::Reset => SettingsActionGlyph::Reset,
     }
 }
 
@@ -415,8 +442,99 @@ mod tests {
             failure: None,
             restarts: 0,
             subscriptions: Vec::new(),
+            actions: offered_actions(),
             log: Vec::new(),
         }
+    }
+
+    /// The controls a running plugin offered, as one renamed control.
+    ///
+    /// A running plugin with a schema is the case that matters here, so the fixture is
+    /// that one rather than the empty default.
+    fn offered_actions() -> Vec<bongocat_plugin::PluginAction> {
+        vec![bongocat_plugin::PluginAction {
+            id: "toggle".to_string(),
+            label: bongocat_plugin::LocalizedText::from("Start"),
+            glyph: bongocat_plugin::ActionGlyph::Play,
+            disabled: false,
+        }]
+    }
+
+    #[test]
+    fn an_offered_control_reaches_the_card_with_its_own_words_and_icon() {
+        // The whole point of a control travelling with its own label: the window draws
+        // what the plugin said, resolved into the user's language. The application learns
+        // nothing about what "toggle" means — it routes the id and draws the word.
+        let projected = project_plugins(
+            &PluginSnapshot {
+                entries: vec![entry()],
+                ..PluginSnapshot::default()
+            },
+            SettingsLanguage::English,
+        );
+        let pomodoro = projected.entries.first().expect("a card");
+        assert_eq!(pomodoro.actions.len(), 1);
+        assert_eq!(pomodoro.actions[0].id, "toggle");
+        assert_eq!(pomodoro.actions[0].label, "Start");
+        assert_eq!(pomodoro.actions[0].glyph, SettingsActionGlyph::Play);
+    }
+
+    #[test]
+    fn a_stopped_plugin_has_no_control_and_no_form_but_still_offers_both_on_its_card() {
+        // The dead end, pinned on the side that decides it. A control and a schema both
+        // arrive from a running process, so a switched-off plugin has neither — and the
+        // projection has to report that as two separate facts, because the card answers
+        // them differently: a missing control is a plugin that wants none, while a missing
+        // form is a plugin whose form can be asked for.
+        let mut stopped = entry();
+        stopped.running = false;
+        stopped.enabled = false;
+        stopped.descriptor = None;
+        stopped.actions = Vec::new();
+        let projected = project_plugins(
+            &PluginSnapshot {
+                entries: vec![stopped],
+                ..PluginSnapshot::default()
+            },
+            SettingsLanguage::English,
+        );
+        let pomodoro = projected.entries.first().expect("a card");
+        assert!(
+            pomodoro.actions.is_empty(),
+            "a plugin that is not running has offered nothing, so its card draws no control"
+        );
+        assert!(
+            !pomodoro.settings_available,
+            "and there is no form to open yet — which is why the card's settings button is \
+             drawn anyway and turns the plugin on"
+        );
+    }
+
+    #[test]
+    fn a_running_plugin_with_an_empty_schema_has_no_form_and_does_not_need_one() {
+        // Distinct from the case above, and the card has to tell them apart: enabled with
+        // no schema is a plugin with nothing to configure, so pressing its settings button
+        // correctly does nothing. Promising a "turn it on" hint here would be telling a
+        // user to do something that cannot help.
+        let mut nothing_to_configure = entry();
+        nothing_to_configure
+            .descriptor
+            .as_mut()
+            .expect("a descriptor")
+            .config = bongocat_plugin::ConfigSchema::default();
+        let projected = project_plugins(
+            &PluginSnapshot {
+                entries: vec![nothing_to_configure],
+                ..PluginSnapshot::default()
+            },
+            SettingsLanguage::English,
+        );
+        let pomodoro = projected.entries.first().expect("a card");
+        assert!(
+            !pomodoro.settings_available,
+            "a plugin that declared no settings has no form, running or not"
+        );
+        assert!(pomodoro.enabled);
     }
 
     #[test]
@@ -681,6 +799,7 @@ mod tests {
                 failure: None,
                 restarts: 0,
                 subscriptions: Vec::new(),
+                actions: Vec::new(),
                 log: Vec::new(),
             }],
             active: Vec::new(),
@@ -866,6 +985,7 @@ mod tests {
                 failure: None,
                 restarts: 0,
                 subscriptions: Vec::new(),
+                actions: Vec::new(),
                 log: Vec::new(),
             }],
             catalog_read: true,

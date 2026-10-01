@@ -568,6 +568,27 @@ impl SettingsClient {
         .await
     }
 
+    /// Press one of the controls a plugin offered for the host to draw.
+    ///
+    /// Not a fire-and-forget like [`Self::refresh_plugin_catalog`], and the difference
+    /// is the answer rather than the latency: this is a press, so the plugin will
+    /// redraw and rename the very button that was pressed, and the snapshot that comes
+    /// back is what tells the page the label changed. A fire-and-forget here would
+    /// leave the card saying "Start" over a timer that is now running, which is the one
+    /// wrong answer this whole mechanism exists to avoid.
+    pub async fn press_plugin_action(
+        &self,
+        plugin: String,
+        action: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::PressPluginAction {
+            plugin,
+            action,
+            reply,
+        })
+        .await
+    }
+
     pub async fn open_logs_location(&self) -> Result<SettingsSnapshot, SettingsError> {
         self.request(|reply| SettingsCommand::OpenLogsLocation { reply })
             .await

@@ -37,7 +37,53 @@ fn entry_with_fields(id: &str, installed: bool, enabled: bool) -> SettingsPlugin
     };
     entry.fields = vec![field.clone()];
     entry.values = BTreeMap::from([(field.key, field.default)]);
+    // A schema only reaches the window through a running process's handshake, so a
+    // fixture with fields but no running plugin is a state the projection cannot
+    // produce. Set both, or the card's button reads as the one it must not.
+    entry.running = entry.enabled;
+    entry.settings_available = entry.running;
     entry
+}
+
+/// A window showing the plugin page over this snapshot, and the view behind it.
+///
+/// Takes the context rather than making one, so a test can share a harness shape across
+/// several cases without each repeating the window builder. The page is rebuilt from the
+/// view on every press, because that is what the real window does: a card's control
+/// calls into the view and the next frame draws from whatever the view then holds. A
+/// harness holding one frozen snapshot would pass without ever proving the panel follows
+/// the view, which is the half of the layout decision worth testing.
+fn page_over(
+    cx: &mut TestAppContext,
+    client: crate::SettingsClient,
+    seeded: SettingsSnapshot,
+) -> (Entity<SettingsView>, &mut VisualTestContext) {
+    let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
+    let capture = Rc::clone(&built);
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::English,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        capture.borrow_mut().replace(view.clone());
+        let page = cx.new(|_| PluginsPageHarness { view });
+        Root::new(page, window, cx)
+    });
+    let view = built
+        .borrow_mut()
+        .take()
+        .expect("the window builder must hand the page out");
+    view.update(visual, |view, _| view.snapshot = Some(seeded));
+    (view, visual)
 }
 
 fn entry(id: &str, installed: bool, enabled: bool) -> SettingsPluginEntry {
@@ -56,7 +102,11 @@ fn entry(id: &str, installed: bool, enabled: bool) -> SettingsPluginEntry {
         // command layer should not depend on.
         running: false,
         update_available: false,
+        // A test entry has no process, so it never has a schema either. Derived rather
+        // than set, so a test cannot build a state the projection cannot produce.
+        settings_available: false,
         fields: Vec::new(),
+        actions: Vec::new(),
         values: Default::default(),
         log: Vec::new(),
         refusal: None,
@@ -222,6 +272,188 @@ fn a_refused_command_leaves_the_page_on_the_hosts_answer(cx: &mut TestAppContext
     );
 }
 
+/// A card's settings control opens a form even when the plugin is switched off.
+///
+/// The panel is a *sibling* of the grid rather than a section of one card, because
+/// `gpui-kit` renders a field row only inside a setting group. That is a layout
+/// decision with a cost — the form is below the grid, not on the card that owns it —
+/// so the two halves of it are pinned here: the card's control opens the panel, and
+/// the panel's own close control puts it away again.
+///
+/// **A stopped plugin, deliberately.** This is the bug that made a plugin card useless
+/// the moment it was installed: a plugin's schema arrives with its running process's
+/// handshake, so a switched-off plugin had no fields, the configure button was drawn
+/// only when there were fields, and the card was left with a delete button and no way
+/// to configure anything. The button is unconditional now, and pressing it on a stopped
+/// plugin turns it on instead.
+#[gpui_kit::test]
+fn a_stopped_plugins_settings_control_starts_it_rather_than_vanishing(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, endpoint) = crate::SettingsClient::bounded(4);
+    let mut stopped = entry("pomodoro", true, false);
+    stopped.running = false;
+    stopped.fields.clear();
+    stopped.values.clear();
+    stopped.settings_available = false;
+    let seeded = snapshot_with_plugins(SettingsPlugins {
+        available: true,
+        catalog_read: true,
+        entries: vec![stopped],
+        ..SettingsPlugins::default()
+    });
+    let (view, visual) = page_over(cx, client, seeded);
+    visual.update(|window, cx| window.render_frame(cx));
+
+    // Present at all. The old behaviour drew nothing here, which is the whole point.
+    let configure = ElementId::from("plugin-configure-pomodoro");
+    assert!(
+        visual.update(|window, _| window.try_find(configure.clone()).is_some()),
+        "a card that has just been installed must still offer a way to configure it — a \
+         button that appears only once a plugin is running is missing at exactly the moment \
+         a user looks for it"
+    );
+
+    visual.update(|window, cx| window.click(configure, cx));
+    // Parked rather than read straight away: the command goes out through a spawned
+    // task, and reading before the executor has run it would assert on an empty queue
+    // and pass for the wrong reason.
+    visual.run_until_parked();
+    assert!(
+        endpoint.try_recv().is_ok_and(|command| {
+            matches!(
+                command,
+                crate::SettingsCommand::SetPluginEnabled { enabled: true, .. }
+            )
+        }),
+        "so the only thing that can make the form exist is the thing that was asked for"
+    );
+    assert!(
+        !view.read_with(visual, |view, _| view.plugin_settings_are_open("pomodoro")),
+        "and no empty panel is drawn in the meantime"
+    );
+}
+
+/// The form opens once the plugin's handshake arrives, not before.
+///
+/// The answer to "has it started yet" is not in the reply to the command that enabled
+/// it — that reply is about the switch — so the page settles this off the snapshot poll.
+#[gpui_kit::test]
+fn a_form_waiting_on_a_plugin_opens_when_its_schema_arrives(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, _endpoint) = crate::SettingsClient::bounded(4);
+    let mut stopped = entry("pomodoro", true, false);
+    stopped.running = false;
+    stopped.fields.clear();
+    stopped.settings_available = false;
+    let seeded = snapshot_with_plugins(SettingsPlugins {
+        available: true,
+        catalog_read: true,
+        entries: vec![stopped.clone()],
+        ..SettingsPlugins::default()
+    });
+    let (view, visual) = page_over(cx, client, seeded);
+
+    visual.update(|window, cx| window.render_frame(cx));
+    visual.update(|window, cx| window.click(ElementId::from("plugin-configure-pomodoro"), cx));
+    assert!(
+        view.read_with(visual, |view, _| view.plugin_awaiting_settings("pomodoro")),
+        "so the page remembers it was asked, since no reply is going to say so"
+    );
+
+    // The plugin answers: running, with a schema.
+    let mut answered = stopped.clone();
+    answered.enabled = true;
+    answered.running = true;
+    answered.settings_available = true;
+    answered.fields = vec![SettingsPluginField {
+        key: "focus_minutes".to_string(),
+        label: "Focus round".to_string(),
+        description: None,
+        kind: SettingsFieldKind::Integer,
+        default: SettingsFieldValue::Integer(25),
+        minimum: Some(1.0),
+        maximum: Some(120.0),
+        step: Some(1.0),
+        unit: None,
+        placeholder: None,
+        multiline: false,
+        options: Vec::new(),
+    }];
+    let answered_snapshot = snapshot_with_plugins(SettingsPlugins {
+        available: true,
+        catalog_read: true,
+        entries: vec![answered],
+        ..SettingsPlugins::default()
+    });
+    view.update(visual, |view, _| {
+        assert!(
+            view.adopt_snapshot(answered_snapshot),
+            "adopting a snapshot that opens a panel has to report a change, or the caller \
+             skips the redraw and the form never appears"
+        );
+    });
+    visual.update(|window, cx| window.render_frame(cx));
+    assert!(
+        view.read_with(visual, |view, _| view.plugin_settings_are_open("pomodoro")),
+        "and the form is there, drawn from the schema the running plugin declared"
+    );
+    assert!(
+        !view.read_with(visual, |view, _| view.plugin_awaiting_settings("pomodoro")),
+        "with the request settled, so a later press starts over rather than queueing"
+    );
+    assert!(
+        visual.update(|window, _| window
+            .try_find(ElementId::from("plugin-settings-header-pomodoro"))
+            .is_some()),
+        "and the header names the plugin the form belongs to"
+    );
+}
+
+/// A control a plugin offered is pressable from the card.
+///
+/// The round trip the whole action mechanism exists for, asserted at the window: a
+/// press sends the plugin's own id, and the page adopts the snapshot that comes back —
+/// which is what carries the button's new label.
+#[gpui_kit::test]
+fn a_controls_press_sends_the_plugins_own_id(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (client, endpoint) = crate::SettingsClient::bounded(4);
+    let mut running = entry("pomodoro", true, true);
+    running.running = true;
+    running.actions = vec![bongocat_ui_protocol::SettingsPluginAction {
+        id: "toggle".to_string(),
+        label: "Pause".to_string(),
+        glyph: SettingsActionGlyph::Pause,
+        disabled: false,
+    }];
+    let seeded = snapshot_with_plugins(SettingsPlugins {
+        available: true,
+        catalog_read: true,
+        entries: vec![running],
+        ..SettingsPlugins::default()
+    });
+    let (_view, visual) = page_over(cx, client, seeded);
+    visual.update(|window, cx| window.render_frame(cx));
+
+    let button = ElementId::from("plugin-action-pomodoro-toggle");
+    assert!(
+        visual.update(|window, _| window.try_find(button.clone()).is_some()),
+        "a control the plugin offered is on its card, in the user's own words"
+    );
+    visual.update(|window, cx| window.click(button, cx));
+    visual.run_until_parked();
+    assert!(
+        endpoint.try_recv().is_ok_and(|command| {
+            matches!(
+                command,
+                crate::SettingsCommand::PressPluginAction { action, .. } if action == "toggle"
+            )
+        }),
+        "a press sends the id the plugin declared, which is the same id a panel button uses — \
+         so the plugin has one handler for both and the two cannot drift"
+    );
+}
+
 /// A plugin with settings opens them from its own card.
 ///
 /// The panel is a *sibling* of the grid rather than a section of one card, because
@@ -239,37 +471,7 @@ fn a_cards_settings_control_opens_a_panel_that_closes_again(cx: &mut TestAppCont
         entries: vec![entry_with_fields("pomodoro", true, true)],
         ..SettingsPlugins::default()
     });
-
-    // The page is rebuilt from the view on each press, because that is what the
-    // window does: the card's control calls into the view and the next frame draws
-    // from whatever the view then holds. A harness holding one frozen snapshot would
-    // pass without ever proving the panel follows the view.
-    let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
-    let capture = Rc::clone(&built);
-    let (_, visual) = cx.add_window_view(move |window, cx| {
-        let view = cx.new(|cx| {
-            SettingsView::new(
-                client,
-                SettingsWindowSeed {
-                    language: SettingsLanguage::English,
-                    appearance_theme: SettingsTheme::System,
-                },
-                Rc::new(|_| {}),
-                Rc::new(|_| {}),
-                window,
-                cx,
-            )
-        });
-        capture.borrow_mut().replace(view.clone());
-        let page = cx.new(|_| PluginsPageHarness { view });
-        Root::new(page, window, cx)
-    });
-    let view = built
-        .borrow_mut()
-        .take()
-        .expect("the window builder must hand the page out");
-    view.update(visual, |view, _| view.snapshot = Some(seeded.clone()));
-    visual.update(|window, cx| window.render_frame(cx));
+    let (view, visual) = page_over(cx, client, seeded);
 
     let configure = ElementId::from("plugin-configure-pomodoro");
     let header = ElementId::from("plugin-settings-header-pomodoro");

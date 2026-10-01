@@ -631,6 +631,21 @@ pub(super) fn run_service(
                         .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::PressPluginAction {
+                plugin,
+                action,
+                reply,
+            } => {
+                // The id is the plugin's own and the host checks it against what the
+                // plugin is currently offering — a button on a stale snapshot is a click
+                // that did not register, which is reported as a refusal rather than
+                // delivered as a press the plugin cannot interpret.
+                let result = with_plugin_id(&clock, &plugin, |id| {
+                    press_plugin_action(&clock, id, &action)
+                })
+                .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SelectModel {
                 expected_config_revision,
                 model,
@@ -915,6 +930,38 @@ pub(super) fn send_plugin_config(
         PluginCommand::SetConfig {
             id,
             config: document,
+        },
+    )
+}
+
+/// Hand one plugin a press of a control it offered for the host to draw.
+///
+/// Checked against the list the plugin is *currently* offering, in the settings service
+/// rather than only in the worker, and that is deliberate: the window builds its card
+/// from a snapshot, so a button can outlive the list it was drawn from by however long a
+/// poll takes. Refusing here means the page learns the press did nothing, rather than
+/// sending it to a plugin that has withdrawn the control and forgotten what the id
+/// meant.
+pub(super) fn press_plugin_action(
+    clock: &SettingsSnapshotClock,
+    id: PluginId,
+    action: &str,
+) -> Result<(), SettingsError> {
+    let reader = clock
+        .plugin_reader()
+        .ok_or_else(|| SettingsError::new(SettingsErrorCode::PluginHostUnavailable))?;
+    if !reader
+        .snapshot()
+        .entry(&id)
+        .is_some_and(|entry| entry.actions.iter().any(|offered| offered.id == action))
+    {
+        return Err(SettingsError::new(SettingsErrorCode::PluginNotFound));
+    }
+    send_plugin_command(
+        clock,
+        PluginCommand::PressAction {
+            id,
+            action: action.to_string(),
         },
     )
 }

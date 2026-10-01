@@ -141,6 +141,12 @@ pub struct PluginEntry {
     pub restarts: u32,
     /// The feeds it asked for.
     pub subscriptions: Vec<Subscription>,
+    /// The controls it wants the host to draw on its card, newest list first.
+    ///
+    /// Empty for a plugin that offered none, for one that is not running, and for one
+    /// that is installed but has not started — the list is what the plugin *said*, and
+    /// a process that is not running has said nothing.
+    pub actions: Vec<bongocat_plugin_protocol::PluginAction>,
     /// What this plugin has written this run, oldest first.
     ///
     /// Shown on the card rather than in the product's log file, because the product's
@@ -260,6 +266,21 @@ pub enum PluginCommand {
     Uninstall(PluginId),
     /// Turn a plugin's panel on or off.
     SetEnabled { id: PluginId, enabled: bool },
+    /// A press of one of the controls a plugin offered for the host to draw.
+    ///
+    /// Addressed by plugin id and control id rather than by layer, which is what makes
+    /// this different from [`Self::Press`]: a press on the model window arrives with a
+    /// layer because the overlay's hit test knows which layer was hit and nothing else,
+    /// whereas this arrives from the settings window, which knows the plugin by name and
+    /// bypasses the hit test entirely. Both end at the same
+    /// [`bongocat_plugin_protocol::HostMessage::Press`].
+    ///
+    /// The control id is checked against what the plugin is currently offering before
+    /// anything is sent, for the same reason a panel press is checked against the panel
+    /// that declared it: a button can outlive the list it was drawn from by however long
+    /// a snapshot takes to arrive, and a press must never reach a plugin that has
+    /// forgotten what the id meant.
+    PressAction { id: PluginId, action: String },
     /// A press inside a layer, in that layer's own raster pixels.
     ///
     /// Addressed by layer rather than by plugin id: the overlay's hit test knows
@@ -839,7 +860,13 @@ impl Worker {
             SessionOutcome::ModelRequested { id, request } => {
                 self.route_model_request(plugin, id, &request, layer_ids);
             }
-            SessionOutcome::ConfigChanged | SessionOutcome::Failed(_) => {
+            // `ActionsChanged` is here rather than left to the next thing that happens
+            // to publish: the controls on a card are what the user reads to decide what
+            // to press, so a timer that renamed its button from "Start" to "Pause" has to
+            // repaint the moment it says so rather than whenever a panel next changes.
+            SessionOutcome::ConfigChanged
+            | SessionOutcome::ActionsChanged
+            | SessionOutcome::Failed(_) => {
                 self.publish(None, None);
             }
             _ => {}
@@ -1095,6 +1122,23 @@ impl Worker {
                     self.publish_layers(layer_ids);
                 }
             }
+            PluginCommand::PressAction { id, action } => {
+                // The drain is there because the answer matters: a press sent from a
+                // card changes what the plugin draws and says, and the settings window
+                // is also drawing a button whose label depends on it. Skipping it would
+                // mean the card kept saying "Start" until the next unrelated publish.
+                if self.press_action(&id, &action) {
+                    self.drain(fonts, layer_ids);
+                } else {
+                    // A press for a control the plugin is not offering. Counted as
+                    // ignored, exactly as a press outside every button on a panel is:
+                    // it is a click that did not register, which is visible and
+                    // recoverable, rather than a press handed to a plugin that has
+                    // forgotten what the id meant.
+                    self.diagnostics.presses_ignored =
+                        self.diagnostics.presses_ignored.saturating_add(1);
+                }
+            }
             PluginCommand::SetConfig { id, config } => self.set_config(&id, config),
             PluginCommand::Input { events } => {
                 for feed in self.feeds.feeds_mut() {
@@ -1177,7 +1221,14 @@ impl Worker {
                     refusal: None,
                     failure: facts.as_ref().and_then(|facts| facts.failure.clone()),
                     restarts: facts.as_ref().map_or(0, |facts| facts.restarts),
-                    subscriptions: facts.map(|facts| facts.subscriptions).unwrap_or_default(),
+                    subscriptions: facts
+                        .as_ref()
+                        .map(|facts| facts.subscriptions.clone())
+                        .unwrap_or_default(),
+                    actions: facts
+                        .as_ref()
+                        .map(|facts| facts.actions.clone())
+                        .unwrap_or_default(),
                     log: crate::plugin_log::lines_for(&record.id),
                 },
             );
@@ -1214,6 +1265,10 @@ impl Worker {
                         subscriptions: installed
                             .as_ref()
                             .map(|entry| entry.subscriptions.clone())
+                            .unwrap_or_default(),
+                        actions: installed
+                            .as_ref()
+                            .map(|entry| entry.actions.clone())
                             .unwrap_or_default(),
                         log: installed.map(|entry| entry.log).unwrap_or_default(),
                     },
@@ -1493,6 +1548,28 @@ impl Worker {
             return false;
         };
         session.press_button(&button);
+        self.diagnostics.presses_handled = self.diagnostics.presses_handled.saturating_add(1);
+        true
+    }
+
+    /// Hand a plugin a press of a control it offered for the host to draw.
+    ///
+    /// The counterpart to [`Self::press`], and it differs in exactly one place that
+    /// matters: there is no hit test. The settings window knows which plugin it is
+    /// pressing and which control, so the worker's only job is to check the control is
+    /// one the plugin is *currently* offering — which [`Session::press_action`] does,
+    /// against the same rule a panel press is checked against.
+    ///
+    /// Reports whether anything was delivered, so the caller can count the rest as
+    /// ignored and know whether the drain that follows has anything to read.
+    fn press_action(&mut self, id: &PluginId, action: &str) -> bool {
+        let Some(session) = self.sessions.get(id) else {
+            // The plugin was uninstalled between the click and the command being read.
+            return false;
+        };
+        if !session.press_action(action) {
+            return false;
+        }
         self.diagnostics.presses_handled = self.diagnostics.presses_handled.saturating_add(1);
         true
     }

@@ -60,11 +60,12 @@ mod worker;
 /// plugins. A caller that wants the raw protocol — a plugin, or a test that is testing
 /// the protocol rather than the host — depends on `bongocat-plugin-protocol` directly.
 pub use bongocat_plugin_protocol::{
-    CONFIG_SCHEMA_VERSION, ChoiceOption, ConfigControl, ConfigDocument, ConfigField, ConfigKind,
-    ConfigSchema, ConfigValue, HostState, InputEvent, InputMethod, LocalizedText, LogLevel,
-    ModelOutcome, ModelRequest, PLUGIN_CATALOG_FILE_NAME, PLUGIN_SCHEMA_VERSION, PluginAnchor,
-    PluginDescriptor, PluginError, PluginErrorCode, PluginIcon, PluginId, PluginManifest,
-    PluginVersion, SUPPORTED_PLUGIN_API_VERSION, Subscription,
+    ActionGlyph, CONFIG_SCHEMA_VERSION, ChoiceOption, ConfigControl, ConfigDocument, ConfigField,
+    ConfigKind, ConfigSchema, ConfigValue, HostState, InputEvent, InputMethod, LocalizedText,
+    LogLevel, MAXIMUM_ACTIONS, ModelOutcome, ModelRequest, PLUGIN_CATALOG_FILE_NAME,
+    PLUGIN_SCHEMA_VERSION, PluginAction, PluginAnchor, PluginDescriptor, PluginError,
+    PluginErrorCode, PluginIcon, PluginId, PluginManifest, PluginVersion,
+    SUPPORTED_PLUGIN_API_VERSION, Subscription,
 };
 pub use bubble::{Bubble, BubbleSet};
 pub use catalog::{

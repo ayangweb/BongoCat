@@ -27,6 +27,7 @@
 //!    refused line is counted; a skipped one would let a version mismatch look
 //!    like a plugin that is simply quiet.
 
+use super::action::PluginAction;
 use super::config::{ConfigDocument, ConfigSchema};
 use super::descriptor::PluginDescriptor;
 use super::error::{PluginError, PluginErrorCode};
@@ -109,6 +110,20 @@ pub enum PluginMessage {
     Panel(Box<PanelUpdate>),
     /// Take the panel down without stopping the plugin.
     HidePanel,
+    /// The controls this plugin wants the host to offer on its behalf, in the order it
+    /// wants them drawn.
+    ///
+    /// A message rather than part of the handshake, and the reason is the whole
+    /// design: an action carries a label, and a label that goes stale lies. A timer
+    /// whose card still reads "Start" while its round is counting says the opposite of
+    /// what pressing the button will do, so a plugin re-sends the list whenever the
+    /// meaning of any of them changed.
+    ///
+    /// The list is *replaced*, never merged, so a plugin cannot leave behind a control
+    /// it has stopped wanting — and a press of an id that is not in the current list is
+    /// ignored rather than delivered, which is what lets a card be rebuilt from a
+    /// snapshot without the window having to guess whether a button is still live.
+    Actions { actions: Vec<PluginAction> },
     /// The plugin's configuration changed and the host should re-read it.
     ///
     /// The document travels with the message rather than being pulled, so the
@@ -229,12 +244,17 @@ pub enum HostMessage {
     },
     /// Something happened, for a plugin that asked for the feed.
     Input { events: Vec<InputEvent> },
-    /// A press inside the plugin's own panel, as the id the scene named.
+    /// A press of one of this plugin's controls, as the id it declared.
     ///
     /// By id and not by position, because the plugin built the scene and knows
     /// what the rectangle meant. A press outside every button produces no message
     /// at all — the host drops it rather than reporting a miss the plugin would
     /// have to interpret.
+    ///
+    /// The same message carries a press of a [`PluginAction`], which is the point
+    /// of an action using the same id vocabulary as a panel button: a control the
+    /// host drew on its own card and a control the plugin drew on its panel are
+    /// one thing to a plugin, so offering the first costs no second handler.
     Press { id: String },
     /// The user changed a setting. Carries the whole document, because a plugin
     /// writes its file atomically and a patch would have to be merged by a side
@@ -404,6 +424,14 @@ mod tests {
                 descriptor: Box::new(descriptor()),
             },
             PluginMessage::HidePanel,
+            PluginMessage::Actions {
+                actions: vec![PluginAction {
+                    id: "toggle".to_string(),
+                    label: crate::descriptor::LocalizedText::from("Start"),
+                    glyph: crate::action::ActionGlyph::Play,
+                    disabled: false,
+                }],
+            },
             PluginMessage::Request {
                 id: 7,
                 request: Box::new(ModelRequest::PlayMotion {

@@ -265,6 +265,19 @@ pub enum SettingsCommand {
         config: BTreeMap<String, SettingsFieldValue>,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Press one of the controls a plugin offered for the host to draw.
+    ///
+    /// `action` is the id the plugin declared, which is the same id vocabulary a panel
+    /// button uses — so this is a press of a button the host drew rather than one the
+    /// plugin did, and it travels the same path once it is checked. The check is the
+    /// host's: only an id the plugin is currently offering is delivered, so a button on
+    /// a stale snapshot is a click that did not register rather than a press a plugin
+    /// receives with no meaning.
+    PressPluginAction {
+        plugin: String,
+        action: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     OpenConfigBackupLocation {
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },

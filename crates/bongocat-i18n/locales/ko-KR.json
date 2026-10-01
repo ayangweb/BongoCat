@@ -512,7 +512,8 @@
       }
     },
     "plugins": {
-      "show_on_window": "모델 창에 표시",
+      "enable": "사용",
+      "configure_needs_running": "켜면 설정을 변경할 수 있습니다",
       "action": {
         "install": "설치",
         "update": "업데이트",

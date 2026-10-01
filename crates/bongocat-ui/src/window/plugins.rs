@@ -48,11 +48,12 @@ use gpui_kit::component::{Sizable as _, Size};
 /// one the catalogs can lose without anything noticing, and a declared key with
 /// no copy in some language renders as the key itself.
 #[cfg(test)]
-pub(super) const PLUGINS_LOCALIZED_KEYS: [&str; 24] = [
+pub(super) const PLUGINS_LOCALIZED_KEYS: [&str; 25] = [
     "settings.plugins.catalog.refresh",
     "settings.plugins.catalog.loading",
     "settings.plugins.catalog.empty",
-    "settings.plugins.show_on_window",
+    "settings.plugins.enable",
+    "settings.plugins.configure_needs_running",
     "settings.plugins.action.install",
     "settings.plugins.action.update",
     "settings.plugins.action.uninstall",
@@ -452,13 +453,19 @@ fn catalog_toolbar(
         )
 }
 
-/// The switch row: what the plugin contributes to the model window, and whether it
-/// is contributing.
+/// The switch, and what it is for.
 ///
-/// The label is the window's own and it sits beside an unlabelled switch rather than
-/// inside one, because a card is narrow: a switch carrying "Show on the model window"
-/// as its own text would either wrap or shrink the control, and the rest of this
-/// window already reads as label on the left and control on the right.
+/// Beside an unlabelled switch rather than inside one, because a card is narrow and
+/// the rest of this window already reads as label on the left and control on the right.
+///
+/// The sentence is the one the window can actually vouch for. The earlier label — "Show
+/// on the model window" — described the *consequence* of the switch rather than what the
+/// switch is, and it was the wrong shape of sentence twice over: a user who does not
+/// know the product has a model window cannot act on it, and a user who has just
+/// installed a plugin and turned this on saw nothing happen and had nothing on the card
+/// that told them where to look. So the card names the switch, and the card's own
+/// summary — which the plugin writes and which therefore *is* about the model window —
+/// carries the rest.
 ///
 /// The switch reads its own state out of the view at build time, so a refused press —
 /// the panel bound, a host that is not running — puts the switch back where the host
@@ -474,10 +481,9 @@ fn card_switch(
     let switch_view = view.clone();
     let switch_id = id.to_string();
     div()
-        .w_full()
+        .flex_none()
         .flex()
         .items_center()
-        .justify_between()
         .gap_2()
         .child(
             div()
@@ -487,7 +493,7 @@ fn card_switch(
                 .truncate()
                 .child(bongocat_i18n::text(
                     language.catalog_locale(),
-                    "settings.plugins.show_on_window",
+                    "settings.plugins.enable",
                 )),
         )
         .child(
@@ -502,20 +508,65 @@ fn card_switch(
         )
 }
 
+/// The controls a plugin asked the host to draw, as buttons.
+///
+/// These are the plugin's own words and its own meaning, and the host draws them with
+/// the product's buttons — which is the whole of the division an action exists to keep.
+/// A timer that has offered a "Start" control gets a Start button on its card, in the
+/// user's language, that becomes "Pause" the moment the round is counting: the label is
+/// what the user reads to decide what a press will do, so it travels with the press
+/// rather than being fixed at the handshake.
+///
+/// Labelled rather than icon-only, and that is the one place this card uses a word on
+/// its own: the icon beside the label is chosen by the plugin, so there may not be one
+/// (a control with no glyph draws no icon), and a row of unlabelled icons beside a
+/// switch is the row that produced the original complaint — controls a user cannot name
+/// and therefore cannot decide between.
+fn card_offered_actions(
+    entry: &SettingsPluginEntry,
+    view: Entity<SettingsView>,
+) -> Vec<AnyElement> {
+    entry
+        .actions
+        .iter()
+        .map(|action| {
+            let press_view = view.clone();
+            let plugin = entry.id.clone();
+            let control = action.id.clone();
+            let mut button = Button::new(SharedString::from(format!(
+                "plugin-action-{plugin}-{control}"
+            )))
+            .label(action.label.clone())
+            .with_size(PLUGIN_CARD_SIZE)
+            .disabled(action.disabled)
+            .on_click(move |_, _, app| {
+                press_view.update(app, |view, cx| {
+                    view.press_plugin_action(plugin.clone(), control.clone(), cx)
+                });
+            });
+            button = match action.glyph {
+                SettingsActionGlyph::None => button,
+                SettingsActionGlyph::Play => button.icon(IconName::Play),
+                SettingsActionGlyph::Pause => button.icon(IconName::Pause),
+                SettingsActionGlyph::Reset => button.icon(IconName::RotateCcw),
+            };
+            button.into_any_element()
+        })
+        .collect()
+}
+
 /// The card's own buttons: one labelled action when there is nothing installed, and
 /// the icon actions of an installed plugin otherwise.
-///
-/// Icons rather than four labels, because a card in a grid has room for one line of
-/// controls and a switch already has a sentence above it. Every icon control carries
-/// its name as a tooltip, which is the only thing that names it.
 ///
 /// Uninstall is the one destructive control here and it asks for nothing first, on
 /// purpose: a plugin the catalog offers is one press away from being installed
 /// again, so the cost of a mispress is a download rather than a loss.
+#[allow(clippy::too_many_arguments)]
 fn card_actions(
     entry: &SettingsPluginEntry,
     action: CardAction,
     settings_open: bool,
+    settings_pending: bool,
     view: Entity<SettingsView>,
     language: SettingsLanguage,
 ) -> AnyElement {
@@ -540,31 +591,50 @@ fn card_actions(
             .into_any_element();
     }
 
-    // The plugin's own settings, which are open for exactly one plugin at a time —
-    // so this control is the one that carries the open state, marked by the same
-    // `toggled` the rest of the window uses for a control that is on.
-    let mut row = div().w_full().flex().items_center().justify_end().gap_1();
-    if !entry.fields.is_empty() {
-        let configure_view = view.clone();
-        let configure_id = id.clone();
-        row = row.child(
-            Button::new(SharedString::from(format!(
-                "plugin-configure-{configure_id}"
-            )))
-            .icon(IconName::SlidersHorizontal)
-            .tooltip(bongocat_i18n::text(
-                locale,
-                "settings.plugins.action.configure",
-            ))
-            .toggled(settings_open)
-            .with_size(PLUGIN_CARD_SIZE)
-            .with_variant(ButtonVariant::Ghost)
-            .on_click(move |_, _, app| {
-                let plugin = configure_id.to_string();
-                configure_view.update(app, |view, cx| view.toggle_plugin_settings(plugin, cx));
-            }),
-        );
+    // The plugin's own settings. **Always** drawn for an installed plugin, and that is
+    // the change that fixes the dead end this card used to have: the form comes from the
+    // running process's handshake, so a plugin that is switched off has no fields yet —
+    // and a button that appears only once a plugin is running is a button that is
+    // missing at exactly the moment a user who has just installed something looks for
+    // it. So the control is always there, and what pressing it does depends on whether
+    // the form can be shown yet: open it, or turn the plugin on and say so. A control
+    // that is present and explains itself beats a control that is absent.
+    let configure_view = view.clone();
+    let configure_id = id.clone();
+    // The tooltip says what pressing this will actually do, which is not the same thing
+    // for a running plugin and a stopped one. A stopped plugin's form is opened by
+    // turning it on, and a tooltip that said "Settings" on a card whose only other
+    // control is a switch would be describing a control that does nothing — the tooltip
+    // is the one place a user can find out before pressing.
+    //
+    // Marked unpressable while the plugin is starting, for the reason the tooltip exists
+    // plus one: a second press would queue a second enable behind the first, and the
+    // user would be told they had pressed it twice for no visible change.
+    let configure_tooltip = if entry.enabled {
+        bongocat_i18n::text(locale, "settings.plugins.action.configure")
+    } else {
+        bongocat_i18n::text(locale, "settings.plugins.configure_needs_running")
+    };
+    let settings_button = Button::new(SharedString::from(format!(
+        "plugin-configure-{configure_id}"
+    )))
+    .icon(IconName::SlidersHorizontal)
+    .tooltip(configure_tooltip)
+    .toggled(settings_open)
+    .disabled(settings_pending)
+    .with_size(PLUGIN_CARD_SIZE)
+    .with_variant(ButtonVariant::Ghost)
+    .on_click(move |_, _, app| {
+        let plugin = configure_id.to_string();
+        configure_view.update(app, |view, cx| view.toggle_plugin_settings(plugin, cx));
+    })
+    .into_any_element();
+
+    let mut row = div().flex().items_center().gap_1();
+    for action in card_offered_actions(entry, view.clone()) {
+        row = row.child(action);
     }
+    let mut row = row.child(settings_button);
     if action.shows_update() {
         let update_view = view.clone();
         let update_id = id.clone();
@@ -615,6 +685,7 @@ fn plugin_card(
     action: CardAction,
     enabled: bool,
     settings_open: bool,
+    settings_pending: bool,
     index: usize,
     view: Entity<SettingsView>,
     language: SettingsLanguage,
@@ -647,18 +718,49 @@ fn plugin_card(
         ),
         None => identity,
     };
+    // One row, switch on the left and everything else on the right, and the reason is
+    // the same one the rest of this window uses: a card is 260 pixels wide, and two
+    // stacked rows of controls left the switch's label in a row of its own with the
+    // buttons underneath it, which is a column that reads as a form rather than as the
+    // controls for one thing. Beside each other, the switch and the buttons are one
+    // answer to one question — is this running, and what can I do to it — and the row
+    // fits in the width the card already has.
     let mut controls = div().w_full().flex().flex_col().gap_2().mt_auto();
     if action.shows_switch() {
-        controls = controls.child(card_switch(
-            &entry.id,
-            enabled,
-            action.switch_is_live(),
-            view.clone(),
+        controls = controls.child(
+            div()
+                .w_full()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_2()
+                .child(card_switch(
+                    &entry.id,
+                    enabled,
+                    action.switch_is_live(),
+                    view.clone(),
+                    language,
+                    tokens,
+                ))
+                .child(card_actions(
+                    entry,
+                    action,
+                    settings_open,
+                    settings_pending,
+                    view,
+                    language,
+                )),
+        );
+    } else {
+        controls = controls.child(card_actions(
+            entry,
+            action,
+            settings_open,
+            settings_pending,
+            view,
             language,
-            tokens,
         ));
     }
-    let actions = card_actions(entry, action, settings_open, view, language);
 
     div()
         .id(("plugin-card", index))
@@ -697,7 +799,7 @@ fn plugin_card(
                     .child(text)
             },
         ))
-        .child(controls.child(actions))
+        .child(controls)
 }
 
 /// The grid itself: rows of cards, each row as wide as the page.
@@ -762,11 +864,13 @@ pub(super) fn content(
             let action = CardAction::for_entry(entry, switch_live);
             let enabled = view.plugin_is_enabled(entry.id.as_str());
             let settings_open = view.plugin_settings_are_open(entry.id.as_str());
+            let settings_pending = view.plugin_awaiting_settings(entry.id.as_str());
             plugin_card(
                 entry,
                 action,
                 enabled,
                 settings_open,
+                settings_pending,
                 index,
                 cards_view.clone(),
                 language,
@@ -881,6 +985,11 @@ mod tests {
             running: installed && enabled,
             update_available: update,
             fields: Vec::new(),
+            // A plugin that declares no settings has none to show, so `enabled` alone
+            // decides the flag here — exactly as the projection computes it for a
+            // running plugin with an empty schema.
+            settings_available: installed && enabled,
+            actions: Vec::new(),
             values: Default::default(),
             log: Vec::new(),
             refusal: None,
@@ -888,6 +997,11 @@ mod tests {
         }
     }
 
+    /// An entry whose running plugin declared one setting.
+    ///
+    /// `settings_available` rather than a field, because the card's behaviour depends on
+    /// whether a form *can* be shown and a test that only set `fields` would be asserting
+    /// against a state the projection cannot produce.
     fn with_fields(mut entry: SettingsPluginEntry) -> SettingsPluginEntry {
         entry.fields = vec![SettingsPluginField {
             key: "minutes".to_string(),
@@ -902,6 +1016,22 @@ mod tests {
             placeholder: None,
             multiline: false,
             options: Vec::new(),
+        }];
+        entry.settings_available = entry.enabled;
+        entry
+    }
+
+    /// An entry whose running plugin offered one control.
+    fn with_actions(
+        mut entry: SettingsPluginEntry,
+        label: &str,
+        glyph: SettingsActionGlyph,
+    ) -> SettingsPluginEntry {
+        entry.actions = vec![bongocat_ui_protocol::SettingsPluginAction {
+            id: "toggle".to_string(),
+            label: label.to_string(),
+            glyph,
+            disabled: false,
         }];
         entry
     }
@@ -1203,13 +1333,57 @@ mod tests {
     }
 
     #[test]
-    fn a_card_with_settings_is_configurable_and_one_without_is_not() {
-        let with = with_fields(entry(true, true, false));
+    fn a_card_offers_its_settings_whether_or_not_the_plugin_is_running() {
+        // The dead end this replaced. A plugin's schema arrives with its handshake, so a
+        // switched-off plugin has no `fields` — and a card that drew its configure button
+        // only when there were fields left a user who had just installed a plugin with a
+        // delete button and no way to configure anything, and no way to find out why.
+        // The button is unconditional now; what pressing it does is what varies.
+        let stopped = entry(true, false, false);
         assert!(
-            !with.fields.is_empty(),
-            "so its card offers the configure button"
+            stopped.fields.is_empty(),
+            "a stopped plugin has no schema yet"
         );
-        assert!(entry(true, true, false).fields.is_empty());
+        assert!(
+            !stopped.settings_available,
+            "so there is nothing to open, and the button has to say so rather than vanish"
+        );
+        assert!(
+            entry(true, true, false).settings_available
+                || entry(true, true, false).fields.is_empty(),
+            "and a running plugin with no settings has nothing to open either"
+        );
+    }
+
+    #[test]
+    fn a_running_plugin_with_a_schema_can_show_its_form() {
+        let running = with_fields(entry(true, true, false));
+        assert!(
+            running.settings_available,
+            "which is the state the settings button opens the form in"
+        );
+    }
+
+    #[test]
+    fn the_controls_a_plugin_offered_are_the_ones_its_card_draws() {
+        // The label is the user's only clue to what a press will do, so a timer that
+        // offers "Start" and then "Pause" arrives here as two different labels — and the
+        // card draws whichever the plugin last said.
+        let offered = with_actions(entry(true, true, false), "Start", SettingsActionGlyph::Play);
+        assert_eq!(offered.actions.len(), 1);
+        assert_eq!(offered.actions[0].label, "Start");
+        assert_eq!(offered.actions[0].glyph, SettingsActionGlyph::Play);
+
+        let paused = with_actions(
+            entry(true, true, false),
+            "Pause",
+            SettingsActionGlyph::Pause,
+        );
+        assert_ne!(offered.actions[0].label, paused.actions[0].label);
+
+        // A plugin that offered nothing is a plugin whose card shows nothing extra,
+        // which is how a plugin that was never meant to be pressed from a card opts out.
+        assert!(entry(true, true, false).actions.is_empty());
     }
 
     #[test]

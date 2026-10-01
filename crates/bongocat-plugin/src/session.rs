@@ -92,6 +92,12 @@ pub struct SessionFacts {
     pub restarts: u32,
     /// Whether the plugin wants each feed. A plugin that did not ask is not sent one.
     pub subscriptions: Vec<Subscription>,
+    /// The controls the plugin last asked the host to draw on its card.
+    ///
+    /// Empty for a plugin that offered none, and for one that has not run yet — the
+    /// list is what the plugin *said*, so it is empty until it says something and
+    /// again once the process is gone.
+    pub actions: Vec<bongocat_plugin_protocol::PluginAction>,
 }
 
 impl SessionFacts {
@@ -146,6 +152,13 @@ pub struct Session {
     images: bongocat_plugin_render::ImageLibrary,
     /// The buttons the last panel declared, so a press can be checked against them.
     buttons: Vec<String>,
+    /// The controls the plugin last offered for the host to draw on its card.
+    ///
+    /// Held so a press of one of them can be checked against the current list before
+    /// it is delivered — the same reason [`Self::buttons`] is held, and the same rule:
+    /// a press of a control the plugin is no longer offering is ignored rather than
+    /// handed to a plugin that has forgotten what the id meant.
+    actions: Vec<bongocat_plugin_protocol::PluginAction>,
     /// The rasterized panel, which is what a press is tested against.
     rendered: Option<bongocat_plugin_render::RenderedPanel>,
     layer_id: u64,
@@ -258,6 +271,7 @@ impl Session {
             panel: None,
             images: bongocat_plugin_render::ImageLibrary::new(),
             buttons: Vec::new(),
+            actions: Vec::new(),
             rendered: None,
             layer_id,
             outbound,
@@ -292,6 +306,71 @@ impl Session {
     /// Hand the plugin a press on one of the buttons its panel declared.
     pub fn press_button(&self, id: &str) -> bool {
         self.queue(HostMessage::Press { id: id.to_string() })
+    }
+
+    /// Hand the plugin a press of one of the controls it offered for its card.
+    ///
+    /// The same message [`Self::press_button`] sends, and refused under the same rule:
+    /// only an id the plugin is *currently* offering is delivered. The window builds its
+    /// card from a snapshot, so a button can outlive the list it came from by however
+    /// long a poll takes — and a press of a control the plugin has since withdrawn would
+    /// otherwise be handed to a plugin that has forgotten what the id meant, which is
+    /// the one thing a press must never be.
+    ///
+    /// Returns whether the press was queued, so the caller can count the rest as
+    /// ignored rather than delivered.
+    pub fn press_action(&self, id: &str) -> bool {
+        if !self.actions.iter().any(|action| action.id == id) {
+            return false;
+        }
+        self.press_button(id)
+    }
+
+    /// The controls this plugin is currently offering.
+    pub fn actions(&self) -> &[bongocat_plugin_protocol::PluginAction] {
+        &self.actions
+    }
+
+    /// A session with the host's end of the conversation but no process behind it.
+    ///
+    /// For the parts of a session that are about *talking* rather than about running: the
+    /// offered controls, the press routing, the outcome each message means. Those are the
+    /// decisions worth testing, and testing them through a real process would mean
+    /// spawning a binary to observe a list, which tests the spawn and not the list.
+    #[cfg(test)]
+    fn without_a_process(id: PluginId) -> Self {
+        let (outbound, outbound_rx) = mpsc::sync_channel(OUTBOUND_CAPACITY);
+        let (_inbound_tx, inbound_rx) = mpsc::sync_channel(1);
+        // Both receivers are deliberately forgotten rather than stored. A live session's
+        // writer thread holds `outbound_rx` for the session's whole life; here there is
+        // no thread, so a receiver that was dropped would make every send report a
+        // disconnected channel — and these tests assert *whether a press was queued*, so
+        // they would be asserting on the test's own plumbing instead of on the routing.
+        // Leaking one channel per test process is a cost worth paying for that.
+        std::mem::forget(outbound_rx);
+        Self {
+            id,
+            directory: PathBuf::new(),
+            data_directory: PathBuf::new(),
+            state: SessionState::Running,
+            started_at: Instant::now(),
+            restarts: 0,
+            descriptor: None,
+            config: ConfigDocument::default(),
+            failure: None,
+            panel: None,
+            images: bongocat_plugin_render::ImageLibrary::new(),
+            buttons: Vec::new(),
+            actions: Vec::new(),
+            rendered: None,
+            layer_id: 0,
+            outbound,
+            inbound: inbound_rx,
+            child_stdin: Mutex::new(None),
+            child: Mutex::new(None),
+            stopping: Arc::new(AtomicBool::new(false)),
+            diagnostics: SessionDiagnostics::default(),
+        }
     }
 
     /// Where this session is in its own life.
@@ -372,6 +451,7 @@ impl Session {
                 .as_ref()
                 .map(|descriptor| descriptor.subscriptions.clone())
                 .unwrap_or_default(),
+            actions: self.actions.clone(),
         }
     }
 
@@ -606,6 +686,34 @@ impl Session {
                 self.config = config;
                 SessionOutcome::ConfigChanged
             }
+            PluginMessage::Actions { actions } => {
+                // Replaced rather than merged, and this is where that rule is enforced:
+                // a plugin that stops wanting a control must be able to make it go away,
+                // and a press of an id that is no longer in the list has to be ignored
+                // rather than delivered to a plugin that has forgotten what it meant.
+                if bongocat_plugin_protocol::check_actions(&actions).is_err() {
+                    // A list the host cannot draw is refused rather than partially
+                    // applied. Half a card's buttons — some renamed, some missing — is a
+                    // state a user cannot act on and a plugin author cannot debug from
+                    // the card, so the previous list stands and the refusal is logged.
+                    self.diagnostics.lines_refused =
+                        self.diagnostics.lines_refused.saturating_add(1);
+                    crate::plugin_log::record(
+                        &self.id,
+                        LogLevel::Warn,
+                        "a list of actions was refused, so the previous one still stands",
+                    );
+                    return SessionOutcome::Ignored;
+                }
+                if self.actions == actions {
+                    // Nothing changed, so nothing to tell the worker. A plugin that
+                    // re-sends an unchanged list every tick then costs one comparison
+                    // rather than a snapshot revision and a card rebuild.
+                    return SessionOutcome::Ignored;
+                }
+                self.actions = actions;
+                SessionOutcome::ActionsChanged
+            }
             PluginMessage::Log { level, message } => {
                 crate::plugin_log::record(&self.id, level, &message);
                 SessionOutcome::Ignored
@@ -815,6 +923,13 @@ pub enum SessionOutcome {
     PanelWithdrawn,
     /// The plugin's settings changed.
     ConfigChanged,
+    /// The controls the plugin wants drawn on its card changed.
+    ///
+    /// Its own outcome rather than folded into [`Self::Ignored`] because it moves
+    /// something the settings window is drawing: without a worker republish here, a
+    /// timer that renamed its button from "Start" to "Pause" would leave the card
+    /// showing the old word until something else happened to move the snapshot.
+    ActionsChanged,
     /// The plugin failed, and said why.
     Failed(PluginError),
     /// The plugin is finished.
@@ -1034,6 +1149,132 @@ mod tests {
         );
         assert!(!SessionOutcome::Ended.is_failure());
         assert!(!SessionOutcome::PanelChanged.is_failure());
+    }
+
+    /// A font book, for the one argument `on_child_message` needs and these tests do not
+    /// exercise.
+    ///
+    /// Built per call rather than shared, because `&mut` is what the method takes and a
+    /// shared measurer would be borrowed across two of them.
+    fn measurer() -> bongocat_plugin_render::TextMeasurer {
+        // No fonts: nothing in these tests sends a panel, so the measurer is only an
+        // argument the signature asks for. `load_from` with two empty paths is the
+        // book that says "no font found" without touching the system's font directories.
+        bongocat_plugin_render::TextMeasurer::new(bongocat_plugin_render::FontBook::load_from(
+            &[],
+            &[],
+        ))
+    }
+
+    #[test]
+    fn a_new_actions_outcome_is_not_a_panel_change_because_it_only_moves_the_card() {
+        // The distinction that keeps this from re-rasterizing every other plugin's panel
+        // on the model window. A control the host draws on its own card is not on the
+        // model window at all, so it is exactly the outcome the panel-channel test above
+        // must keep returning false for.
+        assert!(!SessionOutcome::ActionsChanged.changed_the_panel());
+        assert!(!SessionOutcome::ActionsChanged.is_failure());
+    }
+
+    /// The controls a plugin offers, as the protocol's own type.
+    fn an_action(id: &str, label: &str) -> bongocat_plugin_protocol::PluginAction {
+        bongocat_plugin_protocol::PluginAction {
+            id: id.to_string(),
+            label: bongocat_plugin_protocol::LocalizedText::from(label),
+            glyph: bongocat_plugin_protocol::ActionGlyph::Play,
+            disabled: false,
+        }
+    }
+
+    #[test]
+    fn an_offered_control_is_delivered_and_one_that_was_withdrawn_is_not() {
+        // The reason the session holds the list rather than trusting the press. A card is
+        // rebuilt from a snapshot, so its button can outlive the offer it was drawn from
+        // by however long a poll takes — and a press handed to a plugin that has forgotten
+        // what the id meant is the one thing a press must never be.
+        let mut session = Session::without_a_process(PluginId::new("pomodoro").expect("valid"));
+
+        assert!(
+            !session.press_action("toggle"),
+            "nothing has been offered yet, so there is nothing a press can mean"
+        );
+
+        let offered = bongocat_plugin_protocol::PluginMessage::Actions {
+            actions: vec![an_action("toggle", "Pause")],
+        };
+        assert_eq!(
+            session.on_child_message(offered, &mut measurer(), 1.0),
+            SessionOutcome::ActionsChanged,
+            "and offering is something the worker has to hear about, because the card draws it"
+        );
+        assert_eq!(session.actions().len(), 1);
+        assert!(
+            session.press_action("toggle"),
+            "so the control the card is drawing is pressable"
+        );
+        assert!(
+            !session.press_action("something-else"),
+            "and an id the plugin never offered is refused rather than delivered"
+        );
+
+        // Withdrawn: an empty list replaces the old one rather than merging with it, so a
+        // plugin that stops wanting a control makes it go away.
+        let withdrawn = bongocat_plugin_protocol::PluginMessage::Actions { actions: vec![] };
+        assert_eq!(
+            session.on_child_message(withdrawn, &mut measurer(), 1.0),
+            SessionOutcome::ActionsChanged
+        );
+        assert!(session.actions().is_empty());
+        assert!(
+            !session.press_action("toggle"),
+            "so the button on a card that has not caught up yet is a click that does nothing, \
+             rather than a press the plugin cannot interpret"
+        );
+    }
+
+    #[test]
+    fn re_offering_the_same_control_is_not_a_change() {
+        // A plugin may call this every tick. Without this, sixty offers a second would be
+        // sixty snapshot revisions and sixty card rebuilds to say the same word — and the
+        // whole cost of the mechanism is that it is cheap to leave switched on.
+        let mut session = Session::without_a_process(PluginId::new("pomodoro").expect("valid"));
+        let offered = bongocat_plugin_protocol::PluginMessage::Actions {
+            actions: vec![an_action("toggle", "Pause")],
+        };
+        assert_eq!(
+            session.on_child_message(offered.clone(), &mut measurer(), 1.0),
+            SessionOutcome::ActionsChanged
+        );
+        assert_eq!(
+            session.on_child_message(offered, &mut measurer(), 1.0),
+            SessionOutcome::Ignored,
+            "and the second offer is the same list, so there is nothing to republish"
+        );
+    }
+
+    #[test]
+    fn a_list_the_host_cannot_draw_keeps_the_previous_one_rather_than_part_of_it() {
+        // Refused whole, not partly applied. Half a card's buttons — some renamed, some
+        // missing — is a state a user cannot act on and a plugin author cannot debug from
+        // the card, so the last good list stands and the refusal is counted.
+        let mut session = Session::without_a_process(PluginId::new("pomodoro").expect("valid"));
+        let good = bongocat_plugin_protocol::PluginMessage::Actions {
+            actions: vec![an_action("toggle", "Pause")],
+        };
+        session.on_child_message(good, &mut measurer(), 1.0);
+
+        let two_with_one_id = bongocat_plugin_protocol::PluginMessage::Actions {
+            actions: vec![an_action("toggle", "Pause"), an_action("toggle", "Start")],
+        };
+        assert_eq!(
+            session.on_child_message(two_with_one_id, &mut measurer(), 1.0),
+            SessionOutcome::Ignored
+        );
+        assert_eq!(
+            session.actions().len(),
+            1,
+            "so the card still shows the control it had, rather than two that answer to one id"
+        );
     }
 
     #[test]

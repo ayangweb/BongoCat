@@ -359,6 +359,7 @@ impl SettingsView {
             navigation_memory: SettingsNavigationMemory::default(),
             applied_theme: None,
             plugin_settings: None,
+            plugin_settings_pending: None,
             language_select,
             theme_select,
             logging_level_select,
