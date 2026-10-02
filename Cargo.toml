@@ -44,7 +44,7 @@ embed-resource = "=3.0.11"
 flate2 = "=1.1.10"
 global-hotkey = "=0.8.0"
 gpui-kit = "=0.7.0"
-gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "6dcedad1a3864d4f518b4a3214aa9ade3395b46e", default-features = false }
+gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549", default-features = false }
 rust-i18n = "=4.2.2"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 libc = "=0.2.189"

@@ -2848,7 +2848,7 @@ dependencies = [
 [[package]]
 name = "gilrs"
 version = "0.11.2"
-source = "git+https://github.com/ayangweb/gilrs?rev=6dcedad1a3864d4f518b4a3214aa9ade3395b46e#6dcedad1a3864d4f518b4a3214aa9ade3395b46e"
+source = "git+https://github.com/ayangweb/gilrs?rev=8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549#8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549"
 dependencies = [
  "fnv",
  "gilrs-core",
@@ -2860,7 +2860,7 @@ dependencies = [
 [[package]]
 name = "gilrs-core"
 version = "0.6.8"
-source = "git+https://github.com/ayangweb/gilrs?rev=6dcedad1a3864d4f518b4a3214aa9ade3395b46e#6dcedad1a3864d4f518b4a3214aa9ade3395b46e"
+source = "git+https://github.com/ayangweb/gilrs?rev=8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549#8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549"
 dependencies = [
  "inotify 0.11.5",
  "js-sys",
