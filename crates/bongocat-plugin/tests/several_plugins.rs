@@ -87,13 +87,47 @@ fn asks_for_a_place(id: &str) -> bool {
     id != ECHO
 }
 
+/// The feeds each plugin asks for, which are the feeds its shipped counterpart asks for.
+///
+/// **This is the shape the requirement names.** Three plugins at once means a timer, a
+/// sound and a key display, and they do not want the same things: the timer watches the
+/// host's state, the sound wants keystrokes and model reactions, the key display wants
+/// keystrokes. So the three here do not all ask for the same feed either — a file where
+/// every plugin subscribes to the same thing cannot tell a fan-out that shares one batch
+/// from one that splits it between them, nor a feed that reaches a plugin that never asked.
+fn subscriptions_of(id: &str) -> Vec<Subscription> {
+    match id {
+        // The three shipped plugins, with the feeds each of them actually asks for — a
+        // timer takes the host's state and the keyboard, a key display takes both because
+        // it has to know when the window is hidden, and a sound takes the keyboard plus the
+        // model reactions it plays when the model answers. Spelling them out rather than
+        // inventing a tidier set is the point: this file is here to check the case the
+        // requirement names, and a tidier set would not be it.
+        ALPHA | GAMMA => vec![Subscription::HostState, Subscription::Input],
+        BETA => vec![Subscription::Input, Subscription::ModelReaction],
+        // The one that does not survive the session, and the one with no place: neither
+        // asks for anything, so neither is given a feed. That is what makes them the
+        // discriminator — a host that built a feed for every running plugin would reach
+        // them, and a file where every plugin subscribes to something could not tell.
+        _ => Vec::new(),
+    }
+}
+
+/// The action id a plugin uses to report how many input events it was told about.
+///
+/// An *action* rather than a panel or a setting, because it is the one thing a plugin can
+/// say that the host keeps on its card and a test can read back without interpreting a
+/// raster. The label carries the count, so the assertion is on a number the plugin itself
+/// counted.
+const COUNTED_ACTION: &str = "counted";
+
 /// The cases, and the plain claim each one makes.
 ///
 /// The same shape as `process_session.rs`'s: `harness = false`, a `main` that dispatches,
 /// and a case that reports by panicking. A panic is the only report available here, because
 /// the repository denies printing — and the rule is right for the same reason the plugin
 /// half is a plain function: on the plugin side stdout *is* the wire.
-const CASES: [(&str, fn()); 6] = [
+const CASES: [(&str, fn()); 7] = [
     (
         "three plugins run at once, each with its own settings, panel and place",
         several_run_at_once,
@@ -117,6 +151,10 @@ const CASES: [(&str, fn()); 6] = [
     (
         "uninstalling a plugin frees its place for somebody else",
         uninstalling_frees_a_place,
+    ),
+    (
+        "a keystroke reaches every plugin that asked for it, and only those",
+        a_keystroke_reaches_only_the_plugins_that_asked,
     ),
 ];
 
@@ -888,6 +926,117 @@ fn uninstalling_frees_a_place() {
     );
 }
 
+/// One keystroke reaches every plugin that asked for input, and no plugin that did not.
+///
+/// This is the requirement's own example — a timer, a sound and a key display at once —
+/// and the part of it nothing tested. Every plugin in this file used to ask for the same
+/// feed, and three plugins asking for the same thing cannot tell a host that shares one
+/// batch between them from a host that splits it, nor tell a feed that leaks to a plugin
+/// that never subscribed.
+///
+/// The three here ask for what their shipped counterparts ask for: the timer watches the
+/// host's state, the sound wants keystrokes and model reactions, the key display wants
+/// keystrokes. So one keystroke must arrive at two of them and not the third — and arrive
+/// at both of them *whole*, which is the half a split would lose.
+fn a_keystroke_reaches_only_the_plugins_that_asked() {
+    let ids = [ALPHA, BETA, GAMMA, ECHO];
+    let worker = Several::with(&ids);
+    for id in ids {
+        worker.send(PluginCommand::SetEnabled {
+            id: Several::id(id),
+            enabled: true,
+        });
+    }
+    let snapshot = worker.await_running(&ids);
+
+    // Each plugin is recorded as wanting what it asked for, which is the other half of the
+    // same rule: the host believes the descriptor, and the feed follows from it.
+    for (id, wanted) in [
+        (ALPHA, vec![Subscription::HostState, Subscription::Input]),
+        (BETA, vec![Subscription::Input, Subscription::ModelReaction]),
+        (GAMMA, vec![Subscription::HostState, Subscription::Input]),
+        (ECHO, Vec::new()),
+    ] {
+        let entry = snapshot.entry(&Several::id(id)).expect("an entry");
+        let mut recorded = entry.subscriptions.clone();
+        recorded.sort_by_key(|subscription| subscription.as_str());
+        let mut wanted = wanted;
+        wanted.sort_by_key(|subscription| subscription.as_str());
+        assert_eq!(
+            recorded, wanted,
+            "{id} is recorded as wanting exactly what it declared, because the feed is \
+             built from this and not from what the host assumed"
+        );
+    }
+
+    fn counted_by(snapshot: &PluginSnapshot, id: &str) -> Option<String> {
+        snapshot
+            .entry(&Several::id(id))?
+            .actions
+            .iter()
+            .find(|action| action.id == COUNTED_ACTION)
+            .map(|action| action.label.default.clone())
+    }
+
+    // Every plugin publishes a count of zero before anything is sent, so "it did not
+    // arrive" is distinguishable from "it never said anything" — which means waiting for
+    // that first count rather than assuming it, since a control a plugin offers arrives in
+    // a message of its own after the announcement and this snapshot may predate it.
+    let snapshot = await_snapshot(
+        &worker,
+        |snapshot| ids.iter().all(|id| counted_by(snapshot, id).is_some()),
+        "every plugin to have published the count it starts from",
+    );
+    for id in ids {
+        assert_eq!(
+            counted_by(&snapshot, id).as_deref(),
+            Some("0"),
+            "{id} starts by reporting nothing, so a plugin that is never sent an event is \
+             distinguishable from one that has not published a count yet"
+        );
+    }
+
+    const KEYSTROKES: usize = 3;
+    for index in 0..KEYSTROKES {
+        worker.send(PluginCommand::Input {
+            events: vec![bongocat_plugin_protocol::InputEvent::KeyDown {
+                control: format!("Key{}", b'a' + index as u8),
+                repeat: false,
+            }],
+        });
+    }
+
+    let snapshot = await_snapshot(
+        &worker,
+        |snapshot| {
+            ["tally-beta", "tally-gamma"]
+                .iter()
+                .all(|id| counted_by(snapshot, id).as_deref() == Some("3"))
+        },
+        "both plugins that asked for input to have counted every keystroke",
+    );
+
+    // Whole, not split: the host drains each plugin's own feed rather than sharing one
+    // batch, so N events reach every subscriber rather than being divided between them.
+    for id in [BETA, GAMMA] {
+        assert_eq!(
+            counted_by(&snapshot, id).as_deref(),
+            Some("3"),
+            "{id} asked for input, so all {KEYSTROKES} keystrokes reached it — a shared \
+             batch would have given it one"
+        );
+    }
+    assert_eq!(
+        counted_by(&snapshot, ECHO).as_deref(),
+        Some("0"),
+        "and the plugin that asked for nothing at all was sent none of them: a feed that \
+         reaches a plugin which did not subscribe is a plugin told about other people's \
+         keystrokes. It is the discriminator, because all three plugins above do subscribe \
+         to the keyboard — a file where every plugin wants the feed could not tell a leak \
+         from a delivery"
+    );
+}
+
 fn describe_places(snapshot: &PluginSnapshot, ids: &[&str]) -> Vec<(String, Option<PluginAnchor>)> {
     ids.iter()
         .map(|id| {
@@ -979,7 +1128,7 @@ fn serve() -> std::process::ExitCode {
                     }],
                 },
                 draws_panel: asks_for_a_place(&id),
-                subscriptions: vec![Subscription::HostState],
+                subscriptions: subscriptions_of(&id),
             }),
         },
     );
@@ -994,6 +1143,17 @@ fn serve() -> std::process::ExitCode {
                 key.to_string(),
                 ConfigValue::Bool(true),
             )])),
+        },
+    );
+
+    let mut seen = 0usize;
+    // Zero, published before anything could be sent to this plugin. Without it, "was never
+    // told about an event" and "has not said anything yet" are the same observation, and a
+    // case checking that a feed does not leak could not tell a leak from a silence.
+    send(
+        &mut stdout,
+        &PluginMessage::Actions {
+            actions: vec![counted(0)],
         },
     );
 
@@ -1012,8 +1172,35 @@ fn serve() -> std::process::ExitCode {
         }
         match serde_json::from_str::<HostMessage>(line.trim()) {
             Ok(HostMessage::Shutdown) | Err(_) => return std::process::ExitCode::SUCCESS,
+            // The one message this plugin has something to say about. A plugin that asked
+            // for no feed is never sent one, so for DELTA and ECHO this arm is
+            // unreachable — which is what makes "the host only sends what was asked for" a
+            // claim this file can check rather than a claim about the protocol.
+            Ok(HostMessage::Input { events }) => {
+                seen += events.len();
+                send(
+                    &mut stdout,
+                    &PluginMessage::Actions {
+                        actions: vec![counted(seen)],
+                    },
+                );
+            }
             Ok(_) => {}
         }
+    }
+}
+
+/// One action whose label is how many input events this plugin was told about.
+///
+/// Reported rather than drawn, because the host keeps a card's actions where a test can
+/// read the count back; a panel would make the assertion about pixels this plugin never
+/// intended to be measured by.
+fn counted(seen: usize) -> bongocat_plugin_protocol::PluginAction {
+    bongocat_plugin_protocol::PluginAction {
+        id: COUNTED_ACTION.to_string(),
+        label: format!("{seen}").into(),
+        glyph: bongocat_plugin_protocol::ActionGlyph::Reset,
+        disabled: false,
     }
 }
 
