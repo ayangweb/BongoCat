@@ -78,6 +78,13 @@ A pull request should explain:
 If a change affects user-visible behavior, defaults, compatibility, supported platforms, or upgrade
 guidance, update both `CHANGELOG.md` and `CHANGELOG.zh-CN.md` unless maintainers decide otherwise.
 
+Write that changelog entry **per pull request, not per commit.** A feature branch may hold a dozen
+commits — the first `feat`, then the `fix`es it needed, then the tests for both — and they are one
+change as far as a user is concerned, so they get one entry describing the finished result. Do not add
+an entry per commit: intermediate states were never released to anyone, and the entries accumulate
+into noise. Update the existing entry rather than adding a second one when a later commit only makes
+the same change more complete.
+
 ## Privacy and security
 
 Never include real user paths, key sequences, clipboard contents, private model data, credentials, or
