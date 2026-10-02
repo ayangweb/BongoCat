@@ -14,6 +14,7 @@ use gpui_kit::{
 };
 
 mod copy;
+mod external_link;
 mod model_actions;
 mod model_drag_overlay;
 mod model_editor_render;

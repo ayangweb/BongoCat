@@ -240,8 +240,11 @@ impl Render for UpdateView {
                     tokens,
                     false,
                 )
-                .on_click(move |_, _window, _cx| {
-                    let _ = bongocat_platform::open_external_url(&url);
+                .on_click(move |_, _window, cx| {
+                    // Off the callback thread: `ShellExecuteW` pumps this process's message
+                    // queue, which re-enters GPUI's foreground tasks while they are inside
+                    // the `App` borrow this callback is holding (issue #1081).
+                    crate::external_link::open(url.clone(), cx.background_executor()).detach();
                 }),
             );
         }

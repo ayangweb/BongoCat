@@ -1,5 +1,6 @@
 use super::lifecycle::rounded_u32;
 use super::*;
+use bongocat_platform::ExternalUrlOpenError;
 use gpui_kit::component::Sizable as _;
 
 /// The project links are product-owned constants rather than values received
@@ -456,13 +457,44 @@ impl SettingsView {
         cx.notify();
     }
 
-    fn open_external_link(&mut self, url: &str, cx: &mut Context<Self>) {
-        if bongocat_platform::open_external_url(url).is_err() {
-            self.pending_notification = Some(SettingsError::new(
-                SettingsErrorCode::ExternalLinkOpenFailed,
-            ));
-        }
-        cx.notify();
+    /// Hand an external link to the operating system, and tell the user when it
+    /// could not be opened.
+    ///
+    /// The launch is scheduled, not made here, and that is the whole fix. This
+    /// callback is running inside GPUI's mutable borrow of its `App`, and
+    /// `ShellExecuteW` pumps this process's message queue on the way out. The
+    /// pump re-enters GPUI's foreground tasks, which ask the same `RefCell` for
+    /// another mutable borrow; `RefCell` grants one, so the second one panicked
+    /// and killed the process. Doing it on a background thread means no pump
+    /// happens under the borrow, and the window also keeps painting while the
+    /// browser starts. `external_link` documents the mechanism.
+    fn open_external_link(&mut self, url: &'static str, cx: &mut Context<Self>) {
+        self.open_external_link_with(url, bongocat_platform::open_external_url, cx);
+    }
+
+    /// The one implementation both rows go through, with the launch injected so
+    /// the scheduling can be asserted without a test run opening a browser.
+    pub(super) fn open_external_link_with(
+        &mut self,
+        url: &'static str,
+        launch: impl FnOnce(&str) -> Result<(), ExternalUrlOpenError> + Send + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        cx.spawn(async move |this, cx| {
+            let opened =
+                crate::external_link::open_with(url.to_owned(), cx.background_executor(), launch)
+                    .await
+                    .is_ok();
+            let _ = this.update(cx, |view, cx| {
+                if !opened {
+                    view.pending_notification = Some(SettingsError::new(
+                        SettingsErrorCode::ExternalLinkOpenFailed,
+                    ));
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub(super) fn open_project_source(&mut self, cx: &mut Context<Self>) {

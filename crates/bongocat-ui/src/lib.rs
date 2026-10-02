@@ -6,6 +6,7 @@
 
 use std::time::{Duration, Instant};
 
+mod external_link;
 mod pop_confirm;
 mod window;
 pub use window::{
