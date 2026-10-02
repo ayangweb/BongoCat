@@ -106,6 +106,7 @@ impl Default for NativeConfig {
                 play_motion_audio: false,
                 ignore_keyboard: false,
                 ignore_gamepad: false,
+                show_all_pressed_keys: false,
                 ignore_pointer: false,
                 random_behavior: RandomBehaviorConfig::default(),
                 gamepad_auto_switch: GamepadAutoSwitchConfig::default(),

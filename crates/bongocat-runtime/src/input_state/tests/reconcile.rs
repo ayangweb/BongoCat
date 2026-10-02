@@ -98,7 +98,7 @@ fn non_monotonic_time_resets_pressed_state() {
 }
 
 #[test]
-fn pressed_record_retains_source_and_monotonic_times() {
+fn pressed_record_retains_source_monotonic_times_and_press_order() {
     let mut state = InputState::default();
     state.apply(edge(0, 10, A, InputEdge::Down));
     state.apply(SequencedInputEvent {
@@ -113,6 +113,7 @@ fn pressed_record_retains_source_and_monotonic_times() {
         Some(PressedRecord {
             source: InputSource::Capture,
             pressed_at: MonotonicMillis::new(10),
+            pressed_sequence: 0,
             last_reconciled_at: Some(MonotonicMillis::new(250)),
         })
     );

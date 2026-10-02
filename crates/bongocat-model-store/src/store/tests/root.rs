@@ -437,6 +437,73 @@ fn legacy_import_installs_one_model_per_configured_mode() {
     );
 }
 
+/// A legacy mode whose entry names audio it never shipped still installs.
+///
+/// The conversion drops the dangling name (ADR-0037 §5: one missing optional
+/// resource is not an unusable model), so the mode has to survive the package
+/// validation every converted package goes through — a repair that produced a
+/// package validation still refuses would not be a repair at all.
+#[test]
+fn a_legacy_mode_naming_audio_it_never_shipped_still_imports() {
+    use crate::mver::fixture;
+
+    let data = tempdir().expect("data root");
+    let store = model_store(data.path());
+    let sources = tempdir().expect("sources");
+    let legacy = sources.path().join("Bongo Cat Mver");
+    fs::create_dir(&legacy).expect("legacy source");
+    fixture::legacy_source(
+        &legacy,
+        &[(
+            MverInputMode::Standard,
+            r#"{"hand":[[65]],"keyboard":[[65]]}"#,
+        )],
+        true,
+    );
+    fs::write(
+        legacy.join("img/standard/cat_model/cat.model3.json"),
+        br#"{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "model.moc3",
+    "Textures": [],
+    "Motions": {
+      "CAT_motion": [
+        {"File": "one.motion3.json", "Sound": "live2d_motion1.flac", "FadeInTime": 0, "FadeOutTime": 0}
+      ]
+    }
+  },
+  "Groups": [{"Target": "Parameter", "Name": "EyeBlink", "Ids": ["ParamEyeLOpen"]}]
+}"#,
+    )
+    .expect("source entry");
+    fs::write(
+        legacy.join("img/standard/cat_model/one.motion3.json"),
+        br#"{"Version":3,"Meta":{"Duration":1.0,"Fps":30.0,"Loop":true,"AreBeziersRestricted":false,"CurveCount":1,"TotalSegmentCount":1,"TotalPointCount":1,"UserDataCount":0,"TotalUserDataSize":0},"Curves":[{"Target":"Parameter","Id":"ParamAngleX","Segments":[0,0,1,1,1,0]}]}"#,
+    )
+    .expect("source motion");
+
+    let id = store.allocate_unique_id().expect("allocate id");
+    let installed = store
+        .import_mver_with_observer(id, MverInputMode::Standard, &legacy, |_| {}, || false)
+        .expect("a dangling sound reference must not refuse the mode");
+    assert_eq!(installed.index().entry, "cat.model3.json");
+    let entry = fs::read(installed.root().join("cat.model3.json")).expect("installed entry");
+    let entry: serde_json::Value = serde_json::from_slice(&entry).expect("entry json");
+    assert_eq!(
+        entry["FileReferences"]["Motions"]["CAT_motion"][0].get("Sound"),
+        None,
+        "the installed entry must not name audio the package does not carry"
+    );
+    // The source is an input: the repair happened in the store's own staging.
+    assert!(
+        fs::read_to_string(legacy.join("img/standard/cat_model/cat.model3.json"))
+            .expect("source entry")
+            .contains("live2d_motion1.flac"),
+        "the legacy source must not be rewritten"
+    );
+}
+
 /// A conversion is cancellable and, like every other import, leaves nothing
 /// behind when it is.
 #[test]

@@ -424,6 +424,9 @@
         "title": "لوحة المفاتيح",
         "ignore_keyboard_input": {
           "label": "تجاهل إدخال لوحة المفاتيح"
+        },
+        "show_all_pressed_keys": {
+          "label": "إظهار كل مفتاح مضغوط"
         }
       },
       "gamepad": {

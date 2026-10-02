@@ -336,6 +336,7 @@ fn model_settings_command_is_revisioned_and_published() {
         mirror_pointer_tracking_vertical: false,
         ignore_keyboard: false,
         ignore_gamepad: false,
+        show_all_pressed_keys: false,
         ignore_pointer: true,
     };
     let sequence = client

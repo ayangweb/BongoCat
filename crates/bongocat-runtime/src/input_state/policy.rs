@@ -28,5 +28,13 @@ impl Default for ReconciliationPolicy {
 pub(crate) struct PressedRecord {
     pub(crate) source: InputSource,
     pub(crate) pressed_at: MonotonicMillis,
+    /// The sequence number of the edge that pressed this control.
+    ///
+    /// `pressed_at` alone cannot order two keys typed inside the same
+    /// millisecond, which is exactly the chord the key-image layer has to
+    /// stack. The sequence is a process-wide monotonic counter, so it breaks
+    /// that tie the same way the input queue ordered the events, and it keeps
+    /// doing so across the millisecond boundary a slow adapter can produce.
+    pub(crate) pressed_sequence: u64,
     pub(crate) last_reconciled_at: Option<MonotonicMillis>,
 }

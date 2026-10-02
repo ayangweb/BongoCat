@@ -273,6 +273,12 @@ pub struct ModelConfig {
     pub play_motion_audio: bool,
     pub ignore_keyboard: bool,
     pub ignore_gamepad: bool,
+    /// Every held key draws its own image instead of one per hand. Carries a
+    /// default for the same reason the product type does: the strict v1 entry
+    /// point fails on a missing field, so a field without one would send every
+    /// document written before it existed down the recovery path.
+    #[serde(default)]
+    pub show_all_pressed_keys: bool,
     pub ignore_pointer: bool,
     pub random_behavior: RandomBehaviorConfig,
     pub gamepad_auto_switch: GamepadAutoSwitchConfig,
@@ -447,6 +453,7 @@ impl Default for NativeConfig {
                 play_motion_audio: false,
                 ignore_keyboard: false,
                 ignore_gamepad: false,
+                show_all_pressed_keys: false,
                 ignore_pointer: false,
                 random_behavior: RandomBehaviorConfig::default(),
                 gamepad_auto_switch: GamepadAutoSwitchConfig::default(),

@@ -269,6 +269,7 @@ pub(super) fn snapshot(
                 .mirror_pointer_tracking_vertical,
             ignore_keyboard: runtime.model_settings.ignore_keyboard,
             ignore_gamepad: runtime.model_settings.ignore_gamepad,
+            show_all_pressed_keys: runtime.model_settings.show_all_pressed_keys,
             ignore_pointer: runtime.model_settings.ignore_pointer,
         },
         gamepad_axis_settings: SettingsGamepadAxisSettings {

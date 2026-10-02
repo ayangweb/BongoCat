@@ -769,6 +769,21 @@ CGEvent keycode `63`（`kVK_Function`）以 `FlagsChanged` + `MaskSecondaryFn` �
 `lefthand`/`righthand` 落盘的结果直接可用。缺图的按钮保持惰性（ADR-0042）；两个摇杆键另外驱动
 `StickLeftDown`/`StickRightDown`，与爪部状态互相独立。
 
+**按键层画几张图是显示选择，不是输入状态**（见 ADR-0079）。`RenderSnapshot::active_keys` 是一个有序
+列表，双平台渲染器都按这个顺序绘制且都没有深度附件或深度模板，因此**列表里最后一项就是最上层**；
+z 序完全由列表顺序决定，渲染器没有额外状态。`model.show_all_pressed_keys` 决定这份列表的内容：
+
+- 关闭（默认，兼容模式）：`InputState::model_snapshot_with_filter` 对每只手只保留一个"最后按下且仍
+  有效"的按键，左右手各至多一个，按左手先、右手后写入列表。
+- 打开（叠放模式）：每一个仍按住、且模型为它提供了键位图的键都进列表，按
+  `PressedRecord::pressed_at` 与可靠输入队列的 `pressed_sequence` 从旧到新排序。单调时钟是毫秒精度，
+  快速连击会落在同一毫秒内，只有 sequence 能给出全序。
+
+两种模式都不改变 pressed state、释放路径和 `CatParamLeftHandDown`/`CatParamRightHandDown`：只要有任意
+一个绑定到该手的键仍按住，该手就是按下的。`resolve_key_overlays` 只做"按键 → 资产"的解析，不再按手
+折叠；两个按住的键解析到同一张图时（`Fn` 家族回退、小键盘复用主键区图）只画一次，先按下的那个占住
+底层。列表容量固定为 `KeyPressSet::CAPACITY`，溢出时丢最早按下的那几个。
+
 
 ### 11.1 Cubism 边界
 
@@ -1165,6 +1180,12 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `config.json` 能解析成 legacy 的 section 形状，且它命名的模式里至少有一个在
   `<资源根>/<模式>/cat_model/` 下恰好带一个 `.model3.json`。缺任一条就回退到普通包导入并
   由那条路径报错，检测本身不报错。
+- 解析 legacy `config.json` 的严格程度必须与它自己的读取端一致：该应用用 JsonCpp
+  `CharReaderBuilder` 读这个文件，而它的默认设置含 `allowComments`，所以模型作者用 `//` 或
+  `/* */` 注释标注键位表是格式本身接受的内容，不是损坏。因此读取前先剔除字符串字面量之外的
+  注释（字符串里的 `/` 是数据，`\"` 不结束字面量），再做严格 JSON 解析。放宽只到注释为止：
+  注释移除不能把不是 config 的文件变成 config，也不能破坏多字节字符——否则检测又会静默回退，
+  用户拿到的仍是「模型包无效」这种与模型无关的解释。
 - 普通包的模式在 staging 复制、键名归一化和第二次 `PreparedModel` 校验之后、原子 rename
   之前判定：任一手出现手柄专用键名（`DPad*`、`*Trigger*`、`South/East/West/North`、
   `Start/Select` 等）判 `gamepad`；否则有 `right-keys` 判 `keyboard`；否则有 `left-keys` 判
@@ -1188,6 +1209,13 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
 - 合成图按 lossless 方式重编码（`oxipng`，只开库入口）：位深/颜色类型/调色板/灰度缩减保持解码
   后像素不变，`optimize_alpha` 只改写全透明像素的颜色通道。有损量化库因许可证（GPL）被排除；
   Zopfli 后端实测多 5% 体积换 15 倍时间，不采用。重编码失败写回普通编码结果，不让转换失败。
+- 转换逐字节复制模式的 Live2D 包，唯一例外是 motion 条目里指向源中不存在文件的 `Sound`
+  引用：以「源实际携带的文件集合」判定悬空，丢弃该 `Sound` 键，其余内容保持不变。这沿用上文
+  「少一张键位图不等于这个模型不可用」的决定——从 Cubism 官方示例包改装的模型会留下示例的
+  `Sound` 名，而 Mver 实际从自己的每模式音效列表播放，丢掉这个名字不损失任何东西，保留它则让
+  整个模式过不了包校验。**只丢弃「缺失」的引用**：无法规范化的引用（越出包根、绝对路径）保持
+  原样交由包校验报错，不因为转换而悄悄抹掉一条路径安全发现。没有悬空引用时 entry 逐字节不变，
+  因此转换不会顺手重写第三方模型文件。
 - Mver 源的检测与转换只在 settings service worker 执行，UI executor 不做阻塞文件或模型解析；
   跨模型进度在应用层折叠（累计已完成模型的文件数与字节数、stage 取最大值），因此用户看到的是
   不倒退且终值等于各模型总和的一条序列，而不是卡在第一个模型的终值。标题为

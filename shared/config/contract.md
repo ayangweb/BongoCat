@@ -83,6 +83,7 @@ updates
 | `model`       | `play_motion_audio`                   | 播放动作音效，默认 `false`             |
 | `model`       | `ignore_keyboard`                     | 模型求值忽略键盘输入                   |
 | `model`       | `ignore_gamepad`                      | 模型求值忽略手柄输入                   |
+| `model`       | `show_all_pressed_keys`               | 每个按住的键各自画一张键位图并按按下顺序叠放，默认 `false` |
 | `model`       | `random_behavior.mode`                | 无人操作时自动播放什么：`off`（默认）、`expressions`、`motions` 或 `motions_and_expressions` |
 | `model`       | `random_behavior.interval_seconds`    | 随机播放间隔秒数，`[1, 3600]`          |
 | `model`       | `gamepad_auto_switch.enabled`         | 手柄连接状态变化时是否自动切换模型，默认 `false` |
@@ -106,6 +107,24 @@ updates
 投影：键盘门禁移除键盘键图和手部贡献，手柄门禁移除手柄按钮、手部、摇杆和扳机贡献；原始采集、
 pressed state、释放校正、设备生命周期 Reset、诊断以及独立快捷键注册不受影响。解除门禁后仍由
 同一可靠输入状态继续处理释放，不能通过过滤路径制造卡键。
+
+`model.show_all_pressed_keys` 默认 `false`，即兼容模式：同一只手只画最后按下且仍有效的那个键的
+键位图。打开后每个仍按住的键各自保留一张键位图，按下顺序从旧到新排列，渲染器按该顺序绘制，
+因此最后按下的键显示在最上层。两个输入族共用这一层，所以该开关同样覆盖手柄按钮。
+
+它**只改变画几张图以及叠放顺序**，不改变哪些控件处于按下状态，也不改变爪部反馈：只要有任意一个
+绑定到该手的键仍然按住，对应的 `CatParamLeftHandDown`/`CatParamRightHandDown` 就是 true。判定顺序是
+「按下时间 + 可靠输入队列的 sequence」，两者共同构成一个全序：单调时钟是毫秒精度，快速连击完全可能
+落在同一毫秒内，只有 sequence 能把它们分开。
+
+按键层有固定容量（`bongocat_render::KeyPressSet::CAPACITY`，64）。设备报告的按键数超过该上限时
+丢最早按下的那几个，而不是丢用户此刻正按着的——堆叠的底部是历史，顶层才是用户正在看的。释放仍然只
+由可靠的 KeyUp、状态校正或 Reset 触发，经过的时间不构成释放。
+
+该字段带 `#[serde(default)]`，是 `ModelConfig` 里唯一一个带默认值的字段：v1 解析入口是严格的，
+字段缺失即解析失败，因此没有它的话，任何在该字段加入之前写下的 `config.json` 都会走进
+「最新有效备份 → 默认配置」的恢复流程并丢掉用户设置。缺少该字段的旧文档按兼容模式加载，
+不视为一次新的开启。完整通路见 ADR-0079。
 
 首次启动创建当前 v1 配置时，`overlay.click_through` 默认为 `false`。用户后续通过
 typed settings command 修改该值后，仍按配置 revision 原子提交并在重启时从当前环境恢复。

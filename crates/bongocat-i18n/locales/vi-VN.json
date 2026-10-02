@@ -424,6 +424,9 @@
         "title": "Bàn phím",
         "ignore_keyboard_input": {
           "label": "Bỏ qua đầu vào bàn phím"
+        },
+        "show_all_pressed_keys": {
+          "label": "Hiện mọi phím đang giữ"
         }
       },
       "gamepad": {

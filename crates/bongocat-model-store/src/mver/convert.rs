@@ -28,19 +28,30 @@ where
     let mut created = BTreeSet::new();
     // The Live2D package moves out of `cat_model/` onto the package root,
     // because that is the only place entry discovery looks.
-    for reference in source.files_below(&plan.model, limits)? {
+    let references = source.files_below(&plan.model, limits)?;
+    // Every name the package will carry, resolved against the source rather
+    // than against a staging directory that is still being written. The entry
+    // declares its own audio by name, and whether that name resolves is the one
+    // question about the source this loop cannot answer by copying.
+    let packaged = references
+        .iter()
+        .filter_map(|reference| package_relative_name(reference, &plan.model))
+        .filter_map(|name| normalize_reference(&name).ok())
+        .collect::<BTreeSet<_>>();
+    for reference in &references {
         observation.check_cancelled()?;
-        let Some(relative) = reference.strip_prefix(&plan.model) else {
+        let Some(target) = package_relative_name(reference, &plan.model) else {
             continue;
         };
-        let target = relative.trim_start_matches('/');
-        if target.is_empty() {
-            continue;
-        }
-        let bytes = source.read(&reference)?;
+        let bytes = source.read(reference)?;
+        let bytes = if target == plan.entry {
+            without_dangling_sounds(&bytes, &packaged).unwrap_or(bytes)
+        } else {
+            bytes
+        };
         write_staging_file(
             destination,
-            target,
+            &target,
             &bytes,
             &mut created,
             statistics,
@@ -90,6 +101,57 @@ where
         )?;
     }
     Ok(())
+}
+
+/// Rewrite a package entry that names audio the source never carried.
+///
+/// A motion's `Sound` is optional in the model3 format, and a real model ships
+/// one beside it. A model built from Cubism's own sample package keeps the
+/// sample's reference to an audio file it never copied, and the legacy
+/// application played its sounds from its own per-mode list instead, so nothing
+/// about the model is lost by dropping the name: the motion still plays, without
+/// audio that was never there to begin with.
+///
+/// This is the same decision ADR-0037 §5 takes for a missing key-image layer —
+/// "one missing sound is not an unusable model" — applied to the only optional
+/// reference a legacy package can dangle. Only a reference that is *absent* is
+/// dropped. A reference that escapes the package root or is otherwise invalid
+/// is left in place, because removing it would quietly discard a path-safety
+/// finding instead of reporting it.
+///
+/// `None` leaves the caller's bytes alone: either nothing dangled, or the entry
+/// is not JSON this can read — in which case package validation reports it with
+/// its own diagnostic rather than this rewriting the model's file on a guess.
+fn without_dangling_sounds(bytes: &[u8], packaged: &BTreeSet<String>) -> Option<Vec<u8>> {
+    let mut entry: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let mut dropped = false;
+    for group in entry
+        .get_mut("FileReferences")?
+        .get_mut("Motions")?
+        .as_object_mut()?
+        .values_mut()
+        .filter_map(serde_json::Value::as_array_mut)
+        .flatten()
+        .filter_map(serde_json::Value::as_object_mut)
+    {
+        let Some(sound) = group.get("Sound").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        // A reference that cannot be normalized is not a dangling name: it is
+        // an invalid one, and reporting it is the package validator's job.
+        let Ok(normalized) = normalize_reference(sound) else {
+            continue;
+        };
+        if packaged.contains(&normalized) {
+            continue;
+        }
+        group.remove("Sound");
+        dropped = true;
+    }
+    if !dropped {
+        return None;
+    }
+    serde_json::to_vec_pretty(&entry).ok()
 }
 
 /// Create one package directory below `destination`, reusing whatever an earlier

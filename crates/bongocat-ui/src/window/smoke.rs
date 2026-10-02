@@ -90,6 +90,7 @@ impl SettingsView {
             "settings.input_interaction.mouse.mirror_mouse_tracking_vertical.label",
             "settings.input_interaction.keyboard.title",
             "settings.input_interaction.keyboard.ignore_keyboard_input.label",
+            "settings.input_interaction.keyboard.show_all_pressed_keys.label",
             "settings.input_interaction.gamepad.title",
             "settings.input_interaction.gamepad.auto_switch.label",
             "settings.input_interaction.gamepad.connected_model.label",

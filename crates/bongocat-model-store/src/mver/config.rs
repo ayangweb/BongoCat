@@ -110,6 +110,78 @@ pub(crate) fn first_control_code(entry: &[i64]) -> Option<i64> {
     entry.first().copied()
 }
 
+/// Parse the legacy key table, tolerating the comments its own reader tolerates.
+///
+/// The legacy application reads this file with JsonCpp's `CharReaderBuilder`, and
+/// that builder's default settings set `allowComments`, so a model author
+/// documenting their key table with `//` or `/* */` annotations ships a file the
+/// format accepts. A strict reader refuses it, and because detection is
+/// speculative a refusal never surfaces as an error: the folder is simply taken
+/// for an ordinary package and reported as an invalid one, with nothing to say
+/// the key table was readable all along. Reading what the format's own reader
+/// accepts is what keeps a commented table convertible.
+///
+/// Anything that still does not parse is reported as "not a legacy config"
+/// rather than as an error, exactly as before: the ordinary package import is
+/// the path that reports a real diagnostic.
+pub(crate) fn parse_legacy_config(bytes: &[u8]) -> Option<LegacyConfig> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    serde_json::from_str(&without_json_comments(text)).ok()
+}
+
+/// Drop `//` and `/* */` comments that are not inside a string literal.
+///
+/// A comment is removed but its line breaks are kept, so a config that still
+/// does not parse fails at roughly the line its author wrote. A `/` inside a
+/// string is data — a URL, a file path — and is copied through untouched, which
+/// is what the string-literal scan below is for.
+pub(crate) fn without_json_comments(text: &str) -> String {
+    let mut characters = text.chars().peekable();
+    let mut output = String::with_capacity(text.len());
+    while let Some(character) = characters.next() {
+        match character {
+            // A string runs to its closing quote: an escaped quote does not end
+            // it, so `\"` cannot be mistaken for the end of the literal.
+            '"' => {
+                output.push(character);
+                let mut escaped = false;
+                for character in characters.by_ref() {
+                    output.push(character);
+                    match character {
+                        '\\' => escaped = !escaped,
+                        '"' if !escaped => break,
+                        _ => escaped = false,
+                    }
+                }
+            }
+            '/' if characters.peek() == Some(&'/') => {
+                characters.next();
+                for character in characters.by_ref() {
+                    if character == '\n' || character == '\r' {
+                        output.push(character);
+                        break;
+                    }
+                }
+            }
+            '/' if characters.peek() == Some(&'*') => {
+                characters.next();
+                let mut previous = '\0';
+                for character in characters.by_ref() {
+                    if character == '\n' || character == '\r' {
+                        output.push(character);
+                    }
+                    if previous == '*' && character == '/' {
+                        break;
+                    }
+                    previous = character;
+                }
+            }
+            character => output.push(character),
+        }
+    }
+    output
+}
+
 /// One output key image the legacy table asks for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct LegacyBinding {

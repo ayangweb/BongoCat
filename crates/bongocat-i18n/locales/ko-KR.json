@@ -424,6 +424,9 @@
         "title": "키보드",
         "ignore_keyboard_input": {
           "label": "키보드 입력 무시"
+        },
+        "show_all_pressed_keys": {
+          "label": "누르고 있는 모든 키 표시"
         }
       },
       "gamepad": {

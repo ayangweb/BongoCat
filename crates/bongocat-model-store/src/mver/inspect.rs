@@ -21,7 +21,7 @@ pub(crate) fn inspect(
     let Some(bytes) = source.read_legacy_config() else {
         return Ok(None);
     };
-    let Ok(config) = serde_json::from_slice::<LegacyConfig>(&bytes) else {
+    let Some(config) = parse_legacy_config(&bytes) else {
         return Ok(None);
     };
     let resources = if source.is_directory(LEGACY_RESOURCE_ROOT)? {
@@ -44,7 +44,12 @@ pub(crate) fn inspect(
         // Exactly one entry, exactly like package entry discovery: zero means
         // the mode was configured but never given a model, and more than one is
         // ambiguous and would be rejected after conversion anyway.
-        let (Some(_), None) = (model_entries.next(), model_entries.next()) else {
+        let (Some(entry), None) = (model_entries.next(), model_entries.next()) else {
+            continue;
+        };
+        // The entry's own name, which is what it is called once the package
+        // sits at the root instead of inside `cat_model/`.
+        let Some(entry) = package_relative_name(entry, &model) else {
             continue;
         };
 
@@ -102,6 +107,7 @@ pub(crate) fn inspect(
             mode,
             root,
             model,
+            entry,
             background,
             cover,
             slots,

@@ -215,6 +215,7 @@ fn full_gamepad_source(root: &Path) {
 }
 
 mod compose;
+mod config;
 mod convert;
 mod inspect;
 mod plan;

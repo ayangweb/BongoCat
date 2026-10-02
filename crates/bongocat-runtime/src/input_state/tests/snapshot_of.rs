@@ -75,6 +75,7 @@ fn source_filters_keep_keyboard_and_gamepad_model_input_independent() {
         ModelInputFilter {
             ignore_keyboard: true,
             ignore_gamepad: false,
+            show_all_pressed_keys: false,
         },
     );
     assert!(!keyboard_ignored.left_hand_down);
@@ -95,6 +96,7 @@ fn source_filters_keep_keyboard_and_gamepad_model_input_independent() {
         ModelInputFilter {
             ignore_keyboard: false,
             ignore_gamepad: true,
+            show_all_pressed_keys: false,
         },
     );
     assert!(gamepad_ignored.left_hand_down);
@@ -118,6 +120,7 @@ fn source_filters_keep_keyboard_and_gamepad_model_input_independent() {
         ModelInputFilter {
             ignore_keyboard: true,
             ignore_gamepad: true,
+            show_all_pressed_keys: false,
         },
     );
     assert_eq!(all_ignored, ModelInputSnapshot::default());
@@ -410,5 +413,160 @@ fn an_unbound_gamepad_button_is_inert_and_the_sticks_keep_their_parameters() {
             .map(|press| (press.key, press.side))
             .collect::<Vec<_>>(),
         vec![(KeyIdentity::Gamepad(GamepadButton::Start), KeySide::Right)]
+    );
+}
+
+/// Every held key keeps its own overlay, stacked oldest first so the key pressed
+/// last is the one drawn on top.
+///
+/// This is the mode issue #965 asks for: without it a chord collapses into the
+/// one picture its hand last saw, and a viewer cannot tell a fast four-key roll
+/// from a single tap.
+#[test]
+fn the_stacked_mode_keeps_every_held_key_oldest_first() {
+    let right = PhysicalKey::from_hid_usage(0x4f);
+    let d = PhysicalKey::from_hid_usage(0x07);
+    let bindings = InputBindings::new(BTreeMap::from([
+        (PhysicalKey::KEY_A, HandSide::Left),
+        (d, HandSide::Left),
+        (right, HandSide::Right),
+    ]));
+    let mut state = InputState::default();
+    // `A` and `D` share a millisecond on purpose: the clock has millisecond
+    // resolution, so a chord can and does land inside one, and the sequence of
+    // the two edges is the only thing that tells them apart.
+    state.apply(edge(0, 0, A, InputEdge::Down));
+    state.apply(edge(1, 0, InputControl::Key(d), InputEdge::Down));
+    state.apply(edge(2, 4, InputControl::Key(right), InputEdge::Down));
+
+    let stacked = state.model_snapshot_with_filter(
+        &bindings,
+        NormalizedCursorPosition::default(),
+        ModelInputFilter {
+            show_all_pressed_keys: true,
+            ..ModelInputFilter::default()
+        },
+    );
+    assert_eq!(
+        stacked
+            .key_presses
+            .iter()
+            .map(|press| (press.key, press.side))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                KeyIdentity::Keyboard(PhysicalKey::KEY_A.hid_usage()),
+                KeySide::Left
+            ),
+            (KeyIdentity::Keyboard(d.hid_usage()), KeySide::Left),
+            (KeyIdentity::Keyboard(right.hid_usage()), KeySide::Right),
+        ],
+        "both left-hand keys survive, in the order they were pressed, and the renderer draws the last one on top"
+    );
+    assert!(stacked.left_hand_down && stacked.right_hand_down);
+    assert_eq!(
+        state
+            .model_snapshot(&bindings, NormalizedCursorPosition::default())
+            .key_presses
+            .iter()
+            .count(),
+        2,
+        "the compatibility mode still collapses a hand to the key it last saw"
+    );
+
+    // Releasing the newest key must leave the older picture underneath it alone
+    // rather than promoting a substitute the user is not holding.
+    state.apply(edge(3, 8, InputControl::Key(right), InputEdge::Up));
+    let after_release = state.model_snapshot_with_filter(
+        &bindings,
+        NormalizedCursorPosition::default(),
+        ModelInputFilter {
+            show_all_pressed_keys: true,
+            ..ModelInputFilter::default()
+        },
+    );
+    assert_eq!(
+        after_release
+            .key_presses
+            .iter()
+            .map(|press| press.key)
+            .collect::<Vec<_>>(),
+        vec![
+            KeyIdentity::Keyboard(PhysicalKey::KEY_A.hid_usage()),
+            KeyIdentity::Keyboard(d.hid_usage()),
+        ]
+    );
+    assert!(after_release.left_hand_down && !after_release.right_hand_down);
+}
+
+/// The paw parameters must not follow the overlay count.
+///
+/// A hand is down while *any* key bound to it is held, so turning the stack on
+/// cannot make the paw depend on how many pictures happen to be visible.
+#[test]
+fn the_stacked_mode_does_not_change_which_hands_are_down() {
+    let d = PhysicalKey::from_hid_usage(0x07);
+    let bindings = InputBindings::new(BTreeMap::from([
+        (PhysicalKey::KEY_A, HandSide::Left),
+        (d, HandSide::Left),
+    ]));
+    let mut state = InputState::default();
+    state.apply(edge(0, 0, A, InputEdge::Down));
+    let compatibility = state.model_snapshot_with_filter(
+        &bindings,
+        NormalizedCursorPosition::default(),
+        ModelInputFilter::default(),
+    );
+    state.apply(edge(1, 3, InputControl::Key(d), InputEdge::Down));
+    let stacked = state.model_snapshot_with_filter(
+        &bindings,
+        NormalizedCursorPosition::default(),
+        ModelInputFilter {
+            show_all_pressed_keys: true,
+            ..ModelInputFilter::default()
+        },
+    );
+    assert_eq!(
+        (stacked.left_hand_down, stacked.right_hand_down),
+        (compatibility.left_hand_down, compatibility.right_hand_down)
+    );
+}
+
+/// The key-image layer is bounded, and a device holding more keys than it can
+/// draw loses the oldest ones rather than the ones in the user's hands.
+#[test]
+fn the_stacked_mode_drops_the_oldest_presses_past_the_layer_capacity() {
+    let mut bindings = BTreeMap::new();
+    let mut expected = Vec::new();
+    let mut state = InputState::default();
+    for index in 0..=KeyPressSet::CAPACITY {
+        let usage = 0x04 + u16::try_from(index).expect("usage offset fits a keyboard page");
+        let key = PhysicalKey::from_hid_usage(usage);
+        bindings.insert(key, HandSide::Left);
+        expected.push(KeyIdentity::Keyboard(usage));
+        state.apply(edge(
+            index as u64,
+            index as u64,
+            InputControl::Key(key),
+            InputEdge::Down,
+        ));
+    }
+    let stacked = state.model_snapshot_with_filter(
+        &InputBindings::new(bindings),
+        NormalizedCursorPosition::default(),
+        ModelInputFilter {
+            show_all_pressed_keys: true,
+            ..ModelInputFilter::default()
+        },
+    );
+    assert_eq!(stacked.key_presses.iter().count(), KeyPressSet::CAPACITY);
+    assert_eq!(
+        stacked
+            .key_presses
+            .iter()
+            .map(|press| press.key)
+            .collect::<Vec<_>>(),
+        expected[expected.len() - KeyPressSet::CAPACITY..],
+        "the oldest press is the one that falls off the bottom of the stack"
     );
 }

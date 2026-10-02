@@ -232,6 +232,12 @@ pub struct ModelSettings {
     pub ignore_keyboard: bool,
     /// Whether gamepad input is excluded from the model's input projection.
     pub ignore_gamepad: bool,
+    /// Whether the key-image layer draws every held key with artwork, stacked in
+    /// press order, instead of one image per hand.
+    ///
+    /// The paw parameters do not depend on this: a hand is down while any key
+    /// bound to it is held either way.
+    pub show_all_pressed_keys: bool,
     pub ignore_pointer: bool,
 }
 

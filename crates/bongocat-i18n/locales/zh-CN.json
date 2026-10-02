@@ -424,6 +424,9 @@
         "title": "键盘",
         "ignore_keyboard_input": {
           "label": "忽略键盘输入"
+        },
+        "show_all_pressed_keys": {
+          "label": "同时显示所有按下的键"
         }
       },
       "gamepad": {

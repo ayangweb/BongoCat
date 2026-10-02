@@ -897,6 +897,39 @@ impl Render for SettingsView {
                             },
                         ),
                     ),
+                    // After the gate, not before it: the gate decides which keys reach the
+                    // key-image layer at all, and this decides how that layer
+                    // draws them. The label carries the whole meaning, so the
+                    // row stays as compact as its neighbours'.
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.input_interaction.keyboard.show_all_pressed_keys.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.model_settings.show_all_pressed_keys)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.model_settings;
+                                            settings.show_all_pressed_keys = value;
+                                            view.set_model_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    ),
                 ], &keyboard_keywords)),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
