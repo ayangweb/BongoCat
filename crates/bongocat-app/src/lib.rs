@@ -219,7 +219,11 @@ impl ApplicationError {
             Self::PlatformStorage(_) => "platform_storage_failed",
             Self::Config(_) | Self::ConfigRollback(_) => "config_failed",
             Self::Model(_) => "model_preparation_failed",
-            Self::ModelStore(_) => "model_store_failed",
+            // The store's own code, not a folded "something in the store
+            // failed": twelve different refusals reach this arm, and a log
+            // that cannot tell a lock from a rejected package sends the next
+            // bug report no further than the reporter's own guess.
+            Self::ModelStore(error) => error.code.as_str(),
             Self::MotionId(_) => "motion_id_invalid",
             Self::ExpressionId(_) => "expression_id_invalid",
             Self::PresetModelDeletion(_) => "preset_model_deletion_rejected",

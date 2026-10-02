@@ -2,6 +2,27 @@
 
 use super::*;
 
+use bongocat_model_store::{ModelStoreDiagnostic, ModelStoreError};
+
+/// A store refusal has to say *which* refusal it was.
+///
+/// Twelve store codes reach this arm, and the issue template asks a reporter to
+/// paste the `reason` field. A log that folded them all into one
+/// `model_store_failed` answered nothing — the reported symptom ("模型包无效",
+/// one message for an invalid package, a held lock, a source that moved) is
+/// indistinguishable in it. The resource that would have narrowed it further
+/// can be a user path, so it stays out of the log on purpose; the code is the
+/// part that is safe to publish.
+#[test]
+fn a_store_refusal_logs_the_stores_own_code() {
+    let error = ApplicationError::ModelStore(ModelStoreError::source_conversion_failed("detail"));
+    assert_eq!(
+        error.stable_code(),
+        ModelStoreDiagnostic::SourceConversionFailed.as_str()
+    );
+    assert_ne!(error.stable_code(), "model_store_failed");
+}
+
 #[test]
 fn application_reads_only_anonymous_core_log_diagnostics() {
     let base = tempdir().expect("temp directory");

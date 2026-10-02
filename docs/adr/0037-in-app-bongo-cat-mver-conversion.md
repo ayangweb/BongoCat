@@ -61,6 +61,25 @@ ADR-0065（模型模式元数据与卡片 Badge）
 既有显示兼容语义。普通模型包则由 ModelStore 在 staging 提交前按 `left-keys`/`right-keys` 资源
 判定模式，判定失败直接拒绝导入。详情见 ADR-0065。
 
+修订（2026-10-02，issue #1080）：「能解析成 legacy 的 section 形状」现在按该应用自己的读取端
+判定，不再按严格 JSON 判定。固定 commit 的 `CatUILauncher/data.cpp` 用 JsonCpp
+`CharReaderBuilder` 读 `config.json`，而其 `setDefaults()` 明确设置 `allowComments = true`
+（`jsoncpp.cpp` 的 `CharReaderBuilderDefaults`），因此 `//` 与 `/* */` 注释是这个格式接受的内容。
+带注释的键位表此前被严格读取拒绝，而检测是试探性的、拒绝不报错——文件夹被当成普通包，
+再以「模型包无效」结束，用户拿到的解释与模型本身无关。读取前先剔除字符串字面量之外的注释：
+字符串里的 `/` 是数据，`\"` 不结束字面量，块注释保留换行以免错误位置漂移，多字节字符不被
+拆分。放宽只到注释为止——不是 config 的文件仍然不是 config。
+
+同一次修订：转换逐字节复制模式的 Live2D 包这一约定，增加一个唯一例外。issue #1080 的真实模型
+在 `keyboard` 模式的 model3.json 里声明了 `Sound: live2d_motion1.flac`，而整个包里没有任何
+flac 文件——该模式是从 Cubism 官方 `demomodel2` 示例包改装的，留下了示例的音频名，Mver 实际
+从自己的每模式 `sounds/` 列表播放音效。保留这个名字会让整个模式过不了包校验（ADR-0060 的
+引用必须解析），丢掉它不损失任何东西。因此沿用决策 5 的既有判断（"少一张键位图不等于这个模型
+不可用"），转换时以源实际携带的文件集合判定悬空并丢弃该 `Sound` 键，其余内容保持不变。**只
+丢弃缺失的引用**：无法规范化的引用（越出包根、绝对路径）保持原样，交由包校验报告，不因为
+转换而抹掉一条路径安全发现；没有悬空引用时 entry 逐字节不变。这条修订只在 Mver 转换路径
+生效，普通包导入的引用校验不变严格。
+
 ### 2. 一个源产出多个模型，每个模型独立安装
 
 每个模式转换成一个 BongoCat 包，各自分配一个随机 UUID v4 存储键，各自写一条
@@ -180,7 +199,8 @@ Mver 导入仍由服务层执行阻塞文件与模型解析；用户在检查来
 - **鼠标按键 overlay**：`standard.mouse_left/right/side` 与 `mouse*.png` 不转换。产品当前没有
   鼠标按键的 overlay 通道（`InputControl::Mouse` 不产生 `KeyPress`），参考实现同样忽略它们。
 - **`face/`、`sounds/`、`arm*.png`、`tablet*.png`**：参考实现不处理，产品格式里也没有对应位置；
-  模式自带音效已经通过 `cat_model/` 里的 `Sound` 引用随包复制。
+  模式自带音效已经通过 `cat_model/` 里的 `Sound` 引用随包复制。修订（2026-10-02）：`Sound`
+  引用指向源中不存在的文件时按决策 5 的判断丢弃该引用（issue #1080），`sounds/` 目录本身仍不处理。
 - **有损量化 / 降分辨率 / 减帧**：用户明确要求不牺牲画质，且 GPL 有损库被许可证排除。
 - **`.rar`/`.7z`**：只有 zip 被真实需求驱动，与 ADR-0036 的范围一致。
 - **把 Mver 源就地"升级"成 BongoCat 模型**：本产品不做就地更新，导入永远是"新 id + 新目录"。
@@ -191,12 +211,12 @@ Mver 导入仍由服务层执行阻塞文件与模型解析；用户在检查来
 
 ## 残余风险与待验证项（不得当作已确认）
 
-1. **真实样本只有一份**（用户提供的 `bongo_cat_mver_0.1.6_64`，三模式齐全、deflate 归档、
-   `<img>/<模式>` 布局）。把模式文件夹摊在根上、缺少 `keyboard/` 图集、非 UTF-8 文件名、
+1. **真实样本有两份**（用户提供的 `bongo_cat_mver_0.1.6_64`，三模式齐全、deflate 归档、
+   `<img>/<模式>` 布局；issue #1080 的菲比模型，`<img>/<模式>` 布局 + 带注释的键位表 +
+   一个悬空 `Sound` 引用）。把模式文件夹摊在根上、缺少 `keyboard/` 图集、非 UTF-8 文件名、
    非 ASCII 路径只有合成测试覆盖。
-2. **Windows 未实机验证**：本机是 macOS。转换路径本身平台无关（`std::fs` + `image` + `oxipng`），
-   但 `oxipng` 依赖 `libdeflater`，它会用 `cc` 编译 libdeflate 的 C 源码；本机 macOS 构建通过，
-   Windows MSVC 与交叉编译的 C 工具链未验证（与仓库既有的 ring 交叉编译限制同类）。
+2. **Windows 已在 issue #1080 的修订中实机验证**（本机 Windows 11 / x86_64-pc-windows-msvc，
+   `oxipng` 的 C 工具链在该平台构建通过并跑通了真实模型）。此项在本修订之前记录为未验证。
 3. **`gamepad` 的键位图目前不可达**：`bongocat-runtime` 只对键盘按键产生 `KeyPress`，手柄按键
    仅置 `left_hand_down`/`right_hand_down`/`stick_*_down`。转换输出与预置 gamepad 模型同名，
    但两者在当前运行时下都只是随包携带的资源。这是既有缺口，不由本 ADR 引入，也不在本 ADR 修复。
@@ -240,3 +260,23 @@ Mver 导入仍由服务层执行阻塞文件与模型解析；用户在检查来
 
 **未运行**：Windows 编译与实机导入、`NSOpenPanel`/Windows 对话框的实机交互（本次没有改动选择器）、
 任意 UI 实机点击（本次只在服务层与文案层改动，Models 页面的控件集合未变）。
+
+---
+
+已完成（2026-10-02，本机 Windows 11 / x86_64-pc-windows-msvc，issue #1080）：
+
+- **真实模型验证**：`cargo run --locked -p bongocat-model-store --example model_conversion_smoke
+  -- --source <用户提供的菲比模型目录>`。该源此前被报成「模型包无效」；修复后被判为三模式的
+  BongoCatMver 源，逐模式结果：`standard` → 126 文件 / 23 940 725 字节 / 0.17 s、
+  `left-keys` 91 张；`keyboard` → 18 文件 / 516 461 字节 / 1.50 s、`left-keys` 3 张
+  （`Tab`/`Num1`/`Num2`——该模式的 `lefthand/` 只带了 0–2 三张，其余绑定按决策 5 跳过）；
+  `gamepad` → 47 文件 / 16 574 934 字节 / 0.08 s、`left-keys`/`right-keys` 各 6 张，
+  与仓库内预置 gamepad 模型的按钮词表一致。`standard` 与 `gamepad` 的 entry 与源**逐字节相同**，
+  只有含悬空 `Sound` 的 `keyboard` entry 被改写；源目录未被修改。
+- `bongocat-model-store` 新增测试：带注释的键位表仍被识别为 legacy 源且三种模式的绑定逐个
+  对应；注释移除只作用于字符串之外（URL、`\"` 转义、多字节中文注释、块注释保留换行、文件末尾
+  无换行的注释）；非 JSON 与非 UTF-8 仍然不是 config；悬空 `Sound` 被丢弃而其余声明保留、
+  能解析的 `Sound` 保持 entry 逐字节不变、越出包根的 `Sound` 留给包校验；含悬空音频的 legacy
+  模式经完整导入事务安装成功且源文件不被改写。
+- `bongocat-app` 新增测试：带注释的 legacy 源经 `inspect_model_source` 报出三种模式（即进入模式
+  选择对话框而非回退成包）并导入出 3 个模型；store 失败写入日志时携带 store 自己的码。

@@ -2,6 +2,71 @@
 
 use super::*;
 
+/// A paid model whose key table the author annotated with comments still
+/// imports, all three modes.
+///
+/// This is the whole reported failure end to end: the legacy application reads
+/// `config.json` with comments allowed, so a hand-written key table that
+/// documents itself is a file the format accepts. Reading it strictly refused
+/// the table, and because detection is speculative a refusal never surfaced —
+/// the folder was reported as an invalid *package*, which is what a user with a
+/// working model and no way to find out why has to report.
+#[test]
+fn importing_an_annotated_legacy_source_installs_one_model_per_mode() {
+    let base = tempdir().expect("temp directory");
+    let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+    let mut application =
+        Application::start_with_layout(layout.clone()).expect("start application");
+    let source = base.path().join("Bongo Cat Mver");
+    fs::create_dir(&source).expect("legacy source");
+    legacy_source_fixture(&source);
+    // The annotations a model author writes: what each entry of a pair-valued
+    // list means, which the first column alone cannot say.
+    write_fixture_file(
+        &source,
+        "config.json",
+        r#"{
+	//键鼠模式下的表情快捷键
+	"standard" : {
+		"hand" : [ [ 65 ], /* A */ [ 66 ] ],
+		"keyboard" : [ [ 17 ], [ 16 ] ]
+	},
+	"keyboard" : {
+		"lefthand" : [ [ 65 ] ],
+		"righthand" : [ [ 37 ] ],
+		"keyboard" : [ [ 65 ], [ 37 ] ]
+	},
+	"gamepad" : {
+		"lefthand" : [ [ 12 ], [ 6 ] ],
+		"righthand" : [ [ 0 ], [ 9 ] ],
+		"keyboard" : [ [ 12 ], [ 6 ], [ 0 ], [ 9 ] ]
+	}
+}"#
+        .as_bytes(),
+    );
+
+    let inspected = application
+        .inspect_model_source(&source)
+        .expect("inspect annotated source");
+    assert_eq!(
+        inspected,
+        bongocat_ui_protocol::SettingsModelSourceContent::Mver {
+            modes: vec![
+                bongocat_ui_protocol::SettingsMverMode::Standard,
+                bongocat_ui_protocol::SettingsMverMode::Keyboard,
+                bongocat_ui_protocol::SettingsMverMode::Gamepad,
+            ],
+        },
+        "inspection must offer the mode dialog, not fall back to a package"
+    );
+
+    let installed = application
+        .import_models("菲比", &source)
+        .expect("import annotated legacy source");
+    assert_eq!(installed.len(), 3, "one model per configured mode");
+    application.shutdown().expect("clean shutdown");
+}
+
 /// One BongoCatMver source describes several models: importing it installs
 /// one converted model per mode, each with its own store key and a title
 /// that tells them apart.
