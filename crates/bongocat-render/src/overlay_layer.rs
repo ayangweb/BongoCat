@@ -235,23 +235,37 @@ impl ClipRect {
     /// The four corners in the order the shared quad layout uses: top-left,
     /// top-right, bottom-right, bottom-left, with the same uv assignment as the
     /// model background quad so a backend reuses that layout verbatim.
+    ///
+    /// `v` counts *up* from the rect's bottom edge, which is what makes this the
+    /// same assignment the background quad uses. It looks backwards written down,
+    /// because NDC's `max_y` is the top of the quad while `uv.y = 0.0` is not:
+    ///
+    /// - The model draws with a bottom-left uv origin, so its shared vertex
+    ///   shader flips `v` on the way to the sampler. A texture the host uploaded
+    ///   top row first therefore arrives right side up.
+    /// - A raster *is* uploaded top row first, so it wants that same flip, and
+    ///   wants the corner showing its first row to carry `v = 1.0`.
+    ///
+    /// Authoring `v = 0.0` at `max_y` here would look correct in isolation and
+    /// draw every panel upside down, because the flip is not optional and cannot
+    /// be turned off for one pass without a second shader.
     pub const fn vertices(self) -> [Vertex; 4] {
         [
             Vertex {
                 position: [self.min_x, self.max_y],
-                uv: [0.0, 0.0],
+                uv: [0.0, 1.0],
             },
             Vertex {
                 position: [self.max_x, self.max_y],
-                uv: [1.0, 0.0],
-            },
-            Vertex {
-                position: [self.max_x, self.min_y],
                 uv: [1.0, 1.0],
             },
             Vertex {
+                position: [self.max_x, self.min_y],
+                uv: [1.0, 0.0],
+            },
+            Vertex {
                 position: [self.min_x, self.min_y],
-                uv: [0.0, 1.0],
+                uv: [0.0, 0.0],
             },
         ]
     }
@@ -714,10 +728,79 @@ mod tests {
     fn quad_uvs_match_the_model_background_layout() {
         let rect = overlay_layer_clip_rect(placement(OverlayAnchor::TopLeft), 1.0).unwrap();
         let vertices = rect.vertices();
-        assert_eq!(vertices[0].uv, [0.0, 0.0]);
-        assert_eq!(vertices[1].uv, [1.0, 0.0]);
-        assert_eq!(vertices[2].uv, [1.0, 1.0]);
-        assert_eq!(vertices[3].uv, [0.0, 1.0]);
+        // The same assignment the model background quad uses, which is `v = 0.0`
+        // at `min_y` — NDC's bottom — because the shared vertex shader flips `v`
+        // for the model's bottom-left uv origin and a raster is uploaded top row
+        // first. Asserting `[0.0, 0.0]` at the first corner instead would pin the
+        // upside-down panel this test exists to describe.
+        assert_eq!(vertices[0].position, [rect.min_x, rect.max_y]);
+        assert_eq!(vertices[0].uv, [0.0, 1.0]);
+        assert_eq!(vertices[1].uv, [1.0, 1.0]);
+        assert_eq!(vertices[2].uv, [1.0, 0.0]);
+        assert_eq!(vertices[3].uv, [0.0, 0.0]);
+    }
+
+    #[test]
+    fn a_layers_top_edge_samples_the_raster_s_first_row() {
+        // The vertical contract, stated as the user sees it. `max_y` is the top of
+        // the quad and row 0 is the top of the raster, so the corner carrying
+        // `max_y` must carry `v = 1.0` — the shader flips it to 0.0, which is the
+        // first row. Getting this backwards draws every panel upside down, and
+        // nothing else in the pipeline can notice: a mirrored panel still uploads,
+        // places and hit-tests correctly.
+        let rect = overlay_layer_clip_rect(placement(OverlayAnchor::TopLeft), 1.0).unwrap();
+        let vertices = rect.vertices();
+        let sampled_v_at_top = |vertex: Vertex| {
+            let flipped = 1.0 - vertex.uv[1];
+            assert!(
+                (0.0..=1.0).contains(&flipped),
+                "the flip must produce a sampleable coordinate, not {flipped}"
+            );
+            flipped
+        };
+        assert_eq!(sampled_v_at_top(vertices[0]), 0.0);
+        assert_eq!(sampled_v_at_top(vertices[1]), 0.0);
+        assert_eq!(sampled_v_at_top(vertices[2]), 1.0);
+        assert_eq!(sampled_v_at_top(vertices[3]), 1.0);
+    }
+
+    #[test]
+    fn a_layer_quads_top_row_agrees_with_the_row_a_press_reports() {
+        // The picture and the press come from two independent computations — the
+        // vertex uv and [`PlacedOverlayLayer::to_layer_pixels`] — so they can
+        // disagree while each is self-consistent. What the user sees at the top of
+        // a panel has to be the row a press in that same place reports, or a
+        // button works against the wrong half of the panel.
+        let placed = PlacedOverlayLayer::new(OverlayLayer {
+            id: 1,
+            placement: placement(OverlayAnchor::TopLeft),
+            raster: raster(200, 100, 1),
+        })
+        .unwrap();
+        let uv_v_at = |ndc_y: f32| {
+            let vertex = placed
+                .rect
+                .vertices()
+                .into_iter()
+                .find(|vertex| vertex.position[1] == ndc_y)
+                .expect("a corner at this height");
+            1.0 - vertex.uv[1]
+        };
+        let press_v_at = |ndc_y: f32| {
+            placed
+                .to_layer_pixels(placed.rect.min_x, ndc_y)
+                .expect("a point inside the layer")
+                .y
+                / placed.layer.raster.height as f32
+        };
+        for ndc_y in [placed.rect.max_y, placed.rect.min_y] {
+            assert!(
+                (uv_v_at(ndc_y) - press_v_at(ndc_y)).abs() < 0.001,
+                "at ndc y {ndc_y} the drawn row was {} but a press there reports {}",
+                uv_v_at(ndc_y),
+                press_v_at(ndc_y)
+            );
+        }
     }
 
     #[test]

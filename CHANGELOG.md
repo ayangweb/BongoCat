@@ -18,6 +18,7 @@
 
 ### 🐛 Bug Fixes
 
+- Plugin panels are no longer upside down. A panel was drawn the right way up, but the model window reused the vertex shader that draws the model — which flips the vertical coordinate for the model's bottom-left uv origin — and a panel's pixels are uploaded top row first too, so the flip turned the whole panel over. Text and buttons were inverted on the Pomodoro and Key Display panels. A panel now shares the model background quad's vertex layout and is drawn the way it declared itself.
 - On Windows, BongoCat no longer freezes and quits when you click a link that opens an external website, such as "Report an issue" under Settings → About. The window also keeps painting while the browser starts.
 - A plugin that plays a sound of your own can now have you choose the file. Its settings show the file it will play, with a button that opens your computer's own file picker — offering the formats the plugin asked for — instead of asking you to know where you put it.
 - A plugin that does not show anything on the model window is no longer offered a "Display position" menu with nine choices in it, where every choice did nothing. Choosing one recorded a preference that was then ignored.
