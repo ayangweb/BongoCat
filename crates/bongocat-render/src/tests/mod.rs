@@ -103,4 +103,5 @@ mod commit;
 mod geometry;
 mod identity;
 mod key;
+mod overlay_layer;
 mod validate;

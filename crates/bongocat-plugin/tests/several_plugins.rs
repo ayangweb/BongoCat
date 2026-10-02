@@ -318,18 +318,26 @@ impl Several {
     }
 
     /// The published layers, waited for until there are `count` of them.
+    ///
+    /// Polling the way the overlay does — asking far more often than the worker publishes
+    /// — and counting only the answers that were *new*, which is what `take_latest` reports
+    /// as `Some`. A consumer that treated the silence between publishes as "no layers"
+    /// would be the flicker this file's sibling case in the overlay is about.
     fn layers(&self, count: usize) -> Vec<bongocat_render::OverlayLayer> {
         let deadline = Instant::now() + PATIENCE;
+        let mut newest: Vec<bongocat_render::OverlayLayer> = Vec::new();
         loop {
-            let layers = self.layers.take_latest();
-            if layers.len() >= count {
-                return layers;
+            if let Some(layers) = self.layers.take_latest() {
+                if layers.len() >= count {
+                    return layers;
+                }
+                newest = layers;
             }
             assert!(
                 Instant::now() < deadline,
                 "{count} panels on the model window within {PATIENCE:?}; the last publish \
                  carried {}",
-                layers.len()
+                newest.len()
             );
             std::thread::sleep(Duration::from_millis(10));
         }

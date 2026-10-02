@@ -20,6 +20,16 @@ pub(crate) struct ProductOverlaySession {
     /// binary draws a model, not a product, and a channel with nothing publishing
     /// into it would be a field that is always empty.
     pub(crate) layer_consumer: Option<bongocat_render::OverlayLayerConsumer>,
+    /// The layers the overlay is drawing, kept between ticks.
+    ///
+    /// The channel answers "nothing new" with `None` rather than an empty list, and the
+    /// difference is the whole reason this field exists. The plugin worker publishes at its
+    /// own cadence and this loop runs at the display's, so most ticks have no new answer —
+    /// and replacing the overlay's layers with that absence made a panel visible for one
+    /// frame in six, which is a strobe rather than a panel. Held here, the set survives
+    /// until the worker says something different, and placement still runs every tick so a
+    /// panel that appeared while the window was hidden is placed the moment it returns.
+    pub(crate) current_layers: Vec<bongocat_render::OverlayLayer>,
     /// The placement the click monitor hit-tests against, republished every tick.
     pub(crate) placed_layers: PlacedLayers,
     /// The sink the click monitor reports to, kept for a replacement panel.
@@ -152,6 +162,7 @@ impl ProductOverlaySession {
             // A preview has no plugin worker behind it; the product passes one in
             // through `with_layers`.
             layer_consumer: None,
+            current_layers: Vec::new(),
             placed_layers,
             press_sink,
             click_monitor,
@@ -301,13 +312,22 @@ impl ProductOverlaySession {
         // appeared the moment the window came back would flash its first frame
         // after the model, and one that was uploaded while hidden would not have to
         // wait for a resize to appear at all.
-        self.overlay.set_layers(
-            &self
-                .layer_consumer
-                .as_ref()
-                .map_or_else(Vec::new, bongocat_render::OverlayLayerConsumer::take_latest),
-            &self.placed_layers,
-        );
+        //
+        // Placed from what the worker last *said*, not from what it said this instant.
+        // `take_latest` answers `None` when the worker has been quiet since the last ask,
+        // and the display asks far more often than the worker publishes — so treating that
+        // silence as "no layers" replaced the overlay's layers with nothing five frames
+        // out of six, and a panel flickered instead of sitting there. An *empty* set is
+        // still honoured, because that is the worker saying every plugin is off.
+        if let Some(layers) = self
+            .layer_consumer
+            .as_ref()
+            .and_then(bongocat_render::OverlayLayerConsumer::take_latest)
+        {
+            self.current_layers = layers;
+        }
+        self.overlay
+            .set_layers(&self.current_layers, &self.placed_layers);
         if let Some(token) = self.pending_initial_model_commit {
             match self.overlay.draw(true) {
                 Ok(()) => {

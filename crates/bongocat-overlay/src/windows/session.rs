@@ -198,6 +198,14 @@ pub(crate) struct ProductOverlaySession {
     /// binary draws a model, not a product, and a channel with nothing publishing
     /// into it would be a field that is always empty.
     pub(crate) layer_consumer: Option<bongocat_render::OverlayLayerConsumer>,
+    /// The layers the overlay is drawing, kept between ticks.
+    ///
+    /// The same reason as on macOS, and the same bug when it is missing: the worker
+    /// publishes at its own cadence and this loop runs at the display's, so most ticks
+    /// carry no new answer. Replacing the overlay's layers with that silence made a panel
+    /// visible for one frame in six. An *empty* set is still honoured — that is the worker
+    /// saying every plugin is off — so a switch-off still clears the window.
+    pub(crate) current_layers: Vec<bongocat_render::OverlayLayer>,
     /// The placement the window procedure hit-tests a press against, republished
     /// by `set_layers` once a tick.
     pub(crate) placed_layers: PlacedLayers,
@@ -308,6 +316,7 @@ impl ProductOverlaySession {
             // A preview has no plugin worker behind it; the product passes one in
             // through `with_layers`.
             layer_consumer: None,
+            current_layers: Vec::new(),
             placed_layers,
             press_sink,
             _com_apartment: com_apartment,
@@ -431,13 +440,18 @@ impl ProductOverlaySession {
         // appeared the moment the window came back would flash its first frame
         // after the model, and one uploaded while hidden would not have to wait
         // for a resize to appear at all.
-        self.overlay.set_layers(
-            &self
-                .layer_consumer
-                .as_ref()
-                .map_or_else(Vec::new, bongocat_render::OverlayLayerConsumer::take_latest),
-            &self.placed_layers,
-        )?;
+        //
+        // Placed from what the worker last *said*, not from what it said this instant —
+        // see [`Self::current_layers`], which is the same fix and the same reason.
+        if let Some(layers) = self
+            .layer_consumer
+            .as_ref()
+            .and_then(bongocat_render::OverlayLayerConsumer::take_latest)
+        {
+            self.current_layers = layers;
+        }
+        self.overlay
+            .set_layers(&self.current_layers, &self.placed_layers)?;
         let next_frame = if overlay_visible {
             self.render_consumer.take_latest()
         } else {

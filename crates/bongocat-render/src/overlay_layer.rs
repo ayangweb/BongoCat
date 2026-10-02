@@ -347,20 +347,45 @@ impl OverlayLayerProducer {
 
 pub struct OverlayLayerConsumer {
     slot: Arc<OverlayLayerSlot>,
+    /// The newest publish this consumer has already taken.
+    ///
+    /// What makes "nothing new" an answer rather than an empty list. The two used to be
+    /// the same answer, and that is what made a panel blink: the producer publishes at its
+    /// own cadence — a plugin's worth of work, ten times a second — while a frame loop asks
+    /// sixty times a second, so five frames in six read an empty set and replaced the
+    /// overlay's layers with nothing. The panel was there for one frame in six, which a
+    /// user sees as a strobe. The model's own frame channel has always answered `None` for
+    /// "nothing new"; this one now answers the same way, so the two channels agree.
+    taken: AtomicU64,
 }
 
 impl OverlayLayerConsumer {
-    /// Take the most recent layer set, or an empty set when a producer has
-    /// published nothing yet. A window that is not presenting still drains the
-    /// channel, so a producer is never blocked by a hidden overlay.
-    pub fn take_latest(&self) -> Vec<OverlayLayer> {
-        self.slot
+    /// The most recent layer set, or `None` when nothing has been published since the last
+    /// call.
+    ///
+    /// **`None` and an empty set are different answers**, and the caller must keep them
+    /// apart. `None` means the producer has been quiet since you last asked, so whatever
+    /// you are already drawing is still correct and should be drawn again. An **empty**
+    /// set is a published decision that there is nothing to draw — every plugin switched
+    /// off, or withdrawn — and it must replace what you have. A window that treats `None`
+    /// as "draw nothing" flickers; one that treats an empty set as "nothing changed" can
+    /// never clear the screen.
+    ///
+    /// Placement still happens every tick, which is what the overlay wants: a panel that
+    /// was uploaded while the window was hidden is placed correctly the moment it comes
+    /// back rather than waiting for a resize.
+    pub fn take_latest(&self) -> Option<Vec<OverlayLayer>> {
+        let state = self
+            .slot
             .state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .layers
-            .take()
-            .unwrap_or_default()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let generation = state.generation;
+        if self.taken.load(Ordering::Acquire) >= generation {
+            return None;
+        }
+        self.taken.store(generation, Ordering::Release);
+        state.layers.clone()
     }
 
     pub fn diagnostics(&self) -> OverlayLayerTransportDiagnostics {
@@ -371,6 +396,9 @@ impl OverlayLayerConsumer {
 #[derive(Default)]
 struct OverlayLayerState {
     layers: Option<Vec<OverlayLayer>>,
+    /// How many times a producer has published. Read by a consumer to decide whether the
+    /// answer it is about to be handed is new.
+    generation: u64,
     closed: bool,
     published: u64,
     coalesced: u64,
@@ -405,7 +433,10 @@ pub fn overlay_layer_channel() -> (OverlayLayerProducer, OverlayLayerConsumer) {
         OverlayLayerProducer {
             slot: Arc::clone(&slot),
         },
-        OverlayLayerConsumer { slot },
+        OverlayLayerConsumer {
+            slot,
+            taken: AtomicU64::new(0),
+        },
     )
 }
 
@@ -440,6 +471,11 @@ impl OverlayLayerProducer {
         if state.layers.replace(layers).is_some() {
             state.coalesced = state.coalesced.saturating_add(1);
         }
+        // Every publish is a *new answer*, including one that says there is nothing to
+        // draw. The generation is what lets a consumer tell "the producer just said empty"
+        // from "the producer has not spoken since you last asked" — the distinction a
+        // panel's visibility rests on.
+        state.generation = state.generation.saturating_add(1);
         state.published = state.published.saturating_add(1);
         Ok(())
     }
@@ -778,8 +814,17 @@ mod tests {
         assert_eq!(diagnostics.published, 2);
         assert_eq!(diagnostics.coalesced, 1);
         assert_eq!(diagnostics.unuploadable, 1);
-        assert_eq!(consumer.take_latest().len(), 1);
-        assert!(consumer.take_latest().is_empty());
+        assert_eq!(
+            consumer.take_latest().map(|layers| layers.len()),
+            Some(1),
+            "the good layer arrives"
+        );
+        assert_eq!(
+            consumer.take_latest(),
+            None,
+            "and asking again is silence rather than a second empty answer, which is the \
+             distinction a frame loop needs and the one this channel did not have"
+        );
     }
 
     #[test]
