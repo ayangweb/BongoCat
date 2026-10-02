@@ -77,9 +77,9 @@ pub use config::{
 };
 pub use control::{control_label, keypad_label};
 pub use descriptor::{
-    LocalizedText, MAXIMUM_BUTTON_ID_BYTES, MAXIMUM_BUTTONS_PER_PANEL,
-    MAXIMUM_PLUGIN_DESCRIPTION_CHARS, MAXIMUM_PLUGIN_NAME_CHARS, PLUGIN_MANIFEST_FILE_NAME,
-    PluginDescriptor, PluginIcon, PluginManifest, Subscription,
+    LocalizedText, MAXIMUM_BUTTON_ID_BYTES, MAXIMUM_BUTTONS_PER_PANEL, MAXIMUM_COPY_ENTRIES,
+    MAXIMUM_COPY_KEY_BYTES, MAXIMUM_PLUGIN_DESCRIPTION_CHARS, MAXIMUM_PLUGIN_NAME_CHARS,
+    PLUGIN_MANIFEST_FILE_NAME, PluginDescriptor, PluginIcon, PluginManifest, Subscription,
 };
 pub use error::{PluginError, PluginErrorCode};
 pub use host_state::{

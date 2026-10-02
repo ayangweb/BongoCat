@@ -398,6 +398,7 @@ mod tests {
 
     fn manifest(id: &str) -> bongocat_plugin::PluginManifest {
         bongocat_plugin::PluginManifest {
+            copy: Default::default(),
             schema_version: 1,
             api_version: 1,
             id: bongocat_plugin::PluginId::new(id).expect("a valid id"),

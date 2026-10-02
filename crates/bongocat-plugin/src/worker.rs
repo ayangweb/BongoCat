@@ -1868,5 +1868,9 @@ fn manifest_from_catalog(entry: &PluginCatalogEntry) -> PluginManifest {
         description: entry.description.clone(),
         icon: entry.icon.display_icon(),
         executable: entry.id.as_str().to_string(),
+        // A catalog entry does not carry a plugin's copy table, and does not need to: the
+        // host never renders it, it only falls back to this manifest when no process has
+        // answered a card. The field is here because the host's manifest carries it.
+        copy: Default::default(),
     }
 }

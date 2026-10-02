@@ -32,6 +32,19 @@ pub const MAXIMUM_PLUGIN_NAME_CHARS: usize = 64;
 /// The longest a plugin's description may be, in characters.
 pub const MAXIMUM_PLUGIN_DESCRIPTION_CHARS: usize = 200;
 
+/// The most strings one plugin may carry copy for.
+///
+/// A design bound, like the settings one: past this a plugin has a documentation file
+/// wearing a manifest's clothes, and the manifest is read on every launch.
+pub const MAXIMUM_COPY_ENTRIES: usize = 256;
+
+/// The longest a copy key may be, in bytes.
+///
+/// A key is a name the plugin's own code uses to ask for a string, so it is an identifier
+/// rather than prose: short, and the same bound in the plugin's build and in the host that
+/// reads the file afterwards.
+pub const MAXIMUM_COPY_KEY_BYTES: usize = 64;
+
 /// The longest a button id may be, in bytes.
 pub const MAXIMUM_BUTTON_ID_BYTES: usize = 32;
 
@@ -299,6 +312,26 @@ pub struct PluginManifest {
     /// so the path is subject to the same traversal check as every other path a
     /// plugin names.
     pub executable: String,
+    /// Every other string this plugin uses, in the languages it has them in.
+    ///
+    /// The same document that names the plugin also carries its words, which is the
+    /// point of ADR-0082: a plugin's copy lives in its own `plugin.json` rather than in a
+    /// Rust module beside it, so a translator can read a plugin's sentences without
+    /// reading its code and a card cannot disagree with the plugin about what it is
+    /// called.
+    ///
+    /// **It has to be here, and that is why.** `plugin.json` is one file: it is what the
+    /// plugin embeds at compile time *and* what the host reads out of the archive to check
+    /// the id against the running process. This struct denies unknown fields, so a field
+    /// the plugin reads and the host does not know is a field that makes the host refuse
+    /// every plugin carrying it — which is what happened: the copy table was added to the
+    /// plugin side and the strict manifest was left behind, so the host refused all three
+    /// shipped plugins and the plugin center showed a manifest error instead of a list.
+    ///
+    /// The bounds live here for the same reason: one number, read by both sides, rather
+    /// than a bound the plugin checks and the host does not.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub copy: BTreeMap<String, LocalizedText>,
 }
 
 impl PluginManifest {
@@ -326,7 +359,41 @@ impl PluginManifest {
         if self.description.longest_characters() > MAXIMUM_PLUGIN_DESCRIPTION_CHARS {
             return Err(PluginError::new(PluginErrorCode::InvalidPluginDescription));
         }
-        self.icon.image_path()?;
+        // The *code* stays `InvalidAssetPath`, because something may want to tell a bad
+        // asset path from a malformed document. Only the detail is added, because the bare
+        // error says `invalid_asset_path` and a manifest has two paths in it — so "which
+        // one" is the first question anybody asks about a path error, and the plugin that
+        // reads this file at build time used to answer it.
+        self.icon.image_path().map_err(|error| {
+            PluginError::with_detail(
+                error.code(),
+                format!("this plugin's icon is not a path the host will read: {error}"),
+            )
+        })?;
+        if self.copy.len() > MAXIMUM_COPY_ENTRIES {
+            return Err(PluginError::with_detail(
+                PluginErrorCode::ManifestInvalid,
+                format!(
+                    "this plugin carries copy for {} strings, and the bound is \
+                     {MAXIMUM_COPY_ENTRIES}",
+                    self.copy.len()
+                ),
+            ));
+        }
+        for (key, text) in &self.copy {
+            if key.is_empty() || key.len() > MAXIMUM_COPY_KEY_BYTES {
+                return Err(PluginError::with_detail(
+                    PluginErrorCode::ManifestInvalid,
+                    format!("the copy key {key:?} is not a usable name"),
+                ));
+            }
+            if text.default.trim().is_empty() {
+                return Err(PluginError::with_detail(
+                    PluginErrorCode::ManifestInvalid,
+                    format!("the copy for {key:?} has no default to fall back to"),
+                ));
+            }
+        }
         // The executable goes through the same path check as an asset, because it
         // is one: a path from a document that becomes something the host runs.
         super::validate_relative_asset_path(&self.executable)?;

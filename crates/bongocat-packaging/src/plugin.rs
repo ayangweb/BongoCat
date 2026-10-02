@@ -609,6 +609,8 @@ mod tests {
         );
     }
     /// The repository's own `plugins/` directory.
+    use std::collections::BTreeSet;
+
     fn repository_plugins() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
@@ -751,6 +753,82 @@ mod tests {
             ),
             "{id}: {name} is the {DEFAULT_LOCALE} copy repeated under every language, which is \
              a string that happens to be in a table rather than a translation"
+        );
+    }
+
+    /// Every shipped `plugin.json` is one the **host** can read.
+    ///
+    /// The bug this exists for was a whole missing feature, and it was invisible to every
+    /// other test in this file. `plugin.json` is one document with two readers: the plugin
+    /// embeds it at compile time, and the host reads it out of the archive to check the id
+    /// against the running process. The copy table was added to the plugin's reader and not
+    /// to the host's — and the host's manifest **denies unknown fields**, so adding a field
+    /// the host had never heard of made it refuse every plugin the repository ships. The
+    /// plugin center then showed "this plugin's content does not apply to this version of
+    /// BongoCat" and an empty list, which is what a user sees.
+    ///
+    /// Nothing caught it because every other check here reads the document as JSON, and as
+    /// JSON the document is perfect: a valid file with a valid copy table in it. The one
+    /// question they do not ask is whether the *host's parser* accepts it, which is the only
+    /// question that decides whether the plugin exists. So this asks it, with the host's own
+    /// parser, over the real files.
+    #[test]
+    fn every_shipped_manifest_is_one_the_host_will_read() {
+        for (id, manifest) in repository_plugins_with_manifests() {
+            let parsed =
+                bongocat_plugin_protocol::PluginManifest::parse(manifest.to_string().as_bytes())
+                    .unwrap_or_else(|error| {
+                        panic!(
+                            "{id}: the host cannot read this plugin's own manifest, so it will \
+                         never be installed or started: {error}"
+                        )
+                    });
+            assert_eq!(
+                parsed.id.as_str(),
+                id,
+                "{id}: and it is a manifest about this plugin, read through the host's parser \
+                 rather than as loose JSON"
+            );
+            assert!(
+                !parsed.copy.is_empty(),
+                "{id}: a plugin whose copy table the host cannot see is a plugin whose \
+                 sentences exist only inside its own binary — which is the whole reason the \
+                 table is in the manifest"
+            );
+        }
+    }
+
+    /// Every plugin directory in the repository is found by the scan, archives aside.
+    ///
+    /// The other half of the same feature. ADR-0082 removed the centralised list, so the
+    /// development catalog is the directories that hold a `plugin.json` — and a plugin
+    /// whose directory the scan misses is a plugin the plugin center will never list, with
+    /// no error anywhere, because a directory that is not found is not a failure. It is
+    /// simply absent, which is the worst shape a mistake can have here.
+    #[test]
+    fn the_scan_that_replaced_the_plugin_list_finds_every_shipped_plugin() {
+        let found: BTreeSet<String> =
+            bongocat_plugin::local_plugin_directories(&repository_plugins())
+                .iter()
+                .filter_map(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .map(str::to_owned)
+                })
+                .collect();
+        let shipped: BTreeSet<String> = repository_plugins_with_manifests()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert!(
+            !shipped.is_empty(),
+            "the repository ships plugins, or this case is checking nothing"
+        );
+        assert_eq!(
+            found, shipped,
+            "every directory that holds a plugin.json is a directory the catalog sees: a \
+             plugin the scan misses is a plugin the plugin center never lists, and it is \
+             absent rather than refused, so nothing reports it"
         );
     }
 

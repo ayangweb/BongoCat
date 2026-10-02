@@ -73,6 +73,7 @@ fn handshake(mut input: impl BufRead + 'static, plugin: &mut impl Plugin) -> Res
             description: Default::default(),
             icon: Default::default(),
             executable: hello.id.as_str().to_string(),
+            copy: Default::default(),
         })
         .map_err(|error| Error::Protocol(error.to_string()))?;
 
@@ -815,6 +816,7 @@ mod tests {
         // The mismatch is caught by `handshake`, which needs a real process; what is
         // checked here is that the protocol offers the check at all.
         let manifest = bongocat_plugin_protocol::PluginManifest {
+            copy: Default::default(),
             schema_version: bongocat_plugin_protocol::PLUGIN_SCHEMA_VERSION,
             api_version: bongocat_plugin_protocol::SUPPORTED_PLUGIN_API_VERSION,
             id: PluginId::new("pomodoro").expect("valid"),

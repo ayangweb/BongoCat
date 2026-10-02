@@ -73,13 +73,7 @@ pub const MANIFEST_FILE_NAME: &str = PLUGIN_MANIFEST_FILE_NAME;
 /// The bound a document can rely on rather than anything about the words: a key becomes
 /// a JSON object member in the manifest the plugin ships, so this is the same class of
 /// limit [`bongocat_plugin_protocol::MAXIMUM_CONFIG_KEY_BYTES`] puts on a settings key.
-pub const MAXIMUM_COPY_KEY_BYTES: usize = 64;
-
-/// The most strings one plugin may carry copy for.
-///
-/// A design bound, like the settings one: past this a plugin has a documentation file
-/// wearing a manifest's clothes, and the manifest is read on every launch.
-pub const MAXIMUM_COPY_ENTRIES: usize = 256;
+pub use bongocat_plugin_protocol::{MAXIMUM_COPY_ENTRIES, MAXIMUM_COPY_KEY_BYTES};
 
 /// What a plugin says about itself, and the words it says it with.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -99,14 +93,33 @@ impl SelfDescription {
     /// Takes the bytes rather than a path so the caller decides where they came from,
     /// which for a plugin is [`SelfDescription::load`] over an `include_str!`.
     pub fn from_manifest_bytes(bytes: &[u8]) -> Result<SelfDescription> {
-        let manifest: WireManifest = serde_json::from_slice(bytes).map_err(|error| {
+        // **The host's own parser, on purpose.** `plugin.json` is one file: it is what the
+        // plugin embeds at compile time and what the host reads out of the archive to
+        // check the id against the running process. This used to parse it through a
+        // second, more forgiving type here, on the reasoning that a plugin's authoring
+        // document must tolerate fields the host never sees.
+        //
+        // That reasoning was wrong, and the cost was that the two definitions of the file
+        // were free to drift: the copy table was added to this side and the host's strict
+        // manifest was left behind, so the host refused every shipped plugin and the
+        // plugin center showed a manifest error instead of a list. Reading the file the
+        // way the host reads it means a manifest the plugin accepts is a manifest the host
+        // accepts, which is the only property worth having — and it is checked in a
+        // plugin's own build rather than discovered by a user.
+        let manifest: WireManifest = bongocat_plugin_protocol::PluginManifest::parse(bytes)
+            .map_err(|error| {
+                Error::Config(format!(
+                    "this plugin's own {MANIFEST_FILE_NAME} could not be read: {error}"
+                ))
+            })?;
+        manifest.validate().map_err(|error| {
             Error::Config(format!(
-                "this plugin's own {MANIFEST_FILE_NAME} could not be read: {error}"
+                "this plugin's own {MANIFEST_FILE_NAME} is one the host would refuse: {error}"
             ))
         })?;
         let identity = Self {
-            id: manifest.id,
-            version: manifest.version,
+            id: manifest.id.to_string(),
+            version: manifest.version.to_string(),
             name: manifest.name,
             description: manifest.description,
             author: manifest.author,
@@ -314,30 +327,15 @@ impl SelfDescription {
     }
 }
 
-/// The manifest as it appears on the wire.
+/// The manifest a plugin ships, read as the host reads it.
 ///
-/// Its own type rather than the protocol's [`bongocat_plugin_protocol::PluginManifest`]
-/// on purpose, and the difference is what this type is for. The protocol's manifest is
-/// the *archive's* document: the host reads it to check the id against the running
-/// process, and it is strict — an unknown field is a manifest from a newer host. This one
-/// is the *authoring* document, read by the plugin's own code, and it must be forgiving
-/// about fields the host never sees (the copy table is one) while still refusing the
-/// fields whose absence would produce a plugin that cannot start.
-#[derive(serde::Deserialize)]
-struct WireManifest {
-    id: String,
-    version: String,
-    #[serde(default)]
-    name: LocalizedText,
-    #[serde(default)]
-    description: LocalizedText,
-    #[serde(default)]
-    author: String,
-    #[serde(default)]
-    icon: PluginIcon,
-    #[serde(default)]
-    copy: BTreeMap<String, LocalizedText>,
-}
+/// An alias rather than a second struct, and that is the whole of the fix. `plugin.json` is
+/// one file that two sides read — the plugin embeds it at compile time, and the host reads
+/// it out of the archive — so a plugin whose own copy of the document was more forgiving
+/// than the host's was a plugin that could build, install, and then be refused by the only
+/// reader that matters. There was such a plugin: all three of them, over a copy table the
+/// host had never heard of, and the plugin center showed a manifest error instead of a list.
+type WireManifest = bongocat_plugin_protocol::PluginManifest;
 
 /// Read the manifest a plugin ships and check it, or report why it could not be read.
 ///
@@ -358,6 +356,22 @@ pub const ANCHORS: [PluginAnchor; 9] = PluginAnchor::ALL;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A manifest the host would also accept, with the given fields spliced in.
+    ///
+    /// Every case here used to write a *partial* document — an id and a name, nothing else —
+    /// because the plugin's own reader was more forgiving than the host's. It is not any
+    /// more, deliberately: a manifest the plugin accepts but the host refuses is a plugin
+    /// that builds, installs, and then does not exist, which is the failure this crate is
+    /// now shaped to make impossible. So the fixtures write whole documents, and a case
+    /// that wants a *missing* field has to remove one on purpose.
+    fn whole(extra: &str) -> String {
+        format!(
+            "{{\"schema_version\":1,\"api_version\":1,\"id\":\"pomodoro\",\
+             \"version\":\"1.0.0\",\"name\":\"Pomodoro\",\
+             \"executable\":\"pomodoro\"{extra}}}"
+        )
+    }
 
     const MANIFEST: &str = r#"{
         "schema_version": 1,
@@ -414,29 +428,35 @@ mod tests {
         // Each of these would produce a plugin that cannot start, and each is refused
         // with the part that is wrong in the message rather than as a refusal with no
         // detail, because that is what a plugin author has to work from.
-        let no_id = SelfDescription::load(r#"{"id":"","version":"1.0.0","name":"X"}"#)
-            .expect_err("an id is required");
+        let no_id = SelfDescription::load(&whole(r#","id":"""#)).expect_err("an id is required");
         assert!(no_id.to_string().contains("id"), "{no_id}");
 
-        let spaced_id = SelfDescription::load(r#"{"id":"a b","version":"1.0.0","name":"X"}"#)
-            .expect_err("a space is not an id");
+        let spaced_id =
+            SelfDescription::load(&whole(r#","id":"a b""#)).expect_err("a space is not an id");
         assert!(spaced_id.to_string().contains("id"), "{spaced_id}");
 
-        let bad_version = SelfDescription::load(r#"{"id":"pomodoro","version":"one","name":"X"}"#)
+        let bad_version = SelfDescription::load(&whole(r#","version":"one""#))
             .expect_err("a version is three numbers");
         assert!(bad_version.to_string().contains("version"), "{bad_version}");
 
-        let no_name = SelfDescription::load(r#"{"id":"pomodoro","version":"1.0.0","name":""}"#)
-            .expect_err("a name");
+        let no_name = SelfDescription::load(&whole(r#","name":"""#)).expect_err("a name");
         assert!(no_name.to_string().contains("name"), "{no_name}");
 
-        let escaping_icon = SelfDescription::load(
-            r#"{"id":"pomodoro","version":"1.0.0","name":"X","icon":{"image":"../../etc/passwd"}}"#,
-        )
-        .expect_err("an icon is a path the host reads");
+        let escaping_icon =
+            SelfDescription::load(&whole(r#","icon":{"image":"../../etc/passwd"}"#))
+                .expect_err("an icon is a path the host reads");
         assert!(
             escaping_icon.to_string().contains("icon"),
             "{escaping_icon}"
+        );
+
+        let no_executable =
+            SelfDescription::load(r#"{"schema_version":1,"api_version":1,"id":"pomodoro","version":"1.0.0","name":"Pomodoro"}"#)
+                .expect_err("a manifest names no file to run");
+        assert!(
+            no_executable.to_string().contains("executable"),
+            "a document the host cannot install is refused in the plugin's own build, \
+             where the author is: {no_executable}"
         );
     }
 
@@ -452,10 +472,7 @@ mod tests {
         // The metadata a card needs is not the copy a panel needs, and a plugin that has
         // not moved its words yet still has a card that reads correctly. Refusing the
         // load would take that plugin's panel away over a missing table.
-        let me = SelfDescription::load(
-            r#"{"id":"pomodoro","version":"1.0.0","name":"Pomodoro","executable":"pomodoro"}"#,
-        )
-        .expect("a manifest without copy still reads");
+        let me = SelfDescription::load(&whole("")).expect("a manifest without copy still reads");
         assert!(me.is_empty());
         assert_eq!(
             me.text("focus", "en-US"),
@@ -478,19 +495,18 @@ mod tests {
 
     #[test]
     fn a_copy_table_that_cannot_be_used_is_refused_at_load() {
-        let empty_default = SelfDescription::load(
-            r#"{"id":"plugin","version":"1.0.0","name":"P","copy":{"focus":{"default":"  "}}}"#,
-        )
-        .expect_err("an empty default has nothing to fall back to");
+        let empty_default = SelfDescription::load(&whole(r#","copy":{"focus":{"default":"  "}}"#))
+            .expect_err("an empty default has nothing to fall back to");
         assert!(
             empty_default.to_string().contains("focus"),
             "{empty_default}"
         );
 
-        let long_key = SelfDescription::load(&format!(
-            r#"{{"id":"plugin","version":"1.0.0","name":"P","copy":{{"{}":{{"default":"x"}}}}}}"#,
-            "k".repeat(MAXIMUM_COPY_KEY_BYTES + 1)
-        ))
+        let overlong = "k".repeat(MAXIMUM_COPY_KEY_BYTES + 1);
+        let long_key = SelfDescription::load(&whole(&format!(
+            r#","copy":{{"{}":{{"default":"x"}}}}"#,
+            overlong
+        )))
         .expect_err("a key longer than a JSON member may be is not a usable name");
         assert!(long_key.to_string().contains("copy key"), "{long_key}");
 
@@ -498,17 +514,21 @@ mod tests {
             .map(|index| (format!("k{index}"), LocalizedText::from("x")))
             .collect();
         let oversized = WireManifest {
-            id: "plugin".to_owned(),
-            version: "1.0.0".to_owned(),
+            schema_version: bongocat_plugin_protocol::PLUGIN_SCHEMA_VERSION,
+            api_version: bongocat_plugin_protocol::SUPPORTED_PLUGIN_API_VERSION,
+            id: bongocat_plugin_protocol::PluginId::new("plugin".to_owned()).expect("a valid id"),
+            version: bongocat_plugin_protocol::PluginVersion::new(1, 0, 0),
+            min_app_version: None,
             name: LocalizedText::from("P"),
             description: LocalizedText::default(),
             author: String::new(),
             icon: PluginIcon::default(),
+            executable: "plugin".to_owned(),
             copy: entries,
         };
         let me = SelfDescription {
-            id: oversized.id,
-            version: oversized.version,
+            id: oversized.id.to_string(),
+            version: oversized.version.to_string(),
             name: oversized.name,
             description: oversized.description,
             author: oversized.author,
