@@ -95,6 +95,9 @@ pub struct SettingsModelSettings {
     pub mirror_pointer_tracking_vertical: bool,
     pub ignore_keyboard: bool,
     pub ignore_gamepad: bool,
+    /// Whether the key-image layer stacks every held key with artwork instead of
+    /// drawing one image per hand.
+    pub show_all_pressed_keys: bool,
     pub ignore_pointer: bool,
 }
 

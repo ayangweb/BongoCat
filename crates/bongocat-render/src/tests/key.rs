@@ -45,6 +45,27 @@ fn key_press_set_deduplicates_and_has_bounded_capacity() {
     assert_eq!(presses.iter().filter(|entry| *entry == press).count(), 1);
 }
 
+/// The set keeps the order it was given.
+///
+/// Insertion order is not incidental: the key-image layer stacks the presses in
+/// the order the runtime listed them and the native renderers draw that order, so
+/// a set that sorted its entries would put an arbitrary key on top.
+#[test]
+fn a_key_press_set_keeps_insertion_order() {
+    let mut presses = KeyPressSet::default();
+    for usage in [0x07u16, 0x16, 0x04] {
+        presses.push(KeyPress::keyboard(usage, KeySide::Left));
+    }
+    assert_eq!(
+        presses.iter().map(|press| press.key).collect::<Vec<_>>(),
+        vec![
+            KeyIdentity::Keyboard(0x07),
+            KeyIdentity::Keyboard(0x16),
+            KeyIdentity::Keyboard(0x04),
+        ]
+    );
+}
+
 /// A gamepad press and a keyboard press are different identities even when
 /// they name the same side, and no gamepad button can be folded into the
 /// HID usage space: that is what keeps a button from being resolved as a key.

@@ -20,16 +20,23 @@ pub struct InputSnapshot {
     pub transport: InputTransportDiagnostics,
 }
 
-/// Source gates applied while projecting captured input into the model view.
+/// How the captured input is projected into the model view.
 ///
 /// The pressed-state owner keeps the raw keyboard and gamepad edges intact for
-/// diagnostics and recovery. These gates only affect the immutable model input
-/// projection, so disabling one input family cannot strand a pressed key or
-/// remove its eventual release from the input pipeline.
+/// diagnostics and recovery. These switches only affect the immutable model
+/// input projection, so disabling one input family cannot strand a pressed key
+/// or remove its eventual release from the input pipeline.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct ModelInputFilter {
     pub(crate) ignore_keyboard: bool,
     pub(crate) ignore_gamepad: bool,
+    /// Whether the key-image layer draws every held key rather than one per
+    /// hand.
+    ///
+    /// This is a display choice and not a source gate: it changes how many
+    /// pictures a chord produces and in which order they are stacked, and it
+    /// never changes which controls are held, released or reconciled.
+    pub(crate) show_all_pressed_keys: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

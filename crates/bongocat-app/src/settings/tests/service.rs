@@ -443,6 +443,7 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
         mirror_pointer_tracking_vertical: true,
         ignore_keyboard: true,
         ignore_gamepad: true,
+        show_all_pressed_keys: true,
         ignore_pointer: true,
     };
     let configured_model = client
@@ -504,6 +505,7 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
     assert!(persisted.contains("\"mirror_pointer_tracking_vertical\": true"));
     assert!(persisted.contains("\"ignore_keyboard\": true"));
     assert!(persisted.contains("\"ignore_gamepad\": true"));
+    assert!(persisted.contains("\"show_all_pressed_keys\": true"));
     assert!(persisted.contains("\"ignore_pointer\": true"));
     assert!(persisted.contains("\"stick_dead_zone\": 0.2"));
     assert!(persisted.contains("\"trigger_dead_zone\": 0.1"));
@@ -525,6 +527,7 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
             mirror_pointer_tracking_vertical: true,
             ignore_keyboard: true,
             ignore_gamepad: true,
+            show_all_pressed_keys: true,
             ignore_pointer: true,
         }
     );
@@ -642,6 +645,7 @@ fn service_rejects_stale_direct_settings_without_mutating_runtime_or_config() {
                 mirror_pointer_tracking_vertical: false,
                 ignore_keyboard: false,
                 ignore_gamepad: false,
+                show_all_pressed_keys: false,
                 ignore_pointer: true,
             },
         )

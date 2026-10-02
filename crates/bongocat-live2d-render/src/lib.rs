@@ -55,17 +55,22 @@ pub fn prepare_render_resources(
     })
 }
 
+/// The key images to draw, in the order the runtime supplied them.
+///
+/// Order is the stacking: both native renderers walk `RenderSnapshot::active_keys`
+/// in order with no depth buffer, so the last entry is drawn last and is the one
+/// on top. The compatibility projection therefore lists the left hand before the
+/// right one, and the layered projection lists the presses oldest first, which is
+/// what puts the key the user pressed last on top of the chord.
+///
+/// Two held keys can resolve to the same image — the shared `Fn` fallback, or a
+/// keypad digit that reuses the main block's artwork — so an image already claimed
+/// by an earlier press is not drawn a second time. It would look identical and cost
+/// another draw call, and the earlier press is the one whose key the user pressed
+/// first, which is the layer that belongs underneath.
 pub fn resolve_key_overlays(resources: &RenderResources, presses: KeyPressSet) -> Vec<KeyOverlay> {
-    let mut selected = [None, None];
+    let mut overlays: Vec<KeyOverlay> = Vec::new();
     for press in presses.iter() {
-        let side_index = match press.side {
-            KeySide::Left => 0,
-            KeySide::Right => 1,
-        };
-        // Runtime supplies the most recently pressed key for each side. Clear
-        // the slot before resolving so an unavailable current key never
-        // reuses an older overlay from that side.
-        selected[side_index] = None;
         let candidates = key_image_name_candidates(press.key);
         let Some(asset) = candidates.iter().find_map(|candidate| {
             resources
@@ -73,14 +78,23 @@ pub fn resolve_key_overlays(resources: &RenderResources, presses: KeyPressSet) -
                 .iter()
                 .find(|asset| asset.side == press.side && asset.name == *candidate)
         }) else {
+            // No artwork for this press: the runtime only sends keys the model
+            // can draw (ADR-0042), so this is the candidate names all missing,
+            // not a key the model chose to ignore.
             continue;
         };
-        selected[side_index] = Some(KeyOverlay {
+        if overlays
+            .iter()
+            .any(|overlay| overlay.asset_id == asset.id && overlay.side == press.side)
+        {
+            continue;
+        }
+        overlays.push(KeyOverlay {
             asset_id: asset.id,
             side: press.side,
         });
     }
-    selected.into_iter().flatten().collect()
+    overlays
 }
 
 /// The key images a model package ships, grouped by the hand that draws them.
@@ -555,6 +569,76 @@ mod tests {
                     side: KeySide::Right,
                 },
             ]
+        );
+    }
+
+    /// A chord produces one overlay per press, in the order the runtime listed
+    /// them, because that order is the only thing the native renderers have to
+    /// work with: they draw `active_keys` in sequence with no depth buffer, so
+    /// the last entry is the one on top.
+    #[test]
+    fn every_press_gets_its_own_overlay_in_the_order_the_runtime_supplied() {
+        let resources = RenderResources {
+            textures: Vec::new(),
+            key_assets: ["KeyA", "KeyD", "KeyS"]
+                .iter()
+                .enumerate()
+                .map(|(index, name)| KeyAsset {
+                    id: KeyAssetId::new(index),
+                    side: KeySide::Left,
+                    name: (*name).to_owned(),
+                    path: PathBuf::from(format!("{name}.png")),
+                    width: 1,
+                    height: 1,
+                })
+                .collect(),
+            background: None,
+        };
+        let mut presses = KeyPressSet::default();
+        // Deliberately not in HID order: the runtime lists presses oldest first
+        // and the resolver must not re-sort them into a key order of its own.
+        presses.push(bongocat_render::KeyPress::keyboard(0x07, KeySide::Left));
+        presses.push(bongocat_render::KeyPress::keyboard(0x16, KeySide::Left));
+        presses.push(bongocat_render::KeyPress::keyboard(0x04, KeySide::Left));
+        assert_eq!(
+            resolve_key_overlays(&resources, presses)
+                .into_iter()
+                .map(|overlay| overlay.asset_id)
+                .collect::<Vec<_>>(),
+            vec![KeyAssetId::new(1), KeyAssetId::new(2), KeyAssetId::new(0)]
+        );
+    }
+
+    /// Two held keys that fall back to the same artwork draw one picture.
+    ///
+    /// `F13` shares the model's `Fn` image with every other function key, and a
+    /// keypad digit reuses the main block's image, so a chord can name the same
+    /// file twice. Drawing it twice looks identical and costs another draw
+    /// call, and the press that claimed it first is the one that belongs
+    /// underneath.
+    #[test]
+    fn two_presses_that_share_one_image_draw_it_once() {
+        let resources = RenderResources {
+            textures: Vec::new(),
+            key_assets: vec![KeyAsset {
+                id: KeyAssetId::new(0),
+                side: KeySide::Left,
+                name: "Fn".to_owned(),
+                path: PathBuf::from("Fn.png"),
+                width: 1,
+                height: 1,
+            }],
+            background: None,
+        };
+        let mut presses = KeyPressSet::default();
+        presses.push(bongocat_render::KeyPress::keyboard(0x3a, KeySide::Left));
+        presses.push(bongocat_render::KeyPress::keyboard(0x3b, KeySide::Left));
+        assert_eq!(
+            resolve_key_overlays(&resources, presses),
+            vec![KeyOverlay {
+                asset_id: KeyAssetId::new(0),
+                side: KeySide::Left,
+            }]
         );
     }
 

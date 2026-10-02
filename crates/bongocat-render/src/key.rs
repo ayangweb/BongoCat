@@ -66,25 +66,34 @@ impl KeyPress {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct KeyPressSet {
-    pub(crate) entries: [KeyPress; 64],
-    pub(crate) len: u8,
+    entries: [KeyPress; Self::CAPACITY],
+    len: u8,
 }
 
 impl Default for KeyPressSet {
     fn default() -> Self {
         Self {
-            entries: [KeyPress::default(); 64],
+            entries: [KeyPress::default(); Self::CAPACITY],
             len: 0,
         }
     }
 }
 
 impl KeyPressSet {
+    /// The most presses one snapshot can carry.
+    ///
+    /// A keyboard cannot hold a hundred keys at once and the product draws one
+    /// picture per press, so the bound is a device limit rather than a
+    /// truncation policy: whoever projects the pressed set has to decide what
+    /// to drop when a device reports more than this, and a named constant is
+    /// what lets it make that choice instead of hard-coding the array length.
+    pub const CAPACITY: usize = 64;
+
     pub fn push(&mut self, press: KeyPress) {
         if self.entries[..usize::from(self.len)].contains(&press) {
             return;
         }
-        if usize::from(self.len) < self.entries.len() {
+        if usize::from(self.len) < Self::CAPACITY {
             self.entries[usize::from(self.len)] = press;
             self.len += 1;
         }

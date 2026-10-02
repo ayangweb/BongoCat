@@ -53,14 +53,14 @@ impl InputState {
 
         if gap > 0 {
             if matches!(envelope.event, InputEvent::Reset { .. }) {
-                self.apply_event(envelope.event);
+                self.apply_event(envelope.event, envelope.sequence);
             } else {
                 self.reset(InputResetReason::SequenceGap);
-                self.apply_event(envelope.event);
+                self.apply_event(envelope.event, envelope.sequence);
             }
             return InputDisposition::AppliedAfterSequenceGap { missing: gap };
         }
-        self.apply_event(envelope.event);
+        self.apply_event(envelope.event, envelope.sequence);
         InputDisposition::Applied
     }
 }
@@ -73,7 +73,10 @@ impl InputState {
 }
 
 impl InputState {
-    pub(crate) fn apply_event(&mut self, event: InputEvent) {
+    /// `sequence` is the number the envelope carried, kept on the record of
+    /// every control it presses so the key-image layer can stack a chord in the
+    /// order the queue delivered it (see [`PressedRecord::pressed_sequence`]).
+    pub(crate) fn apply_event(&mut self, event: InputEvent, sequence: u64) {
         match event {
             InputEvent::GamepadConnected { connection, .. } => {
                 if self.active_gamepads.iter().any(|active| {
@@ -133,6 +136,7 @@ impl InputState {
                                 entry.insert(PressedRecord {
                                     source,
                                     pressed_at: at,
+                                    pressed_sequence: sequence,
                                     last_reconciled_at: None,
                                 });
                                 self.diagnostics.captured_down =

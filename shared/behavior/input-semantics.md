@@ -133,7 +133,24 @@ decoder 状态只解决平台 packet 歧义，不是 runtime pressed state，并
 
 ## 手部状态
 
-模型资源可以把多个键映射到同一只手。兼容模式下，同一手只显示最后按下且仍有效的键资源；任意映射到该手的 pressed key 都令对应 hand-down 参数为 true。
+模型资源可以把多个键映射到同一只手。任意映射到该手的 pressed key 都令对应 hand-down 参数为 true；
+这一条不随按键层的显示模式变化。
+
+按键层画几张图由 `model.show_all_pressed_keys` 决定，两种模式共用同一份 pressed state 和同一套
+hand 归属：
+
+- 兼容模式（默认，`show_all_pressed_keys: false`）：同一只手只显示最后按下且仍有效的键资源。
+  "最后按下"由 `pressed_at` 与可靠输入队列的 `sequence` 共同决定——单调时钟是毫秒精度，同一毫秒内
+  的两次按下只能由 sequence 分开。缺少 hand 归属或没有键位图的按键仍然既不画图也不产生爪子动作
+  （ADR-0042），因此"画出来的"永远是"能画出来的那几个里最后按下的那个"。
+- 叠放模式（`show_all_pressed_keys: true`）：每一个仍按住且有键位图的键都保留自己的图片，按
+  `pressed_at` + `sequence` 从旧到新排列。渲染器按 `RenderSnapshot::active_keys` 的顺序绘制且没有
+  深度缓冲，因此**最后按下的键显示在最上层**。释放某个键只移除它自己那一张图，不会替换成别的图，
+  也不会影响同一只手仍在按住的其它图。
+
+两种模式下手部参数完全一致，所以叠放模式只是让一次快速连击可辨认，并不改变爪子对单个按键的反应。
+按键层容量固定为 `bongocat_render::KeyPressSet::CAPACITY`；设备报告的按键数超过它时丢最早按下的
+那几个（堆叠底部是历史），释放路径不变。完整通路见 ADR-0079。
 
 ## Reset 原因
 

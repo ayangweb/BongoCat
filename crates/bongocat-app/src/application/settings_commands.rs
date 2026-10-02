@@ -318,6 +318,7 @@ impl Application {
             settings.mirror_pointer_tracking_vertical;
         next_config.model.ignore_keyboard = settings.ignore_keyboard;
         next_config.model.ignore_gamepad = settings.ignore_gamepad;
+        next_config.model.show_all_pressed_keys = settings.show_all_pressed_keys;
         next_config.model.ignore_pointer = settings.ignore_pointer;
         let next_revision = self
             .config_store

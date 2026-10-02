@@ -86,6 +86,7 @@ pub(crate) fn compose_model_input(
         ModelInputFilter {
             ignore_keyboard: model_settings.ignore_keyboard,
             ignore_gamepad: model_settings.ignore_gamepad,
+            show_all_pressed_keys: model_settings.show_all_pressed_keys,
         },
     );
     let axes = if model_settings.ignore_gamepad {

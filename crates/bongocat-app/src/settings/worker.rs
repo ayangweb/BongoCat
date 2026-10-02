@@ -413,6 +413,7 @@ pub(super) fn run_service(
                     mirror_pointer_tracking_vertical: settings.mirror_pointer_tracking_vertical,
                     ignore_keyboard: settings.ignore_keyboard,
                     ignore_gamepad: settings.ignore_gamepad,
+                    show_all_pressed_keys: settings.show_all_pressed_keys,
                     ignore_pointer: settings.ignore_pointer,
                 };
                 let result = check_revision(&application, expected_config_revision)
