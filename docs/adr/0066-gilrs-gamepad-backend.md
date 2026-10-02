@@ -1,6 +1,6 @@
 # ADR-0066: gilrs 手柄后端与平台窄适配边界
 
-状态：已接受（2026-09-25）；fork 已补齐 callback lifetime、bounded queue/epoch、authoritative reset、bounded shutdown、compile guard 与 xinput 回归修复；2026-09-26 追加 macOS IOHID worker run-loop 空转修复（空闲 CPU 98% → 0%）；2026-10-02 追加 WGI raw analog axis 取值域修复；Windows WGI 焦点矩阵、双平台物理设备与长期证据仍阻塞完成声明
+状态：已接受（2026-09-25）；fork 已补齐 callback lifetime、bounded queue/epoch、authoritative reset、bounded shutdown、compile guard 与 xinput 回归修复；2026-09-26 追加 macOS IOHID worker run-loop 空转修复（空闲 CPU 98% → 0%）；2026-10-02 追加 WGI 焦点门控读取修复与 WGI raw analog axis 取值域修复；双平台物理设备与长期证据仍阻塞完成声明
 
 ## 背景
 
@@ -16,14 +16,20 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
 ## 决策
 
 - 根 workspace 精确固定 `https://github.com/ayangweb/gilrs` 的 commit
-  `6dcedad1a3864d4f518b4a3214aa9ade3395b46e`，package 版本为 `gilrs 0.11.2` /
+  `8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549`，package 版本为 `gilrs 0.11.2` /
   `gilrs-core 0.6.8`。该 commit 包含 callback context ownership、bounded queue/epoch、authoritative
   reset、WGI/XInput bounded shutdown、macOS IOHID stop/join、target-scoped compile guard 与 xinput
-  extreme-axis regression 修复，追加 macOS IOHID worker 的 run-loop 空转修复：worker 曾以 null
+  extreme-axis regression 修复；再追加 macOS IOHID worker 的 run-loop 空转修复：worker 曾以 null
   mode 调用 `CFRunLoopRunInMode`，CoreFoundation 会立即返回而不等待，使无条件创建的空闲
   backend 持续占满一个 CPU 核；修复传入真实 run-loop mode，空闲 CPU 由 98% 降到 0%，
   `reset` 仍在约 8ms 内 ack、`shutdown` 约 105ms join，并新增 `idle_backend_does_not_spin`
-  回归测试；再追加 WGI raw analog axis 的取值域修复：backend 曾用 SDL 的预居中换算
+  回归测试；再追加 WGI 焦点门控读取修复：Windows 只把 mapped 的
+  `Windows.Gaming.Input.Gamepad` 读取投递给拥有前台窗口的进程，而 gilrs 在
+  `Gamepad.FromGameController` 成功（即 XInput 设备）时固定选它，使这类设备只在 BongoCat
+  窗口获得焦点时才有输入，HID 设备不受影响因为它们走 `RawGameController`。修复改为设备只要
+  暴露任何 raw report 就优先用 `RawGameController`，mapped 读取仅作为完全无 raw report 时的
+  回退；该选择同时决定 element 列表、`AxisInfo` 取值域和 SDL mapping 查询键，因为三者都描述
+  raw 布局；最后追加 WGI raw analog axis 的取值域修复：backend 曾用 SDL 的预居中换算
   `(value * 65535.0) - 32768.0` 生成 raw sample，同时把 `EvCodeKind::Axis` 声明为 `i16`
   取值域，而 gilrs 会再归一化一次，导致静止摇杆落在 `i16::MIN` 并被读成 `-1.0`、
   负方向一半行程被钳制为最大偏移，且映射到按键的模拟扳机按有符号域读取时静止值正好是半程、
@@ -80,10 +86,14 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
 
 ## 已知阻塞
 
-0. **Windows WGI 焦点矩阵：** gilrs 文档提示 Windows Gaming Input 可能需要关联且获得焦点的窗口。
-   BongoCat Raw Input window 为 hidden，overlay 默认为 click-through，设置窗口也不保证聚焦。必须在
-   Windows 10/11 实机验证 settings 开关、焦点/失焦、click-through、启动时已连接、重连和多手柄；若 WGI
-   无法在这些状态可靠投递，不能改回 BongoCat 内 XInput workaround，而应继续修复 fork backend。
+0. **Windows WGI 焦点矩阵（已在 fork 修复，实机证据仍缺）：** gilrs 文档提示 Windows Gaming Input
+   可能需要关联且获得焦点的窗口。Issue #1082 证实了这个门控真实存在：BongoCat Raw Input window 为
+   hidden，overlay 默认为 click-through，设置窗口也不保证聚焦，因此 mapped 读取让 XInput 模式手柄
+   只在 BongoCat 窗口获得焦点时才有输入。fork 已改为优先使用不受焦点门控的 `RawGameController`，
+   但仍必须在 Windows 10/11 实机验证 settings 开关、焦点/失焦、click-through、启动时已连接、重连和
+   多手柄，并确认 GameInput 为 XInput 设备暴露的 raw report 元素顺序与 SDL mapping 一致；在取得该
+   证据前不得把焦点矩阵写成已验证，若 raw 路径在这些状态仍不可靠，应继续修复 fork backend，而不是
+   改回 BongoCat 内 XInput workaround。
 1. **双平台物理设备与系统生命周期：** 仍需在真实 macOS IOHID 和 Windows WGI 设备上验证 held-at-startup、
    held-at-reconnect、lost-release、overflow/reset epoch、100-cycle restart、锁屏/睡眠/快速用户切换和
    长时间无增长。cross-check、纯函数测试和无设备 smoke 不能替代这些证据。
@@ -111,6 +121,12 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
   ownership/close 与 xinput extreme-axis test 已通过 fork 的 fmt/check/clippy/test；BongoCat Windows
   `cargo check/clippy/test`、WGI 无设备 context 初始化/关闭 smoke，以及 macOS
   `x86_64-apple-darwin` cross-check 已通过。macOS target 不再启用临时 `wgi` feature。
+- fork 侧 `a_device_with_a_raw_report_is_polled_without_the_foreground_window` 与
+  `a_device_without_a_raw_report_falls_back_to_the_mapped_reading` 固定读取来源的选择规则：设备只要
+  暴露任何 raw report 就走不受焦点门控的 `RawGameController`，完全没有 raw report 才回退 mapped
+  读取。焦点门控本身是 Windows 行为，无法用单元测试断言；该修复仍需 Windows 10/11 实机加 XInput
+  手柄确认背景投递，并确认 GameInput 为 XInput 设备暴露的 raw report 元素顺序与 SDL mapping
+  （Xbox 控制器为 `b0..b9` + D-pad hat + `a0..a5`）一致。未取得该证据前不得声称焦点矩阵已验证。
 - 原 standalone XInput/GameController 手柄 probe、依赖、命令和 CI smoke 已删除；键鼠 Raw Input /
   CGEventTap spike 保留。物理 WGI/IOHID 矩阵、真实设备、物理 profile、热插拔和生命周期矩阵继续作为
   发布门禁。
