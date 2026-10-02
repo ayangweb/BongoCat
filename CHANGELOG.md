@@ -8,6 +8,7 @@
 
 ### 🐛 Bug Fixes
 
+- Some BongoCat Mver models no longer fail to import with an "invalid model package" message. A key table the model author annotated with `//` or `/* */` comments is read the way the original app reads it, and a motion that names an audio file the model never shipped no longer refuses the whole mode — the model plays without audio that was never there to begin with. When an import does still fail, the log now names which failure it was instead of a single catch-all code.
 - On Windows, BongoCat no longer freezes and quits when you click a link that opens an external website, such as "Report an issue" under Settings → About. The window also keeps painting while the browser starts.
 - On macOS, the menu bar icon no longer disappears after updating to a new version.
 - On Windows, an Xbox-mode controller no longer stops responding while another window has focus. BongoCat was reading controllers through a Windows gaming input interface that Windows only delivers to the app that currently owns the foreground window, so gamepad input only arrived while a BongoCat window was focused. Controllers Windows reads as raw HID devices, such as DS4 and Switch modes, were not affected.

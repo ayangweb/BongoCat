@@ -34,6 +34,11 @@ pub(crate) struct MverModePlan {
     pub(crate) root: String,
     /// Package-relative directory holding the mode's Live2D package.
     pub(crate) model: String,
+    /// The mode's one `model3.json`, as the package-relative name it takes once
+    /// the package moves to the root. Entry discovery already decided this is
+    /// the only one, so the writer knows which file declares the package's own
+    /// references without looking for a second candidate.
+    pub(crate) entry: String,
     pub(crate) background: Option<String>,
     pub(crate) cover: Option<String>,
     pub(crate) slots: Vec<MverSlot>,
@@ -76,4 +81,16 @@ pub(crate) fn is_direct_child(reference: &str, directory: &str) -> bool {
         return false;
     };
     !rest.is_empty() && !rest.contains('/')
+}
+
+/// `reference` with its `directory` prefix removed — the name the file takes
+/// inside the package once the directory holding it is moved to the package
+/// root.
+///
+/// `None` when `reference` is not strictly below `directory`, which is what the
+/// caller means by "inside this mode's Live2D package". Subdirectories are
+/// included: a texture folder is part of the package too.
+pub(crate) fn package_relative_name(reference: &str, directory: &str) -> Option<String> {
+    let rest = reference.strip_prefix(directory)?.strip_prefix('/')?;
+    (!rest.is_empty()).then(|| rest.to_owned())
 }

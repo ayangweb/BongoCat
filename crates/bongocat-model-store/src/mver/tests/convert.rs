@@ -403,3 +403,175 @@ fn a_converted_gamepad_image_carries_its_own_buttons_artwork() {
         );
     }
 }
+
+/// One legacy mode whose entry names motion audio, and a real model.
+///
+/// `sound` is what the entry declares and `present` is what the mode's Live2D
+/// package actually carries, so a caller can say "this mode ships this audio"
+/// or "this mode names audio it never shipped".
+fn motion_audio_source(root: &Path, sound: &str, present: &[&str]) {
+    legacy_source(
+        root,
+        &[(
+            MverInputMode::Standard,
+            r#"{"hand":[[65]],"keyboard":[[65]]}"#,
+        )],
+        true,
+    );
+    let entry = format!(
+        r#"{{
+  "Version": 3,
+  "FileReferences": {{
+    "Moc": "model.moc3",
+    "Textures": [],
+    "Motions": {{
+      "CAT_motion": [
+        {{ "File": "one.motion3.json", "Sound": "{sound}", "FadeInTime": 0, "FadeOutTime": 0 }},
+        {{ "File": "two.motion3.json", "FadeInTime": 0, "FadeOutTime": 0 }}
+      ]
+    }}
+  }},
+  "Groups": [{{ "Target": "Parameter", "Name": "EyeBlink", "Ids": ["ParamEyeLOpen"] }}]
+}}"#
+    );
+    write(
+        root,
+        &format!("img/standard/{LEGACY_MODEL_DIRECTORY}/cat.model3.json"),
+        entry.as_bytes(),
+    );
+    for motion in ["one.motion3.json", "two.motion3.json"] {
+        write(
+            root,
+            &format!("img/standard/{LEGACY_MODEL_DIRECTORY}/{motion}"),
+            br#"{"Version":3,"Meta":{"Duration":1.0,"Fps":30.0,"Loop":true,"AreBeziersRestricted":false,"CurveCount":1,"TotalSegmentCount":1,"TotalPointCount":1,"UserDataCount":0,"TotalUserDataSize":0},"Curves":[{"Target":"Parameter","Id":"ParamAngleX","Segments":[0,0,1,1,1,0]}]}"#,
+        );
+    }
+    for audio in present {
+        write(
+            root,
+            &format!("img/standard/{LEGACY_MODEL_DIRECTORY}/{audio}"),
+            &flac_header(),
+        );
+    }
+}
+
+/// The 34 bytes a FLAC STREAMINFO block is: enough for the package parser's
+/// audio check, without an encoder in the fixture.
+fn flac_header() -> Vec<u8> {
+    let mut bytes = Vec::from(*b"fLaC");
+    bytes.extend_from_slice(&34_u32.to_be_bytes());
+    bytes.extend_from_slice(b"STREAMINFO");
+    bytes.extend_from_slice(&[0; 34]);
+    bytes
+}
+
+/// A motion's audio is optional, and a real model leaves the name of audio it
+/// never copied.
+///
+/// A model assembled from Cubism's own sample package keeps the sample's
+/// `Sound` reference to a file it does not ship, and the legacy application
+/// played its sounds from its own per-mode list instead — so nothing about the
+/// model is lost by dropping the name, while keeping it makes the whole mode
+/// fail package validation over audio that was never there.
+///
+/// This is the same call ADR-0037 §5 makes for a missing key-image layer: one
+/// missing sound is not an unusable model.
+#[test]
+fn a_motion_naming_audio_the_source_never_carried_converts_without_it() {
+    let root = tempdir().expect("root");
+    motion_audio_source(root.path(), "live2d_motion1.flac", &[]);
+    let plan = inspect_directory(root.path()).expect("legacy plan");
+    let mode = plan_mode(&plan, MverInputMode::Standard);
+    assert_eq!(mode.entry, "cat.model3.json");
+
+    let staging = tempdir().expect("staging");
+    convert(root.path(), &mode, staging.path()).expect("convert");
+    let entry: serde_json::Value =
+        serde_json::from_slice(&fs::read(staging.path().join("cat.model3.json")).expect("entry"))
+            .expect("entry json");
+
+    // Only the dangling name is gone. The motion that carried it, the motion
+    // that did not, and every other declaration survive.
+    let motions = entry["FileReferences"]["Motions"]["CAT_motion"]
+        .as_array()
+        .expect("motion group");
+    assert_eq!(motions.len(), 2);
+    assert_eq!(motions[0]["File"], "one.motion3.json");
+    assert_eq!(
+        motions[0].get("Sound"),
+        None,
+        "the dangling name is dropped"
+    );
+    assert_eq!(motions[1]["File"], "two.motion3.json");
+    assert_eq!(entry["FileReferences"]["Moc"], "model.moc3");
+    assert_eq!(entry["Groups"][0]["Name"], "EyeBlink");
+    assert_eq!(entry["Version"], 3);
+    // The motion files themselves are copied unchanged; only the entry that
+    // names them is rewritten.
+    assert!(staging.path().join("one.motion3.json").is_file());
+    assert!(staging.path().join("two.motion3.json").is_file());
+}
+
+/// A model whose audio it really does ship keeps its entry byte for byte.
+///
+/// The rewrite is a repair, not a reformatting step: an entry with nothing
+/// dangling must reach the store exactly as the model author wrote it, or
+/// every conversion would quietly rewrite a third party's file.
+#[test]
+fn a_motion_whose_audio_the_source_carries_keeps_its_reference() {
+    let root = tempdir().expect("root");
+    motion_audio_source(root.path(), "one.flac", &["one.flac"]);
+    let source_entry = fs::read(
+        root.path()
+            .join("img/standard")
+            .join(LEGACY_MODEL_DIRECTORY)
+            .join("cat.model3.json"),
+    )
+    .expect("source entry");
+
+    let plan = inspect_directory(root.path()).expect("legacy plan");
+    let staging = tempdir().expect("staging");
+    convert(
+        root.path(),
+        &plan_mode(&plan, MverInputMode::Standard),
+        staging.path(),
+    )
+    .expect("convert");
+
+    assert_eq!(
+        fs::read(staging.path().join("cat.model3.json")).expect("installed entry"),
+        source_entry
+    );
+}
+
+/// A reference that reaches outside the package is not a dangling name, and
+/// dropping it would throw away a path-safety finding instead of reporting it.
+///
+/// So the entry is left exactly as the model author wrote it and the package
+/// validator is the one that refuses it.
+#[test]
+fn a_sound_reference_that_escapes_the_package_is_left_for_the_validator() {
+    let root = tempdir().expect("root");
+    motion_audio_source(root.path(), "../outside.flac", &[]);
+    let source_entry = fs::read(
+        root.path()
+            .join("img/standard")
+            .join(LEGACY_MODEL_DIRECTORY)
+            .join("cat.model3.json"),
+    )
+    .expect("source entry");
+
+    let plan = inspect_directory(root.path()).expect("legacy plan");
+    let staging = tempdir().expect("staging");
+    convert(
+        root.path(),
+        &plan_mode(&plan, MverInputMode::Standard),
+        staging.path(),
+    )
+    .expect("convert");
+
+    assert_eq!(
+        fs::read(staging.path().join("cat.model3.json")).expect("installed entry"),
+        source_entry
+    );
+}
