@@ -1,6 +1,6 @@
 # ADR-0066: gilrs 手柄后端与平台窄适配边界
 
-状态：已接受（2026-09-25）；fork 已补齐 callback lifetime、bounded queue/epoch、authoritative reset、bounded shutdown、compile guard 与 xinput 回归修复；2026-09-26 追加 macOS IOHID worker run-loop 空转修复（空闲 CPU 98% → 0%）；Windows WGI 焦点矩阵、双平台物理设备与长期证据仍阻塞完成声明
+状态：已接受（2026-09-25）；fork 已补齐 callback lifetime、bounded queue/epoch、authoritative reset、bounded shutdown、compile guard 与 xinput 回归修复；2026-09-26 追加 macOS IOHID worker run-loop 空转修复（空闲 CPU 98% → 0%）；2026-10-02 追加 WGI raw analog axis 取值域修复；Windows WGI 焦点矩阵、双平台物理设备与长期证据仍阻塞完成声明
 
 ## 背景
 
@@ -16,14 +16,19 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
 ## 决策
 
 - 根 workspace 精确固定 `https://github.com/ayangweb/gilrs` 的 commit
-  `e69f1083d1a13a234513cb360c3d9d8abe5ea025`，package 版本为 `gilrs 0.11.2` /
+  `6dcedad1a3864d4f518b4a3214aa9ade3395b46e`，package 版本为 `gilrs 0.11.2` /
   `gilrs-core 0.6.8`。该 commit 包含 callback context ownership、bounded queue/epoch、authoritative
   reset、WGI/XInput bounded shutdown、macOS IOHID stop/join、target-scoped compile guard 与 xinput
-  extreme-axis regression 修复，并追加 macOS IOHID worker 的 run-loop 空转修复：worker 曾以 null
+  extreme-axis regression 修复，追加 macOS IOHID worker 的 run-loop 空转修复：worker 曾以 null
   mode 调用 `CFRunLoopRunInMode`，CoreFoundation 会立即返回而不等待，使无条件创建的空闲
   backend 持续占满一个 CPU 核；修复传入真实 run-loop mode，空闲 CPU 由 98% 降到 0%，
   `reset` 仍在约 8ms 内 ack、`shutdown` 约 105ms join，并新增 `idle_backend_does_not_spin`
-  回归测试。后续修复仍必须形成可审计的 patch series、推送到 fork `master` 并再次精确固定 commit。
+  回归测试；再追加 WGI raw analog axis 的取值域修复：backend 曾用 SDL 的预居中换算
+  `(value * 65535.0) - 32768.0` 生成 raw sample，同时把 `EvCodeKind::Axis` 声明为 `i16`
+  取值域，而 gilrs 会再归一化一次，导致静止摇杆落在 `i16::MIN` 并被读成 `-1.0`、
+  负方向一半行程被钳制为最大偏移，且映射到按键的模拟扳机按有符号域读取时静止值正好是半程、
+  压在 axis-to-button 阈值上。后续修复仍必须形成可审计的 patch series、推送到 fork `master`
+  并再次精确固定 commit。
   `deny.toml` 只放行该精确 git source；fork 的 SDL mapping submodule 由该 commit 固定为
   `15b5e9f4abfb1c5c691c468799816755a91a2e11`。`deny.toml` 通过 `required-git-spec = "rev"` 拒绝
   branch/tag git source。workspace dependency 不启用平台 feature；`bongocat-platform` 的 Windows target
@@ -92,6 +97,16 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
 - 共享 adapter 单元测试固定 16 个项目按钮、trigger 连续值与独立 axis、trigger 有限范围、四设备
   上限/容量拒绝、slot 复用 generation、runtime stop 错误、Reset 后同 generation 重播和 backend
   overflow recovery。
+- fork 侧 `raw_axis_value_is_neutral_at_rest_and_spans_the_signed_range`、
+  `raw_axis_value_stays_monotonic_across_the_whole_range`、
+  `a_signed_raw_element_is_read_over_the_range_its_mapping_asks_for` 和
+  `mapped_axis_info_leaves_an_already_matching_range_untouched` 固定 WGI raw analog axis 的取值域
+  契约：静止读数为 0、两端到取值域端点、映射成按键时改按无符号域读取。`wgi` 与 `xinput` 两个
+  feature 的 `cargo test` 均通过，`cargo fmt --all -- --check` 干净；`cargo clippy
+  --no-default-features --features wgi --all-targets` 无新增告警（`gilrs/build.rs` 的
+  `useless_borrows_in_formatting` 告警在 `master` 上已存在，不属本次改动）。
+- 该修复只由纯函数回归测试覆盖。Issue #1083 报告的 Switch 模式手柄"模型鬼畜"是否由它完全解释，
+  仍需 Windows 10/11 实机加该手柄确认；未取得该证据前不得声称手柄输入完成。
 - gilrs fork 的 queue/epoch、authoritative reset、WGI/XInput shutdown acknowledgement、macOS callback
   ownership/close 与 xinput extreme-axis test 已通过 fork 的 fmt/check/clippy/test；BongoCat Windows
   `cargo check/clippy/test`、WGI 无设备 context 初始化/关闭 smoke，以及 macOS

@@ -1830,7 +1830,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "windows 0.62.2",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -2848,7 +2848,7 @@ dependencies = [
 [[package]]
 name = "gilrs"
 version = "0.11.2"
-source = "git+https://github.com/ayangweb/gilrs?rev=e69f1083d1a13a234513cb360c3d9d8abe5ea025#e69f1083d1a13a234513cb360c3d9d8abe5ea025"
+source = "git+https://github.com/ayangweb/gilrs?rev=6dcedad1a3864d4f518b4a3214aa9ade3395b46e#6dcedad1a3864d4f518b4a3214aa9ade3395b46e"
 dependencies = [
  "fnv",
  "gilrs-core",
@@ -2860,7 +2860,7 @@ dependencies = [
 [[package]]
 name = "gilrs-core"
 version = "0.6.8"
-source = "git+https://github.com/ayangweb/gilrs?rev=e69f1083d1a13a234513cb360c3d9d8abe5ea025#e69f1083d1a13a234513cb360c3d9d8abe5ea025"
+source = "git+https://github.com/ayangweb/gilrs?rev=6dcedad1a3864d4f518b4a3214aa9ade3395b46e#6dcedad1a3864d4f518b4a3214aa9ade3395b46e"
 dependencies = [
  "inotify 0.11.5",
  "js-sys",
@@ -2874,7 +2874,7 @@ dependencies = [
  "vec_map",
  "wasm-bindgen",
  "web-sys",
- "windows 0.62.2",
+ "windows 0.57.0",
 ]
 
 [[package]]
@@ -2973,7 +2973,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.21",
- "windows 0.62.2",
+ "windows 0.57.0",
 ]
 
 [[package]]
@@ -3936,7 +3936,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.57.0",
 ]
 
 [[package]]
@@ -8119,7 +8119,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
