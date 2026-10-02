@@ -1,6 +1,6 @@
 [package]
 name = "bongocat-plugin-keyboard-display"
-description = "Shows the keys you are holding on the BongoCat model window."
+description = "Shows the keys you press at the top left of the BongoCat model window."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

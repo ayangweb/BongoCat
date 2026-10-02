@@ -27,7 +27,7 @@ use crate::settings::Settings;
 use crate::{Host, Result};
 use bongocat_plugin_protocol::{
     ConfigSchema, InputEvent, LocalizedText, MAXIMUM_PLUGIN_DESCRIPTION_CHARS,
-    MAXIMUM_PLUGIN_NAME_CHARS, ModelOutcome, Subscription,
+    MAXIMUM_PLUGIN_NAME_CHARS, ModelOutcome, PluginAnchor, Subscription,
 };
 
 /// What the host tells a plugin on a tick.
@@ -252,6 +252,7 @@ pub struct Descriptor {
     icon: bongocat_plugin_protocol::PluginIcon,
     settings: Settings,
     draws_panel: bool,
+    pinned_panel: Option<PluginAnchor>,
     subscriptions: Vec<Subscription>,
 }
 
@@ -272,6 +273,7 @@ impl Descriptor {
             icon: bongocat_plugin_protocol::PluginIcon::default(),
             settings: Settings::new(),
             draws_panel: false,
+            pinned_panel: None,
             subscriptions: Vec::new(),
         }
     }
@@ -360,9 +362,30 @@ impl Descriptor {
         self
     }
 
+    /// This plugin's panel is pinned to `anchor` and the user may not move it.
+    ///
+    /// The exception to "the user chooses the corner", for a panel whose whole value is
+    /// that it is in the same place every time: a key display that could sit in any of
+    /// nine corners is one a viewer has to find. Implies [`Self::draws_panel`] — a pin is
+    /// about a panel, so a plugin that only pins something would be describing a panel it
+    /// says it does not have.
+    ///
+    /// The host still places the panel and still reserves the corner, so nothing else is
+    /// allocated there; what it does not do is offer the user a menu to move it out of.
+    pub fn pins_panel(mut self, anchor: PluginAnchor) -> Self {
+        self.draws_panel = true;
+        self.pinned_panel = Some(anchor);
+        self
+    }
+
     /// Whether this plugin asked for a position of its own.
     pub fn has_panel(&self) -> bool {
         self.draws_panel
+    }
+
+    /// The one position this plugin's panel may not be moved from, if it named one.
+    pub fn pinned_anchor(&self) -> Option<PluginAnchor> {
+        self.pinned_panel
     }
 
     /// Ask for a feed.
@@ -431,6 +454,7 @@ impl Descriptor {
             icon: self.icon.clone(),
             config: self.settings.to_schema()?,
             draws_panel: self.draws_panel,
+            pinned_panel: self.pinned_panel,
             subscriptions: self.subscriptions.clone(),
         };
         descriptor.validate().map_err(invalid)?;

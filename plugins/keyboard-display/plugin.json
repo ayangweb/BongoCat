@@ -16,14 +16,14 @@
     }
   },
   "description": {
-    "default": "Shows the keys you are holding, in a corner of the model window, so a screencast does not need a second window to prove which key you pressed.",
+    "default": "Shows the keys you press at the top left of the model window, so a screencast does not need a second window to prove which key you pressed.",
     "by_locale": {
-      "zh-CN": "在模型窗口角落显示你正在按的键，录屏时不必再开一个窗口来证明按了哪个键。",
-      "zh-TW": "在模型視窗角落顯示你正在按的鍵，錄影時不必再開一個視窗來證明按了哪個鍵。",
-      "ar-SA": "يعرض المفاتيح التي ضغطتها في زاوية نافذة النموذج، فلا تحتاج تسجيل الشاشة إلى نافذة ثانية لإثبات أي مفتاح ضغطت.",
-      "vi-VN": "Hiển thị các phím bạn đang giữ ở một góc cửa sổ mô hình, nên khi quay màn hình không cần mở thêm một cửa sổ để chứng minh đã bấm phím nào.",
-      "pt-BR": "Mostra as teclas que você está pressionando, em um canto da janela do modelo, então uma gravação de tela não precisa de uma segunda janela para provar qual tecla foi pressionada.",
-      "ko-KR": "누르고 있는 키를 모델 창 한쪽에 보여 줍니다. 화면 녹화할 때 어떤 키를 눌렀는지 보이기 위해 창을 하나 더 열 필요가 없습니다."
+      "zh-CN": "在模型窗口左上角显示你按下的键，录屏时不必再开一个窗口来证明按了哪个键。",
+      "zh-TW": "在模型視窗左上角顯示你按下的鍵，錄影時不必再開一個視窗來證明按了哪個鍵。",
+      "ar-SA": "يعرض المفاتيح التي ضغطتها في أعلى يسار نافذة النموذج، فلا تحتاج تسجيل الشاشة إلى نافذة ثانية لإثبات أي مفتاح ضغطت.",
+      "vi-VN": "Hiển thị các phím bạn đã gõ ở góc trên bên trái cửa sổ mô hình, nên khi quay màn hình không cần mở thêm một cửa sổ để chứng minh đã bấm phím nào.",
+      "pt-BR": "Mostra as teclas que você pressiona, no canto superior esquerdo da janela do modelo, então uma gravação de tela não precisa de uma segunda janela para provar qual tecla foi pressionada.",
+      "ko-KR": "누른 키를 모델 창 왼쪽 위에 보여 줍니다. 화면 녹화할 때 어떤 키를 눌렀는지 보이기 위해 창을 하나 더 열 필요가 없습니다."
     }
   },
   "icon": {
@@ -31,17 +31,6 @@
   },
   "executable": "keyboard-display",
   "copy": {
-    "idle": {
-      "default": "No keys held",
-      "by_locale": {
-        "zh-CN": "未按任何键",
-        "zh-TW": "未按任何鍵",
-        "ar-SA": "لا مفاتيح مضغوطة",
-        "vi-VN": "Chưa giữ phím nào",
-        "pt-BR": "Nenhuma tecla pressionada",
-        "ko-KR": "누른 키 없음"
-      }
-    },
     "maximum_keys_label": {
       "default": "Keys shown at once",
       "by_locale": {
@@ -150,28 +139,6 @@
         "vi-VN": "Tắt điều này để chỉ hiện bàn phím.",
         "pt-BR": "Desative para exibir apenas o teclado.",
         "ko-KR": "끄면 키보드만 표시합니다."
-      }
-    },
-    "hide_when_idle_label": {
-      "default": "Hide the panel when nothing is held",
-      "by_locale": {
-        "zh-CN": "没有按键时隐藏面板",
-        "zh-TW": "沒有按鍵時隱藏面板",
-        "ar-SA": "أخفِ اللوحة عندما لا يكون أي مفتاح مضغوطًا",
-        "vi-VN": "Ẩn bảng khi không giữ phím nào",
-        "pt-BR": "Ocultar a janela quando nada está pressionado",
-        "ko-KR": "누른 키가 없으면 패널 숨기기"
-      }
-    },
-    "hide_when_idle_help": {
-      "default": "A panel that says nothing is a box on your desktop.",
-      "by_locale": {
-        "zh-CN": "什么都不显示的面板只是桌面上一个空盒子。",
-        "zh-TW": "什麼都不顯示的面板只是桌面上一個空盒子。",
-        "ar-SA": "اللوحة التي لا تقول شيئًا مجرد مربع على سطح مكتبك.",
-        "vi-VN": "Một bảng không nói gì chỉ là một hộp trên màn hình của bạn.",
-        "pt-BR": "Uma janela que nada diz é apenas uma caixa na sua área de trabalho.",
-        "ko-KR": "아무 말도 하지 않는 패널은 바탕화면 위의 상자일 뿐입니다."
       }
     }
   }

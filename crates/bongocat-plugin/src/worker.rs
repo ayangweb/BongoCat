@@ -1769,24 +1769,39 @@ impl Worker {
     /// a card, a form and a layer disagreeing about where a panel is — that no test of the
     /// allocator alone would find.
     fn placements(&self) -> crate::Placements {
-        let wanted: Vec<(PluginId, bongocat_plugin_protocol::PluginAnchor)> = self
+        let wanted: Vec<crate::Claimed> = self
             .sessions
             .values()
             .filter(|session| session.is_running() && session.draws_panel())
             .map(|session| {
-                let preferred = session
-                    .panel()
-                    .map(|panel| panel.placement.anchor)
-                    .unwrap_or_default();
-                (session.id().clone(), preferred)
+                // A pin comes from the descriptor rather than from the panel it has sent,
+                // because the corner has to be reserved from the moment the plugin is
+                // enabled — before it has drawn anything — or a second panel enabled in
+                // between would be offered the corner this one is going to take.
+                let pinned = session.pinned_panel();
+                let anchor = pinned.unwrap_or_else(|| {
+                    session
+                        .panel()
+                        .map(|panel| panel.placement.anchor)
+                        .unwrap_or_default()
+                });
+                crate::Claimed {
+                    id: session.id().clone(),
+                    anchor,
+                    pinned: pinned.is_some(),
+                }
             })
             .collect();
         crate::Placements::allocate(&wanted, &self.positions)
     }
 
     /// One plugin's position, for the snapshot.
+    ///
+    /// `None` for a panel that is pinned as well as for one with no place, and the form
+    /// draws no row in either case. They are the same answer for the same reason: there is
+    /// no position the user can put this panel in.
     fn position_of(&self, id: &PluginId) -> Option<crate::Placed> {
-        self.placements().of(id)
+        self.placements().of(id).filter(|placed| !placed.pinned)
     }
 
     /// The positions one plugin may be moved to, for the snapshot.
@@ -1797,6 +1812,9 @@ impl Worker {
     /// choice does the same thing, which is none. The choice would be recorded in the
     /// preferences and then ignored, because the allocation only ever considers plugins that
     /// asked for a place: a control that takes a setting and never applies it.
+    ///
+    /// A pinned panel is empty for the same outcome by a different route — the allocation
+    /// does know its position, and refuses to offer it any other.
     fn positions_for(&self, id: &PluginId) -> Vec<PluginAnchor> {
         let placements = self.placements();
         if placements.of(id).is_none() {

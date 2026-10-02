@@ -59,6 +59,8 @@ const GAMMA: &str = "tally-gamma";
 const DELTA: &str = "tally-delta";
 /// Draws a panel and says it has no place in the model window.
 const ECHO: &str = "tally-echo";
+/// Draws a panel the user may not move out of the corner the plugin named.
+const KEYS: &str = "tally-keys";
 
 /// How long a case waits for the worker to publish something.
 const PATIENCE: Duration = Duration::from_secs(30);
@@ -75,8 +77,22 @@ fn character_of(id: &str) -> (PluginAnchor, [u32; 2], &'static str, &'static str
         // A corner that ALPHA also prefers, which is the point: a plugin that has no place
         // must not be able to take one away from a plugin that has one.
         ECHO => (PluginAnchor::TopLeft, [260, 130], "Echo", "echo_flag"),
+        // The key display's shape: it *draws* in the top right — the anchor it would ask
+        // for — while the corner it must sit in is the one below. Which of the two the
+        // window shows it in is the host's answer, and a case that read them as one thing
+        // could not tell a pin from a preference.
+        KEYS => (PluginAnchor::TopRight, [200, 100], "Keys", "keys_flag"),
         other => panic!("{other} is not a plugin this file knows how to be"),
     }
+}
+
+/// The corner this plugin's panel is pinned to, if it pins one.
+///
+/// [`KEYS`] alone, and it is the shipped key display's own case: a panel whose whole
+/// value is that it is in the same place every time, which is a claim rather than a
+/// preference and so outranks the user's arrangement.
+fn pin_of(id: &str) -> Option<PluginAnchor> {
+    (id == KEYS).then_some(PluginAnchor::BottomLeft)
 }
 
 /// Whether this plugin tells the host it has a place in the model window.
@@ -103,7 +119,7 @@ fn subscriptions_of(id: &str) -> Vec<Subscription> {
         // model reactions it plays when the model answers. Spelling them out rather than
         // inventing a tidier set is the point: this file is here to check the case the
         // requirement names, and a tidier set would not be it.
-        ALPHA | GAMMA => vec![Subscription::HostState, Subscription::Input],
+        ALPHA | GAMMA | KEYS => vec![Subscription::HostState, Subscription::Input],
         BETA => vec![Subscription::Input, Subscription::ModelReaction],
         // The one that does not survive the session, and the one with no place: neither
         // asks for anything, so neither is given a feed. That is what makes them the
@@ -127,7 +143,7 @@ const COUNTED_ACTION: &str = "counted";
 /// and a case that reports by panicking. A panic is the only report available here, because
 /// the repository denies printing — and the rule is right for the same reason the plugin
 /// half is a plain function: on the plugin side stdout *is* the wire.
-const CASES: [(&str, fn()); 7] = [
+const CASES: [(&str, fn()); 8] = [
     (
         "three plugins run at once, each with its own settings, panel and place",
         several_run_at_once,
@@ -147,6 +163,10 @@ const CASES: [(&str, fn()); 7] = [
     (
         "a plugin with no place keeps its own corner and holds none",
         a_plugin_with_no_place_keeps_its_corner,
+    ),
+    (
+        "a pinned panel is drawn in its corner and is offered no place",
+        a_pinned_panel_is_drawn_in_its_corner_and_offers_no_place,
     ),
     (
         "uninstalling a plugin frees its place for somebody else",
@@ -849,6 +869,65 @@ fn a_plugin_with_no_place_keeps_its_corner() {
     );
 }
 
+/// A panel the plugin pinned is drawn in that corner, and is offered no place to move to.
+///
+/// The key display is the shipped case: a panel whose value is that it is in the same
+/// place every time, so the user must not be able to move it elsewhere — and so the corner
+/// it holds must not be offered to anybody else, which is the half that is easy to leave
+/// out. A host that drew the panel where the plugin asked would pass the first assertion
+/// without this file noticing, so `KEYS` asks for one corner and pins another.
+fn a_pinned_panel_is_drawn_in_its_corner_and_offers_no_place() {
+    let ids = [KEYS, BETA];
+    let worker = Several::with(&ids);
+    let snapshot = worker.enable_all(&ids);
+
+    let keys = snapshot.entry(&Several::id(KEYS)).expect("an entry");
+    assert!(
+        keys.position.is_none(),
+        "so the settings form draws no position row at all — not a row whose menu the host \
+         ignores: {:?}",
+        keys.position
+    );
+    assert!(
+        keys.positions.is_empty(),
+        "and the menu behind it is empty rather than nine corners. Got {:?}",
+        keys.positions
+    );
+
+    let pinned = pin_of(KEYS).expect("this plugin pins a corner");
+    assert!(
+        !snapshot
+            .entry(&Several::id(BETA))
+            .is_some_and(|entry| entry.positions.contains(&pinned)),
+        "which is also what reserves the corner: beta is not offered {pinned:?}, because a \
+         panel that cannot be moved out of it must not share it"
+    );
+
+    // The corner it is drawn in is the pinned one, not the one its panel message asked for.
+    let layers = worker.layers(2);
+    let anchor_of = |width: u32| {
+        layers
+            .iter()
+            .find(|layer| layer.raster.width == width)
+            .map(|layer| layer.placement.anchor)
+    };
+    assert_eq!(
+        anchor_of(character_of(KEYS).1[0]),
+        Some(pinned.to_overlay_anchor()),
+        "the pinned panel is on the window in the corner the plugin pinned, not the one it \
+         asked for: {:?}",
+        layers
+            .iter()
+            .map(|layer| layer.placement.anchor)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        anchor_of(character_of(BETA).1[0]),
+        Some(character_of(BETA).0.to_overlay_anchor()),
+        "while the panel that may be moved is still where its author put it"
+    );
+}
+
 /// Uninstalling a plugin frees its place, the same way switching it off does.
 ///
 /// Switched off and uninstalled are two different events — one leaves the files, one
@@ -1136,6 +1215,7 @@ fn serve() -> std::process::ExitCode {
                     }],
                 },
                 draws_panel: asks_for_a_place(&id),
+                pinned_panel: pin_of(&id),
                 subscriptions: subscriptions_of(&id),
             }),
         },

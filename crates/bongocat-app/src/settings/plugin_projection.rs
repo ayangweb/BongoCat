@@ -445,6 +445,7 @@ mod tests {
             },
             config: schema,
             draws_panel: true,
+            pinned_panel: None,
             subscriptions: Vec::new(),
         }
     }
@@ -525,6 +526,7 @@ mod tests {
             position: Some(bongocat_plugin::Placed {
                 anchor: bongocat_plugin::PluginAnchor::TopLeft,
                 chosen: false,
+                pinned: false,
             }),
             positions: bongocat_plugin::POSITIONS.to_vec(),
             log: Vec::new(),

@@ -1,22 +1,33 @@
-//! A panel that shows the keys you are holding.
+//! A panel that shows the keys you press.
 //!
 //! Issue #74 asked for the keys on screen "in a corner of the desktop". This is that, and
 //! it is the first plugin whose whole life is a stream of events rather than a clock, so
 //! it is where the input subscription gets exercised for real.
 //!
-//! * **All of the state is here.** Which keys are held, in the order they were pressed,
-//!   in this process. Nothing about "is shift down" is asked of the host, because the host
-//!   does not keep a pressed set to give — it keeps one to *drive the cat*.
-//! * **All of the layout is here.** The panel has no notion of wrapping; a plugin that
-//!   wants three rows of four has to count, and counting is the plugin's business because
-//!   the keys' widths are the plugin's business.
-//! * **All of the copy is here**, in [`copy`].
-//! * **All of the settings are here** — three switches, and the window renders them.
+//! # What it shows
+//!
+//! **The keys you pressed, not the keys you are holding.** This follows KeyCastr, and the
+//! difference is the whole feature: a panel of *held* keys is empty for the ninety
+//! milliseconds a fast keystroke is down, which on a screencast is a panel that is never
+//! there. A transcript stays, so what a viewer saw is what you pressed.
+//!
+//! # All of the state is here
+//!
+//! * **Which keys are down**, in this process. Nothing about "is shift down" is asked of the
+//!   host, because the host does not keep a pressed set to give — it keeps one to *drive
+//!   the cat*, and it does not hand it to anybody.
+//! * **The line of keycaps on screen**, and when it began and when it ends.
+//! * **The layout**, which has no host notion of wrapping: a plugin that wants three rows of
+//!   four has to count, and counting is the plugin's business because the keys' widths are
+//!   the plugin's business.
+//! * **The copy**, in [`copy`], and **the settings**, which the window renders.
 //!
 //! The one thing it asks of the host is the input feed and a panel to draw. It cannot ask
-//! to see another key's state, cannot ask what the model is doing, and cannot ask for a
-//! key to be released: every pressed key is cleared by a release, by a reset, or by the
-//! process ending, and those are the only three ways it can end.
+//! to see another key's state, cannot ask what the model is doing, and cannot ask for a key
+//! to be released: a key it believes is down is cleared by a release, by a reset, or by the
+//! process ending, and those are the only three ways that can happen. What it cannot be told
+//! is where its panel goes — it names one corner and pins itself there, because a corner the
+//! user could move is a corner that is wrong half the time.
 
 mod copy;
 mod layout;
@@ -26,6 +37,7 @@ use bongocat_plugin_sdk::prelude::*;
 use layout::Keycap;
 use settings::Preferences;
 use std::sync::LazyLock;
+use std::time::{Duration, Instant};
 
 /// This plugin's own manifest, embedded at compile time.
 ///
@@ -35,6 +47,13 @@ use std::sync::LazyLock;
 static SELF: LazyLock<SelfDescription> = LazyLock::new(|| {
     describe(include_str!("../plugin.json")).expect("this plugin's own manifest is readable")
 });
+
+/// Where this plugin's panel sits in the model window.
+///
+/// One corner, and it is not a preference. A key display a viewer has to find is not a key
+/// display, so the panel is pinned to the top left and the user is offered no position to
+/// move it to — which the host honours from the descriptor's pin, not from this constant.
+const ANCHOR: PluginAnchor = PluginAnchor::TopLeft;
 
 /// The gap between the panel's edge and the first key, in logical pixels.
 ///
@@ -56,6 +75,31 @@ const PADDING_RATIO: f32 = 0.62;
 /// The keycap's corner radius, as a multiple of the font size.
 const RADIUS_RATIO: f32 = 0.31;
 
+/// The modifier glyphs a chord is written with, in the order a person reads them.
+///
+/// KeyCastr's order and glyphs: control, option, shift, then command — the one that reads
+/// as the order the modifiers are stacked on a keycap rather than the order the platform
+/// happened to deliver them in.
+///
+/// Also the set [`layout`] measures as full-width, which is why the two are one list: a
+/// glyph estimated as a letter is a `⌘` with its right-hand side clipped.
+pub const MODIFIER_GLYPHS: [char; 4] = ['⌃', '⌥', '⇧', '⌘'];
+
+/// How long a quiet spell lasts before the next key starts a new line.
+///
+/// KeyCastr's `keystrokeDelay`: a burst of typing is one line, because the keys in a burst
+/// are being said together, and a key pressed after a pause is a new sentence. Half a
+/// second is a longer pause than any typist's inter-key gap and shorter than anybody's
+/// thought between two words.
+const LINE_BREAK: Duration = Duration::from_millis(500);
+
+/// How long a line stays up after its last key.
+///
+/// KeyCastr's `fadeDelay`. This is the plugin's answer to "nothing is held", which is the
+/// only answer a key display can give: it is not that nothing is pressed — a line is up for
+/// two seconds after the hands have left the keyboard — it is that nothing is *recent*.
+const LINE_LIFETIME: Duration = Duration::from_millis(2000);
+
 /// The settings this plugin declares, re-exported for the tests that assert on them.
 use settings::declared_settings;
 
@@ -63,18 +107,28 @@ use settings::declared_settings;
 pub struct KeyDisplay {
     /// The panel this plugin draws.
     panel: Panel,
-    /// The keys currently held, oldest first.
+    /// The keycaps on screen, in the order they were pressed.
     ///
     /// A `Vec` rather than a set because the order is the display: the keys you pressed
     /// most recently are the ones you are most likely to be explaining, so a set that sorted
     /// them would put `A` before `Z` on every row forever.
+    shown: Vec<String>,
+    /// Which controls are physically down, so a chord knows what to write on its key.
     held: Vec<String>,
     /// What the user configured.
     preferences: Preferences,
     /// Whether the panel is up, so a hide and a show are one fact rather than two.
     showing: bool,
-    /// The keys the panel last showed, so a tick that changed nothing builds nothing.
+    /// The keycaps the panel last showed, so a tick that changed nothing builds nothing.
     painted: Option<Vec<String>>,
+    /// When the last key was pressed, or `None` while there is nothing to show.
+    ///
+    /// The whole of the lifetime is measured from here, which is why it is one field rather
+    /// than a countdown the tick decrements: the display's timing must not drift with the
+    /// host's tick cadence.
+    pressed_at: Option<Duration>,
+    /// When this plugin started, which is what [`Self::now`] counts from.
+    started: Instant,
 }
 
 impl KeyDisplay {
@@ -85,23 +139,38 @@ impl KeyDisplay {
     /// space around it or a keycap with its letter cut off, and neither is a display
     /// anybody asked for.
     pub fn new(preferences: Preferences) -> Self {
-        let panel = Self::panel_box(&preferences, 0);
+        let panel = Self::panel_box(&preferences, &[]);
         Self {
             panel: Panel::new(panel.width, panel.height)
-                .anchored(PluginAnchor::BottomRight)
+                .anchored(ANCHOR)
                 .with_margin(0.03, 0.03)
                 .with_width_fraction(0.30)
                 .with_opacity(0.94),
+            shown: Vec::new(),
             held: Vec::new(),
             preferences,
             showing: false,
             painted: None,
+            pressed_at: None,
+            started: Instant::now(),
         }
     }
 
-    /// The panel these settings need for this many keys.
-    fn panel_box(preferences: &Preferences, keys: usize) -> layout::PanelBox {
-        layout::panel_for(preferences, keys)
+    /// This plugin's own reading of how long it has been running.
+    ///
+    /// Its own monotonic clock rather than the tick's `elapsed_ms`, for one reason: the host
+    /// sends a tick at most every quarter of a second, so a plugin deciding "was that a
+    /// pause?" from a tick would be deciding it from a reading up to a quarter of a second
+    /// old — which at a typist's speed is enough to break a line in the middle of a word.
+    /// A `Duration` rather than an `Instant` throughout, so a test can move time forward
+    /// instead of waiting two seconds for a line to expire.
+    fn now(&self) -> Duration {
+        self.started.elapsed()
+    }
+
+    /// The panel these settings need for these labels.
+    fn panel_box(preferences: &Preferences, labels: &[String]) -> layout::PanelBox {
+        layout::panel_for(preferences, labels)
     }
 
     /// The keycap these settings draw.
@@ -117,24 +186,83 @@ impl KeyDisplay {
     /// Auto-repeat is ignored: the keyboard saying the same thing again is not a second
     /// key, and a display that showed `A A A` while one key was held would be showing the
     /// keyboard's timer rather than the person's hands.
-    fn press(&mut self, control: String) {
+    ///
+    /// The chord is composed *before* the key joins the held set, because a key is not part
+    /// of its own modifier prefix: `⇧` then `⇧A`, and never `⇧⇧A`.
+    fn press(&mut self, control: String, now: Duration) {
+        // A key this plugin already holds is an edge it has already reported. The host can
+        // deliver one — a keyboard that loses a release is the whole of issue #47 — and a
+        // display that answered it would show `A A` for one key and restart its lifetime on
+        // every repeat the platform invents.
         if self.held.contains(&control) {
             return;
         }
+        // The chord is composed *before* the key joins the held set, because a key is not part
+        // of its own modifier prefix: `⇧` then `⇧A`, and never `⇧⇧A`.
+        let cap = self.chord_cap(&control);
         self.held.push(control);
+        // A command is something you did on purpose, so it reads on its own rather than at
+        // the end of whatever you were typing when you remembered it. KeyCastr breaks the
+        // line for the same reason, and for the same chord: the modifiers, not the key.
+        if is_command_chord(&cap) || self.quiet_for(now) >= LINE_BREAK {
+            self.shown.clear();
+        }
+        self.shown.push(cap);
         // The oldest go first, so the panel keeps the keys a person is most likely to be
         // pressing *now* — and so a long chord does not push the key you just pressed off
         // the display.
-        let keep = self.preferences.maximum_keys;
-        if self.held.len() > keep {
-            let excess = self.held.len() - keep;
-            self.held.drain(..excess);
-        }
+        self.bound();
+        self.pressed_at = Some(now);
+    }
+
+    /// How long the keys have been quiet, or the longest gap there could be if nothing has
+    /// been pressed yet.
+    ///
+    /// Saturation rather than an option because a plugin that has never seen a key is not
+    /// in the middle of a line, so "quiet since the beginning" and "quiet for a very long
+    /// time" are the same answer.
+    fn quiet_for(&self, now: Duration) -> Duration {
+        self.pressed_at
+            .map_or(Duration::MAX, |pressed_at| now.saturating_sub(pressed_at))
     }
 
     /// A key came up.
+    ///
+    /// It leaves the held set and stays on the panel: what the viewer needs to see is the
+    /// key that was pressed, and a cap that vanished the instant a finger lifted is a cap
+    /// nobody could read.
     fn release(&mut self, control: &str) {
         self.held.retain(|held| held != control);
+    }
+
+    /// A button went down or up.
+    ///
+    /// The same shape as a key: a press is shown and remembered, a release is only remembered
+    /// — so two clicks are two caps on the line, which is what a person clicking twice did.
+    fn mouse(&mut self, button: String, pressed: bool, now: Duration) {
+        if !self.preferences.include_mouse {
+            return;
+        }
+        if pressed {
+            if self.held.contains(&button) {
+                return;
+            }
+            self.held.push(button.clone());
+            self.shown.push(control_label(&button).to_owned());
+            self.bound();
+            self.pressed_at = Some(now);
+        } else {
+            self.release(&button);
+        }
+    }
+
+    /// Drop the oldest keycaps until the panel is within the user's bound.
+    fn bound(&mut self) {
+        let keep = self.preferences.maximum_keys;
+        if self.shown.len() > keep {
+            let excess = self.shown.len() - keep;
+            self.shown.drain(..excess);
+        }
     }
 
     /// The platform forgot what was held.
@@ -143,59 +271,85 @@ impl KeyDisplay {
     /// saying its own pressed set is not what it told anybody, and the only set this plugin
     /// can be sure of afterwards is the empty one. A tally that keeps a key the platform
     /// has already forgotten is a display that lies until the key is pressed again.
+    ///
+    /// The line stays. It is a record of what was pressed, and a lock screen does not
+    /// un-press it — what it means is that the next chord must not be composed from keys
+    /// this plugin believes are down when they are not.
     fn forget_everything(&mut self) {
         self.held.clear();
     }
 
     /// One event, as this plugin reacts to it.
-    fn react(&mut self, event: &InputEvent) {
+    fn react(&mut self, event: &InputEvent, now: Duration) {
         match event {
             InputEvent::KeyDown { control, repeat } => {
                 if !repeat {
-                    self.press(control.clone());
+                    self.press(control.clone(), now);
                 }
             }
             InputEvent::KeyUp { control } => self.release(control),
             InputEvent::MouseButton { button, pressed } => {
-                if !self.preferences.include_mouse {
-                    return;
-                }
-                if *pressed {
-                    self.press(button.to_owned());
-                } else {
-                    self.release(button);
-                }
+                self.mouse(button.clone(), *pressed, now);
             }
             InputEvent::Reset { .. } => self.forget_everything(),
-            // Pointer movement is not this plugin's business. A display of held keys that
+            // Pointer movement is not this plugin's business. A display of pressed keys that
             // also showed a cursor would be a second cursor, and the model window already
             // has one.
             InputEvent::MouseMove { .. } => {}
         }
     }
 
-    /// The keys as keycaps, oldest first.
-    fn labels(&self) -> Vec<String> {
-        self.held
-            .iter()
-            .map(|control| control_label(control).to_owned())
-            .collect()
+    /// The one keycap for `control`, written as it would read on a key: the modifiers down
+    /// at the moment it went down, then the key.
+    ///
+    /// A chord is one cap rather than several because a chord is one thing the person did —
+    /// `⌘S` is not four keys, and a viewer reading four separate caps has to reassemble it
+    /// themselves.
+    fn chord_cap(&self, control: &str) -> String {
+        if let Some(glyph) = modifier_glyph(control) {
+            // A modifier pressed on its own is its own cap, which is also what a viewer
+            // needs to see: they pressed shift, then pressed something else with it, and
+            // the `⇧` before the `⇧A` is what tells them the order.
+            return glyph.to_string();
+        }
+        let mut cap = String::new();
+        for glyph in MODIFIER_GLYPHS {
+            if self
+                .held
+                .iter()
+                .any(|held| modifier_glyph(held) == Some(glyph))
+            {
+                cap.push(glyph);
+            }
+        }
+        cap.push_str(control_label(control));
+        cap
     }
 
-    /// How many keycaps fit on one row of this panel.
+    /// Take the panel down if the line it was showing has run out.
     ///
-    /// Read off [`layout::panel_for`] rather than computed here, so the number of columns
-    /// the panel was *sized* for is the number of columns the panel is *drawn* with. Two
-    /// calculations of the same thing would agree until the font size changed, and then
-    /// disagree in exactly the way that puts a keycap off the edge.
-    fn columns(&self) -> usize {
-        Self::panel_box(&self.preferences, self.held.len().max(1)).columns
+    /// The one thing a tick is for. Everything else about this display changes when a key
+    /// changes, and this plugin is subscribed to the feed, so a redraw on every tick would
+    /// rebuild the same tree sixty times a second to produce the one the user already has.
+    fn expire(&mut self, now: Duration) -> bool {
+        let Some(pressed_at) = self.pressed_at else {
+            return false;
+        };
+        if now.saturating_sub(pressed_at) < LINE_LIFETIME {
+            return false;
+        }
+        self.shown.clear();
+        self.pressed_at = None;
+        true
     }
 
     /// Rebuild the panel if what it would show has changed, and put it up or take it down.
     fn draw(&mut self, host: &mut Host) {
-        let visible = !self.held.is_empty() || !self.preferences.hide_when_idle;
-        if !visible {
+        // Nothing to say is nothing drawn. The alternative — a panel saying "no keys held"
+        // for as long as the plugin runs — is a box on the user's desktop that costs them
+        // the top-left corner of their model window and tells them nothing, so it is not a
+        // setting: there is only one behaviour and it is this one.
+        if self.shown.is_empty() {
             if self.showing {
                 host.hide_panel();
                 self.showing = false;
@@ -203,30 +357,23 @@ impl KeyDisplay {
             }
             return;
         }
-        let labels = self.labels();
-        if self.painted.as_ref() == Some(&labels) && self.showing {
+        if self.painted.as_ref() == Some(&self.shown) && self.showing {
             return;
         }
-        let idle = self.held.is_empty();
-        let note = if idle {
-            copy::say(host, &copy::idle())
-        } else {
-            String::new()
-        };
-        let columns = self.columns();
-        let box_ = Self::panel_box(&self.preferences, labels.len());
+        // One calculation for both answers, because the number of columns the panel is
+        // *sized* for is the number it is *drawn* with. Two would agree until the font
+        // changed and then disagree in exactly the way that puts a keycap off the edge.
+        let box_ = Self::panel_box(&self.preferences, &self.shown);
+        let columns = box_.columns;
         // Resized before the tree is built, because a panel's size is part of what the host
         // lays the tree out in: a tree laid out for a narrower panel than the one it is drawn
         // in is a tree the host clips, and the clip is invisible to this plugin.
         self.panel.resize(box_.width, box_.height);
         let cap = self.keycap();
+        let shown = self.shown.clone();
         self.panel.rebuild(|panel| {
             panel.surface(6.0, [PANEL_PADDING, 10.0], |content| {
-                if idle {
-                    content.push(muted(&note, self.preferences.font_size));
-                    return;
-                }
-                for row in labels.chunks(columns) {
+                for row in shown.chunks(columns) {
                     content.row_spaced(KEY_GAP, |line| {
                         for key in row {
                             line.push(key_cap(key, cap));
@@ -238,15 +385,56 @@ impl KeyDisplay {
         if host.panel(&mut self.panel) || !self.showing {
             self.showing = true;
         }
-        self.painted = Some(labels);
+        self.painted = Some(shown);
     }
+}
+
+/// Whether a wire name is one of the protocol's mouse buttons.
+///
+/// The four the protocol names, matched rather than checked against a list of every
+/// possible name: a name this build does not know is a key, and a key that happens to be
+/// spelled `left_thing` is a key.
+fn is_mouse_button(control: &str) -> bool {
+    matches!(control, "left" | "right" | "middle" | "back" | "forward")
+}
+
+/// The glyph a modifier key is written with, or `None` when it is not a modifier.
+///
+/// Both spellings the artwork has, because both arrive on the wire and a person pressing
+/// shift has one key.
+fn modifier_glyph(control: &str) -> Option<char> {
+    Some(match control {
+        "LeftControl" | "ControlLeft" | "RightControl" | "ControlRight" => '⌃',
+        "LeftAlt" | "AltLeft" | "RightAlt" | "AltRight" => '⌥',
+        "LeftShift" | "ShiftLeft" | "RightShift" | "ShiftRight" => '⇧',
+        // The artwork spells the platform's own key both ways, and a screencast is watched
+        // on whichever machine is recording: the one that has a Windows key is the one
+        // whose name is not "command".
+        "LeftMeta" | "MetaLeft" | "RightMeta" | "MetaRight" | "LeftGUI" | "GuiLeft"
+        | "RightGUI" | "GuiRight" => '⌘',
+        _ => return None,
+    })
+}
+
+/// Whether a chord reads as a command, and so starts its own line.
+///
+/// KeyCastr's test is control **or** command held, which is the useful one on either
+/// platform: both are the modifiers a shortcut is built from, and neither is one you hold by
+/// accident mid-sentence. Option and shift are left out — `⇧A` belongs with the word being
+/// typed, and `⌥C` on a macOS layout is an ordinary character.
+///
+/// Asked of the *cap* rather than of the key, because the chord is what makes a command: `S`
+/// is a letter and `⌘S` is a shortcut, and the rule cannot tell them apart without the
+/// modifiers.
+fn is_command_chord(cap: &str) -> bool {
+    cap.starts_with('⌃') || cap.starts_with('⌘')
 }
 
 /// One key, as it looks on a keycap.
 ///
 /// A keycap rather than a label: the point of the display is that it reads as *the key you
-/// are pressing*, and a bare word in a row is a list of words. A small surface with the
-/// letter centred in it is the difference between a caption and a keyboard.
+/// pressed*, and a bare word in a row is a list of words. A small surface with the label
+/// centred in it is the difference between a caption and a keyboard.
 ///
 /// The size, the padding and the radius all come from [`Keycap`], so the cap the panel was
 /// sized for and the cap the panel draws are the same cap — see [`layout`].
@@ -262,13 +450,13 @@ impl Plugin for KeyDisplay {
         // keeps its metadata in its own `plugin.json` is then a change to that one file, and
         // a card that said one thing before the plugin started and another after is not
         // expressible.
-        // `draws_panel` says this plugin *has* a place in the model window, not where the
-        // place is: one plugin holds each of the nine positions, the user chooses, and the
-        // host applies it when the layer is published. Without it the panel would still
-        // draw — in the corner this plugin asked for — but the user would be offered no
-        // position to move it to.
+        //
+        // The panel is **pinned** rather than placed. It has a place — the top left — and the
+        // user is not offered a menu to move it to, because a key display a viewer has to
+        // find on the screen is not doing the job it is installed for. Pinning is also what
+        // keeps the corner reserved, so another panel cannot land on top of it.
         SELF.descriptor()
-            .draws_panel()
+            .pins_panel(ANCHOR)
             .subscribe(Subscription::Input)
     }
 
@@ -283,32 +471,33 @@ impl Plugin for KeyDisplay {
     }
 
     fn on_input(&mut self, events: Vec<InputEvent>, host: &mut Host) {
+        // One reading for the whole batch: the batch is one moment as far as this plugin is
+        // concerned, and reading the clock per event would let a boundary fall between two
+        // events the host had already decided were simultaneous.
+        let now = self.now();
         for event in &events {
-            self.react(event);
+            self.react(event, now);
         }
         self.draw(host);
     }
 
     fn on_tick(&mut self, _tick: Tick, host: &mut Host) {
-        // A tick draws nothing. The panel changes when a key does, and this plugin is
-        // subscribed to the feed, so a redraw here would rebuild the same tree sixty times
-        // a second to produce the one the user already has. What a tick *is* good for is
-        // the case where the panel is up and the feed has gone quiet — a keyboard unplugged
-        // without a reset — and the host's own `Reset` is what covers that.
-        self.draw(host);
+        // A tick draws nothing else. The panel changes when a key does, and this plugin is
+        // subscribed to the feed, so a redraw here would rebuild the same tree sixty times a
+        // second to produce the one the user already has. What a tick *is* good for is the
+        // one thing that happens without an event: the line running out of time.
+        if self.expire(self.now()) {
+            self.draw(host);
+        }
     }
 
     fn on_config_changed(&mut self, host: &mut Host) {
         self.preferences = Preferences::read(host.values());
-        // The bound may have shrunk below what is held, and the panel has to obey it now
+        // The bound may have shrunk below what is shown, and the panel has to obey it now
         // rather than at the next press.
-        let keep = self.preferences.maximum_keys;
-        if self.held.len() > keep {
-            let excess = self.held.len() - keep;
-            self.held.drain(..excess);
-        }
+        self.bound();
         // A mouse button that is held while the setting turns it off is no longer shown, so
-        // it has to leave the set rather than come back when it is released.
+        // it has to leave the held set rather than come back when it is released.
         if !self.preferences.include_mouse {
             self.held.retain(|control| !is_mouse_button(control));
         }
@@ -318,15 +507,6 @@ impl Plugin for KeyDisplay {
         self.painted = None;
         self.draw(host);
     }
-}
-
-/// Whether a wire name is one of the protocol's mouse buttons.
-///
-/// The four the protocol names, matched rather than checked against a list of every
-/// possible name: a name this build does not know is a key, and a key that happens to be
-/// spelled `left_thing` is a key.
-fn is_mouse_button(control: &str) -> bool {
-    matches!(control, "left" | "right" | "middle" | "back" | "forward")
 }
 
 fn main() -> bongocat_plugin_sdk::Result<()> {
@@ -375,16 +555,14 @@ mod tests {
 
     /// The document the settings form would send for these settings.
     ///
-    /// Every field named, including the ones this plugin did not change in a test, because
-    /// a test that built a partial document would be testing a document the product never
-    /// sends: the form always sends the whole thing.
-    fn configured(maximum_keys: i64, include_mouse: bool, hide_when_idle: bool) -> ConfigDocument {
+    /// Every field named, because the form always sends the whole thing: a test that built
+    /// a partial document would be testing a document the product never sends.
+    fn configured(maximum_keys: i64, include_mouse: bool) -> ConfigDocument {
         with_font(
             maximum_keys,
             DEFAULT_FONT_SIZE as f64,
             settings::REGULAR,
             include_mouse,
-            hide_when_idle,
         )
     }
 
@@ -394,7 +572,6 @@ mod tests {
         font_size: f64,
         font_weight: &str,
         include_mouse: bool,
-        hide_when_idle: bool,
     ) -> ConfigDocument {
         document(
             [
@@ -411,10 +588,6 @@ mod tests {
                     "include_mouse".to_string(),
                     ConfigValue::Bool(include_mouse),
                 ),
-                (
-                    "hide_when_idle".to_string(),
-                    ConfigValue::Bool(hide_when_idle),
-                ),
             ]
             .into_iter()
             .collect(),
@@ -422,7 +595,7 @@ mod tests {
     }
 
     fn the_defaults() -> ConfigDocument {
-        configured(DEFAULT_MAXIMUM_KEYS, true, false)
+        configured(DEFAULT_MAXIMUM_KEYS, true)
     }
 
     fn a_key(control: &str) -> InputEvent {
@@ -432,39 +605,42 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_key_appears_when_it_goes_down_and_leaves_when_it_comes_up() {
-        let written = harness();
+    fn up(control: &str) -> InputEvent {
+        InputEvent::KeyUp {
+            control: control.to_owned(),
+        }
+    }
+
+    fn mouse(button: &str, pressed: bool) -> InputEvent {
+        InputEvent::MouseButton {
+            button: button.to_owned(),
+            pressed,
+        }
+    }
+
+    /// The keycaps the panel last drew.
+    fn drawn(written: &WrittenMessages) -> Vec<String> {
+        labels_in(&panels(written).last().expect("a panel").scene)
+    }
+
+    /// A display whose clock a test controls.
+    ///
+    /// The plugin reads its own monotonic clock rather than the host's tick — see
+    /// [`KeyDisplay::now`] — so a test about a two-second lifetime cannot drive it through
+    /// messages. It drives [`KeyDisplay::press`] and [`KeyDisplay::expire`] directly with
+    /// the moment each event happened, which is also how a reader can see the timing
+    /// written down rather than waited for.
+    fn at(seconds: u64) -> KeyDisplay {
         let mut plugin = KeyDisplay::new(Preferences::default());
-        serve(
-            &mut plugin,
-            &written,
-            "en-US",
-            the_defaults(),
-            Inbox::new()
-                .input(a_key("KeyA"))
-                .input(InputEvent::KeyUp {
-                    control: "KeyA".to_owned(),
-                })
-                .into_messages(),
-        );
-        assert!(
-            plugin.held.is_empty(),
-            "so the panel is showing no keys rather than a key that is not down"
-        );
-        let last = panels(&written);
-        let labels = labels_in(&last.last().expect("a panel").scene);
-        assert!(
-            !labels.iter().any(|label| label == "A"),
-            "and the last thing drawn does not still show it: {labels:?}"
-        );
+        plugin.started = Instant::now() - Duration::from_secs(seconds);
+        plugin
     }
 
     #[test]
-    fn the_keys_are_shown_in_the_order_they_were_pressed() {
-        // A set would sort them, and a sorted row puts `A` before `Z` forever — so the key
-        // you pressed most recently, the one you are most likely to be explaining, is the
-        // one at the end.
+    fn a_key_stays_on_the_panel_after_it_comes_up() {
+        // The whole difference from a display of held keys: the cap outlives the finger, so
+        // a viewer watching a screencast sees what was pressed rather than a panel that is
+        // only up while somebody is typing.
         let written = harness();
         let mut plugin = KeyDisplay::new(Preferences::default());
         serve(
@@ -473,28 +649,190 @@ mod tests {
             "en-US",
             the_defaults(),
             Inbox::new()
-                .input(a_key("KeyZ"))
                 .input(a_key("KeyA"))
-                .input(a_key("KeyM"))
+                .input(up("KeyA"))
                 .into_messages(),
         );
-        assert_eq!(plugin.held, ["KeyZ", "KeyA", "KeyM"]);
-        let labels = labels_in(&panels(&written).last().expect("a panel").scene);
+        assert!(plugin.held.is_empty(), "so the key is genuinely up");
+        assert_eq!(plugin.shown, ["A"], "and the keycap is still on the panel");
+        assert!(plugin.showing, "which means the panel is still up");
+    }
+
+    #[test]
+    fn the_panel_takes_itself_down_when_the_line_has_run_out() {
+        // There is no setting for this any more: a line outlives the key, so "nothing is
+        // held" is not the question — "nothing is recent" is, and after two seconds of quiet
+        // the honest answer is an empty corner rather than a box on the desktop.
+        let mut plugin = at(0);
+        plugin.press("KeyA".to_owned(), Duration::ZERO);
+        plugin.release("KeyA");
+        assert!(
+            !plugin.expire(LINE_LIFETIME - Duration::from_millis(1)),
+            "and it is still up just before that, because a display that goes early is worse \
+             than one that lingers"
+        );
+        assert!(
+            plugin.expire(LINE_LIFETIME),
+            "and it is due on the tick at the lifetime"
+        );
+        assert!(
+            plugin.shown.is_empty(),
+            "because two seconds after the last key there is nothing left to show"
+        );
+        assert_eq!(plugin.shown, Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_burst_of_typing_is_one_line() {
+        // The reason there is a line at all rather than one key: a burst is one thing being
+        // said, and breaking it between every character would be a display nobody can read.
+        let mut plugin = at(0);
+        for (index, key) in ["KeyZ", "KeyA", "KeyM"].into_iter().enumerate() {
+            let when = Duration::from_millis(index as u64 * 100);
+            plugin.press(key.to_owned(), when);
+        }
         assert_eq!(
-            labels
-                .iter()
-                .rev()
-                .take(3)
-                .rev()
-                .cloned()
-                .collect::<Vec<_>>(),
+            plugin.shown,
             ["Z", "A", "M"],
-            "so the row reads in the order the hands moved"
+            "so the row reads in the order the hands moved, at a typist's speed"
         );
     }
 
     #[test]
-    fn a_held_key_the_keyboard_repeats_is_one_key() {
+    fn a_key_after_a_pause_starts_a_new_line() {
+        let mut plugin = at(0);
+        plugin.press("KeyA".to_owned(), Duration::ZERO);
+        plugin.press(
+            "KeyB".to_owned(),
+            Duration::from_millis(LINE_BREAK.as_millis() as u64),
+        );
+        assert_eq!(
+            plugin.shown,
+            ["B"],
+            "because a key pressed after a pause is a new sentence, and a line holding both \
+             would say the two were typed together"
+        );
+    }
+
+    #[test]
+    fn a_command_always_starts_its_own_line() {
+        // A shortcut is something done on purpose, so it reads alone rather than at the end
+        // of whatever was being typed when the person remembered it.
+        let written = harness();
+        let mut plugin = KeyDisplay::new(Preferences::default());
+        serve(
+            &mut plugin,
+            &written,
+            "en-US",
+            the_defaults(),
+            Inbox::new()
+                .input(a_key("KeyA"))
+                .input(a_key("LeftMeta"))
+                .input(a_key("KeyS"))
+                .input(up("KeyS"))
+                .input(up("LeftMeta"))
+                .into_messages(),
+        );
+        assert_eq!(
+            plugin.shown,
+            ["⌘S"],
+            "which is one cap saying one shortcut, not a word with a command stuck to it"
+        );
+    }
+
+    #[test]
+    fn a_modifier_and_the_key_it_was_held_with_are_two_caps_then_one() {
+        // KeyCastr's shape, and the reason a chord is one cap: the `⇧` before the `⇧A` is
+        // what tells a viewer the shift came first, and the `⇧A` is the shortcut itself.
+        let written = harness();
+        let mut plugin = KeyDisplay::new(Preferences::default());
+        serve(
+            &mut plugin,
+            &written,
+            "en-US",
+            the_defaults(),
+            Inbox::new()
+                .input(a_key("LeftShift"))
+                .input(a_key("KeyA"))
+                .into_messages(),
+        );
+        assert_eq!(plugin.shown, ["⇧", "⇧A"]);
+    }
+
+    #[test]
+    fn a_chord_reads_as_one_cap_with_every_modifier_on_it() {
+        let written = harness();
+        let mut plugin = KeyDisplay::new(Preferences::default());
+        serve(
+            &mut plugin,
+            &written,
+            "en-US",
+            the_defaults(),
+            Inbox::new()
+                .input(a_key("LeftControl"))
+                .input(a_key("LeftAlt"))
+                .input(a_key("LeftShift"))
+                .input(a_key("LeftMeta"))
+                .input(a_key("KeyS"))
+                .into_messages(),
+        );
+        assert_eq!(
+            plugin.shown.last().map(String::as_str),
+            Some("⌃⌥⇧⌘S"),
+            "in the order the glyphs stack on a keycap, whatever order the platform sent \
+             them in — and on its own line, because the ⌘ deliberately broke the line when \
+             it went down"
+        );
+    }
+
+    #[test]
+    fn a_modifier_that_is_not_down_writes_nothing_on_the_caps_after_it() {
+        // The one chord rule that is easy to get wrong: a key released before the next one is
+        // pressed is not part of that one's chord, or a whole word would be shown as though
+        // shift had been held down through it.
+        let written = harness();
+        let mut plugin = KeyDisplay::new(Preferences::default());
+        serve(
+            &mut plugin,
+            &written,
+            "en-US",
+            the_defaults(),
+            Inbox::new()
+                .input(a_key("LeftShift"))
+                .input(up("LeftShift"))
+                .input(a_key("KeyB"))
+                .into_messages(),
+        );
+        assert_eq!(
+            plugin.shown.last().map(String::as_str),
+            Some("B"),
+            "because the shift was up before the B was pressed"
+        );
+    }
+
+    #[test]
+    fn the_windows_key_spells_the_same_glyph_as_the_command_key() {
+        // A screencast is watched on whichever machine is recording, and the key is called
+        // something different on each of them. Both spellings are in the artwork, so both
+        // arrive here.
+        for name in ["LeftMeta", "MetaLeft", "RightMeta", "LeftGUI", "GuiLeft"] {
+            assert_eq!(modifier_glyph(name), Some('⌘'), "{name}");
+        }
+    }
+
+    #[test]
+    fn only_a_control_or_a_command_starts_a_new_line() {
+        // Option and shift are not commands: on a macOS layout `⌥C` is an ordinary
+        // character, and `⇧A` belongs with the word being typed.
+        assert!(is_command_chord("⌘S"));
+        assert!(is_command_chord("⌃⌥⇧⌘S"));
+        assert!(!is_command_chord("⌥C"));
+        assert!(!is_command_chord("⇧A"));
+        assert!(!is_command_chord("A"), "because a letter is not a shortcut");
+    }
+
+    #[test]
+    fn a_key_the_keyboard_repeats_is_one_key() {
         let written = harness();
         let mut plugin = KeyDisplay::new(Preferences::default());
         serve(
@@ -515,33 +853,33 @@ mod tests {
                 .into_messages(),
         );
         assert_eq!(
-            plugin.held,
-            ["KeyA"],
-            "because a display of held keys that shows A A A is showing the keyboard's timer \\
-             rather than the person's hands"
+            plugin.shown,
+            ["A"],
+            "because a display that showed A A A is showing the keyboard's timer rather than \
+             the person's hands"
         );
     }
 
     #[test]
     fn a_second_press_of_a_key_already_held_does_not_add_a_second_keycap() {
         let mut plugin = KeyDisplay::new(Preferences::default());
-        plugin.press("KeyA".to_owned());
-        plugin.press("KeyA".to_owned());
-        assert_eq!(plugin.held, ["KeyA"]);
+        plugin.press("KeyA".to_owned(), Duration::ZERO);
+        plugin.press("KeyA".to_owned(), Duration::ZERO);
+        assert_eq!(plugin.shown, ["A"]);
     }
 
     #[test]
-    fn holding_more_keys_than_the_bound_keeps_the_newest() {
+    fn showing_more_keys_than_the_bound_keeps_the_newest() {
         let mut plugin = KeyDisplay::new(Preferences {
             maximum_keys: 3,
             ..Preferences::default()
         });
         for key in ["KeyA", "KeyB", "KeyC", "KeyD", "KeyE"] {
-            plugin.press(key.to_owned());
+            plugin.press(key.to_owned(), Duration::ZERO);
         }
         assert_eq!(
-            plugin.held,
-            ["KeyC", "KeyD", "KeyE"],
+            plugin.shown,
+            ["C", "D", "E"],
             "so the key you just pressed is never the one that got pushed off the display"
         );
     }
@@ -551,16 +889,23 @@ mod tests {
         // The host tests a release against the set it believes; a plugin that acted on an
         // unmatched release would be defending against a bug that costs nothing to ignore.
         let mut plugin = KeyDisplay::new(Preferences::default());
-        plugin.press("KeyA".to_owned());
+        plugin.press("KeyA".to_owned(), Duration::ZERO);
         plugin.release("KeyQ");
         assert_eq!(plugin.held, ["KeyA"]);
+        assert_eq!(
+            plugin.shown,
+            ["A"],
+            "and the display is a record of presses, so an unmatched release takes nothing \
+             off it"
+        );
     }
 
     #[test]
-    fn a_reset_forgets_every_key_because_the_platforms_set_is_not_this_plugins_to_guess() {
+    fn a_reset_forgets_the_held_keys_and_leaves_the_record_alone() {
         // A lock screen, a sleep, a session switch or an unplugged keyboard all arrive as
-        // one event with no detail. A plugin that kept the keys it could account for would
-        // be showing keys that are not down until each is pressed again.
+        // one event with no detail. The held set has to go, or the next chord is composed
+        // from keys that are not down; the line has not, because a lock screen does not
+        // un-press what was pressed.
         let written = harness();
         let mut plugin = KeyDisplay::new(Preferences::default());
         serve(
@@ -578,7 +923,14 @@ mod tests {
         );
         assert!(
             plugin.held.is_empty(),
-            "so a locked screen does not leave a shift key drawn for ever"
+            "so a locked screen does not leave a shift key in the set the next chord is \
+             composed from"
+        );
+        assert_eq!(
+            plugin.shown,
+            ["⇧", "⇧A"],
+            "while the record of what was pressed stays: a lock screen does not un-press it, \
+             and the shift is in the `⇧A` because it was down when the A was pressed"
         );
     }
 
@@ -590,19 +942,13 @@ mod tests {
             &mut plugin,
             &written,
             "en-US",
-            configured(8, true, false),
-            Inbox::new()
-                .input(InputEvent::MouseButton {
-                    button: "left".to_owned(),
-                    pressed: true,
-                })
-                .into_messages(),
+            configured(8, true),
+            Inbox::new().input(mouse("left", true)).into_messages(),
         );
-        assert_eq!(plugin.held, ["left"]);
-        let labels = labels_in(&panels(&written).last().expect("a panel").scene);
+        assert_eq!(plugin.shown, ["LMB"]);
         assert!(
-            labels.iter().any(|label| label == "LMB"),
-            "and it reads as a button rather than as the word left: {labels:?}"
+            drawn(&written).iter().any(|label| label == "LMB"),
+            "and it reads as a button rather than as the word left"
         );
 
         let written = harness();
@@ -611,62 +957,62 @@ mod tests {
             &mut plugin,
             &written,
             "en-US",
-            configured(8, false, false),
-            Inbox::new()
-                .input(InputEvent::MouseButton {
-                    button: "left".to_owned(),
-                    pressed: true,
-                })
-                .into_messages(),
+            configured(8, false),
+            Inbox::new().input(mouse("left", true)).into_messages(),
         );
         assert!(
-            plugin.held.is_empty(),
-            "a keyboard-only display shows no mouse button, and does not remember one either"
+            plugin.shown.is_empty(),
+            "a keyboard-only display shows no mouse button, and draws nothing at all"
+        );
+        assert!(plugin.held.is_empty(), "and does not remember one either");
+    }
+
+    #[test]
+    fn two_clicks_are_two_caps_and_a_release_is_neither() {
+        // A release only leaves the held set. Were a release a cap too, clicking once would
+        // put `LMB` on the line twice, and a display that shows the same key for every edge
+        // of one click is showing the mouse's plumbing.
+        let written = harness();
+        let mut plugin = KeyDisplay::new(Preferences::default());
+        serve(
+            &mut plugin,
+            &written,
+            "en-US",
+            configured(8, true),
+            Inbox::new()
+                .input(mouse("left", true))
+                .input(mouse("left", false))
+                .input(mouse("left", true))
+                .into_messages(),
+        );
+        assert_eq!(
+            plugin.shown,
+            ["LMB", "LMB"],
+            "because two clicks are two things that happened"
         );
     }
 
     #[test]
     fn a_pointer_moving_changes_nothing() {
-        // The model window already has a cursor. A held-keys display that also showed one
-        // would be a second cursor, and one that nobody asked for.
+        // The model window already has a cursor. A key display that also showed one would be
+        // a second cursor, and one nobody asked for.
         let mut plugin = KeyDisplay::new(Preferences::default());
-        let before = plugin.held.clone();
-        plugin.react(&InputEvent::MouseMove {
-            dx: 1.0,
-            dy: 1.0,
-            distance: 1.4,
-        });
-        assert_eq!(plugin.held, before);
+        let before = plugin.shown.clone();
+        plugin.react(
+            &InputEvent::MouseMove {
+                dx: 1.0,
+                dy: 1.0,
+                distance: 1.4,
+            },
+            Duration::ZERO,
+        );
+        assert_eq!(plugin.shown, before);
     }
 
     #[test]
-    fn a_panel_can_hide_itself_when_there_is_nothing_to_say() {
-        let written = harness();
-        let mut plugin = KeyDisplay::new(Preferences::default());
-        serve(
-            &mut plugin,
-            &written,
-            "en-US",
-            configured(8, true, true),
-            Inbox::new()
-                .input(a_key("KeyA"))
-                .input(InputEvent::KeyUp {
-                    control: "KeyA".to_owned(),
-                })
-                .into_messages(),
-        );
-        assert!(
-            !plugin.showing,
-            "because a panel that says nothing is a box on the user's desktop"
-        );
-        assert!(
-            bongocat_plugin_sdk::testing::panels(&written).len() < 3,
-            "and the idle line is never drawn either, so there is nothing to take down"
-        );
-    }
-
-    #[test]
-    fn an_idle_panel_says_so_rather_than_being_blank() {
+    fn nothing_is_drawn_before_the_first_key() {
+        // The plugin starts with nothing to say, so it starts with no panel rather than one
+        // waiting to be filled in.
         let written = harness();
         let mut plugin = KeyDisplay::new(Preferences::default());
         serve(
@@ -676,11 +1022,10 @@ mod tests {
             the_defaults(),
             Inbox::new().into_messages(),
         );
-        let labels = labels_in(&panels(&written).last().expect("a panel").scene);
+        assert!(!plugin.showing);
         assert!(
-            labels.iter().any(|label| label == "No keys held"),
-            "because an empty box on the desktop is a box somebody has to work out what it \\
-             means: {labels:?}"
+            panels(&written).is_empty(),
+            "because a panel that says nothing is a box on the user's desktop"
         );
     }
 
@@ -697,12 +1042,12 @@ mod tests {
                 .input(a_key("KeyA"))
                 .input(a_key("KeyB"))
                 .input(a_key("KeyC"))
-                .config(configured(1, true, false))
+                .config(configured(1, true))
                 .into_messages(),
         );
         assert_eq!(
-            plugin.held,
-            ["KeyC"],
+            plugin.shown,
+            ["C"],
             "and the panel has to obey the new bound now, because the user just set it"
         );
     }
@@ -710,8 +1055,8 @@ mod tests {
     #[test]
     fn turning_the_mouse_off_removes_a_mouse_button_that_is_already_held() {
         // Otherwise the button comes back the moment it is released — it was in the set the
-        // whole time, it was just not drawn, and a keycap that appears on release is a bug
-        // a user would report as "it shows a key when I let go of the mouse".
+        // whole time, it was just not drawn, and a keycap that appears on release is a bug a
+        // user would report as "it shows a key when I let go of the mouse".
         let written = harness();
         let mut plugin = KeyDisplay::new(Preferences::default());
         serve(
@@ -721,11 +1066,8 @@ mod tests {
             the_defaults(),
             Inbox::new()
                 .input(a_key("KeyA"))
-                .input(InputEvent::MouseButton {
-                    button: "left".to_owned(),
-                    pressed: true,
-                })
-                .config(configured(8, false, false))
+                .input(mouse("left", true))
+                .config(configured(8, false))
                 .into_messages(),
         );
         assert_eq!(plugin.held, ["KeyA"]);
@@ -736,20 +1078,35 @@ mod tests {
         // The host's layout has no notion of wrapping, so the plugin counts — and the count
         // has to come from the same arithmetic the panel's width came from, or a larger font
         // would size a panel for three keycaps and then try to draw five.
-        let plugin = KeyDisplay::new(Preferences::default());
-        let columns = plugin.columns();
-        let cap = plugin.keycap();
-        let fits = (((plugin.panel.size()[0] as f32 - PANEL_PADDING * 2.0 + KEY_GAP)
-            / (cap.width() + KEY_GAP))
-            .floor()) as usize;
-        assert_eq!(
-            columns,
-            fits,
-            "so the panel is drawn with exactly the keycaps it is wide enough for: {columns} \
-             columns in {}px with a {:.0}px cap",
-            plugin.panel.size()[0],
-            cap.width()
-        );
+        for size in [
+            settings::MINIMUM_FONT_SIZE,
+            DEFAULT_FONT_SIZE,
+            MAXIMUM_FONT_SIZE,
+        ] {
+            let mut plugin = KeyDisplay::new(Preferences {
+                font_size: size as f32,
+                maximum_keys: MAXIMUM_KEYS as usize,
+                ..Preferences::default()
+            });
+            for key in ["KeyA", "KeyB", "KeyC", "KeyD", "KeyE", "KeyF"] {
+                plugin.press(key.to_owned(), Duration::ZERO);
+            }
+            let box_ = KeyDisplay::panel_box(&plugin.preferences, &plugin.shown);
+            let cap_width = plugin.keycap().width_of("A");
+            let fits = (((box_.width as f32 - PANEL_PADDING * 2.0 + KEY_GAP)
+                / (cap_width + KEY_GAP))
+                .floor()) as usize;
+            assert!(
+                box_.columns <= fits,
+                "at {size}px the panel is {box_:?}, a cap is {cap_width:.0}px, and the row is \
+                 cut at a number of caps the panel cannot hold"
+            );
+            assert!(
+                box_.columns == fits.min(plugin.shown.len()),
+                "and the row is as full as the panel allows rather than one cap short: \
+                 {box_:?} with six keys"
+            );
+        }
     }
 
     #[test]
@@ -773,15 +1130,15 @@ mod tests {
                 &mut plugin,
                 &written,
                 "en-US",
-                with_font(MAXIMUM_KEYS, size as f64, settings::REGULAR, false, false),
+                with_font(MAXIMUM_KEYS, size as f64, settings::REGULAR, false),
                 inbox.into_messages(),
             );
             let panel = plugin.panel.size();
             let cap = plugin.keycap();
             assert!(
-                panel[0] as f32 >= cap.width(),
+                panel[0] as f32 >= cap.width_of("A"),
                 "at {size}px the panel is {panel:?} and one cap is {:.0}px",
-                cap.width()
+                cap.width_of("A")
             );
             for drawn in panels(&written) {
                 drawn
@@ -795,45 +1152,13 @@ mod tests {
     fn a_bold_key_is_wider_than_a_normal_one_at_the_same_size() {
         // The weight setting has to reach the cap, not just the number: a cap sized for the
         // normal letter and drawn with a bold one is a keycap with its last letter clipped.
-        let written = harness();
         let mut regular = KeyDisplay::new(Preferences::default());
         let mut bold = KeyDisplay::new(Preferences::default());
-        let mut inbox = Inbox::new();
-        for key in ["KeyA", "KeyB"] {
-            inbox = inbox.input(a_key(key));
-        }
-        serve(
-            &mut regular,
-            &written,
-            "en-US",
-            with_font(
-                MAXIMUM_KEYS,
-                DEFAULT_FONT_SIZE as f64,
-                settings::REGULAR,
-                false,
-                false,
-            ),
-            Inbox::new().into_messages(),
-        );
-        serve(
-            &mut bold,
-            &written,
-            "en-US",
-            with_font(
-                MAXIMUM_KEYS,
-                DEFAULT_FONT_SIZE as f64,
-                settings::BOLD,
-                false,
-                false,
-            ),
-            inbox.into_messages(),
-        );
-        assert_eq!(
-            regular.preferences.font_size, bold.preferences.font_size,
-            "so the only difference between the two is the weight"
-        );
+        regular.preferences.bold = false;
+        bold.preferences.bold = true;
+        assert_eq!(regular.preferences.font_size, bold.preferences.font_size);
         assert!(
-            bold.keycap().width() > regular.keycap().width(),
+            bold.keycap().width_of("A") > regular.keycap().width_of("A"),
             "and the bold cap is the wider one, which is why the panel has to grow with it"
         );
     }
@@ -859,12 +1184,12 @@ mod tests {
                 bold: preferences.bold,
             };
             assert!(
-                cap.width().is_finite() && cap.width() > 0.0 && cap.height() > 0.0,
+                cap.width_of("A").is_finite() && cap.width_of("A") > 0.0 && cap.height() > 0.0,
                 "{size} became a cap of {}x{}",
-                cap.width(),
+                cap.width_of("A"),
                 cap.height()
             );
-            let panel = KeyDisplay::panel_box(&preferences, 8);
+            let panel = KeyDisplay::panel_box(&preferences, &["A".to_string()]);
             assert!(
                 panel.width > 0 && panel.height > 0,
                 "{size} produced {panel:?}"
@@ -900,15 +1225,10 @@ mod tests {
                 .iter()
                 .map(|field| field.key.as_str())
                 .collect::<Vec<_>>(),
-            [
-                "maximum_keys",
-                "font_size",
-                "font_weight",
-                "include_mouse",
-                "hide_when_idle"
-            ],
+            ["maximum_keys", "font_size", "font_weight", "include_mouse"],
             "in the order the form shows them, because the order is the order somebody sets \
-             this plugin up in"
+             this plugin up in — and with no row for whether the panel is up, because there \
+             is only one answer to that"
         );
     }
 
@@ -916,39 +1236,24 @@ mod tests {
     fn the_value_the_form_sends_is_the_value_the_plugin_reads() {
         // The one thing that could otherwise drift: what the settings form writes, and what
         // this plugin answers to.
-        let schema = declared_settings().to_schema().expect("a valid schema");
+        let schema: ConfigSchema = declared_settings().to_schema().expect("a valid schema");
         for size in [
             settings::MINIMUM_FONT_SIZE,
             DEFAULT_FONT_SIZE,
             MAXIMUM_FONT_SIZE,
         ] {
             for weight in [settings::REGULAR, settings::BOLD] {
-                let values = values_from(&with_font(5, size as f64, weight, true, true), &schema);
-                let preferences = Preferences::read(&values);
-                assert_eq!(preferences.maximum_keys, 5);
-                assert_eq!(preferences.font_size, size as f32);
-                assert_eq!(preferences.bold, weight == settings::BOLD);
-                assert!(preferences.include_mouse && preferences.hide_when_idle);
+                for include_mouse in [false, true] {
+                    let values =
+                        values_from(&with_font(5, size as f64, weight, include_mouse), &schema);
+                    let preferences = Preferences::read(&values);
+                    assert_eq!(preferences.maximum_keys, 5);
+                    assert_eq!(preferences.font_size, size as f32);
+                    assert_eq!(preferences.bold, weight == settings::BOLD);
+                    assert_eq!(preferences.include_mouse, include_mouse);
+                }
             }
         }
-    }
-
-    #[test]
-    fn the_panel_answers_in_the_language_the_user_reads() {
-        let written = harness();
-        let mut plugin = KeyDisplay::new(Preferences::default());
-        serve(
-            &mut plugin,
-            &written,
-            "zh-CN",
-            the_defaults(),
-            Inbox::new().into_messages(),
-        );
-        let labels = labels_in(&panels(&written).last().expect("a panel").scene);
-        assert!(
-            labels.iter().any(|label| label == "未按任何键"),
-            "and a keycap is still a keycap in every language: {labels:?}"
-        );
     }
 
     #[test]
@@ -957,26 +1262,33 @@ mod tests {
         // a keycap on a row of keycaps is the shape most likely to break it.
         let written = harness();
         let mut plugin = KeyDisplay::new(Preferences::default());
+        let mut inbox = Inbox::new();
+        for key in [
+            "LeftControl",
+            "LeftAlt",
+            "LeftShift",
+            "LeftMeta",
+            "KeyA",
+            "KeyB",
+            "KeyC",
+            "KeyD",
+            "KeyE",
+            "KeyF",
+            "KeyG",
+            "KeyH",
+            "KeyI",
+            "KeyJ",
+            "KeyK",
+            "KeyL",
+        ] {
+            inbox = inbox.input(a_key(key));
+        }
         serve(
             &mut plugin,
             &written,
             "en-US",
-            configured(16, true, false),
-            Inbox::new()
-                .input(a_key("KeyA"))
-                .input(a_key("KeyB"))
-                .input(a_key("KeyC"))
-                .input(a_key("KeyD"))
-                .input(a_key("KeyE"))
-                .input(a_key("KeyF"))
-                .input(a_key("KeyG"))
-                .input(a_key("KeyH"))
-                .input(a_key("KeyI"))
-                .input(a_key("KeyJ"))
-                .input(a_key("KeyK"))
-                .input(a_key("KeyL"))
-                .input(a_key("KeyM"))
-                .into_messages(),
+            configured(16, true),
+            inbox.into_messages(),
         );
         let panels = panels(&written);
         for panel in &panels {
@@ -991,7 +1303,7 @@ mod tests {
     }
 
     #[test]
-    fn a_ticket_builds_nothing_when_no_key_changed() {
+    fn a_tick_builds_nothing_when_the_line_has_not_run_out() {
         // A display that rebuilt its panel on every tick would be a host that rasterized
         // sixty identical panels a second, which is the most expensive thing the product
         // could be asked to do for nothing.
@@ -999,7 +1311,7 @@ mod tests {
         let mut plugin = KeyDisplay::new(Preferences::default());
         let mut inbox = Inbox::new().input(a_key("KeyA"));
         for frame in 0..60 {
-            inbox = inbox.tick(frame * 16);
+            inbox = inbox.tick((frame * 16) as u64);
         }
         serve(
             &mut plugin,
@@ -1010,8 +1322,9 @@ mod tests {
         );
         assert_eq!(
             panels(&written).len(),
-            2,
-            "one panel from the ready and one from the key, and nothing from the sixty ticks"
+            1,
+            "one panel, from the key, and nothing from the sixty ticks: the line has not run \
+             out, so there is nothing to redraw"
         );
     }
 
@@ -1026,7 +1339,8 @@ mod tests {
             .expect("this plugin's own descriptor is one the host accepts");
         assert!(
             descriptor.subscribes_to(Subscription::Input),
-            "a display of held keys that is not told about held keys is a display of nothing"
+            "a display of pressed keys that is not told about pressed keys is a display of \
+             nothing"
         );
         assert!(
             !descriptor.subscribes_to(Subscription::HostState),
@@ -1035,15 +1349,19 @@ mod tests {
     }
 
     #[test]
-    fn this_plugin_asks_for_a_position_and_the_sound_one_does_not() {
-        // Placement is the host's — one plugin per corner, the user chooses — so a plugin
-        // says only that it *has* a place. A plugin that draws a panel without saying so
-        // still draws it, in the corner it asked for, but the user is offered no position
-        // to move it to, which is the half of the mechanism a plugin can be silent about.
+    fn this_plugin_pins_its_panel_to_the_top_left_and_the_sound_one_does_not() {
+        // The pinned panel is the plugin whose value is being in the same place every time.
+        // The user is offered no position to move it to, and — the half that is easy to leave
+        // out — the corner is reserved so nothing else is allocated there.
         let plugin = KeyDisplay::new(Preferences::default());
         assert!(
             plugin.descriptor().has_panel(),
-            "a display of held keys is a panel on the model window"
+            "a display of pressed keys is a panel on the model window"
+        );
+        assert_eq!(
+            plugin.descriptor().pinned_anchor(),
+            Some(PluginAnchor::TopLeft),
+            "pinned to the corner its author put it in, rather than offered a menu of nine"
         );
         plugin
             .descriptor()

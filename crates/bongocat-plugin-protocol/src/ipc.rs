@@ -369,6 +369,7 @@ mod tests {
                 }],
             },
             draws_panel: true,
+            pinned_panel: None,
             subscriptions: vec![crate::descriptor::Subscription::Input],
         }
     }

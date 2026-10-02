@@ -174,6 +174,15 @@ not own. Say `draws_panel()` on your descriptor to be offered the position, and 
 corner you ask for is where you sit until the user moves you *or* until something
 else has taken it. See `docs/adr/0083-one-plugin-per-place-in-the-model-window.md`.
 
+**…unless your panel is only readable from one place.** Say `pins_panel(anchor)`
+instead and the panel is pinned there: the host still places it and still reserves the
+corner so nothing else is allocated on top of it, but the user is offered no position
+to move it to and the row is not drawn at all. Reach for it when the corner is most of
+the value — a key display a viewer has to find is not doing its job — and not when it is
+a preference you would rather a user had. A pin implies `draws_panel`; a descriptor
+that pins a panel it did not declare is refused. See
+`docs/adr/0085-a-plugin-can-pin-its-panel.md`.
+
 ## What a plugin cannot do
 
 - **Touch the product's memory.** There is no shared library, no ABI, and no
@@ -210,4 +219,4 @@ none of them depends on another.
 | --------------- | --------------------------------------------------------- |
 | `pomodoro`      | A focus timer with a break                                 |
 | `typing-sound`  | A model's own motions and sounds, per keystroke            |
-| `keyboard-display` | The keys you are pressing, on the model window          |
+| `keyboard-display` | The keys you press, at the top left of the model window  |

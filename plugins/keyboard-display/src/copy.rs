@@ -1,27 +1,22 @@
 //! The words this plugin shows, read from the `plugin.json` it ships.
 //!
-//! A keycap is not a word, so almost nothing here needs translating — the letters and the
-//! arrows are the same in every language this product ships. What does need it is the
-//! little bit of prose around them: the line shown when nothing is held, and the setting
-//! labels, which the settings window renders in the user's own language.
+//! A keycap is not a word, so nothing on the panel needs translating — the letters, the
+//! arrows and the modifier glyphs are the same in every language this product ships, which
+//! is the whole reason a key display needs no copy of its own. What does need it is the
+//! settings window's labels, which the settings form renders in the user's own language.
 //!
 //! The copy lives in the manifest rather than in this file for the reason that made it
 //! move. It used to be written twice — once here for the panel and once in `plugin.json`
 //! for the card — and the two drifted, so a card changed its own text when the plugin
 //! started.
 
-use bongocat_plugin_sdk::{Host, LocalizedText, SelfDescription, describe};
+use bongocat_plugin_sdk::{LocalizedText, SelfDescription, describe};
 use std::sync::LazyLock;
 
 /// This plugin's own manifest, embedded at compile time.
 static SELF: LazyLock<SelfDescription> = LazyLock::new(|| {
     describe(include_str!("../plugin.json")).expect("this plugin's own manifest is readable")
 });
-
-/// The line shown when nothing is held.
-pub fn idle() -> LocalizedText {
-    SELF.label("idle")
-}
 
 /// The label on the "how many keys" setting.
 pub fn maximum_keys_label() -> LocalizedText {
@@ -73,21 +68,6 @@ pub fn mouse_help() -> LocalizedText {
     SELF.label("mouse_help")
 }
 
-/// The label on the "hide when nothing is held" setting.
-pub fn hide_when_idle_label() -> LocalizedText {
-    SELF.label("hide_when_idle_label")
-}
-
-/// What the "hide when nothing is held" setting is.
-pub fn hide_when_idle_help() -> LocalizedText {
-    SELF.label("hide_when_idle_help")
-}
-
-/// One of this plugin's strings, in the language the user reads.
-pub fn say(host: &Host, text: &LocalizedText) -> String {
-    text.resolve_bounded(host.locale())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,7 +81,6 @@ mod tests {
     #[test]
     fn every_string_this_plugin_asks_for_is_one_it_ships() {
         for key in [
-            "idle",
             "maximum_keys_label",
             "maximum_keys_help",
             "font_size_label",
@@ -112,8 +91,6 @@ mod tests {
             "bold",
             "mouse_label",
             "mouse_help",
-            "hide_when_idle_label",
-            "hide_when_idle_help",
         ] {
             assert!(
                 manifest().has(key),
@@ -132,12 +109,15 @@ mod tests {
     }
 
     #[test]
-    fn this_plugin_speaks_every_language_the_product_ships() {
-        for locale in ["zh-CN", "zh-TW", "ar-SA", "vi-VN", "pt-BR", "ko-KR"] {
-            assert_eq!(
-                idle().resolve(locale),
-                manifest().text("idle", locale),
-                "so the one line of prose the panel draws is in the reader's own language"
+    fn a_word_the_plugin_no_longer_draws_is_not_still_shipped() {
+        // The panel used to say "No keys held" when nothing was held. It no longer draws
+        // anything then, so the line is gone from the panel — and a copy entry left behind
+        // is a sentence in seven languages that nothing in this plugin can ever show.
+        for key in ["idle", "hide_when_idle_label", "hide_when_idle_help"] {
+            assert!(
+                !manifest().has(key),
+                "{key:?} went with the feature that drew it, rather than staying in the \
+                 manifest as copy nothing reads"
             );
         }
     }

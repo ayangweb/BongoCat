@@ -19,6 +19,7 @@
 use super::config::ConfigSchema;
 use super::error::{PluginError, PluginErrorCode};
 use super::identity::{MAXIMUM_PLUGIN_ID_BYTES, PluginId, PluginVersion};
+use super::panel::PluginAnchor;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -489,6 +490,23 @@ pub struct PluginDescriptor {
     /// older host keeps working, it just is not offered a position.
     #[serde(default)]
     pub draws_panel: bool,
+    /// The one position this plugin's panel is pinned to, when the user may not move it.
+    ///
+    /// A panel's corner is normally the host's to decide and the user's to choose, and
+    /// this is the exception stated in the same vocabulary rather than by the plugin
+    /// quietly dropping `draws_panel`: a key display reads from the same place on screen
+    /// every time, so a corner somebody can move is a corner that is wrong half the time.
+    ///
+    /// The host still places it — one plugin still holds each position, and a pinned
+    /// panel reserves its corner so nothing else is allocated there. What changes is that
+    /// the user is offered no position to move it to, and a position they once chose is
+    /// not a choice any more.
+    ///
+    /// Additive and absent by default, so a plugin built against an older host is placed
+    /// exactly as before. Refused without [`Self::draws_panel`], because the two fields
+    /// would then disagree about the same fact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned_panel: Option<PluginAnchor>,
     /// The feeds it wants.
     #[serde(default)]
     pub subscriptions: Vec<Subscription>,
@@ -515,6 +533,16 @@ impl PluginDescriptor {
         }
         self.icon.image_path()?;
         self.config.validate()?;
+        if self.pinned_panel.is_some() && !self.draws_panel {
+            // The two fields answer one question — is there a panel the host places —
+            // and a descriptor that says yes to both halves and no to one of them is
+            // not expressible. Refused rather than resolved, because either reading
+            // would be the host inventing a fact the plugin wrote down.
+            return Err(PluginError::with_detail(
+                PluginErrorCode::ProtocolInvalid,
+                "a panel is pinned to a position but not declared",
+            ));
+        }
         let mut seen = std::collections::BTreeSet::new();
         for subscription in &self.subscriptions {
             if !seen.insert(*subscription) {
@@ -532,6 +560,15 @@ impl PluginDescriptor {
     /// Whether this plugin asked for a feed.
     pub fn wants(&self, subscription: Subscription) -> bool {
         self.subscriptions.contains(&subscription)
+    }
+
+    /// The one position this plugin's panel may not be moved from, if it said one.
+    ///
+    /// Read through [`Self::validate`]'s rule rather than trusting the flag on its own,
+    /// so a caller never has to ask whether a pin was accompanied by a panel: a
+    /// descriptor that was refused at the handshake never reaches one.
+    pub fn pinned_anchor(&self) -> Option<PluginAnchor> {
+        self.draws_panel.then_some(self.pinned_panel).flatten()
     }
 
     /// Whether the descriptor agrees with the archive it came out of.
@@ -705,6 +742,7 @@ mod tests {
                 icon: Default::default(),
                 config: Default::default(),
                 draws_panel: false,
+                pinned_panel: None,
                 subscriptions: Vec::new(),
             }
         }
@@ -773,6 +811,42 @@ mod tests {
         )
         .expect("a descriptor with the flag reads");
         assert!(with.draws_panel);
+    }
+
+    #[test]
+    fn a_panel_pinned_to_a_position_reads_and_says_so() {
+        // Additive for the same reason `draws_panel` is: a plugin built against a host
+        // that did not have it is placed exactly as it was. What it gains is the host
+        // reserving the corner and the form offering no menu to move it out of.
+        let without: PluginDescriptor = serde_json::from_str(
+            r#"{"id":"pomodoro","name":"P","version":"1.0.0","draws_panel":true}"#,
+        )
+        .expect("a descriptor from before the pin existed reads");
+        assert_eq!(without.pinned_anchor(), None);
+
+        let pinned: PluginDescriptor = serde_json::from_str(
+            r#"{"id":"pomodoro","name":"P","version":"1.0.0","draws_panel":true,"pinned_panel":"top_left"}"#,
+        )
+        .expect("a descriptor with a pin reads");
+        assert_eq!(pinned.pinned_anchor(), Some(PluginAnchor::TopLeft));
+        pinned
+            .validate()
+            .expect("and it is a descriptor the host accepts");
+    }
+
+    #[test]
+    fn a_panel_pinned_without_being_declared_is_refused() {
+        // The two fields answer one question — is there a panel the host places — so a
+        // descriptor that pins one without declaring it is a document disagreeing with
+        // itself, and the host must not pick which half it believes.
+        let descriptor: PluginDescriptor = serde_json::from_str(
+            r#"{"id":"pomodoro","name":"P","version":"1.0.0","pinned_panel":"top_left"}"#,
+        )
+        .expect("the wire shape still reads");
+        assert_eq!(
+            descriptor.validate().unwrap_err().code(),
+            PluginErrorCode::ProtocolInvalid
+        );
     }
 
     #[test]

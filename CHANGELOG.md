@@ -4,6 +4,7 @@
 
 ### ✨ Features
 
+- The Key Display plugin now follows KeyCastr: it records the keys you press rather than the keys you happen to be holding, so a cap stays up long enough to be read on a screencast instead of flashing past. A combination is one keycap — ⌘S, ⇧A, ⌃⌥⇧⌘S — with the modifier written on the key it was held with, and a shortcut on its own line so it does not read as the end of a word. A burst of typing is one line; half a second of quiet starts the next one; two seconds after the last key the panel takes itself down. Its panel is now pinned to the top left of the model window, so it is always in the same place and the corner is kept free for other panels.
 - On macOS, the Input Monitoring prompt now opens a guided panel: it takes you to the right System Settings page and shows how to drag BongoCat into the authorization list. The prompt clears BongoCat's Input Monitoring permission first, so the authorization always starts from scratch, and it no longer carries the paragraph that told you to remove and re-add the entry by hand.
 - A plugin can now put a control on its own card in Settings → Plugins, in your own language, so the thing you use most is where you set it up instead of inside a small panel on the model window. The Pomodoro has one: it says Start, Pause or Resume depending on what its round is doing, and pressing it there runs the same round the panel shows. A plugin that wants no control on its card is unaffected.
 - Settings has a Plugins page that lists every plugin available to this version, with one click to install, update, remove, or show its panel. Each plugin is its own card in a grid — laid out like the model library, two to a card row, with a small icon, its name, who made it and which version is here — and its own settings panel, drawn from the settings the plugin itself declares and opened from its card.
@@ -13,7 +14,7 @@
 - A plugin is now its own program, installed from a download and started when you switch it on. A plugin that stops responding costs its own card and nothing else, and adding a plugin never changes the BongoCat installer.
 - Every plugin has its own settings, opened from its own card and filled in with the plugin's own labels in your language — a plugin that is not running cannot be configured, and a plugin nobody is running changes nothing.
 - The first plugin is a Pomodoro timer: pick how long a round lasts, what follows it, and whether the next round starts itself. When a round ends the cat reacts and says so.
-- A second plugin, Key Display, shows the keys you are holding on the model window as keycaps, in the order you pressed them. It can show the mouse buttons too, and can get out of the way when you are not typing.
+- A second plugin, Key Display, shows the keys you press at the top left of the model window as keycaps, in the order you pressed them. It can show the mouse buttons too.
 - A third plugin, Typing Sound, gives the cat a voice while you type: each key plays one of your model's own motions, and the model's own sound for it. You choose the motion, the shortest gap between two sounds, and whether a held key counts once or many times.
 
 ### 🐛 Bug Fixes
@@ -36,6 +37,10 @@
 - The plugin catalog is no longer read with the download timeout, so an unreachable mirror no longer stalls the model window.
 - A plugin you install now shows its panel straight away, instead of waiting for you to switch it on.
 - A plugin installed from an archive built on another operating system now starts, instead of failing with no explanation.
+
+### 🗑️ Removals
+
+- The Key Display plugin no longer has a "Display position" row in its settings, and no longer has a "Hide the panel when nothing is held" switch. Its panel is now always at the top left of the model window, and it is hidden whenever there is nothing recent to show. If you had turned the switch off before, the panel is now hidden by default; the two settings files are read and ignored, so nothing has to be done to your configuration.
 
 ### 🌍 Localization
 

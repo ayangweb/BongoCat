@@ -16,9 +16,8 @@ use crate::copy;
 
 /// The keys shown when the user has not chosen.
 ///
-/// Eight, because that is two tidy rows on a panel of this size and because a display that
-/// has to scroll to show what your hands are doing is a display you cannot read while
-/// typing.
+/// Eight, because that is one tidy line at the default size and because a display that has
+/// to scroll to show what your hands are doing is a display you cannot read while typing.
 pub const DEFAULT_MAXIMUM_KEYS: i64 = 8;
 
 /// The most keys this plugin will show.
@@ -49,17 +48,30 @@ pub const MINIMUM_FONT_SIZE: i64 = 9;
 /// wider than the model window is a panel the model window cannot show.
 pub const MAXIMUM_FONT_SIZE: i64 = 32;
 
-/// The smallest width this plugin's panel may take.
+/// The narrowest this plugin's panel may take.
 ///
-/// A floor rather than a fixed width, because the panel's width follows the font the user
-/// chose — and a plugin that could be configured into a panel narrower than one keycap
+/// A floor rather than a fixed width, because the panel's width follows the labels it is
+/// showing — and a plugin that could be configured into a panel narrower than one keycap
 /// would be a plugin that draws nothing at all.
 pub const MINIMUM_PANEL_WIDTH: u32 = 180;
 
+/// The widest this plugin's panel may take.
+///
+/// The panel sits in the model window's top-left corner and shares it with the model, so
+/// past this it is not a key display beside the cat any more. A chord longer than this wraps
+/// into another row instead, which is why the wrapping exists at all.
+///
+/// The number is the widest cap this plugin can draw — four modifier glyphs plus the longest
+/// name the protocol shortens a key to, at the largest font, in bold — plus the panel's own
+/// padding. Written down because it is a bound the user can feel, and checked by
+/// `layout`'s own test rather than trusted: a cap wider than this is a cap drawn off the
+/// edge of its own panel, which is the one arithmetic error the module exists to prevent.
+pub const MAXIMUM_PANEL_WIDTH: u32 = 406;
+
 /// The tallest this plugin's panel may take.
 ///
-/// The same reason as the width: the panel grows with the font, and the model window has a
-/// height.
+/// The same reason as the width: the panel grows with the font and the number of keys, and
+/// the model window has a height.
 pub const MAXIMUM_PANEL_HEIGHT: u32 = 460;
 
 /// The value the font-weight setting stores for a normal keycap.
@@ -76,6 +88,9 @@ pub const BOLD: &str = "bold";
 ///
 /// Read through the SDK's typed accessors, so a field nobody has touched reads as its own
 /// default and there is no `unwrap_or` written twice.
+///
+/// There is no setting for whether the panel is up when nothing is held: a key display with
+/// nothing on it is a box on the user's desktop saying nothing, so it is not drawn at all.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Preferences {
     /// How many keycaps are shown at once.
@@ -86,8 +101,6 @@ pub struct Preferences {
     pub bold: bool,
     /// Whether the mouse buttons are shown alongside the keys.
     pub include_mouse: bool,
-    /// Whether the panel takes itself down when nothing is held.
-    pub hide_when_idle: bool,
 }
 
 impl Default for Preferences {
@@ -97,7 +110,6 @@ impl Default for Preferences {
             font_size: DEFAULT_FONT_SIZE as f32,
             bold: false,
             include_mouse: true,
-            hide_when_idle: false,
         }
     }
 }
@@ -126,16 +138,14 @@ impl Preferences {
             // written as.
             bold: values.text("font_weight") == BOLD,
             include_mouse: values.flag("include_mouse"),
-            hide_when_idle: values.flag("hide_when_idle"),
         }
     }
 }
 
 /// The settings this plugin declares, which *are* the settings panel.
 ///
-/// Five rows, and the order is the order a person would set this plugin up in: how many
-/// keys, then how big, then how heavy, then what else to show, then whether to be on screen
-/// at all when there is nothing to say.
+/// Four rows, and the order is the order a person would set this plugin up in: how many
+/// keys, then how big, then how heavy, then what else to show.
 pub fn declared_settings() -> Settings {
     Settings::new()
         .with(
@@ -177,11 +187,6 @@ pub fn declared_settings() -> Settings {
         .with(
             Toggle::new("include_mouse", copy::mouse_label())
                 .described(copy::mouse_help())
-                .into(),
-        )
-        .with(
-            Toggle::new("hide_when_idle", copy::hide_when_idle_label())
-                .described(copy::hide_when_idle_help())
                 .into(),
         )
 }

@@ -1046,6 +1046,7 @@ fn speak() {
         icon: Default::default(),
         config: Default::default(),
         draws_panel: true,
+        pinned_panel: None,
         subscriptions: vec![Subscription::HostState],
     };
     send(

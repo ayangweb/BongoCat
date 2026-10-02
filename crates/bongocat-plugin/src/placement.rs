@@ -11,28 +11,34 @@
 //!
 //! * Whether it draws a panel at all, in its descriptor. A sound or a tally has no place in
 //!   the window and is offered no position to move.
-//! * Which corner it would sit in by default, in each panel message. That is a preference
-//!   and not a claim: it is what the plugin uses until somebody places it, and it is what
-//!   the plugin goes back to when every position it liked is taken.
+//! * Which corner it would sit in by default, in each panel message — and whether that
+//!   corner is one the user may change. A preference is what the plugin uses until somebody
+//!   places it, and what it goes back to when every position it liked is taken. A pin is a
+//!   claim that yields to nothing: it is for a panel whose whole value is that it is in the
+//!   same place every time, and the form offers it nothing to move.
 //!
 //! # How a position is chosen
 //!
 //! One function, and every answer comes from it, so a card, a settings form and the layer
 //! on the model window cannot disagree about where a plugin is:
 //!
-//! 1. **The user's choice, if it is free.** A plugin the user placed keeps that place even
+//! 1. **The panel's own pin, if it declared one.** Not a tie-break but a reservation: the
+//!    corner is taken before anything else is considered, which is what stops a second panel
+//!    being offered the place this one cannot be moved out of.
+//! 2. **The user's choice, if it is free.** A plugin the user placed keeps that place even
 //!    if a plugin it preferred comes along later — otherwise a newly enabled plugin would
 //!    silently move a panel somebody had just arranged.
-//! 2. **The plugin's own preference, if it is free.** So a plugin nobody has moved sits
+//! 3. **The plugin's own preference, if it is free.** So a plugin nobody has moved sits
 //!    where its author put it, which is the answer for a fresh install.
-//! 3. **The first free position.** A tie, and the only tie. Two plugins that both default
+//! 4. **The first free position.** A tie, and the only tie. Two plugins that both default
 //!    to the same corner must not overlap, and which of them keeps it is arbitrary — so
 //!    position one keeps it, by id order, and the other moves.
 //!
 //! A hand-edited file, or one a newer version wrote, can name a position this build does not
 //! have or the same position twice; neither is refused, because the allocation above resolves
 //! both without the user losing a panel. A preference is not a reservation, and a duplicate
-//! one is a preference too.
+//! one is a preference too. Two pins for the same corner are resolved the same way: the
+//! first keeps it and the second takes the first free position.
 
 use bongocat_plugin_protocol::{PluginAnchor, PluginId};
 use std::collections::{BTreeMap, BTreeSet};
@@ -54,6 +60,50 @@ pub struct Placed {
     /// Carried so the settings form can say "you moved this" and so a future change can
     /// tell a deliberate arrangement from one that merely happens not to collide.
     pub chosen: bool,
+    /// Whether this plugin's panel is pinned here and the user may not move it.
+    ///
+    /// Carried because "you may not move it" is not the same answer as "here is where it
+    /// is": the form has to draw no menu at all, rather than a menu whose every choice is
+    /// ignored, and the allocator has to reserve the corner before anybody competes for it.
+    pub pinned: bool,
+}
+
+impl Placed {
+    /// A plugin nobody has moved, sitting in the corner its author preferred.
+    const fn preferred(anchor: PluginAnchor) -> Self {
+        Self {
+            anchor,
+            chosen: false,
+            pinned: false,
+        }
+    }
+
+    /// A plugin whose panel is pinned to `anchor`, wherever the user's arrangement says.
+    const fn pinned(anchor: PluginAnchor) -> Self {
+        Self {
+            anchor,
+            chosen: false,
+            pinned: true,
+        }
+    }
+}
+
+/// One plugin's own claim on a position: which corner it prefers, and whether the
+/// user may choose another.
+///
+/// Two facts rather than a bare anchor because they are asked in different places. The
+/// preferred corner is a fallback that loses to a free choice of the user's, and the
+/// pin is a claim that loses to nothing — so the allocator cannot read one of them out
+/// of the other, and a caller cannot pass a pin by accident in the slot that means
+/// "preference".
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Claimed {
+    /// Which plugin this is.
+    pub id: PluginId,
+    /// The corner the plugin would sit in.
+    pub anchor: PluginAnchor,
+    /// Whether the panel is pinned there and the user may not move it.
+    pub pinned: bool,
 }
 
 /// Every plugin's position, and the positions still free.
@@ -71,45 +121,65 @@ pub struct Placements {
 impl Placements {
     /// The positions in `wanted`, allocated without two plugins sharing one.
     ///
-    /// `wanted` is `(plugin id, the corner the plugin would sit in)` for every plugin that
-    /// draws a panel, in id order. `chosen` is the user's own arrangement, keyed the same
-    /// way; an id in it that is not in `wanted` is a plugin that is not drawing anything
-    /// right now, and its position is free for somebody else to take — which is what makes a
-    /// disabled plugin's corner reusable.
-    pub fn allocate(
-        wanted: &[(PluginId, PluginAnchor)],
-        chosen: &BTreeMap<PluginId, PluginAnchor>,
-    ) -> Self {
+    /// `wanted` is every plugin that draws a panel, in id order, each saying which corner
+    /// it prefers and whether that corner is pinned. `chosen` is the user's own
+    /// arrangement, keyed the same way; an id in it that is not in `wanted` is a plugin
+    /// that is not drawing anything right now, and its position is free for somebody else
+    /// to take — which is what makes a disabled plugin's corner reusable.
+    ///
+    /// A pin outranks the user's arrangement, including a preference chosen *before* the
+    /// plugin started pinning. That is not a special case in the middle of the
+    /// allocation: it is the rule "the user chooses among the positions a plugin has not
+    /// claimed", and a plugin that has claimed one leaves none to choose.
+    pub fn allocate(wanted: &[Claimed], chosen: &BTreeMap<PluginId, PluginAnchor>) -> Self {
         let mut taken: BTreeSet<PluginAnchor> = BTreeSet::new();
         let mut placed = BTreeMap::new();
 
-        // First pass: the user's own arrangement, which outranks everything. Skipping a
-        // choice whose position is already taken rather than refusing it is deliberate — the
-        // duplicate is a file to be resolved, not a panel to be refused, and the loser falls
-        // through to its own preference below.
-        for (id, _) in wanted {
-            let Some(preferred) = chosen.get(id) else {
+        // First pass: the pins, which are the only claims that do not yield. A pin is
+        // placed even where an earlier pin already named the same corner — a hand-edited
+        // descriptor must not make the product refuse to start a plugin — and the second
+        // one to arrive falls through to the first free position rather than being
+        // dropped.
+        for claim in wanted.iter().filter(|claim| claim.pinned) {
+            let anchor = if taken.insert(claim.anchor) {
+                claim.anchor
+            } else {
+                POSITIONS
+                    .into_iter()
+                    .find(|anchor| taken.insert(*anchor))
+                    .unwrap_or(claim.anchor)
+            };
+            placed.insert(claim.id.clone(), Placed::pinned(anchor));
+        }
+
+        // Second pass: the user's own arrangement, which outranks everything a plugin
+        // merely prefers. Skipping a choice whose position is already taken rather than
+        // refusing it is deliberate — the duplicate is a file to be resolved, not a panel
+        // to be refused, and the loser falls through to its own preference below.
+        for claim in wanted.iter().filter(|claim| !claim.pinned) {
+            let Some(preferred) = chosen.get(&claim.id) else {
                 continue;
             };
             if taken.insert(*preferred) {
                 placed.insert(
-                    id.clone(),
+                    claim.id.clone(),
                     Placed {
                         anchor: *preferred,
                         chosen: true,
+                        pinned: false,
                     },
                 );
             }
         }
 
-        // Second pass: the plugin's own corner, then the first free one.
-        for (id, preferred) in wanted {
-            if placed.contains_key(id) {
+        // Third pass: the plugin's own corner, then the first free one.
+        for claim in wanted.iter().filter(|claim| !claim.pinned) {
+            if placed.contains_key(&claim.id) {
                 continue;
             }
-            let taken_by_preference = taken.insert(*preferred);
+            let taken_by_preference = taken.insert(claim.anchor);
             let anchor = if taken_by_preference {
-                *preferred
+                claim.anchor
             } else {
                 // Nothing here can fail: nine positions and at most nine plugins, so a
                 // plugin reaching this line has at least one corner nobody has. The
@@ -118,15 +188,9 @@ impl Placements {
                 POSITIONS
                     .into_iter()
                     .find(|anchor| taken.insert(*anchor))
-                    .unwrap_or(*preferred)
+                    .unwrap_or(claim.anchor)
             };
-            placed.insert(
-                id.clone(),
-                Placed {
-                    anchor,
-                    chosen: false,
-                },
-            );
+            placed.insert(claim.id.clone(), Placed::preferred(anchor));
         }
 
         let free = POSITIONS
@@ -147,11 +211,20 @@ impl Placements {
     /// unavailable, because the settings form renders a menu and a menu that offers a
     /// position and then refuses it is a control that lies; a position that is not on the
     /// list is one the user cannot reach, which is the truth.
+    ///
+    /// Empty for a pinned panel, which is the same answer in a stronger form: there is no
+    /// position it can be moved to, so the form draws no row rather than a row whose
+    /// every choice the host then ignores.
     pub fn available_for(&self, id: &PluginId) -> Vec<PluginAnchor> {
-        let own = self.of(id).map(|placed| placed.anchor);
+        let Some(own) = self.of(id) else {
+            return Vec::new();
+        };
+        if own.pinned {
+            return Vec::new();
+        }
         POSITIONS
             .into_iter()
-            .filter(|anchor| Some(*anchor) == own || self.free.contains(anchor))
+            .filter(|anchor| Some(*anchor) == Some(own.anchor) || self.free.contains(anchor))
             .collect()
     }
 
@@ -185,11 +258,28 @@ mod tests {
         PluginId::new(name).expect("a plugin id this test writes")
     }
 
-    fn wanted(entries: &[(&str, PluginAnchor)]) -> Vec<(PluginId, PluginAnchor)> {
+    fn wanted(entries: &[(&str, PluginAnchor)]) -> Vec<Claimed> {
+        movable(entries)
+    }
+
+    /// The same plugins, each declaring that its panel may be moved.
+    fn movable(entries: &[(&str, PluginAnchor)]) -> Vec<Claimed> {
         entries
             .iter()
-            .map(|(name, anchor)| (id(name), *anchor))
+            .map(|(name, anchor)| Claimed {
+                id: id(name),
+                anchor: *anchor,
+                pinned: false,
+            })
             .collect()
+    }
+
+    /// The same plugins with `pinned` naming the ones whose panels may not be moved.
+    fn with_pins(mut claims: Vec<Claimed>, pinned: &[&str]) -> Vec<Claimed> {
+        for claim in &mut claims {
+            claim.pinned = pinned.contains(&claim.id.as_str());
+        }
+        claims
     }
 
     fn chosen(entries: &[(&str, PluginAnchor)]) -> BTreeMap<PluginId, PluginAnchor> {
@@ -211,7 +301,8 @@ mod tests {
             placements.of(&id("pomodoro")),
             Some(Placed {
                 anchor: PluginAnchor::BottomLeft,
-                chosen: false
+                chosen: false,
+                pinned: false,
             })
         );
     }
@@ -265,6 +356,99 @@ mod tests {
         );
         assert!(placements.of(&id("pomodoro")).expect("placed").chosen);
         assert!(!placements.of(&id("typing-sound")).expect("placed").chosen);
+    }
+
+    #[test]
+    fn a_pinned_panel_keeps_its_corner_and_is_offered_no_choice() {
+        // The key display's case: a panel whose whole value is that it is in the same
+        // place every time. It sits where it said, the user is offered nothing to move it
+        // to, and the corner it holds is not free for somebody else.
+        let placements = Placements::allocate(
+            &with_pins(
+                wanted(&[
+                    ("keyboard-display", PluginAnchor::TopLeft),
+                    ("pomodoro", PluginAnchor::BottomLeft),
+                ]),
+                &["keyboard-display"],
+            ),
+            &BTreeMap::new(),
+        );
+        let pinned = placements.of(&id("keyboard-display")).expect("placed");
+        assert_eq!(pinned.anchor, PluginAnchor::TopLeft);
+        assert!(pinned.pinned);
+        assert!(
+            placements.available_for(&id("keyboard-display")).is_empty(),
+            "because a menu of nine corners for a panel the host will not move is a control \
+             whose every choice does nothing"
+        );
+        assert!(
+            !placements.free.contains(&PluginAnchor::TopLeft),
+            "while the corner it holds is reserved, which is what stops a second panel landing \
+             on it"
+        );
+    }
+
+    #[test]
+    fn a_pinned_panel_outranks_a_position_the_user_chose_earlier() {
+        // The user's arrangement outlives a plugin's restart, so a pin has to beat it or
+        // switching a plugin off and on again would move a panel that cannot be moved.
+        let placements = Placements::allocate(
+            &with_pins(
+                wanted(&[("keyboard-display", PluginAnchor::TopLeft)]),
+                &["keyboard-display"],
+            ),
+            &chosen(&[("keyboard-display", PluginAnchor::BottomRight)]),
+        );
+        assert_eq!(
+            placements
+                .of(&id("keyboard-display"))
+                .map(|placed| placed.anchor),
+            Some(PluginAnchor::TopLeft),
+            "so the panel is where it always was, and the stored choice is simply not \
+             consulted"
+        );
+    }
+
+    #[test]
+    fn a_pinned_panel_makes_a_second_panel_look_elsewhere() {
+        // The overlap this whole file exists for, seen from the pin's side: the other
+        // plugin asks for the top left and is moved rather than landing on top of it.
+        let placements = Placements::allocate(
+            &with_pins(
+                wanted(&[
+                    ("keyboard-display", PluginAnchor::TopLeft),
+                    ("pomodoro", PluginAnchor::TopLeft),
+                ]),
+                &["keyboard-display"],
+            ),
+            &BTreeMap::new(),
+        );
+        assert_eq!(
+            placements.of(&id("pomodoro")).map(|placed| placed.anchor),
+            Some(PluginAnchor::TopCenter),
+            "and the first free position is next to it rather than on it"
+        );
+    }
+
+    #[test]
+    fn a_panel_that_may_be_moved_still_offers_its_positions() {
+        // The pin is an exception, and an exception that quietly became the rule would
+        // remove the feature ADR-0083 added.
+        let placements = Placements::allocate(
+            &wanted(&[("pomodoro", PluginAnchor::BottomLeft)]),
+            &BTreeMap::new(),
+        );
+        let offered = placements.available_for(&id("pomodoro"));
+        assert!(
+            offered.contains(&PluginAnchor::BottomLeft),
+            "and its own position is on the list, or a user could not put it back where it \
+             already is"
+        );
+        assert_eq!(
+            offered.len(),
+            POSITIONS.len(),
+            "while all nine are offered, because nothing is holding any of them"
+        );
     }
 
     #[test]
@@ -372,13 +556,17 @@ mod tests {
         // may be placed is the number of positions, and a plugin beyond it is answered from
         // the same list rather than being refused a load. A plugin that cannot be placed
         // anywhere is a plugin the user turns off, not one the product refuses to start.
-        let wanted: Vec<(PluginId, PluginAnchor)> = (0..11)
-            .map(|index| (id(&format!("plugin-{index}")), PluginAnchor::TopLeft))
+        let wanted: Vec<Claimed> = (0..11)
+            .map(|index| Claimed {
+                id: id(&format!("plugin-{index}")),
+                anchor: PluginAnchor::TopLeft,
+                pinned: false,
+            })
             .collect();
         let placements = Placements::allocate(&wanted, &BTreeMap::new());
         let anchors: Vec<PluginAnchor> = wanted
             .iter()
-            .filter_map(|(id, _)| placements.of(id).map(|placed| placed.anchor))
+            .filter_map(|claim| placements.of(&claim.id).map(|placed| placed.anchor))
             .collect();
         assert_eq!(anchors.len(), 11, "and every plugin is placed");
         assert!(

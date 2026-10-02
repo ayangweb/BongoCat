@@ -30,7 +30,8 @@
 
 use bongocat_plugin_protocol::{
     ConfigDocument, Hello, HostMessage, InputEvent, LogLevel, ModelOutcome, PanelUpdate,
-    PluginError, PluginErrorCode, PluginId, PluginMessage, Subscription, write_message,
+    PluginAnchor, PluginError, PluginErrorCode, PluginId, PluginMessage, Subscription,
+    write_message,
 };
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -94,6 +95,8 @@ pub struct SessionFacts {
     pub subscriptions: Vec<Subscription>,
     /// Whether the plugin asked for a position of its own in the model window.
     pub draws_panel: bool,
+    /// The one position that plugin's panel is pinned to, if it named one.
+    pub pinned_panel: Option<PluginAnchor>,
     /// The controls the plugin last asked the host to draw on its card.
     ///
     /// Empty for a plugin that offered none, and for one that has not run yet — the
@@ -452,6 +455,18 @@ impl Session {
             .is_some_and(|descriptor| descriptor.draws_panel)
     }
 
+    /// The one position this plugin's panel may not be moved from, if it named one.
+    ///
+    /// From the descriptor rather than from the panel, because the host reserves the
+    /// corner when the plugin is enabled rather than when it first draws — and a
+    /// reserved corner that another panel took in the meantime is the overlap ADR-0083
+    /// exists to prevent.
+    pub fn pinned_panel(&self) -> Option<PluginAnchor> {
+        self.descriptor
+            .as_ref()
+            .and_then(|descriptor| descriptor.pinned_anchor())
+    }
+
     /// What this session has to say about its plugin.
     pub fn facts(&self) -> SessionFacts {
         SessionFacts {
@@ -465,6 +480,7 @@ impl Session {
                 .descriptor
                 .as_ref()
                 .is_some_and(|descriptor| descriptor.draws_panel),
+            pinned_panel: self.pinned_panel(),
             subscriptions: self
                 .descriptor
                 .as_ref()
@@ -1143,6 +1159,7 @@ mod tests {
             icon: Default::default(),
             config: Default::default(),
             draws_panel: true,
+            pinned_panel: None,
             subscriptions: vec![Subscription::Input],
         }
     }

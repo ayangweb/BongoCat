@@ -111,6 +111,9 @@ pub(super) fn row_labels(entry: &SettingsPluginEntry, language: SettingsLanguage
 ///
 /// Absent for a plugin that draws no panel, which is the whole of how a sound plugin stays
 /// out of this: there is nothing on the model window to move, so there is no row to offer.
+/// Absent for a panel the plugin has *pinned*, which is the same answer for the opposite
+/// reason: there is a panel, and it goes where its author said, so there is no row either.
+///
 /// The menu carries only the positions that are free, because a menu that offered a corner
 /// and then refused it would be a control that lies.
 fn position_row(
