@@ -47,6 +47,21 @@ pub struct ModelConfig {
     pub ignore_keyboard: bool,
     /// Whether gamepad input is excluded from the model's input projection.
     pub ignore_gamepad: bool,
+    /// Whether every held key with artwork draws its own key image instead of
+    /// one image per hand.
+    ///
+    /// Off, the hand that a model binds several keys to draws only the most
+    /// recently pressed of them, so a chord collapses into a single picture.
+    /// On, each held key keeps its own picture and they are stacked in press
+    /// order, newest on top, which is what makes a fast chord legible instead
+    /// of indistinguishable from a single tap. The paw parameters are unchanged
+    /// either way: a hand is down while any key bound to it is held.
+    ///
+    /// Defaults to `false`, and the field carries `#[serde(default)]` so a
+    /// configuration written before it existed still loads as the compatibility
+    /// mode rather than failing the strict v1 parse.
+    #[serde(default)]
+    pub show_all_pressed_keys: bool,
     pub ignore_pointer: bool,
     pub random_behavior: RandomBehaviorConfig,
     /// Switching the selected model when gamepads connect or disconnect.

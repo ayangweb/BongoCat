@@ -81,6 +81,7 @@ pub(crate) const fn model_settings_from_config(config: &NativeConfig) -> ModelSe
         mirror_pointer_tracking_vertical: config.model.mirror_pointer_tracking_vertical,
         ignore_keyboard: config.model.ignore_keyboard,
         ignore_gamepad: config.model.ignore_gamepad,
+        show_all_pressed_keys: config.model.show_all_pressed_keys,
         ignore_pointer: config.model.ignore_pointer,
     }
 }

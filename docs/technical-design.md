@@ -749,6 +749,21 @@ CGEvent keycode `63`（`kVK_Function`）以 `FlagsChanged` + `MaskSecondaryFn` �
 `lefthand`/`righthand` 落盘的结果直接可用。缺图的按钮保持惰性（ADR-0042）；两个摇杆键另外驱动
 `StickLeftDown`/`StickRightDown`，与爪部状态互相独立。
 
+**按键层画几张图是显示选择，不是输入状态**（见 ADR-0079）。`RenderSnapshot::active_keys` 是一个有序
+列表，双平台渲染器都按这个顺序绘制且都没有深度附件或深度模板，因此**列表里最后一项就是最上层**；
+z 序完全由列表顺序决定，渲染器没有额外状态。`model.show_all_pressed_keys` 决定这份列表的内容：
+
+- 关闭（默认，兼容模式）：`InputState::model_snapshot_with_filter` 对每只手只保留一个"最后按下且仍
+  有效"的按键，左右手各至多一个，按左手先、右手后写入列表。
+- 打开（叠放模式）：每一个仍按住、且模型为它提供了键位图的键都进列表，按
+  `PressedRecord::pressed_at` 与可靠输入队列的 `pressed_sequence` 从旧到新排序。单调时钟是毫秒精度，
+  快速连击会落在同一毫秒内，只有 sequence 能给出全序。
+
+两种模式都不改变 pressed state、释放路径和 `CatParamLeftHandDown`/`CatParamRightHandDown`：只要有任意
+一个绑定到该手的键仍按住，该手就是按下的。`resolve_key_overlays` 只做"按键 → 资产"的解析，不再按手
+折叠；两个按住的键解析到同一张图时（`Fn` 家族回退、小键盘复用主键区图）只画一次，先按下的那个占住
+底层。列表容量固定为 `KeyPressSet::CAPACITY`，溢出时丢最早按下的那几个。
+
 
 ### 11.1 Cubism 边界
 

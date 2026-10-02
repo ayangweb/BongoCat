@@ -193,6 +193,37 @@ fn a_configuration_written_before_arabic_existed_still_loads() {
     }
 }
 
+/// A document written before the key layer could stack must still load, as the
+/// compatibility mode.
+///
+/// `show_all_pressed_keys` is the one field in `ModelConfig` that carries
+/// `#[serde(default)]`, and the reason is this test: the strict v1 entry point
+/// rejects anything it cannot read, so a field an older build never wrote would
+/// otherwise send every existing `config.json` down the backup-then-default
+/// recovery path and reset the user's settings. The document is edited by
+/// removing the key from the *serialized* current default, which is the shape
+/// the old bytes had.
+#[test]
+fn a_configuration_written_before_the_key_layer_could_stack_still_loads() {
+    let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    let model = document["model"]
+        .as_object_mut()
+        .expect("model object")
+        .remove("show_all_pressed_keys");
+    assert!(
+        model.is_some(),
+        "the current default still writes the field"
+    );
+    let written = serde_json::to_string(&document).expect("serialize document");
+    let loaded: NativeConfig = serde_json::from_str(&written).expect("read old document");
+    assert!(
+        !loaded.model.show_all_pressed_keys,
+        "a document with no field loads as one image per hand, not as a new opt-in"
+    );
+    loaded.validate().expect("an old document still validates");
+    assert!(parse_config(written.as_bytes()).is_ok());
+}
+
 #[test]
 fn unknown_and_legacy_fields_are_rejected() {
     let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize default");

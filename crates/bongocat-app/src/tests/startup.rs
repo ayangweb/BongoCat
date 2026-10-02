@@ -239,6 +239,7 @@ fn application_projects_model_interaction_settings_at_startup() {
     config.model.mirror_pointer_tracking_vertical = true;
     config.model.ignore_keyboard = true;
     config.model.ignore_gamepad = true;
+    config.model.show_all_pressed_keys = true;
     config.model.ignore_pointer = true;
     config.model.random_behavior.mode = RandomBehaviorMode::MotionsAndExpressions;
     config.model.random_behavior.interval_seconds = 17;
@@ -254,6 +255,7 @@ fn application_projects_model_interaction_settings_at_startup() {
             mirror_pointer_tracking_vertical: true,
             ignore_keyboard: true,
             ignore_gamepad: true,
+            show_all_pressed_keys: true,
             ignore_pointer: true,
         }
     );

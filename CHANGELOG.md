@@ -4,6 +4,7 @@
 
 ### ✨ Features
 
+- Several keys held at the same time now each show their own key image, stacked with the most recently pressed key on top, so a fast chord is no longer indistinguishable from a single tap. Turn it on with "Show every held key" under Settings → Input & interaction → Keyboard; it applies to gamepad buttons as well as keyboard keys, and is off by default. The paw reaction is unchanged: a hand is still down while any key bound to it is held.
 - On macOS, the Input Monitoring prompt now opens a guided panel: it takes you to the right System Settings page and shows how to drag BongoCat into the authorization list. The prompt clears BongoCat's Input Monitoring permission first, so the authorization always starts from scratch, and it no longer carries the paragraph that told you to remove and re-add the entry by hand.
 
 ### 🐛 Bug Fixes

@@ -417,6 +417,9 @@
         "title": "Teclado",
         "ignore_keyboard_input": {
           "label": "Ignorar a entrada do teclado"
+        },
+        "show_all_pressed_keys": {
+          "label": "Mostrar todas as teclas pressionadas"
         }
       },
       "gamepad": {

@@ -599,3 +599,138 @@ fn function_key_presses_reach_the_model_snapshot_with_the_left_hand() {
     }
     application.shutdown().expect("clean shutdown");
 }
+
+/// A chord reaches the overlay as one picture per key, stacked in press order.
+///
+/// This is the whole of issue #965 end to end: two keys held at once used to
+/// produce the single picture their hand last saw, so a viewer could not tell a
+/// fast roll from one tap. The order matters as much as the count — the native
+/// renderers draw `active_keys` in sequence with no depth buffer, so the last
+/// entry is the one on top.
+#[test]
+fn a_chord_draws_one_overlay_per_key_with_the_newest_on_top() {
+    const KEY_A: u16 = 0x04;
+    const KEY_D: u16 = 0x07;
+    let base = tempdir().expect("temp directory");
+    let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+    let mut application = Application::start_with_layout_internal(
+        layout,
+        repository_preset_root().as_path(),
+        true,
+        Language::English,
+    )
+    .expect("start rendering application");
+    let token = application
+        .prepare_model(ModelOrigin::Preset, "keyboard")
+        .expect("prepare keyboard model");
+    let consumer = application
+        .take_render_consumer()
+        .expect("take render consumer");
+    let frame = wait_for_model_commit_frame(&consumer, token);
+    consumer
+        .report_model_commit(ModelCommitFeedback {
+            token: frame.model_commit.expect("commit token"),
+            outcome: ModelCommitOutcome::Prepared,
+        })
+        .expect("commit keyboard model");
+    application
+        .runtime_client()
+        .wait_for_command(token.command_sequence, RUNTIME_TIMEOUT)
+        .expect("keyboard model activation");
+
+    // The keyboard model stays active for the whole test, so one snapshot of its
+    // resources names every overlay the renderer draws. Naming them is what
+    // makes each wait below specific to the state it is waiting for: a plain
+    // "one overlay" predicate would be satisfied by the frame left over from the
+    // first key of the chord.
+    let resources = Arc::clone(&frame.resources);
+    let overlay_names = |snapshot: &bongocat_render::RenderSnapshot| {
+        snapshot
+            .active_keys
+            .iter()
+            .map(|overlay| resources.key_assets[overlay.asset_id.index()].name.clone())
+            .collect::<Vec<_>>()
+    };
+    let input = application.input_producer();
+    let press = |application: &Application, hid_usage: u16| {
+        let published = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::from_hid_usage(hid_usage)),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                // Both keys land in the same millisecond, which is what a fast
+                // roll looks like to a clock with millisecond resolution. The
+                // queue's sequence number is the only thing that orders them.
+                at: MonotonicMillis::new(1),
+            })
+            .expect("key press");
+        application
+            .runtime_client()
+            .wait_for_input_sequence(published, RUNTIME_TIMEOUT)
+            .expect("key projection")
+            .model_input
+    };
+    let expect_names = |names: &[&str]| {
+        let expected = names
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect::<Vec<_>>();
+        move |snapshot: &bongocat_render::RenderSnapshot| overlay_names(snapshot) == expected
+    };
+
+    // The default is the compatibility mode: a chord collapses to one picture,
+    // and it is the key pressed last, not the one with the largest usage.
+    press(&application, KEY_A);
+    let chord = press(&application, KEY_D);
+    assert!(chord.left_hand_down);
+    assert_eq!(
+        chord
+            .key_presses
+            .iter()
+            .map(|press| press.key)
+            .collect::<Vec<_>>(),
+        vec![KeyIdentity::Keyboard(KEY_D)],
+        "one press per hand, and the newest of the tie wins"
+    );
+    let collapsed = wait_for_render_frame(&consumer, expect_names(&["KeyD"]));
+    assert_eq!(overlay_names(&collapsed.snapshot), vec!["KeyD".to_owned()]);
+
+    let mut settings = model_settings_from_config(application.config());
+    settings.show_all_pressed_keys = true;
+    application
+        .set_model_settings(settings)
+        .expect("stack every pressed key");
+
+    let stacked = wait_for_render_frame(&consumer, expect_names(&["KeyA", "KeyD"]));
+    assert_eq!(
+        overlay_names(&stacked.snapshot),
+        vec!["KeyA".to_owned(), "KeyD".to_owned()],
+        "the chord is legible, and the key pressed last is the one drawn on top"
+    );
+    assert!(
+        application.config().model.show_all_pressed_keys,
+        "the choice is persisted, not only applied to the live runtime"
+    );
+
+    // Lifting the newer key must uncover the older one rather than blanking the
+    // layer or promoting a key the user is not holding.
+    let released = input
+        .publish(InputEvent::Edge {
+            control: InputControl::Key(PhysicalKey::from_hid_usage(KEY_D)),
+            edge: InputEdge::Up,
+            source: InputSource::Capture,
+            at: MonotonicMillis::new(2),
+        })
+        .expect("key release");
+    application
+        .runtime_client()
+        .wait_for_input_sequence(released, RUNTIME_TIMEOUT)
+        .expect("release projection");
+    let after_release = wait_for_render_frame(&consumer, expect_names(&["KeyA"]));
+    assert_eq!(
+        overlay_names(&after_release.snapshot),
+        vec!["KeyA".to_owned()]
+    );
+
+    application.shutdown().expect("clean shutdown");
+}

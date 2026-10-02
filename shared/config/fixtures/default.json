@@ -32,6 +32,7 @@
     "play_motion_audio": false,
     "ignore_keyboard": false,
     "ignore_gamepad": false,
+    "show_all_pressed_keys": false,
     "ignore_pointer": false,
     "selected_model": null,
     "imported_models": [],
