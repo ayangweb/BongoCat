@@ -117,10 +117,27 @@ impl Bubble {
     }
 }
 
+/// One bubble, rasterized and waiting to be published.
+///
+/// The pixels live beside the text rather than beside the worker that draws them, because
+/// the text is what the plugin asked for and the pixels are what the model window needs,
+/// and only one of the two changes when the other does.
+#[derive(Clone, Debug)]
+struct Showing {
+    bubble: Bubble,
+    rendered: bongocat_plugin_render::RenderedPanel,
+    /// The layer texture this bubble is published as, built once with its panel.
+    ///
+    /// The same reasoning as a session's own raster: publishing builds the handle rather
+    /// than the pixels, so a bubble that is up for two and a half seconds is rasterized
+    /// once and shared from then on.
+    raster: bongocat_render::OverlayLayerRaster,
+}
+
 /// The bubbles the worker is showing, at most one per layer.
 #[derive(Debug, Default)]
 pub struct BubbleSet {
-    bubbles: Vec<(u64, Bubble)>,
+    bubbles: Vec<(u64, Showing)>,
 }
 
 impl BubbleSet {
@@ -143,16 +160,73 @@ impl BubbleSet {
     }
 
     /// Show a bubble, or replace the one already on `layer`.
-    pub fn show(&mut self, layer: u64, bubble: Bubble) {
+    ///
+    /// `rendered` is the bubble as the host draws it, rasterized by the caller — see
+    /// [`crate::worker::Worker::show_bubble`] for why the two are built together rather
+    /// than here.
+    pub fn show(
+        &mut self,
+        layer: u64,
+        bubble: Bubble,
+        rendered: bongocat_plugin_render::RenderedPanel,
+    ) {
+        let showing = Showing {
+            bubble,
+            raster: rendered.to_raster(),
+            rendered,
+        };
         match self.bubbles.iter_mut().find(|(id, _)| *id == layer) {
-            Some(entry) => entry.1 = bubble,
-            None => self.bubbles.push((layer, bubble)),
+            Some(entry) => entry.1 = showing,
+            None => self.bubbles.push((layer, showing)),
         }
+    }
+
+    /// The rasterized bubble on a layer, if one is up.
+    pub fn rendered(&self, layer: u64) -> Option<&bongocat_plugin_render::RenderedPanel> {
+        self.bubbles
+            .iter()
+            .find(|(id, _)| *id == layer)
+            .map(|(_, showing)| &showing.rendered)
+    }
+
+    /// The layer texture the bubble on `layer` is published as.
+    pub fn raster(&self, layer: u64) -> Option<&bongocat_render::OverlayLayerRaster> {
+        self.bubbles
+            .iter()
+            .find(|(id, _)| *id == layer)
+            .map(|(_, showing)| &showing.raster)
+    }
+
+    /// The whole layer a bubble is published as, or [`None`] when that layer has none.
+    ///
+    /// One call rather than a raster lookup and a placement lookup, because the two are
+    /// only ever needed together and a caller that asked for them separately could take the
+    /// raster of one bubble and the placement of another.
+    pub fn published(&self, layer: u64) -> Option<bongocat_render::OverlayLayer> {
+        self.bubbles
+            .iter()
+            .find(|(id, _)| *id == layer)
+            .map(|(_, showing)| bongocat_render::OverlayLayer {
+                id: layer,
+                placement: showing.rendered.to_placement(),
+                raster: showing.raster.clone(),
+            })
     }
 
     /// Take down the bubble on `layer`.
     pub fn hide(&mut self, layer: u64) {
         self.bubbles.retain(|(id, _)| *id != layer);
+    }
+
+    /// Take down the bubble on `layer` and say whether there was one.
+    ///
+    /// For a plugin that is being stopped rather than a plugin asking to be quiet: the
+    /// layer is about to belong to a process that no longer exists, so a bubble left on it
+    /// would be a layer with no owner and nothing that could ever take it down.
+    pub fn take_layer(&mut self, layer: u64) -> bool {
+        let before = self.bubbles.len();
+        self.hide(layer);
+        self.bubbles.len() != before
     }
 
     /// Take down every bubble.
@@ -167,8 +241,8 @@ impl BubbleSet {
     /// bubble that expired is not still on screen for the interval between checks.
     pub fn take_expired(&mut self, now: std::time::Instant) -> Vec<u64> {
         let mut expired = Vec::new();
-        self.bubbles.retain(|(layer, bubble)| {
-            if bubble.has_expired(now) {
+        self.bubbles.retain(|(layer, showing)| {
+            if showing.bubble.has_expired(now) {
                 expired.push(*layer);
                 false
             } else {
@@ -317,26 +391,65 @@ mod tests {
         assert_eq!(bubble_from(&motion, "en-US", now), None);
     }
 
+    /// A rasterized panel of the bubble's own size, standing in for the one the worker
+    /// builds with the font book and the scene renderer.
+    ///
+    /// Rendered rather than faked, because what is checked here is that a bubble is held
+    /// *as pixels*. The failure this file's sibling in the worker exists for was a bubble
+    /// counted, answered and never drawn, and a test that passed a text document in place
+    /// of the raster could not have seen it.
+    fn raster(text: &str) -> bongocat_plugin_render::RenderedPanel {
+        let now = std::time::Instant::now();
+        let update = bubble(text, 1500, now).to_panel();
+        bongocat_plugin_render::render_update(
+            &update,
+            1.0,
+            &mut bongocat_plugin_render::TextMeasurer::new(
+                bongocat_plugin_render::FontBook::load_from(&[], &[]),
+            ),
+            &bongocat_plugin_render::ImageLibrary::new(),
+        )
+        .expect("a bubble is a panel the host already draws")
+    }
+
+    #[test]
+    fn a_bubble_is_held_as_pixels_so_the_worker_has_something_to_publish() {
+        let now = std::time::Instant::now();
+        let mut bubbles = BubbleSet::new();
+        bubbles.show(1, bubble("done", 1500, now), raster("done"));
+        let shown = bubbles.rendered(1).expect("a published raster");
+        assert_eq!(
+            (shown.width, shown.height),
+            (BUBBLE_WIDTH, BUBBLE_HEIGHT),
+            "and it is the bubble's own box rather than something else on the same layer"
+        );
+    }
+
     #[test]
     fn two_bubbles_on_two_layers_do_not_replace_each_other() {
         // Each plugin gets its own layer, so one plugin's announcement cannot silence
         // another's.
         let now = std::time::Instant::now();
         let mut bubbles = BubbleSet::new();
-        bubbles.show(1, bubble("first", 1500, now));
-        bubbles.show(2, bubble("second", 1500, now));
+        bubbles.show(1, bubble("first", 1500, now), raster("first"));
+        bubbles.show(2, bubble("second", 1500, now), raster("second"));
         assert_eq!(bubbles.len(), 2);
         assert_eq!(bubbles.layer_ids(), vec![1, 2]);
+        assert!(
+            bubbles.rendered(2).is_some(),
+            "and the second is still its own raster rather than the first one's"
+        );
     }
 
     #[test]
     fn a_second_bubble_on_the_same_layer_replaces_the_first() {
         let now = std::time::Instant::now();
         let mut bubbles = BubbleSet::new();
-        bubbles.show(1, bubble("first", 1500, now));
+        bubbles.show(1, bubble("first", 1500, now), raster("first"));
         bubbles.show(
             1,
             bubble("second", 3000, now + std::time::Duration::from_millis(100)),
+            raster("second"),
         );
         assert_eq!(bubbles.len(), 1, "one layer, one bubble");
         let mut expired = bubbles.take_expired(now + std::time::Duration::from_millis(200));
@@ -353,7 +466,7 @@ mod tests {
     fn an_expired_bubble_is_withdrawn_rather_than_left_on_screen_for_another_check() {
         let now = std::time::Instant::now();
         let mut bubbles = BubbleSet::new();
-        bubbles.show(1, bubble("gone", 1000, now));
+        bubbles.show(1, bubble("gone", 1000, now), raster("gone"));
         assert!(
             bubbles
                 .take_expired(now + std::time::Duration::from_millis(999))
@@ -375,10 +488,14 @@ mod tests {
     fn a_hide_takes_down_only_that_layers_bubble() {
         let now = std::time::Instant::now();
         let mut bubbles = BubbleSet::new();
-        bubbles.show(1, bubble("first", 1500, now));
-        bubbles.show(2, bubble("second", 1500, now));
+        bubbles.show(1, bubble("first", 1500, now), raster("first"));
+        bubbles.show(2, bubble("second", 1500, now), raster("second"));
         bubbles.hide(1);
         assert_eq!(bubbles.layer_ids(), vec![2]);
+        assert!(
+            bubbles.rendered(1).is_none(),
+            "and the withdrawn one has no raster left to be published by accident"
+        );
         bubbles.clear();
         assert!(bubbles.is_empty());
     }

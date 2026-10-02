@@ -260,10 +260,18 @@ pub enum SettingsCommand {
     /// file atomically and a patch would have to be merged by a side that does not own
     /// the file. The host checks each value against the field the plugin declared and
     /// sends the document on; the plugin decides what it means and persists it.
+    ///
+    /// **The reply carries no snapshot**, which is the whole difference from its
+    /// neighbours. This command changes no configuration of the product's own — the file
+    /// belongs to the plugin — and the page's answer is whatever the plugin next says. So
+    /// answering it with a snapshot meant building one, and building a snapshot walks the
+    /// model store on disk: a keystroke in a plugin's settings form cost a scan of the
+    /// user's models, for a document the window then threw away because the draft it
+    /// already holds is what the form draws from.
     SetPluginConfig {
         plugin: String,
         config: BTreeMap<String, SettingsFieldValue>,
-        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+        reply: SettingsReply<Result<(), SettingsError>>,
     },
     /// Move one plugin's panel to another place in the model window.
     ///
@@ -272,18 +280,22 @@ pub enum SettingsCommand {
     /// configuration and never sent to the plugin, which does not even know it moved. One
     /// command per position rather than a document, so a second position the same plugin
     /// does not hold is refused at the press rather than written and quietly ignored.
+    ///
+    /// No snapshot in the reply, for the same reason [`Self::SetPluginConfig`] has none:
+    /// the position the plugin *actually* got is not always the one that was asked for, and
+    /// it is on the snapshot the page already polls for.
     SetPluginPosition {
         plugin: String,
         /// The position's name in the plugin protocol's spelling. Absent would mean "no
         /// position", so an empty string is not one: the window sends [`None`] instead, to
         /// put the panel back in its plugin's own corner.
         position: String,
-        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+        reply: SettingsReply<Result<(), SettingsError>>,
     },
     /// Put one plugin's panel back in its own corner, forgetting where the user moved it.
     ClearPluginPosition {
         plugin: String,
-        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+        reply: SettingsReply<Result<(), SettingsError>>,
     },
     /// Press one of the controls a plugin offered for the host to draw.
     ///

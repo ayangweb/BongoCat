@@ -191,6 +191,9 @@ impl SettingsView {
     /// exists — opening a form now would open an empty one.
     pub(super) fn toggle_plugin_settings(&mut self, plugin: String, cx: &mut Context<Self>) {
         if self.plugin_settings_are_open(&plugin) {
+            // Flushed before the draft goes, because the draft is where the send reads its
+            // values from. Collapsing the form is not discarding what the user typed into it.
+            self.send_pending_plugin_settings(cx);
             self.plugin_settings = None;
             cx.notify();
             return;
@@ -413,10 +416,86 @@ impl SettingsView {
         draft.values.insert(key.to_string(), value);
         let plugin = draft.plugin.clone();
         let values = draft.values.clone();
+        // The first change of a burst goes out at once and the rest wait, which is the
+        // window's rule for every bounded setting and is the right one here too: a switch
+        // the user taps once should take effect when they tap it, and a number they are
+        // still dragging should not write the plugin's file once per step.
+        match self
+            .plugin_settings_debouncer
+            .observe(values, Instant::now())
+        {
+            Some(sending) => {
+                self.plugin_settings_pending_send = None;
+                self.send_plugin_config(&plugin, sending, cx);
+            }
+            None => {
+                self.plugin_settings_pending_send = Some(plugin);
+                self.schedule_plugin_settings_send(cx);
+            }
+        }
+    }
+
+    /// Send one plugin's settings once the user has stopped changing them.
+    ///
+    /// The whole document goes out rather than the one field that moved, because the file
+    /// belongs to the plugin and the plugin writes it whole — so a number being dragged or a
+    /// text field being typed into is one document per step, each of them crossing a process
+    /// boundary and each of them making the plugin write its own file.
+    ///
+    /// The generation is bumped **only when a timer is started**. Bumping it on every change
+    /// would leave the timer that is already running stale the moment a second change
+    /// arrived: it would find a generation that was not its own, decline to send, and
+    /// nothing would replace it. That is the whole of a coalescer that coalesces the sends
+    /// and then loses the last one.
+    pub(super) fn schedule_plugin_settings_send(&mut self, cx: &mut Context<Self>) {
+        self.plugin_settings_send_generation =
+            self.plugin_settings_send_generation.saturating_add(1);
+        let generation = self.plugin_settings_send_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.plugin_settings_send_generation != generation {
+                    return;
+                }
+                view.send_pending_plugin_settings(cx);
+            });
+        })
+        .detach();
+    }
+
+    /// Send whatever the coalescer is holding, if it is still holding it.
+    ///
+    /// Separate from [`Self::schedule_plugin_settings_send`] so that closing the window can
+    /// flush the same way it does for every other setting: a value the user typed and then
+    /// closed the window over must still reach the plugin, and "the timer had not fired yet"
+    /// is not a reason to lose it.
+    pub(super) fn send_pending_plugin_settings(&mut self, cx: &mut Context<Self>) {
+        let Some(values) = self.plugin_settings_debouncer.flush(Instant::now()) else {
+            return;
+        };
+        let Some(plugin) = self.plugin_settings_pending_send.take() else {
+            return;
+        };
         self.send_plugin_config(&plugin, values, cx);
     }
 
     /// Hand the plugin its whole settings document.
+    ///
+    /// The reply is ignored on purpose — and now it is *only* whether the command was
+    /// accepted, because the service does not build a settings snapshot to answer it: the
+    /// plugin writes its own file, the form is drawing the draft this view already holds,
+    /// and what the card says about this plugin next is on the snapshot the window's own
+    /// revision poll fetches. So a value that changed costs one command rather than one
+    /// command and a walk of the model store.
+    ///
+    /// Not gated on the page's pending operation, unlike an install or a press. Two reasons
+    /// and they are the reason this is a fire-and-forget at all: a settings change is a
+    /// change to the *user's* document rather than to the product's, so the next one is not
+    /// stale the way a second press after an install is; and each send carries the whole
+    /// document, so a send that arrives after a newer one is harmless rather than a revision
+    /// to be resolved. The one thing that is gated is *how often* it is sent — see
+    /// [`Self::schedule_plugin_settings_send`].
     fn send_plugin_config(
         &mut self,
         plugin: &str,
@@ -425,12 +504,8 @@ impl SettingsView {
     ) {
         let plugin = plugin.to_string();
         let client = self.client.clone();
-        cx.spawn(async move |_this, cx| {
-            // The reply is deliberately ignored: the plugin writes its own file and
-            // the next snapshot is what shows the new value, so a dialog that closes
-            // on the user's next click does not need to wait for a round trip.
+        cx.spawn(async move |_this, _cx| {
             let _ = client.set_plugin_config(plugin, values).await;
-            let _ = cx;
         })
         .detach();
     }
@@ -451,9 +526,8 @@ impl SettingsView {
         let plugin = plugin.to_string();
         let position = position.to_string();
         let client = self.client.clone();
-        cx.spawn(async move |_this, cx| {
+        cx.spawn(async move |_this, _cx| {
             let _ = client.set_plugin_position(plugin, position).await;
-            let _ = cx;
         })
         .detach();
     }

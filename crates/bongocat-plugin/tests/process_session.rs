@@ -263,6 +263,7 @@ impl Probe {
             "2.0.1".to_string(),
             "en-US".to_string(),
             7,
+            a_wake(),
         )
         .expect("the executable this file put there is one the host can start");
         self.session = Some(session);
@@ -955,6 +956,16 @@ fn mode(_path: &Path) -> Option<u32> {
     None
 }
 
+/// A wake-up handle over an inbox nobody is waiting on.
+///
+/// These cases drive a session directly rather than through a worker, so the reader
+/// thread's wake-up has no worker to reach. Dropping it would be fine and would be tested
+/// by nothing: the point is that a session can be handed one and started, which is the
+/// same call the worker makes.
+fn a_wake() -> bongocat_plugin::Wake {
+    bongocat_plugin::Wake::new(std::sync::Arc::new(bongocat_plugin::Inbox::new()))
+}
+
 fn a_missing_executable_is_a_refusal() {
     // The same failure an author would hit, and a refusal rather than a hang because it
     // happens before any process is started.
@@ -974,6 +985,7 @@ fn a_missing_executable_is_a_refusal() {
         "2.0.1".to_string(),
         "en-US".to_string(),
         1,
+        a_wake(),
     )
     .err()
     .expect("there is nothing to run");

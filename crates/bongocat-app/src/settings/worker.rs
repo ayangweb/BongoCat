@@ -626,9 +626,14 @@ pub(super) fn run_service(
                 // host checks each value against the field the plugin declared and the
                 // plugin decides what it means — so nothing here interprets a value,
                 // and `config.json` has no plugin section to drift out of step.
+                //
+                // No snapshot is built, and that is the point of this command not having
+                // one: the page is drawing the draft it already holds, and the answer it
+                // will show next comes from the plugin's own reply through the revision
+                // poll. Building one would have walked the model store on disk for every
+                // keystroke in a plugin's settings form.
                 let result =
-                    with_plugin_id(&clock, &plugin, |id| send_plugin_config(&clock, id, config))
-                        .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                    with_plugin_id(&clock, &plugin, |id| send_plugin_config(&clock, id, config));
                 let _ = reply.respond(result);
             }
             SettingsCommand::SetPluginPosition {
@@ -640,13 +645,17 @@ pub(super) fn run_service(
                 // switch does it in this order: a position the user chose and the window
                 // forgets is one they chose twice, while a panel that moved and the file did
                 // not is one that moves back on the next launch.
+                //
+                // The window is told only whether the move was made. The position the
+                // plugin actually got is on the snapshot it polls for, which is also the
+                // only place it could be drawn from — a press and a whole model-store scan
+                // to learn something the next poll carries anyway.
                 let result = with_plugin_id(&clock, &plugin, |id| {
                     application
                         .set_plugin_position(id.as_str(), Some(&position))
                         .map_err(map_plugin_error)?;
                     send_plugin_position(&clock, id, &position)
-                })
-                .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                });
                 let _ = reply.respond(result);
             }
             SettingsCommand::ClearPluginPosition { plugin, reply } => {
@@ -659,8 +668,7 @@ pub(super) fn run_service(
                     // with the position it actually got — which is the plugin's own corner
                     // again the moment the preference is gone.
                     Ok(())
-                })
-                .map(|()| snapshot(&application, &mut clock, false, startup_item.state()));
+                });
                 let _ = reply.respond(result);
             }
             SettingsCommand::PressPluginAction {
@@ -942,6 +950,11 @@ fn send_plugin_locale(clock: &SettingsSnapshotClock, language: &SettingsLanguage
 /// out, so the host's check is made against the same field the window drew rather than
 /// against the archive's metadata — and a plugin that improved its settings in a later
 /// version is configured against the version that is actually running.
+///
+/// The schema is read through [`PluginWorkerReader::schema_of`] rather than by taking a
+/// snapshot. This runs once per keystroke in a plugin's settings form, and a snapshot is
+/// every plugin's manifest, descriptor, configuration document and log line: the cost of
+/// checking one number's range was the cost of copying the whole plugin center.
 pub(super) fn send_plugin_config(
     clock: &SettingsSnapshotClock,
     id: PluginId,
@@ -950,20 +963,16 @@ pub(super) fn send_plugin_config(
     let reader = clock
         .plugin_reader()
         .ok_or_else(|| SettingsError::new(SettingsErrorCode::PluginHostUnavailable))?;
-    let snapshot = reader.snapshot();
-    let entry = snapshot
-        .entry(&id)
-        .ok_or_else(|| SettingsError::new(SettingsErrorCode::PluginNotFound))?;
-    let descriptor = entry.descriptor.as_ref().ok_or_else(|| {
+    let schema = reader.schema_of(&id).ok_or_else(|| {
         // A plugin that is listed but has no running process has not declared a
         // schema this host could draw — its archive's `plugin.json` carries metadata
         // only, because a *running* plugin is what sends its settings. So the command
         // refuses rather than guessing a form from the archive.
         SettingsError::new(SettingsErrorCode::PluginNotFound)
     })?;
-    let mut document = descriptor.config.defaults();
+    let mut document = schema.defaults();
     for (key, value) in values {
-        let Some(field) = descriptor.config.field(&key) else {
+        let Some(field) = schema.field(&key) else {
             // A key the running plugin does not declare is dropped rather than
             // refused: it is a field a newer version of that same plugin wrote, and
             // the plugin is the only side that can decide what to do about it.
@@ -999,11 +1008,7 @@ pub(super) fn press_plugin_action(
     let reader = clock
         .plugin_reader()
         .ok_or_else(|| SettingsError::new(SettingsErrorCode::PluginHostUnavailable))?;
-    if !reader
-        .snapshot()
-        .entry(&id)
-        .is_some_and(|entry| entry.actions.iter().any(|offered| offered.id == action))
-    {
+    if !reader.offers_action(&id, action) {
         return Err(SettingsError::new(SettingsErrorCode::PluginNotFound));
     }
     send_plugin_command(

@@ -46,6 +46,7 @@ mod model_request;
 mod placement;
 mod plugin_log;
 mod session;
+mod signal;
 mod sound;
 mod store;
 
@@ -67,7 +68,7 @@ pub use bongocat_plugin_protocol::{
     PluginAction, PluginAnchor, PluginDescriptor, PluginError, PluginErrorCode, PluginIcon,
     PluginId, PluginManifest, PluginVersion, SUPPORTED_PLUGIN_API_VERSION, Subscription,
 };
-pub use bubble::{Bubble, BubbleSet};
+pub use bubble::{BUBBLE_HEIGHT, BUBBLE_WIDTH, Bubble, BubbleSet};
 pub use catalog::{
     CATALOG_REQUEST_TIMEOUT, CatalogSource, LOCAL_BUILD_DIRECTORY, LoadedCatalog,
     MAXIMUM_ARCHIVE_BYTES, MAXIMUM_CATALOG_BYTES, agent, catalog_sources, catalog_url,
@@ -84,6 +85,7 @@ pub use session::{
     HANDSHAKE_TIMEOUT, Incoming, MAXIMUM_RESTARTS, Session, SessionDiagnostics, SessionFacts,
     SessionOutcome, SessionState, restart_is_allowed,
 };
+pub use signal::{Arrival, Inbox, Wake};
 pub use sound::{MAXIMUM_SOUND_BYTES, Refusal, SoundOutcome};
 pub use store::{
     CURRENT_VERSION_FILE, MAXIMUM_RETAINED_VERSIONS, PluginStore, digest_hex, digest_matches,

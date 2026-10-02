@@ -102,34 +102,19 @@ impl ModelRequestRouter {
     /// plugin and a stale table would answer "no such motion" for a model that has
     /// one.
     pub fn motions(&self) -> Vec<(MotionId, String)> {
-        self.behaviors()
-            .into_iter()
-            .filter_map(|behavior| match behavior {
-                ModelBehaviorSnapshot::Motion { group, index } => {
-                    let motion = MotionId::new(group.clone(), index).ok()?;
-                    let name = format!("{group}.{index}");
-                    Some((motion, name))
-                }
-                ModelBehaviorSnapshot::Expression { .. } => None,
-            })
-            .collect()
+        motions_in(&self.behaviors())
     }
 
     /// The active model's expressions, as `(id, name)`.
     pub fn expressions(&self) -> Vec<(ExpressionId, String)> {
-        self.behaviors()
-            .into_iter()
-            .filter_map(|behavior| match behavior {
-                ModelBehaviorSnapshot::Expression { name } => {
-                    let expression = ExpressionId::new(name.clone()).ok()?;
-                    Some((expression, name))
-                }
-                ModelBehaviorSnapshot::Motion { .. } => None,
-            })
-            .collect()
+        expressions_in(&self.behaviors())
     }
 
     fn behaviors(&self) -> Vec<ModelBehaviorSnapshot> {
+        self.behaviors_from_snapshot()
+    }
+
+    fn behaviors_from_snapshot(&self) -> Vec<ModelBehaviorSnapshot> {
         self.client
             .as_ref()
             .and_then(|client| client.snapshot().active_model)
@@ -231,11 +216,23 @@ impl ModelRequestRouter {
             // difference and a fourth refusal code would be one more thing to match.
             return ModelOutcome::OverlayHidden;
         };
-        if !client.snapshot().overlay_visible {
+        // **One snapshot for the whole answer.** Visibility and the model's own vocabulary
+        // are two questions about the same instant, and asking twice meant a model could
+        // change between them — so a request could be answered "this model has no motion
+        // called that" for a model that has one, or `Done` for a motion the model has just
+        // lost. Reading once also halves what a request costs, and a request is the most
+        // expensive thing a plugin can do to this router.
+        let snapshot = client.snapshot();
+        if !snapshot.overlay_visible {
             return ModelOutcome::OverlayHidden;
         }
+        let behaviors = snapshot
+            .active_model
+            .as_ref()
+            .map(|model| model.behaviors.as_slice())
+            .unwrap_or_default();
         match request {
-            ModelRequest::PlayMotion { name, .. } => match self.find_motion(name) {
+            ModelRequest::PlayMotion { name, .. } => match find_motion_in(behaviors, name) {
                 Some(motion) => {
                     self.trigger(
                         client,
@@ -250,7 +247,7 @@ impl ModelRequestRouter {
                     kind: ModelRequestKind::Motion,
                 },
             },
-            ModelRequest::SetExpression { name } => match self.find_expression(name) {
+            ModelRequest::SetExpression { name } => match find_expression_in(behaviors, name) {
                 Some(expression) => {
                     self.trigger(client, ShortcutAction::SetExpression(expression));
                     ModelOutcome::Done
@@ -288,19 +285,77 @@ impl ModelRequestRouter {
     /// is tried first so a model with two groups differing only in case still
     /// resolves the way its author wrote it.
     pub fn find_motion(&self, name: &str) -> Option<MotionId> {
-        exact_then_insensitive(self.motions(), name, |(id, _)| id.clone())
+        find_motion_in(&self.behaviors_from_snapshot(), name)
     }
 
     /// The model's expression with this name, if it has one.
     pub fn find_expression(&self, name: &str) -> Option<ExpressionId> {
-        exact_then_insensitive(self.expressions(), name, |(id, _)| id.clone())
+        find_expression_in(&self.behaviors_from_snapshot(), name)
     }
+}
+
+/// One behavior list, answered twice, without reading the runtime again.
+///
+/// Both lookups take the list rather than the router, which is what makes
+/// [`ModelRequestRouter::outcome`] able to answer "is the window visible" and "does this
+/// model have that motion" from one snapshot. A plugin asking for a motion is answered
+/// about the model that was on screen when it asked, not about whatever was on screen
+/// after a second read.
+fn motions_in(behaviors: &[ModelBehaviorSnapshot]) -> Vec<(MotionId, String)> {
+    behaviors
+        .iter()
+        .filter_map(|behavior| match behavior {
+            ModelBehaviorSnapshot::Motion { group, index } => {
+                let motion = MotionId::new(group.clone(), *index).ok()?;
+                let name = format!("{group}.{index}");
+                Some((motion, name))
+            }
+            ModelBehaviorSnapshot::Expression { .. } => None,
+        })
+        .collect()
+}
+
+/// One behavior list, answered once. See [`motions_in`].
+fn expressions_in(behaviors: &[ModelBehaviorSnapshot]) -> Vec<(ExpressionId, String)> {
+    behaviors
+        .iter()
+        .filter_map(|behavior| match behavior {
+            ModelBehaviorSnapshot::Expression { name } => {
+                let expression = ExpressionId::new(name.clone()).ok()?;
+                Some((expression, name.clone()))
+            }
+            ModelBehaviorSnapshot::Motion { .. } => None,
+        })
+        .collect()
+}
+
+/// The first motion whose name matches exactly, then the first that matches
+/// case insensitively.
+fn find_motion_in(behaviors: &[ModelBehaviorSnapshot], name: &str) -> Option<MotionId> {
+    exact_then_insensitive(
+        &motions_in(behaviors),
+        name,
+        |(id, _): &(MotionId, String)| id.clone(),
+    )
+}
+
+/// The first expression whose name matches exactly, then the first that matches case
+/// insensitively. See [`find_motion_in`].
+fn find_expression_in(behaviors: &[ModelBehaviorSnapshot], name: &str) -> Option<ExpressionId> {
+    exact_then_insensitive(
+        &expressions_in(behaviors),
+        name,
+        |(id, _): &(ExpressionId, String)| id.clone(),
+    )
 }
 
 /// The first entry whose name matches exactly, then the first that matches case
 /// insensitively.
+///
+/// Takes the entries by slice, so a caller that already has the list does not hand over
+/// ownership of it to answer one question.
 fn exact_then_insensitive<T, K: Clone>(
-    entries: Vec<(T, String)>,
+    entries: &[(T, String)],
     name: &str,
     key: impl Fn(&(T, String)) -> K,
 ) -> Option<K> {
@@ -390,15 +445,15 @@ mod tests {
         // name that differs only in case still resolves rather than failing.
         let entries: Vec<(u32, String)> = vec![(1, "Wave".to_string()), (2, "wave".to_string())];
         assert_eq!(
-            exact_then_insensitive(entries.clone(), "Wave", |(id, _)| *id),
+            exact_then_insensitive(&entries, "Wave", |(id, _)| *id),
             Some(1)
         );
         assert_eq!(
-            exact_then_insensitive(entries.clone(), "wave", |(id, _)| *id),
+            exact_then_insensitive(&entries, "wave", |(id, _)| *id),
             Some(2)
         );
         assert_eq!(
-            exact_then_insensitive(entries, "WAVE", |(id, _)| *id),
+            exact_then_insensitive(&entries, "WAVE", |(id, _)| *id),
             Some(1),
             "and a plugin that guessed the case still finds one"
         );
@@ -408,7 +463,7 @@ mod tests {
     fn a_name_no_entry_matches_is_not_in_the_model() {
         let entries: Vec<(u32, String)> = vec![(1, "Wave".to_string())];
         assert_eq!(
-            exact_then_insensitive(entries, "tap_head", |(id, _)| *id),
+            exact_then_insensitive(&entries, "tap_head", |(id, _)| *id),
             None,
             "which is a fact the plugin is told, not an error it has to time out on"
         );

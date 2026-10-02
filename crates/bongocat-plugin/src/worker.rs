@@ -37,6 +37,7 @@ use crate::input_feed::FeedSet;
 use crate::local_time::LocalTimeCache;
 use crate::model_request::ModelRequestRouter;
 use crate::session::{HANDSHAKE_TIMEOUT, Incoming, Session, SessionOutcome, SessionState};
+use crate::signal::{Arrival, Inbox, Wake};
 use crate::store::PluginStore;
 use bongocat_audio::MotionAudioClient;
 use bongocat_plugin_protocol::{
@@ -46,22 +47,31 @@ use bongocat_plugin_protocol::{
 use bongocat_render::{OverlayLayer, OverlayLayerIds, OverlayLayerProducer};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// The shortest interval a worker waits between evaluations.
+/// The longest a worker sleeps when a plugin is running.
 ///
-/// Short enough that a countdown is not visibly behind and a press is answered
-/// immediately, long enough that the loop is not a busy wait on a machine with four
-/// idle plugins.
+/// **A ceiling, not a cadence.** Nothing the product does — a press on a panel, a control
+/// on a card, a settings change, a catalog refresh — waits for this: each wakes the worker
+/// through the inbox, and a plugin's own answer wakes it too. What it bounds is the tick a
+/// clock-driven plugin needs, and the tick is already bounded separately by
+/// [`MAXIMUM_TICK_INTERVAL`], so this is the backstop for a plugin whose answers have
+/// stopped arriving.
+///
+/// It used to be the *only* thing bounding anything, which is where a tenth of a second of
+/// lag in every panel came from: the user changed a setting, the plugin answered in a
+/// millisecond, and the answer sat unread for the rest of the interval. See [`crate::signal`].
 pub const EVALUATION_INTERVAL: Duration = Duration::from_millis(100);
 
-/// The interval a worker waits when nothing it runs can change without a command.
+/// The longest a worker sleeps when nothing it runs can change without being told.
 ///
-/// A panel of nothing but a tally is not re-evaluated sixty times a second to produce
-/// sixty identical rasters, so a worker whose panels are all press-driven sleeps on
-/// its command channel instead. A press wakes it, so the response is still immediate.
+/// A panel of nothing but a tally is not re-evaluated ten times a second to produce ten
+/// identical rasters, so a worker whose plugins are all waiting for the user sleeps until
+/// something arrives instead. **An hour rather than for ever**, because "for ever" turns a
+/// missed wake-up into a worker that is dead until the next launch, and an hour is long
+/// enough that nothing notices the difference and short enough that the worst case is a
+/// minute of silence rather than a session of it.
 pub const IDLE_EVALUATION_INTERVAL: Duration = Duration::from_secs(3600);
 
 /// How many ticks a plugin may skip between two of them.
@@ -86,9 +96,6 @@ pub const MAXIMUM_TICK_INTERVAL: Duration = Duration::from_millis(250);
 /// means something — it is what the model window can show without two panels landing on the
 /// same corner — rather than what a designer guessed about legibility.
 pub const MAXIMUM_ENABLED_PLUGINS: usize = crate::POSITIONS.len();
-
-/// How many commands may be queued before a send is dropped.
-const COMMAND_CAPACITY: usize = 32;
 
 /// The raster scale panels are drawn at.
 ///
@@ -365,20 +372,25 @@ pub enum PluginCommand {
 }
 
 /// The channel a worker takes commands on.
+///
+/// One endpoint, one inbox, and the inbox is shared with every session's reader thread —
+/// which is what lets a plugin's own answer wake the worker rather than queue behind an
+/// evaluation interval. The two callers cannot tell the difference: a command from the
+/// settings service and a line a plugin wrote arrive at the same worker, and both are read
+/// on the next turn.
 #[derive(Clone, Debug)]
 pub struct PluginWorkerEndpoint {
-    commands: mpsc::SyncSender<PluginCommand>,
+    inbox: Arc<Inbox>,
 }
 
 impl PluginWorkerEndpoint {
     /// Queue a command, dropping it when the queue is full.
     ///
-    /// `try_send` rather than a blocking send: the caller is the settings worker
-    /// or the GPUI thread, and neither may block on a plugin that is downloading.
-    /// A dropped command is a click that did not register, which is visible and
-    /// recoverable; a blocked settings window is not.
+    /// Non-blocking: the caller is the settings worker or the GPUI thread, and neither may
+    /// block on a plugin that is downloading. A dropped command is a click that did not
+    /// register, which is visible and recoverable; a blocked settings window is not.
     pub fn send(&self, command: PluginCommand) -> bool {
-        self.commands.try_send(command).is_ok()
+        self.inbox.send(command)
     }
 
     /// This endpoint as the sink the model window reports presses to.
@@ -447,7 +459,7 @@ impl PluginInputSink {
 /// chose rather than when a handle is dropped, and sent at most once so a second
 /// drop does not queue a command nobody will read.
 pub struct WorkerStopper {
-    endpoint: PluginWorkerEndpoint,
+    inbox: Arc<Inbox>,
     sent: bool,
 }
 
@@ -457,7 +469,7 @@ impl WorkerStopper {
         if self.sent {
             return true;
         }
-        self.sent = self.endpoint.send(PluginCommand::Shutdown);
+        self.sent = self.inbox.send(PluginCommand::Shutdown);
         self.sent
     }
 }
@@ -518,6 +530,54 @@ impl PluginWorkerReader {
             > last_seen
     }
 
+    /// One plugin's declared settings schema, without taking the whole snapshot.
+    ///
+    /// [`None`] for a plugin that is not listed and for one with no running process — and
+    /// the second is not an oversight: the schema a settings form is drawn from is the one
+    /// a *running* plugin declared, so there is nothing to draw from before it starts.
+    ///
+    /// This exists because the alternative is [`Self::snapshot`], which clones every
+    /// plugin's manifest, descriptor, configuration document and log line. Reading one
+    /// plugin's schema that way means a keystroke in one plugin's settings form copies the
+    /// entire plugin center — on the settings thread, on the way to a comparison against one
+    /// field's range.
+    pub fn schema_of(&self, id: &PluginId) -> Option<bongocat_plugin_protocol::ConfigSchema> {
+        self.with_snapshot(|snapshot| {
+            snapshot
+                .entry(id)
+                .and_then(|entry| entry.descriptor.as_ref())
+                .map(|descriptor| descriptor.config.clone())
+        })
+    }
+
+    /// Whether one plugin is currently offering a control with this id.
+    ///
+    /// The same rule as [`Self::schema_of`] and for the same reason: a press is checked
+    /// against the list the plugin is offering *now*, and taking the whole snapshot to
+    /// look at one id made the check cost more than the press it was protecting.
+    pub fn offers_action(&self, id: &PluginId, action: &str) -> bool {
+        self.with_snapshot(|snapshot| {
+            snapshot
+                .entry(id)
+                .is_some_and(|entry| entry.actions.iter().any(|offered| offered.id == action))
+        })
+    }
+
+    /// Read something out of the published snapshot without taking a copy of it.
+    ///
+    /// The lock is held for the reader's own projection rather than for a clone, so a
+    /// caller that wants one fact pays for one fact. The worker only holds this lock to
+    /// replace the snapshot, so the two never contend for long.
+    fn with_snapshot<T>(&self, read: impl FnOnce(&PluginSnapshot) -> T) -> T {
+        read(
+            &self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .snapshot,
+        )
+    }
+
     /// Queue a command, dropping it when the queue is full.
     pub fn send(&self, command: PluginCommand) -> bool {
         self.endpoint.send(command)
@@ -529,6 +589,7 @@ pub struct PluginWorkerHandle {
     handle: Option<std::thread::JoinHandle<()>>,
     state: Arc<Mutex<SharedState>>,
     endpoint: PluginWorkerEndpoint,
+    inbox: Arc<Inbox>,
 }
 
 impl PluginWorkerHandle {
@@ -553,7 +614,7 @@ impl PluginWorkerHandle {
     /// wants it, rather than something that happens when the last handle goes away.
     pub fn stopper(&self, endpoint: &PluginWorkerEndpoint) -> WorkerStopper {
         WorkerStopper {
-            endpoint: endpoint.clone(),
+            inbox: Arc::clone(&endpoint.inbox),
             sent: false,
         }
     }
@@ -583,6 +644,13 @@ impl PluginWorkerHandle {
     /// ignored: the caller decides whether an unjoined worker is acceptable at
     /// this point in the shutdown order, and it cannot if it is never told.
     pub fn stop_and_join(self, timeout: Duration) -> Result<(), PluginWorkerJoinError> {
+        // Closed before the wait rather than after, and it is what makes this a bounded
+        // shutdown rather than a hopeful one: the worker may be asleep for an hour on the
+        // idle interval, and closing the inbox is the only thing that reaches a thread
+        // that is not reading a channel. Everything already queued — a `Shutdown` this same
+        // call sent, most likely — is still read first, so nothing in flight is lost to
+        // the close that ends the wait.
+        self.inbox.close();
         let deadline = Instant::now() + timeout;
         while !self.is_stopped() && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(10));
@@ -661,18 +729,24 @@ pub fn start(
     audio: MotionAudioClient,
 ) -> Result<(PluginWorkerHandle, PluginWorkerEndpoint), PluginError> {
     store.create()?;
-    let (commands, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);
+    // One inbox for the whole worker. The commands go through the same door a plugin's
+    // answer does, which is the whole of the latency fix: a reader thread and the settings
+    // service are two senders of "there is something for you", and neither waits for an
+    // evaluation to find out whether there was.
+    let inbox = Arc::new(Inbox::new());
     let state = Arc::new(Mutex::new(SharedState {
         snapshot: PluginSnapshot::default(),
         stopped: false,
     }));
     let thread_state = Arc::clone(&state);
     let thread_store = store.clone();
+    let thread_inbox = Arc::clone(&inbox);
     let handle = std::thread::Builder::new()
         .name("bongocat-plugins".to_string())
         .spawn(move || {
             let layer_ids = OverlayLayerIds::new();
             let mut worker = Worker {
+                inbox: thread_inbox,
                 store: thread_store,
                 layer_producer,
                 catalog_directory,
@@ -695,7 +769,7 @@ pub fn start(
                 locale,
                 diagnostics: PluginDiagnostics::default(),
             };
-            worker.run(receiver, &layer_ids);
+            worker.run(&layer_ids);
         })
         .map_err(|error| PluginError::with_detail(PluginErrorCode::StoreWriteFailed, error))?;
     Ok((
@@ -703,15 +777,23 @@ pub fn start(
             handle: Some(handle),
             state,
             endpoint: PluginWorkerEndpoint {
-                commands: commands.clone(),
+                inbox: Arc::clone(&inbox),
             },
+            inbox: Arc::clone(&inbox),
         },
-        PluginWorkerEndpoint { commands },
+        PluginWorkerEndpoint { inbox },
     ))
 }
 
 /// Everything the worker needs to run.
 struct Worker {
+    /// The inbox this worker is waited on at, shared with every session it starts.
+    ///
+    /// A field rather than a loop argument so that starting a session — which happens from
+    /// a command, from a reload, from a restart and from an install — has the handle to
+    /// hand the new session's reader thread without every one of those callers having to
+    /// carry it.
+    inbox: Arc<Inbox>,
     store: PluginStore,
     layer_producer: OverlayLayerProducer,
     catalog_directory: PathBuf,
@@ -772,7 +854,7 @@ struct Worker {
 }
 
 impl Worker {
-    fn run(&mut self, receiver: mpsc::Receiver<PluginCommand>, layer_ids: &OverlayLayerIds) {
+    fn run(&mut self, layer_ids: &OverlayLayerIds) {
         let mut fonts = bongocat_plugin_render::TextMeasurer::new(
             bongocat_plugin_render::FontBook::load_system(),
         );
@@ -783,17 +865,24 @@ impl Worker {
         // on the model window while the page still says it is reading.
         //
         // The read is the worker's own thread, so a press that arrives while it is in
-        // flight waits in the command channel rather than being lost; the channel is
-        // bounded and this happens once per run.
+        // flight waits in the inbox rather than being lost; the queue is bounded and this
+        // happens once per run.
         self.refresh_catalog();
         loop {
             let outcome = self.turn(&mut fonts, layer_ids);
             match outcome {
-                Turn::Wait(duration) => match receiver.recv_timeout(duration) {
-                    Ok(PluginCommand::Shutdown) => break,
-                    Ok(command) => self.handle(command, &mut fonts, layer_ids),
-                    Err(mpsc::RecvTimeoutError::Timeout) => {}
-                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Turn::Wait(duration) => match self.inbox.wait(duration) {
+                    Arrival::Command(PluginCommand::Shutdown) => break,
+                    Arrival::Command(command) => self.handle(command, &mut fonts, layer_ids),
+                    // A plugin said something. Nothing to do here: the turn above already
+                    // drained every session, so this is the answer to the flag being set
+                    // after that drain — and going straight round is what picks it up,
+                    // rather than waiting for the interval to expire.
+                    Arrival::Spoke => {}
+                    // The last sender is gone, so no command can arrive and nothing will
+                    // wake this thread again.
+                    Arrival::Closed => break,
+                    Arrival::TimedOut => {}
                 },
             }
         }
@@ -810,30 +899,80 @@ impl Worker {
             .stopped = true;
     }
 
-    /// One pass: drain, publish, decide whether to keep waiting.
+    /// One pass, and then a decision about how long to wait for the next thing.
+    ///
+    /// Three steps, in this order, every turn:
+    ///
+    /// 1. **Expire whatever the host promised to take down.** A bubble's lifetime is the
+    ///    host's bound rather than the plugin's, so it is checked first and checked
+    ///    unconditionally — see [`Self::expire_bubbles`] for why that matters more than it
+    ///    looks.
+    /// 2. **Drain each session's messages, and publish the layers.** Non-blocking, so a
+    ///    plugin that is silent costs one `try_recv` per session and nothing else. Publishing
+    ///    here means the panel channel is written from exactly one place.
+    /// 3. **Advance, drain again, publish again** — but only while something running is
+    ///    clock-driven. A tick is the only thing in a turn that can *make* a plugin write,
+    ///    so it is the only thing worth a second drain: a plugin's answer to anything else
+    ///    arrives as its own message, and that message wakes this loop through the inbox.
+    ///
+    /// The second drain used to run unconditionally, which is where the loop did twice the
+    /// work it needed to and where the lag was invisible. It is also where the lag came
+    /// from: the answer to a tick was normally *not* there yet, so the fixed wait after it
+    /// was really the mechanism by which a plugin's answer was ever picked up at all. Now
+    /// the answer wakes the loop itself (see [`crate::signal`]) and the tick's own turn is
+    /// not paying to look for it.
     fn turn(
         &mut self,
         fonts: &mut bongocat_plugin_render::TextMeasurer,
         layer_ids: &OverlayLayerIds,
     ) -> Turn {
-        self.drain(fonts, layer_ids);
-        self.publish_layers(layer_ids);
-        if self.needs_clock() {
-            self.advance(layer_ids);
-            self.drain(fonts, layer_ids);
-            self.publish_layers(layer_ids);
-            return Turn::Wait(EVALUATION_INTERVAL);
+        // A bubble's lifetime is the *host's* bound rather than the plugin's, so it is
+        // checked before anything else on every turn. It used to be checked inside
+        // `advance`, which only runs while a plugin is running — so a bubble whose plugin
+        // was switched off in the middle of it stayed on the model window for the rest of
+        // the session, with nothing left that could ever take it down.
+        self.expire_bubbles();
+        self.drain(fonts);
+        self.publish_layers();
+        if !self.needs_clock() {
+            // Nothing a plugin is running can change without being told, and nothing it
+            // asked for is still on screen. A press, a configuration change, a catalog
+            // refresh and a plugin's own answer all wake this through the inbox, so the
+            // long wait costs nothing: it is a ceiling on how long a *missed* wake-up could
+            // stay missed, not a cadence.
+            return Turn::Wait(IDLE_EVALUATION_INTERVAL);
         }
-        // Nothing a plugin is running can change without a command. A press, a
-        // configuration change or a catalog refresh all arrive on the command channel
-        // and wake this, so the long wait costs nothing but a tick the panel did not
-        // need.
-        Turn::Wait(IDLE_EVALUATION_INTERVAL)
+        self.advance(layer_ids);
+        self.expire_bubbles();
+        self.drain(fonts);
+        self.publish_layers();
+        Turn::Wait(EVALUATION_INTERVAL)
     }
 
-    /// Whether anything a plugin is running can change without a command.
+    /// Whether anything a plugin is running can change without being told.
+    ///
+    /// A clock-driven plugin, one waiting for input to deliver, or a bubble that is still
+    /// on screen.
+    ///
+    /// The bubbles are the third thing because of what a bubble is: it has a lifetime the
+    /// host enforces, and the only place that lifetime is checked is on this loop. Leaving
+    /// them out would let a bubble outlive the loop that takes it down — it would sit on
+    /// the model window until something else happened to wake a worker whose plugins have
+    /// all stopped, which is the one state where nothing does.
     fn needs_clock(&self) -> bool {
-        self.sessions.values().any(|session| session.is_running())
+        !self.bubbles.is_empty() || self.sessions.values().any(|session| session.is_running())
+    }
+
+    /// Take down every bubble whose lifetime is over, and publish the withdrawal.
+    ///
+    /// Its own function because both branches of the turn need it, and because the
+    /// publication it implies is the *only* way a bubble comes down: the layer channel has
+    /// no "expire" message, so a bubble going away is a publish that does not carry it.
+    fn expire_bubbles(&mut self) {
+        if self.bubbles.take_expired(Instant::now()).is_empty() {
+            return;
+        }
+        self.publish_layers();
     }
 
     /// Read every session's messages and act on them.
@@ -843,11 +982,7 @@ impl Worker {
     /// everything first and deciding afterwards is what keeps one borrow from
     /// excluding the other, and it has the useful side effect that the order in which
     /// sessions are read does not depend on which of them had something to say.
-    fn drain(
-        &mut self,
-        fonts: &mut bongocat_plugin_render::TextMeasurer,
-        layer_ids: &OverlayLayerIds,
-    ) {
+    fn drain(&mut self, fonts: &mut bongocat_plugin_render::TextMeasurer) {
         let mut pending: Vec<(PluginId, Incoming)> = Vec::new();
         for session in self.sessions.values_mut() {
             session.reap();
@@ -865,7 +1000,7 @@ impl Worker {
             match message {
                 Incoming::Message(message) => {
                     let outcome = session.on_child_message(message, fonts, RASTER_SCALE);
-                    self.on_outcome(&id, outcome, layer_ids);
+                    self.on_outcome(&id, outcome, fonts);
                 }
                 Incoming::Stderr(line) => {
                     // Recorded on the worker's own thread rather than the reader's,
@@ -901,11 +1036,16 @@ impl Worker {
     }
 
     /// Apply what one message from a plugin meant.
+    ///
+    /// The measurer is a parameter rather than a field because rasterizing belongs to the
+    /// worker's loop and not to the state it owns: it is a scratch buffer that the plugin
+    /// render crate keeps its glyph cache in, and a bubble is rasterized here rather than
+    /// at the next publish (see [`Self::show_bubble`]).
     fn on_outcome(
         &mut self,
         plugin: &PluginId,
         outcome: SessionOutcome,
-        layer_ids: &OverlayLayerIds,
+        fonts: &mut bongocat_plugin_render::TextMeasurer,
     ) {
         let id = plugin;
         match outcome {
@@ -924,7 +1064,7 @@ impl Worker {
                 self.publish(None, None);
             }
             SessionOutcome::ModelRequested { id, request } => {
-                self.route_model_request(plugin, id, &request, layer_ids);
+                self.route_model_request(plugin, id, &request, fonts);
             }
             // `ActionsChanged` is here rather than left to the next thing that happens
             // to publish: the controls on a card are what the user reads to decide what
@@ -939,30 +1079,17 @@ impl Worker {
         }
     }
 
-    /// Advance time: tick every plugin, deliver input, expire bubbles.
+    /// Advance time: tick every plugin and deliver the input they asked for.
+    ///
+    /// **Not** where a bubble's lifetime is checked — see [`Self::expire_bubbles`] — and
+    /// **not** the only thing that runs on a turn either, because a turn drains twice: once
+    /// before this and once after, so an answer to a tick is read in the same turn rather
+    /// than the next one.
     fn advance(&mut self, layer_ids: &OverlayLayerIds) {
         let now = Instant::now();
-        let elapsed_ms = now
-            .saturating_duration_since(self.started)
-            .as_millis()
-            .min(u128::from(u64::MAX)) as u64;
-        let state = self.facts().to_host_state(&self.locale, &self.app_version);
         let ticked = now.saturating_duration_since(self.last_tick) >= MAXIMUM_TICK_INTERVAL;
         if ticked {
             self.last_tick = now;
-        }
-
-        let mut running: Vec<PluginId> = self
-            .sessions
-            .values()
-            .filter(|session| session.is_running())
-            .map(|session| session.id().clone())
-            .collect();
-        let expired = self.bubbles.take_expired(now);
-        if !expired.is_empty() {
-            // A bubble that has been up long enough is withdrawn, and the channel is
-            // the only way to say so — republishing without it is that withdrawal.
-            self.publish_layers(layer_ids);
         }
         // A plugin that has not said hello in time is stopped rather than waited on
         // for ever: it is a process the host is responsible for, and a session that
@@ -1004,20 +1131,46 @@ impl Worker {
         for id in restartable.drain(..) {
             self.restart(&id, layer_ids);
         }
-        for id in running.drain(..) {
-            let wants_input = self
-                .sessions
-                .get(&id)
-                .is_some_and(|session| session.wants(Subscription::Input));
-            let batch = if wants_input {
-                self.feeds.feed_mut(&id).drain()
-            } else {
-                Vec::new()
-            };
-            if let Some(session) = self.sessions.get(&id) {
-                if ticked {
-                    session.tick(elapsed_ms, &state, self.clock.read());
-                }
+        // Whether any plugin is waiting for input, asked before the loop rather than
+        // inside it: a feed holds nothing until a keystroke arrives, and a drain that
+        // finds an empty queue is a `Vec` allocated and thrown away four times a turn for
+        // the sake of a message that is not there.
+        let any_waiting_for_input = self
+            .sessions
+            .values()
+            .any(|session| session.is_running() && session.wants(Subscription::Input));
+        // Nothing to send and nothing to say. The common case on a machine with plugins
+        // that only draw what they were told, and it returns before the runtime is read
+        // at all — which matters, because reading it is the most expensive thing this
+        // function could do and a turn that sends nothing should not pay for it.
+        if !ticked && !any_waiting_for_input {
+            return;
+        }
+        let elapsed_ms = now
+            .saturating_duration_since(self.started)
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64;
+        // Read only when a tick is actually going out. It is a snapshot of the runtime
+        // taken over a channel, and four times a second for a plugin that is not being
+        // ticked is four times a second of work for a value nobody is sent.
+        let state = ticked.then(|| self.facts().to_host_state(&self.locale, &self.app_version));
+        let clock = ticked.then(|| self.clock.read());
+        // Borrowed as two fields rather than collected into a `Vec<PluginId>` first: the
+        // ids were being cloned — a `String` each — on every turn so that two maps could
+        // be walked at once, and the walks are of two *different* fields of `self`, which
+        // a loop can hold at the same time without a copy.
+        let Worker {
+            sessions, feeds, ..
+        } = self;
+        for (id, session) in sessions.iter_mut() {
+            if !session.is_running() {
+                continue;
+            }
+            if let (Some(state), Some(clock)) = (state.as_ref(), clock.as_ref()) {
+                session.tick(elapsed_ms, state, *clock);
+            }
+            if session.wants(Subscription::Input) {
+                let batch = feeds.feed_mut(id).drain();
                 if !batch.is_empty() {
                     session.send_input(batch);
                 }
@@ -1039,10 +1192,18 @@ impl Worker {
             .find(|record| &record.id == id)
         else {
             // It was uninstalled while it was running; nothing to restart.
-            self.sessions.remove(id);
+            if let Some(session) = self.sessions.remove(id) {
+                self.withdraw(&session);
+            }
             return;
         };
         let previous = self.sessions.remove(id);
+        if let Some(session) = &previous {
+            // The old process's announcement is not the new one's, and the new process
+            // draws on a different layer: a bubble left behind would sit on the model
+            // window with nothing that could ever take it down.
+            self.bubbles.take_layer(session.layer_id());
+        }
         let restarts = previous
             .as_ref()
             .map_or(0, |session| session.restarts().saturating_add(1));
@@ -1080,13 +1241,13 @@ impl Worker {
         plugin: &PluginId,
         request_id: u64,
         request: &ModelRequest,
-        layer_ids: &OverlayLayerIds,
+        fonts: &mut bongocat_plugin_render::TextMeasurer,
     ) {
         let Some(session) = self.sessions.get(plugin) else {
             return;
         };
         if crate::bubble::is_bubble_request(request) {
-            self.show_bubble(plugin, request, request_id, layer_ids);
+            self.show_bubble(plugin, request, request_id, fonts);
             return;
         }
         let subscribed = session.wants(Subscription::ModelReaction);
@@ -1156,12 +1317,21 @@ impl Worker {
     /// The layer is the plugin's, so two plugins can each have a bubble without either
     /// silencing the other, and a bubble outlives no plugin: taking it down is the
     /// layer going away, not a plugin being told to stop.
+    ///
+    /// The bubble is rasterized **here**, where the request arrives, rather than at the
+    /// next publish. It used to be stored as text and a lifetime with nothing to draw it,
+    /// which is why the model window showed no bubble at all: the layer channel carries
+    /// pixels, a bubble was carried as a string, and a plugin that asked for one was told
+    /// `Done` while the overlay was told nothing. Rasterizing at the moment it is asked for
+    /// is also the honest place for the work — it happens once per announcement rather than
+    /// once per publish, and a bubble that cannot be drawn is refused here where the plugin
+    /// can hear why.
     fn show_bubble(
         &mut self,
         plugin: &PluginId,
         request: &ModelRequest,
         request_id: u64,
-        layer_ids: &OverlayLayerIds,
+        fonts: &mut bongocat_plugin_render::TextMeasurer,
     ) {
         let Some(session) = self.sessions.get(plugin) else {
             return;
@@ -1169,9 +1339,42 @@ impl Worker {
         let layer = session.layer_id();
         let outcome = match crate::bubble::bubble_from(request, &self.locale, Instant::now()) {
             Some(bubble) => {
-                self.bubbles.show(layer, bubble);
-                self.diagnostics.bubbles_shown = self.diagnostics.bubbles_shown.saturating_add(1);
-                bongocat_plugin_protocol::ModelOutcome::Done
+                let update = bubble.to_panel();
+                // A bubble's scene is built here rather than in the protocol, so it is
+                // validated before it is rasterized like any other panel would be — a
+                // request from another process is still a request from another process.
+                match update
+                    .validate()
+                    .map_err(bongocat_plugin_render::from_protocol)
+                    .and_then(|()| {
+                        bongocat_plugin_render::render_update(
+                            &update,
+                            RASTER_SCALE,
+                            fonts,
+                            &bongocat_plugin_render::ImageLibrary::new(),
+                        )
+                    }) {
+                    Ok(rendered) => {
+                        self.bubbles.show(layer, bubble, rendered);
+                        self.diagnostics.bubbles_shown =
+                            self.diagnostics.bubbles_shown.saturating_add(1);
+                        bongocat_plugin_protocol::ModelOutcome::Done
+                    }
+                    Err(error) => {
+                        // A bubble the host cannot draw is a refusal rather than a `Done`
+                        // with nothing on the screen: the plugin asked to say something, and
+                        // the answer that says it could not be shown is the one that lets
+                        // it fall back to its own panel.
+                        self.diagnostics.raster_failures =
+                            self.diagnostics.raster_failures.saturating_add(1);
+                        crate::plugin_log::record(
+                            plugin,
+                            LogLevel::Warn,
+                            &format!("a bubble could not be drawn: {error}"),
+                        );
+                        bongocat_plugin_protocol::ModelOutcome::HostCannot
+                    }
+                }
             }
             // A hide, or anything this worker cannot make a bubble from. Answered
             // rather than dropped: a plugin that asked and got nothing would have to
@@ -1184,41 +1387,75 @@ impl Worker {
         if let Some(session) = self.sessions.get_mut(plugin) {
             session.write_answer(request_id, outcome);
         }
-        self.publish_layers(layer_ids);
+        self.publish_layers();
     }
 
-    /// Publish one layer per panel, plus one per bubble.
-    fn publish_layers(&mut self, layer_ids: &OverlayLayerIds) {
+    /// Publish one layer per plugin that has something to draw.
+    ///
+    /// Two decisions live here and neither is the publisher's to make.
+    ///
+    /// **What a plugin's layer shows.** A bubble *replaces* its plugin's panel while it is
+    /// up, rather than being drawn beside or over it. A bubble is a sentence about
+    /// something that just happened and a panel is what the plugin is showing otherwise —
+    /// a countdown that is still running — so drawing both at once would either hide the
+    /// bubble behind the panel or cover the panel with it. Taking the layer for the moment
+    /// the bubble is up, and publishing the panel again the instant it is withdrawn, is the
+    /// arrangement that shows both in turn. Two plugins can still each have a bubble at the
+    /// same time, because a layer belongs to one plugin.
+    ///
+    /// **Where a panel goes.** The anchor is the host's, because a corner is the model's
+    /// arrangement rather than a plugin's business: the plugin named a corner it would
+    /// prefer, the user may have moved it since, and one plugin holds each position. Every
+    /// other part of the placement stays the plugin's, because a panel's size and opacity
+    /// are the plugin's own.
+    ///
+    /// Nothing is compared against the last publish and nothing is skipped, which used to be
+    /// worth doing and is not any more: publishing now copies no pixels, because each raster
+    /// was built once when its panel was rasterized and is shared from then on. Skipping
+    /// would only trade a check here for a class of bug where a change nobody remembered to
+    /// mark never reached the screen.
+    fn publish_layers(&mut self) {
         let mut layers: Vec<OverlayLayer> = Vec::new();
-        let mut used: Vec<u64> = Vec::new();
         let placements = self.placements();
         for session in self.sessions.values() {
             let layer_id = session.layer_id();
-            if let Some(rendered) = session.rendered() {
-                let mut placement = rendered.to_placement();
-                // The host owns where a panel goes: the plugin said which corner it would
-                // prefer, the user may have moved it, and one plugin holds each position —
-                // so the anchor is read here rather than taken from the panel. Everything
-                // else in the placement stays the plugin's, because a panel's size and
-                // opacity are its business and a corner is the model's.
-                if let Some(placed) = placements.of(session.id()) {
-                    placement.anchor = placed.anchor.to_overlay_anchor();
-                }
-                layers.push(OverlayLayer {
-                    id: layer_id,
-                    placement,
-                    raster: rendered.to_raster(),
-                });
-                used.push(layer_id);
-            }
+            // A bubble first, and it takes the layer outright rather than being drawn over
+            // the panel — see the note on this function.
+            let layer = match self.bubbles.published(layer_id) {
+                Some(bubble) => Some(bubble),
+                // The raster and the panel it came from are set and cleared together, so
+                // this pair is either both `Some` or both `None`; the placement is read
+                // from the panel because that is where it is derived from.
+                None => match (session.raster(), session.rendered()) {
+                    (Some(raster), Some(rendered)) => Some(OverlayLayer {
+                        id: layer_id,
+                        placement: {
+                            let mut placement = rendered.to_placement();
+                            if let Some(placed) = placements.of(session.id()) {
+                                placement.anchor = placed.anchor.to_overlay_anchor();
+                            }
+                            placement
+                        },
+                        raster: raster.clone(),
+                    }),
+                    _ => None,
+                },
+            };
+            layers.extend(layer);
         }
+        // A bubble whose plugin has no session is still drawn. It belongs to a layer a
+        // plugin held until a moment ago, and cutting off the last thing a plugin said
+        // because the user switched it off mid-announcement is not what either of them
+        // asked for.
         for layer in self.bubbles.layer_ids() {
-            used.push(layer);
+            if layers.iter().any(|published| published.id == layer) {
+                continue;
+            }
+            layers.extend(self.bubbles.published(layer));
         }
         if self.layer_producer.publish_checked(layers).is_ok() {
             self.diagnostics.layers_published = self.diagnostics.layers_published.saturating_add(1);
         }
-        let _ = layer_ids;
     }
 
     fn handle(
@@ -1233,22 +1470,24 @@ impl Worker {
             PluginCommand::Uninstall(id) => self.uninstall(&id),
             PluginCommand::SetEnabled { id, enabled } => {
                 self.set_enabled(&id, enabled, layer_ids);
-                self.drain(fonts, layer_ids);
+                self.drain(fonts);
             }
             PluginCommand::Press { layer, x, y } => {
-                if self.press(layer, x, y) {
-                    self.drain(fonts, layer_ids);
-                    self.publish_layers(layer_ids);
-                }
+                // No drain and no publish here. The press has gone to the plugin and the
+                // plugin's answer will wake this loop through the inbox, so the turn that
+                // picks that answer up also publishes what it produced — which is both
+                // sooner than a drain that ran before the plugin could possibly have
+                // replied, and one drain rather than two. A press that hits nothing has
+                // changed nothing, which is what the return value already says; the count
+                // of ignored presses is [`Self::press`]'s own.
+                let _ = self.press(layer, x, y);
             }
             PluginCommand::PressAction { id, action } => {
-                // The drain is there because the answer matters: a press sent from a
-                // card changes what the plugin draws and says, and the settings window
-                // is also drawing a button whose label depends on it. Skipping it would
-                // mean the card kept saying "Start" until the next unrelated publish.
-                if self.press_action(&id, &action) {
-                    self.drain(fonts, layer_ids);
-                } else {
+                // Not drained, for the same reason a panel press is not: what the plugin
+                // does next — renaming the control from "Start" to "Pause", redrawing the
+                // panel, both — arrives as its own message, and that message wakes this
+                // loop. Draining here raced the plugin rather than following it.
+                if !self.press_action(&id, &action) {
                     // A press for a control the plugin is not offering. Counted as
                     // ignored, exactly as a press outside every button on a panel is:
                     // it is a click that did not register, which is visible and
@@ -1263,7 +1502,7 @@ impl Worker {
                 // Published because a card reads the position and the settings form offers
                 // it; publishing without republishing the layers would move the panel a
                 // frame later than the control that moved it.
-                self.publish_layers(layer_ids);
+                self.publish_layers();
                 self.publish(None, None);
             }
             PluginCommand::SetConfig { id, config } => self.set_config(&id, config),
@@ -1320,7 +1559,18 @@ impl Worker {
     }
 
     /// The plugin center's list: what the catalog offers, plus what is installed.
+    ///
+    /// The placement is allocated **once** here and handed to both helpers, rather than
+    /// each of the two computing its own. Every card needs a position *and* the menu of
+    /// positions it may move to, so a helper that allocated for itself ran the allocator
+    /// twice per plugin — and once again for every plugin the catalog offers but the
+    /// store does not hold. A snapshot is published on every handshake, every crash, every
+    /// change of a control's label and every settings change, so that was eighteen
+    /// allocations and eighteen walks of the whole installed set for a page that shows at
+    /// most nine plugins. It also had a nastier property: two answers to the same
+    /// question, computed separately, could disagree.
     fn entries(&self) -> Vec<PluginEntry> {
+        let placements = self.placements();
         let mut entries: BTreeMap<PluginId, PluginEntry> = BTreeMap::new();
         for record in self.store.installed() {
             let Ok(manifest) = self.store.manifest(&record) else {
@@ -1359,8 +1609,8 @@ impl Worker {
                         .as_ref()
                         .map(|facts| facts.subscriptions.clone())
                         .unwrap_or_default(),
-                    position: self.position_of(&record.id),
-                    positions: self.positions_for(&record.id),
+                    position: position_of(&placements, &record.id),
+                    positions: positions_for(&placements, &record.id),
                     actions: facts
                         .as_ref()
                         .map(|facts| facts.actions.clone())
@@ -1402,8 +1652,8 @@ impl Worker {
                             .as_ref()
                             .map(|entry| entry.subscriptions.clone())
                             .unwrap_or_default(),
-                        position: self.position_of(&offer.id),
-                        positions: self.positions_for(&offer.id),
+                        position: position_of(&placements, &offer.id),
+                        positions: positions_for(&placements, &offer.id),
                         actions: installed
                             .as_ref()
                             .map(|entry| entry.actions.clone())
@@ -1442,6 +1692,10 @@ impl Worker {
     }
 
     /// Start one plugin's process.
+    ///
+    /// The session is handed this worker's wake-up handle, which is what lets a line the
+    /// plugin writes reach the worker when it is written rather than at the next
+    /// evaluation. See [`crate::signal`] for why that matters more than it sounds.
     fn start_session(
         &self,
         record: &InstalledPlugin,
@@ -1455,6 +1709,7 @@ impl Worker {
             self.app_version.clone(),
             self.locale.clone(),
             layer_ids.allocate(),
+            Wake::new(Arc::clone(&self.inbox)),
         )
     }
 
@@ -1596,7 +1851,7 @@ impl Worker {
         // The running process goes first, so a failed delete leaves a plugin that is
         // no longer drawn rather than one drawn from files on their way out.
         if let Some(session) = self.sessions.remove(id) {
-            session.stop();
+            self.withdraw(&session);
         }
         self.feeds.remove(id);
         crate::plugin_log::forget(id);
@@ -1607,6 +1862,19 @@ impl Worker {
                 self.publish(Some(PluginPhase::Failed(code.clone())), Some(code))
             }
         }
+    }
+
+    /// Stop one session and take down everything it was drawing.
+    ///
+    /// One place for "the plugin is gone, so its layer is gone", because the two are the
+    /// same event and the layer channel is the only way to say so. A panel disappears
+    /// because the session that rasterized it is dropped; a bubble disappears because the
+    /// set that owns its lifetime is told about it — and a bubble left behind is not a
+    /// stale frame but a live layer with no owner, which the expiry pass would only clear
+    /// when its own lifetime ran out, and its lifetime is the *plugin's* to have asked for.
+    fn withdraw(&mut self, session: &Session) {
+        self.bubbles.take_layer(session.layer_id());
+        session.stop();
     }
 
     /// Turn one plugin's panel on or off, and publish what changed.
@@ -1638,7 +1906,7 @@ impl Worker {
             // and its files are released rather than held for a plugin nobody sees.
             let stopped = match self.sessions.remove(id) {
                 Some(session) => {
-                    session.stop();
+                    self.withdraw(&session);
                     true
                 }
                 None => false,
@@ -1715,6 +1983,15 @@ impl Worker {
     /// Reports whether anything was delivered, so a press that hit nothing does not
     /// force a re-rasterization of every other panel.
     fn press(&mut self, layer: u64, x: f32, y: f32) -> bool {
+        // A press that lands while a bubble is on this layer is a press on the bubble, and
+        // the bubble has no buttons. Testing the panel underneath it would deliver a press
+        // to a control the user cannot see — and a bubble is usually anchored exactly where
+        // a plugin's own panel is, so "the user clicked the thing that was on screen" and
+        // "the plugin heard its button" would disagree for the whole life of the bubble.
+        if self.bubbles.rendered(layer).is_some() {
+            self.diagnostics.presses_ignored = self.diagnostics.presses_ignored.saturating_add(1);
+            return false;
+        }
         let Some(id) = self
             .sessions
             .values()
@@ -1768,6 +2045,12 @@ impl Worker {
     /// The cost is a handful of comparisons per published snapshot, against a bug class —
     /// a card, a form and a layer disagreeing about where a panel is — that no test of the
     /// allocator alone would find.
+    ///
+    /// **Once per caller, never once per question.** A card needs its own place and the menu
+    /// of places it may move to, and a layer needs its own anchor; all three are answers to
+    /// the same allocation, so each caller computes it once and hands the result to the
+    /// helpers below. Asking twice could not disagree — the allocation is pure — but it did
+    /// double the work on the one thread every plugin shares.
     fn placements(&self) -> crate::Placements {
         let wanted: Vec<crate::Claimed> = self
             .sessions
@@ -1795,34 +2078,6 @@ impl Worker {
         crate::Placements::allocate(&wanted, &self.positions)
     }
 
-    /// One plugin's position, for the snapshot.
-    ///
-    /// `None` for a panel that is pinned as well as for one with no place, and the form
-    /// draws no row in either case. They are the same answer for the same reason: there is
-    /// no position the user can put this panel in.
-    fn position_of(&self, id: &PluginId) -> Option<crate::Placed> {
-        self.placements().of(id).filter(|placed| !placed.pinned)
-    }
-
-    /// The positions one plugin may be moved to, for the snapshot.
-    ///
-    /// Empty for a plugin with no place, and that is the only correct answer for it. A
-    /// plugin that did not declare a panel has no position, so it appears in no allocation
-    /// and holds none — and offering it the free positions would be a menu where every
-    /// choice does the same thing, which is none. The choice would be recorded in the
-    /// preferences and then ignored, because the allocation only ever considers plugins that
-    /// asked for a place: a control that takes a setting and never applies it.
-    ///
-    /// A pinned panel is empty for the same outcome by a different route — the allocation
-    /// does know its position, and refuses to offer it any other.
-    fn positions_for(&self, id: &PluginId) -> Vec<PluginAnchor> {
-        let placements = self.placements();
-        if placements.of(id).is_none() {
-            return Vec::new();
-        }
-        placements.available_for(id)
-    }
-
     /// What the runtime currently says, for the facts a plugin may show.
     ///
     /// A worker with no runtime client — one started before the runtime was up, or
@@ -1841,7 +2096,34 @@ impl Worker {
 /// What one turn of the loop decided to do next.
 enum Turn {
     /// Keep waiting this long.
+    ///
+    /// A ceiling rather than a cadence: every real source of work — a command from the
+    /// product, a line from a plugin — arrives as a wake-up rather than as a reason to
+    /// finish a wait first.
     Wait(Duration),
+}
+
+/// One plugin's place in the model window, from an allocation somebody already made.
+fn position_of(placements: &crate::Placements, id: &PluginId) -> Option<crate::Placed> {
+    placements.of(id).filter(|placed| !placed.pinned)
+}
+
+/// The positions one plugin may be moved to, from an allocation somebody already made.
+///
+/// Empty for a plugin with no place, and that is the only correct answer for it. A
+/// plugin that did not declare a panel has no position, so it appears in no allocation
+/// and holds none — and offering it the free positions would be a menu where every
+/// choice does the same thing, which is none. The choice would be recorded in the
+/// preferences and then ignored, because the allocation only ever considers plugins that
+/// asked for a place: a control that takes a setting and never applies it.
+///
+/// A pinned panel is empty for the same outcome by a different route — the allocation
+/// does know its position, and refuses to offer it any other.
+fn positions_for(placements: &crate::Placements, id: &PluginId) -> Vec<PluginAnchor> {
+    if placements.of(id).is_none() {
+        return Vec::new();
+    }
+    placements.available_for(id)
 }
 
 /// The proxy prefix a network catalog was fetched through, if any.

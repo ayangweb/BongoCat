@@ -166,6 +166,16 @@ pub struct Session {
     actions: Vec<bongocat_plugin_protocol::PluginAction>,
     /// The rasterized panel, which is what a press is tested against.
     rendered: Option<bongocat_plugin_render::RenderedPanel>,
+    /// The layer texture this panel's raster becomes, built once per panel.
+    ///
+    /// Held beside [`Self::rendered`] rather than derived from it on every publish, and
+    /// that is a cost decision with a number attached: `to_raster` copies the whole pixel
+    /// buffer into a shared `Arc` and hashes it. Doing that per publish meant every
+    /// enabled plugin copied and hashed its full panel ten times a second — for a
+    /// countdown that changes once a second, that is ten times the work for one result, on
+    /// the one thread every plugin shares. The raster only changes when the panel does, so
+    /// it is built in [`Self::accept_panel`] and read by reference after that.
+    raster: Option<bongocat_render::OverlayLayerRaster>,
     layer_id: u64,
     outbound: SyncSender<HostMessage>,
     /// What the reader thread has handed back, drained by the worker.
@@ -228,6 +238,7 @@ impl Session {
         app_version: String,
         locale: String,
         layer_id: u64,
+        wake: crate::signal::Wake,
     ) -> Result<Self, PluginError> {
         let manifest = read_manifest(&directory)?;
         let executable = manifest.executable_path(&directory).map_err(|error| {
@@ -278,6 +289,7 @@ impl Session {
             buttons: Vec::new(),
             actions: Vec::new(),
             rendered: None,
+            raster: None,
             layer_id,
             outbound,
             inbound: inbound_rx,
@@ -289,7 +301,7 @@ impl Session {
         // The hello goes through the queue rather than straight to the pipe, so the
         // writer has exactly one door. A queue this new is empty, so it cannot drop.
         session.queue(HostMessage::Hello(hello));
-        session.start_reader(outbound_rx, inbound_tx);
+        session.start_reader(outbound_rx, inbound_tx, wake);
         Ok(session)
     }
 
@@ -368,6 +380,7 @@ impl Session {
             buttons: Vec::new(),
             actions: Vec::new(),
             rendered: None,
+            raster: None,
             layer_id: 0,
             outbound,
             inbound: inbound_rx,
@@ -410,8 +423,22 @@ impl Session {
             "the plugin did not announce itself",
         ));
         self.stop();
+        self.withdraw_panel();
+    }
+
+    /// Take down whatever this plugin is currently drawing.
+    ///
+    /// One function rather than four assignments at four call sites, because "the panel,
+    /// its raster and its buttons go together" is a rule and a rule written four times is
+    /// three times waiting to be written three quarters. In particular the raster is
+    /// cleared with the panel it was built from: a layer texture that outlived the panel
+    /// it came from would put the last picture of a withdrawn plugin back on the model
+    /// window.
+    fn withdraw_panel(&mut self) {
         self.panel = None;
         self.rendered = None;
+        self.raster = None;
+        self.buttons.clear();
     }
 
     /// This session's id.
@@ -505,6 +532,15 @@ impl Session {
         self.rendered.as_ref()
     }
 
+    /// The layer this panel is published as, already built and hashed.
+    ///
+    /// [`None`] for a plugin that has drawn nothing and for one whose last scene drew
+    /// nothing at all. Read by the worker on every publish rather than derived, because
+    /// deriving it copies the whole pixel buffer into a shared handle — see [`Self::raster`].
+    pub fn raster(&self) -> Option<&bongocat_render::OverlayLayerRaster> {
+        self.raster.as_ref()
+    }
+
     /// The images this session has decoded for the plugin's scenes.
     pub fn images(&self) -> &bongocat_plugin_render::ImageLibrary {
         &self.images
@@ -532,6 +568,7 @@ impl Session {
         &mut self,
         outbound_rx: Receiver<HostMessage>,
         inbound_tx: SyncSender<Incoming>,
+        wake: crate::signal::Wake,
     ) {
         let stdout = take_stdout(&self.child);
         let stderr = take_stderr(&self.child);
@@ -548,14 +585,16 @@ impl Session {
             let mut readers = Vec::new();
             if let Some(stdout) = stdout {
                 let inbound = inbound_tx.clone();
+                let reader_wake = wake.clone();
                 readers.push(std::thread::spawn(move || {
-                    read_lines(stdout, LineKind::Protocol, &inbound)
+                    read_lines(stdout, LineKind::Protocol, &inbound, &reader_wake)
                 }));
             }
             if let Some(stderr) = stderr {
                 let inbound = inbound_tx.clone();
+                let reader_wake = wake.clone();
                 readers.push(std::thread::spawn(move || {
-                    read_lines(stderr, LineKind::Diagnostic, &inbound)
+                    read_lines(stderr, LineKind::Diagnostic, &inbound, &reader_wake)
                 }));
             }
             drop(inbound_tx);
@@ -713,8 +752,7 @@ impl Session {
                 }
             }
             PluginMessage::HidePanel => {
-                self.panel = None;
-                self.rendered = None;
+                self.withdraw_panel();
                 SessionOutcome::PanelWithdrawn
             }
             PluginMessage::ConfigChanged { config } => {
@@ -756,14 +794,12 @@ impl Session {
             PluginMessage::Failed { error } => {
                 self.failure = Some(error.clone());
                 self.state = SessionState::Failed;
-                self.panel = None;
-                self.rendered = None;
+                self.withdraw_panel();
                 SessionOutcome::Failed(error)
             }
             PluginMessage::Shutdown => {
                 self.state = SessionState::Stopped;
-                self.panel = None;
-                self.rendered = None;
+                self.withdraw_panel();
                 SessionOutcome::Ended
             }
             PluginMessage::Request { id, request } => {
@@ -824,18 +860,15 @@ impl Session {
         self.buttons = declared_buttons(&update);
         match bongocat_plugin_render::render_update(&update, scale, fonts, &self.images) {
             Ok(panel) => {
-                if panel.pixels.is_empty() {
-                    // An empty raster is not an error — it is a panel whose scene
-                    // drew nothing — but it is also not worth publishing, and
-                    // publishing one would make the overlay hold an empty texture.
-                    self.panel = Some(update);
-                    self.rendered = Some(panel);
-                    self.diagnostics.panels_accepted =
-                        self.diagnostics.panels_accepted.saturating_add(1);
-                    return true;
-                }
+                // The layer texture is built here rather than on each publish, and this is
+                // the only place a panel becomes one. The empty case is handled first
+                // because an empty raster is not uploadable: publishing one would make the
+                // overlay hold a texture it cannot take, and the producer would count it as
+                // a layer it had to refuse.
+                let raster = (!panel.pixels.is_empty()).then(|| panel.to_raster());
                 self.panel = Some(update);
                 self.rendered = Some(panel);
+                self.raster = raster;
                 self.diagnostics.panels_accepted =
                     self.diagnostics.panels_accepted.saturating_add(1);
                 true
@@ -885,8 +918,7 @@ impl Session {
             return;
         }
         self.state = SessionState::Exited;
-        self.panel = None;
-        self.rendered = None;
+        self.withdraw_panel();
         self.failure = Some(PluginError::with_detail(
             PluginErrorCode::PluginExited,
             match code {
@@ -1095,7 +1127,12 @@ fn write_line(writer: &mut Option<ChildStdin>, message: &HostMessage) -> bool {
 /// they are. The two are not the same kind of thing — one is the wire and one is the
 /// plugin talking to itself — and treating them alike is either how a plugin's own log
 /// line becomes a refused protocol line, or how a protocol line becomes a log entry.
-fn read_lines<R: std::io::Read>(stream: R, kind: LineKind, inbound: &SyncSender<Incoming>) {
+fn read_lines<R: std::io::Read>(
+    stream: R,
+    kind: LineKind,
+    inbound: &SyncSender<Incoming>,
+    wake: &crate::signal::Wake,
+) {
     for line in BufReader::new(stream).lines() {
         let Ok(line) = line else {
             break;
@@ -1120,12 +1157,17 @@ fn read_lines<R: std::io::Read>(stream: R, kind: LineKind, inbound: &SyncSender<
         if inbound.send(event).is_err() {
             break;
         }
+        // After the send, never before: the flag says there is something to read, so a
+        // reader that set it first could wake a worker that had already drained this queue
+        // and found nothing, and the line would wait for the next evaluation.
+        wake.spoke();
     }
     if matches!(kind, LineKind::Protocol) {
         // The end of a plugin's stdout is the end of the plugin, and it is reported once
         // however many lines came before it. The exit code arrives separately, from the
         // worker's own `reap`.
         let _ = inbound.send(Incoming::Exited(None));
+        wake.spoke();
     }
 }
 
@@ -1359,6 +1401,7 @@ mod tests {
             "2.0.1".to_string(),
             "en-US".to_string(),
             1,
+            a_wake(),
         )
         .err()
         .expect("an executable that is not there cannot be started");
@@ -1376,6 +1419,7 @@ mod tests {
             "2.0.1".to_string(),
             "en-US".to_string(),
             1,
+            a_wake(),
         )
         .err()
         .expect("no manifest, no plugin");
@@ -1401,9 +1445,19 @@ mod tests {
             "2.0.1".to_string(),
             "en-US".to_string(),
             1,
+            a_wake(),
         )
         .err()
         .expect("a path out of the plugin's own directory is not an executable");
         assert_eq!(error.code(), PluginErrorCode::InvalidAssetPath);
+    }
+
+    /// A wake-up handle for a session that never gets as far as spawning anything.
+    ///
+    /// Over an inbox nothing is listening on, which is exactly what these three want: they
+    /// are about the refusals that happen before a reader thread exists, and a `Wake` that
+    /// had nowhere to wake anybody is a correct one.
+    fn a_wake() -> crate::signal::Wake {
+        crate::signal::Wake::new(std::sync::Arc::new(crate::signal::Inbox::new()))
     }
 }

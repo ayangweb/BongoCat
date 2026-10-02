@@ -287,6 +287,31 @@ pub struct SettingsView {
     /// shows what its own file holds; a change goes out through
     /// [`Self::set_plugin_field`] and comes back on the next snapshot.
     pub(crate) plugin_settings: Option<PluginSettingsDraft>,
+    /// The document one plugin's settings are waiting to be sent as, coalesced.
+    ///
+    /// A plugin's settings are sent as a **whole document** every time, because the file
+    /// belongs to the plugin and the plugin writes it atomically — there is no patch to
+    /// send. That makes each send heavier than a patch would be, and a value the user is
+    /// still typing or a number they are still dragging produces one send per keystroke or
+    /// per step. So a change is coalesced here, on the same terms as every other bounded
+    /// setting on this window: the first change of a burst goes out at once, because a
+    /// single tap on a switch should not wait for anything, and the rest collapse into the
+    /// one value the user settled on.
+    pub(crate) plugin_settings_debouncer:
+        crate::SettingsPatchDebouncer<BTreeMap<String, SettingsFieldValue>>,
+    /// Which plugin those values belong to, while they are waiting.
+    ///
+    /// A document is not a plugin: the same values under a different id are a different
+    /// command, and the page can only ever have one plugin's form open. So the id rides
+    /// beside the values rather than inside them.
+    pub(crate) plugin_settings_pending_send: Option<String>,
+    /// Bumped for every scheduled flush, so a timer that has already been started cannot
+    /// send a document the user has since changed again.
+    ///
+    /// A generation rather than a cancelled timer: GPUI's timers cannot be cancelled, so the
+    /// timer that eventually fires has to be able to tell whether it is still the one that
+    /// matters.
+    pub(crate) plugin_settings_send_generation: u64,
     /// The plugin whose settings form was asked for while it was switched off, and is
     /// waiting for its handshake.
     ///

@@ -35,8 +35,8 @@ use bongocat_plugin::{
     PluginVersion, WorkerStopper,
 };
 use bongocat_plugin_protocol::{
-    Color, ConfigDocument, ConfigValue, HostMessage, PanelPlacement, PanelUpdate, PluginAnchor,
-    PluginMessage, SceneNode, StackNode, Subscription, TextNode,
+    Align, ButtonNode, ButtonVariant, Color, ConfigDocument, ConfigValue, HostMessage,
+    PanelPlacement, PanelUpdate, PluginAnchor, PluginMessage, SceneNode, StackNode, Subscription,
 };
 use bongocat_render::overlay_layer_channel;
 use std::collections::{BTreeMap, BTreeSet};
@@ -64,6 +64,14 @@ const KEYS: &str = "tally-keys";
 
 /// How long a case waits for the worker to publish something.
 const PATIENCE: Duration = Duration::from_secs(30);
+
+/// How often a case asks the layer channel whether the worker has published.
+///
+/// Small, because the overlay asks far more often than the worker publishes and a case
+/// that asks less often than that could not tell a slow worker from an unlucky observer.
+/// One place in this file measures time, and it measures *this* number too, so it is kept
+/// small rather than round.
+const POLL: u64 = 2;
 
 /// Each plugin's own shape, so a worker that confused two of them could not pass.
 fn character_of(id: &str) -> (PluginAnchor, [u32; 2], &'static str, &'static str) {
@@ -137,13 +145,31 @@ fn subscriptions_of(id: &str) -> Vec<Subscription> {
 /// counted.
 const COUNTED_ACTION: &str = "counted";
 
+/// Press this and the plugin redraws and nothing else.
+///
+/// The control the timed case presses, and it is separate from [`ANNOUNCE_ACTION`] for one
+/// reason: a bubble *takes over* its plugin's layer while it is up, so a control that
+/// announced as well would have the panel it was supposed to be measuring replaced by a
+/// bubble for as long as the bubble lived — which is longer than any response time worth
+/// asserting on.
+const REDRAW_ACTION: &str = "redraw";
+
+/// Press this and the plugin asks the host for a bubble.
+const ANNOUNCE_ACTION: &str = "announce";
+
+/// The pressable this plugin's own panel declares, for the model window's press path.
+///
+/// A *panel* button rather than a card action: this is the button the model window's hit
+/// test finds, and it is the one a user's click on the desktop can reach.
+const PANEL_BUTTON: &str = "hit";
+
 /// The cases, and the plain claim each one makes.
 ///
 /// The same shape as `process_session.rs`'s: `harness = false`, a `main` that dispatches,
 /// and a case that reports by panicking. A panic is the only report available here, because
 /// the repository denies printing — and the rule is right for the same reason the plugin
 /// half is a plain function: on the plugin side stdout *is* the wire.
-const CASES: [(&str, fn()); 8] = [
+const CASES: [(&str, fn()); 13] = [
     (
         "three plugins run at once, each with its own settings, panel and place",
         several_run_at_once,
@@ -175,6 +201,26 @@ const CASES: [(&str, fn()); 8] = [
     (
         "a keystroke reaches every plugin that asked for it, and only those",
         a_keystroke_reaches_only_the_plugins_that_asked,
+    ),
+    (
+        "a change the user made is on the model window without waiting for an interval",
+        a_change_reaches_the_model_window_without_waiting_for_a_tick,
+    ),
+    (
+        "an announcement is drawn as pixels, and goes away on its own",
+        an_announcement_is_drawn_and_then_goes_away,
+    ),
+    (
+        "switching a plugin off takes its panel down, and back on brings it again",
+        switching_off_takes_the_panel_down,
+    ),
+    (
+        "an announcement goes away when the plugin that made it is switched off",
+        an_announcement_does_not_outlive_the_plugin_that_made_it,
+    ),
+    (
+        "a click on the model window reaches the button it landed on",
+        a_click_on_the_model_window_reaches_the_button_it_landed_on,
     ),
 ];
 
@@ -344,23 +390,79 @@ impl Several {
     /// as `Some`. A consumer that treated the silence between publishes as "no layers"
     /// would be the flicker this file's sibling case in the overlay is about.
     fn layers(&self, count: usize) -> Vec<bongocat_render::OverlayLayer> {
+        self.layers_until(&|layers| layers.len() >= count)
+    }
+
+    /// The published layers, waited for until there are exactly `count` of them.
+    ///
+    /// Separate from [`Self::layers`] because "no longer at least this many" and "exactly
+    /// this many" are different questions, and a switch that takes a panel *away* can only
+    /// be checked by the second. Asking for one layer and being handed two would let a case
+    /// pass against a host that left a ghost on the screen.
+    fn layers_exactly(&self, count: usize) -> Vec<bongocat_render::OverlayLayer> {
+        self.layers_until(&|layers| layers.len() == count)
+    }
+
+    /// The published layers, waited for until `until` says the publish is the one.
+    fn layers_until(
+        &self,
+        until: &dyn Fn(&[bongocat_render::OverlayLayer]) -> bool,
+    ) -> Vec<bongocat_render::OverlayLayer> {
         let deadline = Instant::now() + PATIENCE;
         let mut newest: Vec<bongocat_render::OverlayLayer> = Vec::new();
         loop {
             if let Some(layers) = self.layers.take_latest() {
-                if layers.len() >= count {
+                if until(&layers) {
                     return layers;
                 }
                 newest = layers;
             }
             assert!(
                 Instant::now() < deadline,
-                "{count} panels on the model window within {PATIENCE:?}; the last publish \
-                 carried {}",
+                "a publish this case is waiting for within {PATIENCE:?}; the last one carried {} \
+                 layer(s)",
                 newest.len()
             );
-            std::thread::sleep(Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(POLL));
         }
+    }
+
+    /// The first publish whose layer `width` wide carries different pixels, and how long it
+    /// took to get there.
+    ///
+    /// Polled every [`POLL`] rather than every ten milliseconds, because this is the one
+    /// place in the file where the clock is being measured and a coarse floor on the
+    /// observer would be a large part of the budget it is checking.
+    fn layers_changed_since(
+        &self,
+        width: u32,
+        content: u64,
+    ) -> (Vec<bongocat_render::OverlayLayer>, Duration) {
+        let started = Instant::now();
+        let deadline = started + PATIENCE;
+        loop {
+            if let Some(layers) = self.layers.take_latest()
+                && let Some(layer) = layers.iter().find(|layer| layer.raster.width == width)
+                && layer.raster.content != content
+            {
+                return (layers, started.elapsed());
+            }
+            assert!(
+                Instant::now() < deadline,
+                "a layer {width}px wide carrying new pixels within {PATIENCE:?}; the last one \
+                 still held the picture the plugin had before"
+            );
+            std::thread::sleep(Duration::from_millis(POLL));
+        }
+    }
+
+    /// The content hash of the layer `width` pixels wide, so the next change is tellable apart.
+    fn content_of(&self, width: u32) -> u64 {
+        self.layers(1)
+            .iter()
+            .find(|layer| layer.raster.width == width)
+            .map(|layer| layer.raster.content)
+            .unwrap_or_default()
     }
 }
 
@@ -1124,6 +1226,335 @@ fn a_keystroke_reaches_only_the_plugins_that_asked() {
     );
 }
 
+/// A change the user made is on the model window without waiting for an interval.
+///
+/// The requirement in one case, and the case is **timed** on purpose, because every other
+/// claim in this file is "it arrives" and this one is "it arrives while the user is still
+/// looking". The user presses a control, the plugin redraws, the model window shows it — and
+/// the whole path crosses two process boundaries and three thread hops, so the question was
+/// never whether it works. It was how long it takes.
+///
+/// It worked, and it took up to a tenth of a second, because a plugin's answer did not wake
+/// the worker: the worker was waiting on the *command* channel, a plugin's answer went into
+/// the session's own queue, and the two never met until the wait expired. So the delay was
+/// not a cost on the way — it was dead time after the answer had already arrived. A test
+/// that asked "does it eventually arrive" would have passed against that code, which is why
+/// this one measures.
+///
+/// [`RESPONSE_BUDGET`] is half the old floor and about twenty times the new typical. The
+/// second number is the honest reason it is not tighter: a tighter bound would be a test of
+/// the machine this runs on. The first is the reason it is not looser — the old behaviour
+/// could not have passed it on any machine, because the wait was a fixed interval rather
+/// than a race.
+fn a_change_reaches_the_model_window_without_waiting_for_a_tick() {
+    let ids = [ALPHA];
+    let worker = Several::with(&ids);
+    let _ = worker.enable_all(&ids);
+    let width = character_of(ALPHA).1[0];
+
+    // One round first, and discarded: the first panel through a fresh worker pays for a
+    // system font book and for rasterizing every glyph, and charging that to the
+    // measurement would make this a test of the machine rather than of the path.
+    worker.send(press_redraw(ALPHA));
+    let _ = worker.layers_changed_since(width, worker.content_of(width));
+
+    for round in 1..=4 {
+        let before = worker.content_of(width);
+        worker.send(press_redraw(ALPHA));
+        let (layers, elapsed) = worker.layers_changed_since(width, before);
+        assert_eq!(
+            layers.len(),
+            1,
+            "round {round}: the plugin's answer is published"
+        );
+        assert!(
+            elapsed <= RESPONSE_BUDGET,
+            "round {round}: the change took {elapsed:?} to reach the model window, and a panel \
+             that has not moved {RESPONSE_BUDGET:?} after the press that moved it reads as a \
+             product that ignored the click"
+        );
+    }
+}
+
+/// Half the evaluation interval, which is what the answer used to be held for.
+///
+/// Not a performance target and not a claim about how fast this is: it is the boundary
+/// between "the panel reacts" and "the panel reacts eventually", and the old design could
+/// not cross it because the delay was a timer rather than a cost.
+const RESPONSE_BUDGET: Duration = Duration::from_millis(50);
+
+/// Press the control that makes one plugin redraw and nothing else.
+fn press_redraw(id: &str) -> PluginCommand {
+    PluginCommand::PressAction {
+        id: Several::id(id),
+        action: REDRAW_ACTION.to_string(),
+    }
+}
+
+/// Press the control that makes one plugin ask the host for a bubble.
+fn press_announce(id: &str) -> PluginCommand {
+    PluginCommand::PressAction {
+        id: Several::id(id),
+        action: ANNOUNCE_ACTION.to_string(),
+    }
+}
+
+/// An announcement is drawn as pixels, and takes itself down.
+///
+/// A bubble is the one thing a plugin asks for that is not a panel, and it was broken in the
+/// most invisible way a thing can be broken: the host counted it, answered it `Done`, and
+/// never put it on the layer channel. So a pomodoro's "round finished" was a line of text the
+/// plugin believed it had shown and the user never saw — nothing crashed, nothing was
+/// logged, and every case that did not look at pixels passed.
+///
+/// So this case looks at pixels, twice: once to see the announcement there, and once to see
+/// it gone and the plugin's own panel back in its place.
+fn an_announcement_is_drawn_and_then_goes_away() {
+    let ids = [ALPHA];
+    let worker = Several::with(&ids);
+    let _ = worker.enable_all(&ids);
+    let panel = character_of(ALPHA).1;
+    worker.layers(1);
+
+    worker.send(press_announce(ALPHA));
+    let announced = worker.layers_until(&|layers| {
+        layers
+            .iter()
+            .any(|layer| layer.raster.width == bongocat_plugin::BUBBLE_WIDTH)
+    });
+    let bubble = announced
+        .iter()
+        .find(|layer| layer.raster.width == bongocat_plugin::BUBBLE_WIDTH)
+        .expect("the announcement was found a moment ago");
+    assert_eq!(
+        (bubble.raster.width, bubble.raster.height),
+        (
+            bongocat_plugin::BUBBLE_WIDTH,
+            bongocat_plugin::BUBBLE_HEIGHT
+        ),
+        "the announcement is on the model window as its own box, not counted and never drawn"
+    );
+    assert_ne!(
+        bubble.placement.anchor,
+        character_of(ALPHA).0.to_overlay_anchor(),
+        "and it is anchored above the model rather than in the plugin's corner, because a \
+         sentence about something that just happened is not the plugin's usual panel"
+    );
+
+    // Its own lifetime, and then the panel it was standing in for. Waiting for exactly the
+    // plugin's panel size is what makes this the second half rather than a repeat of the
+    // first: the bubble has to go *and* be replaced, not merely be gone.
+    let back =
+        worker.layers_until(&|layers| layers.len() == 1 && layers[0].raster.width == panel[0]);
+    assert_eq!(
+        (back[0].raster.width, back[0].raster.height),
+        (panel[0], panel[1]),
+        "so the announcement is withdrawn on its own and the countdown is back in its place"
+    );
+}
+
+/// Switching a plugin off takes its panel off the model window, and on brings it back.
+///
+/// The whole of a switch, end to end. A switch is the one thing a user does to a plugin that
+/// is visible in two places at once — a card in the settings window and a panel on the
+/// desktop — and the card's half is easy: the snapshot revision moves. The panel's half is
+/// the layer channel, where "gone" is a published *empty slot* rather than "nothing new",
+/// so a host that confuses the two leaves a ghost panel on the screen for the rest of the
+/// session with nothing left that can take it away.
+fn switching_off_takes_the_panel_down() {
+    let ids = [ALPHA, BETA];
+    let worker = Several::with(&ids);
+    let _ = worker.enable_all(&ids);
+    worker.layers(2);
+
+    worker.send(PluginCommand::SetEnabled {
+        id: Several::id(ALPHA),
+        enabled: false,
+    });
+    let _ = await_snapshot(
+        &worker,
+        |snapshot| {
+            snapshot
+                .entry(&Several::id(ALPHA))
+                .is_some_and(|entry| !entry.running)
+        },
+        "alpha's card to say it is off",
+    );
+    let layers = worker.layers_exactly(1);
+    assert!(
+        !layers.iter().any(|layer| {
+            (layer.raster.width, layer.raster.height)
+                == (character_of(ALPHA).1[0], character_of(ALPHA).1[1])
+        }),
+        "and alpha's panel is gone from the model window rather than left on it: {:?}",
+        described(&layers)
+    );
+
+    worker.send(PluginCommand::SetEnabled {
+        id: Several::id(ALPHA),
+        enabled: true,
+    });
+    let _ = worker.await_running(&[ALPHA]);
+    let layers = worker.layers_exactly(2);
+    assert!(
+        layers.iter().any(|layer| {
+            (layer.raster.width, layer.raster.height)
+                == (character_of(ALPHA).1[0], character_of(ALPHA).1[1])
+        }),
+        "and switching it back on puts its panel back: {:?}",
+        described(&layers)
+    );
+}
+
+/// An announcement is taken down when the plugin that made it is switched off.
+///
+/// The second half of [`an_announcement_is_drawn_and_then_goes_away`], and the bug that
+/// half was hiding. A bubble's lifetime was checked inside the worker's clock path, which
+/// only runs while a plugin is running — so switching a plugin off in the middle of its own
+/// announcement left a layer on the model window with no session behind it and no loop
+/// checking its lifetime. The bubble would have stayed there for the rest of the session,
+/// and nothing in the product could ever have taken it down.
+///
+/// The switch is not the only way in: a plugin that exits mid-announcement reaches the same
+/// state, because the process is gone whether or not the user asked for it. One case for the
+/// switch, because it is the one a user can do on purpose.
+fn an_announcement_does_not_outlive_the_plugin_that_made_it() {
+    let ids = [ALPHA];
+    let worker = Several::with(&ids);
+    let _ = worker.enable_all(&ids);
+    worker.layers(1);
+
+    worker.send(press_announce(ALPHA));
+    let _ = worker.layers_until(&|layers| {
+        layers
+            .iter()
+            .any(|layer| layer.raster.width == bongocat_plugin::BUBBLE_WIDTH)
+    });
+
+    worker.send(PluginCommand::SetEnabled {
+        id: Several::id(ALPHA),
+        enabled: false,
+    });
+    // Exactly zero: the only way this state is ever published is an empty layer set, and
+    // asking for "fewer than one" would also be satisfied by a bubble that is still up.
+    worker.layers_exactly(0);
+}
+
+/// A click on the model window reaches the button it landed on.
+///
+/// The model window's own half of the plugin system, and the half that is not the settings
+/// window's: the overlay's hit test answers with a layer and a point, the worker turns that
+/// back into the plugin it belongs to, and the plugin's panel decides what the point was
+/// inside. All three steps are host decisions, and none of them is the plugin's business —
+/// the plugin only learns that a button with an id it declared was pressed.
+///
+/// Then the other half of the same rule, which is easy to get wrong: **a press that lands
+/// while a bubble is on that layer is refused.** A bubble is drawn where the plugin's panel
+/// is and has no buttons of its own, so testing the panel underneath it would hand a press
+/// to a control the user cannot see. The bubble is what is on screen, so the bubble is what
+/// a click landed on.
+fn a_click_on_the_model_window_reaches_the_button_it_landed_on() {
+    let ids = [ALPHA];
+    let worker = Several::with(&ids);
+    let _ = worker.enable_all(&ids);
+    let width = character_of(ALPHA).1[0];
+    // The layer id the overlay would answer with, read from what the worker published
+    // rather than guessed: the overlay knows a layer's id and the point inside it, and
+    // nothing else, so the id is the whole of what it hands the worker.
+    let layer = worker.layers(1)[0].id;
+
+    // Inside the panel is a press the plugin hears, so the panel redraws.
+    press_until_the_panel_redraws(&worker, width, layer);
+
+    // Nowhere near the panel, so nothing changes and the press is counted as ignored.
+    worker.send(PluginCommand::Press {
+        layer,
+        x: 10_000.0,
+        y: 10_000.0,
+    });
+    visual_nothing_happens(&worker, width);
+
+    // And a press at the *same* point that worked a moment ago reaches nothing while a
+    // bubble is up, because a bubble has no buttons and is what is actually on screen.
+    worker.send(press_announce(ALPHA));
+    let _ = worker.layers_until(&|layers| {
+        layers
+            .iter()
+            .any(|layer| layer.raster.width == bongocat_plugin::BUBBLE_WIDTH)
+    });
+    worker.send(PluginCommand::Press {
+        layer,
+        x: INSIDE.0,
+        y: INSIDE.1,
+    });
+    visual_nothing_happens(&worker, bongocat_plugin::BUBBLE_WIDTH);
+}
+
+/// A point inside every plugin's panel in this file, in logical pixels.
+///
+/// Written down rather than derived from the layout, so a change to the layout shows up as a
+/// failing press rather than as a silently different point.
+const INSIDE: (f32, f32) = (10.0, 15.0);
+
+/// Press inside the panel until the plugin answers, and say whether it ever did.
+///
+/// One press is what happens — the point is fixed and this file builds the panels — but a
+/// case that reported "the press did nothing" for a reason with nothing to do with the press
+/// could not fail, so a couple of points inside the panel are tried before it gives up.
+/// One press that lands proves the whole path: the overlay's layer, the worker's
+/// layer-to-plugin lookup, the panel's own hit test, and the plugin's redraw.
+fn press_until_the_panel_redraws(worker: &Several, width: u32, layer: u64) {
+    for (x, y) in [(INSIDE.0, INSIDE.1), (INSIDE.0, 40.0), (60.0, 12.0)] {
+        let before = worker.content_of(width);
+        worker.send(PluginCommand::Press { layer, x, y });
+        let deadline = Instant::now() + Duration::from_millis(500);
+        while Instant::now() < deadline {
+            if let Some(layers) = worker.layers.take_latest()
+                && let Some(layer) = layers.iter().find(|layer| layer.raster.width == width)
+                && layer.raster.content != before
+            {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(POLL));
+        }
+    }
+    panic!(
+        "a press inside a panel that declares a button was answered by no plugin: the model \
+         window's press path is broken from the overlay's hit test to the plugin"
+    );
+}
+
+/// Assert that a layer keeps the pixels it has for a while.
+///
+/// Not "nothing is published" — the worker publishes on every turn — but "nothing is
+/// *different* is published", which is the claim a press that hit nothing makes and the one
+/// a press delivered through a bubble would break. Two evaluations' worth of turns, so a
+/// single republished frame is not mistaken for a redraw.
+fn visual_nothing_happens(worker: &Several, width: u32) {
+    let before = worker.content_of(width);
+    let deadline = Instant::now() + Duration::from_millis(400);
+    while Instant::now() < deadline {
+        if let Some(layers) = worker.layers.take_latest()
+            && let Some(layer) = layers.iter().find(|layer| layer.raster.width == width)
+        {
+            assert_eq!(
+                layer.raster.content, before,
+                "a press that hit nothing must not redraw anything: this is the pixels changing \
+                 under a click that went nowhere"
+            );
+        }
+        std::thread::sleep(Duration::from_millis(POLL));
+    }
+}
+
+/// A publish's layers as a readable list, for a failure message.
+fn described(layers: &[bongocat_render::OverlayLayer]) -> Vec<(u32, u32)> {
+    layers
+        .iter()
+        .map(|layer| (layer.raster.width, layer.raster.height))
+        .collect()
+}
+
 fn describe_places(snapshot: &PluginSnapshot, ids: &[&str]) -> Vec<(String, Option<PluginAnchor>)> {
     ids.iter()
         .map(|id| {
@@ -1222,7 +1653,7 @@ fn serve() -> std::process::ExitCode {
     );
     send(
         &mut stdout,
-        &PluginMessage::Panel(Box::new(panel(anchor, size, label))),
+        &PluginMessage::Panel(Box::new(panel(anchor, size, label, 0))),
     );
     send(
         &mut stdout,
@@ -1241,7 +1672,7 @@ fn serve() -> std::process::ExitCode {
     send(
         &mut stdout,
         &PluginMessage::Actions {
-            actions: vec![counted(0)],
+            actions: vec![counted(0), redraw(), announce()],
         },
     );
 
@@ -1260,8 +1691,45 @@ fn serve() -> std::process::ExitCode {
         }
         match serde_json::from_str::<HostMessage>(line.trim()) {
             Ok(HostMessage::Shutdown) | Err(_) => return std::process::ExitCode::SUCCESS,
-            // The one message this plugin has something to say about. A plugin that asked
-            // for no feed is never sent one, so for DELTA and ECHO this arm is
+            // A press, which is the whole of the plugin half of two cases above: the plugin
+            // redraws — so the answer is visible as new pixels — and asks for an
+            // announcement, so the host's answer to a model request is visible on the model
+            // window rather than only in a counter.
+            Ok(HostMessage::Press { id }) => {
+                seen += 1;
+                if id == ANNOUNCE_ACTION {
+                    // A bubble is the one thing a plugin asks for that is not a panel, and
+                    // it is asked for on its own control so that the control which only
+                    // redraws can be measured without a bubble standing in for the panel
+                    // underneath it.
+                    send(
+                        &mut stdout,
+                        &PluginMessage::Request {
+                            id: seen as u64,
+                            request: Box::new(bongocat_plugin_protocol::ModelRequest::ShowBubble {
+                                text: format!("{label} {seen}").into(),
+                                duration_ms: 400,
+                            }),
+                        },
+                    );
+                }
+                // The panel is redrawn on **every** press, by both controls, and its
+                // background carries the count. A shape rather than a line of text, for the
+                // reason the rest of this file uses shapes: a case that measures pixels
+                // cannot depend on the machine having a font to draw them with.
+                send(
+                    &mut stdout,
+                    &PluginMessage::Panel(Box::new(panel(anchor, size, label, seen))),
+                );
+                send(
+                    &mut stdout,
+                    &PluginMessage::Actions {
+                        actions: vec![counted(seen), redraw(), announce()],
+                    },
+                );
+            }
+            // The one message this plugin has something else to say about. A plugin that
+            // asked for no feed is never sent one, so for DELTA and ECHO this arm is
             // unreachable — which is what makes "the host only sends what was asked for" a
             // claim this file can check rather than a claim about the protocol.
             Ok(HostMessage::Input { events }) => {
@@ -1292,13 +1760,37 @@ fn counted(seen: usize) -> bongocat_plugin_protocol::PluginAction {
     }
 }
 
+/// The control that only makes this plugin redraw.
+fn redraw() -> bongocat_plugin_protocol::PluginAction {
+    bongocat_plugin_protocol::PluginAction {
+        id: REDRAW_ACTION.to_string(),
+        label: "Redraw".into(),
+        glyph: bongocat_plugin_protocol::ActionGlyph::Play,
+        disabled: false,
+    }
+}
+
+/// The control that makes this plugin announce something in a bubble.
+fn announce() -> bongocat_plugin_protocol::PluginAction {
+    bongocat_plugin_protocol::PluginAction {
+        id: ANNOUNCE_ACTION.to_string(),
+        label: "Announce".into(),
+        glyph: bongocat_plugin_protocol::ActionGlyph::Reset,
+        disabled: false,
+    }
+}
+
 /// This plugin's own panel: a filled surface at this plugin's own size.
 ///
-/// A surface rather than a line of text, because the case checks the *sizes*: the worker's
-/// text measurer loads system fonts, but a shape's size is its own regardless of what the
-/// machine has, so a difference between two plugins' panels is a difference the worker made
-/// rather than a difference in the fonts.
-fn panel(anchor: PluginAnchor, size: [u32; 2], label: &str) -> PanelUpdate {
+/// A surface rather than a line of text, because the cases check the *sizes* and the pixels:
+/// the worker's text measurer loads system fonts, but a shape's size is its own regardless
+/// of what the machine has, so a difference between two plugins' panels is a difference the
+/// worker made rather than a difference in the fonts — and a case that measures how long a
+/// redraw takes cannot ask a machine with no fonts to draw the difference for it.
+///
+/// The background carries the count of presses, so "the plugin answered" is observable as
+/// different pixels without depending on a glyph being drawn at all.
+fn panel(anchor: PluginAnchor, size: [u32; 2], label: &str, presses: usize) -> PanelUpdate {
     PanelUpdate {
         placement: PanelPlacement {
             anchor,
@@ -1309,11 +1801,23 @@ fn panel(anchor: PluginAnchor, size: [u32; 2], label: &str) -> PanelUpdate {
         },
         scene: SceneNode::Stack(StackNode {
             padding: [8.0, 8.0],
-            background: Some(Color::rgba(0x20, 0x20, 0x20, 0xff)),
+            // One pressable, stretched across the panel's width. It is what makes the
+            // model window's own press path testable at all: a press arrives as a layer
+            // and a point, and with nothing for the point to land on a case could only
+            // check that presses are ignored.
+            cross_align: Some(Align::Stretch),
+            background: Some(Color::rgba(
+                0x20 + u8::try_from(presses % 200).unwrap_or(0),
+                0x20,
+                0x20,
+                0xff,
+            )),
             radius: 8.0,
-            children: vec![SceneNode::Text(TextNode {
-                value: label.to_string(),
-                ..TextNode::default()
+            children: vec![SceneNode::Button(ButtonNode {
+                id: PANEL_BUTTON.to_string(),
+                label: label.to_string(),
+                variant: ButtonVariant::Transparent,
+                ..ButtonNode::default()
             })],
             ..StackNode::default()
         }),

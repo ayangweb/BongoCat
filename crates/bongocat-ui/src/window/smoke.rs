@@ -339,6 +339,10 @@ impl SettingsView {
     pub fn prepare_close(&mut self, cx: &mut Context<Self>) {
         self.cancel_shortcut_capture(cx);
         self.clear_model_drag(cx);
+        // A plugin's settings the user changed and then closed the window over are a value
+        // they typed, not a value they discarded — so they are sent on the way out rather
+        // than waiting for a timer this window is about to destroy.
+        self.send_pending_plugin_settings(cx);
         self.flush_pending_settings(cx);
         self.window_hidden = true;
         cx.notify();

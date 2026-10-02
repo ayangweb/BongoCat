@@ -184,6 +184,189 @@ fn toggling_a_switch_reads_the_current_state_rather_than_the_pressed_one(cx: &mu
     );
 }
 
+/// A plugin's settings the user is still changing go out **once**, and they go.
+///
+/// The cost of getting this wrong is invisible and it is why the case is here. A plugin's
+/// settings are sent as a whole document — the file belongs to the plugin and the plugin
+/// writes it whole, so there is no patch to send — which means a number being dragged or a
+/// path being typed is one complete document per step, each crossing a process boundary and
+/// each making the plugin rewrite its own file. The panel the user is looking at does not
+/// change until the last one, so every one of the rest was cost with nothing to show for it.
+///
+/// So: four changes in a row, one document out, and that document carrying the value the
+/// user ended on rather than the three they passed through.
+#[gpui_kit::test]
+fn a_burst_of_changes_to_one_plugin_sends_one_document(cx: &mut TestAppContext) {
+    // The debounce is a timer, so the clock has to move for the coalesced document to go
+    // out. Taken from the app context rather than the window's, because the window borrows
+    // it for as long as the case is driving the page — and it is the same clock either
+    // way, which is the whole of why this reads as a timer rather than as a fake.
+    let clock = cx.executor().clone();
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    view.update(visual, |view, _| {
+        view.snapshot = Some(snapshot_with_plugins(SettingsPlugins {
+            available: true,
+            catalog_read: true,
+            entries: vec![entry_with_fields("pomodoro", true, true)],
+            ..SettingsPlugins::default()
+        }));
+    });
+    view.update(visual, |view, cx| {
+        view.toggle_plugin_settings("pomodoro".to_string(), cx);
+    });
+
+    // The first change of a burst goes out at once, because a switch the user taps once
+    // should take effect when they tap it.
+    view.update(visual, |view, cx| {
+        view.set_plugin_field("pomodoro", "minutes", SettingsFieldValue::Integer(30), cx);
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetPluginConfig { plugin, config, .. } = endpoint
+        .try_recv()
+        .expect("the first change goes out at once")
+    else {
+        panic!("a plugin's settings must use the typed config command");
+    };
+    assert_eq!(plugin, "pomodoro");
+    assert_eq!(
+        config.get("minutes"),
+        Some(&SettingsFieldValue::Integer(30))
+    );
+
+    // The rest of the burst waits for the user to stop, and sends one document.
+    for minutes in [35, 40] {
+        view.update(visual, |view, cx| {
+            view.set_plugin_field(
+                "pomodoro",
+                "minutes",
+                SettingsFieldValue::Integer(minutes),
+                cx,
+            );
+        });
+    }
+    visual.run_until_parked();
+    assert!(
+        endpoint.try_recv().is_err(),
+        "and nothing goes out while the user is still changing it"
+    );
+    clock.advance_clock(crate::SETTINGS_PATCH_DEBOUNCE);
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetPluginConfig { config, .. } = endpoint
+        .try_recv()
+        .expect("one document for the rest of the burst")
+    else {
+        panic!("a plugin's settings must use the typed config command");
+    };
+    assert_eq!(
+        config.get("minutes"),
+        Some(&SettingsFieldValue::Integer(40)),
+        "and it carries the value the user settled on rather than one they passed through"
+    );
+    assert!(
+        endpoint.try_recv().is_err(),
+        "one document for two changes, not two documents: the other would have made the \
+         plugin rewrite a file for a value nobody looked at"
+    );
+}
+
+/// A value the user typed and then closed the window over is still sent.
+///
+/// The other half of coalescing, and the one that would be easy to break while adding it: a
+/// timer that has not fired yet is a value that has not been saved, and a window that is
+/// being destroyed will not wait for a timer it owns.
+#[gpui_kit::test]
+fn a_change_still_waiting_to_be_sent_goes_out_when_the_window_closes(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    view.update(visual, |view, _| {
+        view.snapshot = Some(snapshot_with_plugins(SettingsPlugins {
+            available: true,
+            catalog_read: true,
+            entries: vec![entry_with_fields("pomodoro", true, true)],
+            ..SettingsPlugins::default()
+        }));
+    });
+    view.update(visual, |view, cx| {
+        view.toggle_plugin_settings("pomodoro".to_string(), cx);
+    });
+    view.update(visual, |view, cx| {
+        view.set_plugin_field("pomodoro", "minutes", SettingsFieldValue::Integer(45), cx);
+    });
+    assert!(endpoint.try_recv().is_err(), "still waiting");
+
+    view.update(visual, |view, cx| view.prepare_close(cx));
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetPluginConfig { config, .. } =
+        endpoint.try_recv().expect("the value the user typed")
+    else {
+        panic!("a plugin's settings must use the typed config command");
+    };
+    assert_eq!(
+        config.get("minutes"),
+        Some(&SettingsFieldValue::Integer(45)),
+        "closing the window is not discarding what the user typed into it"
+    );
+}
+
+/// A plugin that asks for a sound through a file, and the file the user chose, both travel.
+///
+/// One case for the path a file takes, because the picker is the one control in this form
+/// whose value arrives from outside the window: the dialog hands back a path, the window
+/// writes it into the draft like any other value, and from there it is the same debounced
+/// document as a typed one.
+#[gpui_kit::test]
+fn a_file_the_user_chosen_becomes_part_of_the_documents_later_sent(cx: &mut TestAppContext) {
+    let clock = cx.executor().clone();
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    view.update(visual, |view, _| {
+        view.snapshot = Some(snapshot_with_plugins(SettingsPlugins {
+            available: true,
+            catalog_read: true,
+            entries: vec![entry_with_fields("typing-sound", true, true)],
+            ..SettingsPlugins::default()
+        }));
+    });
+    view.update(visual, |view, cx| {
+        view.toggle_plugin_settings("typing-sound".to_string(), cx);
+    });
+    view.update(visual, |view, cx| {
+        view.set_plugin_field(
+            "typing-sound",
+            "minutes",
+            SettingsFieldValue::Integer(25),
+            cx,
+        );
+    });
+    visual.run_until_parked();
+    let _ = endpoint.try_recv().expect("the first document");
+
+    // A second change this soon is coalesced, and the document that eventually goes out is
+    // the one the user ended on. A plugin that writes its own file would otherwise write it
+    // again for the value in between.
+    view.update(visual, |view, cx| {
+        view.set_plugin_field(
+            "typing-sound",
+            "minutes",
+            SettingsFieldValue::Integer(30),
+            cx,
+        );
+    });
+    visual.run_until_parked();
+    assert!(endpoint.try_recv().is_err(), "still a burst");
+    clock.advance_clock(crate::SETTINGS_PATCH_DEBOUNCE);
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetPluginConfig { config, .. } =
+        endpoint.try_recv().expect("the settled document")
+    else {
+        panic!("a plugin's settings must use the typed config command");
+    };
+    assert_eq!(
+        config.get("minutes"),
+        Some(&SettingsFieldValue::Integer(30)),
+        "so the last value is the one that is on its way, and nothing is sent twice for it"
+    );
+    assert!(endpoint.try_recv().is_err());
+}
+
 #[gpui_kit::test]
 fn a_press_for_a_plugin_the_page_no_longer_lists_is_dropped(cx: &mut TestAppContext) {
     let (view, visual, endpoint) = settings_view_with_endpoint(cx);

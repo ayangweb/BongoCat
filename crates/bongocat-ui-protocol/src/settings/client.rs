@@ -542,12 +542,16 @@ impl SettingsClient {
     /// The whole document rather than one field, because the plugin writes its own
     /// file atomically and a patch would have to be merged by a side that does not own
     /// the file.
+    ///
+    /// Answers with nothing on success. The page draws the draft it already holds and
+    /// re-reads the plugin center on its own revision poll, so a snapshot here would be a
+    /// scan of the user's models on every keystroke, for an answer nobody asked for.
     pub async fn set_plugin_config(
         &self,
         plugin: String,
         config: std::collections::BTreeMap<String, SettingsFieldValue>,
-    ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::SetPluginConfig {
+    ) -> Result<(), SettingsError> {
+        self.request_acknowledged(|reply| SettingsCommand::SetPluginConfig {
             plugin,
             config,
             reply,
@@ -570,15 +574,16 @@ impl SettingsClient {
 
     /// Move one plugin's panel to another place in the model window.
     ///
-    /// A press rather than a fire-and-forget, for the same reason [`Self::press_plugin_action`]
-    /// is: the answer carries the position the plugin actually got, which is not always the
-    /// one that was asked for — another plugin may already hold that corner.
+    /// A press rather than a fire-and-forget, and it answers with only whether the move was
+    /// made. The position the plugin *actually* got is not always the one that was asked
+    /// for, because another plugin may already hold that corner, and it is on the snapshot
+    /// the page polls for, which is where the form shows it.
     pub async fn set_plugin_position(
         &self,
         plugin: String,
         position: String,
-    ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::SetPluginPosition {
+    ) -> Result<(), SettingsError> {
+        self.request_acknowledged(|reply| SettingsCommand::SetPluginPosition {
             plugin,
             position,
             reply,
@@ -587,11 +592,8 @@ impl SettingsClient {
     }
 
     /// Put one plugin's panel back in its own corner.
-    pub async fn clear_plugin_position(
-        &self,
-        plugin: String,
-    ) -> Result<SettingsSnapshot, SettingsError> {
-        self.request(|reply| SettingsCommand::ClearPluginPosition { plugin, reply })
+    pub async fn clear_plugin_position(&self, plugin: String) -> Result<(), SettingsError> {
+        self.request_acknowledged(|reply| SettingsCommand::ClearPluginPosition { plugin, reply })
             .await
     }
 
@@ -1037,6 +1039,29 @@ impl SettingsClient {
         &self,
         command: impl FnOnce(SettingsReply<Result<SettingsSnapshot, SettingsError>>) -> SettingsCommand,
     ) -> Result<SettingsSnapshot, SettingsError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send(command(SettingsReply(reply)))
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        receiver
+            .recv()
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
+    }
+
+    /// A command that changes no configuration and whose answer is only whether it worked.
+    ///
+    /// A separate helper rather than a parameter, because the distinction is not cosmetic:
+    /// a command that replies with a snapshot makes the service **build** one, and building
+    /// a snapshot walks the model store on disk. So the two shapes of command are two
+    /// shapes of reply, and a plugin's own settings — which the plugin owns, which the
+    /// window already has a draft of, and which the page re-reads on its own poll — are
+    /// answered with the acknowledgement rather than with a scan of every model on the disk.
+    pub(crate) async fn request_acknowledged(
+        &self,
+        command: impl FnOnce(SettingsReply<Result<(), SettingsError>>) -> SettingsCommand,
+    ) -> Result<(), SettingsError> {
         let (reply, receiver) = async_channel::bounded(1);
         self.commands
             .send(command(SettingsReply(reply)))

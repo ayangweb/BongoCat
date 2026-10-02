@@ -1004,10 +1004,21 @@ Linux 阶段再决定增加 Vulkan/OpenGL backend，或基于数据迁移到 wgp
 ```text
 plugin worker thread --(latest-wins 图层通道)--> overlay frame loop
        |                                                  ^
-       +-- 发布快照 <--(有界命令通道)-- settings service  |
+       +-- 发布快照 <--(inbox: 命令 + "插件回答了")-- settings service
+       |                                    +-- session reader 线程
        |                                                  |
        +-- 只读 runtime 事实                               +-- OverlayPressSink
 ```
+
+worker 等待的是**一个入口**而不是两条：产品命令与插件的回答走同一个 inbox，所以「用户按
+下一个控件」和「插件画完了」都会立刻叫醒它，而不是排队等一次评估。评估间隔因此是一个
+**上限**而不是节拍——它只约束时钟驱动的 tick，而 tick 由自己的 `MAXIMUM_TICK_INTERVAL`
+单独约束。光栅化在面板被接受时**只做一次**并随 session 持有，发布路径上一次像素都不复制。
+详见 `docs/adr/0086-a-plugins-answer-wakes-the-host.md`。
+
+气泡在显示期间**占用它自己插件的那一层**，到期后面板立即被重新发布；它的寿命由宿主在
+每一轮循环上强制，与插件是否还在运行无关——否则一个在气泡显示中途被关掉的插件会把一个
+没有主人的图层留在模型窗口上。
 
 三条边界各自承担一件不能合并的事：
 
