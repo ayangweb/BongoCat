@@ -57,6 +57,10 @@ class ReleaseTargetTests(unittest.TestCase):
             "macos-latest": "arm64",
             "macos-26": "arm64",
             "macos-15": "arm64",
+            # Xcode 27 image labels are Apple-silicon-only; Intel Macs never got
+            # one because macOS 27 is Apple-silicon-only.
+            "xcode-27": "arm64",
+            "xcode-27-xlarge": "arm64",
             "macos-26-intel": "x86_64",
             "macos-26-large": "x86_64",
             "macos-15-intel": "x86_64",

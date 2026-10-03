@@ -230,3 +230,10 @@ DMG 压缩格式选 `ULMO`（LZFSE）而不是默认的 `UDZO`（zlib）。`UDZO
 - 本 ADR「验证与已知限制」第 3 条（`x86_64-apple-darwin` 产物在 CI 中不被原生执行）仍然成立：
   Intel 那条 leg 换成 x64 runner 后，CI 里的构建与结构校验都发生在目标架构上，但应用本身
   仍然只在本机（Apple Silicon）运行过。
+
+补充（2026-10-03，ADR-0078）：上一节「两者 macOS 版本相同，Xcode 与 Swift 工具链仍对齐」的结论
+现需修订。v2.1.0 实测显示，用 macOS 26 SDK 构建的 arm64 包在 macOS 27 上点权限引导的「打开系统
+设置」会 SIGTRAP（SwiftUI AG 断言），同源码用 macOS 27 SDK 构建则正常。release workflow 因此改为：
+Apple Silicon leg 用 `xcode-27`（macOS 27 / Xcode 27.0 / SDK 27.0），Intel leg 保持
+`macos-26-intel`（macOS 27 是 Apple silicon 专用，Intel 机最高只到 macOS 26，SDK 26.x 与之匹配）。
+两个 leg 的 Xcode 大版本不再人为一致；「配置完全一致」收窄为「同为与目标架构一致的原生 runner」。
