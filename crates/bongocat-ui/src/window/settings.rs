@@ -640,6 +640,56 @@ impl SettingsView {
         }
     }
 
+    /// Apply an idle-hide delay typed or stepped in the overlay settings page.
+    ///
+    /// The delay is how long the mouse, keyboard and gamepad may stay
+    /// untouched before the overlay fades out, so the value is clamped to the
+    /// range the configuration accepts: `0` hides as soon as input stops, and
+    /// the upper bound is the shared `hide_on_idle_delay_seconds` limit rather
+    /// than a UI-local number. The field is whole-second valued, so a
+    /// fractional entry is rounded before it is compared with the current
+    /// configuration.
+    pub(super) fn set_overlay_idle_hide_delay_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if self.model_import.is_running() {
+            return;
+        }
+        let value = raw.round().clamp(
+            0.0,
+            f64::from(bongocat_config::MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS),
+        ) as u32;
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.overlay.hide_on_idle_delay_seconds == value {
+            return;
+        }
+        let expected_config_revision = snapshot.config_revision;
+        let current_overlay = snapshot.overlay;
+        let should_send = self
+            .overlay_idle_hide_delay_debouncer
+            .observe(value, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .and_then(|hide_on_idle_delay_seconds| {
+                expected_config_revision.map(|expected_config_revision| {
+                    let mut settings = current_overlay;
+                    settings.hide_on_idle_delay_seconds = hide_on_idle_delay_seconds;
+                    self.start_request(
+                        PendingOperation::OverlayIdleHideDelay,
+                        Some(SettingValue::OverlayIdleHideDelay {
+                            expected_config_revision,
+                            hide_on_idle_delay_seconds,
+                            settings,
+                        }),
+                        cx,
+                    );
+                })
+            })
+            .is_some();
+        if !should_send {
+            self.schedule_overlay_idle_hide_delay_flush(cx);
+        }
+    }
+
     pub(super) fn set_motion_audio_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         let Some(expected_config_revision) = self
             .snapshot

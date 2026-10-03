@@ -234,6 +234,8 @@ pub struct SettingsView {
     pub(crate) overlay_corner_radius_timer_generation: u64,
     pub(crate) overlay_hover_hide_delay_debouncer: crate::SettingsPatchDebouncer<u32>,
     pub(crate) overlay_hover_hide_delay_timer_generation: u64,
+    pub(crate) overlay_idle_hide_delay_debouncer: crate::SettingsPatchDebouncer<u32>,
+    pub(crate) overlay_idle_hide_delay_timer_generation: u64,
     pub(crate) gamepad_dead_zone_debouncer:
         crate::SettingsPatchDebouncer<SettingsGamepadAxisSettings>,
     pub(crate) gamepad_dead_zone_timer_generation: u64,

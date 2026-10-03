@@ -192,6 +192,11 @@ pub struct SettingsOverlay {
     /// How long the pointer must rest on the overlay before the hover hide
     /// starts, in whole seconds. `0` hides as soon as the pointer enters.
     pub hide_on_pointer_hover_delay_seconds: u32,
+    /// Hide the overlay after the mouse, keyboard and gamepad stay untouched.
+    pub hide_on_idle: bool,
+    /// How long input may stay untouched before the idle hide starts, in whole
+    /// seconds. `0` hides as soon as input stops.
+    pub hide_on_idle_delay_seconds: u32,
     /// Keep the overlay fully on a display. The window is allowed over a
     /// taskbar, Dock or menu bar, and a window dragged off the desktop returns
     /// after the drag ends rather than being pulled back mid-drag.
@@ -208,6 +213,8 @@ impl Default for SettingsOverlay {
             corner_radius_percent: 0,
             hide_on_pointer_hover: false,
             hide_on_pointer_hover_delay_seconds: 0,
+            hide_on_idle: false,
+            hide_on_idle_delay_seconds: 10,
             keep_inside_screen: true,
         }
     }

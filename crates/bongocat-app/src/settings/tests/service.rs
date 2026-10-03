@@ -420,6 +420,8 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
         corner_radius_percent: 25,
         hide_on_pointer_hover: true,
         hide_on_pointer_hover_delay_seconds: 1,
+        hide_on_idle: true,
+        hide_on_idle_delay_seconds: 30,
         keep_inside_screen: false,
     };
     let configured = client
@@ -572,6 +574,8 @@ fn service_rejects_stale_overlay_settings_without_mutating_runtime_or_config() {
         corner_radius_percent: 25,
         hide_on_pointer_hover: true,
         hide_on_pointer_hover_delay_seconds: 1,
+        hide_on_idle: true,
+        hide_on_idle_delay_seconds: 30,
         keep_inside_screen: false,
     };
     let committed = client
@@ -587,6 +591,8 @@ fn service_rejects_stale_overlay_settings_without_mutating_runtime_or_config() {
         corner_radius_percent: 50,
         hide_on_pointer_hover: false,
         hide_on_pointer_hover_delay_seconds: 0,
+        hide_on_idle: false,
+        hide_on_idle_delay_seconds: 0,
         keep_inside_screen: true,
     };
     let error = client

@@ -362,6 +362,12 @@
       "hide_on_mouse_hover_delay": {
         "label": "Độ trễ ẩn khi rê chuột (giây)"
       },
+      "hide_on_idle": {
+        "label": "Ẩn khi không có thao tác"
+      },
+      "hide_on_idle_delay": {
+        "label": "Thời gian chờ ẩn khi không có thao tác (giây)"
+      },
       "scale": {
         "label": "Tỉ lệ cửa sổ"
       },

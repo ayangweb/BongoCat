@@ -479,6 +479,8 @@ fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
         corner_radius_percent: 25,
         hide_on_pointer_hover: true,
         hide_on_pointer_hover_delay_seconds: 2,
+        hide_on_idle: true,
+        hide_on_idle_delay_seconds: 45,
         keep_inside_screen: false,
     };
     assert_eq!(stepped_overlay_scale(settings, -25).scale_percent, 75);
@@ -496,6 +498,8 @@ fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
     assert_eq!(changed.corner_radius_percent, 25);
     assert!(changed.hide_on_pointer_hover);
     assert_eq!(changed.hide_on_pointer_hover_delay_seconds, 2);
+    assert!(changed.hide_on_idle);
+    assert_eq!(changed.hide_on_idle_delay_seconds, 45);
     assert!(!changed.keep_inside_screen);
 }
 
@@ -521,6 +525,32 @@ fn the_hover_hide_delay_only_applies_while_the_switch_is_on() {
         };
         assert_eq!(
             hover_hide_delay_applies(overlay),
+            expected,
+            "{overlay:?} must follow the switch rather than the delay"
+        );
+    }
+}
+
+/// The idle hide delay follows the same rule as the hover one.
+///
+/// Both overlay backends arm the behaviour with `options.hide_on_idle &&
+/// input_running`, so the delay row is inert while the switch is off, and
+/// turning the switch off must leave the recorded delay alone.
+#[test]
+fn the_idle_hide_delay_only_applies_while_the_switch_is_on() {
+    for (hide_on_idle, delay_seconds, expected) in [
+        (false, 0, false),
+        (false, 300, false),
+        (true, 0, true),
+        (true, 300, true),
+    ] {
+        let overlay = SettingsOverlay {
+            hide_on_idle,
+            hide_on_idle_delay_seconds: delay_seconds,
+            ..SettingsOverlay::default()
+        };
+        assert_eq!(
+            idle_hide_delay_applies(overlay),
             expected,
             "{overlay:?} must follow the switch rather than the delay"
         );

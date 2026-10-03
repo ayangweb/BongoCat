@@ -239,3 +239,17 @@ fn hover_hide_delay_converts_whole_seconds_to_the_frame_clock() {
     );
     assert!(hover_hide_delay_ms(u32::MAX) > MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS);
 }
+
+#[test]
+fn idle_hide_delay_converts_whole_seconds_to_the_frame_clock() {
+    assert_eq!(idle_hide_delay_ms(0), 0);
+    assert_eq!(idle_hide_delay_ms(10), 10_000);
+    assert_eq!(
+        idle_hide_delay_ms(MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS),
+        MAXIMUM_HIDE_ON_IDLE_DELAY_MS
+    );
+    assert!(
+        idle_hide_delay_ms(MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS + 1) > MAXIMUM_HIDE_ON_IDLE_DELAY_MS
+    );
+    assert!(idle_hide_delay_ms(u32::MAX) > MAXIMUM_HIDE_ON_IDLE_DELAY_MS);
+}

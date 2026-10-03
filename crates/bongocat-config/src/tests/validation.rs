@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::{
-    MAXIMUM_MODEL_EXPRESSION_MEMORIES, MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES,
-    ModelExpressionMemory,
+    DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS, MAXIMUM_MODEL_EXPRESSION_MEMORIES,
+    MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES, ModelExpressionMemory,
 };
 
 #[test]
@@ -274,6 +274,64 @@ fn overlay_hover_hide_delay_accepts_the_first_version_range() {
             ))
         ));
     }
+}
+
+#[test]
+fn overlay_idle_hide_delay_accepts_the_first_version_range() {
+    for accepted in [0_u32, 1, 10, 60, 599, 600] {
+        let mut config = NativeConfig::default();
+        config.overlay.hide_on_idle_delay_seconds = accepted;
+        assert!(
+            config.validate().is_ok(),
+            "idle hide delay {accepted} must be accepted"
+        );
+    }
+    for rejected in [601_u32, 1_200, u32::MAX] {
+        let mut config = NativeConfig::default();
+        config.overlay.hide_on_idle_delay_seconds = rejected;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::InvalidValue(
+                "overlay.hide_on_idle_delay_seconds"
+            ))
+        ));
+    }
+}
+
+#[test]
+fn overlay_idle_hide_switch_defaults_to_off_and_round_trips() {
+    let config = NativeConfig::default();
+    assert!(!config.overlay.hide_on_idle);
+    assert_eq!(
+        config.overlay.hide_on_idle_delay_seconds,
+        DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS
+    );
+
+    let mut enabled = config;
+    enabled.overlay.hide_on_idle = true;
+    enabled.overlay.hide_on_idle_delay_seconds = 30;
+    enabled.validate().expect("enabled idle hide is valid");
+    let encoded = serde_json::to_string(&enabled).expect("serialize enabled idle hide");
+    let decoded: NativeConfig =
+        serde_json::from_str(&encoded).expect("deserialize enabled idle hide");
+    assert_eq!(decoded, enabled);
+}
+
+#[test]
+fn overlay_idle_hide_fields_default_when_missing_from_older_data() {
+    let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    let overlay = value["overlay"]
+        .as_object_mut()
+        .expect("overlay is an object");
+    overlay.remove("hide_on_idle");
+    overlay.remove("hide_on_idle_delay_seconds");
+    let decoded: NativeConfig =
+        serde_json::from_value(value).expect("older config without idle hide fields must load");
+    assert!(!decoded.overlay.hide_on_idle);
+    assert_eq!(
+        decoded.overlay.hide_on_idle_delay_seconds,
+        DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS
+    );
 }
 
 #[test]

@@ -31,6 +31,11 @@ pub(crate) struct ProductOverlaySession {
     pub(crate) resize_sender: Option<SyncSender<OverlayResizeOutcome>>,
     pub(crate) right_button_monitor: Option<RightButtonMonitor>,
     pub(crate) hover: PointerHoverHide,
+    /// Inactivity hide shares the session's frame tick and the hover hide's
+    /// fade window: both are temporary presentation states layered on the
+    /// same alpha channel, and the pointer routing treats either one as
+    /// "not ours right now".
+    pub(crate) idle: IdleHide,
     pub(crate) placement: OverlayPlacementConstraint,
     /// Monotonic base for every time-based rule in this session. The hover fade
     /// and the placement settle delay both measure elapsed time from it, so the
@@ -148,6 +153,7 @@ impl ProductOverlaySession {
             resize_sender,
             right_button_monitor: context_menu_monitor,
             hover: PointerHoverHide::default(),
+            idle: IdleHide::default(),
             placement: OverlayPlacementConstraint::default(),
             session_started: Instant::now(),
         })
@@ -266,6 +272,8 @@ impl ProductOverlaySession {
         self.update_hover_presentation(
             self.options,
             runtime_snapshot.cursor.sample,
+            runtime_snapshot.input.last_input_sequence,
+            runtime_snapshot.gamepad_axis_transport.published,
             runtime_snapshot.platform_input.service_status == PlatformInputServiceStatus::Running,
         )?;
         self.options.maximum_fps = runtime_snapshot.maximum_fps;
@@ -472,6 +480,8 @@ impl ProductOverlaySession {
         &mut self,
         options: OverlaySessionOptions,
         cursor: Option<CursorSample>,
+        last_input_sequence: Option<u64>,
+        gamepad_axis_published: u64,
         input_running: bool,
     ) -> Result<(), OverlayError> {
         let mtm = MainThreadMarker::new()
@@ -488,15 +498,26 @@ impl ProductOverlaySession {
             && cursor
                 .and_then(|sample| appkit_cursor_position(sample, mtm))
                 .is_some_and(|position| pointer_inside_window(bounds, position.x, position.y));
+        let now = self.session_started.elapsed();
         let fade = self.hover.observe(PointerHoverObservation {
             enabled: options.hide_on_pointer_hover && input_running,
             delay: Duration::from_millis(u64::from(options.hide_on_pointer_hover_delay_ms)),
             pointer_inside,
-            now: self.session_started.elapsed(),
+            now,
         });
-        let alpha = f64::from(options.opacity_percent) / 100.0 * fade;
-        self.overlay
-            .apply_presentation(alpha, options.click_through || self.hover.hidden());
+        let idle_fade = self.idle.observe(IdleObservation {
+            enabled: options.hide_on_idle && input_running,
+            delay: Duration::from_millis(u64::from(options.hide_on_idle_delay_ms)),
+            input_sequence: last_input_sequence,
+            cursor_at: cursor.map(|sample| sample.at),
+            gamepad_axis_published,
+            now,
+        });
+        let alpha = f64::from(options.opacity_percent) / 100.0 * fade * idle_fade;
+        self.overlay.apply_presentation(
+            alpha,
+            options.click_through || self.hover.hidden() || self.idle.hidden(),
+        );
         Ok(())
     }
 
@@ -514,8 +535,12 @@ impl ProductOverlaySession {
         bounds: Option<OverlayWindowBounds>,
     ) -> Result<NativeOverlay, OverlayError> {
         let mut overlay = NativeOverlay::create(mtm, frame, options, bounds)?;
-        let alpha = f64::from(options.opacity_percent) / 100.0 * self.hover.visible();
-        overlay.apply_presentation(alpha, options.click_through || self.hover.hidden());
+        let alpha =
+            f64::from(options.opacity_percent) / 100.0 * self.hover.visible() * self.idle.visible();
+        overlay.apply_presentation(
+            alpha,
+            options.click_through || self.hover.hidden() || self.idle.hidden(),
+        );
         Ok(overlay)
     }
 
@@ -732,6 +757,11 @@ pub(crate) fn validate_product_options(options: OverlaySessionOptions) -> Result
     if options.hide_on_pointer_hover_delay_ms > MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS {
         return Err(OverlayError::new(
             "overlay hover hide delay must be between 0 and 60000 milliseconds",
+        ));
+    }
+    if options.hide_on_idle_delay_ms > MAXIMUM_HIDE_ON_IDLE_DELAY_MS {
+        return Err(OverlayError::new(
+            "overlay idle hide delay must be between 0 and 600000 milliseconds",
         ));
     }
     if !maximum_fps_is_valid(options.maximum_fps) {

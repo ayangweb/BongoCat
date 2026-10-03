@@ -31,6 +31,8 @@ fn lifecycle_publishes_typed_snapshots_and_stops_cleanly() {
         corner_radius_percent: 25,
         hide_on_pointer_hover: true,
         hide_on_pointer_hover_delay_seconds: 1,
+        hide_on_idle: true,
+        hide_on_idle_delay_seconds: 2,
         keep_inside_screen: false,
     };
     let sequence = client

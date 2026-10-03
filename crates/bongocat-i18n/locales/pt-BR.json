@@ -362,6 +362,12 @@
       "hide_on_mouse_hover_delay": {
         "label": "Atraso para ocultar ao passar o mouse (segundos)"
       },
+      "hide_on_idle": {
+        "label": "Ocultar quando ocioso"
+      },
+      "hide_on_idle_delay": {
+        "label": "Atraso para ocultar quando ocioso (segundos)"
+      },
       "scale": {
         "label": "Escala da janela"
       },

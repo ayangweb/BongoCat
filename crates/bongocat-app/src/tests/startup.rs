@@ -47,6 +47,8 @@ fn application_loads_config_updates_runtime_and_stops() {
         corner_radius_percent: 25,
         hide_on_pointer_hover: true,
         hide_on_pointer_hover_delay_seconds: 1,
+        hide_on_idle: true,
+        hide_on_idle_delay_seconds: 30,
         keep_inside_screen: false,
     };
     let settings_snapshot = application
@@ -66,6 +68,8 @@ fn application_loads_config_updates_runtime_and_stops() {
             .hide_on_pointer_hover_delay_seconds,
         1
     );
+    assert!(application.config().overlay.hide_on_idle);
+    assert_eq!(application.config().overlay.hide_on_idle_delay_seconds, 30);
     assert!(!application.config().overlay.keep_inside_screen);
 
     application

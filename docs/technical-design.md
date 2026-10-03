@@ -911,6 +911,15 @@ runtime 的 overlay visibility 不受影响，frame source 继续按 `overlay.ma
 `opacity_percent` 共同决定最终 alpha。改变不透明度只更新现有 surface 的 presentation alpha；开关和
 延迟本身也在 frame tick 内原地生效，不触发原生窗口重建。
 
+无操作隐藏与悬停隐藏是同一呈现通道上的第二个临时状态。`overlay.hide_on_idle` 开启且
+`overlay.hide_on_idle_delay_seconds` 内没有任何新输入时，overlay 把 alpha 淡到 `0` 并强制指针穿透；
+任意新输入重新开始计时并淡回 `opacity_percent`。它的「活动」判定只读 runtime snapshot 里的三个输入
+计数器：输入事件序号、指针采样时间戳、手柄轴已发布样本数。三者任一变化都算一次新活动；鼠标停在
+原地不产生新采样，因此不会把闲置状态续期。平台 owner 不自己监听全局输入，也不新增平台 API。
+两个状态机的 alpha 相乘、穿透取或，因此任意一个生效都不会让 overlay 停在透明但吞掉点击的状态。
+输入服务不在 `Running` 状态时无操作隐藏同样关闭，避免输入链路失效时永久隐藏窗口。窗口、frame
+loop 与 runtime overlay visibility 都不受影响，shutdown 顺序不变。
+
 原生 overlay 窗口创建后默认保持隐藏。平台 owner 只有在对应 renderer 已成功完成至少一次
 非空帧 draw/present 后才允许首次显示；启动、隐藏后重显、设置导致的窗口重建和模型切换重建
 都遵守同一顺序。首帧提交或验证失败时窗口保持隐藏，模型准备失败仍保留当前可用窗口与模型，

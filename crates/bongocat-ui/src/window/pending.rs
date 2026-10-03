@@ -27,6 +27,7 @@ pub(crate) enum PendingOperation {
     OverlayOpacity,
     OverlayCornerRadius,
     OverlayHoverHideDelay,
+    OverlayIdleHideDelay,
     MotionAudio,
     CommandShortcuts,
     BehaviorShortcuts,
@@ -109,6 +110,11 @@ pub(crate) enum SettingValue {
     OverlayHoverHideDelay {
         expected_config_revision: u64,
         hide_on_pointer_hover_delay_seconds: u32,
+        settings: SettingsOverlay,
+    },
+    OverlayIdleHideDelay {
+        expected_config_revision: u64,
+        hide_on_idle_delay_seconds: u32,
         settings: SettingsOverlay,
     },
     MotionAudioEnabled {

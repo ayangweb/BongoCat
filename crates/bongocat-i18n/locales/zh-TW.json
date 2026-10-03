@@ -362,6 +362,12 @@
       "hide_on_mouse_hover_delay": {
         "label": "滑鼠停留隱藏延遲（秒）"
       },
+      "hide_on_idle": {
+        "label": "無操作時隱藏"
+      },
+      "hide_on_idle_delay": {
+        "label": "無操作時隱藏延遲（秒）"
+      },
       "scale": {
         "label": "視窗縮放"
       },

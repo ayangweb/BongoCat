@@ -52,6 +52,16 @@
       "expected": "reject"
     },
     {
+      "id": "idle-hide",
+      "file": "accept-idle-hide.json",
+      "expected": "accept"
+    },
+    {
+      "id": "idle-hide-delay-out-of-range",
+      "file": "invalid-idle-hide-delay.json",
+      "expected": "reject"
+    },
+    {
       "id": "incomplete-model-identity",
       "file": "invalid-incomplete-model-identity.json",
       "expected": "reject"

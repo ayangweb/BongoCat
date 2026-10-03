@@ -22,6 +22,10 @@ fn product_options_reject_values_outside_renderer_boundaries() {
             ..OverlaySessionOptions::default()
         },
         OverlaySessionOptions {
+            hide_on_idle_delay_ms: MAXIMUM_HIDE_ON_IDLE_DELAY_MS + 1,
+            ..OverlaySessionOptions::default()
+        },
+        OverlaySessionOptions {
             maximum_fps: 14,
             ..OverlaySessionOptions::default()
         },

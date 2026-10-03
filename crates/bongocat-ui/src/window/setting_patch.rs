@@ -210,6 +210,47 @@ impl SettingsView {
         })
         .detach();
     }
+
+    pub(crate) fn schedule_overlay_idle_hide_delay_flush(&mut self, cx: &mut Context<Self>) {
+        self.overlay_idle_hide_delay_timer_generation = self
+            .overlay_idle_hide_delay_timer_generation
+            .saturating_add(1);
+        let generation = self.overlay_idle_hide_delay_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.overlay_idle_hide_delay_timer_generation != generation
+                    || view.pending.is_some()
+                {
+                    return;
+                }
+                let Some(hide_on_idle_delay_seconds) =
+                    view.overlay_idle_hide_delay_debouncer.ready(Instant::now())
+                else {
+                    return;
+                };
+                let Some(snapshot) = view.snapshot.as_ref() else {
+                    return;
+                };
+                let Some(expected_config_revision) = snapshot.config_revision else {
+                    return;
+                };
+                let mut settings = snapshot.overlay;
+                settings.hide_on_idle_delay_seconds = hide_on_idle_delay_seconds;
+                view.start_request(
+                    PendingOperation::OverlayIdleHideDelay,
+                    Some(SettingValue::OverlayIdleHideDelay {
+                        expected_config_revision,
+                        hide_on_idle_delay_seconds,
+                        settings,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
 }
 
 impl SettingsView {
@@ -435,6 +476,20 @@ impl SettingsView {
                 Some(SettingValue::OverlayHoverHideDelay {
                     expected_config_revision,
                     hide_on_pointer_hover_delay_seconds,
+                    settings,
+                }),
+                cx,
+            );
+        } else if let Some(hide_on_idle_delay_seconds) =
+            self.overlay_idle_hide_delay_debouncer.flush(now)
+        {
+            let mut settings = snapshot.overlay;
+            settings.hide_on_idle_delay_seconds = hide_on_idle_delay_seconds;
+            self.start_request(
+                PendingOperation::OverlayIdleHideDelay,
+                Some(SettingValue::OverlayIdleHideDelay {
+                    expected_config_revision,
+                    hide_on_idle_delay_seconds,
                     settings,
                 }),
                 cx,
