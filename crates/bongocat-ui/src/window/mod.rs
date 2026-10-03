@@ -63,6 +63,8 @@ mod model_actions;
 mod model_drag_overlay;
 use model_drag_overlay::ModelDragOverlayState;
 mod drag;
+mod dropdown;
+use dropdown::dropdown_menu_width;
 mod edit;
 mod import;
 mod model_import_card;

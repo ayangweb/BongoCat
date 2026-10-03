@@ -14,6 +14,7 @@
 - On macOS, the menu bar icon no longer disappears after updating to a new version.
 - On Windows, an Xbox-mode controller no longer stops responding while another window has focus. BongoCat was reading controllers through a Windows gaming input interface that Windows only delivers to the app that currently owns the foreground window, so gamepad input only arrived while a BongoCat window was focused. Controllers Windows reads as raw HID devices, such as DS4 and Switch modes, were not affected.
 - On Windows, analog sticks and triggers on controllers that Windows reads as raw HID devices no longer report wrong values: a stick at rest read as full deflection in one direction, half its travel was clamped there, and an analog trigger at rest sat exactly on the press threshold so it could flicker. This affected Switch-mode, DS4-mode and other non-Xbox controller modes.
+- Settings dropdowns now open wide enough for their longest option, so no choice is cut off with an ellipsis anymore. Random playback was the clearest case: with "Off" selected, every option in the list was shown as an ellipsis. A menu takes its width from the longest option it offers rather than from the value it currently shows, and keeps its padding instead of hugging the text.
 
 ### 🌍 Localization
 
