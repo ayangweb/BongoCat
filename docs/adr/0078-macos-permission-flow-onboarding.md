@@ -76,6 +76,17 @@ ADR 记录把它用于 macOS 输入监控引导的决策、实测得到的能力
    `MusicKit`，`fullDiskAccessAuthorizationState()` 会读 `/private/etc/sudoers`、
    `/Library/Application Support/com.apple.TCC/TCC.db` 等路径，Rust 侧也暴露 8 类权限。
 
+10. **CI 构建的 arm64 包在 macOS 27 上点「打开系统设置」会 SIGTRAP。** 复现（v2.1.0 CI 包，
+    arm64，macOS 27.0）：点击引导按钮进入 `request_permission_flow` → `start_flow()`，SwiftUI
+    面板的 `NSHostingView` 加入窗口时断言失败，`bongocat-app` 崩溃。崩溃栈均在 SwiftUI 框架
+    内（`NSHostingView.didChangeRequiredBridges` → `GraphHost.preferenceValues()` →
+    `AGGraphGetValue` → `ViewBodyAccessor.updateBody` 内的 `_assertionFailure`）。同一源码、
+    同一 `Cargo.lock` 的本地产物不崩。唯一可复现的差异是构建 SDK：v2.1.0 CI 包
+    （`build-provenance.json` 为 arm64、`vtool` 显示 `sdk 26.5`、LD 1267.0）在 macOS 27 上崩，
+    本地产物（`sdk 27.0`、LD 27037.1、Xcode 27.0）不崩。也就是说 permission-flow 的 SwiftUI
+    面板是「Swift 静态库版本 ↔ 系统 SwiftUI」的运行时不变量敏感代码：用 macOS 26 SDK 编译的
+    SwiftUI 客户端跑在 macOS 27 的 SwiftUI 上会触发 AG 图断言，反向（macOS 27 SDK）不会。
+
 ## 决策
 
 ### 1. 接受 Swift/AppKit 作为第二个厂商 FFI 例外
@@ -163,6 +174,17 @@ macOS 12 支持只能先落在 fork（上游 PR <https://github.com/veecore/perm
   `LocalizedStringResource`。
 - 上游合并并发布后必须改回 crates.io 精确 pin，并从 `allow-git` 删掉这一行；在此之前
   `Cargo.lock` 记录的是 git source，`cargo deny check sources` 是这一项的守门。
+
+### 8. CI 产物的 SDK 必须匹配产物运行面向的 macOS 大版本（2026-10-03）
+
+v2.1.0 CI 的 arm64 包在 macOS 27 上点权限引导的「打开系统设置」会 SIGTRAP（实测结论第 10 条），
+根因是同一 Swift 面板在「macOS 26 SDK 编译、macOS 27 运行」的组合下触发 SwiftUI AG 断言。修复：
+release workflow 的 Apple Silicon leg 从 `macos-latest`（当时是 macOS 26 / Xcode 26.x）换成
+`xcode-27`（macOS 27 / Xcode 27.0 / SDK 27.0），让 CI 产物与实测不崩的本地产物用同一代 SDK。
+Intel leg 保留 `macos-26-intel`：macOS 27 是 Apple silicon 专用（2026-09 公布的兼容列表不含 Intel
+机型），Intel 机最高只到 macOS 26，SDK 26.x 产物与运行面匹配。两个 leg 的 Xcode 大版本随平台
+能力各自取最新，不再人为对齐；「配置完全一致」的原始意图降级为「同为原生 runner」，见 ADR-0033
+修订节。后续 macOS 大版本迭代时，两条 leg 的 Xcode/SDK 必须同步复核。
 
 ## 未完成项
 

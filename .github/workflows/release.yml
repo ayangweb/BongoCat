@@ -152,11 +152,17 @@ jobs:
         # produces it takes the architecture from the machine it runs on rather
         # than from the target being built, so a leg that crosses architectures
         # links an arm64 archive into an x86_64 binary and fails on undefined
-        # symbols. Each leg therefore runs on a runner of its own architecture —
-        # `macos-26-intel` is the x64 image of the same macOS 26 release as
-        # `macos-latest`, so both legs also build against the same Xcode. Until
-        # that build script follows the Rust target, this repository cannot
-        # produce both packages from one runner (ADR-0078).
+        # symbols. Each leg therefore runs on a runner of its own architecture (ADR-0078).
+        #
+        # The Apple Silicon leg additionally has to match the OS version its binary
+        # will run on. The guided permission panel is a SwiftUI/`NSHostingView`
+        # surface, and the v2.1.0 arm64 package — built on `macos-latest` against
+        # SDK 26.5 — aborts at runtime on macOS 27 (`_assertionFailure` in
+        # `ViewBodyAccessor.updateBody` via `NSHostingView.didChangeRequiredBridges`),
+        # while the same source built against SDK 27.0 works. The Apple Silicon leg
+        # therefore builds against the macOS 27 SDK (`xcode-27`). Intel stays on
+        # `macos-26-intel` (Xcode 26.x): macOS 27 is Apple-silicon-only, so an
+        # Intel Mac tops out at macOS 26, where the SDK 26.x build matches.
         #
         # The job name deliberately does not name the artifact. This target
         # publishes a bundle and a disk image, the Windows job publishes an
@@ -164,7 +170,7 @@ jobs:
         # download link in the release notes, where the file name is spelled out.
         include:
           - label: Apple Silicon
-            runs_on: macos-latest
+            runs_on: xcode-27
             triple: aarch64-apple-darwin
             platform: macos-aarch64
             arch: aarch64
