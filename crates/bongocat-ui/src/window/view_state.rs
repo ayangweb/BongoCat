@@ -125,12 +125,8 @@ impl SettingsView {
             ),
         ] {
             let configured = state.target(&snapshot.gamepad_auto_switch);
-            let options = gamepad_auto_switch_options(
-                &snapshot.model_catalog.entries,
-                state,
-                configured.as_ref(),
-                snapshot.resolved_language,
-            );
+            let options =
+                gamepad_auto_switch_choices(Some(snapshot), state, snapshot.resolved_language);
             // The list is rebuilt from the catalog, so the committed value has to
             // be looked up in the new list rather than carried over by position.
             let selected = options

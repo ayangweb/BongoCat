@@ -185,6 +185,32 @@ pub(super) fn gamepad_auto_switch_options(
     options
 }
 
+/// The options one gamepad auto switch dropdown offers in the frame being
+/// rendered.
+///
+/// `sync_component_inputs` fills the dropdown's items with this same list, and
+/// the render path reads it back to size the dropdown's menu, so the menu width
+/// and the rows it has to hold cannot disagree about what the options are. A
+/// frame with no snapshot yet offers the "last used" choice alone, which is what
+/// `SettingsView::new` seeds the dropdowns with. When the snapshot is there it is
+/// the catalog that decides the rows, and the configured target only adds the row
+/// for a model the catalog no longer offers.
+pub(super) fn gamepad_auto_switch_choices(
+    snapshot: Option<&SettingsSnapshot>,
+    state: GamepadConnectionState,
+    language: SettingsLanguage,
+) -> Vec<GamepadModelChoice> {
+    match snapshot {
+        Some(snapshot) => gamepad_auto_switch_options(
+            &snapshot.model_catalog.entries,
+            state,
+            state.target(&snapshot.gamepad_auto_switch).as_ref(),
+            language,
+        ),
+        None => gamepad_auto_switch_options(&[], state, None, language),
+    }
+}
+
 /// The text one model row shows: the editable title when the catalog still knows
 /// the model, and the stable id when it does not — the same fallback the model
 /// library page uses for a model that was never renamed.

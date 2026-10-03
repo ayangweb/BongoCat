@@ -15,10 +15,13 @@ where
 /// The row is a custom element because the option list is the model catalog, so
 /// it cannot be a static field. The gate still reaches the control itself: the
 /// component forwards the row's disabled state to the renderer, and the select
-/// reads it instead of recomputing the condition.
+/// reads it instead of recomputing the condition. The options are passed in
+/// whole rather than as labels, so the menu width is measured from the very list
+/// the dropdown shows.
 fn gamepad_auto_switch_model_row(
     label_key: &'static str,
     language: SettingsLanguage,
+    choices: Vec<GamepadModelChoice>,
     select: &Entity<GamepadModelSelectState>,
     gate: SettingGate,
 ) -> SettingItem {
@@ -26,8 +29,12 @@ fn gamepad_auto_switch_model_row(
     SettingItem::new(
         bongocat_i18n::text(language.catalog_locale(), label_key),
         SettingField::element(
-            move |options: &RenderOptions, _: &mut Window, _: &mut App| {
+            move |options: &RenderOptions, window: &mut Window, _: &mut App| {
                 Select::new(&select)
+                    .menu_width(dropdown_menu_width(
+                        window,
+                        choices.iter().map(|choice| choice.title()),
+                    ))
                     .disabled(options.is_disabled())
                     .into_any_element()
             },
@@ -242,9 +249,13 @@ impl Render for SettingsView {
                         ),
                         SettingField::element({
                             let view = view_entity.clone();
-                            move |_: &RenderOptions, _: &mut Window, app: &mut App| {
+                            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
                                 let state = view.read(app).theme_select.clone();
                                 Select::new(&state)
+                                    .menu_width(dropdown_menu_width(
+                                        window,
+                                        theme_options(language),
+                                    ))
                                     .disabled(editing_blocked)
                                     .into_any_element()
                             }
@@ -257,9 +268,15 @@ impl Render for SettingsView {
                         ),
                         SettingField::element({
                             let view = view_entity.clone();
-                            move |_: &RenderOptions, _: &mut Window, app: &mut App| {
+                            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
                                 let state = view.read(app).language_select.clone();
                                 Select::new(&state)
+                                    .menu_width(dropdown_menu_width(
+                                        window,
+                                        SettingsLanguage::ALL.into_iter().map(|option| {
+                                            crate::settings_language_display_name(option, language)
+                                        }),
+                                    ))
                                     .disabled(editing_blocked)
                                     .into_any_element()
                             }
@@ -268,6 +285,19 @@ impl Render for SettingsView {
                 ],
                 &appearance_keywords,
             )));
+
+        // The two gamepad dropdowns are sized from the choices this frame shows,
+        // which is the list `sync_component_inputs` fills them with.
+        let gamepad_connected_choices = gamepad_auto_switch_choices(
+            snapshot.as_ref(),
+            GamepadConnectionState::Connected,
+            language,
+        );
+        let gamepad_disconnected_choices = gamepad_auto_switch_choices(
+            snapshot.as_ref(),
+            GamepadConnectionState::Disconnected,
+            language,
+        );
 
         // The model window itself: how it behaves on the desktop, how it looks,
         // and how often it draws. Model-wide mirroring, audio, and random
@@ -698,9 +728,13 @@ impl Render for SettingsView {
                     ),
                     SettingField::element({
                         let view = view_entity.clone();
-                        move |options: &RenderOptions, _: &mut Window, app: &mut App| {
+                        move |options: &RenderOptions, window: &mut Window, app: &mut App| {
                             let state = view.read(app).random_behavior_mode_select.clone();
                             Select::new(&state)
+                                .menu_width(dropdown_menu_width(
+                                    window,
+                                    random_behavior_mode_options(language),
+                                ))
                                 .disabled(options.is_disabled())
                                 .into_any_element()
                         }
@@ -1062,12 +1096,14 @@ impl Render for SettingsView {
                     gamepad_auto_switch_model_row(
                         "settings.input_interaction.gamepad.connected_model.label",
                         language,
+                        gamepad_connected_choices,
                         &gamepad_connected_model_select,
                         gamepad_auto_switch_gate,
                     ),
                     gamepad_auto_switch_model_row(
                         "settings.input_interaction.gamepad.disconnected_model.label",
                         language,
+                        gamepad_disconnected_choices,
                         &gamepad_disconnected_model_select,
                         gamepad_auto_switch_gate,
                     ),
@@ -1283,9 +1319,13 @@ impl Render for SettingsView {
                         ),
                         SettingField::element({
                             let view = view_entity.clone();
-                            move |_: &RenderOptions, _: &mut Window, app: &mut App| {
+                            move |_: &RenderOptions, window: &mut Window, app: &mut App| {
                                 let state = view.read(app).logging_level_select.clone();
                                 Select::new(&state)
+                                    .menu_width(dropdown_menu_width(
+                                        window,
+                                        logging_level_options(language),
+                                    ))
                                     .disabled(editing_blocked)
                                     .into_any_element()
                             }
