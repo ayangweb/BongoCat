@@ -155,6 +155,8 @@ impl Application {
         next_config.overlay.hide_on_pointer_hover = settings.hide_on_pointer_hover;
         next_config.overlay.hide_on_pointer_hover_delay_seconds =
             settings.hide_on_pointer_hover_delay_seconds;
+        next_config.overlay.hide_on_idle = settings.hide_on_idle;
+        next_config.overlay.hide_on_idle_delay_seconds = settings.hide_on_idle_delay_seconds;
         next_config.overlay.keep_inside_screen = settings.keep_inside_screen;
         let next_revision = self
             .config_store

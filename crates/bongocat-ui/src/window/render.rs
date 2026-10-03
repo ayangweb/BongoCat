@@ -112,6 +112,13 @@ impl Render for SettingsView {
         // its row renders disabled rather than accepting a value nothing
         // reads — the unified gate rule's control arm.
         let hover_hide_delay_gate = SettingGate::new(editing_blocked, hover_hide_delay_available);
+        let idle_hide_delay_available = snapshot
+            .as_ref()
+            .is_some_and(|snapshot| idle_hide_delay_applies(snapshot.overlay));
+        // The idle hide delay follows the same rule as the hover one: inert
+        // while its switch is off, so the row renders disabled instead of
+        // accepting a value nothing reads.
+        let idle_hide_delay_gate = SettingGate::new(editing_blocked, idle_hide_delay_available);
         let check_for_updates_interval_gate = SettingGate::new(
             editing_blocked,
             snapshot
@@ -495,6 +502,65 @@ impl Render for SettingsView {
                         ),
                     )
                     .disabled(hover_hide_delay_gate.disables_controls()),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.hide_on_idle.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.overlay.hide_on_idle)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(snapshot) = view.snapshot.as_ref() {
+                                            let mut settings = snapshot.overlay;
+                                            settings.hide_on_idle = value;
+                                            view.set_overlay_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    ),
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.overlay.hide_on_idle_delay.label",
+                        ),
+                        SettingField::number_input(
+                            NumberFieldOptions {
+                                min: 0.0,
+                                max: f64::from(bongocat_config::MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS),
+                                step: 1.0,
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app).snapshot.as_ref().map_or(0.0, |s| {
+                                        f64::from(s.overlay.hide_on_idle_delay_seconds)
+                                    })
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        view.set_overlay_idle_hide_delay_value(value, cx)
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    .disabled(idle_hide_delay_gate.disables_controls()),
                 ],
                         &model_window_behavior_keywords,
                     )),

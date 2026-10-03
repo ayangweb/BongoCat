@@ -55,6 +55,8 @@ updates
 | `overlay`     | `corner_radius_percent`               | 窗口圆角百分比，`[0, 50]`              |
 | `overlay`     | `hide_on_pointer_hover`               | 指针悬停在窗口上时隐藏内容并临时穿透   |
 | `overlay`     | `hide_on_pointer_hover_delay_seconds` | 悬停隐藏前的等待秒数，`[0, 60]`        |
+| `overlay`     | `hide_on_idle`                        | 长时间无操作时淡出内容并临时穿透，默认 `false` |
+| `overlay`     | `hide_on_idle_delay_seconds`          | 无操作隐藏前的等待秒数，`[0, 600]`，默认 `10` |
 | `overlay`     | `keep_inside_screen`                  | 保持在所有屏幕范围内，允许覆盖任务栏等区域 |
 | `input`       | `gamepad.stick_dead_zone`             | 左/右摇杆死区，`[0, 1)`                |
 | `input`       | `gamepad.trigger_dead_zone`           | 扳机死区，`[0, 1)`                     |
@@ -132,6 +134,14 @@ runtime 的 overlay visibility。延迟值在首版收窄为 `0..=60` 秒，理�
 `bongocat-config` 中 `OverlayConfig::hide_on_pointer_hover_delay_seconds` 的文档注释。该字段以
 整秒存储，与设置页显示和输入的单位一致；overlay frame loop 仍以毫秒计时，只在
 `OverlaySessionOptions` 边界换算一次。
+
+`overlay.hide_on_idle` 默认 `false`，`overlay.hide_on_idle_delay_seconds` 默认 `10` 秒。开启后，
+键盘、鼠标与手柄在延迟时间内都没有新输入事件时，窗口渲染 alpha 在 300ms 内降到 `0`，指针事件
+立即穿透；任何新输入（新的输入事件序号、新的光标采样时间戳或新的手柄轴采样）重新开始计时，alpha
+在 300ms 内恢复。它与悬停隐藏共用同一个呈现通道，两者的 alpha 相乘，指针穿透取两者的或；两者都只
+改变呈现层，窗口、frame loop 与 runtime overlay visibility 不受影响。判定依据是 runtime snapshot
+中的输入计数器，因此输入服务不在 `Running` 状态时该功能关闭，最坏情况是窗口保持可见。两个字段都带
+`#[serde(default)]`，旧配置文件缺失时按默认关闭、延迟 10 秒读取，而不是解析失败。
 
 `system.show_status_icon` 控制 Windows 托盘或 macOS 菜单栏状态图标，不销毁系统菜单的
 唯一事件 owner。托盘菜单与 overlay 右键菜单是同一 owner 下的两个 popup 根，共享强类型 action

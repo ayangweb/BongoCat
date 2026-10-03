@@ -362,6 +362,12 @@
       "hide_on_mouse_hover_delay": {
         "label": "Mouse hover hide delay (seconds)"
       },
+      "hide_on_idle": {
+        "label": "Hide when idle"
+      },
+      "hide_on_idle_delay": {
+        "label": "Idle hide delay (seconds)"
+      },
       "scale": {
         "label": "Window scale"
       },

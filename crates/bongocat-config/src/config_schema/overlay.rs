@@ -71,6 +71,32 @@ pub struct OverlayConfig {
         schemars(range(min = 0, max = 60))
     )]
     pub hide_on_pointer_hover_delay_seconds: u32,
+    /// Hide the overlay content after the user stops touching the mouse,
+    /// keyboard and gamepad for a while, so the cat is not in the way of a
+    /// desktop being watched.
+    ///
+    /// This is the same temporary presentation state as
+    /// `hide_on_pointer_hover`: the window and the frame loop keep running,
+    /// only the rendered alpha drops to zero and pointer events pass through
+    /// until the next input resets the idle timer. `#[serde(default)]` keeps
+    /// a configuration written before the field existed on the "off" side
+    /// rather than failing the strict v1 parse.
+    #[serde(default)]
+    pub hide_on_idle: bool,
+    /// How long the input may stay untouched before the idle hide starts, in
+    /// whole seconds. `0` hides as soon as no fresh input event arrives.
+    ///
+    /// The minutes-scale ceiling is deliberate: unlike the hover delay, a
+    /// user legitimately idles for several minutes while watching their
+    /// desktop, so the bound sits at `600` rather than the hover ceiling.
+    /// The overlay compares against the millisecond clock, and the
+    /// conversion lives in `bongocat_runtime::idle_hide_delay_ms`.
+    #[serde(default = "default_hide_on_idle_delay_seconds")]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(range(min = 0, max = 600))
+    )]
+    pub hide_on_idle_delay_seconds: u32,
     /// Keep the overlay window fully on a display. The window stays on
     /// the union of the connected displays, so it may cover a taskbar, Dock or
     /// menu bar, and a window dragged off the desktop is moved back only after
@@ -84,3 +110,22 @@ pub struct OverlayConfig {
 /// See [`OverlayConfig::hide_on_pointer_hover_delay_seconds`] for why the legacy
 /// implementation's unbounded second-valued input is capped here.
 pub const MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS: u32 = 60;
+
+/// Upper bound of the idle hide delay, in whole seconds.
+///
+/// Unlike the hover delay, an idle watch can legitimately last several
+/// minutes, so the ceiling sits higher than
+/// [`MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS`] while staying a documented
+/// first-version bound rather than an unbounded input.
+pub const MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS: u32 = 600;
+
+/// Default idle hide delay, in whole seconds.
+///
+/// Ten seconds matches the first-version request: long enough that ordinary
+/// reading a static desktop is not interrupted, short enough that the cat
+/// leaves the screen quickly when nobody is using the machine.
+pub const DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS: u32 = 10;
+
+fn default_hide_on_idle_delay_seconds() -> u32 {
+    DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS
+}

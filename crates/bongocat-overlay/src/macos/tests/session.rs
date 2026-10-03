@@ -18,6 +18,8 @@ fn product_options_accept_config_boundaries() {
             corner_radius_percent: 50,
             hide_on_pointer_hover: true,
             hide_on_pointer_hover_delay_ms: MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS,
+            hide_on_idle: true,
+            hide_on_idle_delay_ms: MAXIMUM_HIDE_ON_IDLE_DELAY_MS,
             maximum_fps: 240,
             ..OverlaySessionOptions::default()
         },
@@ -47,6 +49,10 @@ fn product_options_reject_values_outside_config_boundaries() {
         },
         OverlaySessionOptions {
             hide_on_pointer_hover_delay_ms: MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS + 1,
+            ..OverlaySessionOptions::default()
+        },
+        OverlaySessionOptions {
+            hide_on_idle_delay_ms: MAXIMUM_HIDE_ON_IDLE_DELAY_MS + 1,
             ..OverlaySessionOptions::default()
         },
         OverlaySessionOptions {

@@ -453,6 +453,29 @@ fn hover_hide_copy_uses_the_same_mouse_hover_subject() {
     }
 }
 
+/// The idle hide copy names the inactivity rather than a device.
+///
+/// Both rows control the same presentation, but they read from different
+/// conditions: the hover hide reacts to the pointer, the idle hide to the
+/// absence of any input. Calling it a mouse or keyboard hide would make the
+/// delay row look like it belongs to the row above it.
+#[test]
+fn idle_hide_copy_names_the_inactivity_instead_of_a_device() {
+    for (locale, switch_label, delay_label) in [
+        ("en-US", "Hide when idle", "Idle hide delay (seconds)"),
+        ("zh-CN", "无操作时隐藏", "无操作时隐藏延迟（秒）"),
+    ] {
+        assert_eq!(
+            bongocat_i18n::text(locale, "settings.overlay.hide_on_idle.label"),
+            switch_label
+        );
+        assert_eq!(
+            bongocat_i18n::text(locale, "settings.overlay.hide_on_idle_delay.label"),
+            delay_label
+        );
+    }
+}
+
 #[test]
 fn model_window_performance_title_names_the_window() {
     assert_eq!(

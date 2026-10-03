@@ -201,6 +201,8 @@ pub(super) fn snapshot(
             hide_on_pointer_hover_delay_seconds: runtime
                 .overlay_settings
                 .hide_on_pointer_hover_delay_seconds,
+            hide_on_idle: runtime.overlay_settings.hide_on_idle,
+            hide_on_idle_delay_seconds: runtime.overlay_settings.hide_on_idle_delay_seconds,
             keep_inside_screen: runtime.overlay_settings.keep_inside_screen,
         },
         motion_audio_enabled: runtime.motion_audio_enabled,

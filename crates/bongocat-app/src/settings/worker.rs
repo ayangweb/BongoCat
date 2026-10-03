@@ -311,6 +311,8 @@ pub(super) fn run_service(
                     hide_on_pointer_hover: settings.hide_on_pointer_hover,
                     hide_on_pointer_hover_delay_seconds: settings
                         .hide_on_pointer_hover_delay_seconds,
+                    hide_on_idle: settings.hide_on_idle,
+                    hide_on_idle_delay_seconds: settings.hide_on_idle_delay_seconds,
                     keep_inside_screen: settings.keep_inside_screen,
                 };
                 let result = check_revision(&application, expected_config_revision)

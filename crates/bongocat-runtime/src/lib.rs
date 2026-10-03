@@ -163,6 +163,29 @@ pub const fn hover_hide_delay_ms(seconds: u32) -> u32 {
     seconds.saturating_mul(1_000)
 }
 
+/// Upper bound of the idle hide delay, in whole seconds.
+///
+/// Higher than the hover ceiling because watching a static desktop is a
+/// minutes-scale activity; the configuration schema documents the same
+/// bound at its validation entry point.
+pub const MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS: u32 = 600;
+
+/// Default idle hide delay, in whole seconds.
+///
+/// Ten seconds is long enough that reading a static desktop is not
+/// interrupted and short enough that the cat leaves the screen promptly.
+pub const DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS: u32 = 10;
+
+/// The same ceiling in the milliseconds the overlay frame loop counts in.
+pub const MAXIMUM_HIDE_ON_IDLE_DELAY_MS: u32 = MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS * 1_000;
+
+/// The idle hide delay in the milliseconds the overlay frame loop counts in.
+///
+/// Same unit conversion as [`hover_hide_delay_ms`].
+pub const fn idle_hide_delay_ms(seconds: u32) -> u32 {
+    seconds.saturating_mul(1_000)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySettings {
     pub click_through: bool,
@@ -183,6 +206,14 @@ pub struct OverlaySettings {
     /// How long the pointer must stay inside the overlay window before the
     /// hover hide starts, in whole seconds. `0` hides immediately.
     pub hide_on_pointer_hover_delay_seconds: u32,
+    /// Hide the overlay content after no input arrives for a stretch of
+    /// time. Same temporary presentation as the hover hide: the window and
+    /// the frame loop keep running and only the alpha and pointer routing
+    /// change.
+    pub hide_on_idle: bool,
+    /// How long no input may arrive before the idle hide starts, in whole
+    /// seconds. `0` hides as soon as input stops.
+    pub hide_on_idle_delay_seconds: u32,
     /// Keep the overlay window fully on a display. The region is the union of
     /// the connected displays rather than one display's work area, so the
     /// window may cover a taskbar, Dock or menu bar; a window dragged off the
@@ -201,6 +232,8 @@ impl Default for OverlaySettings {
             corner_radius_percent: 0,
             hide_on_pointer_hover: false,
             hide_on_pointer_hover_delay_seconds: 0,
+            hide_on_idle: false,
+            hide_on_idle_delay_seconds: DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS,
             keep_inside_screen: true,
         }
     }
@@ -215,6 +248,7 @@ impl OverlaySettings {
             && self.corner_radius_percent <= 50
             && self.hide_on_pointer_hover_delay_seconds
                 <= MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS
+            && self.hide_on_idle_delay_seconds <= MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS
     }
 }
 

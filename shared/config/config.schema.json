@@ -350,6 +350,17 @@
           "minimum": 0,
           "type": "integer"
         },
+        "hide_on_idle": {
+          "default": false,
+          "type": "boolean"
+        },
+        "hide_on_idle_delay_seconds": {
+          "default": 10,
+          "format": "uint32",
+          "maximum": 600,
+          "minimum": 0,
+          "type": "integer"
+        },
         "hide_on_pointer_hover": {
           "type": "boolean"
         },

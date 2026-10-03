@@ -362,6 +362,12 @@
       "hide_on_mouse_hover_delay": {
         "label": "마우스 올림 숨김 지연 시간(초)"
       },
+      "hide_on_idle": {
+        "label": "입력 없을 때 숨기기"
+      },
+      "hide_on_idle_delay": {
+        "label": "입력 없음 숨김 지연 시간(초)"
+      },
       "scale": {
         "label": "창 크기 배율"
       },

@@ -34,3 +34,12 @@ pub(crate) fn stepped_overlay_opacity(
 pub(crate) fn hover_hide_delay_applies(overlay: SettingsOverlay) -> bool {
     overlay.hide_on_pointer_hover
 }
+
+/// Whether the idle hide delay applies to the model window right now.
+///
+/// The mirror of [`hover_hide_delay_applies`] for the inactivity hide: both
+/// platform backends arm the behaviour with `options.hide_on_idle &&
+/// input_running`, so the delay row is inert unless the switch is on.
+pub(crate) fn idle_hide_delay_applies(overlay: SettingsOverlay) -> bool {
+    overlay.hide_on_idle
+}

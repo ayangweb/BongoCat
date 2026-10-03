@@ -60,6 +60,15 @@ fn presentation_and_geometry_changes_use_in_place_window_transitions() {
     next.hide_on_pointer_hover_delay_ms = 1_500;
     assert!(!current.requires_window_recreation(next));
 
+    // The idle hide is applied inside the running tick for the same reason.
+    next = current;
+    next.hide_on_idle = true;
+    assert!(!current.requires_window_recreation(next));
+
+    next = current;
+    next.hide_on_idle_delay_ms = 10_000;
+    assert!(!current.requires_window_recreation(next));
+
     next = current;
     next.opacity_percent = 80;
     assert!(!current.requires_window_recreation(next));

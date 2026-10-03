@@ -54,7 +54,7 @@ use bongocat_platform::{
     SingleInstance, SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceStart,
 };
 use bongocat_platform::{SystemMenu, SystemMenuAction, SystemMenuPresentation};
-use bongocat_runtime::hover_hide_delay_ms;
+use bongocat_runtime::{hover_hide_delay_ms, idle_hide_delay_ms};
 use bongocat_ui::{
     SettingsNavigationMemory, SettingsView, SettingsWindowHandle, SettingsWindowSeed,
     open_settings_window,
@@ -363,6 +363,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .config()
                 .overlay
                 .hide_on_pointer_hover_delay_seconds,
+        ),
+        hide_on_idle: application.config().overlay.hide_on_idle,
+        hide_on_idle_delay_ms: idle_hide_delay_ms(
+            application.config().overlay.hide_on_idle_delay_seconds,
         ),
         keep_inside_screen: application.config().overlay.keep_inside_screen,
         maximum_fps: application.config().overlay.maximum_fps,

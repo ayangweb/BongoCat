@@ -36,7 +36,10 @@ pub use model::{
     ModelExpressionMemory, ModelIdentity, ModelInputMode, ModelSource, RandomBehaviorConfig,
     RandomBehaviorMode,
 };
-pub use overlay::{MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS, OverlayConfig};
+pub use overlay::{
+    DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS, MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS,
+    MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_SECONDS, OverlayConfig,
+};
 pub use system::SystemConfig;
 pub use updates::UpdateConfig;
 
@@ -76,6 +79,8 @@ impl Default for NativeConfig {
                 corner_radius_percent: 0,
                 hide_on_pointer_hover: false,
                 hide_on_pointer_hover_delay_seconds: 0,
+                hide_on_idle: false,
+                hide_on_idle_delay_seconds: DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS,
                 keep_inside_screen: true,
             },
             input: InputConfig {
@@ -143,6 +148,11 @@ impl NativeConfig {
         {
             return Err(ConfigError::InvalidValue(
                 "overlay.hide_on_pointer_hover_delay_seconds",
+            ));
+        }
+        if self.overlay.hide_on_idle_delay_seconds > MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS {
+            return Err(ConfigError::InvalidValue(
+                "overlay.hide_on_idle_delay_seconds",
             ));
         }
         if !(0.0..1.0).contains(&self.input.gamepad.stick_dead_zone)

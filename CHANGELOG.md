@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### ✨ Features
+
+- Added a "Hide when idle" setting under Model window, with an "Idle hide delay (seconds)" row: the cat fades out once your mouse, keyboard and gamepad have been untouched for a while, and fades back in as soon as you use them again.
+
 ## 2.1.1 - 2026-10-03
 
 ### 🐛 Bug Fixes

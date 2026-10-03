@@ -47,6 +47,16 @@ pub struct OverlaySessionOptions {
     /// v1 configuration stores whole seconds; the millisecond value is derived
     /// once, when the runtime settings are applied to the session.
     pub hide_on_pointer_hover_delay_ms: u32,
+    /// Hide the overlay content after no input arrives for a stretch of
+    /// time. Like the hover hide it is applied inside the frame tick, because
+    /// the window must fade out and back in while it keeps running.
+    pub hide_on_idle: bool,
+    /// How long no input may arrive before the idle hide starts, in
+    /// milliseconds. `0` hides as soon as input stops. The current v1
+    /// configuration stores whole seconds; the millisecond value is derived
+    /// once, when the runtime settings are applied to the session, and the
+    /// bound is the runtime's shared ceiling rather than a literal here.
+    pub hide_on_idle_delay_ms: u32,
     /// Keep the overlay window fully on a display. The region is the union of
     /// the connected displays' frames rather than one display's work area, so a
     /// window may sit over a taskbar, Dock or menu bar. The correction itself is
@@ -76,6 +86,8 @@ impl OverlaySessionOptions {
             hide_on_pointer_hover_delay_ms: hover_hide_delay_ms(
                 settings.hide_on_pointer_hover_delay_seconds,
             ),
+            hide_on_idle: settings.hide_on_idle,
+            hide_on_idle_delay_ms: idle_hide_delay_ms(settings.hide_on_idle_delay_seconds),
             keep_inside_screen: settings.keep_inside_screen,
             maximum_fps: self.maximum_fps,
             window_bounds: self.window_bounds,
@@ -108,6 +120,8 @@ impl Default for OverlaySessionOptions {
             corner_radius_percent: 0,
             hide_on_pointer_hover: false,
             hide_on_pointer_hover_delay_ms: 0,
+            hide_on_idle: false,
+            hide_on_idle_delay_ms: idle_hide_delay_ms(DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS),
             keep_inside_screen: true,
             maximum_fps: 60,
             window_bounds: None,

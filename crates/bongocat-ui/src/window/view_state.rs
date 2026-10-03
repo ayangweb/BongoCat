@@ -332,6 +332,8 @@ impl SettingsView {
             overlay_corner_radius_timer_generation: 0,
             overlay_hover_hide_delay_debouncer: crate::SettingsPatchDebouncer::default(),
             overlay_hover_hide_delay_timer_generation: 0,
+            overlay_idle_hide_delay_debouncer: crate::SettingsPatchDebouncer::default(),
+            overlay_idle_hide_delay_timer_generation: 0,
             gamepad_dead_zone_debouncer: crate::SettingsPatchDebouncer::default(),
             gamepad_dead_zone_timer_generation: 0,
             maximum_fps_debouncer: crate::SettingsPatchDebouncer::default(),

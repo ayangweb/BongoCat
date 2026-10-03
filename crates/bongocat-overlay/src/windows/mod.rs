@@ -44,6 +44,7 @@ use crate::{
     },
     default_overlay_window_dimensions, drawable_cull_mode,
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
+    idle::{IdleHide, IdleObservation},
     model_switch_window_bounds, model_window_dimensions,
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
     resize_drag::{ResizeBase, ResizeDrag, ResizeOutcome},
@@ -60,7 +61,7 @@ use bongocat_render::{
 };
 use bongocat_runtime::{
     CursorProducer, CursorSample, GamepadAxisProducer, GamepadButton, HandSide, InputBindings,
-    InputControl, InputEdge, InputEvent, InputProducer, InputSource,
+    InputControl, InputEdge, InputEvent, InputProducer, InputSource, MAXIMUM_HIDE_ON_IDLE_DELAY_MS,
     MAXIMUM_HIDE_ON_POINTER_HOVER_DELAY_MS, MonotonicMillis, PhysicalKey, RuntimeClient,
     RuntimeCommand, RuntimeOwner, RuntimeRenderErrorCode, RuntimeState,
     frame_interval_for_maximum_fps, maximum_fps_is_valid,

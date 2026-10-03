@@ -70,6 +70,8 @@ pub(crate) fn overlay_settings_from_config(config: &NativeConfig) -> OverlaySett
         corner_radius_percent: config.overlay.corner_radius_percent,
         hide_on_pointer_hover: config.overlay.hide_on_pointer_hover,
         hide_on_pointer_hover_delay_seconds: config.overlay.hide_on_pointer_hover_delay_seconds,
+        hide_on_idle: config.overlay.hide_on_idle,
+        hide_on_idle_delay_seconds: config.overlay.hide_on_idle_delay_seconds,
         keep_inside_screen: config.overlay.keep_inside_screen,
     }
 }
