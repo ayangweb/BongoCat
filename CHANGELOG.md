@@ -1,24 +1,24 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 - 2026-10-03
 
 ### ✨ Features
 
-- Several keys held at the same time now each show their own key image, stacked with the most recently pressed key on top, so a fast chord is no longer indistinguishable from a single tap. Turn it on with "Show every held key" under Settings → Input & interaction → Keyboard; it applies to gamepad buttons as well as keyboard keys, and is off by default. The paw reaction is unchanged: a hand is still down while any key bound to it is held.
-- On macOS, the Input Monitoring prompt now opens a guided panel: it takes you to the right System Settings page and shows how to drag BongoCat into the authorization list. The prompt clears BongoCat's Input Monitoring permission first, so the authorization always starts from scratch, and it no longer carries the paragraph that told you to remove and re-add the entry by hand.
+- Added a "Show every held key" setting under Input & interaction → Keyboard.
+- Improved the macOS Input Monitoring permission flow with a guided panel that walks you through the authorization.
 
 ### 🐛 Bug Fixes
 
-- Some BongoCat Mver models no longer fail to import with an "invalid model package" message. A key table the model author annotated with `//` or `/* */` comments is read the way the original app reads it, and a motion that names an audio file the model never shipped no longer refuses the whole mode — the model plays without audio that was never there to begin with. When an import does still fail, the log now names which failure it was instead of a single catch-all code.
-- On Windows, BongoCat no longer freezes and quits when you click a link that opens an external website, such as "Report an issue" under Settings → About. The window also keeps painting while the browser starts.
-- On macOS, the menu bar icon no longer disappears after updating to a new version.
-- On Windows, an Xbox-mode controller no longer stops responding while another window has focus. BongoCat was reading controllers through a Windows gaming input interface that Windows only delivers to the app that currently owns the foreground window, so gamepad input only arrived while a BongoCat window was focused. Controllers Windows reads as raw HID devices, such as DS4 and Switch modes, were not affected.
-- On Windows, analog sticks and triggers on controllers that Windows reads as raw HID devices no longer report wrong values: a stick at rest read as full deflection in one direction, half its travel was clamped there, and an analog trigger at rest sat exactly on the press threshold so it could flicker. This affected Switch-mode, DS4-mode and other non-Xbox controller modes.
-- Settings dropdowns now open wide enough for their longest option, so no choice is cut off with an ellipsis anymore. Random playback was the clearest case: with "Off" selected, every option in the list was shown as an ellipsis. A menu takes its width from the longest option it offers rather than from the value it currently shows, and keeps its padding instead of hugging the text.
+- Fixed some BongoCat Mver models failing to import with an "invalid model package" message.
+- Fixed BongoCat freezing and quitting on Windows after clicking "Report an issue".
+- Fixed the menu bar icon missing on macOS after updating to a new version and restarting.
+- Fixed Xbox-mode controllers going unresponsive on Windows once another window took focus.
+- Fixed flickering on Windows when a model uses a gamepad mode.
+- Fixed dropdown menus in Settings being too narrow to show their options.
 
 ### 🌍 Localization
 
-Korean is now available in Settings → Appearance & language. Existing configurations are unaffected and keep the language they already had.
+Added Korean.
 
 ## 2.0.1 - 2026-09-29
 
