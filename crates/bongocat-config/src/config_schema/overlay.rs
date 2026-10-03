@@ -5,6 +5,8 @@
 //! later multiply into pixels. A corner radius over 50 clips the window content
 //! to less than the full ellipse, which is a shape rather than a rounding.
 
+use bongocat_input::ModifierKey;
+
 use super::*;
 
 /// Overlay window configuration. Every field is a property of the single
@@ -15,6 +17,29 @@ use super::*;
 #[serde(deny_unknown_fields)]
 pub struct OverlayConfig {
     pub click_through: bool,
+    /// The physical modifier key whose hold hands the pointer back to the user
+    /// for as long as it is down.
+    ///
+    /// Click-through and hover hide both exist to keep the overlay out of the
+    /// way, and together they leave no way to move it: the pointer reaches
+    /// through the window, and stopping on it hides the very thing the user is
+    /// trying to grab. Holding this key suspends both — the window stops passing
+    /// pointer events through and stops fading out — so the overlay can be
+    /// dragged again without turning either setting off first. It suspends
+    /// nothing else: the release ends it immediately, the settings themselves
+    /// are untouched, and no pressed key is remembered across the hold.
+    ///
+    /// The value is the *physical* key, so the two sides of a modifier are two
+    /// settings rather than one. A user who drags with the thumb on the right
+    /// shift and never touches the left one would otherwise have to hold both.
+    ///
+    /// `None` is the shipped default and means no key does this.
+    /// `#[serde(default)]` keeps a configuration written before the field
+    /// existed on the "no modifier" side rather than failing the strict v1
+    /// parse. A name outside the eight modifiers is refused by the same parse
+    /// rather than resolved to a key the user did not choose.
+    #[serde(default)]
+    pub hold_modifier_to_interact: Option<ModifierKey>,
     pub always_on_top: bool,
     #[cfg_attr(
         any(test, feature = "schema-generation"),

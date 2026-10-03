@@ -136,6 +136,16 @@ pub(super) fn run_service(
                     interval_hours: application_config.check_interval_hours,
                 }));
             }
+            SettingsCommand::ReadPressedModifiers { reply } => {
+                // An atomic read of state the runtime already publishes on every
+                // input edge. No configuration is touched and no revision moves,
+                // so this is safe to call as often as the recorder needs.
+                let _ = reply.respond(Ok(application
+                    .runtime_client()
+                    .snapshot()
+                    .input
+                    .pressed_modifiers));
+            }
             SettingsCommand::SetOverlayVisible {
                 expected_config_revision,
                 visible,
@@ -304,6 +314,7 @@ pub(super) fn run_service(
             } => {
                 let runtime_settings = OverlaySettings {
                     click_through: settings.click_through,
+                    hold_modifier_to_interact: settings.hold_modifier_to_interact,
                     always_on_top: settings.always_on_top,
                     scale_percent: settings.scale_percent,
                     opacity_percent: settings.opacity_percent,

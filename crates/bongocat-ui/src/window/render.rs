@@ -412,6 +412,7 @@ impl Render for SettingsView {
                             },
                         ),
                     ),
+                    hold_modifier_row(&view_entity, language, editing_blocked),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),

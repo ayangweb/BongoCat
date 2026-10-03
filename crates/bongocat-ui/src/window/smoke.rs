@@ -339,6 +339,7 @@ impl SettingsView {
     /// Complete the UI-side work that must happen before the settings window is destroyed.
     pub fn prepare_close(&mut self, cx: &mut Context<Self>) {
         self.cancel_shortcut_capture(cx);
+        self.cancel_hold_modifier_recording(cx);
         self.clear_model_drag(cx);
         self.flush_pending_settings(cx);
         self.window_hidden = true;

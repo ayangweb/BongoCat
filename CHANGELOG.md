@@ -5,6 +5,7 @@
 ### ✨ Features
 
 - Added a "Hide when idle" setting under Model window, with an "Idle hide delay (seconds)" row: the cat fades out once your mouse, keyboard and gamepad have been untouched for a while, and fades back in as soon as you use them again.
+- Added a "Hold a modifier key to interact" setting under Model window: while you hold the recorded key, the cat stops passing mouse clicks through and stops hiding on hover, so you can move it without turning those settings off first. Left and right keys are recorded separately.
 
 ## 2.1.1 - 2026-10-03
 

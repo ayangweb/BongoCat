@@ -91,6 +91,24 @@ impl SettingsClient {
             .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
     }
 
+    /// Read which keyboard modifiers are held, with the two sides apart.
+    ///
+    /// Cheaper than [`Self::read_snapshot`] by design — this is polled while the
+    /// modifier recorder is armed, so it must not touch the model store.
+    pub async fn read_pressed_modifiers(&self) -> Result<PressedModifiers, SettingsError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send(SettingsCommand::ReadPressedModifiers {
+                reply: SettingsReply(reply),
+            })
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        receiver
+            .recv()
+            .await
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
+    }
+
     pub async fn set_overlay_visible(
         &self,
         expected_config_revision: u64,
@@ -545,6 +563,21 @@ impl SettingsClient {
         let (reply, receiver) = async_channel::bounded(1);
         self.commands
             .send_blocking(SettingsCommand::ReadAutomaticUpdateSettings {
+                reply: SettingsReply(reply),
+            })
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
+        receiver
+            .recv_blocking()
+            .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?
+    }
+
+    /// Read which keyboard modifiers are held, blocking until the service answers.
+    ///
+    /// See [`Self::read_pressed_modifiers`] for why this exists.
+    pub fn read_pressed_modifiers_blocking(&self) -> Result<PressedModifiers, SettingsError> {
+        let (reply, receiver) = async_channel::bounded(1);
+        self.commands
+            .send_blocking(SettingsCommand::ReadPressedModifiers {
                 reply: SettingsReply(reply),
             })
             .map_err(|_| SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;

@@ -50,6 +50,7 @@ use crate::{
     resize_drag::{ResizeBase, ResizeDrag, ResizeOutcome},
     validate_frame_smoke, validate_model_generation_advance,
 };
+use bongocat_input::PressedModifiers;
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
     PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus, WindowsInputService,

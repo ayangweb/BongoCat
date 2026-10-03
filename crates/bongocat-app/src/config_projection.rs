@@ -64,6 +64,7 @@ pub(crate) const fn settings_logging_from_config(
 pub(crate) fn overlay_settings_from_config(config: &NativeConfig) -> OverlaySettings {
     OverlaySettings {
         click_through: config.overlay.click_through,
+        hold_modifier_to_interact: config.overlay.hold_modifier_to_interact,
         always_on_top: config.overlay.always_on_top,
         scale_percent: config.overlay.scale_percent,
         opacity_percent: config.overlay.opacity_percent,

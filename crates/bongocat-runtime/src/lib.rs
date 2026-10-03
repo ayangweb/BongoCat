@@ -45,10 +45,11 @@ pub use bongocat_input::{
     GamepadAxisTransportDiagnostics, GamepadButton, GamepadButtonKey, GamepadConnection,
     GamepadConnectionError, HandSide, InputBindings, InputControl, InputDiagnostics, InputEdge,
     InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource, InputSubmitError,
-    InputSubmitter, InputTransportDiagnostics, MonotonicMillis, MouseButton,
+    InputSubmitter, InputTransportDiagnostics, ModifierKey, MonotonicMillis, MouseButton,
     NormalizedCursorPosition, PhysicalKey, PlatformInputDiagnostics,
     PlatformInputDiagnosticsProducer, PlatformInputDiagnosticsPublishError,
-    PlatformInputServiceStatus, SequencedInputEvent, is_stable_platform_input_error_code,
+    PlatformInputServiceStatus, PressedModifiers, SequencedInputEvent,
+    is_stable_platform_input_error_code,
 };
 use bongocat_input::{CursorSmoother, DEFAULT_GAMEPAD_AXIS_CAPACITY};
 pub use client::RuntimeClient;
@@ -189,6 +190,12 @@ pub const fn idle_hide_delay_ms(seconds: u32) -> u32 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySettings {
     pub click_through: bool,
+    /// The physical modifier key whose hold gives the pointer back to the user.
+    ///
+    /// The overlay suspends click-through and the hover hide for exactly as long
+    /// as this key is held, so the settings that hide the overlay do not also
+    /// make it impossible to move. `None` means no key does this.
+    pub hold_modifier_to_interact: Option<ModifierKey>,
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
@@ -226,6 +233,7 @@ impl Default for OverlaySettings {
     fn default() -> Self {
         Self {
             click_through: false,
+            hold_modifier_to_interact: None,
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,

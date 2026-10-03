@@ -353,6 +353,14 @@
       "click_through": {
         "label": "滑鼠穿透"
       },
+      "hold_modifier_to_interact": {
+        "label": "按住修飾鍵進行互動",
+        "recording": "按下修飾鍵以錄製",
+        "record_placeholder": "點選以錄製修飾鍵",
+        "side_left": "左",
+        "side_right": "右",
+        "description": "按住時，「滑鼠停留時隱藏」和「滑鼠穿透」將暫時失效。"
+      },
       "keep_inside_screen": {
         "label": "保持在螢幕內"
       },

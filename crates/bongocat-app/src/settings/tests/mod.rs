@@ -14,7 +14,10 @@ use bongocat_config::{
     ConfigStore, OverlayWindowPlacement, StorageLayout, WINDOW_STATE_WRITER_LOCK_FILE_NAME,
     WindowStateStore,
 };
-use bongocat_input::{InputDiagnostics, InputEvent, InputTransportDiagnostics, MonotonicMillis};
+use bongocat_input::{
+    InputControl, InputDiagnostics, InputEvent, InputTransportDiagnostics, ModifierKey,
+    MonotonicMillis, PressedModifiers,
+};
 use bongocat_runtime::{RandomBehaviorMode, RuntimeOwner, RuntimeWorkDiagnostics};
 use bongocat_ui_protocol::{
     DIAGNOSTICS_EXPORT_FORMAT_VERSION, SettingsModelImportRequest, SettingsModelOrigin,

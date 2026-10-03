@@ -72,6 +72,7 @@ impl Default for NativeConfig {
             },
             overlay: OverlayConfig {
                 click_through: false,
+                hold_modifier_to_interact: None,
                 always_on_top: true,
                 scale_percent: 100,
                 opacity_percent: 100,

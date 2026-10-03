@@ -353,6 +353,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let overlay_options = OverlaySessionOptions {
         click_through: application.config().overlay.click_through,
+        hold_modifier_to_interact: application.config().overlay.hold_modifier_to_interact,
         always_on_top: application.config().overlay.always_on_top,
         scale_percent: application.config().overlay.scale_percent,
         opacity_percent: application.config().overlay.opacity_percent,

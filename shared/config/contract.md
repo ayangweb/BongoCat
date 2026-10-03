@@ -48,6 +48,7 @@ updates
 | `appearance`  | `theme`                               | `system`、`light` 或 `dark`            |
 | `appearance`  | `language`                            | UI locale                              |
 | `overlay`     | `click_through`                       | 指针事件是否穿透                       |
+| `overlay`     | `hold_modifier_to_interact`           | 按住即临时恢复交互的**物理**修饰键：`left_control`、`left_shift`、`left_alt`、`left_meta`、对应 `right_*`，或为 `null`（默认，无键） |
 | `overlay`     | `always_on_top`                       | 是否置顶                               |
 | `overlay`     | `scale_percent`                       | 模型/窗口缩放百分比                    |
 | `overlay`     | `opacity_percent`                     | 窗口不透明度百分比                     |
@@ -134,6 +135,18 @@ runtime 的 overlay visibility。延迟值在首版收窄为 `0..=60` 秒，理�
 `bongocat-config` 中 `OverlayConfig::hide_on_pointer_hover_delay_seconds` 的文档注释。该字段以
 整秒存储，与设置页显示和输入的单位一致；overlay frame loop 仍以毫秒计时，只在
 `OverlaySessionOptions` 边界换算一次。
+
+`overlay.hold_modifier_to_interact` 默认 `null`（没有键）。设置后，按住该**物理**修饰键期间，
+overlay 同时暂停「指针穿透」和「指针悬停隐藏」：窗口不再把指针事件传下去，悬停隐藏状态机按
+「关闭」复位并把 alpha 淡回 `opacity_percent`，因此一只配置成透明的猫仍然能被抓住拖动。松开键后
+两者立即回到配置值；该字段不修改 `overlay.click_through`、`overlay.hide_on_pointer_hover` 或
+它们的延迟，落盘值不变。它不作用于 `overlay.hide_on_idle`。取值是八个 HID 修饰键之一
+（`0xE0..=0xE7`）的 `snake_case` 名称，左右两侧是两个不同的值而不是一个家族；名称之外的字符串由
+严格 v1 解析拒绝，不做「最接近的修饰键」猜测。字段带 `#[serde(default)]`，旧配置文件缺失时按
+`null` 读取。判定依据是 runtime snapshot 的 `input.pressed_modifiers`，即 runtime 自己持有的
+pressed set 在修饰键词汇表上的投影；因此按住状态由 release、reconcile 或 reset 结束，不依赖
+UI 是否在运行。overlay 在每次 frame tick 内重新读取该投影（与悬停隐藏同一时机），读取该字段
+不触发原生窗口重建。
 
 `overlay.hide_on_idle` 默认 `false`，`overlay.hide_on_idle_delay_seconds` 默认 `10` 秒。开启后，
 键盘、鼠标与手柄在延迟时间内都没有新输入事件时，窗口渲染 alpha 在 300ms 内降到 `0`，指针事件

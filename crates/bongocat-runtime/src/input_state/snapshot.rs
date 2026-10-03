@@ -13,6 +13,15 @@ pub struct InputSnapshot {
     pub pressed_key_count: usize,
     pub pressed_mouse_button_count: usize,
     pub pressed_gamepad_button_count: usize,
+    /// Which keyboard modifiers are held right now, with the two sides apart.
+    ///
+    /// The counts above cannot answer "is the left shift down", and the model
+    /// projection cannot either: it drops any key the current model's artwork
+    /// cannot draw, and modifiers are exactly the keys a model leaves out. This
+    /// is the pressed set read through the modifier vocabulary instead, so a
+    /// consumer that watches for one configured key does not have to take a copy
+    /// of the pressed set or depend on which model is loaded.
+    pub pressed_modifiers: PressedModifiers,
     pub connected_gamepad_count: usize,
     pub last_reset_reason: Option<InputResetReason>,
     pub last_input_sequence: Option<u64>,

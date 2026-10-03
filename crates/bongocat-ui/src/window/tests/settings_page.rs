@@ -473,6 +473,7 @@ fn the_native_and_component_halves_pin_together() {
 fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
     let settings = SettingsOverlay {
         click_through: false,
+        hold_modifier_to_interact: Some(ModifierKey::LeftShift),
         always_on_top: false,
         scale_percent: 100,
         opacity_percent: 50,
@@ -501,6 +502,12 @@ fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
     assert!(changed.hide_on_idle);
     assert_eq!(changed.hide_on_idle_delay_seconds, 45);
     assert!(!changed.keep_inside_screen);
+    assert_eq!(
+        changed.hold_modifier_to_interact,
+        Some(ModifierKey::LeftShift),
+        "stepping one overlay control must not drop the modifier the window reads to \
+         decide the overlay is reachable"
+    );
 }
 
 /// The hover hide delay belongs to the switch above it.

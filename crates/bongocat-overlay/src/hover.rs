@@ -258,6 +258,48 @@ mod tests {
         assert_eq!(hide.observe(observation(false, 0, true, 1_000)), 1.0);
     }
 
+    /// The hold-to-interact modifier reaches this state machine as `enabled`
+    /// turning off and on again while the pointer never leaves.
+    ///
+    /// The session computes `hide_on_pointer_hover && input_running && !held`, so
+    /// holding the key is exactly a disabled setting from here. The round trip is
+    /// what the user sees, and the part that is easy to get wrong is the end of
+    /// it: the pointer is still resting on the window, so letting go has to start
+    /// a fresh delay rather than resume a deadline that elapsed long ago.
+    #[test]
+    fn a_hold_restores_the_overlay_and_letting_go_starts_a_fresh_delay() {
+        let mut hide = PointerHoverHide::default();
+        hide.observe(observation(true, 0, false, 0));
+        hide.observe(observation(true, 0, true, 10));
+        assert_eq!(
+            hide.observe(observation(true, 0, true, 320)),
+            0.0,
+            "the hide finished"
+        );
+        assert!(hide.hidden());
+        assert_eq!(hide.observe(observation(true, 0, true, 330)), 0.0);
+
+        // Holding the modifier: the setting reads as off, so the window comes back.
+        assert_eq!(hide.observe(observation(false, 0, true, 340)), 0.0);
+        assert!(
+            !hide.hidden(),
+            "the window takes pointer events again at once"
+        );
+        assert_eq!(hide.observe(observation(false, 0, true, 490)), 0.5);
+        assert_eq!(hide.observe(observation(false, 0, true, 640)), 1.0);
+
+        // Letting go with the pointer still inside hides again, after its own delay.
+        assert_eq!(hide.observe(observation(true, 500, true, 700)), 1.0);
+        assert!(!hide.hidden());
+        assert_eq!(hide.observe(observation(true, 500, true, 1_199)), 1.0);
+        assert!(!hide.hidden());
+        assert_eq!(hide.observe(observation(true, 500, true, 1_200)), 1.0);
+        assert!(
+            hide.hidden(),
+            "the fresh delay ran out, so the pointer resting on the window hides it again"
+        );
+    }
+
     #[test]
     fn the_fade_is_a_function_of_elapsed_time_and_never_overshoots() {
         // The same elapsed time must produce the same alpha no matter how many

@@ -12,6 +12,7 @@ default = []
 schema-generation = ["dep:schemars"]
 
 [dependencies]
+bongocat-input.workspace = true
 bongocat-storage.workspace = true
 dirs.workspace = true
 schemars = { workspace = true, optional = true }
