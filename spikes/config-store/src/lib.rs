@@ -190,6 +190,8 @@ pub struct OverlayConfig {
     pub corner_radius_percent: u8,
     pub hide_on_pointer_hover: bool,
     pub hide_on_pointer_hover_delay_seconds: u32,
+    pub hide_on_idle: bool,
+    pub hide_on_idle_delay_seconds: u32,
     pub keep_inside_screen: bool,
 }
 
@@ -409,6 +411,8 @@ impl Default for NativeConfig {
                 corner_radius_percent: 0,
                 hide_on_pointer_hover: false,
                 hide_on_pointer_hover_delay_seconds: 0,
+                hide_on_idle: false,
+                hide_on_idle_delay_seconds: 10,
                 keep_inside_screen: true,
             },
             input: InputConfig {
@@ -478,6 +482,11 @@ impl NativeConfig {
         if self.overlay.hide_on_pointer_hover_delay_seconds > 60 {
             return Err(ConfigError::InvalidValue(
                 "overlay.hide_on_pointer_hover_delay_seconds",
+            ));
+        }
+        if self.overlay.hide_on_idle_delay_seconds > 600 {
+            return Err(ConfigError::InvalidValue(
+                "overlay.hide_on_idle_delay_seconds",
             ));
         }
         if !(0.0..1.0).contains(&self.input.gamepad.stick_dead_zone)
@@ -1213,6 +1222,8 @@ mod tests {
                 .get("hide_on_pointer_hover_delay_seconds")
                 .is_some()
         );
+        assert!(value["overlay"].get("hide_on_idle").is_some());
+        assert!(value["overlay"].get("hide_on_idle_delay_seconds").is_some());
         // The overlay presentation fields are part of the current v1, so the
         // legacy store spelling must stay absent rather than come back with
         // them.
@@ -1347,6 +1358,7 @@ mod tests {
             ("hideOnHover", serde_json::json!(true)),
             ("hideOnHoverDelay", serde_json::json!(250)),
             ("hide_on_pointer_hover_delay_ms", serde_json::json!(250)),
+            ("hide_on_idle_delay_ms", serde_json::json!(250)),
         ] {
             let mut config = serde_json::to_value(NativeConfig::default()).unwrap();
             config["overlay"][field] = value;
@@ -1411,23 +1423,26 @@ mod tests {
 
     #[test]
     fn overlay_presentation_fields_follow_the_shared_range_contract() {
-        for (corner_radius, hide_delay, field) in [
-            (51, 0, "overlay.corner_radius_percent"),
-            (0, 61, "overlay.hide_on_pointer_hover_delay_seconds"),
+        for (corner_radius, hide_delay, idle_delay, field) in [
+            (51, 0, 0, "overlay.corner_radius_percent"),
+            (0, 61, 0, "overlay.hide_on_pointer_hover_delay_seconds"),
+            (0, 0, 601, "overlay.hide_on_idle_delay_seconds"),
         ] {
             let mut config = NativeConfig::default();
             config.overlay.corner_radius_percent = corner_radius;
             config.overlay.hide_on_pointer_hover_delay_seconds = hide_delay;
+            config.overlay.hide_on_idle_delay_seconds = idle_delay;
             assert!(matches!(
                 config.validate(),
                 Err(ConfigError::InvalidValue(actual)) if actual == field
             ));
         }
 
-        for (corner_radius, hide_delay) in [(0, 0), (25, 3), (50, 60)] {
+        for (corner_radius, hide_delay, idle_delay) in [(0, 0, 0), (25, 3, 10), (50, 60, 600)] {
             let mut config = NativeConfig::default();
             config.overlay.corner_radius_percent = corner_radius;
             config.overlay.hide_on_pointer_hover_delay_seconds = hide_delay;
+            config.overlay.hide_on_idle_delay_seconds = idle_delay;
             config
                 .validate()
                 .expect("in-range overlay presentation values are valid");
