@@ -4,7 +4,7 @@
 
 ### 🐛 Bug Fixes
 
-- Fixed the app crashing on macOS when opening System Settings from the permission prompt (Apple Silicon CI builds were produced with an older macOS SDK).
+- Fixed the app crashing on macOS when opening System Settings from the permission prompt.
 
 ## 2.1.0 - 2026-10-03
 
