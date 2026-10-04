@@ -80,6 +80,8 @@ pub use macos::{
 };
 #[cfg(target_os = "windows")]
 mod gilrs_gamepad;
+#[cfg(target_os = "linux")]
+mod gilrs_gamepad;
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
@@ -89,6 +91,13 @@ pub use windows::{
     current_display_bounds, display_bounds_for_window, global_window_origin, hide_native_window,
     local_window_origin, request_native_window_close, show_native_window, system_language,
     taskbar_icon_is_visible, terminate_after_product_shutdown,
+};
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{
+    LinuxInputService, current_display_bounds, display_bounds_for_window, global_window_origin,
+    hide_native_window, local_window_origin, show_native_window, system_language,
 };
 
 /// Let the user choose the model folder to import.

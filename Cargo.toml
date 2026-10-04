@@ -42,6 +42,7 @@ cargo-packager-updater = { version = "=0.2.3", default-features = false, feature
 clap = { version = "=4.6.7", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
 dirs = "=6.0.0"
 embed-resource = "=3.0.11"
+evdev = "=0.13.2"
 flate2 = "=1.1.10"
 futures-util = "=0.3.34"
 global-hotkey = "=0.8.0"

@@ -41,7 +41,10 @@ permission-flow.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd.workspace = true
 async-io.workspace = true
+evdev.workspace = true
 futures-util.workspace = true
+gilrs.workspace = true
+libc.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 global-hotkey.workspace = true
