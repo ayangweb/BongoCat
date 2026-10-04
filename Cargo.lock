@@ -971,6 +971,7 @@ name = "bongocat-platform"
 version = "2.1.1"
 dependencies = [
  "arboard",
+ "ashpd",
  "async-io",
  "auto-launch",
  "block2 0.6.2",
@@ -978,6 +979,7 @@ dependencies = [
  "bongocat-input",
  "bongocat-runtime",
  "dispatch2",
+ "futures-util",
  "gilrs",
  "global-hotkey",
  "image",

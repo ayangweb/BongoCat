@@ -44,6 +44,32 @@ fn shortcut_chords_reject_ambiguous_parts() {
 }
 
 #[test]
+fn shortcut_table_publishes_capture_state_with_the_compiled_value() {
+    let active = ShortcutConfig {
+        commands_enabled: true,
+        command_bindings: vec![ShortcutBinding {
+            command: "toggle_overlay".to_owned(),
+            shortcut: "Control+Alt+0".to_owned(),
+        }],
+        ..ShortcutConfig::default()
+    }
+    .compile()
+    .expect("active shortcuts");
+    let table = ShortcutTable::new(active.clone());
+    assert_eq!(table.load(), active);
+    assert!(!table.load_publication().capture_suspended);
+
+    let suspended = CompiledShortcuts::default();
+    table.replace_suspended(suspended.clone());
+    assert_eq!(table.load(), suspended);
+    assert!(table.load_publication().capture_suspended);
+
+    table.replace(active.clone());
+    assert_eq!(table.load(), active);
+    assert!(!table.load_publication().capture_suspended);
+}
+
+#[test]
 fn shortcut_key_tokens_map_to_usb_hid_usages() {
     for (token, canonical, usage) in [
         ("a", "A", 0x04),
