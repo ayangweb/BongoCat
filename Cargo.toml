@@ -58,7 +58,7 @@ permission-flow = { git = "https://github.com/ayangweb/permission-flow", rev = "
 plist = "=1.10.1"
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 raw-window-handle = "=0.6.2"
-rfd = { version = "=0.17.2", default-features = false, features = ["common-controls-v6"] }
+rfd = { version = "=0.17.2", default-features = false }
 rodio = { version = "=0.22.2", default-features = false, features = ["playback", "flac"] }
 schemars = { version = "=1.2.2", features = ["derive"] }
 serde = { version = "=1.0.229", features = ["derive"] }

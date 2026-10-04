@@ -45,10 +45,12 @@ evdev.workspace = true
 futures-util.workspace = true
 gilrs.workspace = true
 libc.workspace = true
+rfd = { workspace = true, features = ["xdg-portal"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 global-hotkey.workspace = true
 gilrs = { workspace = true, features = ["wgi"] }
+rfd = { workspace = true, features = ["common-controls-v6"] }
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",
     "Win32_Globalization",
