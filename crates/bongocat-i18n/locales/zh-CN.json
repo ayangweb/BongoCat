@@ -425,6 +425,10 @@
         },
         "ignore_mouse_input": {
           "label": "忽略鼠标输入"
+        },
+        "force_move": {
+          "label": "强制移动鼠标",
+          "description": "在捕获指针的应用（例如全屏游戏）中也能继续跟随鼠标移动。"
         }
       },
       "keyboard": {

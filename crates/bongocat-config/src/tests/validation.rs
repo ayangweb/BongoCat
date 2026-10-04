@@ -225,6 +225,43 @@ fn a_configuration_written_before_the_key_layer_could_stack_still_loads() {
     assert!(parse_config(written.as_bytes()).is_ok());
 }
 
+/// The pointer capture switch round-trips and an older document without the
+/// namespace still loads on the shipped behaviour.
+///
+/// `input.mouse` is a whole new namespace rather than a new field, so the case
+/// that matters is a document with no `mouse` object at all: the strict v1 entry
+/// point rejects anything it cannot read, so without `#[serde(default)]` every
+/// existing `config.json` would go down the backup-then-default recovery path.
+#[test]
+fn the_force_move_switch_round_trips_and_defaults_off_for_older_data() {
+    assert!(!NativeConfig::default().input.mouse.force_move);
+
+    let mut config = NativeConfig::default();
+    config.input.mouse.force_move = true;
+    let encoded = serde_json::to_string(&config).expect("serialize force move");
+    let decoded: NativeConfig = serde_json::from_str(&encoded).expect("deserialize force move");
+    assert!(decoded.input.mouse.force_move);
+    decoded.validate().expect("the switch still validates");
+
+    let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    let removed = document["input"]
+        .as_object_mut()
+        .expect("input object")
+        .remove("mouse");
+    assert!(
+        removed.is_some(),
+        "the current default still writes the namespace"
+    );
+    let written = serde_json::to_string(&document).expect("serialize document");
+    let loaded: NativeConfig = serde_json::from_str(&written).expect("read old document");
+    assert!(
+        !loaded.input.mouse.force_move,
+        "a document with no namespace loads on the absolute cursor, not as a new opt-in"
+    );
+    loaded.validate().expect("an old document still validates");
+    assert!(parse_config(written.as_bytes()).is_ok());
+}
+
 #[test]
 fn unknown_and_legacy_fields_are_rejected() {
     let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize default");

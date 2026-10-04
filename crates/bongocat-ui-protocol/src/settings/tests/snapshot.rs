@@ -12,3 +12,11 @@ fn gamepad_axis_settings_default_matches_native_config() {
         }
     );
 }
+
+#[test]
+fn cursor_settings_default_to_the_absolute_cursor() {
+    assert_eq!(
+        SettingsCursorSettings::default(),
+        SettingsCursorSettings { force_move: false }
+    );
+}

@@ -4,10 +4,10 @@ use crate::{
 };
 use bongocat_config::Language;
 use bongocat_input::{
-    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport,
-    GamepadAxisProducer, InputControl, InputEdge, InputEvent, InputProducer, InputPublishError,
-    InputResetReason, InputSource, MonotonicMillis, MouseButton, PhysicalKey,
-    PlatformInputDiagnosticsProducer,
+    CursorDelta, CursorForceMoveState, CursorPosition, CursorProducer, CursorPublishError,
+    CursorSample, CursorViewport, GamepadAxisProducer, InputControl, InputEdge, InputEvent,
+    InputProducer, InputPublishError, InputResetReason, InputSource, MonotonicMillis, MouseButton,
+    PhysicalKey, PlatformInputDiagnosticsProducer,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
@@ -76,6 +76,14 @@ const REQUIRED_MISSING_CONFIRMATIONS: u8 = 2;
 const SERVICE_TIMEOUT: Duration = Duration::from_secs(2);
 const FINAL_RESET_ATTEMPTS: usize = 20;
 const FINAL_RESET_RETRY: Duration = Duration::from_millis(5);
+
+/// `RAWMOUSE::usFlags` bit saying `lLastX`/`lLastY` are absolute coordinates
+/// rather than a relative motion.
+///
+/// It is set by an absolute pointing device (a drawing tablet, a remote desktop
+/// session). Such a packet carries a position, not a movement, so it must not be
+/// added to an accumulated one.
+const MOUSE_MOVE_ABSOLUTE: u16 = 0x01;
 
 pub fn system_language() -> Language {
     sys_locale::get_locale().map_or_else(Language::default, |locale| {
@@ -278,7 +286,19 @@ struct RawKeyboardPacket {
 #[derive(Clone, Copy, Debug)]
 struct RawMousePacket {
     button_flags: u16,
-    moved: bool,
+    /// Relative motion reported by the device, in device units.
+    ///
+    /// Non-zero only for a relative packet; an absolute device reports its
+    /// position here instead and [`Self::absolute`] is set.
+    delta: CursorDelta,
+    absolute: bool,
+}
+
+impl RawMousePacket {
+    /// Whether the packet reports pointer motion at all.
+    fn moved(self) -> bool {
+        self.delta.x != 0.0 || self.delta.y != 0.0
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -298,6 +318,20 @@ struct WindowState {
     gamepad: GilrsGamepad,
     stop: Arc<AtomicBool>,
     system_termination_requested: Arc<AtomicBool>,
+    /// Whether the pointer position is accumulated from relative motion instead
+    /// of read from the absolute cursor. Written by the overlay session, read on
+    /// every mouse packet and every service tick.
+    force_move: Arc<AtomicBool>,
+    /// The accumulated position and the mode it belongs to. The mode is re-read
+    /// here so a transition discards the accumulated position rather than
+    /// carrying a stale one across it.
+    cursor_force_move: CursorForceMoveState,
+    /// Relative motion seen since the last published cursor sample.
+    ///
+    /// It is summed here rather than accumulated straight into the position
+    /// because the viewport a position is clamped to is only known when the
+    /// sample is built.
+    pending_cursor_delta: CursorDelta,
     started: Instant,
     queue: VecDeque<CapturedEvent>,
     candidates: BTreeMap<InputControl, SystemControl>,
@@ -323,6 +357,7 @@ impl WindowState {
         diagnostics_producer: PlatformInputDiagnosticsProducer,
         stop: Arc<AtomicBool>,
         system_termination_requested: Arc<AtomicBool>,
+        force_move: Arc<AtomicBool>,
         options: WorkerOptions,
     ) -> Self {
         let gamepad = GilrsGamepad::new(producer.clone(), gamepad_axis_producer);
@@ -332,6 +367,9 @@ impl WindowState {
             gamepad,
             stop,
             system_termination_requested,
+            force_move,
+            cursor_force_move: CursorForceMoveState::default(),
+            pending_cursor_delta: CursorDelta::default(),
             started: Instant::now(),
             queue: VecDeque::with_capacity(CAPTURE_QUEUE_CAPACITY),
             candidates: BTreeMap::new(),
@@ -413,7 +451,7 @@ impl WindowState {
                 });
             }
             RawInputPacket::Mouse(packet) => {
-                if packet.moved {
+                if packet.moved() {
                     self.diagnostics.cursor_captured =
                         self.diagnostics.cursor_captured.saturating_add(1);
                     if self.pointer_dirty {
@@ -421,6 +459,26 @@ impl WindowState {
                             self.diagnostics.cursor_coalesced.saturating_add(1);
                     }
                     self.pointer_dirty = true;
+                    // The motion is summed here rather than at publish time
+                    // because this is where it arrives: several packets can be
+                    // handled before one sample is built, and dropping their
+                    // motion would make a fast move in a captured application
+                    // travel less far than the device actually did.
+                    if self.force_move.load(Ordering::Acquire) {
+                        if packet.absolute {
+                            // An absolute device reports where the pointer is
+                            // rather than how far it moved, so an accumulated
+                            // position cannot follow it and would freeze. The
+                            // accumulation is dropped instead, which makes the
+                            // next sample reseed from the absolute cursor that
+                            // this packet is reporting.
+                            self.cursor_force_move.reset();
+                            self.pending_cursor_delta = CursorDelta::default();
+                        } else {
+                            self.pending_cursor_delta.x += packet.delta.x;
+                            self.pending_cursor_delta.y += packet.delta.y;
+                        }
+                    }
                 }
                 for (button, virtual_key, down, up) in [
                     (
@@ -477,6 +535,10 @@ impl WindowState {
     fn request_recovery(&mut self) {
         self.accepting = false;
         self.recovery_pending = true;
+        // Motion summed before the recovery describes a pointer state that is
+        // about to be reset, so it must not be published afterwards.
+        self.pending_cursor_delta = CursorDelta::default();
+        self.cursor_force_move.reset();
         self.diagnostics.capture_queue_discarded = self
             .diagnostics
             .capture_queue_discarded
@@ -597,6 +659,11 @@ impl WindowState {
                 self.diagnostics.consumed_edges = self.diagnostics.consumed_edges.saturating_add(1);
             }
             CapturedEvent::Reset(reason) => {
+                // A reset says the pointer state can no longer be trusted, so an
+                // accumulated position must not survive it: the next sample
+                // reseeds from wherever the absolute cursor is.
+                self.pending_cursor_delta = CursorDelta::default();
+                self.cursor_force_move.reset();
                 self.producer.recover(reason, self.monotonic())?;
                 self.candidates.clear();
                 self.missing_confirmations.clear();
@@ -650,15 +717,35 @@ impl WindowState {
     }
 
     fn forward_cursor(&mut self) {
+        // The mode is observed on every tick rather than only when there is
+        // motion to publish: a mode change has to discard the accumulated
+        // position even when it happens between two samples, and a stale
+        // position would otherwise be advanced on the next one.
+        //
+        // A change starts over from the absolute cursor, so the first sample
+        // after it reseeds, which is also what discards any motion summed before
+        // it.
+        let force_move = self
+            .cursor_force_move
+            .sync(self.force_move.load(Ordering::Acquire));
         if !self.pointer_dirty || self.terminal_error.is_some() {
             return;
         }
         self.pointer_dirty = false;
-        let Some(sample) = cursor_sample(self.monotonic()) else {
-            self.diagnostics.cursor_display_lookup_failures = self
-                .diagnostics
-                .cursor_display_lookup_failures
-                .saturating_add(1);
+        let sample = if force_move {
+            let Some((absolute, viewport)) = cursor_geometry() else {
+                self.record_cursor_lookup_failure();
+                return;
+            };
+            let delta = std::mem::take(&mut self.pending_cursor_delta);
+            let position = self.cursor_force_move.advance(absolute, delta, viewport);
+            CursorSample::new(position, viewport, self.monotonic()).ok()
+        } else {
+            self.pending_cursor_delta = CursorDelta::default();
+            cursor_sample(self.monotonic())
+        };
+        let Some(sample) = sample else {
+            self.record_cursor_lookup_failure();
             return;
         };
         match self.cursor_producer.publish(sample) {
@@ -674,6 +761,13 @@ impl WindowState {
                 self.terminal_error = Some(PlatformInputError::RuntimeStopped);
             }
         }
+    }
+
+    fn record_cursor_lookup_failure(&mut self) {
+        self.diagnostics.cursor_display_lookup_failures = self
+            .diagnostics
+            .cursor_display_lookup_failures
+            .saturating_add(1);
     }
 
     fn publish_final_reset(&mut self) -> bool {
@@ -712,6 +806,7 @@ impl WindowState {
 pub struct WindowsInputService {
     stop: Arc<AtomicBool>,
     system_termination_requested: Arc<AtomicBool>,
+    force_move: Arc<AtomicBool>,
     completion: Receiver<Result<PlatformInputDiagnostics, PlatformInputError>>,
     worker: Option<JoinHandle<()>>,
 }
@@ -756,6 +851,8 @@ impl WindowsInputService {
         let worker_stop = Arc::clone(&stop);
         let system_termination_requested = Arc::new(AtomicBool::new(false));
         let worker_system_termination_requested = Arc::clone(&system_termination_requested);
+        let force_move = Arc::new(AtomicBool::new(false));
+        let worker_force_move = Arc::clone(&force_move);
         let (startup_sender, startup_receiver) = mpsc::sync_channel(1);
         let (completion_sender, completion_receiver) = mpsc::sync_channel(1);
         let worker = thread::Builder::new()
@@ -769,6 +866,7 @@ impl WindowsInputService {
                         diagnostics_producer,
                         worker_stop,
                         worker_system_termination_requested,
+                        worker_force_move,
                         options,
                         startup_sender,
                     )
@@ -781,6 +879,7 @@ impl WindowsInputService {
             Ok(Ok(())) => Ok(Self {
                 stop,
                 system_termination_requested,
+                force_move,
                 completion: completion_receiver,
                 worker: Some(worker),
             }),
@@ -803,6 +902,16 @@ impl WindowsInputService {
 
     pub fn system_termination_requested(&self) -> bool {
         self.system_termination_requested.load(Ordering::Acquire)
+    }
+
+    /// Switch between the absolute cursor and accumulated relative motion.
+    ///
+    /// The value is read by the input worker on its next mouse packet or service
+    /// tick, so this is a plain store rather than a command: a stale value can
+    /// only ever cost one sample, and the caller re-applies it every frame. See
+    /// [`bongocat_input::CursorSettings::force_move`].
+    pub fn set_force_move(&self, enabled: bool) {
+        self.force_move.store(enabled, Ordering::Release);
     }
 
     fn finish(
@@ -839,6 +948,7 @@ fn run_input_worker(
     diagnostics_producer: PlatformInputDiagnosticsProducer,
     stop: Arc<AtomicBool>,
     system_termination_requested: Arc<AtomicBool>,
+    force_move: Arc<AtomicBool>,
     options: WorkerOptions,
     startup: SyncSender<Result<(), PlatformInputError>>,
 ) -> Result<PlatformInputDiagnostics, PlatformInputError> {
@@ -853,6 +963,7 @@ fn run_input_worker(
             diagnostics_producer,
             stop,
             system_termination_requested,
+            force_move,
             options,
             startup,
         )
@@ -867,6 +978,7 @@ unsafe fn run_input_worker_inner(
     diagnostics_producer: PlatformInputDiagnosticsProducer,
     stop: Arc<AtomicBool>,
     system_termination_requested: Arc<AtomicBool>,
+    force_move: Arc<AtomicBool>,
     options: WorkerOptions,
     startup: SyncSender<Result<(), PlatformInputError>>,
 ) -> Result<PlatformInputDiagnostics, PlatformInputError> {
@@ -896,6 +1008,7 @@ unsafe fn run_input_worker_inner(
         diagnostics_producer,
         stop,
         system_termination_requested,
+        force_move,
         options,
     ));
     let state_ptr = (&mut *state) as *mut WindowState;
@@ -1214,6 +1327,11 @@ fn decode_raw_input_bytes(bytes: &[u8], header_size: usize) -> Result<Option<Raw
             if declared_size < end {
                 return Err(());
             }
+            let flags = u16::from_le_bytes(
+                bytes[header_size..header_size + 2]
+                    .try_into()
+                    .map_err(|_| ())?,
+            );
             let button_flags = u16::from_le_bytes(
                 bytes[header_size + 4..header_size + 6]
                     .try_into()
@@ -1231,7 +1349,11 @@ fn decode_raw_input_bytes(bytes: &[u8], header_size: usize) -> Result<Option<Raw
             );
             Ok(Some(RawInputPacket::Mouse(RawMousePacket {
                 button_flags,
-                moved: x != 0 || y != 0,
+                delta: CursorDelta {
+                    x: f64::from(x),
+                    y: f64::from(y),
+                },
+                absolute: flags & MOUSE_MOVE_ABSOLUTE != 0,
             })))
         }
         1 => {
@@ -1383,7 +1505,13 @@ fn query_pressed_controls(
     }
 }
 
-fn cursor_sample(at: MonotonicMillis) -> Option<CursorSample> {
+/// The absolute cursor position and the viewport of the monitor it is on.
+///
+/// Both are read from the same point so the viewport always belongs to the
+/// position. The position is the seed for an accumulated one as well as the
+/// published one, which is why the pair is returned rather than a finished
+/// sample: the caller decides which position to publish.
+fn cursor_geometry() -> Option<(CursorPosition, CursorViewport)> {
     // SAFETY: each query receives a valid initialized stack pointer; the
     // monitor handle is used only for the immediately following bounds query.
     unsafe {
@@ -1402,7 +1530,7 @@ fn cursor_sample(at: MonotonicMillis) -> Option<CursorSample> {
         if !GetMonitorInfoW(monitor, &mut info).as_bool() {
             return None;
         }
-        CursorSample::new(
+        Some((
             CursorPosition {
                 x: f64::from(point.x),
                 y: f64::from(point.y),
@@ -1415,10 +1543,13 @@ fn cursor_sample(at: MonotonicMillis) -> Option<CursorSample> {
                 width: f64::from(info.rcMonitor.right - info.rcMonitor.left),
                 height: f64::from(info.rcMonitor.bottom - info.rcMonitor.top),
             },
-            at,
-        )
-        .ok()
+        ))
     }
+}
+
+fn cursor_sample(at: MonotonicMillis) -> Option<CursorSample> {
+    let (position, viewport) = cursor_geometry()?;
+    CursorSample::new(position, viewport, at).ok()
 }
 
 #[cfg(test)]
@@ -1443,6 +1574,7 @@ mod tests {
             runtime.cursor_producer(),
             runtime.gamepad_axis_producer(),
             diagnostics_producer,
+            Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
             WorkerOptions::default(),
@@ -1608,6 +1740,95 @@ mod tests {
     }
 
     #[test]
+    fn raw_mouse_decoder_reads_relative_motion_and_marks_absolute_devices() {
+        let header_size = size_of::<RAWINPUTHEADER>();
+        let mouse_bytes = |flags: u16, x: i32, y: i32| {
+            let mut bytes = vec![0_u8; header_size + 24];
+            bytes[0..4].copy_from_slice(&0_u32.to_le_bytes());
+            let declared = bytes.len() as u32;
+            bytes[4..8].copy_from_slice(&declared.to_le_bytes());
+            bytes[header_size..header_size + 2].copy_from_slice(&flags.to_le_bytes());
+            bytes[header_size + 12..header_size + 16].copy_from_slice(&x.to_le_bytes());
+            bytes[header_size + 16..header_size + 20].copy_from_slice(&y.to_le_bytes());
+            bytes
+        };
+
+        let Some(RawInputPacket::Mouse(packet)) =
+            decode_raw_input_bytes(&mouse_bytes(0, -7, 4), header_size).expect("mouse packet")
+        else {
+            panic!("expected mouse packet");
+        };
+        assert_eq!(packet.delta, CursorDelta { x: -7.0, y: 4.0 });
+        assert!(!packet.absolute);
+        assert!(packet.moved());
+
+        // An absolute pointing device reports a position in the same fields, so
+        // the flag is what keeps it from being added to an accumulated one.
+        let Some(RawInputPacket::Mouse(packet)) =
+            decode_raw_input_bytes(&mouse_bytes(MOUSE_MOVE_ABSOLUTE, 500, 400), header_size)
+                .expect("absolute mouse packet")
+        else {
+            panic!("expected mouse packet");
+        };
+        assert!(packet.absolute);
+        assert_eq!(packet.delta, CursorDelta { x: 500.0, y: 400.0 });
+    }
+
+    #[test]
+    fn force_move_sums_relative_motion_and_ignores_absolute_packets() {
+        const TIMEOUT: Duration = Duration::from_secs(2);
+        let runtime = RuntimeOwner::start(true, 64);
+        let client = runtime.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let force_move = Arc::new(AtomicBool::new(true));
+        let mut state = WindowState::new(
+            runtime.input_producer(),
+            runtime.cursor_producer(),
+            runtime.gamepad_axis_producer(),
+            runtime.platform_input_diagnostics_producer(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
+            Arc::clone(&force_move),
+            WorkerOptions::default(),
+        );
+        let mouse = |delta, absolute| {
+            RawInputPacket::Mouse(RawMousePacket {
+                button_flags: 0,
+                delta,
+                absolute,
+            })
+        };
+
+        state.capture_raw_input(mouse(CursorDelta { x: 3.0, y: -2.0 }, false));
+        state.capture_raw_input(mouse(CursorDelta { x: 1.0, y: 5.0 }, false));
+        assert_eq!(
+            state.pending_cursor_delta,
+            CursorDelta { x: 4.0, y: 3.0 },
+            "several packets handled before one sample are summed, not overwritten"
+        );
+
+        // An absolute device reports a position rather than a movement, so the
+        // accumulation is dropped: the next sample reseeds from the absolute
+        // cursor instead of freezing on a position nothing moves.
+        state.capture_raw_input(mouse(CursorDelta { x: 900.0, y: 900.0 }, true));
+        assert_eq!(state.pending_cursor_delta, CursorDelta { x: 0.0, y: 0.0 });
+        assert!(
+            !state.cursor_force_move.is_seeded(),
+            "an absolute packet asks the next sample to reseed"
+        );
+
+        force_move.store(false, Ordering::Release);
+        state.capture_raw_input(mouse(CursorDelta { x: 10.0, y: 10.0 }, false));
+        assert_eq!(
+            state.pending_cursor_delta,
+            CursorDelta { x: 0.0, y: 0.0 },
+            "with the mode off the absolute cursor is published instead"
+        );
+
+        runtime.shutdown(TIMEOUT).expect("runtime stop");
+    }
+
+    #[test]
     fn raw_input_decoder_rejects_forged_sizes_and_unknown_types() {
         let header_size = size_of::<RAWINPUTHEADER>();
 
@@ -1647,6 +1868,7 @@ mod tests {
             runtime.cursor_producer(),
             runtime.gamepad_axis_producer(),
             runtime.platform_input_diagnostics_producer(),
+            Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
             WorkerOptions::default(),

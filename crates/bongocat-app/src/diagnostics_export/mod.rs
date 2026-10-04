@@ -420,13 +420,13 @@ mod tests {
     use crate::{ApplicationLogEventCounts, PRODUCT_VERSION};
     use bongocat_ui_protocol::SettingsGamepadAutoSwitch;
     use bongocat_ui_protocol::{
-        SettingsBuildEnvironment, SettingsBuildInfo, SettingsGamepadAxisSettings,
-        SettingsInputCapability, SettingsLanguage, SettingsLogging, SettingsModelBehavior,
-        SettingsModelCatalog, SettingsModelDiagnostic, SettingsModelEntry, SettingsModelKey,
-        SettingsModelMode, SettingsModelSettings, SettingsOverlay, SettingsRandomBehavior,
-        SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
-        SettingsRuntimeDiagnostics, SettingsShortcuts, SettingsStartupItemState,
-        SettingsStartupItemStatus, SettingsTheme,
+        SettingsBuildEnvironment, SettingsBuildInfo, SettingsCursorSettings,
+        SettingsGamepadAxisSettings, SettingsInputCapability, SettingsLanguage, SettingsLogging,
+        SettingsModelBehavior, SettingsModelCatalog, SettingsModelDiagnostic, SettingsModelEntry,
+        SettingsModelKey, SettingsModelMode, SettingsModelSettings, SettingsOverlay,
+        SettingsRandomBehavior, SettingsRuntimeCommandFailure,
+        SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics, SettingsShortcuts,
+        SettingsStartupItemState, SettingsStartupItemStatus, SettingsTheme,
     };
     use std::path::PathBuf;
     use tempfile::tempdir;
@@ -484,6 +484,7 @@ mod tests {
             random_behavior: SettingsRandomBehavior::default(),
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
+            cursor_settings: SettingsCursorSettings::default(),
             gamepad_auto_switch: SettingsGamepadAutoSwitch::default(),
             remember_last_expression: false,
             logging: SettingsLogging::default(),

@@ -20,9 +20,9 @@ mod input;
 mod platform_input;
 
 pub use cursor::{
-    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorSampleError,
-    CursorSmoother, CursorSnapshot, CursorTransportDiagnostics, CursorViewport,
-    NormalizedCursorPosition,
+    CursorDelta, CursorForceMoveState, CursorMotionAccumulator, CursorPosition, CursorProducer,
+    CursorPublishError, CursorSample, CursorSampleError, CursorSettings, CursorSmoother,
+    CursorSnapshot, CursorTransportDiagnostics, CursorViewport, NormalizedCursorPosition,
 };
 pub use gamepad::{
     DEFAULT_GAMEPAD_AXIS_CAPACITY, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample,

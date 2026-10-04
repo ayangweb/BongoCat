@@ -123,6 +123,12 @@
       "properties": {
         "gamepad": {
           "$ref": "#/$defs/GamepadInputConfig"
+        },
+        "mouse": {
+          "$ref": "#/$defs/MouseInputConfig",
+          "default": {
+            "force_move": false
+          }
         }
       },
       "required": [
@@ -347,6 +353,16 @@
         "right_meta"
       ],
       "type": "string"
+    },
+    "MouseInputConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "force_move": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
     },
     "OverlayConfig": {
       "additionalProperties": false,

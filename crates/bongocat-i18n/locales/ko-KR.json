@@ -425,6 +425,10 @@
         },
         "ignore_mouse_input": {
           "label": "마우스 입력 무시"
+        },
+        "force_move": {
+          "label": "마우스 강제 이동",
+          "description": "포인터를 캡처하는 앱(예: 전체 화면 게임)에서도 마우스를 계속 따라갑니다."
         }
       },
       "keyboard": {

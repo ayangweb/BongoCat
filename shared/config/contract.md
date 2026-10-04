@@ -61,6 +61,7 @@ updates
 | `overlay`     | `keep_inside_screen`                  | 保持在所有屏幕范围内，允许覆盖任务栏等区域 |
 | `input`       | `gamepad.stick_dead_zone`             | 左/右摇杆死区，`[0, 1)`                |
 | `input`       | `gamepad.trigger_dead_zone`           | 扳机死区，`[0, 1)`                     |
+| `input`       | `mouse.force_move`                    | 按相对位移累计指针位置，而不是读绝对光标位置；默认 `false` |
 | `logging`     | `level`                               | 写入阈值：`error`、`warn`、`info`、`debug`、`trace` |
 | `logging`     | `retention_days`                      | 日志保留天数，`[1, 30]`                |
 | `model`       | `selected_model`                      | 当前模型完整身份：`{ id, source }`，或为 `null` |
@@ -155,6 +156,15 @@ UI 是否在运行。overlay 在每次 frame tick 内重新读取该投影（与
 改变呈现层，窗口、frame loop 与 runtime overlay visibility 不受影响。判定依据是 runtime snapshot
 中的输入计数器，因此输入服务不在 `Running` 状态时该功能关闭，最坏情况是窗口保持可见。两个字段都带
 `#[serde(default)]`，旧配置文件缺失时按默认关闭、延迟 10 秒读取，而不是解析失败。
+
+`input.mouse.force_move` 默认 `false`。开启后，指针位置不再取操作系统的绝对光标位置，而是由设备
+报告的相对位移逐次累加得到：以绝对光标位置为种子，累加每个采样之间的 `dx`/`dy`，并夹在当前显示器
+viewport 内。这解决的是「前台应用捕获指针、把光标钉在一处」的场景——多数全屏游戏会这样做，此时绝对
+位置不再变化，但设备仍在报告每一次移动，因此按绝对位置跟随的猫会停住，而按相对位移累加的猫能继续
+跟随。累加器在第一个采样和 viewport 变化时重新用绝对位置对齐，所以跨显示器不会把位移带进错误的
+坐标系；开启与关闭、以及输入 Reset 都会清空累加值，旧位置不会被再次推进。代价是开启期间由设备以外
+的方式移动的指针（程序化 warp、绝对定位设备）不会被跟随，所以默认关闭。该字段带 `#[serde(default)]`，
+缺失 `input.mouse` 命名空间的旧配置按关闭读取，不进入恢复流程。
 
 `system.show_status_icon` 控制 Windows 托盘或 macOS 菜单栏状态图标，不销毁系统菜单的
 唯一事件 owner。托盘菜单与 overlay 右键菜单是同一 owner 下的两个 popup 根，共享强类型 action

@@ -51,6 +51,7 @@ pub struct SettingsSnapshot {
     pub random_behavior: SettingsRandomBehavior,
     pub model_settings: SettingsModelSettings,
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,
+    pub cursor_settings: SettingsCursorSettings,
     /// The configured gamepad-connection model switch. The settings service is
     /// what acts on it, so the view only reads the gate and the two targets.
     pub gamepad_auto_switch: SettingsGamepadAutoSwitch,
@@ -153,6 +154,14 @@ impl Default for SettingsRandomBehavior {
 pub struct SettingsGamepadAxisSettings {
     pub stick_dead_zone_percent: u8,
     pub trigger_dead_zone_percent: u8,
+}
+
+/// How the pointer is read before any model sees it.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SettingsCursorSettings {
+    /// Follow relative device motion instead of the absolute cursor position,
+    /// so the model keeps following the pointer in applications that capture it.
+    pub force_move: bool,
 }
 
 /// Choosing the shown model from gamepad connection state.

@@ -25,6 +25,176 @@ pub struct CursorSample {
     pub at: MonotonicMillis,
 }
 
+/// A relative pointer motion reported by the device since the last sample.
+///
+/// It is separate from [`CursorPosition`] because the two are different facts:
+/// the position is where the pointer is, the delta is how far the device moved
+/// this time. An application that captures the pointer can keep the position
+/// parked while the delta keeps arriving.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CursorDelta {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// Runtime-owned pointer capture settings.
+///
+/// These decide how a pointer position is produced, before the position reaches
+/// the smoothing and normalization that every model follows. They are settings
+/// rather than platform facts because the same device motion has to be read two
+/// different ways depending on what the foreground application does with the
+/// pointer.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CursorSettings {
+    /// Follow relative device motion instead of the absolute cursor position.
+    ///
+    /// An application that captures the pointer — most full-screen games — keeps
+    /// the operating-system cursor parked in one place, so the absolute position
+    /// stops moving while the device still reports every movement. With this on,
+    /// the position is accumulated from that relative motion instead, so the
+    /// model keeps following the pointer in those applications. The trade is
+    /// that a pointer moved by anything other than the device itself (a
+    /// synthetic warp, a second absolute pointing device) is not followed while
+    /// it is on, which is why it is off by default.
+    pub force_move: bool,
+}
+
+/// A pointer position accumulated from relative device motion.
+///
+/// The accumulator exists for [`CursorSettings::force_move`]: it is seeded from
+/// the absolute cursor so it starts where the user's pointer is, then advances
+/// by each reported delta and stays inside the viewport. The first sample and
+/// any sample on a different viewport reseed from the absolute position, so a
+/// display change cannot carry accumulated motion across coordinate systems.
+///
+/// It is deterministic and has no clock of its own: a caller supplies the delta,
+/// the absolute position and the viewport of one sample, and gets the position
+/// to publish.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CursorMotionAccumulator {
+    position: Option<CursorPosition>,
+    viewport: Option<CursorViewport>,
+}
+
+impl CursorMotionAccumulator {
+    /// Forget the accumulated position so the next [`Self::advance`] reseeds.
+    ///
+    /// Called when the mode is switched or the pointer pipeline is reset: a
+    /// stale position from before the change must not be advanced again.
+    pub fn reset(&mut self) {
+        self.position = None;
+        self.viewport = None;
+    }
+
+    /// Whether a position has been accumulated for a viewport.
+    pub fn is_seeded(&self) -> bool {
+        self.position.is_some()
+    }
+
+    /// Advance by one relative motion and return the position to publish.
+    ///
+    /// `absolute` is the viewport's own pointer reading. The first sample and
+    /// any sample on a different viewport start from it and do not add `delta`:
+    /// that motion is already part of where the pointer is, and adding it would
+    /// overshoot by one sample. Every later sample advances by `delta` and is
+    /// clamped inside `viewport`. A viewport with no usable area leaves the
+    /// position unclamped rather than panicking, because a degenerate reading
+    /// must not take the input worker down.
+    pub fn advance(
+        &mut self,
+        delta: CursorDelta,
+        absolute: CursorPosition,
+        viewport: CursorViewport,
+    ) -> CursorPosition {
+        let position = match (self.viewport, self.position) {
+            (Some(current), Some(position)) if current == viewport => CursorPosition {
+                x: clamp_to_span(position.x + delta.x, viewport.origin.x, viewport.width),
+                y: clamp_to_span(position.y + delta.y, viewport.origin.y, viewport.height),
+            },
+            _ => absolute,
+        };
+        self.position = Some(position);
+        self.viewport = Some(viewport);
+        position
+    }
+}
+
+/// The pointer-capture state a platform adapter carries between samples.
+///
+/// [`CursorSettings::force_move`] makes the published position come from
+/// accumulated device motion instead of the absolute cursor. This is the state
+/// that has to survive between samples: the mode itself, so a change discards
+/// the accumulated position rather than advancing a stale one, and the previous
+/// location, which is what tells a position-reporting device from a captured
+/// pointer when the platform has no flag for it.
+///
+/// The adapter supplies one sample at a time and gets back the position to
+/// publish, so the policy is written once rather than once per platform.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CursorForceMoveState {
+    active: bool,
+    motion: CursorMotionAccumulator,
+    last_location: Option<CursorPosition>,
+}
+
+impl CursorForceMoveState {
+    /// Read the mode, discarding accumulated state when it changed.
+    ///
+    /// Returns whether accumulation is active, which is the caller's signal to
+    /// publish an accumulated position instead of the absolute cursor.
+    pub fn sync(&mut self, enabled: bool) -> bool {
+        if self.active != enabled {
+            self.active = enabled;
+            self.reset();
+        }
+        self.active
+    }
+
+    /// Forget the accumulated position; the next [`Self::advance`] reseeds.
+    ///
+    /// Called on a mode change, on an input reset, and when the platform sees a
+    /// device that reports a position rather than motion.
+    pub fn reset(&mut self) {
+        self.motion.reset();
+        self.last_location = None;
+    }
+
+    /// Whether a position has been accumulated for a viewport.
+    pub fn is_seeded(&self) -> bool {
+        self.motion.is_seeded()
+    }
+
+    /// Advance by one sample and return the position to publish.
+    ///
+    /// A device that reports a position moves the location while reporting no
+    /// motion; a captured pointer is the opposite, with the location parked
+    /// while the motion keeps arriving. The former reseeds from `absolute`,
+    /// which is always correct because it is where the pointer is, so an
+    /// absolute pointing device cannot freeze the accumulated position.
+    pub fn advance(
+        &mut self,
+        absolute: CursorPosition,
+        delta: CursorDelta,
+        viewport: CursorViewport,
+    ) -> CursorPosition {
+        let reports_position = delta == CursorDelta::default()
+            && self.last_location.is_some_and(|last| last != absolute);
+        if reports_position {
+            self.motion.reset();
+        }
+        self.last_location = Some(absolute);
+        self.motion.advance(delta, absolute, viewport)
+    }
+}
+
+fn clamp_to_span(value: f64, origin: f64, extent: f64) -> f64 {
+    let end = origin + extent;
+    if !value.is_finite() || !origin.is_finite() || !end.is_finite() || extent <= 0.0 {
+        return value;
+    }
+    value.clamp(origin, end)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CursorSampleError {
     NonFinite,
@@ -419,6 +589,234 @@ mod tests {
         .expect("second display sample");
         smoother.set_target(changed_viewport, Duration::from_millis(1));
         assert_eq!(smoother.normalized(), changed_viewport.normalized());
+    }
+
+    fn viewport(origin_x: f64, origin_y: f64, width: f64, height: f64) -> CursorViewport {
+        CursorViewport {
+            origin: CursorPosition {
+                x: origin_x,
+                y: origin_y,
+            },
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn accumulator_seeds_from_the_absolute_cursor_then_follows_relative_motion() {
+        let mut accumulator = CursorMotionAccumulator::default();
+        assert!(!accumulator.is_seeded());
+        let viewport = viewport(0.0, 0.0, 100.0, 100.0);
+        // The seeding sample starts where the absolute cursor is and does not
+        // add its own motion: that motion is already part of the position, so
+        // adding it would overshoot by one sample.
+        assert_eq!(
+            accumulator.advance(
+                CursorDelta { x: 8.0, y: 8.0 },
+                CursorPosition { x: 50.0, y: 50.0 },
+                viewport,
+            ),
+            CursorPosition { x: 50.0, y: 50.0 }
+        );
+        assert!(accumulator.is_seeded());
+        // A parked absolute cursor plus motion still moves the accumulated one,
+        // which is the whole point of the mode.
+        assert_eq!(
+            accumulator.advance(
+                CursorDelta { x: 10.0, y: -4.0 },
+                CursorPosition { x: 50.0, y: 50.0 },
+                viewport,
+            ),
+            CursorPosition { x: 60.0, y: 46.0 }
+        );
+    }
+
+    #[test]
+    fn accumulator_clamps_inside_the_viewport_and_saturates_at_the_edge() {
+        let mut accumulator = CursorMotionAccumulator::default();
+        let viewport = viewport(100.0, 0.0, 100.0, 50.0);
+        accumulator.advance(
+            CursorDelta { x: 0.0, y: 0.0 },
+            CursorPosition { x: 150.0, y: 25.0 },
+            viewport,
+        );
+        // Pushing past the edge saturates rather than banking motion the user
+        // would have to spend reversing before the pointer moves again.
+        assert_eq!(
+            accumulator.advance(
+                CursorDelta {
+                    x: 1_000.0,
+                    y: -1_000.0
+                },
+                CursorPosition { x: 150.0, y: 25.0 },
+                viewport,
+            ),
+            CursorPosition { x: 200.0, y: 0.0 }
+        );
+        assert_eq!(
+            accumulator.advance(
+                CursorDelta { x: -1.0, y: 1.0 },
+                CursorPosition { x: 150.0, y: 25.0 },
+                viewport,
+            ),
+            CursorPosition { x: 199.0, y: 1.0 }
+        );
+    }
+
+    #[test]
+    fn accumulator_reseeds_when_the_viewport_changes_or_is_reset() {
+        let first = viewport(0.0, 0.0, 100.0, 100.0);
+        let second = viewport(100.0, 0.0, 200.0, 100.0);
+        let mut accumulator = CursorMotionAccumulator::default();
+        accumulator.advance(
+            CursorDelta { x: 0.0, y: 0.0 },
+            CursorPosition { x: 50.0, y: 50.0 },
+            first,
+        );
+        // A display change must not carry motion across coordinate systems, so
+        // the accumulated position snaps to the new viewport's own reading.
+        assert_eq!(
+            accumulator.advance(
+                CursorDelta { x: 5.0, y: 5.0 },
+                CursorPosition { x: 150.0, y: 40.0 },
+                second,
+            ),
+            CursorPosition { x: 150.0, y: 40.0 }
+        );
+
+        accumulator.reset();
+        assert!(!accumulator.is_seeded());
+        assert_eq!(
+            accumulator.advance(
+                CursorDelta { x: 7.0, y: 0.0 },
+                CursorPosition { x: 150.0, y: 40.0 },
+                second,
+            ),
+            CursorPosition { x: 150.0, y: 40.0 }
+        );
+    }
+
+    #[test]
+    fn accumulator_tolerates_a_degenerate_viewport() {
+        let mut accumulator = CursorMotionAccumulator::default();
+        let empty = viewport(0.0, 0.0, 0.0, 0.0);
+        // A viewport with no area must not panic and must not swallow the
+        // position it was given.
+        assert_eq!(
+            accumulator.advance(
+                CursorDelta { x: 3.0, y: 4.0 },
+                CursorPosition { x: 10.0, y: 20.0 },
+                empty,
+            ),
+            CursorPosition { x: 10.0, y: 20.0 }
+        );
+        assert_eq!(
+            accumulator.advance(
+                CursorDelta { x: 3.0, y: 4.0 },
+                CursorPosition { x: 10.0, y: 20.0 },
+                empty,
+            ),
+            CursorPosition { x: 13.0, y: 24.0 },
+            "a degenerate viewport cannot clamp, so later motion is kept as it is"
+        );
+    }
+
+    #[test]
+    fn force_move_state_discards_the_accumulated_position_on_a_mode_change() {
+        let viewport = viewport(0.0, 0.0, 100.0, 100.0);
+        let mut state = CursorForceMoveState::default();
+        assert!(state.sync(true), "the mode is reported as active");
+        // The first sample seeds from the absolute cursor and drops its motion.
+        assert_eq!(
+            state.advance(
+                CursorPosition { x: 50.0, y: 50.0 },
+                CursorDelta { x: 4.0, y: 0.0 },
+                viewport,
+            ),
+            CursorPosition { x: 50.0, y: 50.0 }
+        );
+        assert_eq!(
+            state.advance(
+                CursorPosition { x: 50.0, y: 50.0 },
+                CursorDelta { x: 4.0, y: 0.0 },
+                viewport,
+            ),
+            CursorPosition { x: 54.0, y: 50.0 }
+        );
+
+        // Turning the mode off and on again starts over: the position from
+        // before the change describes a different reading.
+        assert!(!state.sync(false), "the mode is reported as inactive");
+        assert!(state.sync(true));
+        assert_eq!(
+            state.advance(
+                CursorPosition { x: 80.0, y: 20.0 },
+                CursorDelta { x: 4.0, y: 0.0 },
+                viewport,
+            ),
+            CursorPosition { x: 80.0, y: 20.0 }
+        );
+    }
+
+    #[test]
+    fn force_move_state_reseeds_for_a_device_that_reports_a_position() {
+        let viewport = viewport(0.0, 0.0, 100.0, 100.0);
+        let mut state = CursorForceMoveState::default();
+        state.sync(true);
+        state.advance(
+            CursorPosition { x: 50.0, y: 50.0 },
+            CursorDelta { x: 4.0, y: 0.0 },
+            viewport,
+        );
+        assert_eq!(
+            state.advance(
+                CursorPosition { x: 50.0, y: 50.0 },
+                CursorDelta { x: 4.0, y: 0.0 },
+                viewport,
+            ),
+            CursorPosition { x: 54.0, y: 50.0 }
+        );
+        // An absolute pointing device moves the location while reporting no
+        // motion, so the accumulated position reseeds instead of freezing.
+        assert_eq!(
+            state.advance(
+                CursorPosition { x: 70.0, y: 50.0 },
+                CursorDelta::default(),
+                viewport,
+            ),
+            CursorPosition { x: 70.0, y: 50.0 }
+        );
+        assert_eq!(
+            state.advance(
+                CursorPosition { x: 70.0, y: 50.0 },
+                CursorDelta { x: 2.0, y: 0.0 },
+                viewport,
+            ),
+            CursorPosition { x: 72.0, y: 50.0 }
+        );
+    }
+
+    #[test]
+    fn force_move_state_keeps_accumulating_when_a_moving_location_also_reports_motion() {
+        // A captured application may recentre the cursor, which moves the
+        // location while the device still reports motion. Reseeding there would
+        // snap the model to the centre, so motion wins.
+        let viewport = viewport(0.0, 0.0, 100.0, 100.0);
+        let mut state = CursorForceMoveState::default();
+        state.sync(true);
+        state.advance(
+            CursorPosition { x: 10.0, y: 10.0 },
+            CursorDelta { x: 4.0, y: 0.0 },
+            viewport,
+        );
+        assert_eq!(
+            state.advance(
+                CursorPosition { x: 30.0, y: 10.0 },
+                CursorDelta { x: 4.0, y: 0.0 },
+                viewport,
+            ),
+            CursorPosition { x: 14.0, y: 10.0 }
+        );
     }
 
     #[test]

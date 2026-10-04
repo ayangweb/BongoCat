@@ -87,6 +87,21 @@
       "expected": "reject"
     },
     {
+      "id": "force-move-mouse",
+      "file": "accept-force-move-mouse.json",
+      "expected": "accept"
+    },
+    {
+      "id": "input-without-mouse",
+      "file": "accept-input-without-mouse.json",
+      "expected": "accept"
+    },
+    {
+      "id": "force-move-mouse-not-a-boolean",
+      "file": "invalid-force-move-mouse.json",
+      "expected": "reject"
+    },
+    {
       "id": "key-release-timeout",
       "file": "invalid-key-release-timeout.json",
       "expected": "reject"

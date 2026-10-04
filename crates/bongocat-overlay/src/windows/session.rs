@@ -324,6 +324,14 @@ impl ProductOverlaySession {
                 "runtime stopped while the product overlay was active",
             ));
         }
+        // The pointer capture mode is read fresh every frame and pushed to the
+        // input service, which is the only component that sees the device's
+        // relative motion. A plain store is enough: the worker re-reads it on
+        // its next packet, so a missed frame costs one sample and the next one
+        // restores it.
+        if let Some(service) = &self.input_service {
+            service.set_force_move(runtime_snapshot.cursor_settings.force_move);
+        }
         let next_options = self
             .options
             .with_runtime_settings(runtime_snapshot.overlay_settings);

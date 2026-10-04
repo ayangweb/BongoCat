@@ -5,10 +5,10 @@ use crate::{
 use block2::RcBlock;
 use bongocat_config::Language;
 use bongocat_input::{
-    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorViewport,
-    GamepadAxisProducer, InputControl, InputEdge, InputEvent, InputProducer, InputPublishError,
-    InputResetReason, InputSource, MonotonicMillis, MouseButton, PhysicalKey,
-    PlatformInputDiagnosticsProducer,
+    CursorDelta, CursorForceMoveState, CursorPosition, CursorProducer, CursorPublishError,
+    CursorSample, CursorViewport, GamepadAxisProducer, InputControl, InputEdge, InputEvent,
+    InputProducer, InputPublishError, InputResetReason, InputSource, MonotonicMillis, MouseButton,
+    PhysicalKey, PlatformInputDiagnosticsProducer,
 };
 use objc2::{
     MainThreadMarker,
@@ -330,6 +330,23 @@ enum CapturedEvent {
 struct MacCursorPoint {
     x: f64,
     y: f64,
+    /// Relative motion the device reported with this event.
+    ///
+    /// The location above is where the pointer is; this is how far it moved.
+    /// An application that captures the pointer keeps the location parked while
+    /// this keeps arriving, which is what makes it worth carrying separately.
+    delta: CursorDelta,
+}
+
+impl MacCursorPoint {
+    /// A reading with no motion of its own, for a location read on its own.
+    fn at(x: f64, y: f64) -> Self {
+        Self {
+            x,
+            y,
+            delta: CursorDelta::default(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -358,8 +375,23 @@ impl LatestCursor {
             return;
         }
         state.captured = state.captured.saturating_add(1);
-        if state.pending.replace(point).is_some() {
-            state.coalesced = state.coalesced.saturating_add(1);
+        // `MacCursorPoint` is `Copy`, so this reads the pending sample out
+        // instead of borrowing the field the match is on.
+        match state.pending {
+            Some(mut pending) => {
+                // A coalesced sample keeps only the latest location but must
+                // keep every packet's motion: several events can arrive between
+                // two service slices, and dropping their deltas would make a
+                // fast move in a captured application travel less far than the
+                // device did.
+                pending.x = point.x;
+                pending.y = point.y;
+                pending.delta.x += point.delta.x;
+                pending.delta.y += point.delta.y;
+                state.pending = Some(pending);
+                state.coalesced = state.coalesced.saturating_add(1);
+            }
+            None => state.pending = Some(point),
         }
     }
 
@@ -513,6 +545,7 @@ impl CallbackCounters {
 
 pub struct MacInputService {
     stop: Arc<AtomicBool>,
+    force_move: Arc<AtomicBool>,
     completion: Receiver<Result<PlatformInputDiagnostics, PlatformInputError>>,
     worker: Option<JoinHandle<()>>,
 }
@@ -542,6 +575,8 @@ impl MacInputService {
         }
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = Arc::clone(&stop);
+        let force_move = Arc::new(AtomicBool::new(false));
+        let worker_force_move = Arc::clone(&force_move);
         let (startup_sender, startup_receiver) = mpsc::sync_channel(1);
         let (completion_sender, completion_receiver) = mpsc::sync_channel(1);
         let worker = thread::Builder::new()
@@ -554,6 +589,7 @@ impl MacInputService {
                         gamepad_axis_producer,
                         diagnostics_producer,
                         worker_stop,
+                        worker_force_move,
                         startup_sender,
                     )
                 }))
@@ -564,6 +600,7 @@ impl MacInputService {
         match startup_receiver.recv_timeout(STARTUP_TIMEOUT) {
             Ok(Ok(())) => Ok(Self {
                 stop,
+                force_move,
                 completion: completion_receiver,
                 worker: Some(worker),
             }),
@@ -578,6 +615,16 @@ impl MacInputService {
                 Err(PlatformInputError::StartupTimedOut)
             }
         }
+    }
+
+    /// Switch between the absolute cursor and accumulated relative motion.
+    ///
+    /// The value is read by the input worker on its next run-loop slice, so this
+    /// is a plain store rather than a command: a stale value can only ever cost
+    /// one sample, and the caller re-applies it every frame. See
+    /// [`bongocat_input::CursorSettings::force_move`].
+    pub fn set_force_move(&self, enabled: bool) {
+        self.force_move.store(enabled, Ordering::Release);
     }
 
     pub fn stop(mut self) -> Result<PlatformInputDiagnostics, PlatformInputError> {
@@ -632,6 +679,7 @@ fn run_input_worker(
     gamepad_axis_producer: GamepadAxisProducer,
     diagnostics_producer: PlatformInputDiagnosticsProducer,
     stop: Arc<AtomicBool>,
+    force_move: Arc<AtomicBool>,
     startup: SyncSender<Result<(), PlatformInputError>>,
 ) -> Result<PlatformInputDiagnostics, PlatformInputError> {
     let started = Instant::now();
@@ -648,6 +696,7 @@ fn run_input_worker(
     let tap_disabled = Arc::new(AtomicBool::new(false));
     let modifier_decoder = Arc::new(Mutex::new(ModifierDecoder::default()));
     let latest_cursor = LatestCursor::default();
+    let mut cursor_force_move = CursorForceMoveState::default();
     let (capture_sender, capture_receiver) = mpsc::sync_channel(CAPTURE_QUEUE_CAPACITY);
     let mut gamepad = GilrsGamepad::new(producer.clone(), gamepad_axis_producer);
 
@@ -692,10 +741,7 @@ fn run_input_worker(
     let _ = startup.send(Ok(()));
     if let Some(event) = CGEvent::new(None) {
         let location = CGEvent::location(Some(&event));
-        latest_cursor.publish(MacCursorPoint {
-            x: location.x,
-            y: location.y,
-        });
+        latest_cursor.publish(MacCursorPoint::at(location.x, location.y));
     }
     let mut candidates = BTreeMap::<InputControl, SystemControl>::new();
     let mut missing_confirmations = BTreeMap::<InputControl, u8>::new();
@@ -743,6 +789,9 @@ fn run_input_worker(
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
                         .clear();
+                    // A reset says the pointer state can no longer be trusted,
+                    // so an accumulated position must not survive it.
+                    cursor_force_move.reset();
                     diagnostics.recovery_resets = diagnostics.recovery_resets.saturating_add(1);
                     recovery_pending = false;
                     if tap_restart_pending {
@@ -799,6 +848,7 @@ fn run_input_worker(
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .clear();
+            cursor_force_move.reset();
             recovery_pending = true;
             tap_restart_pending = true;
             continue;
@@ -862,9 +912,14 @@ fn run_input_worker(
             }
         }
 
-        if let Err(error) =
-            forward_latest_cursor(&latest_cursor, &cursor_producer, started, &mut diagnostics)
-        {
+        if let Err(error) = forward_latest_cursor(
+            &latest_cursor,
+            &cursor_producer,
+            started,
+            &mut diagnostics,
+            force_move.load(Ordering::Acquire),
+            &mut cursor_force_move,
+        ) {
             break 'service Err(error);
         }
 
@@ -952,8 +1007,14 @@ fn run_input_worker(
     drop(gamepad);
     latest_cursor.close();
     if service_result.is_ok()
-        && let Err(error) =
-            forward_latest_cursor(&latest_cursor, &cursor_producer, started, &mut diagnostics)
+        && let Err(error) = forward_latest_cursor(
+            &latest_cursor,
+            &cursor_producer,
+            started,
+            &mut diagnostics,
+            force_move.load(Ordering::Acquire),
+            &mut cursor_force_move,
+        )
     {
         service_result = Err(error);
     }
@@ -979,7 +1040,12 @@ fn forward_latest_cursor(
     producer: &CursorProducer,
     started: Instant,
     diagnostics: &mut PlatformInputDiagnostics,
+    force_move: bool,
+    force_move_state: &mut CursorForceMoveState,
 ) -> Result<(), PlatformInputError> {
+    // The mode is read first so a change discards the accumulated position even
+    // on a slice with nothing to publish.
+    let force_move = force_move_state.sync(force_move);
     let Some(point) = latest.take() else {
         return Ok(());
     };
@@ -988,14 +1054,16 @@ fn forward_latest_cursor(
             diagnostics.cursor_display_lookup_failures.saturating_add(1);
         return Ok(());
     };
-    let sample = match CursorSample::new(
-        CursorPosition {
-            x: point.x,
-            y: point.y,
-        },
-        viewport,
-        monotonic(started),
-    ) {
+    let absolute = CursorPosition {
+        x: point.x,
+        y: point.y,
+    };
+    let position = if force_move {
+        force_move_state.advance(absolute, point.delta, viewport)
+    } else {
+        absolute
+    };
+    let sample = match CursorSample::new(position, viewport, monotonic(started)) {
         Ok(sample) => sample,
         Err(_) => {
             diagnostics.cursor_publish_rejections =
@@ -1052,10 +1120,7 @@ fn display_at_point(point: MacCursorPoint) -> Option<CGDirectDisplayID> {
 pub fn current_display_bounds() -> Option<DisplayBounds> {
     let event = CGEvent::new(None)?;
     let location = CGEvent::location(Some(&event));
-    let point = MacCursorPoint {
-        x: location.x,
-        y: location.y,
-    };
+    let point = MacCursorPoint::at(location.x, location.y);
     let display = display_at_point(point)?;
     display_bounds(display)
 }
@@ -1243,6 +1308,14 @@ fn capture_callback_event(
             cursor.publish(MacCursorPoint {
                 x: location.x,
                 y: location.y,
+                // An application that captures the pointer keeps the location
+                // above parked while these keep reporting every movement.
+                delta: CursorDelta {
+                    x: CGEvent::integer_value_field(Some(event), CGEventField::MouseEventDeltaX)
+                        as f64,
+                    y: CGEvent::integer_value_field(Some(event), CGEventField::MouseEventDeltaY)
+                        as f64,
+                },
             });
             None
         }
@@ -2174,14 +2247,11 @@ mod tests {
     fn cursor_callback_slot_coalesces_without_touching_the_edge_queue() {
         let cursor = LatestCursor::default();
         for index in 0_u32..10_000 {
-            cursor.publish(MacCursorPoint {
-                x: f64::from(index),
-                y: 1.0,
-            });
+            cursor.publish(MacCursorPoint::at(f64::from(index), 1.0));
         }
-        assert_eq!(cursor.take(), Some(MacCursorPoint { x: 9_999.0, y: 1.0 }));
+        assert_eq!(cursor.take(), Some(MacCursorPoint::at(9_999.0, 1.0)));
         cursor.close();
-        cursor.publish(MacCursorPoint { x: 0.0, y: 0.0 });
+        cursor.publish(MacCursorPoint::at(0.0, 0.0));
         let mut diagnostics = PlatformInputDiagnostics::default();
         cursor.merge_diagnostics(&mut diagnostics);
         assert_eq!(diagnostics.cursor_captured, 10_000);
@@ -2191,15 +2261,39 @@ mod tests {
         assert_eq!(diagnostics.captured_edges, 0);
     }
 
+    /// A coalesced sample keeps the latest location but must keep every
+    /// packet's motion: the accumulated position is only correct if no delta
+    /// is dropped between two service slices.
+    #[test]
+    fn cursor_callback_slot_sums_motion_across_coalesced_samples() {
+        let cursor = LatestCursor::default();
+        let point = |x: f64, dx: f64| MacCursorPoint {
+            x,
+            y: 0.0,
+            delta: CursorDelta { x: dx, y: 0.0 },
+        };
+        cursor.publish(point(10.0, 1.0));
+        cursor.publish(point(10.0, 2.0));
+        cursor.publish(point(10.0, 3.0));
+        let taken = cursor.take().expect("a sample");
+        assert_eq!(taken.x, 10.0, "the location is the latest reading");
+        assert_eq!(
+            taken.delta,
+            CursorDelta { x: 6.0, y: 0.0 },
+            "the motion of every packet is kept even though only the location coalesces"
+        );
+        assert!(cursor.take().is_none());
+    }
+
     #[test]
     fn live_diagnostics_merge_worker_callback_and_cursor_without_accumulating() {
         let producer = PlatformInputDiagnosticsProducer::default();
         let counters = CallbackCounters::default();
         counters.captured_edges.store(3, Ordering::Relaxed);
         let cursor = LatestCursor::default();
-        cursor.publish(MacCursorPoint { x: 1.0, y: 2.0 });
-        cursor.publish(MacCursorPoint { x: 3.0, y: 4.0 });
-        assert_eq!(cursor.take(), Some(MacCursorPoint { x: 3.0, y: 4.0 }));
+        cursor.publish(MacCursorPoint::at(1.0, 2.0));
+        cursor.publish(MacCursorPoint::at(3.0, 4.0));
+        assert_eq!(cursor.take(), Some(MacCursorPoint::at(3.0, 4.0)));
         let worker = PlatformInputDiagnostics {
             runtime_queue_overflows: 2,
             recovery_resets: 6,

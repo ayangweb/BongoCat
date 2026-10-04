@@ -11,6 +11,33 @@ use super::*;
 #[serde(deny_unknown_fields)]
 pub struct InputConfig {
     pub gamepad: GamepadInputConfig,
+    /// How the pointer is read before any model sees it.
+    ///
+    /// `#[serde(default)]` keeps a configuration written before the field
+    /// existed on the shipped behaviour rather than failing the strict v1 parse,
+    /// the same reason `GamepadInputConfig`'s own fields predate it.
+    #[serde(default)]
+    pub mouse: MouseInputConfig,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct MouseInputConfig {
+    /// Follow relative device motion instead of the absolute cursor position.
+    ///
+    /// Some applications, most full-screen games, capture the pointer and keep
+    /// the operating-system cursor parked, so the absolute position stops
+    /// moving while the device still reports every movement. With this on the
+    /// pointer position is accumulated from that relative motion instead, so the
+    /// model keeps following the pointer there. It is off by default because a
+    /// pointer moved by something other than the device (a synthetic warp, an
+    /// absolute pointing device) is not followed while it is on.
+    ///
+    /// `#[serde(default)]` keeps a document that omits the field on the off side
+    /// rather than failing the strict v1 parse.
+    #[serde(default)]
+    pub force_move: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

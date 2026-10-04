@@ -425,6 +425,10 @@
         },
         "ignore_mouse_input": {
           "label": "Ignorar a entrada do mouse"
+        },
+        "force_move": {
+          "label": "Forçar movimento do mouse",
+          "description": "Continua seguindo o mouse em aplicativos que capturam o ponteiro, como jogos em tela cheia."
         }
       },
       "keyboard": {

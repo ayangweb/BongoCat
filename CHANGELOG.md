@@ -7,6 +7,7 @@
 - Added a "Model window → Window behavior → Hide when idle" setting.
 - Added a "Model window → Window behavior → Idle hide delay" setting.
 - Added a "Model window → Window behavior → Hold a modifier key to interact" setting.
+- Added an "Input & interaction → Mouse → Force mouse movement" setting, so the cat keeps following the mouse in full-screen games that capture the pointer.
 
 ## 2.1.1 - 2026-10-03
 
