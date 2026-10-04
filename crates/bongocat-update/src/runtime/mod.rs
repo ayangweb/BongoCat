@@ -149,6 +149,9 @@ impl UpdateRuntime {
         if !self.configuration.channel.is_enabled() {
             return Some(UpdateUnavailability::DevelopmentChannel);
         }
+        if self.configuration.target.is_none() {
+            return Some(UpdateUnavailability::UnsupportedTarget);
+        }
         if configured_signing_key(RELEASE_SIGNING_KEY).is_none() {
             return Some(UpdateUnavailability::SigningKeyMissing);
         }
@@ -262,6 +265,9 @@ impl UpdateRuntime {
         let configuration = self.configuration;
         if !configuration.channel.is_enabled() {
             return Err(UpdateError::new(UpdateErrorCode::EnvironmentDisabled));
+        }
+        if configuration.target.is_none() {
+            return Err(UpdateError::new(UpdateErrorCode::NotConfigured));
         }
         let key = configured_signing_key(RELEASE_SIGNING_KEY)
             .ok_or_else(|| UpdateError::new(UpdateErrorCode::SignatureKeyMissing))?;

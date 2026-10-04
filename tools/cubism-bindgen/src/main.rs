@@ -73,6 +73,10 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        rust: "x86_64-unknown-linux-gnu",
+        clang: "x86_64-unknown-linux-gnu",
+    },
+    Target {
         rust: "x86_64-pc-windows-msvc",
         clang: "x86_64-pc-windows-msvc",
     },
