@@ -412,7 +412,6 @@ impl Render for SettingsView {
                             },
                         ),
                     ),
-                    hold_modifier_row(&view_entity, language, editing_blocked),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -562,6 +561,16 @@ impl Render for SettingsView {
                         ),
                     )
                     .disabled(idle_hide_delay_gate.disables_controls()),
+                    // Last row of the group, on purpose. This row suspends two
+                    // switches rather than standing among them, and no linear
+                    // position can put it next to both: click-through is third
+                    // and hide-on-hover sixth, with keep-on-screen between them.
+                    // After the whole group it reads as a note over the settings
+                    // above it — a modifier that undoes them belongs after them,
+                    // not before — and the description on the row names the two
+                    // it affects, so the rows it merely sits next to cannot be
+                    // mistaken for affected ones.
+                    hold_modifier_row(&view_entity, language, editing_blocked),
                 ],
                         &model_window_behavior_keywords,
                     )),
