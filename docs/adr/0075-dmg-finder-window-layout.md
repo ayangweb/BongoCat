@@ -149,8 +149,10 @@ Command Line Tools；缺失时构建直接失败，而不是悄悄少一个图�
   实测 1.6 s。
 - 体积没有变大。同一 x64 bundle 实测 11,952,090 B，对照改动前一次成型的 11,990,768 B
   反而小 0.32%——两次调用压缩的差异来自转码路径本身。
-- 编码器只在 Unix 上编译（`#[cfg(unix)] mod finder_store;`）：Windows 的打包不读也不写
-  `.DS_Store`，而 workspace 的 `-D warnings` 门禁不接受一个无人调用的模块。
+- 编码器只在 macOS 上编译（`#[cfg(target_os = "macos")] mod finder_store;`）：磁盘镜像与
+  `.DS_Store` 都是 macOS 专有产物，其他平台的打包不读也不写，而 workspace 的 `-D warnings`
+  门禁不接受一个无人调用的模块。用 macOS 条件而不是 `#[cfg(unix)]`，是因为 Linux 同样没有
+  磁盘镜像与 Finder，若按 Unix 放行会把这段 macOS 实现误判为可跨平台复用。
 - 卷根从两个条目变成三个（新增修复命令，ADR-0076）：三个图标排成倒三角（`BongoCat.app`
   与 `Applications` 在上，修复命令居中在下），窗口 660×420、图标 96 px、标签 13 pt
   （Tauri 默认是 660×400、128 px、16 pt，两条目时更合适），卷里多一个可执行命令文件。
