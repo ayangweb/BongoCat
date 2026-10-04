@@ -206,6 +206,12 @@ pub struct OverlayConfig {
 #[serde(deny_unknown_fields)]
 pub struct InputConfig {
     pub gamepad: GamepadInputConfig,
+    /// How the pointer is read before any model sees it. Carries a default for
+    /// the same reason the product type does: the spike's parse entry point is
+    /// strict too, so a document written before the namespace existed would
+    /// otherwise fail rather than load on the shipped behaviour.
+    #[serde(default)]
+    pub mouse: MouseInputConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -213,6 +219,15 @@ pub struct InputConfig {
 pub struct GamepadInputConfig {
     pub stick_dead_zone: f64,
     pub trigger_dead_zone: f64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct MouseInputConfig {
+    /// Follow relative device motion instead of the absolute cursor position.
+    /// Carries a default for the same reason the product type does.
+    #[serde(default)]
+    pub force_move: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -449,6 +464,7 @@ impl Default for NativeConfig {
                     stick_dead_zone: 0.15,
                     trigger_dead_zone: 0.0,
                 },
+                mouse: MouseInputConfig { force_move: false },
             },
             logging: LoggingConfig::default(),
             model: ModelConfig {
@@ -1263,6 +1279,8 @@ mod tests {
         assert!(value["input"].get("gamepad_trigger_dead_zone").is_none());
         assert!(value["input"]["gamepad"].get("stick_dead_zone").is_some());
         assert!(value["input"]["gamepad"].get("trigger_dead_zone").is_some());
+        // The pointer capture switch is its own namespace in the current v1.
+        assert!(value["input"]["mouse"].get("force_move").is_some());
         assert!(value["input"].get("keyboard").is_none());
         assert!(value["logging"].get("level").is_some());
         assert!(value["logging"].get("retention_days").is_some());
