@@ -73,8 +73,8 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 // Only the macOS disk image has a Finder window to describe, so the encoder is
-// not compiled into the Windows packaging run.
-#[cfg(unix)]
+// not compiled into any other platform's packaging run.
+#[cfg(target_os = "macos")]
 mod finder_store;
 
 use std::{
@@ -128,16 +128,16 @@ const OUTPUT_DIRECTORY: &str = "target/package";
 const STAGING_DIRECTORY: &str = "provenance";
 /// Staging directory for the disk image contents, relative to the output directory.
 ///
-/// Only the macOS disk image builder reads it, so it is Unix-only: a Windows
-/// build would otherwise carry a constant no code path can reach, which the
-/// workspace's `-D warnings` gate rejects.
-#[cfg(unix)]
+/// Only the macOS disk image builder reads it, so it is macOS-only: a build for
+/// any other platform would otherwise carry a constant no code path can reach,
+/// which the workspace's `-D warnings` gate rejects.
+#[cfg(target_os = "macos")]
 const DISK_IMAGE_STAGING_DIRECTORY: &str = "dmg-stage";
 /// The drop link the installer window offers as the install target.
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 const APPLICATIONS_LINK: &str = "Applications";
 /// The icon file Finder reads a volume's own icon from.
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 const VOLUME_ICON_FILE: &str = ".VolumeIcon.icns";
 /// The repair command the installer window offers next to the drop link.
 ///
@@ -150,10 +150,10 @@ const VOLUME_ICON_FILE: &str = ".VolumeIcon.icns";
 /// after the product: macOS tells them the app is damaged, and this is the item
 /// that answers that. The `App` is what keeps it apart from disk damage, which
 /// matters for an item that lives on a disk image.
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 const REPAIR_COMMAND: &str = "Fix Damaged App";
 /// Where a drag-to-install product lands, which is what the repair repairs.
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 const APPLICATIONS_DIRECTORY: &str = "/Applications";
 /// Staging directory for the cleaned preset models, relative to the output directory.
 ///
@@ -2019,7 +2019,7 @@ fn run_command(program: &str, command: &mut Command) -> Result<()> {
 }
 
 /// Builds the macOS installer disk image from a finished `.app` bundle.
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn build_disk_image(
     workspace: &Path,
     target: ReleaseTarget,
@@ -2153,7 +2153,7 @@ fn build_disk_image(
 /// The script also closes the Terminal window it ran in, because the window is
 /// the interface here and a prompt that promises to close it has to keep that
 /// promise; see `finish` in the script for the two conditions that make it safe.
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn repair_command(app_name: &str) -> String {
     format!(
         r##"#!/bin/bash
@@ -2262,13 +2262,13 @@ fn make_executable(path: &Path) -> Result<()> {
 /// mounted on the machine that ran it, and a build that fails after detaching
 /// must not detach something it no longer owns, so the guard tracks whether the
 /// volume is still attached.
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 struct MountedImage {
     mount_point: PathBuf,
     attached: bool,
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 impl MountedImage {
     /// Attaches `image` to `mount_point`, which has to exist and be empty.
     fn attach(image: &Path, mount_point: &Path) -> Result<Self> {
@@ -2308,7 +2308,7 @@ impl MountedImage {
     }
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 impl Drop for MountedImage {
     fn drop(&mut self) {
         if self.attached {
@@ -2323,7 +2323,7 @@ impl Drop for MountedImage {
 
 /// Gives a mounted volume the product icon, so Finder titles the installer
 /// window with it instead of a generic disk image icon.
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn set_volume_icon(mount: &Path) -> Result<()> {
     // `SetFile` ships with macOS in `/usr/bin`; it is what `create-dmg` uses for
     // this too, and nothing in the Command Line Tools is needed.
@@ -2334,14 +2334,14 @@ fn set_volume_icon(mount: &Path) -> Result<()> {
 
 /// Marks a file as an icon, so Finder reads it as the volume's icon rather than
 /// as an unknown file with an `.icns` name.
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn mark_icon_file(icon: &Path) -> Result<()> {
     let mut set = Command::new("SetFile");
     set.args(["-c", "icnC"]).arg(icon);
     run_command("SetFile", &mut set)
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "macos"))]
 fn build_disk_image(
     _workspace: &Path,
     _target: ReleaseTarget,
@@ -2433,7 +2433,7 @@ mod tests {
     /// format string above would otherwise ship a file that fails only on the
     /// reader's machine, after they have already dragged the app across.
     #[test]
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     fn the_shipped_repair_command_is_valid_shell() {
         let script = super::repair_command("BongoCat.app");
         let path = std::env::temp_dir().join("bongocat-repair-command-check.sh");
