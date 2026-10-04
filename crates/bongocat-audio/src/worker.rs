@@ -21,19 +21,16 @@ pub(crate) fn run_worker(
         recover_after_overflow(&receiver, &shared, backend.as_mut());
         match receiver.recv_timeout(WORKER_POLL_INTERVAL) {
             Ok(command) => process_command(command, &shared, backend.as_mut()),
-            Err(RecvTimeoutError::Timeout) => {
-                if !backend.is_playing()
-                    && shared
-                        .diagnostics
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .current_voice_sequence
-                        .is_some()
-                {
-                    shared.publish(|diagnostics| diagnostics.current_voice_sequence = None);
-                }
-            }
+            Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
+        }
+        // Check after commands as well as timeouts so a busy queue cannot
+        // indefinitely retain a silent output device after playback finishes.
+        if !backend.is_playing() {
+            backend.stop();
+            if shared.snapshot().current_voice_sequence.is_some() {
+                shared.publish(|diagnostics| diagnostics.current_voice_sequence = None);
+            }
         }
     }
     shared.publish(|diagnostics| diagnostics.state = MotionAudioState::Stopping);
@@ -143,7 +140,7 @@ pub(crate) fn process_command(
             });
         }
         MotionAudioCommand::Play { path, volume, .. } => {
-            let stopped = backend.stop();
+            let stopped = backend.stop_for_replacement();
             let result = backend.play(&path, volume);
             shared.publish(|diagnostics| {
                 diagnostics.processed_commands = diagnostics.processed_commands.saturating_add(1);

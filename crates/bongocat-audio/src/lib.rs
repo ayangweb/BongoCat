@@ -21,8 +21,8 @@ use std::{
 
 use std::collections::HashMap;
 
-// Playback completion is diagnostic state only. A short health check keeps
-// that state reasonably fresh without waking an idle worker at 100 Hz.
+// Reclaim the output device after playback without waking an idle worker at
+// 100 Hz. Commands also trigger the completion check.
 const WORKER_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const PREFERRED_OUTPUT_BUFFER_FRAMES: u32 = 512;
 
