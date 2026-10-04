@@ -38,6 +38,10 @@ pub use shortcut::{ShortcutDispatch, ShortcutDispatchError, ShortcutDispatcher};
 mod single_instance_windows;
 #[cfg(target_os = "windows")]
 pub use single_instance_windows::{SingleInstance, SingleInstanceStart};
+#[cfg(target_os = "linux")]
+mod single_instance_linux;
+#[cfg(target_os = "linux")]
+pub use single_instance_linux::{SingleInstance, SingleInstanceStart};
 
 mod theme;
 #[cfg(target_os = "macos")]
