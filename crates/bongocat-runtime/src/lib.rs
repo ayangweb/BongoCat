@@ -40,13 +40,13 @@ use std::{
 
 pub use bongocat_input::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorSampleError,
-    CursorSnapshot, CursorTransportDiagnostics, CursorViewport, GamepadAxis, GamepadAxisKey,
-    GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadAxisSettings,
-    GamepadAxisTransportDiagnostics, GamepadButton, GamepadButtonKey, GamepadConnection,
-    GamepadConnectionError, HandSide, InputBindings, InputControl, InputDiagnostics, InputEdge,
-    InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource, InputSubmitError,
-    InputSubmitter, InputTransportDiagnostics, ModifierKey, MonotonicMillis, MouseButton,
-    NormalizedCursorPosition, PhysicalKey, PlatformInputDiagnostics,
+    CursorSettings, CursorSnapshot, CursorTransportDiagnostics, CursorViewport, GamepadAxis,
+    GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample,
+    GamepadAxisSettings, GamepadAxisTransportDiagnostics, GamepadButton, GamepadButtonKey,
+    GamepadConnection, GamepadConnectionError, HandSide, InputBindings, InputControl,
+    InputDiagnostics, InputEdge, InputEvent, InputProducer, InputPublishError, InputResetReason,
+    InputSource, InputSubmitError, InputSubmitter, InputTransportDiagnostics, ModifierKey,
+    MonotonicMillis, MouseButton, NormalizedCursorPosition, PhysicalKey, PlatformInputDiagnostics,
     PlatformInputDiagnosticsProducer, PlatformInputDiagnosticsPublishError,
     PlatformInputServiceStatus, PressedModifiers, SequencedInputEvent,
     is_stable_platform_input_error_code,
@@ -456,6 +456,7 @@ pub enum RuntimeCommand {
     SetMotionAudioEnabled(bool),
     SetInputBindings(Arc<InputBindings>),
     SetGamepadAxisSettings(GamepadAxisSettings),
+    SetCursorSettings(CursorSettings),
     ResetInput(InputResetReason),
     ApplyInput(Arc<SequencedInputEvent>),
     ActivateModel(Arc<CommittedModel>),
@@ -514,6 +515,12 @@ pub struct RuntimeSnapshot {
     pub random_behavior_settings: RandomBehaviorSettings,
     pub model_settings: ModelSettings,
     pub gamepad_axis_settings: GamepadAxisSettings,
+    /// How the pointer is read before any model sees it.
+    ///
+    /// The runtime owns this because the configuration does, but the value is
+    /// consumed by the overlay session, which is what owns the platform input
+    /// service and pushes it down. See [`CursorSettings::force_move`].
+    pub cursor_settings: CursorSettings,
     pub motion_audio_enabled: bool,
     pub motion_audio: MotionAudioDiagnostics,
     pub active_model: Option<ModelSnapshot>,
@@ -556,6 +563,7 @@ impl RuntimeSnapshot {
             random_behavior_settings: RandomBehaviorSettings::default(),
             model_settings: ModelSettings::default(),
             gamepad_axis_settings: GamepadAxisSettings::default(),
+            cursor_settings: CursorSettings::default(),
             motion_audio_enabled,
             motion_audio,
             active_model: None,

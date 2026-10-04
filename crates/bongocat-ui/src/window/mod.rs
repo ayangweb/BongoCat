@@ -5,17 +5,17 @@
 //! path are the modules under `window/`.
 
 use crate::{
-    ModifierKey, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsError,
-    SettingsErrorCode, SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsLanguage,
-    SettingsLogLevel, SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
-    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
-    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
-    SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRuntimeErrorCode,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    ModifierKey, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
+    SettingsCursorSettings, SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch,
+    SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel, SettingsLogging,
+    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
+    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelKey, SettingsModelMode,
+    SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode,
+    SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode,
+    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{

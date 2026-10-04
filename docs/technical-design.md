@@ -391,6 +391,13 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 - Key/button down/up、设备连接和 command 必须可靠、有序；溢出是可观测错误，不能静默丢弃。
 - 可靠队列溢出时必须清空无法证明顺序的缓存，并在队首注入 `Reset`；原始失败 item 返回 producer，溢出、恢复和被清理 item 数量进入诊断 snapshot。
 - 鼠标移动和摇杆轴可以合并为最新值，不能阻塞边沿事件。
+- `input.mouse.force_move` 打开时，平台 adapter 不发布绝对光标位置，而是把设备报告的相对位移
+  累加成一个位置再发布（`CursorMotionAccumulator`）：以前台应用捕获指针、把光标钉在一处时，
+  绝对位置不再变化但设备仍在报告每次移动，按绝对位置跟随的模型会停住。累加器以绝对位置为种子，
+  在第一个采样和 viewport 变化时重新对齐，并夹在该 viewport 内；开启与关闭、以及输入 Reset
+  都清空累加值。累加在平台线程完成而不是 runtime：`CursorProducer` 是 latest-value 通道，跨两次
+  发布之间的位移必须在发布前合并，否则被合并掉的采样会连同位移一起丢失。累加值仍走同一条
+  latest-value 通道和同一套平滑，因此 runtime、renderer 和 `ModelSettings` 都不知道这个开关存在。
 - runtime 在独立 latest-value 通道之后按可注入单调时钟平滑光标位置；以 60 FPS 为基准每帧
   保留 `0.75` 的剩余距离，并在逻辑坐标距离小于 `0.5` 时收敛到目标。首个样本和显示器
   viewport 变化直接对齐目标，避免跨显示器插值使用错误坐标系；renderer 只消费平滑后的参数。

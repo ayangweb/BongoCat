@@ -309,6 +309,19 @@ impl SettingsClient {
         .await
     }
 
+    pub async fn set_cursor_settings(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsCursorSettings,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetCursorSettings {
+            expected_config_revision,
+            settings,
+            reply,
+        })
+        .await
+    }
+
     pub async fn set_gamepad_auto_switch(
         &self,
         expected_config_revision: u64,
@@ -772,6 +785,18 @@ impl SettingsClient {
         settings: SettingsGamepadAutoSwitch,
     ) -> Result<SettingsSnapshot, SettingsError> {
         self.request_blocking(|reply| SettingsCommand::SetGamepadAutoSwitch {
+            expected_config_revision,
+            settings,
+            reply,
+        })
+    }
+
+    pub fn set_cursor_settings_blocking(
+        &self,
+        expected_config_revision: u64,
+        settings: SettingsCursorSettings,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request_blocking(|reply| SettingsCommand::SetCursorSettings {
             expected_config_revision,
             settings,
             reply,

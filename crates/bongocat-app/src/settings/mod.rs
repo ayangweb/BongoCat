@@ -39,15 +39,15 @@ use bongocat_platform::{
     startup_permission_available,
 };
 use bongocat_runtime::{
-    InputSnapshot, ModelSettings, OverlaySettings, RandomBehaviorSettings, RuntimeRenderErrorCode,
-    RuntimeSnapshot, RuntimeState,
+    CursorSettings, InputSnapshot, ModelSettings, OverlaySettings, RandomBehaviorSettings,
+    RuntimeRenderErrorCode, RuntimeSnapshot, RuntimeState,
 };
 use bongocat_ui_protocol::{
     AutomaticUpdateSettings, RuntimeHealth, SettingsApplicationShortcut, SettingsBuildEnvironment,
-    SettingsBuildInfo, SettingsClient, SettingsCommand, SettingsDiagnosticsExportStatus,
-    SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings,
-    SettingsInputCapability, SettingsInputDiagnostics, SettingsInputServiceStatus,
-    SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsBuildInfo, SettingsClient, SettingsCommand, SettingsCursorSettings,
+    SettingsDiagnosticsExportStatus, SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch,
+    SettingsGamepadAxisSettings, SettingsInputCapability, SettingsInputDiagnostics,
+    SettingsInputServiceStatus, SettingsLanguage, SettingsModelAvailability, SettingsModelBehavior,
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
     SettingsModelImportStage, SettingsModelKey, SettingsModelMode, SettingsModelSettings,

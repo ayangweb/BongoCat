@@ -425,6 +425,10 @@
         },
         "ignore_mouse_input": {
           "label": "Ignore mouse input"
+        },
+        "force_move": {
+          "label": "Force mouse movement",
+          "description": "Keep following the mouse in applications that capture the pointer, such as full-screen games."
         }
       },
       "keyboard": {

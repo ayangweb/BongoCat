@@ -9,8 +9,8 @@ use bongocat_config::{ConfigError, LoggingConfig, LoggingLevel, NativeConfig, Ra
 use bongocat_input::GamepadAxisSettings;
 use bongocat_log::{LogLevel as RuntimeLogLevel, LogSettings as RuntimeLogSettings};
 use bongocat_runtime::{
-    ModelSettings, OverlaySettings, RandomBehaviorMode as RuntimeRandomBehaviorMode,
-    RandomBehaviorSettings,
+    CursorSettings, ModelSettings, OverlaySettings,
+    RandomBehaviorMode as RuntimeRandomBehaviorMode, RandomBehaviorSettings,
 };
 use bongocat_ui_protocol::SettingsRandomBehaviorMode;
 
@@ -74,6 +74,12 @@ pub(crate) fn overlay_settings_from_config(config: &NativeConfig) -> OverlaySett
         hide_on_idle: config.overlay.hide_on_idle,
         hide_on_idle_delay_seconds: config.overlay.hide_on_idle_delay_seconds,
         keep_inside_screen: config.overlay.keep_inside_screen,
+    }
+}
+
+pub(crate) const fn cursor_settings_from_config(config: &NativeConfig) -> CursorSettings {
+    CursorSettings {
+        force_move: config.input.mouse.force_move,
     }
 }
 

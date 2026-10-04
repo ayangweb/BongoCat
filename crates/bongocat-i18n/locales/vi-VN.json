@@ -425,6 +425,10 @@
         },
         "ignore_mouse_input": {
           "label": "Bỏ qua đầu vào chuột"
+        },
+        "force_move": {
+          "label": "Buộc di chuyển chuột",
+          "description": "Vẫn theo dõi chuột trong các ứng dụng chiếm giữ con trỏ, chẳng hạn như trò chơi toàn màn hình."
         }
       },
       "keyboard": {

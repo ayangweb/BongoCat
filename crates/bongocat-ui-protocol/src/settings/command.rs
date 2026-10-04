@@ -136,6 +136,12 @@ pub enum SettingsCommand {
         settings: SettingsGamepadAxisSettings,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Persist how the pointer is read before any model sees it.
+    SetCursorSettings {
+        expected_config_revision: u64,
+        settings: SettingsCursorSettings,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     /// Persist the gamepad-connection model switch as one atomic change.
     SetGamepadAutoSwitch {
         expected_config_revision: u64,

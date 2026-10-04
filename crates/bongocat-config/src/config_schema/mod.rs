@@ -27,7 +27,7 @@ use model::*;
 // glob would also carry the crate-private helpers, and a `pub` glob cannot
 // widen them.
 pub use appearance::{AppearanceConfig, Language, Theme};
-pub use input::{GamepadInputConfig, InputConfig};
+pub use input::{GamepadInputConfig, InputConfig, MouseInputConfig};
 pub use logging::{LoggingConfig, LoggingLevel};
 pub use model::{
     BuiltInModelMetadata, GamepadAutoSwitchConfig, ImportedModelMetadata,
@@ -89,6 +89,7 @@ impl Default for NativeConfig {
                     stick_dead_zone: 0.15,
                     trigger_dead_zone: 0.0,
                 },
+                mouse: MouseInputConfig { force_move: false },
             },
             logging: LoggingConfig::default(),
             model: ModelConfig {

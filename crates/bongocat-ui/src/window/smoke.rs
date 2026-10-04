@@ -88,6 +88,7 @@ impl SettingsView {
             "settings.input_interaction.mouse.ignore_mouse_input.label",
             "settings.input_interaction.mouse.mirror_mouse_tracking_horizontal.label",
             "settings.input_interaction.mouse.mirror_mouse_tracking_vertical.label",
+            "settings.input_interaction.mouse.force_move.label",
             "settings.input_interaction.keyboard.title",
             "settings.input_interaction.keyboard.ignore_keyboard_input.label",
             "settings.input_interaction.keyboard.show_all_pressed_keys.label",

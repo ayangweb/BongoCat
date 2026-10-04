@@ -266,6 +266,14 @@ impl SettingsView {
                         .set_gamepad_axis_settings(expected_config_revision, settings)
                         .await
                 }
+                Some(SettingValue::CursorSettings {
+                    expected_config_revision,
+                    settings,
+                }) => {
+                    client
+                        .set_cursor_settings(expected_config_revision, settings)
+                        .await
+                }
                 Some(SettingValue::GamepadAutoSwitch {
                     expected_config_revision,
                     settings,

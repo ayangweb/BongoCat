@@ -968,6 +968,47 @@ impl Render for SettingsView {
                             },
                         ),
                     ),
+                    // The last row is the one that changes how the pointer is
+                    // read rather than what the model does with it, so it reads
+                    // as a note on the three above: if the pointer does not move
+                    // at all, none of them can have an effect.
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.input_interaction.mouse.force_move.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.cursor_settings.force_move)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.cursor_settings;
+                                            settings.force_move = value;
+                                            view.set_cursor_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    // The one row on this page whose title does not say when it
+                    // applies. "Force mouse movement" reads as a behaviour the
+                    // cat always has, and the whole point is that it only
+                    // matters where the pointer is captured.
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.input_interaction.mouse.force_move.description",
+                    )),
                 ], &mouse_keywords)),
             SettingGroup::new()
                 .title(bongocat_i18n::text(

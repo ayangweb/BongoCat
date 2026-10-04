@@ -459,6 +459,24 @@ pub(super) fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetCursorSettings {
+                expected_config_revision,
+                settings,
+                reply,
+            } => {
+                let runtime_settings = CursorSettings {
+                    force_move: settings.force_move,
+                };
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_cursor_settings(runtime_settings)
+                            .map(|_| ())
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetGamepadAutoSwitch {
                 expected_config_revision,
                 settings,

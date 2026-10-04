@@ -425,6 +425,10 @@
         },
         "ignore_mouse_input": {
           "label": "忽略滑鼠輸入"
+        },
+        "force_move": {
+          "label": "強制移動滑鼠",
+          "description": "在擷取指標的應用程式（例如全螢幕遊戲）中也能繼續跟隨滑鼠移動。"
         }
       },
       "keyboard": {

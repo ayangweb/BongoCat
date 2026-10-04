@@ -15,8 +15,8 @@ use crate::{ApplicationError, RUNTIME_TIMEOUT};
 use bongocat_config::{Language, Theme as ConfigTheme};
 use bongocat_input::GamepadAxisSettings;
 use bongocat_runtime::{
-    ModelSettings, OverlaySettings, RandomBehaviorSettings, RuntimeCommand, RuntimeCommandFailure,
-    RuntimeRenderErrorCode, RuntimeSnapshot, maximum_fps_is_valid,
+    CursorSettings, ModelSettings, OverlaySettings, RandomBehaviorSettings, RuntimeCommand,
+    RuntimeCommandFailure, RuntimeRenderErrorCode, RuntimeSnapshot, maximum_fps_is_valid,
 };
 
 impl Application {
@@ -360,6 +360,34 @@ impl Application {
         let client = self.runtime.client();
         let sequence = client
             .send(RuntimeCommand::SetGamepadAxisSettings(settings))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        let snapshot = client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(snapshot)
+    }
+
+    /// Persist how the pointer is read before any model sees it.
+    ///
+    /// The runtime does not act on the value itself; it publishes it so the
+    /// overlay session, which owns the platform input service, can push it down.
+    /// The runtime command is still sent here because that is the only path that
+    /// makes the setting visible in the snapshot the overlay reads.
+    pub fn set_cursor_settings(
+        &mut self,
+        settings: CursorSettings,
+    ) -> Result<RuntimeSnapshot, ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.input.mouse.force_move = settings.force_move;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+
+        let client = self.runtime.client();
+        let sequence = client
+            .send(RuntimeCommand::SetCursorSettings(settings))
             .map_err(ApplicationError::RuntimeCommand)?;
         let snapshot = client
             .wait_for_command(sequence, RUNTIME_TIMEOUT)

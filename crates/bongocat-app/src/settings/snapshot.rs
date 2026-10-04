@@ -235,6 +235,9 @@ pub(super) fn snapshot(
                 .round()
                 .clamp(0.0, 99.0) as u8,
         },
+        cursor_settings: SettingsCursorSettings {
+            force_move: runtime.cursor_settings.force_move,
+        },
         gamepad_auto_switch: settings_gamepad_auto_switch(
             &application.config().model.gamepad_auto_switch,
         ),
