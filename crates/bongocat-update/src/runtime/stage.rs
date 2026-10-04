@@ -38,6 +38,8 @@ impl UpdateStage {
 pub enum UpdateUnavailability {
     /// The build's channel is not allowed to update.
     DevelopmentChannel,
+    /// This platform has no published update artifact.
+    UnsupportedTarget,
     /// No release signing key is provisioned.
     SigningKeyMissing,
 }
