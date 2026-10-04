@@ -2,17 +2,17 @@
 //!
 //! The product knows its own version at compile time, but almost nothing about
 //! a bug report can be acted on without the system it came from: a rendering
-//! difference, a Raw Input behaviour and a TCC decision all depend on the exact
-//! macOS or Windows build, and none of them can be inferred from the app's own
+//! difference, an input behaviour and a permission decision all depend on the exact
+//! operating-system build, and none of them can be inferred from the app's own
 //! version. This module is the one place that asks the operating system.
 //!
-//! Both platforms answer the same two questions in their own notation, and
+//! Each platform answers the same two questions in its own notation, and
 //! neither notation is rewritten into the other's:
 //!
-//! | | macOS | Windows |
-//! | --- | --- | --- |
-//! | [`version`](OperatingSystemVersion::version) | `kern.osproductversion` — "15.6" | major/minor under `CurrentVersion` — "10.0" |
-//! | [`build`](OperatingSystemVersion::build) | `kern.osversion` — "24G90" | `CurrentBuildNumber` + `UBR` — "22631.4169" |
+//! | | macOS | Windows | Linux |
+//! | --- | --- | --- | --- |
+//! | [`version`](OperatingSystemVersion::version) | `kern.osproductversion` — "15.6" | major/minor under `CurrentVersion` — "10.0" | release identifier from `/etc/os-release` — "24.04" |
+//! | [`build`](OperatingSystemVersion::build) | `kern.osversion` — "24G90" | `CurrentBuildNumber` + `UBR` — "22631.4169" | kernel release — "6.8.0-79-generic" |
 //!
 //! macOS is read through `sysctlbyname` rather than `NSProcessInfo` on purpose:
 //! `operatingSystemVersion` answers with the compatibility version a process
@@ -35,9 +35,11 @@
 /// is the only form that pins one exact installation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OperatingSystemVersion {
-    /// The version the platform itself reports: "15.6" on macOS, "10.0" on Windows.
+    /// The version the platform itself reports: "15.6" on macOS, "10.0" on Windows,
+    /// or the distribution release identifier on Linux.
     pub version: String,
-    /// The build identity: "24G90" on macOS, "22631.4169" on Windows.
+    /// The build identity: "24G90" on macOS, "22631.4169" on Windows, or the
+    /// kernel release on Linux.
     pub build: String,
 }
 
@@ -128,6 +130,68 @@ mod platform {
             .position(|byte| *byte == 0)
             .unwrap_or(bytes.len());
         String::from_utf8(bytes[..end].to_vec()).ok()
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod platform {
+    use super::OperatingSystemVersion;
+
+    const OS_RELEASE_PATH: &str = "/etc/os-release";
+    const KERNEL_RELEASE_PATH: &str = "/proc/sys/kernel/osrelease";
+
+    pub(super) fn version() -> Option<OperatingSystemVersion> {
+        let os_release = std::fs::read_to_string(OS_RELEASE_PATH).ok()?;
+        let version = distribution_version(&os_release)?;
+        let build = clean_value(std::fs::read_to_string(KERNEL_RELEASE_PATH).ok()?.trim())?;
+        Some(OperatingSystemVersion { version, build })
+    }
+
+    fn os_release_value(contents: &str, key: &str) -> Option<String> {
+        contents.lines().find_map(|line| {
+            let (candidate, value) = line.split_once('=')?;
+            (candidate == key)
+                .then(|| value.trim_matches(['\'', '"']))
+                .and_then(clean_value)
+        })
+    }
+
+    fn distribution_version(contents: &str) -> Option<String> {
+        ["VERSION_ID", "BUILD_ID", "ID"]
+            .into_iter()
+            .find_map(|key| os_release_value(contents, key))
+    }
+
+    fn clean_value(value: &str) -> Option<String> {
+        (!value.is_empty() && !value.contains('\0')).then(|| value.to_owned())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{distribution_version, os_release_value};
+
+        #[test]
+        fn version_id_is_read_without_os_release_quotes() {
+            let release = "NAME=Example\nVERSION_ID=\"24.04\"\nBUILD_ID='rolling'\n";
+            assert_eq!(
+                os_release_value(release, "VERSION_ID").as_deref(),
+                Some("24.04")
+            );
+            assert_eq!(
+                os_release_value(release, "BUILD_ID").as_deref(),
+                Some("rolling")
+            );
+            assert_eq!(os_release_value(release, "MISSING"), None);
+        }
+
+        #[test]
+        fn rolling_distributions_fall_back_to_their_build_identifier() {
+            assert_eq!(
+                distribution_version("ID=arch\nBUILD_ID=rolling\n").as_deref(),
+                Some("rolling")
+            );
+            assert_eq!(distribution_version("ID=nixos\n").as_deref(), Some("nixos"));
+        }
     }
 }
 
@@ -233,7 +297,7 @@ mod platform {
 mod tests {
     use super::operating_system_version;
 
-    /// Both supported platforms have to answer, not just the one this test runs
+    /// Every supported platform has to answer, not just the one this test runs
     /// on: a system that names no version produces a report that is missing the
     /// one field a triage reads first, and nothing else would notice. The `None`
     /// return is for a system that answers unreliably, not for a platform that
@@ -241,7 +305,7 @@ mod tests {
     #[test]
     fn the_running_system_reports_a_complete_version() {
         let version = operating_system_version()
-            .expect("both supported platforms report a version, and this build is one of them");
+            .expect("every supported platform reports a version, and this build is one of them");
         assert!(!version.version.is_empty());
         assert!(!version.build.is_empty());
         for value in [&version.version, &version.build] {
@@ -250,7 +314,7 @@ mod tests {
                 value
                     .chars()
                     .all(|character| character.is_ascii_alphanumeric()
-                        || matches!(character, '.' | '_' | '-')),
+                        || matches!(character, '.' | '_' | '-' | '+')),
                 "{value} is not a plain version string"
             );
         }
