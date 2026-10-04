@@ -217,7 +217,8 @@
     },
     "unavailable": {
       "development_build": "Builds de desenvolvimento não podem instalar atualizações de lançamento.",
-      "signing_key_missing": "Esta versão não pode verificar atualizações, portanto a atualização está desativada."
+      "signing_key_missing": "Esta versão não pode verificar atualizações, portanto a atualização está desativada.",
+      "unsupported_platform": "As atualizações automáticas não estão disponíveis nesta plataforma."
     },
     "about": {
       "label": "Verificar atualizações"

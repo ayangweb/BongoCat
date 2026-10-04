@@ -217,6 +217,7 @@
     },
     "unavailable": {
       "development_build": "Bản dựng phát triển không thể cài đặt bản cập nhật phát hành.",
+      "unsupported_platform": "Nền tảng này chưa hỗ trợ cập nhật tự động.",
       "signing_key_missing": "Phiên bản này không thể xác minh bản cập nhật nên tính năng cập nhật đã bị tắt."
     },
     "about": {
