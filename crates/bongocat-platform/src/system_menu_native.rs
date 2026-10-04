@@ -1,18 +1,27 @@
 use crate::{SystemMenuAction, SystemMenuError, SystemMenuPresentation};
 use image::ImageReader;
+#[cfg(target_os = "macos")]
+use muda::ContextMenu;
+#[cfg(target_os = "windows")]
+use muda::ContextMenu;
 use muda::{
-    CheckMenuItem, ContextMenu, IsMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem,
-    Submenu,
+    CheckMenuItem, IsMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu,
 };
 #[cfg(target_os = "macos")]
 use objc2::MainThreadMarker;
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use raw_window_handle::HasWindowHandle;
+#[cfg(target_os = "macos")]
+use raw_window_handle::RawWindowHandle;
+#[cfg(target_os = "windows")]
+use raw_window_handle::RawWindowHandle;
 use std::{
     io::Cursor,
     sync::mpsc::{self, Receiver, Sender},
 };
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconId};
 #[cfg(target_os = "windows")]
+use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
+#[cfg(target_os = "linux")]
 use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
 
 const TRAY_ICON_ID: &str = "bongocat.system-menu";
@@ -31,6 +40,8 @@ const QUIT_ID: &str = "bongocat.quit";
 const STATUS_ICON_BYTES: &[u8] = include_bytes!("../../../resources/icons/tray-macos.png");
 #[cfg(target_os = "windows")]
 const STATUS_ICON_BYTES: &[u8] = include_bytes!("../../../resources/icons/tray-windows.png");
+#[cfg(target_os = "linux")]
+const STATUS_ICON_BYTES: &[u8] = include_bytes!("../../../resources/icons/tray-windows.png");
 
 /// The platform owner for both native menu surfaces.
 ///
@@ -42,10 +53,15 @@ pub struct SystemMenu {
     // Keep the tray icon first: the native menu handles must be released after
     // the status item stops using them.
     tray_icon: TrayIcon,
+    #[cfg(target_os = "macos")]
+    menu: Menu,
+    #[cfg(target_os = "windows")]
     menu: Menu,
     model_window: Submenu,
     items: NativeMenuItems,
     #[cfg(target_os = "windows")]
+    tray_icon_id: TrayIconId,
+    #[cfg(target_os = "linux")]
     tray_icon_id: TrayIconId,
     sender: Sender<SystemMenuAction>,
     receiver: Receiver<SystemMenuAction>,
@@ -92,6 +108,10 @@ const MODEL_WINDOW_ENTRIES: &[MenuEntry] = &[
     MenuEntry::ToggleHideOnPointerHover,
 ];
 
+const fn effective_checked(configured: bool, available: bool) -> bool {
+    configured && available
+}
+
 impl NativeMenuItems {
     fn new(presentation: &SystemMenuPresentation, include_update: bool) -> Self {
         Self {
@@ -120,15 +140,21 @@ impl NativeMenuItems {
             toggle_always_on_top: CheckMenuItem::with_id(
                 TOGGLE_ALWAYS_ON_TOP_ID,
                 &presentation.always_on_top,
-                true,
-                presentation.always_on_top_enabled,
+                presentation.always_on_top_available,
+                effective_checked(
+                    presentation.always_on_top_enabled,
+                    presentation.always_on_top_available,
+                ),
                 None,
             ),
             toggle_hide_on_pointer_hover: CheckMenuItem::with_id(
                 TOGGLE_HIDE_ON_POINTER_HOVER_ID,
                 &presentation.hide_on_pointer_hover,
-                true,
-                presentation.hide_on_pointer_hover_enabled,
+                presentation.hide_on_pointer_hover_available,
+                effective_checked(
+                    presentation.hide_on_pointer_hover_enabled,
+                    presentation.hide_on_pointer_hover_available,
+                ),
                 None,
             ),
             // Update availability is a build/channel fact and does not change
@@ -158,12 +184,21 @@ impl NativeMenuItems {
             .set_checked(presentation.click_through_enabled);
         self.toggle_always_on_top
             .set_text(&presentation.always_on_top);
+        self.toggle_always_on_top.set_checked(effective_checked(
+            presentation.always_on_top_enabled,
+            presentation.always_on_top_available,
+        ));
         self.toggle_always_on_top
-            .set_checked(presentation.always_on_top_enabled);
+            .set_enabled(presentation.always_on_top_available);
         self.toggle_hide_on_pointer_hover
             .set_text(&presentation.hide_on_pointer_hover);
         self.toggle_hide_on_pointer_hover
-            .set_checked(presentation.hide_on_pointer_hover_enabled);
+            .set_checked(effective_checked(
+                presentation.hide_on_pointer_hover_enabled,
+                presentation.hide_on_pointer_hover_available,
+            ));
+        self.toggle_hide_on_pointer_hover
+            .set_enabled(presentation.hide_on_pointer_hover_available);
         if let Some(check_for_updates) = &self.check_for_updates {
             check_for_updates.set_text(&presentation.check_for_updates);
             check_for_updates.set_enabled(presentation.update_check_available);
@@ -195,6 +230,17 @@ impl SystemMenu {
         let menu = Menu::new();
         append_menu_entries(&menu, &items, &model_window, MENU_ENTRIES)?;
 
+        // `muda` owns one process-wide handler. BongoCat likewise owns one
+        // process-lifetime system menu, so forward native activations directly
+        // into the queue consumed by the product coordinator.
+        let (sender, receiver) = mpsc::channel();
+        let menu_event_sender = sender.clone();
+        MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+            if let Some(action) = action_for_menu_id(event.id()) {
+                let _ = menu_event_sender.send(action);
+            }
+        }));
+
         let tray_icon_id = TrayIconId::new(TRAY_ICON_ID);
         let tray_icon_builder = TrayIconBuilder::new()
             .with_id(tray_icon_id.clone())
@@ -206,13 +252,14 @@ impl SystemMenu {
             .with_menu_on_right_click(true);
         #[cfg(target_os = "windows")]
         let tray_icon_builder = tray_icon_builder.with_guid(TRAY_ICON_GUID);
+        #[cfg(target_os = "linux")]
+        let tray_icon_builder = tray_icon_builder.with_title(&presentation.title);
         let tray_icon = tray_icon_builder.build().map_err(|error| {
+            let _ = &error;
             #[cfg(target_os = "macos")]
             if matches!(error, tray_icon::Error::NotMainThread) {
                 return SystemMenuError::WrongThread;
             }
-            #[cfg(not(target_os = "macos"))]
-            let _ = error;
             SystemMenuError::StatusItemCreateFailed
         })?;
 
@@ -222,13 +269,17 @@ impl SystemMenu {
                 .map_err(|_| SystemMenuError::StatusItemUpdateFailed)?;
         }
 
-        let (sender, receiver) = mpsc::channel();
         Ok(Self {
             tray_icon,
+            #[cfg(target_os = "macos")]
+            menu,
+            #[cfg(target_os = "windows")]
             menu,
             model_window,
             items,
             #[cfg(target_os = "windows")]
+            tray_icon_id,
+            #[cfg(target_os = "linux")]
             tray_icon_id,
             sender,
             receiver,
@@ -259,13 +310,21 @@ impl SystemMenu {
     }
 
     pub fn try_recv(&self) -> Option<SystemMenuAction> {
-        while let Ok(event) = MenuEvent::receiver().try_recv() {
-            if let Some(action) = action_for_menu_id(&event.id) {
-                let _ = self.sender.send(action);
+        #[cfg(target_os = "windows")]
+        while let Ok(event) = TrayIconEvent::receiver().try_recv() {
+            if let TrayIconEvent::Click {
+                id,
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+                && id == self.tray_icon_id
+            {
+                let _ = self.sender.send(SystemMenuAction::OpenSettings);
             }
         }
 
-        #[cfg(target_os = "windows")]
+        #[cfg(target_os = "linux")]
         while let Ok(event) = TrayIconEvent::receiver().try_recv() {
             if let TrayIconEvent::Click {
                 id,
@@ -287,33 +346,50 @@ impl SystemMenu {
         &self,
         window: &impl HasWindowHandle,
     ) -> Result<(), SystemMenuError> {
-        let window = window
-            .window_handle()
-            .map_err(|_| SystemMenuError::WindowHandleUnavailable)?;
+        #[cfg(target_os = "linux")]
+        {
+            let _ = window;
+            Err(SystemMenuError::UnsupportedWindowHandle)
+        }
 
-        match window.as_raw() {
-            #[cfg(target_os = "windows")]
-            RawWindowHandle::Win32(handle) => {
-                // SAFETY: `window` keeps the HWND alive for the duration of this
-                // synchronous popup, and `muda` only tracks the owned menu.
-                let _ = unsafe {
-                    self.menu
-                        .show_context_menu_for_hwnd(handle.hwnd.get(), None)
-                };
-                Ok(())
+        #[cfg(target_os = "macos")]
+        {
+            let window = window
+                .window_handle()
+                .map_err(|_| SystemMenuError::WindowHandleUnavailable)?;
+            match window.as_raw() {
+                RawWindowHandle::AppKit(handle) => {
+                    let _main_thread =
+                        MainThreadMarker::new().ok_or(SystemMenuError::WrongThread)?;
+                    // SAFETY: the overlay's `HasWindowHandle` implementation keeps its
+                    // content NSView alive for the duration of this synchronous popup.
+                    let _ = unsafe {
+                        self.menu
+                            .show_context_menu_for_nsview(handle.ns_view.as_ptr(), None)
+                    };
+                    Ok(())
+                }
+                _ => Err(SystemMenuError::UnsupportedWindowHandle),
             }
-            #[cfg(target_os = "macos")]
-            RawWindowHandle::AppKit(handle) => {
-                let _main_thread = MainThreadMarker::new().ok_or(SystemMenuError::WrongThread)?;
-                // SAFETY: the overlay's `HasWindowHandle` implementation keeps its
-                // content NSView alive for the duration of this synchronous popup.
-                let _ = unsafe {
-                    self.menu
-                        .show_context_menu_for_nsview(handle.ns_view.as_ptr(), None)
-                };
-                Ok(())
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let window = window
+                .window_handle()
+                .map_err(|_| SystemMenuError::WindowHandleUnavailable)?;
+            match window.as_raw() {
+                RawWindowHandle::Win32(handle) => {
+                    // SAFETY: `window` keeps the HWND alive for the duration of this
+                    // synchronous popup, and `muda` only tracks the owned menu.
+                    let _ = unsafe {
+                        self.menu
+                            .show_context_menu_for_hwnd(handle.hwnd.get(), None)
+                    };
+                    Ok(())
+                }
+                _ => Err(SystemMenuError::UnsupportedWindowHandle),
             }
-            _ => Err(SystemMenuError::UnsupportedWindowHandle),
         }
     }
 
@@ -472,6 +548,12 @@ mod tests {
     fn visibility_is_rendered_as_a_check_state_meaning_hidden() {
         assert!(visibility_checked(false));
         assert!(!visibility_checked(true));
+    }
+
+    #[test]
+    fn unavailable_window_actions_are_presented_as_effectively_off() {
+        assert!(!super::effective_checked(true, false));
+        assert!(!super::effective_checked(false, false));
     }
 
     #[test]

@@ -47,6 +47,7 @@ futures-util.workspace = true
 gilrs.workspace = true
 libc.workspace = true
 rfd = { workspace = true, features = ["xdg-portal"] }
+tray-icon = { workspace = true, features = ["ksni"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 global-hotkey.workspace = true
