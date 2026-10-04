@@ -22,6 +22,8 @@ use async_channel::{Receiver, Sender};
 pub enum UpdateUnavailableReason {
     /// The build carries the Development channel and never installs a release.
     DevelopmentBuild,
+    /// This platform has no published update artifact.
+    UnsupportedPlatform,
     /// No release signing key is provisioned, so nothing could be authenticated.
     SigningKeyMissing,
 }
