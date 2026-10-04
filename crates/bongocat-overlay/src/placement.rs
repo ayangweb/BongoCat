@@ -20,7 +20,61 @@
 
 use std::time::Duration;
 
-use crate::{OverlayScreenBounds, OverlayWindowBounds};
+use crate::{OverlaySessionOptions, OverlayWindowBounds};
+
+/// One display's full frame in the shared virtual-desktop coordinate space.
+///
+/// This is the display's visible extent, including the strip a taskbar, Dock or
+/// menu bar occupies, so the placement constraint keeps the overlay on a screen
+/// without pushing it clear of the desktop chrome. Coordinates may be negative
+/// for a display placed left of or above the primary one.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct OverlayScreenBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl OverlayWindowBounds {
+    /// Move the window box so that it lands fully on `screen`, without changing
+    /// its size.
+    ///
+    /// The origin is clamped to the display's own origin when the window is
+    /// larger than the display on an axis, so an oversized window stays pinned
+    /// to the display's top-left corner instead of being resized or pushed off
+    /// the opposite edge.
+    pub(crate) fn clamp_to(self, screen: OverlayScreenBounds) -> Self {
+        let maximum_x = if self.width <= screen.width {
+            screen.x.saturating_add_unsigned(screen.width - self.width)
+        } else {
+            screen.x
+        };
+        let maximum_y = if self.height <= screen.height {
+            screen
+                .y
+                .saturating_add_unsigned(screen.height - self.height)
+        } else {
+            screen.y
+        };
+        Self {
+            x: self.x.clamp(screen.x, maximum_x),
+            y: self.y.clamp(screen.y, maximum_y),
+            ..self
+        }
+    }
+}
+
+impl OverlaySessionOptions {
+    /// Z-order, mouse-routing, hover, opacity, scale and taskbar-button changes
+    /// are applied directly to the native surface. Corner-radius and
+    /// screen-constraint changes still require replacing the native window
+    /// resources.
+    pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
+        self.corner_radius_percent != next.corner_radius_percent
+            || self.keep_inside_screen != next.keep_inside_screen
+    }
+}
 
 /// How long the overlay must stay put outside the displays before it is moved
 /// back. The countdown restarts whenever the window box changes, so this is
