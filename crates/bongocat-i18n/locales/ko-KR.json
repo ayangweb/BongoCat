@@ -359,7 +359,7 @@
         "record_placeholder": "클릭하면 대응키를 기록합니다",
         "side_left": "왼쪽",
         "side_right": "오른쪽",
-        "description": "이 키를 누르고 있으면 「마우스를 올리면 숨기기」와 「마우스 클릭 통과」가 잠시 꺼집니다."
+        "description": "이 키를 누르고 있으면 「마우스 클릭 통과」와 「마우스를 올리면 숨기기」가 잠시 꺼집니다."
       },
       "keep_inside_screen": {
         "label": "화면 안에 유지"

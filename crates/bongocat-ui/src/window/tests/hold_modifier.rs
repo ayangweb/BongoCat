@@ -137,12 +137,14 @@ fn every_prompt_in_the_row_names_the_modifier_the_same_way() {
 }
 
 /// The description has to name the two settings it suspends, by the page's own
-/// titles.
+/// titles, in the order the page shows them.
 ///
 /// This is the whole reason the row carries a description at all. The two
-/// switches it temporarily disables are the two rows directly above it, so
-/// quoting their titles is what connects the sentence to something on screen;
-/// describing the effect instead leaves the user to map it back themselves.
+/// switches it temporarily disables are both in this group, so quoting their
+/// titles is what connects the sentence to something on screen; describing the
+/// effect instead leaves the user to map it back themselves. Click-through is the
+/// row directly above this one and hide-on-hover is further down, so the sentence
+/// reads top-to-bottom like the page does.
 ///
 /// Comparing against the catalog rather than a literal also catches drift in the
 /// other direction: renaming a setting without updating this description fails
@@ -160,16 +162,20 @@ fn the_recorder_description_names_both_settings_it_suspends() {
             !description.contains('{') && !description.contains('}'),
             "{language:?} description has an unresolved placeholder: {description}"
         );
-        for key in [
-            "settings.overlay.hide_on_mouse_hover.label",
-            "settings.overlay.click_through.label",
-        ] {
-            let title = bongocat_i18n::text(locale, key);
+        let click_through = bongocat_i18n::text(locale, "settings.overlay.click_through.label");
+        let hide_on_hover =
+            bongocat_i18n::text(locale, "settings.overlay.hide_on_mouse_hover.label");
+        for title in [click_through, hide_on_hover] {
             assert!(
                 description.contains(title),
-                "{language:?} description does not name {key} ({title:?}): {description}"
+                "{language:?} description does not name {title:?}: {description}"
             );
         }
+        assert!(
+            description.find(click_through) < description.find(hide_on_hover),
+            "{language:?} description names the settings in the opposite order to the \
+             page ({description})"
+        );
     }
 }
 

@@ -359,7 +359,7 @@
         "record_placeholder": "点击以录制修饰键",
         "side_left": "左",
         "side_right": "右",
-        "description": "按住时，「鼠标悬停时隐藏」和「鼠标穿透」将暂时失效。"
+        "description": "按住时，「鼠标穿透」和「鼠标悬停时隐藏」将暂时失效。"
       },
       "keep_inside_screen": {
         "label": "保持在屏幕内"

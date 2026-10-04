@@ -359,7 +359,7 @@
         "record_placeholder": "Nhấp chuột để ghi lại phím sửa",
         "side_left": "Trái",
         "side_right": "Phải",
-        "description": "Khi giữ phím này, \"Ẩn khi rê chuột\" và \"Chuột xuyên qua cửa sổ\" tạm thời không có hiệu lực."
+        "description": "Khi giữ phím này, \"Chuột xuyên qua cửa sổ\" và \"Ẩn khi rê chuột\" tạm thời không có hiệu lực."
       },
       "keep_inside_screen": {
         "label": "Giữ trong màn hình"

@@ -359,7 +359,7 @@
         "record_placeholder": "Clique para registrar uma tecla modificadora",
         "side_left": "Esquerdo",
         "side_right": "Direito",
-        "description": "\"Ocultar ao passar o mouse\" e \"Cliques atravessam a janela\" ficam desativados enquanto a tecla é mantida pressionada."
+        "description": "\"Cliques atravessam a janela\" e \"Ocultar ao passar o mouse\" ficam desativados enquanto a tecla é mantida pressionada."
       },
       "keep_inside_screen": {
         "label": "Manter na tela"
