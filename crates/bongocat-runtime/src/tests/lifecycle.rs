@@ -25,6 +25,7 @@ fn lifecycle_publishes_typed_snapshots_and_stops_cleanly() {
 
     let settings = OverlaySettings {
         click_through: false,
+        hold_modifier_to_interact: Some(ModifierKey::RightShift),
         always_on_top: false,
         scale_percent: 125,
         opacity_percent: 80,

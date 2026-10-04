@@ -180,6 +180,12 @@ impl Default for SettingsGamepadAxisSettings {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SettingsOverlay {
     pub click_through: bool,
+    /// The physical modifier key whose hold gives the pointer back to the user.
+    ///
+    /// The overlay stops passing pointer events through and stops hiding while
+    /// this key is down, so a cat that is configured to be unreachable can still
+    /// be moved. `None` means no key does this.
+    pub hold_modifier_to_interact: Option<ModifierKey>,
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
@@ -207,6 +213,7 @@ impl Default for SettingsOverlay {
     fn default() -> Self {
         Self {
             click_through: false,
+            hold_modifier_to_interact: None,
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,

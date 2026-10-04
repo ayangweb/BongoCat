@@ -353,6 +353,14 @@
       "click_through": {
         "label": "Cliques atravessam a janela"
       },
+      "hold_modifier_to_interact": {
+        "label": "Segure uma tecla modificadora para interagir",
+        "recording": "Pressione para registrar uma tecla modificadora",
+        "record_placeholder": "Clique para registrar uma tecla modificadora",
+        "side_left": "Esquerdo",
+        "side_right": "Direito",
+        "description": "\"Cliques atravessam a janela\" e \"Ocultar ao passar o mouse\" ficam desativados enquanto a tecla é mantida pressionada."
+      },
       "keep_inside_screen": {
         "label": "Manter na tela"
       },

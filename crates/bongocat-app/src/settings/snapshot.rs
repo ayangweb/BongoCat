@@ -193,6 +193,7 @@ pub(super) fn snapshot(
         overlay_visible: runtime.overlay_visible,
         overlay: SettingsOverlay {
             click_through: runtime.overlay_settings.click_through,
+            hold_modifier_to_interact: runtime.overlay_settings.hold_modifier_to_interact,
             always_on_top: runtime.overlay_settings.always_on_top,
             scale_percent: runtime.overlay_settings.scale_percent,
             opacity_percent: runtime.overlay_settings.opacity_percent,

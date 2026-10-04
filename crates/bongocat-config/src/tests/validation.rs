@@ -5,6 +5,7 @@ use crate::{
     DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS, MAXIMUM_MODEL_EXPRESSION_MEMORIES,
     MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES, ModelExpressionMemory,
 };
+use bongocat_input::ModifierKey;
 
 #[test]
 fn system_locale_resolves_to_a_shipped_language() {
@@ -348,6 +349,63 @@ fn overlay_hover_hide_switch_defaults_to_off_and_round_trips() {
     let decoded: NativeConfig =
         serde_json::from_str(&encoded).expect("deserialize enabled hover hide");
     assert_eq!(decoded, enabled);
+}
+
+/// The modifier is one physical key, so every one of the eight has to survive a
+/// write/read cycle as itself — a document that came back naming a different key
+/// would suspend the overlay for a key the user never chose.
+#[test]
+fn the_hold_modifier_stores_one_physical_key_and_defaults_to_none() {
+    assert_eq!(
+        NativeConfig::default().overlay.hold_modifier_to_interact,
+        None
+    );
+
+    for modifier in ModifierKey::ALL {
+        let mut config = NativeConfig::default();
+        config.overlay.hold_modifier_to_interact = Some(modifier);
+        config.validate().expect("a known modifier is valid");
+        let encoded = serde_json::to_string(&config).expect("serialize the hold modifier");
+        let decoded: NativeConfig =
+            serde_json::from_str(&encoded).expect("deserialize the hold modifier");
+        assert_eq!(decoded.overlay.hold_modifier_to_interact, Some(modifier));
+    }
+}
+
+/// A configuration written before the field existed has to keep loading, and on
+/// the side that changes nothing: the shipped default is "no key does this".
+#[test]
+fn the_hold_modifier_defaults_when_missing_from_older_data() {
+    let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    let overlay = value["overlay"]
+        .as_object_mut()
+        .expect("overlay is an object");
+    overlay.remove("hold_modifier_to_interact");
+    let decoded: NativeConfig =
+        serde_json::from_value(value).expect("older config without the hold modifier must load");
+    assert_eq!(decoded.overlay.hold_modifier_to_interact, None);
+}
+
+/// The strict v1 parse is the only place an unknown name can be refused. There is
+/// no fallback spelling and no silent "nearest modifier": the field would then
+/// suspend the overlay for a key the document never named.
+#[test]
+fn an_unknown_hold_modifier_is_refused_by_the_strict_parse() {
+    for refused in [
+        "\"shift\"",
+        "\"left\"",
+        "\"left_shift_right\"",
+        "\"Super\"",
+        "4",
+    ] {
+        let mut value = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+        value["overlay"]["hold_modifier_to_interact"] =
+            serde_json::from_str::<serde_json::Value>(refused).expect("a json literal");
+        assert!(
+            serde_json::from_value::<NativeConfig>(value.clone()).is_err(),
+            "{refused} must not resolve to a modifier"
+        );
+    }
 }
 
 #[test]

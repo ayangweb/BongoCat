@@ -34,8 +34,8 @@ mod cover;
 pub use cover::ModelCoverCapture;
 
 use bongocat_input::{
-    CursorProducer, GamepadAxisProducer, InputProducer, PlatformInputDiagnostics,
-    PlatformInputDiagnosticsProducer, PlatformInputServiceStatus,
+    CursorProducer, GamepadAxisProducer, InputProducer, ModifierKey, PlatformInputDiagnostics,
+    PlatformInputDiagnosticsProducer, PlatformInputServiceStatus, PressedModifiers,
 };
 use bongocat_platform::PlatformInputError;
 use bongocat_render::BlendMode;

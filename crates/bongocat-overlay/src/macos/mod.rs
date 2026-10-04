@@ -47,6 +47,7 @@ use crate::{
     validate_frame_smoke, validate_model_generation_advance,
 };
 use block2::RcBlock;
+use bongocat_input::PressedModifiers;
 use bongocat_model::{CommittedModel, ModelId, ModelPackageLimits, PresetModelCatalog};
 use bongocat_platform::{
     MacInputService, PlatformInputDiagnostics, PlatformInputError, PlatformInputServiceStatus,

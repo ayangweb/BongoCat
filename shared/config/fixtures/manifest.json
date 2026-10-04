@@ -52,6 +52,16 @@
       "expected": "reject"
     },
     {
+      "id": "hold-modifier-to-interact",
+      "file": "accept-hold-modifier-to-interact.json",
+      "expected": "accept"
+    },
+    {
+      "id": "hold-modifier-to-interact-unknown",
+      "file": "invalid-hold-modifier-to-interact.json",
+      "expected": "reject"
+    },
+    {
       "id": "idle-hide",
       "file": "accept-idle-hide.json",
       "expected": "accept"

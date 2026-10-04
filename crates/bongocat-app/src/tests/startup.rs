@@ -41,6 +41,7 @@ fn application_loads_config_updates_runtime_and_stops() {
 
     let overlay_settings = OverlaySettings {
         click_through: true,
+        hold_modifier_to_interact: Some(ModifierKey::RightControl),
         always_on_top: false,
         scale_percent: 150,
         opacity_percent: 75,
@@ -70,6 +71,10 @@ fn application_loads_config_updates_runtime_and_stops() {
     );
     assert!(application.config().overlay.hide_on_idle);
     assert_eq!(application.config().overlay.hide_on_idle_delay_seconds, 30);
+    assert_eq!(
+        application.config().overlay.hold_modifier_to_interact,
+        Some(ModifierKey::RightControl)
+    );
     assert!(!application.config().overlay.keep_inside_screen);
 
     application

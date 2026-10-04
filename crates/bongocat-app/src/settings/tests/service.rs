@@ -37,6 +37,102 @@ fn service_uses_defaults_when_current_and_backups_are_invalid() {
     );
 }
 
+/// Read the pressed set until it satisfies `wanted`, or give up.
+///
+/// The runtime applies an edge on its own thread, so a read that races the edge
+/// legitimately sees the previous state. The budget is deliberately small and the
+/// sleep coarse: this asserts that the value arrives, and a tight spin would only
+/// take work away from the other tests running beside it.
+fn read_pressed_modifiers_until(
+    client: &bongocat_ui_protocol::SettingsClient,
+    wanted: impl Fn(PressedModifiers) -> bool,
+) -> PressedModifiers {
+    for _ in 0..25 {
+        let pressed = client
+            .read_pressed_modifiers_blocking()
+            .expect("pressed modifiers");
+        if wanted(pressed) {
+            return pressed;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    client
+        .read_pressed_modifiers_blocking()
+        .expect("pressed modifiers")
+}
+
+/// The pressed-modifier read is the modifier recorder's only input, so it has to
+/// report the runtime's own pressed set rather than anything the service decided.
+///
+/// Two properties matter and neither is visible in a full snapshot: it must answer
+/// for the physical key (the recorder stores one), and it must not move the
+/// configuration revision, because it is polled several times a second while the
+/// control is armed.
+#[test]
+fn the_pressed_modifier_read_reports_the_physical_key_and_moves_no_revision() {
+    let base = tempdir().expect("temporary storage");
+    let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+    let application = Application::start_with_layout(layout).expect("application start");
+    let producer = application.input_producer();
+    let service = ApplicationSettingsService::start(application).expect("service start");
+    let client = service.client();
+
+    assert_eq!(
+        client
+            .read_pressed_modifiers_blocking()
+            .expect("initial pressed modifiers"),
+        PressedModifiers::NONE,
+        "a runtime that has seen no input holds no modifier"
+    );
+    // Startup still has commits of its own to make, so the pair that has to match
+    // is taken once the service has settled rather than against the first reading.
+    let settled = client
+        .read_snapshot_revision_blocking()
+        .expect("settled revision");
+    let _ = client
+        .read_pressed_modifiers_blocking()
+        .expect("settled pressed modifiers");
+    assert_eq!(
+        settled,
+        client
+            .read_snapshot_revision_blocking()
+            .expect("revision after the read"),
+        "reading the pressed set must not move the configuration revision"
+    );
+
+    producer
+        .publish(InputEvent::Edge {
+            control: InputControl::Key(ModifierKey::RightShift.physical_key()),
+            edge: bongocat_runtime::InputEdge::Down,
+            source: bongocat_runtime::InputSource::Capture,
+            at: MonotonicMillis::new(10),
+        })
+        .expect("the shift press reaches the runtime");
+    let held =
+        read_pressed_modifiers_until(&client, |pressed| pressed.holds(ModifierKey::RightShift));
+    assert!(held.holds(ModifierKey::RightShift));
+    assert!(
+        !held.holds(ModifierKey::LeftShift),
+        "the right shift must not answer for the left one"
+    );
+
+    producer
+        .publish(InputEvent::Edge {
+            control: InputControl::Key(ModifierKey::RightShift.physical_key()),
+            edge: bongocat_runtime::InputEdge::Up,
+            source: bongocat_runtime::InputSource::Capture,
+            at: MonotonicMillis::new(20),
+        })
+        .expect("the shift release reaches the runtime");
+    assert!(
+        read_pressed_modifiers_until(&client, PressedModifiers::is_empty).is_empty(),
+        "the release ends the hold"
+    );
+
+    client.shutdown_blocking().expect("service shutdown");
+    service.join().expect("service join");
+}
+
 #[test]
 fn service_advances_settings_revision_once_for_one_control_change() {
     let base = tempdir().expect("temporary storage");
@@ -414,6 +510,7 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
     );
     let overlay_settings = SettingsOverlay {
         click_through: true,
+        hold_modifier_to_interact: Some(ModifierKey::LeftAlt),
         always_on_top: false,
         scale_percent: 125,
         opacity_percent: 80,
@@ -568,6 +665,7 @@ fn service_rejects_stale_overlay_settings_without_mutating_runtime_or_config() {
     let initial_config_revision = initial.config_revision.expect("config revision");
     let original_settings = SettingsOverlay {
         click_through: false,
+        hold_modifier_to_interact: Some(ModifierKey::LeftAlt),
         always_on_top: false,
         scale_percent: 125,
         opacity_percent: 80,
@@ -585,6 +683,7 @@ fn service_rejects_stale_overlay_settings_without_mutating_runtime_or_config() {
 
     let stale_settings = SettingsOverlay {
         click_through: true,
+        hold_modifier_to_interact: None,
         always_on_top: true,
         scale_percent: 400,
         opacity_percent: 10,

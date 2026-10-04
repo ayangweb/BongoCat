@@ -39,6 +39,23 @@ pub enum SettingsCommand {
     ReadAutomaticUpdateSettings {
         reply: SettingsReply<Result<AutomaticUpdateSettings, SettingsError>>,
     },
+    /// Which keyboard modifiers are held right now, with the two sides apart.
+    ///
+    /// This exists because the modifier recorder cannot read the keyboard itself.
+    /// GPUI reports a modifier press as a boolean flag change with no key
+    /// identity, so left and right arrive indistinguishable and a press of a bare
+    /// modifier never reaches a key handler at all. The runtime's pressed set is
+    /// the only place the physical key is known, and it is where the answer
+    /// belongs.
+    ///
+    /// It is a separate command from [`Self::ReadSnapshot`] because the recorder
+    /// needs it several times a second, and building a snapshot walks the model
+    /// store on disk. Reading this is an atomic load of state the runtime already
+    /// publishes on every input edge, which is also what makes it fresh enough
+    /// to record a key the user is holding.
+    ReadPressedModifiers {
+        reply: SettingsReply<Result<PressedModifiers, SettingsError>>,
+    },
     SetOverlayVisible {
         expected_config_revision: u64,
         visible: bool,

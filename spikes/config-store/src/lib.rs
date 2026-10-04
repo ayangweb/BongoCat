@@ -183,6 +183,13 @@ pub enum Theme {
 #[serde(deny_unknown_fields)]
 pub struct OverlayConfig {
     pub click_through: bool,
+    /// The physical modifier key whose hold gives the pointer back to the user.
+    ///
+    /// `#[serde(default)]` mirrors the shared schema: the field arrived after
+    /// the first documents were written, and a document without it has to load
+    /// on the "no modifier" side rather than fail the strict parse.
+    #[serde(default)]
+    pub hold_modifier_to_interact: Option<HoldModifierKey>,
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
@@ -233,6 +240,27 @@ pub enum LoggingLevel {
     Info,
     Debug,
     Trace,
+}
+
+/// The modifier key the overlay watches for while it is held.
+///
+/// The spike carries its own copy of the v1 shape, so this mirrors
+/// `bongocat_input::ModifierKey` instead of depending on it. Depending on the
+/// real type would hide the one thing this copy exists to catch: a document that
+/// grows a field or a value the copy has not heard of. A local enum also keeps
+/// the refusal honest — a `String` would accept a name the shared schema rejects,
+/// and the two copies would then disagree about the same file.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HoldModifierKey {
+    LeftControl,
+    LeftShift,
+    LeftAlt,
+    LeftMeta,
+    RightControl,
+    RightShift,
+    RightAlt,
+    RightMeta,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -404,6 +432,7 @@ impl Default for NativeConfig {
             },
             overlay: OverlayConfig {
                 click_through: false,
+                hold_modifier_to_interact: None,
                 always_on_top: true,
                 scale_percent: 100,
                 opacity_percent: 100,
@@ -1224,6 +1253,7 @@ mod tests {
         );
         assert!(value["overlay"].get("hide_on_idle").is_some());
         assert!(value["overlay"].get("hide_on_idle_delay_seconds").is_some());
+        assert!(value["overlay"].get("hold_modifier_to_interact").is_some());
         // The overlay presentation fields are part of the current v1, so the
         // legacy store spelling must stay absent rather than come back with
         // them.
@@ -1399,6 +1429,53 @@ mod tests {
             source: ModelSource::BuiltIn,
         });
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn the_hold_modifier_names_one_known_key_and_defaults_to_none() {
+        // The shipped default is "no key does this", and it has to reach the
+        // shared fixture as an explicit `null` rather than an absent key: the
+        // document this spike commits is the one the product reads back.
+        let value = serde_json::to_value(NativeConfig::default()).unwrap();
+        assert!(value["overlay"]["hold_modifier_to_interact"].is_null());
+
+        // A document written before the field existed has to load.
+        let mut older = value.clone();
+        older["overlay"]
+            .as_object_mut()
+            .unwrap()
+            .remove("hold_modifier_to_interact");
+        let decoded: NativeConfig = serde_json::from_value(older).expect("older document loads");
+        assert_eq!(decoded.overlay.hold_modifier_to_interact, None);
+
+        for (name, modifier) in [
+            ("left_control", HoldModifierKey::LeftControl),
+            ("left_shift", HoldModifierKey::LeftShift),
+            ("left_alt", HoldModifierKey::LeftAlt),
+            ("left_meta", HoldModifierKey::LeftMeta),
+            ("right_control", HoldModifierKey::RightControl),
+            ("right_shift", HoldModifierKey::RightShift),
+            ("right_alt", HoldModifierKey::RightAlt),
+            ("right_meta", HoldModifierKey::RightMeta),
+        ] {
+            let mut document = value.clone();
+            document["overlay"]["hold_modifier_to_interact"] = serde_json::json!(name);
+            let decoded: NativeConfig =
+                serde_json::from_value(document).unwrap_or_else(|error| panic!("{name}: {error}"));
+            assert_eq!(decoded.overlay.hold_modifier_to_interact, Some(modifier));
+        }
+
+        // The two sides are separate values, and a name outside the eight is
+        // refused rather than resolved to a key the document never named.
+        assert_ne!(HoldModifierKey::LeftShift, HoldModifierKey::RightShift);
+        for refused in ["shift", "left", "left_shift_right", "Super", "0xe1"] {
+            let mut document = value.clone();
+            document["overlay"]["hold_modifier_to_interact"] = serde_json::json!(refused);
+            assert!(
+                serde_json::from_value::<NativeConfig>(document).is_err(),
+                "{refused} must not resolve to a modifier"
+            );
+        }
     }
 
     #[test]

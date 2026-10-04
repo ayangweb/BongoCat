@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 async-channel.workspace = true
+bongocat-input.workspace = true
 thiserror.workspace = true
 
 [lints]

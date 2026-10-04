@@ -148,6 +148,7 @@ impl Application {
         }
         let mut next_config = self.config.clone();
         next_config.overlay.click_through = settings.click_through;
+        next_config.overlay.hold_modifier_to_interact = settings.hold_modifier_to_interact;
         next_config.overlay.always_on_top = settings.always_on_top;
         next_config.overlay.scale_percent = settings.scale_percent;
         next_config.overlay.opacity_percent = settings.opacity_percent;

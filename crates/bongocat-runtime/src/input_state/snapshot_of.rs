@@ -15,28 +15,32 @@ impl InputState {
 
 impl InputState {
     pub fn snapshot(&self) -> InputSnapshot {
-        InputSnapshot {
-            pressed_key_count: self
-                .pressed
-                .keys()
-                .filter(|control| matches!(control, InputControl::Key(_)))
-                .count(),
-            pressed_mouse_button_count: self
-                .pressed
-                .keys()
-                .filter(|control| matches!(control, InputControl::Mouse(_)))
-                .count(),
-            pressed_gamepad_button_count: self
-                .pressed
-                .keys()
-                .filter(|control| matches!(control, InputControl::Gamepad(_)))
-                .count(),
+        // The four counts and the modifier set read the same pressed map, so they
+        // are collected in one pass: this runs on every input edge, and walking
+        // the map five times would make the cost of a fast chord five times what
+        // one walk needs.
+        let mut snapshot = InputSnapshot {
+            pressed_modifiers: PressedModifiers::NONE,
             connected_gamepad_count: self.active_gamepads.len(),
             last_reset_reason: self.last_reset_reason,
             last_input_sequence: self.last_sequence,
             diagnostics: self.diagnostics,
             transport: InputTransportDiagnostics::default(),
+            ..InputSnapshot::default()
+        };
+        for control in self.pressed.keys() {
+            match control {
+                InputControl::Key(key) => {
+                    snapshot.pressed_key_count += 1;
+                    if let Some(modifier) = ModifierKey::from_hid_usage(key.hid_usage()) {
+                        snapshot.pressed_modifiers.insert(modifier);
+                    }
+                }
+                InputControl::Mouse(_) => snapshot.pressed_mouse_button_count += 1,
+                InputControl::Gamepad(_) => snapshot.pressed_gamepad_button_count += 1,
+            }
         }
+        snapshot
     }
 }
 
