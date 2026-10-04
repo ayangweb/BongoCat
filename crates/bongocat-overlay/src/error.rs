@@ -7,6 +7,7 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum OverlayErrorKind {
     Fatal,
+    PresentationSurfaceLost,
     TemporaryPresentationUnavailable,
 }
 
@@ -32,10 +33,21 @@ impl OverlayError {
         }
     }
 
+    pub(crate) fn presentation_surface_lost(detail: impl Into<String>) -> Self {
+        Self {
+            kind: OverlayErrorKind::PresentationSurfaceLost,
+            detail: detail.into(),
+        }
+    }
+
     pub(crate) const fn is_temporary_presentation_unavailable(&self) -> bool {
         matches!(
             self.kind,
             OverlayErrorKind::TemporaryPresentationUnavailable
         )
+    }
+
+    pub(crate) const fn is_presentation_surface_lost(&self) -> bool {
+        matches!(self.kind, OverlayErrorKind::PresentationSurfaceLost)
     }
 }

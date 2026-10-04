@@ -5,6 +5,8 @@
 //! a frame of it contained, and when it is really visible. The modules below are
 //! those questions; the platform sessions beside them own the two implementations.
 
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]

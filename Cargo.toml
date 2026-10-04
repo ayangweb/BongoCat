@@ -37,6 +37,7 @@ ashpd = { version = "=0.13.13", default-features = false, features = ["async-io"
 async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"
 async-channel = "=2.5.0"
+bytemuck = "=1.25.2"
 cargo-packager = { version = "=0.11.8", default-features = false, features = ["rustls-tls"] }
 cargo-packager-updater = { version = "=0.2.3", default-features = false, features = ["rustls-tls"] }
 clap = { version = "=4.6.7", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
@@ -56,6 +57,7 @@ opener = { version = "=0.8.5", features = ["reveal"] }
 oxipng = { version = "=10.2.1", default-features = false }
 permission-flow = { git = "https://github.com/ayangweb/permission-flow", rev = "fad0354d960cf775ac332e6375916f7cc6424c7b" }
 plist = "=1.10.1"
+pollster = "=0.4.0"
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 raw-window-handle = "=0.6.2"
 rfd = { version = "=0.17.2", default-features = false }
@@ -70,6 +72,7 @@ time = { version = "=0.3.55", default-features = false, features = ["formatting"
 tray-icon = { version = "=0.25.0", default-features = false }
 url = "=2.5.8"
 walkdir = "=2.5.0"
+wgpu = { version = "=29.0.4", default-features = false }
 zip = { version = "=8.6.0", default-features = false }
 
 bongocat-config = { path = "crates/bongocat-config" }

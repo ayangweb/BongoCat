@@ -952,6 +952,7 @@ dependencies = [
  "bongocat-platform",
  "bongocat-render",
  "bongocat-runtime",
+ "bytemuck",
  "core-graphics-types 0.2.0",
  "image",
  "metal",
@@ -959,8 +960,10 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "objc2-quartz-core 0.3.2",
+ "pollster 0.4.0",
  "raw-window-handle",
  "thiserror 2.0.21",
+ "wgpu",
  "windows 0.62.2",
 ]
 

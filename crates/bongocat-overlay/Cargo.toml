@@ -16,6 +16,12 @@ bongocat-runtime.workspace = true
 raw-window-handle.workspace = true
 thiserror.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+bytemuck = { workspace = true, features = ["derive"] }
+image.workspace = true
+pollster.workspace = true
+wgpu = { workspace = true, default-features = false, features = ["std", "vulkan", "wgsl"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics-types = "=0.2.0"
 image.workspace = true
