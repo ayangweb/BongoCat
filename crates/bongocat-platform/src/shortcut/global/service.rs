@@ -1,8 +1,8 @@
 //! The handle the application holds, and the counters it reads.
 //!
 //! The service owns the thread and nothing else, so `stop` is the whole teardown:
-//! it asks the owner to finish, joins it with a timeout, and reports what the
-//! platform said on the way out. The counters are atomic rather than locked
+//! it asks the owner to finish, waits for its bounded platform calls, and joins
+//! it. The counters are atomic rather than locked
 //! because the owner thread writes them and the application reads them from a
 //! different thread while the service is still running.
 

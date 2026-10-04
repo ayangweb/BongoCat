@@ -83,4 +83,5 @@ fn mirror(
 mod hotkey;
 mod owner;
 mod registration;
+#[cfg(not(target_os = "linux"))]
 mod service;
