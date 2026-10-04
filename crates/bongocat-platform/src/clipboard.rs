@@ -29,6 +29,11 @@ pub fn read_clipboard_text() -> Result<Option<String>, ClipboardError> {
     {
         read_text()
     }
+
+    #[cfg(target_os = "linux")]
+    {
+        read_text()
+    }
 }
 
 pub fn write_clipboard_text(value: &str) -> Result<(), ClipboardError> {
@@ -41,6 +46,11 @@ pub fn write_clipboard_text(value: &str) -> Result<(), ClipboardError> {
     }
 
     #[cfg(target_os = "windows")]
+    {
+        write_text(value)
+    }
+
+    #[cfg(target_os = "linux")]
     {
         write_text(value)
     }

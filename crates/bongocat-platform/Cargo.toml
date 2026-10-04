@@ -39,6 +39,7 @@ objc2-foundation = { version = "=0.3.2", default-features = false, features = ["
 permission-flow.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
+arboard = { workspace = true, features = ["wayland-data-control"] }
 ashpd.workspace = true
 async-io.workspace = true
 evdev.workspace = true
