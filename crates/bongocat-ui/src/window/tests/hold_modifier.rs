@@ -100,13 +100,49 @@ fn the_recorder_names_the_side_of_the_key_it_stores() {
     assert_eq!(rendered.len(), ModifierKey::ALL.len());
 }
 
-/// The description has to carry what the title cannot.
+/// One noun for one thing, across every string this row is made of.
 ///
-/// ADR-0066 permits a row description only where the title and the control leave
-/// the behaviour unclear, so this one earns its place by naming the two settings
-/// it suspends. Those two switches are the two rows directly above it, so quoting
-/// their titles is what connects the sentence to something on screen; describing
-/// the effect instead leaves the user to map it back themselves.
+/// The row is three sentences in the interface language — a title and two recorder
+/// prompts — and all of them talk about the same physical key. Translating one of
+/// them from a different glossary would leave the row calling the same key by two
+/// names, which is the drift a catalog nobody reads side by side accumulates. The
+/// noun is spelled out per locale rather than derived, because there is no way to
+/// pull "the word for modifier key" out of a sentence mechanically, and the point
+/// of the check is the agreement rather than the word.
+#[test]
+fn every_prompt_in_the_row_names_the_modifier_the_same_way() {
+    let noun = [
+        (SettingsLanguage::English, "modifier key"),
+        (SettingsLanguage::ChineseSimplified, "修饰键"),
+        (SettingsLanguage::ChineseTraditional, "修飾鍵"),
+        (SettingsLanguage::Portuguese, "tecla modificadora"),
+        (SettingsLanguage::Korean, "대응키"),
+        (SettingsLanguage::Vietnamese, "phím sửa"),
+        (SettingsLanguage::Arabic, "مفتاح تعديل"),
+    ];
+    for (language, modifier) in noun {
+        let locale = language.catalog_locale();
+        for key in [
+            "settings.overlay.hold_modifier_to_interact.label",
+            "settings.overlay.hold_modifier_to_interact.recording",
+            "settings.overlay.hold_modifier_to_interact.record_placeholder",
+        ] {
+            let text = bongocat_i18n::text(locale, key);
+            assert!(
+                text.contains(modifier),
+                "{language:?} {key} does not call the key {modifier:?}: {text}"
+            );
+        }
+    }
+}
+
+/// The description has to name the two settings it suspends, by the page's own
+/// titles.
+///
+/// This is the whole reason the row carries a description at all. The two
+/// switches it temporarily disables are the two rows directly above it, so
+/// quoting their titles is what connects the sentence to something on screen;
+/// describing the effect instead leaves the user to map it back themselves.
 ///
 /// Comparing against the catalog rather than a literal also catches drift in the
 /// other direction: renaming a setting without updating this description fails

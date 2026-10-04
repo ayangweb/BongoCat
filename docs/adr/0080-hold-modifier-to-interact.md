@@ -97,6 +97,15 @@ overlay 侧只在 `update_hover_presentation` 里读一次，两个平台共用
 符号本身在任何语言里都不翻译，但侧标记是这一行里唯一跟着界面语言走的部分——它和这一行的标题一样
 属于产品文案；写成 `L` / `R` 会得到一个没人能读的键帽，也是唯一一段任何语言里都不像人话的标签。
 
+七种语言必须说同一件事，因此有两条由测试固定的约束：
+
+- **一个名词。** 标题与两条录入提示在每种语言里用同一个词指称修饰键。同一行的三句话若从不同术语表
+  翻译，会让同一个键有两个名字。
+- **没有任何语言暗示时长门槛。** 这个功能没有门槛：按住多久算多久，因此标题一律用「按住」类动词
+  （`按住` / `Hold` / `Segure` / `Giữ` / `누르고` / `استمر في الضغط`），不用「长按」类
+  （`길게` / `مطولًا`）——后者在韩语和阿拉伯语 UI 里同样读作「按够时长」，而实现里没有这个时长。
+  录入提示按快捷键录入框的写法说「按下」，两者分工见上。
+
 这一行是 Model window 页唯一带描述的设置项，按的是 ADR-0066 的判据而不是新增惯例：**描述只在标题与
 控件说不清时出现**。它逐字写出被暂停的两项设置在页面上的标题（「鼠标悬停时隐藏」和「鼠标穿透」），因为
 那两个开关就在这一行上方——引用它们的标题是把句子接到屏幕上某个东西上的唯一方式；改成描述效果，则要
@@ -178,5 +187,6 @@ issue 与维护者的确认都只点了这两项。无操作隐藏期间用户�
   `structural_editing_blocking_renders_the_recorder_inert`、
   `the_recorder_names_the_side_of_the_key_it_stores`、
   `the_side_word_follows_the_interface_language`、
-  `the_recorder_description_says_what_the_title_cannot`、
+  `every_prompt_in_the_row_names_the_modifier_the_same_way`、
+  `the_recorder_description_names_both_settings_it_suspends`、
   `the_recorder_copy_is_named_in_every_shipped_language`。
