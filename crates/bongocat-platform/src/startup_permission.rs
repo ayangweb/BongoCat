@@ -1,9 +1,9 @@
 //! Startup permission check and native user guidance.
 //!
 //! The product needs a platform capability before global input works: macOS requires the
-//! Input Monitoring TCC grant, and Windows needs an elevated token to keep receiving Raw Input
-//! while a higher-integrity window is in the foreground. Both are read-only queries that never
-//! prompt, so the check may run on every start.
+//! Input Monitoring TCC grant, Windows needs an elevated token to keep receiving Raw Input while a
+//! higher-integrity window is in the foreground, and Linux needs read access to an evdev input
+//! device. These are read-only queries that never prompt, so the check may run on every start.
 //!
 //! Nothing about the prompt is persisted. A user who dismisses it is asked again on the next start
 //! while the platform still reports the capability as missing, and a user who already granted the
@@ -55,6 +55,8 @@ pub struct StartupPermissionPrompt {
 /// state, so this value never changes a later start.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StartupPermissionStatus {
+    /// This platform has no startup permission flow implemented by the product.
+    Unsupported,
     /// The platform already reports the capability; no prompt was shown.
     Satisfied,
     /// The prompt was shown and dismissed. The product keeps starting with the current
@@ -82,6 +84,9 @@ pub fn startup_permission_available() -> bool {
 /// it does not, the prompt is presented once and the user decides whether the product keeps
 /// starting with reduced input coverage or opens the platform permission flow.
 pub fn check_startup_permission(prompt: &StartupPermissionPrompt) -> StartupPermissionStatus {
+    if !platform::SUPPORTED {
+        return StartupPermissionStatus::Unsupported;
+    }
     if platform::available() {
         return StartupPermissionStatus::Satisfied;
     }
@@ -167,6 +172,7 @@ mod platform {
     }
 
     pub const CAPABILITY: &str = "input_monitoring";
+    pub const SUPPORTED: bool = true;
 
     pub fn available() -> bool {
         input_monitoring_permission() == InputPermission::Granted
@@ -448,6 +454,7 @@ mod platform {
     };
 
     pub const CAPABILITY: &str = "administrator";
+    pub const SUPPORTED: bool = true;
 
     pub fn available() -> bool {
         process_is_elevated()
@@ -508,6 +515,26 @@ mod platform {
             let _ = CloseHandle(token);
             result.is_ok() && elevation.TokenIsElevated != 0
         }
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod platform {
+    use crate::{InputPermission, StartupPermissionPrompt, linux::evdev_input_permission};
+
+    pub const CAPABILITY: &str = "evdev_access";
+    pub const SUPPORTED: bool = false;
+
+    pub fn available() -> bool {
+        evdev_input_permission() == InputPermission::Granted
+    }
+
+    pub fn present_prompt(_prompt: &StartupPermissionPrompt) -> rfd::MessageDialogResult {
+        rfd::MessageDialogResult::Cancel
+    }
+
+    pub fn request_permission_flow(_locale: &str) -> bool {
+        false
     }
 }
 
@@ -715,7 +742,16 @@ mod tests {
     fn capability_name_is_stable_and_anonymous() {
         assert!(matches!(
             STARTUP_PERMISSION_CAPABILITY,
-            "input_monitoring" | "administrator"
+            "input_monitoring" | "administrator" | "evdev_access"
         ));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_reports_the_interactive_permission_flow_as_unsupported() {
+        assert_eq!(
+            check_startup_permission(&prompt()),
+            StartupPermissionStatus::Unsupported
+        );
     }
 }
