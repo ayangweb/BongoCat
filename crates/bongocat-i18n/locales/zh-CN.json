@@ -217,6 +217,7 @@
     },
     "unavailable": {
       "development_build": "开发版本不会安装正式版更新。",
+      "unsupported_platform": "当前平台暂不支持自动更新。",
       "signing_key_missing": "当前版本无法验证更新，因此更新功能已关闭。"
     },
     "about": {
