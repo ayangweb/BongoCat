@@ -31,6 +31,9 @@ LEGAL_FILES = {
 }
 
 TARGET_ARTIFACTS = {
+    "x86_64-unknown-linux-gnu": {
+        "linux_x64_static_library": "lib/linux/x86_64/libLive2DCubismCore.a",
+    },
     "x86_64-pc-windows-msvc": {
         "windows_x64_dll": "dll/windows/x86_64/Live2DCubismCore.dll",
         "windows_x64_import_library": "dll/windows/x86_64/Live2DCubismCore.lib",

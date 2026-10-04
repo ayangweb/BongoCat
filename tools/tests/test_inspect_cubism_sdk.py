@@ -52,6 +52,7 @@ def valid_entries() -> dict[str, bytes]:
         f"{CORE}RedistributableFiles.txt": redistributable,
         f"{CORE}dll/windows/x86_64/Live2DCubismCore.dll": b"x64-dll",
         f"{CORE}dll/windows/x86_64/Live2DCubismCore.lib": b"x64-import-lib",
+        f"{CORE}lib/linux/x86_64/libLive2DCubismCore.a": b"linux-x64-static",
         f"{CORE}lib/macos/arm64/libLive2DCubismCore.a": b"mac-arm64-static",
         f"{CORE}lib/macos/x86_64/libLive2DCubismCore.a": b"mac-x64-static",
         **FRAMEWORK_SOURCE_CONTENTS,
@@ -92,6 +93,16 @@ class CubismSdkInspectorTests(unittest.TestCase):
             self.assertEqual(
                 report["targets"]["x86_64-pc-windows-msvc"]["status"],
                 "present",
+            )
+            linux_report = report["targets"]["x86_64-unknown-linux-gnu"]
+            self.assertEqual(linux_report["status"], "present")
+            self.assertEqual(
+                linux_report["artifacts"][0]["relative_path"],
+                "lib/linux/x86_64/libLive2DCubismCore.a",
+            )
+            self.assertEqual(
+                linux_report["artifacts"][0]["sha256"],
+                hashlib.sha256(b"linux-x64-static").hexdigest(),
             )
             self.assertEqual(
                 report["targets"]["i686-pc-windows-msvc"]["status"],
@@ -170,6 +181,19 @@ class CubismSdkInspectorTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 SDK_INSPECTOR.InspectionError, "windows_x64_dll is missing"
+            ):
+                inspect(path)
+
+    def test_missing_linux_static_library_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sdk.zip"
+            entries = valid_entries()
+            del entries[f"{CORE}lib/linux/x86_64/libLive2DCubismCore.a"]
+            write_zip(path, entries)
+
+            with self.assertRaisesRegex(
+                SDK_INSPECTOR.InspectionError,
+                "linux_x64_static_library is missing",
             ):
                 inspect(path)
 

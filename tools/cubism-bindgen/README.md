@@ -5,7 +5,7 @@ for Native R5. It does not download the SDK, accept a license, link Cubism
 Core, or implement product behavior.
 
 The committed fixture header and expected bindings are synthetic BongoCat test
-data. They verify the symbol allowlist, three R5 desktop target configurations,
+data. They verify the symbol allowlist, four R5 desktop target configurations,
 the C ABI, deterministic output, and generated-file drift. They are not copied
 from the Cubism SDK. Windows x86 and native Windows ARM64 are outside the
 final target set; Windows on ARM runs the x64 build. R5 has no matching
