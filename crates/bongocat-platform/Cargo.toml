@@ -39,13 +39,20 @@ objc2-foundation = { version = "=0.3.2", default-features = false, features = ["
 permission-flow.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
+arboard = { workspace = true, features = ["wayland-data-control"] }
 ashpd.workspace = true
 async-io.workspace = true
+evdev.workspace = true
 futures-util.workspace = true
+gilrs.workspace = true
+libc.workspace = true
+rfd = { workspace = true, features = ["xdg-portal"] }
+tray-icon = { workspace = true, features = ["ksni"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 global-hotkey.workspace = true
 gilrs = { workspace = true, features = ["wgi"] }
+rfd = { workspace = true, features = ["common-controls-v6"] }
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",
     "Win32_Globalization",

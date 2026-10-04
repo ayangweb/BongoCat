@@ -25,6 +25,8 @@ use std::{
 
 #[cfg(target_os = "windows")]
 use std::{sync::atomic::Ordering, thread, time::Duration};
+#[cfg(target_os = "linux")]
+use std::{sync::atomic::Ordering, time::Duration};
 
 #[cfg(target_os = "windows")]
 use windows::{
@@ -269,6 +271,20 @@ fn start_automation(
     Ok(None)
 }
 
+#[cfg(target_os = "linux")]
+fn start_automation(
+    _expected: &ExpectedOutcome,
+    automated: bool,
+    _completed: Arc<AtomicBool>,
+) -> Result<Option<std::thread::JoinHandle<Result<(), io::Error>>>, io::Error> {
+    if automated {
+        return Err(io::Error::other(
+            "--auto is supported only by the Windows picker smoke",
+        ));
+    }
+    Ok(None)
+}
+
 fn run_native_picker_smoke() -> Result<(), Box<dyn Error>> {
     let options = smoke_options()?;
     #[cfg(target_os = "macos")]
@@ -285,12 +301,26 @@ fn run_native_picker_smoke() -> Result<(), Box<dyn Error>> {
             let _ = sender.send(result);
         })?;
     }
+    #[cfg(target_os = "linux")]
+    {
+        let callback_completed = Arc::clone(&completed);
+        pick_model_folder(move |result| {
+            callback_completed.store(true, Ordering::Release);
+            let _ = sender.send(result);
+        })?;
+    }
     let automation = start_automation(&options.expected, options.automated, completed)?;
     #[cfg(target_os = "macos")]
     run_native_application(&native_application);
     #[cfg(target_os = "windows")]
     run_native_application();
     #[cfg(target_os = "windows")]
+    let actual = receiver
+        .recv_timeout(Duration::from_secs(15))
+        .map_err(|_| {
+            io::Error::other("timed out waiting for the model source picker callback")
+        })??;
+    #[cfg(target_os = "linux")]
     let actual = receiver
         .recv_timeout(Duration::from_secs(15))
         .map_err(|_| {

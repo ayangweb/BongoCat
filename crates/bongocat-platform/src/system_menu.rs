@@ -1,8 +1,7 @@
-/// Localized text and revisioned state used by the two native menu surfaces.
+/// Localized text and revisioned state shared by the product's menu surfaces.
 ///
-/// The platform owns native menu handles only. The application supplies this
-/// value from its settings snapshot so platform code never becomes a second
-/// source of configuration or localization state.
+/// The application supplies this value from its settings snapshot and active
+/// appearance so platform adapters never become a second source of state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SystemMenuPresentation {
     pub title: String,
@@ -20,9 +19,23 @@ pub struct SystemMenuPresentation {
     pub quit: String,
     pub overlay_visible: bool,
     pub click_through_enabled: bool,
+    pub always_on_top_available: bool,
     pub always_on_top_enabled: bool,
+    pub hide_on_pointer_hover_available: bool,
     pub hide_on_pointer_hover_enabled: bool,
     pub update_check_available: bool,
+    pub palette: SystemMenuPalette,
+}
+
+/// GPUI-free colors shared with menu surfaces painted by the application.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SystemMenuPalette {
+    pub surface: [u8; 4],
+    pub foreground: [u8; 4],
+    pub muted_foreground: [u8; 4],
+    pub separator: [u8; 4],
+    pub hover_background: [u8; 4],
+    pub hover_foreground: [u8; 4],
 }
 
 /// A product action emitted by either native menu surface.

@@ -397,6 +397,27 @@ mod platform {
     }
 }
 
+#[cfg(target_os = "linux")]
+mod platform {
+    use super::{AppTheme, NativeThemeError};
+    use raw_window_handle::HasWindowHandle;
+
+    pub(super) fn apply_process(_theme: Option<AppTheme>) -> Result<(), NativeThemeError> {
+        Ok(())
+    }
+
+    pub(super) fn apply(
+        _window: &impl HasWindowHandle,
+        _theme: Option<AppTheme>,
+    ) -> Result<(), NativeThemeError> {
+        Ok(())
+    }
+
+    pub(super) fn init() -> Result<(), NativeThemeError> {
+        Ok(())
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub use platform::system_appearance;
 
