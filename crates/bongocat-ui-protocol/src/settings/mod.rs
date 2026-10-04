@@ -64,9 +64,9 @@ pub use runtime::{
 };
 pub use snapshot::{
     AutomaticUpdateSettings, SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings,
-    SettingsModelBehaviorBinding, SettingsModelSettings, SettingsOverlay, SettingsRandomBehavior,
-    SettingsRandomBehaviorMode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
-    SettingsTheme,
+    SettingsModelBehaviorBinding, SettingsModelSettings, SettingsOverlay,
+    SettingsOverlayCapabilities, SettingsRandomBehavior, SettingsRandomBehaviorMode,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsTheme,
 };
 pub use startup::{
     SettingsStartupItemError, SettingsStartupItemState, SettingsStartupItemStatus,
