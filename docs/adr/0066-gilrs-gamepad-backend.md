@@ -158,7 +158,12 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
   双射。四处变异（把左扳机放回 evdev 下标、把面键放回 evdev 下标、把十字键推回表外、让轴翻译退化为
   恒等）分别让对应测试变红。fork 的 `cargo test --workspace --features wgi` 与 `cargo clippy
   --workspace --all-targets --features wgi` 通过；轴顺序依据 Microsoft `Raw game controller`
-  文档，按键顺序依据实机报告顺序，两者都仍需 Windows 10/11 实机逐键确认。
+  文档，按键顺序依据实机报告顺序，两者都仍需 Windows 10/11 实机逐键确认。槽位翻译修好的是
+  `a0`/`a1`/`a3`/`a4`/`a5` 五条；DirectInput 时代 Xbox 360 的映射把两个扳机写在同一槽位
+  （`lefttrigger:a2,righttrigger:-a2`，因为 DirectInput 只暴露一个共享扳机轴），而 WGI 的六轴设备
+  各自有一个独立扳机轴，因此这条映射的 `righttrigger` 会解析到左扳机并取反，在真机 Xbox 360 手柄
+  上表现为拉左扳机时左右扳机图同时出现。判断「同一槽位读两个扳机」说明该映射描述的是共享扳机轴
+  设备、不适用于六轴 WGI 设备是可行方向，但在没有实机证据前不在 fork 里加这层启发式。
 - 原 standalone XInput/GameController 手柄 probe、依赖、命令和 CI smoke 已删除；键鼠 Raw Input /
   CGEventTap spike 保留。物理 WGI/IOHID 矩阵、真实设备、物理 profile、热插拔和生命周期矩阵继续作为
   发布门禁。
