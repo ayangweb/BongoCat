@@ -1,9 +1,9 @@
 //! Startup permission check and user guidance.
 //!
 //! The product needs one platform capability before global input works: the macOS Input Monitoring
-//! grant, or an elevated Windows token. The check reads the platform state on every start and
-//! stores nothing, so a user who dismissed the prompt is asked again while the capability is still
-//! missing (ADR-0032).
+//! grant, an elevated Windows token, or Linux evdev device access. The check reads the platform
+//! state on every start and stores nothing, so a user who dismissed an available prompt is asked
+//! again while the capability is still missing (ADR-0032).
 //!
 //! The check never runs on the main thread: the product starts its windows first and the caller
 //! spawns a dedicated worker for this function, so a pending prompt cannot delay any product
@@ -33,6 +33,13 @@ mod keys {
     pub(super) const DESCRIPTION: &str = "startup_permission.administrator.description";
     #[cfg(target_os = "windows")]
     pub(super) const PRIMARY: &str = "startup_permission.administrator.open_program_folder";
+
+    #[cfg(target_os = "linux")]
+    pub(super) const TITLE: &str = "startup_permission.input_monitoring.title";
+    #[cfg(target_os = "linux")]
+    pub(super) const DESCRIPTION: &str = "startup_permission.input_monitoring.description";
+    #[cfg(target_os = "linux")]
+    pub(super) const PRIMARY: &str = "startup_permission.input_monitoring.open_settings";
 }
 
 /// Runs the startup permission check for this platform.
@@ -42,9 +49,14 @@ mod keys {
 /// Nothing is returned to the caller as state: the outcome only describes what this start did, and
 /// the next start re-reads the platform.
 pub fn ensure_startup_permission(language: Language) -> bongocat_platform::StartupPermissionStatus {
+    let prompt = localized_prompt(language);
+    bongocat_platform::check_startup_permission(&prompt)
+}
+
+fn localized_prompt(language: Language) -> bongocat_platform::StartupPermissionPrompt {
     let locale = bongocat_i18n::locale_code(language.code());
     let text = |key| bongocat_i18n::text(locale, key).to_owned();
-    bongocat_platform::check_startup_permission(&bongocat_platform::StartupPermissionPrompt {
+    bongocat_platform::StartupPermissionPrompt {
         title: text(keys::TITLE),
         description: text(keys::DESCRIPTION),
         primary: text(keys::PRIMARY),
@@ -53,7 +65,7 @@ pub fn ensure_startup_permission(language: Language) -> bongocat_platform::Start
         // product language to make the panel and this prompt agree (ADR-0078). It is the same
         // resolved locale the copy above came from.
         locale: locale.to_owned(),
-    })
+    }
 }
 
 #[cfg(test)]

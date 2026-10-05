@@ -20,7 +20,7 @@ mod startup_item;
 // frame and asserts on a real log, so what they share is a shape rather than a
 // value. A scenario is re-exported under the gate it was written behind rather
 // than under one gate for the module, because they are not the same gate: the
-// login item is macOS-only and the rest need the injection feature.
+// login item is platform-wide and the rest need the injection feature.
 #[cfg(feature = "storage-test-injection")]
 pub(super) use diagnostics::{contains_application_event, read_application_logs};
 #[cfg(feature = "storage-test-injection")]
@@ -31,6 +31,5 @@ pub(crate) use panic::{run_panic_diagnostics_smoke, run_panic_diagnostics_smoke_
 pub(crate) use settings_window::run_settings_window_state_smoke;
 #[cfg(feature = "storage-test-injection")]
 pub(super) use startup_item::SmokeRoot;
-#[cfg(target_os = "macos")]
 pub(crate) use startup_item::run_startup_item_smoke;
 pub(crate) use startup_item::run_startup_permission_smoke;

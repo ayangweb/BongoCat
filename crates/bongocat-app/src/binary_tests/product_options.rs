@@ -31,7 +31,6 @@ fn run_options_default_to_an_unbounded_product_lifetime() {
             startup_permission_smoke: false,
             #[cfg(target_os = "macos")]
             application_reopen_smoke: false,
-            #[cfg(target_os = "macos")]
             startup_item_smoke: false,
             #[cfg(target_os = "windows")]
             single_instance_smoke: false,
@@ -112,7 +111,6 @@ fn only_the_bounded_run_duration_keeps_a_start_interactive() {
         "--diagnostics-export-failure-smoke",
         #[cfg(target_os = "macos")]
         "--application-reopen-smoke",
-        #[cfg(target_os = "macos")]
         "--startup-item-smoke",
         #[cfg(target_os = "windows")]
         "--single-instance-smoke",

@@ -13,8 +13,8 @@ use std::path::PathBuf;
 
 /// Reports the startup permission state the product would act on, without showing any prompt.
 ///
-/// This is the repeatable acceptance path for both platforms: it is run once while the capability
-/// is missing and once while it is granted, and it never writes product state.
+/// This is the repeatable acceptance path for each desktop platform: it is run once while the
+/// capability is missing and once while it is granted, and it never writes product state.
 pub(crate) fn run_startup_permission_smoke() -> Result<(), Box<dyn std::error::Error>> {
     let state = if bongocat_platform::startup_permission_available() {
         "available"
@@ -28,7 +28,6 @@ pub(crate) fn run_startup_permission_smoke() -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
 pub(crate) fn run_startup_item_smoke() -> Result<(), Box<dyn std::error::Error>> {
     use bongocat_platform::{
         StartupItemEnvironment, StartupItemState, set_startup_item_enabled, startup_item_state,
