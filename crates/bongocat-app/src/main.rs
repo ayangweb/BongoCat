@@ -1255,7 +1255,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     last_overlay_bounds = Some(bounds);
                                 }
                                 coordinator.frame_ticks = coordinator.frame_ticks.saturating_add(1);
-                                let retry_after = outcome.retry_after();
+                                // This tick also pumps Wayland window input. Keep a
+                                // temporary surface retry from pausing drag events.
+                                let retry_after = outcome
+                                    .retry_after()
+                                    .map(|delay| delay.min(frame_interval));
                                 (true, None, None, None, retry_after)
                             }
                             Err(error) => {
