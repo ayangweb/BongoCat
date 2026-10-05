@@ -650,6 +650,14 @@ impl ProductOverlaySession {
         self.overlay.renderer.model_generation
     }
 
+    pub(crate) const fn capabilities(&self) -> OverlayCapabilities {
+        OverlayCapabilities {
+            always_on_top: true,
+            output_relative_geometry: true,
+            pointer_hover: true,
+        }
+    }
+
     pub(crate) fn system_termination_requested(&self) -> bool {
         self.input_service
             .as_ref()

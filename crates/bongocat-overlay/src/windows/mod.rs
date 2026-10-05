@@ -35,7 +35,7 @@ pub(crate) use window_proc::*;
 
 use crate::{
     BlendFactor, DrawableCullMode, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff,
-    MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
+    MAXIMUM_CORNER_RADIUS_PERCENT, OverlayCapabilities, OverlayContextMenuRequest, OverlayError,
     OverlayInteractionSinks, OverlayPresentationState, OverlayResizeOutcome, OverlayScreenBounds,
     OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
     ProductOverlayReport, blend_factors, corner_radius_uniform,

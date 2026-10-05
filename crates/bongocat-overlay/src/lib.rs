@@ -5,26 +5,38 @@
 //! a frame of it contained, and when it is really visible. The modules below are
 //! those questions; the platform sessions beside them own the two implementations.
 
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
-/// Pointer hover hide is only reachable through the native sessions, so the
-/// module shares their platform gate rather than warning as dead code on the
-/// targets that cannot create an overlay.
+/// Generic xdg-shell cannot observe a click-through window's global pointer.
+#[cfg(target_os = "macos")]
+mod hover;
+#[cfg(target_os = "windows")]
+mod hover;
+#[cfg(all(target_os = "linux", test))]
 mod hover;
 /// Idle hide shares the platform sessions with [`hover`]: only they
 /// receive the input counters the state machine consumes.
 mod idle;
 
-/// Overlay placement constraint and its settle delay. Gated with the native
-/// sessions for the same reason as [`hover`].
+/// Generic xdg-shell neither exposes nor controls global placement.
+#[cfg(target_os = "macos")]
+mod placement;
+#[cfg(target_os = "windows")]
+mod placement;
+#[cfg(all(target_os = "linux", test))]
 mod placement;
 
-/// Right-button drag resizing of the model window. Gated with the native
-/// sessions for the same reason as [`hover`]: only they receive the pointer
-/// messages the state machine consumes.
+/// Pointer interaction is available while the overlay is not click-through.
+#[cfg(target_os = "linux")]
+mod resize_drag;
+#[cfg(target_os = "macos")]
+mod resize_drag;
+#[cfg(target_os = "windows")]
 mod resize_drag;
 
 /// The backend-independent half of the model cover capture. Gated with the native
@@ -105,9 +117,21 @@ pub(crate) use blend::*;
 pub(crate) use bounds::*;
 pub(crate) use dimensions::*;
 pub(crate) use frame::*;
+#[cfg(target_os = "macos")]
+pub(crate) use placement::*;
+#[cfg(target_os = "windows")]
+pub(crate) use placement::*;
+#[cfg(all(target_os = "linux", test))]
+pub(crate) use placement::*;
 pub(crate) use presentation::*;
 pub(crate) use preview::*;
 pub(crate) use product_session::*;
+#[cfg(target_os = "macos")]
+pub(crate) use resize_drag::*;
+#[cfg(target_os = "windows")]
+pub(crate) use resize_drag::*;
+#[cfg(target_os = "linux")]
+pub(crate) use resize_drag::*;
 // `cover` and `timing` hold items that are only `pub(crate)`, so the root
 // names them: a glob would carry nothing and an existing `pub use` line
 // cannot reach a narrower item.
@@ -121,7 +145,8 @@ pub use cover::{ModelCoverCaptureSession, capture_model_cover};
 pub use error::OverlayError;
 pub use preview::{run_interactive_model_preview, run_model_preview, run_model_switch_preview};
 pub use product_session::{
-    OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome, ProductOverlaySession,
+    OverlayCapabilities, OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome,
+    ProductOverlaySession,
 };
 pub use report::{OverlayTickOutcome, ProductOverlayReport};
 pub use timing::{FrameTimingSummary, PreviewReport};

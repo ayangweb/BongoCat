@@ -31,10 +31,10 @@ pub(crate) use textures::*;
 
 use crate::{
     BlendFactor, DrawableCullMode, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff,
-    FrameTimingCollector, MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
-    OverlayInteractionSinks, OverlayPresentationState, OverlayResizeOutcome, OverlayScreenBounds,
-    OverlaySessionOptions, OverlayTickOutcome, OverlayWindowBounds, PreviewReport,
-    ProductOverlayReport, blend_factors, corner_radius_uniform,
+    FrameTimingCollector, MAXIMUM_CORNER_RADIUS_PERCENT, OverlayCapabilities,
+    OverlayContextMenuRequest, OverlayError, OverlayInteractionSinks, OverlayPresentationState,
+    OverlayResizeOutcome, OverlayScreenBounds, OverlaySessionOptions, OverlayTickOutcome,
+    OverlayWindowBounds, PreviewReport, ProductOverlayReport, blend_factors, corner_radius_uniform,
     cover::{
         COVER_CAPTURE_FRAMES, COVER_CAPTURE_SCALE_PERCENT, COVER_CAPTURE_TIMEOUT, CapturedFrame,
     },

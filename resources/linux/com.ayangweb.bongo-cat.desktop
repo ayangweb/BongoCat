@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=BongoCat
+Comment=Interactive desktop companion
+Exec=bongocat-app
+Icon=com.ayangweb.bongo-cat
+Terminal=false
+Categories=Utility;
+StartupNotify=true
