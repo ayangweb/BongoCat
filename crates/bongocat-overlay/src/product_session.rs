@@ -53,6 +53,17 @@ pub struct ProductOverlaySession {
     pub(crate) inner: windows::ProductOverlaySession,
 }
 
+/// Window-system capabilities discovered for the active overlay session.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct OverlayCapabilities {
+    /// Whether the compositor exposes a role that can stay above normal windows.
+    pub always_on_top: bool,
+    /// Whether a supported role can persist output-relative position and clamp it.
+    pub output_relative_geometry: bool,
+    /// Whether the backend can observe pointer entry and exit while presenting.
+    pub pointer_hover: bool,
+}
+
 /// A right-click on the model window. The application owns menu presentation
 /// and action handling; the overlay only reports this platform input.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -210,6 +221,10 @@ impl ProductOverlaySession {
 
     pub fn model_generation(&self) -> u64 {
         self.inner.model_generation()
+    }
+
+    pub fn capabilities(&self) -> OverlayCapabilities {
+        self.inner.capabilities()
     }
 
     #[cfg(target_os = "linux")]

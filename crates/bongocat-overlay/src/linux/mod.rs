@@ -16,7 +16,7 @@ use xdg_shell::SctkXdgOverlay;
 
 use crate::{
     BlendFactor, DrawableCullMode, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff,
-    MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
+    MAXIMUM_CORNER_RADIUS_PERCENT, OverlayCapabilities, OverlayContextMenuRequest, OverlayError,
     OverlayInteractionSinks, OverlayPresentationState, OverlayResizeOutcome, OverlaySessionOptions,
     OverlayTickOutcome, OverlayWindowBounds, ProductOverlayReport, ResizeBase, ResizeDrag,
     blend_factors, bounds_match_scale, corner_radius_uniform,

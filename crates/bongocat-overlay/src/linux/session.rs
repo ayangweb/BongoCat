@@ -470,6 +470,15 @@ impl NativeOverlay {
         }
     }
 
+    fn capabilities(&self) -> OverlayCapabilities {
+        let layer_shell_available = self.layer_shell_available == Some(true);
+        OverlayCapabilities {
+            always_on_top: layer_shell_available,
+            output_relative_geometry: layer_shell_available,
+            pointer_hover: false,
+        }
+    }
+
     fn set_system_menu_presentation(
         &mut self,
         presentation: bongocat_platform::SystemMenuPresentation,
@@ -876,6 +885,10 @@ impl ProductOverlaySession {
 
     pub(crate) fn model_generation(&self) -> u64 {
         self.overlay.renderer().model_generation
+    }
+
+    pub(crate) fn capabilities(&self) -> OverlayCapabilities {
+        self.overlay.capabilities()
     }
 
     pub(crate) fn set_system_menu_presentation(
