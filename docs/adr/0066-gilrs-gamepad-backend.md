@@ -178,7 +178,7 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
 - fork 侧 `the_position_names_carry_the_windows_gaming_input_axis_order`、
   `the_face_buttons_carry_the_windows_gaming_input_button_order`、
   `a_device_that_reports_its_dpad_as_buttons_reaches_every_direction`、
-  `the_raw_elements_are_exposed_in_the_order_the_device_reports_them` 与
+`the_raw_elements_are_exposed_in_the_order_the_device_reports_them` 与
   `every_code_the_mapped_reading_emits_is_in_the_element_list` 固定 WGI raw element 顺序契约：
   位置名携带 WGI 原始下标、十字键落回真实下标、raw element 按设备报告顺序呈现且每个下标都可达、
   mapped 回退路径发出的每个 code 都在 `BUTTONS`/`AXES` 里。五处变异（把左扳机放回 evdev 下标、把面键
