@@ -1,12 +1,14 @@
 //! Linux Wayland overlay adapter backed by SCTK and Vulkan through wgpu.
 
 mod context_menu;
+mod cover_capture;
 mod layer_shell;
 mod renderer;
 mod session;
 mod xdg_shell;
 
 use context_menu::*;
+pub(crate) use cover_capture::*;
 use layer_shell::LayerOverlay;
 pub(crate) use renderer::*;
 pub(crate) use session::*;

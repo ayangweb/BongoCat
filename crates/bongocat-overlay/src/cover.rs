@@ -339,6 +339,8 @@ pub fn capture_model_cover(
 /// The session must live where a native window can be created: the main thread
 /// on macOS, and the thread that owns the window on Windows.
 pub struct ModelCoverCaptureSession {
+    #[cfg(target_os = "linux")]
+    pub(crate) inner: linux::CoverCaptureSession,
     #[cfg(target_os = "macos")]
     pub(crate) inner: macos::CoverCaptureSession,
     #[cfg(target_os = "windows")]
@@ -348,6 +350,8 @@ pub struct ModelCoverCaptureSession {
 impl ModelCoverCaptureSession {
     pub fn start(model: Arc<bongocat_model::CommittedModel>) -> Result<Self, OverlayError> {
         Ok(Self {
+            #[cfg(target_os = "linux")]
+            inner: linux::CoverCaptureSession::start(model)?,
             #[cfg(target_os = "macos")]
             inner: macos::CoverCaptureSession::start(model)?,
             #[cfg(target_os = "windows")]
