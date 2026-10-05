@@ -3,11 +3,13 @@
 mod context_menu;
 mod layer_shell;
 mod renderer;
+mod session;
 mod xdg_shell;
 
 use context_menu::*;
 use layer_shell::LayerOverlay;
 pub(crate) use renderer::*;
+pub(crate) use session::*;
 use xdg_shell::SctkXdgOverlay;
 use crate::{
     BlendFactor, DrawableCullMode, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff,

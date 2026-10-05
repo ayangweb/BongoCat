@@ -45,6 +45,8 @@ pub(crate) fn start_platform_input<T>(
 }
 
 pub struct ProductOverlaySession {
+    #[cfg(target_os = "linux")]
+    pub(crate) inner: linux::ProductOverlaySession,
     #[cfg(target_os = "macos")]
     pub(crate) inner: macos::ProductOverlaySession,
     #[cfg(target_os = "windows")]
@@ -108,6 +110,20 @@ impl ProductOverlaySession {
         options: OverlaySessionOptions,
         interaction_sinks: OverlayInteractionSinks,
     ) -> Result<Self, OverlayError> {
+        #[cfg(target_os = "linux")]
+        {
+            linux::ProductOverlaySession::start(
+                runtime_client,
+                input_producer,
+                cursor_producer,
+                gamepad_axis_producer,
+                render_consumer,
+                options,
+                interaction_sinks,
+            )
+            .map(|inner| Self { inner })
+        }
+
         #[cfg(target_os = "macos")]
         {
             macos::ProductOverlaySession::start(
@@ -138,6 +154,11 @@ impl ProductOverlaySession {
     }
 
     pub fn run_for(&mut self, duration: Duration) -> Result<(), OverlayError> {
+        #[cfg(target_os = "linux")]
+        {
+            self.inner.run_for(duration)
+        }
+
         #[cfg(target_os = "macos")]
         {
             self.inner.run_for(duration)
@@ -150,6 +171,11 @@ impl ProductOverlaySession {
     }
 
     pub fn tick(&mut self) -> Result<OverlayTickOutcome, OverlayError> {
+        #[cfg(target_os = "linux")]
+        {
+            self.inner.tick()
+        }
+
         #[cfg(target_os = "macos")]
         {
             self.inner.tick()
@@ -162,6 +188,11 @@ impl ProductOverlaySession {
     }
 
     pub fn window_bounds(&self) -> Result<OverlayWindowBounds, OverlayError> {
+        #[cfg(target_os = "linux")]
+        {
+            self.inner.window_bounds()
+        }
+
         #[cfg(target_os = "macos")]
         {
             self.inner.window_bounds()
@@ -179,6 +210,19 @@ impl ProductOverlaySession {
 
     pub fn model_generation(&self) -> u64 {
         self.inner.model_generation()
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn set_system_menu_presentation(
+        &mut self,
+        presentation: bongocat_platform::SystemMenuPresentation,
+    ) {
+        self.inner.set_system_menu_presentation(presentation);
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn take_system_menu_action(&mut self) -> Option<bongocat_platform::SystemMenuAction> {
+        self.inner.take_system_menu_action()
     }
 
     /// Windows only: apply the configured taskbar button to the model window.
@@ -202,6 +246,11 @@ impl ProductOverlaySession {
     }
 
     pub fn stop_input(&mut self) -> Result<(), OverlayError> {
+        #[cfg(target_os = "linux")]
+        {
+            self.inner.stop_input()
+        }
+
         #[cfg(target_os = "macos")]
         {
             self.inner.stop_input()
@@ -214,6 +263,11 @@ impl ProductOverlaySession {
     }
 
     pub fn finish_after_runtime_shutdown(self) -> Result<ProductOverlayReport, OverlayError> {
+        #[cfg(target_os = "linux")]
+        {
+            self.inner.finish_after_runtime_shutdown()
+        }
+
         #[cfg(target_os = "macos")]
         {
             self.inner.finish_after_runtime_shutdown()
