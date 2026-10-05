@@ -160,6 +160,8 @@ pub(super) fn snapshot(
 ) -> SettingsSnapshot {
     let (runtime, input_diagnostics) =
         observe_snapshot_state(application, clock, startup_item, catalog_changed);
+    let (always_on_top, output_relative_geometry, pointer_hover) =
+        application.overlay_capabilities();
     SettingsSnapshot {
         revision: clock.revision,
         config_revision: application.config_revision(),
@@ -204,6 +206,12 @@ pub(super) fn snapshot(
             hide_on_idle: runtime.overlay_settings.hide_on_idle,
             hide_on_idle_delay_seconds: runtime.overlay_settings.hide_on_idle_delay_seconds,
             keep_inside_screen: runtime.overlay_settings.keep_inside_screen,
+        },
+        overlay_capabilities: SettingsOverlayCapabilities {
+            always_on_top,
+            output_relative_geometry: output_relative_geometry
+                && runtime.overlay_settings.always_on_top,
+            pointer_hover,
         },
         motion_audio_enabled: runtime.motion_audio_enabled,
         command_shortcuts_enabled: application.config().shortcuts.commands_enabled,

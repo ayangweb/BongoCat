@@ -492,6 +492,12 @@ fn shortcut_capture_suspends_a_binding_without_persisting_and_restores_it_on_can
     assert!(
         application
             .shortcut_table()
+            .load_publication()
+            .capture_suspended
+    );
+    assert!(
+        application
+            .shortcut_table()
             .load()
             .resolve(meta, "L")
             .is_none()
@@ -500,10 +506,33 @@ fn shortcut_capture_suspends_a_binding_without_persisting_and_restores_it_on_can
         std::fs::read(&layout.config).expect("config remains unchanged"),
         persisted_before_capture
     );
+    application
+        .select_model(ModelOrigin::Preset, "keyboard")
+        .expect("switch model during capture");
+    assert!(
+        application
+            .shortcut_table()
+            .load_publication()
+            .capture_suspended,
+        "a model switch must not recreate a live portal session during capture"
+    );
+    assert!(
+        application
+            .shortcut_table()
+            .load()
+            .resolve(meta, "L")
+            .is_none()
+    );
 
     application
         .resume_shortcut_capture()
         .expect("restore shortcut");
+    assert!(
+        !application
+            .shortcut_table()
+            .load_publication()
+            .capture_suspended
+    );
     assert!(
         application
             .shortcut_table()

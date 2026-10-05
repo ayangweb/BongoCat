@@ -129,14 +129,12 @@ fn application_reopen_smoke_is_opt_in() {
     assert!(options.opens_settings_window_on_start());
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn startup_item_smoke_is_opt_in() {
     let options =
         RunOptions::parse(["--startup-item-smoke".to_owned()]).expect("startup-item smoke options");
     assert!(options.startup_item_smoke);
     assert!(!options.settings_window_smoke);
-    assert!(!options.application_reopen_smoke);
 }
 
 #[cfg(target_os = "windows")]

@@ -335,6 +335,9 @@ impl Application {
             panic_hook: None,
             shortcut_table,
             shortcut_capture_suspended: false,
+            overlay_always_on_top_available: false,
+            overlay_output_relative_geometry_available: false,
+            overlay_pointer_hover_available: false,
         };
         if previous_run.is_some() {
             application

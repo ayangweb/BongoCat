@@ -451,6 +451,11 @@ pub(crate) fn product_overlay_state(cx: &mut App) -> Result<(u64, bool), String>
         .overlay
         .as_ref()
         .ok_or_else(|| "product overlay is unavailable".to_owned())?;
+    #[cfg(target_os = "linux")]
+    let overlay = coordinator
+        .overlay
+        .as_ref()
+        .ok_or_else(|| "product overlay is unavailable".to_owned())?;
     #[cfg(target_os = "windows")]
     let overlay = coordinator.overlay.borrow();
     #[cfg(target_os = "windows")]

@@ -26,3 +26,9 @@ fn executable_relative_preset_models_resolve_next_to_a_product_executable() {
         Some(PathBuf::from("/Applications/BongoCat/resources/models"))
     );
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn system_preset_models_use_the_linux_shared_data_layout() {
+    assert_eq!(SYSTEM_PRESET_ROOT, "/usr/share/bongocat/models");
+}

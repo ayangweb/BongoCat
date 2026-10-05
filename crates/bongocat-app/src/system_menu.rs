@@ -5,7 +5,10 @@
 
 use super::*;
 
-pub(crate) fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMenuPresentation {
+pub(crate) fn system_menu_presentation(
+    snapshot: &SettingsSnapshot,
+    palette: SystemMenuPalette,
+) -> SystemMenuPresentation {
     // `catalog_locale` is the protocol's own answer to "which catalog does this
     // resolved language read from". Restating that mapping here is what left the
     // tray menu in English for every language other than Chinese.
@@ -24,7 +27,9 @@ pub(crate) fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMen
         quit: text("system_menu.quit"),
         overlay_visible: snapshot.overlay_visible,
         click_through_enabled: snapshot.overlay.click_through,
+        always_on_top_available: snapshot.overlay_capabilities.always_on_top,
         always_on_top_enabled: snapshot.overlay.always_on_top,
+        hide_on_pointer_hover_available: snapshot.overlay_capabilities.pointer_hover,
         hide_on_pointer_hover_enabled: snapshot.overlay.hide_on_pointer_hover,
         // A Production build stays gated on its channel and release signing key
         // (`bongocat_app::update_check_available`): without them a check can only fail.
@@ -36,6 +41,7 @@ pub(crate) fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMen
                 bongocat_app::BUILD_ENVIRONMENT,
                 bongocat_config::BuildEnvironment::Development
             ),
+        palette,
     }
 }
 
@@ -47,15 +53,23 @@ pub(crate) async fn refresh_system_menu_presentation(
         .read_snapshot()
         .await
         .map_err(|error| error.to_string())?;
-    let presentation = system_menu_presentation(&snapshot);
     cx.update(|cx| {
+        let presentation = system_menu_presentation(
+            &snapshot,
+            system_menu_palette(snapshot.appearance_theme, cx),
+        );
         if !cx.has_global::<ProductCoordinator>() {
             return Err("system menu owner is unavailable".to_owned());
         }
-        cx.global_mut::<ProductCoordinator>()
-            .system_menu
-            .as_mut()
-            .ok_or_else(|| "system menu owner is unavailable".to_owned())?
+        let coordinator = cx.global_mut::<ProductCoordinator>();
+        #[cfg(target_os = "linux")]
+        if let Some(overlay) = coordinator.overlay.as_mut() {
+            overlay.set_system_menu_presentation(presentation.clone());
+        }
+        let Some(system_menu) = coordinator.system_menu.as_mut() else {
+            return Ok(());
+        };
+        system_menu
             .set_presentation(presentation)
             .map_err(|error| error.to_string())
     })
