@@ -1,6 +1,7 @@
 //! Product session and Wayland window lifecycle.
 
 use super::*;
+use crate::idle::{IdleHide, IdleObservation};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ActiveOverlayBackend {
@@ -536,6 +537,8 @@ pub(crate) struct ProductOverlaySession {
     previous_snapshot: Arc<RenderSnapshot>,
     options: OverlaySessionOptions,
     last_frame: RenderFrame,
+    idle: IdleHide,
+    session_started: Instant,
     retry_backoff: FrameRetryBackoff,
 }
 
@@ -637,6 +640,8 @@ impl ProductOverlaySession {
             previous_snapshot: Arc::clone(&initial_frame.snapshot),
             options,
             last_frame: initial_frame,
+            idle: IdleHide::default(),
+            session_started: Instant::now(),
             retry_backoff: FrameRetryBackoff::default(),
         })
     }
@@ -708,6 +713,16 @@ impl ProductOverlaySession {
             }
             self.options = next_options;
         }
+        self.idle.observe(IdleObservation {
+            enabled: self.options.hide_on_idle
+                && runtime_snapshot.platform_input.service_status
+                    == PlatformInputServiceStatus::Running,
+            delay: Duration::from_millis(u64::from(self.options.hide_on_idle_delay_ms)),
+            input_sequence: runtime_snapshot.input.last_input_sequence,
+            cursor_at: runtime_snapshot.cursor.sample.map(|sample| sample.at),
+            gamepad_axis_published: runtime_snapshot.gamepad_axis_transport.published,
+            now: self.session_started.elapsed(),
+        });
         self.options.maximum_fps = runtime_snapshot.maximum_fps;
         let overlay_visible = runtime_snapshot.overlay_visible && !close_requested;
         if !overlay_visible {
@@ -818,6 +833,8 @@ impl ProductOverlaySession {
         if !visible {
             return Ok(OverlayTickOutcome::Hidden);
         }
+        let alpha = f32::from(self.options.opacity_percent) / 100.0 * self.idle.visible() as f32;
+        self.overlay.renderer_mut().set_presentation_opacity(alpha);
         match self.overlay.draw(self.frames_presented == 0) {
             Ok(()) => {
                 self.retry_backoff.record_success();
@@ -837,6 +854,9 @@ impl ProductOverlaySession {
             Err(error) => return Err(error),
         }
         self.frames_presented = self.frames_presented.saturating_add(1);
+        let mut options = self.options;
+        options.click_through = self.options.click_through || self.idle.hidden();
+        self.overlay.set_visible(true, options)?;
         Ok(OverlayTickOutcome::Presented)
     }
 
