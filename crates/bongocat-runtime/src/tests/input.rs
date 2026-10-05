@@ -289,6 +289,178 @@ fn runtime_coalesces_gamepad_axes_and_projects_dead_zone_without_blocking_edges(
     assert_eq!(stopped.gamepad_axis_transport.pending, 0);
 }
 
+/// The complete stick matrix through the real transport: a `GamepadAxisProducer`
+/// sample for each of the six analog axes and an `InputProducer` edge for each
+/// stick click, checked on the `ModelInputSnapshot` the runtime hands the
+/// renderer.
+///
+/// This is the half of the chain the platform adapter feeds. Together with
+/// `rendering::tests::model::every_stick_control_reaches_its_own_parameter_and_nothing_else`,
+/// which reads the Live2D side, it covers a sample from a device to a model
+/// parameter, so a control that stops reaching the snapshot cannot still reach the
+/// model. Each row moves one control and checks all six fields, which is what
+/// catches a mapping that shifts one stick's axis onto the other, or folds an
+/// analog trigger into a stick.
+#[test]
+fn every_gamepad_axis_reaches_its_own_model_input_field() {
+    /// Every axis the transport carries and the snapshot field it owns.
+    const AXES: [(GamepadAxis, &str, f32); 6] = [
+        (GamepadAxis::LeftStickX, "stick_left_x", 0.8),
+        (GamepadAxis::LeftStickY, "stick_left_y", -0.6),
+        (GamepadAxis::RightStickX, "stick_right_x", 0.8),
+        (GamepadAxis::RightStickY, "stick_right_y", -0.6),
+        (GamepadAxis::LeftTrigger, "left_trigger", 0.75),
+        (GamepadAxis::RightTrigger, "right_trigger", 0.75),
+    ];
+
+    fn field(input: &ModelInputSnapshot, name: &str) -> f32 {
+        match name {
+            "stick_left_x" => input.stick_left_x,
+            "stick_left_y" => input.stick_left_y,
+            "stick_right_x" => input.stick_right_x,
+            "stick_right_y" => input.stick_right_y,
+            "left_trigger" => input.left_trigger,
+            "right_trigger" => input.right_trigger,
+            other => panic!("unknown model input field {other}"),
+        }
+    }
+
+    let owner = RuntimeOwner::start(true, 32);
+    let client = owner.client();
+    client
+        .wait_for_revision(1, TIMEOUT)
+        .expect("ready snapshot");
+    // No dead zone, so the assertion is about which field a sample reaches and
+    // not about how it was shaped; `GamepadAxisSettings` has its own tests.
+    let settings = client
+        .send(RuntimeCommand::SetGamepadAxisSettings(
+            GamepadAxisSettings::new(0.0, 0.0).expect("settings"),
+        ))
+        .expect("axis settings accepted");
+    client
+        .wait_for_command(settings, TIMEOUT)
+        .expect("axis settings applied");
+    let axes = owner.gamepad_axis_producer();
+    let connection = axes.connect(0).expect("gamepad connection allocated");
+    let input = owner.input_producer();
+    let connected = input
+        .publish(InputEvent::GamepadConnected {
+            connection,
+            at: MonotonicMillis::new(0),
+        })
+        .expect("connection accepted");
+    let initial = client
+        .wait_for_input_sequence(connected, TIMEOUT)
+        .expect("connection consumed");
+    for (_, name, _) in AXES {
+        assert_eq!(field(&initial.model_input, name), 0.0, "{name} at connect");
+    }
+    let mut clock = 0u64;
+
+    for (index, (axis, name, value)) in AXES.into_iter().enumerate() {
+        clock += 1;
+        // An axis is a latest-value slot, so the value the previous iteration
+        // left behind is still there. Recording the six fields before the sample
+        // is what turns "this axis carries its own value" into "this sample moved
+        // this axis and left the other five alone", which is the property a
+        // shifted or folded mapping breaks.
+        let before = client.snapshot().model_input;
+        axes.publish(GamepadAxisSample {
+            key: GamepadAxisKey { connection, axis },
+            value,
+            at: MonotonicMillis::new(clock),
+        })
+        .expect("axis sample accepted");
+        // A reliable edge is what makes the worker recompose its model input in
+        // the same pass, so the sample is observed without waiting for a tick.
+        let flush = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Gamepad(GamepadButtonKey {
+                    connection,
+                    button: GamepadButton::South,
+                }),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(clock),
+            })
+            .expect("flush edge accepted");
+        let snapshot = client
+            .wait_for_input_sequence(flush, TIMEOUT)
+            .expect("input consumed");
+        assert_eq!(
+            field(&snapshot.model_input, name),
+            value,
+            "{name} must carry its own sample"
+        );
+        for (other, other_name, _) in AXES.into_iter().filter(|(other, _, _)| *other != axis) {
+            assert_eq!(
+                field(&snapshot.model_input, other_name),
+                field(&before, other_name),
+                "{name} must not reach {other:?}"
+            );
+        }
+        assert!(
+            !snapshot.model_input.stick_left_down && !snapshot.model_input.stick_right_down,
+            "{name} is a continuous axis and must not claim a stick click"
+        );
+        if index == 0 {
+            assert_eq!(
+                field(&initial.model_input, name),
+                0.0,
+                "{name} starts at rest"
+            );
+        }
+    }
+
+    // Each stick click lands in its own field from a reliable edge rather than an
+    // axis sample, so the two halves of the projection cannot be conflated.
+    for (button, left, right) in [
+        (GamepadButton::LeftStick, true, false),
+        (GamepadButton::RightStick, false, true),
+    ] {
+        clock += 1;
+        let pressed = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Gamepad(GamepadButtonKey { connection, button }),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(clock),
+            })
+            .expect("stick click accepted");
+        let snapshot = client
+            .wait_for_input_sequence(pressed, TIMEOUT)
+            .expect("stick click consumed");
+        assert_eq!(
+            snapshot.model_input.stick_left_down, left,
+            "{button:?} left stick click"
+        );
+        assert_eq!(
+            snapshot.model_input.stick_right_down, right,
+            "{button:?} right stick click"
+        );
+
+        clock += 1;
+        let released = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Gamepad(GamepadButtonKey { connection, button }),
+                edge: InputEdge::Up,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(clock),
+            })
+            .expect("stick click release accepted");
+        let snapshot = client
+            .wait_for_input_sequence(released, TIMEOUT)
+            .expect("stick click release consumed");
+        assert!(!snapshot.model_input.stick_left_down, "{button:?} released");
+        assert!(
+            !snapshot.model_input.stick_right_down,
+            "{button:?} released"
+        );
+    }
+
+    owner.shutdown(TIMEOUT).expect("clean shutdown");
+}
+
 #[test]
 fn model_input_filters_preserve_raw_pressed_state_and_recompose_immediately() {
     let owner = RuntimeOwner::start(true, 16);

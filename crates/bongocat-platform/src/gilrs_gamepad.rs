@@ -741,6 +741,97 @@ mod tests {
         assert!(trigger_edge(false, 1.1).is_err());
     }
 
+    /// A shoulder's product name and an analog trigger's product name differ by
+    /// one word in the third-party library — `LeftTrigger`/`RightTrigger` are the
+    /// **shoulder** buttons there, and `LeftTrigger2`/`RightTrigger2` are the
+    /// analog triggers — while the product's own names are `LeftShoulder` /
+    /// `RightShoulder` and `LeftTrigger` / `RightTrigger`. The bundled `gamepad`
+    /// model ships `LeftShoulder.png` and `LeftTrigger.png`, so mapping the
+    /// shoulder onto the trigger draws one button's artwork for the other and
+    /// leaves the other image unreachable.
+    ///
+    /// This is written out per name rather than derived from the tables above so
+    /// that rewriting either table cannot quietly swap the two again without
+    /// this test failing on the specific pair.
+    #[test]
+    fn the_shoulder_and_the_analog_trigger_keep_their_own_buttons_and_artwork() {
+        for (backend, product, axis, name) in [
+            (
+                Button::LeftTrigger,
+                GamepadButton::LeftShoulder,
+                None,
+                "LeftShoulder",
+            ),
+            (
+                Button::RightTrigger,
+                GamepadButton::RightShoulder,
+                None,
+                "RightShoulder",
+            ),
+            (
+                Button::LeftTrigger2,
+                GamepadButton::LeftTrigger,
+                Some(GamepadAxis::LeftTrigger),
+                "LeftTrigger",
+            ),
+            (
+                Button::RightTrigger2,
+                GamepadButton::RightTrigger,
+                Some(GamepadAxis::RightTrigger),
+                "RightTrigger",
+            ),
+        ] {
+            assert_eq!(map_button(backend), Some(product), "{name} button");
+            assert_eq!(product.key_image_name(), name, "{name} artwork");
+            assert_eq!(map_button_axis(backend), axis, "{name} axis");
+        }
+        // The two names are different strings, which is the whole point: a model
+        // ships one image per control, so sharing a stem would make one of them
+        // unreachable.
+        assert_ne!(
+            GamepadButton::LeftShoulder.key_image_name(),
+            GamepadButton::LeftTrigger.key_image_name()
+        );
+        assert_ne!(
+            GamepadButton::RightShoulder.key_image_name(),
+            GamepadButton::RightTrigger.key_image_name()
+        );
+        // A shoulder is a button and carries no analog axis, so its press is a
+        // single edge with nothing left to project.
+        assert_eq!(map_button_axis(Button::LeftTrigger), None);
+        assert_eq!(map_button_axis(Button::RightTrigger), None);
+    }
+
+    /// The analog trigger is the only control the product reports twice: as a
+    /// button, so the model shows its artwork and raises its paw, and as a
+    /// continuous axis, so the runtime can shape it with the trigger dead zone.
+    /// The library's synthesized `ButtonPressed`/`ButtonReleased` for it are
+    /// deliberately not forwarded: the product owns the `>= 0.5` rule, and
+    /// forwarding both would publish a second edge for every change of pressure.
+    #[test]
+    fn only_the_analog_trigger_reports_a_continuous_axis() {
+        let analog = BUTTON_MAP
+            .iter()
+            .map(|(backend, _)| *backend)
+            .filter(|backend| map_button_axis(*backend).is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(analog, [Button::LeftTrigger2, Button::RightTrigger2]);
+        // The four stick axes are axes and never buttons, and neither trigger is
+        // a stick: `is_trigger` is what separates the two dead-zone rules.
+        for (backend, axis) in [
+            (Axis::LeftStickX, GamepadAxis::LeftStickX),
+            (Axis::LeftStickY, GamepadAxis::LeftStickY),
+            (Axis::RightStickX, GamepadAxis::RightStickX),
+            (Axis::RightStickY, GamepadAxis::RightStickY),
+        ] {
+            assert_eq!(map_axis(backend), Some(axis));
+            assert!(!axis.is_trigger(), "{backend:?} is a stick axis");
+        }
+        for axis in [GamepadAxis::LeftTrigger, GamepadAxis::RightTrigger] {
+            assert!(axis.is_trigger());
+        }
+    }
+
     #[test]
     fn connection_table_is_bounded_and_reuses_slots_with_a_new_generation() {
         const TIMEOUT: Duration = Duration::from_secs(2);

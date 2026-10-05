@@ -1,6 +1,6 @@
 # ADR-0066: gilrs 手柄后端与平台窄适配边界
 
-状态：已接受（2026-09-25）；fork 已补齐 callback lifetime、bounded queue/epoch、authoritative reset、bounded shutdown、compile guard 与 xinput 回归修复；2026-09-26 追加 macOS IOHID worker run-loop 空转修复（空闲 CPU 98% → 0%）；2026-10-02 追加 WGI 焦点门控读取修复与 WGI raw analog axis 取值域修复；双平台物理设备与长期证据仍阻塞完成声明
+状态：已接受（2026-09-25）；fork 已补齐 callback lifetime、bounded queue/epoch、authoritative reset、bounded shutdown、compile guard 与 xinput 回归修复；2026-09-26 追加 macOS IOHID worker run-loop 空转修复（空闲 CPU 98% → 0%）；2026-10-02 追加 WGI 焦点门控读取修复与 WGI raw analog axis 取值域修复；2026-10-04 记录 WGI 默认 mapping 的轴位置错位（fork 待修）；双平台物理设备与长期证据仍阻塞完成声明
 
 ## 背景
 
@@ -99,6 +99,27 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
    长时间无增长。cross-check、纯函数测试和无设备 smoke 不能替代这些证据。
 2. **macOS 物理 callback 静止证明：** fork 已拥有持久 context、run-loop stop、close 和 bounded join，但
    TCC deny/grant/revoke、自然 timeout、设备移除及 callback in-flight 的静止/恢复仍需目标系统实测。
+3. **WGI 默认 mapping 的轴位置错位（fork 待修，本仓库不兜底）：** 没有 SDL mapping 的
+   Windows 控制器走 `gilrs::mapping::Mapping::default`，它按 `gilrs-core` 的
+   `windows_wgi::native_ev_codes` 表把位置名绑定到事件码，而该表的 axis 下标写的是
+   `LSTICKX=0, LSTICKY=1, RSTICKX=2, LT2=3, RT2=4, RSTICKY=5`，与 Windows
+   Gaming Input 的 raw 报告顺序不符。Microsoft 的 `Raw game controller` 文档逐字写明
+   Xbox 手柄的六个 raw 轴是 `LeftThumbstickX=0, LeftThumbstickY=1, RightThumbstickX=2,
+   RightThumbstickY=3, LeftTrigger=4, RightTrigger=5`。raw reading 的 element 列表来自
+   `collect_axes_and_buttons`（设备自己的 `AxisCount`），`Mapping::default` 按「下标在列表里
+   吗」过滤，因此 LT/RT 与右摇杆 Y 轴互相错位：`LT2=3` 实际读到右摇杆 Y，`RT2=4` 实际读到
+   左手扳机（两个扳机对调），`RSTICKY=5` 实际读到右手扳机。同一张表的 button 下标也按
+   evdev 排列（`BTN_WEST=0, BTN_SOUTH=1, …`），而 raw button 顺序由设备的 registry
+   `Labels\Buttons` 决定、没有跨设备固定顺序，所以 button 侧无法在没有证据的情况下改。
+   影响面：只覆盖 SDL database 里没有 GUID 的 Windows 控制器；有 mapping 的设备按元素下标
+   解析（`parse_sdl_mapping` 用 `axes.get(from)`/`buttons.get(from)`），因此不受影响。
+   需要的修法：只把 axis 六个下标改成上表的 raw 顺序，并加一条 fork 回归测试断言
+   `Mapping::default` 在一个六轴十五键的 raw 设备上把 `LeftStickX/Y`、`RightStickX/Y` 绑到
+   `0/1/2/3`、把两个模拟扳机绑到 `4/5`。改下标不影响 mapped reading——那条路径按事件码
+   身份（`nec::AXIS_LSTICKX` 等）收发，从不读下标。
+   本仓库**不**在 `gilrs_gamepad.rs` 里补偿：补偿就要在 adapter 复制一份第三方位置表，并在
+   上游修好之后静默变成双重修正。fork 修复、推送 `master` 与再次精确 pin 之前，该缺陷只在
+   Windows 无 mapping 的控制器上可见。
 
 这些阻塞不授权在 BongoCat 内复制 backend，但禁止把当前状态写成双平台手柄完成或 stable 可发布。
 
@@ -127,6 +148,11 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
   读取。焦点门控本身是 Windows 行为，无法用单元测试断言；该修复仍需 Windows 10/11 实机加 XInput
   手柄确认背景投递，并确认 GameInput 为 XInput 设备暴露的 raw report 元素顺序与 SDL mapping
   （Xbox 控制器为 `b0..b9` + D-pad hat + `a0..a5`）一致。未取得该证据前不得声称焦点矩阵已验证。
+- 共享 adapter 侧新增 `the_shoulder_and_the_analog_trigger_keep_their_own_buttons_and_artwork`
+  与 `only_the_analog_trigger_reports_a_continuous_axis`，逐个名字钉住第三方
+  `LeftTrigger`/`RightTrigger`（肩键）与 `LeftTrigger2`/`RightTrigger2`（模拟扳机）到项目
+  shoulder/trigger 按钮与美术名的对应，以及只有模拟扳机同时是连续轴；这是 ADR-0070 修过的
+  互换关系的防回归。
 - 原 standalone XInput/GameController 手柄 probe、依赖、命令和 CI smoke 已删除；键鼠 Raw Input /
   CGEventTap spike 保留。物理 WGI/IOHID 矩阵、真实设备、物理 profile、热插拔和生命周期矩阵继续作为
   发布门禁。
