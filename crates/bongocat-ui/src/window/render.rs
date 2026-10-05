@@ -10,6 +10,40 @@ where
         .map(move |item| item.keywords(keywords.iter().cloned()))
 }
 
+#[cfg(target_os = "linux")]
+const fn global_pointer_tracking_available() -> bool {
+    true
+}
+
+#[cfg(target_os = "macos")]
+const fn global_pointer_tracking_available() -> bool {
+    true
+}
+
+const fn effective_switch_state(configured: bool, available: bool) -> bool {
+    configured && available
+}
+
+#[cfg(target_os = "windows")]
+const fn global_pointer_tracking_available() -> bool {
+    true
+}
+
+#[cfg(target_os = "linux")]
+const fn automatic_updates_available() -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+const fn automatic_updates_available() -> bool {
+    true
+}
+
+#[cfg(target_os = "windows")]
+const fn automatic_updates_available() -> bool {
+    true
+}
+
 /// One model dropdown of the gamepad auto switch.
 ///
 /// The row is a custom element because the option list is the model catalog, so
@@ -169,6 +203,15 @@ impl Render for SettingsView {
             .as_ref()
             .map(|snapshot| snapshot.model_catalog.entries.as_slice())
             .unwrap_or_default();
+        let always_on_top_available = snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.overlay_capabilities.always_on_top);
+        let output_relative_geometry_available = snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.overlay_capabilities.output_relative_geometry);
+        let pointer_hover_available = snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.overlay_capabilities.pointer_hover);
         let language = self.display_language();
         // The two model dropdowns are view state, not render state, so the page
         // reads the very entities the view syncs and subscribes to.
@@ -366,7 +409,12 @@ impl Render for SettingsView {
                                     view.read(app)
                                         .snapshot
                                         .as_ref()
-                                        .is_some_and(|s| s.overlay.always_on_top)
+                                        .is_some_and(|s| {
+                                            effective_switch_state(
+                                                s.overlay.always_on_top,
+                                                always_on_top_available,
+                                            )
+                                        })
                                 }
                             },
                             {
@@ -382,7 +430,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
+                    )
+                    .disabled(!always_on_top_available),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -424,7 +473,12 @@ impl Render for SettingsView {
                                     view.read(app)
                                         .snapshot
                                         .as_ref()
-                                        .is_some_and(|s| s.overlay.keep_inside_screen)
+                                        .is_some_and(|s| {
+                                            effective_switch_state(
+                                                s.overlay.keep_inside_screen,
+                                                output_relative_geometry_available,
+                                            )
+                                        })
                                 }
                             },
                             {
@@ -440,7 +494,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
+                    )
+                    .disabled(!output_relative_geometry_available),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -453,7 +508,12 @@ impl Render for SettingsView {
                                     view.read(app)
                                         .snapshot
                                         .as_ref()
-                                        .is_some_and(|s| s.overlay.hide_on_pointer_hover)
+                                        .is_some_and(|s| {
+                                            effective_switch_state(
+                                                s.overlay.hide_on_pointer_hover,
+                                                pointer_hover_available,
+                                            )
+                                        })
                                 }
                             },
                             {
@@ -469,7 +529,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
+                    )
+                    .disabled(!pointer_hover_available),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -501,7 +562,10 @@ impl Render for SettingsView {
                             },
                         ),
                     )
-                    .disabled(hover_hide_delay_gate.disables_controls()),
+                    .disabled(
+                        hover_hide_delay_gate.disables_controls()
+                            || !pointer_hover_available,
+                    ),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -926,7 +990,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
+                    )
+                    .disabled(!global_pointer_tracking_available()),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -957,7 +1022,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
+                    )
+                    .disabled(!global_pointer_tracking_available()),
                 ], &mouse_keywords)),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
@@ -1322,7 +1388,12 @@ impl Render for SettingsView {
                                         view.read(app)
                                             .snapshot
                                             .as_ref()
-                                            .is_some_and(|s| s.check_for_updates_automatically)
+                                            .is_some_and(|s| {
+                                                effective_switch_state(
+                                                    s.check_for_updates_automatically,
+                                                    automatic_updates_available(),
+                                                )
+                                            })
                                     }
                                 },
                                 {
@@ -1335,7 +1406,10 @@ impl Render for SettingsView {
                                 },
                             ),
                         )
-                        .disabled(check_for_updates_interval_gate.disables_switch()),
+                        .disabled(
+                            check_for_updates_interval_gate.disables_switch()
+                                || !automatic_updates_available(),
+                        ),
                     );
                     items.push(
                         SettingItem::new(
@@ -1368,7 +1442,10 @@ impl Render for SettingsView {
                                 },
                             ),
                         )
-                        .disabled(check_for_updates_interval_gate.disables_controls()),
+                        .disabled(
+                            check_for_updates_interval_gate.disables_controls()
+                                || !automatic_updates_available(),
+                        ),
                     );
                     items
                 }, &app_updates_keywords)),
@@ -1598,5 +1675,12 @@ mod tests {
         let memory = SettingsNavigationMemory::new();
         report_navigation_page(SettingsNavigationPage::ModelBehavior, &memory);
         assert_eq!(memory.page_index(), 2);
+    }
+
+    #[test]
+    fn unavailable_switches_present_their_effective_off_state() {
+        assert!(!effective_switch_state(true, false));
+        assert!(!effective_switch_state(false, false));
+        assert!(effective_switch_state(true, true));
     }
 }

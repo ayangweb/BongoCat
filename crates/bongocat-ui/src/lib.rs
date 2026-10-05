@@ -11,7 +11,7 @@ mod pop_confirm;
 mod window;
 pub use window::{
     SettingsNavigationMemory, SettingsView, SettingsWindowHandle, SettingsWindowSeed,
-    open_settings_window,
+    open_settings_window, system_menu_palette,
 };
 
 mod update_markdown;
@@ -166,6 +166,7 @@ pub(crate) mod tests {
                 bongocat_config::DEFAULT_CHECK_FOR_UPDATES_INTERVAL_HOURS,
             overlay_visible,
             overlay: SettingsOverlay::default(),
+            overlay_capabilities: SettingsOverlayCapabilities::default(),
             motion_audio_enabled,
             command_shortcuts_enabled: true,
             behavior_shortcuts_enabled: true,
@@ -207,6 +208,9 @@ pub(crate) mod tests {
         vec![
             UpdatePhase::Unavailable {
                 reason: UpdateUnavailableReason::DevelopmentBuild,
+            },
+            UpdatePhase::Unavailable {
+                reason: UpdateUnavailableReason::UnsupportedPlatform,
             },
             UpdatePhase::Unavailable {
                 reason: UpdateUnavailableReason::SigningKeyMissing,

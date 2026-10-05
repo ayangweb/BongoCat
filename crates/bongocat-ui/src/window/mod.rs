@@ -23,7 +23,8 @@ use bongocat_platform::{
     validate_model_folder,
 };
 use gpui_kit::component::{
-    ActiveTheme, Disableable, Icon, IndexPath, Root, Theme, ThemeMode, ThemeStyled, WindowExt,
+    ActiveTheme, Disableable, Icon, IndexPath, Root, Theme, ThemeColor, ThemeMode, ThemeStyled,
+    WindowExt,
     button::{Button, ButtonVariant, ButtonVariants},
     checkbox::Checkbox,
     dialog::{Dialog, DialogButtonProps},
@@ -166,6 +167,7 @@ use pending::*;
 use shortcut_capture::*;
 use startup_item::*;
 pub(crate) use theme::apply_component_theme;
+pub use theme::system_menu_palette;
 use theme::*;
 pub(crate) use tokens::Tokens;
 

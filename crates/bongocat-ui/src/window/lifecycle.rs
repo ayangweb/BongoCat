@@ -13,6 +13,12 @@ pub fn open_settings_window(
     let (window_bounds, display_id) = initial_window_bounds(&window_state, cx);
     let initial_content_size = window_bounds.get_bounds().size;
     let normalize_initial_content_size = matches!(window_bounds, WindowBounds::Windowed(_));
+    #[cfg(target_os = "linux")]
+    let show_at_creation = true;
+    #[cfg(target_os = "macos")]
+    let show_at_creation = false;
+    #[cfg(target_os = "windows")]
+    let show_at_creation = false;
     let settings_view = Rc::new(RefCell::new(None));
     let opened_settings_view = Rc::clone(&settings_view);
     let handle = cx
@@ -34,8 +40,9 @@ pub fn open_settings_window(
                     ),
                     ..Default::default()
                 }),
+                app_id: Some(bongocat_config::BUNDLE_ID.into()),
                 focus: false,
-                show: false,
+                show: show_at_creation,
                 ..Default::default()
             },
             move |window, cx| {
@@ -236,6 +243,10 @@ fn settings_window_content_top_inset() -> f32 {
         bongocat_platform::window_content_top_inset()
     }
     #[cfg(target_os = "windows")]
+    {
+        0.0
+    }
+    #[cfg(target_os = "linux")]
     {
         0.0
     }
