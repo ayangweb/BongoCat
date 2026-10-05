@@ -31,6 +31,7 @@ mod model_titles;
 mod settings;
 mod shortcut_config;
 mod shortcuts;
+#[cfg(not(target_os = "linux"))]
 mod startup_permission;
 #[cfg(test)]
 mod tests;
@@ -51,6 +52,7 @@ pub use settings::{
     TaskbarIconCapability,
 };
 pub use shortcuts::application_shortcut_dispatcher;
+#[cfg(not(target_os = "linux"))]
 pub use startup_permission::ensure_startup_permission;
 pub use update::{ApplicationUpdateService, UpdateServiceError, restart_required_after_install};
 

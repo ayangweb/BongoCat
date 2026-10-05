@@ -33,6 +33,7 @@ pub(crate) fn model_window_dimensions(canvas: CanvasInfo, scale_percent: u16) ->
     (width, height)
 }
 
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) fn default_overlay_window_dimensions(canvas: CanvasInfo) -> (u32, u32) {
     model_window_dimensions(canvas, 100)
 }

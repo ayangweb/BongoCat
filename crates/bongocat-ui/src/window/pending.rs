@@ -33,6 +33,7 @@ pub(crate) enum PendingOperation {
     BehaviorShortcuts,
     RandomBehavior,
     MaximumFps,
+    PointerSensitivity,
     ModelSettings,
     GamepadAxisSettings,
     CursorSettings,
@@ -137,6 +138,10 @@ pub(crate) enum SettingValue {
     MaximumFps {
         expected_config_revision: u64,
         maximum_fps: u16,
+    },
+    PointerSensitivity {
+        expected_config_revision: u64,
+        pointer_sensitivity_percent: u16,
     },
     ModelSettings {
         expected_config_revision: u64,

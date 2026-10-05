@@ -440,6 +440,7 @@ mod tests {
         let path = directory.path().join("logs").join("diagnostics.json");
         let snapshot = SettingsSnapshot {
             revision: 42,
+            pointer_sensitivity_percent: 100,
             config_revision: Some(7),
             build_info: SettingsBuildInfo {
                 product_version: PRODUCT_VERSION.to_owned(),

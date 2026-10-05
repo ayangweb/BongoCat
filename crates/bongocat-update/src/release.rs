@@ -38,7 +38,7 @@ impl ReleaseChannel {
     }
 }
 
-/// The three release targets BongoCat ships.
+/// Product target identities; Linux remains excluded from automatic updates.
 ///
 /// The list is closed on purpose: `AGENTS.md` §1 restricts the product to these
 /// combinations, so an unrecognized host must refuse to update rather than fall
@@ -49,6 +49,7 @@ pub enum UpdateTargetTriple {
     Aarch64AppleDarwin,
     X86_64AppleDarwin,
     X86_64PcWindowsMsvc,
+    X86_64UnknownLinuxGnu,
 }
 
 impl UpdateTargetTriple {
@@ -57,6 +58,7 @@ impl UpdateTargetTriple {
             Self::Aarch64AppleDarwin => "aarch64-apple-darwin",
             Self::X86_64AppleDarwin => "x86_64-apple-darwin",
             Self::X86_64PcWindowsMsvc => "x86_64-pc-windows-msvc",
+            Self::X86_64UnknownLinuxGnu => "x86_64-unknown-linux-gnu",
         }
     }
 
@@ -85,6 +87,7 @@ impl UpdateTargetTriple {
             Self::Aarch64AppleDarwin => "macos-aarch64",
             Self::X86_64AppleDarwin => "macos-x86_64",
             Self::X86_64PcWindowsMsvc => "windows-x86_64",
+            Self::X86_64UnknownLinuxGnu => "linux-x86_64",
         }
     }
 }
@@ -99,12 +102,16 @@ pub const HOST_TARGET_TRIPLE: UpdateTargetTriple = UpdateTargetTriple::X86_64App
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 pub const HOST_TARGET_TRIPLE: UpdateTargetTriple = UpdateTargetTriple::X86_64PcWindowsMsvc;
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub const HOST_TARGET_TRIPLE: UpdateTargetTriple = UpdateTargetTriple::X86_64UnknownLinuxGnu;
+
 #[cfg(not(any(
     all(target_os = "macos", target_arch = "aarch64"),
     all(target_os = "macos", target_arch = "x86_64"),
-    all(target_os = "windows", target_arch = "x86_64")
+    all(target_os = "windows", target_arch = "x86_64"),
+    all(target_os = "linux", target_arch = "x86_64")
 )))]
-compile_error!("BongoCat builds only for macOS and x86_64 Windows");
+compile_error!("BongoCat supports macOS, x86_64 Windows and x86_64 GNU/Linux");
 
 /// Immutable configuration for one update run.
 ///

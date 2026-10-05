@@ -381,6 +381,20 @@ pub(super) fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetPointerSensitivity {
+                expected_config_revision,
+                pointer_sensitivity_percent,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_pointer_sensitivity(pointer_sensitivity_percent)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetMaximumFps {
                 expected_config_revision,
                 maximum_fps,

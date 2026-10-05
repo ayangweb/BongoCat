@@ -15,6 +15,9 @@ fn main() {
     let manifest_dir = PathBuf::from(
         std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo must provide CARGO_MANIFEST_DIR"),
     );
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
+        embed_linux_presets(&manifest_dir);
+    }
     let resources_dir = manifest_dir.join("../../resources/icons");
     validate_icon(
         &resources_dir.join("logo-macos.icns"),
@@ -85,4 +88,38 @@ fn validate_icon(path: &Path, description: &str, validate: fn(&[u8]) -> Result<(
     });
     validate(&bytes)
         .unwrap_or_else(|error| panic!("invalid {description} at {}: {error}", path.display()));
+}
+
+fn embed_linux_presets(manifest_dir: &Path) {
+    fn collect(directory: &Path, files: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(directory).expect("read bundled models") {
+            let entry = entry.expect("read model entry");
+            let kind = entry.file_type().expect("model entry type");
+            if kind.is_dir() {
+                collect(&entry.path(), files);
+            } else if kind.is_file() {
+                files.push(entry.path());
+            }
+        }
+    }
+    let root = manifest_dir.join("../../resources/models");
+    let mut files = Vec::new();
+    for model in ["standard", "keyboard", "gamepad"] {
+        let directory = root.join(model);
+        println!("cargo::rerun-if-changed={}", directory.display());
+        collect(&directory, &mut files);
+    }
+    files.sort();
+    let mut generated = String::from("const PRESET_FILES: &[(&str, &[u8])] = &[\n");
+    for file in files {
+        let relative = file.strip_prefix(&root).expect("bundled model path");
+        generated.push_str(&format!(
+            "({:?}, include_bytes!({:?})),\n",
+            relative.to_str().expect("model path UTF-8"),
+            file.to_str().expect("model path UTF-8"),
+        ));
+    }
+    generated.push_str("];\n");
+    let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("build output"));
+    std::fs::write(output.join("linux_presets.rs"), generated).expect("write embedded model list");
 }

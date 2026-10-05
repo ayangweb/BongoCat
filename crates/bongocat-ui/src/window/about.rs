@@ -311,7 +311,8 @@ pub(super) fn operational_group(
         PRODUCT_NAME,
         SettingField::element(
             move |options: &RenderOptions, _: &mut Window, app: &mut App| {
-                let available = update_view.read(app).snapshot.is_some();
+                let available =
+                    platform::AUTOMATIC_UPDATES && update_view.read(app).snapshot.is_some();
                 let request = update_request.clone();
                 Button::new("about-check-for-updates-button")
                     .label(bongocat_i18n::text(locale, "update.about.label"))
@@ -446,7 +447,7 @@ impl SettingsView {
         };
         let copied = SoftwareInformation::read(snapshot, window)
             .to_json()
-            .is_some_and(|json| bongocat_platform::write_clipboard_text(&json).is_ok());
+            .is_some_and(|json| platform::copy_text(json, cx));
         if copied {
             self.about_copy_success_pending = true;
         } else {

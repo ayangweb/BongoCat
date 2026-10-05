@@ -170,6 +170,7 @@ pub(crate) mod tests {
             command_shortcuts_enabled: true,
             behavior_shortcuts_enabled: true,
             maximum_fps: 60,
+            pointer_sensitivity_percent: 100,
             random_behavior: SettingsRandomBehavior::default(),
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),

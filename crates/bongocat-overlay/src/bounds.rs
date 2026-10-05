@@ -15,6 +15,7 @@ use super::*;
 /// right-button drag (and it can be a persisted/manual geometry). The shared
 /// cover rounding keeps the model fully inside the native window and makes a
 /// switch back to a model reproduce its startup dimensions.
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) fn model_switch_window_bounds(
     current: OverlayWindowBounds,
     canvas: CanvasInfo,
@@ -131,6 +132,7 @@ impl OverlaySessionOptions {
     /// either: like the hover hide it is consulted inside the frame tick, because
     /// the window has to start and stop passing pointer events through while it
     /// keeps running.
+    #[cfg(any(not(target_os = "linux"), test))]
     pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
         self.corner_radius_percent != next.corner_radius_percent
             || self.keep_inside_screen != next.keep_inside_screen
@@ -180,6 +182,7 @@ impl OverlayWindowBounds {
         }
     }
 
+    #[cfg(any(not(target_os = "linux"), test))]
     pub(crate) fn validate(self) -> Result<Self, OverlayError> {
         const MAX_COORDINATE: i32 = 1_000_000;
         const MIN_DIMENSION: u32 = 64;
@@ -194,6 +197,7 @@ impl OverlayWindowBounds {
         Ok(self)
     }
 
+    #[cfg(any(not(target_os = "linux"), test))]
     pub(crate) fn rescale(self, previous_percent: u16, next_percent: u16) -> Self {
         let ratio = f64::from(next_percent) / f64::from(previous_percent);
         Self {
@@ -210,6 +214,7 @@ impl OverlayWindowBounds {
     /// larger than the display on an axis, so an oversized window stays pinned
     /// to the display's top-left corner instead of being resized or pushed off
     /// the opposite edge.
+    #[cfg(any(not(target_os = "linux"), test))]
     pub(crate) fn clamp_to(self, screen: OverlayScreenBounds) -> Self {
         let maximum_x = if self.width <= screen.width {
             screen.x.saturating_add_unsigned(screen.width - self.width)
@@ -238,6 +243,7 @@ impl OverlayWindowBounds {
 /// new scale must not apply the ratio a second time. The one-pixel tolerance
 /// absorbs the rounding the physical-to-logical conversion introduces on the
 /// way back from the window system.
+#[cfg(not(target_os = "linux"))]
 pub(crate) fn bounds_match_scale(
     bounds: OverlayWindowBounds,
     base: resize_drag::ResizeBase,
@@ -254,6 +260,7 @@ pub(crate) fn bounds_match_scale(
 /// without pushing it clear of the desktop chrome. Coordinates may be negative
 /// for a display placed left of or above the primary one.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) struct OverlayScreenBounds {
     pub x: i32,
     pub y: i32,

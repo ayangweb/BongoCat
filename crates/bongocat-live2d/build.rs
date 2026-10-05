@@ -18,6 +18,7 @@ fn main() {
             );
             println!("cargo:rustc-link-lib=static=Live2DCubismCore_MD");
         }
+        "x86_64-unknown-linux-gnu" => link_static_core(vendor.join("lib/linux/x86_64")),
         _ => {}
     }
 }

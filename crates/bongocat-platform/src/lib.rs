@@ -17,7 +17,9 @@ pub use model_source_picker::{ModelSourcePickerError, ModelSourcePickerOutcome};
 mod directory_opener;
 pub use directory_opener::{DirectoryOpenError, open_directory};
 
+#[cfg(not(target_os = "linux"))]
 mod clipboard;
+#[cfg(not(target_os = "linux"))]
 pub use clipboard::{ClipboardError, read_clipboard_text, write_clipboard_text};
 
 mod url_opener;
@@ -30,6 +32,7 @@ mod single_instance;
 pub use single_instance::{SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceError};
 
 mod shortcut;
+#[cfg(not(target_os = "linux"))]
 pub use shortcut::{
     GlobalShortcutCounters, GlobalShortcutService, GlobalShortcutServiceError, ShortcutHotkeyError,
 };
@@ -49,7 +52,9 @@ pub use theme::{
 
 mod system_menu;
 pub use system_menu::{SystemMenuAction, SystemMenuError, SystemMenuPresentation};
+#[cfg(not(target_os = "linux"))]
 mod system_menu_native;
+#[cfg(not(target_os = "linux"))]
 pub use system_menu_native::SystemMenu;
 
 mod startup_item;
@@ -61,13 +66,16 @@ mod startup_item_native;
 mod startup_permission;
 pub use startup_permission::{
     InputPermission, STARTUP_PERMISSION_CAPABILITY, StartupPermissionPrompt,
-    StartupPermissionStatus, check_startup_permission, startup_permission_available,
+    StartupPermissionStatus, startup_permission_available,
 };
+
+#[cfg(not(target_os = "linux"))]
+pub use startup_permission::check_startup_permission;
 
 mod native_window;
 pub use native_window::NativeWindowError;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod gilrs_gamepad;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -139,3 +147,10 @@ pub fn set_startup_item_enabled(
 ) -> Result<StartupItemState, StartupItemError> {
     startup_item_native::set_enabled(environment, enabled)
 }
+
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{
+    LinuxInputService, LinuxSystemTray, set_linux_pointer_sensitivity, system_language,
+};

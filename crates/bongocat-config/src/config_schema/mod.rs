@@ -85,6 +85,7 @@ impl Default for NativeConfig {
                 keep_inside_screen: true,
             },
             input: InputConfig {
+                pointer_sensitivity_percent: 100,
                 gamepad: GamepadInputConfig {
                     stick_dead_zone: 0.15,
                     trigger_dead_zone: 0.0,
@@ -155,6 +156,11 @@ impl NativeConfig {
         if self.overlay.hide_on_idle_delay_seconds > MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS {
             return Err(ConfigError::InvalidValue(
                 "overlay.hide_on_idle_delay_seconds",
+            ));
+        }
+        if !(1..=400).contains(&self.input.pointer_sensitivity_percent) {
+            return Err(ConfigError::InvalidValue(
+                "input.pointer_sensitivity_percent",
             ));
         }
         if !(0.0..1.0).contains(&self.input.gamepad.stick_dead_zone)

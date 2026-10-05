@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/bongocat-app",
+    "crates/bongocat-input-helper",
     "crates/bongocat-audio",
     "crates/bongocat-i18n",
     "crates/bongocat-input",

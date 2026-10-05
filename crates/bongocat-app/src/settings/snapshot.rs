@@ -227,6 +227,7 @@ pub(super) fn snapshot(
             show_all_pressed_keys: runtime.model_settings.show_all_pressed_keys,
             ignore_pointer: runtime.model_settings.ignore_pointer,
         },
+        pointer_sensitivity_percent: application.config().input.pointer_sensitivity_percent,
         gamepad_axis_settings: SettingsGamepadAxisSettings {
             stick_dead_zone_percent: (runtime.gamepad_axis_settings.stick_dead_zone * 100.0)
                 .round()
