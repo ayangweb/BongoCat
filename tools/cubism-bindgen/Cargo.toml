@@ -6,7 +6,7 @@ publish = false
 license = "Apache-2.0"
 
 [dependencies]
-bindgen = { version = "=0.72.1", default-features = false, features = ["prettyplease", "runtime"] }
+bindgen = { version = "=0.73.2", default-features = false, features = ["prettyplease", "runtime"] }
 sha2 = { version = "=0.11.0", default-features = false }
 
 [dev-dependencies]
