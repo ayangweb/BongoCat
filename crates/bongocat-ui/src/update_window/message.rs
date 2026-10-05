@@ -102,6 +102,7 @@ pub(crate) fn stage_message_key(stage: UpdateFailureStage) -> &'static str {
 pub(crate) fn unavailable_message(locale: &str, reason: UpdateUnavailableReason) -> String {
     let key = match reason {
         UpdateUnavailableReason::DevelopmentBuild => "update.unavailable.development_build",
+        UpdateUnavailableReason::UnsupportedPlatform => "update.unavailable.unsupported_platform",
         UpdateUnavailableReason::SigningKeyMissing => "update.unavailable.signing_key_missing",
     };
     text(locale, key).to_owned()
