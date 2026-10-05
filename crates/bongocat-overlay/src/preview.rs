@@ -50,6 +50,14 @@ pub fn run_model_switch_preview(
     model_root: &Path,
     switch_cycles: u32,
 ) -> Result<PreviewReport, OverlayError> {
+    #[cfg(target_os = "linux")]
+    {
+        let _ = (model_id, model_root, switch_cycles);
+        Err(OverlayError::new(
+            "model switch preview is not available on the Linux Wayland backend",
+        ))
+    }
+
     #[cfg(target_os = "macos")]
     {
         macos::run_model_preview(
