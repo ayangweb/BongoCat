@@ -13,6 +13,7 @@ use layer_shell::LayerOverlay;
 pub(crate) use renderer::*;
 pub(crate) use session::*;
 use xdg_shell::SctkXdgOverlay;
+
 use crate::{
     BlendFactor, DrawableCullMode, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff,
     MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
@@ -54,4 +55,23 @@ const WAYLAND_APPLICATION_ID: &str = "com.ayangweb.bongo-cat";
 
 fn gpu_error(context: &'static str, error: impl std::fmt::Display) -> OverlayError {
     OverlayError::new(format!("{context}: {error}"))
+}
+
+#[cfg(test)]
+mod desktop_integration_tests {
+    use super::*;
+
+    const DESKTOP_ENTRY: &str =
+        include_str!("../../../../resources/linux/com.ayangweb.bongo-cat.desktop");
+
+    #[test]
+    fn wayland_application_id_matches_the_desktop_entry() {
+        assert_eq!(
+            DESKTOP_ENTRY
+                .lines()
+                .find_map(|line| line.strip_prefix("Icon=")),
+            Some(WAYLAND_APPLICATION_ID)
+        );
+        assert!(DESKTOP_ENTRY.contains("Exec=bongocat-app\n"));
+    }
 }
