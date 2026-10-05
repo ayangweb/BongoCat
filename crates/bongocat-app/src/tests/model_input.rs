@@ -528,6 +528,204 @@ fn gamepad_button_presses_reach_the_render_frame_as_key_overlays() {
     application.shutdown().expect("clean shutdown");
 }
 
+/// The complete gamepad button matrix on the model that is actually live, with
+/// the expectation **derived from the model's own artwork** rather than written
+/// out.
+///
+/// The test above pins twelve drawable buttons and four inert ones, which is
+/// right today and wrong the moment the model gains or loses an image: the
+/// assertions would keep passing while a button silently stopped drawing or
+/// started borrowing another button's picture. Here the expectation comes from
+/// the same `KeyImageInventory` the binding table asks, so for all sixteen
+/// product buttons the test asserts the whole chain at once — hand, key overlay,
+/// the file the overlay resolved to, and which paw moved — and a disagreement
+/// anywhere between the artwork on disk, the binding, the projection and the
+/// renderer is a failure instead of an invisible behaviour change.
+#[test]
+fn every_gamepad_button_matches_the_live_model_artwork() {
+    let base = tempdir().expect("temp directory");
+    let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+    let mut application = Application::start_with_layout_internal(
+        layout,
+        repository_preset_root().as_path(),
+        true,
+        Language::English,
+    )
+    .expect("start rendering application");
+    let token = application
+        .prepare_model(ModelOrigin::Preset, "gamepad")
+        .expect("prepare gamepad model");
+    let consumer = application
+        .take_render_consumer()
+        .expect("take render consumer");
+    let frame = wait_for_model_commit_frame(&consumer, token);
+    consumer
+        .report_model_commit(ModelCommitFeedback {
+            token: frame.model_commit.expect("commit token"),
+            outcome: ModelCommitOutcome::Prepared,
+        })
+        .expect("commit gamepad model");
+    application
+        .runtime_client()
+        .wait_for_command(token.command_sequence, RUNTIME_TIMEOUT)
+        .expect("gamepad model activation");
+
+    // What the model can draw is the only thing that decides which buttons are
+    // live, read from the same preset package the activated model was loaded
+    // from, through the same inventory the binding table asks.
+    let images = shipped_key_images("gamepad");
+    let bindings = input_bindings_for_model(ModelOrigin::Preset, "gamepad", &images);
+
+    let axis = application.gamepad_axis_producer();
+    let connection = axis.connect(0).expect("gamepad connection");
+    let input = application.input_producer();
+    input
+        .publish(InputEvent::GamepadConnected {
+            connection,
+            at: MonotonicMillis::new(0),
+        })
+        .expect("connection event");
+    let mut sequence = 1;
+    let mut live = 0usize;
+    for button in GamepadButton::ALL {
+        let drawable = [HandSide::Left, HandSide::Right].into_iter().find(|side| {
+            images.can_draw_key(
+                match side {
+                    HandSide::Left => KeySide::Left,
+                    HandSide::Right => KeySide::Right,
+                },
+                KeyIdentity::Gamepad(button),
+            )
+        });
+        sequence += 1;
+        let published = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Gamepad(GamepadButtonKey { connection, button }),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(sequence),
+            })
+            .expect("button press");
+        let snapshot = application
+            .runtime_client()
+            .wait_for_input_sequence(published, RUNTIME_TIMEOUT)
+            .expect("button projection");
+
+        // A button the model ships no artwork for is inert end to end: unbound, no
+        // overlay, no paw. It must never borrow a neighbour's picture (ADR-0042),
+        // which is the failure this branch exists to catch.
+        let Some(drawable) = drawable else {
+            assert_eq!(
+                bindings.hand_for_gamepad(button),
+                None,
+                "{button:?} has no artwork and must be unbound"
+            );
+            assert_eq!(
+                snapshot.model_input.key_presses.iter().count(),
+                0,
+                "{button:?} has no artwork and must draw nothing"
+            );
+            assert!(!snapshot.model_input.left_hand_down, "{button:?} left paw");
+            assert!(
+                !snapshot.model_input.right_hand_down,
+                "{button:?} right paw"
+            );
+            continue;
+        };
+        assert_eq!(
+            bindings.hand_for_gamepad(button),
+            Some(drawable),
+            "{button:?} hand must come from the directory its image lives in"
+        );
+        let side = match drawable {
+            HandSide::Left => KeySide::Left,
+            HandSide::Right => KeySide::Right,
+        };
+        live += 1;
+
+        assert_eq!(
+            snapshot.model_input.key_presses.iter().count(),
+            1,
+            "{button:?} draws exactly its own image"
+        );
+        assert_eq!(
+            snapshot.model_input.key_presses.iter().next().unwrap().side,
+            side,
+            "{button:?} is a {side:?} image"
+        );
+        assert_eq!(
+            snapshot.model_input.left_hand_down,
+            side == KeySide::Left,
+            "{button:?} left paw"
+        );
+        assert_eq!(
+            snapshot.model_input.right_hand_down,
+            side == KeySide::Right,
+            "{button:?} right paw"
+        );
+
+        let frame = wait_for_render_frame(&consumer, |frame| frame.active_keys.len() == 1);
+        let overlay = frame.snapshot.active_keys[0];
+        assert_eq!(overlay.side, side, "{button:?}");
+        let resources = Arc::clone(&frame.resources);
+        let asset = &resources.key_assets[overlay.asset_id.index()];
+        assert_eq!(
+            asset.name,
+            button.key_image_name(),
+            "{button:?} must resolve to its own stem, never a neighbour's"
+        );
+        assert_eq!(
+            asset.path.file_stem().and_then(|stem| stem.to_str()),
+            Some(button.key_image_name()),
+            "{button:?} resolved to {}",
+            asset.path.display()
+        );
+
+        sequence += 1;
+        let released = input
+            .publish(InputEvent::Edge {
+                control: InputControl::Gamepad(GamepadButtonKey { connection, button }),
+                edge: InputEdge::Up,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(sequence),
+            })
+            .expect("button release");
+        let snapshot = application
+            .runtime_client()
+            .wait_for_input_sequence(released, RUNTIME_TIMEOUT)
+            .expect("button release projection");
+        assert_eq!(
+            snapshot.model_input.key_presses.iter().count(),
+            0,
+            "{button:?} must release its own image and nothing else"
+        );
+        assert!(!snapshot.model_input.left_hand_down, "{button:?} left paw");
+        assert!(
+            !snapshot.model_input.right_hand_down,
+            "{button:?} right paw"
+        );
+    }
+    // The bundled preset ships no artwork for `Select`, `Start` or either stick
+    // click, so twelve of the sixteen buttons are live today. The loop above is
+    // the real assertion — it checks whichever buttons are drawable — and this
+    // count is the one number a future artwork change is allowed to move, so a
+    // model that silently loses an image fails here instead of quietly going
+    // inert.
+    assert_eq!(
+        live,
+        12,
+        "the bundled gamepad preset draws twelve of its sixteen buttons: \
+         the four it ships no artwork for are {:?}",
+        GamepadButton::ALL
+            .iter()
+            .filter(|button| bindings.hand_for_gamepad(**button).is_none())
+            .collect::<Vec<_>>()
+    );
+
+    let _ = consumer.take_latest();
+    application.shutdown().expect("clean shutdown");
+}
+
 /// The binding test above proves the Map; this proves the press actually
 /// survives the whole path for the model that is active at runtime. F1 and
 /// F13 bracket the two HID function-key ranges.

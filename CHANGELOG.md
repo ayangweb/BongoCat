@@ -9,6 +9,13 @@
 - Added a "Model window → Window behavior → Hold a modifier key to interact" setting.
 - Added an "Input & interaction → Mouse → Force mouse movement" setting, so the cat keeps following the mouse in full-screen games that capture the pointer.
 
+### 🐛 Bug Fixes
+
+- Fixed the analog sticks never appearing in gamepad mode, and made moving a stick or pressing its button lower that side's paw.
+- Fixed a second gamepad's sticks and triggers doing nothing while another gamepad was connected.
+- Fixed Windows controllers in Xbox-compatible mode pressing the wrong key image, leaving the cross keys unresponsive, and swapping the triggers with the right stick.
+- Fixed a Nintendo Switch controller in Switch mode making the model rapidly press every key on Windows.
+
 ## 2.1.1 - 2026-10-03
 
 ### 🐛 Bug Fixes

@@ -406,6 +406,14 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   adapter 关闭默认 jitter/dead-zone filter 和环境 mapping，只负责 fork mapping 后的完整范围值、
   trigger 连续值与无效值诊断，不把设备默认 dead-zone 写入共享协议。轴值随后以
   `ModelInputSnapshot` 的不可变字段投影给 renderer。
+- 手柄六个轴按 `{device_id, connection_generation, axis}` 分别取最新样本，不先挑一个
+  connection 再只投影它的六个值；多手柄同时连接时后动的那只在它动过的轴上立即生效，回中
+  读到 0（ADR-0082，与重构前合并全部手柄的同名轴一致）。
+- `CatParamStickShowLeftHand`/`CatParamStickShowRightHand` 是模型声明的摇杆可见性，由
+  `apply_model_input` 写入：该侧摇杆偏离中心（死区之后）或摇杆键按下即为 1。同一个条件也
+  让该侧 hand-down 落下，但只在模型声明了该参数时——把 ADR-0042 的「缺图不动爪」从按键图
+  片推广到摇杆美术，使键盘/鼠标模型上的摇杆完全惰性。三个事实仍互相独立：`*Stick*Down` 只
+  表示摇杆键，`CatParamStickL*`/`R*` 只表示位置（ADR-0082）。
 - 手柄连接状态的事实来源只有 runtime 的 `InputState`：`RuntimeSnapshot::input` 的
   `connected_gamepad_count` 是上层唯一可读的形式（ADR-0071）。产品 frame source 每帧已经读取
   该 snapshot，因此在「无手柄 ↔ 至少一个手柄」跨帧变化时向 settings service 发送一次无载荷
@@ -765,7 +773,7 @@ CGEvent keycode `63`（`kVK_Function`）以 `FlagsChanged` + `MaskSecondaryFn` �
 肩键的名字，任何别名表都会把肩键或扳机键解析成对方的图。左右手归属同样由模型自己的目录决定——
 `left-keys` 里的图画在左爪上、`right-keys` 里的画在右爪上，这与旧实现的判定一致，也让 Mver 转换按
 `lefthand`/`righthand` 落盘的结果直接可用。缺图的按钮保持惰性（ADR-0042）；两个摇杆键另外驱动
-`StickLeftDown`/`StickRightDown`，与爪部状态互相独立。
+`StickLeftDown`/`StickRightDown`，摇杆本身另有可见性参数并按下述规则带动爪子（ADR-0082）。
 
 **按键层画几张图是显示选择，不是输入状态**（见 ADR-0079）。`RenderSnapshot::active_keys` 是一个有序
 列表，双平台渲染器都按这个顺序绘制且都没有深度附件或深度模板，因此**列表里最后一项就是最上层**；
