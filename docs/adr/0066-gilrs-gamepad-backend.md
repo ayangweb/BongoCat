@@ -38,11 +38,11 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
   Input 自己的顺序报告元素，`Mapping::default` 又按 element code 身份匹配，于是四个面键整体错位
   一位、把 D-pad 报告成按键的设备十字键四个方向全部落到表外而失效、两个模拟扳机分别落到右摇杆
   Y 轴和左扳机上——静止摇杆因此正好压在 axis-to-button 阈值上而让被它驱动的按键逐采样抖动，
-  这就是 Switch 模式下"模型鬼畜地疯狂按下所有按键"。修复分两半：`native_ev_codes` 改带 WGI
-  原始下标（面键 `SOUTH/EAST/WEST/NORTH` = 0..3，D-pad 落在 10..13，Guide 之后的元素排在
-  15 之后以免借用别的按键下标），`Gamepad::axes` 则把 raw element 按 SDL 映射的槽位顺序
-  呈现（六个轴时 `[0, 1, 4, 2, 3, 5]`），使 `lefttrigger:a2` 解析到左扳机而不是右摇杆 X 轴；
-  非六轴设备保持自身顺序，因为没有任何来源描述它。后续修复仍必须形成可审计的 patch series、
+  这就是 Switch 模式下"模型鬼畜地疯狂按下所有按键"。修复是让 `native_ev_codes` 改带 WGI 原始下标
+  （面键 `SOUTH/EAST/WEST/NORTH` = 0..3，D-pad 落在 10..13，Guide 之后的元素排在 15 之后以免借用
+  别的按键下标），这一半只影响没有 SDL mapping 的设备与 mapped 回退路径。曾同时尝试把
+  `Gamepad::axes` 按 SDL 映射的槽位顺序重排（六轴时 `[0, 1, 4, 2, 3, 5]`），使 `lefttrigger:a2`
+  解析到左扳机；用整库实测后回退，见阻塞 0b。后续修复仍必须形成可审计的 patch series、
   推送到 fork `master` 并再次精确固定 commit。
   `deny.toml` 只放行该精确 git source；fork 的 SDL mapping submodule 由该 commit 固定为
   `15b5e9f4abfb1c5c691c468799816755a91a2e11`。`deny.toml` 通过 `required-git-spec = "rev"` 拒绝
@@ -102,20 +102,29 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
    但仍必须在 Windows 10/11 实机验证 settings 开关、焦点/失焦、click-through、启动时已连接、重连和
    多手柄；在取得该证据前不得把焦点矩阵写成已验证，若 raw 路径在这些状态仍不可靠，应继续修复 fork
    backend，而不是改回 BongoCat 内 XInput workaround。
-0b. **Windows WGI raw element 顺序（已在 fork 修复，实机证据仍缺）：** Issue #1099 报告 Xbox 兼容
-   模式下面键错位、十字键无响应、左爪默认姿态错误，Switch 模式下模型疯狂按下所有按键，而 DS4
-   模式正常。该症状与 `native_ev_codes` 的 evdev 下标和 WGI raw 顺序不一致完全吻合：没有 SDL
+0b. **Windows WGI raw element 顺序（已在 fork 修复，实机证据与映射库缺口仍存）：** Issue #1099 报告
+   Xbox 兼容模式下面键错位、十字键无响应、左爪默认姿态错误，Switch 模式下模型疯狂按下所有按键，而
+   DS4 模式正常。该症状与 `native_ev_codes` 的 evdev 下标和 WGI raw 顺序不一致完全吻合：没有 SDL
    mapping 的设备走 `Mapping::default` 时面键错位、十字键落到表外，两个模拟扳机则落到右摇杆 Y 轴
    和左扳机上；Switch Pro 只有四个轴，其第三轴（正是右摇杆 Y）因此被当成左扳机，静止时按有符号
-   域归一化后正好是 `0.5`，压在 axis-to-button 阈值上逐采样抖动，这就是"鬼畜"。有 SDL mapping 的
-   设备走 `parse_sdl_mapping`，其 `a2`（左扳机）同样落到 WGI 的右摇杆 X 轴。fork 已按上文把
-   `native_ev_codes` 改为 WGI 原始下标，并把 `Gamepad::axes` 的呈现顺序改为 SDL 槽位顺序；轴顺序
-   依据是 Microsoft 的 `Raw game controller` 文档，按键顺序依据是 Windows 手柄的实际报告顺序
-   （Microsoft 不跨设备固定它，设备在注册表 `Labels\Buttons` 自报），因此仍必须在 Windows 10/11
-   实机逐一确认面键、十字键、摇杆与扳机，确认 SDL mapping 命中的设备不再错位，并确认非六轴设备
-   （Switch Pro、DS4）在自身顺序下的表现。切换 `crates/bongocat-platform/Cargo.toml` 的 Windows
-   feature 到 `xinput` 可让 Xbox 兼容模式正常但让 Switch/DS4 完全无反应，这是 `xinput` backend
-   只认 XInput 设备的预期行为，不作为回退方案。
+   域归一化后正好是 `0.5`，压在 axis-to-button 阈值上逐采样抖动，这就是"鬼畜"。fork 已把
+   `native_ev_codes` 改为 WGI 原始下标；轴顺序依据是 Microsoft 的 `Raw game controller` 文档，
+   按键顺序依据是 Windows 手柄的实际报告顺序（Microsoft 不跨设备固定它，设备在注册表
+   `Labels\Buttons` 自报），因此仍必须在 Windows 10/11 实机逐一确认面键、十字键、摇杆与扳机。
+
+   **SDL mapping 数据库描述的不是 WGI。** 该库由本后端的 GUID 查询键命中（2058 条中 1592 条形如
+   `bus/vendor/product/version` 后全零；138 条 Bluetooth 条目因查询键固定用 USB bustype 而不可达），
+   而这些条目是给 DirectInput/evdev 写的：DirectInput 把游戏柄的六个轴排成左摇杆 X、���摇杆 Y、
+   左扳机、右摇杆 X、右摇杆 Y、右扳机，WGI 则把两个扳机排在两个摇杆之后。一个列表无法同时满足
+   两种顺序。实测整库后可命中的条目里，582 条把四个摇杆排在 0、1、2、3（期望设备报告顺序），
+   393 条把扳机插在槽位 2 与 5（需要交换）；按前者交付会破坏更大的一组，且分组顺序正是微软文档
+   给出的顺序，因此 `Gamepad::axes` 维持设备报告顺序。由此产生的已知残留：命中"交错扳机"映射的设备
+   （主要是真机 Xbox 360/One 一类 XInput 手柄）在右摇杆与扳机上仍然错位，表现为拉左扳机时左右扳机
+   图可能同时出现。要彻底解决需要一份针对 WGI 写的映射数据库，或把平台知识放进共享的映射解析
+   层；两者都超出本轮可验证范围，不在 fork 里加启发式。
+
+   切换 `crates/bongocat-platform/Cargo.toml` 的 Windows feature 到 `xinput` 可让 Xbox 兼容模式正常
+   但让 Switch/DS4 完全无反应，这是 `xinput` backend 只认 XInput 设备的预期行为，不作为回退方案。
 1. **双平台物理设备与系统生命周期：** 仍需在真实 macOS IOHID 和 Windows WGI 设备上验证 held-at-startup、
    held-at-reconnect、lost-release、overflow/reset epoch、100-cycle restart、锁屏/睡眠/快速用户切换和
    长时间无增长。cross-check、纯函数测试和无设备 smoke 不能替代这些证据。

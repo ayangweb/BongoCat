@@ -2852,7 +2852,7 @@ dependencies = [
 [[package]]
 name = "gilrs"
 version = "0.11.2"
-source = "git+https://github.com/ayangweb/gilrs?rev=9a5ee3d6c36db25871f6ea67eafaf09c637a0c50#9a5ee3d6c36db25871f6ea67eafaf09c637a0c50"
+source = "git+https://github.com/ayangweb/gilrs?rev=c7e97f54e9e4b10ff89d3527560a22f6817329ea#c7e97f54e9e4b10ff89d3527560a22f6817329ea"
 dependencies = [
  "fnv",
  "gilrs-core",
@@ -2864,7 +2864,7 @@ dependencies = [
 [[package]]
 name = "gilrs-core"
 version = "0.6.8"
-source = "git+https://github.com/ayangweb/gilrs?rev=9a5ee3d6c36db25871f6ea67eafaf09c637a0c50#9a5ee3d6c36db25871f6ea67eafaf09c637a0c50"
+source = "git+https://github.com/ayangweb/gilrs?rev=c7e97f54e9e4b10ff89d3527560a22f6817329ea#c7e97f54e9e4b10ff89d3527560a22f6817329ea"
 dependencies = [
  "inotify 0.11.5",
  "js-sys",
@@ -2878,7 +2878,7 @@ dependencies = [
  "vec_map",
  "wasm-bindgen",
  "web-sys",
- "windows 0.58.0",
+ "windows 0.57.0",
 ]
 
 [[package]]
@@ -2977,7 +2977,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.21",
- "windows 0.58.0",
+ "windows 0.57.0",
 ]
 
 [[package]]
@@ -3940,7 +3940,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.58.0",
+ "windows-core 0.57.0",
 ]
 
 [[package]]
