@@ -113,6 +113,9 @@ pub(crate) fn request_windows_product_quit(shutdown_requested: &AtomicBool) {
 }
 
 pub(crate) fn finish_product_quit(cx: &mut App) {
+    #[cfg(target_os = "linux")]
+    cx.quit();
+
     #[cfg(target_os = "macos")]
     {
         // The application-owned quit must own its exit boundary: AppKit can terminate
@@ -242,12 +245,23 @@ pub(crate) fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
     {
         record_failure(&coordinator.failures, error.to_string());
     }
+    #[cfg(target_os = "linux")]
+    if let Some(single_instance) = coordinator.single_instance.take()
+        && let Err(error) = single_instance.shutdown()
+    {
+        record_failure(&coordinator.failures, error.to_string());
+    }
     if let Some(system_menu) = coordinator.system_menu.take()
         && let Err(error) = system_menu.shutdown()
     {
         record_failure(&coordinator.failures, error.to_string());
     }
     #[cfg(target_os = "macos")]
+    let mut overlay = coordinator
+        .overlay
+        .take()
+        .expect("product overlay owner is present");
+    #[cfg(target_os = "linux")]
     let mut overlay = coordinator
         .overlay
         .take()

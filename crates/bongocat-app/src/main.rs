@@ -49,15 +49,15 @@ use bongocat_overlay::{
     OverlaySessionOptions, OverlayWindowBounds, ProductOverlaySession,
 };
 use bongocat_platform::GlobalShortcutService;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use bongocat_platform::{
     SingleInstance, SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceStart,
 };
-use bongocat_platform::{SystemMenu, SystemMenuAction, SystemMenuPresentation};
+use bongocat_platform::{SystemMenu, SystemMenuAction, SystemMenuPalette, SystemMenuPresentation};
 use bongocat_runtime::{hover_hide_delay_ms, idle_hide_delay_ms};
 use bongocat_ui::{
     SettingsNavigationMemory, SettingsView, SettingsWindowHandle, SettingsWindowSeed,
-    open_settings_window,
+    open_settings_window, system_menu_palette,
 };
 use bongocat_ui_protocol::{
     AutomaticUpdateSettings, SettingsClient, SettingsError, SettingsErrorCode,
@@ -104,6 +104,8 @@ use product_shutdown::{
 };
 #[cfg(target_os = "windows")]
 use product_shutdown::{request_windows_product_quit, start_windows_product_shutdown};
+#[cfg(target_os = "linux")]
+use product_windows::take_update_restart_request;
 #[cfg(target_os = "macos")]
 use product_windows::{apply_dock_icon_visibility, poll_update_restart, product_dock_icon_state};
 #[cfg(target_os = "windows")]
@@ -174,6 +176,8 @@ async fn settle_taskbar_icon(
 
 struct ProductCoordinator {
     _core_log: CoreLogHandle,
+    #[cfg(target_os = "linux")]
+    overlay: Option<ProductOverlaySession>,
     #[cfg(target_os = "macos")]
     overlay: Option<ProductOverlaySession>,
     #[cfg(target_os = "windows")]
@@ -223,9 +227,9 @@ struct ProductCoordinator {
     dock_icon_visible: bool,
     #[cfg(target_os = "macos")]
     application_reopens: u64,
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     single_instance: Option<SingleInstance>,
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     single_instance_wakes: u64,
     frame_source_running: bool,
     frame_source_shutdown: FrameSourceShutdown,
@@ -245,12 +249,27 @@ struct ProductCoordinator {
 
 impl Global for ProductCoordinator {}
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn build_single_instance_environment() -> SingleInstanceEnvironment {
     match bongocat_app::BUILD_ENVIRONMENT {
         bongocat_config::BuildEnvironment::Development => SingleInstanceEnvironment::Development,
         bongocat_config::BuildEnvironment::Production => SingleInstanceEnvironment::Production,
     }
+}
+
+#[cfg(target_os = "linux")]
+const fn system_menu_start_failure_is_fatal() -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+const fn system_menu_start_failure_is_fatal() -> bool {
+    true
+}
+
+#[cfg(target_os = "windows")]
+const fn system_menu_start_failure_is_fatal() -> bool {
+    true
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -293,14 +312,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if run_options.diagnostics_export_failure_smoke {
         return smoke::run_diagnostics_export_failure_smoke();
     }
-    #[cfg(target_os = "macos")]
     if run_options.startup_item_smoke {
         return smoke::run_startup_item_smoke();
     }
     if run_options.startup_permission_smoke {
         return smoke::run_startup_permission_smoke();
     }
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     let single_instance = match SingleInstance::acquire(build_single_instance_environment())? {
         SingleInstanceStart::Primary(single_instance) => single_instance,
         SingleInstanceStart::SecondaryNotified => {
@@ -469,7 +487,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Err(error) = bongocat_platform::apply_process_theme(initial_native_theme) {
             record_failure(&run_failures, format!("apply startup native theme: {error}"));
         }
-        let overlay = match ProductOverlaySession::start_with_interaction_sinks(
+        let mut overlay = match ProductOverlaySession::start_with_interaction_sinks(
             runtime_client,
             input_producer,
             cursor_producer,
@@ -491,6 +509,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
         };
+        let overlay_capabilities = overlay.capabilities();
+        application.set_overlay_capabilities(
+            overlay_capabilities.always_on_top,
+            overlay_capabilities.output_relative_geometry,
+            overlay_capabilities.pointer_hover,
+        );
         let settings_service =
             match bongocat_app::ApplicationSettingsService::start_with_product_capabilities(
                 application,
@@ -530,12 +554,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
         };
-        let initial_menu_presentation = system_menu_presentation(&initial_settings_snapshot);
+        let initial_menu_presentation = system_menu_presentation(
+            &initial_settings_snapshot,
+            system_menu_palette(initial_settings_snapshot.appearance_theme, cx),
+        );
+        #[cfg(target_os = "linux")]
+        overlay.set_system_menu_presentation(initial_menu_presentation.clone());
         let system_menu = match SystemMenu::start_with_presentation(
             initial_status_icon_visible,
             initial_menu_presentation,
         ) {
-            Ok(system_menu) => system_menu,
+            Ok(system_menu) => Some(system_menu),
+            Err(_) if !system_menu_start_failure_is_fatal() => {
+                application_log.record(
+                    ApplicationLogEvent::new(ApplicationLogCode::ServiceFailed)
+                        .with_context(ApplicationLogContext::Service("system_menu"))
+                        .with_context(ApplicationLogContext::Reason("startup_failed")),
+                );
+                None
+            }
             Err(error) => {
                 record_failure(&run_failures, error.to_string());
                 let mut overlay = overlay;
@@ -590,6 +627,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let frame_overlay = Rc::clone(&overlay);
         cx.set_global(ProductCoordinator {
             _core_log: core_log,
+            #[cfg(target_os = "linux")]
+            overlay: Some(overlay),
             #[cfg(target_os = "macos")]
             overlay: Some(overlay),
             #[cfg(target_os = "windows")]
@@ -605,16 +644,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             update_installed_since: None,
             #[cfg(target_os = "macos")]
             update_restart_started: false,
-            system_menu: Some(system_menu),
+            system_menu,
             #[cfg(target_os = "windows")]
             taskbar_icon_visible: initial_taskbar_icon_visible,
             #[cfg(target_os = "macos")]
             dock_icon_visible: initial_dock_icon_visible,
             #[cfg(target_os = "macos")]
             application_reopens: 0,
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
             single_instance: Some(single_instance),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
             single_instance_wakes: 0,
             frame_source_running: true,
             frame_source_shutdown: frame_source_shutdown.clone(),
@@ -904,6 +943,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let system_menu_action_client = system_menu_client.clone();
         cx.spawn(async move |cx| {
             let mut last_menu_revision = None;
+            let mut last_menu_palette = None;
             loop {
                 Timer::after(Duration::from_millis(50)).await;
                 if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
@@ -917,29 +957,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let Ok(revision) = system_menu_client.read_snapshot_revision().await else {
                     continue;
                 };
-                if last_menu_revision == Some(revision) {
+                let palette = cx.update(|cx| {
+                    let theme = cx
+                        .try_global::<ProductCoordinator>()
+                        .map_or(bongocat_ui_protocol::SettingsTheme::System, |coordinator| {
+                            coordinator.product_appearance_theme
+                        });
+                    system_menu_palette(theme, cx)
+                });
+                if last_menu_revision == Some(revision) && last_menu_palette == Some(palette) {
                     continue;
                 }
                 if let Ok(snapshot) = system_menu_client.read_snapshot().await {
-                    let presentation = system_menu_presentation(&snapshot);
                     let language = snapshot.resolved_language;
                     let appearance_theme = snapshot.appearance_theme;
                     let result = cx.update(|cx| {
+                        let palette = system_menu_palette(appearance_theme, cx);
+                        let presentation = system_menu_presentation(&snapshot, palette);
                         if !cx.has_global::<ProductCoordinator>() {
-                            return Ok(());
+                            return Ok(palette);
                         }
                         let coordinator = cx.global_mut::<ProductCoordinator>();
                         coordinator.product_language = language;
                         coordinator.product_appearance_theme = appearance_theme;
-                        coordinator
-                            .system_menu
-                            .as_mut()
-                            .ok_or_else(|| "system menu owner is unavailable".to_owned())?
+                        #[cfg(target_os = "linux")]
+                        if let Some(overlay) = coordinator.overlay.as_mut() {
+                            overlay.set_system_menu_presentation(presentation.clone());
+                        }
+                        let Some(system_menu) = coordinator.system_menu.as_mut() else {
+                            return Ok(palette);
+                        };
+                        system_menu
                             .set_presentation(presentation)
-                            .map_err(|error| error.to_string())
+                            .map_err(|error| error.to_string())?;
+                        Ok::<SystemMenuPalette, String>(palette)
                     });
                     match result {
-                        Ok(()) => last_menu_revision = Some(snapshot.revision),
+                        Ok(palette) => {
+                            last_menu_revision = Some(snapshot.revision);
+                            last_menu_palette = Some(palette);
+                        }
                         Err(error) => record_failure(&system_menu_snapshot_failures, error),
                     }
                 }
@@ -953,23 +1010,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Timer::after(Duration::from_millis(50)).await;
                 if !cx.update(|cx| cx.has_global::<ProductCoordinator>()) {
                     break;
-                }                while let Ok(request) = status_icon_receiver.try_recv() {
+                }
+                while let Ok(request) = status_icon_receiver.try_recv() {
                     let result = cx.update(|cx| {
                         if !cx.has_global::<ProductCoordinator>() {
                             return Err(SettingsError::new(
                                 SettingsErrorCode::StatusIconUpdateFailed,
                             ));
                         }
-                        cx.global_mut::<ProductCoordinator>()
-                            .system_menu
-                            .as_mut()
-                            .ok_or_else(|| {
-                                SettingsError::new(SettingsErrorCode::StatusIconUpdateFailed)
-                            })?
-                            .set_visible(request.visible)
-                            .map_err(|_| {
-                                SettingsError::new(SettingsErrorCode::StatusIconUpdateFailed)
-                            })
+                        let coordinator = cx.global_mut::<ProductCoordinator>();
+                        let Some(system_menu) = coordinator.system_menu.as_mut() else {
+                            return Ok(());
+                        };
+                        system_menu.set_visible(request.visible).map_err(|_| {
+                            SettingsError::new(SettingsErrorCode::StatusIconUpdateFailed)
+                        })
                     });
                     let _ = request.reply.send(result);
                 }
@@ -992,9 +1047,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 #[cfg(target_os = "windows")]
                 let _ = cx.update(take_update_restart_request);
+                #[cfg(target_os = "linux")]
+                let _ = cx.update(take_update_restart_request);
                 let action = cx.update(|cx| {
-                    cx.try_global::<ProductCoordinator>()
-                        .and_then(|coordinator| coordinator.system_menu.as_ref())
+                    if !cx.has_global::<ProductCoordinator>() {
+                        return None;
+                    }
+                    let coordinator = cx.global_mut::<ProductCoordinator>();
+                    #[cfg(target_os = "linux")]
+                    if let Some(action) = coordinator
+                        .overlay
+                        .as_mut()
+                        .and_then(ProductOverlaySession::take_system_menu_action)
+                    {
+                        return Some(action);
+                    }
+                    coordinator
+                        .system_menu
+                        .as_ref()
                         .and_then(SystemMenu::try_recv)
                 });
                 let Some(action) = action else {
@@ -1046,9 +1116,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .detach();
 
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         let single_instance_failures = Arc::clone(&run_failures);
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         cx.spawn(async move |cx| {
             loop {
                 Timer::after(Duration::from_millis(25)).await;
@@ -1139,8 +1209,89 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if frame_source_shutdown.stop_requested() {
                     break;
                 }
-                let context_menu_requested = context_menu_receiver.try_recv().is_ok();
+                let _context_menu_requested = context_menu_receiver.try_recv().is_ok();
                 let resize_outcome = resize_receiver.try_recv().ok();
+                #[cfg(target_os = "linux")]
+                let (keep_running, next_retry_delay) = cx.update(|cx| {
+                    if !cx.has_global::<ProductCoordinator>() {
+                        return (false, None);
+                    }
+                    handle_shortcut_toggle_settings(cx);
+                    let (keep_running, failure, settings_window, failures, next_retry_delay) = {
+                        let coordinator = cx.global_mut::<ProductCoordinator>();
+                        if !coordinator.frame_source_running {
+                            return (false, None);
+                        }
+                        let result = coordinator
+                            .overlay
+                            .as_mut()
+                            .expect("product overlay owner is present")
+                            .tick();
+                        match result {
+                            Ok(outcome) => {
+                                if let Ok(bounds) = coordinator
+                                    .overlay
+                                    .as_ref()
+                                    .expect("product overlay owner is present")
+                                    .window_bounds()
+                                    && last_overlay_bounds != Some(bounds)
+                                    && let Some(bounds) = overlay_placement_debouncer
+                                        .observe(bounds, Instant::now())
+                                    && {
+                                        let sent = frame_settings_client
+                                            .update_overlay_window_placement(
+                                                bounds.x,
+                                                bounds.y,
+                                                bounds.width,
+                                                bounds.height,
+                                            )
+                                            .is_ok();
+                                        if sent {
+                                            overlay_placement_debouncer.mark_sent(bounds);
+                                        }
+                                        sent
+                                    }
+                                {
+                                    last_overlay_bounds = Some(bounds);
+                                }
+                                coordinator.frame_ticks = coordinator.frame_ticks.saturating_add(1);
+                                let retry_after = outcome.retry_after();
+                                (true, None, None, None, retry_after)
+                            }
+                            Err(error) => {
+                                coordinator.frame_source_running = false;
+                                frame_application_log.record(
+                                    ApplicationLogEvent::new(ApplicationLogCode::ServiceFailed)
+                                        .with_context(ApplicationLogContext::Service("overlay"))
+                                        .with_context(ApplicationLogContext::Reason("tick_failed")),
+                                );
+                                (
+                                    false,
+                                    Some(error.to_string()),
+                                    coordinator.settings_window.clone(),
+                                    Some(Arc::clone(&coordinator.failures)),
+                                    None,
+                                )
+                            }
+                        }
+                    };
+                    if let (Some(failure), Some(settings_window), Some(failures)) =
+                        (failure, settings_window, failures)
+                    {
+                        record_failure(&failures, failure);
+                        let _ = settings_window.update(cx, |view, _, cx| {
+                            view.report_service_error(
+                                SettingsError::new(SettingsErrorCode::RuntimeUnavailable),
+                                cx,
+                            );
+                        });
+                    }
+                    (keep_running, next_retry_delay)
+                });
+                #[cfg(target_os = "linux")]
+                {
+                    retry_delay = next_retry_delay;
+                }
                 #[cfg(target_os = "macos")]
                 let (keep_running, next_retry_delay) = cx.update(|cx| {
                     if !cx.has_global::<ProductCoordinator>() {
@@ -1157,7 +1308,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .as_mut()
                             .expect("product overlay owner is present")
                             .tick();
-                        if context_menu_requested
+                        if _context_menu_requested
                             && let Some(menu) = coordinator.system_menu.as_ref()
                             && let Some(overlay) = coordinator.overlay.as_ref()
                             && let Err(error) = menu.show_context_menu_for_window(overlay)
@@ -1287,7 +1438,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return false;
                     }
                     handle_shortcut_toggle_settings(cx);
-                    if context_menu_requested
+                    if _context_menu_requested
                         && let Some(coordinator) = cx.try_global::<ProductCoordinator>()
                         && let Some(menu) = coordinator.system_menu.as_ref()
                     {
@@ -2452,6 +2603,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let quit_shutdown_requested = Arc::clone(&shutdown_requested);
             cx.spawn(async move |_cx| {
                 Timer::after(run_options.run_duration()).await;
+                #[cfg(target_os = "linux")]
+                _cx.update(request_product_quit);
                 #[cfg(target_os = "macos")]
                 _cx.update(request_product_quit);
                 #[cfg(target_os = "windows")]
