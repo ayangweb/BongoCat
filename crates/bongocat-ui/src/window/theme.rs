@@ -73,7 +73,11 @@ pub(crate) fn system_appearance(window: Option<&Window>, cx: &App) -> WindowAppe
             bongocat_platform::SystemAppearance::Dark => WindowAppearance::Dark,
         }
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        window.map_or_else(|| cx.window_appearance(), Window::appearance)
+    }
+    #[cfg(target_os = "linux")]
     {
         window.map_or_else(|| cx.window_appearance(), Window::appearance)
     }
@@ -94,6 +98,33 @@ pub(crate) fn resolved_theme_mode(
         Some(mode) => mode,
         None => component_theme_mode(theme, system_appearance(window, cx)),
     }
+}
+
+/// Resolves the menu colors from the same GPUI Kit theme used by Settings.
+pub fn system_menu_palette(theme: SettingsTheme, cx: &App) -> bongocat_platform::SystemMenuPalette {
+    let colors = if resolved_theme_mode(theme, None, cx).is_dark() {
+        ThemeColor::dark()
+    } else {
+        ThemeColor::light()
+    };
+    bongocat_platform::SystemMenuPalette {
+        surface: rgba8(colors.popover),
+        foreground: rgba8(colors.foreground),
+        muted_foreground: rgba8(colors.muted_foreground),
+        separator: rgba8(colors.border),
+        hover_background: rgba8(colors.accent),
+        hover_foreground: rgba8(colors.accent_foreground),
+    }
+}
+
+fn rgba8(color: Hsla) -> [u8; 4] {
+    let color = color.to_rgb();
+    [
+        (color.r * 255.0).round() as u8,
+        (color.g * 255.0).round() as u8,
+        (color.b * 255.0).round() as u8,
+        (color.a * 255.0).round() as u8,
+    ]
 }
 
 /// Applies the preference to the component colours before the configuration roundtrip,
