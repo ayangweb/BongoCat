@@ -77,6 +77,9 @@ pub struct Application {
     panic_hook: Option<ApplicationPanicHook>,
     shortcut_table: ShortcutTable,
     shortcut_capture_suspended: bool,
+    overlay_always_on_top_available: bool,
+    overlay_output_relative_geometry_available: bool,
+    overlay_pointer_hover_available: bool,
 }
 
 impl Application {
@@ -108,6 +111,25 @@ impl Application {
 
     pub fn config(&self) -> &NativeConfig {
         &self.config
+    }
+
+    pub fn set_overlay_capabilities(
+        &mut self,
+        always_on_top: bool,
+        output_relative_geometry: bool,
+        pointer_hover: bool,
+    ) {
+        self.overlay_always_on_top_available = always_on_top;
+        self.overlay_output_relative_geometry_available = output_relative_geometry;
+        self.overlay_pointer_hover_available = pointer_hover;
+    }
+
+    pub(crate) const fn overlay_capabilities(&self) -> (bool, bool, bool) {
+        (
+            self.overlay_always_on_top_available,
+            self.overlay_output_relative_geometry_available,
+            self.overlay_pointer_hover_available,
+        )
     }
 
     pub fn effective_language(&self) -> Language {
@@ -160,6 +182,9 @@ impl Application {
     /// longer compiles leaves the previous table in place and the platform
     /// keeps what it already registered.
     fn refresh_shortcut_table(&mut self) {
+        if self.shortcut_capture_suspended {
+            return;
+        }
         let compiled = {
             let active_model = self.live_model_identity();
             active_shortcuts(&self.config, active_model.as_ref())

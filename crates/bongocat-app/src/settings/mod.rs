@@ -51,12 +51,12 @@ use bongocat_ui_protocol::{
     SettingsModelBehaviorBinding, SettingsModelCatalog, SettingsModelCatalogError,
     SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportProgress,
     SettingsModelImportStage, SettingsModelKey, SettingsModelMode, SettingsModelSettings,
-    SettingsOverlay, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
-    SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics,
-    SettingsRuntimeErrorCode, SettingsServiceEndpoint, SettingsShortcutBinding, SettingsShortcuts,
-    SettingsSnapshot, SettingsStartupItemError, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsOverlay, SettingsOverlayCapabilities, SettingsRandomBehavior,
+    SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,
+    SettingsRuntimeDiagnostics, SettingsRuntimeErrorCode, SettingsServiceEndpoint,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemError,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_update::UpdateDiagnostics;
 use std::{
