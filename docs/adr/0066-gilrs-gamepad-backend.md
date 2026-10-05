@@ -1,6 +1,6 @@
 # ADR-0066: gilrs 手柄后端与平台窄适配边界
 
-状态：已接受（2026-09-25）；fork 已补齐 callback lifetime、bounded queue/epoch、authoritative reset、bounded shutdown、compile guard 与 xinput 回归修复；2026-09-26 追加 macOS IOHID worker run-loop 空转修复（空闲 CPU 98% → 0%）；2026-10-02 追加 WGI 焦点门控读取修复与 WGI raw analog axis 取值域修复；双平台物理设备与长期证据仍阻塞完成声明
+状态：已接受（2026-09-25）；fork 已补齐 callback lifetime、bounded queue/epoch、authoritative reset、bounded shutdown、compile guard 与 xinput 回归修复；2026-09-26 追加 macOS IOHID worker run-loop 空转修复（空闲 CPU 98% → 0%）；2026-10-02 追加 WGI 焦点门控读取修复与 WGI raw analog axis 取值域修复；2026-10-05 追加 WGI raw element 顺序修复（见 Issue #1099）；双平台物理设备与长期证据仍阻塞完成声明
 
 ## 背景
 
@@ -16,7 +16,7 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
 ## 决策
 
 - 根 workspace 精确固定 `https://github.com/ayangweb/gilrs` 的 commit
-  `8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549`，package 版本为 `gilrs 0.11.2` /
+  `9a5ee3d6c36db25871f6ea67eafaf09c637a0c50`，package 版本为 `gilrs 0.11.2` /
   `gilrs-core 0.6.8`。该 commit 包含 callback context ownership、bounded queue/epoch、authoritative
   reset、WGI/XInput bounded shutdown、macOS IOHID stop/join、target-scoped compile guard 与 xinput
   extreme-axis regression 修复；再追加 macOS IOHID worker 的 run-loop 空转修复：worker 曾以 null
@@ -29,12 +29,21 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
   窗口获得焦点时才有输入，HID 设备不受影响因为它们走 `RawGameController`。修复改为设备只要
   暴露任何 raw report 就优先用 `RawGameController`，mapped 读取仅作为完全无 raw report 时的
   回退；该选择同时决定 element 列表、`AxisInfo` 取值域和 SDL mapping 查询键，因为三者都描述
-  raw 布局；最后追加 WGI raw analog axis 的取值域修复：backend 曾用 SDL 的预居中换算
+  raw 布局；再追加 WGI raw analog axis 的取值域修复：backend 曾用 SDL 的预居中换算
   `(value * 65535.0) - 32768.0` 生成 raw sample，同时把 `EvCodeKind::Axis` 声明为 `i16`
   取值域，而 gilrs 会再归一化一次，导致静止摇杆落在 `i16::MIN` 并被读成 `-1.0`、
   负方向一半行程被钳制为最大偏移，且映射到按键的模拟扳机按有符号域读取时静止值正好是半程、
-  压在 axis-to-button 阈值上。后续修复仍必须形成可审计的 patch series、推送到 fork `master`
-  并再次精确固定 commit。
+  压在 axis-to-button 阈值上。最后追加 WGI raw element 顺序修复（Issue #1099）：
+  `native_ev_codes` 沿用上游 gilrs 的 evdev 下标，而 `RawGameController` 按 Windows Gaming
+  Input 自己的顺序报告元素，`Mapping::default` 又按 element code 身份匹配，于是四个面键整体错位
+  一位、把 D-pad 报告成按键的设备十字键四个方向全部落到表外而失效、两个模拟扳机分别落到右摇杆
+  Y 轴和左扳机上——静止摇杆因此正好压在 axis-to-button 阈值上而让被它驱动的按键逐采样抖动，
+  这就是 Switch 模式下"模型鬼畜地疯狂按下所有按键"。修复分两半：`native_ev_codes` 改带 WGI
+  原始下标（面键 `SOUTH/EAST/WEST/NORTH` = 0..3，D-pad 落在 10..13，Guide 之后的元素排在
+  15 之后以免借用别的按键下标），`Gamepad::axes` 则把 raw element 按 SDL 映射的槽位顺序
+  呈现（六个轴时 `[0, 1, 4, 2, 3, 5]`），使 `lefttrigger:a2` 解析到左扳机而不是右摇杆 X 轴；
+  非六轴设备保持自身顺序，因为没有任何来源描述它。后续修复仍必须形成可审计的 patch series、
+  推送到 fork `master` 并再次精确固定 commit。
   `deny.toml` 只放行该精确 git source；fork 的 SDL mapping submodule 由该 commit 固定为
   `15b5e9f4abfb1c5c691c468799816755a91a2e11`。`deny.toml` 通过 `required-git-spec = "rev"` 拒绝
   branch/tag git source。workspace dependency 不启用平台 feature；`bongocat-platform` 的 Windows target
@@ -91,9 +100,22 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
    hidden，overlay 默认为 click-through，设置窗口也不保证聚焦，因此 mapped 读取让 XInput 模式手柄
    只在 BongoCat 窗口获得焦点时才有输入。fork 已改为优先使用不受焦点门控的 `RawGameController`，
    但仍必须在 Windows 10/11 实机验证 settings 开关、焦点/失焦、click-through、启动时已连接、重连和
-   多手柄，并确认 GameInput 为 XInput 设备暴露的 raw report 元素顺序与 SDL mapping 一致；在取得该
-   证据前不得把焦点矩阵写成已验证，若 raw 路径在这些状态仍不可靠，应继续修复 fork backend，而不是
-   改回 BongoCat 内 XInput workaround。
+   多手柄；在取得该证据前不得把焦点矩阵写成已验证，若 raw 路径在这些状态仍不可靠，应继续修复 fork
+   backend，而不是改回 BongoCat 内 XInput workaround。
+0b. **Windows WGI raw element 顺序（已在 fork 修复，实机证据仍缺）：** Issue #1099 报告 Xbox 兼容
+   模式下面键错位、十字键无响应、左爪默认姿态错误，Switch 模式下模型疯狂按下所有按键，而 DS4
+   模式正常。该症状与 `native_ev_codes` 的 evdev 下标和 WGI raw 顺序不一致完全吻合：没有 SDL
+   mapping 的设备走 `Mapping::default` 时面键错位、十字键落到表外，两个模拟扳机则落到右摇杆 Y 轴
+   和左扳机上；Switch Pro 只有四个轴，其第三轴（正是右摇杆 Y）因此被当成左扳机，静止时按有符号
+   域归一化后正好是 `0.5`，压在 axis-to-button 阈值上逐采样抖动，这就是"鬼畜"。有 SDL mapping 的
+   设备走 `parse_sdl_mapping`，其 `a2`（左扳机）同样落到 WGI 的右摇杆 X 轴。fork 已按上文把
+   `native_ev_codes` 改为 WGI 原始下标，并把 `Gamepad::axes` 的呈现顺序改为 SDL 槽位顺序；轴顺序
+   依据是 Microsoft 的 `Raw game controller` 文档，按键顺序依据是 Windows 手柄的实际报告顺序
+   （Microsoft 不跨设备固定它，设备在注册表 `Labels\Buttons` 自报），因此仍必须在 Windows 10/11
+   实机逐一确认面键、十字键、摇杆与扳机，确认 SDL mapping 命中的设备不再错位，并确认非六轴设备
+   （Switch Pro、DS4）在自身顺序下的表现。切换 `crates/bongocat-platform/Cargo.toml` 的 Windows
+   feature 到 `xinput` 可让 Xbox 兼容模式正常但让 Switch/DS4 完全无反应，这是 `xinput` backend
+   只认 XInput 设备的预期行为，不作为回退方案。
 1. **双平台物理设备与系统生命周期：** 仍需在真实 macOS IOHID 和 Windows WGI 设备上验证 held-at-startup、
    held-at-reconnect、lost-release、overflow/reset epoch、100-cycle restart、锁屏/睡眠/快速用户切换和
    长时间无增长。cross-check、纯函数测试和无设备 smoke 不能替代这些证据。
@@ -115,8 +137,9 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
   feature 的 `cargo test` 均通过，`cargo fmt --all -- --check` 干净；`cargo clippy
   --no-default-features --features wgi --all-targets` 无新增告警（`gilrs/build.rs` 的
   `useless_borrows_in_formatting` 告警在 `master` 上已存在，不属本次改动）。
-- 该修复只由纯函数回归测试覆盖。Issue #1083 报告的 Switch 模式手柄"模型鬼畜"是否由它完全解释，
-  仍需 Windows 10/11 实机加该手柄确认；未取得该证据前不得声称手柄输入完成。
+- 该修复只由纯函数回归测试覆盖。Issue #1083 与 #1099 报告的 Switch 模式手柄"模型鬼畜"是否由取值域
+  与 element 顺序两处缺陷完全解释，仍需 Windows 10/11 实机加该手柄确认；未取得该证据前不得声称手柄
+  输入完成。
 - gilrs fork 的 queue/epoch、authoritative reset、WGI/XInput shutdown acknowledgement、macOS callback
   ownership/close 与 xinput extreme-axis test 已通过 fork 的 fmt/check/clippy/test；BongoCat Windows
   `cargo check/clippy/test`、WGI 无设备 context 初始化/关闭 smoke，以及 macOS
@@ -125,8 +148,17 @@ runtime dead-zone；这些是产品语义，不能由第三方库类型替代。
   `a_device_without_a_raw_report_falls_back_to_the_mapped_reading` 固定读取来源的选择规则：设备只要
   暴露任何 raw report 就走不受焦点门控的 `RawGameController`，完全没有 raw report 才回退 mapped
   读取。焦点门控本身是 Windows 行为，无法用单元测试断言；该修复仍需 Windows 10/11 实机加 XInput
-  手柄确认背景投递，并确认 GameInput 为 XInput 设备暴露的 raw report 元素顺序与 SDL mapping
-  （Xbox 控制器为 `b0..b9` + D-pad hat + `a0..a5`）一致。未取得该证据前不得声称焦点矩阵已验证。
+  手柄确认背景投递。未取得该证据前不得声称焦点矩阵已验证。
+- fork 侧 `the_position_names_carry_the_windows_gaming_input_axis_order`、
+  `the_face_buttons_carry_the_windows_gaming_input_button_order`、
+  `a_device_that_reports_its_dpad_as_buttons_reaches_every_direction`、
+  `a_mapping_slot_resolves_to_the_raw_axis_behind_that_control` 与
+  `a_device_without_the_six_axis_shape_keeps_its_own_axis_order` 固定 WGI raw element 顺序契约：
+  位置名携带 WGI 原始下标、SDL 槽位解析到该控件背后的 raw 轴、非六轴设备不被重排，以及映射必须是
+  双射。四处变异（把左扳机放回 evdev 下标、把面键放回 evdev 下标、把十字键推回表外、让轴翻译退化为
+  恒等）分别让对应测试变红。fork 的 `cargo test --workspace --features wgi` 与 `cargo clippy
+  --workspace --all-targets --features wgi` 通过；轴顺序依据 Microsoft `Raw game controller`
+  文档，按键顺序依据实机报告顺序，两者都仍需 Windows 10/11 实机逐键确认。
 - 原 standalone XInput/GameController 手柄 probe、依赖、命令和 CI smoke 已删除；键鼠 Raw Input /
   CGEventTap spike 保留。物理 WGI/IOHID 矩阵、真实设备、物理 profile、热插拔和生命周期矩阵继续作为
   发布门禁。
