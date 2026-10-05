@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+use super::platform::{initial_window_bounds, placement_from_window};
 use super::*;
 
 #[allow(clippy::too_many_arguments)]
@@ -34,8 +36,9 @@ pub fn open_settings_window(
                     ),
                     ..Default::default()
                 }),
+                window_decorations: platform::window_decorations(),
                 focus: false,
-                show: false,
+                show: platform::SHOW_ON_CREATE,
                 ..Default::default()
             },
             move |window, cx| {
@@ -143,6 +146,7 @@ pub fn open_settings_window(
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 fn initial_window_bounds(
     window_state: &SettingsWindowState,
     cx: &App,
@@ -196,6 +200,7 @@ fn initial_window_bounds(
     (bounds, gpui_display_id(display.display_id, cx))
 }
 
+#[cfg(not(target_os = "linux"))]
 fn gpui_display_id(display_id: Option<u32>, cx: &App) -> Option<DisplayId> {
     let display_id = display_id?;
     cx.displays()
@@ -204,6 +209,7 @@ fn gpui_display_id(display_id: Option<u32>, cx: &App) -> Option<DisplayId> {
         .map(|display| display.id())
 }
 
+#[cfg(not(target_os = "linux"))]
 fn placement_from_window(window: &Window, cx: &App) -> Option<SettingsWindowPlacement> {
     let window_bounds = window.window_bounds();
     let maximized = match window_bounds {
@@ -230,6 +236,7 @@ fn placement_from_window(window: &Window, cx: &App) -> Option<SettingsWindowPlac
     )
 }
 
+#[cfg(not(target_os = "linux"))]
 fn settings_window_content_top_inset() -> f32 {
     #[cfg(target_os = "macos")]
     {
@@ -241,6 +248,7 @@ fn settings_window_content_top_inset() -> f32 {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 fn rounded_f32_i32(value: f32) -> Option<i32> {
     if !value.is_finite() || value < i32::MIN as f32 || value > i32::MAX as f32 {
         return None;

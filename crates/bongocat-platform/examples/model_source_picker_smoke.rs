@@ -14,7 +14,9 @@
 //! Windows that flag only covers the cancellation path: an accepted run selects
 //! the folder by hand and uses `--expect-selected`.
 
+#[cfg(not(target_os = "linux"))]
 use bongocat_platform::{ModelSourcePickerOutcome, pick_model_folder};
+#[cfg(not(target_os = "linux"))]
 use std::{
     env,
     error::Error,
@@ -118,17 +120,20 @@ fn run_native_application(_application: &NativeApplication) {
     NSApplication::sharedApplication(mtm).run();
 }
 
+#[cfg(not(target_os = "linux"))]
 enum ExpectedOutcome {
     Cancelled,
     Selected(PathBuf),
     SelectedAny,
 }
 
+#[cfg(not(target_os = "linux"))]
 struct SmokeOptions {
     expected: ExpectedOutcome,
     automated: bool,
 }
 
+#[cfg(not(target_os = "linux"))]
 fn smoke_options() -> Result<SmokeOptions, io::Error> {
     let mut arguments = env::args().skip(1);
     let expected = match arguments.next().as_deref() {
@@ -269,6 +274,7 @@ fn start_automation(
     Ok(None)
 }
 
+#[cfg(not(target_os = "linux"))]
 fn run_native_picker_smoke() -> Result<(), Box<dyn Error>> {
     let options = smoke_options()?;
     #[cfg(target_os = "macos")]
@@ -323,6 +329,12 @@ fn run_native_picker_smoke() -> Result<(), Box<dyn Error>> {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 fn main() -> Result<(), Box<dyn Error>> {
     run_native_picker_smoke()
+}
+
+#[cfg(target_os = "linux")]
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    Err("model picker smoke is not implemented on Linux".into())
 }

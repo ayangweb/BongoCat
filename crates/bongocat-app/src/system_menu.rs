@@ -3,7 +3,14 @@
 //! The labels are read from the settings snapshot rather than translated here, so
 //! the menu and the settings window cannot disagree about the product's language.
 
+#[cfg(not(target_os = "linux"))]
 use super::*;
+#[cfg(target_os = "linux")]
+use bongocat_platform::{SystemMenuAction, SystemMenuPresentation};
+#[cfg(target_os = "linux")]
+use bongocat_ui_protocol::{
+    SettingsClient, SettingsError, SettingsErrorCode, SettingsOverlay, SettingsSnapshot,
+};
 
 pub(crate) fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMenuPresentation {
     // `catalog_locale` is the protocol's own answer to "which catalog does this
@@ -39,6 +46,7 @@ pub(crate) fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMen
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 pub(crate) async fn refresh_system_menu_presentation(
     client: &SettingsClient,
     cx: &mut AsyncApp,
@@ -64,14 +72,11 @@ pub(crate) async fn refresh_system_menu_presentation(
 pub(crate) async fn apply_system_menu_overlay_action(
     client: SettingsClient,
     action: SystemMenuAction,
-) -> Result<bool, String> {
-    let snapshot = client
-        .read_snapshot()
-        .await
-        .map_err(|error| error.to_string())?;
+) -> Result<bool, SettingsError> {
+    let snapshot = client.read_snapshot().await?;
     let revision = snapshot
         .config_revision
-        .ok_or_else(|| "system menu cannot update configuration during recovery".to_owned())?;
+        .ok_or(SettingsError::new(SettingsErrorCode::ServiceUnavailable))?;
     match action {
         SystemMenuAction::ToggleOverlayVisibility => {
             client
@@ -111,8 +116,7 @@ pub(crate) async fn apply_system_menu_overlay_action(
                 )
                 .await
         }
-        _ => return Err("invalid system menu overlay action".to_owned()),
+        _ => return Err(SettingsError::new(SettingsErrorCode::ServiceUnavailable)),
     }
     .map(|_| true)
-    .map_err(|error| error.to_string())
 }

@@ -416,6 +416,10 @@
     },
     "input_interaction": {
       "mouse": {
+        "sensitivity": {
+          "label": "鼠标跟随灵敏度（%）",
+          "description": "100% 为默认速度；数值越小，移动越慢。到边界后丢弃多余位移。"
+        },
         "title": "鼠标",
         "mirror_mouse_tracking_horizontal": {
           "label": "水平翻转鼠标跟随"
@@ -496,7 +500,8 @@
       "status_icon": {
         "label": {
           "macos": "显示菜单栏图标",
-          "windows": "显示系统托盘图标"
+          "windows": "显示系统托盘图标",
+          "linux": "显示系统托盘图标"
         }
       },
       "taskbar_icon": {
@@ -525,5 +530,11 @@
         "unsupported_build": "开发版本不支持登录时启动"
       }
     }
-  }
+  },
+  "linux_input": {
+    "unavailable": "输入服务不可用。请检查系统是否安装 pkexec、libinput，以及桌面认证代理，然后重新打开应用。",
+    "denied": "输入授权未完成。请重新打开应用并允许认证，键鼠动作才能驱动模型。",
+    "stopped": "输入服务已停止，模型无法响应键鼠。请重新打开应用并检查认证与当前桌面会话状态。"
+  },
+  "linux_tray": {"unavailable": "无法显示托盘图标。请确认桌面支持系统托盘；GNOME 需要启用 AppIndicator 扩展。"}
 }

@@ -20,6 +20,20 @@ use bongocat_runtime::{
 };
 
 impl Application {
+    pub fn set_pointer_sensitivity(&mut self, percent: u16) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.input.pointer_sensitivity_percent = percent;
+        next_config.validate()?;
+        let revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(revision);
+        #[cfg(target_os = "linux")]
+        bongocat_platform::set_linux_pointer_sensitivity(percent);
+        Ok(())
+    }
+
     pub fn set_appearance_theme(&mut self, theme: ConfigTheme) -> Result<(), ApplicationError> {
         let mut next_config = self.config.clone();
         next_config.appearance.theme = theme;

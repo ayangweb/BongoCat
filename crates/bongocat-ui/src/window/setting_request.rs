@@ -69,6 +69,13 @@ impl SettingsView {
             Some(SettingValue::MaximumFps { maximum_fps, .. }) => Some(*maximum_fps),
             _ => None,
         };
+        let sent_pointer_sensitivity_percent = match value.as_ref() {
+            Some(SettingValue::PointerSensitivity {
+                pointer_sensitivity_percent,
+                ..
+            }) => Some(*pointer_sensitivity_percent),
+            _ => None,
+        };
         let sent_random_behavior = match value.as_ref() {
             Some(SettingValue::RandomBehaviorSettings { settings, .. }) => Some(*settings),
             _ => None,
@@ -250,6 +257,17 @@ impl SettingsView {
                         .set_maximum_fps(expected_config_revision, maximum_fps)
                         .await
                 }
+                Some(SettingValue::PointerSensitivity {
+                    expected_config_revision,
+                    pointer_sensitivity_percent,
+                }) => {
+                    client
+                        .set_pointer_sensitivity(
+                            expected_config_revision,
+                            pointer_sensitivity_percent,
+                        )
+                        .await
+                }
                 Some(SettingValue::ModelSettings {
                     expected_config_revision,
                     settings,
@@ -384,6 +402,15 @@ impl SettingsView {
                     }
                 }
                 if result.is_ok()
+                    && let Some(pointer_sensitivity_percent) = sent_pointer_sensitivity_percent
+                {
+                    view.pointer_sensitivity_percent_debouncer
+                        .mark_sent(&pointer_sensitivity_percent);
+                    if view.pointer_sensitivity_percent_debouncer.is_pending() {
+                        view.schedule_pointer_sensitivity_percent_flush(cx);
+                    }
+                }
+                if result.is_ok()
                     && let Some(settings) = sent_random_behavior
                 {
                     view.random_behavior_debouncer.mark_sent(&settings);
@@ -425,6 +452,9 @@ impl SettingsView {
                     }
                     if sent_maximum_fps.is_some() {
                         view.schedule_maximum_fps_flush(cx);
+                    }
+                    if sent_pointer_sensitivity_percent.is_some() {
+                        view.schedule_pointer_sensitivity_percent_flush(cx);
                     }
                     if sent_random_behavior.is_some() {
                         view.schedule_random_behavior_flush(cx);

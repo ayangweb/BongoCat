@@ -416,6 +416,10 @@
     },
     "input_interaction": {
       "mouse": {
+        "sensitivity": {
+          "label": "마우스 추적 감도 (%)",
+          "description": "100%가 기본 속도입니다. 값이 낮을수록 느리게 움직이며, 경계에 도달한 뒤의 초과 이동은 버립니다."
+        },
         "title": "마우스",
         "mirror_mouse_tracking_horizontal": {
           "label": "마우스 추적 좌우 반전"
@@ -496,7 +500,8 @@
       "status_icon": {
         "label": {
           "macos": "메뉴 막대 아이콘 표시",
-          "windows": "시스템 트레이 아이콘 표시"
+          "windows": "시스템 트레이 아이콘 표시",
+          "linux": "시스템 트레이 아이콘 표시"
         }
       },
       "taskbar_icon": {
@@ -525,5 +530,13 @@
         "unsupported_build": "개발 빌드에서는 로그인 시 실행을 사용할 수 없습니다"
       }
     }
+  },
+  "linux_input": {
+    "unavailable": "입력 서비스를 사용할 수 없습니다. pkexec, libinput 및 데스크톱 인증 에이전트를 사용할 수 있는지 확인한 뒤 앱을 다시 여세요.",
+    "denied": "입력 권한 인증이 완료되지 않았습니다. 앱을 다시 열고 인증을 완료하면 키보드와 마우스로 모델을 움직일 수 있습니다.",
+    "stopped": "입력 서비스가 중지되었습니다. 앱을 다시 열고 권한과 현재 데스크톱 세션을 확인하세요."
+  },
+  "linux_tray": {
+    "unavailable": "트레이 아이콘을 표시할 수 없습니다. 데스크톱이 시스템 트레이를 지원하는지 확인하세요. GNOME에는 AppIndicator 확장이 필요합니다."
   }
 }

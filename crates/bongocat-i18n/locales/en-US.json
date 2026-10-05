@@ -416,6 +416,10 @@
     },
     "input_interaction": {
       "mouse": {
+        "sensitivity": {
+          "label": "Mouse tracking sensitivity (%)",
+          "description": "100% is the default speed. Lower values move more slowly; excess travel at the boundary is discarded."
+        },
         "title": "Mouse",
         "mirror_mouse_tracking_horizontal": {
           "label": "Flip mouse tracking horizontally"
@@ -496,7 +500,8 @@
       "status_icon": {
         "label": {
           "macos": "Show menu bar icon",
-          "windows": "Show system tray icon"
+          "windows": "Show system tray icon",
+          "linux": "Show system tray icon"
         }
       },
       "taskbar_icon": {
@@ -525,5 +530,11 @@
         "unsupported_build": "Login startup is unavailable in development builds"
       }
     }
-  }
+  },
+  "linux_input": {
+    "unavailable": "Input service unavailable. Check that pkexec, libinput and a desktop authentication agent are available, then reopen the app.",
+    "denied": "Input authorization was not completed. Reopen the app and approve authentication to animate the model from keyboard and mouse input.",
+    "stopped": "The input service stopped. Reopen the app and check authorization and the current desktop session."
+  },
+  "linux_tray": {"unavailable": "The tray icon could not be shown. Check that the desktop supports system trays; GNOME requires an AppIndicator extension."}
 }

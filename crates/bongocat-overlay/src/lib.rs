@@ -13,6 +13,7 @@ mod windows;
 /// Pointer hover hide is only reachable through the native sessions, so the
 /// module shares their platform gate rather than warning as dead code on the
 /// targets that cannot create an overlay.
+#[cfg(any(not(target_os = "linux"), test))]
 mod hover;
 /// Idle hide shares the platform sessions with [`hover`]: only they
 /// receive the input counters the state machine consumes.
@@ -20,11 +21,13 @@ mod idle;
 
 /// Overlay placement constraint and its settle delay. Gated with the native
 /// sessions for the same reason as [`hover`].
+#[cfg(any(not(target_os = "linux"), test))]
 mod placement;
 
 /// Right-button drag resizing of the model window. Gated with the native
 /// sessions for the same reason as [`hover`]: only they receive the pointer
 /// messages the state machine consumes.
+#[cfg(any(not(target_os = "linux"), test))]
 mod resize_drag;
 
 /// The backend-independent half of the model cover capture. Gated with the native
@@ -46,11 +49,13 @@ use bongocat_runtime::{
     idle_hide_delay_ms,
 };
 use raw_window_handle::{HandleError, HasWindowHandle, WindowHandle};
+#[cfg(any(not(target_os = "linux"), test))]
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::{path::Path, sync::mpsc::SyncSender, time::Duration};
 
 pub const DEFAULT_OVERLAY_WINDOW_WIDTH: u32 = 350;
+#[cfg(not(target_os = "linux"))]
 pub(crate) const FRAME_SMOKE_GRID_DIMENSION: u64 = 17;
 const MIN_OVERLAY_WINDOW_DIMENSION: f32 = 64.0;
 const MAX_OVERLAY_WINDOW_DIMENSION: u32 = 16_384;
@@ -92,7 +97,9 @@ mod blend;
 mod bounds;
 mod dimensions;
 mod error;
+#[cfg(any(not(target_os = "linux"), test))]
 mod frame;
+#[cfg(any(not(target_os = "linux"), test))]
 mod presentation;
 mod preview;
 mod product_session;
@@ -102,10 +109,14 @@ mod tests;
 mod timing;
 
 pub(crate) use blend::*;
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) use bounds::*;
 pub(crate) use dimensions::*;
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) use frame::*;
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) use presentation::*;
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) use preview::*;
 pub(crate) use product_session::*;
 // `cover` and `timing` hold items that are only `pub(crate)`, so the root
@@ -125,3 +136,6 @@ pub use product_session::{
 };
 pub use report::{OverlayTickOutcome, ProductOverlayReport};
 pub use timing::{FrameTimingSummary, PreviewReport};
+
+#[cfg(target_os = "linux")]
+mod linux;

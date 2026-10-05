@@ -5,7 +5,8 @@
 //! steps is an await on the foreground executor, so the settings window keeps
 //! redrawing and the overlay keeps ticking while the capture's model settles.
 
-use super::*;
+use async_io::Timer;
+use std::sync::Arc;
 
 /// How often the GPUI thread looks for a cover capture the settings worker queued.
 ///
@@ -30,4 +31,35 @@ pub(crate) async fn capture_model_cover_without_blocking(
         Timer::after(session.frame_interval()).await;
     }
     session.finish()
+}
+
+/// Commit a captured cover, or remove the unusable import before exposing its card.
+pub(crate) async fn capture_imported_model_cover(
+    client: &bongocat_ui_protocol::SettingsClient,
+    request: bongocat_app::CoverCaptureRequest,
+    log: &bongocat_app::ApplicationLogHandle,
+) -> (bongocat_ui_protocol::SettingsModelKey, bool) {
+    let key = request.key().clone();
+    let captured = match capture_model_cover_without_blocking(Arc::clone(request.model())).await {
+        Ok(cover) => client
+            .replace_model_cover(key.clone(), cover.png().to_vec())
+            .await
+            .is_ok(),
+        Err(_) => false,
+    };
+    if !captured {
+        log.record(
+            bongocat_app::ApplicationLogEvent::new(
+                bongocat_app::ApplicationLogCode::ModelOperationFailed,
+            )
+            .with_context(bongocat_app::ApplicationLogContext::Operation(
+                "cover_capture",
+            ))
+            .with_context(bongocat_app::ApplicationLogContext::Reason(
+                "overlay_capture_failed",
+            )),
+        );
+        let _ = client.delete_model(key.clone()).await;
+    }
+    (key, captured)
 }

@@ -910,6 +910,44 @@ impl SettingsView {
         }
     }
 
+    pub(super) fn set_pointer_sensitivity_percent_value(
+        &mut self,
+        raw: f64,
+        cx: &mut Context<Self>,
+    ) {
+        if self.model_import.is_running() {
+            return;
+        }
+        let value = raw.round().clamp(1.0, 400.0) as u16;
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if snapshot.pointer_sensitivity_percent == value {
+            return;
+        }
+        let expected_config_revision = snapshot.config_revision;
+        let should_send = self
+            .pointer_sensitivity_percent_debouncer
+            .observe(value, Instant::now())
+            .filter(|_| self.pending.is_none())
+            .and_then(|pointer_sensitivity_percent| {
+                expected_config_revision.map(|expected_config_revision| {
+                    self.start_request(
+                        PendingOperation::PointerSensitivity,
+                        Some(SettingValue::PointerSensitivity {
+                            expected_config_revision,
+                            pointer_sensitivity_percent,
+                        }),
+                        cx,
+                    );
+                })
+            })
+            .is_some();
+        if !should_send {
+            self.schedule_pointer_sensitivity_percent_flush(cx);
+        }
+    }
+
     pub(super) fn set_model_settings(
         &mut self,
         settings: SettingsModelSettings,

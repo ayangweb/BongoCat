@@ -146,7 +146,7 @@ impl UpdateRuntime {
     /// signing key. Callers surface the first reason so the UI can explain the
     /// absence of the entry point instead of leaving it unexplained.
     pub fn unavailability(&self) -> Option<UpdateUnavailability> {
-        if !self.configuration.channel.is_enabled() {
+        if cfg!(target_os = "linux") || !self.configuration.channel.is_enabled() {
             return Some(UpdateUnavailability::DevelopmentChannel);
         }
         if configured_signing_key(RELEASE_SIGNING_KEY).is_none() {

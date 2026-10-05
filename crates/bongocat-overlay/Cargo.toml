@@ -51,3 +51,10 @@ dbg_macro = "deny"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+bongocat-config.workspace = true
+image.workspace = true
+winit = { version = "=0.30.13", default-features = false, features = ["wayland", "wayland-dlopen", "rwh_06"] }
+wgpu = { version = "=30.0.1", default-features = false, features = ["std", "vulkan", "wgsl"] }
+pollster = "=1.0.1"

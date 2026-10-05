@@ -76,6 +76,7 @@
 // not compiled into any other platform's packaging run.
 #[cfg(target_os = "macos")]
 mod finder_store;
+mod linux;
 
 use std::{
     collections::BTreeMap,
@@ -221,6 +222,7 @@ fn failure<T>(message: impl Into<String>) -> Result<T> {
 /// fails the build if the two lists ever drift apart.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ReleaseTarget {
+    LinuxX86_64,
     MacosAarch64,
     MacosX86_64,
     WindowsX86_64,
@@ -234,6 +236,7 @@ impl ReleaseTarget {
             Self::MacosAarch64 => "aarch64-apple-darwin",
             Self::MacosX86_64 => "x86_64-apple-darwin",
             Self::WindowsX86_64 => "x86_64-pc-windows-msvc",
+            Self::LinuxX86_64 => "x86_64-unknown-linux-gnu",
         }
     }
 
@@ -252,7 +255,7 @@ impl ReleaseTarget {
         match self {
             Self::MacosAarch64 => "aarch64",
             Self::MacosX86_64 => "x64",
-            Self::WindowsX86_64 => "x64",
+            Self::WindowsX86_64 | Self::LinuxX86_64 => "x64",
         }
     }
 
@@ -269,7 +272,7 @@ impl ReleaseTarget {
     fn installer_file_name(self) -> Option<String> {
         match self {
             Self::WindowsX86_64 => Some(self.download_asset()),
-            Self::MacosAarch64 | Self::MacosX86_64 => None,
+            Self::MacosAarch64 | Self::MacosX86_64 | Self::LinuxX86_64 => None,
         }
     }
 
@@ -294,6 +297,7 @@ impl ReleaseTarget {
                 self.architecture()
             ),
             Self::MacosAarch64 | Self::MacosX86_64 => self.disk_image_file_name(),
+            Self::LinuxX86_64 => format!("BongoCat-{}-linux-x64.tar.gz", env!("CARGO_PKG_VERSION")),
         }
     }
 
@@ -310,6 +314,9 @@ impl ReleaseTarget {
     }
 
     fn parse(triple: &str) -> Result<Self> {
+        if triple == "x86_64-unknown-linux-gnu" {
+            return Ok(Self::LinuxX86_64);
+        }
         Self::ALL
             .into_iter()
             .find(|target| target.triple() == triple)
@@ -330,6 +337,7 @@ impl ReleaseTarget {
         match self {
             Self::MacosAarch64 | Self::MacosX86_64 => &[PackageFormat::App, PackageFormat::Dmg],
             Self::WindowsX86_64 => &[PackageFormat::Nsis],
+            Self::LinuxX86_64 => &[],
         }
     }
 
@@ -343,6 +351,7 @@ impl ReleaseTarget {
             Self::MacosAarch64 => "macos-aarch64",
             Self::MacosX86_64 => "macos-x86_64",
             Self::WindowsX86_64 => "windows-x86_64",
+            Self::LinuxX86_64 => "linux-x86_64",
         }
     }
 
@@ -354,6 +363,7 @@ impl ReleaseTarget {
         match self {
             Self::MacosAarch64 | Self::MacosX86_64 => "app",
             Self::WindowsX86_64 => "nsis",
+            Self::LinuxX86_64 => "unsupported",
         }
     }
 
@@ -385,6 +395,7 @@ impl ReleaseTarget {
             ("macos", "aarch64") => Ok(Self::MacosAarch64),
             ("macos", "x86_64") => Ok(Self::MacosX86_64),
             ("windows", "x86_64") => Ok(Self::WindowsX86_64),
+            ("linux", "x86_64") => Ok(Self::LinuxX86_64),
             (os, arch) => failure(format!(
                 "{os}/{arch} is not a BongoCat release host; packaging must run on one of {}",
                 Self::ALL.map(Self::triple).join(", ")
@@ -638,6 +649,14 @@ fn package(options: Options) -> Result<Vec<PathBuf>> {
         Some(target) => target,
         None => ReleaseTarget::host()?,
     };
+    if target == ReleaseTarget::LinuxX86_64 {
+        if options.formats.is_some() {
+            return failure(
+                "Linux currently produces a local installation archive; omit --formats",
+            );
+        }
+        return linux::package(&workspace, &options.environment, target);
+    }
     let requested = match &options.formats {
         Some(formats) => {
             for format in formats {
@@ -2246,7 +2265,7 @@ finish 1
 }
 
 /// Makes a staged file runnable by whoever opens the image.
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn make_executable(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let mut permissions = fs::metadata(path)?.permissions();
