@@ -34,6 +34,10 @@ fn unavailability_reasons_are_preserved() {
         UpdateUnavailableReason::DevelopmentBuild
     );
     assert_eq!(
+        unavailable_reason(UpdateUnavailability::UnsupportedTarget),
+        UpdateUnavailableReason::UnsupportedPlatform
+    );
+    assert_eq!(
         unavailable_reason(UpdateUnavailability::SigningKeyMissing),
         UpdateUnavailableReason::SigningKeyMissing
     );
