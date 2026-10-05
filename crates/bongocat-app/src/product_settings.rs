@@ -49,3 +49,27 @@ impl ProductSettingsWindow {
         Ok(handle)
     }
 }
+
+/// Bring the stored overlay scale to the one a right-button resize drag settled
+/// on.
+///
+/// The drag already resized the native window, so this only aligns the
+/// configuration — and with it the settings page — with what the user sees. A
+/// configuration that already matches needs no command. The existing revisioned
+/// settings service persists the scale; overlay adapters never write configuration.
+pub(crate) async fn publish_overlay_scale(client: &SettingsClient, scale_percent: u16) {
+    let Ok(snapshot) = client.read_snapshot().await else {
+        return;
+    };
+    let Some(config_revision) = snapshot.config_revision else {
+        return;
+    };
+    if snapshot.overlay.scale_percent == scale_percent {
+        return;
+    }
+    let settings = bongocat_ui_protocol::SettingsOverlay {
+        scale_percent,
+        ..snapshot.overlay
+    };
+    let _ = client.set_overlay_settings(config_revision, settings).await;
+}

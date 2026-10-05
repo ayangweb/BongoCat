@@ -24,10 +24,7 @@ mod idle;
 #[cfg(any(not(target_os = "linux"), test))]
 mod placement;
 
-/// Right-button drag resizing of the model window. Gated with the native
-/// sessions for the same reason as [`hover`]: only they receive the pointer
-/// messages the state machine consumes.
-#[cfg(any(not(target_os = "linux"), test))]
+/// Right-button drag resizing shared by desktop sessions.
 mod resize_drag;
 
 /// The backend-independent half of the model cover capture. Gated with the native

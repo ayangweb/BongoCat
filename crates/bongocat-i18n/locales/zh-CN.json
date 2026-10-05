@@ -35,6 +35,11 @@
     "quit": "退出 BongoCat"
   },
   "startup_permission": {
+    "linux": {
+      "title": "允许监听键盘和鼠标？",
+      "description": "BongoCat 需要读取输入设备，才能响应其他应用中的键盘和鼠标操作。点击确定后，系统会请求管理员授权；仅输入监听辅助进程获得权限，设置和模型窗口仍以普通用户运行。选择稍后设置可继续使用，但键鼠响应和输入快捷键暂不可用。",
+      "confirm": "确定"
+    },
     "later": "稍后设置",
     "input_monitoring": {
       "title": "需要「输入监控」权限",

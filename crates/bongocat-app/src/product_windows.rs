@@ -8,32 +8,6 @@
 use super::*;
 use product_shutdown::finish_product_quit;
 
-/// Bring the stored overlay scale to the one a right-button resize drag settled
-/// on.
-///
-/// The drag already resized the native window, so this only aligns the
-/// configuration — and with it the settings page — with what the user sees. A
-/// failed snapshot read, a configuration that already matches, and a missing
-/// config revision are all non-errors: the window keeps working either way, and
-/// the placement write the frame loop already performs is what makes the new
-/// size survive a restart.
-pub(crate) async fn publish_overlay_scale(client: &SettingsClient, scale_percent: u16) {
-    let Ok(snapshot) = client.read_snapshot().await else {
-        return;
-    };
-    let Some(config_revision) = snapshot.config_revision else {
-        return;
-    };
-    if snapshot.overlay.scale_percent == scale_percent {
-        return;
-    }
-    let settings = SettingsOverlay {
-        scale_percent,
-        ..snapshot.overlay
-    };
-    let _ = client.set_overlay_settings(config_revision, settings).await;
-}
-
 /// Run one update against the settings view, retrying while GPUI cannot hand the
 /// window over.
 ///

@@ -1,5 +1,6 @@
 use super::*;
 use crate::idle::{IdleHide, IdleObservation};
+use crate::resize_drag::{ResizeBase, ResizeDrag};
 use bongocat_render::{ModelCommitErrorCode, ModelCommitFeedback, ModelCommitOutcome, RenderFrame};
 use std::time::Instant;
 use winit::{
@@ -16,13 +17,31 @@ pub(crate) use cover_capture::CoverCaptureSession;
 struct WindowEvents {
     window: Arc<Window>,
     closed: bool,
-    open_settings: bool,
+    pointer: (f64, f64),
+    resize_base: ResizeBase,
+    drag: Option<ResizeDrag>,
+    resized_scale: Option<u16>,
+    sinks: OverlayInteractionSinks,
 }
 impl ApplicationHandler for WindowEvents {
     fn resumed(&mut self, _events: &ActiveEventLoop) {}
     fn window_event(&mut self, _events: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => self.closed = true,
+            WindowEvent::Focused(false) => self.finish_drag(),
+            WindowEvent::CursorMoved { position, .. } => {
+                let logical = position.to_logical::<f64>(self.window.scale_factor());
+                self.pointer = (logical.x, logical.y);
+                if let Some(drag) = &mut self.drag
+                    && let Some(resize) = drag.observe(self.pointer)
+                {
+                    self.resized_scale = Some(resize.scale_percent);
+                    let _ = self.window.request_inner_size(winit::dpi::LogicalSize::new(
+                        resize.width,
+                        resize.height,
+                    ));
+                }
+            }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button: MouseButton::Left,
@@ -35,12 +54,42 @@ impl ApplicationHandler for WindowEvents {
                 button: MouseButton::Right,
                 ..
             } => {
-                self.open_settings = true;
+                let width = self
+                    .window
+                    .inner_size()
+                    .to_logical::<f64>(self.window.scale_factor())
+                    .width
+                    .round() as u32;
+                let scale = self.resize_base.scale_percent_for_width(width);
+                self.drag = Some(ResizeDrag::begin(self.pointer, self.resize_base, scale));
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Right,
+                ..
+            } => {
+                if self.drag.as_ref().is_some_and(|drag| !drag.dragging())
+                    && let Some(sender) = &self.sinks.context_menu_sender
+                {
+                    let _ = sender.try_send(OverlayContextMenuRequest);
+                }
+                self.finish_drag();
             }
             _ => {}
         }
     }
 }
+impl WindowEvents {
+    fn finish_drag(&mut self) {
+        if let Some(drag) = self.drag.take()
+            && let Some(scale_percent) = drag.finish()
+            && let Some(sender) = &self.sinks.resize_sender
+        {
+            let _ = sender.try_send(OverlayResizeOutcome { scale_percent });
+        }
+    }
+}
+
 pub struct ProductOverlaySession {
     renderer: renderer::Renderer,
     events: EventLoop<()>,
@@ -49,6 +98,13 @@ pub struct ProductOverlaySession {
     consumer: RenderConsumer,
     frame: RenderFrame,
     input: Option<bongocat_platform::LinuxInputService>,
+    input_sources: Option<(InputProducer, CursorProducer, GamepadAxisProducer)>,
+    shortcuts: Option<(
+        bongocat_config::ShortcutTable,
+        bongocat_platform::ShortcutDispatcher,
+    )>,
+    pending_scale: Option<u16>,
+    configured_scale: u16,
     options: OverlaySessionOptions,
     idle: IdleHide,
     session_started: Instant,
@@ -72,7 +128,7 @@ impl ProductOverlaySession {
         axes: GamepadAxisProducer,
         consumer: RenderConsumer,
         options: OverlaySessionOptions,
-        _sinks: OverlayInteractionSinks,
+        sinks: OverlayInteractionSinks,
     ) -> Result<Self, OverlayError> {
         let frame = consumer
             .take_latest()
@@ -110,27 +166,28 @@ impl ProductOverlaySession {
             }
         };
         feedback(&runtime, &consumer, &frame, ModelCommitOutcome::Prepared)?;
-        let diagnostic_sender = runtime.platform_input_diagnostics_producer();
-        let (input, input_error) = start_platform_input(&diagnostic_sender, || {
-            bongocat_platform::LinuxInputService::start_with_diagnostics(
-                producer,
-                cursor,
-                axes,
-                diagnostic_sender.clone(),
-            )
-        });
+        let (base_width, base_height) = model_window_dimensions(frame.snapshot.canvas, 100);
         Ok(Self {
             renderer,
             events,
             state: WindowEvents {
                 window,
                 closed: false,
-                open_settings: false,
+                pointer: (0.0, 0.0),
+                resize_base: ResizeBase::new(f64::from(base_width), f64::from(base_height))
+                    .expect("model dimensions are positive"),
+                drag: None,
+                resized_scale: None,
+                sinks,
             },
             runtime,
             consumer,
             frame,
-            input,
+            input: None,
+            input_sources: Some((producer, cursor, axes)),
+            shortcuts: None,
+            pending_scale: None,
+            configured_scale: options.scale_percent,
             options,
             idle: IdleHide::default(),
             session_started: Instant::now(),
@@ -138,12 +195,31 @@ impl ProductOverlaySession {
             frames: 0,
             snapshots: 0,
             rejections: 0,
-            input_error,
+            input_error: None,
             diagnostics: None,
         })
     }
-    pub fn take_open_settings(&mut self) -> bool {
-        std::mem::take(&mut self.state.open_settings)
+    /// Only the application's explicit confirmation starts the privileged helper.
+    pub fn start_input(&mut self) {
+        let Some((producer, cursor, axes)) = self.input_sources.take() else {
+            return;
+        };
+        let diagnostics = self.runtime.platform_input_diagnostics_producer();
+        let (input, error) = start_platform_input(&diagnostics, || {
+            bongocat_platform::LinuxInputService::start_with_diagnostics(
+                producer,
+                cursor,
+                axes,
+                diagnostics.clone(),
+            )
+        });
+        if let Some(input) = &input
+            && let Some((table, dispatcher)) = self.shortcuts.take()
+        {
+            input.set_shortcuts(table, dispatcher);
+        }
+        self.input = input;
+        self.input_error = error;
     }
     pub fn close_requested(&self) -> bool {
         self.state.closed
@@ -155,6 +231,8 @@ impl ProductOverlaySession {
     ) {
         if let Some(input) = &self.input {
             input.set_shortcuts(table, dispatcher);
+        } else {
+            self.shortcuts = Some((table, dispatcher));
         }
     }
     pub fn run_for(&mut self, duration: Duration) -> Result<(), OverlayError> {
@@ -174,9 +252,19 @@ impl ProductOverlaySession {
             return Ok(OverlayTickOutcome::Hidden);
         }
         let snapshot = self.runtime.snapshot();
-        let next = self
+        let mut next = self
             .options
             .with_runtime_settings(snapshot.overlay_settings);
+        if let Some(scale) = self.state.resized_scale.take() {
+            self.pending_scale = Some(scale);
+        }
+        if let Some(scale) = self.pending_scale {
+            if next.scale_percent == scale || next.scale_percent != self.configured_scale {
+                self.pending_scale = None;
+            } else {
+                next.scale_percent = scale;
+            }
+        }
         let held = next.hold_modifier_pressed(snapshot.input.pressed_modifiers);
         self.idle.observe(IdleObservation {
             enabled: next.hide_on_idle
@@ -187,6 +275,7 @@ impl ProductOverlaySession {
             gamepad_axis_published: snapshot.gamepad_axis_transport.published,
             now: self.session_started.elapsed(),
         });
+        self.configured_scale = snapshot.overlay_settings.scale_percent;
         let cursor_hittest = (!next.click_through || held) && !self.idle.hidden();
         if cursor_hittest != self.cursor_hittest {
             self.state
@@ -226,6 +315,14 @@ impl ProductOverlaySession {
                     }
                 }
             }
+            if self.frame.model_generation != frame.model_generation {
+                self.state.finish_drag();
+                self.pending_scale = None;
+                let (base_width, base_height) = model_window_dimensions(frame.snapshot.canvas, 100);
+                self.state.resize_base =
+                    ResizeBase::new(f64::from(base_width), f64::from(base_height))
+                        .expect("model dimensions are positive");
+            }
             if self.frame.snapshot.canvas != frame.snapshot.canvas {
                 let (w, h) =
                     model_window_dimensions(frame.snapshot.canvas, self.options.scale_percent);
@@ -263,6 +360,8 @@ impl ProductOverlaySession {
         self.frame.model_generation
     }
     pub fn stop_input(&mut self) -> Result<(), OverlayError> {
+        self.input_sources.take();
+        self.shortcuts.take();
         if let Some(mut input) = self.input.take() {
             self.diagnostics = Some(input.stop().map_err(err)?);
         }

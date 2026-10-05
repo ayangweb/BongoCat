@@ -88,38 +88,38 @@ impl ksni::Tray for Tray {
     }
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         use ksni::menu::{CheckmarkItem, StandardItem};
-        vec![
-            StandardItem {
-                label: self.presentation.open_settings.clone(),
-                activate: Box::new(|tray: &mut Self| tray.send(SystemMenuAction::OpenSettings)),
-                ..Default::default()
-            }
-            .into(),
-            CheckmarkItem {
-                label: self.presentation.hide_overlay.clone(),
-                checked: !self.presentation.overlay_visible,
-                activate: Box::new(|tray: &mut Self| {
-                    tray.send(SystemMenuAction::ToggleOverlayVisibility)
-                }),
-                ..Default::default()
-            }
-            .into(),
-            CheckmarkItem {
-                label: self.presentation.click_through.clone(),
-                checked: self.presentation.click_through_enabled,
-                activate: Box::new(|tray: &mut Self| {
-                    tray.send(SystemMenuAction::ToggleClickThrough)
-                }),
-                ..Default::default()
-            }
-            .into(),
-            ksni::MenuItem::Separator,
-            StandardItem {
-                label: self.presentation.quit.clone(),
-                activate: Box::new(|tray: &mut Self| tray.send(SystemMenuAction::Quit)),
-                ..Default::default()
-            }
-            .into(),
-        ]
+        self.presentation
+            .linux_items()
+            .into_iter()
+            .map(|item| match item {
+                crate::LinuxSystemMenuItem::Separator => ksni::MenuItem::Separator,
+                crate::LinuxSystemMenuItem::Action {
+                    action,
+                    label,
+                    checked,
+                } => {
+                    if matches!(
+                        action,
+                        SystemMenuAction::ToggleOverlayVisibility
+                            | SystemMenuAction::ToggleClickThrough
+                    ) {
+                        CheckmarkItem {
+                            label,
+                            checked,
+                            activate: Box::new(move |tray: &mut Self| tray.send(action)),
+                            ..Default::default()
+                        }
+                        .into()
+                    } else {
+                        StandardItem {
+                            label,
+                            activate: Box::new(move |tray: &mut Self| tray.send(action)),
+                            ..Default::default()
+                        }
+                        .into()
+                    }
+                }
+            })
+            .collect()
     }
 }

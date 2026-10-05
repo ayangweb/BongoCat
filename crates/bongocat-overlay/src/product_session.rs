@@ -237,8 +237,9 @@ impl ProductOverlaySession {
     pub fn linux_close_requested(&self) -> bool {
         self.inner.close_requested()
     }
-    pub fn take_linux_open_settings(&mut self) -> bool {
-        self.inner.take_open_settings()
+    /// Start input capture after the Linux permission explanation is confirmed.
+    pub fn start_linux_input(&mut self) {
+        self.inner.start_input();
     }
     pub fn set_linux_shortcuts(
         &mut self,

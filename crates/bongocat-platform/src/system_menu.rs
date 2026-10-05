@@ -70,3 +70,44 @@ pub enum SystemMenuError {
     #[error("the system menu did not shut down cleanly")]
     ShutdownFailed,
 }
+
+/// The Linux tray and model-window menu use the same supported action set.
+#[cfg(target_os = "linux")]
+pub enum LinuxSystemMenuItem {
+    Action {
+        action: SystemMenuAction,
+        label: String,
+        checked: bool,
+    },
+    Separator,
+}
+
+#[cfg(target_os = "linux")]
+impl SystemMenuPresentation {
+    pub fn linux_items(&self) -> Vec<LinuxSystemMenuItem> {
+        use LinuxSystemMenuItem::{Action, Separator};
+        vec![
+            Action {
+                action: SystemMenuAction::OpenSettings,
+                label: self.open_settings.clone(),
+                checked: false,
+            },
+            Action {
+                action: SystemMenuAction::ToggleOverlayVisibility,
+                label: self.hide_overlay.clone(),
+                checked: !self.overlay_visible,
+            },
+            Action {
+                action: SystemMenuAction::ToggleClickThrough,
+                label: self.click_through.clone(),
+                checked: self.click_through_enabled,
+            },
+            Separator,
+            Action {
+                action: SystemMenuAction::Quit,
+                label: self.quit.clone(),
+                checked: false,
+            },
+        ]
+    }
+}

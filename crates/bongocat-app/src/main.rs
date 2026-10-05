@@ -56,6 +56,8 @@ use bongocat_app::{
 };
 #[cfg(not(target_os = "linux"))]
 use bongocat_live2d::CoreLogHandle;
+#[cfg(target_os = "linux")]
+use bongocat_overlay::{OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome};
 #[cfg(not(target_os = "linux"))]
 use bongocat_overlay::{
     OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome, OverlayWindowBounds,
@@ -138,8 +140,8 @@ use product_windows::{
 #[cfg(not(target_os = "linux"))]
 use product_windows::{
     ensure_settings_window, handle_shortcut_toggle_settings, open_update_window_and_check,
-    product_overlay_state, publish_overlay_scale, published_update_phase, request_update_check,
-    show_update_window, update_settings_window, update_window_is_open,
+    product_overlay_state, published_update_phase, request_update_check, show_update_window,
+    update_settings_window, update_window_is_open,
 };
 #[cfg(target_os = "windows")]
 use smoke_status::write_smoke_marker;
@@ -1410,7 +1412,7 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
                 // after it has already resized the window, so this only brings
                 // the stored configuration to the same number.
                 if let Some(outcome) = resize_outcome {
-                    publish_overlay_scale(&frame_settings_client, outcome.scale_percent).await;
+                    product_settings::publish_overlay_scale(&frame_settings_client, outcome.scale_percent).await;
                 }
                 // Gamepad connectivity is a product behaviour the settings
                 // service owns, so the frame source only reports the transition.
@@ -2511,6 +2513,7 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
 struct Product {
     overlay: Option<ProductOverlaySession>,
     tray: Option<LinuxSystemTray>,
+    context_menu: Option<gpui_kit::WindowHandle<gpui_kit::component::Root>>,
     service: Option<ApplicationSettingsService>,
     settings: ProductSettingsWindow,
     frame_source: FrameSourceShutdown,
@@ -2586,13 +2589,21 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     application.restore_startup_model()?;
     let application_log = application.log_handle();
     let runtime = application.runtime_client();
-    let mut overlay = ProductOverlaySession::start(
+    let (context_sender, context_receiver) =
+        std::sync::mpsc::sync_channel::<OverlayContextMenuRequest>(1);
+    let (resize_sender, resize_receiver) = std::sync::mpsc::sync_channel::<OverlayResizeOutcome>(1);
+    let (menu_sender, menu_receiver) = std::sync::mpsc::channel();
+    let mut overlay = ProductOverlaySession::start_with_interaction_sinks(
         runtime.clone(),
         application.input_producer(),
         application.cursor_producer(),
         application.gamepad_axis_producer(),
         application.take_render_consumer()?,
         options,
+        OverlayInteractionSinks {
+            context_menu_sender: Some(context_sender),
+            resize_sender: Some(resize_sender),
+        },
     )?;
     let (sender, receiver) = std::sync::mpsc::sync_channel(64);
     overlay.set_linux_shortcuts(
@@ -2634,6 +2645,7 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         cx.set_global(Product {
             overlay: Some(overlay),
             tray,
+            context_menu: None,
             service: Some(service),
             settings: ProductSettingsWindow::new(seed),
             frame_source: frame_source.clone(),
@@ -2642,6 +2654,27 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             close_requested: false,
         });
         open_settings(cx);
+        if let Some(settings) = cx.global::<Product>().settings.window.clone() {
+            let _ = settings.update(cx, |_, window, cx| {
+                // The dialog reads Root's window state; release the typed
+                // settings-window update's Root borrow before opening it.
+                window.defer(cx, move |window, cx| {
+                    bongocat_ui::show_linux_input_permission(
+                        seed.language,
+                        |cx| {
+                            // Defer until the explanation dialog has closed.
+                            cx.defer(|cx| {
+                                if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
+                                    overlay.start_linux_input();
+                                }
+                            });
+                        },
+                        window,
+                        cx,
+                    );
+                });
+            });
+        }
         if tray_error && let Some(settings) = cx.global::<Product>().settings.window.clone() {
             let _ = settings.update(cx, |_, window, cx| {
                 window.push_notification(
@@ -2766,21 +2799,61 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
                         .detach();
                         return true;
                     }
-                    if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
-                        if let Err(e) = overlay.tick() {
-                            record_failure(&failures, e.to_string());
-                            quit.store(true, Ordering::Release);
-                        }
-
-                        if overlay.take_linux_open_settings() {
-                            signals.request_open_settings();
-                        }
+                    if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut()
+                        && let Err(e) = overlay.tick()
+                    {
+                        record_failure(&failures, e.to_string());
+                        quit.store(true, Ordering::Release);
+                    }
+                    if let Ok(resized) = resize_receiver.try_recv() {
+                        let client = client.clone();
+                        cx.spawn(async move |_| {
+                            product_settings::publish_overlay_scale(&client, resized.scale_percent)
+                                .await;
+                        })
+                        .detach();
+                    }
+                    if context_receiver.try_recv().is_ok() {
+                        let client = client.clone();
+                        let menu_sender = menu_sender.clone();
+                        let quit = quit.clone();
+                        cx.spawn(async move |cx| {
+                            let Ok(snapshot) = client.read_snapshot().await else {
+                                return;
+                            };
+                            let presentation = system_menu::system_menu_presentation(&snapshot);
+                            cx.update(|cx| {
+                                if quit.load(Ordering::Acquire) {
+                                    return;
+                                }
+                                if let Some(existing) =
+                                    cx.global_mut::<Product>().context_menu.take()
+                                {
+                                    let _ =
+                                        existing.update(cx, |_, window, _| window.remove_window());
+                                }
+                                match bongocat_ui::open_linux_context_menu(
+                                    presentation,
+                                    move |action, _| {
+                                        let _ = menu_sender.send(action);
+                                    },
+                                    cx,
+                                ) {
+                                    Ok(menu) => {
+                                        cx.global_mut::<Product>().context_menu = Some(menu)
+                                    }
+                                    Err(error) => report_error("context menu", error),
+                                }
+                            });
+                        })
+                        .detach();
                     }
                     let mut tray_quit = false;
-                    while let Some(action) = tray_actions
-                        .as_ref()
-                        .and_then(|receiver| receiver.try_recv().ok())
-                    {
+                    while let Some(action) = menu_receiver.try_recv().ok().or_else(|| {
+                        tray_actions
+                            .as_ref()
+                            .and_then(|receiver| receiver.try_recv().ok())
+                    }) {
                         match action {
                             SystemMenuAction::OpenSettings => signals.request_open_settings(),
                             SystemMenuAction::Quit => tray_quit = true,

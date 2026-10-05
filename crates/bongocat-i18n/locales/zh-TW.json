@@ -35,6 +35,11 @@
     "quit": "結束 BongoCat"
   },
   "startup_permission": {
+    "linux": {
+      "title": "允許監聽鍵盤和滑鼠？",
+      "description": "BongoCat 需要讀取輸入裝置，才能回應其他應用程式中的鍵盤和滑鼠操作。點擊確定後，系統會要求管理員授權；僅輸入監聽輔助程序取得權限，設定和模型視窗仍以一般使用者執行。選擇稍後設定可繼續使用，但鍵鼠回應和輸入快捷鍵暫時無法使用。",
+      "confirm": "確定"
+    },
     "later": "稍後設定",
     "input_monitoring": {
       "title": "需要「輸入監控」權限",

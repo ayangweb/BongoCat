@@ -35,6 +35,11 @@
     "quit": "Encerrar o BongoCat"
   },
   "startup_permission": {
+    "linux": {
+      "title": "Permitir o monitoramento do teclado e mouse?",
+      "description": "O BongoCat precisa acessar os dispositivos de entrada para reagir ao teclado e mouse em outros aplicativos. Ao confirmar, o sistema solicitará autorização de administrador. Apenas o processo auxiliar de entrada recebe esse acesso; as configurações e a janela do modelo continuam como usuário comum. Configure depois para continuar sem reações de teclado e mouse ou atalhos de entrada.",
+      "confirm": "OK"
+    },
     "later": "Configurar depois",
     "input_monitoring": {
       "title": "Permissão de monitoramento de entrada necessária",

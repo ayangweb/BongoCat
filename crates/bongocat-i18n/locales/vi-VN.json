@@ -35,6 +35,11 @@
     "quit": "Thoát BongoCat"
   },
   "startup_permission": {
+    "linux": {
+      "title": "Cho phép theo dõi bàn phím và chuột?",
+      "description": "BongoCat cần truy cập thiết bị đầu vào để phản hồi thao tác bàn phím và chuột trong các ứng dụng khác. Sau khi xác nhận, hệ thống sẽ yêu cầu quyền quản trị viên. Chỉ tiến trình hỗ trợ đầu vào nhận quyền này; cửa sổ cài đặt và mô hình vẫn chạy với quyền người dùng thông thường. Chọn thiết lập sau để tiếp tục mà không có phản hồi bàn phím, chuột hoặc phím tắt đầu vào.",
+      "confirm": "OK"
+    },
     "later": "Thiết lập sau",
     "input_monitoring": {
       "title": "Cần cấp quyền Giám sát đầu vào",
