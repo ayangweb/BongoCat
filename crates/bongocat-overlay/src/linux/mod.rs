@@ -2,9 +2,11 @@
 
 mod context_menu;
 mod renderer;
+mod xdg_shell;
 
 use context_menu::*;
 pub(crate) use renderer::*;
+use xdg_shell::SctkXdgOverlay;
 use crate::{
     BlendFactor, DrawableCullMode, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff,
     MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
