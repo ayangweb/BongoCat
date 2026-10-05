@@ -1,7 +1,9 @@
 //! Linux Wayland overlay adapter backed by SCTK and Vulkan through wgpu.
 
+mod context_menu;
 mod renderer;
 
+use context_menu::*;
 pub(crate) use renderer::*;
 use crate::{
     BlendFactor, DrawableCullMode, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff,

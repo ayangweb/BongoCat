@@ -18,8 +18,11 @@ thiserror.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 bytemuck = { workspace = true, features = ["derive"] }
+cosmic-text.workspace = true
 image.workspace = true
 pollster.workspace = true
+smithay-client-toolkit.workspace = true
+wayland-client.workspace = true
 wgpu = { workspace = true, default-features = false, features = ["std", "vulkan", "wgsl"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
