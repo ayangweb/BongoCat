@@ -225,7 +225,7 @@ impl SettingsError {
                 "The application log folder could not be opened"
             }
             SettingsErrorCode::StartupItemUpdateFailed => {
-                "The login startup setting could not be updated"
+                "The run at startup setting could not be updated"
             }
             SettingsErrorCode::StatusIconUpdateFailed => "Could not update the system icon.",
             SettingsErrorCode::TaskbarIconUpdateFailed => "Could not update the taskbar icon.",

@@ -301,7 +301,7 @@
       "software_info_copy_failed": "Software information could not be copied",
       "external_link_open_failed": "The link could not be opened",
       "log_location_open_failed": "The application log folder could not be opened",
-      "login_startup_update_failed": "The login startup setting could not be updated",
+      "login_startup_update_failed": "The run at startup setting could not be updated",
       "system_icon_update_failed": "Could not update the system icon.",
       "taskbar_icon_update_failed": "Could not update the taskbar icon.",
       "dock_icon_update_failed": "Could not update the Dock icon.",
@@ -512,7 +512,7 @@
         }
       },
       "open_at_login": {
-        "label": "Open at login"
+        "label": "Run at startup"
       },
       "startup": {
         "checking": "Checking the login item…",
@@ -520,9 +520,9 @@
         "stale": "The saved app location changed; turn the switch off and on to repair",
         "requires_approval": "Approve BongoCat in System Settings",
         "not_found": "The login item is missing; turn the switch off and on to repair",
-        "unsupported_platform": "Login startup is unavailable on this system",
-        "unsupported_os": "Login startup is unavailable on this operating system",
-        "unsupported_build": "Login startup is unavailable in development builds"
+        "unsupported_platform": "Running at startup is unavailable on this system",
+        "unsupported_os": "Running at startup is unavailable on this operating system",
+        "unsupported_build": "Running at startup is unavailable in development builds"
       }
     }
   }

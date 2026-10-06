@@ -301,7 +301,7 @@
       "software_info_copy_failed": "소프트웨어 정보를 복사할 수 없습니다",
       "external_link_open_failed": "링크를 열 수 없습니다",
       "log_location_open_failed": "애플리케이션 로그 폴더를 열 수 없습니다",
-      "login_startup_update_failed": "로그인 시 실행 설정을 변경할 수 없습니다",
+      "login_startup_update_failed": "자동 시작 설정을 변경할 수 없습니다",
       "system_icon_update_failed": "시스템 아이콘을 변경할 수 없습니다.",
       "taskbar_icon_update_failed": "작업 표시줄 아이콘을 변경할 수 없습니다.",
       "dock_icon_update_failed": "Dock 아이콘을 변경할 수 없습니다.",
@@ -512,7 +512,7 @@
         }
       },
       "open_at_login": {
-        "label": "로그인 시 실행"
+        "label": "자동 시작"
       },
       "startup": {
         "checking": "로그인 항목을 확인하는 중…",
@@ -520,9 +520,9 @@
         "stale": "저장된 앱 위치가 변경되었습니다. 스위치를 껐다 켜서 복구하세요",
         "requires_approval": "시스템 설정에서 BongoCat을 승인하세요",
         "not_found": "로그인 항목이 없습니다. 스위치를 껐다 켜서 복구하세요",
-        "unsupported_platform": "이 시스템에서는 로그인 시 실행을 사용할 수 없습니다",
-        "unsupported_os": "이 운영체제에서는 로그인 시 실행을 사용할 수 없습니다",
-        "unsupported_build": "개발 빌드에서는 로그인 시 실행을 사용할 수 없습니다"
+        "unsupported_platform": "이 시스템에서는 자동 시작을 사용할 수 없습니다",
+        "unsupported_os": "이 운영체제에서는 자동 시작을 사용할 수 없습니다",
+        "unsupported_build": "개발 빌드에서는 자동 시작을 사용할 수 없습니다"
       }
     }
   }

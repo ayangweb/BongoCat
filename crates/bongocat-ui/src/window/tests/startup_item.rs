@@ -177,7 +177,7 @@ fn a_development_build_disables_the_startup_row_with_visible_copy() {
     let presentation =
         startup_item_presentation(Some(status), false, SettingsLanguage::ChineseSimplified);
     assert!(presentation.disabled);
-    assert_eq!(presentation.description, Some("开发版本不支持登录时启动"));
+    assert_eq!(presentation.description, Some("开发版本不支持开机自启动"));
     assert_eq!(presentation.action, StartupItemAction::None);
 }
 

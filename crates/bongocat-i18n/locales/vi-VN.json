@@ -301,7 +301,7 @@
       "software_info_copy_failed": "Không thể sao chép thông tin phần mềm",
       "external_link_open_failed": "Không thể mở liên kết",
       "log_location_open_failed": "Không thể mở thư mục nhật ký ứng dụng",
-      "login_startup_update_failed": "Không thể cập nhật cài đặt mở khi đăng nhập",
+      "login_startup_update_failed": "Không thể cập nhật cài đặt tự động khởi động cùng hệ thống",
       "system_icon_update_failed": "Không thể cập nhật biểu tượng hệ thống.",
       "taskbar_icon_update_failed": "Không thể cập nhật biểu tượng thanh tác vụ.",
       "dock_icon_update_failed": "Không thể cập nhật biểu tượng Dock.",
@@ -512,7 +512,7 @@
         }
       },
       "open_at_login": {
-        "label": "Mở khi đăng nhập"
+        "label": "Tự động khởi động cùng hệ thống"
       },
       "startup": {
         "checking": "Đang kiểm tra mục khởi động…",
@@ -520,9 +520,9 @@
         "stale": "Vị trí ứng dụng đã lưu đã thay đổi; hãy tắt rồi bật lại công tắc để sửa",
         "requires_approval": "Cấp quyền cho BongoCat trong Cài đặt hệ thống",
         "not_found": "Thiếu mục khởi động; hãy tắt rồi bật lại công tắc để sửa",
-        "unsupported_platform": "Tính năng mở khi đăng nhập không khả dụng trên hệ thống này",
-        "unsupported_os": "Tính năng mở khi đăng nhập không khả dụng trên hệ điều hành này",
-        "unsupported_build": "Tính năng mở khi đăng nhập không khả dụng trong bản dựng phát triển"
+        "unsupported_platform": "Tính năng tự động khởi động không khả dụng trên hệ thống này",
+        "unsupported_os": "Tính năng tự động khởi động không khả dụng trên hệ điều hành này",
+        "unsupported_build": "Tính năng tự động khởi động không khả dụng trong bản dựng phát triển"
       }
     }
   }
