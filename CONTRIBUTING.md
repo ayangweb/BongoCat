@@ -31,6 +31,12 @@ just build
 just schema
 ```
 
+When building on Windows, ensure you use the MSVC toolchain (of the form
+`stable-x86_64-pc-windows-**msvc**`, not `stable-x86_64-pc-windows-**gnu**`). This project depends
+on Live2D Cubism Core, whose Windows distribution is only available in MSVC format (`.lib`), so MSVC
+is mandatory on Windows. Use `rustup show` to check the active toolchain. If it is not MSVC, switch
+to it with `rustup override set`.
+
 Building on macOS also needs an Xcode Swift toolchain, because the guided Input Monitoring flow
 links a Swift static library (ADR-0078). SwiftPM refuses to load a package whose manifest declares a
 newer tools version than the installed toolchain, and that package asks for 6.1. The Rust toolchain
