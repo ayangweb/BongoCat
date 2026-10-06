@@ -1708,6 +1708,23 @@ impl Render for SettingsView {
                 })
         });
 
+        // A client-side decorated window owns its whole frame
+        let title_bar =
+            matches!(window.window_decorations(), Decorations::Client { .. }).then(|| {
+                let title_bar_view = cx.entity().downgrade();
+                TitleBar::new()
+                    .flex_shrink_0()
+                    .child(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "navigation.settings.title",
+                    ))
+                    // remove_window skips the flush the platform's close request runs
+                    .on_close_window(move |_, window, cx| {
+                        let _ = title_bar_view.update(cx, |view, cx| view.prepare_close(cx));
+                        window.remove_window();
+                    })
+            });
+
         div()
             .id("bongocat-settings-root")
             .relative()
@@ -1737,6 +1754,7 @@ impl Render for SettingsView {
             .size_full()
             .flex()
             .flex_col()
+            .children(title_bar)
             .child(div().min_h_0().w_full().flex_1().child(settings))
             .child(model_drag_exit_listener)
             .children(model_drag_overlay)
