@@ -8,8 +8,12 @@
 use super::*;
 
 pub(crate) struct MaskTarget {
-    pub(crate) _texture: ID3D11Texture2D,
+    /// MSAA surface used while rasterizing clipping geometry.
+    pub(crate) multisample_texture: ID3D11Texture2D,
     pub(crate) render_target: ID3D11RenderTargetView,
+    /// Single-sample surface resolved from `multisample_texture` before the
+    /// mask is sampled by the drawable pixel shader.
+    pub(crate) resolved_texture: ID3D11Texture2D,
     pub(crate) shader_resource: ID3D11ShaderResourceView,
 }
 
@@ -345,7 +349,11 @@ pub(crate) unsafe fn create_mask_target(
     width: u32,
     height: u32,
 ) -> WindowsResult<MaskTarget> {
-    let descriptor = D3D11_TEXTURE2D_DESC {
+    let multisample_texture =
+        unsafe { create_multisample_texture(device, width, height, MASK_TEXTURE_FORMAT)? };
+    let render_target =
+        unsafe { create_render_target(device, &multisample_texture, MASK_TEXTURE_FORMAT)? };
+    let resolved_descriptor = D3D11_TEXTURE2D_DESC {
         Width: width,
         Height: height,
         MipLevels: 1,
@@ -356,18 +364,20 @@ pub(crate) unsafe fn create_mask_target(
             Quality: 0,
         },
         Usage: D3D11_USAGE_DEFAULT,
-        BindFlags: (D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE).0 as u32,
+        BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
         ..Default::default()
     };
-    let mut texture = None;
-    unsafe { device.CreateTexture2D(&descriptor, None, Some(&mut texture))? };
-    let texture = required(texture, "mask texture")?;
-    let render_target = unsafe { create_render_target(device, &texture, MASK_TEXTURE_FORMAT)? };
+    let mut resolved_texture = None;
+    unsafe { device.CreateTexture2D(&resolved_descriptor, None, Some(&mut resolved_texture))? };
+    let resolved_texture = required(resolved_texture, "resolved mask texture")?;
     let mut shader_resource = None;
-    unsafe { device.CreateShaderResourceView(&texture, None, Some(&mut shader_resource))? };
+    unsafe {
+        device.CreateShaderResourceView(&resolved_texture, None, Some(&mut shader_resource))?
+    };
     Ok(MaskTarget {
-        _texture: texture,
+        multisample_texture,
         render_target,
+        resolved_texture,
         shader_resource: required(shader_resource, "mask shader resource")?,
     })
 }

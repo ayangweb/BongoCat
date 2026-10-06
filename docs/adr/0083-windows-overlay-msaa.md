@@ -11,11 +11,13 @@ D3D11 overlay 直接把 drawable 绘制到单采样的 DirectComposition 交换�
 
 ## 决策
 
-Windows renderer 使用 4x multisample 的 `B8G8R8A8_UNORM` 内部 render target。
-DirectComposition flip-model 交换链继续保持单采样；每帧绘制完成后调用
-`ResolveSubresource` 写回交换链，再执行 readback 或 present。内部 target 使用
-`TEXTURE2DMS` RTV，交换链和 staging texture 仍使用现有单采样格式与
-premultiplied-alpha contract。模型资源、配置和跨平台 renderer API 不变。
+Windows renderer 使用 4x multisample 的 `B8G8R8A8_UNORM` 内部 render target，
+包括用于 clipping mask 的中间 target。每个 mask 在被 drawable shader 采样前先
+通过 `ResolveSubresource` 写入单采样纹理；DirectComposition flip-model 交换链
+继续保持单采样，每帧绘制完成后再 resolve 到交换链，然后执行 readback 或 present。
+内部 target 使用 `TEXTURE2DMS` RTV，交换链、mask shader resource 和 staging
+texture 仍使用现有单采样格式与 premultiplied-alpha contract。模型资源、配置和
+跨平台 renderer API 不变。
 
 ## 验证
 

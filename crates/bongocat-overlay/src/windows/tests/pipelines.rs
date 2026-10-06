@@ -23,3 +23,9 @@ fn color_formats_match_the_encoded_space_contract() {
 fn model_rasterization_uses_multisampling_before_composition_resolve() {
     assert_eq!(MSAA_SAMPLE_COUNT, 4);
 }
+
+#[test]
+fn clipping_masks_share_the_model_msaa_sample_count() {
+    assert_eq!(MSAA_SAMPLE_COUNT, 4);
+    assert_eq!(MASK_TEXTURE_FORMAT, COMPOSITION_RENDER_TARGET_FORMAT);
+}

@@ -463,6 +463,19 @@ impl Renderer {
                     self.bind_mesh(source, &uniforms, &self.model.empty_mask.shader_resource)?
                 };
             }
+            // Resolve clipping coverage before the single-sample drawable pass
+            // samples the mask. Keeping the resolve here preserves the MSAA
+            // coverage generated for every mask triangle.
+            unsafe {
+                self.context.OMSetRenderTargets(None, None);
+                self.context.ResolveSubresource(
+                    &mask_target.resolved_texture,
+                    0,
+                    &mask_target.multisample_texture,
+                    0,
+                    MASK_TEXTURE_FORMAT,
+                );
+            }
         }
         let targets = self
             .targets
