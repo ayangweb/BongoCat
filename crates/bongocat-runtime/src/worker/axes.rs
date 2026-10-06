@@ -33,28 +33,28 @@ impl GamepadAxisValues {
             .retain(|key, sample| key.connection != connection || sample.at >= connected_at);
     }
 
-    pub(crate) fn project(
+            pub(crate) fn project(
         &self,
         input_state: &InputState,
         settings: GamepadAxisSettings,
     ) -> [f32; 6] {
-        let Some(connection) = self
-            .values
-            .keys()
-            .filter(|key| input_state.is_gamepad_connected(key.connection))
-            .map(|key| key.connection)
-            .min()
-        else {
-            return [0.0; 6];
-        };
         let mut values = [0.0; 6];
-        for (key, value) in self.values.iter().filter(|(key, _)| {
-            key.connection == connection && input_state.is_gamepad_connected(key.connection)
-        }) {
-            values[key.axis as usize] = settings.apply(key.axis, value.value);
+        let mut newest = [None; 6];
+        for (key, sample) in &self.values {
+            if !input_state.is_gamepad_connected(key.connection) {
+                continue;
+            }
+            let slot = key.axis as usize;
+            if newest[slot].is_some_and(|seen| seen >= sample.at) {
+                continue;
+            }
+            newest[slot] = Some(sample.at);
+            values[slot] = settings.apply(key.axis, sample.value);
         }
         values
     }
+
+
 
     pub(crate) fn clear(&mut self) {
         self.values.clear();
