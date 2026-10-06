@@ -276,6 +276,8 @@ impl Application {
                             .map(model_input_mode_from_store)
                             .map_err(ApplicationError::ModelStore)?;
                         records.push(ImportedModelMetadata {
+                            library_url: None,
+                            shared_model_id: None,
                             id: id.as_str().to_owned(),
                             title,
                             input_mode,

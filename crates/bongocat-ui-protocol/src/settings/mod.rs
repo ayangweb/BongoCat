@@ -63,8 +63,8 @@ pub use model_import::{
 pub use multiplayer::{
     CHAT_HISTORY_LIMIT, MAXIMUM_CHAT_CONTENT_CHARS, MAXIMUM_ROOM_NAME_CHARS,
     MAXIMUM_ROOM_PASSWORD_CHARS, SettingsChatMessage, SettingsLobbyRoom, SettingsLobbyStatus,
-    SettingsMultiplayer, SettingsMultiplayerError, SettingsMultiplayerStatus, SettingsRoomMember,
-    SettingsRoomView,
+    SettingsMemberModelProgress, SettingsMultiplayer, SettingsMultiplayerError,
+    SettingsMultiplayerStatus, SettingsRoomMember, SettingsRoomView,
 };
 pub use remote_models::{
     SettingsRemoteCatalogStatus, SettingsRemoteImageFormat, SettingsRemoteModelEntry,

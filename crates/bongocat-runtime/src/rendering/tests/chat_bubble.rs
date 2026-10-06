@@ -22,16 +22,13 @@ fn state_with(
     shown_at: Duration,
     hold: Duration,
 ) -> ChatBubbleState {
-    ChatBubbleState {
-        font: None,
-        font_attempted: false,
-        active: Some(super::super::chat_bubble::ActiveBubble {
-            texture,
-            shown_at,
-            hold,
-        }),
-        cache: Vec::new(),
-    }
+    let mut state = ChatBubbleState::new();
+    state.active = Some(super::super::chat_bubble::ActiveBubble {
+        texture,
+        shown_at,
+        hold,
+    });
+    state
 }
 
 fn bounds() -> ModelBounds {

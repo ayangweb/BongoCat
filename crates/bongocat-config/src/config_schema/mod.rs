@@ -231,6 +231,25 @@ impl NativeConfig {
                 .iter()
                 .map(|record| (record.id.as_str(), record.title.as_str())),
         )?;
+        if self.model.imported_models.iter().any(|record| {
+            record.library_url.as_ref().is_some_and(|url| {
+                url.len() > 2048 || !url.starts_with("https://") || url.contains(['\r', '\n'])
+            })
+        }) {
+            return Err(ConfigError::InvalidValue(
+                "model.imported_models.library_url",
+            ));
+        }
+        if self.model.imported_models.iter().any(|record| {
+            record
+                .shared_model_id
+                .as_ref()
+                .is_some_and(|id| !is_portable_model_id(id))
+        }) {
+            return Err(ConfigError::InvalidValue(
+                "model.imported_models.shared_model_id",
+            ));
+        }
         validate_model_metadata(
             "model.built_in_models.id",
             "model.built_in_models.title",

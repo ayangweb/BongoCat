@@ -1,6 +1,7 @@
 //! The command queue, its sequence tracker and overflow recovery.
 
 use super::*;
+use crate::pacing::SystemMonotonicClock;
 
 #[test]
 fn sequence_wait_predicate_handles_wraparound() {
@@ -28,6 +29,7 @@ fn full_queue_returns_the_original_typed_command() {
         accepting: Arc::new(AtomicBool::new(true)),
     });
     let client = RuntimeClient {
+        clock: Arc::new(SystemMonotonicClock::start()),
         input_producer: InputProducer::new(Arc::new(RuntimeInputSubmitter {
             producer: Arc::clone(&producer),
         })),
@@ -107,6 +109,7 @@ fn input_producer_overflow_is_observable_and_recovery_resets_state() {
         accepting: Arc::new(AtomicBool::new(true)),
     });
     let client = RuntimeClient {
+        clock: Arc::new(SystemMonotonicClock::start()),
         producer: Arc::clone(&runtime_producer),
         snapshot: Arc::new(SnapshotCell {
             value: Mutex::new(RuntimeSnapshot::starting(

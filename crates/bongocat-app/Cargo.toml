@@ -14,6 +14,7 @@ storage-test-injection = []
 
 [dependencies]
 async-channel.workspace = true
+async-trait.workspace = true
 async-io.workspace = true
 atomic-write-file.workspace = true
 bongocat-audio.workspace = true
@@ -39,7 +40,9 @@ rust_socketio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 ureq.workspace = true
+webrtc.workspace = true
 zip = { workspace = true, features = ["deflate"] }
 
 [dev-dependencies]

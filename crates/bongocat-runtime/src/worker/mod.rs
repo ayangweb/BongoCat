@@ -660,6 +660,27 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             });
                         }
                     }
+                    WorkerCommand::Product(RuntimeCommand::SetRoomMemberPresentation {
+                        name,
+                        progress,
+                    }) => {
+                        if let Some(renderer) = &mut renderer {
+                            renderer.chat_bubble.set_member(name, progress);
+                        }
+                        publish(&snapshot, |current| {
+                            current.last_command_failure = None;
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
+                    WorkerCommand::Product(RuntimeCommand::SetRoomMemberHovered(hovered)) => {
+                        if let Some(renderer) = &mut renderer {
+                            renderer.chat_bubble.set_hovered(hovered);
+                        }
+                        publish(&snapshot, |current| {
+                            current.last_command_failure = None;
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
                     WorkerCommand::Product(RuntimeCommand::ShowChatBubble { sender, content }) => {
                         if let Some(renderer) = &mut renderer {
                             renderer.chat_bubble.show(&sender, &content, clock.now());

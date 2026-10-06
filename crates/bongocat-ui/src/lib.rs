@@ -170,6 +170,9 @@ pub(crate) mod tests {
             }),
             model_catalog: SettingsModelCatalog::default(),
             remote_models: SettingsRemoteModels::default(),
+            multiplayer_server_url: String::new(),
+            multiplayer_nickname: String::new(),
+            multiplayer: SettingsMultiplayer::default(),
         }
     }
 

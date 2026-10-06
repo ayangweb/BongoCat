@@ -243,6 +243,21 @@ pub struct BuiltInModelMetadata {
 #[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ImportedModelMetadata {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(length(max = 2048), regex(pattern = "^https://[^\\r\\n]*$"))
+    )]
+    pub library_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(
+            length(min = 1, max = 64),
+            regex(pattern = "^[A-Za-z0-9_-](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9_-])?$")
+        )
+    )]
+    pub shared_model_id: Option<String>,
     #[cfg_attr(
         any(test, feature = "schema-generation"),
         schemars(

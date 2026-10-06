@@ -104,6 +104,23 @@
         "input_mode": {
           "$ref": "#/$defs/ModelInputMode"
         },
+        "library_url": {
+          "maxLength": 2048,
+          "pattern": "^https://[^\\r\\n]*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "shared_model_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9_-])?$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "title": {
           "maxLength": 128,
           "minLength": 1,

@@ -397,8 +397,18 @@ impl ApplicationSettingsService {
         .map_err(SettingsServiceJoinError::Spawn)?;
         let (multiplayer_jobs, multiplayer_worker_jobs) =
             async_channel::bounded(MULTIPLAYER_JOB_CAPACITY);
-        let multiplayer_state = crate::multiplayer::MultiplayerState::default();
+        let multiplayer_state = crate::multiplayer::MultiplayerState::with_scene(
+            signals
+                .as_ref()
+                .map(|signals| signals.room_scene.clone())
+                .unwrap_or_default(),
+        );
         let multiplayer_runtime = application.runtime_client();
+        multiplayer_state
+            .scene
+            .1
+            .configure(application.remote_models_directory().join("room-transfers"));
+        application.refresh_room_cache(&multiplayer_state.scene.1);
         let multiplayer_log = application.multiplayer_log_handle();
         let multiplayer_worker_stop = Arc::new(AtomicBool::new(false));
         let multiplayer_worker = crate::multiplayer::spawn_multiplayer_worker(

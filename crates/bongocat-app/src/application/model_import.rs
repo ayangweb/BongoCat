@@ -276,6 +276,8 @@ impl Application {
                     ),
                 };
                 installed_models.push(ImportedModelMetadata {
+                    library_url: None,
+                    shared_model_id: None,
                     id: model.id().as_str().to_owned(),
                     title,
                     input_mode,

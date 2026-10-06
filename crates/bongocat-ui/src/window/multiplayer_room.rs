@@ -258,6 +258,27 @@ impl SettingsView {
         .detach();
     }
 
+    pub(super) fn set_member_visible(
+        &mut self,
+        member_id: String,
+        visible: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = client
+                .set_multiplayer_member_visible(member_id, visible)
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                match result {
+                    Ok(snapshot) => view.apply_snapshot_if_newer(snapshot),
+                    Err(error) => view.pending_notification = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
     pub(super) fn refresh_multiplayer_lobby(&mut self, cx: &mut Context<Self>) {
         let client = self.client.clone();
         cx.spawn(async move |this, cx| {
@@ -532,7 +553,10 @@ fn room_items(
         } else {
             None
         };
-        let can_kick = member.is_host && !member.is_self;
+        let can_kick = room.can_kick_member(&member.id);
+        let model_visible = member.model_visible;
+        let is_self = member.is_self;
+        let progress = member.model_download;
         let model_line = member
             .model_name
             .as_deref()
@@ -549,10 +573,51 @@ fn room_items(
                 member.name.clone(),
                 SettingField::element(
                     move |options: &RenderOptions, _: &mut Window, _: &mut App| {
+                        let toggle_view = member_view.clone();
+                        let toggle_id = member_id.clone();
+                        let mut row = div().flex().items_center().gap_2();
+                        if let Some(progress) = progress {
+                            row = row.child(
+                                gpui_kit::component::progress::Progress::new(SharedString::from(
+                                    format!("member-progress-{member_id}"),
+                                ))
+                                .value(progress.percent.map_or(0.0, f32::from))
+                                .loading(progress.percent.is_none())
+                                .w_24(),
+                            );
+                        }
+                        if !is_self {
+                            row = row.child(
+                                Button::new(SharedString::from(format!(
+                                    "member-visible-{member_id}"
+                                )))
+                                .label(bongocat_i18n::text(
+                                    language.catalog_locale(),
+                                    if model_visible {
+                                        "settings.multiplayer_room.members.hide_model"
+                                    } else {
+                                        "settings.multiplayer_room.members.show_model"
+                                    },
+                                ))
+                                .with_size(options.size())
+                                .on_click(move |_, _, app| {
+                                    toggle_view.update(app, |view, cx| {
+                                        view.set_member_visible(
+                                            toggle_id.clone(),
+                                            !model_visible,
+                                            cx,
+                                        )
+                                    });
+                                }),
+                            );
+                        }
                         if can_kick && configured {
                             let kick_view = member_view.clone();
                             let kick_id = member_id.clone();
-                            Button::new(SharedString::from(format!("multiplayer-kick-{kick_id}")))
+                            row = row.child(
+                                Button::new(SharedString::from(format!(
+                                    "multiplayer-kick-{kick_id}"
+                                )))
                                 .label(bongocat_i18n::text(
                                     language.catalog_locale(),
                                     "settings.multiplayer_room.members.kick",
@@ -564,11 +629,10 @@ fn room_items(
                                     kick_view.update(app, |view, cx| {
                                         view.kick_multiplayer_member(member_id, cx)
                                     });
-                                })
-                                .into_any_element()
-                        } else {
-                            Label::new(String::new()).into_any_element()
+                                }),
+                            );
                         }
+                        row.into_any_element()
                     },
                 ),
             )

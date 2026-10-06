@@ -276,7 +276,7 @@ impl SettingsError {
                 "Another remote model is downloading. Try again in a moment."
             }
             SettingsErrorCode::MultiplayerNotConfigured => {
-                "Set the room service address and a nickname first"
+                "Set the service address and a nickname first"
             }
             SettingsErrorCode::MultiplayerConnectFailed => "The room service could not be reached",
             SettingsErrorCode::MultiplayerRoomNotFound => "That room does not exist",

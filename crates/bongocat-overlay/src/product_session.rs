@@ -108,6 +108,50 @@ impl ProductOverlaySession {
         options: OverlaySessionOptions,
         interaction_sinks: OverlayInteractionSinks,
     ) -> Result<Self, OverlayError> {
+        Self::start_with_input_mode(
+            runtime_client,
+            input_producer,
+            cursor_producer,
+            gamepad_axis_producer,
+            render_consumer,
+            options,
+            interaction_sinks,
+            true,
+        )
+    }
+
+    /// A room member receives input from its peer, never from this computer.
+    pub fn start_remote(
+        runtime_client: RuntimeClient,
+        render_consumer: RenderConsumer,
+        options: OverlaySessionOptions,
+    ) -> Result<Self, OverlayError> {
+        Self::start_with_input_mode(
+            runtime_client.clone(),
+            runtime_client.input_producer(),
+            runtime_client.cursor_producer(),
+            runtime_client.gamepad_axis_producer(),
+            render_consumer,
+            options,
+            OverlayInteractionSinks {
+                context_menu_sender: None,
+                resize_sender: None,
+            },
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_with_input_mode(
+        runtime_client: RuntimeClient,
+        input_producer: InputProducer,
+        cursor_producer: CursorProducer,
+        gamepad_axis_producer: GamepadAxisProducer,
+        render_consumer: RenderConsumer,
+        options: OverlaySessionOptions,
+        interaction_sinks: OverlayInteractionSinks,
+        capture_local_input: bool,
+    ) -> Result<Self, OverlayError> {
         #[cfg(target_os = "macos")]
         {
             macos::ProductOverlaySession::start(
@@ -118,6 +162,7 @@ impl ProductOverlaySession {
                 render_consumer,
                 options,
                 interaction_sinks,
+                capture_local_input,
             )
             .map(|inner| Self { inner })
         }
@@ -132,6 +177,7 @@ impl ProductOverlaySession {
                 render_consumer,
                 options,
                 interaction_sinks,
+                capture_local_input,
             )
             .map(|inner| Self { inner })
         }

@@ -365,6 +365,9 @@ operation control、state handle 和 bounded client/endpoint。它不依赖 GPUI
 config/platform/update producer 映射为 protocol 类型。debounce、语言显示文案、更新窗口轮询节奏和
 文件选择后的展示判断留在 UI/适配器，不进入跨层 contract。
 
+正式 release 构建使用 ThinLTO 与 16 个 codegen units，保留三级优化、符号裁剪与
+非增量编译；本地和 CI 均通过既有 packaging 入口使用同一 profile（ADR-0079）。
+
 正式 workspace 位于仓库根目录，是仓库中唯一的产品构建入口。重构前实现仅在远端
 `pre-refactor-tauri` 分支中保留，当前工作树不包含其源码、资源或构建入口；`master` 承载当前代码，
 不作为旧实现参考。该路径安排不改变 crate 边界或产品架构。
@@ -1545,6 +1548,22 @@ About 仍是 Settings 中的普通页面，产品/软件信息、项目与反馈
 不展示法律与隐私正文，日志路径不进入 snapshot。页面与分组标题进入搜索关键词，旧页面名作为搜索别名；不增加第三级导航、常用页或高级页。
 
 ## 17. 实施阶段
+
+房间 Socket.IO 连接按 ADR-0078 直接使用 WebSocket transport，不先进行 HTTP polling
+握手；namespace 为 `/bangocat`，transport path 为 `/socket.io/`。
+
+房间成员模型按成功导入的在线来源或共享身份复用当前环境模型库缓存；不存在的条目重新获取。成员下载反馈经强类型状态传入其 runtime，由渲染快照携带进度条和悬停用户名；成员列表可控制本机对应窗口显示，隐藏不改变服务端成员状态。
+
+房间成员窗口按 ADR-0077 由产品主线程分别拥有独立 overlay 与 runtime。本机成员复用
+主模型窗口，其他成员窗口不注册本机输入服务；模型在设置 worker 中加载，ID 与来源唯一匹配的
+已安装模型可以复用；缺失的导入模型按 ADR-0080 自动获取并导入当前环境模型库：
+本地来源通过独立可靠有序 WebRTC 模型通道，在线来源通过房间广告的 HTTPS 地址下载。
+接收端维护远端身份到本机 UUID 的映射，不改变本机当前模型。下载、校验或导入失败使用 standard。聊天以服务端成员 ID 路由，成员离开或房间
+连接关闭时撤销路由并依次停止 runtime、释放 GPU 和窗口。成员窗口不写本机模型选择
+或窗口持久化状态。成员键鼠输入经 WebRTC 的可靠有序数据通道进入对应 runtime，
+鼠标位置走独立 latest-value 通道；边沿队列溢出、断线、重建与离房触发 Reset。
+SDP/ICE 经现有 peer:signal 交换，成员 ID 排序确定 offer 发起方；传输 adapter 不暴露
+第三方类型，也不记录真实按键。当前使用 STUN，需 TURN 的网络仍需独立中继配置与实测。
 
 ### Phase 0：风险验证和行为冻结
 

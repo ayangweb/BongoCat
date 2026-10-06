@@ -29,6 +29,9 @@ mod model_input;
 mod model_listing;
 mod model_titles;
 mod multiplayer;
+mod room_assets;
+mod room_scene;
+pub use room_scene::{RoomMemberModel, RoomSceneHandle};
 mod remote_models;
 mod settings;
 mod shortcut_config;
@@ -69,6 +72,7 @@ pub(crate) use tests::repository_preset_root;
 /// every clone observes the same work.
 #[derive(Clone, Default)]
 pub struct ApplicationMainThreadSignals {
+    pub room_scene: RoomSceneHandle,
     open_settings: Arc<AtomicBool>,
     cover_captures: Arc<Mutex<VecDeque<CoverCaptureRequest>>>,
 }

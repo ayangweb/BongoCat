@@ -2,6 +2,21 @@
   "schemaVersion": 1,
   "cases": [
     {
+      "id": "invalid-shared-model-id",
+      "file": "invalid-shared-model-id.json",
+      "expected": "reject"
+    },
+    {
+      "id": "model-library-source",
+      "file": "accept-model-library-source.json",
+      "expected": "accept"
+    },
+    {
+      "id": "invalid-model-library-source",
+      "file": "invalid-model-library-source.json",
+      "expected": "reject"
+    },
+    {
       "id": "default",
       "file": "default.json",
       "expected": "accept"

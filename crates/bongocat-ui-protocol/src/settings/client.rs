@@ -448,6 +448,18 @@ impl SettingsClient {
     }
 
     /// Remove one member from the current room.
+    pub async fn set_multiplayer_member_visible(
+        &self,
+        member_id: String,
+        visible: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetMultiplayerMemberVisible {
+            member_id,
+            visible,
+            reply,
+        })
+        .await
+    }
     pub async fn kick_multiplayer_member(
         &self,
         member_id: String,

@@ -1,13 +1,15 @@
 //! The server payload shapes, parsed once at the socket boundary and
 //! converted into the protocol vocabulary.
 //!
-//! Only what the window renders survives the conversion: member ids the kick
-//! request needs, names, model titles and the room shell. Everything else the
-//! service sends — timestamps, hashes, custom metadata — is dropped here.
+//! Member identity, model identity/source, names and the room shell survive
+//! conversion into project types. Asset hashes and other model metadata are
+//! dropped; the room never imports remote assets.
 
 use serde::Deserialize;
 
-use bongocat_ui_protocol::{SettingsRoomMember, SettingsRoomView};
+use bongocat_ui_protocol::{
+    SettingsModelKey, SettingsModelOrigin, SettingsRoomMember, SettingsRoomView,
+};
 
 /// One member as the service sends it.
 #[derive(Clone, Debug, Deserialize)]
@@ -27,6 +29,32 @@ pub(crate) struct ServerMember {
 pub(crate) struct ServerModel {
     #[serde(default)]
     pub(crate) name: Option<String>,
+    #[serde(default)]
+    pub(crate) meta: Option<ServerModelMeta>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct ServerModelMeta {
+    #[serde(default)]
+    pub(crate) share: Option<crate::room_assets::Advertisement>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    pub(crate) join_token: Option<String>,
+}
+
+impl ServerModel {
+    pub(crate) fn key(&self) -> Option<SettingsModelKey> {
+        let origin = match self.meta.as_ref()?.source.as_deref()? {
+            "preset" => SettingsModelOrigin::BuiltIn,
+            "installed" => SettingsModelOrigin::Imported,
+            _ => return None,
+        };
+        Some(SettingsModelKey {
+            id: self.name.clone()?,
+            origin,
+        })
+    }
 }
 
 /// The room view the create, join and state acknowledgements carry.
@@ -54,6 +82,8 @@ pub(crate) struct ServerRoom {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ServerChat {
+    #[serde(default)]
+    pub(crate) room_id: String,
     #[serde(default)]
     pub(crate) from_id: String,
     #[serde(default)]
@@ -83,8 +113,7 @@ pub(crate) struct ServerLobbyRow {
     pub(crate) host_name: String,
 }
 
-/// The member-joined broadcast; it is also how the connection learns its own
-/// server identity after joining.
+/// The member-joined broadcast identifies another member.
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct ServerMemberJoined {
     #[serde(default)]
@@ -115,19 +144,16 @@ pub(crate) fn parse_body<T: for<'de> Deserialize<'de>>(value: &serde_json::Value
     serde_json::from_value(value.clone()).ok()
 }
 
-/// Convert a server room into the projection, marking the member this
-/// connection is. Identity is the server member id when it is known and the
-/// nickname otherwise, because the create acknowledgement names the host (the
-/// creator) while a join learns its id from the member-joined echo.
-pub(crate) fn project_room(
-    server: &ServerRoom,
-    self_id: Option<&str>,
-    self_name: Option<&str>,
-) -> SettingsRoomView {
+/// Project a room using the server-acknowledged connection identity.
+pub(crate) fn project_room(server: &ServerRoom, self_id: Option<&str>) -> SettingsRoomView {
     let members = server
         .members
         .iter()
-        .map(|member| project_member(member, self_id, self_name))
+        .map(|member| {
+            let mut projected = project_member(member, self_id);
+            projected.is_host = member.id == server.host_id;
+            projected
+        })
         .collect();
     SettingsRoomView {
         room_id: server.room_id.clone(),
@@ -143,17 +169,15 @@ pub(crate) fn project_room(
     }
 }
 
-pub(crate) fn project_member(
-    member: &ServerMember,
-    self_id: Option<&str>,
-    self_name: Option<&str>,
-) -> SettingsRoomMember {
-    let is_self = Some(member.id.as_str()) == self_id
-        || (self_id.is_none() && self_name.is_some_and(|name| name == member.name));
+pub(crate) fn project_member(member: &ServerMember, self_id: Option<&str>) -> SettingsRoomMember {
+    let is_self = Some(member.id.as_str()) == self_id;
     SettingsRoomMember {
+        model_visible: true,
+        model_download: None,
         id: member.id.clone(),
         name: member.name.clone(),
         model_name: member.model.as_ref().and_then(|model| model.name.clone()),
+        model_key: member.model.as_ref().and_then(ServerModel::key),
         is_host: member.is_host,
         is_self,
     }

@@ -133,6 +133,10 @@ pub(super) fn run_service(
             // user does in the settings window announces it. The common answer is a
             // sequence comparison and no write.
             SettingsCommand::ReadSnapshotRevision { reply } => {
+                let room_snapshot = multiplayer.snapshot();
+                multiplayer
+                    .scene
+                    .synchronize(&mut application, room_snapshot.room.as_ref());
                 application.persist_user_expression_memory();
                 let _ =
                     observe_snapshot_state(&application, &mut clock, startup_item.state(), false);
@@ -789,6 +793,26 @@ pub(super) fn run_service(
                     || false,
                 ) {
                     Ok(installed) => {
+                        let source_url = remote_models
+                            .catalog_entry(id)
+                            .map(|entry| entry.download_url);
+                        for model in &installed {
+                            if let Err(error) = application
+                                .record_library_source(model.id().as_str(), source_url.clone())
+                            {
+                                application.record_log(
+                                    ApplicationLogEvent::new(
+                                        ApplicationLogCode::ModelOperationFailed,
+                                    )
+                                    .with_context(ApplicationLogContext::Operation(
+                                        "model_library_source",
+                                    ))
+                                    .with_context(
+                                        ApplicationLogContext::Reason(error.stable_code()),
+                                    ),
+                                );
+                            }
+                        }
                         // A remote import earns its cover the same way a local
                         // one does: rendered from the model on a thread that
                         // owns a window, not from the package's placeholder.
@@ -955,6 +979,30 @@ pub(super) fn run_service(
                         )
                         .map(|_| snapshot(&application, &mut clock, false, startup_item.state()))
                     };
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetMultiplayerMemberVisible {
+                member_id,
+                visible,
+                reply,
+            } => {
+                let valid = multiplayer.snapshot().room.as_ref().is_some_and(|room| {
+                    room.members.iter().any(|m| m.id == member_id && !m.is_self)
+                });
+                let result = if valid {
+                    multiplayer.scene.set_member_visible(&member_id, visible);
+                    let _ = multiplayer.snapshot();
+                    Ok(snapshot(
+                        &application,
+                        &mut clock,
+                        false,
+                        startup_item.state(),
+                    ))
+                } else {
+                    Err(SettingsError::new(
+                        SettingsErrorCode::MultiplayerInvalidInput,
+                    ))
+                };
                 let _ = reply.respond(result);
             }
             SettingsCommand::KickMultiplayerMember { member_id, reply } => {

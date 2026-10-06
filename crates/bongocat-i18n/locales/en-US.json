@@ -613,7 +613,8 @@
         }
       },
       "members": {
-        "title": "Members",
+        "hide_model": "Hide model",
+        "show_model": "Show model",
         "count": "%{count} members",
         "host": "host",
         "you": "you",

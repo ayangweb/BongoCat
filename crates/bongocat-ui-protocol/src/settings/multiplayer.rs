@@ -54,15 +54,24 @@ pub enum SettingsLobbyStatus {
     Failed,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SettingsMemberModelProgress {
+    pub percent: Option<u8>,
+    pub installing: bool,
+}
+
 /// One member of the room as the window renders it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsRoomMember {
+    pub model_visible: bool,
+    pub model_download: Option<SettingsMemberModelProgress>,
     /// The server-assigned member identity (the socket id), which a host's
     /// kick request must carry verbatim.
     pub id: String,
     pub name: String,
     /// The model the member advertised, when it advertised one.
     pub model_name: Option<String>,
+    pub model_key: Option<SettingsModelKey>,
     pub is_host: bool,
     pub is_self: bool,
 }
@@ -82,6 +91,15 @@ impl SettingsRoomView {
     /// The member marked `is_self`, if the projection still carries it.
     pub fn self_member(&self) -> Option<&SettingsRoomMember> {
         self.members.iter().find(|member| member.is_self)
+    }
+
+    /// Only the current host can remove another current member.
+    pub fn can_kick_member(&self, member_id: &str) -> bool {
+        self.self_member().is_some_and(|member| member.is_host)
+            && self
+                .members
+                .iter()
+                .any(|member| member.id == member_id && !member.is_self && !member.is_host)
     }
 }
 

@@ -30,6 +30,7 @@ use crate::app_log::{
 
 mod lobby;
 mod payload;
+mod peer;
 mod socket;
 
 /// How long the worker waits for a server acknowledgement before it reports
@@ -38,7 +39,7 @@ mod socket;
 pub(crate) const ACK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How often the worker wakes to check its stop flag between jobs.
-const JOB_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const JOB_POLL_INTERVAL: Duration = Duration::from_millis(16);
 
 /// The last published multiplayer state, and the version that tells the
 /// snapshot clock when it moved.
@@ -48,32 +49,65 @@ const JOB_POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// revision moved.
 #[derive(Clone, Default)]
 pub(crate) struct MultiplayerState {
+    signals: Arc<Mutex<std::collections::VecDeque<peer::IncomingSignal>>>,
     inner: Arc<Mutex<MultiplayerInner>>,
+    pub(crate) scene: crate::RoomSceneHandle,
 }
 
 #[derive(Default)]
 struct MultiplayerInner {
     version: u64,
     state: SettingsMultiplayer,
-    /// The server identity of this connection, learned from the create ack or
-    /// the first member-joined echo. Room members are matched against it.
+    /// The server identity supplied by the create/join acknowledgement.
     self_id: Option<String>,
-    /// The nickname this connection joined with, the fallback for `is_self`
-    /// while the server identity is still unknown.
+    /// The nickname this connection joined with, for outgoing requests.
     self_name: Option<String>,
-    /// Set while waiting for the member-joined echo that names this
-    /// connection's identity.
-    awaiting_self_name: Option<String>,
     last_error_seq: u64,
 }
 
 impl MultiplayerState {
+    pub(crate) fn with_scene(scene: crate::RoomSceneHandle) -> Self {
+        Self {
+            scene,
+            ..Self::default()
+        }
+    }
     pub(crate) fn snapshot(&self) -> SettingsMultiplayer {
-        self.inner
+        let mut inner = self
+            .inner
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .state
-            .clone()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut changed = false;
+        if let Some(room) = &mut inner.state.room {
+            for member in &mut room.members {
+                let visible = member.is_self || self.scene.member_visible(&member.id);
+                let progress = self
+                    .scene
+                    .1
+                    .progress(&member.id)
+                    .map(|progress| match progress {
+                        bongocat_runtime::RoomModelProgress::Downloading { percent } => {
+                            bongocat_ui_protocol::SettingsMemberModelProgress {
+                                percent,
+                                installing: false,
+                            }
+                        }
+                        bongocat_runtime::RoomModelProgress::Installing => {
+                            bongocat_ui_protocol::SettingsMemberModelProgress {
+                                percent: Some(100),
+                                installing: true,
+                            }
+                        }
+                    });
+                changed |= member.model_visible != visible || member.model_download != progress;
+                member.model_visible = visible;
+                member.model_download = progress;
+            }
+        }
+        if changed {
+            inner.version = inner.version.saturating_add(1);
+        }
+        inner.state.clone()
     }
 
     pub(crate) fn version(&self) -> u64 {
@@ -117,6 +151,9 @@ impl MultiplayerState {
     }
 
     pub(crate) fn replace_room(&self, room: Option<SettingsRoomView>) {
+        if room.is_none() {
+            self.scene.clear();
+        }
         self.update(|inner| inner.state.room = room);
     }
 
@@ -194,13 +231,54 @@ fn run_worker(
     stop: Arc<AtomicBool>,
 ) {
     let mut session: Option<socket::RoomSession> = None;
+    let mut published_model = None;
+    let peers = peer::PeerService::start(runtime.clone(), state.clone(), log.clone()).ok();
+    if peers.is_none() {
+        log_multiplayer_degraded(
+            &log,
+            "peer_worker_start_failed",
+            SettingsErrorCode::MultiplayerConnectFailed,
+        );
+    }
     loop {
         if stop.load(Ordering::Acquire) {
             break;
         }
+        let model_snapshot = runtime.snapshot();
+        if let Some(session) = session.as_ref()
+            && let Some(room_id) = state.room_id()
+            && let Some(model) = model_snapshot.active_model
+            && let Some(origin) = model_snapshot.active_model_origin
+        {
+            let source = match origin {
+                bongocat_model::ModelOrigin::Preset => "preset",
+                bongocat_model::ModelOrigin::Installed => "installed",
+            };
+            let share = state
+                .scene
+                .1
+                .local()
+                .filter(|share| share.id == model.id.as_str());
+            let identity = (room_id, model.id.as_str().to_owned(), source, share);
+            if published_model.as_ref() != Some(&identity)
+                && socket::publish_model_with_share(
+                    session,
+                    &identity.1,
+                    identity.2,
+                    identity.3.as_ref(),
+                )
+            {
+                published_model = Some(identity);
+            }
+        } else {
+            published_model = None;
+        }
         match jobs.try_recv() {
             Ok(job) => {
                 handle_job(job, &mut session, &state, &runtime, &log);
+                if let Some(peers) = &peers {
+                    peers.set_session(session.clone());
+                }
             }
             Err(async_channel::TryRecvError::Empty) => {
                 thread::sleep(JOB_POLL_INTERVAL);
@@ -208,9 +286,19 @@ fn run_worker(
             Err(async_channel::TryRecvError::Closed) => break,
         }
     }
+    if let Some(peers) = peers
+        && !peers.shutdown()
+    {
+        log_multiplayer_degraded(
+            &log,
+            "peer_worker_shutdown_failed",
+            SettingsErrorCode::MultiplayerConnectFailed,
+        );
+    }
     if let Some(session) = session.take() {
         session.shutdown();
     }
+    state.scene.clear();
 }
 
 fn handle_job(
@@ -403,6 +491,421 @@ pub(crate) fn server_error_code(raw: &str) -> SettingsErrorCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires a room service via BONGOCAT_TEST_SERVER_URL and real WebRTC model channels"]
+    fn two_clients_transfer_custom_model_over_separate_channel() {
+        use crate::room_assets::Advertisement;
+        use bongocat_config::{ModelInputMode, StorageLayout};
+        let url = std::env::var("BONGOCAT_TEST_SERVER_URL").unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let log = ApplicationLogHandle::install(temp.path()).unwrap();
+        let host_runtime = bongocat_runtime::RuntimeOwner::start(false, 128);
+        let guest_runtime = bongocat_runtime::RuntimeOwner::start(false, 128);
+        let host = MultiplayerState::default();
+        let guest = MultiplayerState::default();
+        host.scene.1.configure(temp.path().join("host"));
+        guest.scene.1.configure(temp.path().join("guest"));
+        let host_session =
+            socket::connect(&url, "model-host", &host, &host_runtime.client(), &log).unwrap();
+        assert!(socket::create_room(
+            &host_session,
+            &host,
+            "model-channel-test",
+            ""
+        ));
+        let ad = Advertisement {
+            id: "shared-model".into(),
+            title: "P2P cat".into(),
+            input_mode: ModelInputMode::Standard,
+            library_url: None,
+            cache_id: None,
+        };
+        host.scene.1.set_local(Some((
+            ad.clone(),
+            crate::tests::repository_preset_root().join("standard"),
+        )));
+        let host_peer =
+            peer::PeerService::start(host_runtime.client(), host.clone(), log.clone()).unwrap();
+        host_peer.set_session(Some(host_session.clone()));
+        for _ in 0..200 {
+            if host.scene.1.local().is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(host.scene.1.local().is_some());
+        assert!(socket::publish_model_with_share(
+            &host_session,
+            &ad.id,
+            "installed",
+            Some(&ad)
+        ));
+        let guest_session =
+            socket::connect(&url, "model-guest", &guest, &guest_runtime.client(), &log).unwrap();
+        socket::join_room(&guest_session, &guest, &host.room_id().unwrap(), "");
+        assert!(guest.snapshot().room.is_some());
+        let guest_peer =
+            peer::PeerService::start(guest_runtime.client(), guest.clone(), log).unwrap();
+        guest_peer.set_session(Some(guest_session.clone()));
+        let mut acquired = None;
+        for _ in 0..1500 {
+            acquired = guest.scene.1.acquired().pop();
+            if acquired.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let mut app = crate::Application::start_with_layout(StorageLayout::under(
+            temp.path().join("library"),
+            crate::BUILD_ENVIRONMENT,
+        ))
+        .unwrap();
+        let imported = acquired
+            .as_ref()
+            .map(|item| app.import_room_model(item, &guest.scene.1));
+        let started = std::time::Instant::now();
+        assert!(guest_peer.shutdown());
+        assert!(host_peer.shutdown());
+        let shutdown = started.elapsed();
+        socket::leave_room(&guest_session, &guest);
+        guest_session.shutdown();
+        socket::leave_room(&host_session, &host);
+        host_session.shutdown();
+        guest_runtime.shutdown(Duration::from_secs(2)).unwrap();
+        host_runtime.shutdown(Duration::from_secs(2)).unwrap();
+        let catalog = app.config().model.imported_models.clone();
+        app.shutdown().unwrap();
+        assert!(
+            shutdown < Duration::from_secs(2),
+            "model workers must join within budget"
+        );
+        let id = imported
+            .expect("model bytes arrived over actual data channel")
+            .unwrap();
+        assert_ne!(id, ad.id);
+        assert!(
+            catalog
+                .iter()
+                .any(|record| record.id == id && record.title == ad.title)
+        );
+    }
+
+    #[test]
+    #[ignore = "requires a local room service via BONGOCAT_TEST_SERVER_URL"]
+    fn two_clients_join_with_host_model_and_same_nickname() {
+        let url = std::env::var("BONGOCAT_TEST_SERVER_URL").unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let log = ApplicationLogHandle::install(directory.path()).unwrap();
+        let runtime = bongocat_runtime::RuntimeOwner::start(false, 64);
+        let host = MultiplayerState::default();
+        let guest = MultiplayerState::default();
+        let host_session = socket::connect(&url, "same", &host, &runtime.client(), &log).unwrap();
+        assert!(socket::create_room(
+            &host_session,
+            &host,
+            "join-regression",
+            ""
+        ));
+        assert!(socket::publish_model(&host_session, "standard", "preset"));
+        std::thread::sleep(Duration::from_millis(200));
+        let room_id = host.room_id().unwrap();
+        let guest_session = socket::connect(&url, "same", &guest, &runtime.client(), &log).unwrap();
+        socket::join_room(&guest_session, &guest, &room_id, "");
+        let snapshot = guest.snapshot();
+        socket::leave_room(&guest_session, &guest);
+        guest_session.shutdown();
+        socket::leave_room(&host_session, &host);
+        host_session.shutdown();
+        runtime.shutdown(Duration::from_secs(2)).unwrap();
+        assert!(snapshot.last_error.is_none(), "{:?}", snapshot.last_error);
+        let room = snapshot.room.expect("guest entered room");
+        assert_eq!(room.members.len(), 2);
+        assert!(!room.self_member().unwrap().is_host);
+    }
+
+    #[test]
+    #[ignore = "requires a room service via BONGOCAT_TEST_SERVER_URL and opens real WebRTC sockets"]
+    fn two_clients_peer_workers_deliver_release_and_join_on_shutdown() {
+        use bongocat_input::{InputControl, InputEdge, InputEvent, InputSource, PhysicalKey};
+        let url = std::env::var("BONGOCAT_TEST_SERVER_URL").unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let log = ApplicationLogHandle::install(directory.path()).unwrap();
+        let host_runtime = bongocat_runtime::RuntimeOwner::start(false, 256);
+        let guest_runtime = bongocat_runtime::RuntimeOwner::start(false, 256);
+        let remote_runtime = bongocat_runtime::RuntimeOwner::start(false, 256);
+        let host = MultiplayerState::default();
+        let guest = MultiplayerState::default();
+        let host_session =
+            socket::connect(&url, "worker-host", &host, &host_runtime.client(), &log).unwrap();
+        assert!(socket::create_room(
+            &host_session,
+            &host,
+            "worker-regression",
+            ""
+        ));
+        let guest_session =
+            socket::connect(&url, "worker-guest", &guest, &guest_runtime.client(), &log).unwrap();
+        socket::join_room(&guest_session, &guest, &host.room_id().unwrap(), "");
+        let guest_id = guest
+            .snapshot()
+            .room
+            .unwrap()
+            .self_member()
+            .unwrap()
+            .id
+            .clone();
+        host.scene
+            .register_test_client(guest_id, remote_runtime.client());
+        let host_worker =
+            peer::PeerService::start(host_runtime.client(), host.clone(), log.clone()).unwrap();
+        let guest_worker =
+            peer::PeerService::start(guest_runtime.client(), guest.clone(), log).unwrap();
+        host_worker.set_session(Some(host_session.clone()));
+        guest_worker.set_session(Some(guest_session.clone()));
+        std::thread::sleep(Duration::from_millis(100));
+        for (edge, expected) in [(InputEdge::Down, 1), (InputEdge::Up, 0)] {
+            let client = guest_runtime.client();
+            client
+                .input_producer()
+                .publish(InputEvent::Edge {
+                    control: InputControl::Key(PhysicalKey::KEY_A),
+                    edge,
+                    source: InputSource::Capture,
+                    at: client.input_timestamp(),
+                })
+                .unwrap();
+            for _ in 0..1500 {
+                if remote_runtime.client().snapshot().input.pressed_key_count == expected {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            assert_eq!(
+                remote_runtime.client().snapshot().input.pressed_key_count,
+                expected
+            );
+        }
+        let shutdown_started = std::time::Instant::now();
+        assert!(guest_worker.shutdown());
+        assert!(host_worker.shutdown());
+        assert!(shutdown_started.elapsed() < Duration::from_secs(4));
+        socket::leave_room(&guest_session, &guest);
+        guest_session.shutdown();
+        socket::leave_room(&host_session, &host);
+        host_session.shutdown();
+        for runtime in [host_runtime, guest_runtime, remote_runtime] {
+            runtime.shutdown(Duration::from_secs(2)).unwrap();
+        }
+    }
+
+    #[test]
+    #[ignore = "requires a room service via BONGOCAT_TEST_SERVER_URL and opens real WebRTC sockets"]
+    fn two_clients_webrtc_routes_edges_cursor_and_disconnect_reset() {
+        use bongocat_input::{InputControl, InputEdge, InputEvent, InputSource, PhysicalKey};
+        let url = std::env::var("BONGOCAT_TEST_SERVER_URL").unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let log = ApplicationLogHandle::install(directory.path()).unwrap();
+        let host_runtime = bongocat_runtime::RuntimeOwner::start(false, 256);
+        let guest_runtime = bongocat_runtime::RuntimeOwner::start(false, 256);
+        let host_remote = bongocat_runtime::RuntimeOwner::start(false, 256);
+        let guest_remote = bongocat_runtime::RuntimeOwner::start(false, 256);
+        let model = Arc::new(
+            bongocat_model::PresetModelCatalog::open(
+                crate::tests::repository_preset_root(),
+                bongocat_model::ModelPackageLimits::default(),
+            )
+            .unwrap()
+            .load(&bongocat_model::ModelId::parse("standard").unwrap())
+            .unwrap(),
+        );
+        let bindings = Arc::new(crate::model_input::input_bindings_for_committed_model(
+            &model,
+        ));
+        for client in [host_remote.client(), guest_remote.client()] {
+            let sequence = client
+                .send(
+                    bongocat_runtime::RuntimeCommand::ActivateModelWithBindings {
+                        model: Arc::clone(&model),
+                        input_bindings: Arc::clone(&bindings),
+                    },
+                )
+                .unwrap();
+            client
+                .wait_for_command(sequence, Duration::from_secs(2))
+                .unwrap();
+        }
+        let host = MultiplayerState::default();
+        let guest = MultiplayerState::default();
+        let host_session =
+            socket::connect(&url, "same", &host, &host_runtime.client(), &log).unwrap();
+        assert!(socket::create_room(
+            &host_session,
+            &host,
+            "webrtc-regression",
+            ""
+        ));
+        let room_id = host.room_id().unwrap();
+        let guest_session =
+            socket::connect(&url, "same", &guest, &guest_runtime.client(), &log).unwrap();
+        socket::join_room(&guest_session, &guest, &room_id, "");
+        let guest_id = guest
+            .snapshot()
+            .room
+            .unwrap()
+            .self_member()
+            .unwrap()
+            .id
+            .clone();
+        let host_id = host
+            .snapshot()
+            .room
+            .unwrap()
+            .self_member()
+            .unwrap()
+            .id
+            .clone();
+        host.scene
+            .register_test_client(guest_id, host_remote.client());
+        guest
+            .scene
+            .register_test_client(host_id, guest_remote.client());
+        let mut host_network = peer::PeerNetwork::new(host_runtime.client());
+        let mut guest_network = peer::PeerNetwork::new(guest_runtime.client());
+        let pump = |host_network: &mut peer::PeerNetwork, guest_network: &mut peer::PeerNetwork| {
+            host_network.tick(Some(&host_session), &host).unwrap();
+            guest_network.tick(Some(&guest_session), &guest).unwrap();
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        for _ in 0..2000 {
+            pump(&mut host_network, &mut guest_network);
+            if host_network.connected_members() == 1 && guest_network.connected_members() == 1 {
+                break;
+            }
+        }
+        assert_eq!(
+            host_network.connected_members(),
+            1,
+            "host WebRTC channel opened"
+        );
+        assert_eq!(
+            guest_network.connected_members(),
+            1,
+            "guest WebRTC channel opened"
+        );
+        let guest_client = guest_runtime.client();
+        guest_client
+            .cursor_producer()
+            .publish(
+                bongocat_input::CursorSample::new(
+                    bongocat_input::CursorPosition { x: 25.0, y: 75.0 },
+                    bongocat_input::CursorViewport {
+                        origin: bongocat_input::CursorPosition { x: 0.0, y: 0.0 },
+                        width: 100.0,
+                        height: 100.0,
+                    },
+                    guest_client.input_timestamp(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        for _ in 0..200 {
+            pump(&mut host_network, &mut guest_network);
+            if host_remote.client().snapshot().cursor.sample.is_some() {
+                break;
+            }
+        }
+        let position = host_remote
+            .client()
+            .snapshot()
+            .cursor
+            .sample
+            .expect("remote cursor")
+            .normalized();
+        assert_eq!((position.x, position.y), (0.5, -0.5));
+        let host_client = host_runtime.client();
+        host_client
+            .input_producer()
+            .publish(InputEvent::Edge {
+                control: InputControl::Mouse(bongocat_input::MouseButton::Left),
+                edge: InputEdge::Down,
+                source: InputSource::Capture,
+                at: host_client.input_timestamp(),
+            })
+            .unwrap();
+        for _ in 0..200 {
+            pump(&mut host_network, &mut guest_network);
+            if guest_remote
+                .client()
+                .snapshot()
+                .input
+                .pressed_mouse_button_count
+                == 1
+            {
+                break;
+            }
+        }
+        assert_eq!(
+            guest_remote
+                .client()
+                .snapshot()
+                .input
+                .pressed_mouse_button_count,
+            1
+        );
+        for (edge, expected) in [
+            (InputEdge::Down, 1),
+            (InputEdge::Up, 0),
+            (InputEdge::Down, 1),
+        ] {
+            let client = guest_runtime.client();
+            client
+                .input_producer()
+                .publish(InputEvent::Edge {
+                    control: InputControl::Key(PhysicalKey::KEY_A),
+                    edge,
+                    source: InputSource::Capture,
+                    at: client.input_timestamp(),
+                })
+                .unwrap();
+            for _ in 0..200 {
+                pump(&mut host_network, &mut guest_network);
+                if host_remote.client().snapshot().input.pressed_key_count == expected {
+                    break;
+                }
+            }
+            assert_eq!(
+                host_remote.client().snapshot().input.pressed_key_count,
+                expected
+            );
+            assert_eq!(
+                host_remote.client().snapshot().model_input.left_hand_down,
+                expected == 1
+            );
+            assert_eq!(host_runtime.client().snapshot().input.pressed_key_count, 0);
+        }
+        guest_network.shutdown();
+        for _ in 0..200 {
+            host_network.tick(Some(&host_session), &host).unwrap();
+            if host_remote.client().snapshot().input.pressed_key_count == 0 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            host_remote.client().snapshot().input.pressed_key_count,
+            0,
+            "disconnect clears held key"
+        );
+        host_network.shutdown();
+        socket::leave_room(&guest_session, &guest);
+        guest_session.shutdown();
+        socket::leave_room(&host_session, &host);
+        host_session.shutdown();
+        for runtime in [host_runtime, guest_runtime, host_remote, guest_remote] {
+            runtime.shutdown(Duration::from_secs(2)).unwrap();
+        }
+    }
 
     #[test]
     #[ignore = "requires a local bango-server via BONGOCAT_TEST_SERVER_URL"]

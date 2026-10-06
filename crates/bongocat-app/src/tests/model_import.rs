@@ -434,11 +434,15 @@ fn import_hints_become_titles_while_ids_stay_generated_uuids() {
         application.config().model.imported_models,
         vec![
             ImportedModelMetadata {
+                library_url: None,
+                shared_model_id: None,
                 id: first.id().as_str().to_owned(),
                 title: "我的猫".to_owned(),
                 input_mode: ModelInputMode::Standard,
             },
             ImportedModelMetadata {
+                library_url: None,
+                shared_model_id: None,
                 id: second.id().as_str().to_owned(),
                 title: "我的猫".to_owned(),
                 input_mode: ModelInputMode::Standard,
@@ -452,6 +456,8 @@ fn import_hints_become_titles_while_ids_stay_generated_uuids() {
     assert_eq!(
         application.config().model.imported_models,
         vec![ImportedModelMetadata {
+            library_url: None,
+            shared_model_id: None,
             id: second.id().as_str().to_owned(),
             title: "我的猫".to_owned(),
             input_mode: ModelInputMode::Standard,

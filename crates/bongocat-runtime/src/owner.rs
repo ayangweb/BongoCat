@@ -272,6 +272,7 @@ impl RuntimeOwner {
         let shutdown = Arc::new(ShutdownSignal::default());
         let worker_shutdown = Arc::clone(&shutdown);
         let client = RuntimeClient {
+            clock: Arc::clone(&clock),
             producer,
             snapshot: Arc::clone(&snapshot),
             input_producer,

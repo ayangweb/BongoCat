@@ -9,6 +9,7 @@ use crate::*;
 
 #[derive(Clone)]
 pub struct RuntimeClient {
+    pub(crate) clock: Arc<dyn MonotonicClock>,
     pub(crate) producer: Arc<Producer>,
     pub(crate) snapshot: Arc<SnapshotCell>,
     pub(crate) input_producer: InputProducer,
@@ -20,6 +21,10 @@ pub struct RuntimeClient {
 }
 
 impl RuntimeClient {
+    /// Timestamp remote input in the receiving runtime's monotonic time domain.
+    pub fn input_timestamp(&self) -> MonotonicMillis {
+        MonotonicMillis::new(self.clock.now().as_millis().min(u128::from(u64::MAX)) as u64)
+    }
     pub fn send(&self, command: RuntimeCommand) -> Result<u64, SendError> {
         self.producer.send(command)
     }

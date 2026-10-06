@@ -34,7 +34,7 @@ use self::catalog::CatalogFetcher;
 use self::download::{DownloadFailure, download_package, extract_package};
 
 mod catalog;
-mod download;
+pub(crate) mod download;
 
 /// The directory under the environment's storage root where downloads unpack.
 pub(crate) const REMOTE_MODELS_DIRECTORY_NAME: &str = "remote-models";

@@ -396,8 +396,20 @@ pub struct PendingModelSnapshot {
     pub model: ModelSnapshot,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RoomModelProgress {
+    Downloading { percent: Option<u8> },
+    Installing,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum RuntimeCommand {
+    /// Member-specific asset feedback, rasterized by the runtime worker.
+    SetRoomMemberPresentation {
+        name: String,
+        progress: Option<RoomModelProgress>,
+    },
+    SetRoomMemberHovered(bool),
     /// Drive one deterministic runtime evaluation using the injected clock.
     Tick,
     SetOverlayVisible(bool),

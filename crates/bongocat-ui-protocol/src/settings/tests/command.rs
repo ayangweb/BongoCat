@@ -604,9 +604,12 @@ fn multiplayer_commands_preserve_typed_requests_and_carry_the_projection() {
             max_members: 8,
             has_password: true,
             members: vec![SettingsRoomMember {
+                model_visible: true,
+                model_download: None,
                 id: "socket-1".to_owned(),
                 name: "小明".to_owned(),
                 model_name: Some("cat-v1.glb".to_owned()),
+                model_key: None,
                 is_host: true,
                 is_self: true,
             }],
@@ -627,9 +630,12 @@ fn multiplayer_commands_preserve_typed_requests_and_carry_the_projection() {
             max_members: 8,
             has_password: true,
             members: vec![SettingsRoomMember {
+                model_visible: true,
+                model_download: None,
                 id: "socket-1".to_owned(),
                 name: "小明".to_owned(),
                 model_name: Some("cat-v1.glb".to_owned()),
+                model_key: None,
                 is_host: true,
                 is_self: true,
             }],
@@ -662,6 +668,57 @@ fn multiplayer_commands_preserve_typed_requests_and_carry_the_projection() {
     assert_eq!(chatted.multiplayer.chat.len(), 1);
     assert_eq!(chatted.multiplayer.chat[0].sender, "小明");
     worker.join().expect("worker join");
+}
+
+#[test]
+fn room_kick_permissions_follow_the_current_host() {
+    let mut room = SettingsRoomView {
+        room_id: "room".to_owned(),
+        name: "room".to_owned(),
+        member_count: 2,
+        max_members: 8,
+        has_password: false,
+        members: vec![
+            SettingsRoomMember {
+                model_visible: true,
+                model_download: None,
+                id: "host".to_owned(),
+                name: "same-name".to_owned(),
+                model_name: None,
+                model_key: None,
+                is_host: true,
+                is_self: true,
+            },
+            SettingsRoomMember {
+                model_visible: true,
+                model_download: None,
+                id: "guest".to_owned(),
+                name: "same-name".to_owned(),
+                model_name: None,
+                model_key: None,
+                is_host: false,
+                is_self: false,
+            },
+        ],
+    };
+    assert!(room.can_kick_member("guest"));
+    assert!(!room.can_kick_member("host"));
+    assert!(!room.can_kick_member("missing"));
+
+    // A guest must not be offered an action against the host or itself.
+    room.members[0].is_self = false;
+    room.members[1].is_self = true;
+    assert!(!room.can_kick_member("host"));
+    assert!(!room.can_kick_member("guest"));
+
+    // Ownership transfer changes permissions without changing identities.
+    room.members[0].is_host = false;
+    room.members[1].is_host = true;
+    assert!(room.can_kick_member("host"));
+    assert!(!room.can_kick_member("guest"));
+
+    room.members[1].is_self = false;
+    assert!(!room.can_kick_member("host"));
 }
 
 #[test]

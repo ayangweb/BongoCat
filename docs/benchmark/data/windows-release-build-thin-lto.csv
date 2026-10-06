@@ -1,0 +1,3 @@
+condition,command,wall_seconds,cargo_release_report,success
+profile_change_rebuild,just build,267.8578158,4m 11s,true
+unchanged_cached_build,just build,17.0675054,1.06s,true

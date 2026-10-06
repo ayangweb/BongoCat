@@ -613,7 +613,8 @@
         }
       },
       "members": {
-        "title": "成员",
+        "hide_model": "隐藏模型",
+        "show_model": "显示模型",
         "count": "%{count} 名成员",
         "host": "房主",
         "you": "你",

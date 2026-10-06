@@ -64,7 +64,7 @@ multiplayer
 | `logging`     | `level`                               | 写入阈值：`error`、`warn`、`info`、`debug`、`trace` |
 | `logging`     | `retention_days`                      | 日志保留天数，`[1, 30]`                |
 | `model`       | `selected_model`                      | 当前模型完整身份：`{ id, source }`，或为 `null` |
-| `model`       | `imported_models`                     | 用户导入模型的元数据列表（`id` + `title` + `input_mode`） |
+| `model`       | `imported_models`                     | 用户导入模型的元数据列表（`id` + `title` + `input_mode`，可缺省的 `library_url` 保存在线来源） |
 | `model`       | `built_in_models`                     | 内置模型被改名后的元数据列表（`id` + `title`） |
 | `model`       | `mirror`                              | 水平翻转模型                           |
 | `model`       | `mirror_pointer_tracking_horizontal`   | 水平翻转指针跟随方向                   |
@@ -453,3 +453,7 @@ modifier、抑制重复 key down；binding replace 保留 pressed set 以避免 
 `Development` 与 `Production` 使用同一 schema、默认值和相对目录结构，只由数据根目录区分。配置内容不保存环境字段，也不能引用另一环境的绝对路径。
 
 路径与构建约束见 ADR-0008。
+
+房间自动获取的模型也进入当前环境模型库，使用本机新 UUID。`library_url` 可缺省或为 null；旧记录按无在线来源读取。在线来源只接受不超过 2048 字节的 HTTPS 地址，运行时只从模型库支持的公共源下载。
+
+房间缓存使用可缺省的 `shared_model_id` 保存原始共享模型身份；缺少或 null 按无共享身份读取，非空值必须满足当前模型 ID 约束。在线模型按 `library_url` 与输入模式复用，本地共享按原始共享身份与输入模式复用。仅成功导入且仍存在的模型可命中缓存。

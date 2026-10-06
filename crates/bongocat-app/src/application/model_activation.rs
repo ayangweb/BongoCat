@@ -265,6 +265,14 @@ impl Application {
         Ok(Some(target))
     }
 
+    pub(crate) fn load_room_model(
+        &self,
+        origin: ModelOrigin,
+        id: &ModelId,
+    ) -> Result<CommittedModel, ApplicationError> {
+        self.load_model(origin, id)
+    }
+
     fn load_model(
         &self,
         origin: ModelOrigin,

@@ -16,7 +16,7 @@ use bongocat_model::ModelPackageLimits;
 
 /// Why one download session did not end in a package on disk.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum DownloadFailure {
+pub(crate) enum DownloadFailure {
     /// Every URL the entry advertised was unreachable or refused the request.
     DownloadFailed,
     /// The download or the unpack exceeded the package size limit.
@@ -46,7 +46,7 @@ impl DownloadFailure {
 /// Progress reports every chunk with the byte count so far and the advertised
 /// total when the server sent one; publishing is the caller's decision. A stop
 /// check runs between chunks, so shutdown waits at most one chunk.
-pub(super) fn download_package(
+pub(crate) fn download_package(
     agent: &ureq::Agent,
     urls: &[String],
     destination: &Path,
@@ -121,7 +121,7 @@ fn try_download(
 /// Unpacks one downloaded archive into `destination`, refusing anything the
 /// local import path would refuse on shape: too many entries, too much bytes,
 /// paths that leave the destination, or nesting that is too deep.
-pub(super) fn extract_package(
+pub(crate) fn extract_package(
     archive_path: &Path,
     destination: &Path,
     limits: &ModelPackageLimits,
@@ -133,6 +133,7 @@ pub(super) fn extract_package(
         return Err(DownloadFailure::DownloadTooLarge);
     }
     let mut unpacked_bytes: u64 = 0;
+    let mut paths = std::collections::BTreeSet::new();
     for index in 0..archive.len() {
         let mut entry = archive
             .by_index(index)
@@ -142,6 +143,13 @@ pub(super) fn extract_package(
         let Some(relative) = entry.enclosed_name() else {
             return Err(DownloadFailure::InvalidPackage);
         };
+        if entry
+            .unix_mode()
+            .is_some_and(|mode| mode & 0o170000 == 0o120000)
+            || !paths.insert(relative.to_string_lossy().to_lowercase())
+        {
+            return Err(DownloadFailure::InvalidPackage);
+        }
         if relative.components().count() > limits.maximum_directory_depth {
             return Err(DownloadFailure::InvalidPackage);
         }
@@ -186,7 +194,7 @@ fn copy_bounded(
 /// itself: a root that carries no files and exactly one directory hands that
 /// directory over, any other shape is already a package root and the import
 /// reports its own, precise diagnostic about it.
-pub(super) fn resolve_package_root(extracted: &Path) -> PathBuf {
+pub(crate) fn resolve_package_root(extracted: &Path) -> PathBuf {
     let Ok(entries) = fs::read_dir(extracted) else {
         return extracted.to_owned();
     };
@@ -259,6 +267,25 @@ mod tests {
         let unpacked = root.path().join("package");
         write_zip(&archive, &[("../escape.txt", b"x".as_slice())]);
         assert!(extract_package(&archive, &unpacked, &tight_limits()).is_err());
+    }
+
+    #[test]
+    fn refuses_case_collisions_and_symbolic_links() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let archive = root.path().join("package.zip");
+        let unpacked = root.path().join("package");
+        write_zip(&archive, &[("Cat.json", b"{}"), ("cat.json", b"{}")]);
+        assert!(extract_package(&archive, &unpacked, &tight_limits()).is_err());
+        let mut writer = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        writer
+            .add_symlink(
+                "linked.json",
+                "../outside.json",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+        assert!(extract_package(&archive, &root.path().join("linked"), &tight_limits()).is_err());
     }
 
     #[test]

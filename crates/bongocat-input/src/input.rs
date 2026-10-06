@@ -342,6 +342,34 @@ pub trait InputSubmitter: Send + Sync {
 struct InputProducerState {
     next_sequence: u64,
     recovery_pending: bool,
+    subscribers: Vec<std::sync::Weak<std::sync::Mutex<InputSubscriptionState>>>,
+}
+
+#[derive(Default)]
+struct InputSubscriptionState {
+    pending: std::collections::VecDeque<InputEvent>,
+    overflow_count: u64,
+}
+
+/// Bounded, non-blocking copy of accepted input, independent of the runtime queue.
+pub struct InputSubscription(std::sync::Arc<std::sync::Mutex<InputSubscriptionState>>);
+
+impl InputSubscription {
+    pub fn drain(&self) -> Vec<InputEvent> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .pending
+            .drain(..)
+            .collect()
+    }
+
+    pub fn overflow_count(&self) -> u64 {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .overflow_count
+    }
 }
 
 #[derive(Clone)]
@@ -360,6 +388,16 @@ pub enum InputPublishError {
 }
 
 impl InputProducer {
+    pub fn subscribe(&self) -> InputSubscription {
+        let subscriber =
+            std::sync::Arc::new(std::sync::Mutex::new(InputSubscriptionState::default()));
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .subscribers
+            .push(std::sync::Arc::downgrade(&subscriber));
+        InputSubscription(subscriber)
+    }
     pub fn new(submitter: std::sync::Arc<dyn InputSubmitter>) -> Self {
         Self {
             submitter,
@@ -382,6 +420,24 @@ impl InputProducer {
         match self.submitter.submit(envelope) {
             Ok(()) => {
                 self.transport.enqueued();
+                state.subscribers.retain(|subscriber| {
+                    let Some(subscriber) = subscriber.upgrade() else {
+                        return false;
+                    };
+                    let mut subscriber = subscriber
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if subscriber.pending.len() >= 256 {
+                        subscriber.pending.clear();
+                        subscriber.overflow_count = subscriber.overflow_count.saturating_add(1);
+                        subscriber.pending.push_back(InputEvent::Reset {
+                            reason: InputResetReason::QueueOverflow,
+                            at: event.at(),
+                        });
+                    }
+                    subscriber.pending.push_back(event.clone());
+                    true
+                });
                 if state.recovery_pending {
                     state.recovery_pending = false;
                     self.transport.recovered_after_overflow();
@@ -453,6 +509,54 @@ impl InputTransportCounters {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn slow_input_subscriber_resets_observably_without_losing_final_release() {
+        struct Sink;
+        impl InputSubmitter for Sink {
+            fn submit(&self, _: SequencedInputEvent) -> Result<(), InputSubmitError> {
+                Ok(())
+            }
+        }
+        let producer = InputProducer::new(std::sync::Arc::new(Sink));
+        let subscription = producer.subscribe();
+        for at in 0..300 {
+            producer
+                .publish(InputEvent::Edge {
+                    control: InputControl::Key(PhysicalKey::KEY_A),
+                    edge: InputEdge::Down,
+                    source: InputSource::Capture,
+                    at: MonotonicMillis::new(at),
+                })
+                .unwrap();
+        }
+        producer
+            .publish(InputEvent::Edge {
+                control: InputControl::Key(PhysicalKey::KEY_A),
+                edge: InputEdge::Up,
+                source: InputSource::Capture,
+                at: MonotonicMillis::new(300),
+            })
+            .unwrap();
+        assert_eq!(subscription.overflow_count(), 1);
+        let events = subscription.drain();
+        assert!(events.len() <= 256);
+        assert!(matches!(
+            events.first(),
+            Some(InputEvent::Reset {
+                reason: InputResetReason::QueueOverflow,
+                ..
+            })
+        ));
+        assert!(matches!(
+            events.last(),
+            Some(InputEvent::Edge {
+                edge: InputEdge::Up,
+                ..
+            })
+        ));
+        assert_eq!(producer.diagnostics().queue_full, 0);
+    }
 
     /// The key-image vocabulary is a contract with model authors, so it has to
     /// satisfy the same rules the keyboard table does: every button named

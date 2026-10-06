@@ -18,6 +18,14 @@ dev:
 dev-smoke:
     cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
 
+# Exercise two room-member windows, ID-routed chat, and shutdown without local input capture.
+room-window-smoke:
+    cargo test --locked -p bongocat-app --lib room_scene::tests::remote_windows_render_chat_without_starting_local_input -- --ignored
+
+# Requires BONGOCAT_TEST_SERVER_URL; exercises two real clients and WebRTC sockets.
+room-peer-smoke:
+    cargo test --locked -p bongocat-app --lib two_clients_ -- --ignored
+
 # Run a deterministic Live2D diagnostic preview.
 preview model="standard" seconds="30":
     cargo run --locked -p bongocat-overlay --release -- "{{model}}" "{{seconds}}"

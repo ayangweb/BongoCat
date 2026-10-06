@@ -36,9 +36,11 @@ pub(crate) struct ProductOverlaySession {
     /// and the placement settle delay both measure elapsed time from it, so the
     /// session needs exactly one wall-clock reading at start.
     pub(crate) session_started: Instant,
+    member_hovered: bool,
 }
 
 impl ProductOverlaySession {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn start(
         runtime_client: RuntimeClient,
         input_producer: InputProducer,
@@ -47,6 +49,7 @@ impl ProductOverlaySession {
         render_consumer: RenderConsumer,
         options: OverlaySessionOptions,
         interaction_sinks: OverlayInteractionSinks,
+        capture_local_input: bool,
     ) -> Result<Self, OverlayError> {
         let OverlayInteractionSinks {
             context_menu_sender,
@@ -108,7 +111,7 @@ impl ProductOverlaySession {
             )?;
         }
         let diagnostics_producer = runtime_client.platform_input_diagnostics_producer();
-        let (input_service, input_start_error) =
+        let (input_service, input_start_error) = if capture_local_input {
             crate::start_platform_input(&diagnostics_producer, || {
                 MacInputService::start_with_diagnostics(
                     input_producer,
@@ -116,7 +119,10 @@ impl ProductOverlaySession {
                     gamepad_axis_producer,
                     diagnostics_producer.clone(),
                 )
-            });
+            })
+        } else {
+            (None, None)
+        };
         let (base_width, base_height) =
             default_overlay_window_dimensions(initial_frame.snapshot.canvas);
         let context_menu_monitor = install_context_menu_monitor(
@@ -150,6 +156,7 @@ impl ProductOverlaySession {
             hover: PointerHoverHide::default(),
             placement: OverlayPlacementConstraint::default(),
             session_started: Instant::now(),
+            member_hovered: false,
         })
     }
 
@@ -468,6 +475,15 @@ impl ProductOverlaySession {
     /// pointer event has arrived yet) and a platform input service that is not
     /// running both count as "not inside", so a degraded pointer pipeline can
     /// never leave the overlay stuck invisible.
+    pub(crate) fn pointer_inside(&self) -> Result<bool, OverlayError> {
+        let point = NSEvent::mouseLocation();
+        Ok(pointer_inside_window(
+            self.window_bounds()?,
+            point.x,
+            point.y,
+        ))
+    }
+
     pub(crate) fn update_hover_presentation(
         &mut self,
         options: OverlaySessionOptions,
@@ -488,6 +504,15 @@ impl ProductOverlaySession {
             && cursor
                 .and_then(|sample| appkit_cursor_position(sample, mtm))
                 .is_some_and(|position| pointer_inside_window(bounds, position.x, position.y));
+        let member_hovered = self.pointer_inside()?;
+        if member_hovered != self.member_hovered
+            && self
+                .runtime_client
+                .send(RuntimeCommand::SetRoomMemberHovered(member_hovered))
+                .is_ok()
+        {
+            self.member_hovered = member_hovered;
+        }
         let fade = self.hover.observe(PointerHoverObservation {
             enabled: options.hide_on_pointer_hover && input_running,
             delay: Duration::from_millis(u64::from(options.hide_on_pointer_hover_delay_ms)),

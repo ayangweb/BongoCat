@@ -36,6 +36,7 @@ arboard = { version = "=3.6.1", default-features = false }
 async-io = "=2.6.0"
 atomic-write-file = "=0.3.1"
 async-channel = "=2.5.0"
+async-trait = "=0.1.92"
 cargo-packager = { version = "=0.11.8", default-features = false, features = ["rustls-tls"] }
 cargo-packager-updater = { version = "=0.2.3", default-features = false, features = ["rustls-tls"] }
 clap = { version = "=4.6.7", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
@@ -65,10 +66,12 @@ tar = "=0.4.46"
 tempfile = "=3.27.0"
 thiserror = "=2.0.21"
 time = { version = "=0.3.55", default-features = false, features = ["formatting", "macros", "parsing"] }
+tokio = { version = "=1.53.1", features = ["rt", "time", "net", "sync"] }
 tray-icon = { version = "=0.25.0", default-features = false }
 ureq = { version = "=2.12.1", default-features = false, features = ["tls"] }
 url = "=2.5.8"
 walkdir = "=2.5.0"
+webrtc = "=0.21.0"
 zip = { version = "=8.6.0", default-features = false }
 
 bongocat-config = { path = "crates/bongocat-config" }
@@ -104,9 +107,9 @@ incremental = true
 panic = "unwind"
 
 [profile.release]
-lto = "fat"
+lto = "thin"
 opt-level = 3
-codegen-units = 1
+codegen-units = 16
 panic = "abort"
 strip = "symbols"
 debug = 0

@@ -325,6 +325,11 @@ pub enum SettingsCommand {
     },
     /// Remove one member from the current room. Only the host may ask, and the
     /// server decides; the removal arrives through the member list.
+    SetMultiplayerMemberVisible {
+        member_id: String,
+        visible: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     KickMultiplayerMember {
         member_id: String,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,

@@ -1,6 +1,22 @@
 //! The schema, its defaults, its bounds and its version gate.
 
 use super::*;
+
+#[test]
+fn old_imported_model_metadata_without_library_url_still_parses() {
+    let mut value = serde_json::to_value(NativeConfig::default()).unwrap();
+    value["model"]["imported_models"] = serde_json::json!([
+        {"id":"existing-cat","title":"Existing cat","input_mode":"standard"}
+    ]);
+    let (parsed, _) = parse_config(&serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(parsed.model.imported_models[0].library_url.is_none());
+    assert!(parsed.model.imported_models[0].shared_model_id.is_none());
+    assert_eq!(parsed.model.imported_models[0].id, "existing-cat");
+    value["model"]["imported_models"][0]["library_url"] =
+        serde_json::json!("https://github.com/a/b/raw/main/model.zip");
+    let (parsed, _) = parse_config(&serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(parsed.model.imported_models[0].library_url.is_some());
+}
 use crate::{
     MAXIMUM_MODEL_EXPRESSION_MEMORIES, MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES,
     ModelExpressionMemory,
@@ -701,6 +717,8 @@ fn model_ids_are_portable_store_keys() {
         .model
         .imported_models
         .push(ImportedModelMetadata {
+            library_url: None,
+            shared_model_id: None,
             id: "NUL".to_owned(),
             title: "Invalid".to_owned(),
             input_mode: ModelInputMode::Standard,

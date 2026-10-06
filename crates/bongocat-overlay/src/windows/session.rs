@@ -196,6 +196,7 @@ pub(crate) struct ProductOverlaySession {
     /// and the placement settle delay both measure elapsed time from it, so the
     /// session needs exactly one wall-clock reading at start.
     pub(crate) session_started: Instant,
+    member_hovered: bool,
 }
 
 impl HasWindowHandle for ProductOverlaySession {
@@ -210,6 +211,7 @@ impl HasWindowHandle for ProductOverlaySession {
 }
 
 impl ProductOverlaySession {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn start(
         runtime_client: RuntimeClient,
         input_producer: InputProducer,
@@ -218,6 +220,7 @@ impl ProductOverlaySession {
         render_consumer: RenderConsumer,
         options: OverlaySessionOptions,
         interaction_sinks: OverlayInteractionSinks,
+        capture_local_input: bool,
     ) -> Result<Self, OverlayError> {
         let OverlayInteractionSinks {
             context_menu_sender,
@@ -259,7 +262,7 @@ impl ProductOverlaySession {
             ModelCommitOutcome::Prepared,
         )?;
         let diagnostics_producer = runtime_client.platform_input_diagnostics_producer();
-        let (input_service, input_start_error) =
+        let (input_service, input_start_error) = if capture_local_input {
             crate::start_platform_input(&diagnostics_producer, || {
                 WindowsInputService::start_with_diagnostics(
                     input_producer,
@@ -267,7 +270,10 @@ impl ProductOverlaySession {
                     gamepad_axis_producer,
                     diagnostics_producer.clone(),
                 )
-            });
+            })
+        } else {
+            (None, None)
+        };
         Ok(Self {
             overlay,
             runtime_client,
@@ -289,6 +295,7 @@ impl ProductOverlaySession {
             hover: PointerHoverHide::default(),
             placement: OverlayPlacementConstraint::default(),
             session_started: Instant::now(),
+            member_hovered: false,
         })
     }
 
@@ -550,6 +557,15 @@ impl ProductOverlaySession {
     ///
     /// `GetCursorPos` and `GetWindowRect` both report virtual-screen pixels, so
     /// unlike macOS this needs no coordinate conversion.
+    pub(crate) fn pointer_inside(&self) -> Result<bool, OverlayError> {
+        let point = current_cursor_position();
+        Ok(pointer_inside_window(
+            self.overlay.window.bounds()?,
+            f64::from(point.x),
+            f64::from(point.y),
+        ))
+    }
+
     pub(crate) fn update_hover_presentation(
         &mut self,
         options: OverlaySessionOptions,
@@ -564,6 +580,15 @@ impl ProductOverlaySession {
             && cursor.is_some_and(|sample| {
                 pointer_inside_window(bounds, sample.position.x, sample.position.y)
             });
+        let member_hovered = self.pointer_inside()?;
+        if member_hovered != self.member_hovered
+            && self
+                .runtime_client
+                .send(RuntimeCommand::SetRoomMemberHovered(member_hovered))
+                .is_ok()
+        {
+            self.member_hovered = member_hovered;
+        }
         let fade = self.hover.observe(PointerHoverObservation {
             enabled: options.hide_on_pointer_hover && input_running,
             delay: Duration::from_millis(u64::from(options.hide_on_pointer_hover_delay_ms)),

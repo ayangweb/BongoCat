@@ -236,6 +236,9 @@ pub(crate) fn begin_product_shutdown(cx: &mut App) -> ProductShutdown {
     let mut coordinator = cx.remove_global::<ProductCoordinator>();
     coordinator.frame_source_running = false;
     coordinator.frame_source_shutdown.request_stop();
+    for failure in coordinator.room_windows.shutdown() {
+        record_failure(&coordinator.failures, failure);
+    }
     #[cfg(target_os = "windows")]
     if let Some(single_instance) = coordinator.single_instance.take()
         && let Err(error) = single_instance.shutdown()

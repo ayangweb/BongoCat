@@ -4,7 +4,17 @@
 
 ### ✨ Features
 
+- Room models show download progress and the member's name on hover. Member windows can be hidden from the member list, downloaded models are reused from the local library, and chat text alignment is corrected.
+- Room members' custom models are acquired automatically: locally imported models transfer through P2P, online library models download from their source, and successful imports remain in your model library. Failed acquisition uses the default cat.
 - The model library gains a remote model library: entries published in the Awesome-BongoCat catalog can be previewed there, downloaded with a progress bar, and imported automatically.
+- Room members have separate model windows, with chat bubbles displayed above the sender's model. Unavailable models use the default cat.
+- Room members' keyboard and mouse actions are synchronized to their model windows through WebRTC.
+
+### 🐛 Bug Fixes
+
+- Room connections now use WebSocket directly, avoiding failed polling handshakes on services that require WebSocket transport.
+- Room hosts can now kick other members; ordinary members no longer see the kick button.
+- Fixed joining a room showing an invalid response and leaving the interface outside the room after the server had already added the member.
 
 ## 2.0.0 - 2026-09-29
 

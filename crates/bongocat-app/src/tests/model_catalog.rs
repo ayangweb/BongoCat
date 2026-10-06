@@ -13,6 +13,8 @@ fn missing_selected_model_falls_back_to_the_standard_preset_at_startup() {
         source: ModelSource::Imported,
     });
     configured.model.imported_models = vec![ImportedModelMetadata {
+        library_url: None,
+        shared_model_id: None,
         id: "ghost".to_owned(),
         title: "幽灵模型".to_owned(),
         input_mode: ModelInputMode::Standard,
@@ -54,11 +56,15 @@ fn metadata_records_for_missing_model_directories_are_pruned_at_startup() {
     let mut configured = store.load_or_default().expect("default config").config;
     configured.model.imported_models = vec![
         ImportedModelMetadata {
+            library_url: None,
+            shared_model_id: None,
             id: "ghost".to_owned(),
             title: "被手动删除".to_owned(),
             input_mode: ModelInputMode::Standard,
         },
         ImportedModelMetadata {
+            library_url: None,
+            shared_model_id: None,
             id: "still-there".to_owned(),
             title: "目录仍在".to_owned(),
             input_mode: ModelInputMode::Standard,
@@ -71,6 +77,8 @@ fn metadata_records_for_missing_model_directories_are_pruned_at_startup() {
     assert_eq!(
         application.config().model.imported_models,
         vec![ImportedModelMetadata {
+            library_url: None,
+            shared_model_id: None,
             id: "still-there".to_owned(),
             title: "目录仍在".to_owned(),
             input_mode: ModelInputMode::Standard,
@@ -91,6 +99,8 @@ fn hand_deleted_model_beside_file_manager_metadata_keeps_the_catalog_available()
     let store = ConfigStore::new(layout.clone()).expect("config store");
     let mut configured = store.load_or_default().expect("default config").config;
     configured.model.imported_models = vec![ImportedModelMetadata {
+        library_url: None,
+        shared_model_id: None,
         id: "deleted-by-hand".to_owned(),
         title: "被手动删除".to_owned(),
         input_mode: ModelInputMode::Standard,

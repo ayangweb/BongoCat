@@ -35,6 +35,7 @@ mod system_menu;
 // Windows only in a product build, since the taskbar button is; the tests read
 // the settle decision on every platform, which is the point of keeping it apart
 // from the smoke that polls with it.
+mod room_windows;
 #[cfg(any(target_os = "windows", test))]
 mod taskbar_settle;
 mod update_schedule;
@@ -173,6 +174,7 @@ async fn settle_taskbar_icon(
 }
 
 struct ProductCoordinator {
+    room_windows: room_windows::RoomWindows,
     _core_log: CoreLogHandle,
     #[cfg(target_os = "macos")]
     overlay: Option<ProductOverlaySession>,
@@ -487,6 +489,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
         };
+        let room_window_origin = overlay.window_bounds().unwrap_or(OverlayWindowBounds::new(0, 0, 320, 320));
         let settings_service =
             match bongocat_app::ApplicationSettingsService::start_with_product_capabilities(
                 application,
@@ -590,6 +593,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             overlay: Some(overlay),
             #[cfg(target_os = "windows")]
             overlay,
+            room_windows: room_windows::RoomWindows::new(main_thread_signals.room_scene.clone(), room_window_origin),
             settings_service: Some(settings_service),
             settings_window: None,
             settings_navigation_memory: SettingsNavigationMemory::new(),
@@ -636,6 +640,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 format!("apply startup Dock icon visibility: {error}"),
             );
         }
+
+        // Other members own their GPU windows on this foreground executor.
+        cx.spawn(async move |cx| {
+            loop {
+                Timer::after(Duration::from_millis(16)).await;
+                if !cx.update(|cx| {
+                    if !cx.has_global::<ProductCoordinator>() { return false; }
+                    let coordinator = cx.global_mut::<ProductCoordinator>();
+                    for failure in coordinator.room_windows.tick() { record_failure(&coordinator.failures, failure); }
+                    true
+                }) { break; }
+            }
+        }).detach();
 
         // Every model the settings worker installs is rendered into its own cover
         // here. The worker cannot do it — a capture creates a native window, and the

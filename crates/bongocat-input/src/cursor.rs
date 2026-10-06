@@ -171,6 +171,7 @@ pub enum CursorPublishError {
 
 #[derive(Default)]
 struct CursorSlotState {
+    latest: Option<CursorSample>,
     pending: Option<CursorSample>,
     last_published_at: Option<MonotonicMillis>,
     stopped: bool,
@@ -201,6 +202,7 @@ impl CursorSlot {
             return Err(CursorPublishError::NonMonotonic(sample));
         }
         state.last_published_at = Some(sample.at);
+        state.latest = Some(sample);
         state.diagnostics.published = state.diagnostics.published.saturating_add(1);
         if state.pending.replace(sample).is_some() {
             state.diagnostics.coalesced = state.diagnostics.coalesced.saturating_add(1);
@@ -245,6 +247,14 @@ pub struct CursorProducer {
 }
 
 impl CursorProducer {
+    /// Observe the latest accepted sample without consuming the runtime's slot.
+    pub fn latest(&self) -> Option<CursorSample> {
+        self.slot
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .latest
+    }
     pub fn new() -> Self {
         Self {
             slot: Arc::new(CursorSlot::default()),
