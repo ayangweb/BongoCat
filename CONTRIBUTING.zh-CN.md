@@ -26,6 +26,12 @@ just build
 just schema
 ```
 
+在 Windows 上构建时，请确保使用 MSVC 工具链（形如 `stable-x86_64-pc-windows-**msvc**`，
+而非 `stable-x86_64-pc-windows-**gnu**`）。本项目依赖 Live2D Cubism Core，而该库的 Windows 版
+官方仅提供 MSVC 格式的 `.lib`，因此 Windows 上必须使用 MSVC 工具链。可使用 `rustup show` 查看
+当前工具链，其会显示在 `active toolchain` 栏；若不是 MSVC 工具链，请通过 `rustup override set`
+切换为 MSVC 工具链。
+
 在 macOS 上构建还需要 Xcode 自带的 Swift 工具链，因为「输入监控」引导流程链接了一个 Swift 静态
 库（ADR-0078）。SwiftPM 拒绝加载 tools version 高于本机工具链的包清单，而该包声明的是 6.1；
 `rust-toolchain.toml` 不覆盖它，所以请保持 Xcode 为较新版本——否则失败会表现为
