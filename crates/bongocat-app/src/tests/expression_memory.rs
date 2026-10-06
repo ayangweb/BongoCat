@@ -16,13 +16,13 @@ use std::thread;
 /// wait for a frame the test itself is the only thing able to ask for. The pump
 /// reports every prepared frame as prepared, which is what a working GPU path
 /// does.
-struct RenderPump {
+pub(crate) struct RenderPump {
     stop: Arc<AtomicBool>,
     pump: Option<thread::JoinHandle<()>>,
 }
 
 impl RenderPump {
-    fn start(consumer: RenderConsumer) -> Self {
+    pub(crate) fn start(consumer: RenderConsumer) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let pump_stop = Arc::clone(&stop);
         let pump = thread::spawn(move || {

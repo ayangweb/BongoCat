@@ -25,7 +25,7 @@ use audio::{motion_audio_path, prepare_model_audio, stop_motion_audio};
 use axes::GamepadAxisValues;
 use input::{compose_model_input, consume_cursor, consume_gamepad_axes};
 use model::{begin_model_activation, process_model_commit_feedback};
-use random_behavior::maybe_trigger_random_behavior;
+use random_behavior::{maybe_trigger_random_behavior, random_behavior_inclusion};
 use renderer::{evaluate_renderer, start_motion};
 
 pub(crate) struct RuntimeWorkerBootstrap {
@@ -72,6 +72,10 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
     let mut maximum_fps = DEFAULT_MAXIMUM_FPS;
     let mut model_settings = ModelSettings::default();
     let mut random_behavior_scheduler = RandomBehaviorScheduler::new(system_seed());
+    // The selection the application last published, kept whole so the worker can
+    // ask whether it belongs to the model that is live now rather than storing a
+    // filtered copy that would silently apply to whichever model arrived next.
+    let mut random_behavior_selection: Option<RandomBehaviorInclusion> = None;
     let mut next_automatic_event_sequence = AUTOMATIC_SEQUENCE_START;
     let mut motion_audio_enabled = initial_motion_audio_enabled;
     let mut pending_model = None;
@@ -107,6 +111,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
             maybe_trigger_random_behavior(
                 renderer.as_mut(),
                 active_model.as_deref(),
+                random_behavior_inclusion(active_model.as_deref(), &random_behavior_selection),
                 &mut active_motion,
                 &mut active_expression,
                 &mut random_behavior_scheduler,
@@ -276,6 +281,15 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                                 current.last_command_sequence = Some(sequence);
                             });
                         }
+                    }
+                    WorkerCommand::Product(RuntimeCommand::SetRandomBehaviorInclusion(
+                        inclusion,
+                    )) => {
+                        random_behavior_selection = inclusion;
+                        publish(&snapshot, |current| {
+                            current.last_command_failure = None;
+                            current.last_command_sequence = Some(sequence);
+                        });
                     }
                     WorkerCommand::Product(RuntimeCommand::SetModelSettings(settings)) => {
                         model_settings = settings;
@@ -765,6 +779,10 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                     maybe_trigger_random_behavior(
                         renderer.as_mut(),
                         active_model.as_deref(),
+                        random_behavior_inclusion(
+                            active_model.as_deref(),
+                            &random_behavior_selection,
+                        ),
                         &mut active_motion,
                         &mut active_expression,
                         &mut random_behavior_scheduler,

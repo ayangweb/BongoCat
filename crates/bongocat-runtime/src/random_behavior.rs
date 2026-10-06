@@ -1,8 +1,6 @@
-use bongocat_model::ModelBehaviorSnapshot;
-#[cfg(test)]
-use std::collections::BTreeSet;
+use bongocat_model::{ModelBehaviorSnapshot, ModelId, ModelOrigin};
 use std::{
-    collections::hash_map::DefaultHasher,
+    collections::{BTreeSet, hash_map::DefaultHasher},
     hash::{Hash, Hasher},
     time::{Duration, Instant},
 };
@@ -81,6 +79,28 @@ impl RandomBehaviorSettings {
     }
 }
 
+/// The behaviors one model plays on its own, or every behavior it declares.
+///
+/// The model identity travels with the set rather than being assumed by the
+/// receiver, because the selection follows a model rather than the application:
+/// switching models has to change what may play, and a set that named no model
+/// could not say whether it still applies. The runtime compares it against the
+/// model actually in effect and ignores a set that belongs to another one, so a
+/// selection that arrives late cannot filter the wrong model.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RandomBehaviorInclusion {
+    pub model: ModelId,
+    pub model_origin: ModelOrigin,
+    pub behavior_ids: BTreeSet<String>,
+}
+
+impl RandomBehaviorInclusion {
+    /// Whether this selection is the one belonging to the model now in effect.
+    pub fn belongs_to(&self, model: &ModelId, origin: ModelOrigin) -> bool {
+        self.model == *model && self.model_origin == origin
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RandomBehaviorScheduler {
     settings: RandomBehaviorSettings,
@@ -125,10 +145,21 @@ impl RandomBehaviorScheduler {
         }
     }
 
-    /// Return one due behavior, if the active model has one the mode allows. A
-    /// long pause causes one selection and re-anchors from the current monotonic
-    /// time; it never produces a catch-up burst.
-    pub(crate) fn poll<F>(&mut self, now: Duration, behaviors: F) -> Option<ModelBehaviorSnapshot>
+    /// Return one due behavior, if the active model has one the mode allows and
+    /// the user selected. A long pause causes one selection and re-anchors from
+    /// the current monotonic time; it never produces a catch-up burst.
+    ///
+    /// `included` is the active model's own selection, or `None` when it has none.
+    /// The caller resolves that against the model actually in effect, so this stays
+    /// a pure filter over what it is handed: an empty set means the model selected
+    /// nothing and therefore has nothing to play, which is a state the settings page
+    /// spells out rather than one that falls back to "everything".
+    pub(crate) fn poll<F>(
+        &mut self,
+        now: Duration,
+        included: Option<&BTreeSet<String>>,
+        behaviors: F,
+    ) -> Option<ModelBehaviorSnapshot>
     where
         F: FnOnce() -> Vec<ModelBehaviorSnapshot>,
     {
@@ -142,13 +173,20 @@ impl RandomBehaviorScheduler {
         }
         self.next_due = Some(deadline(anchor, self.settings.interval()));
         let behaviors = behaviors();
-        // The mode narrows the candidate set *before* the draw, so a selection is
-        // uniform over the behaviors the user allowed rather than over everything
-        // the model happens to declare. The two passes scan one identifier list
-        // twice and build no second copy, which is what keeps this on a per-tick
-        // path; `mode` is hoisted so the draw can still borrow the generator.
+        // The mode and the selection narrow the candidate set *before* the draw, so
+        // a selection is uniform over the behaviors the user allowed rather than
+        // over everything the model happens to declare. The passes scan one
+        // identifier list and build no second copy, which is what keeps this on a
+        // per-tick path; `mode` is hoisted so the draw can still borrow the
+        // generator.
         let mode = self.settings.mode;
-        let mut candidates = behaviors.iter().filter(|behavior| mode.admits(behavior));
+        let mut candidates = behaviors
+            .iter()
+            .filter(|behavior| mode.admits(behavior))
+            .filter(|behavior| match included {
+                Some(included) => included.contains(&behavior_id(behavior)),
+                None => true,
+            });
         let rank = self.random.index(candidates.clone().count());
         candidates.nth(rank).cloned()
     }
@@ -174,6 +212,19 @@ impl RandomBehaviorScheduler {
 fn deadline(now: Duration, interval: Duration) -> Duration {
     now.checked_add(interval)
         .unwrap_or_else(|| Duration::from_secs(u64::MAX))
+}
+
+/// The canonical spelling one behavior is selected and bound under.
+///
+/// It has to be the same string the configuration persists, because the selection
+/// is compared against what the model declares rather than against an index: the
+/// order of a package's declarations is not part of its contract, so an index would
+/// make a selection mean a different behavior after a model update.
+fn behavior_id(behavior: &ModelBehaviorSnapshot) -> String {
+    match behavior {
+        ModelBehaviorSnapshot::Motion { group, index } => format!("motion:{group}:{index}"),
+        ModelBehaviorSnapshot::Expression { name } => format!("expression:{name}"),
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -267,12 +318,35 @@ mod tests {
         draws: usize,
         behaviors: &[ModelBehaviorSnapshot],
     ) -> Vec<ModelBehaviorSnapshot> {
+        drawn_with(seed, mode, draws, None, behaviors)
+    }
+
+    /// The same drive with a per-behavior selection in force, so a mode test and a
+    /// selection test read the same way and neither has to restate the scheduler.
+    fn drawn_with(
+        seed: u64,
+        mode: RandomBehaviorMode,
+        draws: usize,
+        included: Option<&BTreeSet<String>>,
+        behaviors: &[ModelBehaviorSnapshot],
+    ) -> Vec<ModelBehaviorSnapshot> {
         let mut scheduler = RandomBehaviorScheduler::new(seed);
         scheduler.set_settings(settings(mode, 1), Duration::ZERO);
         (0..draws)
             .filter_map(|index| {
-                scheduler.poll(Duration::from_secs(index as u64 + 1), || behaviors.to_vec())
+                scheduler.poll(Duration::from_secs(index as u64 + 1), included, || {
+                    behaviors.to_vec()
+                })
             })
+            .collect()
+    }
+
+    /// A selection over the fixture behaviors, named the way the configuration
+    /// names them.
+    fn selected(behavior_ids: &[&str]) -> BTreeSet<String> {
+        behavior_ids
+            .iter()
+            .map(|behavior_id| (*behavior_id).to_owned())
             .collect()
     }
 
@@ -319,7 +393,7 @@ mod tests {
             for second in 1..=24u64 {
                 assert!(
                     scheduler
-                        .poll(Duration::from_secs(second), || behaviors.clone())
+                        .poll(Duration::from_secs(second), None, || behaviors.clone())
                         .is_none(),
                     "the off mode selected a behavior at {second}s"
                 );
@@ -394,16 +468,16 @@ mod tests {
         let behaviors = behaviors();
         assert!(
             first
-                .poll(Duration::from_secs(1), || behaviors.clone())
+                .poll(Duration::from_secs(1), None, || behaviors.clone())
                 .is_none()
         );
-        let first_selection = first.poll(Duration::from_secs(2), || behaviors.clone());
-        let second_selection = second.poll(Duration::from_secs(2), || behaviors.clone());
+        let first_selection = first.poll(Duration::from_secs(2), None, || behaviors.clone());
+        let second_selection = second.poll(Duration::from_secs(2), None, || behaviors.clone());
         assert_eq!(first_selection, second_selection);
         assert!(first_selection.is_some());
         assert!(
             first
-                .poll(Duration::from_secs(3), || behaviors.clone())
+                .poll(Duration::from_secs(3), None, || behaviors.clone())
                 .is_none()
         );
     }
@@ -413,7 +487,11 @@ mod tests {
         let mut scheduler = RandomBehaviorScheduler::new(11);
         scheduler.set_settings(settings(RandomBehaviorMode::Motions, 10), Duration::ZERO);
         scheduler.reset(Duration::from_secs(20));
-        assert!(scheduler.poll(Duration::from_secs(29), behaviors).is_none());
+        assert!(
+            scheduler
+                .poll(Duration::from_secs(29), None, behaviors)
+                .is_none()
+        );
         scheduler.set_settings(
             settings(RandomBehaviorMode::Off, 10),
             Duration::from_secs(29),
@@ -422,7 +500,11 @@ mod tests {
             settings(RandomBehaviorMode::Motions, 10),
             Duration::from_secs(29),
         );
-        assert!(scheduler.poll(Duration::from_secs(38), behaviors).is_none());
+        assert!(
+            scheduler
+                .poll(Duration::from_secs(38), None, behaviors)
+                .is_none()
+        );
     }
 
     #[test]
@@ -432,9 +514,131 @@ mod tests {
             settings(RandomBehaviorMode::MotionsAndExpressions, 1),
             Duration::from_secs(10),
         );
-        assert!(scheduler.poll(Duration::from_secs(11), behaviors).is_some());
-        assert!(scheduler.poll(Duration::from_secs(5), behaviors).is_none());
-        assert!(scheduler.poll(Duration::from_secs(12), behaviors).is_some());
-        assert!(scheduler.poll(Duration::from_secs(13), behaviors).is_some());
+        assert!(
+            scheduler
+                .poll(Duration::from_secs(11), None, behaviors)
+                .is_some()
+        );
+        assert!(
+            scheduler
+                .poll(Duration::from_secs(5), None, behaviors)
+                .is_none()
+        );
+        assert!(
+            scheduler
+                .poll(Duration::from_secs(12), None, behaviors)
+                .is_some()
+        );
+        assert!(
+            scheduler
+                .poll(Duration::from_secs(13), None, behaviors)
+                .is_some()
+        );
+    }
+
+    /// A selection narrows the draw to what the user checked, over any number of
+    /// draws from any number of seeds.
+    ///
+    /// Asserting on a single draw would prove nothing: one pick from three can land
+    /// on the allowed entry by luck. The mode tests above already use this shape,
+    /// and a selection has to hold at least as strictly — an excluded behavior that
+    /// appears is exactly the failure the user is reporting.
+    #[test]
+    fn a_selection_never_draws_outside_what_the_user_checked() {
+        let behaviors = behaviors();
+        let included = selected(&["motion:tap:1", "expression:happy.exp3.json"]);
+        for seed in 1..=24u64 {
+            for mode in [
+                RandomBehaviorMode::MotionsAndExpressions,
+                RandomBehaviorMode::Motions,
+                RandomBehaviorMode::Expressions,
+            ] {
+                let selection = drawn_with(seed, mode, 12, Some(&included), &behaviors);
+                assert!(
+                    selection.iter().all(|behavior| matches!(
+                        behavior,
+                        ModelBehaviorSnapshot::Motion { group, .. } if group == "tap"
+                    ) || kind(behavior) == "expression"),
+                    "{mode:?} seed {seed} selected outside the selection: {selection:?}"
+                );
+            }
+        }
+    }
+
+    /// An empty selection means the model plays nothing on its own.
+    ///
+    /// It does **not** fall back to "everything": the settings page says this state
+    /// out loud, and a fallback would make unchecking every box read as though it
+    /// had done the opposite.
+    #[test]
+    fn an_empty_selection_leaves_the_scheduler_with_nothing_to_play() {
+        let behaviors = behaviors();
+        let none = selected(&[]);
+        for seed in 1..=24u64 {
+            for mode in RandomBehaviorMode::ALL {
+                assert!(
+                    drawn_with(seed, mode, 12, Some(&none), &behaviors).is_empty(),
+                    "{mode:?} seed {seed} played something with nothing selected"
+                );
+            }
+        }
+    }
+
+    /// The mode and the selection are two filters, and either one can empty the set.
+    ///
+    /// A model that selected only motions while the mode is expressions-only has
+    /// nothing to play, and the product must not answer by playing a motion the mode
+    /// excluded — the mode is the user's decision about what kind plays, not a
+    /// ranking between two sets that are both available.
+    #[test]
+    fn a_selection_of_the_other_kind_leaves_the_scheduler_idle() {
+        let behaviors = behaviors();
+        let motions_only = selected(&["motion:idle:0", "motion:tap:1"]);
+        for seed in 1..=24u64 {
+            assert!(
+                drawn_with(
+                    seed,
+                    RandomBehaviorMode::Expressions,
+                    12,
+                    Some(&motions_only),
+                    &behaviors
+                )
+                .is_empty()
+            );
+            assert!(
+                drawn_with(
+                    seed,
+                    RandomBehaviorMode::Motions,
+                    12,
+                    Some(&motions_only),
+                    &behaviors
+                )
+                .len()
+                    == 12,
+                "the selected motions must remain selectable"
+            );
+        }
+    }
+
+    /// A selection identifies the model it belongs to, and a mismatch reads as "no
+    /// selection" rather than as somebody else's choice.
+    ///
+    /// The application re-publishes on every activation, so a selection that names a
+    /// model which has moved on is one that has not been replaced yet. Applying it
+    /// anyway would filter whichever model happens to be live — the failure mode a
+    /// shared configuration setting across models would have.
+    #[test]
+    fn a_selection_only_applies_to_the_model_it_names() {
+        let inclusion = RandomBehaviorInclusion {
+            model: ModelId::parse("standard").expect("model id"),
+            model_origin: ModelOrigin::Preset,
+            behavior_ids: selected(&["motion:tap:1"]),
+        };
+        assert!(inclusion.belongs_to(&ModelId::parse("standard").unwrap(), ModelOrigin::Preset));
+        assert!(!inclusion.belongs_to(&ModelId::parse("keyboard").unwrap(), ModelOrigin::Preset));
+        assert!(
+            !inclusion.belongs_to(&ModelId::parse("standard").unwrap(), ModelOrigin::Installed),
+            "the same id from another source is a different model"
+        );
     }
 }

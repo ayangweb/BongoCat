@@ -43,6 +43,87 @@ fn gamepad_auto_switch_model_row(
     .disabled(gate.disables_controls())
 }
 
+/// The behaviors that take part in random playback, as one checkbox per behavior.
+///
+/// A custom element because the rows are whatever the live model declares: there is
+/// no fixed list to render. The rows come from the snapshot rather than from the
+/// view's own state, so the list and the stored answer can never disagree — and the
+/// whole checked set travels to the service on every click, which is what makes
+/// "nothing is checked" a state the page can send rather than infer.
+///
+/// The gate is the same one the interval row uses. It dims the rows while the mode
+/// is off and the mutator refuses a click then, so the two controls read as one
+/// group: neither of them acts while nothing is admitted.
+fn random_behavior_picker_row(
+    language: SettingsLanguage,
+    view: Entity<SettingsView>,
+    gate: SettingGate,
+) -> SettingItem {
+    SettingItem::new(
+        bongocat_i18n::text(
+            language.catalog_locale(),
+            "settings.models.behavior.random_behavior_included.label",
+        ),
+        SettingField::element(
+            move |options: &RenderOptions, _window: &mut Window, app: &mut App| {
+                let view_for_rows = view.clone();
+                let tokens = Tokens::from_theme(app);
+                let disabled = options.is_disabled();
+                let (rows, note) = view_for_rows.read(app).snapshot.as_ref().map_or(
+                    (Vec::new(), None),
+                    |snapshot| {
+                        let candidates = random_behavior_candidates(snapshot, language);
+                        let note = (!candidates.is_empty()
+                            && candidates.iter().all(|row| !row.checked))
+                        .then(|| {
+                            SharedString::from(bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.models.behavior.random_behavior_included.none_checked",
+                            ))
+                        });
+                        (candidates, note)
+                    },
+                );
+                let rows = rows.into_iter().enumerate().map(|(index, row)| {
+                    let view_for_check = view_for_rows.clone();
+                    let behavior = row.behavior.clone();
+                    Checkbox::new(random_behavior_checkbox_id(index))
+                        .label(row.label.clone())
+                        .checked(row.checked)
+                        .disabled(disabled)
+                        .on_change(move |checked, _window, cx| {
+                            view_for_check.update(cx, |view, cx| {
+                                view.set_random_behavior_checked(behavior.clone(), *checked, cx)
+                            });
+                        })
+                        .into_any_element()
+                });
+                div()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .children(rows)
+                    .when_some(note, |list, note| {
+                        list.child(div().text_sm().text_color(tokens.muted).child(note))
+                    })
+                    .into_any_element()
+            },
+        ),
+    )
+    .disabled(gate.disables_controls())
+}
+
+/// One stable element id per picker row.
+///
+/// The index rather than the behavior name, because `gpui-kit` needs an `ElementId`
+/// and a behavior name is text that would have to be escaped into one; the rows are
+/// the live model's declaration order, so the same index always names the same row
+/// for as long as that model is live.
+fn random_behavior_checkbox_id(index: usize) -> gpui_kit::ElementId {
+    format!("random-behavior-check-{index}").into()
+}
+
 /// `gpui-kit` owns the sidebar selection in window-keyed state. The empty title
 /// suffix is the component's public per-page render hook, so it lets the process
 /// owner observe the active page without taking over the component's navigation.
@@ -851,6 +932,7 @@ impl Render for SettingsView {
                     ),
                 )
                 .disabled(random_behavior_gate.disables_controls()),
+                random_behavior_picker_row(language, view_entity.clone(), random_behavior_gate),
             ],
             &model_behavior_keywords,
         ));

@@ -774,6 +774,114 @@ fn the_remembered_expression_switch_sends_the_revision_it_was_rendered_from(
     assert!(endpoint.try_recv().is_err());
 }
 
+/// The picker sends the whole checked set as its own typed command.
+///
+/// The set is the value, so a command that carried only the box that moved would
+/// leave the service guessing between "add" and "remove" — and would make "nothing is
+/// checked", a state the page can reach, unrepresentable. The revision is the one the
+/// page was rendered from, so a stale page cannot rewrite someone else's selection.
+#[gpui_kit::test]
+fn a_checkbox_sends_the_whole_selection_for_the_model_it_was_rendered_from(
+    cx: &mut TestAppContext,
+) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(4, true, true);
+    initial.config_revision = Some(4);
+    initial.active_model = Some(SettingsModelKey {
+        id: "standard".to_owned(),
+        origin: SettingsModelOrigin::BuiltIn,
+    });
+    initial.model_catalog.entries = vec![model_entry(
+        "standard",
+        SettingsModelOrigin::BuiltIn,
+        SettingsModelAvailability::Ready {
+            behaviors: vec![
+                SettingsModelBehavior::Motion {
+                    group: "CAT_motion".to_owned(),
+                    index: 0,
+                },
+                SettingsModelBehavior::Expression {
+                    name: "live2d_expression0.exp3.json".to_owned(),
+                },
+            ],
+        },
+    )];
+    initial.random_behavior.mode = SettingsRandomBehaviorMode::MotionsAndExpressions;
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+
+    view.update(visual, |view, cx| {
+        view.set_random_behavior_checked(
+            SettingsModelBehavior::Motion {
+                group: "CAT_motion".to_owned(),
+                index: 0,
+            },
+            false,
+            cx,
+        );
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetRandomBehaviorInclusion {
+        expected_config_revision,
+        model,
+        behaviors,
+        reply,
+    } = endpoint
+        .try_recv()
+        .expect("the checkbox must reach the service as its own typed command")
+    else {
+        panic!("the checkbox must use the typed random-behavior inclusion command");
+    };
+    assert_eq!(expected_config_revision, 4);
+    assert_eq!(model.id, "standard");
+    assert_eq!(
+        behaviors,
+        vec![SettingsModelBehavior::Expression {
+            name: "live2d_expression0.exp3.json".to_owned(),
+        }],
+        "the click sends the whole answer, not the one box that moved"
+    );
+
+    let mut confirmed = crate::tests::snapshot(5, true, true);
+    confirmed.config_revision = Some(5);
+    confirmed.random_behavior_inclusion = Some(behaviors.clone());
+    reply.respond(Ok(confirmed)).expect("switch reply");
+    visual.run_until_parked();
+    assert!(endpoint.try_recv().is_err());
+}
+
+/// The picker is inert while the mode is off, exactly like the interval above it.
+///
+/// Both rows belong to one control: the mode dropdown decides whether anything plays
+/// at all, and neither the interval nor a checkbox may accept a value nothing reads.
+#[gpui_kit::test]
+fn the_random_behavior_picker_refuses_a_click_while_the_mode_is_off(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(4, true, true);
+    initial.config_revision = Some(4);
+    initial.active_model = Some(SettingsModelKey {
+        id: "standard".to_owned(),
+        origin: SettingsModelOrigin::BuiltIn,
+    });
+    initial.random_behavior.mode = SettingsRandomBehaviorMode::Off;
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+
+    view.update(visual, |view, cx| {
+        view.set_random_behavior_checked(
+            SettingsModelBehavior::Motion {
+                group: "CAT_motion".to_owned(),
+                index: 0,
+            },
+            true,
+            cx,
+        );
+    });
+    visual.run_until_parked();
+    assert!(
+        endpoint.try_recv().is_err(),
+        "a click while nothing is admitted must not replace the selection with one"
+    );
+}
+
 #[gpui_kit::test]
 fn the_random_behavior_interval_is_inert_while_the_mode_is_off(cx: &mut TestAppContext) {
     let (view, visual, endpoint) = settings_view_with_endpoint(cx);

@@ -26,9 +26,6 @@
     "gamepad": {
       "stick_dead_zone": 0.15,
       "trigger_dead_zone": 0.0
-    },
-    "mouse": {
-      "force_move": false
     }
   },
   "model": {
@@ -38,15 +35,32 @@
     "play_motion_audio": false,
     "ignore_keyboard": false,
     "ignore_gamepad": false,
-    "show_all_pressed_keys": false,
     "ignore_pointer": false,
     "selected_model": null,
     "imported_models": [],
     "built_in_models": [],
     "random_behavior": {
-      "mode": "off",
-      "interval_seconds": 30,
-      "included": null
+      "mode": "motions_and_expressions",
+      "interval_seconds": 3600,
+      "included": [
+        {
+          "model": {
+            "id": "standard",
+            "source": "built_in"
+          },
+          "behavior_ids": [
+            "motion:CAT_motion:0",
+            "motion:CAT_motion:0"
+          ]
+        },
+        {
+          "model": {
+            "id": "keyboard",
+            "source": "built_in"
+          },
+          "behavior_ids": []
+        }
+      ]
     },
     "gamepad_auto_switch": {
       "enabled": false,
@@ -68,7 +82,7 @@
     "show_status_icon": true
   },
   "updates": {
-    "check_automatically": false,
+    "check_automatically": true,
     "check_interval_hours": 24
   }
 }

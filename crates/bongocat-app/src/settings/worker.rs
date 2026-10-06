@@ -415,6 +415,35 @@ pub(super) fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetRandomBehaviorInclusion {
+                expected_config_revision,
+                model,
+                behaviors,
+                reply,
+            } => {
+                let identity = config_identity_from_settings(&model);
+                let behavior_ids = behaviors
+                    .iter()
+                    .map(settings_model_behavior_id)
+                    .collect::<Vec<_>>();
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_random_behavior_inclusion(identity.clone(), behavior_ids)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                if let Err(error) = &result {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
+                            .with_context(ApplicationLogContext::Operation(
+                                "random_behavior_inclusion",
+                            ))
+                            .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+                    );
+                }
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetModelSettings {
                 expected_config_revision,
                 settings,

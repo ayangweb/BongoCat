@@ -111,6 +111,39 @@ pub struct RandomBehaviorConfig {
         schemars(range(min = 1, max = 3600))
     )]
     pub interval_seconds: u32,
+    /// Which behaviors each model plays on its own, or `null` for all of them.
+    ///
+    /// The mode says which *kinds* may play; this says which members of those
+    /// kinds do, because a model can declare a behavior the user never wants to see
+    /// appear by itself. `null` is the default and means "no per-behavior choice has
+    /// been made", which is exactly what every configuration written before this
+    /// field existed means — the field carries `#[serde(default)]` so such a document
+    /// still loads instead of falling through the strict v1 entry point to the
+    /// backup-then-default recovery path.
+    ///
+    /// `Some(vec![])` is *not* the same as `null`: it is a model that selected
+    /// nothing, which plays nothing and is the state the settings page says out
+    /// loud. Rows are kept for every model the first time one is written, so
+    /// materialising this list never silently mutes a model the user did not touch.
+    #[serde(default)]
+    pub included: Option<Vec<RandomBehaviorInclusion>>,
+}
+
+/// One model's selection of the behaviors it may play on its own.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct RandomBehaviorInclusion {
+    /// The model this selection belongs to, complete because two catalog entries
+    /// may share an id.
+    pub model: ModelIdentity,
+    /// `behavior_id` spellings, the same canonical strings the shortcut bindings
+    /// use: `motion:<group>:<index>` or `expression:<name>`.
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(length(min = 0, max = 256))
+    )]
+    pub behavior_ids: Vec<String>,
 }
 
 impl Default for RandomBehaviorConfig {
@@ -118,6 +151,7 @@ impl Default for RandomBehaviorConfig {
         Self {
             mode: RandomBehaviorMode::default(),
             interval_seconds: DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+            included: None,
         }
     }
 }
@@ -376,7 +410,64 @@ pub(crate) fn validate_model_expression_memories(
     Ok(())
 }
 
-/// Validate one list of user-facing model metadata.
+/// One model contributes at most this many behavior rows.
+///
+/// A model declares its behaviors in its own package, so this is generous enough
+/// that no real package reaches it and small enough that a hand-edited document
+/// cannot turn the list into an unbounded array.
+pub const MAXIMUM_RANDOM_BEHAVIOR_INCLUSIONS: usize = 256;
+
+/// The behaviors of one model that may play on its own.
+///
+/// Bounded so a hand-edited document cannot describe an unbounded array. Whether
+/// a listed behavior still exists is a property of the model package rather than of
+/// the configuration document — a model that no longer ships it simply plays one
+/// fewer thing.
+pub const MAXIMUM_RANDOM_BEHAVIOR_IDS_PER_MODEL: usize = 256;
+
+/// Validate the per-behavior random-playback selection.
+///
+/// One row per model, exactly as the remembered-expression list is, because two
+/// rows for one model would leave the model playing whichever of them the parser
+/// saw last. Each identifier is parsed rather than trusted: the same
+/// `behavior_id` vocabulary the shortcut bindings use is the only spelling that
+/// means anything, so an unparseable one is a document defect rather than a
+/// behavior nobody will ever pick.
+pub(crate) fn validate_random_behavior_inclusions(
+    inclusions: &[RandomBehaviorInclusion],
+) -> Result<(), ConfigError> {
+    if inclusions.len() > MAXIMUM_RANDOM_BEHAVIOR_INCLUSIONS {
+        return Err(ConfigError::InvalidValue("model.random_behavior.included"));
+    }
+    let mut models = std::collections::BTreeSet::new();
+    for inclusion in inclusions {
+        if !is_portable_model_id(&inclusion.model.id) || !models.insert(&inclusion.model) {
+            return Err(ConfigError::InvalidValue(
+                "model.random_behavior.included.model.id",
+            ));
+        }
+        if inclusion.behavior_ids.len() > MAXIMUM_RANDOM_BEHAVIOR_IDS_PER_MODEL {
+            return Err(ConfigError::InvalidValue(
+                "model.random_behavior.included.behavior_ids",
+            ));
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        for behavior_id in &inclusion.behavior_ids {
+            let binding = ModelBehaviorBinding {
+                model: inclusion.model.clone(),
+                behavior_id: behavior_id.clone(),
+                shortcut: String::new(),
+            };
+            if binding.parse_action().is_err() || !ids.insert(behavior_id) {
+                return Err(ConfigError::InvalidValue(
+                    "model.random_behavior.included.behavior_ids",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 ///
 /// Both metadata lists are checked the same way even though installed records
 /// also carry an input mode: a stable id that is present and unique within its

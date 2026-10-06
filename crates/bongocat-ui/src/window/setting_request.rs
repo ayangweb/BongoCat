@@ -242,6 +242,19 @@ impl SettingsView {
                         .set_random_behavior_settings(expected_config_revision, settings)
                         .await
                 }
+                Some(SettingValue::RandomBehaviorInclusion {
+                    expected_config_revision,
+                    model,
+                    behaviors,
+                }) => {
+                    client
+                        .set_random_behavior_inclusion(
+                            expected_config_revision,
+                            model.clone(),
+                            behaviors.clone(),
+                        )
+                        .await
+                }
                 Some(SettingValue::MaximumFps {
                     expected_config_revision,
                     maximum_fps,

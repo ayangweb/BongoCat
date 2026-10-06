@@ -39,7 +39,8 @@ pub(crate) use bongocat_runtime::{
     InputEvent, InputSource, ModelSettings, MonotonicMillis, OverlaySettings,
     RandomBehaviorMode as RuntimeRandomBehaviorMode, RandomBehaviorSettings, RuntimeState,
 };
-pub(crate) use std::{fs, path::Path, time::Instant};
+pub(crate) use expression_memory::RenderPump;
+pub(crate) use std::{collections::BTreeSet, fs, path::Path, time::Instant};
 pub(crate) use tempfile::tempdir;
 
 mod diagnostics;
@@ -48,6 +49,7 @@ mod gamepad;
 mod model_catalog;
 mod model_import;
 mod model_input;
+mod random_behavior;
 mod shortcuts;
 mod shutdown;
 mod startup;

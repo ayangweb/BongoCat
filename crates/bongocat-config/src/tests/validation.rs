@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS, MAXIMUM_MODEL_EXPRESSION_MEMORIES,
-    MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES, ModelExpressionMemory,
+    MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES, ModelExpressionMemory, RandomBehaviorInclusion,
 };
 use bongocat_input::ModifierKey;
 
@@ -560,6 +560,117 @@ fn gamepad_auto_switch_defaults_to_off_without_targets_and_validates_target_ids(
             "gamepad auto switch target {rejected:?} must be rejected"
         );
     }
+}
+
+/// The per-behavior random-playback selection is optional, and an absent list is
+/// not an empty one.
+///
+/// `null` means nobody has chosen, which is what every configuration written before
+/// the field existed means — and it is the state the settings page draws as
+/// "everything checked". An empty list is a decision: this model plays nothing on
+/// its own. Reading the two as one would make an untouched configuration start
+/// playing nothing, so the default has to be distinguishable rather than merely
+/// absent.
+#[test]
+fn an_absent_random_behavior_selection_is_not_an_empty_one() {
+    let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    let removed = document["model"]
+        .get_mut("random_behavior")
+        .and_then(serde_json::Value::as_object_mut)
+        .expect("random behavior object")
+        .remove("included");
+    assert!(
+        removed.is_some(),
+        "the current default still writes the field: {}",
+        document
+    );
+    let written = serde_json::to_string(&document).expect("serialize document");
+    let loaded: NativeConfig = serde_json::from_str(&written).expect("read old document");
+    assert!(
+        loaded.model.random_behavior.included.is_none(),
+        "a document with no field means nobody has chosen, not that nothing plays"
+    );
+    loaded.validate().expect("an old document still validates");
+    assert!(parse_config(written.as_bytes()).is_ok());
+
+    let mut selected_nothing = loaded;
+    selected_nothing.model.random_behavior.included = Some(Vec::new());
+    assert!(
+        selected_nothing
+            .model
+            .random_behavior
+            .included
+            .as_ref()
+            .is_some_and(Vec::is_empty),
+        "an explicit empty list is a model that plays nothing, and stays distinct"
+    );
+    selected_nothing
+        .validate()
+        .expect("selecting nothing is a valid document");
+}
+
+/// The selection names behaviors, so an identifier that is not one — or the same one
+/// twice — is a document defect rather than a behavior nobody will ever pick.
+///
+/// The identifier is parsed with the same `behavior_id` vocabulary the shortcut
+/// bindings use, so a selection can never name something a binding could not.
+#[test]
+fn a_random_behavior_selection_is_parsed_and_holds_one_row_per_model() {
+    let mut config = NativeConfig::default();
+    config.model.random_behavior.mode = RandomBehaviorMode::MotionsAndExpressions;
+    config.model.random_behavior.included = Some(vec![RandomBehaviorInclusion {
+        model: ModelIdentity {
+            id: "standard".to_owned(),
+            source: ModelSource::BuiltIn,
+        },
+        behavior_ids: vec![
+            "motion:CAT_motion:0".to_owned(),
+            "expression:live2d_expression1.exp3.json".to_owned(),
+        ],
+    }]);
+    config.validate().expect("a well-formed selection");
+
+    for rejected in [
+        vec!["not-a-behavior".to_owned()],
+        vec!["motion:CAT_motion".to_owned()],
+        vec!["expression:".to_owned()],
+        vec![
+            "motion:CAT_motion:0".to_owned(),
+            "motion:CAT_motion:0".to_owned(),
+        ],
+    ] {
+        let mut broken = config.clone();
+        broken
+            .model
+            .random_behavior
+            .included
+            .as_mut()
+            .expect("a row")[0]
+            .behavior_ids = rejected.clone();
+        assert!(
+            broken.validate().is_err(),
+            "the selection accepted {rejected:?}"
+        );
+    }
+
+    let mut duplicate_model = config.clone();
+    duplicate_model
+        .model
+        .random_behavior
+        .included
+        .as_mut()
+        .expect("a row")
+        .push(RandomBehaviorInclusion {
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            },
+            behavior_ids: Vec::new(),
+        });
+    assert!(
+        duplicate_model.validate().is_err(),
+        "two rows for one model leave the answer up to which the parser saw last"
+    );
 }
 
 #[test]

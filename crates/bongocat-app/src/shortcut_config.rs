@@ -94,6 +94,24 @@ pub(crate) fn behavior_ids(model: &CommittedModel) -> Vec<String> {
         .collect()
 }
 
+/// The `behavior_id` spelling of one declared behavior.
+///
+/// Same canonical string [`behavior_ids`] produces for a whole model, so a random
+/// playback selection and a shortcut binding can never name the same behavior two
+/// different ways.
+pub(crate) fn behavior_id(behavior: &ModelBehaviorSnapshot) -> String {
+    let action = match behavior {
+        ModelBehaviorSnapshot::Motion { group, index } => ModelBehaviorAction::Motion {
+            group: group.clone(),
+            index: *index,
+        },
+        ModelBehaviorSnapshot::Expression { name } => {
+            ModelBehaviorAction::Expression { name: name.clone() }
+        }
+    };
+    action.behavior_id()
+}
+
 /// Fill in the legacy default chords for one model's motions and expressions,
 /// leaving every binding the user already has untouched. Returns how many
 /// bindings were added.

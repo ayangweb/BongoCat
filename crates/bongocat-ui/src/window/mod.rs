@@ -80,6 +80,8 @@ mod models;
 mod navigation;
 pub use navigation::SettingsNavigationMemory;
 use navigation::{SettingsNavigationPage, model_library_search_keywords};
+mod random_behavior_picker;
+use random_behavior_picker::{random_behavior_candidates, random_behavior_selection_after};
 mod render;
 mod setting_gate;
 use setting_gate::SettingGate;

@@ -411,6 +411,10 @@
         },
         "random_behavior_interval": {
           "label": "隨機播放動作或表情間隔（秒）"
+        },
+        "random_behavior_included": {
+          "label": "參與隨機播放的動作與表情",
+          "none_checked": "一個都沒勾選，因此不會隨機播放。"
         }
       }
     },

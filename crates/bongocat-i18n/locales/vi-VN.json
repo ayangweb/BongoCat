@@ -411,6 +411,10 @@
         },
         "random_behavior_interval": {
           "label": "Khoảng thời gian ngẫu nhiên giữa các chuyển động hoặc biểu cảm (giây)"
+        },
+        "random_behavior_included": {
+          "label": "Chuyển động và biểu cảm phát ngẫu nhiên",
+          "none_checked": "Chưa chọn mục nào nên sẽ không phát ngẫu nhiên."
         }
       }
     },

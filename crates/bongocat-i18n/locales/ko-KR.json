@@ -411,6 +411,10 @@
         },
         "random_behavior_interval": {
           "label": "무작위 모션 또는 표현식 간격(초)"
+        },
+        "random_behavior_included": {
+          "label": "무작위로 재생되는 모션과 표정",
+          "none_checked": "하나도 선택하지 않았으므로 무작위 재생이 없습니다."
         }
       }
     },

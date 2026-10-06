@@ -84,6 +84,8 @@ impl SettingsView {
             "settings.models.behavior.random_behavior_mode.options.motions",
             "settings.models.behavior.random_behavior_mode.options.motions_and_expressions",
             "settings.models.behavior.random_behavior_interval.label",
+            "settings.models.behavior.random_behavior_included.label",
+            "settings.models.behavior.random_behavior_included.none_checked",
             "settings.input_interaction.mouse.title",
             "settings.input_interaction.mouse.ignore_mouse_input.label",
             "settings.input_interaction.mouse.mirror_mouse_tracking_horizontal.label",

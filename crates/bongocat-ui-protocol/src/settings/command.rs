@@ -126,6 +126,19 @@ pub enum SettingsCommand {
         settings: SettingsRandomBehavior,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Persist which behaviors one model plays on its own.
+    ///
+    /// The whole checked set travels rather than the one box that moved, because the
+    /// stored value *is* the set: a page that sent a single toggle would leave the
+    /// service guessing whether it meant "add this" or "remove that", and an empty
+    /// request is exactly the state that says the model plays nothing. The model is
+    /// named because the document keeps one row per model.
+    SetRandomBehaviorInclusion {
+        expected_config_revision: u64,
+        model: SettingsModelKey,
+        behaviors: Vec<SettingsModelBehavior>,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetModelSettings {
         expected_config_revision: u64,
         settings: SettingsModelSettings,

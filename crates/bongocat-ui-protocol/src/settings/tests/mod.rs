@@ -41,6 +41,7 @@ pub(crate) fn snapshot(
         behavior_shortcuts_enabled: true,
         maximum_fps: 60,
         random_behavior: SettingsRandomBehavior::default(),
+        random_behavior_inclusion: None,
         model_settings: SettingsModelSettings::default(),
         gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
         cursor_settings: SettingsCursorSettings::default(),

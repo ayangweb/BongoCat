@@ -3,6 +3,7 @@
 
 use super::Application;
 use crate::app_log::{ApplicationLogCode, ApplicationLogContext, ApplicationLogEvent};
+use crate::config_projection::random_behavior_inclusion_from_config;
 use crate::model_identity::{
     config_identity_from_settings, config_source_from_model, model_origin_from_config,
 };
@@ -89,6 +90,10 @@ impl Application {
                 .filter(|pending| pending.token.command_sequence == sequence)
                 .map(|pending| pending.token)
                 .ok_or(ApplicationError::RuntimeDidNotPrepareModel)?;
+            let live = ModelIdentity {
+                id: id.as_str().to_owned(),
+                source: config_source_from_model(origin),
+            };
             self.active_model_origin = Some(origin);
             self.active_model_id = Some(id);
             self.remember_live_model();
@@ -97,6 +102,7 @@ impl Application {
             // out and registers the incoming model's own chords.
             self.refresh_shortcut_table();
             self.restore_remembered_expression();
+            self.publish_random_behavior_selection(&live);
             Ok(token)
         })();
         if let Err(error) = &result {
@@ -143,11 +149,16 @@ impl Application {
                 Ok(snapshot) => {
                     self.config = next_config;
                     self.config_revision = Some(next_revision);
+                    let live = ModelIdentity {
+                        id: id.as_str().to_owned(),
+                        source: config_source_from_model(origin),
+                    };
                     self.active_model_origin = Some(origin);
                     self.active_model_id = Some(id);
                     self.remember_live_model();
                     self.refresh_shortcut_table();
                     self.restore_remembered_expression();
+                    self.publish_random_behavior_selection(&live);
                     Ok(snapshot)
                 }
                 Err(error) => {
@@ -173,6 +184,42 @@ impl Application {
             );
         }
         result
+    }
+
+    /// Tell the runtime which behaviors the model that has just become live plays
+    /// on its own.
+    ///
+    /// The projection answers for *this* model, and a model with no row in a document
+    /// that exists projects an empty set — "this one plays nothing" — which is
+    /// different from the document being absent. That distinction is why the whole
+    /// document is materialised the first time a selection is written: creating it
+    /// must not silently mute every model the user has not opened.
+    ///
+    /// A document that says nothing at all publishes nothing. The runtime already
+    /// reads a selection naming a different model as no selection, so the previous
+    /// model's answer is not a stale filter — it is exactly the unfiltered answer this
+    /// model wants. Skipping the command there also means a configuration that never
+    /// opens the picker produces no runtime traffic on a model switch, which is the
+    /// whole point of the field being optional.
+    ///
+    /// A model that does have an answer does publish it, and waits: the selection
+    /// *narrows what the scheduler may draw*, and an activation that returned while
+    /// the incoming model's answer was still unapplied would hand the caller a
+    /// snapshot that is one revision from the truth.
+    ///
+    /// Nothing is reported when this fails. A selection that could not be delivered is
+    /// corrected by the next activation, and the user has not done anything to be told
+    /// about; the alternative would be failing a model switch over an idle preference.
+    fn publish_random_behavior_selection(&self, model: &ModelIdentity) {
+        let Some(selection) = random_behavior_inclusion_from_config(&self.config, model) else {
+            return;
+        };
+        let client = self.runtime.client();
+        let Ok(sequence) = client.send(RuntimeCommand::SetRandomBehaviorInclusion(Some(selection)))
+        else {
+            return;
+        };
+        let _ = client.wait_for_command(sequence, RUNTIME_TIMEOUT);
     }
 
     /// Persist the gamepad-connection model switch as one atomic change.

@@ -839,6 +839,52 @@ impl SettingsView {
         self.patch_random_behavior(settings, cx);
     }
 
+    /// Check or clear one behavior's participation in random playback.
+    ///
+    /// One click is one write, with no debounce: the stored value is a whole set, so
+    /// a debounce would have to merge two clicks into one answer, and the answer
+    /// would depend on how fast the user clicked.
+    ///
+    /// Refused while the mode is off, matching the interval row above it: the page
+    /// draws the list inert then, and a request accepted while nothing is admitted
+    /// would replace the user's selection with an empty one.
+    pub(super) fn set_random_behavior_checked(
+        &mut self,
+        behavior: SettingsModelBehavior,
+        checked: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if self.editing_blocked(self.snapshot.as_ref()) {
+            return;
+        }
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return;
+        };
+        if !snapshot.random_behavior.mode.is_active() {
+            return;
+        }
+        let Some(model) = snapshot.active_model.clone() else {
+            return;
+        };
+        let behaviors = random_behavior_selection_after(snapshot, &behavior, checked);
+        self.start_request(
+            PendingOperation::RandomBehaviorInclusion,
+            Some(SettingValue::RandomBehaviorInclusion {
+                expected_config_revision,
+                model,
+                behaviors,
+            }),
+            cx,
+        );
+    }
+
     /// Hand one whole random-behavior patch to the service, or hold it for the
     /// debounce window.
     ///

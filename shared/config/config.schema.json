@@ -448,6 +448,16 @@
     "RandomBehaviorConfig": {
       "additionalProperties": false,
       "properties": {
+        "included": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/RandomBehaviorInclusion"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "interval_seconds": {
           "format": "uint32",
           "maximum": 3600,
@@ -461,6 +471,27 @@
       "required": [
         "mode",
         "interval_seconds"
+      ],
+      "type": "object"
+    },
+    "RandomBehaviorInclusion": {
+      "additionalProperties": false,
+      "properties": {
+        "behavior_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "minItems": 0,
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelIdentity"
+        }
+      },
+      "required": [
+        "model",
+        "behavior_ids"
       ],
       "type": "object"
     },

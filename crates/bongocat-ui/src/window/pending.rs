@@ -32,6 +32,7 @@ pub(crate) enum PendingOperation {
     CommandShortcuts,
     BehaviorShortcuts,
     RandomBehavior,
+    RandomBehaviorInclusion,
     MaximumFps,
     ModelSettings,
     GamepadAxisSettings,
@@ -133,6 +134,11 @@ pub(crate) enum SettingValue {
     RandomBehaviorSettings {
         expected_config_revision: u64,
         settings: SettingsRandomBehavior,
+    },
+    RandomBehaviorInclusion {
+        expected_config_revision: u64,
+        model: SettingsModelKey,
+        behaviors: Vec<SettingsModelBehavior>,
     },
     MaximumFps {
         expected_config_revision: u64,

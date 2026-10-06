@@ -8,6 +8,7 @@
 - Added a "Model window → Window behavior → Idle hide delay" setting.
 - Added a "Model window → Window behavior → Hold a modifier key to interact" setting.
 - Added an "Input & interaction → Mouse → Force mouse movement" setting, so the cat keeps following the mouse in full-screen games that capture the pointer.
+- Added a "Model behavior → Motions and expressions played at random" picker, so you can choose which motions and expressions each model plays on its own instead of getting all of them.
 
 ### 🐛 Bug Fixes
 

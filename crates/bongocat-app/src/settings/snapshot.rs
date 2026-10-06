@@ -12,6 +12,54 @@ use super::*;
 
 use super::model_projection::*;
 use super::projection::*;
+use crate::config_projection::random_behavior_inclusion_in_config;
+
+/// The checked behaviors of the model the random scheduler would draw from.
+///
+/// `None` while the document carries no per-behavior choice at all, which is the
+/// unfiltered answer every configuration written before the field existed means, so
+/// the page draws its whole candidate list checked. A model that appears in the
+/// document without a row of its own has selected nothing, which is an empty list
+/// rather than the unfiltered one.
+///
+/// The stored identifiers are canonical `behavior_id` spellings, so this turns them
+/// back into the same typed behaviors the catalog entry already carries rather than
+/// re-deriving an order here. One the active model does not declare is dropped:
+/// whether a behavior still exists is a property of the model package, and a stale
+/// row must not put a name on the page that cannot be played.
+fn random_behavior_inclusion_snapshot(
+    application: &Application,
+    catalog: &SettingsModelCatalog,
+) -> Option<Vec<SettingsModelBehavior>> {
+    let model = application.live_model_identity()?;
+    let stored = random_behavior_inclusion_in_config(application.config(), &model)?;
+    let declared = catalog_entry_behaviors(catalog, &settings_key_from_config(&model))?;
+    Some(
+        declared
+            .iter()
+            .filter(|behavior| stored.contains(&settings_model_behavior_id(behavior)))
+            .cloned()
+            .collect(),
+    )
+}
+
+/// One catalog entry's declared behaviors, in the order the package declares them.
+///
+/// Declaration order is the page's row order, so it is preserved rather than sorted
+/// into an order of this module's choosing.
+fn catalog_entry_behaviors<'a>(
+    catalog: &'a SettingsModelCatalog,
+    model: &SettingsModelKey,
+) -> Option<&'a [SettingsModelBehavior]> {
+    catalog
+        .entries
+        .iter()
+        .find(|entry| entry.id == model.id && entry.origin == model.origin)
+        .and_then(|entry| match &entry.availability {
+            SettingsModelAvailability::Ready { behaviors } => Some(behaviors.as_slice()),
+            SettingsModelAvailability::Invalid { .. } => None,
+        })
+}
 
 /// How long an input-capability answer stays usable.
 ///
@@ -160,6 +208,11 @@ pub(super) fn snapshot(
 ) -> SettingsSnapshot {
     let (runtime, input_diagnostics) =
         observe_snapshot_state(application, clock, startup_item, catalog_changed);
+    // The catalog is scanned once and read twice: the library page lists it, and the
+    // random-playback selection filters the active model's behaviors by it. Scanning
+    // per reader would double the most expensive part of building a snapshot.
+    let model_catalog = settings_model_catalog(application);
+    let random_behavior_inclusion = random_behavior_inclusion_snapshot(application, &model_catalog);
     SettingsSnapshot {
         revision: clock.revision,
         config_revision: application.config_revision(),
@@ -214,6 +267,7 @@ pub(super) fn snapshot(
             mode: random_behavior_mode_from_runtime(runtime.random_behavior_settings.mode),
             interval_seconds: runtime.random_behavior_settings.interval_seconds,
         },
+        random_behavior_inclusion,
         model_settings: SettingsModelSettings {
             mirror: runtime.model_settings.mirror,
             mirror_pointer_tracking_horizontal: runtime
@@ -258,7 +312,7 @@ pub(super) fn snapshot(
                     })
             })
             .or_else(|| configured_model_key(application)),
-        model_catalog: settings_model_catalog(application),
+        model_catalog,
     }
 }
 

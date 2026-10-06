@@ -411,6 +411,10 @@
         },
         "random_behavior_interval": {
           "label": "Intervalo aleatório de movimento ou expressão (segundos)"
+        },
+        "random_behavior_included": {
+          "label": "Movimentos e expressões reproduzidos aleatoriamente",
+          "none_checked": "Nada está marcado, então nada é reproduzido aleatoriamente."
         }
       }
     },

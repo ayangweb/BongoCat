@@ -41,7 +41,26 @@
     "built_in_models": [],
     "random_behavior": {
       "mode": "motions_and_expressions",
-      "interval_seconds": 3600
+      "interval_seconds": 3600,
+      "included": [
+        {
+          "model": {
+            "id": "standard",
+            "source": "built_in"
+          },
+          "behavior_ids": [
+            "expression:live2d_expression1.exp3.json",
+            "motion:CAT_motion:0"
+          ]
+        },
+        {
+          "model": {
+            "id": "keyboard",
+            "source": "built_in"
+          },
+          "behavior_ids": []
+        }
+      ]
     },
     "gamepad_auto_switch": {
       "enabled": false,

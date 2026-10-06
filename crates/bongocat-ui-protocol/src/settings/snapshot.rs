@@ -49,6 +49,18 @@ pub struct SettingsSnapshot {
     pub behavior_shortcuts_enabled: bool,
     pub maximum_fps: u16,
     pub random_behavior: SettingsRandomBehavior,
+    /// Which of the active model's behaviors play on their own.
+    ///
+    /// `None` means the document carries no per-behavior choice yet, which the page
+    /// draws as every visible behavior checked — that is what an unfiltered model
+    /// does. `Some` is the user's answer, and an empty one means this model plays
+    /// nothing, which the page states rather than leaving the user to infer it from
+    /// an unchecked list.
+    ///
+    /// The list is the *checked* members in declaration order, not the whole
+    /// declared set: the page draws candidates from the model catalog and the
+    /// checked ones from here, so the two can never disagree about what exists.
+    pub random_behavior_inclusion: Option<Vec<SettingsModelBehavior>>,
     pub model_settings: SettingsModelSettings,
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,
     pub cursor_settings: SettingsCursorSettings,

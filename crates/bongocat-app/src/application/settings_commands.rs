@@ -7,13 +7,15 @@
 
 use super::Application;
 use crate::config_projection::{
-    logging_config_from_settings, persistent_dead_zone, random_behavior_mode_to_config,
-    runtime_log_settings,
+    logging_config_from_settings, persistent_dead_zone, random_behavior_inclusion_from_config,
+    random_behavior_mode_to_config, runtime_log_settings, with_random_behavior_inclusion,
 };
+use crate::model_identity::config_source_from_model;
 use crate::shortcut_config::{active_shortcuts, shortcut_config_from_settings};
 use crate::{ApplicationError, RUNTIME_TIMEOUT};
-use bongocat_config::{Language, Theme as ConfigTheme};
+use bongocat_config::{Language, ModelIdentity, Theme as ConfigTheme};
 use bongocat_input::GamepadAxisSettings;
+use bongocat_model::ModelCatalogEntry;
 use bongocat_runtime::{
     CursorSettings, ModelSettings, OverlaySettings, RandomBehaviorSettings, RuntimeCommand,
     RuntimeCommandFailure, RuntimeRenderErrorCode, RuntimeSnapshot, maximum_fps_is_valid,
@@ -307,6 +309,72 @@ impl Application {
                 Err(error)
             }
         }
+    }
+
+    /// Persist which behaviors one model plays on its own.
+    ///
+    /// The row is rewritten for one model and every other model's row is left
+    /// alone, because the document is per-model and a page that wrote the whole
+    /// list would be a way to lose the others.
+    ///
+    /// The runtime is told afterwards rather than deciding anything here, but what it
+    /// is told is the answer for the model **in effect**, not the one the user
+    /// edited. The runtime compares a selection against the live model and reads a
+    /// mismatch as "no selection", so publishing the edited model's row would leave
+    /// the live one unfiltered — which is exactly what the user sees when they check
+    /// boxes on a model that is not the one on screen.
+    pub fn set_random_behavior_inclusion(
+        &mut self,
+        model: ModelIdentity,
+        behavior_ids: Vec<String>,
+    ) -> Result<(), ApplicationError> {
+        // The catalog is read here, not lazily inside the projection, because a model
+        // with no row in the selection document plays nothing — so the first write has
+        // to create a row for every model, seeded with everything it declares. A store
+        // that cannot be listed has no catalog to seed from, and answering with an
+        // incomplete document would mute models rather than mislabel them, so the
+        // write is refused instead.
+        let catalog_behaviors = self
+            .model_catalog()?
+            .into_iter()
+            .map(|entry| {
+                let identity = ModelIdentity {
+                    id: entry.id().as_str().to_owned(),
+                    source: config_source_from_model(entry.origin()),
+                };
+                let declared = match &entry {
+                    ModelCatalogEntry::Ready { snapshot, .. } => snapshot
+                        .behaviors
+                        .iter()
+                        .map(crate::shortcut_config::behavior_id)
+                        .collect(),
+                    ModelCatalogEntry::Invalid { .. } => Vec::new(),
+                };
+                (identity, declared)
+            })
+            .collect::<Vec<_>>();
+        let mut next_config = self.config.clone();
+        next_config.model.random_behavior.included = Some(with_random_behavior_inclusion(
+            &next_config,
+            &catalog_behaviors,
+            model,
+            behavior_ids,
+        ));
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        let selection = self
+            .live_model_identity()
+            .and_then(|live| random_behavior_inclusion_from_config(&next_config, &live));
+        let runtime_result = self
+            .runtime
+            .client()
+            .send(RuntimeCommand::SetRandomBehaviorInclusion(selection))
+            .map_err(ApplicationError::RuntimeCommand);
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        runtime_result.map(|_| ())
     }
 
     pub fn set_model_settings(

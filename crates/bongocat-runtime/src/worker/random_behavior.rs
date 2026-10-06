@@ -8,11 +8,31 @@ use super::super::transport::SnapshotCell;
 use super::audio::{motion_audio_path, stop_motion_audio};
 use crate::owner::ShutdownSignal;
 use crate::*;
+use std::collections::BTreeSet;
+
+/// The selection that applies to the model in effect right now, or `None`.
+///
+/// A published selection that names a different model is not this model's choice,
+/// and treating it as one would filter whichever model happened to be live. The
+/// application re-publishes on every activation, so a selection belonging to a
+/// model that has moved on is simply not yet replaced — and "not yet replaced"
+/// must mean "no selection" rather than "someone else's selection".
+pub(crate) fn random_behavior_inclusion<'a>(
+    active_model: Option<&CommittedModel>,
+    inclusion: &'a Option<RandomBehaviorInclusion>,
+) -> Option<&'a BTreeSet<String>> {
+    let model = active_model?;
+    let inclusion = inclusion.as_ref()?;
+    inclusion
+        .belongs_to(model.id(), model.origin())
+        .then_some(&inclusion.behavior_ids)
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn maybe_trigger_random_behavior(
     renderer: Option<&mut RuntimeRenderer>,
     active_model: Option<&CommittedModel>,
+    included: Option<&BTreeSet<String>>,
     active_motion: &mut Option<ActiveMotionSnapshot>,
     active_expression: &mut Option<ActiveExpressionSnapshot>,
     scheduler: &mut RandomBehaviorScheduler,
@@ -27,6 +47,7 @@ pub(crate) fn maybe_trigger_random_behavior(
         maybe_trigger_random_behavior_locked(
             renderer,
             active_model,
+            included,
             active_motion,
             active_expression,
             scheduler,
@@ -43,6 +64,7 @@ pub(crate) fn maybe_trigger_random_behavior(
 pub(crate) fn maybe_trigger_random_behavior_locked(
     renderer: Option<&mut RuntimeRenderer>,
     active_model: Option<&CommittedModel>,
+    included: Option<&BTreeSet<String>>,
     active_motion: &mut Option<ActiveMotionSnapshot>,
     active_expression: &mut Option<ActiveExpressionSnapshot>,
     scheduler: &mut RandomBehaviorScheduler,
@@ -58,7 +80,7 @@ pub(crate) fn maybe_trigger_random_behavior_locked(
     let Some(model) = active_model else {
         return;
     };
-    let Some(behavior) = scheduler.poll(now, || model.snapshot().behaviors) else {
+    let Some(behavior) = scheduler.poll(now, included, || model.snapshot().behaviors) else {
         return;
     };
     let automatic_sequence = *next_automatic_event_sequence;

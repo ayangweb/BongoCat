@@ -411,6 +411,10 @@
         },
         "random_behavior_interval": {
           "label": "Random motion or expression interval (seconds)"
+        },
+        "random_behavior_included": {
+          "label": "Motions and expressions played at random",
+          "none_checked": "Nothing is checked, so nothing plays at random."
         }
       }
     },

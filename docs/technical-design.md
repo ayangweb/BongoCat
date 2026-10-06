@@ -457,9 +457,19 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后
   清理；重复 stop 不重启计时，零时长立即清理。不同 motion identity 的旧 stop 不影响新动作；
   同一 ID 重播后仍是当前 run，之后到达的同名 stop 有意停止该 run。
+- `model.random_behavior.included` 是**每个模型一行**的勾选列表，`null` 表示还没有做过这个选择
+  （等同全部参与，字段带 `#[serde(default)]`，旧文档按无筛选加载）。runtime 侧对应
+  `SetRandomBehaviorInclusion(Option<RandomBehaviorInclusion>)`：可选的那一项**携带模型身份**
+  （`ModelId` + `ModelOrigin` + `behavior_id` 集合），worker 用 `belongs_to` 判定它是否属于当前
+  生效的模型，不属于就当作没有筛选——因此一次迟到的选择不会作用到别的模型上。Application 在每次
+  `prepare_model` / `select_model` 之后为新模型重新发布；文档整体为 `null` 时不发布任何命令，
+  上一模型的残留选择因为身份不匹配本来就等于无筛选。`set_random_behavior_inclusion` 写完配置后
+  发布的是**当前生效模型**那一行，而不是用户刚编辑的那一行。勾选列表与 mode 是两个独立筛选器，
+  任何一方都可能把候选集清空；清空时保持无操作而不退回另一类。
 - `model.random_behavior.mode` 不为 `off` 时，runtime 以可注入单调时钟按
   `model.random_behavior.interval_seconds` 从当前模型声明的对应类别列表中均匀选择
-  一个行为（每个声明项等权）。mode 先收窄候选集合再抽取，因此选中项一定属于用户允许的类别；
+  一个行为（每个声明项等权）。mode 与勾选列表都先收窄候选集合再抽取，因此选中项一定属于用户允许
+  的类别与成员；
   模型没有声明所选类别的行为时保持无操作，不退回另一类。第一次选择等待一个完整间隔；成功模型切换、
   设置变更和重新启用都会重锚定时器，长暂停只产生一次选择而不追赶补发。自动 motion 使用 `Idle`
   priority，不能替换正在进行
@@ -1051,7 +1061,10 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `[0, 1)` 的有限数。模型随机播放由 `model.random_behavior.mode` 与
   `model.random_behavior.interval_seconds` 成对表达：mode 是 `off`（默认）、`expressions`、
   `motions` 或 `motions_and_expressions` 的单一枚举，关闭是它的一个取值而不是独立布尔门禁；后者为
-  `[1, 3600]` 秒且默认 `30`。两者直接进入当前 v1，不读取旧字段。`model.gamepad_auto_switch` 直接包含当前 v1：门禁
+  `[1, 3600]` 秒且默认 `30`。`model.random_behavior.included` 直接包含当前 v1：`Option<Vec>`，
+  默认 `null`（无筛选，等同升级前行为），`Some` 时每个模型最多一行，每行的 `behavior_ids` 用与快捷键
+  绑定相同的 `behavior_id` 拼法并在校验时解析，重复或无法解析的字符串被拒绝。`null` 与空列表是
+  两个不同状态：前者是「没人选过」，后者是「这个模型什么都不自己播」。两者直接进入当前 v1，不读取旧字段。`model.gamepad_auto_switch` 直接包含当前 v1：门禁
   `enabled` 默认 `false`，`connected_model` 与 `disconnected_model` 是完整 `ModelIdentity` 或
   `null`，`null` 是默认值并表示「上次在该输入族上使用过的模型」；该「上次使用」是
   Application 的会话状态而不是配置字段（ADR-0071）。`model.remember_last_expression` 与

@@ -283,6 +283,22 @@ impl SettingsClient {
         .await
     }
 
+    /// Persist which behaviors one model plays on its own.
+    pub async fn set_random_behavior_inclusion(
+        &self,
+        expected_config_revision: u64,
+        model: SettingsModelKey,
+        behaviors: Vec<SettingsModelBehavior>,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetRandomBehaviorInclusion {
+            expected_config_revision,
+            model,
+            behaviors,
+            reply,
+        })
+        .await
+    }
+
     pub async fn set_model_settings(
         &self,
         expected_config_revision: u64,

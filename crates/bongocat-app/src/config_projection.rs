@@ -5,11 +5,16 @@
 //! added on one side and forgotten on the other is a compile error here rather
 //! than a setting that quietly stops doing anything.
 
-use bongocat_config::{ConfigError, LoggingConfig, LoggingLevel, NativeConfig, RandomBehaviorMode};
+use crate::model_identity::model_origin_from_config;
+use bongocat_config::{
+    ConfigError, LoggingConfig, LoggingLevel, ModelIdentity, NativeConfig,
+    RandomBehaviorInclusion as ConfigRandomBehaviorInclusion, RandomBehaviorMode,
+};
 use bongocat_input::GamepadAxisSettings;
 use bongocat_log::{LogLevel as RuntimeLogLevel, LogSettings as RuntimeLogSettings};
+use bongocat_model::ModelId;
 use bongocat_runtime::{
-    CursorSettings, ModelSettings, OverlaySettings,
+    CursorSettings, ModelSettings, OverlaySettings, RandomBehaviorInclusion,
     RandomBehaviorMode as RuntimeRandomBehaviorMode, RandomBehaviorSettings,
 };
 use bongocat_ui_protocol::SettingsRandomBehaviorMode;
@@ -162,6 +167,95 @@ pub(crate) const fn random_behavior_settings_from_config(
         mode: random_behavior_mode_to_runtime(config.model.random_behavior.mode),
         interval_seconds: config.model.random_behavior.interval_seconds,
     }
+}
+
+/// The behaviors one model plays on its own, projected for the runtime.
+///
+/// `None` means the document carries no per-behavior choice at all, which is what
+/// every configuration written before the field existed means and what keeps the
+/// runtime drawing from the whole declared set. A model that appears in the
+/// document without a row has selected nothing, so its answer is an empty set
+/// rather than the unfiltered one.
+pub(crate) fn random_behavior_inclusion_from_config(
+    config: &NativeConfig,
+    model: &ModelIdentity,
+) -> Option<RandomBehaviorInclusion> {
+    let inclusions = config.model.random_behavior.included.as_ref()?;
+    let behavior_ids = inclusions
+        .iter()
+        .find(|inclusion| &inclusion.model == model)
+        .map(|inclusion| inclusion.behavior_ids.iter().cloned().collect())
+        .unwrap_or_default();
+    Some(RandomBehaviorInclusion {
+        model: ModelId::parse(&model.id).ok()?,
+        model_origin: model_origin_from_config(model.source),
+        behavior_ids,
+    })
+}
+
+/// Rewrite one model's row, keeping every other model's row untouched.
+///
+/// The document is per-model by design, so writing the whole list from one model's
+/// page would be a way to lose the others. A document that does not exist yet is
+/// materialised from `catalog_behaviors` — every model the catalog holds, each seeded
+/// with everything that model declares — rather than holding only the model that was
+/// edited.
+///
+/// The seeding is not tidiness. A model with no row in the document plays nothing, so
+/// a document created by one checkbox on one model would mute every model the user
+/// never opened. Seeding each row with the whole declared set leaves every other
+/// model's behaviour exactly what it was: nothing had been chosen for it, so
+/// everything the mode could admit was playing.
+pub(crate) fn with_random_behavior_inclusion(
+    config: &NativeConfig,
+    catalog_behaviors: &[(ModelIdentity, Vec<String>)],
+    model: ModelIdentity,
+    behavior_ids: Vec<String>,
+) -> Vec<ConfigRandomBehaviorInclusion> {
+    let mut inclusions = config
+        .model
+        .random_behavior
+        .included
+        .clone()
+        .unwrap_or_else(|| {
+            catalog_behaviors
+                .iter()
+                .map(|(model, declared)| ConfigRandomBehaviorInclusion {
+                    model: model.clone(),
+                    behavior_ids: declared.clone(),
+                })
+                .collect()
+        });
+    let mut behavior_ids = behavior_ids;
+    behavior_ids.sort();
+    behavior_ids.dedup();
+    match inclusions
+        .iter_mut()
+        .find(|inclusion| inclusion.model == model)
+    {
+        Some(inclusion) => inclusion.behavior_ids = behavior_ids,
+        None => inclusions.push(ConfigRandomBehaviorInclusion {
+            model,
+            behavior_ids,
+        }),
+    }
+    inclusions
+}
+
+/// The behavior ids of one model's row, or `None` while the document says nothing
+/// about any model.
+pub(crate) fn random_behavior_inclusion_in_config(
+    config: &NativeConfig,
+    model: &ModelIdentity,
+) -> Option<Vec<String>> {
+    config
+        .model
+        .random_behavior
+        .included
+        .as_ref()?
+        .iter()
+        .find(|inclusion| &inclusion.model == model)
+        .map(|inclusion| inclusion.behavior_ids.clone())
 }
 
 pub(crate) fn gamepad_axis_settings_from_config(

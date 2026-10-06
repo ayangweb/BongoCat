@@ -61,7 +61,8 @@ pub use pacing::{
 };
 pub use random_behavior::{
     DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS, MAXIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
-    MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS, RandomBehaviorMode, RandomBehaviorSettings,
+    MINIMUM_RANDOM_BEHAVIOR_INTERVAL_SECONDS, RandomBehaviorInclusion, RandomBehaviorMode,
+    RandomBehaviorSettings,
 };
 use random_behavior::{RandomBehaviorScheduler, system_seed};
 use rendering::{MotionStopStatus, RuntimeRenderBootstrap, RuntimeRenderer};
@@ -452,6 +453,16 @@ pub enum RuntimeCommand {
     SetOverlaySettings(OverlaySettings),
     SetMaximumFps(u16),
     SetRandomBehaviorSettings(RandomBehaviorSettings),
+    /// Which behaviors the model now in effect plays on its own, or `None` for all
+    /// of them.
+    ///
+    /// Separate from [`Self::SetRandomBehaviorSettings`] because the two answer
+    /// different questions and have different shapes: the mode and the interval
+    /// describe the schedule and stay a pair of scalars, while this is an owned set
+    /// that names the model it belongs to. The model travels with it so the worker
+    /// can ignore a selection that arrived after the model moved on rather than
+    /// filtering whichever model happens to be live.
+    SetRandomBehaviorInclusion(Option<RandomBehaviorInclusion>),
     SetModelSettings(ModelSettings),
     SetMotionAudioEnabled(bool),
     SetInputBindings(Arc<InputBindings>),

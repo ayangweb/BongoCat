@@ -76,6 +76,7 @@ updates
 | `model`       | `show_all_pressed_keys`               | 每个按住的键各自画一张键位图并按按下顺序叠放，默认 `false` |
 | `model`       | `random_behavior.mode`                | 无人操作时自动播放什么：`off`（默认）、`expressions`、`motions` 或 `motions_and_expressions` |
 | `model`       | `random_behavior.interval_seconds`    | 随机播放间隔秒数，`[1, 3600]`          |
+| `model`       | `random_behavior.included`            | 每个模型各自勾选参与随机播放的行为；`null` 表示还没有做过这个选择，等同于全部参与 |
 | `model`       | `gamepad_auto_switch.enabled`         | 手柄连接状态变化时是否自动切换模型，默认 `false` |
 | `model`       | `gamepad_auto_switch.connected_model` | 连接手柄时自动切换的模型，`null` 表示上次使用的手柄模型 |
 | `model`       | `gamepad_auto_switch.disconnected_model` | 断开手柄时自动切换的模型，`null` 表示上次使用的非手柄模型 |
@@ -106,6 +107,23 @@ pressed state、释放校正、设备生命周期 Reset、诊断以及独立快�
 绑定到该手的键仍然按住，对应的 `CatParamLeftHandDown`/`CatParamRightHandDown` 就是 true。判定顺序是
 「按下时间 + 可靠输入队列的 sequence」，两者共同构成一个全序：单调时钟是毫秒精度，快速连击完全可能
 落在同一毫秒内，只有 sequence 能把它们分开。
+
+`model.random_behavior.included` 是一个**每个模型一行**的列表，或者 `null`。`null` 是默认值，也是该字段
+加入之前写下的每一份文档读出来的值：没有人做过「参与哪些」这个选择，因此模式允许的每一个行为都照常
+参与，runtime 的筛选器读到的也是「无筛选」。字段带 `#[serde(default)]`，缺少它的旧文档按无筛选加载，
+而不是被严格 v1 入口拒绝后走恢复流程。
+
+`Some(vec![])`（某一行存在但一个都没勾）**不等于** `null`：它是「这个模型什么都不自己播」的决定，设置
+页会在界面上写明这一点。一个模型在列表里没有自己那一行时同样什么都不播，所以第一次写入这个列表时必须
+给**每一个模型**都建好行——否则用户在一个模型上点一下勾选框，会让所有没打开过的模型一起哑掉。
+
+每行的 `behavior_ids` 用快捷键绑定同一套 `behavior_id` 写法（`motion:<group>:<index>` 或
+`expression:<name>`），因此同一个行为在整个配置里只有一种拼法；校验会解析它，所以一个不是行为的字符串、
+或者同一行里重复的一个，都是文档缺陷而不是「反正选不到」的行为。一个模型最多一行；模型 id 必须合法。
+
+模式与这份列表是**两个独立的筛选器**，任何一个都可能把候选集清空：只勾了动作而模式是「仅表情」时什么
+都不播，而不会退回去播一个被模式排除的动作——模式是用户对「播什么类别」的决定，不是两个集合之间的排序。
+收窄模式只会让勾选列表少显示几行，不会删掉已经勾上的行为，所以把模式改回去时它们都还在。
 
 按键层有固定容量（`bongocat_render::KeyPressSet::CAPACITY`，64）。设备报告的按键数超过该上限时
 丢最早按下的那几个，而不是丢用户此刻正按着的——堆叠的底部是历史，顶层才是用户正在看的。释放仍然只

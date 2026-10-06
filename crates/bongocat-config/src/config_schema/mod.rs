@@ -31,10 +31,11 @@ pub use input::{GamepadInputConfig, InputConfig, MouseInputConfig};
 pub use logging::{LoggingConfig, LoggingLevel};
 pub use model::{
     BuiltInModelMetadata, GamepadAutoSwitchConfig, ImportedModelMetadata,
-    MAXIMUM_MODEL_EXPRESSION_MEMORIES, MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES,
+    MAXIMUM_MODEL_EXPRESSION_MEMORIES, MAXIMUM_RANDOM_BEHAVIOR_IDS_PER_MODEL,
+    MAXIMUM_RANDOM_BEHAVIOR_INCLUSIONS, MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES,
     MODEL_METADATA_MAXIMUM_ID_BYTES, MODEL_METADATA_MAXIMUM_TITLE_CHARS, ModelConfig,
     ModelExpressionMemory, ModelIdentity, ModelInputMode, ModelSource, RandomBehaviorConfig,
-    RandomBehaviorMode,
+    RandomBehaviorInclusion, RandomBehaviorMode,
 };
 pub use overlay::{
     DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS, MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS,
@@ -216,6 +217,9 @@ impl NativeConfig {
                 .map(|record| (record.id.as_str(), record.title.as_str())),
         )?;
         validate_model_expression_memories(&self.model.last_expressions)?;
+        if let Some(inclusions) = &self.model.random_behavior.included {
+            validate_random_behavior_inclusions(inclusions)?;
+        }
         if self
             .shortcuts
             .command_bindings
