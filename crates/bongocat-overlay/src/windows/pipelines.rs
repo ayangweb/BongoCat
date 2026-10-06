@@ -77,13 +77,14 @@ pub(crate) const SHADER_SOURCE: &str = r#"
     Texture2D<float4> mask_texture : register(t1);
     SamplerState texture_sampler : register(s0);
 
-    // The source texture is an ordinary UNORM view on purpose. This is the
-    // encoded-space compatibility blend: do not insert a linear/sRGB conversion
-    // here without changing both backends and the product contract.
+    // Texture RGB is premultiplied by alpha before upload. Keep the encoded
+    // values in this UNORM view; filtering premultiplied texels prevents hidden
+    // RGB in transparent texels from creating a fringe around the model.
     float4 cubism_fragment(RasterVertex input) : SV_TARGET {
         float4 texture_color = model_texture.Sample(texture_sampler, input.uv);
         float3 color = texture_color.rgb * multiply_color.rgb;
-        color = color + screen_color.rgb - color * screen_color.rgb;
+        color = (color + screen_color.rgb * texture_color.a)
+              - (color * screen_color.rgb);
         float mask = 1.0;
         if (mask_settings.z > 0.5) {
             float2 mask_uv = input.position.xy / mask_settings.xy;
@@ -92,9 +93,8 @@ pub(crate) const SHADER_SOURCE: &str = r#"
                 mask = 1.0 - mask;
             }
         }
-        float alpha = texture_color.a * opacity * mask
-                    * corner_coverage(input.position.xy, corner_radius);
-        return float4(color * alpha, alpha);
+        float coverage = opacity * mask * corner_coverage(input.position.xy, corner_radius);
+        return float4(color * coverage, texture_color.a * coverage);
     }
 
     float4 cubism_mask_fragment(RasterVertex input) : SV_TARGET {
