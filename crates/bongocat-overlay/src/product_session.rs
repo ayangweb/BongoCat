@@ -237,6 +237,12 @@ impl ProductOverlaySession {
     pub fn linux_close_requested(&self) -> bool {
         self.inner.close_requested()
     }
+    pub fn linux_always_on_top_available(&self) -> bool {
+        self.inner.always_on_top_available()
+    }
+    pub fn set_linux_context_menu_active(&mut self, active: bool) {
+        self.inner.set_context_menu_active(active);
+    }
     /// Start input capture after the Linux permission explanation is confirmed.
     pub fn start_linux_input(&mut self) {
         self.inner.start_input();

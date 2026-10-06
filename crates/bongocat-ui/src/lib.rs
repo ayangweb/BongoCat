@@ -152,6 +152,7 @@ pub(crate) mod tests {
     ) -> SettingsSnapshot {
         SettingsSnapshot {
             revision,
+            overlay_always_on_top_available: false,
             config_revision: Some(revision),
             build_info: SettingsBuildInfo {
                 product_version: env!("CARGO_PKG_VERSION").to_owned(),

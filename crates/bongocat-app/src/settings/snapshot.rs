@@ -191,6 +191,7 @@ pub(super) fn snapshot(
         check_for_updates_automatically: application.config().updates.check_automatically,
         check_for_updates_interval_hours: application.config().updates.check_interval_hours,
         overlay_visible: runtime.overlay_visible,
+        overlay_always_on_top_available: application.overlay_always_on_top_available,
         overlay: SettingsOverlay {
             click_through: runtime.overlay_settings.click_through,
             hold_modifier_to_interact: runtime.overlay_settings.hold_modifier_to_interact,

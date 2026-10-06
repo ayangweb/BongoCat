@@ -77,9 +77,13 @@ pub struct Application {
     panic_hook: Option<ApplicationPanicHook>,
     shortcut_table: ShortcutTable,
     shortcut_capture_suspended: bool,
+    pub(crate) overlay_always_on_top_available: bool,
 }
 
 impl Application {
+    pub fn set_overlay_always_on_top_available(&mut self, available: bool) {
+        self.overlay_always_on_top_available = available;
+    }
     pub fn runtime_client(&self) -> RuntimeClient {
         self.runtime.client()
     }

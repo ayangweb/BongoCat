@@ -439,6 +439,7 @@ mod tests {
         let directory = tempdir().expect("diagnostics directory");
         let path = directory.path().join("logs").join("diagnostics.json");
         let snapshot = SettingsSnapshot {
+            overlay_always_on_top_available: false,
             revision: 42,
             pointer_sensitivity_percent: 100,
             config_revision: Some(7),

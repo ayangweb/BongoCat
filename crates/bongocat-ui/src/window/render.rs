@@ -356,7 +356,7 @@ impl Render for SettingsView {
                             },
                         ),
                     )),
-                    (platform::GLOBAL_WINDOW_CONTROL, SettingItem::new(
+                    (platform::GLOBAL_WINDOW_CONTROL || self.snapshot.as_ref().is_some_and(|snapshot| snapshot.overlay_always_on_top_available), SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.overlay.always_on_top.label",
@@ -414,7 +414,7 @@ impl Render for SettingsView {
                             },
                         ),
                     )),
-                    (platform::GLOBAL_WINDOW_CONTROL, SettingItem::new(
+                    (platform::GLOBAL_WINDOW_CONTROL || self.snapshot.as_ref().is_some_and(|snapshot| snapshot.overlay_always_on_top_available && snapshot.overlay.always_on_top), SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.overlay.keep_inside_screen.label",

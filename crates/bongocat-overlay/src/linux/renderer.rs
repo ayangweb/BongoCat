@@ -6,6 +6,8 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 
 pub struct Renderer {
     surface: Option<wgpu::Surface<'static>>,
+    instance: wgpu::Instance,
+    adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
@@ -30,7 +32,7 @@ fn bytes(values: impl IntoIterator<Item = f32>) -> Vec<u8> {
 }
 impl Renderer {
     pub fn new(
-        window: Option<Arc<winit::window::Window>>,
+        window: Option<Arc<WindowTarget>>,
         frame: &RenderFrame,
         width: u32,
         height: u32,
@@ -179,6 +181,8 @@ impl Renderer {
             .transpose()?;
         Ok(Self {
             surface,
+            instance,
+            adapter,
             device,
             queue,
             config,
@@ -195,6 +199,33 @@ impl Renderer {
             background,
             resources: frame.resources.clone(),
         })
+    }
+    pub fn replace_window(
+        &mut self,
+        target: Arc<WindowTarget>,
+        width: u32,
+        height: u32,
+    ) -> Result<(), OverlayError> {
+        let surface = self.instance.create_surface(target).map_err(error)?;
+        let capabilities = surface.get_capabilities(&self.adapter);
+        if !capabilities.formats.contains(&self.config.format)
+            || !capabilities
+                .alpha_modes
+                .contains(&wgpu::CompositeAlphaMode::PreMultiplied)
+        {
+            return Err(error(
+                "replacement Wayland surface does not support the existing renderer",
+            ));
+        }
+        let config = wgpu::SurfaceConfiguration {
+            width: width.max(1),
+            height: height.max(1),
+            ..self.config.clone()
+        };
+        surface.configure(&self.device, &config);
+        self.surface = Some(surface);
+        self.resize(config.width, config.height);
+        Ok(())
     }
     pub fn prepare(&mut self, frame: &RenderFrame) -> Result<(), OverlayError> {
         let oom = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);

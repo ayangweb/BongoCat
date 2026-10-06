@@ -53,6 +53,8 @@ dbg_macro = "deny"
 unsafe_op_in_unsafe_fn = "deny"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+smithay-client-toolkit.workspace = true
+wayland-client.workspace = true
 bongocat-config.workspace = true
 image.workspace = true
 winit = { version = "=0.30.13", default-features = false, features = ["wayland", "wayland-dlopen", "rwh_06"] }

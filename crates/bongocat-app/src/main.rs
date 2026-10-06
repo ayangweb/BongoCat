@@ -358,6 +358,7 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
         }
     };
     let mut application = bongocat_app::Application::start(preset_root())?;
+    application.set_overlay_always_on_top_available(true);
     let application_log = application.log_handle();
     application.install_process_panic_hook();
     let core_log = CoreLogHandle::install(
@@ -2583,6 +2584,16 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     let config = &application.config().overlay;
     let options = OverlaySessionOptions {
         click_through: config.click_through,
+        always_on_top: config.always_on_top,
+        keep_inside_screen: config.keep_inside_screen,
+        window_bounds: application.overlay_window_placement().map(|placement| {
+            bongocat_overlay::OverlayWindowBounds::new(
+                placement.x,
+                placement.y,
+                placement.width,
+                placement.height,
+            )
+        }),
         scale_percent: config.scale_percent,
         opacity_percent: config.opacity_percent,
         corner_radius_percent: config.corner_radius_percent,
@@ -2611,6 +2622,7 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             resize_sender: Some(resize_sender),
         },
     )?;
+    application.set_overlay_always_on_top_available(overlay.linux_always_on_top_available());
     let (sender, receiver) = std::sync::mpsc::sync_channel(64);
     let shortcut_service = bongocat_platform::GlobalShortcutService::start(
         application.shortcut_table(),
@@ -2805,6 +2817,14 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
                         })
                         .detach();
                         return true;
+                    }
+                    let context_menu_active = cx
+                        .global::<Product>()
+                        .context_menu
+                        .as_ref()
+                        .is_some_and(|menu| menu.read(cx).is_ok());
+                    if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
+                        overlay.set_linux_context_menu_active(context_menu_active);
                     }
                     if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut()
                         && let Err(e) = overlay.tick()
