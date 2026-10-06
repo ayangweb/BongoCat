@@ -322,6 +322,19 @@ pub struct ModelExpressionMemory {
 pub struct RandomBehaviorConfig {
     pub mode: RandomBehaviorMode,
     pub interval_seconds: u32,
+    /// Which behaviors each model plays on its own, or `null` for all of them.
+    /// Kept in step with the product's schema because this spike's default must
+    /// still serialize identically to `shared/config/fixtures/default.json`.
+    #[serde(default)]
+    pub included: Option<Vec<RandomBehaviorInclusion>>,
+}
+
+/// One model's selection of the behaviors it may play on its own.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RandomBehaviorInclusion {
+    pub model: ModelIdentity,
+    pub behavior_ids: Vec<String>,
 }
 
 /// What the idle scheduler may pick on its own.
@@ -355,6 +368,7 @@ impl Default for RandomBehaviorConfig {
         Self {
             mode: RandomBehaviorMode::default(),
             interval_seconds: DEFAULT_RANDOM_BEHAVIOR_INTERVAL_SECONDS,
+            included: None,
         }
     }
 }
