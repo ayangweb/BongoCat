@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::{open_linux_context_menu, show_linux_input_permission};
+pub use linux::{linux_system_menu_palette, show_linux_input_permission};
 
 mod external_link;
 mod pop_confirm;

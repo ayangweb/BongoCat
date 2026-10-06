@@ -51,7 +51,7 @@ pub use theme::{
 
 mod system_menu;
 #[cfg(target_os = "linux")]
-pub use system_menu::LinuxSystemMenuItem;
+pub use system_menu::{LinuxSystemMenuItem, SystemMenuPalette};
 pub use system_menu::{SystemMenuAction, SystemMenuError, SystemMenuPresentation};
 #[cfg(not(target_os = "linux"))]
 mod system_menu_native;

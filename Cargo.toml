@@ -63,7 +63,7 @@ rodio = { version = "=0.22.2", default-features = false, features = ["playback",
 schemars = { version = "=1.2.2", features = ["derive"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
-smithay-client-toolkit = { version = "=0.21.1", default-features = false, features = ["calloop"] }
+smithay-client-toolkit = { version = "=0.21.1", default-features = false, features = ["calloop", "xkbcommon"] }
 tar = "=0.4.46"
 tempfile = "=3.27.0"
 thiserror = "=2.0.21"

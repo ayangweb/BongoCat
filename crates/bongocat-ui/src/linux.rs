@@ -1,15 +1,8 @@
-//! Linux product controls. Both windows use the existing GPUI component framework.
+//! Linux permission explanation and theme colors for the Wayland menu.
 use crate::SettingsLanguage;
-use bongocat_platform::{LinuxSystemMenuItem, SystemMenuAction, SystemMenuPresentation};
-use gpui_kit::component::{
-    Root, WindowExt,
-    dialog::DialogButtonProps,
-    menu::{PopupMenu, PopupMenuItem},
-};
-use gpui_kit::{
-    App, AppContext, Bounds, Context, DismissEvent, Entity, Focusable, Render, Subscription,
-    Window, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, prelude::*, px, size,
-};
+use bongocat_platform::SystemMenuPalette;
+use gpui_kit::component::{ActiveTheme, WindowExt, dialog::DialogButtonProps};
+use gpui_kit::{App, Hsla, ParentElement, Rgba, Window};
 use std::rc::Rc;
 
 pub fn show_linux_input_permission(
@@ -44,76 +37,19 @@ pub fn show_linux_input_permission(
     });
 }
 
-struct MenuView {
-    menu: Entity<PopupMenu>,
-    _subscriptions: Vec<Subscription>,
-}
-impl Render for MenuView {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().child(self.menu.clone())
+/// Use the same semantic colors as the GPUI popup menu.
+pub fn linux_system_menu_palette(cx: &App) -> SystemMenuPalette {
+    let theme = cx.theme();
+    let rgba = |color: Hsla| {
+        let color = Rgba::from(color);
+        [color.r, color.g, color.b, color.a].map(|component| (component * 255.).round() as u8)
+    };
+    SystemMenuPalette {
+        surface: rgba(theme.popover),
+        foreground: rgba(theme.popover_foreground),
+        muted_foreground: rgba(theme.muted_foreground),
+        separator: rgba(theme.border),
+        hover_background: rgba(theme.accent),
+        hover_foreground: rgba(theme.accent_foreground),
     }
-}
-
-/// Independent menu window: Wayland chooses its placement because the overlay
-/// belongs to a separate connection, so it cannot be a GPUI popup parent.
-pub fn open_linux_context_menu(
-    presentation: SystemMenuPresentation,
-    action: impl Fn(SystemMenuAction, &mut App) + 'static,
-    cx: &mut App,
-) -> Result<WindowHandle<Root>, String> {
-    let action = Rc::new(action);
-    cx.open_window(
-        WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                None,
-                size(px(280.), px(180.)),
-                cx,
-            ))),
-            titlebar: None,
-            kind: WindowKind::PopUp,
-            is_resizable: false,
-            ..Default::default()
-        },
-        move |window, cx| {
-            let menu = PopupMenu::build(window, cx, |mut menu, _, _| {
-                for item in presentation.linux_items() {
-                    menu = match item {
-                        LinuxSystemMenuItem::Separator => menu.separator(),
-                        LinuxSystemMenuItem::Action {
-                            action: command,
-                            label,
-                            checked,
-                        } => {
-                            let action = action.clone();
-                            menu.item(PopupMenuItem::new(label).checked(checked).on_click(
-                                move |_, window, cx| {
-                                    window.remove_window();
-                                    action(command, cx);
-                                },
-                            ))
-                        }
-                    };
-                }
-                menu
-            });
-            menu.focus_handle(cx).focus(window, cx);
-            let view = cx.new(|cx| {
-                let dismiss =
-                    cx.subscribe_in(&menu, window, |_, _, _: &DismissEvent, window, _| {
-                        window.remove_window();
-                    });
-                let deactivate = cx.observe_window_activation(window, |_, window, _| {
-                    if !window.is_window_active() {
-                        window.remove_window();
-                    }
-                });
-                MenuView {
-                    menu,
-                    _subscriptions: vec![dismiss, deactivate],
-                }
-            });
-            cx.new(|cx| Root::new(view, window, cx))
-        },
-    )
-    .map_err(|error| error.to_string())
 }

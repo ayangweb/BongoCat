@@ -57,11 +57,13 @@ use bongocat_app::{
 #[cfg(not(target_os = "linux"))]
 use bongocat_live2d::CoreLogHandle;
 #[cfg(target_os = "linux")]
-use bongocat_overlay::{OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome};
+#[cfg(not(target_os = "linux"))]
+use bongocat_overlay::OverlayContextMenuRequest;
 #[cfg(not(target_os = "linux"))]
 use bongocat_overlay::{
     OverlayContextMenuRequest, OverlayInteractionSinks, OverlayResizeOutcome, OverlayWindowBounds,
 };
+use bongocat_overlay::{OverlayInteractionSinks, OverlayResizeOutcome};
 use bongocat_overlay::{OverlaySessionOptions, ProductOverlaySession};
 #[cfg(not(target_os = "linux"))]
 use bongocat_platform::GlobalShortcutService;
@@ -2515,7 +2517,6 @@ struct Product {
     shortcut_service: Option<bongocat_platform::GlobalShortcutService>,
     overlay: Option<ProductOverlaySession>,
     tray: Option<LinuxSystemTray>,
-    context_menu: Option<gpui_kit::WindowHandle<gpui_kit::component::Root>>,
     service: Option<ApplicationSettingsService>,
     settings: ProductSettingsWindow,
     frame_source: FrameSourceShutdown,
@@ -2606,10 +2607,7 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     application.restore_startup_model()?;
     let application_log = application.log_handle();
     let runtime = application.runtime_client();
-    let (context_sender, context_receiver) =
-        std::sync::mpsc::sync_channel::<OverlayContextMenuRequest>(1);
     let (resize_sender, resize_receiver) = std::sync::mpsc::sync_channel::<OverlayResizeOutcome>(1);
-    let (menu_sender, menu_receiver) = std::sync::mpsc::channel();
     let overlay = ProductOverlaySession::start_with_interaction_sinks(
         runtime.clone(),
         application.input_producer(),
@@ -2618,7 +2616,7 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         application.take_render_consumer()?,
         options,
         OverlayInteractionSinks {
-            context_menu_sender: Some(context_sender),
+            context_menu_sender: None,
             resize_sender: Some(resize_sender),
         },
     )?;
@@ -2664,7 +2662,6 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             shortcut_service: Some(shortcut_service),
             overlay: Some(overlay),
             tray,
-            context_menu: None,
             service: Some(service),
             settings: ProductSettingsWindow::new(seed),
             frame_source: frame_source.clone(),
@@ -2673,6 +2670,12 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
             close_requested: false,
         });
         open_settings(cx);
+        let palette = bongocat_ui::linux_system_menu_palette(cx);
+        cx.global_mut::<Product>()
+            .overlay
+            .as_mut()
+            .expect("running overlay")
+            .set_linux_menu_presentation(presentation.clone(), palette);
         if let Some(settings) = cx.global::<Product>().settings.window.clone() {
             let _ = settings.update(cx, |_, window, cx| {
                 // The dialog reads Root's window state; release the typed
@@ -2710,39 +2713,38 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         let menu_client = client.clone();
         let menu_quit = quit.clone();
         cx.spawn(async move |cx| {
-            let mut last_presentation = presentation;
-            let mut revision = None;
+            let mut last_presentation = None;
             while !menu_quit.load(Ordering::Acquire) {
                 Timer::after(Duration::from_secs(1)).await;
-                let Ok(next_revision) = menu_client.read_snapshot_revision().await else {
-                    break;
-                };
-                if revision == Some(next_revision) {
-                    continue;
-                }
-                revision = Some(next_revision);
                 let Ok(snapshot) = menu_client.read_snapshot().await else {
-                    continue;
+                    break;
                 };
                 let next = system_menu::system_menu_presentation(&snapshot);
                 cx.update(|cx| {
-                    let settings = &mut cx.global_mut::<Product>().settings;
-                    settings.seed = SettingsWindowSeed {
+                    let palette = bongocat_ui::linux_system_menu_palette(cx);
+                    let product = cx.global_mut::<Product>();
+                    product.settings.seed = SettingsWindowSeed {
                         language: snapshot.resolved_language,
                         appearance_theme: snapshot.appearance_theme,
                     };
+                    if last_presentation
+                        .as_ref()
+                        .is_some_and(|(presentation, colors)| {
+                            presentation == &next && *colors == palette
+                        })
+                    {
+                        return;
+                    }
+                    if let Some(overlay) = &mut product.overlay {
+                        overlay.set_linux_menu_presentation(next.clone(), palette);
+                    }
+                    if let Some(tray) = &product.tray
+                        && let Err(error) = tray.set_presentation(next.clone())
+                    {
+                        report_error("tray update", error);
+                    }
+                    last_presentation = Some((next.clone(), palette));
                 });
-                if next != last_presentation {
-                    let presentation = next.clone();
-                    cx.update(|cx| {
-                        if let Some(tray) = &cx.global::<Product>().tray
-                            && let Err(error) = tray.set_presentation(presentation)
-                        {
-                            report_error("tray update", error);
-                        }
-                    });
-                    last_presentation = next;
-                }
             }
         })
         .detach();
@@ -2818,14 +2820,6 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
                         .detach();
                         return true;
                     }
-                    let context_menu_active = cx
-                        .global::<Product>()
-                        .context_menu
-                        .as_ref()
-                        .is_some_and(|menu| menu.read(cx).is_ok());
-                    if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut() {
-                        overlay.set_linux_context_menu_active(context_menu_active);
-                    }
                     if let Some(overlay) = cx.global_mut::<Product>().overlay.as_mut()
                         && let Err(e) = overlay.tick()
                     {
@@ -2840,52 +2834,24 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
                         })
                         .detach();
                     }
-                    if context_receiver.try_recv().is_ok() {
-                        let client = client.clone();
-                        let menu_sender = menu_sender.clone();
-                        let quit = quit.clone();
-                        cx.spawn(async move |cx| {
-                            let Ok(snapshot) = client.read_snapshot().await else {
-                                return;
-                            };
-                            let presentation = system_menu::system_menu_presentation(&snapshot);
-                            cx.update(|cx| {
-                                if quit.load(Ordering::Acquire) {
-                                    return;
-                                }
-                                if let Some(existing) =
-                                    cx.global_mut::<Product>().context_menu.take()
-                                {
-                                    let _ =
-                                        existing.update(cx, |_, window, _| window.remove_window());
-                                }
-                                match bongocat_ui::open_linux_context_menu(
-                                    presentation,
-                                    move |action, _| {
-                                        let _ = menu_sender.send(action);
-                                    },
-                                    cx,
-                                ) {
-                                    Ok(menu) => {
-                                        cx.global_mut::<Product>().context_menu = Some(menu)
-                                    }
-                                    Err(error) => report_error("context menu", error),
-                                }
-                            });
-                        })
-                        .detach();
-                    }
                     let mut tray_quit = false;
-                    while let Some(action) = menu_receiver.try_recv().ok().or_else(|| {
-                        tray_actions
-                            .as_ref()
-                            .and_then(|receiver| receiver.try_recv().ok())
-                    }) {
+                    while let Some(action) = cx
+                        .global_mut::<Product>()
+                        .overlay
+                        .as_mut()
+                        .and_then(|overlay| overlay.take_linux_menu_action())
+                        .or_else(|| {
+                            tray_actions
+                                .as_ref()
+                                .and_then(|receiver| receiver.try_recv().ok())
+                        })
+                    {
                         match action {
                             SystemMenuAction::OpenSettings => signals.request_open_settings(),
                             SystemMenuAction::Quit => tray_quit = true,
                             SystemMenuAction::ToggleOverlayVisibility
-                            | SystemMenuAction::ToggleClickThrough => {
+                            | SystemMenuAction::ToggleClickThrough
+                            | SystemMenuAction::ToggleAlwaysOnTop => {
                                 let client = client.clone();
                                 cx.spawn(async move |cx| {
                                     if let Err(error) =

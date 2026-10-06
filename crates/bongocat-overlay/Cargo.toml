@@ -57,6 +57,6 @@ smithay-client-toolkit.workspace = true
 wayland-client.workspace = true
 bongocat-config.workspace = true
 image.workspace = true
-winit = { version = "=0.30.13", default-features = false, features = ["wayland", "wayland-dlopen", "rwh_06"] }
+cosmic-text = "=0.19.0"
 wgpu = { version = "=30.0.1", default-features = false, features = ["std", "vulkan", "wgsl"] }
 pollster = "=1.0.1"

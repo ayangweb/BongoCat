@@ -31,13 +31,21 @@ pub(crate) fn system_menu_presentation(snapshot: &SettingsSnapshot) -> SystemMen
         quit: text("system_menu.quit"),
         overlay_visible: snapshot.overlay_visible,
         click_through_enabled: snapshot.overlay.click_through,
+        #[cfg(target_os = "linux")]
+        always_on_top_available: snapshot.overlay_always_on_top_available,
         always_on_top_enabled: snapshot.overlay.always_on_top,
+        #[cfg(target_os = "linux")]
+        hide_on_pointer_hover_available: false,
         hide_on_pointer_hover_enabled: snapshot.overlay.hide_on_pointer_hover,
         // A Production build stays gated on its channel and release signing key
         // (`bongocat_app::update_check_available`): without them a check can only fail.
         // A Development build can never update either, but the update window is where
         // that is *explained* (`Unavailable · DevelopmentBuild`), so its entry stays
         // clickable and clicking it shows the development-build explanation.
+        // The Linux product does not yet own an update service/window.
+        #[cfg(target_os = "linux")]
+        update_check_available: false,
+        #[cfg(not(target_os = "linux"))]
         update_check_available: bongocat_app::update_check_available()
             || matches!(
                 bongocat_app::BUILD_ENVIRONMENT,

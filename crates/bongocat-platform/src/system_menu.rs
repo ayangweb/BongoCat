@@ -20,9 +20,25 @@ pub struct SystemMenuPresentation {
     pub quit: String,
     pub overlay_visible: bool,
     pub click_through_enabled: bool,
+    #[cfg(target_os = "linux")]
+    pub always_on_top_available: bool,
     pub always_on_top_enabled: bool,
+    #[cfg(target_os = "linux")]
+    pub hide_on_pointer_hover_available: bool,
     pub hide_on_pointer_hover_enabled: bool,
     pub update_check_available: bool,
+}
+
+/// Theme colors passed to the Linux SHM menu without GPUI types.
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SystemMenuPalette {
+    pub surface: [u8; 4],
+    pub foreground: [u8; 4],
+    pub muted_foreground: [u8; 4],
+    pub separator: [u8; 4],
+    pub hover_background: [u8; 4],
+    pub hover_foreground: [u8; 4],
 }
 
 /// A product action emitted by either native menu surface.
@@ -71,7 +87,7 @@ pub enum SystemMenuError {
     ShutdownFailed,
 }
 
-/// The Linux tray and model-window menu use the same supported action set.
+/// The Linux tray exposes the basic model-window actions.
 #[cfg(target_os = "linux")]
 pub enum LinuxSystemMenuItem {
     Action {

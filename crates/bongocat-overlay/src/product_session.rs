@@ -240,8 +240,15 @@ impl ProductOverlaySession {
     pub fn linux_always_on_top_available(&self) -> bool {
         self.inner.always_on_top_available()
     }
-    pub fn set_linux_context_menu_active(&mut self, active: bool) {
-        self.inner.set_context_menu_active(active);
+    pub fn set_linux_menu_presentation(
+        &mut self,
+        presentation: bongocat_platform::SystemMenuPresentation,
+        palette: bongocat_platform::SystemMenuPalette,
+    ) {
+        self.inner.set_menu_presentation(presentation, palette);
+    }
+    pub fn take_linux_menu_action(&mut self) -> Option<bongocat_platform::SystemMenuAction> {
+        self.inner.take_menu_action()
     }
     /// Start input capture after the Linux permission explanation is confirmed.
     pub fn start_linux_input(&mut self) {
