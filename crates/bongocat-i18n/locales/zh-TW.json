@@ -512,7 +512,7 @@
         }
       },
       "open_at_login": {
-        "label": "登入時啟動"
+        "label": "開機自動啟動"
       },
       "startup": {
         "checking": "正在檢查登入項目…",
@@ -520,9 +520,9 @@
         "stale": "應用程式位置已變更；重新切換一次開關即可修復",
         "requires_approval": "請在系統設定中核准 BongoCat",
         "not_found": "登入項目缺失；重新切換一次開關即可修復",
-        "unsupported_platform": "目前系統不支援登入時啟動",
-        "unsupported_os": "目前作業系統不支援登入時啟動",
-        "unsupported_build": "開發版本不支援登入時啟動"
+        "unsupported_platform": "目前系統不支援開機自動啟動",
+        "unsupported_os": "目前作業系統不支援開機自動啟動",
+        "unsupported_build": "開發版本不支援開機自動啟動"
       }
     }
   }

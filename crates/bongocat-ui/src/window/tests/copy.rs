@@ -411,6 +411,50 @@ fn model_behavior_shortcut_copy_stays_aligned_between_scope_and_gate() {
     }
 }
 
+/// The login item row names one concept, so the switch and every state that
+/// explains why it cannot act have to spell it the same way.
+///
+/// The switch used to be called "登录时启动" while the three unavailable states
+/// said the same words again, and a reader who has only ever seen the Windows
+/// task manager has to work out that this is what "start with Windows" is
+/// called here. Each catalog entry is pinned so the wording cannot drift back
+/// into two vocabularies for the same setting.
+#[test]
+fn the_login_item_row_names_one_concept_in_its_switch_and_its_states() {
+    for (locale, label, platform, operating_system, build) in [
+        (
+            "en-US",
+            "Run at startup",
+            "Running at startup is unavailable on this system",
+            "Running at startup is unavailable on this operating system",
+            "Running at startup is unavailable in development builds",
+        ),
+        (
+            "zh-CN",
+            "开机自启动",
+            "当前系统不支持开机自启动",
+            "当前操作系统不支持开机自启动",
+            "开发版本不支持开机自启动",
+        ),
+    ] {
+        assert_eq!(
+            bongocat_i18n::text(locale, "settings.app_system.open_at_login.label"),
+            label
+        );
+        for (key, expected) in [
+            ("unsupported_platform", platform),
+            ("unsupported_os", operating_system),
+            ("unsupported_build", build),
+        ] {
+            assert_eq!(
+                bongocat_i18n::text(locale, &format!("settings.app_system.startup.{key}")),
+                expected,
+                "{locale}: {key} names the setting differently from its switch"
+            );
+        }
+    }
+}
+
 #[test]
 fn model_window_visibility_copy_uses_the_shared_hide_label() {
     for (language, label) in [

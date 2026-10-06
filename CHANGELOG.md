@@ -17,6 +17,10 @@
 - Fixed a Nintendo Switch controller in Switch mode making the model rapidly press every key on Windows.
 - Fixed the input method candidate window appearing in the wrong place while renaming a model in Settings with a Chinese, Japanese or Korean input method.
 
+### 🎨 Interface
+
+- Renamed the "Open at login" switch to "Run at startup", and matched the wording of the messages that explain when it is unavailable.
+
 ## 2.1.1 - 2026-10-03
 
 ### 🐛 Bug Fixes
