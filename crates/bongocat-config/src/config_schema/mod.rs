@@ -108,6 +108,7 @@ impl Default for NativeConfig {
                 random_behavior: RandomBehaviorConfig::default(),
                 gamepad_auto_switch: GamepadAutoSwitchConfig::default(),
                 remember_last_expression: false,
+                toggle_repeated_expression: false,
                 last_expressions: Vec::new(),
                 behavior_names: Vec::new(),
             },

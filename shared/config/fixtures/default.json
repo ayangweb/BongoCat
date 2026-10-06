@@ -53,6 +53,7 @@
       "disconnected_model": null
     },
     "remember_last_expression": false,
+    "toggle_repeated_expression": false,
     "last_expressions": [],
     "behavior_names": []
   },

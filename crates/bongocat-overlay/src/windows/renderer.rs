@@ -161,6 +161,7 @@ impl Renderer {
         let model = unsafe {
             GpuModel::prepare(
                 &device,
+                &context,
                 &frame.resources,
                 &frame.snapshot,
                 window.width,
@@ -296,6 +297,7 @@ impl Renderer {
             let candidate = unsafe {
                 GpuModel::prepare(
                     &self.device,
+                    &self.context,
                     &frame.resources,
                     &frame.snapshot,
                     self.width,

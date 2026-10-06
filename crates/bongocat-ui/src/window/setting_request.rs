@@ -290,6 +290,14 @@ impl SettingsView {
                         .set_remember_last_expression(expected_config_revision, enabled)
                         .await
                 }
+                Some(SettingValue::ToggleRepeatedExpression {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_toggle_repeated_expression(expected_config_revision, enabled)
+                        .await
+                }
                 Some(SettingValue::ModelBehaviorName {
                     expected_config_revision,
                     model,

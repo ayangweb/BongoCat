@@ -61,6 +61,14 @@ pub struct SettingsSnapshot {
     /// decision a user makes, and which expression each model happens to be
     /// holding is a fact about what they used rather than a setting.
     pub remember_last_expression: bool,
+    /// Whether triggering the expression already showing turns it off.
+    ///
+    /// A separate switch from the remembered-expression one because the two are
+    /// orthogonal: remembering an expression says where a model starts, and this
+    /// says how a repeat trigger behaves while it is already wearing one. Neither
+    /// expression a model currently shows is shown here, for the same reason the
+    /// remembered ones are not.
+    pub toggle_repeated_expression: bool,
     pub logging: SettingsLogging,
     pub shortcuts: SettingsShortcuts,
     /// What each of the active model's motions and expressions is called.

@@ -78,6 +78,7 @@ impl SettingsView {
             "settings.models.behavior.mirror_model.label",
             "settings.models.behavior.motion_audio.label",
             "settings.models.behavior.remember_last_expression.label",
+            "settings.models.behavior.toggle_repeated_expression.label",
             "settings.models.behavior.random_behavior_mode.label",
             "settings.models.behavior.random_behavior_mode.options.off",
             "settings.models.behavior.random_behavior_mode.options.expressions",

@@ -774,6 +774,7 @@ fn the_remembered_expression_switch_sends_the_revision_it_was_rendered_from(
     assert!(endpoint.try_recv().is_err());
 }
 
+<<<<<<< HEAD
 /// A confirmed rename reaches the service as its own typed command.
 ///
 /// It carries the revision the page was rendered from, so a stale page cannot overwrite
@@ -852,6 +853,65 @@ fn a_confirmed_rename_sends_the_row_identity_it_was_opened_from(cx: &mut TestApp
     }];
     reply.respond(Ok(confirmed)).expect("rename reply");
     visual.run_until_parked();
+    assert!(endpoint.try_recv().is_err());
+}
+
+/// The toggle is its own row and its own command, not a second field of the
+/// remembered-expression switch.
+///
+/// They sit next to each other on the page, which is exactly why they need to stay
+/// separable: remembering a face and reacting to a repeated trigger are different
+/// questions, and a row that changed one while the user reached for the other is
+/// the failure this guards.
+#[gpui_kit::test]
+fn the_expression_toggle_switch_sends_its_own_command(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(4, true, true);
+    initial.config_revision = Some(4);
+    assert!(
+        !initial.toggle_repeated_expression,
+        "a fresh configuration repeats an expression rather than turning it off"
+    );
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+
+    view.update(visual, |view, cx| {
+        view.set_toggle_repeated_expression(true, cx);
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetToggleRepeatedExpression {
+        expected_config_revision,
+        enabled,
+        reply,
+    } = endpoint
+        .try_recv()
+        .expect("the switch must reach the service as its own typed command")
+    else {
+        panic!("the switch must use the typed expression-toggle command");
+    };
+    assert_eq!(expected_config_revision, 4);
+    assert!(enabled);
+
+    let mut confirmed = crate::tests::snapshot(5, true, true);
+    confirmed.config_revision = Some(5);
+    confirmed.toggle_repeated_expression = true;
+    reply.respond(Ok(confirmed)).expect("switch reply");
+    visual.run_until_parked();
+    view.update(visual, |view, _| {
+        assert_eq!(
+            view.snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.toggle_repeated_expression),
+            Some(true),
+            "the confirmed snapshot is what the switch then renders"
+        );
+        assert_eq!(
+            view.snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.remember_last_expression),
+            Some(false),
+            "confirming the toggle must not also move the remembered-expression switch"
+        );
+    });
     assert!(endpoint.try_recv().is_err());
 }
 

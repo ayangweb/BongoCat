@@ -454,6 +454,15 @@ pub(super) fn run_service(
                     ignore_keyboard: settings.ignore_keyboard,
                     ignore_gamepad: settings.ignore_gamepad,
                     show_all_pressed_keys: settings.show_all_pressed_keys,
+                    // Not part of the page's grouped settings and therefore not
+                    // part of the command: it has its own switch and its own
+                    // revision-checked command, so this projection carries the
+                    // stored value across rather than resetting it whenever an
+                    // unrelated model setting moves.
+                    toggle_repeated_expression: application
+                        .config()
+                        .model
+                        .toggle_repeated_expression,
                     ignore_pointer: settings.ignore_pointer,
                 };
                 let result = check_revision(&application, expected_config_revision)
@@ -567,6 +576,29 @@ pub(super) fn run_service(
                         ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
                             .with_context(ApplicationLogContext::Operation(
                                 "remember_last_expression",
+                            ))
+                            .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+                    );
+                }
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetToggleRepeatedExpression {
+                expected_config_revision,
+                enabled,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_toggle_repeated_expression(enabled)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                if let Err(error) = &result {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
+                            .with_context(ApplicationLogContext::Operation(
+                                "toggle_repeated_expression",
                             ))
                             .with_context(ApplicationLogContext::Reason(error.code().as_str())),
                     );

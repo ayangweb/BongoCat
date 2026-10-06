@@ -479,7 +479,14 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   runtime 内部 seed，测试可以通过固定 seed 和单调时间得到同一序列。
 - 用户主动触发的 expression command 除了更新当前 `active_expression`，还写入 runtime snapshot 的
   `user_expression_memory`：该次选择时的模型身份、表情名与 command sequence。随机行为走
-  renderer 而不是 command 队列，因此不会产生这条记录。该记录描述「用户选过什么」而不是
+  renderer 而不是 command 队列，因此不会产生这条记录。
+- `model.toggle_repeated_expression` 打开时，`SetExpression` 请求的表达式等于当前
+  `active_expression` 时该命令变成「关闭」而不是「重新应用」：runtime 让所有表达式图层开始淡出、
+  不压入新图层，`active_expression` 置空，并且**不**写 `user_expression_memory`。关闭动作因此不会
+  进入 `model.last_expressions`，记住的仍然是用户最后选择穿上的那张脸。判定放在 runtime 而不是
+  Application，因为两个触发源（设置窗口的播放按钮与快捷键）都收敛为这一条 command，只有 runtime
+  知道当前生效的是哪个表情；模型切换会先清空 `active_expression`，被延迟到 commit 之后执行的
+  「恢复上次表情」因此永远不会被读成重复触发。该记录描述「用户选过什么」而不是
   「屏幕上是什么」，所以它不随模型切换清除——切换会清掉 `active_expression`，而做出这次选择的
   模型仍需要把记录写进配置。Application 按模型身份把它并入
   `model.last_expressions`；模型成为当前模型时，若 `model.remember_last_expression` 打开且该模型
@@ -1061,7 +1068,8 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   `[1, 3600]` 秒且默认 `30`。两者直接进入当前 v1，不读取旧字段。`model.gamepad_auto_switch` 直接包含当前 v1：门禁
   `enabled` 默认 `false`，`connected_model` 与 `disconnected_model` 是完整 `ModelIdentity` 或
   `null`，`null` 是默认值并表示「上次在该输入族上使用过的模型」；该「上次使用」是
-  Application 的会话状态而不是配置字段（ADR-0071）。`model.remember_last_expression` 与
+  Application 的会话状态而不是配置字段（ADR-0071）。`model.toggle_repeated_expression` 直接包含当前 v1 且默认 `false`，带 `#[serde(default)]`：
+旧文档没有这个键时读出 `false`。`model.remember_last_expression` 与
   `model.last_expressions` 直接包含当前 v1：门禁默认 `false`，列表每个元素是一个
   `{ model: ModelIdentity, expression }` 记录且同一模型最多一条，列表默认为 `[]`。
   记录与门禁分离：记录只由用户主动触发的 expression command 产生，随机行为播放的

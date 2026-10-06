@@ -265,6 +265,7 @@ fn application_projects_model_interaction_settings_at_startup() {
             ignore_keyboard: true,
             ignore_gamepad: true,
             show_all_pressed_keys: true,
+            toggle_repeated_expression: false,
             ignore_pointer: true,
         }
     );

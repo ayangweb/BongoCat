@@ -306,6 +306,11 @@ pub struct ModelConfig {
     /// the recorded expressions are kept but nothing replays them.
     pub remember_last_expression: bool,
     pub last_expressions: Vec<ModelExpressionMemory>,
+    /// A repeat of the expression already showing turns it off. Kept in step with
+    /// the product's schema because this spike's default must still serialize
+    /// identically to `shared/config/fixtures/default.json`.
+    #[serde(default)]
+    pub toggle_repeated_expression: bool,
     /// What a motion or expression is called on the shortcuts page instead of its
     /// numbered label. Kept in step with the product's schema because this spike's
     /// default must still serialize identically to
@@ -497,6 +502,7 @@ impl Default for NativeConfig {
                 random_behavior: RandomBehaviorConfig::default(),
                 gamepad_auto_switch: GamepadAutoSwitchConfig::default(),
                 remember_last_expression: false,
+                toggle_repeated_expression: false,
                 last_expressions: Vec::new(),
                 behavior_names: Vec::new(),
             },

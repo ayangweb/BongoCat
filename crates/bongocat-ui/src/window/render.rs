@@ -811,6 +811,31 @@ impl Render for SettingsView {
                 SettingItem::new(
                     bongocat_i18n::text(
                         language.catalog_locale(),
+                        "settings.models.behavior.toggle_repeated_expression.label",
+                    ),
+                    SettingField::switch(
+                        {
+                            let view = view_entity.clone();
+                            move |app| {
+                                view.read(app)
+                                    .snapshot
+                                    .as_ref()
+                                    .is_some_and(|s| s.toggle_repeated_expression)
+                            }
+                        },
+                        {
+                            let view = view_entity.clone();
+                            move |value, app| {
+                                view.update(app, |view, cx| {
+                                    view.set_toggle_repeated_expression(value, cx)
+                                });
+                            }
+                        },
+                    ),
+                ),
+                SettingItem::new(
+                    bongocat_i18n::text(
+                        language.catalog_locale(),
                         "settings.models.behavior.random_behavior_mode.label",
                     ),
                     SettingField::element({

@@ -307,7 +307,7 @@
       "software_info_copy_failed": "Não foi possível copiar as informações do software",
       "external_link_open_failed": "Não foi possível abrir o link",
       "log_location_open_failed": "Não foi possível abrir a pasta de registros do aplicativo",
-      "login_startup_update_failed": "Não foi possível atualizar a configuração de abertura no login",
+      "login_startup_update_failed": "Não foi possível atualizar a configuração de inicialização automática",
       "system_icon_update_failed": "Não foi possível atualizar o ícone do sistema.",
       "taskbar_icon_update_failed": "Não foi possível atualizar o ícone da barra de tarefas.",
       "dock_icon_update_failed": "Não foi possível atualizar o ícone do Dock.",
@@ -405,6 +405,9 @@
         },
         "remember_last_expression": {
           "label": "Lembrar a última expressão de cada modelo"
+        },
+        "toggle_repeated_expression": {
+          "label": "Desligar a expressão ao acioná-la novamente"
         },
         "random_behavior_mode": {
           "label": "Reproduzir movimentos ou expressões aleatoriamente",
@@ -518,7 +521,7 @@
         }
       },
       "open_at_login": {
-        "label": "Abrir no login"
+        "label": "Iniciar na inicialização"
       },
       "startup": {
         "checking": "Verificando o item de login…",
@@ -526,9 +529,9 @@
         "stale": "O local salvo do aplicativo mudou; desligue e religue o botão para corrigir",
         "requires_approval": "Aprove o BongoCat nas configurações do sistema",
         "not_found": "O item de login está ausente; desligue e religue o botão para corrigir",
-        "unsupported_platform": "A abertura no login não está disponível neste sistema",
-        "unsupported_os": "A abertura no login não está disponível neste sistema operacional",
-        "unsupported_build": "A abertura no login não está disponível em builds de desenvolvimento"
+        "unsupported_platform": "A inicialização automática não está disponível neste sistema",
+        "unsupported_os": "A inicialização automática não está disponível neste sistema operacional",
+        "unsupported_build": "A inicialização automática não está disponível em builds de desenvolvimento"
       }
     }
   }

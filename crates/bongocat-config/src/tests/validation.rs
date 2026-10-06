@@ -197,13 +197,12 @@ fn a_configuration_written_before_arabic_existed_still_loads() {
 /// A document written before the key layer could stack must still load, as the
 /// compatibility mode.
 ///
-/// `show_all_pressed_keys` is the one field in `ModelConfig` that carries
-/// `#[serde(default)]`, and the reason is this test: the strict v1 entry point
-/// rejects anything it cannot read, so a field an older build never wrote would
-/// otherwise send every existing `config.json` down the backup-then-default
-/// recovery path and reset the user's settings. The document is edited by
-/// removing the key from the *serialized* current default, which is the shape
-/// the old bytes had.
+/// `show_all_pressed_keys` carries `#[serde(default)]` for this reason: the
+/// strict v1 entry point rejects anything it cannot read, so a field an older
+/// build never wrote would otherwise send every existing `config.json` down the
+/// backup-then-default recovery path and reset the user's settings. The document
+/// is edited by removing the key from the *serialized* current default, which is
+/// the shape the old bytes had.
 #[test]
 fn a_configuration_written_before_the_key_layer_could_stack_still_loads() {
     let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
@@ -223,6 +222,62 @@ fn a_configuration_written_before_the_key_layer_could_stack_still_loads() {
     );
     loaded.validate().expect("an old document still validates");
     assert!(parse_config(written.as_bytes()).is_ok());
+}
+
+/// A document written before the expression toggle existed must still load, as
+/// the non-toggling behaviour.
+///
+/// The same reasoning as the key layer above, and the same shape of document: the
+/// field is removed from the *serialized* current default, which is exactly what
+/// the bytes of a build that predates the switch look like. Without the default
+/// this build would refuse to read every existing `config.json`, fall back to a
+/// default configuration, and reset the user's settings.
+#[test]
+fn a_configuration_written_before_the_expression_toggle_still_loads() {
+    let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    let model = document["model"]
+        .as_object_mut()
+        .expect("model object")
+        .remove("toggle_repeated_expression");
+    assert!(
+        model.is_some(),
+        "the current default still writes the field"
+    );
+    let written = serde_json::to_string(&document).expect("serialize document");
+    let loaded: NativeConfig = serde_json::from_str(&written).expect("read old document");
+    assert!(
+        !loaded.model.toggle_repeated_expression,
+        "a document with no field loads as the repeat-is-a-no-op behaviour, not as a new opt-in"
+    );
+    loaded.validate().expect("an old document still validates");
+    assert!(parse_config(written.as_bytes()).is_ok());
+}
+
+/// The toggle is its own switch rather than a second remembered-expression field.
+///
+/// Turning a repeated trigger into "turn this expression off" and restoring the
+/// last chosen expression are different decisions, and one implementation detail
+/// of the other: a repeat that closes an expression deliberately records nothing,
+/// so what is remembered is still the last face the user chose to wear.
+#[test]
+fn the_expression_toggle_defaults_to_off_and_is_independent_of_the_memory_switch() {
+    let default = NativeConfig::default();
+    assert!(!default.model.toggle_repeated_expression);
+
+    let mut config = default;
+    config.model.remember_last_expression = true;
+    assert!(
+        !config.model.toggle_repeated_expression,
+        "restoring the last expression says nothing about what a repeat trigger does"
+    );
+    config.model.toggle_repeated_expression = true;
+    assert!(
+        config.model.remember_last_expression,
+        "toggling a repeat says nothing about where a model starts"
+    );
+    config
+        .validate()
+        .expect("both switches on is a valid document");
 }
 
 /// The pointer capture switch round-trips and an older document without the

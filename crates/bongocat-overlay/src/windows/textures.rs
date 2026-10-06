@@ -36,6 +36,7 @@ pub(crate) struct GpuModel {
 impl GpuModel {
     pub(crate) unsafe fn prepare(
         device: &ID3D11Device,
+        context: &ID3D11DeviceContext,
         resources: &RenderResources,
         snapshot: &RenderSnapshot,
         width: u32,
@@ -46,7 +47,9 @@ impl GpuModel {
         let textures = resources
             .textures
             .iter()
-            .map(|asset| unsafe { load_texture(device, asset) }.map(|texture| (asset.id, texture)))
+            .map(|asset| {
+                unsafe { load_texture(device, context, asset) }.map(|texture| (asset.id, texture))
+            })
             .collect::<WindowsResult<BTreeMap<_, _>>>()?;
         let key_textures = resources
             .key_assets
@@ -58,7 +61,8 @@ impl GpuModel {
                     width: asset.width,
                     height: asset.height,
                 };
-                unsafe { load_texture(device, &texture) }.map(|texture| (asset.id, texture))
+                unsafe { load_texture(device, context, &texture) }
+                    .map(|texture| (asset.id, texture))
             })
             .collect::<WindowsResult<BTreeMap<_, _>>>()?;
         let background = resources
@@ -67,6 +71,7 @@ impl GpuModel {
             .map(|asset| unsafe {
                 load_texture(
                     device,
+                    context,
                     &TextureAsset {
                         id: TextureId::new(usize::MAX),
                         path: asset.path.clone(),
@@ -273,9 +278,10 @@ pub(crate) unsafe fn create_buffer<T>(
 
 pub(crate) unsafe fn load_texture(
     device: &ID3D11Device,
+    context: &ID3D11DeviceContext,
     asset: &TextureAsset,
 ) -> WindowsResult<TextureResource> {
-    let image = ImageReader::open(&asset.path)
+    let mut image = ImageReader::open(&asset.path)
         .map_err(|error| Error::new(HRESULT(0x80004005_u32 as i32), error.to_string()))?
         .decode()
         .map_err(|error| Error::new(HRESULT(0x80004005_u32 as i32), error.to_string()))?
@@ -285,9 +291,11 @@ pub(crate) unsafe fn load_texture(
             "texture dimensions changed after validation",
         ));
     }
+    premultiply_alpha(&mut image);
     unsafe {
-        create_texture_resource(
+        create_mipmapped_texture_resource(
             device,
+            context,
             asset.width,
             asset.height,
             MODEL_TEXTURE_FORMAT,
@@ -295,6 +303,63 @@ pub(crate) unsafe fn load_texture(
             asset.width.saturating_mul(4),
         )
     }
+}
+
+/// Convert straight-alpha PNG data before any GPU filtering occurs.
+///
+/// Cubism's normal blend path consumes premultiplied RGB. Premultiplying the
+/// source texels first prevents RGB stored in transparent texels from bleeding
+/// into visible edges during linear or mipmap filtering.
+pub(crate) fn premultiply_alpha(image: &mut image::RgbaImage) {
+    for pixel in image.pixels_mut() {
+        let alpha = u16::from(pixel[3]);
+        for channel in &mut pixel.0[..3] {
+            *channel = ((u16::from(*channel) * alpha + 127) / 255) as u8;
+        }
+    }
+}
+
+/// Create a filterable texture and generate its mip chain from premultiplied
+/// level zero. The immediate context is used only during resource creation;
+/// all later sampling remains on the renderer's owner thread.
+pub(crate) unsafe fn create_mipmapped_texture_resource(
+    device: &ID3D11Device,
+    context: &ID3D11DeviceContext,
+    width: u32,
+    height: u32,
+    format: DXGI_FORMAT,
+    bytes: *const u8,
+    row_pitch: u32,
+) -> WindowsResult<TextureResource> {
+    let descriptor = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 0,
+        ArraySize: 1,
+        Format: format,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: (D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE).0 as u32,
+        MiscFlags: D3D11_RESOURCE_MISC_GENERATE_MIPS.0 as u32,
+        ..Default::default()
+    };
+    let mut texture = None;
+    unsafe { device.CreateTexture2D(&descriptor, None, Some(&mut texture))? };
+    let texture = required(texture, "mipmapped texture")?;
+    let mut shader_resource = None;
+    unsafe { device.CreateShaderResourceView(&texture, None, Some(&mut shader_resource))? };
+    let shader_resource = required(shader_resource, "mipmapped texture shader resource")?;
+    unsafe {
+        context.UpdateSubresource(&texture, 0, None, bytes.cast(), row_pitch, 0);
+        context.GenerateMips(&shader_resource);
+    }
+    Ok(TextureResource {
+        _texture: texture,
+        shader_resource,
+    })
 }
 
 pub(crate) unsafe fn create_empty_mask(device: &ID3D11Device) -> WindowsResult<TextureResource> {

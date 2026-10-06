@@ -8,6 +8,7 @@
 - Added a "Model window → Window behavior → Idle hide delay" setting.
 - Added a "Model window → Window behavior → Hold a modifier key to interact" setting.
 - Added an "Input & interaction → Mouse → Force mouse movement" setting, so the cat keeps following the mouse in full-screen games that capture the pointer.
+- Added a "Model behavior → Turn off an expression when triggered again" setting, so triggering the expression you are already wearing takes it off and returns the model to its own default face.
 - Motions and expressions on the Shortcuts page can be given your own name. Click a row's name to rename it, and leave the field empty to go back to the numbered name.
 
 ### 🐛 Bug Fixes
@@ -17,6 +18,11 @@
 - Fixed Windows controllers in Xbox-compatible mode pressing the wrong key image, leaving the cross keys unresponsive, and swapping the triggers with the right stick.
 - Fixed a Nintendo Switch controller in Switch mode making the model rapidly press every key on Windows.
 - Fixed the input method candidate window appearing in the wrong place while renaming a model in Settings with a Chinese, Japanese or Korean input method.
+- Fixed soft fringes and inconsistent edge quality around Windows model textures by matching the Web renderer's premultiplied-alpha filtering and high-DPI resize behavior.
+
+### 🎨 Interface
+
+- Renamed the "Open at login" switch to "Run at startup", and matched the wording of the messages that explain when it is unavailable.
 
 ## 2.1.1 - 2026-10-03
 
