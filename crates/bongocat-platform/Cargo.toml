@@ -40,6 +40,7 @@ permission-flow.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 gilrs = { workspace = true, features = ["wgi"] }
+rusty-xinput = "1.2"
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",
     "Win32_Globalization",
