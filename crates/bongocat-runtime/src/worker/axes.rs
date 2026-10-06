@@ -33,7 +33,7 @@ impl GamepadAxisValues {
             .retain(|key, sample| key.connection != connection || sample.at >= connected_at);
     }
 
-            pub(crate) fn project(
+    pub(crate) fn project(
         &self,
         input_state: &InputState,
         settings: GamepadAxisSettings,
