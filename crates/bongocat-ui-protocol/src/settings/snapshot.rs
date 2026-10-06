@@ -20,6 +20,14 @@ pub struct AutomaticUpdateSettings {
     pub interval_hours: u16,
 }
 
+/// Window-system features the overlay can actually provide in this session.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SettingsOverlayCapabilities {
+    pub always_on_top: bool,
+    pub output_relative_geometry: bool,
+    pub pointer_hover: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsSnapshot {
     pub revision: u64,
@@ -41,6 +49,7 @@ pub struct SettingsSnapshot {
     pub check_for_updates_interval_hours: u16,
     pub overlay_visible: bool,
     pub overlay: SettingsOverlay,
+    pub overlay_capabilities: SettingsOverlayCapabilities,
     pub motion_audio_enabled: bool,
     /// Whether the application command bindings are allowed to reach the
     /// platform shortcut table. The shortcuts page renders it as the "disable

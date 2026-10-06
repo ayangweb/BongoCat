@@ -14,7 +14,6 @@ raw-window-handle.workspace = true
 url.workspace = true
 thiserror.workspace = true
 
-global-hotkey.workspace = true
 image.workspace = true
 muda.workspace = true
 tray-icon.workspace = true
@@ -26,6 +25,7 @@ sys-locale = "=0.3.2"
 auto-launch = "=0.6.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+global-hotkey.workspace = true
 gilrs = { workspace = true }
 async-io.workspace = true
 block2 = "=0.6.2"
@@ -38,8 +38,21 @@ objc2-core-graphics = { version = "=0.3.2", default-features = false, features =
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSArray", "NSData", "NSGeometry", "NSNotification", "NSObject", "NSString", "NSURL", "NSUserDefaults", "block2"] }
 permission-flow.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { workspace = true, features = ["wayland-data-control"] }
+ashpd.workspace = true
+async-io.workspace = true
+evdev.workspace = true
+futures-util.workspace = true
+gilrs.workspace = true
+libc.workspace = true
+rfd = { workspace = true, features = ["xdg-portal"] }
+tray-icon = { workspace = true, features = ["ksni"] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
+global-hotkey.workspace = true
 gilrs = { workspace = true, features = ["wgi"] }
+rfd = { workspace = true, features = ["common-controls-v6"] }
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",
     "Win32_Globalization",
@@ -60,6 +73,7 @@ windows = { version = "=0.62.2", features = [
 
 [dev-dependencies]
 bongocat-runtime.workspace = true
+global-hotkey.workspace = true
 tempfile.workspace = true
 
 [lints.clippy]

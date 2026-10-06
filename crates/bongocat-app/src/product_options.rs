@@ -96,7 +96,6 @@ pub(crate) struct RunOptions {
     pub(crate) application_reopen_smoke: bool,
 
     /// Report the login item state and leave it as it was found.
-    #[cfg(target_os = "macos")]
     #[arg(long)]
     pub(crate) startup_item_smoke: bool,
 
@@ -179,6 +178,7 @@ impl RunOptions {
             || self.hidden_model_switch_smoke
             || self.system_menu_smoke
             || self.startup_permission_smoke
+            || self.startup_item_smoke
             || self.single_instance_arguments_present()
             || self.macos_smoke_arguments_present()
             || self.storage_test_injection_arguments_present()
@@ -203,7 +203,7 @@ impl RunOptions {
     /// the startup permission prompt on screen in front of the harness.
     #[cfg(target_os = "macos")]
     pub(crate) fn macos_smoke_arguments_present(&self) -> bool {
-        self.application_reopen_smoke || self.startup_item_smoke
+        self.application_reopen_smoke
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -227,16 +227,11 @@ impl RunOptions {
     }
 
     pub(crate) fn opens_settings_window_on_start(&self) -> bool {
-        let mut opens_settings_window =
-            self.settings_window_smoke || self.settings_window_open_smoke;
+        let opens_settings_window = self.settings_window_smoke || self.settings_window_open_smoke;
         #[cfg(target_os = "macos")]
-        {
-            opens_settings_window |= self.application_reopen_smoke;
-        }
+        let opens_settings_window = opens_settings_window || self.application_reopen_smoke;
         #[cfg(target_os = "windows")]
-        {
-            opens_settings_window |= self.single_instance_smoke;
-        }
+        let opens_settings_window = opens_settings_window || self.single_instance_smoke;
         opens_settings_window
     }
 }

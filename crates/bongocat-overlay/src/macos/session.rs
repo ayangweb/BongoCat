@@ -579,6 +579,14 @@ impl ProductOverlaySession {
         self.overlay.model_generation
     }
 
+    pub(crate) const fn capabilities(&self) -> OverlayCapabilities {
+        OverlayCapabilities {
+            always_on_top: true,
+            output_relative_geometry: true,
+            pointer_hover: true,
+        }
+    }
+
     pub(crate) fn stop_input(&mut self) -> Result<(), OverlayError> {
         if self.input_stopped {
             return Ok(());

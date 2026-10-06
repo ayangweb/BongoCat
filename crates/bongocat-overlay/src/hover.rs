@@ -209,6 +209,7 @@ mod tests {
         assert!(hide.hidden(), "a zero delay hides on the entering frame");
         assert_eq!(hide.observe(observation(true, 0, true, 250)), 0.5);
         assert_eq!(hide.observe(observation(true, 0, true, 400)), 0.0);
+        assert_eq!(hide.visible(), 0.0);
         assert_eq!(hide.observe(observation(true, 0, true, 1_000)), 0.0);
 
         assert_eq!(hide.observe(observation(true, 0, false, 1_100)), 0.0);

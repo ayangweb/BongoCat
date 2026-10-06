@@ -217,6 +217,7 @@
     },
     "unavailable": {
       "development_build": "Development builds cannot install release updates.",
+      "unsupported_platform": "Automatic updates are not available on this platform.",
       "signing_key_missing": "This version cannot verify updates, so updating is disabled."
     },
     "about": {

@@ -46,21 +46,68 @@ English | [简体中文](README.zh-CN.md)
   </tbody>
 </table>
 
-BongoCat is a desktop companion for Windows and macOS. A Live2D cat lives on your screen, its eyes
-and paws follow your mouse, and it reacts to every key, mouse button and gamepad button you press.
-Bring your own models, move the window wherever you like, and it stays out of your way until you
-want it again.
+BongoCat is a desktop companion for Windows, macOS and Linux/Wayland. A Live2D cat lives on your screen, its eyes and paws follow your mouse, and it reacts to
+every key, mouse button and gamepad button you press. Bring your own models, move the window
+wherever you like, and it stays out of your way until you want it again.
 
 Inspired by [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver) by
 [MMmmmoko](https://github.com/MMmmmoko).
 
 ## Features
 
-- Runs on macOS and Windows.
+- Runs on macOS, Windows and Linux/Wayland.
 - Matches the right motion to every key, mouse button or gamepad button you press.
 - Bring your own Live2D models and make the cat your own.
 - Fully open source, public code, and no collection of user data.
 - Works offline with no network access, so your privacy is protected.
+
+## Linux build
+
+Install the build and runtime dependencies on Arch Linux, then start a Production build from the
+repository root:
+
+```sh
+sudo pacman -S --needed base-devel rust alsa-lib dbus libxcb libxkbcommon libxkbcommon-x11 \
+  systemd-libs wayland vulkan-icd-loader xdg-desktop-portal desktop-file-utils
+cargo build --locked -p bongocat-app --release --features production
+desktop_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+install -d "$desktop_dir"
+desktop-file-install --dir="$desktop_dir" \
+  --set-key=Exec --set-value="$(realpath target/release/bongocat-app)" \
+  resources/linux/com.ayangweb.bongo-cat.desktop
+cargo run --locked -p bongocat-app --release --features production
+```
+
+The desktop entry must be installed before starting a source build; GLib also rejects an
+application entry whose `Exec` program cannot be found, so the source build command replaces the
+packaged `Exec` with the built executable's absolute path. Reference file contents:
+
+```ini
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=BongoCat
+Comment=Interactive desktop companion
+Exec=/absolute/path/to/BongoCat/target/release/bongocat-app
+Icon=com.ayangweb.bongo-cat
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+```
+
+A Vulkan driver for your GPU is also required, along with a desktop-specific portal backend such as
+`xdg-desktop-portal-kde` or `xdg-desktop-portal-gnome`.
+Global keyboard, mouse-button and relative-motion animation needs read access to the relevant
+`/dev/input/event*` devices; grant that access through your distribution's device policy.
+Packages should grant the required keyboard and mouse event devices through a seat-aware udev
+`uaccess` rule.
+
+On compositors that provide the Wayland layer-shell protocol, including KDE Plasma, the source build
+can keep the model above normal windows and constrain its output-relative position to the screen.
+Other compositors fall back to generic xdg-shell, where the corresponding controls are disabled.
+
+Global shortcuts are registered through the XDG Desktop Portal; the desktop may show its own
+confirmation surface the first time a shortcut is bound.
 
 ## More models
 

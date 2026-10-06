@@ -9,7 +9,23 @@
 //! [`RESIZE_DRAG_THRESHOLD`] 之后才算缩放；没有越过阈值就松开的右键仍然是菜单。
 //! 平台适配层负责自己那份无法便携的部分：读取指针位置、改原生窗口尺寸、以及在
 //! 拖动结束时把最终缩放报回配置。
-use crate::cover_window_dimension;
+use crate::{OverlayWindowBounds, cover_window_dimension};
+
+/// Whether a window box is already the size one scale maps to.
+///
+/// A right-button resize drag resizes the native window before the scale it
+/// settled on is written back to configuration, so the tick that observes the
+/// new scale must not apply the ratio a second time. The one-pixel tolerance
+/// absorbs the rounding the physical-to-logical conversion introduces on the
+/// way back from the window system.
+pub(crate) fn bounds_match_scale(
+    bounds: OverlayWindowBounds,
+    base: ResizeBase,
+    scale_percent: u16,
+) -> bool {
+    let (width, height) = base.dimensions(scale_percent);
+    bounds.width.abs_diff(width) <= 1 && bounds.height.abs_diff(height) <= 1
+}
 
 /// 指针位移超过它才算缩放，而不是一次右键单击。
 ///
@@ -162,6 +178,21 @@ impl ResizeDrag {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settled_bounds_match_their_scale_with_rounding_tolerance() {
+        let base = ResizeBase::new(350.0, 200.0).expect("valid base");
+        assert!(bounds_match_scale(
+            OverlayWindowBounds::new(0, 0, 526, 299),
+            base,
+            150,
+        ));
+        assert!(!bounds_match_scale(
+            OverlayWindowBounds::new(0, 0, 530, 300),
+            base,
+            150,
+        ));
+    }
 
     fn base() -> ResizeBase {
         ResizeBase::new(350.0, 350.0).expect("square base")

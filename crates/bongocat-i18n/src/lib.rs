@@ -126,6 +126,10 @@ pub const fn current_platform_id() -> &'static str {
     {
         "windows"
     }
+    #[cfg(target_os = "linux")]
+    {
+        "linux"
+    }
 }
 
 /// Resolve a translation that can vary per supported platform.

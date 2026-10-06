@@ -38,6 +38,10 @@ pub use shortcut::{ShortcutDispatch, ShortcutDispatchError, ShortcutDispatcher};
 mod single_instance_windows;
 #[cfg(target_os = "windows")]
 pub use single_instance_windows::{SingleInstance, SingleInstanceStart};
+#[cfg(target_os = "linux")]
+mod single_instance_linux;
+#[cfg(target_os = "linux")]
+pub use single_instance_linux::{SingleInstance, SingleInstanceStart};
 
 mod theme;
 #[cfg(target_os = "macos")]
@@ -48,7 +52,9 @@ pub use theme::{
 };
 
 mod system_menu;
-pub use system_menu::{SystemMenuAction, SystemMenuError, SystemMenuPresentation};
+pub use system_menu::{
+    SystemMenuAction, SystemMenuError, SystemMenuPalette, SystemMenuPresentation,
+};
 mod system_menu_native;
 pub use system_menu_native::SystemMenu;
 
@@ -80,6 +86,8 @@ pub use macos::{
 };
 #[cfg(target_os = "windows")]
 mod gilrs_gamepad;
+#[cfg(target_os = "linux")]
+mod gilrs_gamepad;
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
@@ -89,6 +97,13 @@ pub use windows::{
     current_display_bounds, display_bounds_for_window, global_window_origin, hide_native_window,
     local_window_origin, request_native_window_close, show_native_window, system_language,
     taskbar_icon_is_visible, terminate_after_product_shutdown,
+};
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{
+    LinuxInputService, current_display_bounds, display_bounds_for_window, global_window_origin,
+    hide_native_window, local_window_origin, show_native_window, system_language,
 };
 
 /// Let the user choose the model folder to import.

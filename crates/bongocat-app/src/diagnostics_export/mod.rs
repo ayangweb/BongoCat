@@ -424,7 +424,7 @@ mod tests {
         SettingsGamepadAxisSettings, SettingsInputCapability, SettingsLanguage, SettingsLogging,
         SettingsModelBehavior, SettingsModelCatalog, SettingsModelDiagnostic, SettingsModelEntry,
         SettingsModelKey, SettingsModelMode, SettingsModelSettings, SettingsOverlay,
-        SettingsRandomBehavior, SettingsRuntimeCommandFailure,
+        SettingsOverlayCapabilities, SettingsRandomBehavior, SettingsRuntimeCommandFailure,
         SettingsRuntimeCommandTransportDiagnostics, SettingsRuntimeDiagnostics, SettingsShortcuts,
         SettingsStartupItemState, SettingsStartupItemStatus, SettingsTheme,
     };
@@ -477,6 +477,7 @@ mod tests {
             check_for_updates_interval_hours: 24,
             overlay_visible: true,
             overlay: SettingsOverlay::default(),
+            overlay_capabilities: SettingsOverlayCapabilities::default(),
             motion_audio_enabled: true,
             command_shortcuts_enabled: true,
             behavior_shortcuts_enabled: true,

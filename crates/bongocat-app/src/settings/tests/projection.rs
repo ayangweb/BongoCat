@@ -391,7 +391,10 @@ fn the_running_system_reports_the_capability_it_actually_gates_input_behind() {
     let capability = system_input_capability();
     assert_eq!(capability.name, STARTUP_PERMISSION_CAPABILITY);
     assert!(
-        matches!(capability.name, "input_monitoring" | "administrator"),
+        matches!(
+            capability.name,
+            "input_monitoring" | "administrator" | "evdev_access"
+        ),
         "the capability name is a property of the platform, got {}",
         capability.name
     );

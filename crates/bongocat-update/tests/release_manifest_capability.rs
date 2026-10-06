@@ -17,6 +17,8 @@
 //! Not covered: the real GitHub endpoint, Windows installer execution, process
 //! restart, and anything requiring a published release.
 
+#![cfg(not(target_os = "linux"))]
+
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;

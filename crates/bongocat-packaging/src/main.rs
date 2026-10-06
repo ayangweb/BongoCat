@@ -2246,7 +2246,11 @@ finish 1
 }
 
 /// Makes a staged file runnable by whoever opens the image.
-#[cfg(unix)]
+///
+/// Only the macOS disk image stages a script to run, so the helper is gated with
+/// the builder that calls it: `cfg(unix)` would compile it on Linux with no
+/// caller, which the workspace's `-D warnings` gate rejects.
+#[cfg(target_os = "macos")]
 fn make_executable(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let mut permissions = fs::metadata(path)?.permissions();

@@ -1,7 +1,8 @@
-//! OS-registered global shortcuts backed by the `global-hotkey` crate
-//! (ADR-0044). A single owner thread holds the platform manager, mirrors
-//! the shared [`bongocat_config::ShortcutTable`] into real OS
-//! registrations, and forwards pressed events to the dispatcher.
+//! OS-registered global shortcuts backed by `global-hotkey` (ADR-0044) on
+//! Windows/macOS and the XDG Desktop Portal on Linux. A single owner thread
+//! holds the platform manager, mirrors the shared
+//! [`bongocat_config::ShortcutTable`] into real OS registrations, and forwards
+//! pressed events to the dispatcher.
 //!
 //! Platform notes:
 //! - Windows: `RegisterHotKey` posts `WM_HOTKEY` to the message queue of
@@ -13,14 +14,17 @@
 //!   Bindings whose keys have no Carbon scancode (ScrollLock, Pause)
 //!   cannot register and are reported as registration failures instead of
 //!   blocking the remaining bindings.
-#[cfg(test)]
-#[cfg(test)]
+//! - Linux: the XDG Desktop Portal owns the global registration and emits
+//!   activation/deactivation signals, so pure Wayland does not depend on X11.
+#[cfg(all(test, not(target_os = "linux")))]
 use super::ShortcutDispatch;
 use super::{ShortcutDispatchError, ShortcutDispatcher};
 use bongocat_config::{
     CompiledShortcuts, ShortcutChord, ShortcutModifiers, ShortcutTable, ShortcutTarget,
 };
+#[cfg(any(not(target_os = "linux"), test))]
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
+#[cfg(any(not(target_os = "linux"), test))]
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use std::collections::{BTreeSet, HashMap};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -30,7 +34,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub(crate) mod hotkey;
+#[cfg(any(not(target_os = "linux"), test))]
 mod owner;
+#[cfg(target_os = "linux")]
+mod portal;
+#[cfg(any(not(target_os = "linux"), test))]
 mod registration;
 pub(crate) mod service;
 
@@ -42,7 +50,12 @@ mod tests;
 // prelude rather than naming three modules apiece. The globs are `pub(crate)`
 // because nothing outside this crate implements a registrar or pumps the
 // platform's messages.
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) use hotkey::*;
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) use owner::*;
+#[cfg(target_os = "linux")]
+pub(crate) use portal::*;
+#[cfg(any(not(target_os = "linux"), test))]
 pub(crate) use registration::*;
 pub(crate) use service::*;

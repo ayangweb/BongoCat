@@ -36,6 +36,7 @@ pub(crate) fn snapshot(
         check_for_updates_interval_hours: 24,
         overlay_visible,
         overlay: SettingsOverlay::default(),
+        overlay_capabilities: SettingsOverlayCapabilities::default(),
         motion_audio_enabled,
         command_shortcuts_enabled: true,
         behavior_shortcuts_enabled: true,

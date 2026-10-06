@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn current_platform_id_is_one_of_the_supported_platforms() {
     assert!(
-        matches!(current_platform_id(), "macos" | "windows"),
+        matches!(current_platform_id(), "macos" | "windows" | "linux"),
         "platform id must be a known suffix, got {:?}",
         current_platform_id()
     );

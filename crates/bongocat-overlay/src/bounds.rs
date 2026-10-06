@@ -121,20 +121,6 @@ impl OverlaySessionOptions {
             None => false,
         }
     }
-
-    /// Z-order, mouse-routing, hover, opacity, scale and taskbar-button changes
-    /// are applied directly to the native surface. Corner-radius and
-    /// screen-constraint changes still require replacing the native window
-    /// resources.
-    ///
-    /// Recalling which modifier suspends pointer routing is not on this list
-    /// either: like the hover hide it is consulted inside the frame tick, because
-    /// the window has to start and stop passing pointer events through while it
-    /// keeps running.
-    pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
-        self.corner_radius_percent != next.corner_radius_percent
-            || self.keep_inside_screen != next.keep_inside_screen
-    }
 }
 
 impl Default for OverlaySessionOptions {
@@ -202,61 +188,4 @@ impl OverlayWindowBounds {
             ..self
         }
     }
-
-    /// Move the window box so that it lands fully on `screen`, without changing
-    /// its size.
-    ///
-    /// The origin is clamped to the display's own origin when the window is
-    /// larger than the display on an axis, so an oversized window stays pinned
-    /// to the display's top-left corner instead of being resized or pushed off
-    /// the opposite edge.
-    pub(crate) fn clamp_to(self, screen: OverlayScreenBounds) -> Self {
-        let maximum_x = if self.width <= screen.width {
-            screen.x.saturating_add_unsigned(screen.width - self.width)
-        } else {
-            screen.x
-        };
-        let maximum_y = if self.height <= screen.height {
-            screen
-                .y
-                .saturating_add_unsigned(screen.height - self.height)
-        } else {
-            screen.y
-        };
-        Self {
-            x: self.x.clamp(screen.x, maximum_x),
-            y: self.y.clamp(screen.y, maximum_y),
-            ..self
-        }
-    }
-}
-
-/// Whether a window box is already the size one scale maps to.
-///
-/// A right-button resize drag resizes the native window before the scale it
-/// settled on is written back to configuration, so the tick that observes the
-/// new scale must not apply the ratio a second time. The one-pixel tolerance
-/// absorbs the rounding the physical-to-logical conversion introduces on the
-/// way back from the window system.
-pub(crate) fn bounds_match_scale(
-    bounds: OverlayWindowBounds,
-    base: resize_drag::ResizeBase,
-    scale_percent: u16,
-) -> bool {
-    let (width, height) = base.dimensions(scale_percent);
-    bounds.width.abs_diff(width) <= 1 && bounds.height.abs_diff(height) <= 1
-}
-
-/// One display's full frame in the shared virtual-desktop coordinate space.
-///
-/// This is the display's visible extent, including the strip a taskbar, Dock or
-/// menu bar occupies, so the placement constraint keeps the overlay on a screen
-/// without pushing it clear of the desktop chrome. Coordinates may be negative
-/// for a display placed left of or above the primary one.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct OverlayScreenBounds {
-    pub x: i32,
-    pub y: i32,
-    pub width: u32,
-    pub height: u32,
 }

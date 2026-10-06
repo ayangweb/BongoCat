@@ -1,7 +1,4 @@
-"""Keep cfg predicates on the supported Windows/macOS platform set.
-
-Linux is not a shipped target. A temporary compatibility union would make code
-compile for a platform the contract test or release matrix is expected to catch.
+"""Keep desktop platform cfg predicates explicit.
 """
 
 import re
@@ -16,7 +13,6 @@ CFG_ATTRIBUTE = re.compile(r"#\[cfg\s*\((.*?)\)\]", re.DOTALL)
 ANY_EXPRESSION = re.compile(r"\bany\s*\((.*?)\)", re.DOTALL)
 MACOS = 'target_os = "macos"'
 WINDOWS = 'target_os = "windows"'
-LINUX = 'target_os = "linux"'
 
 
 def scan_rust_file(path):
@@ -28,8 +24,6 @@ def scan_rust_file(path):
         line_number = line_start + source[: match.start()].count("\n")
         line = source.splitlines()[line_number - 1]
         reasons = []
-        if LINUX in expression:
-            reasons.append("linux target_os")
         for any_expression in ANY_EXPRESSION.finditer(expression):
             if MACOS in any_expression.group(1) and WINDOWS in any_expression.group(1):
                 reasons.append("macOS+Windows any() union")
@@ -48,11 +42,10 @@ def offenders(root=CRATES):
 
 
 class SupportedPlatformCfgDetectorTests(unittest.TestCase):
-    def test_forbidden_unions_and_linux_are_reported(self):
+    def test_forbidden_unions_are_reported(self):
         cases = {
             "macos_windows.rs": '#[cfg(any(target_os = "macos", target_os = "windows"))]\n',
             "windows_macos.rs": '#[cfg(any(target_os = "windows", target_os = "macos"))]\n',
-            "linux.rs": '#[cfg(target_os = "linux")]\n',
             "multiline.rs": '#[cfg(any(\n    target_os = "macos",\n    target_os = "windows",\n))]\n',
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -70,6 +63,7 @@ class SupportedPlatformCfgDetectorTests(unittest.TestCase):
         source = "\n".join(
             (
                 '#[cfg(target_os = "macos")]',
+                '#[cfg(target_os = "linux")]',
                 '#[cfg(any(target_os = "windows", test))]',
                 "#[cfg(all(target_os = \"macos\", target_arch = \"aarch64\"))]",
                 "#[cfg(any(target_os = \"macos\", test))]",

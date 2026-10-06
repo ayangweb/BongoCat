@@ -9,6 +9,7 @@
 
 use super::*;
 
+#[cfg(not(target_os = "linux"))]
 pub(crate) fn run_shortcut_owner(
     table: ShortcutTable,
     dispatcher: ShortcutDispatcher,

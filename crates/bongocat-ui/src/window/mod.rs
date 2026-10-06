@@ -23,7 +23,8 @@ use bongocat_platform::{
     validate_model_folder,
 };
 use gpui_kit::component::{
-    ActiveTheme, Disableable, Icon, IndexPath, Root, Theme, ThemeMode, ThemeStyled, WindowExt,
+    ActiveTheme, Disableable, Icon, IndexPath, Root, Theme, ThemeColor, ThemeMode, ThemeStyled,
+    TitleBar, WindowExt,
     button::{Button, ButtonVariant, ButtonVariants},
     checkbox::Checkbox,
     dialog::{Dialog, DialogButtonProps},
@@ -39,11 +40,11 @@ use gpui_kit::component::{
 };
 
 use gpui_kit::{
-    Anchor, App, AppContext, Bounds, Context, DisplayId, Div, DragMoveEvent, ElementId, Entity,
-    ExternalPaths, FocusHandle, Focusable, Hsla, ImageSource, KeyDownEvent, KeyUpEvent, Modifiers,
-    MouseButton, ObjectFit, Pixels, Render, SharedString, Stateful, TitlebarOptions, VisualContext,
-    WeakEntity, Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions,
-    base::StyledExt, div, img, point, prelude::*, px, size,
+    Anchor, App, AppContext, Bounds, Context, Decorations, DisplayId, Div, DragMoveEvent,
+    ElementId, Entity, ExternalPaths, FocusHandle, Focusable, Hsla, ImageSource, KeyDownEvent,
+    KeyUpEvent, Modifiers, MouseButton, ObjectFit, Pixels, Render, SharedString, Stateful,
+    TitlebarOptions, VisualContext, WeakEntity, Window, WindowAppearance, WindowBounds,
+    WindowHandle, WindowOptions, base::StyledExt, div, img, point, prelude::*, px, size,
 };
 use std::{
     cell::RefCell,
@@ -168,6 +169,7 @@ use pending::*;
 use shortcut_capture::*;
 use startup_item::*;
 pub(crate) use theme::apply_component_theme;
+pub use theme::system_menu_palette;
 use theme::*;
 pub(crate) use tokens::Tokens;
 

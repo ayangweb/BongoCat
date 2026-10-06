@@ -109,3 +109,13 @@ pub fn platform_layout(
         .join(BUNDLE_ID);
     Ok(StorageLayout::under_application_root(root, environment))
 }
+
+#[cfg(target_os = "linux")]
+pub fn platform_layout(
+    environment: BuildEnvironment,
+) -> Result<StorageLayout, PlatformStorageError> {
+    let root = dirs::data_dir()
+        .ok_or(PlatformStorageError::DataDirectoryUnavailable)?
+        .join(BUNDLE_ID);
+    Ok(StorageLayout::under_application_root(root, environment))
+}

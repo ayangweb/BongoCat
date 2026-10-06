@@ -68,6 +68,7 @@ pub(crate) const fn error_code(code: bongocat_update::UpdateErrorCode) -> Update
 pub(crate) const fn unavailable_reason(reason: UpdateUnavailability) -> UpdateUnavailableReason {
     match reason {
         UpdateUnavailability::DevelopmentChannel => UpdateUnavailableReason::DevelopmentBuild,
+        UpdateUnavailability::UnsupportedTarget => UpdateUnavailableReason::UnsupportedPlatform,
         UpdateUnavailability::SigningKeyMissing => UpdateUnavailableReason::SigningKeyMissing,
     }
 }

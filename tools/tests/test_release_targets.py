@@ -89,6 +89,15 @@ class ReleaseTargetTests(unittest.TestCase):
         source = CI_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("x86_64-pc-windows-msvc", source)
 
+    def test_active_ci_builds_the_linux_source_backend(self):
+        workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+        workspace_matrix = workflow["jobs"]["workspace"]["strategy"]["matrix"]["os"]
+        self.assertIn(
+            "ubuntu-latest",
+            workspace_matrix,
+            "the Linux source backend must compile and test in the workspace job",
+        )
+
     def test_dependency_policy_audits_exactly_the_shipped_targets(self):
         """The offline audit walks a target list of its own, outside `deny.toml`.
 

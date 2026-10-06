@@ -7,12 +7,19 @@
 
 use super::*;
 
+#[cfg(target_os = "linux")]
+pub(crate) const SYSTEM_PRESET_ROOT: &str = "/usr/share/bongocat/models";
+
 pub(crate) fn preset_root() -> PathBuf {
     if let Ok(executable) = env::current_exe()
         && let Some(root) = bundled_preset_root(&executable)
         && root.is_dir()
     {
         return root;
+    }
+    #[cfg(target_os = "linux")]
+    if Path::new(SYSTEM_PRESET_ROOT).is_dir() {
+        return PathBuf::from(SYSTEM_PRESET_ROOT);
     }
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -39,7 +46,12 @@ pub(crate) fn bundled_preset_root(executable: &Path) -> Option<PathBuf> {
     executable_relative_preset_root(executable)
 }
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(target_os = "linux")]
+pub(crate) fn bundled_preset_root(executable: &Path) -> Option<PathBuf> {
+    executable_relative_preset_root(executable)
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
 pub(crate) fn executable_relative_preset_root(executable: &Path) -> Option<PathBuf> {
     Some(executable.parent()?.join("resources/models"))
 }

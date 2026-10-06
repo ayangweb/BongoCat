@@ -25,6 +25,12 @@ pub enum SingleInstanceError {
     WakeFailed,
     #[error("the single-instance owner did not shut down cleanly")]
     ShutdownFailed,
+    #[error("the per-user runtime directory is unavailable")]
+    RuntimeDirectoryUnavailable,
+    #[error("the single-instance endpoint could not be created")]
+    EndpointCreateFailed,
+    #[error("the single-instance worker could not be created")]
+    WorkerCreateFailed,
 }
 
 #[cfg(test)]

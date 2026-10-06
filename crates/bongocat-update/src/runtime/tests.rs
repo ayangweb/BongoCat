@@ -27,7 +27,7 @@ fn configuration(channel: ReleaseChannel) -> ReleaseConfiguration {
         repository_name: "BongoCat",
         binary_name: "bongocat-app",
         bundle_name: Some("BongoCat.app"),
-        target: UpdateTargetTriple::Aarch64AppleDarwin,
+        target: Some(UpdateTargetTriple::Aarch64AppleDarwin),
     }
 }
 
@@ -123,7 +123,7 @@ fn the_manifest_endpoint_is_the_shared_release_manifest() {
         UpdateTargetTriple::X86_64PcWindowsMsvc,
     ] {
         let mut configuration = configuration(ReleaseChannel::Production);
-        configuration.target = target;
+        configuration.target = Some(target);
         assert_eq!(
             UpdateRuntime::manifest_endpoint(configuration)
                 .expect("every shipped target produces a valid URL"),
@@ -541,6 +541,25 @@ fn unavailability_names_the_gate_that_closed() {
     assert_eq!(
         runtime_for(ReleaseChannel::Production).unavailability(),
         None
+    );
+}
+
+#[test]
+fn an_unshipped_target_is_unavailable_before_update_work_starts() {
+    let mut configuration = configuration(ReleaseChannel::Production);
+    configuration.target = None;
+    let runtime = UpdateRuntime::new(
+        configuration,
+        env!("CARGO_PKG_VERSION"),
+        UpdateDiagnosticsTracker::default(),
+    );
+    assert_eq!(
+        runtime.unavailability(),
+        Some(UpdateUnavailability::UnsupportedTarget)
+    );
+    assert_eq!(
+        runtime.check().expect_err("target is not shipped").code(),
+        UpdateErrorCode::NotConfigured
     );
 }
 
