@@ -95,7 +95,18 @@ pub struct ModelConfig {
     /// is a removal rather than a name. `model.random_behavior.included` shares this
     /// model-plus-behavior identity for the same reason — one model, one row, one
     /// spelling for both.
+    ///
+    /// `uniqueItems` covers the case the schema can express — two byte-identical rows —
+    /// which is what a hand-edited document duplicated by copy-paste looks like. Two
+    /// rows that agree on the model and the behavior but differ in the name are a
+    /// narrower case that only the Rust validator can see; it is covered by
+    /// `a_behavior_name_is_parsed_bounded_and_held_once_per_behavior` rather than by a
+    /// fixture, because a fixture the schema accepts would make the two layers disagree.
     #[serde(default)]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(extend("uniqueItems" = true))
+    )]
     pub behavior_names: Vec<ModelBehaviorName>,
 }
 
@@ -112,18 +123,37 @@ pub struct ModelBehaviorName {
     pub model: ModelIdentity,
     /// The behavior this names, spelled the way the whole configuration spells it:
     /// `motion:<group>:<index>` or `expression:<name>`.
+    ///
+    /// The schema carries that shape rather than a "not blank" pattern, because the
+    /// generated JSON Schema is itself checked against the fixture corpus: a loose
+    /// pattern would let the schema accept a document the Rust validator refuses, and
+    /// the two layers would then disagree about what a valid `config.json` is.
     #[cfg_attr(
         any(test, feature = "schema-generation"),
-        schemars(length(min = 1, max = 255), regex(pattern = ".*\\S.*"))
+        schemars(
+            length(min = 1, max = 255),
+            regex(pattern = "(motion:[^:]+:[0-9]+|expression:.+)")
+        )
     )]
     pub behavior_id: String,
     /// What the row shows instead of its numbered label.
     ///
     /// Bounded and printable: it is the row's own text, so a long or unprintable one
     /// would be the page's problem rather than the model's.
+    ///
+    /// The pattern spells out "no control characters and not only whitespace" rather
+    /// than leaning on `\S`, because the generated JSON Schema is checked against the
+    /// same fixture corpus as the Rust validator and the two have to agree on what a
+    /// valid `config.json` is. `\x7f-\x9f` is included because `char::is_control` covers
+    /// the C1 range too, not just the C0 one.
     #[cfg_attr(
         any(test, feature = "schema-generation"),
-        schemars(length(min = 1, max = 64), regex(pattern = ".*\\S.*"))
+        schemars(
+            length(min = 1, max = 64),
+            regex(
+                pattern = "^[^\\x00-\\x1f\\x7f-\\x9f]*[^\\s\\x00-\\x1f\\x7f-\\x9f][^\\x00-\\x1f\\x7f-\\x9f]*$"
+            )
+        )
     )]
     pub name: String,
 }
