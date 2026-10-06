@@ -46,17 +46,57 @@
   </tbody>
 </table>
 
-BongoCat 是一款面向 Windows 和 macOS 的桌面陪伴应用。一只 Live2D 小猫住在你的屏幕上，眼神和爪子会跟着鼠标移动，你按下的每个按键、鼠标键和手柄按键它都会有反应。你可以换上自己的模型，把窗口拖到任何位置，需要的时候它就安静地待在一边。
+BongoCat 是一款面向 Windows 和 macOS 和 Linux/Wayland 的桌面陪伴应用。一只 Live2D 小猫住在你的屏幕上，眼神和爪子会跟着鼠标移动，你按下的每个按键、鼠标键和手柄按键它都会有反应。你可以换上自己的模型，把窗口拖到任何位置，需要的时候它就安静地待在一边。
 
 灵感来自 [MMmmmoko](https://github.com/MMmmmoko) 的 [Bongo-Cat-Mver](https://github.com/MMmmmoko/Bongo-Cat-Mver)。
 
 ## 功能介绍
 
-- 适配 macOS、Windows。
+- 适配 macOS、Windows、Linux/Wayland。
 - 根据键盘、鼠标或手柄的操作，同步对应的动作。
 - 支持导入自定义模型，自由打造专属猫咪形象。
 - 完全开源，代码公开透明，绝不收集任何用户数据。
 - 支持离线运行，无需联网，保护用户隐私。
+
+## Linux 构建
+
+在 Arch Linux 安装构建和运行依赖后，于仓库根目录启动 Production 构建：
+
+```sh
+sudo pacman -S --needed base-devel rust alsa-lib dbus libxcb libxkbcommon libxkbcommon-x11 \
+  systemd-libs wayland vulkan-icd-loader xdg-desktop-portal desktop-file-utils
+cargo build --locked -p bongocat-app --release --features production
+desktop_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+install -d "$desktop_dir"
+desktop-file-install --dir="$desktop_dir" \
+  --set-key=Exec --set-value="$(realpath target/release/bongocat-app)" \
+  resources/linux/com.ayangweb.bongo-cat.desktop
+cargo run --locked -p bongocat-app --release --features production
+```
+
+启动源码构建前必须安装 desktop entry；GLib 还会在 `Exec` 对应程序无法找到时拒绝整个 application entry，源码构建命令会把打包模板中的
+`Exec` 替换为已构建二进制的绝对路径。参考文件内容：
+
+```ini
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=BongoCat
+Comment=Interactive desktop companion
+Exec=/absolute/path/to/BongoCat/target/release/bongocat-app
+Icon=com.ayangweb.bongo-cat
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+```
+
+还需要安装适合显卡的 Vulkan 驱动，以及 `xdg-desktop-portal-kde`、`xdg-desktop-portal-gnome` 等桌面对应的 portal backend.
+全局键盘、鼠标按键和相对移动动画需要读取相关`/dev/input/event*` 设备；请通过发行版的设备权限策略授权.
+打包应通过 seat-aware 的 udev `uaccess` 规则授权所需键鼠 event 设备.
+
+在 KDE Plasma 等提供 Wayland layer-shell 协议的 compositor 上，源码构建可以让模型保持在普通窗口上方，并把输出内位置限制在屏幕范围；其他 compositor 会回退到通用 xdg-shell，并禁用无法使用的对应控件。
+
+全局快捷键通过 XDG Desktop Portal 注册；首次绑定快捷键时，桌面环境可能显示自己的确认界面。
 
 ## 更多模型
 
