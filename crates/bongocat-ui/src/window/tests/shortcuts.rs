@@ -295,7 +295,7 @@ fn only_a_model_behavior_row_carries_a_playable_behavior() {
         },
     )];
 
-    let rows = shortcut_rows(&SettingsShortcuts::default(), Some(&model), &entries);
+    let rows = shortcut_rows(&SettingsShortcuts::default(), Some(&model), &entries, &[]);
     assert!(
         rows[..5].iter().all(|row| row.playable.is_none()),
         "the application command rows must offer no play control"
@@ -410,7 +410,14 @@ fn the_controls_inside_a_shortcut_row_act_without_recording(cx: &mut TestAppCont
         });
         view.update(cx, |view, cx| {
             view.snapshot = Some(snapshot.clone());
-            view.sync_shortcut_row_focus(&snapshot.shortcuts, active.as_ref(), &entries, false, cx);
+            view.sync_shortcut_row_focus(
+                &snapshot.shortcuts,
+                active.as_ref(),
+                &entries,
+                &snapshot.model_behavior_names,
+                false,
+                cx,
+            );
         });
         capture.borrow_mut().replace(view.clone());
         Root::new(
@@ -559,7 +566,14 @@ fn a_shortcut_rows_frame_is_sized_by_its_chord_and_holds_its_controls(cx: &mut T
         });
         view.update(cx, |view, cx| {
             view.snapshot = Some(snapshot.clone());
-            view.sync_shortcut_row_focus(&snapshot.shortcuts, active.as_ref(), &entries, false, cx);
+            view.sync_shortcut_row_focus(
+                &snapshot.shortcuts,
+                active.as_ref(),
+                &entries,
+                &snapshot.model_behavior_names,
+                false,
+                cx,
+            );
         });
         Root::new(
             cx.new(|_| ShortcutsPageHarness {

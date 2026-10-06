@@ -226,7 +226,8 @@
   "actions": {
     "cancel": "취소",
     "confirm": "확인",
-    "close": "닫기"
+    "close": "닫기",
+    "save": "저장"
   },
   "shortcuts": {
     "scopes": {
@@ -258,7 +259,12 @@
     },
     "behavior_names": {
       "motion": "모션 %{index}",
-      "expression": "표현식 %{index}"
+      "expression": "표현식 %{index}",
+      "rename": {
+        "title": "이 모션 또는 표정 이름 바꾸기",
+        "field": "이름",
+        "description": "비워 두면 「모션 1」 같은 번호 이름으로 돌아갑니다. 이름은 모델별로 저장되어 모델마다 따로 유지됩니다."
+      }
     },
     "errors": {
       "conflict": "이미 다른 단축키에 할당되어 있습니다: %{shortcut}"

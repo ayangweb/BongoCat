@@ -50,13 +50,20 @@ impl Application {
             let (auto_switch, targets_changed) =
                 without_removed_model_targets(&self.config.model.gamepad_auto_switch, &id);
             let last_expressions = self.without_removed_model_memories(&id);
-            let memories_changed =
-                last_expressions.len() != self.config.model.last_expressions.len();
+            let behavior_names = self.without_removed_model_behavior_names(&id);
+            let memories_changed = last_expressions.len()
+                != self.config.model.last_expressions.len()
+                || behavior_names.len() != self.config.model.behavior_names.len();
             let mut installed_models = self.config.model.imported_models.clone();
             let before = installed_models.len();
             installed_models.retain(|metadata| metadata.id != id.as_str());
             if installed_models.len() != before || targets_changed || memories_changed {
-                self.commit_model_metadata(installed_models, auto_switch, last_expressions)?;
+                self.commit_model_metadata(
+                    installed_models,
+                    auto_switch,
+                    last_expressions,
+                    behavior_names,
+                )?;
             }
             Ok(())
         })();

@@ -202,9 +202,42 @@
       ],
       "type": "object"
     },
+    "ModelBehaviorName": {
+      "additionalProperties": false,
+      "properties": {
+        "behavior_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelIdentity"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "behavior_id",
+        "name"
+      ],
+      "type": "object"
+    },
     "ModelConfig": {
       "additionalProperties": false,
       "properties": {
+        "behavior_names": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ModelBehaviorName"
+          },
+          "type": "array"
+        },
         "built_in_models": {
           "items": {
             "$ref": "#/$defs/BuiltInModelMetadata"

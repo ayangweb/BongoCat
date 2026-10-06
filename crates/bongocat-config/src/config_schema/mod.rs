@@ -31,10 +31,11 @@ pub use input::{GamepadInputConfig, InputConfig, MouseInputConfig};
 pub use logging::{LoggingConfig, LoggingLevel};
 pub use model::{
     BuiltInModelMetadata, GamepadAutoSwitchConfig, ImportedModelMetadata,
-    MAXIMUM_MODEL_EXPRESSION_MEMORIES, MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES,
-    MODEL_METADATA_MAXIMUM_ID_BYTES, MODEL_METADATA_MAXIMUM_TITLE_CHARS, ModelConfig,
-    ModelExpressionMemory, ModelIdentity, ModelInputMode, ModelSource, RandomBehaviorConfig,
-    RandomBehaviorMode,
+    MAXIMUM_MODEL_BEHAVIOR_NAMES, MAXIMUM_MODEL_EXPRESSION_MEMORIES,
+    MODEL_BEHAVIOR_NAME_MAXIMUM_CHARS, MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES,
+    MODEL_METADATA_MAXIMUM_ID_BYTES, MODEL_METADATA_MAXIMUM_TITLE_CHARS, ModelBehaviorName,
+    ModelConfig, ModelExpressionMemory, ModelIdentity, ModelInputMode, ModelSource,
+    RandomBehaviorConfig, RandomBehaviorMode,
 };
 pub use overlay::{
     DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS, MAXIMUM_HIDE_ON_IDLE_DELAY_SECONDS,
@@ -108,6 +109,7 @@ impl Default for NativeConfig {
                 gamepad_auto_switch: GamepadAutoSwitchConfig::default(),
                 remember_last_expression: false,
                 last_expressions: Vec::new(),
+                behavior_names: Vec::new(),
             },
             shortcuts: ShortcutConfig::default(),
             system: SystemConfig {
@@ -216,6 +218,7 @@ impl NativeConfig {
                 .map(|record| (record.id.as_str(), record.title.as_str())),
         )?;
         validate_model_expression_memories(&self.model.last_expressions)?;
+        validate_model_behavior_names(&self.model.behavior_names)?;
         if self
             .shortcuts
             .command_bindings

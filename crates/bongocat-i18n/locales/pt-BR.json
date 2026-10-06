@@ -226,7 +226,8 @@
   "actions": {
     "cancel": "Cancelar",
     "confirm": "Confirmar",
-    "close": "Fechar"
+    "close": "Fechar",
+    "save": "Salvar"
   },
   "shortcuts": {
     "scopes": {
@@ -258,7 +259,12 @@
     },
     "behavior_names": {
       "motion": "Movimento %{index}",
-      "expression": "Expressão %{index}"
+      "expression": "Expressão %{index}",
+      "rename": {
+        "title": "Renomear este movimento ou expressão",
+        "field": "Nome",
+        "description": "Deixe em branco para voltar ao nome numerado. Os nomes são salvos por modelo, então cada um guarda o seu."
+      }
     },
     "errors": {
       "conflict": "%{shortcut} já está atribuído a outro atalho"

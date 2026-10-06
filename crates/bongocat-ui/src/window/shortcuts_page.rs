@@ -125,10 +125,11 @@ impl ShortcutScope {
         shortcuts: &SettingsShortcuts,
         active_model: Option<&SettingsModelKey>,
         entries: &[SettingsModelEntry],
+        behavior_names: &[SettingsModelBehaviorName],
     ) -> Vec<ShortcutRow> {
         match self {
             Self::Window => window_shortcut_rows(shortcuts),
-            Self::Model => shortcut_behavior_rows(shortcuts, active_model, entries),
+            Self::Model => shortcut_behavior_rows(shortcuts, active_model, entries, behavior_names),
         }
     }
 
@@ -227,6 +228,7 @@ pub(super) fn content(
                 &snapshot.shortcuts,
                 snapshot.active_model.as_ref(),
                 &snapshot.model_catalog.entries,
+                &snapshot.model_behavior_names,
             );
             let row_index_offset = scope.row_index_offset(&snapshot.shortcuts);
             let empty_message = scope.empty_message(language).filter(|_| rows.is_empty());
@@ -276,6 +278,28 @@ fn shortcut_row(
     // scope's switch is off. A disabled row is inert, not merely painted
     // lighter — the mutators guard on the same predicate.
     let row_disabled = gate.disables_controls();
+    // The label is the rename affordance, so a row gains a name without gaining a
+    // fourth control: the frame's chord, its play button and its clear button keep
+    // their positions and their tab order exactly as they were, and a row nobody
+    // renamed still reads as plain text because the hover surface only appears on a
+    // behavior row that can actually be renamed.
+    let renamable = playable.is_some() && !row_disabled;
+    let label_for_click = target.clone();
+    let label = div()
+        .id(behavior_name_label_id(&label_for_click))
+        .min_w_0()
+        .flex_1()
+        .rounded_sm()
+        .child(target_name)
+        .when(renamable, |this| {
+            this.cursor_pointer()
+                .on_click(cx.listener(move |view, _, window, cx| {
+                    let Some(row) = view.shortcut_rows.get(&label_for_click).cloned() else {
+                        return;
+                    };
+                    view.open_behavior_name(&row, window, cx);
+                }))
+        });
     let focus = view
         .shortcut_row_focus
         .get(&target)
@@ -430,8 +454,25 @@ fn shortcut_row(
         // description, so a gated setting reads as one unavailable entry
         // rather than a live label sitting next to a dead control.
         .when(row_disabled, |this| this.opacity(0.5))
-        .child(div().min_w_0().flex_1().child(target_name))
+        .child(label)
         .child(frame)
+}
+
+/// One stable element id per renamable row's label.
+///
+/// The index rather than the target, for the same reason the row's controls use it:
+/// `gpui-kit` needs an `ElementId`, and a target is a typed value that would have to
+/// be flattened into one. The rows are the live model's declaration order, so the same
+/// index always names the same row for as long as that model is live.
+fn behavior_name_label_id(target: &ShortcutCaptureTarget) -> gpui_kit::ElementId {
+    match target {
+        ShortcutCaptureTarget::Command(command) => {
+            format!("behavior-name-command-{command}").into()
+        }
+        ShortcutCaptureTarget::ModelBehavior { behavior_id, .. } => {
+            format!("behavior-name-{behavior_id}").into()
+        }
+    }
 }
 
 /// The compact icon button that lives inside a shortcut row's frame.

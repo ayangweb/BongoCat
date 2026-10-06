@@ -226,7 +226,8 @@
   "actions": {
     "cancel": "Cancel",
     "confirm": "Confirm",
-    "close": "Close"
+    "close": "Close",
+    "save": "Save"
   },
   "shortcuts": {
     "scopes": {
@@ -258,7 +259,12 @@
     },
     "behavior_names": {
       "motion": "Motion %{index}",
-      "expression": "Expression %{index}"
+      "expression": "Expression %{index}",
+      "rename": {
+        "title": "Rename this motion or expression",
+        "field": "Name",
+        "description": "Leave it empty to go back to the numbered name. Names are saved per model, so each model keeps its own."
+      }
     },
     "errors": {
       "conflict": "%{shortcut} is already assigned to another shortcut"

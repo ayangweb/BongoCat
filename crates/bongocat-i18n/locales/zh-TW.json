@@ -226,7 +226,8 @@
   "actions": {
     "cancel": "取消",
     "confirm": "確認",
-    "close": "關閉"
+    "close": "關閉",
+    "save": "儲存"
   },
   "shortcuts": {
     "scopes": {
@@ -258,7 +259,12 @@
     },
     "behavior_names": {
       "motion": "動作 %{index}",
-      "expression": "表情 %{index}"
+      "expression": "表情 %{index}",
+      "rename": {
+        "title": "重新命名這個動作或表情",
+        "field": "名稱",
+        "description": "留空則恢復「動作 1」這樣的編號名稱。名稱跟隨模型保存，換模型後各用各的。"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} 已被其他快速鍵佔用"

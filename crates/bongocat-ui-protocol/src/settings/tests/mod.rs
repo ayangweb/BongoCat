@@ -48,6 +48,7 @@ pub(crate) fn snapshot(
         remember_last_expression: false,
         logging: SettingsLogging::default(),
         shortcuts: SettingsShortcuts::default(),
+        model_behavior_names: Vec::new(),
         startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),
         diagnostics_export: None,
         input_diagnostics: SettingsInputDiagnostics::default(),

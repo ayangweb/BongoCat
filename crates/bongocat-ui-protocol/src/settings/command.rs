@@ -131,6 +131,19 @@ pub enum SettingsCommand {
         settings: SettingsModelSettings,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Give one behavior of one model the name its row shows.
+    ///
+    /// A blank `name` clears it rather than storing a blank label, because "go back to
+    /// the numbered name" is a removal and not a name. The model travels with the
+    /// request because the document keeps one row per model, exactly as the shortcut
+    /// bindings do.
+    SetModelBehaviorName {
+        expected_config_revision: u64,
+        model: SettingsModelKey,
+        behavior_id: String,
+        name: String,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetGamepadAxisSettings {
         expected_config_revision: u64,
         settings: SettingsGamepadAxisSettings,

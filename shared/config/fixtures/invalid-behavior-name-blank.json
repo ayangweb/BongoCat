@@ -54,7 +54,16 @@
     },
     "remember_last_expression": false,
     "last_expressions": [],
-    "behavior_names": []
+    "behavior_names": [
+      {
+        "model": {
+          "id": "standard",
+          "source": "built_in"
+        },
+        "behavior_id": "motion:CAT_motion:0",
+        "name": "   "
+      }
+    ]
   },
   "shortcuts": {
     "commands_enabled": true,

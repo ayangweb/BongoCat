@@ -204,10 +204,24 @@ impl SettingsView {
             &snapshot.shortcuts,
             snapshot.active_model.as_ref(),
             &snapshot.model_catalog.entries,
+            &snapshot.model_behavior_names,
         );
         for row in rows {
             if row.name(snapshot.resolved_language).is_empty() {
                 return Err("shortcuts page contains an unnamed row".to_owned());
+            }
+        }
+        // The rename surface is only reachable from this page, so its copy is checked
+        // with the rest of it rather than left to the dialog's own first frame.
+        let locale = snapshot.resolved_language.catalog_locale();
+        for key in [
+            "shortcuts.behavior_names.rename.title",
+            "shortcuts.behavior_names.rename.field",
+            "shortcuts.behavior_names.rename.description",
+            "actions.save",
+        ] {
+            if bongocat_i18n::text(locale, key).is_empty() {
+                return Err(format!("the shortcuts page is missing {key}"));
             }
         }
         Ok(())

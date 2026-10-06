@@ -42,6 +42,7 @@ pub(crate) enum PendingOperation {
     ModelSelection,
     ModelDeletion,
     ModelMetadata,
+    ModelBehaviorName,
     ModelLocation,
     OpenLogsLocation,
     SetShortcuts,
@@ -157,6 +158,12 @@ pub(crate) enum SettingValue {
     RememberLastExpression {
         expected_config_revision: u64,
         enabled: bool,
+    },
+    ModelBehaviorName {
+        expected_config_revision: u64,
+        model: SettingsModelKey,
+        behavior_id: String,
+        name: String,
     },
     StartupItemEnabled(bool),
     Shortcuts {

@@ -140,6 +140,27 @@ pub(super) fn settings_model_behavior(behavior: ModelBehaviorSnapshot) -> Settin
     }
 }
 
+/// The canonical `behavior_id` spelling one behavior is stored under.
+///
+/// It goes through [`ModelBehaviorAction::behavior_id`] rather than formatting the
+/// string here, because that is the single place that owns the spelling: the same
+/// string names a behavior in a shortcut binding, in a custom row name and in the
+/// random-playback selection, and two formatters would be two ways for them to
+/// disagree about which behavior a row is talking about.
+pub(super) fn settings_model_behavior_id(behavior: &SettingsModelBehavior) -> String {
+    use bongocat_config::ModelBehaviorAction;
+    match behavior {
+        SettingsModelBehavior::Motion { group, index } => ModelBehaviorAction::Motion {
+            group: group.clone(),
+            index: *index,
+        }
+        .behavior_id(),
+        SettingsModelBehavior::Expression { name } => {
+            ModelBehaviorAction::Expression { name: name.clone() }.behavior_id()
+        }
+    }
+}
+
 /// Play one behavior of the model the runtime is actually running.
 ///
 /// The request names the model it was rendered for, because a shortcut row

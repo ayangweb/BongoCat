@@ -26,7 +26,9 @@ use super::Application;
 use crate::ApplicationError;
 use crate::app_log::{ApplicationLogCode, ApplicationLogContext, ApplicationLogEvent};
 use crate::model_identity::config_source_from_model;
-use bongocat_config::{ModelExpressionMemory, ModelIdentity, ModelSource, NativeConfig};
+use bongocat_config::{
+    ModelBehaviorName, ModelExpressionMemory, ModelIdentity, ModelSource, NativeConfig,
+};
 use bongocat_model::ModelId;
 use bongocat_runtime::{ExpressionId, RuntimeCommand};
 
@@ -131,6 +133,27 @@ impl Application {
             .filter(|record| {
                 !(record.model.source == ModelSource::Imported
                     && record.model.id == removed.as_str())
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// The names a removed model leaves behind.
+    ///
+    /// A name is display text attached to one model, so a removed model takes its
+    /// names with it. Only an imported model can be removed, so a build-shipped row
+    /// that happens to share the id names a different model and is kept — the same
+    /// reasoning as the remembered expressions above.
+    pub(crate) fn without_removed_model_behavior_names(
+        &self,
+        removed: &ModelId,
+    ) -> Vec<ModelBehaviorName> {
+        self.config
+            .model
+            .behavior_names
+            .iter()
+            .filter(|row| {
+                !(row.model.source == ModelSource::Imported && row.model.id == removed.as_str())
             })
             .cloned()
             .collect()

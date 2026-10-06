@@ -201,6 +201,13 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   拒绝的机会。BongoCat 按维护者决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
   该开关只作用于 motion/expression 绑定，不得清空或改写配置中的绑定，也不得连带禁用
   `open_settings`、overlay 显隐以及三个模型输入忽略开关等应用级快捷键——应用级快捷键有它自己的开关。
+- `model.behavior_names` 是每个模型每个行为一行的自定义显示名，`behavior_id` 与快捷键绑定、随机播放
+  勾选共用同一种拼法。设置窗口把它解析成 `SettingsModelBehaviorName`（只含已命名的行、只含当前模型），
+  `shortcut_rows` 优先用它作为行标签，未命名的行保持「动作 N / 表情 N」。空白名字不落盘，清空字段等于
+  删除这一行；删除模型时一并清掉它的名字。窗口侧的限长与配置侧一致
+  （`MODEL_BEHAVIOR_NAME_MAXIMUM_CHARS`），因此窗口不会送出配置会拒绝的值。改名的输入面是独立弹框而
+  不是行内字段：行的标签紧邻一个「按下即录制」的框，行内文本框要与一个按 Enter 就开始录制的控件共享
+  焦点与 tab 顺序，所以这一行**不新增第四个控件**，录制/播放/清除三个控件的位置与 tab 序号都保持不变。
 - 模型行为快捷键的自动分配与旧版同构：模型激活时（`prepare_model` / `select_model`）按声明顺序
   遍历该模型的 motion 与 expression，依次填入 `[primary]`、`[primary, Shift]`、`[primary, Alt]`、
   `[primary, Shift, Alt]` 四层、每层先数字后字母的组合键，共 144 个名额；`primary` 在 macOS 是

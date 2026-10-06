@@ -451,7 +451,7 @@ pub(super) enum BehaviorKind {
 
 /// A behavior's flattened position inside the active model's behavior list.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct BehaviorOrdinal {
+pub(crate) struct BehaviorOrdinal {
     pub(super) kind: BehaviorKind,
     pub(super) number: usize,
 }
@@ -464,39 +464,54 @@ pub(super) struct BehaviorOrdinal {
 /// rather than looking the active model up again at click time — so the control
 /// can only ever play what the row is actually showing.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct PlayableBehavior {
+pub(crate) struct PlayableBehavior {
     pub(super) model: SettingsModelKey,
     pub(super) behavior: SettingsModelBehavior,
 }
 
-pub(super) struct ShortcutRow {
-    pub(super) target: ShortcutCaptureTarget,
+#[derive(Clone)]
+pub(crate) struct ShortcutRow {
+    pub(crate) target: ShortcutCaptureTarget,
     /// Where this row sits in the active model's behavior list, for the rows
     /// that are model behaviors. `None` on an application command, which is
     /// named by the command itself.
-    pub(super) behavior: Option<BehaviorOrdinal>,
+    pub(crate) behavior: Option<BehaviorOrdinal>,
     /// The behavior this row's binding fires, for the rows that are model
     /// behaviors. `None` on an application command.
-    pub(super) playable: Option<PlayableBehavior>,
-    pub(super) shortcut: Option<String>,
+    pub(crate) playable: Option<PlayableBehavior>,
+    pub(crate) shortcut: Option<String>,
+    /// The name the user gave this behavior, when they gave it one.
+    ///
+    /// `None` is the ordinary case and means "draw the numbered label", so the page
+    /// never has to invent a placeholder for a behavior nobody renamed.
+    pub(crate) custom_name: Option<String>,
 }
 
 impl ShortcutRow {
     /// The label this row renders.
-    pub(super) fn name(&self, language: SettingsLanguage) -> String {
+    pub(crate) fn name(&self, language: SettingsLanguage) -> String {
         match &self.target {
             ShortcutCaptureTarget::Command(command) => {
                 shortcut_command_name(language, command.as_str())
             }
+            // A row the user named shows that name: it is the only way to find the
+            // behavior they meant without counting positions, and the resource names
+            // inside a package are internal numbering the user cannot see. Everything
+            // else falls back to the numbered label, which is the ordinary case.
+            //
             // Every model behavior row is built from the active model's ordered
-            // behavior list, so it carries a position and this arm is the one
-            // users see. The fallback keeps the row self-describing if one is
-            // ever built outside that list; it prints the raw identity the way
-            // the page used to, rather than panicking in a render path.
-            ShortcutCaptureTarget::ModelBehavior { behavior_id, .. } => self.behavior.map_or_else(
-                || behavior_id.clone(),
-                |ordinal| shortcut_behavior_name(language, ordinal),
-            ),
+            // behavior list, so it carries a position and that arm is the one users
+            // see. The fallback keeps the row self-describing if one is ever built
+            // outside that list; it prints the raw identity the way the page used to,
+            // rather than panicking in a render path.
+            ShortcutCaptureTarget::ModelBehavior { behavior_id, .. } => self
+                .custom_name
+                .clone()
+                .or_else(|| {
+                    self.behavior
+                        .map(|ordinal| shortcut_behavior_name(language, ordinal))
+                })
+                .unwrap_or_else(|| behavior_id.clone()),
         }
     }
 }
@@ -516,6 +531,10 @@ pub(super) fn window_shortcut_rows(shortcuts: &SettingsShortcuts) -> Vec<Shortcu
             target: ShortcutCaptureTarget::Command((*command).to_owned()),
             behavior: None,
             playable: None,
+            // An application command is not a model behavior, so there is nothing a
+            // user could have named it. The row still carries the field because the
+            // two kinds share one row type and one label path.
+            custom_name: None,
             shortcut: shortcuts
                 .commands
                 .iter()
@@ -529,6 +548,7 @@ pub(super) fn shortcut_rows(
     shortcuts: &SettingsShortcuts,
     active_model: Option<&SettingsModelKey>,
     entries: &[SettingsModelEntry],
+    behavior_names: &[SettingsModelBehaviorName],
 ) -> Vec<ShortcutRow> {
     let mut rows = window_shortcut_rows(shortcuts);
     let Some((model, behaviors)) = active_model.and_then(|model| {
@@ -578,6 +598,10 @@ pub(super) fn shortcut_rows(
                 .iter()
                 .find(|binding| binding.model == *model && binding.behavior_id == behavior_id)
                 .map(|binding| binding.shortcut.clone()),
+            custom_name: behavior_names
+                .iter()
+                .find(|named| named.behavior_id == behavior_id)
+                .map(|named| named.name.clone()),
         }
     }));
     rows
@@ -587,8 +611,9 @@ pub(super) fn shortcut_behavior_rows(
     shortcuts: &SettingsShortcuts,
     active_model: Option<&SettingsModelKey>,
     entries: &[SettingsModelEntry],
+    behavior_names: &[SettingsModelBehaviorName],
 ) -> Vec<ShortcutRow> {
-    shortcut_rows(shortcuts, active_model, entries)
+    shortcut_rows(shortcuts, active_model, entries, behavior_names)
         .into_iter()
         .filter(|row| matches!(row.target, ShortcutCaptureTarget::ModelBehavior { .. }))
         .collect()
@@ -600,7 +625,7 @@ pub(super) fn shortcut_targets(
     active_model: Option<&SettingsModelKey>,
     entries: &[SettingsModelEntry],
 ) -> Vec<ShortcutCaptureTarget> {
-    shortcut_rows(shortcuts, active_model, entries)
+    shortcut_rows(shortcuts, active_model, entries, &[])
         .into_iter()
         .map(|row| row.target)
         .collect()
@@ -614,7 +639,7 @@ pub(super) fn shortcut_targets(
 /// would silently render every row without its chord. `bongocat-config` is the
 /// single owner of the spelling; the auto-assignment and the import
 /// normalization both go through it too.
-fn model_behavior_id(behavior: &SettingsModelBehavior) -> String {
+pub(crate) fn model_behavior_id(behavior: &SettingsModelBehavior) -> String {
     match behavior {
         SettingsModelBehavior::Motion { group, index } => ModelBehaviorAction::Motion {
             group: group.clone(),

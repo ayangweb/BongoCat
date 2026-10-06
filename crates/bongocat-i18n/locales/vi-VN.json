@@ -226,7 +226,8 @@
   "actions": {
     "cancel": "Hủy",
     "confirm": "Xác nhận",
-    "close": "Đóng"
+    "close": "Đóng",
+    "save": "Lưu"
   },
   "shortcuts": {
     "scopes": {
@@ -258,7 +259,12 @@
     },
     "behavior_names": {
       "motion": "Chuyển động %{index}",
-      "expression": "Biểu cảm %{index}"
+      "expression": "Biểu cảm %{index}",
+      "rename": {
+        "title": "Đổi tên chuyển động hoặc biểu cảm này",
+        "field": "Tên",
+        "description": "Để trống để quay lại tên đánh số. Tên được lưu theo từng mô hình, nên mỗi mô hình giữ tên riêng."
+      }
     },
     "errors": {
       "conflict": "%{shortcut} đã được gán cho một phím tắt khác"

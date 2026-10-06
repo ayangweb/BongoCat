@@ -14,6 +14,7 @@ use gpui_kit::{
     VisualTestContext,
 };
 
+mod behavior_names;
 mod copy;
 mod dropdown;
 mod external_link;

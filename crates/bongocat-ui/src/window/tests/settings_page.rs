@@ -49,7 +49,7 @@ fn model_behavior_rows_are_named_by_flattened_position() {
             behaviors: behaviors.to_vec(),
         },
     )];
-    let rows = shortcut_behavior_rows(&SettingsShortcuts::default(), Some(&active), &entries);
+    let rows = shortcut_behavior_rows(&SettingsShortcuts::default(), Some(&active), &entries, &[]);
     assert_eq!(rows.len(), behaviors.len());
 
     let english = rows
@@ -771,6 +771,87 @@ fn the_remembered_expression_switch_sends_the_revision_it_was_rendered_from(
             "the confirmed snapshot is what the switch then renders"
         );
     });
+    assert!(endpoint.try_recv().is_err());
+}
+
+/// A confirmed rename reaches the service as its own typed command.
+///
+/// It carries the revision the page was rendered from, so a stale page cannot overwrite
+/// a name someone else just changed, and the row's whole identity — model plus
+/// behavior — rather than a position, because a position means a different behavior
+/// after the package changes.
+#[gpui_kit::test]
+fn a_confirmed_rename_sends_the_row_identity_it_was_opened_from(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(4, true, true);
+    initial.config_revision = Some(4);
+    initial.active_model = Some(SettingsModelKey {
+        id: "standard".to_owned(),
+        origin: SettingsModelOrigin::BuiltIn,
+    });
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+
+    // The draft opens on the label the row already shows, so the user edits the thing
+    // they can see rather than retyping a name they have to remember.
+    let row = ShortcutRow {
+        target: ShortcutCaptureTarget::ModelBehavior {
+            model: SettingsModelKey {
+                id: "standard".to_owned(),
+                origin: SettingsModelOrigin::BuiltIn,
+            },
+            behavior_id: "motion:CAT_motion:1".to_owned(),
+        },
+        behavior: Some(BehaviorOrdinal {
+            kind: BehaviorKind::Motion,
+            number: 2,
+        }),
+        playable: None,
+        shortcut: None,
+        custom_name: None,
+    };
+    assert_eq!(row.name(SettingsLanguage::English), "Motion 2");
+    view.update(visual, |view, _| {
+        view.shortcut_rows.insert(row.target.clone(), row);
+    });
+    visual.run_until_parked();
+
+    view.update(visual, |view, cx| {
+        view.set_model_behavior_name_for_test(
+            SettingsModelKey {
+                id: "standard".to_owned(),
+                origin: SettingsModelOrigin::BuiltIn,
+            },
+            "motion:CAT_motion:1".to_owned(),
+            "the sleepy one".to_owned(),
+            cx,
+        );
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetModelBehaviorName {
+        expected_config_revision,
+        model,
+        behavior_id,
+        name,
+        reply,
+    } = endpoint
+        .try_recv()
+        .expect("a confirmed rename must reach the service as its own command")
+    else {
+        panic!("the rename must use the typed model-behavior-name command");
+    };
+    assert_eq!(expected_config_revision, 4);
+    assert_eq!(model.id, "standard");
+    assert_eq!(behavior_id, "motion:CAT_motion:1");
+    assert_eq!(name, "the sleepy one");
+
+    let mut confirmed = crate::tests::snapshot(5, true, true);
+    confirmed.config_revision = Some(5);
+    confirmed.model_behavior_names = vec![crate::SettingsModelBehaviorName {
+        behavior_id: "motion:CAT_motion:1".to_owned(),
+        name: "the sleepy one".to_owned(),
+    }];
+    reply.respond(Ok(confirmed)).expect("rename reply");
+    visual.run_until_parked();
     assert!(endpoint.try_recv().is_err());
 }
 

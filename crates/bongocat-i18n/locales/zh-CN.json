@@ -226,7 +226,8 @@
   "actions": {
     "cancel": "取消",
     "confirm": "确认",
-    "close": "关闭"
+    "close": "关闭",
+    "save": "保存"
   },
   "shortcuts": {
     "scopes": {
@@ -258,7 +259,12 @@
     },
     "behavior_names": {
       "motion": "动作 %{index}",
-      "expression": "表情 %{index}"
+      "expression": "表情 %{index}",
+      "rename": {
+        "title": "重命名这个动作或表情",
+        "field": "名称",
+        "description": "留空则恢复「动作 1」这样的编号名称。名称跟随模型保存，换模型后各用各的。"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} 已被其他快捷键占用"

@@ -226,7 +226,8 @@
   "actions": {
     "cancel": "إلغاء",
     "confirm": "تأكيد",
-    "close": "إغلاق"
+    "close": "إغلاق",
+    "save": "حفظ"
   },
   "shortcuts": {
     "scopes": {
@@ -258,7 +259,12 @@
     },
     "behavior_names": {
       "motion": "الحركة %{index}",
-      "expression": "التعبير %{index}"
+      "expression": "التعبير %{index}",
+      "rename": {
+        "title": "إعادة تسمية هذه الحركة أو التعبير",
+        "field": "الاسم",
+        "description": "اتركه فارغًا للعودة إلى الاسم المرقّم. تُحفظ الأسماء لكل نموذج، فيحتفظ كل نموذج باسمه."
+      }
     },
     "errors": {
       "conflict": "اختصار %{shortcut} مُخصَّص بالفعل لاختصار آخر"
