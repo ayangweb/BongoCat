@@ -468,7 +468,7 @@ impl Application {
         temporary.shortcuts = temporary.shortcuts.canonicalized()?;
         temporary.validate()?;
         let compiled = active_shortcuts(&temporary, self.live_model_identity().as_ref())?;
-        self.shortcut_table.replace(compiled);
+        self.shortcut_table.replace_suspended(compiled);
         self.shortcut_capture_suspended = true;
         Ok(())
     }

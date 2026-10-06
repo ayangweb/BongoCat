@@ -37,7 +37,7 @@
   "startup_permission": {
     "linux": {
       "title": "Allow keyboard and mouse monitoring?",
-      "description": "BongoCat needs access to input devices to respond to keyboard and mouse activity in other apps. After you confirm, the system will request administrator authorization. Only the input helper receives elevated access; Settings and the model window continue to run as your user. Choose Set up later to continue without keyboard and mouse reactions or input shortcuts.",
+      "description": "BongoCat needs access to input devices to respond to keyboard and mouse activity in other apps. After you confirm, the system will request administrator authorization. Only the input helper receives elevated access; Settings and the model window continue to run as your user. Choose Set up later to continue without keyboard and mouse reactions.",
       "confirm": "OK"
     },
     "later": "Set Up Later",

@@ -160,6 +160,9 @@ impl Application {
     /// longer compiles leaves the previous table in place and the platform
     /// keeps what it already registered.
     fn refresh_shortcut_table(&mut self) {
+        if self.shortcut_capture_suspended {
+            return;
+        }
         let compiled = {
             let active_model = self.live_model_identity();
             active_shortcuts(&self.config, active_model.as_ref())

@@ -15,8 +15,6 @@ use std::{
 
 pub struct LinuxInputService {
     stop: Arc<AtomicBool>,
-    shortcuts:
-        Arc<std::sync::Mutex<Option<(bongocat_config::ShortcutTable, crate::ShortcutDispatcher)>>>,
     worker: Option<JoinHandle<Result<PlatformInputDiagnostics, PlatformInputError>>>,
 }
 impl LinuxInputService {
@@ -44,10 +42,6 @@ impl LinuxInputService {
             .ok_or(PlatformInputError::BackendUnavailable)?;
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = stop.clone();
-        let shortcuts = Arc::new(std::sync::Mutex::new(
-            None::<(bongocat_config::ShortcutTable, crate::ShortcutDispatcher)>,
-        ));
-        let worker_shortcuts = shortcuts.clone();
         let worker = thread::Builder::new()
             .name("bongocat-linux-input".into())
             .spawn(move || {
@@ -74,7 +68,6 @@ impl LinuxInputService {
                     ));
                     let gamepad = gamepad.as_mut().unwrap();
                     let mut packet = [0; PACKET_SIZE];
-                    let mut pressed = std::collections::BTreeSet::new();
                     let mut enabled = false;
                     let mut position = CursorPosition { x: 0.5, y: 0.5 };
                     while read_packet(&mut output, &mut packet, &worker_stop)? {
@@ -82,44 +75,7 @@ impl LinuxInputService {
                         let message = InputMessage::decode(&packet)
                             .ok_or(PlatformInputError::BackendUnavailable)?;
                         if let InputMessage::Reset { enabled: active } = message {
-                            pressed.clear();
                             enabled = active;
-                        }
-                        if let InputMessage::Key {
-                            code,
-                            state: key_state,
-                        } = message
-                            && let Some(usage) = key_usage(code)
-                        {
-                            let fresh = if key_state == ButtonState::Pressed {
-                                pressed.insert(usage)
-                            } else {
-                                pressed.remove(&usage);
-                                false
-                            };
-                            if fresh {
-                                let mut bits = 0;
-                                for (keys, bit) in [
-                                    ([0xe0, 0xe4], 1),
-                                    ([0xe2, 0xe6], 2),
-                                    ([0xe1, 0xe5], 4),
-                                    ([0xe3, 0xe7], 8),
-                                ] {
-                                    if keys.iter().any(|k| pressed.contains(k)) {
-                                        bits |= bit;
-                                    }
-                                }
-                                if let Some((table, dispatcher)) =
-                                    &*worker_shortcuts.lock().unwrap()
-                                    && let Some(binding) = table.load().resolve_hid_usage(
-                                        bongocat_config::ShortcutModifiers::from_bits(bits)
-                                            .unwrap(),
-                                        usage,
-                                    )
-                                {
-                                    let _ = dispatcher.execute(binding.target());
-                                }
-                            }
                         }
                         let event = match message {
                             InputMessage::Reset { .. } => Some(InputEvent::Reset {
@@ -241,16 +197,8 @@ impl LinuxInputService {
             .map_err(|_| PlatformInputError::WorkerPanicked)?;
         Ok(Self {
             stop,
-            shortcuts,
             worker: Some(worker),
         })
-    }
-    pub fn set_shortcuts(
-        &self,
-        table: bongocat_config::ShortcutTable,
-        dispatcher: crate::ShortcutDispatcher,
-    ) {
-        *self.shortcuts.lock().unwrap() = Some((table, dispatcher));
     }
     pub fn stop(&mut self) -> Result<PlatformInputDiagnostics, PlatformInputError> {
         self.stop.store(true, Ordering::Release);

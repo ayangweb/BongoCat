@@ -32,7 +32,6 @@ mod single_instance;
 pub use single_instance::{SingleInstanceAction, SingleInstanceEnvironment, SingleInstanceError};
 
 mod shortcut;
-#[cfg(not(target_os = "linux"))]
 pub use shortcut::{
     GlobalShortcutCounters, GlobalShortcutService, GlobalShortcutServiceError, ShortcutHotkeyError,
 };

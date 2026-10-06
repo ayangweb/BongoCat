@@ -2511,6 +2511,7 @@ fn run_product(run_options: RunOptions) -> Result<(), Box<dyn std::error::Error>
 
 #[cfg(target_os = "linux")]
 struct Product {
+    shortcut_service: Option<bongocat_platform::GlobalShortcutService>,
     overlay: Option<ProductOverlaySession>,
     tray: Option<LinuxSystemTray>,
     context_menu: Option<gpui_kit::WindowHandle<gpui_kit::component::Root>>,
@@ -2532,6 +2533,11 @@ impl Product {
         self.quit.store(true, Ordering::Release);
         self.frame_source.request_stop();
         self.tray.take();
+        if let Some(shortcuts) = self.shortcut_service.take()
+            && let Err(error) = shortcuts.stop()
+        {
+            record_failure(&self.failures, error.to_string());
+        }
         if let Err(error) = overlay.stop_input() {
             record_failure(&self.failures, error.to_string());
         }
@@ -2593,7 +2599,7 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         std::sync::mpsc::sync_channel::<OverlayContextMenuRequest>(1);
     let (resize_sender, resize_receiver) = std::sync::mpsc::sync_channel::<OverlayResizeOutcome>(1);
     let (menu_sender, menu_receiver) = std::sync::mpsc::channel();
-    let mut overlay = ProductOverlaySession::start_with_interaction_sinks(
+    let overlay = ProductOverlaySession::start_with_interaction_sinks(
         runtime.clone(),
         application.input_producer(),
         application.cursor_producer(),
@@ -2606,10 +2612,10 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
         },
     )?;
     let (sender, receiver) = std::sync::mpsc::sync_channel(64);
-    overlay.set_linux_shortcuts(
+    let shortcut_service = bongocat_platform::GlobalShortcutService::start(
         application.shortcut_table(),
         bongocat_app::application_shortcut_dispatcher(runtime, sender),
-    );
+    )?;
     let tick_runtime = application.runtime_client();
     let signals = ApplicationMainThreadSignals::default();
     let (status_sender, status_receiver) = std::sync::mpsc::sync_channel(4);
@@ -2643,6 +2649,7 @@ fn run_product(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
     gpui_application().with_assets(AllAssets).run(move |cx| {
         gpui_kit::init(cx);
         cx.set_global(Product {
+            shortcut_service: Some(shortcut_service),
             overlay: Some(overlay),
             tray,
             context_menu: None,

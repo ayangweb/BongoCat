@@ -99,10 +99,6 @@ pub struct ProductOverlaySession {
     frame: RenderFrame,
     input: Option<bongocat_platform::LinuxInputService>,
     input_sources: Option<(InputProducer, CursorProducer, GamepadAxisProducer)>,
-    shortcuts: Option<(
-        bongocat_config::ShortcutTable,
-        bongocat_platform::ShortcutDispatcher,
-    )>,
     pending_scale: Option<u16>,
     configured_scale: u16,
     options: OverlaySessionOptions,
@@ -185,7 +181,6 @@ impl ProductOverlaySession {
             frame,
             input: None,
             input_sources: Some((producer, cursor, axes)),
-            shortcuts: None,
             pending_scale: None,
             configured_scale: options.scale_percent,
             options,
@@ -213,27 +208,11 @@ impl ProductOverlaySession {
                 diagnostics.clone(),
             )
         });
-        if let Some(input) = &input
-            && let Some((table, dispatcher)) = self.shortcuts.take()
-        {
-            input.set_shortcuts(table, dispatcher);
-        }
         self.input = input;
         self.input_error = error;
     }
     pub fn close_requested(&self) -> bool {
         self.state.closed
-    }
-    pub fn set_shortcuts(
-        &mut self,
-        table: bongocat_config::ShortcutTable,
-        dispatcher: bongocat_platform::ShortcutDispatcher,
-    ) {
-        if let Some(input) = &self.input {
-            input.set_shortcuts(table, dispatcher);
-        } else {
-            self.shortcuts = Some((table, dispatcher));
-        }
     }
     pub fn run_for(&mut self, duration: Duration) -> Result<(), OverlayError> {
         let start = Instant::now();
@@ -361,7 +340,6 @@ impl ProductOverlaySession {
     }
     pub fn stop_input(&mut self) -> Result<(), OverlayError> {
         self.input_sources.take();
-        self.shortcuts.take();
         if let Some(mut input) = self.input.take() {
             self.diagnostics = Some(input.stop().map_err(err)?);
         }

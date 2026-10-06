@@ -56,6 +56,7 @@ windows = { version = "=0.62.2", features = [
 
 [dev-dependencies]
 bongocat-runtime.workspace = true
+global-hotkey.workspace = true
 tempfile.workspace = true
 
 [lints.clippy]
@@ -71,6 +72,9 @@ muda.workspace = true
 tray-icon.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
+ashpd.workspace = true
+async-io.workspace = true
+futures-util.workspace = true
 bongocat-input-helper = { path = "../bongocat-input-helper" }
 rfd = { workspace = true, features = ["xdg-portal", "wayland"] }
 gilrs.workspace = true

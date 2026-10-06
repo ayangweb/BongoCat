@@ -241,11 +241,4 @@ impl ProductOverlaySession {
     pub fn start_linux_input(&mut self) {
         self.inner.start_input();
     }
-    pub fn set_linux_shortcuts(
-        &mut self,
-        table: bongocat_config::ShortcutTable,
-        dispatcher: bongocat_platform::ShortcutDispatcher,
-    ) {
-        self.inner.set_shortcuts(table, dispatcher);
-    }
 }

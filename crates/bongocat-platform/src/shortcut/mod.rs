@@ -58,16 +58,13 @@ impl ShortcutDispatcher {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
 mod global;
 #[cfg(test)]
 mod tests;
 
 // The public surface is named through the modules that hold it, so the
 // crate-private globs inside `global` do not narrow what leaves the crate.
-#[cfg(not(target_os = "linux"))]
 pub use global::hotkey::ShortcutHotkeyError;
-#[cfg(not(target_os = "linux"))]
 pub use global::service::{
     GlobalShortcutCounters, GlobalShortcutService, GlobalShortcutServiceError,
 };
