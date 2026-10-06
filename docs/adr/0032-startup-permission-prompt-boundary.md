@@ -324,6 +324,13 @@ adapter 之外不得依赖 `rfd` 类型。升级 `objc2-app-kit` 时必须复验
 若升级 `gpui-kit`/`gpui-pre-macos`，必须复验 `GPUIApplication` 子类与 `platform` ivar 的约束是否
 仍然成立：一旦 GPUI 不再依赖该 ivar，本 ADR 的 macOS 同步/异步选择可以重新评估。
 
+复核记录（2026-10-06，`gpui-kit 0.7.1` / `gpui-pre 0.3.8`）：`resources/windows/gpui.rc` 与
+`gpui.manifest.xml` 相对 `0.3.7` 逐字节相同，仍是单条 `RT_MANIFEST 24` 内嵌
+`Microsoft.Windows.Common-Controls 6.0.0.0`，产品自有 `.rc` 无需也不再新增嵌入。macOS 侧的
+`Ivar platform not found` 约束由 `startup_permission.rs` 的源码 pin 测试固定；同日的 macOS
+`just dev-smoke` 通过，设置窗口关闭、销毁并重新打开，未触发该 abort。Windows 侧仍需实机安装、
+升级与卸载证据。
+
 ## macOS 引导流程换成 permission-flow（2026-09-30，ADR-0078）
 
 提示壳不变：仍是主线程 `NSAlert`，文案仍由 `bongocat-app` 从翻译目录构造，worker 生命周期、

@@ -1,10 +1,10 @@
 # ADR-0012: JSON Localization
 
-状态：已接受（2026-09-10）
+状态：已接受（2026-09-10；2026-10-06 修订）
 
 ## 决策
 
-BongoCat 使用 `rust-i18n = 4.2.2` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，已落地的语言为 `zh-CN`、`zh-TW`、`ar-SA`、`vi-VN`、`pt-BR` 与 `ko-KR`。
+BongoCat 使用 `rust-i18n = 4.2.4` 加载编译期嵌入的 JSON 语言资源。应用层资源由独立的 `bongocat-i18n` crate 管理，默认语言为 `en-US`，已落地的语言为 `zh-CN`、`zh-TW`、`ar-SA`、`vi-VN`、`pt-BR` 与 `ko-KR`。
 
 **语言命名采用带地区子标签的提名式**，与 `en-US` 一致：一份语言只发一份 catalog，地区子标签提名这份文案所依据的主要变体，并不声称 catalog 未携带的地区特化。`en-US` 本身也是这种名字——它同样服务 `en-GB`。
 
@@ -61,4 +61,4 @@ key、同占位符的 JSON，然后在 `build.rs` 的 `CATALOGS`、`Language`/`S
 
 ## 取舍
 
-`gpui-kit` 的底层 `gpui-component` 也使用 `rust-i18n`，因此依赖生态一致。JSON 比 YAML/TOML 更适合现有前端资源、翻译工具和跨语言校验；本方案不引入 Fluent 的复数/选择语法。若后续产品需要复杂 ICU/Fluent 消息，应另行提交 ADR，不在业务代码中混用第二套格式。
+`gpui-kit` 的底层 `gpui-component` 也使用 `rust-i18n`，因此依赖生态一致。`rust-i18n` 与传递的 `rust-i18n-macro`／`rust-i18n-support` 必须停在同一个补丁序列：4.2.4 的宏展开调用 `rust_i18n::replace_patterns_cow`，只存在于 4.2.4 的运行时 crate，跨版本混用会让 `gpui-component` 与 `bongocat-i18n` 同时编译失败。JSON 比 YAML/TOML 更适合现有前端资源、翻译工具和跨语言校验；本方案不引入 Fluent 的复数/选择语法。若后续产品需要复杂 ICU/Fluent 消息，应另行提交 ADR，不在业务代码中混用第二套格式。

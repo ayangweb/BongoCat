@@ -101,13 +101,13 @@ GPUI 用于设置窗口、模型管理、快捷键编辑、权限状态、更新
 
 GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 Live2D 纹理合成路径。因此：
 
-- 正式 workspace 只直接依赖 crates.io 的 `gpui-kit = "=0.7.0"` 并提交 `Cargo.lock`；GPUI Kit
+- 正式 workspace 只直接依赖 crates.io 的 `gpui-kit = "=0.7.1"` 并提交 `Cargo.lock`；GPUI Kit
   是唯一直接 GPUI 依赖，其 suite 内五个 package 都从同一 registry 版本解析。禁止另行声明或替换
   `gpui`、platform、component 和 assets。
 - v0.7.0 是首个同时发布 `SettingGroup::variant()` 与 `Popover::arrow()` 的 release，此前为拿到
   这两项能力而固定的 `longbridge/gpui-kit` git revision 已删除，`deny.toml` 不再放行该仓库。
-  GPUI Kit 仍通过 crates.io 的 `gpui-pre 0.3.7` 同步包提供元数据对应 Zed `gpui 0.2.2` 的整套
-  GPUI crate，并把这套家族精确 pin 在 `=0.3.7`。
+  GPUI Kit 仍通过 crates.io 的 `gpui-pre 0.3.8` 同步包提供元数据对应 Zed `gpui 0.2.2` 的整套
+  GPUI crate，并把这套家族精确 pin 在 `=0.3.8`。
 - 不自动跟随 Zed main，不直接依赖 Zed 应用内部 UI crate。
 - 以 `gpui_kit::component` 提供的主题和基础组件为 design system 基础；窗口使用其官方
   `Root`，图标使用 `gpui_kit::assets`，项目只保留领域适配、产品 token 覆盖和组件库未覆盖
