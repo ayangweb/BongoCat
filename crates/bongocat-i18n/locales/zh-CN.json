@@ -230,15 +230,15 @@
   },
   "shortcuts": {
     "scopes": {
-      "window": "窗口快捷键",
-      "model": "模型行为快捷键"
+      "window": "窗口与输入快捷键",
+      "model": "动作和表情快捷键"
     },
     "switches": {
       "enable_window_shortcuts": {
-        "label": "启用窗口快捷键"
+        "label": "启用窗口与输入快捷键"
       },
       "enable_model_behavior_shortcuts": {
-        "label": "启用模型行为快捷键"
+        "label": "启用动作和表情快捷键"
       }
     },
     "actions": {

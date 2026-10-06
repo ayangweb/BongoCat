@@ -184,8 +184,8 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   窗口不存在时才创建并显示。设置窗口的当前侧边栏页面由 app coordinator 持有的 process-local
   `SettingsNavigationMemory` 记忆，重建窗口时恢复，应用重启后回到 Appearance。forwarder 必须支持
   有界停止与 join。
-- 快捷键页面由两个带标题的 group 组成，每个 group 的第一行是它自己的门禁开关：`启用窗口快捷键`
-  （`shortcuts.commands_enabled`，默认 `true`）与 `启用模型行为快捷键`
+- 快捷键页面由两个带标题的 group 组成，每个 group 的第一行是它自己的门禁开关：`启用窗口与输入快捷键`
+  （`shortcuts.commands_enabled`，默认 `true`）与 `启用动作和表情快捷键`
   （`shortcuts.model_behaviors_enabled`，默认 `false`）。两个门禁彼此独立，各自只决定对应的一半是否
   进入活动的 `CompiledShortcuts`：都不清空、不改写配置中的绑定，因此重新打开时无需重录即可恢复
   全部已校验绑定。门禁的唯一实现点是 `ShortcutConfig::active_bindings`——"此刻生效的绑定"的唯一
@@ -201,7 +201,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   拒绝的机会。BongoCat 按维护者决定移植这套自动分配，但把"是否让这些组合键真正生效"交给用户。
   该开关只作用于 motion/expression 绑定，不得清空或改写配置中的绑定，也不得连带禁用
   `open_settings`、overlay 显隐以及三个模型输入忽略开关等应用级快捷键——应用级快捷键有它自己的开关。
-- 模型行为快捷键的自动分配与旧版同构：模型激活时（`prepare_model` / `select_model`）按声明顺序
+- 动作和表情快捷键的自动分配与旧版同构：模型激活时（`prepare_model` / `select_model`）按声明顺序
   遍历该模型的 motion 与 expression，依次填入 `[primary]`、`[primary, Shift]`、`[primary, Alt]`、
   `[primary, Shift, Alt]` 四层、每层先数字后字母的组合键，共 144 个名额；`primary` 在 macOS 是
   Command、其它平台是 Control。编号对每个模型独立从第一个名额开始——占用范围是"应用级 command 绑定
@@ -209,7 +209,7 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   的行为永不重写，因此重复激活是幂等的，只有用户尚未录制的行为会被补上；同一作用域内已被占用的组合键
   跳过而非重用，否则 `shortcuts.conflict` 会让整份配置失效。分配结果随选中模型同一次 commit 落盘，
   且不依赖 `shortcuts.model_behaviors_enabled`——绑定在快捷键页面始终可见，门禁关闭时该分组行置灰
-  不可改（ADR-0053），是否进入平台匹配表则由同一分组第一行的 `启用模型行为快捷键` 开关决定。
+  不可改（ADR-0053），是否进入平台匹配表则由同一分组第一行的 `启用动作和表情快捷键` 开关决定。
 - 只有当前模型的绑定进入平台编译表。配置按模型保存绑定且跨模型允许复用同一组合键，所以
   `shortcuts.conflict` 是作用域内的判定（命令内唯一、同一模型内唯一、模型绑定不得与命令冲突），
   整份配置本身不是一张无歧义的表：`active_shortcuts` 先按当前模型投影再编译。`prepare_model` 与
@@ -560,7 +560,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - 设置窗口只展示用户可操作的设置，导航分两级（ADR-0066）。一级页面按用户任务固定为
   Appearance & language、Model library、Model behavior、Model window、Input & interaction、
   Shortcuts、App & system 七个业务分类，About 作为设置菜单中的最后一个普通页面。Appearance & language
-  直接展示主题与语言，不再重复同名分组；Model library 单独展示模型卡片，Model behavior 单独展示模型镜像、动作音效，以及随机播放内容的模式下拉（关闭 / 仅表情 / 仅动作 / 表情和动作，ADR-0072）和它控制的间隔，模型行为快捷键仍留在 Shortcuts；Input & interaction 按 Mouse、Keyboard、
+  直接展示主题与语言，不再重复同名分组；Model library 单独展示模型卡片，Model behavior 单独展示模型镜像、动作音效，以及随机播放内容的模式下拉（关闭 / 仅表情 / 仅动作 / 表情和动作，ADR-0072）和它控制的间隔，动作和表情快捷键仍留在 Shortcuts；Input & interaction 按 Mouse、Keyboard、
   Gamepad 分组；Gamepad 分组末尾是「连接或断开手柄时自动切换模型」门禁开关及其
   连接/断开两个模型下拉（ADR-0071）；App & system 按 Startup & desktop、Updates、Logging 分组。Updates、Logging 与 Model window 的设置项只保留标题和控件，
   不显示重复描述。Model window 继续按 Window behavior、Window appearance、Window performance 分组；

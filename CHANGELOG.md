@@ -20,6 +20,7 @@
 ### 🎨 Interface
 
 - Renamed the "Open at login" switch to "Run at startup", and matched the wording of the messages that explain when it is unavailable.
+- Renamed the two Shortcuts page groups to "Window and input shortcuts" and "Motion and expression shortcuts", and matched each group's switch to its own name.
 
 ## 2.1.1 - 2026-10-03
 

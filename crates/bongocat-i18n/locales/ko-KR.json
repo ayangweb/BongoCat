@@ -230,15 +230,15 @@
   },
   "shortcuts": {
     "scopes": {
-      "window": "창 단축키",
-      "model": "모델 동작 단축키"
+      "window": "창 및 입력 단축키",
+      "model": "모션 및 표현식 단축키"
     },
     "switches": {
       "enable_window_shortcuts": {
-        "label": "창 단축키 사용"
+        "label": "창 및 입력 단축키 사용"
       },
       "enable_model_behavior_shortcuts": {
-        "label": "모델 동작 단축키 사용"
+        "label": "모션 및 표현식 단축키 사용"
       }
     },
     "actions": {

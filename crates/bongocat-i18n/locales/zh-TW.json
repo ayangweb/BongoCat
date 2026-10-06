@@ -230,15 +230,15 @@
   },
   "shortcuts": {
     "scopes": {
-      "window": "視窗快速鍵",
-      "model": "模型行為快速鍵"
+      "window": "視窗與輸入快速鍵",
+      "model": "動作與表情快速鍵"
     },
     "switches": {
       "enable_window_shortcuts": {
-        "label": "啟用視窗快速鍵"
+        "label": "啟用視窗與輸入快速鍵"
       },
       "enable_model_behavior_shortcuts": {
-        "label": "啟用模型行為快速鍵"
+        "label": "啟用動作與表情快速鍵"
       }
     },
     "actions": {

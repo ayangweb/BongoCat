@@ -230,15 +230,15 @@
   },
   "shortcuts": {
     "scopes": {
-      "window": "Window shortcuts",
-      "model": "Model behavior shortcuts"
+      "window": "Window and input shortcuts",
+      "model": "Motion and expression shortcuts"
     },
     "switches": {
       "enable_window_shortcuts": {
-        "label": "Enable window shortcuts"
+        "label": "Enable window and input shortcuts"
       },
       "enable_model_behavior_shortcuts": {
-        "label": "Enable model behavior shortcuts"
+        "label": "Enable motion and expression shortcuts"
       }
     },
     "actions": {

@@ -230,15 +230,15 @@
   },
   "shortcuts": {
     "scopes": {
-      "window": "Phím tắt cửa sổ",
-      "model": "Phím tắt hành vi mô hình"
+      "window": "Phím tắt cửa sổ và nhập liệu",
+      "model": "Phím tắt chuyển động và biểu cảm"
     },
     "switches": {
       "enable_window_shortcuts": {
-        "label": "Bật phím tắt cửa sổ"
+        "label": "Bật phím tắt cửa sổ và nhập liệu"
       },
       "enable_model_behavior_shortcuts": {
-        "label": "Bật phím tắt hành vi mô hình"
+        "label": "Bật phím tắt chuyển động và biểu cảm"
       }
     },
     "actions": {

@@ -230,15 +230,15 @@
   },
   "shortcuts": {
     "scopes": {
-      "window": "Atalhos da janela",
-      "model": "Atalhos do comportamento do modelo"
+      "window": "Atalhos da janela e da entrada",
+      "model": "Atalhos de movimentos e expressões"
     },
     "switches": {
       "enable_window_shortcuts": {
-        "label": "Ativar atalhos da janela"
+        "label": "Ativar atalhos da janela e da entrada"
       },
       "enable_model_behavior_shortcuts": {
-        "label": "Ativar atalhos do comportamento do modelo"
+        "label": "Ativar atalhos de movimentos e expressões"
       }
     },
     "actions": {

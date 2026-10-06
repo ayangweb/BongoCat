@@ -392,22 +392,48 @@ fn shortcut_scope_gates_have_their_own_localized_label() {
     }
 }
 
+/// Each scope's group heading and its own gate switch read as one name.
+///
+/// A group called "Model behavior shortcuts" is named after a settings *page*,
+/// while the rows under it are only motions and expressions — so the heading
+/// promises something the group does not contain, and the switch below it
+/// repeats the same wrong name. Spelling both out as the two things a user can
+/// actually bind is what makes the group title usable as the way to guess which
+/// keys a shortcut belongs to.
 #[test]
-fn model_behavior_shortcut_copy_stays_aligned_between_scope_and_gate() {
-    for (language, scope_title, gate_title) in [
+fn shortcut_scope_copy_names_what_the_scope_lets_you_bind() {
+    for (language, window_scope, window_gate, model_scope, model_gate) in [
         (
             SettingsLanguage::English,
-            "Model behavior shortcuts",
-            "Enable model behavior shortcuts",
+            "Window and input shortcuts",
+            "Enable window and input shortcuts",
+            "Motion and expression shortcuts",
+            "Enable motion and expression shortcuts",
         ),
         (
             SettingsLanguage::ChineseSimplified,
-            "模型行为快捷键",
-            "启用模型行为快捷键",
+            "窗口与输入快捷键",
+            "启用窗口与输入快捷键",
+            "动作和表情快捷键",
+            "启用动作和表情快捷键",
         ),
     ] {
-        assert_eq!(ShortcutScope::Model.title(language), scope_title);
-        assert_eq!(ShortcutScope::Model.gate_label(language), gate_title);
+        assert_eq!(ShortcutScope::Window.title(language), window_scope);
+        assert_eq!(ShortcutScope::Window.gate_label(language), window_gate);
+        assert_eq!(ShortcutScope::Model.title(language), model_scope);
+        assert_eq!(ShortcutScope::Model.gate_label(language), model_gate);
+        // The gate is the heading with a verb in front of it, so the two can
+        // never drift into two names for the same scope again. The comparison
+        // folds case because the English verb is what capitalises.
+        for (scope, gate) in [
+            (ShortcutScope::Window.title(language), window_gate),
+            (ShortcutScope::Model.title(language), model_gate),
+        ] {
+            assert!(
+                gate.to_lowercase().ends_with(&scope.to_lowercase()),
+                "{gate:?} does not end in its own group heading {scope:?}"
+            );
+        }
     }
 }
 
