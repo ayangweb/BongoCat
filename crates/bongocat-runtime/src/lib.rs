@@ -277,6 +277,14 @@ pub struct ModelSettings {
     /// The paw parameters do not depend on this: a hand is down while any key
     /// bound to it is held either way.
     pub show_all_pressed_keys: bool,
+    /// Whether a command for the expression already in effect turns it off.
+    ///
+    /// The runtime owns this decision because it is the only place that knows
+    /// which expression is in effect: both trigger sources converge on
+    /// [`RuntimeCommand::SetExpression`], the settings window's preview button
+    /// and a shortcut alike. The idle scheduler deliberately does not go through
+    /// that command, so an automatic pick never toggles the user's own face off.
+    pub toggle_repeated_expression: bool,
     pub ignore_pointer: bool,
 }
 

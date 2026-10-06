@@ -400,6 +400,9 @@
         "remember_last_expression": {
           "label": "각 모델의 마지막 표현식 기억"
         },
+        "toggle_repeated_expression": {
+          "label": "같은 표정을 다시 누르면 끄기"
+        },
         "random_behavior_mode": {
           "label": "모션이나 표현식을 무작위로 재생",
           "options": {

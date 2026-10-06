@@ -80,6 +80,7 @@ updates
 | `model`       | `gamepad_auto_switch.connected_model` | 连接手柄时自动切换的模型，`null` 表示上次使用的手柄模型 |
 | `model`       | `gamepad_auto_switch.disconnected_model` | 断开手柄时自动切换的模型，`null` 表示上次使用的非手柄模型 |
 | `model`       | `remember_last_expression`          | 模型是否回到该模型上次使用的表情，默认 `false` |
+| `model`       | `toggle_repeated_expression`        | 再次触发当前正在显示的同一表情时关闭它，默认 `false` |
 | `model`       | `last_expressions`                  | 每个模型各自记住的表情，模型身份为 `{ id, source }`，默认 `[]` |
 | `model`       | `ignore_pointer`                      | 模型求值忽略指针位置                   |
 | `shortcuts`   | `commands_enabled`                    | 应用快捷键是否进入平台匹配表，默认 `true` |
@@ -97,6 +98,16 @@ updates
 投影：键盘门禁移除键盘键图和手部贡献，手柄门禁移除手柄按钮、手部、摇杆和扳机贡献；原始采集、
 pressed state、释放校正、设备生命周期 Reset、诊断以及独立快捷键注册不受影响。解除门禁后仍由
 同一可靠输入状态继续处理释放，不能通过过滤路径制造卡键。
+
+`model.toggle_repeated_expression` 默认 `false`。表情一旦应用就保持到被替换，因此重复触发同一表情
+一直是空操作；打开后它变成「关掉它」——按当前正在显示的那张脸等于回到模型自己的默认表情，而默认
+表情在切换模型之外没有别的入口。该字段带 `#[serde(default)]`：旧文档没有这个键，读出来是 `false`
+（保持既有行为），而不是被严格 v1 入口拒绝后走「最新有效备份 → 默认配置」恢复流程。
+
+它是独立的开关而不是 `model.remember_last_expression` 的一个取值：两者回答不同问题——一个是模型
+从哪里开始，另一个是重复触发时做什么。关闭动作不写 `model.last_expressions`：记住一个刚被关掉的
+表情会让它在下次启动时以「用户选过」的名义回来。随机播放走 renderer 而不是 command 队列，因此
+永远不参与这个开关。
 
 `model.show_all_pressed_keys` 默认 `false`，即兼容模式：同一只手只画最后按下且仍有效的那个键的
 键位图。打开后每个仍按住的键各自保留一张键位图，按下顺序从旧到新排列，渲染器按该顺序绘制，

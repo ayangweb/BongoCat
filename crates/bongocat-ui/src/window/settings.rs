@@ -731,6 +731,30 @@ impl SettingsView {
         );
     }
 
+    /// Whether triggering the expression already showing turns it off.
+    ///
+    /// Sent without a debounce, like the other switches: one click is one write.
+    /// It is a switch of its own rather than a detail of the remembered-expression
+    /// one above it, because the two answer different questions — where a model
+    /// starts, and what a repeat trigger does while it is already wearing a face.
+    pub(super) fn set_toggle_repeated_expression(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::ToggleRepeatedExpression,
+            Some(SettingValue::ToggleRepeatedExpression {
+                expected_config_revision,
+                enabled,
+            }),
+            cx,
+        );
+    }
+
     /// Whether the application command bindings reach the platform table.
     ///
     /// The Shortcuts page renders this gate as "disable window shortcuts", so

@@ -91,6 +91,7 @@ pub(crate) const fn model_settings_from_config(config: &NativeConfig) -> ModelSe
         ignore_keyboard: config.model.ignore_keyboard,
         ignore_gamepad: config.model.ignore_gamepad,
         show_all_pressed_keys: config.model.show_all_pressed_keys,
+        toggle_repeated_expression: config.model.toggle_repeated_expression,
         ignore_pointer: config.model.ignore_pointer,
     }
 }

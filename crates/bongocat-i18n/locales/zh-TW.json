@@ -400,6 +400,9 @@
         "remember_last_expression": {
           "label": "記住每個模型上次使用的表情"
         },
+        "toggle_repeated_expression": {
+          "label": "重複觸發同一表情時關閉它"
+        },
         "random_behavior_mode": {
           "label": "隨機播放動作或表情",
           "options": {

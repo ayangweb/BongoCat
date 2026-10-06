@@ -400,6 +400,9 @@
         "remember_last_expression": {
           "label": "Lembrar a última expressão de cada modelo"
         },
+        "toggle_repeated_expression": {
+          "label": "Desligar a expressão ao acioná-la novamente"
+        },
         "random_behavior_mode": {
           "label": "Reproduzir movimentos ou expressões aleatoriamente",
           "options": {

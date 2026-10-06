@@ -845,3 +845,330 @@ fn an_automatic_expression_is_never_remembered() {
 
     owner.shutdown(TIMEOUT).expect("clean shutdown");
 }
+
+/// With the toggle off — the default — a repeat of the expression already showing
+/// is what it has always been: the same face applied again.
+///
+/// This is the direction an existing configuration keeps, so it is the direction
+/// that has to be provably unchanged rather than assumed.
+#[test]
+fn a_repeated_expression_is_applied_again_while_the_toggle_is_off() {
+    let clock = Arc::new(ManualClock::default());
+    let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+        true,
+        8,
+        Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+    );
+    let client = owner.client();
+    client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+    let activation_sequence = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+            "standard",
+        ))))
+        .expect("activation command");
+    let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+    report_model_prepared(&client, &consumer, &candidate);
+
+    let chosen = ExpressionId::new("live2d_expression1.exp3.json").expect("expression id");
+    let first_sequence = client
+        .send(RuntimeCommand::SetExpression(chosen.clone()))
+        .expect("choose expression");
+    let first = client
+        .wait_for_command(first_sequence, TIMEOUT)
+        .expect("chosen expression active");
+    assert_eq!(
+        first.active_expression,
+        Some(ActiveExpressionSnapshot {
+            expression: chosen.clone(),
+            command_sequence: first_sequence,
+        })
+    );
+
+    let repeat_sequence = client
+        .send(RuntimeCommand::SetExpression(chosen.clone()))
+        .expect("repeat the same expression");
+    let repeat = client
+        .wait_for_command(repeat_sequence, TIMEOUT)
+        .expect("repeated expression answered");
+    assert_eq!(
+        repeat.active_expression,
+        Some(ActiveExpressionSnapshot {
+            expression: chosen,
+            command_sequence: repeat_sequence,
+        }),
+        "the repeat is applied, not turned into an off request"
+    );
+    assert!(
+        repeat.user_expression_memory.is_some(),
+        "applying the same face again is still the user choosing it"
+    );
+
+    owner.shutdown(TIMEOUT).expect("runtime shutdown");
+}
+
+/// With the toggle on, a repeat of the expression in effect takes it off and the
+/// model returns to its own default face.
+///
+/// Both trigger sources reach the runtime as this one command, so the decision
+/// lives where the runtime knows which expression is in effect. A request for a
+/// *different* expression is unaffected: turning one face off is not a general
+/// "next trigger clears the model" rule.
+#[test]
+fn a_repeated_expression_turns_itself_off_while_the_toggle_is_on() {
+    let clock = Arc::new(ManualClock::default());
+    let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+        true,
+        8,
+        Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+    );
+    let client = owner.client();
+    client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+    let toggle_sequence = client
+        .send(RuntimeCommand::SetModelSettings(ModelSettings {
+            toggle_repeated_expression: true,
+            ..ModelSettings::default()
+        }))
+        .expect("toggle accepted");
+    let toggled = client
+        .wait_for_command(toggle_sequence, TIMEOUT)
+        .expect("toggle published");
+    assert!(toggled.model_settings.toggle_repeated_expression);
+
+    let activation_sequence = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+            "standard",
+        ))))
+        .expect("activation command");
+    let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+    report_model_prepared(&client, &consumer, &candidate);
+    wait_for_render_frame(&consumer, |frame| {
+        frame.model_generation == candidate.model_generation
+            && frame.frame_number > candidate.frame_number
+    });
+
+    let chosen = ExpressionId::new("live2d_expression1.exp3.json").expect("expression id");
+    let first_sequence = client
+        .send(RuntimeCommand::SetExpression(chosen.clone()))
+        .expect("choose expression");
+    let first = client
+        .wait_for_command(first_sequence, TIMEOUT)
+        .expect("chosen expression active");
+    assert_eq!(
+        first
+            .active_expression
+            .as_ref()
+            .map(|active| &active.expression),
+        Some(&chosen)
+    );
+    let remembered_sequence = first.user_expression_memory.as_ref().map(|memory| {
+        assert_eq!(memory.expression, chosen);
+        memory.command_sequence
+    });
+
+    clock.set(Duration::from_millis(400));
+    wait_for_render_frame(&consumer, |consumer_frame| {
+        consumer_frame.model_generation == candidate.model_generation
+    });
+
+    // The repeat is the off request, and it deliberately records nothing: a
+    // remembered expression that the user just turned off would come back on the
+    // next launch as if they had chosen it.
+    let repeat_sequence = client
+        .send(RuntimeCommand::SetExpression(chosen.clone()))
+        .expect("repeat the same expression");
+    let repeat = client
+        .wait_for_command(repeat_sequence, TIMEOUT)
+        .expect("repeated expression answered");
+    assert_eq!(
+        repeat.active_expression, None,
+        "the expression in effect is turned off rather than re-applied"
+    );
+    assert_eq!(
+        repeat
+            .user_expression_memory
+            .as_ref()
+            .map(|memory| memory.command_sequence),
+        remembered_sequence,
+        "turning an expression off writes no new remembered choice"
+    );
+    assert_eq!(
+        client.unrecorded_user_expression(Some(repeat_sequence - 1)),
+        None,
+        "the reader has nothing new to persist from an off request"
+    );
+
+    // Once the fade the clip itself declares has run there is nothing left to
+    // apply, which is the whole point of the behaviour: otherwise the only way
+    // back to the model's own face is a model switch. The fade itself is a
+    // renderer concern and is covered by the clearing tests beside it.
+    clock.set(Duration::from_secs(2));
+    let settled = client
+        .send(RuntimeCommand::Tick)
+        .expect("expression fade runs on");
+    let settled = client
+        .wait_for_command(settled, TIMEOUT)
+        .expect("fade published");
+    assert_eq!(settled.active_expression, None);
+
+    // Asking for a different expression is still a first request, not an off.
+    let other = ExpressionId::new("live2d_expression2.exp3.json").expect("expression id");
+    let other_sequence = client
+        .send(RuntimeCommand::SetExpression(other.clone()))
+        .expect("choose a different expression");
+    let switched_face = client
+        .wait_for_command(other_sequence, TIMEOUT)
+        .expect("different expression active");
+    assert_eq!(
+        switched_face
+            .active_expression
+            .as_ref()
+            .map(|active| &active.expression),
+        Some(&other)
+    );
+    assert_eq!(
+        switched_face
+            .user_expression_memory
+            .as_ref()
+            .map(|memory| memory.expression.clone()),
+        Some(other),
+        "a different expression is a choice the user made, and is remembered as one"
+    );
+
+    owner.shutdown(TIMEOUT).expect("runtime shutdown");
+}
+
+/// The automatic pick is not a repeat of the user's face.
+///
+/// The idle scheduler plays expressions through the renderer rather than through
+/// the command queue, which is what keeps the toggle out of its path: with the
+/// toggle on, a scheduled expression still applies, and the user's own choice
+/// still governs what a repeat does.
+#[test]
+fn the_toggle_does_not_reach_the_automatic_expression_picker() {
+    let clock = Arc::new(ManualClock::default());
+    let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+        true,
+        8,
+        Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+    );
+    let client = owner.client();
+    client
+        .wait_for_revision(1, TIMEOUT)
+        .expect("ready snapshot");
+    let settings_sequence = client
+        .send(RuntimeCommand::SetModelSettings(ModelSettings {
+            toggle_repeated_expression: true,
+            ..ModelSettings::default()
+        }))
+        .expect("model settings accepted");
+    client
+        .wait_for_command(settings_sequence, TIMEOUT)
+        .expect("model settings published");
+    let random_sequence = client
+        .send(RuntimeCommand::SetRandomBehaviorSettings(
+            RandomBehaviorSettings {
+                mode: RandomBehaviorMode::Expressions,
+                interval_seconds: 1,
+            },
+        ))
+        .expect("random behavior setting accepted");
+    client
+        .wait_for_command(random_sequence, TIMEOUT)
+        .expect("random behavior setting published");
+
+    let activation_sequence = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+            "standard",
+        ))))
+        .expect("model activation accepted");
+    let frame = wait_for_prepared_model(&client, &consumer, activation_sequence);
+    report_model_prepared(&client, &consumer, &frame);
+
+    clock.set(Duration::from_secs(1));
+    let tick = client
+        .send(RuntimeCommand::Tick)
+        .expect("random tick accepted");
+    let mut snapshot = client
+        .wait_for_command(tick, TIMEOUT)
+        .expect("random behavior tick published");
+    let deadline = Instant::now() + TIMEOUT;
+    while snapshot.active_expression.is_none() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(2));
+        snapshot = client.snapshot();
+    }
+    assert!(
+        snapshot.active_expression.is_some(),
+        "an automatic pick is not a repeat, so the toggle must not turn it back off"
+    );
+
+    owner.shutdown(TIMEOUT).expect("clean shutdown");
+}
+
+/// The remembered expression a model is restored with is a first request.
+///
+/// Model activation clears the expression in effect before any deferred command
+/// runs, so the restore can never read as a repeat — otherwise a restored face
+/// would immediately switch itself off again.
+#[test]
+fn a_restored_expression_is_never_read_as_a_repeat() {
+    let clock = Arc::new(ManualClock::default());
+    let (owner, consumer) = RuntimeOwner::start_with_rendering_and_clock(
+        true,
+        8,
+        Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+    );
+    let client = owner.client();
+    client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+    let toggle_sequence = client
+        .send(RuntimeCommand::SetModelSettings(ModelSettings {
+            toggle_repeated_expression: true,
+            ..ModelSettings::default()
+        }))
+        .expect("toggle accepted");
+    client
+        .wait_for_command(toggle_sequence, TIMEOUT)
+        .expect("toggle published");
+
+    let activation_sequence = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+            "standard",
+        ))))
+        .expect("activation command");
+    let candidate = wait_for_prepared_model(&client, &consumer, activation_sequence);
+    report_model_prepared(&client, &consumer, &candidate);
+    let chosen = ExpressionId::new("live2d_expression1.exp3.json").expect("expression id");
+    let first_sequence = client
+        .send(RuntimeCommand::SetExpression(chosen.clone()))
+        .expect("choose expression");
+    client
+        .wait_for_command(first_sequence, TIMEOUT)
+        .expect("chosen expression active");
+
+    // The restore the application performs after switching back to a model: the
+    // activation command and the expression command are queued together, so the
+    // expression command is deferred until the commit that cleared the display.
+    let switch_sequence = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
+            "keyboard",
+        ))))
+        .expect("second activation command");
+    let restore_sequence = client
+        .send(RuntimeCommand::SetExpression(chosen.clone()))
+        .expect("restore the remembered expression");
+    let switched = wait_for_prepared_model(&client, &consumer, switch_sequence);
+    let restored = report_model_prepared(&client, &consumer, &switched);
+    assert_eq!(restored.active_expression, None);
+    let applied = client
+        .wait_for_command(restore_sequence, TIMEOUT)
+        .expect("restored expression applied");
+    assert_eq!(
+        applied
+            .active_expression
+            .as_ref()
+            .map(|active| &active.expression),
+        Some(&chosen),
+        "the restored face is applied rather than taken straight back off"
+    );
+
+    owner.shutdown(TIMEOUT).expect("runtime shutdown");
+}

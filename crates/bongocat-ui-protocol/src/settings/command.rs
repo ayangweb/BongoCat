@@ -158,6 +158,17 @@ pub enum SettingsCommand {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    /// Whether triggering the expression already showing turns it off.
+    ///
+    /// The switch alone, and it reaches the runtime as the same model settings the
+    /// page reads back: the runtime is what knows which expression is in effect,
+    /// so the service persists the choice and pushes the settings rather than
+    /// deciding the toggle itself.
+    SetToggleRepeatedExpression {
+        expected_config_revision: u64,
+        enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     /// The number of connected gamepads changed; the settings service
     /// reconciles the configured switch against the runtime's own answer.
     ///

@@ -400,6 +400,9 @@
         "remember_last_expression": {
           "label": "Remember the last expression of each model"
         },
+        "toggle_repeated_expression": {
+          "label": "Turn off an expression when triggered again"
+        },
         "random_behavior_mode": {
           "label": "Randomly play motions or expressions",
           "options": {
