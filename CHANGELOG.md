@@ -17,6 +17,7 @@
 - Fixed Windows controllers in Xbox-compatible mode pressing the wrong key image, leaving the cross keys unresponsive, and swapping the triggers with the right stick.
 - Fixed a Nintendo Switch controller in Switch mode making the model rapidly press every key on Windows.
 - Fixed the input method candidate window appearing in the wrong place while renaming a model in Settings with a Chinese, Japanese or Korean input method.
+- Fixed soft fringes and inconsistent edge quality around Windows model textures by matching the Web renderer's premultiplied-alpha filtering and high-DPI resize behavior.
 
 ### 🎨 Interface
 

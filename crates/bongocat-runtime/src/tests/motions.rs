@@ -1144,20 +1144,20 @@ fn a_restored_expression_is_never_read_as_a_repeat() {
         .wait_for_command(first_sequence, TIMEOUT)
         .expect("chosen expression active");
 
-    // The restore the application performs after switching back to a model: the
-    // activation command and the expression command are queued together, so the
-    // expression command is deferred until the commit that cleared the display.
+    // The application restores the remembered expression after switching back to
+    // a model. Wait for the commit before sending that follow-up command so this
+    // assertion observes the cleared model state rather than a later snapshot.
     let switch_sequence = client
         .send(RuntimeCommand::ActivateModel(Arc::new(preset_model(
             "keyboard",
         ))))
         .expect("second activation command");
-    let restore_sequence = client
-        .send(RuntimeCommand::SetExpression(chosen.clone()))
-        .expect("restore the remembered expression");
     let switched = wait_for_prepared_model(&client, &consumer, switch_sequence);
     let restored = report_model_prepared(&client, &consumer, &switched);
     assert_eq!(restored.active_expression, None);
+    let restore_sequence = client
+        .send(RuntimeCommand::SetExpression(chosen.clone()))
+        .expect("restore the remembered expression");
     let applied = client
         .wait_for_command(restore_sequence, TIMEOUT)
         .expect("restored expression applied");

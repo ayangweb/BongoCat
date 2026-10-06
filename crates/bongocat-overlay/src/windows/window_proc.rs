@@ -95,6 +95,35 @@ pub(crate) unsafe extern "system" fn window_proc(
         return unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
     }
     match message {
+        WM_DPICHANGED => {
+            // Per-monitor-V2 supplies a physical-pixel rectangle that keeps the
+            // window's logical size stable on the new display. Applying it here
+            // lets the session observe the new bounds and rebuild the swap chain
+            // before the next frame is drawn.
+            if lparam.0 != 0 {
+                // SAFETY: WM_DPICHANGED documents lParam as a pointer to a
+                // RECT that remains valid for the duration of this callback.
+                let suggested = unsafe { &*(lparam.0 as *const RECT) };
+                let width = suggested.right.saturating_sub(suggested.left);
+                let height = suggested.bottom.saturating_sub(suggested.top);
+                if width > 0 && height > 0 {
+                    // SAFETY: hwnd is the live window being dispatched and the
+                    // suggested rectangle is bounded by user32's DPI manager.
+                    let _ = unsafe {
+                        SetWindowPos(
+                            hwnd,
+                            None,
+                            suggested.left,
+                            suggested.top,
+                            width,
+                            height,
+                            SWP_NOACTIVATE | SWP_NOZORDER,
+                        )
+                    };
+                }
+            }
+            return LRESULT(0);
+        }
         WM_NCHITTEST => {
             // SAFETY: the callback receives a live HWND from user32 and only
             // reads its current extended style on the dispatch thread.
