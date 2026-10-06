@@ -46,6 +46,7 @@ pub(crate) fn snapshot(
         cursor_settings: SettingsCursorSettings::default(),
         gamepad_auto_switch: SettingsGamepadAutoSwitch::default(),
         remember_last_expression: false,
+        toggle_repeated_expression: false,
         logging: SettingsLogging::default(),
         shortcuts: SettingsShortcuts::default(),
         startup_item: SettingsStartupItemStatus::State(SettingsStartupItemState::Disabled),

@@ -400,6 +400,9 @@
         "remember_last_expression": {
           "label": "Ghi nhớ biểu cảm cuối cùng của mỗi mô hình"
         },
+        "toggle_repeated_expression": {
+          "label": "Tắt biểu cảm khi kích hoạt lại"
+        },
         "random_behavior_mode": {
           "label": "Phát ngẫu nhiên chuyển động hoặc biểu cảm",
           "options": {

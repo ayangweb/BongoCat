@@ -73,6 +73,20 @@ pub struct ModelConfig {
     /// preference. The recorded expressions themselves are kept either way, so
     /// turning this off stops the restore without discarding what is remembered.
     pub remember_last_expression: bool,
+    /// Whether triggering the expression that is already showing turns it off.
+    ///
+    /// An expression holds until something replaces it, so a repeat request for
+    /// the same one has always been a no-op. The legacy build made it a toggle —
+    /// asking for the face you are already wearing takes it off and the model
+    /// returns to its own default — and a product that cannot get back to the
+    /// default face without switching models cannot be corrected from the UI.
+    ///
+    /// Defaults to `false` because that is what this build has always done and a
+    /// user who relies on it must keep it; the field carries `#[serde(default)]`
+    /// so a configuration written before it existed still loads as the
+    /// non-toggling behavior rather than failing the strict v1 parse.
+    #[serde(default)]
+    pub toggle_repeated_expression: bool,
     /// The expression each model was last showing, one record per model.
     ///
     /// Expressions are per-model assets, so a name recorded for one model is

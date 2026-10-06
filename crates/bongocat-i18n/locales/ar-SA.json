@@ -400,6 +400,9 @@
         "remember_last_expression": {
           "label": "تذكّر آخر تعبير لكل نموذج"
         },
+        "toggle_repeated_expression": {
+          "label": "إيقاف التعبير عند تفعيله مرة أخرى"
+        },
         "random_behavior_mode": {
           "label": "تشغيل حركات أو تعابير عشوائيًا",
           "options": {

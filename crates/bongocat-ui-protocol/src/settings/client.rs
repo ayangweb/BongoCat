@@ -349,6 +349,20 @@ impl SettingsClient {
         .await
     }
 
+    /// Whether triggering the expression already showing turns it off.
+    pub async fn set_toggle_repeated_expression(
+        &self,
+        expected_config_revision: u64,
+        enabled: bool,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetToggleRepeatedExpression {
+            expected_config_revision,
+            enabled,
+            reply,
+        })
+        .await
+    }
+
     /// Tell the settings service that gamepad connectivity changed.
     ///
     /// The caller is the product frame source, which observes the runtime's

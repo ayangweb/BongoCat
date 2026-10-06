@@ -38,6 +38,7 @@ pub(crate) enum PendingOperation {
     CursorSettings,
     GamepadAutoSwitch,
     RememberLastExpression,
+    ToggleRepeatedExpression,
     StartupItem,
     ModelSelection,
     ModelDeletion,
@@ -155,6 +156,10 @@ pub(crate) enum SettingValue {
         settings: SettingsGamepadAutoSwitch,
     },
     RememberLastExpression {
+        expected_config_revision: u64,
+        enabled: bool,
+    },
+    ToggleRepeatedExpression {
         expected_config_revision: u64,
         enabled: bool,
     },

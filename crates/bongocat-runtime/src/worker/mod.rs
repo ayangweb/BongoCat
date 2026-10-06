@@ -628,7 +628,36 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                         }
                     }
                     WorkerCommand::Product(RuntimeCommand::SetExpression(expression)) => {
-                        if let Some(renderer) = &mut renderer {
+                        // Both trigger sources land here — the settings window's
+                        // preview button and a shortcut — so this is the one
+                        // place that can tell a repeat of the expression already
+                        // in effect from a first request for it. Turning that
+                        // repeat off is a configured behaviour rather than a
+                        // property of the model, and the model that is showing an
+                        // expression is the model the request is about: model
+                        // activation clears `active_expression` before any
+                        // deferred command runs, so a remembered expression
+                        // restored onto a fresh model can never read as a repeat.
+                        let repeats_the_active_expression = model_settings
+                            .toggle_repeated_expression
+                            && active_expression
+                                .as_ref()
+                                .is_some_and(|active| active.expression == expression);
+                        if repeats_the_active_expression {
+                            if let Some(renderer) = &mut renderer {
+                                renderer.clear_expression(clock.now());
+                            }
+                            // The user is undoing a choice, so this deliberately
+                            // writes no `user_expression_memory`: remembering an
+                            // expression that is no longer on screen would
+                            // restore the face the user just turned off.
+                            active_expression = None;
+                            publish(&snapshot, |current| {
+                                current.active_expression = None;
+                                current.last_command_failure = None;
+                                current.last_command_sequence = Some(sequence);
+                            });
+                        } else if let Some(renderer) = &mut renderer {
                             match renderer.set_expression(&expression, clock.now()) {
                                 Ok(()) => {
                                     let active = ActiveExpressionSnapshot {

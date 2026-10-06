@@ -268,6 +268,10 @@
         "show_all_pressed_keys": {
           "default": false,
           "type": "boolean"
+        },
+        "toggle_repeated_expression": {
+          "default": false,
+          "type": "boolean"
         }
       },
       "required": [
