@@ -39,7 +39,7 @@ async-channel = "=2.5.0"
 cargo-packager = { version = "=0.11.8", default-features = false, features = ["rustls-tls"] }
 cargo-packager-updater = { version = "=0.2.3", default-features = false, features = ["rustls-tls"] }
 clap = { version = "=4.6.7", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
-dirs = "=6.0.0"
+dirs = "=7.0.0"
 embed-resource = "=3.0.11"
 flate2 = "=1.1.10"
 global-hotkey = "=0.8.0"
@@ -47,9 +47,9 @@ gpui-kit = "=0.7.1"
 gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "c7e97f54e9e4b10ff89d3527560a22f6817329ea", default-features = false }
 rust-i18n = "=4.2.4"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
-libc = "=0.2.189"
-muda = { version = "=0.20.0", default-features = false }
-opener = { version = "=0.8.5", features = ["reveal"] }
+libc = "=0.2.190"
+muda = { version = "=0.21.0", default-features = false }
+opener = { version = "=0.9.0", features = ["reveal"] }
 oxipng = { version = "=10.2.1", default-features = false }
 permission-flow = { git = "https://github.com/ayangweb/permission-flow", rev = "fad0354d960cf775ac332e6375916f7cc6424c7b" }
 plist = "=1.10.1"
@@ -64,7 +64,7 @@ tar = "=0.4.46"
 tempfile = "=3.27.0"
 thiserror = "=2.0.21"
 time = { version = "=0.3.55", default-features = false, features = ["formatting", "macros", "parsing"] }
-tray-icon = { version = "=0.25.0", default-features = false }
+tray-icon = { version = "=0.26.0", default-features = false }
 url = "=2.5.8"
 walkdir = "=2.5.0"
 zip = { version = "=8.6.0", default-features = false }
