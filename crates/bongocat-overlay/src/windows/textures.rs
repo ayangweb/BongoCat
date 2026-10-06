@@ -21,6 +21,11 @@ pub(crate) struct TextureResource {
 pub(crate) struct GpuModel {
     pub(crate) textures: BTreeMap<TextureId, TextureResource>,
     pub(crate) key_textures: BTreeMap<KeyAssetId, TextureResource>,
+    /// One quad per key image, because a legacy key image is authored in
+    /// BongoCatMver's window frame rather than in the canvas frame the model is
+    /// drawn in (see [`legacy_key_overlay_bounds`]). Key images that are already
+    /// in the canvas frame — every model the product ships — get the canvas quad.
+    pub(crate) key_overlay_buffers: BTreeMap<KeyAssetId, ID3D11Buffer>,
     pub(crate) background: Option<TextureResource>,
     pub(crate) background_vertex_buffer: ID3D11Buffer,
     pub(crate) background_index_buffer: ID3D11Buffer,
@@ -82,24 +87,18 @@ impl GpuModel {
             })
             .transpose()?;
         let canvas_bounds = ModelBounds::from_canvas(snapshot.canvas);
-        let background_vertices = [
-            bongocat_render::Vertex {
-                position: [canvas_bounds.min_x, canvas_bounds.min_y],
-                uv: [0.0, 0.0],
-            },
-            bongocat_render::Vertex {
-                position: [canvas_bounds.max_x, canvas_bounds.min_y],
-                uv: [1.0, 0.0],
-            },
-            bongocat_render::Vertex {
-                position: [canvas_bounds.max_x, canvas_bounds.max_y],
-                uv: [1.0, 1.0],
-            },
-            bongocat_render::Vertex {
-                position: [canvas_bounds.min_x, canvas_bounds.max_y],
-                uv: [0.0, 1.0],
-            },
-        ];
+        let mut key_overlay_buffers = BTreeMap::new();
+        for asset in &resources.key_assets {
+            let vertices = quad_vertices(legacy_key_overlay_bounds(
+                canvas_bounds,
+                asset.width,
+                asset.height,
+            ));
+            let buffer =
+                unsafe { create_buffer(device, &vertices, D3D11_BIND_VERTEX_BUFFER.0 as u32)? };
+            key_overlay_buffers.insert(asset.id, buffer);
+        }
+        let background_vertices = quad_vertices(canvas_bounds);
         let background_indices = [0_u16, 1, 2, 0, 2, 3];
         let mut meshes = Vec::with_capacity(snapshot.drawables.len());
         for drawable in &snapshot.drawables {
@@ -158,6 +157,7 @@ impl GpuModel {
         Ok(Self {
             textures,
             key_textures,
+            key_overlay_buffers,
             background,
             background_vertex_buffer: unsafe {
                 create_buffer(

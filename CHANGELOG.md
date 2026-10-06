@@ -18,6 +18,7 @@
 - Fixed a Nintendo Switch controller in Switch mode making the model rapidly press every key on Windows.
 - Fixed the input method candidate window appearing in the wrong place while renaming a model in Settings with a Chinese, Japanese or Korean input method.
 - Fixed soft fringes and inconsistent edge quality around Windows model textures by matching the Web renderer's premultiplied-alpha filtering and high-DPI resize behavior.
+- Fixed BongoCatMver models whose key images are narrower than they are tall drawing every pressed key off to the right of the key it belongs to, so the paws and the key caps now land on the model's own keyboard.
 
 ### 🎨 Interface
 
