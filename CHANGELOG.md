@@ -15,6 +15,7 @@
 - Fixed a second gamepad's sticks and triggers doing nothing while another gamepad was connected.
 - Fixed Windows controllers in Xbox-compatible mode pressing the wrong key image, leaving the cross keys unresponsive, and swapping the triggers with the right stick.
 - Fixed a Nintendo Switch controller in Switch mode making the model rapidly press every key on Windows.
+- Fixed the input method candidate window appearing in the wrong place while renaming a model in Settings with a Chinese, Japanese or Korean input method.
 
 ## 2.1.1 - 2026-10-03
 
