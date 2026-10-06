@@ -112,5 +112,8 @@ snapshot 只带**当前模型**的已命名行，由配置的 catalog entry 过�
     含控制字符、同一行为两行、非法模型 id）。
 - 共享 fixture 只有 `default.json` 增加该键：新增字段可选，其余 48 份保持没有该键的样子，正是它们要验证的
   「旧文档仍能读取」。
+- `spikes/config-store` 保留自己的 `NativeConfig` 副本，并断言它序列化后与 `shared/config/fixtures/
+  default.json` 逐字相同，所以产品默认值新增字段时这里也必须同步。`just check` 不覆盖 `spikes/`，
+  漏掉它只有一个 CI job 会报，所以它是单独写的。
 - 未运行实机验证：只在本机（macOS）跑了 `just check` 与 `tools/` 下的校验脚本，没有做 macOS 或 Windows
   实机 smoke。弹框在 800×600 与 Windows 125/150/200% 下的观感、以及标签作为入口的可发现性需要实机确认。
