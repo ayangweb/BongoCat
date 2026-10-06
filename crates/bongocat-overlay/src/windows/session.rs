@@ -324,6 +324,14 @@ impl ProductOverlaySession {
                 "runtime stopped while the product overlay was active",
             ));
         }
+        // The pointer capture mode is read fresh every frame and pushed to the
+        // input service, which is the only component that sees the device's
+        // relative motion. A plain store is enough: the worker re-reads it on
+        // its next packet, so a missed frame costs one sample and the next one
+        // restores it.
+        if let Some(service) = &self.input_service {
+            service.set_force_move(runtime_snapshot.cursor_settings.force_move);
+        }
         let next_options = self
             .options
             .with_runtime_settings(runtime_snapshot.overlay_settings);
@@ -390,6 +398,7 @@ impl ProductOverlaySession {
             runtime_snapshot.cursor.sample,
             runtime_snapshot.input.last_input_sequence,
             runtime_snapshot.gamepad_axis_transport.published,
+            runtime_snapshot.input.pressed_modifiers,
             runtime_snapshot.platform_input.service_status == PlatformInputServiceStatus::Running,
         )?;
         self.options.maximum_fps = runtime_snapshot.maximum_fps;
@@ -564,9 +573,16 @@ impl ProductOverlaySession {
         cursor: Option<CursorSample>,
         last_input_sequence: Option<u64>,
         gamepad_axis_published: u64,
+        pressed_modifiers: PressedModifiers,
         input_running: bool,
     ) -> Result<(), OverlayError> {
         let bounds = self.overlay.window.bounds()?;
+        // Holding the configured modifier hands the pointer back to the user: the
+        // window stops passing events through and stops fading out, which is the
+        // only way to reach a cat that is configured to be invisible. The hold is
+        // read fresh every frame, so releasing the key restores both settings on
+        // the next one without either of them being touched.
+        let held = options.hold_modifier_pressed(pressed_modifiers);
         // A right-button resize drag keeps the overlay visible: the hover hide
         // fades the window out and starts passing pointer events through, which
         // would end the drag the window itself is running.
@@ -576,7 +592,7 @@ impl ProductOverlaySession {
             });
         let now = self.session_started.elapsed();
         let fade = self.hover.observe(PointerHoverObservation {
-            enabled: options.hide_on_pointer_hover && input_running,
+            enabled: options.hide_on_pointer_hover && input_running && !held,
             delay: Duration::from_millis(u64::from(options.hide_on_pointer_hover_delay_ms)),
             pointer_inside,
             now,
@@ -592,7 +608,7 @@ impl ProductOverlaySession {
         let alpha = f32::from(options.opacity_percent) / 100.0 * (fade * idle_fade) as f32;
         self.overlay.apply_presentation(
             alpha,
-            options.click_through || self.hover.hidden() || self.idle.hidden(),
+            (options.click_through && !held) || self.hover.hidden() || self.idle.hidden(),
         )?;
         Ok(())
     }

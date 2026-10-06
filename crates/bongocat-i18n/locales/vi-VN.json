@@ -354,6 +354,14 @@
       "click_through": {
         "label": "Chuột xuyên qua cửa sổ"
       },
+      "hold_modifier_to_interact": {
+        "label": "Giữ phím sửa để tương tác",
+        "recording": "Nhấn để ghi lại phím sửa",
+        "record_placeholder": "Nhấp chuột để ghi lại phím sửa",
+        "side_left": "Trái",
+        "side_right": "Phải",
+        "description": "Khi giữ phím này, \"Chuột xuyên qua cửa sổ\" và \"Ẩn khi rê chuột\" tạm thời không có hiệu lực."
+      },
       "keep_inside_screen": {
         "label": "Giữ trong màn hình"
       },
@@ -418,6 +426,10 @@
         },
         "ignore_mouse_input": {
           "label": "Bỏ qua đầu vào chuột"
+        },
+        "force_move": {
+          "label": "Buộc di chuyển chuột",
+          "description": "Vẫn theo dõi chuột trong các ứng dụng chiếm giữ con trỏ, chẳng hạn như trò chơi toàn màn hình."
         }
       },
       "keyboard": {

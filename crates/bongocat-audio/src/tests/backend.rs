@@ -3,6 +3,28 @@
 use super::*;
 
 #[test]
+#[ignore = "requires a real default audio output device"]
+fn product_backend_releases_output_on_stop_and_reopens_for_playback() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../resources/models/standard/live2d_motion1.flac");
+    let mut backend = SystemAudioBackend::default();
+    backend.prepare(std::slice::from_ref(&path)).unwrap();
+    for _ in 0..2 {
+        backend.play(&path, MotionAudioVolume::FULL).unwrap();
+        assert!(backend.output.is_some());
+        assert!(backend.stop_for_replacement());
+        assert!(
+            backend.output.is_some(),
+            "replacement should reuse the device"
+        );
+        backend.play(&path, MotionAudioVolume::FULL).unwrap();
+        assert!(backend.stop());
+        assert!(backend.output.is_none(), "stopping must close the device");
+        assert!(!backend.is_playing());
+    }
+}
+
+#[test]
 fn backend_failure_is_observable_and_later_play_recovers() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let service = MotionAudioService::start_with_backend(

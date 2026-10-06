@@ -2,6 +2,124 @@
 
 use super::*;
 
+/// The modifier projection answers per physical key, and nothing else does.
+///
+/// The counts beside it cannot say which shift is down, and the model projection
+/// cannot either: it drops any key the current model's artwork cannot draw, and
+/// modifiers are exactly the keys a model leaves out. So this is the only place
+/// the overlay can learn that the key the user configured is being held.
+#[test]
+fn the_pressed_modifier_projection_keeps_the_two_sides_apart() {
+    let mut state = InputState::default();
+    assert!(
+        state.snapshot().pressed_modifiers.is_empty(),
+        "an empty pressed set holds no modifier"
+    );
+
+    let right_shift = InputControl::Key(ModifierKey::RightShift.physical_key());
+    state.apply(edge(0, 0, right_shift, InputEdge::Down));
+    let held = state.snapshot().pressed_modifiers;
+    assert!(held.holds(ModifierKey::RightShift));
+    assert!(
+        !held.holds(ModifierKey::LeftShift),
+        "the right shift must not answer for the left one"
+    );
+    assert_eq!(state.snapshot().pressed_key_count, 1);
+
+    // A key that is not a modifier contributes to the count and nothing else.
+    state.apply(edge(1, 1, A, InputEdge::Down));
+    assert_eq!(state.snapshot().pressed_key_count, 2);
+    assert_eq!(state.snapshot().pressed_modifiers, held);
+
+    // Both sides at once are two keys, and the projection says so rather than
+    // collapsing them the way a modifier bitmask would.
+    state.apply(edge(
+        2,
+        2,
+        InputControl::Key(ModifierKey::LeftShift.physical_key()),
+        InputEdge::Down,
+    ));
+    let both = state.snapshot().pressed_modifiers;
+    assert!(both.holds(ModifierKey::LeftShift) && both.holds(ModifierKey::RightShift));
+    assert_eq!(
+        both.iter().collect::<Vec<_>>(),
+        vec![ModifierKey::LeftShift, ModifierKey::RightShift],
+        "read back in keyboard order, so a two-modifier hold resolves the same way every time"
+    );
+
+    state.apply(edge(3, 3, right_shift, InputEdge::Up));
+    let after_release = state.snapshot().pressed_modifiers;
+    assert!(
+        !after_release.holds(ModifierKey::RightShift),
+        "a release ends that side's hold, which is what makes it a hold"
+    );
+    assert!(
+        after_release.holds(ModifierKey::LeftShift),
+        "and leaves the other side alone"
+    );
+    assert_eq!(state.snapshot().pressed_key_count, 2);
+
+    state.apply(edge(
+        4,
+        4,
+        InputControl::Key(ModifierKey::LeftShift.physical_key()),
+        InputEdge::Up,
+    ));
+    assert_eq!(state.snapshot().pressed_modifiers, PressedModifiers::NONE);
+    assert_eq!(state.snapshot().pressed_key_count, 1);
+}
+
+/// A reset has to clear the projection for the same reason it clears the pressed
+/// set: a modifier left "held" after a lock, a sleep or a device removal would
+/// keep the overlay reachable with no key under the user's fingers.
+#[test]
+fn a_reset_clears_the_pressed_modifier_projection() {
+    let mut state = InputState::default();
+    state.apply(edge(0, 0, ALT, InputEdge::Down));
+    assert!(
+        state
+            .snapshot()
+            .pressed_modifiers
+            .holds(ModifierKey::LeftAlt)
+    );
+
+    state.force_reset(InputResetReason::SessionLock);
+    assert_eq!(state.snapshot().pressed_modifiers, PressedModifiers::NONE);
+}
+
+/// The two documented routes to "the configured key is not held" both have to
+/// leave the projection empty: a release that never arrived, and a reconcile that
+/// confirms the key is gone. This is the issue #47 shape applied to the hold.
+#[test]
+fn a_reconciled_release_ends_the_modifier_hold() {
+    let mut state = InputState::default();
+    state.apply(edge(0, 0, CTRL, InputEdge::Down));
+    let mut confirmations = 0_u8;
+    while state
+        .snapshot()
+        .pressed_modifiers
+        .holds(ModifierKey::LeftControl)
+    {
+        state.apply(SequencedInputEvent {
+            sequence: u64::from(confirmations) + 1,
+            event: InputEvent::Reconcile {
+                pressed: BTreeSet::new(),
+                at: MonotonicMillis::new(u64::from(confirmations) + 1),
+            },
+        });
+        confirmations += 1;
+        assert!(
+            confirmations < 8,
+            "a reconcile that never clears the hold would strand the overlay"
+        );
+    }
+    assert!(
+        confirmations > 1,
+        "the policy asks for more than one confirmation, so one missing release does not end the hold"
+    );
+    assert!(state.snapshot().diagnostics.reconciled_release > 0);
+}
+
 #[test]
 fn model_snapshot_applies_bindings_without_exposing_pressed_keys() {
     let right = PhysicalKey::from_hid_usage(0x4f);

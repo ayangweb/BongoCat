@@ -932,6 +932,28 @@ impl SettingsView {
         );
     }
 
+    pub(super) fn set_cursor_settings(
+        &mut self,
+        settings: SettingsCursorSettings,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::CursorSettings,
+            Some(SettingValue::CursorSettings {
+                expected_config_revision,
+                settings,
+            }),
+            cx,
+        );
+    }
+
     pub(super) fn set_gamepad_dead_zone_value(
         &mut self,
         stick: bool,

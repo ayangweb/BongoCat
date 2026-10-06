@@ -28,6 +28,13 @@ pub(crate) fn model_switch_window_bounds(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySessionOptions {
     pub click_through: bool,
+    /// The physical modifier key whose hold gives the pointer back to the user.
+    ///
+    /// Read every frame against the runtime's pressed modifiers, never cached:
+    /// the whole point is that the hold ends the moment the key comes up, and a
+    /// cached answer would leave the overlay interactive after the user let go.
+    /// `None` means no key does this.
+    pub hold_modifier_to_interact: Option<ModifierKey>,
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
@@ -78,6 +85,7 @@ impl OverlaySessionOptions {
     pub const fn with_runtime_settings(self, settings: OverlaySettings) -> Self {
         Self {
             click_through: settings.click_through,
+            hold_modifier_to_interact: settings.hold_modifier_to_interact,
             always_on_top: settings.always_on_top,
             scale_percent: settings.scale_percent,
             opacity_percent: settings.opacity_percent,
@@ -99,12 +107,27 @@ impl OverlaySessionOptions {
             taskbar_icon_visible: self.taskbar_icon_visible,
         }
     }
+
+    /// Whether the configured hold modifier is down, and the overlay should
+    /// therefore behave as if pointer routing and the hover hide were off.
+    ///
+    /// Both platform sessions read this in the same place, so "holding the key
+    /// gives the pointer back" is one rule rather than two copies of it. It is a
+    /// question about the current frame, never a latch: letting go of the key
+    /// restores the configured behaviour on the next frame.
+    pub const fn hold_modifier_pressed(self, pressed_modifiers: PressedModifiers) -> bool {
+        match self.hold_modifier_to_interact {
+            Some(modifier) => pressed_modifiers.holds(modifier),
+            None => false,
+        }
+    }
 }
 
 impl Default for OverlaySessionOptions {
     fn default() -> Self {
         Self {
             click_through: false,
+            hold_modifier_to_interact: None,
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,

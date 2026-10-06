@@ -354,6 +354,14 @@
       "click_through": {
         "label": "Mouse click-through"
       },
+      "hold_modifier_to_interact": {
+        "label": "Hold a modifier key to interact",
+        "recording": "Press to record a modifier key",
+        "record_placeholder": "Click to record a modifier key",
+        "side_left": "Left",
+        "side_right": "Right",
+        "description": "While held, \"Mouse click-through\" and \"Hide on mouse hover\" are temporarily disabled."
+      },
       "keep_inside_screen": {
         "label": "Keep on screen"
       },
@@ -418,6 +426,10 @@
         },
         "ignore_mouse_input": {
           "label": "Ignore mouse input"
+        },
+        "force_move": {
+          "label": "Force mouse movement",
+          "description": "Keep following the mouse in applications that capture the pointer, such as full-screen games."
         }
       },
       "keyboard": {

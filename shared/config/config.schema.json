@@ -123,6 +123,12 @@
       "properties": {
         "gamepad": {
           "$ref": "#/$defs/GamepadInputConfig"
+        },
+        "mouse": {
+          "$ref": "#/$defs/MouseInputConfig",
+          "default": {
+            "force_move": false
+          }
         }
       },
       "required": [
@@ -335,6 +341,29 @@
       ],
       "type": "string"
     },
+    "ModifierKey": {
+      "enum": [
+        "left_control",
+        "left_shift",
+        "left_alt",
+        "left_meta",
+        "right_control",
+        "right_shift",
+        "right_alt",
+        "right_meta"
+      ],
+      "type": "string"
+    },
+    "MouseInputConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "force_move": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "OverlayConfig": {
       "additionalProperties": false,
       "properties": {
@@ -369,6 +398,17 @@
           "maximum": 60,
           "minimum": 0,
           "type": "integer"
+        },
+        "hold_modifier_to_interact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModifierKey"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "keep_inside_screen": {
           "type": "boolean"

@@ -347,6 +347,20 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             current.last_command_sequence = Some(sequence);
                         });
                     }
+                    WorkerCommand::Product(RuntimeCommand::SetCursorSettings(settings)) => {
+                        // Nothing in the worker consumes this: the pointer is
+                        // captured on the platform thread, and the overlay
+                        // session reads the value back out of the snapshot and
+                        // pushes it down. Publishing it here is what makes the
+                        // runtime the single source of truth for the setting
+                        // rather than a second copy the overlay would have to
+                        // fetch from the configuration.
+                        publish(&snapshot, |current| {
+                            current.cursor_settings = settings;
+                            current.last_command_failure = None;
+                            current.last_command_sequence = Some(sequence);
+                        });
+                    }
                     WorkerCommand::Product(RuntimeCommand::ResetInput(reason)) => {
                         input_state.force_reset(reason);
                         gamepad_axis_values.clear();

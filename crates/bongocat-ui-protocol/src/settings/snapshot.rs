@@ -60,6 +60,7 @@ pub struct SettingsSnapshot {
     pub random_behavior: SettingsRandomBehavior,
     pub model_settings: SettingsModelSettings,
     pub gamepad_axis_settings: SettingsGamepadAxisSettings,
+    pub cursor_settings: SettingsCursorSettings,
     /// The configured gamepad-connection model switch. The settings service is
     /// what acts on it, so the view only reads the gate and the two targets.
     pub gamepad_auto_switch: SettingsGamepadAutoSwitch,
@@ -164,6 +165,14 @@ pub struct SettingsGamepadAxisSettings {
     pub trigger_dead_zone_percent: u8,
 }
 
+/// How the pointer is read before any model sees it.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SettingsCursorSettings {
+    /// Follow relative device motion instead of the absolute cursor position,
+    /// so the model keeps following the pointer in applications that capture it.
+    pub force_move: bool,
+}
+
 /// Choosing the shown model from gamepad connection state.
 ///
 /// `connected_model` is the model the product shows while at least one gamepad
@@ -189,6 +198,12 @@ impl Default for SettingsGamepadAxisSettings {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SettingsOverlay {
     pub click_through: bool,
+    /// The physical modifier key whose hold gives the pointer back to the user.
+    ///
+    /// The overlay stops passing pointer events through and stops hiding while
+    /// this key is down, so a cat that is configured to be unreachable can still
+    /// be moved. `None` means no key does this.
+    pub hold_modifier_to_interact: Option<ModifierKey>,
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
@@ -216,6 +231,7 @@ impl Default for SettingsOverlay {
     fn default() -> Self {
         Self {
             click_through: false,
+            hold_modifier_to_interact: None,
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,

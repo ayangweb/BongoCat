@@ -89,6 +89,11 @@ Runtime 使用布局无关的稳定物理键名。左右修饰键必须区分，
 
 双平台手柄 adapter 固定使用 `ayangweb/gilrs`：Windows 为 WGI，macOS 为 IOHID。adapter 关闭 gilrs 默认 jitter/dead-zone filter、force feedback 和环境 mapping，保留 fork 内置 SDL mapping，并使用 gilrs 自带 D-pad axis-to-button 转换。gilrs 的 `LeftTrigger`/`RightTrigger` 位置映射为项目 shoulder，`LeftTrigger2`/`RightTrigger2` 的连续值同时产生项目 trigger button edge 与 trigger axis；后者按产品 `>= 0.5` 判定，不使用 gilrs 默认阈值代替。非有限或越界 trigger 值在改变 pressed state 前拒绝并计数。backend device id 不进入项目协议；adapter 分配最多四个 `device_id`，每次连接/重连通过 axis producer 获得新 generation。全局 Reset 成功后以同一 generation 重播 connection、gilrs 已缓存的当前 held button 和六轴，不重新分配连接；进程启动/重连时的 authoritative initial state 仍需 gilrs backend 提供。
 
+六个轴按 `{device_id, connection_generation, axis}` 分别取**最新的样本**，不先挑一个
+connection 再只投影它的六个值。多个手柄同时连接时，后动的那只在它动过的轴上立即生效，
+同一轴上最后一次移动的手柄获胜，与重构前把全部手柄合并进一份同名状态一致（ADR-0082）。
+摇杆回到中心读到 `0`，不是停在上一个非零值。
+
 ## 按键图片词表
 
 键盘键与手柄按钮共用同一个按键层：写入 render snapshot 的 `KeyPress` 携带带标签的身份
@@ -105,7 +110,17 @@ Runtime 使用布局无关的稳定物理键名。左右修饰键必须区分，
   由导入归一化改写。
 - 按钮的左右手由模型自身提供图片的目录决定：`left-keys` 是左爪，`right-keys` 是右爪。模型没有
   该按钮的图片时按钮保持惰性，不产生爪子动作也不产生按键层。
-- `left_stick`/`right_stick` 额外驱动摇杆参数，与爪子状态互相独立。
+- `left_stick`/`right_stick` 额外驱动摇杆参数，与按键图层的归属互相独立：
+  `CatParamStickLeftDown`/`CatParamStickRightDown` 只表示摇杆键被按下，
+  `CatParamStickLX/LY/RX/RY` 只表示位置。
+- 摇杆可见性由模型自己的参数决定：`CatParamStickShowLeftHand`/`CatParamStickShowRightHand`
+  在该侧摇杆**偏离中心或摇杆键按下**时为 1，其余为 0，条件取死区之后的轴值，因此静止的
+  摇杆不会因硬件噪声闪现。同一个条件也决定该侧爪子：`CatParamLeftHandDown` /
+  `CatParamRightHandDown` 在该侧摇杆使用时落下，但**只在模型声明了对应的
+  `CatParamStickShow*` 时**——没有摇杆美术的模型不会为一件永远不出现的东西落爪
+  （ADR-0082，ADR-0042 的同一规则）。
+- `model.ignore_gamepad` 打开时，六个轴投影为零、摇杆键不贡献 `*Stick*Down`、摇杆不贡献
+  可见性与爪子。
 
 
 macOS listen-only tap 必须创建在 HID 层 head 位置（`kCGHIDEventTap` + `kCGHeadInsertEventTap`，与 rdev 的 listen 一致）；实测 macOS 26 的 session tail 位置收不到右 Shift 的释放 `FlagsChanged`，HID head 位置能收到全部修饰键的完整事件对。
@@ -125,7 +140,7 @@ decoder 状态只解决平台 packet 歧义，不是 runtime pressed state，并
 只有生成 `ModelInputSnapshot` 时才应用门禁：
 
 - 忽略键盘时，不把键盘按键加入 `key_presses`，也不让键盘绑定贡献 `left_hand_down` 或 `right_hand_down`。
-- 忽略手柄时，不把手柄按钮加入 `key_presses`，不让手柄按钮贡献手部或摇杆按下状态，并把六个摇杆/扳机轴投影为零。
+- 忽略手柄时，不把手柄按钮加入 `key_presses`，不让手柄按钮贡献手部或摇杆按下状态，把六个摇杆/扳机轴投影为零，并且不让摇杆贡献 `CatParamStickShow*` 或爪子——轴为零因此摇杆本来就不在用，两个来源的手部合并也拿不到它。
 - 手部状态按来源分别计算后再合并：`allowed_keyboard_hand || allowed_gamepad_hand`。因此忽略键盘不会误清除同时按下的手柄贡献，反之亦然。
 - 解除门禁只重新读取既有 pressed state，不重新制造边沿；后续正常释放仍由可靠输入队列处理。
 
@@ -134,7 +149,9 @@ decoder 状态只解决平台 packet 歧义，不是 runtime pressed state，并
 ## 手部状态
 
 模型资源可以把多个键映射到同一只手。任意映射到该手的 pressed key 都令对应 hand-down 参数为 true；
-这一条不随按键层的显示模式变化。
+这一条不随按键层的显示模式变化。手柄摇杆是该规则在模型参数上的对应物：模型声明了
+`CatParamStickShowLeftHand`/`CatParamStickShowRightHand` 时，该侧摇杆偏离中心或摇杆键按下
+也令同一侧的 hand-down 参数为 true（ADR-0082）。
 
 按键层画几张图由 `model.show_all_pressed_keys` 决定，两种模式共用同一份 pressed state 和同一套
 hand 归属：

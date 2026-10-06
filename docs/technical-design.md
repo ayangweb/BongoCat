@@ -101,13 +101,13 @@ GPUI 用于设置窗口、模型管理、快捷键编辑、权限状态、更新
 
 GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 Live2D 纹理合成路径。因此：
 
-- 正式 workspace 只直接依赖 crates.io 的 `gpui-kit = "=0.7.0"` 并提交 `Cargo.lock`；GPUI Kit
+- 正式 workspace 只直接依赖 crates.io 的 `gpui-kit = "=0.7.1"` 并提交 `Cargo.lock`；GPUI Kit
   是唯一直接 GPUI 依赖，其 suite 内五个 package 都从同一 registry 版本解析。禁止另行声明或替换
   `gpui`、platform、component 和 assets。
 - v0.7.0 是首个同时发布 `SettingGroup::variant()` 与 `Popover::arrow()` 的 release，此前为拿到
   这两项能力而固定的 `longbridge/gpui-kit` git revision 已删除，`deny.toml` 不再放行该仓库。
-  GPUI Kit 仍通过 crates.io 的 `gpui-pre 0.3.7` 同步包提供元数据对应 Zed `gpui 0.2.2` 的整套
-  GPUI crate，并把这套家族精确 pin 在 `=0.3.7`。
+  GPUI Kit 仍通过 crates.io 的 `gpui-pre 0.3.8` 同步包提供元数据对应 Zed `gpui 0.2.2` 的整套
+  GPUI crate，并把这套家族精确 pin 在 `=0.3.8`。
 - 不自动跟随 Zed main，不直接依赖 Zed 应用内部 UI crate。
 - 以 `gpui_kit::component` 提供的主题和基础组件为 design system 基础；窗口使用其官方
   `Root`，图标使用 `gpui_kit::assets`，项目只保留领域适配、产品 token 覆盖和组件库未覆盖
@@ -391,6 +391,13 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
 - Key/button down/up、设备连接和 command 必须可靠、有序；溢出是可观测错误，不能静默丢弃。
 - 可靠队列溢出时必须清空无法证明顺序的缓存，并在队首注入 `Reset`；原始失败 item 返回 producer，溢出、恢复和被清理 item 数量进入诊断 snapshot。
 - 鼠标移动和摇杆轴可以合并为最新值，不能阻塞边沿事件。
+- `input.mouse.force_move` 打开时，平台 adapter 不发布绝对光标位置，而是把设备报告的相对位移
+  累加成一个位置再发布（`CursorMotionAccumulator`）：以前台应用捕获指针、把光标钉在一处时，
+  绝对位置不再变化但设备仍在报告每次移动，按绝对位置跟随的模型会停住。累加器以绝对位置为种子，
+  在第一个采样和 viewport 变化时重新对齐，并夹在该 viewport 内；开启与关闭、以及输入 Reset
+  都清空累加值。累加在平台线程完成而不是 runtime：`CursorProducer` 是 latest-value 通道，跨两次
+  发布之间的位移必须在发布前合并，否则被合并掉的采样会连同位移一起丢失。累加值仍走同一条
+  latest-value 通道和同一套平滑，因此 runtime、renderer 和 `ModelSettings` 都不知道这个开关存在。
 - runtime 在独立 latest-value 通道之后按可注入单调时钟平滑光标位置；以 60 FPS 为基准每帧
   保留 `0.75` 的剩余距离，并在逻辑坐标距离小于 `0.5` 时收敛到目标。首个样本和显示器
   viewport 变化直接对齐目标，避免跨显示器插值使用错误坐标系；renderer 只消费平滑后的参数。
@@ -399,6 +406,14 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   adapter 关闭默认 jitter/dead-zone filter 和环境 mapping，只负责 fork mapping 后的完整范围值、
   trigger 连续值与无效值诊断，不把设备默认 dead-zone 写入共享协议。轴值随后以
   `ModelInputSnapshot` 的不可变字段投影给 renderer。
+- 手柄六个轴按 `{device_id, connection_generation, axis}` 分别取最新样本，不先挑一个
+  connection 再只投影它的六个值；多手柄同时连接时后动的那只在它动过的轴上立即生效，回中
+  读到 0（ADR-0082，与重构前合并全部手柄的同名轴一致）。
+- `CatParamStickShowLeftHand`/`CatParamStickShowRightHand` 是模型声明的摇杆可见性，由
+  `apply_model_input` 写入：该侧摇杆偏离中心（死区之后）或摇杆键按下即为 1。同一个条件也
+  让该侧 hand-down 落下，但只在模型声明了该参数时——把 ADR-0042 的「缺图不动爪」从按键图
+  片推广到摇杆美术，使键盘/鼠标模型上的摇杆完全惰性。三个事实仍互相独立：`*Stick*Down` 只
+  表示摇杆键，`CatParamStickL*`/`R*` 只表示位置（ADR-0082）。
 - 手柄连接状态的事实来源只有 runtime 的 `InputState`：`RuntimeSnapshot::input` 的
   `connected_gamepad_count` 是上层唯一可读的形式（ADR-0071）。产品 frame source 每帧已经读取
   该 snapshot，因此在「无手柄 ↔ 至少一个手柄」跨帧变化时向 settings service 发送一次无载荷
@@ -548,7 +563,18 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   直接展示主题与语言，不再重复同名分组；Model library 单独展示模型卡片，Model behavior 单独展示模型镜像、动作音效，以及随机播放内容的模式下拉（关闭 / 仅表情 / 仅动作 / 表情和动作，ADR-0072）和它控制的间隔，模型行为快捷键仍留在 Shortcuts；Input & interaction 按 Mouse、Keyboard、
   Gamepad 分组；Gamepad 分组末尾是「连接或断开手柄时自动切换模型」门禁开关及其
   连接/断开两个模型下拉（ADR-0071）；App & system 按 Startup & desktop、Updates、Logging 分组。Updates、Logging 与 Model window 的设置项只保留标题和控件，
-  不显示重复描述。Model window 继续按 Window behavior、Window appearance、Window performance 分组。About 的
+  不显示重复描述。Model window 继续按 Window behavior、Window appearance、Window performance 分组；
+  「按住修饰键进行交互」的录入控件是 Window behavior 分组的**最后一行**（ADR-0080）。它排最后不是随意的：
+  这一行是对另外两行的修饰而不是它们之中的一行，而任何线性位置都无法让它同时挨着那两行——鼠标穿透在
+  第三行、鼠标悬停时隐藏在第六行，中间还隔着「保持在屏幕内」。放在整组之后，它读作对上方设置的一条附注；
+  撤销型修饰出现在被修饰项之后，而不是之前（之前会读成「这个开关启用了它们」）。这一行是 Model window 页
+  唯一带描述的设置项，符合 ADR-0066「描述只在标题与控件说不清时出现」：描述逐字写出被暂停的两项设置在页面上的
+  标题且与页面顺序一致（先「鼠标穿透」，后「鼠标悬停时隐藏」）；控件只显示已录入的键，标题也只说明
+  键的用途，没有说明它影响哪两项、以及松开会不会有事。描述同时承担邻接可能引起的误读——它就在行内，
+  紧贴着它**不**影响的那几行。该描述同时进入搜索索引，因此在任意页面搜索「穿透」
+  或「click-through」都能找到这一行。该行不跟随任何
+  开关门禁，因为它同时被「鼠标穿透」与「鼠标悬停时隐藏」两个开关绑定，而门禁规则绑定的是「一个开关与其下方
+  的设置项」；该行只在结构性编辑阻塞时禁用，取值保留到任一开关打开时生效。About 的
   操作行使用标准设置项：产品信息/手动检查更新、隐私安全的软件信息复制、项目主页、问题反馈和打开
   application-owned 日志目录；日志路径不进入 SettingsSnapshot，由 settings service 持有并校验。
   软件信息复制写入的是一个 JSON 对象而不是本地化文案：字段名稳定，不随界面语言变化，报告方可以检索、
@@ -747,7 +773,7 @@ CGEvent keycode `63`（`kVK_Function`）以 `FlagsChanged` + `MaskSecondaryFn` �
 肩键的名字，任何别名表都会把肩键或扳机键解析成对方的图。左右手归属同样由模型自己的目录决定——
 `left-keys` 里的图画在左爪上、`right-keys` 里的画在右爪上，这与旧实现的判定一致，也让 Mver 转换按
 `lefthand`/`righthand` 落盘的结果直接可用。缺图的按钮保持惰性（ADR-0042）；两个摇杆键另外驱动
-`StickLeftDown`/`StickRightDown`，与爪部状态互相独立。
+`StickLeftDown`/`StickRightDown`，摇杆本身另有可见性参数并按下述规则带动爪子（ADR-0082）。
 
 **按键层画几张图是显示选择，不是输入状态**（见 ADR-0079）。`RenderSnapshot::active_keys` 是一个有序
 列表，双平台渲染器都按这个顺序绘制且都没有深度附件或深度模板，因此**列表里最后一项就是最上层**；
@@ -910,6 +936,22 @@ runtime 的 overlay visibility 不受影响，frame source 继续按 `overlay.ma
 链路失效时 overlay 最坏情况是保持可见，而不会永久停在全透明且穿透的状态。悬停隐藏与
 `opacity_percent` 共同决定最终 alpha。改变不透明度只更新现有 surface 的 presentation alpha；开关和
 延迟本身也在 frame tick 内原地生效，不触发原生窗口重建。
+
+「按住修饰键以恢复交互」是这两个临时状态之上的一个开关，而不是第三个状态机。
+`overlay.hold_modifier_to_interact` 设置后，平台 owner 在每次 frame tick 内把它与 runtime snapshot
+里的 `input.pressed_modifiers` 相与：按住期间悬停隐藏按「关闭」处理（状态机复位、alpha 淡回
+`opacity_percent`），并且最终穿透判定从 `click_through` 收窄为 `click_through && !held`。因此
+一只配置成「鼠标穿透 + 悬停隐藏」的猫仍然可以被抓住拖动，不必先关掉设置再打开。松开键后两者
+立即恢复，指针通常仍停在窗口内，因此悬停延迟重新开始计时而不是恢复一个已经过期的截止时间。
+该字段只读不改：落盘配置、runtime 设置与 overlay options 都保持用户原值，忘记哪个键也不会在
+下一次按住时改变行为。
+
+`input.pressed_modifiers` 是 runtime pressed set 在八个 HID 修饰键词汇表（`0xE0..=0xE7`）上的投影，
+左右两侧各占一位。它存在的理由是现有两条读法都答不了这个问题：snapshot 只有按键计数，而模型投影
+会丢掉当前模型没有对应按键图的键——修饰键恰好就是模型不会提供的键。因此设置页的录入控件也读它，
+而不是读 GPUI 的按键事件：GPUI 把修饰键报告为不带键身份的布尔标志变化（macOS 上按修饰键根本不
+产生按键事件，Windows 上左右 Shift 的虚拟键码落在同一分支），既分不出左右，也没有可供录入的
+按键事件。控件因此是「按住」语义而非「点按」语义，这也正好是设置本身要求用户做的动作。
 
 无操作隐藏与悬停隐藏是同一呈现通道上的第二个临时状态。`overlay.hide_on_idle` 开启且
 `overlay.hide_on_idle_delay_seconds` 内没有任何新输入时，overlay 把 alpha 淡到 `0` 并强制指针穿透；

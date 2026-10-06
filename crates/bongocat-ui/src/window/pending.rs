@@ -35,6 +35,7 @@ pub(crate) enum PendingOperation {
     MaximumFps,
     ModelSettings,
     GamepadAxisSettings,
+    CursorSettings,
     GamepadAutoSwitch,
     RememberLastExpression,
     StartupItem,
@@ -144,6 +145,10 @@ pub(crate) enum SettingValue {
     GamepadAxisSettings {
         expected_config_revision: u64,
         settings: SettingsGamepadAxisSettings,
+    },
+    CursorSettings {
+        expected_config_revision: u64,
+        settings: SettingsCursorSettings,
     },
     GamepadAutoSwitch {
         expected_config_revision: u64,

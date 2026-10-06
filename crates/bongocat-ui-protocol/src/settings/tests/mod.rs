@@ -44,6 +44,7 @@ pub(crate) fn snapshot(
         random_behavior: SettingsRandomBehavior::default(),
         model_settings: SettingsModelSettings::default(),
         gamepad_axis_settings: SettingsGamepadAxisSettings::default(),
+        cursor_settings: SettingsCursorSettings::default(),
         gamepad_auto_switch: SettingsGamepadAutoSwitch::default(),
         remember_last_expression: false,
         logging: SettingsLogging::default(),

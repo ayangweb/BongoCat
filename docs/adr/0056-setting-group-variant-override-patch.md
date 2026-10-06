@@ -1,6 +1,6 @@
 # ADR-0056: SettingGroup variant 与上游 GPUI Kit 固定 revision
 
-状态：已接受（2026-09-23；2026-09-24、2026-09-25、2026-09-28 修订）
+状态：已接受（2026-09-23；2026-09-24、2026-09-25、2026-09-28、2026-10-06 修订）
 
 ## 背景
 
@@ -24,11 +24,12 @@ git source 条件因此解除。
 ## 决策
 
 - 根 workspace 直接依赖 `gpui-kit` 的 crates.io 精确 pin。2026-09-28 起该 pin 为 `=0.7.0`，
+  2026-10-06 随 v0.7.1 补丁版升到 `=0.7.1`，
   `[patch.crates-io]`、维护者 fork 依赖与 `longbridge/gpui-kit` git source 一并删除；仍禁止
   改用未固定的 `main` branch。
 - lockfile 中 `gpui-kit`、`gpui-component`、`gpui-base`、`gpui-component-macros` 与
   `gpui-kit-assets` 全部从同一 registry 版本解析；GPUI 本身仍来自 crates.io
-  `gpui-pre` 同步包（`=0.7.0` 要求 `0.3.7`），不引入第二套 GPUI 类型。
+  `gpui-pre` 同步包（`=0.7.1` 要求 `0.3.8`），不引入第二套 GPUI 类型。
 - Model library 页面继续调用 `SettingGroup::variant(GroupBoxVariant::Normal)`；独立的
   Model behavior 页面不覆盖 variant，调用点与测试 harness 不因依赖来源或页面拆分而改变。
 - `PopConfirm` 增加 `arrow(bool)` 转发，模型删除确认在按钮上方显示并启用 anchor-aligned arrow。上游同时改为由 `Root` 自动挂载 dialog、sheet 与 notification layer，因此业务根视图删除旧的 `Root::render_*_layer` 调用。

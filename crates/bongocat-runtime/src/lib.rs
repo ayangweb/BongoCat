@@ -40,15 +40,16 @@ use std::{
 
 pub use bongocat_input::{
     CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorSampleError,
-    CursorSnapshot, CursorTransportDiagnostics, CursorViewport, GamepadAxis, GamepadAxisKey,
-    GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample, GamepadAxisSettings,
-    GamepadAxisTransportDiagnostics, GamepadButton, GamepadButtonKey, GamepadConnection,
-    GamepadConnectionError, HandSide, InputBindings, InputControl, InputDiagnostics, InputEdge,
-    InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource, InputSubmitError,
-    InputSubmitter, InputTransportDiagnostics, MonotonicMillis, MouseButton,
-    NormalizedCursorPosition, PhysicalKey, PlatformInputDiagnostics,
+    CursorSettings, CursorSnapshot, CursorTransportDiagnostics, CursorViewport, GamepadAxis,
+    GamepadAxisKey, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample,
+    GamepadAxisSettings, GamepadAxisTransportDiagnostics, GamepadButton, GamepadButtonKey,
+    GamepadConnection, GamepadConnectionError, HandSide, InputBindings, InputControl,
+    InputDiagnostics, InputEdge, InputEvent, InputProducer, InputPublishError, InputResetReason,
+    InputSource, InputSubmitError, InputSubmitter, InputTransportDiagnostics, ModifierKey,
+    MonotonicMillis, MouseButton, NormalizedCursorPosition, PhysicalKey, PlatformInputDiagnostics,
     PlatformInputDiagnosticsProducer, PlatformInputDiagnosticsPublishError,
-    PlatformInputServiceStatus, SequencedInputEvent, is_stable_platform_input_error_code,
+    PlatformInputServiceStatus, PressedModifiers, SequencedInputEvent,
+    is_stable_platform_input_error_code,
 };
 use bongocat_input::{CursorSmoother, DEFAULT_GAMEPAD_AXIS_CAPACITY};
 pub use client::RuntimeClient;
@@ -189,6 +190,12 @@ pub const fn idle_hide_delay_ms(seconds: u32) -> u32 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySettings {
     pub click_through: bool,
+    /// The physical modifier key whose hold gives the pointer back to the user.
+    ///
+    /// The overlay suspends click-through and the hover hide for exactly as long
+    /// as this key is held, so the settings that hide the overlay do not also
+    /// make it impossible to move. `None` means no key does this.
+    pub hold_modifier_to_interact: Option<ModifierKey>,
     pub always_on_top: bool,
     pub scale_percent: u16,
     pub opacity_percent: u8,
@@ -226,6 +233,7 @@ impl Default for OverlaySettings {
     fn default() -> Self {
         Self {
             click_through: false,
+            hold_modifier_to_interact: None,
             always_on_top: true,
             scale_percent: 100,
             opacity_percent: 100,
@@ -448,6 +456,7 @@ pub enum RuntimeCommand {
     SetMotionAudioEnabled(bool),
     SetInputBindings(Arc<InputBindings>),
     SetGamepadAxisSettings(GamepadAxisSettings),
+    SetCursorSettings(CursorSettings),
     ResetInput(InputResetReason),
     ApplyInput(Arc<SequencedInputEvent>),
     ActivateModel(Arc<CommittedModel>),
@@ -506,6 +515,12 @@ pub struct RuntimeSnapshot {
     pub random_behavior_settings: RandomBehaviorSettings,
     pub model_settings: ModelSettings,
     pub gamepad_axis_settings: GamepadAxisSettings,
+    /// How the pointer is read before any model sees it.
+    ///
+    /// The runtime owns this because the configuration does, but the value is
+    /// consumed by the overlay session, which is what owns the platform input
+    /// service and pushes it down. See [`CursorSettings::force_move`].
+    pub cursor_settings: CursorSettings,
     pub motion_audio_enabled: bool,
     pub motion_audio: MotionAudioDiagnostics,
     pub active_model: Option<ModelSnapshot>,
@@ -548,6 +563,7 @@ impl RuntimeSnapshot {
             random_behavior_settings: RandomBehaviorSettings::default(),
             model_settings: ModelSettings::default(),
             gamepad_axis_settings: GamepadAxisSettings::default(),
+            cursor_settings: CursorSettings::default(),
             motion_audio_enabled,
             motion_audio,
             active_model: None,

@@ -3,6 +3,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MonotonicMillis(u64);
 
@@ -42,6 +45,190 @@ impl PhysicalKey {
 
     pub const fn hid_usage(self) -> u16 {
         self.0
+    }
+}
+
+/// One of the eight keyboard modifiers, with the two sides kept apart.
+///
+/// This is a closed vocabulary over the Keyboard/Keypad HID usages `0xE0..=0xE7`
+/// rather than a bitmask of modifier *families*, because the input contract
+/// requires the sides to stay distinct physical keys
+/// (`shared/behavior/input-semantics.md`): a configuration that names the right
+/// shift has to remain distinguishable from one that names the left shift, all
+/// the way from the stored document to the key the overlay watches for.
+///
+/// The enum is the single spelling of that vocabulary, and it is derived here
+/// rather than in the configuration crate because four layers have to agree on
+/// it — the stored document, the runtime's overlay settings, the settings
+/// protocol and the overlay's own option struct — and a second spelling in any
+/// of them would be free to drift.
+#[derive(
+    Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ModifierKey {
+    LeftControl,
+    LeftShift,
+    LeftAlt,
+    LeftMeta,
+    RightControl,
+    RightShift,
+    RightAlt,
+    RightMeta,
+}
+
+/// Every modifier with its HID usage, in keyboard order.
+///
+/// This is the one table the whole vocabulary is built from: [`ModifierKey::ALL`]
+/// reads it, so a variant and its usage cannot end up in different orders or with
+/// one of them extended alone. The order is the HID usage order, which is also
+/// left-before-right within each family, so it is also the order the keys sit in
+/// on the keyboard.
+const MODIFIER_KEYS: [(ModifierKey, u16); 8] = [
+    (ModifierKey::LeftControl, 0xe0),
+    (ModifierKey::LeftShift, 0xe1),
+    (ModifierKey::LeftAlt, 0xe2),
+    (ModifierKey::LeftMeta, 0xe3),
+    (ModifierKey::RightControl, 0xe4),
+    (ModifierKey::RightShift, 0xe5),
+    (ModifierKey::RightAlt, 0xe6),
+    (ModifierKey::RightMeta, 0xe7),
+];
+
+/// The first HID usage of a right-hand modifier.
+const RIGHT_SIDE_FIRST_USAGE: u16 = 0xe4;
+
+impl ModifierKey {
+    /// Every modifier, in keyboard order. See [`PressedModifiers::first`] for
+    /// why that order is load-bearing.
+    pub const ALL: [Self; 8] = {
+        let mut all = [Self::LeftControl; 8];
+        let mut index = 0;
+        while index < MODIFIER_KEYS.len() {
+            all[index] = MODIFIER_KEYS[index].0;
+            index += 1;
+        }
+        all
+    };
+
+    /// The HID usage the platform adapters report this modifier under.
+    pub const fn hid_usage(self) -> u16 {
+        MODIFIER_KEYS[self.index()].1
+    }
+
+    /// The same key as a [`PhysicalKey`], for pressed-set comparisons.
+    pub const fn physical_key(self) -> PhysicalKey {
+        PhysicalKey::from_hid_usage(self.hid_usage())
+    }
+
+    /// Whether this is the right-hand key of its family.
+    ///
+    /// The HID usage page numbers the eight modifiers left first (`0xE0`..
+    /// `0xE3`) and right second, so the usage alone answers this. The table
+    /// order agrees with it, and a test pins that the two never drift.
+    pub const fn is_right(self) -> bool {
+        self.hid_usage() >= RIGHT_SIDE_FIRST_USAGE
+    }
+
+    /// This modifier's position in [`Self::ALL`], which is also its bit in
+    /// [`PressedModifiers`].
+    const fn index(self) -> usize {
+        self as usize
+    }
+
+    /// The canonical configuration token, in `snake_case`.
+    ///
+    /// This is the persisted spelling, so it has to stay stable: a document
+    /// written by an earlier build has to keep naming the same key.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::LeftControl => "left_control",
+            Self::LeftShift => "left_shift",
+            Self::LeftAlt => "left_alt",
+            Self::LeftMeta => "left_meta",
+            Self::RightControl => "right_control",
+            Self::RightShift => "right_shift",
+            Self::RightAlt => "right_alt",
+            Self::RightMeta => "right_meta",
+        }
+    }
+
+    /// The modifier a stored token names.
+    ///
+    /// A token outside [`Self::ALL`] is refused rather than guessed: a setting
+    /// that silently resolved to a different key would suspend the overlay for a
+    /// key the user never chose, which is worse than one that does not work.
+    pub fn from_name(name: &str) -> Option<Self> {
+        let name = name.trim();
+        Self::ALL
+            .into_iter()
+            .find(|modifier| modifier.name().eq_ignore_ascii_case(name))
+    }
+
+    /// The modifier a HID usage names, if it is one of the eight.
+    pub const fn from_hid_usage(usage: u16) -> Option<Self> {
+        let mut index = 0;
+        while index < MODIFIER_KEYS.len() {
+            if MODIFIER_KEYS[index].1 == usage {
+                return Some(MODIFIER_KEYS[index].0);
+            }
+            index += 1;
+        }
+        None
+    }
+}
+
+/// Which keyboard modifiers are held right now.
+///
+/// The pressed set lives in the runtime, which owns it and clears it on release,
+/// reconcile and reset. This is that set's projection onto the modifier
+/// vocabulary: a consumer that only needs to ask "is this one key down" reads it
+/// instead of taking a copy of the whole pressed set, so the answer cannot fall
+/// out of step with the set it came from.
+///
+/// Bits are positions in [`ModifierKey::ALL`], so [`Self::holds`] is a bit test
+/// and the type stays `Copy`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct PressedModifiers(u8);
+
+impl PressedModifiers {
+    pub const NONE: Self = Self(0);
+
+    pub const fn holds(self, modifier: ModifierKey) -> bool {
+        self.0 & (1 << modifier.index()) != 0
+    }
+
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// Record one held modifier.
+    pub fn insert(&mut self, modifier: ModifierKey) {
+        self.0 |= 1 << modifier.index();
+    }
+
+    /// The held modifier that comes first on the keyboard, or `None` when none
+    /// is held.
+    ///
+    /// A chord of two modifiers has to resolve to one stored key, and keyboard
+    /// order is the only tie-break that does not depend on which edge the
+    /// observer happened to see first.
+    pub const fn first(self) -> Option<ModifierKey> {
+        let mut index = 0;
+        while index < ModifierKey::ALL.len() {
+            if self.0 & (1 << index) != 0 {
+                return Some(ModifierKey::ALL[index]);
+            }
+            index += 1;
+        }
+        None
+    }
+
+    /// Every held modifier, in keyboard order.
+    pub fn iter(self) -> impl Iterator<Item = ModifierKey> {
+        ModifierKey::ALL
+            .into_iter()
+            .filter(move |modifier| self.holds(*modifier))
     }
 }
 
@@ -453,6 +640,167 @@ impl InputTransportCounters {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn every_modifier_names_one_distinct_left_and_right_hid_usage() {
+        let mut usages = BTreeSet::new();
+        for modifier in ModifierKey::ALL {
+            let usage = modifier.hid_usage();
+            assert!(
+                usages.insert(usage),
+                "{modifier:?} reuses usage {usage:#06x}"
+            );
+            assert_eq!(
+                ModifierKey::from_hid_usage(usage),
+                Some(modifier),
+                "{modifier:?} must be the only modifier at usage {usage:#06x}"
+            );
+            assert_eq!(
+                modifier.physical_key().hid_usage(),
+                usage,
+                "the pressed-set key and the modifier must be one physical key"
+            );
+        }
+        assert_eq!(usages.len(), ModifierKey::ALL.len());
+        assert_eq!(ModifierKey::from_hid_usage(0x04), None);
+        assert_eq!(ModifierKey::from_hid_usage(0x39), None);
+        assert_eq!(ModifierKey::from_hid_usage(GLOBE_KEY_USAGE), None);
+    }
+
+    #[test]
+    fn the_two_sides_of_a_modifier_are_separate_configuration_values() {
+        for (left, right) in [
+            (ModifierKey::LeftControl, ModifierKey::RightControl),
+            (ModifierKey::LeftShift, ModifierKey::RightShift),
+            (ModifierKey::LeftAlt, ModifierKey::RightAlt),
+            (ModifierKey::LeftMeta, ModifierKey::RightMeta),
+        ] {
+            assert_ne!(left.name(), right.name());
+            assert_ne!(left.hid_usage(), right.hid_usage());
+            assert!(!left.is_right() && right.is_right());
+            assert_eq!(ModifierKey::from_name(left.name()), Some(left));
+            assert_eq!(ModifierKey::from_name(right.name()), Some(right));
+        }
+    }
+
+    /// `ModifierKey::ALL` is the order the table lists, the order the HID usage
+    /// page numbers the keys in, and the order `PressedModifiers` stores bits in.
+    /// `is_right` reads the usage boundary instead of the table, so this is what
+    /// stops the two from drifting apart.
+    #[test]
+    fn the_table_order_is_the_keyboard_order_and_agrees_with_the_side_boundary() {
+        assert_eq!(
+            ModifierKey::ALL
+                .iter()
+                .map(|modifier| modifier.hid_usage())
+                .collect::<Vec<_>>(),
+            vec![0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7]
+        );
+        assert_eq!(
+            ModifierKey::ALL
+                .iter()
+                .position(|modifier| modifier.is_right()),
+            Some(4)
+        );
+    }
+
+    #[test]
+    fn a_stored_token_round_trips_and_anything_else_is_refused() {
+        let mut names = BTreeSet::new();
+        for modifier in ModifierKey::ALL {
+            let name = modifier.name();
+            assert!(
+                names.insert(name),
+                "{name} is claimed by more than one modifier"
+            );
+            assert_eq!(
+                name,
+                snake_case(&format!("{modifier:?}")),
+                "the persisted token is the variant name in snake_case, so a renamed \
+                 variant cannot leave an old document naming a key that no longer exists"
+            );
+            assert_eq!(ModifierKey::from_name(name), Some(modifier));
+            assert_eq!(
+                ModifierKey::from_name(&name.to_ascii_uppercase()),
+                Some(modifier),
+                "the persisted token is read case-insensitively"
+            );
+        }
+        assert_eq!(names.len(), ModifierKey::ALL.len());
+        for refused in ["", " ", "shift", "left", "left_shift_left", "0xe1"] {
+            assert_eq!(
+                ModifierKey::from_name(refused),
+                None,
+                "{refused:?} must not resolve to a modifier"
+            );
+        }
+    }
+
+    fn snake_case(variant: &str) -> String {
+        variant
+            .chars()
+            .flat_map(|character| {
+                if character.is_ascii_uppercase() {
+                    vec!['_', character.to_ascii_lowercase()]
+                } else {
+                    vec![character]
+                }
+            })
+            .skip(1)
+            .collect()
+    }
+
+    #[test]
+    fn the_pressed_set_projection_answers_per_modifier_and_keeps_the_sides_apart() {
+        let mut pressed = PressedModifiers::default();
+        assert!(pressed.is_empty());
+        assert_eq!(pressed.first(), None);
+        assert_eq!(pressed.iter().count(), 0);
+
+        pressed.insert(ModifierKey::RightShift);
+        assert!(pressed.holds(ModifierKey::RightShift));
+        assert!(
+            !pressed.holds(ModifierKey::LeftShift),
+            "the right shift must not answer for the left one"
+        );
+        assert!(!pressed.is_empty());
+
+        // Inserting twice is what a repeated auto-repeat edge would do, and it
+        // must not change the answer.
+        pressed.insert(ModifierKey::RightShift);
+        assert_eq!(pressed.first(), Some(ModifierKey::RightShift));
+        assert_eq!(
+            pressed.iter().collect::<Vec<_>>(),
+            vec![ModifierKey::RightShift]
+        );
+
+        pressed.insert(ModifierKey::LeftControl);
+        pressed.insert(ModifierKey::LeftAlt);
+        assert_eq!(
+            pressed.iter().collect::<Vec<_>>(),
+            vec![
+                ModifierKey::LeftControl,
+                ModifierKey::LeftAlt,
+                ModifierKey::RightShift
+            ],
+            "held modifiers read back in keyboard order"
+        );
+        assert_eq!(
+            pressed.first(),
+            Some(ModifierKey::LeftControl),
+            "a chord of modifiers resolves to the leftmost key, not to whichever edge was seen first"
+        );
+
+        let all =
+            ModifierKey::ALL
+                .into_iter()
+                .fold(PressedModifiers::NONE, |mut pressed, modifier| {
+                    pressed.insert(modifier);
+                    pressed
+                });
+        assert_eq!(all.iter().count(), ModifierKey::ALL.len());
+        assert!(ModifierKey::ALL.iter().all(|modifier| all.holds(*modifier)));
+    }
 
     /// The key-image vocabulary is a contract with model authors, so it has to
     /// satisfy the same rules the keyboard table does: every button named

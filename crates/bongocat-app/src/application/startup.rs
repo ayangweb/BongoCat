@@ -10,8 +10,8 @@ use crate::app_log::{
     ApplicationLogCode, ApplicationLogContext, ApplicationLogEvent, ApplicationLogHandle,
 };
 use crate::config_projection::{
-    gamepad_axis_settings_from_config, model_settings_from_config, overlay_settings_from_config,
-    random_behavior_settings_from_config, runtime_log_settings,
+    cursor_settings_from_config, gamepad_axis_settings_from_config, model_settings_from_config,
+    overlay_settings_from_config, random_behavior_settings_from_config, runtime_log_settings,
 };
 use crate::model_identity::model_origin_from_config;
 use crate::shortcut_config::active_shortcuts;
@@ -268,6 +268,14 @@ impl Application {
         let sequence = client
             .send(RuntimeCommand::SetGamepadAxisSettings(
                 gamepad_axis_settings_from_config(&config)?,
+            ))
+            .map_err(ApplicationError::RuntimeCommand)?;
+        client
+            .wait_for_command(sequence, RUNTIME_TIMEOUT)
+            .ok_or(ApplicationError::RuntimeDidNotPublish)?;
+        let sequence = client
+            .send(RuntimeCommand::SetCursorSettings(
+                cursor_settings_from_config(&config),
             ))
             .map_err(ApplicationError::RuntimeCommand)?;
         client

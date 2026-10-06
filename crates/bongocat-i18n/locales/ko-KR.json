@@ -354,6 +354,14 @@
       "click_through": {
         "label": "마우스 클릭 통과"
       },
+      "hold_modifier_to_interact": {
+        "label": "대응키를 누르고 상호작용",
+        "recording": "누르면 대응키를 기록합니다",
+        "record_placeholder": "클릭하면 대응키를 기록합니다",
+        "side_left": "왼쪽",
+        "side_right": "오른쪽",
+        "description": "이 키를 누르고 있으면 「마우스 클릭 통과」와 「마우스를 올리면 숨기기」가 잠시 꺼집니다."
+      },
       "keep_inside_screen": {
         "label": "화면 안에 유지"
       },
@@ -418,6 +426,10 @@
         },
         "ignore_mouse_input": {
           "label": "마우스 입력 무시"
+        },
+        "force_move": {
+          "label": "마우스 강제 이동",
+          "description": "포인터를 캡처하는 앱(예: 전체 화면 게임)에서도 마우스를 계속 따라갑니다."
         }
       },
       "keyboard": {

@@ -195,6 +195,7 @@ pub(super) fn snapshot(
         overlay_visible: runtime.overlay_visible,
         overlay: SettingsOverlay {
             click_through: runtime.overlay_settings.click_through,
+            hold_modifier_to_interact: runtime.overlay_settings.hold_modifier_to_interact,
             always_on_top: runtime.overlay_settings.always_on_top,
             scale_percent: runtime.overlay_settings.scale_percent,
             opacity_percent: runtime.overlay_settings.opacity_percent,
@@ -241,6 +242,9 @@ pub(super) fn snapshot(
             trigger_dead_zone_percent: (runtime.gamepad_axis_settings.trigger_dead_zone * 100.0)
                 .round()
                 .clamp(0.0, 99.0) as u8,
+        },
+        cursor_settings: SettingsCursorSettings {
+            force_move: runtime.cursor_settings.force_move,
         },
         gamepad_auto_switch: settings_gamepad_auto_switch(
             &application.config().model.gamepad_auto_switch,

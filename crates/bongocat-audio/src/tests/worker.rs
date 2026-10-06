@@ -3,6 +3,59 @@
 use super::*;
 
 #[test]
+fn completed_playback_releases_output_and_allows_another_play() {
+    #[derive(Default)]
+    struct OutputState {
+        playing: bool,
+        open: bool,
+    }
+
+    struct CompletingBackend(Arc<Mutex<OutputState>>);
+
+    impl AudioBackend for CompletingBackend {
+        fn play(&mut self, _: &Path, _: MotionAudioVolume) -> Result<(), BackendError> {
+            let mut state = self.0.lock().unwrap();
+            state.open = true;
+            state.playing = true;
+            Ok(())
+        }
+
+        fn stop(&mut self) -> bool {
+            let mut state = self.0.lock().unwrap();
+            let playing = state.playing;
+            state.playing = false;
+            state.open = false;
+            playing
+        }
+
+        fn is_playing(&self) -> bool {
+            self.0.lock().unwrap().playing
+        }
+    }
+
+    let state = Arc::new(Mutex::new(OutputState::default()));
+    let service =
+        MotionAudioService::start_with_backend(4, Box::new(CompletingBackend(Arc::clone(&state))))
+            .expect("audio service");
+    let client = service.client();
+    for sequence in 1..=2 {
+        client.try_publish(play(sequence, "sound.flac")).unwrap();
+        client.wait_for_sequence(sequence, TIMEOUT).unwrap();
+        {
+            let mut state = state.lock().unwrap();
+            assert!(state.open);
+            state.playing = false;
+        }
+        let deadline = Instant::now() + TIMEOUT;
+        while state.lock().unwrap().open {
+            assert!(Instant::now() < deadline, "idle output was not released");
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+    service.shutdown(TIMEOUT).expect("clean shutdown");
+}
+
+#[test]
 fn accepted_commands_replace_one_voice_in_order() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let service = MotionAudioService::start_with_backend(

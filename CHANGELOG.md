@@ -4,7 +4,18 @@
 
 ### ✨ Features
 
-- Added a "Hide when idle" setting under Model window, with an "Idle hide delay (seconds)" row: the cat fades out once your mouse, keyboard and gamepad have been untouched for a while, and fades back in as soon as you use them again.
+- Added a "Model window → Window behavior → Hide when idle" setting.
+- Added a "Model window → Window behavior → Idle hide delay" setting.
+- Added a "Model window → Window behavior → Hold a modifier key to interact" setting.
+- Added an "Input & interaction → Mouse → Force mouse movement" setting, so the cat keeps following the mouse in full-screen games that capture the pointer.
+
+### 🐛 Bug Fixes
+
+- Fixed the analog sticks never appearing in gamepad mode, and made moving a stick or pressing its button lower that side's paw.
+- Fixed a second gamepad's sticks and triggers doing nothing while another gamepad was connected.
+- Fixed Windows controllers in Xbox-compatible mode pressing the wrong key image, leaving the cross keys unresponsive, and swapping the triggers with the right stick.
+- Fixed a Nintendo Switch controller in Switch mode making the model rapidly press every key on Windows.
+- Fixed the input method candidate window appearing in the wrong place while renaming a model in Settings with a Chinese, Japanese or Korean input method.
 
 ## 2.1.1 - 2026-10-03
 

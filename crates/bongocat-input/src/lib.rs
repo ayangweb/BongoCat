@@ -7,6 +7,12 @@
 //! configuration, or renderer dependency. The runtime still owns when these
 //! values are applied; this crate only provides deterministic state machines and
 //! bounded/latest-value transports.
+//!
+//! [`ModifierKey`] is the one part of the vocabulary a product document stores,
+//! so it carries serde and a JSON Schema. That is a serialization format rather
+//! than a subsystem: the alternative would be a second spelling of the same eight
+//! keys in the configuration crate, free to drift from the usage table the
+//! platform adapters report.
 
 mod cursor;
 mod gamepad;
@@ -14,9 +20,9 @@ mod input;
 mod platform_input;
 
 pub use cursor::{
-    CursorPosition, CursorProducer, CursorPublishError, CursorSample, CursorSampleError,
-    CursorSmoother, CursorSnapshot, CursorTransportDiagnostics, CursorViewport,
-    NormalizedCursorPosition,
+    CursorDelta, CursorForceMoveState, CursorMotionAccumulator, CursorPosition, CursorProducer,
+    CursorPublishError, CursorSample, CursorSampleError, CursorSettings, CursorSmoother,
+    CursorSnapshot, CursorTransportDiagnostics, CursorViewport, NormalizedCursorPosition,
 };
 pub use gamepad::{
     DEFAULT_GAMEPAD_AXIS_CAPACITY, GamepadAxisProducer, GamepadAxisPublishError, GamepadAxisSample,
@@ -26,8 +32,8 @@ pub use input::{
     GLOBE_KEY_USAGE, GamepadAxis, GamepadAxisKey, GamepadButton, GamepadButtonKey,
     GamepadConnection, HandSide, InputBindings, InputControl, InputDiagnostics, InputEdge,
     InputEvent, InputProducer, InputPublishError, InputResetReason, InputSource, InputSubmitError,
-    InputSubmitter, InputTransportDiagnostics, MonotonicMillis, MouseButton, PhysicalKey,
-    SequencedInputEvent,
+    InputSubmitter, InputTransportDiagnostics, ModifierKey, MonotonicMillis, MouseButton,
+    PhysicalKey, PressedModifiers, SequencedInputEvent,
 };
 pub use platform_input::{
     PlatformInputDiagnostics, PlatformInputDiagnosticsProducer,

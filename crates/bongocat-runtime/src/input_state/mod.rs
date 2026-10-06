@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bongocat_input::{
     GamepadButton, GamepadConnection, HandSide, InputBindings, InputControl, InputDiagnostics,
-    InputEdge, InputEvent, InputResetReason, InputSource, InputTransportDiagnostics,
-    MonotonicMillis, MouseButton, NormalizedCursorPosition, SequencedInputEvent,
+    InputEdge, InputEvent, InputResetReason, InputSource, InputTransportDiagnostics, ModifierKey,
+    MonotonicMillis, MouseButton, NormalizedCursorPosition, PressedModifiers, SequencedInputEvent,
 };
 #[cfg(test)]
 use bongocat_input::{GamepadButtonKey, PhysicalKey};

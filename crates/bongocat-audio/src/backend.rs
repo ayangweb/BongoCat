@@ -25,6 +25,9 @@ pub(crate) trait AudioBackend: Send {
 
     fn play(&mut self, path: &Path, volume: MotionAudioVolume) -> Result<(), BackendError>;
     fn stop(&mut self) -> bool;
+    fn stop_for_replacement(&mut self) -> bool {
+        self.stop()
+    }
     fn is_playing(&self) -> bool;
 }
 
@@ -92,6 +95,16 @@ impl AudioBackend for SystemAudioBackend {
     }
 
     fn stop(&mut self) -> bool {
+        let stopped = self.stop_for_replacement();
+        // An empty mixer still feeds silence to the device and can keep a
+        // Bluetooth multipoint headset attached to this computer.
+        self.output.take();
+        stopped
+    }
+
+    fn stop_for_replacement(&mut self) -> bool {
+        // The next sound can reuse the device without reopening it between
+        // consecutive motions. Idle and explicit stop paths release it.
         self.player.take().is_some()
     }
 

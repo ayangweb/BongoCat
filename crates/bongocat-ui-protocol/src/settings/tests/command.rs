@@ -80,6 +80,35 @@ fn gamepad_axis_settings_command_preserves_typed_values() {
 }
 
 #[test]
+fn cursor_settings_command_preserves_typed_values() {
+    let (client, endpoint) = SettingsClient::bounded(1);
+    let worker = thread::spawn(move || {
+        let SettingsCommand::SetCursorSettings {
+            expected_config_revision,
+            settings,
+            reply,
+        } = endpoint.recv_blocking().expect("cursor command")
+        else {
+            panic!("unexpected command");
+        };
+        assert_eq!(expected_config_revision, 7);
+        assert_eq!(
+            settings,
+            SettingsCursorSettings { force_move: true },
+            "the command carries the switch as typed data, not as an untyped path"
+        );
+        let mut result = snapshot(8, true, true);
+        result.cursor_settings = settings;
+        reply.respond(Ok(result)).expect("cursor reply");
+    });
+    let result = client
+        .set_cursor_settings_blocking(7, SettingsCursorSettings { force_move: true })
+        .expect("cursor snapshot");
+    assert!(result.cursor_settings.force_move);
+    worker.join().expect("worker join");
+}
+
+#[test]
 fn logging_settings_command_preserves_the_complete_typed_policy() {
     let (client, endpoint) = SettingsClient::bounded(1);
     let expected = SettingsLogging {

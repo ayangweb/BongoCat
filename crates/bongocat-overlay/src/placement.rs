@@ -70,6 +70,11 @@ impl OverlaySessionOptions {
     /// are applied directly to the native surface. Corner-radius and
     /// screen-constraint changes still require replacing the native window
     /// resources.
+    ///
+    /// Recalling which modifier suspends pointer routing is not on this list
+    /// either: like the hover hide it is consulted inside the frame tick, because
+    /// the window has to start and stop passing pointer events through while it
+    /// keeps running.
     pub(crate) const fn requires_window_recreation(self, next: Self) -> bool {
         self.corner_radius_percent != next.corner_radius_percent
             || self.keep_inside_screen != next.keep_inside_screen

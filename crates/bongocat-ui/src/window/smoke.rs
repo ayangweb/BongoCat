@@ -88,6 +88,7 @@ impl SettingsView {
             "settings.input_interaction.mouse.ignore_mouse_input.label",
             "settings.input_interaction.mouse.mirror_mouse_tracking_horizontal.label",
             "settings.input_interaction.mouse.mirror_mouse_tracking_vertical.label",
+            "settings.input_interaction.mouse.force_move.label",
             "settings.input_interaction.keyboard.title",
             "settings.input_interaction.keyboard.ignore_keyboard_input.label",
             "settings.input_interaction.keyboard.show_all_pressed_keys.label",
@@ -342,6 +343,7 @@ impl SettingsView {
     /// Complete the UI-side work that must happen before the settings window is destroyed.
     pub fn prepare_close(&mut self, cx: &mut Context<Self>) {
         self.cancel_shortcut_capture(cx);
+        self.cancel_hold_modifier_recording(cx);
         self.clear_model_drag(cx);
         self.flush_pending_settings(cx);
         self.window_hidden = true;

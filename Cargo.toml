@@ -48,9 +48,9 @@ evdev = "=0.13.2"
 flate2 = "=1.1.10"
 futures-util = "=0.3.34"
 global-hotkey = "=0.8.0"
-gpui-kit = "=0.7.0"
-gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549", default-features = false }
-rust-i18n = "=4.2.2"
+gpui-kit = "=0.7.1"
+gilrs = { git = "https://github.com/ayangweb/gilrs", rev = "c7e97f54e9e4b10ff89d3527560a22f6817329ea", default-features = false }
+rust-i18n = "=4.2.4"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 libc = "=0.2.189"
 muda = { version = "=0.20.0", default-features = false }

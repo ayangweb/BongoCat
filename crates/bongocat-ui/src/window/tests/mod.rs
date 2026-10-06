@@ -3,6 +3,7 @@
 //! The fixtures every module reaches live here; each subject module holds only
 //! the tests for one surface.
 
+use super::hold_modifier::hold_modifier_control;
 use super::shortcuts_page::ShortcutScope;
 use super::*;
 use crate::{SettingsModelBehaviorBinding, SettingsShortcutBinding};
@@ -16,6 +17,7 @@ use gpui_kit::{
 mod copy;
 mod dropdown;
 mod external_link;
+mod hold_modifier;
 mod model_actions;
 mod model_drag_overlay;
 mod model_editor_render;
@@ -175,6 +177,41 @@ impl Render for WrappedModelsPageHarness {
 
         div().size_full().child(
             Settings::new("wrapped-models-page")
+                .sidebar_width(px(220.0))
+                .with_group_variant(GroupBoxVariant::Outline)
+                .page(page),
+        )
+    }
+}
+
+/// Reproduce the packaged wrapper around one overlay row, so the recorder is
+/// exercised through `SettingItem::render` the way the page renders it — which is
+/// what supplies the `RenderOptions` the row reads its disabled state from.
+struct OverlayRowHarness {
+    view: Entity<SettingsView>,
+    editing_blocked: bool,
+}
+
+impl Render for OverlayRowHarness {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let view = self.view.clone();
+        let editing_blocked = self.editing_blocked;
+        let page = SettingPage::new("Overlay").group(
+            SettingGroup::new()
+                .variant(GroupBoxVariant::Normal)
+                .item(SettingItem::render(move |options, window, app| {
+                    hold_modifier_control(
+                        &view,
+                        SettingsLanguage::English,
+                        editing_blocked,
+                        options,
+                        window,
+                        app,
+                    )
+                })),
+        );
+        div().size_full().child(
+            Settings::new("overlay-row-page")
                 .sidebar_width(px(220.0))
                 .with_group_variant(GroupBoxVariant::Outline)
                 .page(page),

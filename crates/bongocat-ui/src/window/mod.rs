@@ -5,17 +5,17 @@
 //! path are the modules under `window/`.
 
 use crate::{
-    SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient, SettingsError, SettingsErrorCode,
-    SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel,
-    SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
-    SettingsModelBehaviorBinding, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
-    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
-    SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRuntimeErrorCode,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    ModifierKey, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
+    SettingsCursorSettings, SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch,
+    SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel, SettingsLogging,
+    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
+    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
+    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelKey, SettingsModelMode,
+    SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode,
+    SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode,
+    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -67,6 +67,8 @@ mod drag;
 mod dropdown;
 use dropdown::dropdown_menu_width;
 mod edit;
+mod hold_modifier;
+use hold_modifier::hold_modifier_row;
 mod import;
 mod model_import_card;
 mod model_mver_dialog;
@@ -266,6 +268,24 @@ pub struct SettingsView {
     /// rows whose binding is empty.
     pub(crate) shortcut_play_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
     pub(crate) shortcut_clear_focus: BTreeMap<ShortcutCaptureTarget, FocusHandle>,
+    /// Whether the overlay page's modifier recorder is armed and waiting for the
+    /// user to hold a key.
+    ///
+    /// A bool rather than a capture struct because there is exactly one such
+    /// control on the page, and unlike the shortcut capture it holds nothing: the
+    /// key it records is read from the runtime rather than accumulated from key
+    /// events.
+    pub(crate) hold_modifier_recording: bool,
+    pub(crate) hold_modifier_recorder_focus: FocusHandle,
+    pub(crate) hold_modifier_clear_focus: FocusHandle,
+    pub(crate) hold_modifier_blur_subscription: Option<gpui_kit::Subscription>,
+    /// Which recorder session the running poll belongs to.
+    ///
+    /// A cancelled recording is followed by another one from the same control
+    /// without the old poll having stopped, and both polls would then see the same
+    /// held key. Comparing the generation is what lets the older poll recognise
+    /// that it no longer owns the recorder and stop instead of writing the value.
+    pub(crate) hold_modifier_recording_generation: u64,
     pub(crate) window_hidden: bool,
     pub(crate) navigation_memory: SettingsNavigationMemory,
     pub(crate) applied_theme: Option<SettingsTheme>,

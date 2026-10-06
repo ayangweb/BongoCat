@@ -48,6 +48,7 @@ updates
 | `appearance`  | `theme`                               | `system`、`light` 或 `dark`            |
 | `appearance`  | `language`                            | UI locale                              |
 | `overlay`     | `click_through`                       | 指针事件是否穿透                       |
+| `overlay`     | `hold_modifier_to_interact`           | 按住即临时恢复交互的**物理**修饰键：`left_control`、`left_shift`、`left_alt`、`left_meta`、对应 `right_*`，或为 `null`（默认，无键） |
 | `overlay`     | `always_on_top`                       | 是否置顶                               |
 | `overlay`     | `scale_percent`                       | 模型/窗口缩放百分比                    |
 | `overlay`     | `opacity_percent`                     | 窗口不透明度百分比                     |
@@ -60,6 +61,7 @@ updates
 | `overlay`     | `keep_inside_screen`                  | 保持在所有屏幕范围内，允许覆盖任务栏等区域 |
 | `input`       | `gamepad.stick_dead_zone`             | 左/右摇杆死区，`[0, 1)`                |
 | `input`       | `gamepad.trigger_dead_zone`           | 扳机死区，`[0, 1)`                     |
+| `input`       | `mouse.force_move`                    | 按相对位移累计指针位置，而不是读绝对光标位置；默认 `false` |
 | `logging`     | `level`                               | 写入阈值：`error`、`warn`、`info`、`debug`、`trace` |
 | `logging`     | `retention_days`                      | 日志保留天数，`[1, 30]`                |
 | `model`       | `selected_model`                      | 当前模型完整身份：`{ id, source }`，或为 `null` |
@@ -135,6 +137,18 @@ runtime 的 overlay visibility。延迟值在首版收窄为 `0..=60` 秒，理�
 整秒存储，与设置页显示和输入的单位一致；overlay frame loop 仍以毫秒计时，只在
 `OverlaySessionOptions` 边界换算一次。
 
+`overlay.hold_modifier_to_interact` 默认 `null`（没有键）。设置后，按住该**物理**修饰键期间，
+overlay 同时暂停「指针穿透」和「指针悬停隐藏」：窗口不再把指针事件传下去，悬停隐藏状态机按
+「关闭」复位并把 alpha 淡回 `opacity_percent`，因此一只配置成透明的猫仍然能被抓住拖动。松开键后
+两者立即回到配置值；该字段不修改 `overlay.click_through`、`overlay.hide_on_pointer_hover` 或
+它们的延迟，落盘值不变。它不作用于 `overlay.hide_on_idle`。取值是八个 HID 修饰键之一
+（`0xE0..=0xE7`）的 `snake_case` 名称，左右两侧是两个不同的值而不是一个家族；名称之外的字符串由
+严格 v1 解析拒绝，不做「最接近的修饰键」猜测。字段带 `#[serde(default)]`，旧配置文件缺失时按
+`null` 读取。判定依据是 runtime snapshot 的 `input.pressed_modifiers`，即 runtime 自己持有的
+pressed set 在修饰键词汇表上的投影；因此按住状态由 release、reconcile 或 reset 结束，不依赖
+UI 是否在运行。overlay 在每次 frame tick 内重新读取该投影（与悬停隐藏同一时机），读取该字段
+不触发原生窗口重建。
+
 `overlay.hide_on_idle` 默认 `false`，`overlay.hide_on_idle_delay_seconds` 默认 `10` 秒。开启后，
 键盘、鼠标与手柄在延迟时间内都没有新输入事件时，窗口渲染 alpha 在 300ms 内降到 `0`，指针事件
 立即穿透；任何新输入（新的输入事件序号、新的光标采样时间戳或新的手柄轴采样）重新开始计时，alpha
@@ -142,6 +156,15 @@ runtime 的 overlay visibility。延迟值在首版收窄为 `0..=60` 秒，理�
 改变呈现层，窗口、frame loop 与 runtime overlay visibility 不受影响。判定依据是 runtime snapshot
 中的输入计数器，因此输入服务不在 `Running` 状态时该功能关闭，最坏情况是窗口保持可见。两个字段都带
 `#[serde(default)]`，旧配置文件缺失时按默认关闭、延迟 10 秒读取，而不是解析失败。
+
+`input.mouse.force_move` 默认 `false`。开启后，指针位置不再取操作系统的绝对光标位置，而是由设备
+报告的相对位移逐次累加得到：以绝对光标位置为种子，累加每个采样之间的 `dx`/`dy`，并夹在当前显示器
+viewport 内。这解决的是「前台应用捕获指针、把光标钉在一处」的场景——多数全屏游戏会这样做，此时绝对
+位置不再变化，但设备仍在报告每一次移动，因此按绝对位置跟随的猫会停住，而按相对位移累加的猫能继续
+跟随。累加器在第一个采样和 viewport 变化时重新用绝对位置对齐，所以跨显示器不会把位移带进错误的
+坐标系；开启与关闭、以及输入 Reset 都会清空累加值，旧位置不会被再次推进。代价是开启期间由设备以外
+的方式移动的指针（程序化 warp、绝对定位设备）不会被跟随，所以默认关闭。该字段带 `#[serde(default)]`，
+缺失 `input.mouse` 命名空间的旧配置按关闭读取，不进入恢复流程。
 
 `system.show_status_icon` 控制 Windows 托盘或 macOS 菜单栏状态图标，不销毁系统菜单的
 唯一事件 owner。托盘菜单与 overlay 右键菜单是同一 owner 下的两个 popup 根，共享强类型 action

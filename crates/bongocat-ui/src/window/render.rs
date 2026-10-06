@@ -44,6 +44,29 @@ const fn automatic_updates_available() -> bool {
     true
 }
 
+/// Whether the platform needs the pointer's motion forced while an application
+/// has captured it.
+///
+/// macOS and Windows read the system cursor, which a capturing application
+/// stops moving, so the cursor service there has to keep the model following.
+/// Linux reads relative motion from the input devices and derives the pointer
+/// position from it, so motion keeps arriving either way and the switch has
+/// nothing to change.
+#[cfg(target_os = "linux")]
+const fn cursor_force_move_available() -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+const fn cursor_force_move_available() -> bool {
+    true
+}
+
+#[cfg(target_os = "windows")]
+const fn cursor_force_move_available() -> bool {
+    true
+}
+
 /// One model dropdown of the gamepad auto switch.
 ///
 /// The row is a custom element because the option list is the model catalog, so
@@ -625,6 +648,16 @@ impl Render for SettingsView {
                         ),
                     )
                     .disabled(idle_hide_delay_gate.disables_controls()),
+                    // Last row of the group, on purpose. This row suspends two
+                    // switches rather than standing among them, and no linear
+                    // position can put it next to both: click-through is third
+                    // and hide-on-hover sixth, with keep-on-screen between them.
+                    // After the whole group it reads as a note over the settings
+                    // above it — a modifier that undoes them belongs after them,
+                    // not before — and the description on the row names the two
+                    // it affects, so the rows it merely sits next to cannot be
+                    // mistaken for affected ones.
+                    hold_modifier_row(&view_entity, language, editing_blocked),
                 ],
                         &model_window_behavior_keywords,
                     )),
@@ -1024,6 +1057,51 @@ impl Render for SettingsView {
                         ),
                     )
                     .disabled(!global_pointer_tracking_available()),
+                    // The last row is the one that changes how the pointer is
+                    // read rather than what the model does with it, so it reads
+                    // as a note on the three above: if the pointer does not move
+                    // at all, none of them can have an effect.
+                    SettingItem::new(
+                        bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.input_interaction.mouse.force_move.label",
+                        ),
+                        SettingField::switch(
+                            {
+                                let view = view_entity.clone();
+                                move |app| {
+                                    view.read(app)
+                                        .snapshot
+                                        .as_ref()
+                                        .is_some_and(|s| s.cursor_settings.force_move)
+                                }
+                            },
+                            {
+                                let view = view_entity.clone();
+                                move |value, app| {
+                                    view.update(app, |view, cx| {
+                                        if let Some(s) = view.snapshot.as_ref() {
+                                            let mut settings = s.cursor_settings;
+                                            settings.force_move = value;
+                                            view.set_cursor_settings(settings, cx);
+                                        }
+                                    });
+                                }
+                            },
+                        ),
+                    )
+                    // Only the platforms whose cursor service reads a captured
+                    // pointer can act on this, and the row says why it applies
+                    // where it does, so it is disabled rather than hidden.
+                    .disabled(!cursor_force_move_available())
+                    // The one row on this page whose title does not say when it
+                    // applies. "Force mouse movement" reads as a behaviour the
+                    // cat always has, and the whole point is that it only
+                    // matters where the pointer is captured.
+                    .description(bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "settings.input_interaction.mouse.force_move.description",
+                    )),
                 ], &mouse_keywords)),
             SettingGroup::new()
                 .title(bongocat_i18n::text(

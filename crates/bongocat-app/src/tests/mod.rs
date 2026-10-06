@@ -22,7 +22,9 @@ pub(crate) use bongocat_config::{
     ModelIdentity, ModelInputMode, ModelSource, NativeConfig, RandomBehaviorMode, StorageLayout,
     Theme as ConfigTheme,
 };
-pub(crate) use bongocat_input::{GamepadAxisSettings, GamepadButton, HandSide, PhysicalKey};
+pub(crate) use bongocat_input::{
+    GamepadAxisSettings, GamepadButton, HandSide, ModifierKey, PhysicalKey,
+};
 pub(crate) use bongocat_live2d_render::KeyImageInventory;
 pub(crate) use bongocat_model::{
     InstalledModel, ModelCatalogEntry, ModelOrigin, ModelPackageLimits,

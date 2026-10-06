@@ -354,6 +354,14 @@
       "click_through": {
         "label": "鼠标穿透"
       },
+      "hold_modifier_to_interact": {
+        "label": "按住修饰键进行交互",
+        "recording": "按下修饰键以录制",
+        "record_placeholder": "点击以录制修饰键",
+        "side_left": "左",
+        "side_right": "右",
+        "description": "按住时，「鼠标穿透」和「鼠标悬停时隐藏」将暂时失效。"
+      },
       "keep_inside_screen": {
         "label": "保持在屏幕内"
       },
@@ -418,6 +426,10 @@
         },
         "ignore_mouse_input": {
           "label": "忽略鼠标输入"
+        },
+        "force_move": {
+          "label": "强制移动鼠标",
+          "description": "在捕获指针的应用（例如全屏游戏）中也能继续跟随鼠标移动。"
         }
       },
       "keyboard": {
