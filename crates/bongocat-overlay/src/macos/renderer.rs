@@ -565,6 +565,13 @@ impl NativeOverlay {
             let Some(texture) = self.model.key_textures.get(&overlay.asset_id) else {
                 continue;
             };
+            // The key image's own quad, not the canvas quad: a legacy key image
+            // is authored in BongoCatMver's window frame and carries that
+            // window's horizontal margin (see `legacy_key_overlay_bounds`).
+            let Some(overlay_vertex_buffer) = self.model.key_overlay_buffers.get(&overlay.asset_id)
+            else {
+                continue;
+            };
             encoder.set_cull_mode(MTLCullMode::None);
             let uniforms = Uniforms {
                 scale_offset,
@@ -576,7 +583,7 @@ impl NativeOverlay {
                 padding: [0.0; 3],
             };
             encoder.set_render_pipeline_state(&self.pipelines.normal);
-            encoder.set_vertex_buffer(0, Some(&self.model.background_vertex_buffer), 0);
+            encoder.set_vertex_buffer(0, Some(overlay_vertex_buffer), 0);
             encoder.set_vertex_bytes(
                 1,
                 size_of::<Uniforms>() as u64,

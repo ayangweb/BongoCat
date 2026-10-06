@@ -536,6 +536,13 @@ impl Renderer {
             let Some(texture) = self.model.key_textures.get(&overlay.asset_id) else {
                 continue;
             };
+            // The key image's own quad, not the canvas quad: a legacy key image
+            // is authored in BongoCatMver's window frame and carries that
+            // window's horizontal margin (see `legacy_key_overlay_bounds`).
+            let Some(overlay_vertex_buffer) = self.model.key_overlay_buffers.get(&overlay.asset_id)
+            else {
+                continue;
+            };
             let uniforms = Uniforms {
                 scale_offset,
                 multiply_color: [1.0; 4],
@@ -557,7 +564,7 @@ impl Renderer {
                     0,
                     0,
                 );
-                let vertex_buffer = Some(self.model.background_vertex_buffer.clone());
+                let vertex_buffer = Some(overlay_vertex_buffer.clone());
                 let stride = size_of::<bongocat_render::Vertex>() as u32;
                 let offset = 0_u32;
                 self.context.IASetVertexBuffers(
