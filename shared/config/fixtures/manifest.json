@@ -247,18 +247,8 @@
       "expected": "reject"
     },
     {
-      "id": "random-behavior-inclusion-behavior-id",
-      "file": "invalid-random-behavior-inclusion-behavior-id.json",
-      "expected": "reject"
-    },
-    {
       "id": "random-behavior-inclusion-duplicate-id",
       "file": "invalid-random-behavior-inclusion-duplicate-id.json",
-      "expected": "reject"
-    },
-    {
-      "id": "random-behavior-inclusion-duplicate-model",
-      "file": "invalid-random-behavior-inclusion-duplicate-model.json",
       "expected": "reject"
     },
     {

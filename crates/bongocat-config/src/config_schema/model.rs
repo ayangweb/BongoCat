@@ -125,7 +125,14 @@ pub struct RandomBehaviorConfig {
     /// nothing, which plays nothing and is the state the settings page says out
     /// loud. Rows are kept for every model the first time one is written, so
     /// materialising this list never silently mutes a model the user did not touch.
+    ///
+    /// The rows carry `uniqueItems` so a byte-identical duplicate is rejected by the
+    /// schema as well as by the validator.
     #[serde(default)]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(extend("uniqueItems" = true))
+    )]
     pub included: Option<Vec<RandomBehaviorInclusion>>,
 }
 
@@ -139,9 +146,17 @@ pub struct RandomBehaviorInclusion {
     pub model: ModelIdentity,
     /// `behavior_id` spellings, the same canonical strings the shortcut bindings
     /// use: `motion:<group>:<index>` or `expression:<name>`.
+    ///
+    /// The list carries `uniqueItems`, which rejects the same identifier listed twice —
+    /// the shape a hand-edited document takes after a copy-paste, and the one the JSON
+    /// Schema can express. Whether an identifier is a form the parser accepts, and
+    /// whether two rows name the same model, are rules only the Rust validator can
+    /// see: the schema's item type is a bare string, so a fixture for either would be a
+    /// document the schema accepts and the validator refuses. Those two are covered by
+    /// `a_random_behavior_selection_is_parsed_and_holds_one_row_per_model` instead.
     #[cfg_attr(
         any(test, feature = "schema-generation"),
-        schemars(length(min = 0, max = 256))
+        schemars(length(min = 0, max = 256), extend("uniqueItems" = true))
     )]
     pub behavior_ids: Vec<String>,
 }

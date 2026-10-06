@@ -456,7 +456,8 @@
           "type": [
             "array",
             "null"
-          ]
+          ],
+          "uniqueItems": true
         },
         "interval_seconds": {
           "format": "uint32",
@@ -483,7 +484,8 @@
           },
           "maxItems": 256,
           "minItems": 0,
-          "type": "array"
+          "type": "array",
+          "uniqueItems": true
         },
         "model": {
           "$ref": "#/$defs/ModelIdentity"

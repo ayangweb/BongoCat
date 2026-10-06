@@ -130,7 +130,12 @@ Application 在每次 `prepare_model` / `select_model` 之后为新模型重新�
   - `bongocat-config`（`an_absent_random_behavior_selection_is_not_an_empty_one`、
     `a_random_behavior_selection_is_parsed_and_holds_one_row_per_model`）从序列化后的当前默认里删掉
     该字段模拟旧文档的字节，并钉住 `null` 与空列表的区分、解析与每模型一行；
-  - `shared/config/fixtures` 新增 1 份 accept 与 4 份 reject 用例（无法解析的 id、重复 id、重复模型、
-    非法模型 id）。
+  - `shared/config/fixtures` 新增 1 份 accept 与 2 份 reject 用例（重复 id、非法模型 id），两套校验层
+    对它们一致。**「id 不是合法行为拼法」与「同一模型两行」这两条只有 Rust 校验器能表达**：生成的
+    JSON Schema 里 `behavior_ids` 的 item 只是一个裸字符串（schemars 1.2 无法给数组元素挂 pattern），
+    而两行只共享 model 与 behavior、不逐字相同时 `uniqueItems` 也看不出来。为它们加 fixture 会造出一份
+    schema 放行、Rust 拒绝的文档，也就是让两层对「什么是合法 config.json」再次分歧，因此这两条由
+    `a_random_behavior_selection_is_parsed_and_holds_one_row_per_model` 承担。
+    两个数组都加了 `uniqueItems`，覆盖逐字重复那一类手改。
 - 未运行实机验证：只在本机（macOS）跑了 `just check` 与 `tools/` 下的校验脚本，没有做 macOS 或 Windows
   实机 smoke。复选框列表在 800×600 与 Windows 125/150/200% 下的观感需要实机确认。
