@@ -18,3 +18,8 @@ fn color_formats_match_the_encoded_space_contract() {
     assert_eq!(COMPOSITION_RENDER_TARGET_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM);
     assert_eq!(MASK_TEXTURE_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM);
 }
+
+#[test]
+fn model_rasterization_uses_multisampling_before_composition_resolve() {
+    assert_eq!(MSAA_SAMPLE_COUNT, 4);
+}

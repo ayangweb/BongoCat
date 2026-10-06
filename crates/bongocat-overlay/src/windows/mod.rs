@@ -33,6 +33,11 @@ pub(crate) use thread_settle::*;
 pub(crate) use window::*;
 pub(crate) use window_proc::*;
 
+/// Internal render target sample count. The composition swap chain remains
+/// single-sample (required by the flip model); resolving this target before
+/// present provides antialiased drawable edges without changing its format.
+pub(crate) const MSAA_SAMPLE_COUNT: u32 = 4;
+
 use crate::{
     BlendFactor, DrawableCullMode, FRAME_SMOKE_GRID_DIMENSION, FrameRetryBackoff,
     MAXIMUM_CORNER_RADIUS_PERCENT, OverlayContextMenuRequest, OverlayError,
@@ -103,13 +108,14 @@ use windows::{
                 D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_INPUT_ELEMENT_DESC,
                 D3D11_INPUT_PER_VERTEX_DATA, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE,
                 D3D11_RASTERIZER_DESC, D3D11_RENDER_TARGET_BLEND_DESC,
-                D3D11_RENDER_TARGET_VIEW_DESC, D3D11_RTV_DIMENSION_TEXTURE2D, D3D11_SAMPLER_DESC,
-                D3D11_SDK_VERSION, D3D11_SUBRESOURCE_DATA, D3D11_TEXTURE_ADDRESS_CLAMP,
-                D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING, D3D11_VIEWPORT,
-                D3D11CreateDevice, ID3D11BlendState, ID3D11Buffer, ID3D11ClassLinkage,
-                ID3D11DepthStencilView, ID3D11Device, ID3D11DeviceContext, ID3D11InputLayout,
-                ID3D11PixelShader, ID3D11RasterizerState, ID3D11RenderTargetView,
-                ID3D11SamplerState, ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
+                D3D11_RENDER_TARGET_VIEW_DESC, D3D11_RTV_DIMENSION_TEXTURE2D,
+                D3D11_RTV_DIMENSION_TEXTURE2DMS, D3D11_SAMPLER_DESC, D3D11_SDK_VERSION,
+                D3D11_SUBRESOURCE_DATA, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE2D_DESC,
+                D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING, D3D11_VIEWPORT, D3D11CreateDevice,
+                ID3D11BlendState, ID3D11Buffer, ID3D11ClassLinkage, ID3D11DepthStencilView,
+                ID3D11Device, ID3D11DeviceContext, ID3D11InputLayout, ID3D11PixelShader,
+                ID3D11RasterizerState, ID3D11RenderTargetView, ID3D11SamplerState,
+                ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
             },
             DirectComposition::{
                 DCompositionCreateDevice, IDCompositionDevice, IDCompositionEffectGroup,

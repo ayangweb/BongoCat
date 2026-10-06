@@ -11,6 +11,7 @@
 
 ### 🐛 Bug Fixes
 
+- Reduced jagged edges on Windows models by enabling multisample antialiasing in the overlay renderer.
 - Fixed the analog sticks never appearing in gamepad mode, and made moving a stick or pressing its button lower that side's paw.
 - Fixed a second gamepad's sticks and triggers doing nothing while another gamepad was connected.
 - Fixed Windows controllers in Xbox-compatible mode pressing the wrong key image, leaving the cross keys unresponsive, and swapping the triggers with the right stick.

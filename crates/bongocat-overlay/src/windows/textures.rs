@@ -385,14 +385,48 @@ pub(crate) unsafe fn create_render_target(
     texture: &ID3D11Texture2D,
     format: DXGI_FORMAT,
 ) -> WindowsResult<ID3D11RenderTargetView> {
+    let mut texture_descriptor = D3D11_TEXTURE2D_DESC::default();
+    unsafe { texture.GetDesc(&mut texture_descriptor) };
     let descriptor = D3D11_RENDER_TARGET_VIEW_DESC {
         Format: format,
-        ViewDimension: D3D11_RTV_DIMENSION_TEXTURE2D,
+        ViewDimension: if texture_descriptor.SampleDesc.Count > 1 {
+            D3D11_RTV_DIMENSION_TEXTURE2DMS
+        } else {
+            D3D11_RTV_DIMENSION_TEXTURE2D
+        },
         ..Default::default()
     };
     let mut target = None;
     unsafe { device.CreateRenderTargetView(texture, Some(&descriptor), Some(&mut target))? };
     required(target, "render target")
+}
+
+/// Allocate the multisampled color surface used for model rasterization.
+/// DirectComposition flip-model swap chains must stay single-sample, so the
+/// renderer resolves this surface into the swap-chain buffer before presenting.
+pub(crate) unsafe fn create_multisample_texture(
+    device: &ID3D11Device,
+    width: u32,
+    height: u32,
+    format: DXGI_FORMAT,
+) -> WindowsResult<ID3D11Texture2D> {
+    let descriptor = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: format,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: MSAA_SAMPLE_COUNT,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
+        ..Default::default()
+    };
+    let mut texture = None;
+    unsafe { device.CreateTexture2D(&descriptor, None, Some(&mut texture))? };
+    required(texture, "multisample render target")
 }
 
 pub(crate) unsafe fn create_staging_texture(

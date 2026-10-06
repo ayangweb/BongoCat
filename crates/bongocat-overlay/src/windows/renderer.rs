@@ -62,6 +62,7 @@ impl Drop for ComApartment {
 /// to the old buffers is released, so a resize has to drop all three together
 /// and rebuild them from the resized chain.
 pub(crate) struct RenderTargets {
+    pub(crate) multisample_texture: ID3D11Texture2D,
     pub(crate) render_target: ID3D11RenderTargetView,
     pub(crate) staging_texture: ID3D11Texture2D,
     pub(crate) back_buffer: ID3D11Texture2D,
@@ -153,8 +154,20 @@ impl Renderer {
             composition_device.Commit()?;
         }
         let back_buffer: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0)? };
+        let multisample_texture = unsafe {
+            create_multisample_texture(
+                &device,
+                window.width,
+                window.height,
+                COMPOSITION_RENDER_TARGET_FORMAT,
+            )?
+        };
         let render_target = unsafe {
-            create_render_target(&device, &back_buffer, COMPOSITION_RENDER_TARGET_FORMAT)?
+            create_render_target(
+                &device,
+                &multisample_texture,
+                COMPOSITION_RENDER_TARGET_FORMAT,
+            )?
         };
         let staging_texture = unsafe { create_staging_texture(&device, &back_buffer)? };
         let pipelines = unsafe { create_pipelines(&device)? };
@@ -173,6 +186,7 @@ impl Renderer {
             target,
             composition_device,
             targets: Some(RenderTargets {
+                multisample_texture,
                 render_target,
                 staging_texture,
                 back_buffer,
@@ -265,11 +279,24 @@ impl Renderer {
             )?;
         }
         let back_buffer: ID3D11Texture2D = unsafe { self.swap_chain.GetBuffer(0)? };
+        let multisample_texture = unsafe {
+            create_multisample_texture(
+                &self.device,
+                width,
+                height,
+                COMPOSITION_RENDER_TARGET_FORMAT,
+            )?
+        };
         let render_target = unsafe {
-            create_render_target(&self.device, &back_buffer, COMPOSITION_RENDER_TARGET_FORMAT)?
+            create_render_target(
+                &self.device,
+                &multisample_texture,
+                COMPOSITION_RENDER_TARGET_FORMAT,
+            )?
         };
         let staging_texture = unsafe { create_staging_texture(&self.device, &back_buffer)? };
         self.targets = Some(RenderTargets {
+            multisample_texture,
             render_target,
             staging_texture,
             back_buffer,
@@ -579,6 +606,15 @@ impl Renderer {
                 );
                 self.context.DrawIndexed(6, 0, 0);
             }
+        }
+        unsafe {
+            self.context.ResolveSubresource(
+                &targets.back_buffer,
+                0,
+                &targets.multisample_texture,
+                0,
+                COMPOSITION_RENDER_TARGET_FORMAT,
+            );
         }
         if verify || capture {
             unsafe {
