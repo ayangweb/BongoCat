@@ -1,29 +1,24 @@
 # Changelog
 
-## Unreleased
+## 2.2.0 - 2026-10-07
 
 ### ✨ Features
 
 - Added a "Model window → Window behavior → Hide when idle" setting.
 - Added a "Model window → Window behavior → Idle hide delay" setting.
 - Added a "Model window → Window behavior → Hold a modifier key to interact" setting.
-- Added an "Input & interaction → Mouse → Force mouse movement" setting, so the cat keeps following the mouse in full-screen games that capture the pointer.
-- Added a "Model behavior → Turn off an expression when triggered again" setting, so triggering the expression you are already wearing takes it off and returns the model to its own default face.
-- Motions and expressions on the Shortcuts page can be given your own name. Click the edit icon beside a row's name to rename it in place, and leave the field empty to go back to the numbered name.
+- Added an "Input & interaction → Mouse → Force mouse movement" setting.
+- Added a "Model behavior → Turn off an expression when triggered again" setting.
+- Added renaming support to "Shortcuts → Model behavior shortcuts".
 
 ### 🐛 Bug Fixes
 
-- Fixed the analog sticks never appearing in gamepad mode, and made moving a stick or pressing its button lower that side's paw.
-- Fixed a second gamepad's sticks and triggers doing nothing while another gamepad was connected.
-- Fixed Windows controllers in Xbox-compatible mode pressing the wrong key image, leaving the cross keys unresponsive, and swapping the triggers with the right stick.
-- Fixed a Nintendo Switch controller in Switch mode making the model rapidly press every key on Windows.
-- Fixed the input method candidate window appearing in the wrong place while renaming a model in Settings with a Chinese, Japanese or Korean input method.
-- Fixed soft fringes and inconsistent edge quality around Windows model textures by matching the Web renderer's premultiplied-alpha filtering and high-DPI resize behavior.
-- Fixed BongoCatMver models whose key images are narrower than they are tall drawing every pressed key off to the right of the key it belongs to, so the paws and the key caps now land on the model's own keyboard.
+- Fixed noticeable soft fringes around model texture edges.
+- Fixed misplaced key images in some converted Bongo-Cat-Mver models.
 
 ### 🎨 Interface
 
-- Renamed the "Open at login" switch to "Run at startup", and matched the wording of the messages that explain when it is unavailable.
+- Renamed "App & system → Startup & desktop → Open at login" to "Run at startup".
 
 ## 2.1.1 - 2026-10-03
 
