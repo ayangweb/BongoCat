@@ -96,7 +96,14 @@ Windows x64 packaging is a current-user NSIS install. `cargo-packager` obtains i
 toolchain, so no release workstation state is required, and the installer requests no administrator
 privileges and writes only HKCU uninstall metadata plus its own product directory. The installer is
 signed only when a signing identity or signing command is configured; without one the release
-workflow reports the unsigned installer as unsuitable for a stable release. Windows install,
+workflow reports the unsigned installer as unsuitable for a stable release.
+The wizard opens with a language picker covering exactly the application languages (Simplified and
+Traditional Chinese, English, Arabic, Vietnamese, Brazilian Portuguese, Korean); it preselects the
+system language and falls back to English. The choice only changes the installer and uninstaller
+text, never the application language setting. NSIS stores it in HKCU, so a machine that already has
+BongoCat installed reuses the stored language without showing the picker, and silent updates never
+show it. `cargo-packager` embeds the installer messages for every language except Vietnamese, whose
+strings live in `crates/bongocat-packaging/installer/Vietnamese.nsh`. Windows install,
 upgrade, uninstall, and rollback smoke remain release gates.
 
 Preset models are product resources, not user data. macOS loads them from
