@@ -200,7 +200,7 @@ just schema                                             # 从 Rust 类型生成�
 ## 10. Git 与交付
 
 - 未经用户明确要求，不 commit、push、开 PR、release 或打 tag。
-- 主分支是 `master`（以 `origin/HEAD` 为准）。`master` 上禁止直接提交，按实际改动创建 `<type>/<short-topic>` 语义分支（如 `feat/settings-window`、`fix/input-release`、`docs/phase-0-plan`）后再提交；已在其他分支时按用户指定执行，未指定则先询问。未经要求不创建、删除、重命名或切换分支，不 reset、checkout、覆盖或格式化无关文件。
+- 主分支是 `master`（以 `origin/HEAD` 为准）。除 §10.2 的发布版本外，`master` 上禁止直接提交，按实际改动创建 `<type>/<short-topic>` 语义分支（如 `feat/settings-window`、`fix/input-release`、`docs/phase-0-plan`）后再提交；已在其他分支时按用户指定执行，未指定则先询问。未经要求不创建、删除、重命名或切换分支，不 reset、checkout、覆盖或格式化无关文件。
 - Commit message 必须依据实际 staged diff，遵循 Conventional Commits：`<type>: <summary>`，只有 scope 有明确区分价值时用 `<type>(<scope>): <summary>`。type 用 `feat`、`fix`、`docs`、`test`、`refactor`、`perf`、`build`、`ci`、`chore`，不用 `update`、`changes`、`misc`；summary 用简洁英文祈使句、不加句号、建议不超过 72 字符；不兼容变更加 `!` 并在正文写 `BREAKING CHANGE:`。提交前核对 staged diff，排除未暂存或无关改动。
 - **推送顺序固定为「先拉上游 → 解决冲突 → 验证 → 提交 → push」。** 动手写代码前先 `git fetch`（必要时 `git pull --ff-only`），在最新上游之上工作；提交前若发现远端已有新 commit，必须先把上游改动合入并解决冲突再提交，不得留下 `Merge remote-tracking branch 'origin/master' into <branch>` 这类 merge commit。合并后必须在最终树上重跑完整验证，不能沿用合入前的结论。
 - 冲突按实际语义逐个解决，不用 `checkout --ours/--theirs` 覆盖对方实质改动，解决后确认本任务改动仍在。合并后若出现失败测试，先判断是否由本次改动引入（在纯上游 commit 上单独复跑）；上游自身失败不代为修复，如实报告并交由用户决定。
@@ -215,3 +215,9 @@ just schema                                             # 从 Rust 类型生成�
 - 完成推送和 PR 创建后 `git switch` 回主分支（默认 `master`），工作树不留在本次开发分支。
 - PR 标题沿用同一 Conventional Commits 标题，正文写清改动、验证结果、未运行测试和已知风险。
 - 未经明确要求不打 tag、不 release。
+
+### 10.2 发布版本
+
+用户明确要求**“发布版本”**（如“发布 2.2.0 版本”）时，直接在 `master` 上完成，不建分支、不开 PR，固定顺序是：fetch 并确认 `master` 与上游一致 → 改 `[workspace.package].version` 并 `cargo update --workspace` 同步 `Cargo.lock` → 两份 changelog 的 `## Unreleased` 改为 `## <version> - <date>` → `just release-notes` 与 `python3 -m unittest tools.tests.test_release_changelog_contract` 本地校验 → 在 `master` 提交 `chore: release v<version>` → 打附注 tag `v<version>` → `git push origin master` 与 `git push origin v<version>` 触发 release 流水线。
+
+- 发布 commit 只包含版本号、`Cargo.lock` 与 changelog 标题等版本相关改动，功能改动不得混入；标题与 tag 规则见 `docs/changelog-conventions.md` §3。
