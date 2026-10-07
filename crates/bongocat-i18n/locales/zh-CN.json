@@ -226,8 +226,7 @@
   "actions": {
     "cancel": "取消",
     "confirm": "确认",
-    "close": "关闭",
-    "save": "保存"
+    "close": "关闭"
   },
   "shortcuts": {
     "scopes": {
@@ -261,9 +260,8 @@
       "motion": "动作 %{index}",
       "expression": "表情 %{index}",
       "rename": {
-        "title": "重命名这个动作或表情",
-        "field": "名称",
-        "description": "留空则恢复「动作 1」这样的编号名称。名称跟随模型保存，换模型后各用各的。"
+        "tooltip": "重命名",
+        "field": "名称"
       }
     },
     "errors": {

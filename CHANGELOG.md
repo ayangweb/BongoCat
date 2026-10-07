@@ -9,7 +9,7 @@
 - Added a "Model window → Window behavior → Hold a modifier key to interact" setting.
 - Added an "Input & interaction → Mouse → Force mouse movement" setting, so the cat keeps following the mouse in full-screen games that capture the pointer.
 - Added a "Model behavior → Turn off an expression when triggered again" setting, so triggering the expression you are already wearing takes it off and returns the model to its own default face.
-- Motions and expressions on the Shortcuts page can be given your own name. Click a row's name to rename it, and leave the field empty to go back to the numbered name.
+- Motions and expressions on the Shortcuts page can be given your own name. Click the edit icon beside a row's name to rename it in place, and leave the field empty to go back to the numbered name.
 
 ### 🐛 Bug Fixes
 

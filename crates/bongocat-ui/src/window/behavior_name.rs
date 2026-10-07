@@ -1,22 +1,26 @@
-//! Renaming one motion or expression.
+//! Naming one motion or expression, in place.
 //!
 //! The rows and the random-playback checkboxes both name a behavior by position —
 //! "Motion 3" — because the resource names inside a package are internal numbering the
 //! user cannot see. A name is the only way to find the behavior you meant without
 //! counting, so each row carries an optional one.
 //!
-//! The rename is a dialog rather than an inline field for one reason: a shortcut row's
-//! label sits next to a control that records a chord on any click inside it, and a text
-//! field in that row would have to share focus and tab order with a capture that opens
-//! on Enter. A separate surface keeps the row's interaction exactly what it was, and
-//! keeps a half-typed name from ever being drawn as the row's label.
+//! The name is edited where it is shown: the pencil beside the label turns the label
+//! into a text field on a click, the way a piece of editable text does in the component
+//! libraries this window takes its controls from. The pencil is the only entry — the
+//! name itself stays plain text, so reading or selecting a row never starts an edit.
+//! Nothing is drawn in a second surface,
+//! so the thing being renamed and the thing being typed are the same object in the same
+//! place on screen — and a half-typed name is never drawn as the row's label, because
+//! the label is not on screen while the field is.
 //!
-//! One draft exists at a time, and it belongs to the view rather than to the dialog
-//! layer, because the page has to know whether a rename is pending before it opens the
-//! layer at all — the same reason the Mver conversion dialog keeps its draft there.
+//! One draft exists at a time and it belongs to the view rather than to the row,
+//! because a row is rebuilt every frame and the field has to survive that — the same
+//! reason the model rename keeps its draft there.
 
 use super::*;
 
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::{Rems, component::Size};
 
@@ -30,10 +34,35 @@ pub(crate) struct BehaviorNameDraft {
     pub(crate) behavior_id: String,
     /// The numbered label, which is also what clearing the field returns to.
     pub(crate) current: String,
-    pub(crate) title: String,
     pub(crate) input: Entity<InputState>,
-    /// Whether the rename surface has been put on screen for this draft.
-    pub(crate) opened: bool,
+    /// The field's focus handle, which the label gives up its click to.
+    pub(crate) input_focus: FocusHandle,
+}
+
+impl BehaviorNameDraft {
+    /// Whether this draft is the one a row would open.
+    ///
+    /// Only one editor exists at a time, and the pencil that opens it disappears
+    /// while its own row is being edited, so this is a guard rather than a path the
+    /// pointer can retrace: it makes a second arrival a no-op instead of a restart
+    /// that discards what was typed.
+    pub(crate) fn is_for(&self, model: &SettingsModelKey, behavior_id: &str) -> bool {
+        self.model == *model && self.behavior_id == behavior_id
+    }
+
+    /// The draft's value as it will be stored.
+    pub(crate) fn value(&self, cx: &App) -> String {
+        sanitize_behavior_name_input(&self.input.read(cx).value())
+    }
+
+    /// Whether saving would write anything.
+    ///
+    /// Saving the name a row already shows writes nothing, so Enter on an unchanged
+    /// field closes it without sending a request the service would answer by storing
+    /// what it already has.
+    pub(crate) fn can_save(&self, cx: &App) -> bool {
+        self.value(cx) != self.current
+    }
 }
 
 /// The longest name one row may carry, matching the configuration's own bound.
@@ -63,151 +92,121 @@ pub(crate) fn sanitize_behavior_name_input(value: &str) -> String {
     filtered.chars().take(BEHAVIOR_NAME_MAXIMUM_CHARS).collect()
 }
 
-/// Build one frame of the rename dialog.
+/// Build the row's label as the field that replaces it while the row is renamed.
 ///
-/// The builder runs whenever the dialog layer paints, which happens inside
-/// `SettingsView::render`, so it must not read the view: the draft and the language
-/// are passed in instead. The footer is built by hand because the stock button pair has
-/// no disabled state, and saving a name the field never accepted has to read as
-/// disabled. Enter still routes through [`Dialog::on_ok`], so the keyboard path reads
-/// the same predicate.
-pub(super) fn build_behavior_name_dialog(
-    draft: Rc<RefCell<BehaviorNameDialogSnapshot>>,
-    locale: &'static str,
-    view: WeakEntity<SettingsView>,
-    dialog: Dialog,
-    _window: &mut Window,
-    cx: &mut App,
-) -> Dialog {
-    let text = |key: &str| SharedString::from(bongocat_i18n::text(locale, key));
-    let title = draft.borrow().title.clone();
-    let description = text("shortcuts.behavior_names.rename.description");
-    let save_label = text("actions.save");
-    let cancel_label = text("actions.cancel");
-    let input = draft.borrow().input.clone();
-    // Read once here, while the builder still has an `App`: a save is offered only
-    // when the field holds a name the row does not already show, because saving the
-    // current label writes nothing.
-    let can_save = draft.borrow().can_save(cx);
+/// The editor takes the label's place in the row and nothing else about the row moves:
+/// the chord frame, its play control and its clear control keep their positions, their
+/// tab indices and their handlers, because this surface is built from the label rather
+/// than added beside them. Nothing here joins the tab order — the row's three controls
+/// are still the row's three tab stops — so the keyboard path to a rename is the
+/// pointer one, exactly as it was when the label alone was the entry.
+///
+/// The surface carries no controls and no copy of its own: Enter saves, Escape
+/// discards, and the field's focus being taken away saves. What the field says is only
+/// its placeholder — set where the draft is opened — which names the value it holds.
+pub(super) fn behavior_name_editor(
+    draft: &BehaviorNameDraft,
+    cx: &mut Context<SettingsView>,
+) -> gpui_kit::AnyElement {
+    let input = draft.input.clone();
+    let focus = draft.input_focus.clone();
+    let focus_for_click = focus.clone();
+    let key = behavior_name_key(&ShortcutCaptureTarget::ModelBehavior {
+        model: draft.model.clone(),
+        behavior_id: draft.behavior_id.clone(),
+    });
 
-    let on_ok_view = view.clone();
-    let on_cancel_view = view.clone();
-    let footer_save_view = view.clone();
-    let footer_cancel_view = view.clone();
-    let ok_draft = draft.clone();
-    let save_draft = draft.clone();
-
-    let viewport_height = _window.viewport_size().height;
-    // GPUI Kit's Dialog positions from a top inset, before the surface has measured
-    // its content. The surface here is a fixed width with one field and a description,
-    // so the measured height is derived the same way the Mver dialog's is.
-    let dialog_height = px(178.);
-    let centered_margin_top = ((viewport_height - dialog_height) / 2.).max(px(16.));
-
-    dialog
-        .title(title)
-        .w(px(440.))
-        .margin_top(centered_margin_top)
-        .button_props(
-            DialogButtonProps::default()
-                .ok_text(save_label.clone())
-                .cancel_text(cancel_label.clone())
-                .show_cancel(true)
-                .on_ok(move |_, window, cx| {
-                    // Enter and the footer's save read the same shared draft, so a
-                    // name the field never accepted can never be stored.
-                    if !ok_draft.borrow().can_save(cx) {
-                        return false;
-                    }
-                    let _ = on_ok_view.update(cx, |view, cx| view.confirm_behavior_name(cx));
-                    window.close_dialog(cx);
-                    true
-                })
-                .on_cancel(move |_, window, cx| {
-                    let _ = on_cancel_view.update(cx, |view, cx| view.cancel_behavior_name(cx));
-                    window.close_dialog(cx);
-                    true
-                }),
-        )
-        .footer(
+    div()
+        .id(behavior_name_part_id(&key, "editor"))
+        .key_context("SettingsControl")
+        .track_focus(&focus)
+        .min_w_0()
+        .flex_1()
+        .on_click(cx.listener(move |_view, _, window, cx| {
+            window.focus(&focus_for_click, cx);
+        }))
+        .on_key_down(cx.listener(move |view, event: &KeyDownEvent, _, cx| {
+            if event.keystroke.key == "escape" {
+                cx.stop_propagation();
+                view.cancel_behavior_name(cx);
+            }
+        }))
+        .child(
             div()
-                .flex()
-                .justify_end()
-                .gap_2()
+                .id(behavior_name_part_id(&key, "field"))
+                .flex_1()
+                .min_w_0()
                 .child(
-                    Button::new("behavior-name-cancel")
-                        .label(cancel_label.clone())
-                        .ghost()
-                        .tab_stop(true)
-                        .on_click(move |_, window, cx| {
-                            let _ = footer_cancel_view
-                                .update(cx, |view, cx| view.cancel_behavior_name(cx));
-                            window.close_dialog(cx);
-                        }),
+                    Input::new(&input)
+                        .with_size(BEHAVIOR_NAME_SIZE)
+                        .line_height(BEHAVIOR_NAME_LINE_HEIGHT)
+                        .text_base(),
                 )
-                .child(
-                    Button::new("behavior-name-save")
-                        .label(save_label.clone())
-                        .disabled(!can_save)
-                        .tab_stop(can_save)
-                        .on_click(move |_, window, cx| {
-                            if !save_draft.borrow().can_save(cx) {
-                                return;
-                            }
-                            let _ = footer_save_view
-                                .update(cx, |view, cx| view.confirm_behavior_name(cx));
-                            window.close_dialog(cx);
-                        }),
-                ),
+                .test_support(),
         )
-        .content(move |content, _window, cx| {
-            let muted = cx.theme().muted_foreground;
-            content.child(
-                div()
-                    .v_flex()
-                    .w_full()
-                    .gap_3()
-                    .child(div().text_sm().text_color(muted).child(description.clone()))
-                    .child(
-                        Input::new(&input)
-                            .with_size(BEHAVIOR_NAME_SIZE)
-                            .line_height(BEHAVIOR_NAME_LINE_HEIGHT)
-                            .text_base(),
-                    ),
-            )
-        })
+        .into_any_element()
 }
 
-/// A render-safe copy of the rename draft.
+/// One stable element id per part of a renamable row's name surface.
 ///
-/// The dialog builder runs while `SettingsView` is borrowed for rendering, so this
-/// carries exactly the state the surface needs: the field, the title it was opened
-/// with, and whether the value may be saved.
-#[derive(Clone)]
-pub(super) struct BehaviorNameDialogSnapshot {
-    pub(crate) title: String,
-    pub(crate) input: Entity<InputState>,
-    pub(crate) current: String,
+/// `key` is [`behavior_name_key`]: the behavior a row names, or the command it runs.
+/// The parts are spelled out rather than derived from a position, because these
+/// elements are queried by what they belong to rather than by where the row happens to
+/// sit. `gpui-kit` needs an `ElementId`, and a target is a typed value that would have
+/// to be flattened into one.
+pub(super) fn behavior_name_part_id(key: &str, part: &str) -> gpui_kit::ElementId {
+    format!("behavior-name-{key}-{part}").into()
 }
 
-impl BehaviorNameDialogSnapshot {
-    pub(super) fn from_draft(draft: &BehaviorNameDraft) -> Self {
-        Self {
-            title: draft.title.clone(),
-            input: draft.input.clone(),
-            current: draft.current.clone(),
-        }
+/// The stable name one row's rename surface is identified by.
+///
+/// A behavior is named by the `behavior_id` it is stored under, so a query and a
+/// registration agree on the row without either counting positions. A command has no
+/// behavior to name, so it carries its own spelling — it never renders a rename
+/// surface, but the label shares this id space.
+pub(super) fn behavior_name_key(target: &ShortcutCaptureTarget) -> String {
+    match target {
+        ShortcutCaptureTarget::Command(command) => format!("command-{command}"),
+        ShortcutCaptureTarget::ModelBehavior { behavior_id, .. } => behavior_id.clone(),
     }
+}
 
-    pub(super) fn can_save(&self, cx: &App) -> bool {
-        // Saving the name a row already shows writes nothing, so the button reads as
-        // disabled rather than as a command that would silently do nothing.
-        sanitize_behavior_name_input(&self.input.read(cx).value()) != self.current
-    }
+/// The pencil that turns a row's label into the field above.
+///
+/// It sits after the name rather than replacing anything, so a row that has never been
+/// renamed still reads as plain text with one extra glyph — and the glyph is the only
+/// thing that says the name can be edited at all, and the only thing that starts one.
+/// It carries no keyboard handler: it is a pointer affordance, so it stays out of the
+/// tab order rather than becoming a fourth stop in a row that has three.
+pub(super) fn behavior_name_edit_control(
+    target: &ShortcutCaptureTarget,
+    label: &'static str,
+    color: Hsla,
+    cx: &mut Context<SettingsView>,
+) -> impl IntoElement {
+    let click_target = target.clone();
+    div()
+        .id(behavior_name_part_id(&behavior_name_key(target), "edit"))
+        .flex_none()
+        .child(
+            Button::new(label)
+                .ghost()
+                .xsmall()
+                .icon(Icon::new(gpui_kit::assets::IconName::SquarePen).text_color(color))
+                .tooltip(label)
+                .tab_stop(false),
+        )
+        .on_click(cx.listener(move |view, _, window, cx| {
+            let Some(row) = view.shortcut_rows.get(&click_target).cloned() else {
+                return;
+            };
+            view.open_behavior_name(&row, window, cx);
+        }))
+        .test_support()
 }
 
 impl SettingsView {
-    /// Open the rename surface for one behavior row.
+    /// Open the rename editor for one behavior row.
     ///
     /// The field starts on the label the row shows today, so the user edits the thing
     /// they can see rather than retyping a name they have to remember. Only a row that
@@ -229,6 +228,20 @@ impl SettingsView {
             ShortcutCaptureTarget::ModelBehavior { behavior_id, .. } => behavior_id.clone(),
             ShortcutCaptureTarget::Command(_) => return,
         };
+        if self
+            .behavior_name
+            .as_ref()
+            .is_some_and(|draft| draft.is_for(&playable.model, &behavior_id))
+        {
+            return;
+        }
+        // Opening another row's editor commits the one that was open. The editor is
+        // one at a time, so the alternative to committing is discarding a name the
+        // user had already typed — and leaving a row because the next one caught
+        // their eye is not a reason to throw their typing away.
+        if self.behavior_name.is_some() {
+            self.confirm_behavior_name(cx);
+        }
         let language = self
             .snapshot
             .as_ref()
@@ -237,10 +250,6 @@ impl SettingsView {
             });
         let locale = language.catalog_locale();
         let current = row.name(language);
-        // The title names the subject rather than repeating the row's label: the field
-        // already shows the label, and a title that quoted it would read as a second
-        // copy of the same thing.
-        let title = bongocat_i18n::text(locale, "shortcuts.behavior_names.rename.title").to_owned();
         let placeholder = bongocat_i18n::text(locale, "shortcuts.behavior_names.rename.field");
         let input = cx.new(|cx| {
             InputState::new(window, cx)
@@ -248,13 +257,24 @@ impl SettingsView {
                 .default_value(current.clone())
         });
         let input_focus = input.read(cx).focus_handle(cx);
-        // The dialog reads the field live when it paints, so the only thing a change
-        // has to do is ask for that repaint: it is what turns the save button on once
-        // the field holds something the row does not already show.
-        cx.subscribe(&input, |_view, _input, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify();
+        // Enter saves, Escape discards, and losing the field to something else saves
+        // rather than drops: a name the user typed is never thrown away by looking at
+        // something else. The check is on the draft, so a blur from an editor that has
+        // already been replaced can never write the one that replaced it.
+        cx.subscribe(&input, |view, input, event: &InputEvent, cx| match event {
+            InputEvent::Change => cx.notify(),
+            InputEvent::PressEnter { .. } => view.confirm_behavior_name(cx),
+            InputEvent::Blur => {
+                let blurred = input.entity_id();
+                if view
+                    .behavior_name
+                    .as_ref()
+                    .is_some_and(|draft| draft.input.entity_id() == blurred)
+                {
+                    view.confirm_behavior_name(cx);
+                }
             }
+            InputEvent::Focus => {}
         })
         .detach();
         window.focus(&input_focus, cx);
@@ -262,44 +282,10 @@ impl SettingsView {
             model: playable.model.clone(),
             behavior_id,
             current,
-            title,
             input,
-            opened: false,
+            input_focus,
         });
         cx.notify();
-    }
-
-    /// Send one name, without going through the dialog.
-    ///
-    /// The dialog is the product path; this is the seam a rendered test drives, so the
-    /// command, the revision it carries and the row identity it names can be asserted
-    /// without a text field in the way. It takes the same guard as
-    /// [`Self::confirm_behavior_name`], so a rename cannot overtake a request in flight.
-    #[cfg(test)]
-    pub(super) fn set_model_behavior_name_for_test(
-        &mut self,
-        model: SettingsModelKey,
-        behavior_id: String,
-        name: String,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(expected_config_revision) = self
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.config_revision)
-        else {
-            return;
-        };
-        self.start_request(
-            PendingOperation::ModelBehaviorName,
-            Some(SettingValue::ModelBehaviorName {
-                expected_config_revision,
-                model,
-                behavior_id,
-                name,
-            }),
-            cx,
-        );
     }
 
     /// Drop the rename draft without writing anything.
@@ -313,7 +299,8 @@ impl SettingsView {
     ///
     /// An empty field is a removal rather than a stored blank: "go back to the
     /// numbered name" is what clearing a text field means, and storing an empty string
-    /// would leave the page deciding whether an empty name is a name.
+    /// would leave the page deciding whether an empty name is a name. A field still
+    /// holding the label the row already shows writes nothing at all.
     pub(super) fn confirm_behavior_name(&mut self, cx: &mut Context<Self>) {
         let Some(expected_config_revision) = self
             .snapshot
@@ -326,7 +313,11 @@ impl SettingsView {
         let Some(draft) = self.behavior_name.take() else {
             return;
         };
-        let name = sanitize_behavior_name_input(&draft.input.read(cx).value());
+        if !draft.can_save(cx) {
+            cx.notify();
+            return;
+        }
+        let name = draft.value(cx);
         self.start_request(
             PendingOperation::ModelBehaviorName,
             Some(SettingValue::ModelBehaviorName {
@@ -337,38 +328,5 @@ impl SettingsView {
             }),
             cx,
         );
-    }
-}
-
-impl SettingsView {
-    /// Put the rename surface on screen for a draft that has just been created.
-    ///
-    /// The layer is opened from render rather than from the click, because the click
-    /// arrives on a row that is rebuilt every frame and the surface needs the
-    /// render-safe copy of the draft rather than the draft itself — the same reason the
-    /// Mver conversion dialog opens here. The draft records that it has been opened, so
-    /// this runs once per rename rather than once per frame.
-    pub(super) fn sync_behavior_name_dialog(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(draft) = self.behavior_name.as_ref() else {
-            return;
-        };
-        if draft.opened {
-            return;
-        }
-        let locale = self.display_language().catalog_locale();
-        let snapshot = Rc::new(RefCell::new(BehaviorNameDialogSnapshot::from_draft(draft)));
-        if let Some(draft) = self.behavior_name.as_mut() {
-            draft.opened = true;
-        }
-        let view = cx.entity().downgrade();
-        window.open_dialog(cx, move |dialog, window, cx| {
-            // The builder runs again on every frame the dialog is on screen, reading
-            // the snapshot rather than the view, which is already borrowed for render.
-            build_behavior_name_dialog(snapshot.clone(), locale, view.clone(), dialog, window, cx)
-        });
     }
 }

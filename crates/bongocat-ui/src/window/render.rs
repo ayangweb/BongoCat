@@ -175,7 +175,6 @@ impl Render for SettingsView {
         let gamepad_connected_model_select = self.gamepad_connected_model_select.clone();
         let gamepad_disconnected_model_select = self.gamepad_disconnected_model_select.clone();
         self.sync_mver_mode_dialog(window, cx);
-        self.sync_behavior_name_dialog(window, cx);
         if let Some(error) = self.pending_notification.take() {
             window.push_notification(
                 Notification::new()

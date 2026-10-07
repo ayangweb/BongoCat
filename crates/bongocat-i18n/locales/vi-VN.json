@@ -226,8 +226,7 @@
   "actions": {
     "cancel": "Hủy",
     "confirm": "Xác nhận",
-    "close": "Đóng",
-    "save": "Lưu"
+    "close": "Đóng"
   },
   "shortcuts": {
     "scopes": {
@@ -261,9 +260,8 @@
       "motion": "Chuyển động %{index}",
       "expression": "Biểu cảm %{index}",
       "rename": {
-        "title": "Đổi tên chuyển động hoặc biểu cảm này",
-        "field": "Tên",
-        "description": "Để trống để quay lại tên đánh số. Tên được lưu theo từng mô hình, nên mỗi mô hình giữ tên riêng."
+        "tooltip": "Đổi tên",
+        "field": "Tên"
       }
     },
     "errors": {

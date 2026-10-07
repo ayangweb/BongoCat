@@ -214,3 +214,261 @@ fn a_stored_name_is_bounded_and_carries_no_control_characters() {
         "the field and the document agree on the bound, so the page never sends a value the service rejects"
     );
 }
+
+// ── The inline editor ────────────────────────────────────────────────────────
+//
+// The rename surface is the row's own label, so these tests render the page and
+// drive the label, the pencil and the field the way a pointer and a keyboard do.
+
+use super::behavior_name::{behavior_name_key, behavior_name_part_id};
+
+/// The model scope of the shortcuts page, rendered with one ready model.
+///
+/// Returns the view, the context it renders into, the endpoint its commands arrive
+/// at, and the second motion's `behavior_id` — the row a rename is driven on.
+fn editor_harness(
+    cx: &mut TestAppContext,
+) -> (
+    Entity<SettingsView>,
+    &mut VisualTestContext,
+    crate::SettingsServiceEndpoint,
+    String,
+) {
+    let mut snapshot = crate::tests::snapshot(4, false, true);
+    snapshot.model_catalog.entries = entries();
+    let behavior_id = "motion:CAT_motion:1".to_owned();
+    let (view, visual, endpoint) = rendered_shortcuts_scope(cx, snapshot, ShortcutScope::Model);
+    visual.update(|window, cx| window.render_frame(cx));
+    (view, visual, endpoint, behavior_id)
+}
+
+fn editor_id(behavior_id: &str, part: &str) -> gpui_kit::ElementId {
+    behavior_name_part_id(
+        &behavior_name_key(&ShortcutCaptureTarget::ModelBehavior {
+            model: active_model(),
+            behavior_id: behavior_id.to_owned(),
+        }),
+        part,
+    )
+}
+
+fn editor_is_open(visual: &mut VisualTestContext, behavior_id: &str) -> bool {
+    visual.update(|window, _| window.try_find(editor_id(behavior_id, "field")).is_some())
+}
+
+/// A confirmed rename reaches the service as its own typed command.
+///
+/// It carries the revision the page was rendered from, so a stale page cannot overwrite
+/// a name someone else just changed, and the row's whole identity — model plus
+/// behavior — rather than a position, because a position means a different behavior
+/// after the package changes.
+#[gpui_kit::test]
+fn a_confirmed_rename_sends_the_row_identity_it_was_opened_from(cx: &mut TestAppContext) {
+    let (_view, visual, endpoint, behavior_id) = editor_harness(cx);
+    let pencil = editor_id(&behavior_id, "edit");
+    visual.update(|window, cx| window.click(pencil, cx));
+    assert!(
+        editor_is_open(visual, &behavior_id),
+        "the pencil opens the field where the name was"
+    );
+
+    // The field opens on the label the row already shows, so the user edits the
+    // thing they can see rather than retyping a name they have to remember.
+    visual.update(|window, cx| window.press("cmd-a", cx));
+    visual.update(|window, cx| window.input("the sleepy one", cx));
+    visual.update(|window, cx| window.press("enter", cx));
+    visual.run_until_parked();
+
+    let crate::SettingsCommand::SetModelBehaviorName {
+        expected_config_revision,
+        model,
+        behavior_id,
+        name,
+        reply,
+    } = endpoint
+        .try_recv()
+        .expect("a confirmed rename must reach the service as its own command")
+    else {
+        panic!("the rename must use the typed model-behavior-name command");
+    };
+    assert_eq!(expected_config_revision, 4);
+    assert_eq!(model.id, "standard");
+    assert_eq!(behavior_id, "motion:CAT_motion:1");
+    assert_eq!(name, "the sleepy one");
+
+    let mut confirmed = crate::tests::snapshot(5, false, true);
+    confirmed.config_revision = Some(5);
+    confirmed.model_behavior_names = vec![crate::SettingsModelBehaviorName {
+        behavior_id: "motion:CAT_motion:1".to_owned(),
+        name: "the sleepy one".to_owned(),
+    }];
+    reply.respond(Ok(confirmed)).expect("rename reply");
+    visual.run_until_parked();
+    assert!(
+        !editor_is_open(visual, "motion:CAT_motion:1"),
+        "a confirmed rename closes the field"
+    );
+    assert!(endpoint.try_recv().is_err());
+}
+
+/// The pencil is the only entry, and the name itself never starts an edit.
+///
+/// Reading a row — and selecting its text with the pointer — must not turn the row
+/// into a field: an edit is something the pencil asks for, not something that happens
+/// because the pointer passed over a name.
+#[gpui_kit::test]
+fn the_pencil_opens_the_field_and_the_name_does_not(cx: &mut TestAppContext) {
+    let (_view, visual, _endpoint, behavior_id) = editor_harness(cx);
+    visual.update(|window, cx| window.click(editor_id(&behavior_id, "label"), cx));
+    assert!(
+        !editor_is_open(visual, &behavior_id),
+        "clicking the name starts nothing"
+    );
+    visual.update(|window, cx| window.click(editor_id(&behavior_id, "edit"), cx));
+    assert!(
+        editor_is_open(visual, &behavior_id),
+        "the pencil opens the field without a second surface"
+    );
+    assert!(
+        visual.update(|window, _| window.try_find(editor_id(&behavior_id, "label")).is_none()),
+        "the field replaces the name rather than sitting beside a second copy of it"
+    );
+}
+
+/// The name and the pencil that names it editable sit on one center line.
+///
+/// The pencil is an icon inside its own button box and the name is a line of text, so
+/// "beside" is only true if their vertical centers agree: an icon a pixel or two off
+/// the text's center reads as a misaligned row even though nothing overlaps.
+#[gpui_kit::test]
+fn the_name_and_the_pencil_share_a_center_line(cx: &mut TestAppContext) {
+    let (_view, visual, _endpoint, behavior_id) = editor_harness(cx);
+    let name_bounds =
+        visual.update(|window, _| window.find(editor_id(&behavior_id, "name")).bounds());
+    let pencil_bounds =
+        visual.update(|window, _| window.find(editor_id(&behavior_id, "edit")).bounds());
+    let row = visual.update(|window, _| window.find(editor_id(&behavior_id, "label")).bounds());
+    let offset = (name_bounds.center().y - pencil_bounds.center().y).abs();
+    assert!(
+        offset <= px(1.0),
+        "the name's center {:?} and the pencil's center {:?} must share the row's line {:?}, off by {offset:?}",
+        name_bounds.center().y,
+        pencil_bounds.center().y,
+        row.center().y,
+    );
+}
+
+/// Escape leaves the field without writing anything.
+#[gpui_kit::test]
+fn escape_leaves_the_field_without_writing(cx: &mut TestAppContext) {
+    let (_view, visual, endpoint, behavior_id) = editor_harness(cx);
+    visual.update(|window, cx| window.click(editor_id(&behavior_id, "edit"), cx));
+    visual.update(|window, cx| window.press("cmd-a", cx));
+    visual.update(|window, cx| window.input("a name nobody asked for", cx));
+    visual.update(|window, cx| window.press("escape", cx));
+    visual.run_until_parked();
+
+    assert!(
+        !editor_is_open(visual, &behavior_id),
+        "escape closes the field"
+    );
+    assert!(
+        endpoint.try_recv().is_err(),
+        "a discarded edit must not reach the service"
+    );
+}
+
+/// Saving the label a row already shows writes nothing.
+///
+/// Enter reads the same predicate the page would offer a save control, so the
+/// keyboard path cannot send a request that would store what the row already shows.
+#[gpui_kit::test]
+fn saving_an_unchanged_label_writes_nothing(cx: &mut TestAppContext) {
+    let (_view, visual, endpoint, behavior_id) = editor_harness(cx);
+    visual.update(|window, cx| window.click(editor_id(&behavior_id, "edit"), cx));
+    visual.update(|window, cx| window.press("enter", cx));
+    visual.run_until_parked();
+
+    assert!(
+        !editor_is_open(visual, &behavior_id),
+        "the field closes either way"
+    );
+    assert!(
+        endpoint.try_recv().is_err(),
+        "a rename that changes nothing must not reach the service"
+    );
+}
+
+/// Renaming changes the label and nothing else about the row.
+///
+/// The field takes the label's place; the row's three controls are the same three
+/// controls in the same order, and none of the rename surface joins their tab order.
+/// The field carries no controls of its own — Enter saves, Escape discards, blur saves.
+#[gpui_kit::test]
+fn the_field_replaces_the_label_and_the_row_keeps_its_controls(cx: &mut TestAppContext) {
+    let (_view, visual, endpoint, behavior_id) = editor_harness(cx);
+    // The row under test is the second motion, and the model scope's rows are
+    // numbered after the window scope's, so its controls are the ones row 6 names.
+    let row_index = ShortcutScope::Model.row_index_offset(&SettingsShortcuts::default()) + 1;
+    let controls = [
+        ("capture-model-shortcut", row_index),
+        ("play-model-shortcut", row_index),
+        ("clear-model-shortcut", row_index),
+    ]
+    .map(gpui_kit::ElementId::from);
+    for id in &controls {
+        assert!(
+            visual.update(|window, _| window.try_find(id.clone()).is_some()),
+            "{id:?} is drawn before the rename starts"
+        );
+    }
+    visual.update(|window, cx| window.click(editor_id(&behavior_id, "edit"), cx));
+    for id in &controls {
+        assert!(
+            visual.update(|window, _| window.try_find(id.clone()).is_some()),
+            "{id:?} is still drawn while the rename is open"
+        );
+    }
+    assert!(
+        visual.update(|window, _| window
+            .try_find(editor_id(&behavior_id, "confirm"))
+            .is_none()),
+        "the field grows no controls of its own: Enter and blur do the saving"
+    );
+    assert!(
+        endpoint.try_recv().is_err(),
+        "opening the field sends nothing"
+    );
+}
+
+/// Opening another row's editor commits the one that was open.
+///
+/// The editor is one at a time, so the alternative to committing is discarding a name
+/// the user had already typed — and leaving a row because the next one caught their
+/// eye is not a reason to throw their typing away.
+#[gpui_kit::test]
+fn opening_another_rows_editor_commits_the_one_that_was_open(cx: &mut TestAppContext) {
+    let (_view, visual, endpoint, behavior_id) = editor_harness(cx);
+    visual.update(|window, cx| window.click(editor_id(&behavior_id, "edit"), cx));
+    visual.update(|window, cx| window.press("cmd-a", cx));
+    visual.update(|window, cx| window.input("the sleepy one", cx));
+
+    visual.update(|window, cx| window.click(editor_id("motion:CAT_motion:0", "edit"), cx));
+    visual.run_until_parked();
+
+    let crate::SettingsCommand::SetModelBehaviorName {
+        behavior_id, name, ..
+    } = endpoint
+        .try_recv()
+        .expect("the first row's edit must be committed, not dropped")
+    else {
+        panic!("the commit must use the typed model-behavior-name command");
+    };
+    assert_eq!(behavior_id, "motion:CAT_motion:1");
+    assert_eq!(name, "the sleepy one");
+    assert!(
+        editor_is_open(visual, "motion:CAT_motion:0"),
+        "and the second row's field is the one on screen"
+    );
+    assert!(endpoint.try_recv().is_err());
+}

@@ -317,44 +317,6 @@ fn only_a_model_behavior_row_carries_a_playable_behavior() {
     );
 }
 
-/// The shortcuts page's own content for one scope, the way the settings item's
-/// render closure builds it.
-///
-/// The page is rendered through the same `content(...)` the settings item calls,
-/// so the controls under test are the ones the product draws. The wrapper exists
-/// to give the harness a frame of its own: everything below it is the page.
-struct ShortcutsPageHarness {
-    view: Entity<SettingsView>,
-    snapshot: Option<SettingsSnapshot>,
-    scope: ShortcutScope,
-    gate: SettingGate,
-}
-
-impl Render for ShortcutsPageHarness {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let snapshot = self.snapshot.clone();
-        let scope = self.scope;
-        let gate = self.gate;
-        let tokens = Tokens::from_theme(cx);
-        div().id("shortcuts-harness").test_support().child(
-            self.view
-                .clone()
-                .update(cx, move |view, cx| {
-                    shortcuts_page::content(
-                        view,
-                        window,
-                        cx,
-                        snapshot.as_ref(),
-                        scope,
-                        gate,
-                        tokens,
-                    )
-                })
-                .into_any_element(),
-        )
-    }
-}
-
 /// Pressing either control inside a row's frame does its own job and does not
 /// start recording a chord; pressing the frame itself still records.
 ///

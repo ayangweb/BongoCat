@@ -226,8 +226,7 @@
   "actions": {
     "cancel": "Cancel",
     "confirm": "Confirm",
-    "close": "Close",
-    "save": "Save"
+    "close": "Close"
   },
   "shortcuts": {
     "scopes": {
@@ -261,9 +260,8 @@
       "motion": "Motion %{index}",
       "expression": "Expression %{index}",
       "rename": {
-        "title": "Rename this motion or expression",
-        "field": "Name",
-        "description": "Leave it empty to go back to the numbered name. Names are saved per model, so each model keeps its own."
+        "tooltip": "Rename",
+        "field": "Name"
       }
     },
     "errors": {

@@ -226,8 +226,7 @@
   "actions": {
     "cancel": "Cancelar",
     "confirm": "Confirmar",
-    "close": "Fechar",
-    "save": "Salvar"
+    "close": "Fechar"
   },
   "shortcuts": {
     "scopes": {
@@ -261,9 +260,8 @@
       "motion": "Movimento %{index}",
       "expression": "Expressão %{index}",
       "rename": {
-        "title": "Renomear este movimento ou expressão",
-        "field": "Nome",
-        "description": "Deixe em branco para voltar ao nome numerado. Os nomes são salvos por modelo, então cada um guarda o seu."
+        "tooltip": "Renomear",
+        "field": "Nome"
       }
     },
     "errors": {
