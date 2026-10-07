@@ -256,6 +256,22 @@ fn editor_is_open(visual: &mut VisualTestContext, behavior_id: &str) -> bool {
     visual.update(|window, _| window.try_find(editor_id(behavior_id, "field")).is_some())
 }
 
+/// Selects everything in the focused input, with the keystroke the compiled
+/// platform actually bound.
+///
+/// The input binds `cmd-a` on macOS and `ctrl-a` everywhere else, so pressing the
+/// other one is a silent no-op — and the edit that follows would append to the
+/// prefilled label instead of replacing it. That is exactly how the first Windows
+/// CI run of this suite failed: the stored name arrived as "the sleepy oneMotion 2".
+fn select_all_in_focus(visual: &mut VisualTestContext) {
+    let keystroke = if cfg!(target_os = "macos") {
+        "cmd-a"
+    } else {
+        "ctrl-a"
+    };
+    visual.update(|window, cx| window.press(keystroke, cx));
+}
+
 /// A confirmed rename reaches the service as its own typed command.
 ///
 /// It carries the revision the page was rendered from, so a stale page cannot overwrite
@@ -274,7 +290,7 @@ fn a_confirmed_rename_sends_the_row_identity_it_was_opened_from(cx: &mut TestApp
 
     // The field opens on the label the row already shows, so the user edits the
     // thing they can see rather than retyping a name they have to remember.
-    visual.update(|window, cx| window.press("cmd-a", cx));
+    select_all_in_focus(visual);
     visual.update(|window, cx| window.input("the sleepy one", cx));
     visual.update(|window, cx| window.press("enter", cx));
     visual.run_until_parked();
@@ -363,7 +379,7 @@ fn the_name_and_the_pencil_share_a_center_line(cx: &mut TestAppContext) {
 fn escape_leaves_the_field_without_writing(cx: &mut TestAppContext) {
     let (_view, visual, endpoint, behavior_id) = editor_harness(cx);
     visual.update(|window, cx| window.click(editor_id(&behavior_id, "edit"), cx));
-    visual.update(|window, cx| window.press("cmd-a", cx));
+    select_all_in_focus(visual);
     visual.update(|window, cx| window.input("a name nobody asked for", cx));
     visual.update(|window, cx| window.press("escape", cx));
     visual.run_until_parked();
@@ -450,7 +466,7 @@ fn the_field_replaces_the_label_and_the_row_keeps_its_controls(cx: &mut TestAppC
 fn opening_another_rows_editor_commits_the_one_that_was_open(cx: &mut TestAppContext) {
     let (_view, visual, endpoint, behavior_id) = editor_harness(cx);
     visual.update(|window, cx| window.click(editor_id(&behavior_id, "edit"), cx));
-    visual.update(|window, cx| window.press("cmd-a", cx));
+    select_all_in_focus(visual);
     visual.update(|window, cx| window.input("the sleepy one", cx));
 
     visual.update(|window, cx| window.click(editor_id("motion:CAT_motion:0", "edit"), cx));
