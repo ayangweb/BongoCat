@@ -118,6 +118,22 @@ const MODEL_DIRECTORY: &str = "models";
 const SWIFT_RESOURCE_BUNDLE: &str = "PermissionFlow_PermissionFlow.bundle";
 /// Repository-relative directory holding the macOS `Info.plist` overlay.
 const MACOS_INFO_PLIST: &str = "macos/Info.plist";
+/// Repository-relative NSIS translation of the installer messages `cargo-packager` ships no text for.
+const VIETNAMESE_INSTALLER_STRINGS: &str = "crates/bongocat-packaging/installer/Vietnamese.nsh";
+/// NSIS installer languages, one per application language and in the order the picker lists them.
+///
+/// The set is the application's own language list (`bongocat-i18n` catalogs). English comes
+/// first because NSIS falls back to the first language when the system language is not listed,
+/// and `tools/tests/test_packaging_contract.py` keeps this list equal to the catalog set.
+const INSTALLER_LANGUAGES: [&str; 7] = [
+    "English",
+    "SimpChinese",
+    "TradChinese",
+    "Arabic",
+    "Vietnamese",
+    "PortugueseBR",
+    "Korean",
+];
 /// Repository-relative build provenance generator.
 const PROVENANCE_GENERATOR: &str = "tools/record-provenance.py";
 /// Build provenance file name inside the packaged resources.
@@ -912,13 +928,26 @@ fn packaging_config(
     }
 
     if target == ReleaseTarget::WindowsX86_64 {
-        let mut nsis = NsisConfig::new();
-        // Per-user install: no administrator prompt, no machine-level registry keys.
-        nsis.install_mode = NSISInstallerMode::CurrentUser;
-        config.nsis = Some(nsis);
+        config.nsis = Some(windows_installer(workspace));
     }
 
     Ok(config)
+}
+
+/// NSIS installer settings: a per-user install with a wizard language picker.
+///
+/// The picker only changes the wizard's own text and the uninstaller reuses the stored choice;
+/// the application language still follows its own setting. NSIS preselects the system language
+/// and falls back to English. `cargo-packager` embeds every language except Vietnamese, which
+/// the repository supplies.
+fn windows_installer(workspace: &Path) -> NsisConfig {
+    let mut nsis = NsisConfig::new()
+        .languages(INSTALLER_LANGUAGES)
+        .custom_language_files([("Vietnamese", workspace.join(VIETNAMESE_INSTALLER_STRINGS))])
+        .display_language_selector(true);
+    // Per-user install: no administrator prompt, no machine-level registry keys.
+    nsis.install_mode = NSISInstallerMode::CurrentUser;
+    nsis
 }
 
 /// Maps the bundled resources to the locations the application resolves at runtime.
@@ -2424,9 +2453,33 @@ fn report(summary: &str, artifacts: &[PathBuf]) {
 #[cfg(test)]
 mod tests {
     use super::{
-        MODEL_DIRECTORY, OUTPUT_DIRECTORY, PRESET_MODELS, PRODUCT_NAME, ReleaseTarget,
-        is_packaging_junk,
+        INSTALLER_LANGUAGES, MODEL_DIRECTORY, OUTPUT_DIRECTORY, PRESET_MODELS, PRODUCT_NAME,
+        ReleaseTarget, is_packaging_junk,
     };
+
+    /// The wizard has to offer the picker, keep English first as the fallback, and carry
+    /// translated installer messages for the one language `cargo-packager` embeds none for.
+    #[test]
+    fn the_windows_installer_offers_every_language_with_english_as_the_fallback() {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("the packaging crate lives two levels below the workspace");
+        let nsis = super::windows_installer(workspace);
+
+        assert!(nsis.display_language_selector);
+        assert_eq!(nsis.install_mode, super::NSISInstallerMode::CurrentUser);
+        assert_eq!(INSTALLER_LANGUAGES.first(), Some(&"English"));
+        assert_eq!(
+            nsis.languages.as_deref(),
+            Some(INSTALLER_LANGUAGES.map(str::to_owned).as_slice())
+        );
+
+        let custom = nsis.custom_language_files.expect("custom language files");
+        assert_eq!(custom.len(), 1);
+        let vietnamese = custom.get("Vietnamese").expect("Vietnamese strings");
+        assert!(vietnamese.is_file(), "{} must exist", vietnamese.display());
+    }
 
     /// The repair command is shell, and nothing in the build runs it, so `bash -n`
     /// is the only check it gets from the test suite. A quoting mistake in the
