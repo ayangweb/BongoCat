@@ -226,7 +226,17 @@ impl Render for SettingsView {
                 cx,
             );
         }
-        self.sync_shortcut_row_focus(&shortcuts, active_model, model_entries, editing_blocked, cx);
+        self.sync_shortcut_row_focus(
+            &shortcuts,
+            active_model,
+            model_entries,
+            &snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.model_behavior_names.clone())
+                .unwrap_or_default(),
+            editing_blocked,
+            cx,
+        );
         let view_entity = cx.entity();
         let navigation_memory = self.navigation_memory.clone();
         let startup_item = startup_item_presentation(

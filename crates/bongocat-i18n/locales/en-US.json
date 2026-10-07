@@ -258,7 +258,11 @@
     },
     "behavior_names": {
       "motion": "Motion %{index}",
-      "expression": "Expression %{index}"
+      "expression": "Expression %{index}",
+      "rename": {
+        "tooltip": "Rename",
+        "field": "Name"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} is already assigned to another shortcut"

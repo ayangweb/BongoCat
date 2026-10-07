@@ -283,6 +283,24 @@ impl SettingsClient {
         .await
     }
 
+    /// Give one behavior of one model the name its row shows; a blank name clears it.
+    pub async fn set_model_behavior_name(
+        &self,
+        expected_config_revision: u64,
+        model: SettingsModelKey,
+        behavior_id: String,
+        name: String,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetModelBehaviorName {
+            expected_config_revision,
+            model,
+            behavior_id,
+            name,
+            reply,
+        })
+        .await
+    }
+
     pub async fn set_model_settings(
         &self,
         expected_config_revision: u64,

@@ -14,6 +14,7 @@ use gpui_kit::{
     VisualTestContext,
 };
 
+mod behavior_names;
 mod copy;
 mod dropdown;
 mod external_link;
@@ -124,6 +125,108 @@ fn settings_view_with_endpoint(
 fn settings_view(cx: &mut TestAppContext) -> (Entity<SettingsView>, &mut VisualTestContext) {
     let (view, visual, _endpoint) = settings_view_with_endpoint(cx);
     (view, visual)
+}
+
+/// The shortcuts page's own content for one scope, the way the settings item's
+/// render closure builds it.
+///
+/// The page is rendered through the same `content(...)` the settings item calls,
+/// so the controls under test are the ones the product draws. The wrapper exists
+/// to give the harness a frame of its own: everything below it is the page.
+struct ShortcutsPageHarness {
+    view: Entity<SettingsView>,
+    snapshot: Option<SettingsSnapshot>,
+    scope: ShortcutScope,
+    gate: SettingGate,
+}
+
+impl Render for ShortcutsPageHarness {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let snapshot = self.snapshot.clone();
+        let scope = self.scope;
+        let gate = self.gate;
+        let tokens = Tokens::from_theme(cx);
+        div().id("shortcuts-harness").test_support().child(
+            self.view
+                .clone()
+                .update(cx, move |view, cx| {
+                    shortcuts_page::content(
+                        view,
+                        window,
+                        cx,
+                        snapshot.as_ref(),
+                        scope,
+                        gate,
+                        tokens,
+                    )
+                })
+                .into_any_element(),
+        )
+    }
+}
+
+/// The shortcuts page rendered on its own, with the page's own state seeded.
+///
+/// Returns the view, the context the page is rendered into, and the service endpoint
+/// the page's commands arrive at. The caller seeds `snapshot` and the focus maps before
+/// the first frame, because the page reads both while it builds a row.
+fn rendered_shortcuts_scope(
+    cx: &mut TestAppContext,
+    snapshot: SettingsSnapshot,
+    scope: ShortcutScope,
+) -> (
+    Entity<SettingsView>,
+    &mut VisualTestContext,
+    crate::SettingsServiceEndpoint,
+) {
+    cx.update(gpui_kit::init);
+    let (client, endpoint) = crate::SettingsClient::bounded(4);
+    let entries = snapshot.model_catalog.entries.clone();
+    let active = snapshot.active_model.clone();
+    let built: Rc<RefCell<Option<Entity<SettingsView>>>> = Rc::new(RefCell::new(None));
+    let capture = Rc::clone(&built);
+    let (_, visual) = cx.add_window_view(move |window, cx| {
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                client,
+                SettingsWindowSeed {
+                    language: SettingsLanguage::English,
+                    appearance_theme: SettingsTheme::System,
+                },
+                Rc::new(|_| {}),
+                Rc::new(|_| {}),
+                window,
+                cx,
+            )
+        });
+        view.update(cx, |view, cx| {
+            view.snapshot = Some(snapshot.clone());
+            view.sync_shortcut_row_focus(
+                &snapshot.shortcuts,
+                active.as_ref(),
+                &entries,
+                &snapshot.model_behavior_names,
+                false,
+                cx,
+            );
+        });
+        capture.borrow_mut().replace(view.clone());
+        Root::new(
+            cx.new(|_| ShortcutsPageHarness {
+                view,
+                snapshot: Some(snapshot),
+                scope,
+                gate: SettingGate::new(false, true),
+            }),
+            window,
+            cx,
+        )
+    });
+    let view = built
+        .borrow_mut()
+        .take()
+        .expect("the window builder must hand the page out");
+    (view, visual, endpoint)
 }
 
 /// The models page's own content, with the import card and the model cards in it.

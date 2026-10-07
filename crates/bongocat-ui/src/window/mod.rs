@@ -9,13 +9,14 @@ use crate::{
     SettingsCursorSettings, SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch,
     SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel, SettingsLogging,
     SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
-    SettingsModelDiagnostic, SettingsModelEntry, SettingsModelImportMonitor,
-    SettingsModelImportOperation, SettingsModelImportRequest, SettingsModelKey, SettingsModelMode,
-    SettingsModelOrigin, SettingsModelSettings, SettingsModelSourceContent, SettingsMverMode,
-    SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode,
-    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
-    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
+    SettingsModelBehaviorName, SettingsModelDiagnostic, SettingsModelEntry,
+    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
+    SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
+    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
+    SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRuntimeErrorCode,
+    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
+    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
+    SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -57,6 +58,10 @@ use std::{
 mod presentation;
 use presentation::*;
 mod about;
+mod behavior_name;
+use behavior_name::BehaviorNameDraft;
+#[cfg(test)]
+use behavior_name::{BEHAVIOR_NAME_MAXIMUM_CHARS, sanitize_behavior_name_input};
 mod lifecycle;
 mod localization;
 mod model_actions;
@@ -252,6 +257,19 @@ pub struct SettingsView {
     pub(crate) model_delete_confirmation: Option<SettingsModelKey>,
     pub(crate) model_row_focus: BTreeMap<ModelRowKey, ModelRowFocus>,
     pub(crate) model_edit: Option<ModelEditDraft>,
+    /// The one behavior row open for renaming, if any.
+    ///
+    /// A value rather than a flag, because the page has to know *which* row is being
+    /// renamed before it opens the dialog layer at all — the same reason the model
+    /// rename and the Mver conversion dialog keep their drafts here.
+    pub(crate) behavior_name: Option<BehaviorNameDraft>,
+    /// The rows the shortcuts page is currently showing, keyed by target.
+    ///
+    /// The page renders them from a fresh projection every frame; this copy exists so
+    /// a control inside a row can ask about the row it belongs to rather than
+    /// re-deriving one, and it is replaced wholesale on each sync so it can never
+    /// describe a model that is no longer on screen.
+    pub(crate) shortcut_rows: BTreeMap<ShortcutCaptureTarget, ShortcutRow>,
     /// Whether the unreadable-catalog notification has already been pushed for
     /// the current failure, so it is not repeated on every snapshot.
     pub(crate) model_catalog_error_reported: bool,

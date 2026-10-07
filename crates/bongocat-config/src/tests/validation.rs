@@ -617,6 +617,112 @@ fn gamepad_auto_switch_defaults_to_off_without_targets_and_validates_target_ids(
     }
 }
 
+/// A document written before behaviors could be named must still load, with every row
+/// still showing its numbered label.
+///
+/// The field carries `#[serde(default)]` for the same reason the other optional model
+/// fields do: the v1 entry point rejects anything it cannot read, so a required new
+/// field would send every existing `config.json` down the backup-then-default recovery
+/// path and reset the user's settings. The document is edited by removing the key from
+/// the *serialized* current default, which is the shape the old bytes had.
+#[test]
+fn a_configuration_written_before_behaviors_could_be_named_still_loads() {
+    let mut document = serde_json::to_value(NativeConfig::default()).expect("serialize default");
+    let removed = document["model"]
+        .as_object_mut()
+        .expect("model object")
+        .remove("behavior_names");
+    assert!(
+        removed.is_some(),
+        "the current default still writes the field"
+    );
+    let written = serde_json::to_string(&document).expect("serialize document");
+    let loaded: NativeConfig = serde_json::from_str(&written).expect("read old document");
+    assert!(
+        loaded.model.behavior_names.is_empty(),
+        "a document with no field loads as every row numbered"
+    );
+    loaded.validate().expect("an old document still validates");
+    assert!(parse_config(written.as_bytes()).is_ok());
+}
+
+/// A name is display text on one row, so it is bounded, printable and unique per
+/// behavior — and the behavior it names has to be one the vocabulary can spell.
+///
+/// A row that carried an unprintable or unbounded name would be the page's problem, and
+/// two rows for one behavior would leave the label up to which the parser saw last.
+#[test]
+fn a_behavior_name_is_parsed_bounded_and_held_once_per_behavior() {
+    let mut config = NativeConfig::default();
+    config.model.behavior_names = vec![
+        ModelBehaviorName {
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            },
+            behavior_id: "motion:CAT_motion:0".to_owned(),
+            name: "the sleepy one".to_owned(),
+        },
+        ModelBehaviorName {
+            model: ModelIdentity {
+                id: "standard".to_owned(),
+                source: ModelSource::BuiltIn,
+            },
+            behavior_id: "expression:live2d_expression1.exp3.json".to_owned(),
+            name: "开心".to_owned(),
+        },
+    ];
+    config.validate().expect("well-formed names");
+
+    for rejected in ["", "   ", "a\nb"] {
+        let mut broken = config.clone();
+        broken.model.behavior_names[0].name = rejected.to_owned();
+        assert!(
+            broken.validate().is_err(),
+            "the name {rejected:?} must be rejected"
+        );
+    }
+    let mut long = config.clone();
+    long.model.behavior_names[0].name = "n".repeat(MODEL_BEHAVIOR_NAME_MAXIMUM_CHARS + 1);
+    assert!(
+        long.validate().is_err(),
+        "a name longer than the field accepts must be rejected"
+    );
+
+    let mut wrong_behavior = config.clone();
+    wrong_behavior.model.behavior_names[0].behavior_id = "not-a-behavior".to_owned();
+    assert!(wrong_behavior.validate().is_err());
+
+    let mut duplicate = config.clone();
+    duplicate.model.behavior_names.push(ModelBehaviorName {
+        model: ModelIdentity {
+            id: "standard".to_owned(),
+            source: ModelSource::BuiltIn,
+        },
+        behavior_id: "motion:CAT_motion:0".to_owned(),
+        name: "another name".to_owned(),
+    });
+    assert!(
+        duplicate.validate().is_err(),
+        "two rows for one behavior leave the label up to parse order"
+    );
+
+    // The same behavior of a *different* model is a different row, which is the whole
+    // reason the model travels with the name.
+    let mut per_model = config.clone();
+    per_model.model.behavior_names.push(ModelBehaviorName {
+        model: ModelIdentity {
+            id: "keyboard".to_owned(),
+            source: ModelSource::BuiltIn,
+        },
+        behavior_id: "motion:CAT_motion:0".to_owned(),
+        name: "keyboard's own".to_owned(),
+    });
+    per_model
+        .validate()
+        .expect("the same behavior of two models is two rows");
+}
+
 #[test]
 fn remembered_expressions_default_to_off_and_hold_one_record_per_model() {
     let default = NativeConfig::default();

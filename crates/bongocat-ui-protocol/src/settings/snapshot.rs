@@ -71,11 +71,29 @@ pub struct SettingsSnapshot {
     pub toggle_repeated_expression: bool,
     pub logging: SettingsLogging,
     pub shortcuts: SettingsShortcuts,
+    /// What each of the active model's motions and expressions is called.
+    ///
+    /// Only the named ones, for the active model only. A behavior with no row here is
+    /// one the user has not renamed, and the window draws its numbered label — so the
+    /// absence of a name is a state the page renders rather than an error.
+    pub model_behavior_names: Vec<SettingsModelBehaviorName>,
     pub startup_item: SettingsStartupItemStatus,
     pub diagnostics_export: Option<SettingsDiagnosticsExportStatus>,
     pub input_diagnostics: SettingsInputDiagnostics,
     pub active_model: Option<SettingsModelKey>,
     pub model_catalog: SettingsModelCatalog,
+}
+
+/// One behavior of the active model, with the name the user gave it.
+///
+/// The window resolves the label from this rather than asking the service for a
+/// rendered string, so the same text appears in every place a row is drawn — the
+/// shortcut row and the random-playback checkbox share it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SettingsModelBehaviorName {
+    /// The `behavior_id` spelling the configuration persists it under.
+    pub behavior_id: String,
+    pub name: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

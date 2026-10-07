@@ -13,6 +13,51 @@ use super::*;
 use super::model_projection::*;
 use super::projection::*;
 
+/// What each of the active model's behaviors is called.
+///
+/// Only the rows that exist, for the active model only: a behavior with no row is one
+/// the user has not renamed, and the window draws its numbered label. A row naming a
+/// behavior the model no longer declares is dropped rather than sent — whether a
+/// behavior still exists is a property of the package, and the window would have no row
+/// to put the name on.
+fn model_behavior_names(
+    application: &Application,
+    catalog: &SettingsModelCatalog,
+) -> Vec<SettingsModelBehaviorName> {
+    let Some(model) = application.live_model_identity() else {
+        return Vec::new();
+    };
+    let declared = catalog
+        .entries
+        .iter()
+        .find(|entry| {
+            entry.id == model.id && entry.origin == settings_origin_from_config(model.source)
+        })
+        .and_then(|entry| match &entry.availability {
+            SettingsModelAvailability::Ready { behaviors } => Some(
+                behaviors
+                    .iter()
+                    .map(settings_model_behavior_id)
+                    .collect::<Vec<_>>(),
+            ),
+            SettingsModelAvailability::Invalid { .. } => None,
+        });
+    let Some(declared) = declared else {
+        return Vec::new();
+    };
+    application
+        .config()
+        .model
+        .behavior_names
+        .iter()
+        .filter(|row| row.model == model && declared.contains(&row.behavior_id))
+        .map(|row| SettingsModelBehaviorName {
+            behavior_id: row.behavior_id.clone(),
+            name: row.name.clone(),
+        })
+        .collect()
+}
+
 /// How long an input-capability answer stays usable.
 ///
 /// On macOS the system answers this query through a TCC round trip on its own
@@ -160,6 +205,10 @@ pub(super) fn snapshot(
 ) -> SettingsSnapshot {
     let (runtime, input_diagnostics) =
         observe_snapshot_state(application, clock, startup_item, catalog_changed);
+    // The catalog is scanned once and read twice: the library page lists it, and the
+    // names shown against the active model's behaviors filter by it. Scanning per
+    // reader would double the most expensive part of building a snapshot.
+    let model_catalog = settings_model_catalog(application);
     SettingsSnapshot {
         revision: clock.revision,
         config_revision: application.config_revision(),
@@ -245,6 +294,7 @@ pub(super) fn snapshot(
         toggle_repeated_expression: application.config().model.toggle_repeated_expression,
         logging: settings_logging_from_config(&application.config().logging),
         shortcuts: settings_shortcuts(application.config()),
+        model_behavior_names: model_behavior_names(application, &model_catalog),
         startup_item,
         diagnostics_export: clock.diagnostics_export,
         input_diagnostics,
@@ -259,7 +309,7 @@ pub(super) fn snapshot(
                     })
             })
             .or_else(|| configured_model_key(application)),
-        model_catalog: settings_model_catalog(application),
+        model_catalog,
     }
 }
 

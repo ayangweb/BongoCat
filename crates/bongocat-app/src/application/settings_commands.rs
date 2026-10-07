@@ -12,7 +12,7 @@ use crate::config_projection::{
 };
 use crate::shortcut_config::{active_shortcuts, shortcut_config_from_settings};
 use crate::{ApplicationError, RUNTIME_TIMEOUT};
-use bongocat_config::{Language, Theme as ConfigTheme};
+use bongocat_config::{Language, ModelBehaviorName, ModelIdentity, Theme as ConfigTheme};
 use bongocat_input::GamepadAxisSettings;
 use bongocat_runtime::{
     CursorSettings, ModelSettings, OverlaySettings, RandomBehaviorSettings, RuntimeCommand,
@@ -342,6 +342,41 @@ impl Application {
                 Err(error)
             }
         }
+    }
+
+    /// Persist the name one behavior's row shows, or clear it.
+    ///
+    /// A blank name is a removal rather than a stored blank label: "go back to the
+    /// numbered name" is what clearing a text field means, and storing an empty string
+    /// would make the page decide whether an empty name is a name. Configuration only
+    /// — a name is display text, so nothing about the running product changes at the
+    /// moment it is written.
+    pub fn set_model_behavior_name(
+        &mut self,
+        model: ModelIdentity,
+        behavior_id: String,
+        name: String,
+    ) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config
+            .model
+            .behavior_names
+            .retain(|row| !(row.model == model && row.behavior_id == behavior_id));
+        let name = name.trim();
+        if !name.is_empty() {
+            next_config.model.behavior_names.push(ModelBehaviorName {
+                model,
+                behavior_id,
+                name: name.to_owned(),
+            });
+        }
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        Ok(())
     }
 
     pub fn set_model_settings(

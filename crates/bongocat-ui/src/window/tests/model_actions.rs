@@ -201,6 +201,7 @@ fn behavior_targets_stay_scoped_to_model_and_behavior_identity() {
                 origin: SettingsModelOrigin::BuiltIn,
             }),
             &entries,
+            &[],
         )
         .into_iter()
         .map(|row| row.target)
@@ -247,8 +248,8 @@ fn active_model_behavior_preview_targets_exclude_inactive_and_invalid_models() {
     // The page no longer previews behaviors: the shortcuts page owns that list,
     // so the targets are only reached through the shortcut rows it renders.
     assert_eq!(
-        shortcut_behavior_rows(&SettingsShortcuts::default(), Some(&active), &entries).len(),
+        shortcut_behavior_rows(&SettingsShortcuts::default(), Some(&active), &entries, &[]).len(),
         1
     );
-    assert!(shortcut_behavior_rows(&SettingsShortcuts::default(), None, &entries).is_empty());
+    assert!(shortcut_behavior_rows(&SettingsShortcuts::default(), None, &entries, &[]).is_empty());
 }

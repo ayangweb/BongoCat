@@ -49,7 +49,7 @@ fn model_behavior_rows_are_named_by_flattened_position() {
             behaviors: behaviors.to_vec(),
         },
     )];
-    let rows = shortcut_behavior_rows(&SettingsShortcuts::default(), Some(&active), &entries);
+    let rows = shortcut_behavior_rows(&SettingsShortcuts::default(), Some(&active), &entries, &[]);
     assert_eq!(rows.len(), behaviors.len());
 
     let english = rows

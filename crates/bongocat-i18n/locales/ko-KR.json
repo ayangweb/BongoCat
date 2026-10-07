@@ -258,7 +258,11 @@
     },
     "behavior_names": {
       "motion": "모션 %{index}",
-      "expression": "표현식 %{index}"
+      "expression": "표현식 %{index}",
+      "rename": {
+        "tooltip": "이름 바꾸기",
+        "field": "이름"
+      }
     },
     "errors": {
       "conflict": "이미 다른 단축키에 할당되어 있습니다: %{shortcut}"

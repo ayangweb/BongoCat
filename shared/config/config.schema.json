@@ -202,9 +202,43 @@
       ],
       "type": "object"
     },
+    "ModelBehaviorName": {
+      "additionalProperties": false,
+      "properties": {
+        "behavior_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "(motion:[^:]+:[0-9]+|expression:.+)",
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelIdentity"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]*[^\\s\\x00-\\x1f\\x7f-\\x9f][^\\x00-\\x1f\\x7f-\\x9f]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "behavior_id",
+        "name"
+      ],
+      "type": "object"
+    },
     "ModelConfig": {
       "additionalProperties": false,
       "properties": {
+        "behavior_names": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ModelBehaviorName"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
         "built_in_models": {
           "items": {
             "$ref": "#/$defs/BuiltInModelMetadata"

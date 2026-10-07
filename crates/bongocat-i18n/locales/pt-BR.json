@@ -258,7 +258,11 @@
     },
     "behavior_names": {
       "motion": "Movimento %{index}",
-      "expression": "Expressão %{index}"
+      "expression": "Expressão %{index}",
+      "rename": {
+        "tooltip": "Renomear",
+        "field": "Nome"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} já está atribuído a outro atalho"

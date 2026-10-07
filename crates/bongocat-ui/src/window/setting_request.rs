@@ -298,6 +298,21 @@ impl SettingsView {
                         .set_toggle_repeated_expression(expected_config_revision, enabled)
                         .await
                 }
+                Some(SettingValue::ModelBehaviorName {
+                    expected_config_revision,
+                    model,
+                    behavior_id,
+                    name,
+                }) => {
+                    client
+                        .set_model_behavior_name(
+                            expected_config_revision,
+                            model.clone(),
+                            behavior_id.clone(),
+                            name.clone(),
+                        )
+                        .await
+                }
                 Some(SettingValue::StartupItemEnabled(enabled)) => {
                     client.set_startup_item_enabled(enabled).await
                 }

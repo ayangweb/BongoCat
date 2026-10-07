@@ -311,6 +311,21 @@ pub struct ModelConfig {
     /// identically to `shared/config/fixtures/default.json`.
     #[serde(default)]
     pub toggle_repeated_expression: bool,
+    /// What a motion or expression is called on the shortcuts page instead of its
+    /// numbered label. Kept in step with the product's schema because this spike's
+    /// default must still serialize identically to
+    /// `shared/config/fixtures/default.json`.
+    #[serde(default)]
+    pub behavior_names: Vec<ModelBehaviorName>,
+}
+
+/// One model's name for one behavior.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ModelBehaviorName {
+    pub model: ModelIdentity,
+    pub behavior_id: String,
+    pub name: String,
 }
 
 /// One model's remembered expression, keyed by the complete identity because two
@@ -487,8 +502,9 @@ impl Default for NativeConfig {
                 random_behavior: RandomBehaviorConfig::default(),
                 gamepad_auto_switch: GamepadAutoSwitchConfig::default(),
                 remember_last_expression: false,
-                last_expressions: Vec::new(),
                 toggle_repeated_expression: false,
+                last_expressions: Vec::new(),
+                behavior_names: Vec::new(),
             },
             shortcuts: ShortcutConfig::default(),
             system: SystemConfig {

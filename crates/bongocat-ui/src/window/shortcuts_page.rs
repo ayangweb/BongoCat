@@ -1,5 +1,8 @@
 use super::*;
 
+use super::behavior_name::{
+    behavior_name_edit_control, behavior_name_editor, behavior_name_key, behavior_name_part_id,
+};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::Sizable as _;
 
@@ -125,10 +128,11 @@ impl ShortcutScope {
         shortcuts: &SettingsShortcuts,
         active_model: Option<&SettingsModelKey>,
         entries: &[SettingsModelEntry],
+        behavior_names: &[SettingsModelBehaviorName],
     ) -> Vec<ShortcutRow> {
         match self {
             Self::Window => window_shortcut_rows(shortcuts),
-            Self::Model => shortcut_behavior_rows(shortcuts, active_model, entries),
+            Self::Model => shortcut_behavior_rows(shortcuts, active_model, entries, behavior_names),
         }
     }
 
@@ -227,6 +231,7 @@ pub(super) fn content(
                 &snapshot.shortcuts,
                 snapshot.active_model.as_ref(),
                 &snapshot.model_catalog.entries,
+                &snapshot.model_behavior_names,
             );
             let row_index_offset = scope.row_index_offset(&snapshot.shortcuts);
             let empty_message = scope.empty_message(language).filter(|_| rows.is_empty());
@@ -276,6 +281,63 @@ fn shortcut_row(
     // scope's switch is off. A disabled row is inert, not merely painted
     // lighter — the mutators guard on the same predicate.
     let row_disabled = gate.disables_controls();
+    // The pencil beside the name is the rename entry, and it is the only one: the
+    // name itself stays plain text, so reading a row never risks starting an edit.
+    // A row gains a name without gaining a fourth control in its tab order: the
+    // frame's chord, its play button and its clear button keep their positions and
+    // their tab indices exactly as they were, and a row nobody renamed still reads
+    // as plain text because the pencil only appears on a behavior row that can
+    // actually be renamed.
+    let renamable = playable.is_some() && !row_disabled;
+    let behavior_id = match &target {
+        ShortcutCaptureTarget::ModelBehavior { behavior_id, .. } => Some(behavior_id.clone()),
+        ShortcutCaptureTarget::Command(_) => None,
+    };
+    let editing = match (&playable, behavior_id.as_deref()) {
+        (Some(playable), Some(behavior_id)) => view
+            .behavior_name
+            .as_ref()
+            .filter(|draft| draft.is_for(&playable.model, behavior_id)),
+        _ => None,
+    };
+    let label = match editing {
+        Some(draft) => behavior_name_editor(draft, cx),
+        None => {
+            let key = behavior_name_key(&target);
+            let mut label = div()
+                .id(behavior_name_part_id(&key, "label"))
+                .test_support()
+                .min_w_0()
+                .flex_1()
+                .flex()
+                .items_center()
+                .gap_1()
+                .rounded_sm()
+                // The name is its own element so it can be measured against the
+                // pencil beside it, and so a name longer than the row gives up
+                // characters instead of pushing the chord frame off the window.
+                .child(
+                    div()
+                        .id(behavior_name_part_id(&key, "name"))
+                        .test_support()
+                        .min_w_0()
+                        .truncate()
+                        .child(target_name),
+                );
+            if renamable {
+                label = label.child(behavior_name_edit_control(
+                    &target,
+                    bongocat_i18n::text(
+                        language.catalog_locale(),
+                        "shortcuts.behavior_names.rename.tooltip",
+                    ),
+                    tokens.accent,
+                    cx,
+                ));
+            }
+            label.into_any_element()
+        }
+    };
     let focus = view
         .shortcut_row_focus
         .get(&target)
@@ -430,7 +492,7 @@ fn shortcut_row(
         // description, so a gated setting reads as one unavailable entry
         // rather than a live label sitting next to a dead control.
         .when(row_disabled, |this| this.opacity(0.5))
-        .child(div().min_w_0().flex_1().child(target_name))
+        .child(label)
         .child(frame)
 }
 

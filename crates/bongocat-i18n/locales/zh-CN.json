@@ -258,7 +258,11 @@
     },
     "behavior_names": {
       "motion": "动作 %{index}",
-      "expression": "表情 %{index}"
+      "expression": "表情 %{index}",
+      "rename": {
+        "tooltip": "重命名",
+        "field": "名称"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} 已被其他快捷键占用"

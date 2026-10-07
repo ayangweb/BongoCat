@@ -53,9 +53,17 @@
       "disconnected_model": null
     },
     "remember_last_expression": false,
-    "toggle_repeated_expression": false,
     "last_expressions": [],
-    "behavior_names": []
+    "behavior_names": [
+      {
+        "model": {
+          "id": "../escape",
+          "source": "built_in"
+        },
+        "behavior_id": "motion:CAT_motion:0",
+        "name": "摇尾巴"
+      }
+    ]
   },
   "shortcuts": {
     "commands_enabled": true,

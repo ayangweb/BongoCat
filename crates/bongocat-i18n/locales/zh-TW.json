@@ -258,7 +258,11 @@
     },
     "behavior_names": {
       "motion": "動作 %{index}",
-      "expression": "表情 %{index}"
+      "expression": "表情 %{index}",
+      "rename": {
+        "tooltip": "重新命名",
+        "field": "名稱"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} 已被其他快速鍵佔用"

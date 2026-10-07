@@ -82,6 +82,7 @@ updates
 | `model`       | `remember_last_expression`          | 模型是否回到该模型上次使用的表情，默认 `false` |
 | `model`       | `toggle_repeated_expression`        | 再次触发当前正在显示的同一表情时关闭它，默认 `false` |
 | `model`       | `last_expressions`                  | 每个模型各自记住的表情，模型身份为 `{ id, source }`，默认 `[]` |
+| `model`       | `behavior_names`                     | 每个模型各自给动作和表情起的名字，模型身份为 `{ id, source }` 加 `behavior_id`，默认 `[]` |
 | `model`       | `ignore_pointer`                      | 模型求值忽略指针位置                   |
 | `shortcuts`   | `commands_enabled`                    | 应用快捷键是否进入平台匹配表，默认 `true` |
 | `shortcuts`   | `command_bindings`                    | 应用 command 到快捷键绑定              |
@@ -108,6 +109,16 @@ pressed state、释放校正、设备生命周期 Reset、诊断以及独立快�
 从哪里开始，另一个是重复触发时做什么。关闭动作不写 `model.last_expressions`：记住一个刚被关掉的
 表情会让它在下次启动时以「用户选过」的名义回来。随机播放走 renderer 而不是 command 队列，因此
 永远不参与这个开关。
+
+`model.behavior_names` 是**每个模型每个行为一行**的名字列表，默认 `[]`，字段带 `#[serde(default)]`：
+旧文档没有这个键时按「没有起过名字」加载，而不是被严格 v1 入口拒绝后走恢复流程。
+
+行的身份是 `model` 加 `behavior_id`，与快捷键绑定、随机播放勾选同一套拼法，因此同一个行为在整份
+配置里只有一种写法。名字是行自己的显示文本，所以会被 trim、丢弃控制字符并限长 64 个字符；空白名字
+不会被存下来——清空字段是「回到编号名称」，是一次删除而不是一个名字。一个模型的一个行为最多一行，
+两行会让标签取决于解析顺序。
+
+模型被删除时它的名字跟着一起删除；内置模型与导入模型同名时保留内置那一行，因为那指的是另一个模型。
 
 `model.show_all_pressed_keys` 默认 `false`，即兼容模式：同一只手只画最后按下且仍有效的那个键的
 键位图。打开后每个仍按住的键各自保留一张键位图，按下顺序从旧到新排列，渲染器按该顺序绘制，

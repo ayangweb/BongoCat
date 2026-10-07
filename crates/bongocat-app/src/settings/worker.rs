@@ -415,6 +415,33 @@ pub(super) fn run_service(
                     .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
                 let _ = reply.respond(result);
             }
+            SettingsCommand::SetModelBehaviorName {
+                expected_config_revision,
+                model,
+                behavior_id,
+                name,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_model_behavior_name(
+                                config_identity_from_settings(&model),
+                                behavior_id,
+                                name,
+                            )
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                if let Err(error) = &result {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
+                            .with_context(ApplicationLogContext::Operation("behavior_name"))
+                            .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+                    );
+                }
+                let _ = reply.respond(result);
+            }
             SettingsCommand::SetModelSettings {
                 expected_config_revision,
                 settings,

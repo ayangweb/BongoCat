@@ -35,13 +35,13 @@ pub(super) const MODEL_CARD_MIN_HEIGHT: f32 = 238.0;
 /// `Input::with_size(size)`; that pair is the whole reason the card measures the
 /// same with its editor open as without it, so the two must not be given
 /// different sizes.
-const MODEL_TITLE_SIZE: Size = Size::Medium;
+pub(crate) const MODEL_TITLE_SIZE: Size = Size::Medium;
 /// The line box the title reserves for its text, in the field's own terms.
 ///
 /// The field sets `1.25 rem` on its text and this is the same length: a row of a
 /// fixed height centres whatever line box its text has, so the two faces only
 /// put the name at the same place if the line box is the same one.
-const MODEL_TITLE_LINE_HEIGHT: Rems = Rems(1.25);
+pub(crate) const MODEL_TITLE_LINE_HEIGHT: Rems = Rems(1.25);
 /// How far the mode badge and cover picker sit from the cover's own corner.
 const MODEL_COVER_OVERLAY_INSET: Pixels = px(8.0);
 

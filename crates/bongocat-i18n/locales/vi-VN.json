@@ -258,7 +258,11 @@
     },
     "behavior_names": {
       "motion": "Chuyển động %{index}",
-      "expression": "Biểu cảm %{index}"
+      "expression": "Biểu cảm %{index}",
+      "rename": {
+        "tooltip": "Đổi tên",
+        "field": "Tên"
+      }
     },
     "errors": {
       "conflict": "%{shortcut} đã được gán cho một phím tắt khác"

@@ -93,6 +93,83 @@ pub struct ModelConfig {
     /// meaningless to another; recording them separately is what lets switching
     /// back to a model return to the face it was left wearing.
     pub last_expressions: Vec<ModelExpressionMemory>,
+    /// What each motion and expression is called in the settings window.
+    ///
+    /// The rows and the checkboxes both name a behavior by position — "Motion 3" —
+    /// because the resource names inside a package are internal numbering the user
+    /// cannot see. A row's own name is what lets the user find the one they meant
+    /// without counting positions, so a name is per model and per behavior.
+    ///
+    /// Defaults to empty, which is what every configuration written before the field
+    /// existed means: every row keeps showing its numbered label. The field carries
+    /// `#[serde(default)]` so such a document still loads instead of failing the
+    /// strict v1 parse.
+    ///
+    /// An empty `name` is not stored: it means "go back to the numbered label", which
+    /// is a removal rather than a name. `model.random_behavior.included` shares this
+    /// model-plus-behavior identity for the same reason — one model, one row, one
+    /// spelling for both.
+    ///
+    /// `uniqueItems` covers the case the schema can express — two byte-identical rows —
+    /// which is what a hand-edited document duplicated by copy-paste looks like. Two
+    /// rows that agree on the model and the behavior but differ in the name are a
+    /// narrower case that only the Rust validator can see; it is covered by
+    /// `a_behavior_name_is_parsed_bounded_and_held_once_per_behavior` rather than by a
+    /// fixture, because a fixture the schema accepts would make the two layers disagree.
+    #[serde(default)]
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(extend("uniqueItems" = true))
+    )]
+    pub behavior_names: Vec<ModelBehaviorName>,
+}
+
+/// One behavior's user-facing name.
+///
+/// The behavior is a complete [`ModelIdentity`] plus a `behavior_id` rather than a
+/// bare id, for the same reason [`ModelExpressionMemory`] is: two catalog entries may
+/// share an id, and a behavior name only means anything inside the package it came
+/// from.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct ModelBehaviorName {
+    pub model: ModelIdentity,
+    /// The behavior this names, spelled the way the whole configuration spells it:
+    /// `motion:<group>:<index>` or `expression:<name>`.
+    ///
+    /// The schema carries that shape rather than a "not blank" pattern, because the
+    /// generated JSON Schema is itself checked against the fixture corpus: a loose
+    /// pattern would let the schema accept a document the Rust validator refuses, and
+    /// the two layers would then disagree about what a valid `config.json` is.
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(
+            length(min = 1, max = 255),
+            regex(pattern = "(motion:[^:]+:[0-9]+|expression:.+)")
+        )
+    )]
+    pub behavior_id: String,
+    /// What the row shows instead of its numbered label.
+    ///
+    /// Bounded and printable: it is the row's own text, so a long or unprintable one
+    /// would be the page's problem rather than the model's.
+    ///
+    /// The pattern spells out "no control characters and not only whitespace" rather
+    /// than leaning on `\S`, because the generated JSON Schema is checked against the
+    /// same fixture corpus as the Rust validator and the two have to agree on what a
+    /// valid `config.json` is. `\x7f-\x9f` is included because `char::is_control` covers
+    /// the C1 range too, not just the C0 one.
+    #[cfg_attr(
+        any(test, feature = "schema-generation"),
+        schemars(
+            length(min = 1, max = 64),
+            regex(
+                pattern = "^[^\\x00-\\x1f\\x7f-\\x9f]*[^\\s\\x00-\\x1f\\x7f-\\x9f][^\\x00-\\x1f\\x7f-\\x9f]*$"
+            )
+        )
+    )]
+    pub name: String,
 }
 
 /// One model's remembered expression.
@@ -385,6 +462,61 @@ pub(crate) fn validate_model_expression_memories(
             return Err(ConfigError::InvalidValue(
                 "model.last_expressions.expression",
             ));
+        }
+    }
+    Ok(())
+}
+
+/// The longest user-facing name one behavior row may carry.
+///
+/// A row is a single line in a settings list, so this is generous enough for
+/// "the sleepy one" and small enough that a hand-edited document cannot turn the
+/// label into an unbounded blob.
+pub const MODEL_BEHAVIOR_NAME_MAXIMUM_CHARS: usize = 64;
+
+/// How many behavior names one installation can hold.
+///
+/// A user names the behaviors they care about, and the list is bounded by how many
+/// models exist rather than by how often they rename: an imported model can be added
+/// and removed freely, so this is generous enough that no real installation reaches
+/// it.
+pub const MAXIMUM_MODEL_BEHAVIOR_NAMES: usize = 1024;
+
+/// Validate the behavior-name list.
+///
+/// One row per behavior of a model: two rows for the same behavior would leave the
+/// label up to which of them the parser saw last. The behavior is parsed rather than
+/// trusted — it is the same `behavior_id` vocabulary the shortcut bindings use — and
+/// the name is bounded and printable because it is the row's own text.
+pub(crate) fn validate_model_behavior_names(
+    names: &[ModelBehaviorName],
+) -> Result<(), ConfigError> {
+    if names.len() > MAXIMUM_MODEL_BEHAVIOR_NAMES {
+        return Err(ConfigError::InvalidValue("model.behavior_names"));
+    }
+    let mut rows = std::collections::BTreeSet::new();
+    for row in names {
+        if !is_portable_model_id(&row.model.id)
+            || !rows.insert((row.model.clone(), row.behavior_id.clone()))
+        {
+            return Err(ConfigError::InvalidValue("model.behavior_names.model.id"));
+        }
+        let binding = ModelBehaviorBinding {
+            model: row.model.clone(),
+            behavior_id: row.behavior_id.clone(),
+            shortcut: String::new(),
+        };
+        let name = row.name.trim();
+        if binding.parse_action().is_err() {
+            return Err(ConfigError::InvalidValue(
+                "model.behavior_names.behavior_id",
+            ));
+        }
+        if name.is_empty()
+            || name.chars().count() > MODEL_BEHAVIOR_NAME_MAXIMUM_CHARS
+            || row.name.chars().any(char::is_control)
+        {
+            return Err(ConfigError::InvalidValue("model.behavior_names.name"));
         }
     }
     Ok(())

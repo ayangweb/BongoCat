@@ -279,6 +279,7 @@ fn shortcut_presentations_follow_the_resolved_language() {
             behavior: None,
             playable: None,
             shortcut: None,
+            custom_name: None,
         }
         .name(SettingsLanguage::English),
         "Show or hide the model window"
@@ -332,9 +333,9 @@ fn shortcut_scopes_split_the_combined_row_order_into_two_halves() {
     )];
     let shortcuts = SettingsShortcuts::default();
 
-    let window_rows = ShortcutScope::Window.rows(&shortcuts, Some(&active), &entries);
-    let model_rows = ShortcutScope::Model.rows(&shortcuts, Some(&active), &entries);
-    let combined = shortcut_rows(&shortcuts, Some(&active), &entries);
+    let window_rows = ShortcutScope::Window.rows(&shortcuts, Some(&active), &entries, &[]);
+    let model_rows = ShortcutScope::Model.rows(&shortcuts, Some(&active), &entries, &[]);
+    let combined = shortcut_rows(&shortcuts, Some(&active), &entries, &[]);
 
     assert_eq!(ShortcutScope::Window.row_index_offset(&shortcuts), 0);
     assert_eq!(

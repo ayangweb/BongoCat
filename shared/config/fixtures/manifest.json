@@ -245,6 +245,36 @@
       "id": "last-expression-model-id",
       "file": "invalid-last-expression-model-id.json",
       "expected": "reject"
+    },
+    {
+      "id": "behavior-names",
+      "file": "accept-behavior-names.json",
+      "expected": "accept"
+    },
+    {
+      "id": "behavior-name-behavior-id",
+      "file": "invalid-behavior-name-behavior-id.json",
+      "expected": "reject"
+    },
+    {
+      "id": "behavior-name-blank",
+      "file": "invalid-behavior-name-blank.json",
+      "expected": "reject"
+    },
+    {
+      "id": "behavior-name-control-character",
+      "file": "invalid-behavior-name-control-character.json",
+      "expected": "reject"
+    },
+    {
+      "id": "behavior-name-duplicate",
+      "file": "invalid-behavior-name-duplicate.json",
+      "expected": "reject"
+    },
+    {
+      "id": "behavior-name-model-id",
+      "file": "invalid-behavior-name-model-id.json",
+      "expected": "reject"
     }
   ]
 }

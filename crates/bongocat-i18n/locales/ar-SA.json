@@ -258,7 +258,11 @@
     },
     "behavior_names": {
       "motion": "الحركة %{index}",
-      "expression": "التعبير %{index}"
+      "expression": "التعبير %{index}",
+      "rename": {
+        "tooltip": "إعادة تسمية",
+        "field": "الاسم"
+      }
     },
     "errors": {
       "conflict": "اختصار %{shortcut} مُخصَّص بالفعل لاختصار آخر"
