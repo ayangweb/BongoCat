@@ -470,7 +470,7 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   关闭开关立即只保留最近启动的存活层；成功模型 commit 和 shutdown 清除全部层。
   snapshot 的 `active_motions` 显示完整集合，`active_motion` 派生为最近启动的存活层；
   UserData 保留来源 identity。随机动作仍让位于任何未结束的手动动作，音效沿用单路有序
-  worker（ADR-0087）。
+  worker（ADR-0088）。
 - `motion_stop` 只作用于匹配的当前动作，包括已完成并保持最终姿态的 motion。非零
   `FadeOutTime` 在 runtime snapshot 中保留
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后

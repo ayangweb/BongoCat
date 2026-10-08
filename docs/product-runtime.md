@@ -219,7 +219,7 @@ Product input is applied after motion curves so an actual pressed key or button 
 for hand parameters.
 
 The Model behavior setting `model.allow_motion_overlap` enables independent motion
-layers ordered by accepted start, oldest first (ADR-0087). Replays move their
+layers ordered by accepted start, oldest first (ADR-0088). Replays move their
 matching layer to the newest position, so older held terminal poses cannot mask
 newer starts from another group. Existing documents
 and fresh installations use replacement playback until the setting is enabled.

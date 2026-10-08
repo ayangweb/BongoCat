@@ -311,6 +311,10 @@ pub struct ModelConfig {
     /// identically to `shared/config/fixtures/default.json`.
     #[serde(default)]
     pub toggle_repeated_expression: bool,
+    /// Keep the independent storage contract aligned with the product schema.
+    /// Existing v1 documents retain replacement playback when the field is absent.
+    #[serde(default)]
+    pub allow_motion_overlap: bool,
     /// What a motion or expression is called on the shortcuts page instead of its
     /// numbered label. Kept in step with the product's schema because this spike's
     /// default must still serialize identically to
@@ -503,6 +507,7 @@ impl Default for NativeConfig {
                 gamepad_auto_switch: GamepadAutoSwitchConfig::default(),
                 remember_last_expression: false,
                 toggle_repeated_expression: false,
+                allow_motion_overlap: false,
                 last_expressions: Vec::new(),
                 behavior_names: Vec::new(),
             },
@@ -1396,6 +1401,40 @@ mod tests {
         assert_eq!(
             serde_json::to_value(NativeConfig::default()).unwrap(),
             expected
+        );
+    }
+
+    #[test]
+    fn motion_overlap_shared_fixtures_preserve_v1_compatibility() {
+        for (document, enabled) in [
+            (
+                include_bytes!("../../../shared/config/fixtures/accept-before-motion-overlap.json")
+                    .as_slice(),
+                false,
+            ),
+            (
+                include_bytes!("../../../shared/config/fixtures/accept-motion-overlap.json")
+                    .as_slice(),
+                true,
+            ),
+        ] {
+            let config: NativeConfig = serde_json::from_slice(document).unwrap();
+            config.validate().unwrap();
+            assert_eq!(config.model.allow_motion_overlap, enabled);
+            let base = tempdir().unwrap();
+            let store = ConfigStore::new(StorageLayout::under(
+                base.path(),
+                BuildEnvironment::Development,
+            ))
+            .unwrap();
+            store.commit(&config).unwrap();
+            assert_eq!(store.load_or_default().unwrap(), config);
+        }
+        assert!(
+            serde_json::from_slice::<NativeConfig>(include_bytes!(
+                "../../../shared/config/fixtures/invalid-motion-overlap.json"
+            ))
+            .is_err()
         );
     }
 

@@ -1,4 +1,4 @@
-# ADR-0087: Concurrent motion playback
+# ADR-0088: Concurrent motion playback
 
 - Status: accepted
 - Date: 2026-10-08
