@@ -152,6 +152,17 @@ async fn settle_taskbar_icon(
             .map_err(|error| format!("read taskbar icon snapshot: {error}"))?;
         let (model_window, settings_window, model_window_visible) =
             cx.update(product_taskbar_icon_state)?;
+        if snapshot.overlay.window_mode {
+            if snapshot.taskbar_icon_visible == expected
+                && model_window
+                && settings_window
+                && model_window_visible
+            {
+                return Ok(());
+            }
+            Timer::after(TASKBAR_ICON_SETTLE_INTERVAL).await;
+            continue;
+        }
         match taskbar_icon_settle_gap(
             &TaskbarIconSample::new(
                 snapshot.taskbar_icon_visible,
@@ -352,6 +363,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let permission_check_enabled = !run_options.automated_verification();
 
     let overlay_options = OverlaySessionOptions {
+        window_mode: application.config().overlay.window_mode,
+        window_background_color: application.config().overlay.window_background_color,
         click_through: application.config().overlay.click_through,
         hold_modifier_to_interact: application.config().overlay.hold_modifier_to_interact,
         always_on_top: application.config().overlay.always_on_top,
@@ -2077,6 +2090,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return;
                     }
                     if let Err(error) = write_smoke_status("taskbar icon toggled and restored") {
+                        record_failure(&smoke_failures, error.to_string());
+                        cx.update(request_product_quit);
+                        return;
+                    }
+                    let mode_result = async {
+                        let initial = smoke_client.read_snapshot().await.map_err(|error| error.to_string())?;
+                        let initial_settings = initial.overlay;
+                        for enabled in [!initial_settings.window_mode, initial_settings.window_mode] {
+                            let snapshot = smoke_client.read_snapshot().await.map_err(|error| error.to_string())?;
+                            let mut settings = snapshot.overlay;
+                            settings.window_mode = enabled;
+                            smoke_client.set_overlay_settings(snapshot.config_revision.ok_or("window mode revision missing")?, settings).await.map_err(|error| error.to_string())?;
+                            let mut applied = false;
+                            for _ in 0..SMOKE_FIRST_FRAME_WAIT_TICKS {
+                                Timer::after(Duration::from_millis(50)).await;
+                                applied = cx.update(|cx| {
+                                    let coordinator = cx.global::<ProductCoordinator>();
+                                    let overlay = coordinator.overlay.borrow();
+                                    overlay.as_ref().is_some_and(|overlay| overlay.window_mode_is_active() == enabled && overlay.is_visible())
+                                });
+                                if applied { break; }
+                            }
+                            if !applied { return Err("window mode did not reach the product surface".to_owned()); }
+                        }
+                        let restored = smoke_client.read_snapshot().await.map_err(|error| error.to_string())?;
+                        if restored.overlay != initial_settings { return Err("window mode changed pet preferences".to_owned()); }
+                        Ok::<(), String>(())
+                    }.await;
+                    if let Err(error) = mode_result {
+                        record_failure(&smoke_failures, error);
+                        cx.update(request_product_quit);
+                        return;
+                    }
+                    if let Err(error) = write_smoke_status("window mode toggled and restored") {
                         record_failure(&smoke_failures, error.to_string());
                         cx.update(request_product_quit);
                         return;

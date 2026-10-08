@@ -79,11 +79,17 @@ fn presentation_and_geometry_changes_use_in_place_window_transitions() {
 
     next = current;
     next.corner_radius_percent = 25;
-    assert!(current.requires_window_recreation(next));
+    assert_eq!(
+        current.requires_window_recreation(next),
+        cfg!(target_os = "macos")
+    );
 
     next = current;
     next.keep_inside_screen = false;
-    assert!(current.requires_window_recreation(next));
+    assert_eq!(
+        current.requires_window_recreation(next),
+        cfg!(target_os = "macos")
+    );
 }
 
 /// Recalling the modifier is read inside the tick, like the hover hide, so that

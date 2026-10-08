@@ -342,6 +342,12 @@
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "Window mode"
+      },
+      "window_background_color": {
+        "label": "Window background color"
+      },
       "behavior": {
         "title": "Window behavior"
       },

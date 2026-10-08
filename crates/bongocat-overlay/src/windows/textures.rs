@@ -6,6 +6,7 @@
 //! visible in one file rather than spread through the draw path.
 
 use super::*;
+use std::collections::BTreeSet;
 
 pub(crate) struct MaskTarget {
     pub(crate) _texture: ID3D11Texture2D,
@@ -520,6 +521,7 @@ pub(crate) unsafe fn verify_frame_smoke(
     texture: &ID3D11Texture2D,
     width: u32,
     height: u32,
+    window_background_color: Option<[u8; 3]>,
 ) -> WindowsResult<()> {
     let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
     unsafe { context.Map(texture, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
@@ -544,7 +546,29 @@ pub(crate) unsafe fn verify_frame_smoke(
                 pixels.push(pixel);
             }
         }
-        validate_frame_smoke(pixels).map_err(invariant_error)
+        if let Some(rgb) = window_background_color {
+            let background = [rgb[2], rgb[1], rgb[0], 255];
+            if pixels.iter().any(|pixel| pixel[3] != 255) {
+                Err(invariant_error("window capture surface is not opaque"))
+            } else if pixels
+                .iter()
+                .filter(|pixel| **pixel != background)
+                .map(|pixel| [pixel[0], pixel[1], pixel[2]])
+                .collect::<BTreeSet<_>>()
+                .len()
+                < 2
+            {
+                Err(invariant_error(
+                    "window capture surface contains no model picture",
+                ))
+            } else {
+                Ok(())
+            }
+        } else {
+            validate_frame_smoke(pixels)
+                .map(|_| ())
+                .map_err(invariant_error)
+        }
     };
     unsafe { context.Unmap(texture, 0) };
     result.map(|_| ())

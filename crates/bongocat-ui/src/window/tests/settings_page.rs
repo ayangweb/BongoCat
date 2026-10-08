@@ -472,6 +472,8 @@ fn the_native_and_component_halves_pin_together() {
 #[test]
 fn overlay_stepper_values_are_bounded_and_preserve_other_settings() {
     let settings = SettingsOverlay {
+        window_mode: false,
+        window_background_color: [0, 255, 0],
         click_through: false,
         hold_modifier_to_interact: Some(ModifierKey::LeftShift),
         always_on_top: false,

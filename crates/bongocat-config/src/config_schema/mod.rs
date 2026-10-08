@@ -72,6 +72,8 @@ impl Default for NativeConfig {
                 language: Language::default(),
             },
             overlay: OverlayConfig {
+                window_mode: false,
+                window_background_color: overlay::default_window_background_color(),
                 click_through: false,
                 hold_modifier_to_interact: None,
                 always_on_top: true,

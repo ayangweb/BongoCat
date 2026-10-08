@@ -189,6 +189,8 @@ pub const fn idle_hide_delay_ms(seconds: u32) -> u32 {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySettings {
+    pub window_mode: bool,
+    pub window_background_color: [u8; 3],
     pub click_through: bool,
     /// The physical modifier key whose hold gives the pointer back to the user.
     ///
@@ -232,6 +234,8 @@ pub struct OverlaySettings {
 impl Default for OverlaySettings {
     fn default() -> Self {
         Self {
+            window_mode: false,
+            window_background_color: [0, 255, 0],
             click_through: false,
             hold_modifier_to_interact: None,
             always_on_top: true,

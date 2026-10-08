@@ -17,6 +17,11 @@
       "expected": "reject"
     },
     {
+      "id": "window-mode",
+      "file": "accept-window-mode.json",
+      "expected": "accept"
+    },
+    {
       "id": "default",
       "file": "default.json",
       "expected": "accept"

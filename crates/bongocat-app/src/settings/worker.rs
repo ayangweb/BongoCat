@@ -313,6 +313,8 @@ pub(super) fn run_service(
                 reply,
             } => {
                 let runtime_settings = OverlaySettings {
+                    window_mode: settings.window_mode,
+                    window_background_color: settings.window_background_color,
                     click_through: settings.click_through,
                     hold_modifier_to_interact: settings.hold_modifier_to_interact,
                     always_on_top: settings.always_on_top,

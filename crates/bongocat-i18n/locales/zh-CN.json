@@ -342,6 +342,12 @@
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "窗口模式"
+      },
+      "window_background_color": {
+        "label": "窗口背景颜色"
+      },
       "behavior": {
         "title": "窗口行为"
       },

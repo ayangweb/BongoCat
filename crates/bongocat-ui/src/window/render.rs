@@ -105,6 +105,13 @@ impl Render for SettingsView {
         // and the startup switch below read it exactly like the gated rows do
         // (see `setting_gate` for the unified rule).
         let editing_blocked = self.editing_blocked(snapshot.as_ref());
+        let pet_controls_disabled =
+            editing_blocked || window_mode_active(snapshot.as_ref().map(|s| s.overlay));
+        #[cfg(target_os = "windows")]
+        let background_color_gate = SettingGate::new(
+            editing_blocked,
+            snapshot.as_ref().is_some_and(|s| s.overlay.window_mode),
+        );
         let hover_hide_delay_available = snapshot
             .as_ref()
             .is_some_and(|snapshot| hover_hide_delay_applies(snapshot.overlay));
@@ -340,6 +347,8 @@ impl Render for SettingsView {
                     ))
                     .items(with_search_keywords(
                         vec![
+                    #[cfg(target_os = "windows")]
+                    window_mode::window_mode_row(&view_entity, language),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -422,7 +431,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
+                    ).disabled(pet_controls_disabled),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -480,7 +489,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
+                    ).disabled(pet_controls_disabled),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -512,7 +521,7 @@ impl Render for SettingsView {
                             },
                         ),
                     )
-                    .disabled(hover_hide_delay_gate.disables_controls()),
+                    .disabled(hover_hide_delay_gate.disables_controls() || pet_controls_disabled),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -541,7 +550,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
+                    ).disabled(pet_controls_disabled),
                     SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
@@ -571,7 +580,7 @@ impl Render for SettingsView {
                             },
                         ),
                     )
-                    .disabled(idle_hide_delay_gate.disables_controls()),
+                    .disabled(idle_hide_delay_gate.disables_controls() || pet_controls_disabled),
                     // Last row of the group, on purpose. This row suspends two
                     // switches rather than standing among them, and no linear
                     // position can put it next to both: click-through is third
@@ -581,7 +590,7 @@ impl Render for SettingsView {
                     // not before — and the description on the row names the two
                     // it affects, so the rows it merely sits next to cannot be
                     // mistaken for affected ones.
-                    hold_modifier_row(&view_entity, language, editing_blocked),
+                    hold_modifier_row(&view_entity, language, pet_controls_disabled),
                 ],
                         &model_window_behavior_keywords,
                     )),
@@ -592,6 +601,12 @@ impl Render for SettingsView {
                     ))
                     .items(with_search_keywords(
                         vec![
+                            #[cfg(target_os = "windows")]
+                            window_mode::background_color_row(
+                                &self.window_background_color,
+                                language,
+                                background_color_gate,
+                            ),
                             SettingItem::new(
                                 bongocat_i18n::text(
                                     language.catalog_locale(),
@@ -649,7 +664,8 @@ impl Render for SettingsView {
                                         }
                                     },
                                 ),
-                            ),
+                            )
+                            .disabled(pet_controls_disabled),
                             SettingItem::new(
                                 bongocat_i18n::text(
                                     language.catalog_locale(),
@@ -678,7 +694,8 @@ impl Render for SettingsView {
                                         }
                                     },
                                 ),
-                            ),
+                            )
+                            .disabled(pet_controls_disabled),
                         ],
                         &model_window_appearance_keywords,
                     )),
@@ -1369,7 +1386,7 @@ impl Render for SettingsView {
                                     view.read(app)
                                         .snapshot
                                         .as_ref()
-                                        .is_some_and(|s| s.taskbar_icon_visible)
+                                        .is_some_and(|s| s.taskbar_icon_visible || s.overlay.window_mode)
                                 }
                             },
                             {
@@ -1381,7 +1398,7 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ));
+                    ).disabled(window_mode_active(snapshot.as_ref().map(|s| s.overlay))));
                     // The macOS counterpart of the Windows taskbar button. It is its
                     // own row and its own field rather than a second meaning of
                     // `show_taskbar_icon`, which the contract explicitly refuses to

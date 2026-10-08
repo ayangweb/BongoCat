@@ -342,6 +342,12 @@
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "Chế độ cửa sổ"
+      },
+      "window_background_color": {
+        "label": "Màu nền cửa sổ"
+      },
       "behavior": {
         "title": "Hành vi cửa sổ"
       },

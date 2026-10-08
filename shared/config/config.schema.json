@@ -472,6 +472,26 @@
           "maximum": 400,
           "minimum": 25,
           "type": "integer"
+        },
+        "window_background_color": {
+          "default": [
+            0,
+            255,
+            0
+          ],
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "window_mode": {
+          "default": false,
+          "type": "boolean"
         }
       },
       "required": [

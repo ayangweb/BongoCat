@@ -241,6 +241,8 @@ pub(super) fn snapshot(
         check_for_updates_interval_hours: application.config().updates.check_interval_hours,
         overlay_visible: runtime.overlay_visible,
         overlay: SettingsOverlay {
+            window_mode: runtime.overlay_settings.window_mode,
+            window_background_color: runtime.overlay_settings.window_background_color,
             click_through: runtime.overlay_settings.click_through,
             hold_modifier_to_interact: runtime.overlay_settings.hold_modifier_to_interact,
             always_on_top: runtime.overlay_settings.always_on_top,
