@@ -440,3 +440,43 @@ fn the_expression_toggle_is_one_switch_that_reaches_the_runtime_and_the_document
         "with the toggle off a repeat is the same face applied again"
     );
 }
+
+#[test]
+fn motion_overlap_setting_is_persisted_and_restored_at_startup() {
+    let base = tempdir().expect("temp directory");
+    let layout = StorageLayout::under(base.path(), BUILD_ENVIRONMENT);
+    let (mut application, pump, _token) = start_with_pumped_overlay(&layout);
+    assert!(!application.config().model.allow_motion_overlap);
+    application
+        .set_allow_motion_overlap(true)
+        .expect("enable overlap");
+    let deadline = Instant::now() + RUNTIME_TIMEOUT;
+    while !application
+        .runtime_client()
+        .snapshot()
+        .model_settings
+        .allow_motion_overlap
+    {
+        assert!(Instant::now() < deadline, "runtime setting delivery");
+        std::thread::yield_now();
+    }
+    application.shutdown().expect("shutdown");
+    drop(pump);
+    let (mut restarted, _pump, _token) = start_with_pumped_overlay(&layout);
+    assert!(restarted.config().model.allow_motion_overlap);
+    let deadline = Instant::now() + RUNTIME_TIMEOUT;
+    while !restarted
+        .runtime_client()
+        .snapshot()
+        .model_settings
+        .allow_motion_overlap
+    {
+        assert!(Instant::now() < deadline, "runtime startup setting");
+        std::thread::yield_now();
+    }
+    restarted
+        .set_allow_motion_overlap(false)
+        .expect("disable overlap");
+    assert!(!restarted.config().model.allow_motion_overlap);
+    restarted.shutdown().expect("shutdown");
+}

@@ -410,6 +410,9 @@
         "toggle_repeated_expression": {
           "label": "같은 표정을 다시 누르면 끄기"
         },
+        "allow_motion_overlap": {
+          "label": "동작 동시 재생"
+        },
         "random_behavior_mode": {
           "label": "모션이나 표현식을 무작위로 재생",
           "options": {

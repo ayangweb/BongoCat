@@ -109,6 +109,7 @@ impl Default for NativeConfig {
                 gamepad_auto_switch: GamepadAutoSwitchConfig::default(),
                 remember_last_expression: false,
                 toggle_repeated_expression: false,
+                allow_motion_overlap: false,
                 last_expressions: Vec::new(),
                 behavior_names: Vec::new(),
             },

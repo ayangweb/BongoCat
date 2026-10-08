@@ -13,7 +13,7 @@ use crate::*;
 pub(crate) fn maybe_trigger_random_behavior(
     renderer: Option<&mut RuntimeRenderer>,
     active_model: Option<&CommittedModel>,
-    active_motion: &mut Option<ActiveMotionSnapshot>,
+    active_motions: &mut Vec<ActiveMotionSnapshot>,
     active_expression: &mut Option<ActiveExpressionSnapshot>,
     scheduler: &mut RandomBehaviorScheduler,
     next_automatic_event_sequence: &mut u64,
@@ -27,7 +27,7 @@ pub(crate) fn maybe_trigger_random_behavior(
         maybe_trigger_random_behavior_locked(
             renderer,
             active_model,
-            active_motion,
+            active_motions,
             active_expression,
             scheduler,
             next_automatic_event_sequence,
@@ -43,7 +43,7 @@ pub(crate) fn maybe_trigger_random_behavior(
 pub(crate) fn maybe_trigger_random_behavior_locked(
     renderer: Option<&mut RuntimeRenderer>,
     active_model: Option<&CommittedModel>,
-    active_motion: &mut Option<ActiveMotionSnapshot>,
+    active_motions: &mut Vec<ActiveMotionSnapshot>,
     active_expression: &mut Option<ActiveExpressionSnapshot>,
     scheduler: &mut RandomBehaviorScheduler,
     next_automatic_event_sequence: &mut u64,
@@ -68,12 +68,10 @@ pub(crate) fn maybe_trigger_random_behavior_locked(
             let Ok(motion) = MotionId::new(group, index) else {
                 return;
             };
-            let motion_is_settled = renderer.motion_is_settled(now);
-            let current_priority = active_motion
-                .as_ref()
-                .filter(|_| !motion_is_settled)
-                .map(|active| active.priority);
-            if current_priority.is_some_and(|priority| priority > MotionPriority::Idle) {
+            if active_motions.iter().any(|active| {
+                active.priority > MotionPriority::Idle
+                    && !renderer.motion_is_settled(&active.motion, now)
+            }) {
                 return;
             }
             if renderer.validate_motion(&motion).is_err() {
@@ -101,8 +99,14 @@ pub(crate) fn maybe_trigger_random_behavior_locked(
                 command_sequence: automatic_sequence,
                 stop_command_sequence: None,
             };
-            *active_motion = Some(active.clone());
-            publish(snapshot, |current| current.active_motion = Some(active));
+            if !renderer.model_settings.allow_motion_overlap {
+                active_motions.clear();
+            }
+            active_motions.retain(|current| current.motion != active.motion);
+            active_motions.push(active);
+            publish(snapshot, |current| {
+                current.active_motions = active_motions.clone()
+            });
         }
         bongocat_model::ModelBehaviorSnapshot::Expression { name } => {
             let Ok(expression) = ExpressionId::new(name) else {

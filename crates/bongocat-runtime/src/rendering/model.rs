@@ -9,6 +9,13 @@ use super::*;
 
 impl RuntimeRenderer {
     pub(crate) fn set_model_settings(&mut self, settings: ModelSettings) {
+        if !settings.allow_motion_overlap
+            && let Some(active) = &mut self.active
+            && let Some(latest) = active.motions.pop()
+        {
+            active.motions.clear();
+            active.motions.push(latest);
+        }
         self.model_settings = settings;
     }
 }
@@ -54,7 +61,7 @@ impl RuntimeRenderer {
             model_generation,
             next_frame_number: 1,
             last_evaluated_at: None,
-            motion: None,
+            motions: Vec::new(),
             expressions: Vec::new(),
         });
         Ok(token)

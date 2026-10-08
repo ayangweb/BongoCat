@@ -87,6 +87,9 @@ pub struct ModelConfig {
     /// non-toggling behavior rather than failing the strict v1 parse.
     #[serde(default)]
     pub toggle_repeated_expression: bool,
+    /// Whether distinct motions play concurrently in accepted start order.
+    #[serde(default)]
+    pub allow_motion_overlap: bool,
     /// The expression each model was last showing, one record per model.
     ///
     /// Expressions are per-model assets, so a name recorded for one model is

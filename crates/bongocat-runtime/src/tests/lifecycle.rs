@@ -341,6 +341,7 @@ fn model_settings_command_is_revisioned_and_published() {
         ignore_gamepad: false,
         show_all_pressed_keys: false,
         toggle_repeated_expression: false,
+        allow_motion_overlap: false,
         ignore_pointer: true,
     };
     let sequence = client

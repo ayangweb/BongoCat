@@ -39,14 +39,15 @@ fn frame_evaluation_order_is_motion_expression_input_effects_then_core_update() 
     )
     .expect("expression");
     let active = renderer.active.as_mut().expect("active model");
-    active.motion = Some(MotionPlayback {
+    active.motions = vec![MotionPlayback {
+        motion: MotionId::new("CAT_motion", 0).expect("motion id"),
         clip: motion,
         looping: true,
         started_at: Duration::ZERO,
         completed: false,
         fade_out_started_at: None,
         last_event_elapsed: None,
-    });
+    }];
     active.expressions.push(ExpressionPlayback {
         clip: expression,
         started_at: Duration::ZERO,

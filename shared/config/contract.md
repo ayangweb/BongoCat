@@ -80,6 +80,7 @@ updates
 | `model`       | `gamepad_auto_switch.connected_model` | 连接手柄时自动切换的模型，`null` 表示上次使用的手柄模型 |
 | `model`       | `gamepad_auto_switch.disconnected_model` | 断开手柄时自动切换的模型，`null` 表示上次使用的非手柄模型 |
 | `model`       | `remember_last_expression`          | 模型是否回到该模型上次使用的表情，默认 `false` |
+| `model`       | `allow_motion_overlap`             | 不同动作独立计时、按启动顺序叠加求值，默认 `false`，旧数据缺少字段时使用默认值 |
 | `model`       | `toggle_repeated_expression`        | 再次触发当前正在显示的同一表情时关闭它，默认 `false` |
 | `model`       | `last_expressions`                  | 每个模型各自记住的表情，模型身份为 `{ id, source }`，默认 `[]` |
 | `model`       | `behavior_names`                     | 每个模型各自给动作和表情起的名字，模型身份为 `{ id, source }` 加 `behavior_id`，默认 `[]` |

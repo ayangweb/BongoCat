@@ -231,6 +231,10 @@
     "ModelConfig": {
       "additionalProperties": false,
       "properties": {
+        "allow_motion_overlap": {
+          "default": false,
+          "type": "boolean"
+        },
         "behavior_names": {
           "default": [],
           "items": {

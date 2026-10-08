@@ -217,6 +217,7 @@ pub(crate) fn publish(snapshot_cell: &SnapshotCell, update: impl FnOnce(&mut Run
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     update(&mut snapshot);
+    snapshot.active_motion = snapshot.active_motions.last().cloned();
     snapshot.revision = snapshot.revision.saturating_add(1);
     snapshot_cell.changed.notify_all();
 }

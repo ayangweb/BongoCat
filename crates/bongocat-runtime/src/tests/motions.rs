@@ -1172,3 +1172,117 @@ fn a_restored_expression_is_never_read_as_a_repeat() {
 
     owner.shutdown(TIMEOUT).expect("runtime shutdown");
 }
+
+#[test]
+fn overlapping_motions_keep_independent_identity_priority_audio_and_fades() {
+    let (_catalog, model) = preset_model_with_motion_fade_out(1.0);
+    let clock = Arc::new(ManualClock::default());
+    let (owner, consumer) = RuntimeOwner::start_with_rendering_audio_and_clock(
+        true,
+        true,
+        16,
+        MotionAudioClient::unavailable(),
+        Arc::clone(&clock) as Arc<dyn MonotonicClock>,
+    );
+    let client = owner.client();
+    client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+    let activation = client
+        .send(RuntimeCommand::ActivateModel(Arc::new(model)))
+        .expect("activate");
+    let candidate = wait_for_prepared_model(&client, &consumer, activation);
+    report_model_prepared(&client, &consumer, &candidate);
+    let send = |command| {
+        let sequence = client.send(command).expect("send command");
+        client
+            .wait_for_command(sequence, TIMEOUT)
+            .expect("command result")
+    };
+    send(RuntimeCommand::SetModelSettings(ModelSettings {
+        allow_motion_overlap: true,
+        ..ModelSettings::default()
+    }));
+    let first = MotionId::new("CAT_motion", 0).expect("first motion");
+    let second = MotionId::new("CAT_motion", 1).expect("second motion");
+    let first_started = send(RuntimeCommand::StartMotion {
+        motion: first.clone(),
+        priority: MotionPriority::Force,
+    });
+    clock.set(Duration::from_millis(100));
+    let both = send(RuntimeCommand::StartMotion {
+        motion: second.clone(),
+        priority: MotionPriority::Normal,
+    });
+    assert_eq!(
+        both.active_motions.len(),
+        2,
+        "different layers do not compete for priority"
+    );
+    assert_eq!(both.active_motions[0], first_started.active_motions[0]);
+    assert_eq!(
+        both.active_motion.as_ref().map(|active| &active.motion),
+        Some(&second)
+    );
+    let audio_before_repeat = both.motion_audio.rejected_after_shutdown;
+    let repeated = send(RuntimeCommand::StartMotion {
+        motion: first.clone(),
+        priority: MotionPriority::Force,
+    });
+    assert_eq!(repeated.active_motions, both.active_motions);
+    assert_eq!(
+        repeated.motion_audio.rejected_after_shutdown,
+        audio_before_repeat
+    );
+    let invalid = send(RuntimeCommand::PreviewMotion(
+        MotionId::new("missing", 0).expect("missing motion"),
+    ));
+    assert!(invalid.last_command_failure.is_some());
+    assert_eq!(invalid.active_motions, both.active_motions);
+    assert_eq!(
+        invalid.motion_audio.rejected_after_shutdown,
+        audio_before_repeat
+    );
+    let previewed = send(RuntimeCommand::PreviewMotion(second.clone()));
+    assert_eq!(previewed.active_motions[0], both.active_motions[0]);
+    assert_ne!(
+        previewed.active_motions[1].command_sequence,
+        both.active_motions[1].command_sequence
+    );
+    clock.set(Duration::from_millis(500));
+    let stopping = send(RuntimeCommand::StopMotion(first.clone()));
+    assert!(stopping.active_motions[0].stop_command_sequence.is_some());
+    assert_eq!(stopping.active_motions[1], previewed.active_motions[1]);
+    clock.set(Duration::from_millis(700));
+    let repeated_stop = send(RuntimeCommand::StopMotion(first.clone()));
+    assert_eq!(repeated_stop.active_motions, stopping.active_motions);
+    assert_eq!(
+        repeated_stop.motion_audio.rejected_after_shutdown,
+        stopping.motion_audio.rejected_after_shutdown
+    );
+    clock.set(Duration::from_millis(1500));
+    let deadline = Instant::now() + TIMEOUT;
+    while client.snapshot().active_motions.len() != 1 {
+        assert!(
+            Instant::now() < deadline,
+            "only the stopped layer must finish its fade"
+        );
+        std::thread::yield_now();
+    }
+    assert_eq!(
+        client.snapshot().active_motions[0],
+        previewed.active_motions[1]
+    );
+    send(RuntimeCommand::StartMotion {
+        motion: first.clone(),
+        priority: MotionPriority::Normal,
+    });
+    let single = send(RuntimeCommand::SetModelSettings(ModelSettings::default()));
+    assert_eq!(single.active_motions.len(), 1);
+    assert_eq!(single.active_motions[0].motion, first);
+    let ignored = send(RuntimeCommand::StartMotion {
+        motion: second,
+        priority: MotionPriority::Idle,
+    });
+    assert_eq!(ignored.active_motions, single.active_motions);
+    let stopped = owner.shutdown(TIMEOUT).expect("shutdown");
+    assert!(stopped.active_motions.is_empty());
+}

@@ -853,3 +853,38 @@ fn the_random_behavior_interval_is_inert_while_the_mode_is_off(cx: &mut TestAppC
         "an interval nothing reads must not reach the service"
     );
 }
+
+#[gpui_kit::test]
+fn motion_overlap_switch_uses_a_revision_checked_command(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(4, true, true);
+    initial.config_revision = Some(4);
+    assert!(!initial.allow_motion_overlap);
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+    view.update(visual, |view, cx| view.set_allow_motion_overlap(true, cx));
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetAllowMotionOverlap {
+        expected_config_revision,
+        enabled,
+        reply,
+    } = endpoint.try_recv().expect("overlap command")
+    else {
+        panic!("expected typed overlap command");
+    };
+    assert_eq!(expected_config_revision, 4);
+    assert!(enabled);
+    let mut confirmed = crate::tests::snapshot(5, true, true);
+    confirmed.config_revision = Some(5);
+    confirmed.allow_motion_overlap = true;
+    reply.respond(Ok(confirmed)).expect("switch reply");
+    visual.run_until_parked();
+    view.update(visual, |view, _| {
+        assert!(
+            view.snapshot
+                .as_ref()
+                .expect("confirmed snapshot")
+                .allow_motion_overlap
+        );
+    });
+    assert!(endpoint.try_recv().is_err());
+}

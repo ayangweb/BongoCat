@@ -459,6 +459,7 @@ pub(super) fn run_service(
                     // revision-checked command, so this projection carries the
                     // stored value across rather than resetting it whenever an
                     // unrelated model setting moves.
+                    allow_motion_overlap: application.config().model.allow_motion_overlap,
                     toggle_repeated_expression: application
                         .config()
                         .model
@@ -600,6 +601,27 @@ pub(super) fn run_service(
                             .with_context(ApplicationLogContext::Operation(
                                 "toggle_repeated_expression",
                             ))
+                            .with_context(ApplicationLogContext::Reason(error.code().as_str())),
+                    );
+                }
+                let _ = reply.respond(result);
+            }
+            SettingsCommand::SetAllowMotionOverlap {
+                expected_config_revision,
+                enabled,
+                reply,
+            } => {
+                let result = check_revision(&application, expected_config_revision)
+                    .and_then(|()| {
+                        application
+                            .set_allow_motion_overlap(enabled)
+                            .map_err(map_application_error)
+                    })
+                    .map(|_| snapshot(&application, &mut clock, false, startup_item.state()));
+                if let Err(error) = &result {
+                    application.record_log_once(
+                        ApplicationLogEvent::new(ApplicationLogCode::SettingsCommandFailed)
+                            .with_context(ApplicationLogContext::Operation("allow_motion_overlap"))
                             .with_context(ApplicationLogContext::Reason(error.code().as_str())),
                     );
                 }

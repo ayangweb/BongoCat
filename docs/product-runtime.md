@@ -218,6 +218,15 @@ generation unchanged.
 Product input is applied after motion curves so an actual pressed key or button remains authoritative
 for hand parameters.
 
+The Model behavior setting `model.allow_motion_overlap` enables independent motion
+layers ordered by accepted start, oldest first (ADR-0088). Replays move their
+matching layer to the newest position, so older held terminal poses cannot mask
+newer starts from another group. Existing documents
+and fresh installations use replacement playback until the setting is enabled.
+The runtime publishes `active_motions` and derives `active_motion` from the latest
+surviving start. Each stop and UserData occurrence belongs to one motion identity;
+model commit and shutdown clear all layers. Audio remains one ordered stream.
+
 Accepted motions now publish an ordered side effect to the independent `bongocat-audio` worker.
 The worker uses rodio with only playback and FLAC enabled, owns one voice, and resolves no model
 metadata itself. A new motion, explicit stop, disabled audio setting, successful model switch, or

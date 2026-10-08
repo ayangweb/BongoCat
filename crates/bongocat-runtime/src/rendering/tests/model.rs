@@ -14,6 +14,7 @@ fn model_settings_control_pointer_tracking_and_render_mirroring() {
         ignore_gamepad: false,
         show_all_pressed_keys: false,
         toggle_repeated_expression: false,
+        allow_motion_overlap: false,
         ignore_pointer: false,
     });
     let token = renderer
@@ -49,6 +50,7 @@ fn model_settings_control_pointer_tracking_and_render_mirroring() {
         ignore_gamepad: false,
         show_all_pressed_keys: false,
         toggle_repeated_expression: false,
+        allow_motion_overlap: false,
         ignore_pointer: true,
     });
     renderer
@@ -107,6 +109,7 @@ fn pointer_tracking_flips_each_axis_on_its_own() {
             ignore_gamepad: false,
             show_all_pressed_keys: false,
             toggle_repeated_expression: false,
+            allow_motion_overlap: false,
             ignore_pointer: false,
         });
         renderer

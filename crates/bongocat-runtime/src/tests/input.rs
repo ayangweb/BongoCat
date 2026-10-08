@@ -542,6 +542,7 @@ fn model_input_filters_preserve_raw_pressed_state_and_recompose_immediately() {
             ignore_gamepad: false,
             show_all_pressed_keys: false,
             toggle_repeated_expression: false,
+            allow_motion_overlap: false,
             ignore_pointer: false,
         }))
         .expect("keyboard filter accepted");
@@ -573,6 +574,7 @@ fn model_input_filters_preserve_raw_pressed_state_and_recompose_immediately() {
             ignore_gamepad: true,
             show_all_pressed_keys: false,
             toggle_repeated_expression: false,
+            allow_motion_overlap: false,
             ignore_pointer: false,
         }))
         .expect("gamepad filter accepted");

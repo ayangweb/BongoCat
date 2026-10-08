@@ -39,6 +39,7 @@ pub(crate) enum PendingOperation {
     GamepadAutoSwitch,
     RememberLastExpression,
     ToggleRepeatedExpression,
+    AllowMotionOverlap,
     StartupItem,
     ModelSelection,
     ModelDeletion,
@@ -161,6 +162,10 @@ pub(crate) enum SettingValue {
         enabled: bool,
     },
     ToggleRepeatedExpression {
+        expected_config_revision: u64,
+        enabled: bool,
+    },
+    AllowMotionOverlap {
         expected_config_revision: u64,
         enabled: bool,
     },

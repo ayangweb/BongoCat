@@ -60,7 +60,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
     } = bootstrap;
     let mut renderer = renderer.map(RuntimeRenderer::start);
     let mut active_model = None;
-    let mut active_motion = None;
+    let mut active_motions = Vec::new();
     let mut active_expression = None;
     let mut input_state = InputState::default();
     let mut input_bindings = InputBindings::default();
@@ -94,7 +94,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
             gamepad_axis_settings,
             model_settings,
             &mut active_model,
-            &mut active_motion,
+            &mut active_motions,
             &mut active_expression,
             &motion_audio,
             &mut next_motion_event_sequence,
@@ -107,7 +107,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
             maybe_trigger_random_behavior(
                 renderer.as_mut(),
                 active_model.as_deref(),
-                &mut active_motion,
+                &mut active_motions,
                 &mut active_expression,
                 &mut random_behavior_scheduler,
                 &mut next_automatic_event_sequence,
@@ -278,12 +278,19 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                         }
                     }
                     WorkerCommand::Product(RuntimeCommand::SetModelSettings(settings)) => {
+                        if !settings.allow_motion_overlap
+                            && let Some(latest) = active_motions.pop()
+                        {
+                            active_motions.clear();
+                            active_motions.push(latest);
+                        }
                         model_settings = settings;
                         if let Some(renderer) = &mut renderer {
                             renderer.set_model_settings(settings);
                         }
                         publish(&snapshot, |current| {
                             current.model_settings = settings;
+                            current.active_motions = active_motions.clone();
                             current.model_input = compose_model_input(
                                 &input_state,
                                 &input_bindings,
@@ -438,7 +445,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             gamepad_axis_settings,
                             model_settings,
                             &mut active_model,
-                            &mut active_motion,
+                            &mut active_motions,
                             &mut active_expression,
                             &mut pending_model,
                             &motion_audio,
@@ -463,7 +470,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             gamepad_axis_settings,
                             model_settings,
                             &mut active_model,
-                            &mut active_motion,
+                            &mut active_motions,
                             &mut active_expression,
                             &mut pending_model,
                             &motion_audio,
@@ -502,19 +509,26 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                         // the next request may replace it. A preview stays a
                         // direct UI action and restarts on every request.
                         let now = clock.now();
-                        let motion_is_settled = renderer
-                            .as_ref()
-                            .is_some_and(|renderer| renderer.motion_is_settled(now));
+                        let matching = active_motions.iter().find(|active| active.motion == motion);
                         let duplicate = repeat_is_idempotent
-                            && !motion_is_settled
-                            && active_motion.as_ref().is_some_and(|active| {
-                                active.motion == motion
-                                    && active.priority == priority
+                            && matching.is_some_and(|active| {
+                                active.priority == priority
                                     && active.stop_command_sequence.is_none()
+                                    && renderer.as_ref().is_some_and(|renderer| {
+                                        !renderer.motion_is_settled(&active.motion, now)
+                                    })
                             });
-                        let current_priority = active_motion
-                            .as_ref()
-                            .filter(|_| !motion_is_settled)
+                        let candidate = if model_settings.allow_motion_overlap {
+                            matching
+                        } else {
+                            active_motions.last()
+                        };
+                        let current_priority = candidate
+                            .filter(|active| {
+                                renderer.as_ref().is_some_and(|renderer| {
+                                    !renderer.motion_is_settled(&active.motion, now)
+                                })
+                            })
                             .map(|active| active.priority);
                         let can_replace =
                             current_priority.is_none_or(|current| priority >= current);
@@ -552,7 +566,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                                             priority,
                                             looping,
                                             sequence,
-                                            &mut active_motion,
+                                            &mut active_motions,
                                             &snapshot,
                                             now,
                                         );
@@ -567,7 +581,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                                             priority,
                                             looping,
                                             sequence,
-                                            &mut active_motion,
+                                            &mut active_motions,
                                             &snapshot,
                                             now,
                                         );
@@ -580,7 +594,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                                         priority,
                                         looping,
                                         sequence,
-                                        &mut active_motion,
+                                        &mut active_motions,
                                         &snapshot,
                                         now,
                                     );
@@ -589,43 +603,29 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                         }
                     }
                     WorkerCommand::Product(RuntimeCommand::StopMotion(motion)) => {
-                        let matching = active_motion
-                            .as_ref()
-                            .is_some_and(|active| active.motion == motion);
-                        let already_stopping = active_motion
-                            .as_ref()
-                            .is_some_and(|active| active.stop_command_sequence.is_some());
-                        if matching && !already_stopping {
+                        let matching = active_motions
+                            .iter()
+                            .position(|active| active.motion == motion);
+                        if let Some(index) = matching
+                            && active_motions[index].stop_command_sequence.is_none()
+                        {
                             stop_motion_audio(&motion_audio, MotionAudioStopReason::MotionStopped);
                             let stop_status = renderer
                                 .as_mut()
                                 .map_or(MotionStopStatus::Finished, |renderer| {
-                                    renderer.stop_motion(clock.now())
+                                    renderer.stop_motion(&motion, clock.now())
                                 });
                             if stop_status == MotionStopStatus::Fading {
-                                let stopping =
-                                    active_motion.as_mut().expect("matching motion is active");
-                                stopping.stop_command_sequence = Some(sequence);
-                                let stopping = stopping.clone();
-                                publish(&snapshot, |current| {
-                                    current.active_motion = Some(stopping);
-                                    current.last_command_failure = None;
-                                    current.last_command_sequence = Some(sequence);
-                                });
+                                active_motions[index].stop_command_sequence = Some(sequence);
                             } else {
-                                active_motion = None;
-                                publish(&snapshot, |current| {
-                                    current.active_motion = None;
-                                    current.last_command_failure = None;
-                                    current.last_command_sequence = Some(sequence);
-                                });
+                                active_motions.remove(index);
                             }
-                        } else {
-                            publish(&snapshot, |current| {
-                                current.last_command_failure = None;
-                                current.last_command_sequence = Some(sequence);
-                            });
                         }
+                        publish(&snapshot, |current| {
+                            current.active_motions = active_motions.clone();
+                            current.last_command_failure = None;
+                            current.last_command_sequence = Some(sequence);
+                        });
                     }
                     WorkerCommand::Product(RuntimeCommand::SetExpression(expression)) => {
                         // Both trigger sources land here — the settings window's
@@ -711,7 +711,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                         publish(&snapshot, |current| {
                             current.state = RuntimeState::Stopping;
                             current.pending_model = None;
-                            current.active_motion = None;
+                            current.active_motions.clear();
                             current.active_expression = None;
                             current.last_command_sequence = Some(sequence);
                         });
@@ -739,7 +739,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                         ),
                         &snapshot,
                         clock.now(),
-                        &mut active_motion,
+                        &mut active_motions,
                         &mut next_motion_event_sequence,
                     );
                     // A command may produce a frame before its slot is due, which
@@ -781,7 +781,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                     gamepad_axis_settings,
                     model_settings,
                     &mut active_model,
-                    &mut active_motion,
+                    &mut active_motions,
                     &mut active_expression,
                     &motion_audio,
                     &mut next_motion_event_sequence,
@@ -794,7 +794,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                     maybe_trigger_random_behavior(
                         renderer.as_mut(),
                         active_model.as_deref(),
-                        &mut active_motion,
+                        &mut active_motions,
                         &mut active_expression,
                         &mut random_behavior_scheduler,
                         &mut next_automatic_event_sequence,
@@ -818,7 +818,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                         ),
                         &snapshot,
                         clock.now(),
-                        &mut active_motion,
+                        &mut active_motions,
                         &mut next_motion_event_sequence,
                     );
                 }

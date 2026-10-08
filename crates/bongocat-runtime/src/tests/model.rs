@@ -194,10 +194,30 @@ fn cpu_and_gpu_model_failures_preserve_the_active_model_and_bindings() {
             priority: MotionPriority::Normal,
         })
         .expect("motion command");
-    let motion_active = client
+    client
         .wait_for_command(motion_sequence, TIMEOUT)
         .expect("motion active");
+    let settings_sequence = client
+        .send(RuntimeCommand::SetModelSettings(ModelSettings {
+            allow_motion_overlap: true,
+            ..ModelSettings::default()
+        }))
+        .expect("enable overlap");
+    client
+        .wait_for_command(settings_sequence, TIMEOUT)
+        .expect("overlap enabled");
+    let second_sequence = client
+        .send(RuntimeCommand::StartMotion {
+            motion: MotionId::new("CAT_motion", 1).expect("second motion"),
+            priority: MotionPriority::Normal,
+        })
+        .expect("second motion command");
+    let motion_active = client
+        .wait_for_command(second_sequence, TIMEOUT)
+        .expect("two active motions");
     let expected_motion = motion_active.active_motion.clone();
+    let expected_motions = motion_active.active_motions.clone();
+    assert_eq!(expected_motions.len(), 2);
     assert!(expected_motion.is_some());
     let expression_sequence = client
         .send(RuntimeCommand::SetExpression(
@@ -232,6 +252,7 @@ fn cpu_and_gpu_model_failures_preserve_the_active_model_and_bindings() {
     );
     assert_eq!(rejected.state, RuntimeState::Ready);
     assert_eq!(rejected.active_motion, expected_motion);
+    assert_eq!(rejected.active_motions, expected_motions);
     assert_eq!(rejected.active_expression, expected_expression);
     assert_eq!(
         rejected
@@ -330,6 +351,7 @@ fn cpu_and_gpu_model_failures_preserve_the_active_model_and_bindings() {
         Some("standard")
     );
     assert_eq!(gpu_rejected.active_motion, expected_motion);
+    assert_eq!(gpu_rejected.active_motions, expected_motions);
     assert_eq!(gpu_rejected.active_expression, expected_expression);
     assert!(gpu_rejected.model_input.left_hand_down);
     assert!(!gpu_rejected.model_input.right_hand_down);
@@ -360,6 +382,7 @@ fn cpu_and_gpu_model_failures_preserve_the_active_model_and_bindings() {
         Some("keyboard")
     );
     assert!(replaced.active_motion.is_none());
+    assert!(replaced.active_motions.is_empty());
     assert!(replaced.active_expression.is_none());
     assert!(replaced.model_input.right_hand_down);
     assert!(!replaced.model_input.left_hand_down);

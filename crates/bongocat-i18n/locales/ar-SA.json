@@ -410,6 +410,9 @@
         "toggle_repeated_expression": {
           "label": "إيقاف التعبير عند تفعيله مرة أخرى"
         },
+        "allow_motion_overlap": {
+          "label": "السماح بتداخل الحركات"
+        },
         "random_behavior_mode": {
           "label": "تشغيل حركات أو تعابير عشوائيًا",
           "options": {

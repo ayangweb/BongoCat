@@ -628,6 +628,7 @@ fn service_orders_updates_persists_them_and_stops_runtime() {
             ignore_gamepad: true,
             show_all_pressed_keys: true,
             toggle_repeated_expression: false,
+            allow_motion_overlap: false,
             ignore_pointer: true,
         }
     );
