@@ -129,6 +129,13 @@
           "default": {
             "force_move": false
           }
+        },
+        "pointer_sensitivity_percent": {
+          "default": 100,
+          "format": "uint16",
+          "maximum": 400,
+          "minimum": 1,
+          "type": "integer"
         }
       },
       "required": [

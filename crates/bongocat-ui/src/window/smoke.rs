@@ -343,6 +343,7 @@ impl SettingsView {
 
     /// Show a newly created settings window.
     pub fn reopen(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
+        #[cfg(not(target_os = "linux"))]
         bongocat_platform::show_native_window(window).map_err(|error| error.to_string())?;
         self.window_hidden = false;
         self.refresh(cx);

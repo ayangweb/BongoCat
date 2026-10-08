@@ -35,6 +35,11 @@
     "quit": "退出 BongoCat"
   },
   "startup_permission": {
+    "linux": {
+      "title": "允许监听键盘和鼠标？",
+      "description": "BongoCat 需要读取输入设备，才能响应其他应用中的键盘和鼠标操作。点击确定后，系统会请求管理员授权；仅输入监听辅助进程获得权限，设置和模型窗口仍以普通用户运行。选择稍后设置可继续使用，但键鼠响应暂不可用。",
+      "confirm": "确定"
+    },
     "later": "稍后设置",
     "input_monitoring": {
       "title": "需要「输入监控」权限",
@@ -423,6 +428,10 @@
     },
     "input_interaction": {
       "mouse": {
+        "sensitivity": {
+          "label": "鼠标跟随灵敏度（%）",
+          "description": "100% 为默认速度；数值越小，移动越慢。到边界后丢弃多余位移。"
+        },
         "title": "鼠标",
         "mirror_mouse_tracking_horizontal": {
           "label": "水平翻转鼠标跟随"
@@ -503,7 +512,8 @@
       "status_icon": {
         "label": {
           "macos": "显示菜单栏图标",
-          "windows": "显示系统托盘图标"
+          "windows": "显示系统托盘图标",
+          "linux": "显示系统托盘图标"
         }
       },
       "taskbar_icon": {
@@ -532,5 +542,11 @@
         "unsupported_build": "开发版本不支持开机自启动"
       }
     }
-  }
+  },
+  "linux_input": {
+    "unavailable": "输入服务不可用。请检查系统是否安装 pkexec、libinput，以及桌面认证代理，然后重新打开应用。",
+    "denied": "输入授权未完成。请重新打开应用并允许认证，键鼠动作才能驱动模型。",
+    "stopped": "输入服务已停止，模型无法响应键鼠。请重新打开应用并检查认证与当前桌面会话状态。"
+  },
+  "linux_tray": {"unavailable": "无法显示托盘图标。请确认桌面支持系统托盘；GNOME 需要启用 AppIndicator 扩展。"}
 }

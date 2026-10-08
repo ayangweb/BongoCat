@@ -426,3 +426,20 @@ mod tests {
         assert!(!AppTheme::Light.is_dark());
     }
 }
+
+#[cfg(target_os = "linux")]
+mod platform {
+    use super::*;
+    pub fn apply_process(_theme: Option<AppTheme>) -> Result<(), NativeThemeError> {
+        Err(NativeThemeError::UnsupportedWindowHandle)
+    }
+    pub fn init() -> Result<(), NativeThemeError> {
+        Err(NativeThemeError::UnsupportedWindowHandle)
+    }
+    pub fn apply(
+        _window: &impl HasWindowHandle,
+        _theme: Option<AppTheme>,
+    ) -> Result<(), NativeThemeError> {
+        Err(NativeThemeError::UnsupportedWindowHandle)
+    }
+}

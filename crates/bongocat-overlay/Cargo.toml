@@ -51,3 +51,12 @@ dbg_macro = "deny"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+smithay-client-toolkit.workspace = true
+wayland-client.workspace = true
+bongocat-config.workspace = true
+image.workspace = true
+cosmic-text = "=0.19.0"
+wgpu = { version = "=30.0.1", default-features = false, features = ["std", "vulkan", "wgsl"] }
+pollster = "=1.0.1"

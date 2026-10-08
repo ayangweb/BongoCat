@@ -40,6 +40,7 @@ pub struct SettingsSnapshot {
     pub check_for_updates_automatically: bool,
     pub check_for_updates_interval_hours: u16,
     pub overlay_visible: bool,
+    pub overlay_always_on_top_available: bool,
     pub overlay: SettingsOverlay,
     pub motion_audio_enabled: bool,
     /// Whether the application command bindings are allowed to reach the
@@ -47,6 +48,7 @@ pub struct SettingsSnapshot {
     /// window shortcuts" switch above the command rows.
     pub command_shortcuts_enabled: bool,
     pub behavior_shortcuts_enabled: bool,
+    pub pointer_sensitivity_percent: u16,
     pub maximum_fps: u16,
     pub random_behavior: SettingsRandomBehavior,
     pub model_settings: SettingsModelSettings,

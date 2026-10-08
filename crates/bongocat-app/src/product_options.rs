@@ -226,6 +226,7 @@ impl RunOptions {
         false
     }
 
+    #[cfg(not(target_os = "linux"))]
     pub(crate) fn opens_settings_window_on_start(&self) -> bool {
         let mut opens_settings_window =
             self.settings_window_smoke || self.settings_window_open_smoke;
@@ -281,7 +282,7 @@ impl From<clap::Error> for RunOptionsError {
 ///
 /// The flags come from the one declaration above, so this is also what a test reads to
 /// confirm that a harness this build does not contain is absent from the help text too.
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "linux")))]
 pub(crate) fn usage() -> String {
     <RunOptions as clap::CommandFactory>::command()
         .render_help()

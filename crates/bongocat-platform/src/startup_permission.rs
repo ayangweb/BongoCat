@@ -81,6 +81,7 @@ pub fn startup_permission_available() -> bool {
 /// The platform is queried first. When it already provides the capability nothing is shown; when
 /// it does not, the prompt is presented once and the user decides whether the product keeps
 /// starting with reduced input coverage or opens the platform permission flow.
+#[cfg(not(target_os = "linux"))]
 pub fn check_startup_permission(prompt: &StartupPermissionPrompt) -> StartupPermissionStatus {
     if platform::available() {
         return StartupPermissionStatus::Satisfied;
@@ -521,6 +522,7 @@ mod platform {
 /// reports `Cancel`. The standard-button mapping below stays as a safety net for a `MessageBoxW`
 /// fallback: if the task dialog cannot bind (activation context missing), `TaskDialogIndirect`
 /// fails and `rfd` reports `Cancel`, which must never be mistaken for consent.
+#[cfg(any(not(target_os = "linux"), test))]
 fn requested_permission_flow(result: &rfd::MessageDialogResult, primary: &str) -> bool {
     match result {
         rfd::MessageDialogResult::Custom(label) => label == primary,
@@ -717,5 +719,13 @@ mod tests {
             STARTUP_PERMISSION_CAPABILITY,
             "input_monitoring" | "administrator"
         ));
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod platform {
+    pub const CAPABILITY: &str = "linux_libinput";
+    pub fn available() -> bool {
+        crate::linux::INPUT_AUTHORIZED.load(std::sync::atomic::Ordering::Acquire)
     }
 }

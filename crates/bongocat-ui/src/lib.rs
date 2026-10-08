@@ -6,6 +6,11 @@
 
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{linux_system_menu_palette, show_linux_input_permission};
+
 mod external_link;
 mod pop_confirm;
 mod window;
@@ -147,6 +152,7 @@ pub(crate) mod tests {
     ) -> SettingsSnapshot {
         SettingsSnapshot {
             revision,
+            overlay_always_on_top_available: false,
             config_revision: Some(revision),
             build_info: SettingsBuildInfo {
                 product_version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -170,6 +176,7 @@ pub(crate) mod tests {
             command_shortcuts_enabled: true,
             behavior_shortcuts_enabled: true,
             maximum_fps: 60,
+            pointer_sensitivity_percent: 100,
             random_behavior: SettingsRandomBehavior::default(),
             model_settings: SettingsModelSettings::default(),
             gamepad_axis_settings: SettingsGamepadAxisSettings::default(),

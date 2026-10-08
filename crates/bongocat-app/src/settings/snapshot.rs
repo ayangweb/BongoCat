@@ -240,6 +240,7 @@ pub(super) fn snapshot(
         check_for_updates_automatically: application.config().updates.check_automatically,
         check_for_updates_interval_hours: application.config().updates.check_interval_hours,
         overlay_visible: runtime.overlay_visible,
+        overlay_always_on_top_available: application.overlay_always_on_top_available,
         overlay: SettingsOverlay {
             click_through: runtime.overlay_settings.click_through,
             hold_modifier_to_interact: runtime.overlay_settings.hold_modifier_to_interact,
@@ -276,6 +277,7 @@ pub(super) fn snapshot(
             show_all_pressed_keys: runtime.model_settings.show_all_pressed_keys,
             ignore_pointer: runtime.model_settings.ignore_pointer,
         },
+        pointer_sensitivity_percent: application.config().input.pointer_sensitivity_percent,
         gamepad_axis_settings: SettingsGamepadAxisSettings {
             stick_dead_zone_percent: (runtime.gamepad_axis_settings.stick_dead_zone * 100.0)
                 .round()

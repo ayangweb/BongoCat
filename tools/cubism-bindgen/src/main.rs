@@ -230,6 +230,12 @@ fn usage() -> &'static str {
 }
 
 fn find_target(name: &str) -> Result<Target> {
+    if name == "x86_64-unknown-linux-gnu" {
+        return Ok(Target {
+            rust: "x86_64-unknown-linux-gnu",
+            clang: "x86_64-unknown-linux-gnu",
+        });
+    }
     TARGETS
         .iter()
         .copied()

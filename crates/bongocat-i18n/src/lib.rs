@@ -118,6 +118,10 @@ pub fn format_text(locale: &str, key: &str, values: &[(&str, String)]) -> String
 /// as `settings.app_system.status_icon.label.macos`. Add a new value when a
 /// newly supported platform needs its own copy of an otherwise-shared string.
 pub const fn current_platform_id() -> &'static str {
+    #[cfg(target_os = "linux")]
+    {
+        "linux"
+    }
     #[cfg(target_os = "macos")]
     {
         "macos"

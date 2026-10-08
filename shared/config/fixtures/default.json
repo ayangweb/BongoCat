@@ -23,6 +23,7 @@
     "maximum_fps": 60
   },
   "input": {
+    "pointer_sensitivity_percent": 100,
     "gamepad": {
       "stick_dead_zone": 0.15,
       "trigger_dead_zone": 0.0

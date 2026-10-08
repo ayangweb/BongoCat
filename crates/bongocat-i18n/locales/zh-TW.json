@@ -35,6 +35,11 @@
     "quit": "結束 BongoCat"
   },
   "startup_permission": {
+    "linux": {
+      "title": "允許監聽鍵盤和滑鼠？",
+      "description": "BongoCat 需要讀取輸入裝置，才能回應其他應用程式中的鍵盤和滑鼠操作。點擊確定後，系統會要求管理員授權；僅輸入監聽輔助程序取得權限，設定和模型視窗仍以一般使用者執行。選擇稍後設定可繼續使用，但鍵鼠回應暫時無法使用。",
+      "confirm": "確定"
+    },
     "later": "稍後設定",
     "input_monitoring": {
       "title": "需要「輸入監控」權限",
@@ -423,6 +428,10 @@
     },
     "input_interaction": {
       "mouse": {
+        "sensitivity": {
+          "label": "滑鼠追蹤靈敏度（%）",
+          "description": "100% 為預設速度。數值越小移動越慢；到達邊界後，多餘的位移會被捨棄。"
+        },
         "title": "滑鼠",
         "mirror_mouse_tracking_horizontal": {
           "label": "水平翻轉滑鼠跟隨"
@@ -503,7 +512,8 @@
       "status_icon": {
         "label": {
           "macos": "顯示選單列圖示",
-          "windows": "顯示系統匣圖示"
+          "windows": "顯示系統匣圖示",
+          "linux": "顯示系統匣圖示"
         }
       },
       "taskbar_icon": {
@@ -532,5 +542,13 @@
         "unsupported_build": "開發版本不支援開機自動啟動"
       }
     }
+  },
+  "linux_input": {
+    "unavailable": "輸入服務無法使用。請確認已安裝 pkexec、libinput，且桌面驗證代理程式正在執行，然後重新開啟應用程式。",
+    "denied": "尚未完成輸入授權。請重新開啟應用程式並完成驗證，以使用鍵盤與滑鼠控制模型。",
+    "stopped": "輸入服務已停止。請重新開啟應用程式，並檢查授權及目前的桌面工作階段。"
+  },
+  "linux_tray": {
+    "unavailable": "無法顯示系統匣圖示。請確認桌面支援系統匣；GNOME 需要 AppIndicator 擴充功能。"
   }
 }

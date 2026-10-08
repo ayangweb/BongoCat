@@ -322,6 +322,46 @@ impl SettingsView {
         })
         .detach();
     }
+
+    pub(crate) fn schedule_pointer_sensitivity_percent_flush(&mut self, cx: &mut Context<Self>) {
+        self.pointer_sensitivity_percent_timer_generation = self
+            .pointer_sensitivity_percent_timer_generation
+            .saturating_add(1);
+        let generation = self.pointer_sensitivity_percent_timer_generation;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            executor.timer(crate::SETTINGS_PATCH_DEBOUNCE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.pointer_sensitivity_percent_timer_generation != generation
+                    || view.pending.is_some()
+                {
+                    return;
+                }
+                let Some(pointer_sensitivity_percent) = view
+                    .pointer_sensitivity_percent_debouncer
+                    .ready(Instant::now())
+                else {
+                    return;
+                };
+                let Some(expected_config_revision) = view
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.config_revision)
+                else {
+                    return;
+                };
+                view.start_request(
+                    PendingOperation::PointerSensitivity,
+                    Some(SettingValue::PointerSensitivity {
+                        expected_config_revision,
+                        pointer_sensitivity_percent,
+                    }),
+                    cx,
+                );
+            });
+        })
+        .detach();
+    }
 }
 
 impl SettingsView {
@@ -509,6 +549,17 @@ impl SettingsView {
                 Some(SettingValue::MaximumFps {
                     expected_config_revision,
                     maximum_fps,
+                }),
+                cx,
+            );
+        } else if let Some(pointer_sensitivity_percent) =
+            self.pointer_sensitivity_percent_debouncer.flush(now)
+        {
+            self.start_request(
+                PendingOperation::PointerSensitivity,
+                Some(SettingValue::PointerSensitivity {
+                    expected_config_revision,
+                    pointer_sensitivity_percent,
                 }),
                 cx,
             );

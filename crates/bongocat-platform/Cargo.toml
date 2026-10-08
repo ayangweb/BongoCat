@@ -14,12 +14,8 @@ raw-window-handle.workspace = true
 url.workspace = true
 thiserror.workspace = true
 
-global-hotkey.workspace = true
 image.workspace = true
-muda.workspace = true
-tray-icon.workspace = true
 
-arboard.workspace = true
 rfd.workspace = true
 opener.workspace = true
 sys-locale = "=0.3.2"
@@ -60,6 +56,7 @@ windows = { version = "=0.62.2", features = [
 
 [dev-dependencies]
 bongocat-runtime.workspace = true
+global-hotkey.workspace = true
 tempfile.workspace = true
 
 [lints.clippy]
@@ -67,3 +64,23 @@ dbg_macro = "deny"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+global-hotkey.workspace = true
+arboard.workspace = true
+muda.workspace = true
+tray-icon.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd.workspace = true
+async-io.workspace = true
+futures-util.workspace = true
+bongocat-input-helper = { path = "../bongocat-input-helper" }
+rfd = { workspace = true, features = ["xdg-portal", "wayland"] }
+gilrs.workspace = true
+libc.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies.ksni]
+version = "=0.3.6"
+default-features = false
+features = ["async-io", "blocking"]

@@ -35,6 +35,11 @@
     "quit": "Thoát BongoCat"
   },
   "startup_permission": {
+    "linux": {
+      "title": "Cho phép theo dõi bàn phím và chuột?",
+      "description": "BongoCat cần truy cập thiết bị đầu vào để phản hồi thao tác bàn phím và chuột trong các ứng dụng khác. Sau khi xác nhận, hệ thống sẽ yêu cầu quyền quản trị viên. Chỉ tiến trình hỗ trợ đầu vào nhận quyền này; cửa sổ cài đặt và mô hình vẫn chạy với quyền người dùng thông thường. Chọn thiết lập sau để tiếp tục mà không có phản hồi bàn phím và chuột.",
+      "confirm": "OK"
+    },
     "later": "Thiết lập sau",
     "input_monitoring": {
       "title": "Cần cấp quyền Giám sát đầu vào",
@@ -423,6 +428,10 @@
     },
     "input_interaction": {
       "mouse": {
+        "sensitivity": {
+          "label": "Độ nhạy theo dõi chuột (%)",
+          "description": "100% là tốc độ mặc định. Giá trị thấp hơn làm chuyển động chậm hơn; phần di chuyển vượt quá giới hạn sẽ bị bỏ qua."
+        },
         "title": "Chuột",
         "mirror_mouse_tracking_horizontal": {
           "label": "Lật theo dõi chuột theo chiều ngang"
@@ -503,7 +512,8 @@
       "status_icon": {
         "label": {
           "macos": "Hiện biểu tượng trên thanh menu",
-          "windows": "Hiện biểu tượng trên thanh hệ thống"
+          "windows": "Hiện biểu tượng trên thanh hệ thống",
+          "linux": "Hiển thị biểu tượng khay hệ thống"
         }
       },
       "taskbar_icon": {
@@ -532,5 +542,13 @@
         "unsupported_build": "Tính năng tự động khởi động không khả dụng trong bản dựng phát triển"
       }
     }
+  },
+  "linux_input": {
+    "unavailable": "Không thể sử dụng dịch vụ đầu vào. Hãy kiểm tra pkexec, libinput và trình xác thực của môi trường máy tính, rồi mở lại ứng dụng.",
+    "denied": "Chưa hoàn tất cấp quyền đầu vào. Hãy mở lại ứng dụng và hoàn tất xác thực để điều khiển mô hình bằng bàn phím và chuột.",
+    "stopped": "Dịch vụ đầu vào đã dừng. Hãy mở lại ứng dụng và kiểm tra quyền cùng phiên làm việc hiện tại."
+  },
+  "linux_tray": {
+    "unavailable": "Không thể hiển thị biểu tượng khay. Hãy kiểm tra môi trường máy tính có hỗ trợ khay hệ thống; GNOME cần phần mở rộng AppIndicator."
   }
 }

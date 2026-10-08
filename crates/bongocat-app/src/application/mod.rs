@@ -77,9 +77,13 @@ pub struct Application {
     panic_hook: Option<ApplicationPanicHook>,
     shortcut_table: ShortcutTable,
     shortcut_capture_suspended: bool,
+    pub(crate) overlay_always_on_top_available: bool,
 }
 
 impl Application {
+    pub fn set_overlay_always_on_top_available(&mut self, available: bool) {
+        self.overlay_always_on_top_available = available;
+    }
     pub fn runtime_client(&self) -> RuntimeClient {
         self.runtime.client()
     }
@@ -160,6 +164,9 @@ impl Application {
     /// longer compiles leaves the previous table in place and the platform
     /// keeps what it already registered.
     fn refresh_shortcut_table(&mut self) {
+        if self.shortcut_capture_suspended {
+            return;
+        }
         let compiled = {
             let active_model = self.live_model_identity();
             active_shortcuts(&self.config, active_model.as_ref())

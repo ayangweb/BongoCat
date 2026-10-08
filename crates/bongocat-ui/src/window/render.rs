@@ -174,6 +174,8 @@ impl Render for SettingsView {
         // reads the very entities the view syncs and subscribes to.
         let gamepad_connected_model_select = self.gamepad_connected_model_select.clone();
         let gamepad_disconnected_model_select = self.gamepad_disconnected_model_select.clone();
+        self.platform_notifications
+            .observe(snapshot.as_ref(), language, window, cx);
         self.sync_mver_mode_dialog(window, cx);
         if let Some(error) = self.pending_notification.take() {
             window.push_notification(
@@ -339,7 +341,7 @@ impl Render for SettingsView {
                     ))
                     .items(with_search_keywords(
                         vec![
-                    SettingItem::new(
+                    (true, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.overlay.hide_model_window.label",
@@ -363,8 +365,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
-                    SettingItem::new(
+                    )),
+                    (platform::GLOBAL_WINDOW_CONTROL || self.snapshot.as_ref().is_some_and(|snapshot| snapshot.overlay_always_on_top_available), SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.overlay.always_on_top.label",
@@ -392,8 +394,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
-                    SettingItem::new(
+                    )),
+                    (true, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.overlay.click_through.label",
@@ -421,8 +423,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
-                    SettingItem::new(
+                    )),
+                    (platform::GLOBAL_WINDOW_CONTROL || self.snapshot.as_ref().is_some_and(|snapshot| snapshot.overlay_always_on_top_available && snapshot.overlay.always_on_top), SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.overlay.keep_inside_screen.label",
@@ -450,8 +452,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
-                    SettingItem::new(
+                    )),
+                    (platform::GLOBAL_WINDOW_CONTROL, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.overlay.hide_on_mouse_hover.label",
@@ -479,8 +481,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
-                    SettingItem::new(
+                    )),
+                    (platform::GLOBAL_WINDOW_CONTROL, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.overlay.hide_on_mouse_hover_delay.label",
@@ -511,8 +513,8 @@ impl Render for SettingsView {
                             },
                         ),
                     )
-                    .disabled(hover_hide_delay_gate.disables_controls()),
-                    SettingItem::new(
+                    .disabled(hover_hide_delay_gate.disables_controls())),
+                    (true, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.overlay.hide_on_idle.label",
@@ -540,8 +542,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
-                    SettingItem::new(
+                    )),
+                    (true, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.overlay.hide_on_idle_delay.label",
@@ -570,7 +572,7 @@ impl Render for SettingsView {
                             },
                         ),
                     )
-                    .disabled(idle_hide_delay_gate.disables_controls()),
+                    .disabled(idle_hide_delay_gate.disables_controls())),
                     // Last row of the group, on purpose. This row suspends two
                     // switches rather than standing among them, and no linear
                     // position can put it next to both: click-through is third
@@ -580,8 +582,10 @@ impl Render for SettingsView {
                     // not before — and the description on the row names the two
                     // it affects, so the rows it merely sits next to cannot be
                     // mistaken for affected ones.
-                    hold_modifier_row(&view_entity, language, editing_blocked),
-                ],
+                    (true, hold_modifier_row(&view_entity, language, editing_blocked)),
+                ]
+                        .into_iter()
+                        .filter_map(|(available, item)| available.then_some(item)),
                         &model_window_behavior_keywords,
                     )),
                 SettingGroup::new()
@@ -912,7 +916,44 @@ impl Render for SettingsView {
                     "settings.input_interaction.mouse.title",
                 ))
                 .items(with_search_keywords(vec![
-                    SettingItem::new(
+                    (
+                        platform::RELATIVE_POINTER_SENSITIVITY,
+                        SettingItem::new(
+                            bongocat_i18n::text(
+                                language.catalog_locale(),
+                                "settings.input_interaction.mouse.sensitivity.label",
+                            ),
+                            SettingField::number_input(
+                                NumberFieldOptions {
+                                    min: 1.0,
+                                    max: 400.0,
+                                    step: 5.0,
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |app| {
+                                        view.read(app)
+                                            .snapshot
+                                            .as_ref()
+                                            .map_or(100.0, |s| f64::from(s.pointer_sensitivity_percent))
+                                    }
+                                },
+                                {
+                                    let view = view_entity.clone();
+                                    move |value, app| {
+                                        view.update(app, |view, cx| {
+                                            view.set_pointer_sensitivity_percent_value(value, cx)
+                                        })
+                                    }
+                                },
+                            ),
+                        )
+                        .description(bongocat_i18n::text(
+                            language.catalog_locale(),
+                            "settings.input_interaction.mouse.sensitivity.description",
+                        )),
+                    ),
+                    (true, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.input_interaction.mouse.ignore_mouse_input.label",
@@ -940,8 +981,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
-                    SettingItem::new(
+                    )),
+                    (true, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.input_interaction.mouse.mirror_mouse_tracking_horizontal.label",
@@ -971,8 +1012,8 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
-                    SettingItem::new(
+                    )),
+                    (true, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.input_interaction.mouse.mirror_mouse_tracking_vertical.label",
@@ -1002,12 +1043,12 @@ impl Render for SettingsView {
                                 }
                             },
                         ),
-                    ),
+                    )),
                     // The last row is the one that changes how the pointer is
                     // read rather than what the model does with it, so it reads
                     // as a note on the three above: if the pointer does not move
                     // at all, none of them can have an effect.
-                    SettingItem::new(
+                    (platform::FORCE_POINTER_MOVEMENT, SettingItem::new(
                         bongocat_i18n::text(
                             language.catalog_locale(),
                             "settings.input_interaction.mouse.force_move.label",
@@ -1043,8 +1084,8 @@ impl Render for SettingsView {
                     .description(bongocat_i18n::text(
                         language.catalog_locale(),
                         "settings.input_interaction.mouse.force_move.description",
-                    )),
-                ], &mouse_keywords)),
+                    ))),
+                ].into_iter().filter_map(|(available, item)| available.then_some(item)), &mouse_keywords)),
             SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
@@ -1277,7 +1318,7 @@ impl Render for SettingsView {
                 navigation_memory.clone(),
             ))
             .groups(vec![
-            SettingGroup::new()
+            (true, SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
                     "settings.app_system.desktop.title",
@@ -1387,8 +1428,8 @@ impl Render for SettingsView {
                         ),
                     ));
                     items
-                }, &app_desktop_keywords)),
-            SettingGroup::new()
+                }, &app_desktop_keywords))),
+            (platform::AUTOMATIC_UPDATES, SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
                     "settings.app_system.updates.title",
@@ -1457,8 +1498,8 @@ impl Render for SettingsView {
                         .disabled(check_for_updates_interval_gate.disables_controls()),
                     );
                     items
-                }, &app_updates_keywords)),
-            SettingGroup::new()
+                }, &app_updates_keywords))),
+            (true, SettingGroup::new()
                 .title(bongocat_i18n::text(
                     language.catalog_locale(),
                     "settings.app_system.logging.title",
@@ -1511,8 +1552,8 @@ impl Render for SettingsView {
                         ),
                     )
                     .disabled(editing_blocked),
-                ], &app_logging_keywords)),
-        ]);
+                ], &app_logging_keywords))),
+        ].into_iter().filter_map(|(available, item)| available.then_some(item)));
 
         // The model library is a flat grid of self-drawn cards, so its page drops
         // the window-wide Outline surface. Model behavior is a separate page and
@@ -1639,6 +1680,12 @@ impl Render for SettingsView {
                 })
         });
 
+        let content = platform::decorate_content(
+            div().min_h_0().w_full().flex_1().child(settings),
+            language,
+            window,
+            cx,
+        );
         div()
             .id("bongocat-settings-root")
             .relative()
@@ -1668,7 +1715,7 @@ impl Render for SettingsView {
             .size_full()
             .flex()
             .flex_col()
-            .child(div().min_h_0().w_full().flex_1().child(settings))
+            .child(content)
             .child(model_drag_exit_listener)
             .children(model_drag_overlay)
             .into_any_element()

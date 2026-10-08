@@ -35,6 +35,11 @@
     "quit": "Encerrar o BongoCat"
   },
   "startup_permission": {
+    "linux": {
+      "title": "Permitir o monitoramento do teclado e mouse?",
+      "description": "O BongoCat precisa acessar os dispositivos de entrada para reagir ao teclado e mouse em outros aplicativos. Ao confirmar, o sistema solicitará autorização de administrador. Apenas o processo auxiliar de entrada recebe esse acesso; as configurações e a janela do modelo continuam como usuário comum. Configure depois para continuar sem reações de teclado e mouse.",
+      "confirm": "OK"
+    },
     "later": "Configurar depois",
     "input_monitoring": {
       "title": "Permissão de monitoramento de entrada necessária",
@@ -423,6 +428,10 @@
     },
     "input_interaction": {
       "mouse": {
+        "sensitivity": {
+          "label": "Sensibilidade do rastreamento do mouse (%)",
+          "description": "100% é a velocidade padrão. Valores menores tornam o movimento mais lento; o deslocamento excedente no limite é descartado."
+        },
         "title": "Mouse",
         "mirror_mouse_tracking_horizontal": {
           "label": "Espelhar o rastreamento do mouse horizontalmente"
@@ -503,7 +512,8 @@
       "status_icon": {
         "label": {
           "macos": "Mostrar o ícone na barra de menus",
-          "windows": "Mostrar o ícone na bandeja do sistema"
+          "windows": "Mostrar o ícone na bandeja do sistema",
+          "linux": "Mostrar ícone na bandeja do sistema"
         }
       },
       "taskbar_icon": {
@@ -532,5 +542,13 @@
         "unsupported_build": "A inicialização automática não está disponível em builds de desenvolvimento"
       }
     }
+  },
+  "linux_input": {
+    "unavailable": "Serviço de entrada indisponível. Verifique se pkexec, libinput e um agente de autenticação do ambiente gráfico estão disponíveis e reabra o aplicativo.",
+    "denied": "A autorização de entrada não foi concluída. Reabra o aplicativo e conclua a autenticação para animar o modelo com o teclado e o mouse.",
+    "stopped": "O serviço de entrada parou. Reabra o aplicativo e verifique a autorização e a sessão atual do ambiente gráfico."
+  },
+  "linux_tray": {
+    "unavailable": "Não foi possível mostrar o ícone na bandeja. Verifique se o ambiente gráfico oferece suporte à bandeja do sistema; o GNOME exige uma extensão AppIndicator."
   }
 }

@@ -257,6 +257,19 @@ impl SettingsClient {
         .await
     }
 
+    pub async fn set_pointer_sensitivity(
+        &self,
+        expected_config_revision: u64,
+        pointer_sensitivity_percent: u16,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        self.request(|reply| SettingsCommand::SetPointerSensitivity {
+            expected_config_revision,
+            pointer_sensitivity_percent,
+            reply,
+        })
+        .await
+    }
+
     pub async fn set_maximum_fps(
         &self,
         expected_config_revision: u64,

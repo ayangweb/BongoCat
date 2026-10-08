@@ -38,13 +38,15 @@ use gpui_kit::component::{
         SettingPage, Settings,
     },
 };
+#[cfg(any(not(target_os = "linux"), test))]
+use gpui_kit::point;
 
 use gpui_kit::{
     Anchor, App, AppContext, Bounds, Context, DisplayId, Div, DragMoveEvent, ElementId, Entity,
     ExternalPaths, FocusHandle, Focusable, Hsla, ImageSource, KeyDownEvent, KeyUpEvent, Modifiers,
     MouseButton, ObjectFit, Pixels, Render, SharedString, Stateful, TitlebarOptions, VisualContext,
     WeakEntity, Window, WindowAppearance, WindowBounds, WindowHandle, WindowOptions,
-    base::StyledExt, div, img, point, prelude::*, px, size,
+    base::StyledExt, div, img, prelude::*, px, size,
 };
 use std::{
     cell::RefCell,
@@ -66,6 +68,7 @@ mod lifecycle;
 mod localization;
 mod model_actions;
 mod model_drag_overlay;
+mod platform;
 use model_drag_overlay::ModelDragOverlayState;
 mod drag;
 mod dropdown;
@@ -215,6 +218,7 @@ pub struct SettingsView {
     pub(crate) client: SettingsClient,
     pub(crate) seed: SettingsWindowSeed,
     pub(crate) snapshot: Option<SettingsSnapshot>,
+    platform_notifications: platform::InputNotifications,
     pub(crate) pending: Option<PendingOperation>,
     pub(crate) pending_notification: Option<SettingsError>,
     pub(crate) model_import_success_pending: bool,
@@ -247,7 +251,9 @@ pub struct SettingsView {
         crate::SettingsPatchDebouncer<SettingsGamepadAxisSettings>,
     pub(crate) gamepad_dead_zone_timer_generation: u64,
     pub(crate) maximum_fps_debouncer: crate::SettingsPatchDebouncer<u16>,
+    pub(crate) pointer_sensitivity_percent_debouncer: crate::SettingsPatchDebouncer<u16>,
     pub(crate) maximum_fps_timer_generation: u64,
+    pub(crate) pointer_sensitivity_percent_timer_generation: u64,
     pub(crate) random_behavior_debouncer: crate::SettingsPatchDebouncer<SettingsRandomBehavior>,
     pub(crate) random_behavior_timer_generation: u64,
     pub(crate) logging_settings_debouncer: crate::SettingsPatchDebouncer<SettingsLogging>,

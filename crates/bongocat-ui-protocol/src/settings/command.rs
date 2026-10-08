@@ -116,6 +116,11 @@ pub enum SettingsCommand {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetPointerSensitivity {
+        expected_config_revision: u64,
+        pointer_sensitivity_percent: u16,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     SetMaximumFps {
         expected_config_revision: u64,
         maximum_fps: u16,

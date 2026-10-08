@@ -343,6 +343,7 @@ impl Application {
             panic_hook: None,
             shortcut_table,
             shortcut_capture_suspended: false,
+            overlay_always_on_top_available: false,
         };
         if previous_run.is_some() {
             application
