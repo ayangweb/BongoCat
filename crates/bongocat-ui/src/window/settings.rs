@@ -755,6 +755,24 @@ impl SettingsView {
         );
     }
 
+    pub(super) fn set_allow_motion_overlap(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let Some(expected_config_revision) = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.config_revision)
+        else {
+            return;
+        };
+        self.start_request(
+            PendingOperation::AllowMotionOverlap,
+            Some(SettingValue::AllowMotionOverlap {
+                expected_config_revision,
+                enabled,
+            }),
+            cx,
+        );
+    }
+
     /// Whether the application command bindings reach the platform table.
     ///
     /// The Shortcuts page renders this gate as "disable window shortcuts", so

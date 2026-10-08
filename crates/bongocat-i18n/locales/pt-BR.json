@@ -410,6 +410,9 @@
         "toggle_repeated_expression": {
           "label": "Desligar a expressão ao acioná-la novamente"
         },
+        "allow_motion_overlap": {
+          "label": "Permitir movimentos simultâneos"
+        },
         "random_behavior_mode": {
           "label": "Reproduzir movimentos ou expressões aleatoriamente",
           "options": {

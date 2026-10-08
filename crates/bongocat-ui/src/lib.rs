@@ -177,6 +177,7 @@ pub(crate) mod tests {
             gamepad_auto_switch: SettingsGamepadAutoSwitch::default(),
             remember_last_expression: false,
             toggle_repeated_expression: false,
+            allow_motion_overlap: false,
             logging: SettingsLogging::default(),
             shortcuts: SettingsShortcuts::default(),
             model_behavior_names: Vec::new(),

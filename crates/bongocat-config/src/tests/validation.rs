@@ -1116,3 +1116,17 @@ fn parser_requires_nullable_v1_fields_to_be_present() {
         Err(ConfigError::InvalidValue("model.selected_model"))
     ));
 }
+
+#[test]
+fn motion_overlap_defaults_off_for_existing_v1_documents_and_round_trips() {
+    let old =
+        include_bytes!("../../../../shared/config/fixtures/accept-before-motion-overlap.json");
+    let (config, _) = parse_config(old).expect("existing v1 configuration");
+    assert!(!config.model.allow_motion_overlap);
+    assert!(!NativeConfig::default().model.allow_motion_overlap);
+    let mut enabled = config;
+    enabled.model.allow_motion_overlap = true;
+    enabled.validate().expect("valid overlap setting");
+    let bytes = serde_json::to_vec(&enabled).expect("serialize configuration");
+    assert_eq!(parse_config(&bytes).expect("read configuration").0, enabled);
+}

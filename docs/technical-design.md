@@ -461,6 +461,16 @@ Gamepad axes -------- latest-value slot -------+        +--> UI snapshot
   规则），因此按键重复和连按既不会重启 clip 也不会重放 motion 音效。预览播放同样只播放一个
   循环并保持最终姿态，但每次请求都重新开始。显式停止的非零 fade 即使在 overlay 隐藏、没有
   下一帧时，也会按注入单调时钟在 fade duration 结束后视为 settled，避免过期 motion 阻塞随机行为。
+- `model.allow_motion_overlap` 默认关闭，旧 v1 文档缺少字段时按 `false` 读取。
+  打开后不同 motion identity 独立保留 clip、单调开始时间、完成状态、stop fade 与 UserData 游标；
+  共享参数按接纳启动的先后顺序求值，后启动层用资源自己的淡入淡出权重覆盖前层；重播匹配
+  identity 会移到末尾，幂等重复和 stop 不改变顺序。顺序来自插入次序而不是时间戳，因此同一
+  时钟采样内的启动也有确定次序，旧层终态不会永久遮住其他动作组的新播放。
+  优先级只仲裁匹配 identity，重复产品触发保持幂等，预览只重启匹配层。
+  关闭开关立即只保留最近启动的存活层；成功模型 commit 和 shutdown 清除全部层。
+  snapshot 的 `active_motions` 显示完整集合，`active_motion` 派生为最近启动的存活层；
+  UserData 保留来源 identity。随机动作仍让位于任何未结束的手动动作，音效沿用单路有序
+  worker（ADR-0087）。
 - `motion_stop` 只作用于匹配的当前动作，包括已完成并保持最终姿态的 motion。非零
   `FadeOutTime` 在 runtime snapshot 中保留
   active identity 和首次 stop command sequence，renderer 以正弦权重淡出并在结束帧后

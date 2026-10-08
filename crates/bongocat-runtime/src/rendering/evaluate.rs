@@ -27,7 +27,10 @@ impl RuntimeRenderer {
             })?;
         let mut motion_user_data = Vec::new();
         let mut skipped_motion_user_data = 0;
-        let motion_finished = if let Some(playback) = &mut active.motion {
+        let mut finished_motions = Vec::new();
+        // Starts append their layer, including replays of an existing identity.
+        // Apply newer layers last so older terminal poses cannot hide them.
+        for playback in &mut active.motions {
             let elapsed = now.saturating_sub(playback.started_at);
             let elapsed = if playback.completed {
                 playback.clip.duration()
@@ -52,16 +55,15 @@ impl RuntimeRenderer {
             {
                 playback.last_event_elapsed = Some(elapsed);
             }
-            motion_user_data = user_data
-                .occurrences
-                .into_iter()
-                .map(|occurrence| RenderMotionUserDataOccurrence {
+            motion_user_data.extend(user_data.occurrences.into_iter().map(|occurrence| {
+                RenderMotionUserDataOccurrence {
+                    motion: playback.motion.clone(),
                     cycle: occurrence.cycle,
                     local_time: occurrence.local_time,
                     value: occurrence.value,
-                })
-                .collect();
-            skipped_motion_user_data = user_data.skipped_occurrences;
+                }
+            }));
+            skipped_motion_user_data += user_data.skipped_occurrences;
             let weight =
                 fade_out_elapsed.map_or(1.0, |elapsed| playback.clip.fade_out_weight(elapsed));
             let status = if playback.looping {
@@ -79,13 +81,13 @@ impl RuntimeRenderer {
             if !playback.looping && status.finished {
                 playback.completed = true;
             }
-            explicit_fade_finished
-        } else {
-            false
-        };
-        if motion_finished {
-            active.motion = None;
+            if explicit_fade_finished {
+                finished_motions.push(playback.motion.clone());
+            }
         }
+        active
+            .motions
+            .retain(|playback| !finished_motions.contains(&playback.motion));
         active.expressions.retain(|playback| {
             playback.fade_out_started_at.is_none_or(|started_at| {
                 now.saturating_sub(started_at) < playback.clip.fade_out_duration()
@@ -155,7 +157,7 @@ impl RuntimeRenderer {
         self.next_transport_sequence = self.next_transport_sequence.wrapping_add(1);
         Ok(RenderEvaluation {
             rendered: true,
-            motion_finished,
+            finished_motions,
             motion_user_data,
             skipped_motion_user_data,
         })

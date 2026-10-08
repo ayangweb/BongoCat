@@ -2,6 +2,21 @@
   "schemaVersion": 1,
   "cases": [
     {
+      "id": "motion-overlap",
+      "file": "accept-motion-overlap.json",
+      "expected": "accept"
+    },
+    {
+      "id": "motion-overlap-before-field",
+      "file": "accept-before-motion-overlap.json",
+      "expected": "accept"
+    },
+    {
+      "id": "motion-overlap-invalid-type",
+      "file": "invalid-motion-overlap.json",
+      "expected": "reject"
+    },
+    {
       "id": "default",
       "file": "default.json",
       "expected": "accept"

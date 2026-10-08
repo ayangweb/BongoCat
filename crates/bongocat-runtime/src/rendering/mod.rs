@@ -20,7 +20,7 @@ const BLINK_CLOSED_DURATION: Duration = Duration::from_millis(180);
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct RenderEvaluation {
     pub(crate) rendered: bool,
-    pub(crate) motion_finished: bool,
+    pub(crate) finished_motions: Vec<MotionId>,
     pub(crate) motion_user_data: Vec<RenderMotionUserDataOccurrence>,
     pub(crate) skipped_motion_user_data: u64,
 }

@@ -92,6 +92,7 @@ pub(crate) const fn model_settings_from_config(config: &NativeConfig) -> ModelSe
         ignore_gamepad: config.model.ignore_gamepad,
         show_all_pressed_keys: config.model.show_all_pressed_keys,
         toggle_repeated_expression: config.model.toggle_repeated_expression,
+        allow_motion_overlap: config.model.allow_motion_overlap,
         ignore_pointer: config.model.ignore_pointer,
     }
 }

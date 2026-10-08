@@ -298,6 +298,14 @@ impl SettingsView {
                         .set_toggle_repeated_expression(expected_config_revision, enabled)
                         .await
                 }
+                Some(SettingValue::AllowMotionOverlap {
+                    expected_config_revision,
+                    enabled,
+                }) => {
+                    client
+                        .set_allow_motion_overlap(expected_config_revision, enabled)
+                        .await
+                }
                 Some(SettingValue::ModelBehaviorName {
                     expected_config_revision,
                     model,

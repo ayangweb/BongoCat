@@ -291,6 +291,28 @@ impl Application {
         runtime_result.map(|_| ())
     }
 
+    pub fn set_allow_motion_overlap(&mut self, enabled: bool) -> Result<(), ApplicationError> {
+        let mut next_config = self.config.clone();
+        next_config.model.allow_motion_overlap = enabled;
+        next_config.validate()?;
+        let next_revision = self
+            .config_store
+            .commit_if_revision(&next_config, self.ready_config_revision()?)?;
+        let runtime_result = self
+            .runtime
+            .client()
+            .send(RuntimeCommand::SetModelSettings(
+                model_settings_from_config(&next_config),
+            ))
+            .map_err(ApplicationError::RuntimeCommand);
+        // The configuration is the source of truth and the commit already landed,
+        // so a runtime that could not take the setting is recorded rather than
+        // rolled back: the next model settings push carries the same value.
+        self.config = next_config;
+        self.config_revision = Some(next_revision);
+        runtime_result.map(|_| ())
+    }
+
     pub fn set_random_behavior_settings(
         &mut self,
         settings: RandomBehaviorSettings,

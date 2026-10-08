@@ -410,6 +410,9 @@
         "toggle_repeated_expression": {
           "label": "Tắt biểu cảm khi kích hoạt lại"
         },
+        "allow_motion_overlap": {
+          "label": "Cho phép chồng chuyển động"
+        },
         "random_behavior_mode": {
           "label": "Phát ngẫu nhiên chuyển động hoặc biểu cảm",
           "options": {

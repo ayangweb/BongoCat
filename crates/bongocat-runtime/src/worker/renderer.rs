@@ -13,13 +13,12 @@ pub(crate) fn evaluate_renderer(
     input: ModelInputSnapshot,
     snapshot: &SnapshotCell,
     now: Duration,
-    active_motion: &mut Option<ActiveMotionSnapshot>,
+    active_motions: &mut Vec<ActiveMotionSnapshot>,
     next_motion_event_sequence: &mut u64,
 ) {
     let Some(renderer) = renderer else {
         return;
     };
-    let event_motion = active_motion.as_ref().map(|active| active.motion.clone());
     match renderer.evaluate(input, now) {
         Ok(RenderEvaluation {
             rendered: false, ..
@@ -31,32 +30,27 @@ pub(crate) fn evaluate_renderer(
                         .motion_events
                         .skipped
                         .saturating_add(evaluation.skipped_motion_user_data);
-                    if let Some(motion) = event_motion {
-                        for occurrence in evaluation.motion_user_data {
-                            let observed = MotionUserDataSnapshot {
-                                event_sequence: *next_motion_event_sequence,
-                                motion: motion.clone(),
-                                cycle: occurrence.cycle,
-                                local_time: occurrence.local_time,
-                                value: occurrence.value,
-                            };
-                            *next_motion_event_sequence =
-                                next_motion_event_sequence.wrapping_add(1);
-                            current.motion_events.emitted =
-                                current.motion_events.emitted.saturating_add(1);
-                            current.motion_events.last_event = Some(observed);
-                        }
-                    } else {
-                        current.motion_events.skipped = current
-                            .motion_events
-                            .skipped
-                            .saturating_add(evaluation.motion_user_data.len() as u64);
+                    for occurrence in evaluation.motion_user_data {
+                        let observed = MotionUserDataSnapshot {
+                            event_sequence: *next_motion_event_sequence,
+                            motion: occurrence.motion,
+                            cycle: occurrence.cycle,
+                            local_time: occurrence.local_time,
+                            value: occurrence.value,
+                        };
+                        *next_motion_event_sequence = next_motion_event_sequence.wrapping_add(1);
+                        current.motion_events.emitted =
+                            current.motion_events.emitted.saturating_add(1);
+                        current.motion_events.last_event = Some(observed);
                     }
                 });
             }
-            if evaluation.motion_finished {
-                *active_motion = None;
-                publish(snapshot, |current| current.active_motion = None);
+            if !evaluation.finished_motions.is_empty() {
+                active_motions
+                    .retain(|active| !evaluation.finished_motions.contains(&active.motion));
+                publish(snapshot, |current| {
+                    current.active_motions = active_motions.clone()
+                });
             }
             update_renderer_health(snapshot, Ok(()));
         }
@@ -98,7 +92,7 @@ pub(crate) fn start_motion(
     priority: MotionPriority,
     looping: bool,
     sequence: u64,
-    active_motion: &mut Option<ActiveMotionSnapshot>,
+    active_motions: &mut Vec<ActiveMotionSnapshot>,
     snapshot: &SnapshotCell,
     now: Duration,
 ) {
@@ -115,9 +109,16 @@ pub(crate) fn start_motion(
                 command_sequence: sequence,
                 stop_command_sequence: None,
             };
-            *active_motion = Some(started.clone());
+            if !renderer
+                .as_ref()
+                .is_some_and(|renderer| renderer.model_settings.allow_motion_overlap)
+            {
+                active_motions.clear();
+            }
+            active_motions.retain(|active| active.motion != started.motion);
+            active_motions.push(started);
             publish(snapshot, |current| {
-                current.active_motion = Some(started);
+                current.active_motions = active_motions.clone();
                 current.last_command_failure = None;
                 current.last_command_sequence = Some(sequence);
             });

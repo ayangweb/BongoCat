@@ -285,6 +285,8 @@ pub struct ModelSettings {
     /// and a shortcut alike. The idle scheduler deliberately does not go through
     /// that command, so an automatic pick never toggles the user's own face off.
     pub toggle_repeated_expression: bool,
+    /// Whether distinct motion identities retain independently timed layers.
+    pub allow_motion_overlap: bool,
     pub ignore_pointer: bool,
 }
 
@@ -537,7 +539,10 @@ pub struct RuntimeSnapshot {
     /// the same id as a build-shipped model.
     pub active_model_origin: Option<ModelOrigin>,
     pub pending_model: Option<PendingModelSnapshot>,
+    /// Most recently started surviving motion, derived from `active_motions`.
     pub active_motion: Option<ActiveMotionSnapshot>,
+    /// All motion layers, in start order.
+    pub active_motions: Vec<ActiveMotionSnapshot>,
     pub active_expression: Option<ActiveExpressionSnapshot>,
     /// The last expression a command asked for, whether or not it is still the
     /// one in effect. See [`UserExpressionMemory`].
@@ -578,6 +583,7 @@ impl RuntimeSnapshot {
             active_model_origin: None,
             pending_model: None,
             active_motion: None,
+            active_motions: Vec::new(),
             active_expression: None,
             user_expression_memory: None,
             motion_events: MotionEventDiagnostics::default(),

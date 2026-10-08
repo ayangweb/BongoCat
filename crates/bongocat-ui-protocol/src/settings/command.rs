@@ -182,6 +182,11 @@ pub enum SettingsCommand {
         enabled: bool,
         reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
     },
+    SetAllowMotionOverlap {
+        expected_config_revision: u64,
+        enabled: bool,
+        reply: SettingsReply<Result<SettingsSnapshot, SettingsError>>,
+    },
     /// The number of connected gamepads changed; the settings service
     /// reconciles the configured switch against the runtime's own answer.
     ///

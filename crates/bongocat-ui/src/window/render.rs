@@ -836,6 +836,31 @@ impl Render for SettingsView {
                 SettingItem::new(
                     bongocat_i18n::text(
                         language.catalog_locale(),
+                        "settings.models.behavior.allow_motion_overlap.label",
+                    ),
+                    SettingField::switch(
+                        {
+                            let view = view_entity.clone();
+                            move |app| {
+                                view.read(app)
+                                    .snapshot
+                                    .as_ref()
+                                    .is_some_and(|s| s.allow_motion_overlap)
+                            }
+                        },
+                        {
+                            let view = view_entity.clone();
+                            move |value, app| {
+                                view.update(app, |view, cx| {
+                                    view.set_allow_motion_overlap(value, cx)
+                                });
+                            }
+                        },
+                    ),
+                ),
+                SettingItem::new(
+                    bongocat_i18n::text(
+                        language.catalog_locale(),
                         "settings.models.behavior.random_behavior_mode.label",
                     ),
                     SettingField::element({

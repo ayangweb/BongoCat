@@ -410,6 +410,9 @@
         "toggle_repeated_expression": {
           "label": "重复触发同一表情时关闭它"
         },
+        "allow_motion_overlap": {
+          "label": "叠加播放动作"
+        },
         "random_behavior_mode": {
           "label": "随机播放动作或表情",
           "options": {

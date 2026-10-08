@@ -5,6 +5,7 @@
 ### ✨ Features
 
 - Model folders can now contain multiple levels of nested folders. A single model imports directly; folders containing multiple models let you select which to import, then choose conversion modes as needed.
+- Added a "Model behavior → Allow overlapping motions" setting, off by default. Different motions can play together with independent timing and fades; newer starts blend over older motions on shared parameters, and motion audio still plays one clip at a time.
 - The Windows installer now asks which language to use and offers Simplified Chinese, Traditional Chinese, English, Arabic, Vietnamese, Brazilian Portuguese and Korean. The system language is preselected, with English as the fallback. The choice only changes the installer and uninstaller wizard; the app language is still decided in Settings. A computer that already has BongoCat installed keeps the installer language it stored earlier.
 
 ### 🐛 Bug Fixes

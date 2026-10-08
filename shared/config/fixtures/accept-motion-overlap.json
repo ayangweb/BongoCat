@@ -54,7 +54,7 @@
     },
     "remember_last_expression": false,
     "toggle_repeated_expression": false,
-    "allow_motion_overlap": false,
+    "allow_motion_overlap": true,
     "last_expressions": [],
     "behavior_names": []
   },

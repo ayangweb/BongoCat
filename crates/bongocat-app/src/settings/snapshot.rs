@@ -292,6 +292,7 @@ pub(super) fn snapshot(
         ),
         remember_last_expression: application.config().model.remember_last_expression,
         toggle_repeated_expression: application.config().model.toggle_repeated_expression,
+        allow_motion_overlap: application.config().model.allow_motion_overlap,
         logging: settings_logging_from_config(&application.config().logging),
         shortcuts: settings_shortcuts(application.config()),
         model_behavior_names: model_behavior_names(application, &model_catalog),

@@ -69,6 +69,7 @@ pub struct SettingsSnapshot {
     /// expression a model currently shows is shown here, for the same reason the
     /// remembered ones are not.
     pub toggle_repeated_expression: bool,
+    pub allow_motion_overlap: bool,
     pub logging: SettingsLogging,
     pub shortcuts: SettingsShortcuts,
     /// What each of the active model's motions and expressions is called.
