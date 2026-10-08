@@ -67,7 +67,7 @@ pub(crate) struct RenderTargets {
     pub(crate) back_buffer: ID3D11Texture2D,
 }
 
-pub(crate) struct Renderer {
+pub(crate) struct CompositionSurface {
     pub(crate) visual: IDCompositionVisual,
     /// Applies presentation opacity after every model, mask, background, and
     /// key drawable has already been composited into the swap-chain surface.
@@ -77,6 +77,11 @@ pub(crate) struct Renderer {
     pub(crate) opacity_effect: IDCompositionEffectGroup,
     pub(crate) target: IDCompositionTarget,
     pub(crate) composition_device: IDCompositionDevice,
+}
+
+pub(crate) struct Renderer {
+    pub(crate) composition: Option<CompositionSurface>,
+    pub(crate) window_background_color: Option<[u8; 3]>,
     /// `None` only while a resize is between dropping the old buffers and
     /// rebuilding them; every other path requires them to be present.
     pub(crate) targets: Option<RenderTargets>,
@@ -130,28 +135,53 @@ impl Renderer {
             BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
             BufferCount: 2,
             Scaling: DXGI_SCALING_STRETCH,
-            SwapEffect: DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
-            AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
+            // A blt HWND chain keeps GDI/BitBlt capture working in addition to
+            // Windows Graphics Capture. Transparent pets keep composition.
+            SwapEffect: if options.window_mode {
+                DXGI_SWAP_EFFECT_DISCARD
+            } else {
+                DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL
+            },
+            AlphaMode: if options.window_mode {
+                DXGI_ALPHA_MODE_IGNORE
+            } else {
+                DXGI_ALPHA_MODE_PREMULTIPLIED
+            },
             Flags: 0,
         };
-        let swap_chain =
-            unsafe { factory.CreateSwapChainForComposition(&device, &descriptor, None)? };
-        let composition_device: IDCompositionDevice =
-            unsafe { DCompositionCreateDevice(&dxgi_device)? };
-        let target = unsafe { composition_device.CreateTargetForHwnd(window.hwnd, true)? };
-        let visual = unsafe { composition_device.CreateVisual()? };
-        // The default DirectComposition layer opacity mode treats this visual's
-        // swap-chain subtree as one surface. That is the final-composite
-        // boundary we need; Multiply mode would reintroduce per-surface fading.
-        let opacity_effect = unsafe { composition_device.CreateEffectGroup()? };
-        let initial_opacity = f32::from(options.opacity_percent) / 100.0;
-        unsafe {
-            opacity_effect.SetOpacity2(initial_opacity)?;
-            visual.SetContent(&swap_chain)?;
-            visual.SetEffect(&opacity_effect)?;
-            target.SetRoot(&visual)?;
-            composition_device.Commit()?;
-        }
+        let swap_chain = if options.window_mode {
+            unsafe {
+                factory.CreateSwapChainForHwnd(&device, window.hwnd, &descriptor, None, None)?
+            }
+        } else {
+            unsafe { factory.CreateSwapChainForComposition(&device, &descriptor, None)? }
+        };
+        let composition = if options.window_mode {
+            None
+        } else {
+            let composition_device: IDCompositionDevice =
+                unsafe { DCompositionCreateDevice(&dxgi_device)? };
+            let target = unsafe { composition_device.CreateTargetForHwnd(window.hwnd, true)? };
+            let visual = unsafe { composition_device.CreateVisual()? };
+            // The default DirectComposition layer opacity mode treats this visual's
+            // swap-chain subtree as one surface. That is the final-composite
+            // boundary we need; Multiply mode would reintroduce per-surface fading.
+            let opacity_effect = unsafe { composition_device.CreateEffectGroup()? };
+            let initial_opacity = f32::from(options.opacity_percent) / 100.0;
+            unsafe {
+                opacity_effect.SetOpacity2(initial_opacity)?;
+                visual.SetContent(&swap_chain)?;
+                visual.SetEffect(&opacity_effect)?;
+                target.SetRoot(&visual)?;
+                composition_device.Commit()?;
+            }
+            Some(CompositionSurface {
+                visual,
+                opacity_effect,
+                target,
+                composition_device,
+            })
+        };
         let back_buffer: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0)? };
         let render_target = unsafe {
             create_render_target(&device, &back_buffer, COMPOSITION_RENDER_TARGET_FORMAT)?
@@ -169,10 +199,10 @@ impl Renderer {
             )?
         };
         Ok(Self {
-            visual,
-            opacity_effect,
-            target,
-            composition_device,
+            composition,
+            window_background_color: options
+                .window_mode
+                .then_some(options.window_background_color),
             targets: Some(RenderTargets {
                 render_target,
                 staging_texture,
@@ -188,9 +218,17 @@ impl Renderer {
             model,
             width: window.width,
             height: window.height,
-            corner_radius_percent: options.corner_radius_percent,
+            corner_radius_percent: if options.window_mode {
+                0
+            } else {
+                options.corner_radius_percent
+            },
             corner_radius: corner_radius_uniform(
-                options.corner_radius_percent,
+                if options.window_mode {
+                    0
+                } else {
+                    options.corner_radius_percent
+                },
                 window.width as f32,
                 window.height as f32,
             ),
@@ -207,16 +245,21 @@ impl Renderer {
     /// mask, and key layers have been blended. This preserves a coherent image
     /// for models with many overlapping Live2D parts.
     pub(crate) fn set_opacity(&self, opacity: f32) -> Result<(), OverlayError> {
+        let Some(composition) = &self.composition else {
+            return Ok(());
+        };
         let alpha = opacity.clamp(0.0, 1.0);
         // SAFETY: the renderer owns both COM interfaces, they are confined to
         // its owner thread, and the effect has already been attached to the
         // visual before this method can be called. The value is finite after
         // clamping, as required by IDCompositionEffectGroup::SetOpacity.
         unsafe {
-            self.opacity_effect
+            composition
+                .opacity_effect
                 .SetOpacity2(alpha)
                 .map_err(windows_error("set DirectComposition opacity"))?;
-            self.composition_device
+            composition
+                .composition_device
                 .Commit()
                 .map_err(windows_error("commit DirectComposition opacity"))?;
         }
@@ -305,7 +348,13 @@ impl Renderer {
                 )
             }
             .map_err(windows_error("prepare D3D11 model resources"))?;
-            self.model = candidate;
+            let previous = std::mem::replace(&mut self.model, candidate);
+            if self.window_background_color.is_some()
+                && let Err(error) = self.draw_capturing(true)
+            {
+                self.model = previous;
+                return Err(error);
+            }
             self.resources = Arc::clone(&frame.resources);
             self.model_generation = frame.model_generation;
             return Ok(true);
@@ -443,13 +492,21 @@ impl Renderer {
             .targets
             .as_ref()
             .ok_or_else(|| invariant_error("renderer targets are unavailable"))?;
+        let clear_color = self.window_background_color.map_or([0.0; 4], |rgb| {
+            [
+                f32::from(rgb[0]) / 255.0,
+                f32::from(rgb[1]) / 255.0,
+                f32::from(rgb[2]) / 255.0,
+                1.0,
+            ]
+        });
         unsafe {
             self.context.OMSetRenderTargets(
                 Some(&[Some(targets.render_target.clone())]),
                 None::<&ID3D11DepthStencilView>,
             );
             self.context
-                .ClearRenderTargetView(&targets.render_target, &[0.0; 4]);
+                .ClearRenderTargetView(&targets.render_target, &clear_color);
             self.context
                 .PSSetShader(&self.pipelines.fragment_shader, None);
         }
@@ -599,6 +656,7 @@ impl Renderer {
                         &targets.staging_texture,
                         self.width,
                         self.height,
+                        self.window_background_color,
                     )?;
                 }
             }
@@ -691,9 +749,13 @@ impl Drop for Renderer {
             self.context.PSSetShaderResources(0, Some(&[None, None]));
             self.context.ClearState();
             self.context.Flush();
-            let _ = self.visual.SetContent(None::<&windows::core::IUnknown>);
-            let _ = self.target.SetRoot(None::<&IDCompositionVisual>);
-            let _ = self.composition_device.Commit();
+            if let Some(composition) = &self.composition {
+                let _ = composition
+                    .visual
+                    .SetContent(None::<&windows::core::IUnknown>);
+                let _ = composition.target.SetRoot(None::<&IDCompositionVisual>);
+                let _ = composition.composition_device.Commit();
+            }
         }
     }
 }

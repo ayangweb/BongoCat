@@ -2,6 +2,70 @@
 
 use super::*;
 
+#[cfg(target_os = "windows")]
+#[gpui_kit::test]
+fn window_background_keeps_the_latest_color_while_a_save_is_in_flight(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let mut initial = crate::tests::snapshot(7, true, true);
+    initial.config_revision = Some(7);
+    initial.overlay.window_mode = true;
+    initial.overlay.click_through = true;
+    let original = initial.overlay;
+    view.update(visual, |view, _| view.snapshot = Some(initial));
+    view.update(visual, |view, cx| {
+        view.set_window_background_color(super::super::window_mode::rgb_color([255, 0, 255]), cx);
+        view.flush_pending_settings(cx);
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetOverlaySettings {
+        expected_config_revision,
+        settings,
+        reply,
+    } = endpoint.try_recv().unwrap()
+    else {
+        panic!("typed overlay command");
+    };
+    assert_eq!(expected_config_revision, 7);
+    assert_eq!(settings.window_background_color, [255, 0, 255]);
+    assert!(settings.click_through);
+    view.update(visual, |view, cx| {
+        view.set_window_background_color(super::super::window_mode::rgb_color([0, 0, 255]), cx);
+        view.flush_pending_settings(cx);
+    });
+    visual.run_until_parked();
+    assert!(endpoint.try_recv().is_err());
+    let mut confirmed = crate::tests::snapshot(8, true, true);
+    confirmed.config_revision = Some(8);
+    confirmed.overlay = settings;
+    reply.respond(Ok(confirmed)).unwrap();
+    visual.run_until_parked();
+    let crate::SettingsCommand::SetOverlaySettings {
+        expected_config_revision,
+        settings,
+        reply,
+    } = endpoint.try_recv().unwrap()
+    else {
+        panic!("latest typed overlay command");
+    };
+    assert_eq!(expected_config_revision, 8);
+    assert_eq!(settings.window_background_color, [0, 0, 255]);
+    assert_eq!(
+        settings,
+        SettingsOverlay {
+            window_background_color: [0, 0, 255],
+            ..original
+        }
+    );
+    let mut confirmed = crate::tests::snapshot(9, true, true);
+    confirmed.config_revision = Some(9);
+    confirmed.overlay = settings;
+    reply.respond(Ok(confirmed)).unwrap();
+    visual.run_until_parked();
+    assert!(!view.read_with(visual, |view, _| {
+        view.window_background_debouncer.is_pending()
+    }));
+}
+
 #[test]
 fn settings_error_display_matches_the_english_catalog_copy() {
     for code in SettingsErrorCode::ALL {

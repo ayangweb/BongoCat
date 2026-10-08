@@ -45,16 +45,30 @@ impl NativeOverlay {
             renderer,
             window,
             presentation: OverlayPresentationState::default(),
-            applied_alpha: f32::from(options.opacity_percent) / 100.0,
-            applied_click_through: options.click_through,
-            applied_taskbar_icon: options.taskbar_icon_visible,
+            applied_alpha: if options.window_mode {
+                1.0
+            } else {
+                f32::from(options.opacity_percent) / 100.0
+            },
+            applied_click_through: options.click_through && !options.window_mode,
+            applied_taskbar_icon: options.taskbar_icon_visible || options.window_mode,
         })
     }
 
     pub(crate) fn set_visible(&self, visible: bool) -> Result<(), OverlayError> {
         if visible {
             self.presentation.require_presented_frame()?;
+            let was_hidden = !self.window.is_visible();
             self.window.show()?;
+            if was_hidden && self.window._state.window_mode {
+                // A hidden HWND can reject Present after its back buffer is
+                // ready. Submit that frame immediately after showing/restoring.
+                if let Err(error) = self.renderer.draw(false)
+                    && !error.is_temporary_presentation_unavailable()
+                {
+                    return Err(error);
+                }
+            }
         } else if self.window.is_visible() {
             // SAFETY: the HWND is live and accessed only from its owner thread.
             let _ = unsafe { ShowWindow(self.window.hwnd, SW_HIDE) };
@@ -72,6 +86,7 @@ impl NativeOverlay {
 
     /// Give the model window a taskbar button, or take it away, in place.
     pub(crate) fn set_taskbar_icon_visible(&mut self, visible: bool) -> Result<(), OverlayError> {
+        let visible = visible || self.window._state.window_mode;
         if self.applied_taskbar_icon == visible {
             return Ok(());
         }
@@ -89,6 +104,7 @@ impl NativeOverlay {
     pub(crate) fn resize(&mut self, bounds: OverlayWindowBounds) -> Result<(), OverlayError> {
         let visible = self.window.is_visible();
         self.window.resize(bounds)?;
+        let bounds = self.window.bounds()?;
         let resized = self.renderer.resize(bounds.width, bounds.height)?;
         if visible && resized {
             // ResizeBuffers leaves a new back buffer without content until the
@@ -136,10 +152,9 @@ impl NativeOverlay {
     /// product session explicitly. The swap chain follows the native resize
     /// immediately, before the next frame is drawn.
     pub(crate) fn resize_for_model(&mut self, canvas: CanvasInfo) -> Result<(), OverlayError> {
-        let bounds = model_switch_window_bounds(self.window.bounds()?, canvas);
-        self.window.resize(bounds)?;
-        self.renderer.resize(bounds.width, bounds.height)?;
-        Ok(())
+        self.window._state.sizing = WindowSizing::new(canvas)
+            .ok_or_else(|| OverlayError::new("model canvas has an invalid aspect ratio"))?;
+        self.resize(self.window.bounds()?)
     }
 
     /// Match the swap chain and the mask targets to the window's current size.
@@ -155,7 +170,13 @@ impl NativeOverlay {
     }
 
     pub(crate) fn draw(&mut self, verify: bool) -> Result<(), OverlayError> {
-        self.renderer.draw(verify)?;
+        if let Err(error) = self.renderer.draw(verify)
+            && !(self.window._state.window_mode
+                && !self.window.is_visible()
+                && error.is_temporary_presentation_unavailable())
+        {
+            return Err(error);
+        }
         self.presentation.record_presented_frame();
         Ok(())
     }
@@ -324,6 +345,14 @@ impl ProductOverlaySession {
                 "runtime stopped while the product overlay was active",
             ));
         }
+        if self.overlay.window._state.close_requested {
+            self.runtime_client
+                .send(RuntimeCommand::SetOverlayVisible(false))
+                .map_err(|error| OverlayError::new(error.to_string()))?;
+            self.overlay.window._state.close_requested = false;
+            self.overlay.set_visible(false)?;
+            return Ok(OverlayTickOutcome::Hidden);
+        }
         // The pointer capture mode is read fresh every frame and pushed to the
         // input service, which is the only component that sees the device's
         // relative motion. A plain store is enough: the worker re-reads it on
@@ -338,10 +367,10 @@ impl ProductOverlaySession {
         if next_options != self.options {
             if self.options.requires_window_recreation(next_options) {
                 let bounds = self.overlay.window.bounds()?;
-                let bounds = if next_options.scale_percent != self.options.scale_percent
-                    && !self.bounds_match_scale(bounds, next_options.scale_percent)
-                {
-                    bounds.rescale(self.options.scale_percent, next_options.scale_percent)
+                let bounds = if next_options.scale_percent != self.options.scale_percent {
+                    self.overlay
+                        .window
+                        .bounds_for_scale(next_options.scale_percent)?
                 } else {
                     bounds
                 };
@@ -359,13 +388,23 @@ impl ProductOverlaySession {
                 }
                 self.overlay = replacement;
             } else {
+                if next_options.window_mode {
+                    self.overlay.renderer.window_background_color =
+                        Some(next_options.window_background_color);
+                } else {
+                    self.overlay.renderer.corner_radius_percent =
+                        next_options.corner_radius_percent;
+                    self.overlay.renderer.corner_radius = corner_radius_uniform(
+                        next_options.corner_radius_percent,
+                        self.overlay.renderer.width as f32,
+                        self.overlay.renderer.height as f32,
+                    );
+                }
                 if next_options.scale_percent != self.options.scale_percent {
-                    let bounds = self.overlay.window.bounds()?;
-                    let bounds = if self.bounds_match_scale(bounds, next_options.scale_percent) {
-                        bounds
-                    } else {
-                        bounds.rescale(self.options.scale_percent, next_options.scale_percent)
-                    };
+                    let bounds = self
+                        .overlay
+                        .window
+                        .bounds_for_scale(next_options.scale_percent)?;
                     self.overlay.resize(bounds)?;
                 }
                 if next_options.always_on_top != self.options.always_on_top {
@@ -377,8 +416,11 @@ impl ProductOverlaySession {
         // A right-button resize drag changes the window size directly, so the
         // swap chain and the mask targets follow here, before anything draws
         // against them.
-        self.overlay.sync_window_size()?;
-        if self.options.keep_inside_screen {
+        let minimized = unsafe { IsIconic(self.overlay.window.hwnd) }.as_bool();
+        if !minimized {
+            self.overlay.sync_window_size()?;
+        }
+        if self.options.keep_inside_screen && !minimized {
             let bounds = self.overlay.window.bounds()?;
             // A box that is still outside the displays is only corrected once it
             // has been observed at rest for the settle delay, so a drag that is
@@ -413,11 +455,8 @@ impl ProductOverlaySession {
         };
         if let Some(frame) = next_frame {
             let model_changed = frame.model_generation != self.overlay.renderer.model_generation;
-            if model_changed {
-                let bounds = model_switch_window_bounds(
-                    self.overlay.window.bounds()?,
-                    frame.snapshot.canvas,
-                );
+            if model_changed && !self.options.window_mode {
+                let bounds = self.overlay.window.bounds()?;
                 let mut replacement = match self.create_overlay(
                     &frame,
                     self.options,
@@ -491,6 +530,9 @@ impl ProductOverlaySession {
             }
             match self.overlay.renderer.sync_frame(&frame) {
                 Ok(switched) => {
+                    if switched {
+                        self.overlay.resize_for_model(frame.snapshot.canvas)?;
+                    }
                     if let Some(token) = frame.model_commit {
                         report_model_commit(
                             &self.runtime_client,
@@ -502,7 +544,7 @@ impl ProductOverlaySession {
                     if frame.snapshot.as_ref() != self.previous_snapshot.as_ref() {
                         self.dynamic_snapshots = self.dynamic_snapshots.saturating_add(1);
                     }
-                    debug_assert!(!switched);
+                    debug_assert!(!switched || self.options.window_mode);
                     self.last_frame = frame.clone();
                     self.previous_snapshot = frame.snapshot;
                 }
@@ -520,6 +562,9 @@ impl ProductOverlaySession {
         }
         if !overlay_visible {
             return Ok(OverlayTickOutcome::Hidden);
+        }
+        if minimized && self.overlay.window.is_visible() {
+            return Ok(OverlayTickOutcome::Deferred(Duration::from_millis(100)));
         }
         match self.overlay.draw(self.frames_presented == 0) {
             Ok(()) => self.retry_backoff.record_success(),
@@ -592,23 +637,31 @@ impl ProductOverlaySession {
             });
         let now = self.session_started.elapsed();
         let fade = self.hover.observe(PointerHoverObservation {
-            enabled: options.hide_on_pointer_hover && input_running && !held,
+            enabled: options.hide_on_pointer_hover
+                && input_running
+                && !held
+                && !options.window_mode,
             delay: Duration::from_millis(u64::from(options.hide_on_pointer_hover_delay_ms)),
             pointer_inside,
             now,
         });
         let idle_fade = self.idle.observe(IdleObservation {
-            enabled: options.hide_on_idle && input_running,
+            enabled: options.hide_on_idle && input_running && !options.window_mode,
             delay: Duration::from_millis(u64::from(options.hide_on_idle_delay_ms)),
             input_sequence: last_input_sequence,
             cursor_at: cursor.map(|sample| sample.at),
             gamepad_axis_published,
             now,
         });
-        let alpha = f32::from(options.opacity_percent) / 100.0 * (fade * idle_fade) as f32;
+        let alpha = if options.window_mode {
+            1.0
+        } else {
+            f32::from(options.opacity_percent) / 100.0 * (fade * idle_fade) as f32
+        };
         self.overlay.apply_presentation(
             alpha,
-            (options.click_through && !held) || self.hover.hidden() || self.idle.hidden(),
+            !options.window_mode
+                && ((options.click_through && !held) || self.hover.hidden() || self.idle.hidden()),
         )?;
         Ok(())
     }
@@ -629,35 +682,21 @@ impl ProductOverlaySession {
     ) -> Result<NativeOverlay, OverlayError> {
         let mut overlay =
             NativeOverlay::create(frame, options, bounds, context_menu_sender, resize_sender)?;
-        let alpha = f32::from(options.opacity_percent) / 100.0
-            * (self.hover.visible() * self.idle.visible()) as f32;
+        let alpha = if options.window_mode {
+            1.0
+        } else {
+            f32::from(options.opacity_percent) / 100.0
+                * (self.hover.visible() * self.idle.visible()) as f32
+        };
         overlay.apply_presentation(
             alpha,
-            options.click_through || self.hover.hidden() || self.idle.hidden(),
+            !options.window_mode
+                && (options.click_through || self.hover.hidden() || self.idle.hidden()),
         )?;
         Ok(overlay)
     }
 
-    /// Whether the live window box already matches a scale.
-    ///
-    /// A resize drag resizes the window before the scale reaches the
-    /// configuration, so the in-place resize that follows the write-back must
-    /// not scale the box a second time. The base is derived in physical pixels,
-    /// which is the unit the box itself is in. See
-    /// [`crate::bounds_match_scale`].
-    pub(crate) fn bounds_match_scale(
-        &self,
-        bounds: OverlayWindowBounds,
-        scale_percent: u16,
-    ) -> bool {
-        let (base_width, base_height) =
-            default_overlay_window_dimensions(self.last_frame.snapshot.canvas);
-        // SAFETY: the HWND is live and read on its owner thread.
-        let dpi = unsafe { GetDpiForWindow(self.overlay.window.hwnd) };
-        resize_base_for_dpi(base_width, base_height, dpi)
-            .is_some_and(|base| crate::bounds_match_scale(bounds, base, scale_percent))
-    }
-
+    /// Whether the model window is currently shown.
     pub(crate) fn is_visible(&self) -> bool {
         self.overlay.window.is_visible()
     }

@@ -16,6 +16,11 @@ use super::*;
 #[cfg_attr(any(test, feature = "schema-generation"), derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct OverlayConfig {
+    /// Windows ordinary capture window; other platforms retain overlay behavior.
+    #[serde(default)]
+    pub window_mode: bool,
+    #[serde(default = "default_window_background_color")]
+    pub window_background_color: [u8; 3],
     pub click_through: bool,
     /// The physical modifier key whose hold hands the pointer back to the user
     /// for as long as it is down.
@@ -128,6 +133,10 @@ pub struct OverlayConfig {
     /// the drag has stopped. This replaces the earlier work-area constraint,
     /// which forbade the desktop chrome strip entirely.
     pub keep_inside_screen: bool,
+}
+
+pub const fn default_window_background_color() -> [u8; 3] {
+    [0, 255, 0]
 }
 
 /// Upper bound of the hover hide delay, in whole seconds.

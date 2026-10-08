@@ -181,6 +181,11 @@ impl ProductOverlaySession {
         self.inner.model_generation()
     }
 
+    #[cfg(target_os = "windows")]
+    pub fn window_mode_is_active(&self) -> bool {
+        self.inner.overlay.window._state.window_mode
+    }
+
     /// Windows only: apply the configured taskbar button to the model window.
     ///
     /// macOS has no per-window equivalent: the Dock belongs to the process

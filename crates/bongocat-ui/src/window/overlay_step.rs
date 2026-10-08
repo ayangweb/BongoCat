@@ -6,6 +6,18 @@
 
 use super::*;
 
+pub(crate) fn window_mode_active(overlay: Option<SettingsOverlay>) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        overlay.is_some_and(|s| s.window_mode)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = overlay;
+        false
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn stepped_overlay_scale(mut settings: SettingsOverlay, delta: i16) -> SettingsOverlay {
     let next = i32::from(settings.scale_percent) + i32::from(delta);

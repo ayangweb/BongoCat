@@ -1,6 +1,31 @@
 //! The schema, its defaults, its bounds and its version gate.
 
 use super::*;
+
+#[test]
+fn window_mode_preserves_older_v1_documents_and_rejects_invalid_rgb() {
+    let mut old = serde_json::to_value(NativeConfig::default()).expect("config value");
+    old["overlay"]
+        .as_object_mut()
+        .unwrap()
+        .remove("window_mode");
+    old["overlay"]
+        .as_object_mut()
+        .unwrap()
+        .remove("window_background_color");
+    let config = parse_config(&serde_json::to_vec(&old).unwrap()).expect("older config");
+    assert!(!config.0.overlay.window_mode);
+    assert_eq!(config.0.overlay.window_background_color, [0, 255, 0]);
+    for rgb in [
+        serde_json::json!([256, 0, 0]),
+        serde_json::json!([-1, 0, 0]),
+        serde_json::json!([0, 255]),
+        serde_json::json!([0, 255, 0, 255]),
+    ] {
+        old["overlay"]["window_background_color"] = rgb;
+        assert!(parse_config(&serde_json::to_vec(&old).unwrap()).is_err());
+    }
+}
 use crate::{
     DEFAULT_HIDE_ON_IDLE_DELAY_SECONDS, MAXIMUM_MODEL_EXPRESSION_MEMORIES,
     MODEL_EXPRESSION_MEMORY_MAXIMUM_NAME_BYTES, ModelExpressionMemory,

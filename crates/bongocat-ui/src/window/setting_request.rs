@@ -24,6 +24,13 @@ impl SettingsView {
             cx.notify();
         }
         let client = self.client.clone();
+        #[cfg(target_os = "windows")]
+        let sent_window_background = match value.as_ref() {
+            Some(SettingValue::OverlaySettings { settings, .. }) => {
+                Some(settings.window_background_color)
+            }
+            _ => None,
+        };
         let sent_check_for_updates_interval = match value.as_ref() {
             Some(SettingValue::CheckForUpdatesIntervalHours { interval_hours, .. }) => {
                 Some(*interval_hours)
@@ -345,6 +352,17 @@ impl SettingsView {
                 let mut snapshot_changed = false;
                 if !is_refresh {
                     view.pending = None;
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    if result.is_ok()
+                        && let Some(color) = sent_window_background
+                    {
+                        view.window_background_debouncer.mark_sent(&color);
+                    }
+                    if view.window_background_debouncer.is_pending() {
+                        view.schedule_window_background_flush(cx);
+                    }
                 }
                 if result.is_ok()
                     && let Some(interval_hours) = sent_check_for_updates_interval

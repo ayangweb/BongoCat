@@ -48,6 +48,8 @@ updates
 | `appearance`  | `theme`                               | `system`、`light` 或 `dark`            |
 | `appearance`  | `language`                            | UI locale                              |
 | `overlay`     | `click_through`                       | 指针事件是否穿透                       |
+| `overlay`     | `window_mode`                         | Windows 普通窗口模式，默认 `false`；macOS 不应用 |
+| `overlay`     | `window_background_color`             | 窗口模式背景 RGB，三个 `0..=255` 字节，默认 `[0, 255, 0]` |
 | `overlay`     | `hold_modifier_to_interact`           | 按住即临时恢复交互的**物理**修饰键：`left_control`、`left_shift`、`left_alt`、`left_meta`、对应 `right_*`，或为 `null`（默认，无键） |
 | `overlay`     | `always_on_top`                       | 是否置顶                               |
 | `overlay`     | `scale_percent`                       | 模型/窗口缩放百分比                    |

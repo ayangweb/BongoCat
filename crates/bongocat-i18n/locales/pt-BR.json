@@ -342,6 +342,12 @@
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "Modo de janela"
+      },
+      "window_background_color": {
+        "label": "Cor de fundo da janela"
+      },
       "behavior": {
         "title": "Comportamento da janela"
       },

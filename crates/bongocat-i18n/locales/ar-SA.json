@@ -342,6 +342,12 @@
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "وضع النافذة"
+      },
+      "window_background_color": {
+        "label": "لون خلفية النافذة"
+      },
       "behavior": {
         "title": "سلوك النافذة"
       },

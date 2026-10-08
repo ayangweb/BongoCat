@@ -4,12 +4,14 @@
 
 ### ✨ Features
 
+- Added Windows window mode under Model window → Window behavior, with a normal title bar and a customizable solid background for OBS window capture and chroma keying. Desktop-pet preferences are restored when window mode is turned off.
 - Model folders can now contain multiple levels of nested folders. A single model imports directly; folders containing multiple models let you select which to import, then choose conversion modes as needed.
 - Added a "Model behavior → Allow overlapping motions" setting, off by default. Different motions can play together with independent timing and fades; newer starts blend over older motions on shared parameters, and motion audio still plays one clip at a time.
 - The Windows installer now asks which language to use and offers Simplified Chinese, Traditional Chinese, English, Arabic, Vietnamese, Brazilian Portuguese and Korean. The system language is preselected, with English as the fallback. The choice only changes the installer and uninstaller wizard; the app language is still decided in Settings. A computer that already has BongoCat installed keeps the installer language it stored earlier.
 
 ### 🐛 Bug Fixes
 
+- Fixed Windows model windows losing their proportions when changing scale, resizing, restoring saved geometry or switching models.
 - Fixed imported models that showed "The selected model could not be activated" when switching to them and only enabled after several attempts, even though they render correctly. Switching now succeeds on the first attempt.
 
 ## 2.2.0 - 2026-10-07

@@ -9,8 +9,6 @@
     "language": "system"
   },
   "overlay": {
-    "window_mode": false,
-    "window_background_color": [0, 255, 0],
     "click_through": false,
     "hold_modifier_to_interact": null,
     "always_on_top": true,
@@ -22,12 +20,18 @@
     "hide_on_idle": false,
     "hide_on_idle_delay_seconds": 10,
     "keep_inside_screen": true,
-    "maximum_fps": 60
+    "maximum_fps": 60,
+    "window_mode": true,
+    "window_background_color": [
+      255,
+      0,
+      255
+    ]
   },
   "input": {
     "gamepad": {
       "stick_dead_zone": 0.15,
-      "trigger_dead_zone": 0.0
+      "trigger_dead_zone": 0
     },
     "mouse": {
       "force_move": false
@@ -56,7 +60,6 @@
     },
     "remember_last_expression": false,
     "toggle_repeated_expression": false,
-    "allow_motion_overlap": false,
     "last_expressions": [],
     "behavior_names": []
   },

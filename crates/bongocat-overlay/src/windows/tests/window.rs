@@ -5,6 +5,54 @@ use super::*;
 use bongocat_runtime::OverlaySettings;
 
 #[test]
+fn window_mode_uses_model_client_size_when_switching_from_saved_pet_geometry() {
+    let canvas = CanvasInfo {
+        width: 2048.0,
+        height: 1188.0,
+        origin_x: 1024.0,
+        origin_y: 594.0,
+        pixels_per_unit: 1024.0,
+    };
+    let saved = OverlayWindowBounds::new(100, 100, 720, 308);
+    let pet = OverlayWindow::create(
+        OverlaySessionOptions::default(),
+        canvas,
+        Some(saved),
+        None,
+        None,
+    )
+    .unwrap();
+    let expected = crate::model_switch_window_bounds(saved, canvas);
+    assert_eq!(pet.bounds().unwrap(), expected);
+    for scale_percent in [25, 100, 200] {
+        let window = OverlayWindow::create(
+            OverlaySessionOptions {
+                window_mode: true,
+                scale_percent,
+                ..OverlaySessionOptions::default()
+            },
+            canvas,
+            Some(pet.bounds().unwrap()),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(window.bounds().unwrap(), expected);
+        // SAFETY: this test owns the HWND and reads both rectangles on its
+        // creation thread. The title bar/border must be outside the model size.
+        unsafe {
+            let frame = window_frame_rect(window.hwnd, expected.width, expected.height).unwrap();
+            let mut outer = RECT::default();
+            GetWindowRect(window.hwnd, &mut outer).unwrap();
+            assert_eq!(outer.right - outer.left, frame.right - frame.left);
+            assert_eq!(outer.bottom - outer.top, frame.bottom - frame.top);
+            assert!(outer.right - outer.left > expected.width as i32);
+            assert!(outer.bottom - outer.top > expected.height as i32);
+        }
+    }
+}
+
+#[test]
 fn overlay_window_class_supports_overlapping_replacement_windows() {
     let canvas = CanvasInfo {
         width: 2048.0,

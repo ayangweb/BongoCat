@@ -50,6 +50,18 @@ impl SettingsView {
             "navigation.settings.title",
         ));
         self.syncing_component_inputs = true;
+        #[cfg(target_os = "windows")]
+        self.window_background_color.update(cx, |picker, cx| {
+            let rgb = self
+                .window_background_debouncer
+                .pending_value()
+                .copied()
+                .unwrap_or(snapshot.overlay.window_background_color);
+            let color = super::window_mode::rgb_color(rgb);
+            if picker.value() != Some(color) {
+                picker.set_value(color, window, cx);
+            }
+        });
         self.language_select.update(cx, |select, cx| {
             select.set_items(
                 SearchableVec::new(
@@ -151,6 +163,25 @@ impl SettingsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        #[cfg(target_os = "windows")]
+        let window_background_color = cx.new(|cx| {
+            gpui_kit::component::color_picker::ColorPickerState::new(window, cx)
+                .default_value(super::window_mode::rgb_color([0, 255, 0]))
+        });
+        #[cfg(target_os = "windows")]
+        cx.subscribe_in(
+            &window_background_color,
+            window,
+            |view, _, event: &gpui_kit::component::color_picker::ColorPickerEvent, _, cx| {
+                let gpui_kit::component::color_picker::ColorPickerEvent::Change(Some(color)) =
+                    event
+                else {
+                    return;
+                };
+                view.set_window_background_color(*color, cx);
+            },
+        )
+        .detach();
         // Every component built here is seeded with the window's language for the same
         // reason as the frame itself: they are constructed before the first snapshot
         // exists, and a component built in the default language would be replaced —
@@ -312,6 +343,12 @@ impl SettingsView {
             .detach();
         }
         Self {
+            #[cfg(target_os = "windows")]
+            window_background_color,
+            #[cfg(target_os = "windows")]
+            window_background_debouncer: crate::SettingsPatchDebouncer::default(),
+            #[cfg(target_os = "windows")]
+            window_background_timer_generation: 0,
             client,
             seed,
             snapshot: None,

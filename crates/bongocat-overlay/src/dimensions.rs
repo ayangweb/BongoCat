@@ -19,12 +19,14 @@ pub(crate) fn cover_window_dimension(value: f64) -> u32 {
     ) as u32
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn model_window_height_for_width(canvas: CanvasInfo, width: u32) -> u32 {
     let canvas_width = canvas.width.max(MIN_OVERLAY_WINDOW_DIMENSION);
     let canvas_height = canvas.height.max(MIN_OVERLAY_WINDOW_DIMENSION);
     cover_window_dimension(f64::from(width) * f64::from(canvas_height) / f64::from(canvas_width))
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn model_window_dimensions(canvas: CanvasInfo, scale_percent: u16) -> (u32, u32) {
     let width = cover_window_dimension(
         f64::from(DEFAULT_OVERLAY_WINDOW_WIDTH) * f64::from(scale_percent) / 100.0,
@@ -33,6 +35,7 @@ pub(crate) fn model_window_dimensions(canvas: CanvasInfo, scale_percent: u16) ->
     (width, height)
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn default_overlay_window_dimensions(canvas: CanvasInfo) -> (u32, u32) {
     model_window_dimensions(canvas, 100)
 }

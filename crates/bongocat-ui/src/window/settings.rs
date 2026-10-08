@@ -186,6 +186,9 @@ impl SettingsView {
 
     #[cfg(target_os = "windows")]
     pub(super) fn set_taskbar_icon_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        if window_mode_active(self.snapshot.as_ref().map(|s| s.overlay)) {
+            return;
+        }
         let Some(expected_config_revision) = self
             .snapshot
             .as_ref()
@@ -510,6 +513,9 @@ impl SettingsView {
     }
 
     pub(super) fn set_overlay_opacity_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if window_mode_active(self.snapshot.as_ref().map(|s| s.overlay)) {
+            return;
+        }
         if self.model_import.is_running() {
             return;
         }
@@ -553,6 +559,9 @@ impl SettingsView {
     /// value is clamped to the range the configuration accepts: `0` keeps square
     /// corners and `50` is the full inscribed ellipse.
     pub(super) fn set_overlay_corner_radius_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if window_mode_active(self.snapshot.as_ref().map(|s| s.overlay)) {
+            return;
+        }
         if self.model_import.is_running() {
             return;
         }
@@ -599,6 +608,9 @@ impl SettingsView {
     /// UI-local number. The field is whole-second valued, so a fractional entry
     /// is rounded before it is compared with the current configuration.
     pub(super) fn set_overlay_hover_hide_delay_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if window_mode_active(self.snapshot.as_ref().map(|s| s.overlay)) {
+            return;
+        }
         if self.model_import.is_running() {
             return;
         }
@@ -650,6 +662,9 @@ impl SettingsView {
     /// fractional entry is rounded before it is compared with the current
     /// configuration.
     pub(super) fn set_overlay_idle_hide_delay_value(&mut self, raw: f64, cx: &mut Context<Self>) {
+        if window_mode_active(self.snapshot.as_ref().map(|s| s.overlay)) {
+            return;
+        }
         if self.model_import.is_running() {
             return;
         }

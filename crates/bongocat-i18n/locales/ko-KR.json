@@ -342,6 +342,12 @@
       }
     },
     "overlay": {
+      "window_mode": {
+        "label": "창 모드"
+      },
+      "window_background_color": {
+        "label": "창 배경색"
+      },
       "behavior": {
         "title": "창 동작"
       },

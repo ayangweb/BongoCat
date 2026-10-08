@@ -25,6 +25,21 @@ Rust 2024 edition application
 - Windows 只发布 `x86_64-pc-windows-msvc`，不构建或发布 x86 与原生 ARM64；Windows on ARM 通过系统 x64 仿真运行该构建。
 - GPUI 只负责常规设置 UI，不承担模型渲染。
 - 模型窗口由 Rust 平台模块直接创建和管理，与 GPUI 设置窗口共享同一应用生命周期。
+- Windows 模型窗口支持透明桌宠与普通窗口模式（ADR-0089）。普通窗口使用系统标题栏、等比例
+  resize 边框、最小化/关闭按钮和不透明 D3D11 HWND swap chain，支持窗口捕获。背景为用户选择的
+  RGB 纯色，默认绿色；模型自带背景和绘制层次保持不变。模式与背景通过既有 revision-checked
+  overlay command 持久化，缺失新字段的 v1 数据仍按桌宠默认启动，macOS 不应用这两项。
+  普通窗口暂停点击穿透、悬停/空闲隐藏、不透明度及圆角裁剪，不改写桌宠偏好。关闭隐藏模型窗口，
+  不提前销毁 renderer 的 HWND；客户区几何用于 renderer 和持久化，最小化不写入 shell 的占位坐标。
+  Windows 两种呈现共用客户区尺寸规则，保留未取整的模型画布宽高。数字及手势缩放按当前 DPI、
+  100% 时 350 逻辑像素的基准宽度计算绝对尺寸；恢复、模式和模型切换保留客户区宽度，再按
+  画布推导高度。尺寸上下限统一作用于比例，不分别截断两轴；系统边框在最后计算。原生尺寸
+  变更及 DPI 建议矩形同样经过该规则，避免系统标题栏最小宽度再单独改动一轴。renderer 跟随
+  实测客户区尺寸，最小化期间更新恢复几何；边框拖动回写的百分比再次应用时不叠加缩放。
+  只有实际改变客户区尺寸的系统 resize 操作回写缩放；移动窗口（包括跨屏 DPI 调整）、未改变
+  尺寸或取消的 resize 不回写缩放，不把恢复的窗口几何误当作新缩放比例。
+  模型切换在原 HWND 上 prepare/validate/commit，失败保留当前可捕获模型；改变颜色、缩放和置顶
+  同样不替换捕获目标。模式切换需要重建对应呈现资源。
 - Windows 使用 D3D11，macOS 使用 Metal；首发不为了未来 Linux 强行统一 GPU backend。
 - Windows 键鼠输入优先评估成熟输入库；若没有方案能同时满足事件边缘完整性、系统状态校正、
   Raw Input 设备语义和已确认的生命周期复位不变量，则直接使用 `windows-rs` 实现最小适配层，
@@ -238,7 +253,8 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   它在任务栏里的按钮没有用户可操作的对应窗口，而设置窗口才是可用的任务栏入口，因此默认
   不额外占用一个任务栏位置。设置窗口始终保留 GPUI 创建时带的任务栏按钮与原生标题栏：
   给它套上 `WS_EX_TOOLWINDOW` 会连标题栏一起换成工具窗口的短标题栏，因此产品不写它的
-  扩展样式。该偏好只切换模型窗口的 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW`。
+  扩展样式。该偏好在桌宠模式切换模型窗口的 `WS_EX_APPWINDOW`/`WS_EX_TOOLWINDOW`；普通窗口模式
+  固定使用 `WS_EX_APPWINDOW`，以保留普通标题栏和可恢复的任务栏入口，原偏好不被重写。
   settings worker 通过独立的有界 request/reply bridge 请求主线程在 overlay 会话上应用并回读，
   平台成功后才由 Application owner 按 expected revision 原子提交；配置提交失败时恢复旧值。
   启动必须把当前 v1 值写进 overlay 会话选项，模型切换重建 HWND 时沿用会话记录的应用值，
@@ -665,11 +681,12 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 ### 10.1 Windows
 
 - 应用：GPUI/Win32 主事件循环，单实例使用 named mutex + 唤醒消息。
-- Overlay：Win32 透明无边框 popup；无已保存 bounds 时以 `350px` 作为 `100%` 的默认逻辑
-  宽度，高度按 Cubism Core 返回的当前模型 Canvas 宽高比自适应，两者再应用缩放
-  设置；已保存 bounds 优先，需要资源重建的设置/模型切换时重建窗口，普通 scale/opacity
-  更新在现有窗口上完成；非 click-through 模式的
-  客户区支持拖动，click-through 仍返回 `HTTRANSPARENT`。右键拖动缩放窗口：位移越过
+- Overlay：透明桌宠用 Win32 无边框 popup，普通窗口使用系统标题栏与 resize 边框（ADR-0089）。
+  无已保存 bounds 时以 `350px` 作为 `100%` 的默认逻辑宽度，再应用当前 DPI 与缩放；高度按
+  Cubism Core 返回的模型 Canvas 宽高比推导。恢复保存位置时保留客户区宽度并校正高度。
+  只有呈现模式切换重建窗口资源；桌宠模式切换模型仍重建窗口，普通窗口切换模型保留 HWND。
+  scale/opacity、圆角和屏幕约束设置在现有窗口上更新。桌宠非 click-through 模式的
+  客户区支持拖动，click-through 仍返回 `HTTRANSPARENT`。桌宠右键拖动缩放窗口：位移越过
   `3px` 后按 `(dx + dy) * 0.5` 改 `overlay.scale_percent`（钳制在 `25–400`），窗口左上角
   不动，尺寸逐帧经 `IDXGISwapChain1::ResizeBuffers` 与就地重建的 render target、staging
   纹理、mask target 生效（不重建窗口、不重载模型纹理），松手后缩放写回配置（ADR-0057）。
@@ -680,7 +697,8 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   才移回显示器内，期间任何被观测到的位移都重新计时，因此跨显示器拖拽不会被打断。约束缓存最多
   `500ms` 复用一次放置检查，显示器变化（含拔掉外接屏）在静止窗口下也会被重新评估并纠正。关闭时
   不执行该收敛，但完全离开现存显示器的持久化 bounds 仍按 state 恢复规则回退。
-- Renderer：D3D11 + DXGI + DirectComposition/DWM，预乘 alpha。
+- Renderer：D3D11 + DXGI；桌宠使用 DirectComposition/DWM 与预乘 alpha，普通窗口使用
+  不透明 HWND blt swap chain，同时支持 OBS BitBlt 与 Windows Graphics Capture。
 - DPI：Per-Monitor-V2，处理 `WM_DPICHANGED`、显示器热插拔和负坐标。
 - 输入：Raw Input、状态校正、可选低级 hook、gilrs/WGI 手柄。
 - 产品图标：`bongocat-app` 在构建期把 BongoCat 自有 `.ico` 编译进 Windows executable，用于窗口、
@@ -949,9 +967,10 @@ DirectComposition 对最终 surface 的显示转换不同，因此同一组 enco
 圆角比垂直圆角更大；`0` 保持直角，`50` 时四条弧线相接、内容被裁剪为窗口的内切椭圆。renderer
 在片元着色器中按 drawable 像素位置求该椭圆的 coverage，并把它乘进每次绘制的 alpha，因此圆角
 只改变窗口边缘的合成结果，不改变 `RenderSnapshot`、模型资源、绘制顺序或 blend 模式。该值只
-作用于 overlay 窗口；GPUI 设置窗口和其他产品窗口保持各自的平台边框。改变圆角与改变屏幕范围约束
-仍需要重建原生窗口资源；缩放通过现有窗口与 renderer 原地调整，不透明度则更新最终 surface 的
-presentation alpha，二者都不应因为设置变化替换 HWND/NSPanel。
+作用于 overlay 窗口；GPUI 设置窗口和其他产品窗口保持各自的平台边框。Windows 圆角与屏幕范围约束
+在现有窗口上更新，普通窗口模式暂停圆角裁剪；macOS 改变这两项仍重建原生窗口资源。缩放通过
+现有窗口与 renderer 原地调整，不透明度则更新最终 surface 的 presentation alpha，二者都不应
+因为设置变化替换 HWND/NSPanel。
 
 指针悬停隐藏是 overlay 窗口的临时呈现状态，不是窗口可见性。`overlay.hide_on_pointer_hover`
 开启时，指针进入 overlay 窗口矩形并停留 `overlay.hide_on_pointer_hover_delay_seconds` 之后，owner 把
