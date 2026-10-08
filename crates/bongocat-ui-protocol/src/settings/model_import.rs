@@ -98,7 +98,20 @@ pub enum SettingsModelMode {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SettingsModelSourceContent {
     Package,
-    Mver { modes: Vec<SettingsMverMode> },
+    Mver {
+        modes: Vec<SettingsMverMode>,
+    },
+    /// Model roots discovered below the selected folder, in relative-path order.
+    Folder {
+        models: Vec<SettingsModelSourceCandidate>,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SettingsModelSourceCandidate {
+    pub source_root: PathBuf,
+    /// A path relative to the selected folder, to disambiguate repeated names.
+    pub label: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

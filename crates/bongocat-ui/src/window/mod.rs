@@ -12,11 +12,11 @@ use crate::{
     SettingsModelBehaviorName, SettingsModelDiagnostic, SettingsModelEntry,
     SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
     SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
-    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, SettingsOverlay,
-    SettingsRandomBehavior, SettingsRandomBehaviorMode, SettingsRuntimeErrorCode,
-    SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState,
-    SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason, SettingsTheme,
-    SettingsWindowPlacement, SettingsWindowState,
+    SettingsModelSourceCandidate, SettingsModelSourceContent, SettingsMverMode,
+    SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode,
+    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
+    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
+    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{
@@ -76,6 +76,7 @@ use hold_modifier::hold_modifier_row;
 mod import;
 mod model_import_card;
 mod model_mver_dialog;
+mod model_selection;
 mod mver;
 mod row;
 mod source;

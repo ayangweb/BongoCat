@@ -119,6 +119,9 @@
     "import": {
       "success": "모델 가져오기가 완료되었습니다",
       "failed": "모델을 가져오지 못했습니다",
+      "selection_dialog": {
+        "title": "모델 선택"
+      },
       "mver_dialog": {
         "title": "변환할 모드 선택",
         "description": "가져올 BongoCat Mver 모드를 선택하세요.",

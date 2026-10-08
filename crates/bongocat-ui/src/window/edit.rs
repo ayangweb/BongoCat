@@ -272,10 +272,11 @@ impl SettingsView {
             if self.pending_model_reveal.is_empty()
                 && matches!(self.model_import.state, ModelImportState::Capturing)
             {
-                self.model_import.reset();
+                self.model_import.finish_current();
                 if captured {
                     self.model_import_success_pending = true;
                 }
+                self.advance_model_import_queue(cx);
             }
         } else if matches!(
             self.model_import.state,

@@ -333,3 +333,59 @@ fn every_model_store_delete_diagnostic_has_a_stable_ui_code() {
         );
     }
 }
+
+#[test]
+fn service_discovers_nested_candidates_and_reuses_the_existing_import_command() {
+    let base = tempdir().expect("storage");
+    let layout = StorageLayout::under(base.path(), crate::BUILD_ENVIRONMENT);
+    let application = Application::start_with_layout(layout).expect("start");
+    let service = ApplicationSettingsService::start(application).expect("service");
+    let client = service.client();
+    let sources = tempdir().expect("collection");
+    copy_model_fixture_tree(&model_fixture(), &sources.path().join("a/猫"));
+    copy_model_fixture_tree(&model_fixture(), &sources.path().join("b/猫"));
+    let content = client
+        .inspect_model_source_blocking(sources.path().to_owned())
+        .expect("discover");
+    let bongocat_ui_protocol::SettingsModelSourceContent::Folder { models } = content else {
+        panic!("nested folder");
+    };
+    assert_eq!(
+        models
+            .iter()
+            .map(|model| model.label.clone())
+            .collect::<Vec<_>>(),
+        ["a", "b"].map(|parent| std::path::PathBuf::from(parent)
+            .join("猫")
+            .to_string_lossy()
+            .into_owned())
+    );
+    for model in &models {
+        assert_eq!(
+            client
+                .inspect_model_source_blocking(model.source_root.clone())
+                .unwrap(),
+            bongocat_ui_protocol::SettingsModelSourceContent::Package
+        );
+        client
+            .import_model_blocking(SettingsModelImportRequest {
+                title: "猫".to_owned(),
+                source_root: model.source_root.clone(),
+                selected_mver_modes: Vec::new(),
+            })
+            .expect("independent import");
+    }
+    let snapshot = client.read_snapshot_blocking().unwrap();
+    let imported = snapshot
+        .model_catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.origin == SettingsModelOrigin::Imported)
+        .collect::<Vec<_>>();
+    assert_eq!(imported.len(), 2);
+    assert_ne!(imported[0].id, imported[1].id);
+    assert!(imported.iter().all(|entry| entry.title == "猫"));
+    assert!(snapshot.active_model.is_none());
+    client.shutdown_blocking().unwrap();
+    service.join().unwrap();
+}

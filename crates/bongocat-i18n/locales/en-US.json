@@ -119,6 +119,9 @@
     "import": {
       "success": "Model import completed",
       "failed": "Model import failed",
+      "selection_dialog": {
+        "title": "Select models"
+      },
       "mver_dialog": {
         "title": "Choose modes to convert",
         "description": "Select the BongoCat Mver modes to import.",

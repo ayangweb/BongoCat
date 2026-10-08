@@ -119,6 +119,9 @@
     "import": {
       "success": "模型导入完成",
       "failed": "模型导入失败",
+      "selection_dialog": {
+        "title": "选择模型"
+      },
       "mver_dialog": {
         "title": "选择要转换的模式",
         "description": "请选择需要导入的 BongoCat Mver 模式。",

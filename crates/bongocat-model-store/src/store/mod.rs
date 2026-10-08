@@ -10,6 +10,7 @@
 mod catalog;
 mod copy;
 mod diagnostic;
+mod discovery;
 mod input_mode;
 mod progress;
 mod staging;
@@ -46,6 +47,7 @@ use std::{
 // already bring the rest of these modules' items into scope here and below.
 pub use catalog::InstalledModelCatalog;
 pub use diagnostic::{ModelStoreDiagnostic, ModelStoreError};
+pub use discovery::ModelSourceCandidate;
 pub use input_mode::ModelStoreInputMode;
 pub use progress::{ModelImportProgress, ModelImportStage};
 pub use staging::ModelStoreRecovery;

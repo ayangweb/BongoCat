@@ -129,6 +129,7 @@ fn source_key_images(source: &Path) -> std::collections::BTreeMap<(String, Strin
 mod catalog;
 mod copy;
 mod diagnostic;
+mod discovery;
 mod input_mode;
 mod progress;
 mod root;
