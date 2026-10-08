@@ -6,6 +6,10 @@
 
 - The Windows installer now asks which language to use and offers Simplified Chinese, Traditional Chinese, English, Arabic, Vietnamese, Brazilian Portuguese and Korean. The system language is preselected, with English as the fallback. The choice only changes the installer and uninstaller wizard; the app language is still decided in Settings. A computer that already has BongoCat installed keeps the installer language it stored earlier.
 
+### 🐛 Bug Fixes
+
+- Fixed imported models that showed "The selected model could not be activated" when switching to them and only enabled after several attempts, even though they render correctly. Switching now succeeds on the first attempt.
+
 ## 2.2.0 - 2026-10-07
 
 ### ✨ Features
