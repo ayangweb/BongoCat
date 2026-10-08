@@ -119,6 +119,9 @@
     "import": {
       "success": "Đã nhập mô hình",
       "failed": "Nhập mô hình thất bại",
+      "selection_dialog": {
+        "title": "Chọn mô hình"
+      },
       "mver_dialog": {
         "title": "Chọn chế độ cần chuyển đổi",
         "description": "Chọn các chế độ BongoCat Mver cần nhập.",

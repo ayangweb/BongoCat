@@ -20,6 +20,6 @@ pub use mver::{
 };
 pub use preset_covers::{PresetCoverStore, preset_cover_exists};
 pub use store::{
-    InstalledModelCatalog, ModelImportProgress, ModelImportStage, ModelStore, ModelStoreDiagnostic,
-    ModelStoreError, ModelStoreInputMode, ModelStoreRecovery,
+    InstalledModelCatalog, ModelImportProgress, ModelImportStage, ModelSourceCandidate, ModelStore,
+    ModelStoreDiagnostic, ModelStoreError, ModelStoreInputMode, ModelStoreRecovery,
 };

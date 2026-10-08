@@ -66,7 +66,8 @@ impl SettingsView {
                     view.observe_model_import(operation, cx);
                 }
                 Err(error) => {
-                    view.model_import.mver_mode_dialog = None;
+                    view.model_import.finish_current();
+                    view.advance_model_import_queue(cx);
                     view.pending_notification = Some(error);
                     cx.notify();
                 }
@@ -104,6 +105,7 @@ impl SettingsView {
                         }
                         if view.begin_model_reveal() {
                             view.model_import_success_pending = true;
+                            view.advance_model_import_queue(cx);
                         }
                     }
                     // Nothing was installed: the card goes back to its prompt
@@ -112,7 +114,8 @@ impl SettingsView {
                         view.model_import.reset();
                     }
                     Err(error) => {
-                        view.model_import.reset();
+                        view.model_import.finish_current();
+                        view.advance_model_import_queue(cx);
                         view.pending_notification = Some(error);
                     }
                 }
@@ -147,6 +150,7 @@ impl SettingsView {
 
 impl SettingsView {
     pub(super) fn cancel_model_import(&mut self, cx: &mut Context<Self>) {
+        self.model_import.queued_sources.clear();
         match &mut self.model_import.state {
             ModelImportState::Starting { cancel_requested } => {
                 *cancel_requested = true;

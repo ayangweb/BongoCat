@@ -400,3 +400,294 @@ fn the_suggested_title_is_the_chosen_folders_own_name() {
     // back to the placeholder the service also uses.
     assert_eq!(suggested_model_title(&PathBuf::from("/")), "custom-model");
 }
+
+fn nested_candidate(label: &str) -> SettingsModelSourceCandidate {
+    SettingsModelSourceCandidate {
+        source_root: PathBuf::from("/selected").join(label),
+        label: label.to_owned(),
+    }
+}
+
+#[gpui_kit::test]
+fn a_single_nested_model_skips_selection_and_is_reinspected(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let model = nested_candidate("one/deep/猫");
+    view.update(visual, |view, cx| {
+        view.model_import.source_root = Some(PathBuf::from("/selected"));
+        view.apply_model_source_content(
+            SettingsModelSourceContent::Folder {
+                models: vec![model.clone()],
+            },
+            cx,
+        );
+        assert!(view.model_import.model_selection_dialog.is_none());
+        assert_eq!(view.model_import.title, "猫");
+        assert!(view.model_import.queued_sources.is_empty());
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::InspectModelSource { source_root, reply } =
+        endpoint.try_recv().unwrap()
+    else {
+        panic!("inspection");
+    };
+    assert_eq!(source_root, model.source_root);
+    reply
+        .respond(Ok(SettingsModelSourceContent::Package))
+        .unwrap();
+    visual.run_until_parked();
+    let crate::SettingsCommand::ImportModel { request, .. } = endpoint.try_recv().unwrap() else {
+        panic!("import");
+    };
+    assert_eq!(request.source_root, model.source_root);
+    assert_eq!(request.title, "猫");
+    assert!(request.selected_mver_modes.is_empty());
+}
+
+#[gpui_kit::test]
+fn model_selection_survives_render_and_empty_selection_cannot_start_a_run(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    view.update(visual, |view, cx| {
+        view.model_import.source_root = Some(PathBuf::from("/selected"));
+        view.model_import.title = "Collection".to_owned();
+        view.apply_model_source_content(
+            SettingsModelSourceContent::Folder {
+                models: vec![nested_candidate("a/猫"), nested_candidate("b/猫")],
+            },
+            cx,
+        );
+        assert!(!view.model_source_command_available());
+        view.confirm_model_selection(Vec::new(), cx);
+        assert!(view.model_import.model_selection_dialog.is_some());
+        cx.notify();
+    });
+    visual.run_until_parked();
+    visual.update(|window, cx| assert!(window.has_active_dialog(cx)));
+    // Checkboxes are controlled across Root's repeated render; clearing every
+    // option also blocks Enter, not just the visible footer button.
+    // Dialog's slide-in uses frame time; settle it before pointer hit testing.
+    std::thread::sleep(Duration::from_millis(200));
+    for index in 0usize..2 {
+        visual.update(|window, cx| window.click(("import-choice", index), cx));
+        visual.run_until_parked();
+        view.read_with(visual, |view, _| {
+            assert!(
+                !view
+                    .model_import
+                    .model_selection_dialog
+                    .as_ref()
+                    .expect("dialog remains open")
+                    .checked
+                    .contains(&index),
+                "checkbox {index} must clear"
+            );
+        });
+    }
+    visual.simulate_keystrokes("enter");
+    visual.run_until_parked();
+    visual.update(|window, cx| assert!(window.has_active_dialog(cx)));
+    assert!(endpoint.try_recv().is_err());
+    visual.simulate_keystrokes("escape");
+    visual.run_until_parked();
+    view.read_with(visual, |view, _| {
+        assert!(view.model_import.model_selection_dialog.is_none());
+        assert!(view.model_import.queued_sources.is_empty());
+        assert!(view.model_source_command_available());
+    });
+}
+
+#[gpui_kit::test]
+fn selected_models_run_in_display_order_and_mver_modes_gate_the_next_import(
+    cx: &mut TestAppContext,
+) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let first = nested_candidate("a/ordinary");
+    let second = nested_candidate("b/legacy");
+    view.update(visual, |view, cx| {
+        view.model_import.source_root = Some(PathBuf::from("/selected"));
+        view.apply_model_source_content(
+            SettingsModelSourceContent::Folder {
+                models: vec![first.clone(), nested_candidate("ignored"), second.clone()],
+            },
+            cx,
+        );
+        view.confirm_model_selection(vec![2, 0, 2, 99], cx);
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::InspectModelSource { source_root, reply } =
+        endpoint.try_recv().unwrap()
+    else {
+        panic!("first inspection");
+    };
+    assert_eq!(source_root, first.source_root);
+    reply
+        .respond(Ok(SettingsModelSourceContent::Package))
+        .unwrap();
+    visual.run_until_parked();
+    let crate::SettingsCommand::ImportModel { request, reply, .. } = endpoint.try_recv().unwrap()
+    else {
+        panic!("first import");
+    };
+    assert_eq!(request.source_root, first.source_root);
+    assert!(
+        endpoint.try_recv().is_err(),
+        "next source must wait for import"
+    );
+    // The second independent source can still import if the first fails.
+    reply
+        .respond(Err(SettingsError::new(
+            SettingsErrorCode::ModelImportFailed,
+        )))
+        .unwrap();
+    visual.run_until_parked();
+    let crate::SettingsCommand::InspectModelSource { source_root, reply } =
+        endpoint.try_recv().unwrap()
+    else {
+        panic!("second inspection");
+    };
+    assert_eq!(source_root, second.source_root);
+    reply
+        .respond(Ok(SettingsModelSourceContent::Mver {
+            modes: vec![SettingsMverMode::Standard, SettingsMverMode::Keyboard],
+        }))
+        .unwrap();
+    visual.run_until_parked();
+    view.read_with(visual, |view, _| {
+        assert!(view.model_import.mver_mode_dialog.is_some())
+    });
+    assert!(
+        endpoint.try_recv().is_err(),
+        "legacy import waits for mode confirmation"
+    );
+    view.update(visual, |view, cx| {
+        view.confirm_mver_mode_import(vec![SettingsMverMode::Keyboard], cx)
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::ImportModel { request, .. } = endpoint.try_recv().unwrap() else {
+        panic!("legacy import");
+    };
+    assert_eq!(request.source_root, second.source_root);
+    assert_eq!(request.selected_mver_modes, [SettingsMverMode::Keyboard]);
+}
+
+#[gpui_kit::test]
+fn queued_sources_wait_for_cover_capture_and_cancel_discards_the_queue(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    let model = settings_model_key("new-model", SettingsModelOrigin::Imported);
+    let next = nested_candidate("next");
+    view.update(visual, |view, cx| {
+        view.model_import.state = ModelImportState::Capturing;
+        view.model_import.queued_sources.push_back(next.clone());
+        view.pending_model_reveal
+            .insert(ModelRowKey::new(model.origin, &model.id));
+        assert!(!view.model_source_command_available());
+        view.finish_model_cover_capture(&model, true, cx);
+    });
+    visual.run_until_parked();
+    let crate::SettingsCommand::InspectModelSource { source_root, .. } =
+        endpoint.try_recv().unwrap()
+    else {
+        panic!("advance after capture");
+    };
+    assert_eq!(source_root, next.source_root);
+    view.update(visual, |view, cx| {
+        view.model_import.state = ModelImportState::Starting {
+            cancel_requested: false,
+        };
+        view.model_import
+            .queued_sources
+            .push_back(nested_candidate("later"));
+        view.cancel_model_import(cx);
+        assert!(view.model_import.queued_sources.is_empty());
+        assert!(matches!(
+            view.model_import.state,
+            ModelImportState::Starting {
+                cancel_requested: true
+            }
+        ));
+        view.model_import
+            .queued_sources
+            .push_back(nested_candidate("later"));
+        view.cancel_mver_mode_dialog(cx);
+        assert!(view.model_import.queued_sources.is_empty());
+        assert!(view.model_source_command_available());
+    });
+}
+
+#[gpui_kit::test]
+fn a_long_model_selection_keeps_its_footer_inside_a_small_window(cx: &mut TestAppContext) {
+    let (view, visual, _endpoint) = settings_view_with_endpoint(cx);
+    visual.simulate_resize(size(px(800.), px(600.)));
+    view.update(visual, |view, cx| {
+        view.model_import.title = "Collection".to_owned();
+        view.apply_model_source_content(
+            SettingsModelSourceContent::Folder {
+                models: (0..80)
+                    .map(|index| nested_candidate(&format!("{index:03}/deeply-nested-model-name")))
+                    .collect(),
+            },
+            cx,
+        );
+        cx.notify();
+    });
+    visual.run_until_parked();
+    std::thread::sleep(Duration::from_millis(200));
+    visual.update(|window, cx| window.render_frame(cx));
+    let confirm = rendered_bounds(visual, "import-choice-confirm".into());
+    let cancel = rendered_bounds(visual, "import-choice-cancel".into());
+    for bounds in [confirm, cancel] {
+        assert!(
+            bounds.origin.y >= px(0.) && bounds.bottom() <= px(600.),
+            "footer {bounds:?} must fit"
+        );
+        assert!(
+            bounds.origin.x >= px(0.) && bounds.right() <= px(800.),
+            "footer {bounds:?} must fit"
+        );
+    }
+    assert!(
+        rendered_bounds(visual, ("import-choice", 79usize).into())
+            .origin
+            .y
+            > confirm.origin.y,
+        "a long list must scroll instead of growing the dialog"
+    );
+}
+
+#[gpui_kit::test]
+fn the_shared_dialog_preserves_mver_checks_until_confirmation(cx: &mut TestAppContext) {
+    let (view, visual, endpoint) = settings_view_with_endpoint(cx);
+    view.update(visual, |view, cx| {
+        view.model_import.title = "legacy".to_owned();
+        view.model_import.source_root = Some(PathBuf::from("/selected/legacy"));
+        view.apply_model_source_content(
+            SettingsModelSourceContent::Mver {
+                modes: vec![SettingsMverMode::Standard, SettingsMverMode::Keyboard],
+            },
+            cx,
+        );
+        cx.notify();
+    });
+    visual.run_until_parked();
+    std::thread::sleep(Duration::from_millis(200));
+    visual.update(|window, cx| window.click(("import-choice", 1usize), cx));
+    visual.run_until_parked();
+    view.read_with(visual, |view, _| {
+        assert_eq!(
+            view.model_import
+                .mver_mode_dialog
+                .as_ref()
+                .unwrap()
+                .checked_in_order(),
+            [SettingsMverMode::Standard, SettingsMverMode::Keyboard]
+        );
+    });
+    visual.update(|window, cx| window.click("import-choice-confirm", cx));
+    visual.run_until_parked();
+    let crate::SettingsCommand::ImportModel { request, .. } = endpoint.try_recv().unwrap() else {
+        panic!("confirmed import");
+    };
+    assert_eq!(
+        request.selected_mver_modes,
+        [SettingsMverMode::Standard, SettingsMverMode::Keyboard]
+    );
+}

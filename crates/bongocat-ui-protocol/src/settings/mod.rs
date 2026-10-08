@@ -56,8 +56,8 @@ pub use model_diagnostic::{SettingsModelCatalogError, SettingsModelDiagnostic};
 pub use model_import::{
     SettingsModelImportControl, SettingsModelImportFinalResult, SettingsModelImportMonitor,
     SettingsModelImportOperation, SettingsModelImportProgress, SettingsModelImportRequest,
-    SettingsModelImportStage, SettingsModelMode, SettingsModelSourceContent, SettingsMverMode,
-    SettingsOperationId, model_source_display_name,
+    SettingsModelImportStage, SettingsModelMode, SettingsModelSourceCandidate,
+    SettingsModelSourceContent, SettingsMverMode, SettingsOperationId, model_source_display_name,
 };
 pub use runtime::{
     RuntimeHealth, SettingsRuntimeCommandFailure, SettingsRuntimeCommandTransportDiagnostics,

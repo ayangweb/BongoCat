@@ -119,6 +119,9 @@
     "import": {
       "success": "اكتمل استيراد النموذج",
       "failed": "فشل استيراد النموذج",
+      "selection_dialog": {
+        "title": "اختر النماذج"
+      },
       "mver_dialog": {
         "title": "اختر الأوضاع المراد تحويلها",
         "description": "حدّد أوضاع BongoCat Mver المراد استيرادها.",

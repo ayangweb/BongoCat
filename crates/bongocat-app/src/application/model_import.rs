@@ -141,6 +141,33 @@ impl Application {
         &self,
         source_root: impl AsRef<Path>,
     ) -> Result<bongocat_ui_protocol::SettingsModelSourceContent, ApplicationError> {
+        let source_root = source_root.as_ref();
+        let candidates = self
+            .model_store
+            .discover_sources(source_root)
+            .map_err(ApplicationError::ModelStore)?;
+        if candidates.len() == 1 && candidates[0].relative_path.as_os_str().is_empty() {
+            return Ok(settings_model_source_content(
+                candidates
+                    .into_iter()
+                    .next()
+                    .expect("one candidate")
+                    .content,
+            ));
+        }
+        if !candidates.is_empty() {
+            return Ok(bongocat_ui_protocol::SettingsModelSourceContent::Folder {
+                models: candidates
+                    .into_iter()
+                    .map(
+                        |candidate| bongocat_ui_protocol::SettingsModelSourceCandidate {
+                            label: candidate.relative_path.to_string_lossy().into_owned(),
+                            source_root: candidate.source_root,
+                        },
+                    )
+                    .collect(),
+            });
+        }
         self.model_store
             .inspect_source(source_root)
             .map(settings_model_source_content)
