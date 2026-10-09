@@ -430,12 +430,14 @@ impl WindowState {
             RawInputPacket::Keyboard(packet) => {
                 let Some(key) = map_scan_code(packet.make_code, packet.flags) else {
                     self.diagnostics.unmapped_keys =
-                        self.diagnostics.unmapped_keys.saturating_add(1);
+                        self.diagnostics.unmapped_keys.saturating_add(1);    
                     // An unknown scan code cannot be reconciled through a
                     // reliable virtual-key query. Reset the captured state
                     // before accepting later edges so it cannot leave a
                     // pressed control latched indefinitely.
-                    self.enqueue(CapturedEvent::Reset(InputResetReason::ServiceRestart));
+                    if packet.make_code != 0 {
+                        self.enqueue(CapturedEvent::Reset(InputResetReason::ServiceRestart));
+                    }
                     return;
                 };
                 let edge = if packet.flags & RI_KEY_BREAK == 0 {
@@ -1888,6 +1890,35 @@ mod tests {
 
         runtime.shutdown(TIMEOUT).expect("runtime stop");
     }
+    #[test]
+    fn zero_scan_code_is_ignored_without_a_state_reset() {
+        const TIMEOUT: Duration = Duration::from_secs(2);
+        let runtime = RuntimeOwner::start(true, 64);
+        let client = runtime.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let mut state = WindowState::new(
+            runtime.input_producer(),
+            runtime.cursor_producer(),
+            runtime.gamepad_axis_producer(),
+            runtime.platform_input_diagnostics_producer(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
+            WorkerOptions::default(),
+        );
+        // Non-keyboard HID devices (e.g. a gamepad keyboard collection) send
+        // reports with no PS/2 scan code and a reserved virtual key.
+        state.capture_raw_input(RawInputPacket::Keyboard(RawKeyboardPacket {
+            make_code: 0,
+            flags: 0,
+            virtual_key: 0xd3,
+        }));
+        assert_eq!(state.diagnostics.unmapped_keys, 1);
+        // It is counted and dropped, but must not trigger a state reset.
+        assert!(state.queue.is_empty());
+        runtime.shutdown(TIMEOUT).expect("runtime stop");
+    }
+
 
     #[test]
     #[ignore = "requires a Windows interactive input desktop"]
