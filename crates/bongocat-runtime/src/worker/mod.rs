@@ -398,6 +398,9 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             InputEvent::GamepadDisconnected { connection, .. } => Some(*connection),
                             _ => None,
                         };
+                        let connection_already_active = connected.is_some_and(|(connection, _)| {
+                            input_state.is_gamepad_connected(connection)
+                        });
                         let disposition = input_state.apply(envelope);
                         if input_reset {
                             gamepad_axis_values.clear();
@@ -405,6 +408,7 @@ pub(crate) fn run_worker(receiver: Receiver<CommandEnvelope>, bootstrap: Runtime
                             gamepad_axis_values.clear_connection(connection);
                         }
                         if let Some((connection, at)) = connected
+                            && !connection_already_active
                             && matches!(
                                 disposition,
                                 InputDisposition::Applied

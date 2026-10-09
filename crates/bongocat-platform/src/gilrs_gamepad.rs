@@ -8,6 +8,7 @@ use gilrs::{
     Axis, Button, EventType, Filter, GamepadId, Gilrs, GilrsBuilder,
     ev::filter::axis_dpad_to_button,
 };
+use rusty_xinput::{XInputHandle, XInputState};
 use std::{
     collections::{BTreeMap, BTreeSet},
     panic::{AssertUnwindSafe, catch_unwind},
@@ -17,7 +18,7 @@ const MAX_GAMEPADS: usize = 4;
 const MAX_EVENTS_PER_DRAIN: usize = 256;
 const AXIS_TO_BUTTON_PRESSED: f32 = 0.5 + f32::EPSILON;
 const AXIS_TO_BUTTON_RELEASED: f32 = 0.5;
-
+const REANNOUNCE_INTERVAL_DRAINS: u32 = 64; // 约 1 秒（16ms/drain）
 /// Owns the third-party gamepad context and translates it into BongoCat's
 /// platform-neutral input protocol. No gilrs type crosses this module boundary.
 pub(crate) struct GilrsGamepad {
@@ -29,7 +30,15 @@ pub(crate) struct GilrsGamepad {
     connections: ConnectionTable,
     backend_ids: BTreeMap<usize, GamepadId>,
     pressed_triggers: BTreeSet<(usize, GamepadButton)>,
+    /// Loaded XInput used to poll Xbox controllers; unlike the WGI mapped
+    /// reading, `XInputGetState` keeps returning values without a focused window.
+    xinput_handle: Option<XInputHandle>,
+    /// Per-XInput-slot state, keyed by the XInput user index (0..4).
+    xinput_slots: BTreeMap<u32, XinputSlotState>,
+    /// Counts drains to drive the periodic connection re-announce safety net.
+    drain_tick: u32,
 }
+
 
 pub(crate) struct GilrsShutdown {
     pub(crate) disconnected: u64,
@@ -53,6 +62,11 @@ impl GilrsGamepad {
         }))
         .ok()
         .flatten();
+        // Loading XInput only adds an Xbox fallback; a missing DLL disables just
+        // that path and must not stop keyboard/mouse or the other gamepads.
+        let xinput_handle = catch_unwind(AssertUnwindSafe(XInputHandle::load_default))
+            .ok()
+            .and_then(|result| result.ok());
         Self {
             gilrs,
             backend_failure_reported: false,
@@ -62,6 +76,9 @@ impl GilrsGamepad {
             connections: ConnectionTable::new(),
             backend_ids: BTreeMap::new(),
             pressed_triggers: BTreeSet::new(),
+            xinput_handle,
+            xinput_slots: BTreeMap::new(),
+            drain_tick: 0,
         }
     }
 
@@ -105,9 +122,15 @@ impl GilrsGamepad {
             }
         }
         self.reconcile_connected(at, diagnostics)?;
+        self.poll_xinput(at, diagnostics)?;
         if self.recovery_requested {
             self.recovery_requested = false;
             self.reseed_internal(false, at, diagnostics)?;
+        }
+        // 兜底：周期重放在场连接，启动竞态或未被跟进的 reset 都无法让手柄永久失效。
+        self.drain_tick = self.drain_tick.saturating_add(1);
+        if self.drain_tick.is_multiple_of(REANNOUNCE_INTERVAL_DRAINS) {
+            self.reannounce_connections(at)?;
         }
         Ok(())
     }
@@ -158,7 +181,17 @@ impl GilrsGamepad {
     ) -> Result<(), InputPublishError> {
         self.reseed_internal(true, at, diagnostics)
     }
-
+    /// Re-publish GamepadConnected for every present connection without
+    /// resetting the backend or clearing pressed state. An identical active
+    /// connection is discarded as stale; a connection lost to a startup race or
+    /// an unmatched reset is re-activated within a second.
+    fn reannounce_connections(&self, at: MonotonicMillis) -> Result<(), InputPublishError> {
+        for connection in self.connections.values() {
+            self.producer
+                .publish(InputEvent::GamepadConnected { connection, at })?;
+        }
+        Ok(())
+    }
     fn reseed_internal(
         &mut self,
         reset_backend: bool,
@@ -194,6 +227,23 @@ impl GilrsGamepad {
                 self.publish_snapshot(gamepad_id, at, diagnostics)?;
             }
         }
+        // XInput(Xbox) 连接不在 backend_ids 中，而 reset 已清空运行时活动集合，
+        // 必须一并重放仍在线的槽，否则其连接永久非活动、轴被静默丢弃。对仍活动的
+        // 相同连接，重放会被当作 stale 丢弃，因此无副作用。
+        let xinput = self
+            .xinput_slots
+            .iter()
+            .map(|(slot, state)| (*slot, state.connection, state.prev))
+            .collect::<Vec<_>>();
+        for (slot, connection, state) in xinput {
+            self.producer
+                .publish(InputEvent::GamepadConnected { connection, at })?;
+            let (lt, rt) = self.emit_xinput_full(connection, &state, at, diagnostics)?;
+            if let Some(tracked) = self.xinput_slots.get_mut(&slot) {
+                tracked.lt_pressed = lt;
+                tracked.rt_pressed = rt;
+            }
+        }
         Ok(())
     }
 
@@ -219,6 +269,11 @@ impl GilrsGamepad {
         diagnostics: &mut PlatformInputDiagnostics,
     ) -> Result<(), InputPublishError> {
         let backend_id = gamepad_id.into_inner();
+        // Xbox controllers are polled through XInput (which works in the
+        // background); do not also connect them through the focus-gated WGI.
+        if self.is_xbox_gamepad(gamepad_id) {
+            return Ok(());
+        }
         let Some((backend_id, connection)) =
             self.connections
                 .allocate(backend_id, &self.axis_producer, at, diagnostics)?
@@ -354,6 +409,16 @@ impl GilrsGamepad {
         let Some(connection) = self.connections.get(gamepad_id.into_inner()) else {
             return Ok(());
         };
+        self.publish_connection_edge(connection, button, edge, at, diagnostics)
+    }
+    fn publish_connection_edge(
+        &self,
+        connection: GamepadConnection,
+        button: GamepadButton,
+        edge: InputEdge,
+        at: MonotonicMillis,
+        diagnostics: &mut PlatformInputDiagnostics,
+    ) -> Result<(), InputPublishError> {
         self.producer
             .publish(InputEvent::Edge {
                 control: InputControl::Gamepad(GamepadButtonKey { connection, button }),
@@ -365,6 +430,7 @@ impl GilrsGamepad {
         diagnostics.gamepad_button_edges = diagnostics.gamepad_button_edges.saturating_add(1);
         Ok(())
     }
+
 
     fn publish_snapshot(
         &mut self,
@@ -448,6 +514,16 @@ impl GilrsGamepad {
         let Some(connection) = self.connections.get(gamepad_id.into_inner()) else {
             return Ok(());
         };
+        self.publish_connection_axis(connection, axis, value, at, diagnostics)
+    }
+    fn publish_connection_axis(
+        &self,
+        connection: GamepadConnection,
+        axis: GamepadAxis,
+        value: f32,
+        at: MonotonicMillis,
+        diagnostics: &mut PlatformInputDiagnostics,
+    ) -> Result<(), InputPublishError> {
         match self.axis_producer.publish(GamepadAxisSample {
             key: GamepadAxisKey { connection, axis },
             value,
@@ -462,7 +538,8 @@ impl GilrsGamepad {
             Err(error) => {
                 if matches!(
                     error,
-                    GamepadAxisPublishError::NonFinite(_) | GamepadAxisPublishError::OutOfRange(_)
+                    GamepadAxisPublishError::NonFinite(_)
+                        | GamepadAxisPublishError::OutOfRange(_)
                 ) {
                     record_invalid_axis_value(diagnostics);
                 } else {
@@ -475,6 +552,7 @@ impl GilrsGamepad {
         }
     }
 
+
     fn disconnect_all(&mut self) -> u64 {
         let disconnected = self.connections.len() as u64;
         for connection in self.connections.values() {
@@ -483,6 +561,7 @@ impl GilrsGamepad {
         self.connections.clear();
         self.backend_ids.clear();
         self.pressed_triggers.clear();
+        self.xinput_slots.clear();
         disconnected
     }
 }
@@ -490,6 +569,311 @@ impl GilrsGamepad {
 impl Drop for GilrsGamepad {
     fn drop(&mut self) {
         self.disconnect_all();
+    }
+}
+// --- XInput (Xbox) background polling -------------------------------------
+
+const XINPUT_KEY_BASE: usize = 1000;
+const XINPUT_SLOT_COUNT: u32 = 4;
+// 设备空闲、无报告时 XInput 会间歇读空（实测 Ok 间隔约 336ms），但这并非拔出：
+// 一旦有按键/摇杆，get_state 会连续返回 Ok。阈值需明显大于空闲读空间隔（约 2 秒），
+// 连接才能始终保持同一代、不在空闲时被拆；真正拔手柄即使按键也持续读空，约 2 秒后拆除。
+const XINPUT_REMOVE_CONFIRMATIONS: u8 = 128;
+struct XinputSlotState {
+    connection: GamepadConnection,
+    prev: XInputState,
+    lt_pressed: bool,
+    rt_pressed: bool,
+    miss_count: u8,
+}
+
+fn xinput_digital(state: &XInputState) -> [(bool, GamepadButton); 14] {
+    [
+        (state.south_button(), GamepadButton::South),
+        (state.east_button(), GamepadButton::East),
+        (state.west_button(), GamepadButton::West),
+        (state.north_button(), GamepadButton::North),
+        (state.left_shoulder(), GamepadButton::LeftShoulder),
+        (state.right_shoulder(), GamepadButton::RightShoulder),
+        (state.select_button(), GamepadButton::Select),
+        (state.start_button(), GamepadButton::Start),
+        (state.left_thumb_button(), GamepadButton::LeftStick),
+        (state.right_thumb_button(), GamepadButton::RightStick),
+        (state.arrow_up(), GamepadButton::DpadUp),
+        (state.arrow_down(), GamepadButton::DpadDown),
+        (state.arrow_left(), GamepadButton::DpadLeft),
+        (state.arrow_right(), GamepadButton::DpadRight),
+    ]
+}
+
+fn stick_axis(value: i16) -> f32 {
+    (value as f32 / 32767.0).clamp(-1.0, 1.0)
+}
+
+fn trigger_axis(value: u8) -> f32 {
+    value as f32 / 255.0
+}
+
+impl GilrsGamepad {
+    fn is_xbox_gamepad(&self, gamepad_id: GamepadId) -> bool {
+        self.gilrs
+            .as_ref()
+            .map(|gilrs| gilrs.gamepad(gamepad_id))
+            .is_some_and(|gamepad| {
+                gamepad.name().to_ascii_lowercase().contains("xbox")
+            })
+    }
+
+    fn poll_xinput(
+        &mut self,
+        at: MonotonicMillis,
+        diagnostics: &mut PlatformInputDiagnostics,
+    ) -> Result<(), InputPublishError> {
+        let handle = match self.xinput_handle.as_ref() {
+            Some(handle) => handle.clone(),
+            None => return Ok(()),
+        };
+        for user_index in 0..XINPUT_SLOT_COUNT {
+            match handle.get_state(user_index) {
+                Ok(state) => {
+                    if self.xinput_slots.contains_key(&user_index) {
+                        self.xinput_slots
+                            .get_mut(&user_index)
+                            .expect("xinput slot present")
+                            .miss_count = 0;
+                        let (connection, prev, lt, rt) = {
+                            let slot = self
+                                .xinput_slots
+                                .get_mut(&user_index)
+                                .expect("xinput slot present");
+                            (slot.connection, slot.prev, slot.lt_pressed, slot.rt_pressed)
+                        };
+                        let mut lt = lt;
+                        let mut rt = rt;
+                        self.emit_xinput_diff(
+                            connection, &prev, &state, &mut lt, &mut rt, at, diagnostics,
+                        )?;
+                        let slot = self
+                            .xinput_slots
+                            .get_mut(&user_index)
+                            .expect("xinput slot present");
+                        slot.prev = state;
+                        slot.lt_pressed = lt;
+                        slot.rt_pressed = rt;
+                    } else {
+                        let key = XINPUT_KEY_BASE + user_index as usize;
+                        let Some((backend_key, connection)) = self.connections.allocate(
+                            key,
+                            &self.axis_producer,
+                            at,
+                            diagnostics,
+                        )? else {
+                            continue;
+                        };
+                        if let Err(error) =
+                            self.producer
+                                .publish(InputEvent::GamepadConnected { connection, at })
+                        {
+                            self.connections
+                                .rollback(backend_key, connection, &self.axis_producer);
+                            return Err(error);
+                        }
+                        diagnostics.gamepad_connections =
+                            diagnostics.gamepad_connections.saturating_add(1);
+                        // 先建槽再发完整状态：若下面发布撞上队列满，recovery 的
+                        // reset + reseed 才能重放本槽，避免 backend 已登记但槽未
+                        // 跟踪、device_id 泄漏到只能物理拔插。
+                        self.xinput_slots.insert(
+                            user_index,
+                            XinputSlotState {
+                                connection,
+                                prev: state,
+                                lt_pressed: false,
+                                rt_pressed: false,
+                                miss_count: 0,
+                            },
+                        );
+                        let (lt, rt) =
+                            self.emit_xinput_full(connection, &state, at, diagnostics)?;
+                        let slot = self
+                            .xinput_slots
+                            .get_mut(&user_index)
+                            .expect("xinput slot present");
+                        slot.lt_pressed = lt;
+                        slot.rt_pressed = rt;
+                    }
+                }
+                Err(_) => {
+                    // 断开去抖：设备空闲/驱动初始化会间歇读空，一次读空就拆会造成
+                    // 反复横跳、generation 飙升；需连续读空约 2 秒才确认真正拔出。
+                    let confirmed = self
+                        .xinput_slots
+                        .get_mut(&user_index)
+                        .is_some_and(|slot| {
+                            slot.miss_count = slot.miss_count.saturating_add(1);
+                            slot.miss_count >= XINPUT_REMOVE_CONFIRMATIONS
+                        });
+                    if confirmed
+                        && let Some(slot) = self.xinput_slots.remove(&user_index)
+                    {
+                        let key = XINPUT_KEY_BASE + user_index as usize;
+                        if self.connections.remove(key).is_some() {
+                            self.axis_producer.disconnect(slot.connection);
+                            diagnostics.gamepad_disconnections =
+                                diagnostics.gamepad_disconnections.saturating_add(1);
+                            self.producer.publish(InputEvent::GamepadDisconnected {
+                                connection: slot.connection,
+                                at,
+                            })?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn emit_xinput_full(
+        &self,
+        connection: GamepadConnection,
+        state: &XInputState,
+        at: MonotonicMillis,
+        diagnostics: &mut PlatformInputDiagnostics,
+    ) -> Result<(bool, bool), InputPublishError> {
+        for (pressed, button) in xinput_digital(state) {
+            if pressed {
+                self.publish_connection_edge(
+                    connection,
+                    button,
+                    InputEdge::Down,
+                    at,
+                    diagnostics,
+                )?;
+            }
+        }
+        let lt = trigger_axis(state.left_trigger());
+        let rt = trigger_axis(state.right_trigger());
+        self.publish_connection_axis(connection, GamepadAxis::LeftTrigger, lt, at, diagnostics)?;
+        self.publish_connection_axis(connection, GamepadAxis::RightTrigger, rt, at, diagnostics)?;
+        let lt_pressed = trigger_is_pressed(lt);
+        let rt_pressed = trigger_is_pressed(rt);
+        if lt_pressed {
+            self.publish_connection_edge(
+                connection,
+                GamepadButton::LeftTrigger,
+                InputEdge::Down,
+                at,
+                diagnostics,
+            )?;
+        }
+        if rt_pressed {
+            self.publish_connection_edge(
+                connection,
+                GamepadButton::RightTrigger,
+                InputEdge::Down,
+                at,
+                diagnostics,
+            )?;
+        }
+        let (lx, ly) = state.left_stick_raw();
+        let (rx, ry) = state.right_stick_raw();
+        self.publish_connection_axis(
+            connection, GamepadAxis::LeftStickX, stick_axis(lx), at, diagnostics,
+        )?;
+        self.publish_connection_axis(
+            connection, GamepadAxis::LeftStickY, stick_axis(ly), at, diagnostics,
+        )?;
+        self.publish_connection_axis(
+            connection, GamepadAxis::RightStickX, stick_axis(rx), at, diagnostics,
+        )?;
+        self.publish_connection_axis(
+            connection, GamepadAxis::RightStickY, stick_axis(ry), at, diagnostics,
+        )?;
+        Ok((lt_pressed, rt_pressed))
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn emit_xinput_diff(
+        &self,
+        connection: GamepadConnection,
+        prev: &XInputState,
+        state: &XInputState,
+        lt_pressed: &mut bool,
+        rt_pressed: &mut bool,
+        at: MonotonicMillis,
+        diagnostics: &mut PlatformInputDiagnostics,
+    ) -> Result<(), InputPublishError> {
+        let before = xinput_digital(prev);
+        let after = xinput_digital(state);
+        for (index, (current, button)) in after.iter().map(|(p, b)| (*p, *b)).enumerate() {
+            if before[index].0 != current {
+                self.publish_connection_edge(
+                    connection,
+                    button,
+                    if current { InputEdge::Down } else { InputEdge::Up },
+                    at,
+                    diagnostics,
+                )?;
+            }
+        }
+        if prev.left_trigger() != state.left_trigger() {
+            self.publish_connection_axis(
+                connection,
+                GamepadAxis::LeftTrigger,
+                trigger_axis(state.left_trigger()),
+                at,
+                diagnostics,
+            )?;
+        }
+        if prev.right_trigger() != state.right_trigger() {
+            self.publish_connection_axis(
+                connection,
+                GamepadAxis::RightTrigger,
+                trigger_axis(state.right_trigger()),
+                at,
+                diagnostics,
+            )?;
+        }
+        let now_lt = trigger_is_pressed(trigger_axis(state.left_trigger()));
+        if now_lt != *lt_pressed {
+            self.publish_connection_edge(
+                connection,
+                GamepadButton::LeftTrigger,
+                if now_lt { InputEdge::Down } else { InputEdge::Up },
+                at,
+                diagnostics,
+            )?;
+            *lt_pressed = now_lt;
+        }
+        let now_rt = trigger_is_pressed(trigger_axis(state.right_trigger()));
+        if now_rt != *rt_pressed {
+            self.publish_connection_edge(
+                connection,
+                GamepadButton::RightTrigger,
+                if now_rt { InputEdge::Down } else { InputEdge::Up },
+                at,
+                diagnostics,
+            )?;
+            *rt_pressed = now_rt;
+        }
+        if prev.left_stick_raw() != state.left_stick_raw() {
+            let (x, y) = state.left_stick_raw();
+            self.publish_connection_axis(
+                connection, GamepadAxis::LeftStickX, stick_axis(x), at, diagnostics,
+            )?;
+            self.publish_connection_axis(
+                connection, GamepadAxis::LeftStickY, stick_axis(y), at, diagnostics,
+            )?;
+        }
+        if prev.right_stick_raw() != state.right_stick_raw() {
+            let (x, y) = state.right_stick_raw();
+            self.publish_connection_axis(
+                connection, GamepadAxis::RightStickX, stick_axis(x), at, diagnostics,
+            )?;
+            self.publish_connection_axis(
+                connection, GamepadAxis::RightStickY, stick_axis(y), at, diagnostics,
+            )?;
+        }
+        Ok(())
     }
 }
 

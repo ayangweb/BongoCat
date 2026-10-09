@@ -995,6 +995,7 @@ dependencies = [
  "permission-flow",
  "raw-window-handle",
  "rfd",
+ "rusty-xinput",
  "sys-locale",
  "tempfile",
  "thiserror 2.0.21",
@@ -7153,6 +7154,17 @@ dependencies = [
  "quick-error 1.2.3",
  "tempfile",
  "wait-timeout",
+]
+
+[[package]]
+name = "rusty-xinput"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3335c2b62e1e48dd927f6c8941705386e3697fa944aabcb10431bea7ee47ef3"
+dependencies = [
+ "lazy_static",
+ "log",
+ "winapi",
 ]
 
 [[package]]
