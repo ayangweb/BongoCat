@@ -2853,7 +2853,7 @@ dependencies = [
 [[package]]
 name = "gilrs"
 version = "0.11.2"
-source = "git+https://github.com/ayangweb/gilrs?rev=8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549#8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549"
+source = "git+https://github.com/ayangweb/gilrs?rev=5a61ef1ee106cf5a1aee046b4325e1cf7e5666a7#5a61ef1ee106cf5a1aee046b4325e1cf7e5666a7"
 dependencies = [
  "fnv",
  "gilrs-core",
@@ -2865,7 +2865,7 @@ dependencies = [
 [[package]]
 name = "gilrs-core"
 version = "0.6.8"
-source = "git+https://github.com/ayangweb/gilrs?rev=8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549#8917eb2ad8fcfdccb12a82a3259af7dbf8cb2549"
+source = "git+https://github.com/ayangweb/gilrs?rev=5a61ef1ee106cf5a1aee046b4325e1cf7e5666a7#5a61ef1ee106cf5a1aee046b4325e1cf7e5666a7"
 dependencies = [
  "inotify 0.11.5",
  "js-sys",
@@ -2879,7 +2879,7 @@ dependencies = [
  "vec_map",
  "wasm-bindgen",
  "web-sys",
- "windows 0.62.2",
+ "windows 0.58.0",
 ]
 
 [[package]]
@@ -8135,7 +8135,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
