@@ -10,6 +10,7 @@
 
 ### 🐛 Bug Fixes
 
+- Fixed the cat window missing from OBS's default window list on macOS by giving it a recognizable title.
 - Fixed imported models that showed "The selected model could not be activated" when switching to them and only enabled after several attempts, even though they render correctly. Switching now succeeds on the first attempt.
 
 ## 2.2.0 - 2026-10-07
