@@ -199,11 +199,13 @@ impl SystemMenu {
         let tray_icon_builder = TrayIconBuilder::new()
             .with_id(tray_icon_id.clone())
             .with_menu(Box::new(menu.clone()))
-            .with_icon(icon)
             .with_tooltip(&presentation.tooltip)
-            .with_icon_as_template(cfg!(target_os = "macos"))
             .with_menu_on_left_click(cfg!(target_os = "macos"))
             .with_menu_on_right_click(true);
+        #[cfg(target_os = "macos")]
+        let tray_icon_builder = tray_icon_builder.with_icon_templated(icon);
+        #[cfg(not(target_os = "macos"))]
+        let tray_icon_builder = tray_icon_builder.with_icon(icon);
         #[cfg(target_os = "windows")]
         let tray_icon_builder = tray_icon_builder.with_guid(TRAY_ICON_GUID);
         let tray_icon = tray_icon_builder.build().map_err(|error| {

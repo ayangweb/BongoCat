@@ -3,6 +3,14 @@
 状态：Accepted
 日期：2026-08-31
 
+> 后续修订（2026-10-12）：`rodio` 由 `=0.22.2` 升级到 crates.io 精确 pin `=0.23.0`。
+> 该 release 把 `cpal` 由 `0.17.3` 升到 `0.18.2`，并把此前分散的 cpal 错误类型
+> （`StreamError`、`BuildStreamError`、`PlayStreamError`、`DevicesError`、
+> `DefaultStreamConfigError`、`SupportedStreamConfigsError`）统一为 `cpal::Error`，以
+> `CpalError`/`CpalErrorKind` 重导出，`rodio::DevicesError` 被移除。项目只使用 `Decoder`、
+> `SamplesBuffer`、`DeviceSinkBuilder`、`Player` 与 `rodio::cpal::BufferSize`，不匹配这些
+> 错误类型，源码零改动。仍然只启用 `playback` 与 `flac`，不改变本 ADR 的替换边界。
+
 ## Context
 
 预置 model3 的 motion 通过相对路径引用 FLAC。音效是动作被接受后的产品副作用，
@@ -12,7 +20,7 @@
 
 ## Decision
 
-- 使用 crates.io 当日最新稳定版 `rodio 0.22.2`，精确 pin，只启用 `playback` 与 `flac`。
+- 使用 crates.io 当日最新稳定版 `rodio 0.23.0`，精确 pin，只启用 `playback` 与 `flac`。
   不启用录音、MP3、MP4、Vorbis、WAV、dither 或其它未使用 feature。
 - `bongocat-audio` 是独立 Rust owner。它持有固定容量 16 的有序 command queue、专用
   worker、decoder、output stream 和唯一 voice；runtime 只非阻塞发布强类型
@@ -37,10 +45,9 @@
 
 ## Dependency Boundary
 
-`rodio 0.22.2` 声明 `MIT OR Apache-2.0`，Rust 1.87+，仓库在审计日仍活跃；底层 CPAL
-支持 Windows/macOS 系统输出。最新独立 CPAL 是 `0.18.2`，但 rodio 0.22.2 约束
-`cpal 0.17.x`，因此 lockfile 合法解析为 `0.17.3`；项目不直接依赖或 fork CPAL 来伪造
-版本升级。
+`rodio 0.23.0` 声明 `MIT OR Apache-2.0`，Rust 1.87+，仓库在审计日仍活跃；底层 CPAL
+支持 Windows/macOS 系统输出。rodio 0.23.0 把 `cpal` 升到 `0.18.2`，lockfile 因此解析为
+`0.18.2`；项目不直接依赖或 fork CPAL 来伪造版本升级。
 
 rodio/CPAL 类型不离开 `bongocat-audio` 私有 backend。替换其它音频库时只需保持
 `MotionAudioClient`、强类型 command、诊断和 shutdown contract，不修改 runtime、模型

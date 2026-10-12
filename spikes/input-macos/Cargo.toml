@@ -13,6 +13,6 @@ bongocat-input-queue-spike = { path = "../input-queue" }
 core-graphics2 = { version = "=0.6.1", default-features = false, features = ["event", "link"] }
 core-foundation = "=0.10.1"
 block2 = "=0.6.2"
-objc2 = "=0.6.4"
+objc2 = "=0.6.5"
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSWorkspace"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSNotification", "NSObject", "NSOperation", "NSString", "block2"] }

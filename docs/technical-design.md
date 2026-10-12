@@ -241,8 +241,8 @@ GPUI 仍是 pre-1.0，公共渲染 API 也没有稳定的 Windows/macOS 外部 L
   无需重启即可用自己的组合键，非活动模型的绑定也不再占用全局热键。
 - `system.show_status_icon` 通过独立的 revision-checked settings command 修改。settings worker
   以有界 request/reply bridge 请求平台主线程隐藏或显示状态图标，平台成功后才由 Application owner
-  原子提交配置；配置提交失败时必须把图标恢复为旧状态。macOS/Windows 共用 `tray-icon 0.25.0` 托盘
-  owner 与直接依赖的 `muda 0.20.0` 菜单 owner：`TrayIcon`、一个 popup 菜单根、菜单项 receiver 和强类型
+  原子提交配置；配置提交失败时必须把图标恢复为旧状态。macOS/Windows 共用 `tray-icon 0.26.1` 托盘
+  owner 与直接依赖的 `muda 0.21.2` 菜单 owner：`TrayIcon`、一个 popup 菜单根、菜单项 receiver 和强类型
   事件队列在整个运行期保持存活，`set_visible` 只改变平台表示（macOS 移除 `NSStatusItem`，Windows 保留
   注册并设置隐藏），重新显示不创建第二套业务状态或菜单 owner。托盘和 overlay 右键复用同一棵菜单树，
   由 `muda` 从 overlay 的真实 HWND/`NSView` 弹出，不借用托盘隐藏窗口。
@@ -703,7 +703,7 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - 输入：Raw Input、状态校正、可选低级 hook、gilrs/WGI 手柄。
 - 产品图标：`bongocat-app` 在构建期把 BongoCat 自有 `.ico` 编译进 Windows executable，用于窗口、
   任务栏和文件身份；它不再是托盘图标来源，托盘也不会回退到系统通用应用图标。
-- 托盘：`tray-icon 0.25.0` 拥有 `TrayIcon` 和固定 GUID，直接依赖的 `muda 0.20.0` 拥有一个由托盘和
+- 托盘：`tray-icon 0.26.1` 拥有 `TrayIcon` 和固定 GUID，直接依赖的 `muda 0.21.2` 拥有一个由托盘和
   overlay 右键共用的 popup 根。Windows 状态图标从 BongoCat 自有
   `resources/icons/tray-windows.png` 解码；托盘隐藏点击恢复和 overlay 右键入口均由该唯一菜单 owner
   管理，overlay 弹出使用自身 HWND，不借用托盘隐藏窗口。共用菜单根包含设置入口、模型窗口操作分组（显隐、
@@ -748,8 +748,8 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - Renderer：Metal + `CAMetalLayer`，drawable size 跟随 backing scale。
 - Spaces：按配置设置 collection behavior 和 full-screen auxiliary。
 - 输入：CGEventTap、状态校正、gilrs/IOHID 手柄。
-- 菜单栏：`tray-icon 0.25.0` 在 macOS 主线程拥有 `NSStatusItem`，同一份直接依赖的
-  `muda 0.20.0` owner 持有一个由托盘和 overlay 右键共用的 popup 根；状态图标使用 BongoCat 自有
+- 菜单栏：`tray-icon 0.26.1` 在 macOS 主线程拥有 `NSStatusItem`，同一份直接依赖的
+  `muda 0.21.2` owner 持有一个由托盘和 overlay 右键共用的 popup 根；状态图标使用 BongoCat 自有
   `resources/icons/tray-macos.png` 并作为 template image。overlay 右键通过 content `NSView` 在同一主线程
   调用同一棵菜单树，不借用托盘状态项。登录启动在 macOS 13+ Production `.app` 使用
   `SMAppService.mainAppService`。macOS 12 和 Development 构建明确报告 capability unsupported，不回退到
@@ -1042,7 +1042,7 @@ Linux 阶段再决定增加 Vulkan/OpenGL backend，或基于数据迁移到 wgp
 
 ### 11.3 Motion 音效
 
-- `bongocat-audio` 使用精确锁定的 `rodio 0.22.2`，只启用 output playback 与 FLAC；
+- `bongocat-audio` 使用精确锁定的 `rodio 0.23.0`，只启用 output playback 与 FLAC；
   rodio/CPAL 类型不进入 runtime、model、UI 或 renderer 公共接口。
 - runtime 只在 motion priority 与资源解析均成功后，通过固定容量有序队列非阻塞发布
   强类型 `Prepare`/`ActivatePrepared`/`Play`/`Stop`。解码、文件 I/O 和设备创建全部由独立 worker 执行。
@@ -1252,7 +1252,7 @@ resolver，不接受外部 `StorageLayout`、根目录或生产路径覆盖；�
   目录存在但内容无效的记录保留，由合并目录的稳定诊断码呈现。启动期清理失败的记录留待
   下次启动重试，不影响其他模型或应用整体。
 - 模型导入 command 携带标题与文件选择来源（文件夹选择器选中的目录，或设置窗口拖入的单个目录）；
-  标题只是显示名称，不参与身份——settings service worker 在导入前用随机 UUID v4（`uuid 1.26.1`，
+  标题只是显示名称，不参与身份——settings service worker 在导入前用随机 UUID v4（`uuid 1.28.0`，
   精确 pin）生成当前 store 内唯一的可移植存储 ID，因此重复导入同一目录不会覆盖已有模型，
   显示名称可以随时编辑，用户也无需发明任何 ID。导入成功后把标题和模式写入 `model.imported_models`
   元数据：Mver 写入实际选中的 source mode；普通包在 staging 通过 `left-keys`/`right-keys` 资源
@@ -1661,7 +1661,7 @@ Windows 由安装器 `/R` 负责。明确不做下载取消。**记录一处与 
 
 ### ADR-0031：托盘第三方库边界
 
-macOS/Windows 托盘使用 `tray-icon 0.25.0`，菜单与右键弹出使用直接依赖的 `muda 0.20.0`；平台
+macOS/Windows 托盘使用 `tray-icon 0.26.1`，菜单与右键弹出使用直接依赖的 `muda 0.21.2`；平台
 adapter 负责加载 PNG、映射强类型 action、调用 hide/show，并从 overlay session 的真实
 HWND/`NSView` 弹出与托盘共用的菜单树。第三方类型、句柄和错误不进入 runtime/UI 公共 API，Windows
 固定 GUID 与双平台唯一 owner 由 ADR-0031 约束。

@@ -44,7 +44,7 @@ Settings 和 Diagnostics 里投影状态，用户必须自己发现问题。
 - 现有可复用能力：`bongocat-platform::input_monitoring_permission`
   （`CGPreflightListenEventAccess`，只读）、`request_input_monitoring_permission`
   （`CGRequestListenEventAccess`）、`rfd`（目录选择已使用的既有依赖）、
-  `opener 0.8.5` 的 `reveal`（既有依赖且已启用 feature，用于在资源管理器中定位可执行文件）。
+  `opener 0.9.0` 的 `reveal`（既有依赖且已启用 feature，用于在资源管理器中定位可执行文件）。
   不需要任何新依赖。
 
 ## 决策
