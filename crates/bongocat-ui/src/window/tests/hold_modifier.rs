@@ -117,6 +117,7 @@ fn every_prompt_in_the_row_names_the_modifier_the_same_way() {
         (SettingsLanguage::ChineseTraditional, "修飾鍵"),
         (SettingsLanguage::Portuguese, "tecla modificadora"),
         (SettingsLanguage::Korean, "대응키"),
+        (SettingsLanguage::French, "touche de modification"),
         (SettingsLanguage::Vietnamese, "phím sửa"),
         (SettingsLanguage::Arabic, "مفتاح تعديل"),
     ];
