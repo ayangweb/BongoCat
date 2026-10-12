@@ -82,17 +82,17 @@ unsafe fn send_mouse_move(action: &ScheduledMouseMove) -> Result<(), String> {
     // NSEvent's mouse-event initializer.
     let event: *mut AnyObject = unsafe {
         msg_send![class!(NSEvent),
-            mouseEventWithType: 5usize
+            mouseEventWithType: 5usize,
             location: NSPoint::new(
                 f64::from(action.x),
                 f64::from(action.content_height - action.y),
-            )
-            modifierFlags: 0usize
-            timestamp: 0.0f64
-            windowNumber: window_number
-            context: core::ptr::null_mut::<AnyObject>()
-            eventNumber: 0isize
-            clickCount: 0isize
+            ),
+            modifierFlags: 0usize,
+            timestamp: 0.0f64,
+            windowNumber: window_number,
+            context: core::ptr::null_mut::<AnyObject>(),
+            eventNumber: 0isize,
+            clickCount: 0isize,
             pressure: 0.0f32
         ]
     };
