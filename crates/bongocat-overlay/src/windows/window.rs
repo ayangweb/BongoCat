@@ -26,7 +26,6 @@ pub(crate) const fn taskbar_ex_style(visible: bool) -> WINDOW_EX_STYLE {
 
 pub(crate) struct OverlayWindow {
     pub(crate) hwnd: HWND,
-    pub(crate) instance: HINSTANCE,
     pub(crate) owner_thread: ThreadId,
     pub(crate) width: u32,
     pub(crate) height: u32,
@@ -88,6 +87,14 @@ impl OverlayWindow {
             lpszClassName: WINDOW_CLASS,
             ..Default::default()
         };
+        // A window class is a process-wide resource, so this only ever
+        // registers: a class that is already there is the state an earlier
+        // creation left behind, and nothing here removes it. `UnregisterClassW`
+        // only succeeds once no window of the class exists, and a destruction on
+        // another thread can land between this call and `CreateWindowExW`, which
+        // then fails with `ERROR_CLASS_DOES_NOT_EXIST`. The swap path leans on
+        // the same rule: a replacement window is created before the window it
+        // replaces is dropped, so the class has to outlive both.
         if unsafe { RegisterClassW(&class) } == 0 {
             let error = Error::from_thread();
             if error.code() != ERROR_CLASS_ALREADY_EXISTS.to_hresult() {
@@ -124,7 +131,7 @@ impl OverlayWindow {
             sizing,
             drag: None,
         });
-        let hwnd = match unsafe {
+        let hwnd = unsafe {
             CreateWindowExW(
                 extended,
                 WINDOW_CLASS,
@@ -143,16 +150,9 @@ impl OverlayWindow {
                 Some(instance),
                 Some((&mut *state as *mut OverlayWindowState).cast()),
             )
-        } {
-            Ok(hwnd) => hwnd,
-            Err(error) => {
-                let _ = unsafe { UnregisterClassW(WINDOW_CLASS, Some(instance)) };
-                return Err(error);
-            }
-        };
+        }?;
         let mut window = Self {
             hwnd,
-            instance,
             owner_thread: thread::current().id(),
             width: logical_width,
             height: logical_height,
@@ -505,11 +505,12 @@ impl Drop for OverlayWindow {
     fn drop(&mut self) {
         self.assert_owner_thread();
         // SAFETY: Renderer has already dropped, so no composition target still
-        // uses this HWND. Class unregistration follows window destruction.
+        // uses this HWND. The class is deliberately left registered: it belongs
+        // to the process rather than to this window, and removing it here could
+        // take it away from a window another thread is about to create.
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_HIDE);
             let _ = DestroyWindow(self.hwnd);
-            let _ = UnregisterClassW(WINDOW_CLASS, Some(self.instance));
         }
     }
 }
