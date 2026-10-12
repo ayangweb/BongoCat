@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### 🐛 Bug Fixes
+
+- Fixed the settings window disappearing when disabling the Dock icon on macOS. Settings and update windows keep the Dock icon visible while open; "Always show Dock icon" controls whether it stays visible after those windows close.
+
 ## 2.3.0 - 2026-10-12
 
 ### ✨ Features

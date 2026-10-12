@@ -244,6 +244,10 @@ pub fn show_native_window(window: &impl HasWindowHandle) -> Result<(), NativeWin
     Ok(())
 }
 
+pub fn native_window_is_visible(window: &impl HasWindowHandle) -> Result<bool, NativeWindowError> {
+    Ok(native_window(window)?.isVisible())
+}
+
 /// Whether the process currently shows a Dock icon.
 ///
 /// macOS owns the Dock icon as a process-wide activation policy rather than a

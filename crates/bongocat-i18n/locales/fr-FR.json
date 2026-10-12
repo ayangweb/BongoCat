@@ -523,7 +523,7 @@
         "label": "Afficher l’icône dans la barre des tâches"
       },
       "dock_icon": {
-        "label": "Afficher l’icône dans le Dock"
+        "label": "Toujours afficher l’icône dans le Dock"
       },
       "auto_update": {
         "label": "Rechercher automatiquement les mises à jour",
