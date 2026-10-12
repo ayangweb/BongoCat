@@ -75,8 +75,8 @@ mod macos;
 pub use macos::{
     MacInputService, current_display_bounds, display_bounds_for_window, dock_icon_is_visible,
     global_window_origin, hide_native_window, input_monitoring_permission, local_window_origin,
-    request_input_monitoring_permission, set_dock_icon_visible, show_native_window,
-    system_language, window_content_top_inset,
+    native_window_is_visible, request_input_monitoring_permission, set_dock_icon_visible,
+    show_native_window, system_language, window_content_top_inset,
 };
 #[cfg(target_os = "windows")]
 mod gilrs_gamepad;

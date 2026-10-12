@@ -105,7 +105,10 @@ use product_shutdown::{
 #[cfg(target_os = "windows")]
 use product_shutdown::{request_windows_product_quit, start_windows_product_shutdown};
 #[cfg(target_os = "macos")]
-use product_windows::{apply_dock_icon_visibility, poll_update_restart, product_dock_icon_state};
+use product_windows::{
+    apply_dock_icon_visibility, poll_update_restart, product_dock_icon_state,
+    sync_product_dock_icon,
+};
 #[cfg(target_os = "windows")]
 use product_windows::{
     apply_taskbar_icon_visibility, product_taskbar_icon_state, take_update_restart_request,
@@ -227,11 +230,10 @@ struct ProductCoordinator {
     /// value is recorded here and read back by the smoke.
     #[cfg(target_os = "windows")]
     taskbar_icon_visible: bool,
-    /// The macOS Dock icon the product last applied. Kept for the same reason as
-    /// `taskbar_icon_visible`: it is the coordinator's own record of a
-    /// process-wide surface the settings worker cannot observe on its own thread.
+    /// The user's Dock preference while only the cat overlay is running.
+    /// Settings and update windows keep the Dock icon visible independently.
     #[cfg(target_os = "macos")]
-    dock_icon_visible: bool,
+    background_dock_icon_visible: bool,
     #[cfg(target_os = "macos")]
     application_reopens: u64,
     #[cfg(target_os = "windows")]
@@ -623,7 +625,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(target_os = "windows")]
             taskbar_icon_visible: initial_taskbar_icon_visible,
             #[cfg(target_os = "macos")]
-            dock_icon_visible: initial_dock_icon_visible,
+            background_dock_icon_visible: initial_dock_icon_visible,
             #[cfg(target_os = "macos")]
             application_reopens: 0,
             #[cfg(target_os = "windows")]
@@ -794,6 +796,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 && !window_handle.is_open()
             {
                 cx.global_mut::<ProductCoordinator>().update_window = None;
+            }
+            #[cfg(target_os = "macos")]
+            if let Err(error) = sync_product_dock_icon(cx) {
+                record_failure(
+                    &cx.global::<ProductCoordinator>().failures,
+                    format!("apply Dock visibility after window close: {error}"),
+                );
             }
         })
         .detach();
@@ -2133,6 +2142,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(target_os = "macos")]
                 {
                     let dock_result = async {
+                        let window_handle = cx.update(ensure_settings_window)?;
+                        let assert_window_preserved = |cx: &mut App| -> Result<(), String> {
+                            if cx.global::<ProductCoordinator>().settings_window.as_ref()
+                                != Some(&window_handle)
+                            {
+                                return Err("Dock toggle replaced the settings window".to_owned());
+                            }
+                            let visible = window_handle
+                                .update(cx, |_, window, _| {
+                                    bongocat_platform::native_window_is_visible(window)
+                                })
+                                .map_err(|error| error.to_string())?
+                                .map_err(|error| error.to_string())?;
+                            if !visible {
+                                return Err("Dock toggle hid the settings window".to_owned());
+                            }
+                            Ok(())
+                        };
+                        cx.update(assert_window_preserved)?;
                         let initial = smoke_client
                             .read_snapshot()
                             .await
@@ -2140,12 +2168,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let initial_visibility = initial.dock_icon_visible;
                         let (native_initial, applied_initial) =
                             cx.update(product_dock_icon_state)?;
-                        if native_initial != initial_visibility
-                            || applied_initial != initial_visibility
-                        {
+                        if !native_initial || !applied_initial {
                             return Err(
-                                "startup Dock visibility diverged from the current snapshot"
-                                    .to_owned(),
+                                "settings window did not enable the Dock icon".to_owned(),
                             );
                         }
                         let changed = smoke_client
@@ -2159,14 +2184,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .map_err(|error| format!("toggle dock icon: {error}"))?;
                         let (native_changed, applied_changed) = cx.update(product_dock_icon_state)?;
                         if changed.dock_icon_visible == initial_visibility
-                            || native_changed != changed.dock_icon_visible
-                            || applied_changed != changed.dock_icon_visible
+                            || !native_changed
+                            || !applied_changed
                         {
                             return Err(
-                                "dock icon toggle did not reach the process activation policy"
-                                    .to_owned(),
+                                "background Dock preference hid an open settings window".to_owned(),
                             );
                         }
+                        Timer::after(Duration::from_millis(100)).await;
+                        let changed_window_result = cx.update(assert_window_preserved);
                         let restored = smoke_client
                             .set_dock_icon_visible(
                                 changed.config_revision.ok_or_else(|| {
@@ -2178,10 +2204,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .map_err(|error| format!("restore dock icon: {error}"))?;
                         let (native_restored, applied_restored) = cx.update(product_dock_icon_state)?;
                         if restored.dock_icon_visible != initial_visibility
-                            || native_restored != initial_visibility
-                            || applied_restored != initial_visibility
+                            || !native_restored
+                            || !applied_restored
                         {
                             return Err("dock icon visibility was not restored atomically".to_owned());
+                        }
+                        Timer::after(Duration::from_millis(100)).await;
+                        changed_window_result?;
+                        cx.update(assert_window_preserved)?;
+                        let update_window = cx.update(|cx| {
+                            product_windows::ensure_update_window(
+                                cx,
+                                bongocat_ui::UpdateWindowStart::Current,
+                            )
+                        })?;
+                        cx.update(product_windows::toggle_settings_window)?;
+                        Timer::after(Duration::from_millis(100)).await;
+                        let (native_with_update, expected_with_update) =
+                            cx.update(product_dock_icon_state)?;
+                        if !native_with_update || !expected_with_update {
+                            return Err("closing Settings hid the update window's Dock icon".to_owned());
+                        }
+                        cx.update(|cx| {
+                            update_window
+                                .update(cx, |_, window, _| window.remove_window())
+                                .map_err(|error| error.to_string())
+                        })?;
+                        Timer::after(Duration::from_millis(100)).await;
+                        let (native_background, expected_background) =
+                            cx.update(product_dock_icon_state)?;
+                        if native_background != initial_visibility
+                            || expected_background != initial_visibility
+                        {
+                            return Err("closing the last window did not restore the background Dock preference".to_owned());
                         }
                         Ok::<(), String>(())
                     }
