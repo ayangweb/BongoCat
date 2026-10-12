@@ -19,8 +19,10 @@ The layout half was reimplementing what the product already depends on.
 inline layout, and is the same renderer every other part of the settings UI uses.
 
 The obstacle was that `TextView` cannot be handed untrusted Markdown unchanged.
-Checked against the pinned `gpui-kit` (`=0.7.1`, previously `=0.7.0` and upstream
-revision `500852f`; the observation below holds for all of them):
+Checked against the pinned `gpui-kit` (`=0.7.3`, previously `=0.7.1`, `=0.7.0` and
+upstream revision `500852f`; the observation below holds for all of them, and the
+precedence `crates/bongocat-ui/src/update_markdown/tests/mod.rs` pins still passes on
+`0.7.3`):
 
 - `TextView` renders `![alt](url)` by handing `url` to GPUI's resource loader, which
   fetches it, and `ImageNode::source` only exempts `data:` URLs.
