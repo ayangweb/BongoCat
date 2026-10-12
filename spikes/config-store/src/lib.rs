@@ -182,6 +182,17 @@ pub enum Theme {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct OverlayConfig {
+    /// Windows ordinary capture window; other platforms retain overlay behavior.
+    ///
+    /// Carries a default for the same reason the product's schema does: the field
+    /// arrived after the first v1 documents were written, and this spike's default
+    /// has to keep serializing identically to
+    /// `shared/config/fixtures/default.json`.
+    #[serde(default)]
+    pub window_mode: bool,
+    /// The solid background the Windows capture window paints.
+    #[serde(default = "default_window_background_color")]
+    pub window_background_color: [u8; 3],
     pub click_through: bool,
     /// The physical modifier key whose hold gives the pointer back to the user.
     ///
@@ -200,6 +211,10 @@ pub struct OverlayConfig {
     pub hide_on_idle: bool,
     pub hide_on_idle_delay_seconds: u32,
     pub keep_inside_screen: bool,
+}
+
+pub const fn default_window_background_color() -> [u8; 3] {
+    [0, 255, 0]
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -470,6 +485,8 @@ impl Default for NativeConfig {
                 language: "system".into(),
             },
             overlay: OverlayConfig {
+                window_mode: false,
+                window_background_color: default_window_background_color(),
                 click_through: false,
                 hold_modifier_to_interact: None,
                 always_on_top: true,
