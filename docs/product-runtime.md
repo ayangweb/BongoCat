@@ -98,7 +98,7 @@ privileges and writes only HKCU uninstall metadata plus its own product director
 signed only when a signing identity or signing command is configured; without one the release
 workflow reports the unsigned installer as unsuitable for a stable release.
 The wizard opens with a language picker covering exactly the application languages (Simplified and
-Traditional Chinese, English, Arabic, Vietnamese, Brazilian Portuguese, Korean); it preselects the
+Traditional Chinese, English, Arabic, Vietnamese, Brazilian Portuguese, Korean, French); it preselects the
 system language and falls back to English. The choice only changes the installer and uninstaller
 text, never the application language setting. NSIS stores it in HKCU, so a machine that already has
 BongoCat installed reuses the stored language without showing the picker, and silent updates never

@@ -125,7 +125,7 @@ const VIETNAMESE_INSTALLER_STRINGS: &str = "crates/bongocat-packaging/installer/
 /// The set is the application's own language list (`bongocat-i18n` catalogs). English comes
 /// first because NSIS falls back to the first language when the system language is not listed,
 /// and `tools/tests/test_packaging_contract.py` keeps this list equal to the catalog set.
-const INSTALLER_LANGUAGES: [&str; 7] = [
+const INSTALLER_LANGUAGES: [&str; 8] = [
     "English",
     "SimpChinese",
     "TradChinese",
@@ -133,6 +133,7 @@ const INSTALLER_LANGUAGES: [&str; 7] = [
     "Vietnamese",
     "PortugueseBR",
     "Korean",
+    "French",
 ];
 /// Repository-relative build provenance generator.
 const PROVENANCE_GENERATOR: &str = "tools/record-provenance.py";

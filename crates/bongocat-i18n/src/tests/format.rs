@@ -60,4 +60,12 @@ fn format_text_interpolation_is_available() {
         ),
         "현재 버전 1.2.3"
     );
+    assert_eq!(
+        format_text(
+            "fr-FR",
+            "update.current_version",
+            &[("version", "1.2.3".to_string())],
+        ),
+        "Version actuelle 1.2.3"
+    );
 }

@@ -38,8 +38,8 @@ fn flatten(value: &serde_json::Value, prefix: &str, out: &mut BTreeMap<String, S
 /// locale added to `locales/` and to the `messages` match below but not here
 /// would leave every comparison silently covering one catalog fewer, which is
 /// exactly the failure this constant exists to make impossible.
-pub(super) const LOCALES: [&str; 7] = [
-    "en-US", "zh-CN", "zh-TW", "ar-SA", "vi-VN", "pt-BR", "ko-KR",
+pub(super) const LOCALES: [&str; 8] = [
+    "en-US", "zh-CN", "zh-TW", "ar-SA", "vi-VN", "pt-BR", "ko-KR", "fr-FR",
 ];
 
 /// The locale every other catalog is compared against.
@@ -59,6 +59,7 @@ fn source(locale: &str) -> &'static str {
         "vi-VN" => include_str!("../../locales/vi-VN.json"),
         "pt-BR" => include_str!("../../locales/pt-BR.json"),
         "ko-KR" => include_str!("../../locales/ko-KR.json"),
+        "fr-FR" => include_str!("../../locales/fr-FR.json"),
         _ => panic!("unsupported test locale"),
     }
 }

@@ -102,6 +102,7 @@ class PackagingTargetTests(unittest.TestCase):
             "vi-VN": "Vietnamese",
             "pt-BR": "PortugueseBR",
             "ko-KR": "Korean",
+            "fr-FR": "French",
         }
         catalogs = {path.stem for path in I18N_LOCALES.glob("*.json")}
         self.assertEqual(catalogs, set(nsis_languages))

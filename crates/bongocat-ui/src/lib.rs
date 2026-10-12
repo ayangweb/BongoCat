@@ -52,6 +52,9 @@ pub(crate) fn settings_language_display_name(
         SettingsLanguage::Korean => {
             bongocat_i18n::text(locale, "settings.appearance.language.options.korean")
         }
+        SettingsLanguage::French => {
+            bongocat_i18n::text(locale, "settings.appearance.language.options.french")
+        }
     }
 }
 
@@ -284,6 +287,7 @@ pub(crate) mod tests {
             ("vi-VN", "Tiếng Việt"),
             ("pt-BR", "Português"),
             ("ko-KR", "한국어"),
+            ("fr-FR", "Français"),
         ];
         for (language, (code, endonym)) in SettingsLanguage::ALL
             .into_iter()
@@ -337,6 +341,10 @@ pub(crate) mod tests {
         assert_eq!(
             settings_language_display_name(SettingsLanguage::System, SettingsLanguage::Korean,),
             "시스템"
+        );
+        assert_eq!(
+            settings_language_display_name(SettingsLanguage::System, SettingsLanguage::French),
+            "Système"
         );
         assert_eq!(
             settings_language_from_display_name("Deutsch", SettingsLanguage::English,),
