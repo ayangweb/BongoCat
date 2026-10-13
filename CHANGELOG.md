@@ -5,7 +5,7 @@
 ### 🐛 Bug Fixes
 
 - Fixed "Model window → Window behavior → Hide on mouse hover" hiding the window only sometimes while "Input & interaction → Mouse → Force mouse movement" was on.
-- Fixed the settings window losing foreground focus when toggling the Dock icon on macOS.
+- Fixed the settings window disappearing when disabling the Dock icon on macOS. Settings and update windows keep the Dock icon visible while open; "Always show Dock icon" controls whether it stays visible after those windows close.
 
 ## 2.3.0 - 2026-10-12
 

@@ -523,7 +523,7 @@
         "label": "Show taskbar icon"
       },
       "dock_icon": {
-        "label": "Show Dock icon"
+        "label": "Always show Dock icon"
       },
       "auto_update": {
         "label": "Check for updates automatically",

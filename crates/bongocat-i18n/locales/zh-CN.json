@@ -523,7 +523,7 @@
         "label": "显示任务栏图标"
       },
       "dock_icon": {
-        "label": "显示程序坞图标"
+        "label": "始终显示程序坞图标"
       },
       "auto_update": {
         "label": "自动检查更新",
