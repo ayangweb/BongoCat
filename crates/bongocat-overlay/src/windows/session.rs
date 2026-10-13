@@ -610,6 +610,13 @@ impl ProductOverlaySession {
     /// running both count as "not inside", so a degraded pointer pipeline can
     /// never leave the overlay stuck invisible.
     ///
+    /// The hit test uses the sample's pointer position rather than the position
+    /// the model follows. The two differ while `input.mouse.force_move`
+    /// accumulates the model's position from relative device motion, and that
+    /// accumulation is an estimate of where the pointer is — good enough to aim
+    /// a model with, not exact enough to decide whether the pointer has entered
+    /// the window box.
+    ///
     /// `GetCursorPos` and `GetWindowRect` both report virtual-screen pixels, so
     /// unlike macOS this needs no coordinate conversion.
     pub(crate) fn update_hover_presentation(
@@ -631,9 +638,14 @@ impl ProductOverlaySession {
         // A right-button resize drag keeps the overlay visible: the hover hide
         // fades the window out and starts passing pointer events through, which
         // would end the drag the window itself is running.
+        // The pointer's own position, not the one the model follows: hover hide
+        // asks whether the pointer is over the window, and `force_move`
+        // accumulates the model's position from relative motion, which is only an
+        // estimate of where the pointer is. Hit-testing the accumulated position
+        // made the hide depend on how the mouse travelled to the window.
         let pointer_inside = !self.overlay.window.is_resize_dragging()
             && cursor.is_some_and(|sample| {
-                pointer_inside_window(bounds, sample.position.x, sample.position.y)
+                pointer_inside_window(bounds, sample.pointer.x, sample.pointer.y)
             });
         let now = self.session_started.elapsed();
         let fade = self.hover.observe(PointerHoverObservation {

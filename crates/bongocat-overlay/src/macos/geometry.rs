@@ -17,21 +17,26 @@ pub(crate) fn main_window_level(always_on_top: bool) -> NSWindowLevel {
     }
 }
 
-/// Convert a cursor sample into the AppKit screen space used by `NSScreen` and
-/// by the overlay panel's frame.
+/// Convert a pointer position into the AppKit screen space used by `NSScreen`
+/// and by the overlay panel's frame.
 ///
 /// CoreGraphics measures the primary display from its top-left corner while
 /// AppKit measures it from its bottom-left corner, so the vertical axis has to
-/// be mirrored about the primary display's height before a cursor position can
+/// be mirrored about the primary display's height before a pointer position can
 /// be compared with a window frame. Both spaces use the same unit, so no
 /// scaling is involved. The primary display is the one whose AppKit frame
 /// origin is `(0, 0)`, which is also the display whose CoreGraphics bounds
 /// start at `(0, 0)`.
 ///
+/// Callers pass [`CursorSample::pointer`] rather than the position the model
+/// follows. `input.mouse.force_move` accumulates the model's position from
+/// relative device motion, which is an estimate of where the pointer is rather
+/// than where it is, so it cannot be hit-tested against a window frame.
+///
 /// Returns `None` when the primary display cannot be identified, which makes
 /// the caller treat the pointer as unknown instead of guessing a position.
-pub(crate) fn appkit_cursor_position(
-    sample: CursorSample,
+pub(crate) fn appkit_pointer_position(
+    pointer: CursorPosition,
     mtm: MainThreadMarker,
 ) -> Option<CursorPosition> {
     let primary_height = NSScreen::screens(mtm).iter().find_map(|screen| {
@@ -39,8 +44,8 @@ pub(crate) fn appkit_cursor_position(
         (frame.origin.x == 0.0 && frame.origin.y == 0.0).then_some(frame.size.height)
     })?;
     Some(CursorPosition {
-        x: sample.position.x,
-        y: primary_height - sample.position.y,
+        x: pointer.x,
+        y: primary_height - pointer.y,
     })
 }
 

@@ -725,6 +725,12 @@ impl WindowState {
         // A change starts over from the absolute cursor, so the first sample
         // after it reseeds, which is also what discards any motion summed before
         // it.
+        //
+        // Both positions are published. The accumulated one is what the model
+        // follows; the absolute cursor is where the pointer is, and the overlay's
+        // hover hide hit-tests that one, because an accumulation of device units
+        // is an estimate of the pointer's position rather than the pointer's
+        // position.
         let force_move = self
             .cursor_force_move
             .sync(self.force_move.load(Ordering::Acquire));
@@ -733,13 +739,13 @@ impl WindowState {
         }
         self.pointer_dirty = false;
         let sample = if force_move {
-            let Some((absolute, viewport)) = cursor_geometry() else {
+            let Some((pointer, viewport)) = cursor_geometry() else {
                 self.record_cursor_lookup_failure();
                 return;
             };
             let delta = std::mem::take(&mut self.pending_cursor_delta);
-            let position = self.cursor_force_move.advance(absolute, delta, viewport);
-            CursorSample::new(position, viewport, self.monotonic()).ok()
+            let position = self.cursor_force_move.advance(pointer, delta, viewport);
+            CursorSample::following(pointer, position, viewport, self.monotonic()).ok()
         } else {
             self.pending_cursor_delta = CursorDelta::default();
             cursor_sample(self.monotonic())
@@ -1824,6 +1830,69 @@ mod tests {
             CursorDelta { x: 0.0, y: 0.0 },
             "with the mode off the absolute cursor is published instead"
         );
+
+        runtime.shutdown(TIMEOUT).expect("runtime stop");
+    }
+
+    /// A published reading carries two positions: the model follows the
+    /// accumulated one, and the overlay's hover hide hit-tests the pointer's own
+    /// position against the window box. Reporting the accumulation as both made
+    /// the hover hide depend on how the mouse travelled to the window, which is
+    /// what issue #1140 reported.
+    #[test]
+    fn a_forced_sample_publishes_the_pointer_position_apart_from_the_model_position() {
+        const TIMEOUT: Duration = Duration::from_secs(2);
+        let runtime = RuntimeOwner::start(true, 64);
+        let client = runtime.client();
+        client.wait_for_revision(1, TIMEOUT).expect("runtime ready");
+        let force_move = Arc::new(AtomicBool::new(true));
+        let mut state = WindowState::new(
+            runtime.input_producer(),
+            runtime.cursor_producer(),
+            runtime.gamepad_axis_producer(),
+            runtime.platform_input_diagnostics_producer(),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
+            Arc::clone(&force_move),
+            WorkerOptions::default(),
+        );
+        // The sample is read back through the runtime rather than from the
+        // producer, because the runtime worker consumes the slot on its own
+        // schedule and would otherwise take the sample this test is looking for.
+        let published = |consumed, expectation: &str| {
+            client
+                .wait_for_cursor_samples(consumed, TIMEOUT)
+                .unwrap_or_else(|| panic!("{expectation} reached the runtime"))
+                .cursor
+                .sample
+                .unwrap_or_else(|| panic!("{expectation} sample"))
+        };
+
+        // The first sample seeds the accumulation from the cursor, so the model
+        // and the pointer agree on it.
+        state.pointer_dirty = true;
+        state.forward_cursor();
+        let seeded = published(1, "seeded");
+        assert_eq!(seeded.position, seeded.pointer);
+
+        // Motion summed since the seed advances the model's position and leaves
+        // the pointer's own position alone.
+        state.pending_cursor_delta = CursorDelta { x: 5.0, y: -3.0 };
+        state.pointer_dirty = true;
+        state.forward_cursor();
+        let moved = published(2, "advanced");
+        assert_ne!(
+            moved.position, moved.pointer,
+            "the model's position is the accumulation, not where the pointer is"
+        );
+
+        // With the mode off the absolute cursor is the only position there is,
+        // so the two agree again.
+        force_move.store(false, Ordering::Release);
+        state.pointer_dirty = true;
+        state.forward_cursor();
+        let absolute = published(3, "absolute");
+        assert_eq!(absolute.position, absolute.pointer);
 
         runtime.shutdown(TIMEOUT).expect("runtime stop");
     }

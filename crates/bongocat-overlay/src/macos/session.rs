@@ -485,6 +485,13 @@ impl ProductOverlaySession {
     /// pointer event has arrived yet) and a platform input service that is not
     /// running both count as "not inside", so a degraded pointer pipeline can
     /// never leave the overlay stuck invisible.
+    ///
+    /// The hit test uses the sample's pointer position rather than the position
+    /// the model follows. The two differ while `input.mouse.force_move`
+    /// accumulates the model's position from relative device motion, and that
+    /// accumulation is an estimate of where the pointer is — good enough to aim
+    /// a model with, not exact enough to decide whether the pointer has entered
+    /// the window box.
     pub(crate) fn update_hover_presentation(
         &mut self,
         options: OverlaySessionOptions,
@@ -510,9 +517,13 @@ impl ProductOverlaySession {
             .right_button_monitor
             .as_ref()
             .is_some_and(RightButtonMonitor::is_resize_dragging);
+        // The pointer's own position, not the one the model follows: hover hide
+        // asks whether the pointer is over the window, and `force_move`
+        // accumulates the model's position from relative motion, which is only an
+        // estimate of where the pointer is.
         let pointer_inside = !resizing
             && cursor
-                .and_then(|sample| appkit_cursor_position(sample, mtm))
+                .and_then(|sample| appkit_pointer_position(sample.pointer, mtm))
                 .is_some_and(|position| pointer_inside_window(bounds, position.x, position.y));
         let now = self.session_started.elapsed();
         let fade = self.hover.observe(PointerHoverObservation {

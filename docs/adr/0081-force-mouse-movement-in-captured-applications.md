@@ -1,8 +1,8 @@
 # ADR-0081: 指针被捕获时按相对位移累计光标位置
 
-状态：已接受（2026-10-04）
+状态：已接受（2026-10-04）；2026-10-13 采样改为同时携带指针自身位置、悬停命中测试改读它，见「决策 8」
 补充：ADR-0011（模块契约）、ADR-0054（配置读取失败恢复）
-实现：Issue #785
+实现：Issue #785；指针位置分离见 Issue #1140
 
 ## 背景
 
@@ -101,6 +101,40 @@ runtime **不消费**这个值。消费者是 overlay session——它持有平�
 怎么用**。这一行描述的是**指针位置从哪来**，放在三行之后读作对上面三行的一条附注：如果指针根本不动，
 上面三项都没有作用对象。放在最前会读成「下面几项的前提条件」，而它并不是——关闭它时上面三行照常工作。
 
+### 8. 采样同时携带指针自身位置，悬停命中测试只读它
+
+`force_move` 把模型跟随的位置换成累加位置，但累加位置**不是指针位置**。它由设备的相对位移
+（Windows 的 `RAWMOUSE::lLastX/lLastY`、macOS 的 event delta）累加得到，而设备位移与光标位移
+不是同一个量：Windows 把鼠标计数换算成光标像素时要经过「指针速度」与「提高指针精确度」两条曲线。
+因此累加值是对指针位置的**估计**，并且与鼠标**走到**当前位置的路径有关：同一个终点，快慢不同会
+得到不同的累加值。
+
+原实现里 `CursorSample` 只有一个 `position`，于是 overlay 的悬停命中测试
+（`overlay.hide_on_pointer_hover`）也拿累加位置判断「指针是否在窗口矩形内」。窗口只有几百像素宽，
+路径相关的误差足以让同一个手势有时命中、有时不命中。这就是 Issue #1140：打开该设置后模型窗口
+「有时隐藏、有时不隐藏」，把 `input.mouse.force_move` 关掉再打开（累加器重新对齐到绝对光标）
+之后短暂恢复正常，重启后又复现。
+
+决策：`CursorSample` 同时携带两个位置——`pointer`（指针自身位置，平台直接读到的绝对光标）与
+`position`（模型跟随的位置，`force_move` 打开时是累加值）。两个平台在同一条采样里都发布这两个值。
+runtime 的平滑、归一化与模型投影继续只读 `position`，因此本决策不改变决策 1 的边界：runtime 仍然
+不知道这个开关存在。悬停命中测试改读 `pointer`——它问的是「指针是否在窗口上」，而累加值回答的是
+「模型该看哪里」。
+
+命中测试必须在同一坐标空间里比较，因此 macOS 仍先把指针位置从 CoreGraphics 空间换算到 AppKit
+空间（换算对象由「整个采样」收窄为「采样的 `pointer`」）；Windows 两个值本来就是虚拟屏幕像素，
+不需要换算。
+
+不采用的替代方案：
+
+- **让累加位置在绝对光标移动时重新对齐**（把决策 5 的规则改成「位置一动就重对齐」）。这能一并消除
+  桌面上的累加漂移，但会把「游戏每帧把光标重新居中」误判成普通移动，让模型跳到屏幕中心，正是决策 5
+  要避免的情况；而且它改的是模型跟随行为，与 Issue #1140 无关。
+- **让 overlay 自己调用 `GetCursorPos` / `NSEvent::mouseLocation`。** 这会绕过「采样缺失或输入服务
+  不在 `Running` 时视为不在窗口内」的降级规则（见 Technical Design），也让平台光标读取出现第二份实现。
+- **只在 `force_move` 打开时才发布 `pointer`**（其余情况用 `Option`）。指针位置在两种模式下都存在，
+  用 `Option` 会让每个读者都必须处理一个不可能出现的分支。
+
 ## 明确不做
 
 - **不默认打开。** 打开期间由设备以外的方式移动的指针（程序化 warp、绝对定位设备、触摸板手势）不会
@@ -117,10 +151,14 @@ runtime **不消费**这个值。消费者是 overlay session——它持有平�
 
 - 在捕获指针的全屏游戏里，模型继续跟随鼠标移动；按键跟随不受影响，因为它本来就走另一条路径。
 - 桌面上的正常使用不受影响：位移与绝对光标同步移动，累加位置跟着走；绝对设备与重新居中的游戏由
-  决策 5 的规则处理。
+  决策 5 的规则处理。**（2026-10-13 修正）** 「跟着走」不等于「逐像素相等」：系统把设备位移换算成
+  光标位移时会应用指针速度与加速度曲线，因此累加位置是对指针位置的估计，误差随鼠标移动路径累积。
+  模型跟随用的就是这个估计值（本决策不变），但任何需要回答「指针在哪」的判断必须读采样里的
+  `pointer`，见决策 8。
 - 配置、runtime 快照、设置协议与 overlay options 之间只有一份拼写；`CursorSettings` 与
   `GamepadAxisSettings` 共用同一套命令与快照通道。
 - 该开关在 Windows 与 macOS 上都生效，且两平台共用同一段累加策略与同一批单元测试。
+- 采样类型（`CursorSample`）多一个位置字段；runtime 的消费面不变，仍然只读模型跟随的位置。
 
 ## 残余风险与待验证项（不得当作已确认）
 
@@ -134,6 +172,13 @@ runtime **不消费**这个值。消费者是 overlay session——它持有平�
    但绝对定位设备在 macOS 上是否真的产生零位移事件没有实测。
 5. **`RAWMOUSE` 字节布局只在解码测试中固定。** `usFlags` 偏移（`header_size + 0`）与
    `MOUSE_MOVE_ABSOLUTE` 取值来自 `RAWMOUSE` 的定义，未在真实远程桌面或绘图板上核对。
+6. **累加位置与光标位置的误差幅度未实测（2026-10-13 新增）。** 决策 8 的成立只依赖「累加值不等于
+   指针位置」这一事实（设备位移与光标位移之间隔着指针速度与加速度换算），不依赖误差有多大；但误差
+   在桌面上的实际幅度、以及它是否让模型跟随看起来明显滞后，只有推理没有实测。本机是 macOS，
+   Windows 侧的相关测试（见「验证」）只做了交叉编译类型检查。
+7. **Windows 与 macOS 的悬停隐藏回归测试未在本机运行（2026-10-13 新增）。** 命中测试那一行是平台
+   适配器里的代码，本机跑不了 Windows 目标；Windows 的两个新测试只经过 `cargo check
+   --target x86_64-pc-windows-msvc` 的类型检查，需要由 Windows CI 实际运行确认。
 
 ## 验证
 
@@ -154,3 +199,12 @@ runtime **不消费**这个值。消费者是 overlay session——它持有平�
   `cursor_callback_slot_sums_motion_across_coalesced_samples`（见残余风险 2）。
 - `bongocat-ui`：`settings.input_interaction.mouse.force_move.label` 在七个语言资源与设置窗口 smoke
   清单中都被点名。
+- 决策 8（2026-10-13）：
+  - `bongocat-input`：`a_reading_without_accumulation_reports_the_pointer_as_the_model_position`、
+    `a_reading_keeps_the_pointer_position_when_the_model_follows_another`，以及
+    `invalid_geometry_non_monotonic_time_and_stop_are_explicit` 里新增的「模型位置非有限」用例。
+  - `bongocat-platform`（Windows）：`a_forced_sample_publishes_the_pointer_position_apart_from_the_model_position`。
+  - `bongocat-overlay`（Windows）：`hover_hide_hit_tests_the_pointer_position_rather_than_the_model_position`
+    ——把两个位置放在窗口矩形的两侧，断言命中测试只跟指针位置走。
+  - 前两项在本机（macOS）跑过；后两项只有 `cargo check --target x86_64-pc-windows-msvc` 的类型检查，
+    见残余风险 7。

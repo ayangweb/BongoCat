@@ -1035,6 +1035,13 @@ fn run_input_worker(
     Ok(diagnostics)
 }
 
+/// Publish the latest cursor reading.
+///
+/// Both positions are published. The model follows the accumulated one while
+/// `force_move` is on; the pointer's own position is where the pointer is, and
+/// that is what the overlay's hover hide hit-tests a window box against, because
+/// an accumulation of relative motion is an estimate of the pointer's position
+/// rather than the pointer's position.
 fn forward_latest_cursor(
     latest: &LatestCursor,
     producer: &CursorProducer,
@@ -1054,16 +1061,16 @@ fn forward_latest_cursor(
             diagnostics.cursor_display_lookup_failures.saturating_add(1);
         return Ok(());
     };
-    let absolute = CursorPosition {
+    let pointer = CursorPosition {
         x: point.x,
         y: point.y,
     };
     let position = if force_move {
-        force_move_state.advance(absolute, point.delta, viewport)
+        force_move_state.advance(pointer, point.delta, viewport)
     } else {
-        absolute
+        pointer
     };
-    let sample = match CursorSample::new(position, viewport, monotonic(started)) {
+    let sample = match CursorSample::following(pointer, position, viewport, monotonic(started)) {
         Ok(sample) => sample,
         Err(_) => {
             diagnostics.cursor_publish_rejections =

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### 🐛 Bug Fixes
+
+- Fixed "Model window → Window behavior → Hide on mouse hover" hiding the window only sometimes while "Input & interaction → Mouse → Force mouse movement" was on.
+
 ## 2.3.0 - 2026-10-12
 
 ### ✨ Features

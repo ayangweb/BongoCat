@@ -1,7 +1,131 @@
-//! The options the renderer can actually honour.
+//! The options the renderer can actually honour, and the presentation the
+//! session derives from them.
 
 use super::*;
+use bongocat_runtime::{CursorPosition, CursorViewport};
 use windows::Win32::UI::WindowsAndMessaging::{SW_MINIMIZE, SW_RESTORE};
+
+/// Hover hide asks whether the pointer is over the model window, so the hit test
+/// has to read the pointer's own position rather than the position the model
+/// follows.
+///
+/// `input.mouse.force_move` accumulates the model's position from relative device
+/// motion, and that accumulation is an estimate of where the pointer is: it
+/// depends on how the mouse travelled rather than on where it ended up. Issue
+/// #1140 reported the window hiding or staying shown for the same gesture because
+/// the hit test read it. The two samples below put the two positions on opposite
+/// sides of the window box, so either arrangement answers the question the other
+/// one is asked.
+#[test]
+fn hover_hide_hit_tests_the_pointer_position_rather_than_the_model_position() {
+    let catalog = PresetModelCatalog::open(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/models"),
+        ModelPackageLimits::default(),
+    )
+    .unwrap();
+    let (runtime, consumer) = RuntimeOwner::start_with_rendering(false, 64);
+    let client = runtime.client();
+    client.wait_for_revision(1, RUNTIME_TIMEOUT).unwrap();
+    let model = catalog.load(&ModelId::parse("standard").unwrap()).unwrap();
+    let (token, frame) = prepare_switch_frame(
+        &client,
+        &consumer,
+        Arc::new(model),
+        Arc::new(preview_input_bindings("standard")),
+    )
+    .unwrap();
+    let apartment = ComApartment::initialize().unwrap();
+    let options = OverlaySessionOptions {
+        hide_on_pointer_hover: true,
+        hide_on_pointer_hover_delay_ms: 0,
+        ..OverlaySessionOptions::default()
+    };
+    let mut overlay = NativeOverlay::create(
+        &frame,
+        options,
+        Some(OverlayWindowBounds::new(100, 100, 720, 308)),
+        None,
+        None,
+    )
+    .unwrap();
+    overlay.draw_capturing(true).unwrap();
+    report_model_commit(&client, &consumer, token, ModelCommitOutcome::Prepared).unwrap();
+    let mut session = ProductOverlaySession {
+        overlay,
+        runtime_client: client.clone(),
+        render_consumer: consumer,
+        _com_apartment: apartment,
+        input_service: None,
+        input_start_error: None,
+        input_diagnostics: None,
+        input_stopped: true,
+        frames_presented: 0,
+        dynamic_snapshots: 0,
+        model_commit_rejections: 0,
+        previous_snapshot: Arc::clone(&frame.snapshot),
+        options,
+        last_frame: frame,
+        retry_backoff: FrameRetryBackoff::default(),
+        context_menu_sender: None,
+        resize_sender: None,
+        hover: PointerHoverHide::default(),
+        idle: IdleHide::default(),
+        placement: OverlayPlacementConstraint::default(),
+        session_started: Instant::now(),
+    };
+
+    let bounds = session.window_bounds().unwrap();
+    let over_window = CursorPosition {
+        x: f64::from(bounds.x) + 5.0,
+        y: f64::from(bounds.y) + 5.0,
+    };
+    let off_window = CursorPosition {
+        x: f64::from(bounds.x) - 500.0,
+        y: f64::from(bounds.y) - 500.0,
+    };
+    let viewport = CursorViewport {
+        origin: CursorPosition { x: 0.0, y: 0.0 },
+        width: 100_000.0,
+        height: 100_000.0,
+    };
+    let observation = |pointer, position, at| {
+        CursorSample::following(pointer, position, viewport, MonotonicMillis::new(at))
+            .expect("valid sample")
+    };
+
+    session
+        .update_hover_presentation(
+            session.options,
+            Some(observation(over_window, off_window, 0)),
+            None,
+            0,
+            PressedModifiers::NONE,
+            true,
+        )
+        .unwrap();
+    assert!(
+        session.hover.hidden(),
+        "the pointer is over the window even though the model follows a position outside it"
+    );
+
+    session
+        .update_hover_presentation(
+            session.options,
+            Some(observation(off_window, over_window, 1)),
+            None,
+            0,
+            PressedModifiers::NONE,
+            true,
+        )
+        .unwrap();
+    assert!(
+        !session.hover.hidden(),
+        "the pointer left the window even though the model follows a position inside it"
+    );
+
+    runtime.shutdown(RUNTIME_TIMEOUT).unwrap();
+    session.finish_after_runtime_shutdown().unwrap();
+}
 
 #[test]
 fn window_mode_numeric_scale_uses_model_size_instead_of_saved_geometry() {
