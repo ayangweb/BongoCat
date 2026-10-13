@@ -17,6 +17,13 @@
 >   `set_tray_visible`、`register_tray_icon` 与 `remove_tray_icon` 都经 `apply_guid` 补
 >   `NIF_GUID`。因此本文「`SystemMenuPresentation::tooltip` 是创建期输入」的不变量继续成立，
 >   实现未改动，Windows 实机验收仍是发布门禁。
+> - v0.26 把 macOS 图标高度从硬编码的 18pt 改成 `MAX_ICON_HEIGHT = 22.0` 上限，且
+>   `RgbaIcon::to_nsimage` 只缩小不放大；`TrayIconBuilder` 与 `Icon` 都没有尺寸 API，像素数
+>   直接当点数用，因此任何大于 22px 的画布都会被画成 22pt。项目原来的 256×256 蒙版占满画布，
+>   菜单栏图标随之从 18pt 变成 22pt。为保持更新前的视觉尺寸，`tray-macos.png` 重绘为
+>   「图形按 18/22 缩到 210×210 并居中、四周透明留白」的 256×256 画布，渲染回 18.05pt。
+>   代价是状态栏占位仍为 22pt 宽，图形左右各多约 2pt 空隙；PNG 容器契约（256×256、
+>   8-bit RGBA、非隔行、deflate）不变。
 > - 本文「调研结论」与「安全与生命周期不变量」中仍写有 `0.25.0`/`0.20.0` 的段落均为
 >   2026-09-13/2026-09-14 的升级前复核记录，保留原样；除上述 `set_tooltip` 缺陷外，本次未在
 >   Windows 实机复核 `set_visible` 等 shell 行为，这些不变量在 `0.26.1` 上仍待实机确认。
@@ -58,7 +65,8 @@ Windows GUID、菜单顺序、左键打开设置和右键菜单等产品行为�
   已逐字节核验为 256×256、8-bit RGBA、非隔行 PNG，SHA-256 为
   `65f3a1e71f60417916c0511945131c7341edbd46d037fa9e703014e6155434dd`。macOS 现有
   `tray-macos.png` 也固定为 256×256、8-bit RGBA、非隔行，SHA-256 为
-  `1e39a05cc356501518291acea439c06a7f7e944ad3a227f29387875f3604af9a`。
+  `9342c5f8138b03e492434133041264147b759e2309f1ed3b7fab2e0e51b5a99d`（2026-10-12 重绘，
+  见文首「后续修订」）。
 
 ## 决策
 
