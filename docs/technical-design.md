@@ -734,9 +734,12 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   （钳制在 `25–400`），窗口顶边不动（AppKit frame 原点在左下角，因此修正 origin.y），尺寸
   逐帧经 `setFrame:display:` 与重设的 drawable size 生效，mask 纹理随 drawable 尺寸重建，
   松手后缩放写回配置（ADR-0057）。
-  `always_on_top` 开启时使用高于程序坞的 AppKit main-menu window level，关闭时恢复 normal
-  window level。配置的 runtime snapshot 变化和任何 overlay 重建都必须立即重放当前层级，
-  不能由其他路径覆盖。
+  `always_on_top` 开启时使用高于 macOS 菜单栏的 AppKit status window level（`NSStatusWindowLevel`，
+  25），关闭时恢复 normal window level。菜单栏自身在 `NSMainMenuWindowLevel`（24）并压住同层级的应用
+  窗口，因此处于该层级的模型窗口被拖进菜单栏区域后那部分不可见（issue #1155）；25 同时仍高于程序坞
+  （20），并低于 AppKit 给 `NSMenu` 弹出菜单的 `NSPopUpMenuWindowLevel`（101），所以托盘菜单与模型
+  窗口右键菜单依然显示在模型窗口之上。配置的 runtime snapshot 变化和任何 overlay 重建都必须立即重放
+  当前层级，不能由其他路径覆盖。
   `keep_inside_screen` 开启时，窗口必须完整落在所有 `NSScreen` 的 `frame`（含菜单栏与程序坞
   占用条）并集内，因此允许覆盖系统区域，负坐标保持有效；跨显示器摆放只要不越过桌面边界就不纠正。
   需要纠正时选择与窗口交叠面积最大的 screen，完全无交叠时选择中心距离最近的 screen，再收敛原点。

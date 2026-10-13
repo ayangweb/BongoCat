@@ -6,6 +6,7 @@
 
 - Fixed "Model window → Window behavior → Hide on mouse hover" hiding the window only sometimes while "Input & interaction → Mouse → Force mouse movement" was on.
 - Fixed the settings window disappearing when disabling the Dock icon on macOS. Settings and update windows keep the Dock icon visible while open; "Always show Dock icon" controls whether it stays visible after those windows close.
+- Fixed the model window not being able to reach the top of the screen on macOS. The window level is now above the menu bar, so the model can be shown over it.
 
 ## 2.3.0 - 2026-10-12
 

@@ -9,9 +9,19 @@
 
 use super::*;
 
+/// The level the model window presents at.
+///
+/// macOS gives its own menu bar level 24 (`NSMainMenuWindowLevel`) and stacks it
+/// above an application window that shares that level, so an overlay at 24 is
+/// drawn *behind* the menu bar: the window can be dragged into the menu bar strip
+/// but the part inside it is not visible, which reads as "the cat cannot reach
+/// the top of the screen" (issue #1155). `NSStatusWindowLevel` is 25 — the next
+/// level up, which is what macOS uses for status windows — so the overlay covers
+/// the menu bar while staying above the Dock (20) and below the popup menus the
+/// tray and the model window's own context menu open at (101).
 pub(crate) fn main_window_level(always_on_top: bool) -> NSWindowLevel {
     if always_on_top {
-        NSMainMenuWindowLevel
+        NSStatusWindowLevel
     } else {
         NSNormalWindowLevel
     }
