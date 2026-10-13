@@ -1,28 +1,27 @@
 use super::{
-    BehaviorKind, BehaviorOrdinal, SettingsBuildEnvironment, SettingsBuildInfo, SettingsError,
-    SettingsErrorCode, SettingsLanguage, SettingsModelOrigin,
+    BehaviorKind, BehaviorOrdinal, SettingsBuildInfo, SettingsError, SettingsErrorCode,
+    SettingsLanguage, SettingsModelOrigin,
 };
 
+/// The version row the About page shows.
+///
+/// The build environment is deliberately absent. Development and Production are
+/// the same binary with different data roots, and which one is running is the
+/// update channel's business rather than the reader's: a version a user is
+/// looking at should name the version. The environment is still carried in the
+/// snapshot and still travels in the copied software information report, where
+/// a triager reads it as its own field instead of as a suffix.
 pub(super) fn build_info_detail(
     language: SettingsLanguage,
     build_info: &SettingsBuildInfo,
 ) -> String {
-    let environment = match build_info.environment {
-        SettingsBuildEnvironment::Development => {
-            "about.product_information.version.environment.development"
-        }
-        SettingsBuildEnvironment::Production => {
-            "about.product_information.version.environment.release"
-        }
-    };
     format!(
-        "{} {} · {}",
+        "{} {}",
         bongocat_i18n::text(
             language.catalog_locale(),
             "about.product_information.version.label",
         ),
         build_info.product_version,
-        bongocat_i18n::text(language.catalog_locale(), environment)
     )
 }
 

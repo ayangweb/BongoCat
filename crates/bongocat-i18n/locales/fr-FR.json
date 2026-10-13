@@ -51,16 +51,12 @@
     "product_information": {
       "version": {
         "title": "Informations de version",
-        "label": "Version",
-        "environment": {
-          "development": "Version de développement",
-          "release": "Version de production"
-        }
+        "label": "Version"
       }
     },
     "software_information": {
       "title": "Informations sur le logiciel",
-      "description": "Copiez la version, le système et les détails d’exécution au format JSON pour un rapport de bug.",
+      "description": "Copiez les informations de version, de système et d’exécution pour un rapport de bug.",
       "copy": "Copier",
       "copy_success": "Informations sur le logiciel copiées"
     },
@@ -70,7 +66,6 @@
     },
     "feedback": {
       "title": "Signaler un problème",
-      "description": "Copiez d’abord les informations sur le logiciel, puis collez-les dans le rapport.",
       "action": "Signaler un problème"
     },
     "logs": {

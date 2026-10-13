@@ -51,16 +51,12 @@
     "product_information": {
       "version": {
         "title": "버전 정보",
-        "label": "버전",
-        "environment": {
-          "development": "개발 빌드",
-          "release": "릴리스 빌드"
-        }
+        "label": "버전"
       }
     },
     "software_information": {
       "title": "소프트웨어 정보",
-      "description": "버전, 시스템, 런타임 정보를 JSON으로 복사해 버그 제보에 사용하세요.",
+      "description": "버전, 시스템, 런타임 정보를 복사해 문제 제보에 사용하세요.",
       "copy": "복사",
       "copy_success": "소프트웨어 정보를 복사했습니다"
     },
@@ -70,7 +66,6 @@
     },
     "feedback": {
       "title": "문제 제보",
-      "description": "소프트웨어 정보를 먼저 복사한 뒤 보고서에 붙여 넣어 주세요.",
       "action": "문제 제보하기"
     },
     "logs": {

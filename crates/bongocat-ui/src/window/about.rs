@@ -12,7 +12,7 @@ pub(super) const FEEDBACK_URL: &str = "https://github.com/ayangweb/BongoCat/issu
 /// Every user-visible string on the About page belongs to this small contract.
 /// Keeping it beside the page assembly makes the settings smoke check cover
 /// the same rows that users can actually reach.
-pub(super) const ABOUT_LOCALIZED_KEYS: [&str; 13] = [
+pub(super) const ABOUT_LOCALIZED_KEYS: [&str; 12] = [
     "about.product_information.version.title",
     "about.software_information.title",
     "about.software_information.description",
@@ -21,7 +21,6 @@ pub(super) const ABOUT_LOCALIZED_KEYS: [&str; 13] = [
     "about.project.title",
     "about.project.action",
     "about.feedback.title",
-    "about.feedback.description",
     "about.feedback.action",
     "about.logs.title",
     "about.logs.action",
@@ -356,9 +355,9 @@ pub(super) fn operational_group(
     .keywords(keywords.clone());
 
     let project_view = view.clone();
-    // The row's description is the link itself: a second sentence about the
-    // source, releases or progress repeats what the button and the URL already
-    // say, and the URL is the part a reader may want to select or type.
+    // No description: the title names the destination and the button opens it,
+    // so a line underneath would restate one of the two. The address is the
+    // button's business rather than a second line of prose.
     let project = SettingItem::new(
         bongocat_i18n::text(locale, "about.project.title"),
         SettingField::element(
@@ -376,10 +375,12 @@ pub(super) fn operational_group(
             },
         ),
     )
-    .description(PROJECT_SOURCE_URL.to_owned())
     .keywords(keywords.clone());
 
     let feedback_view = view.clone();
+    // No description either: the button says what the row does, and the order of
+    // the two actions is the order of the rows — copy the software information
+    // above, then report.
     let feedback = SettingItem::new(
         bongocat_i18n::text(locale, "about.feedback.title"),
         SettingField::element(
@@ -398,7 +399,6 @@ pub(super) fn operational_group(
             },
         ),
     )
-    .description(bongocat_i18n::text(locale, "about.feedback.description"))
     .keywords(keywords.clone());
 
     let logs_view = view.clone();

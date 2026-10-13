@@ -51,16 +51,12 @@
     "product_information": {
       "version": {
         "title": "Thông tin phiên bản",
-        "label": "Phiên bản",
-        "environment": {
-          "development": "Bản dựng phát triển",
-          "release": "Bản phát hành"
-        }
+        "label": "Phiên bản"
       }
     },
     "software_information": {
       "title": "Thông tin phần mềm",
-      "description": "Sao chép thông tin phiên bản, hệ thống và môi trường chạy dưới dạng JSON để đưa vào báo cáo lỗi.",
+      "description": "Sao chép thông tin phiên bản, hệ thống và môi trường chạy để báo cáo lỗi.",
       "copy": "Sao chép",
       "copy_success": "Đã sao chép thông tin phần mềm"
     },
@@ -70,7 +66,6 @@
     },
     "feedback": {
       "title": "Góp ý vấn đề",
-      "description": "Hãy sao chép thông tin phần mềm trước, rồi dán vào báo cáo.",
       "action": "Báo cáo sự cố"
     },
     "logs": {

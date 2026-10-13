@@ -51,16 +51,12 @@
     "product_information": {
       "version": {
         "title": "版本信息",
-        "label": "版本",
-        "environment": {
-          "development": "开发版",
-          "release": "正式版"
-        }
+        "label": "版本"
       }
     },
     "software_information": {
       "title": "软件信息",
-      "description": "以 JSON 复制版本、系统与运行状态信息，反馈问题时使用。",
+      "description": "复制版本、系统与运行信息，用于问题反馈。",
       "copy": "复制",
       "copy_success": "软件信息已复制"
     },
@@ -70,7 +66,6 @@
     },
     "feedback": {
       "title": "问题反馈",
-      "description": "先复制软件信息，再粘贴到问题反馈中。",
       "action": "反馈问题"
     },
     "logs": {

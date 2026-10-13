@@ -51,16 +51,12 @@
     "product_information": {
       "version": {
         "title": "版本資訊",
-        "label": "版本",
-        "environment": {
-          "development": "開發版",
-          "release": "正式版"
-        }
+        "label": "版本"
       }
     },
     "software_information": {
       "title": "軟體資訊",
-      "description": "以 JSON 複製版本、系統與執行狀態資訊，回報問題時使用。",
+      "description": "複製版本、系統與執行資訊，用於問題回報。",
       "copy": "複製",
       "copy_success": "軟體資訊已複製"
     },
@@ -70,7 +66,6 @@
     },
     "feedback": {
       "title": "問題回報",
-      "description": "請先複製軟體資訊，再貼到問題回報中。",
       "action": "回報問題"
     },
     "logs": {

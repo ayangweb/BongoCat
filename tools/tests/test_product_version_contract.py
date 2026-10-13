@@ -119,17 +119,23 @@ class ProductVersionContractTests(unittest.TestCase):
             'product_version: env!("CARGO_PKG_VERSION").to_owned()',
             read(UI_LIBRARY),
         )
+        copy_tests = read(UI_WINDOW_COPY_TESTS)
         self.assertIn(
-            'let product_version = env!("CARGO_PKG_VERSION");', read(UI_WINDOW_COPY_TESTS)
+            'let product_version = env!("CARGO_PKG_VERSION");', copy_tests
         )
         self.assertIn(
-            'format!("Version {product_version} · Development build")',
-            read(UI_WINDOW_COPY_TESTS),
+            'format!("Version {product_version}")',
+            copy_tests,
         )
         self.assertIn(
-            'format!("版本 {product_version} · 开发版")',
-            read(UI_WINDOW_COPY_TESTS),
+            'format!("版本 {product_version}")',
+            copy_tests,
         )
+        # The About row names the version and not the build environment, so the
+        # environment suffix has to stay out of the expectation rather than be
+        # pinned by it.
+        self.assertNotIn("· Development build", copy_tests)
+        self.assertNotIn("· 开发版", copy_tests)
 
         update_runtime = read(UPDATE_RUNTIME_TESTS)
         self.assertIn('env!("CARGO_PKG_VERSION")', update_runtime)

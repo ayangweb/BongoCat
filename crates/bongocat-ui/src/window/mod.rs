@@ -5,18 +5,18 @@
 //! path are the modules under `window/`.
 
 use crate::{
-    ModifierKey, SettingsBuildEnvironment, SettingsBuildInfo, SettingsClient,
-    SettingsCursorSettings, SettingsError, SettingsErrorCode, SettingsGamepadAutoSwitch,
-    SettingsGamepadAxisSettings, SettingsLanguage, SettingsLogLevel, SettingsLogging,
-    SettingsModelAvailability, SettingsModelBehavior, SettingsModelBehaviorBinding,
-    SettingsModelBehaviorName, SettingsModelDiagnostic, SettingsModelEntry,
-    SettingsModelImportMonitor, SettingsModelImportOperation, SettingsModelImportRequest,
-    SettingsModelKey, SettingsModelMode, SettingsModelOrigin, SettingsModelSettings,
-    SettingsModelSourceCandidate, SettingsModelSourceContent, SettingsMverMode,
-    SettingsOperationId, SettingsOverlay, SettingsRandomBehavior, SettingsRandomBehaviorMode,
-    SettingsRuntimeErrorCode, SettingsShortcutBinding, SettingsShortcuts, SettingsSnapshot,
-    SettingsStartupItemState, SettingsStartupItemStatus, SettingsStartupItemUnsupportedReason,
-    SettingsTheme, SettingsWindowPlacement, SettingsWindowState,
+    ModifierKey, SettingsBuildInfo, SettingsClient, SettingsCursorSettings, SettingsError,
+    SettingsErrorCode, SettingsGamepadAutoSwitch, SettingsGamepadAxisSettings, SettingsLanguage,
+    SettingsLogLevel, SettingsLogging, SettingsModelAvailability, SettingsModelBehavior,
+    SettingsModelBehaviorBinding, SettingsModelBehaviorName, SettingsModelDiagnostic,
+    SettingsModelEntry, SettingsModelImportMonitor, SettingsModelImportOperation,
+    SettingsModelImportRequest, SettingsModelKey, SettingsModelMode, SettingsModelOrigin,
+    SettingsModelSettings, SettingsModelSourceCandidate, SettingsModelSourceContent,
+    SettingsMverMode, SettingsOperationId, SettingsOverlay, SettingsRandomBehavior,
+    SettingsRandomBehaviorMode, SettingsRuntimeErrorCode, SettingsShortcutBinding,
+    SettingsShortcuts, SettingsSnapshot, SettingsStartupItemState, SettingsStartupItemStatus,
+    SettingsStartupItemUnsupportedReason, SettingsTheme, SettingsWindowPlacement,
+    SettingsWindowState,
 };
 use bongocat_config::ShortcutChord;
 use bongocat_platform::{

@@ -20,24 +20,33 @@ fn report_of(snapshot: &SettingsSnapshot) -> serde_json::Value {
     serde_json::from_str(&json).expect("the report is valid JSON")
 }
 
+/// The row names the version and nothing else.
+///
+/// Both environments are asserted rather than just the one the tests compile
+/// as, because the suffix this row used to carry was environment-dependent: a
+/// guard written against Development alone would go green again the moment
+/// Production started appending "Release build".
 #[test]
 fn build_information_is_localized_and_contains_only_compiled_identity() {
     let product_version = env!("CARGO_PKG_VERSION");
-    let build_info = crate::SettingsBuildInfo {
-        product_version: product_version.to_owned(),
-        environment: crate::SettingsBuildEnvironment::Development,
-        cubism_core_version: "6.0.1".to_owned(),
-    };
-    let detail = build_info_detail(SettingsLanguage::English, &build_info);
-    assert_eq!(
-        detail,
-        format!("Version {product_version} · Development build")
-    );
-    assert!(!detail.contains('/'));
-    assert!(!detail.contains("path"));
 
-    let chinese = build_info_detail(SettingsLanguage::ChineseSimplified, &build_info);
-    assert_eq!(chinese, format!("版本 {product_version} · 开发版"));
+    for environment in [
+        crate::SettingsBuildEnvironment::Development,
+        crate::SettingsBuildEnvironment::Production,
+    ] {
+        let build_info = crate::SettingsBuildInfo {
+            product_version: product_version.to_owned(),
+            environment,
+            cubism_core_version: "6.0.1".to_owned(),
+        };
+        let detail = build_info_detail(SettingsLanguage::English, &build_info);
+        assert_eq!(detail, format!("Version {product_version}"));
+        assert!(!detail.contains('/'));
+        assert!(!detail.contains("path"));
+
+        let chinese = build_info_detail(SettingsLanguage::ChineseSimplified, &build_info);
+        assert_eq!(chinese, format!("版本 {product_version}"));
+    }
 }
 
 /// The report has to survive being pasted into an issue as a code block, which

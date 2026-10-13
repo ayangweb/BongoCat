@@ -636,8 +636,10 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   仍未采集的是 GPU adapter 名称与渲染后端：它需要 Metal/DXGI 枚举（新的 `objc2-metal` 依赖或新的
   `windows` feature）与无法在本机验证的 unsafe FFI，不属于本字段的最小闭环；渲染问题先靠
   `runtime_error_code` 与 `cubism_core_version` 定位，adapter 名称是下一个独立条目。
-  About 的描述只在标题和按钮说不清时才出现：产品信息行显示 build 标识，软件信息行说明复制内容，
-  问题反馈行提示先复制软件信息；项目主页行只显示链接，日志目录行不显示描述。About 的操作按钮
+  About 的描述只在标题和按钮说不清时才出现：产品信息行显示产品版本，不带 build environment
+  （Development/Production 是同一份二进制、不同数据根，只对更新通道有意义，该值仍留在 snapshot
+  与复制的软件信息报告里），软件信息行说明复制内容；项目主页、问题反馈与日志目录三行都不显示
+  描述（标题与按钮已经说清各自做什么）。About 的操作按钮
   以「检查更新」为唯一实心 `primary`，「反馈问题」用 `danger` 描边，复制、项目主页与日志目录三行
   保持组件库默认按钮，使颜色本身始终携带含义。
   About 不再展示法律与隐私正文。页面与分组标题同时作为设置搜索关键词，
