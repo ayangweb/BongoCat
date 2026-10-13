@@ -277,8 +277,16 @@ pub fn set_dock_icon_visible(visible: bool) -> Result<(), NativeWindowError> {
     if application.activationPolicy() == policy {
         return Ok(());
     }
+    let was_active = application.isActive();
     if !application.setActivationPolicy(policy) {
         return Err(NativeWindowError::DockVisibilityUpdateFailed);
+    }
+    if was_active {
+        // Changing policy can yield activation and send the settings window behind
+        // other apps. Preserve foreground interaction only for an already-active app.
+        // This selector supports macOS 12; its replacement requires macOS 14.
+        #[allow(deprecated)]
+        application.activateIgnoringOtherApps(true);
     }
     if dock_icon_is_visible()? != visible {
         return Err(NativeWindowError::DockVisibilityUpdateFailed);

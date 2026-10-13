@@ -523,7 +523,7 @@
         "label": "顯示工作列圖示"
       },
       "dock_icon": {
-        "label": "始終顯示 Dock 圖示"
+        "label": "顯示 Dock 圖示"
       },
       "auto_update": {
         "label": "自動檢查更新",

@@ -67,24 +67,6 @@ pub(crate) async fn update_settings_window<R>(
     unreachable!("the bounded settings update loop always returns")
 }
 
-fn open_product_window<T>(
-    cx: &mut App,
-    open: impl FnOnce(&mut App) -> Result<T, String>,
-) -> Result<T, String> {
-    #[cfg(target_os = "macos")]
-    bongocat_platform::set_dock_icon_visible(true).map_err(|error| error.to_string())?;
-    let result = open(cx);
-    #[cfg(target_os = "macos")]
-    if result.is_err()
-        && let Err(error) = sync_product_dock_icon(cx)
-    {
-        return result.map_err(|open_error| {
-            format!("{open_error}; restore background Dock visibility: {error}")
-        });
-    }
-    result
-}
-
 pub(crate) fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandle, String> {
     let existing = cx
         .try_global::<ProductCoordinator>()
@@ -124,17 +106,15 @@ pub(crate) fn ensure_settings_window(cx: &mut App) -> Result<SettingsWindowHandl
             })
         })
         .ok_or_else(|| "settings service owner is unavailable".to_owned())?;
-    let window_handle = open_product_window(cx, |cx| {
-        open_settings_window(
-            settings_client,
-            window_state,
-            seed,
-            navigation_memory,
-            finish_product_quit,
-            open_update_window_and_check,
-            cx,
-        )
-    })?;
+    let window_handle = open_settings_window(
+        settings_client,
+        window_state,
+        seed,
+        navigation_memory,
+        finish_product_quit,
+        open_update_window_and_check,
+        cx,
+    )?;
     cx.global_mut::<ProductCoordinator>().settings_window = Some(window_handle.clone());
     Ok(window_handle)
 }
@@ -179,16 +159,14 @@ pub(crate) fn ensure_update_window(
         cx.activate(true);
         return Ok(window_handle);
     }
-    let window_handle = open_product_window(cx, |cx| {
-        bongocat_ui::open_update_window(
-            update_client,
-            settings_client,
-            language,
-            appearance_theme,
-            start,
-            cx,
-        )
-    })?;
+    let window_handle = bongocat_ui::open_update_window(
+        update_client,
+        settings_client,
+        language,
+        appearance_theme,
+        start,
+        cx,
+    )?;
     cx.global_mut::<ProductCoordinator>().update_window = Some(window_handle.clone());
     Ok(window_handle)
 }
@@ -440,31 +418,24 @@ pub(crate) fn apply_dock_icon_visibility(cx: &mut App, visible: bool) -> Result<
     if !cx.has_global::<ProductCoordinator>() {
         return Err(SettingsError::new(SettingsErrorCode::DockIconUpdateFailed));
     }
-    // GPUI owns only the settings and update windows; the cat overlay is separate.
-    // Keep Regular mode while either product window exists, including when minimized.
-    bongocat_platform::set_dock_icon_visible(visible || !cx.windows().is_empty())
+    // Unlike the taskbar button, the Dock icon belongs to the process rather than
+    // to the settings window, so this runs whether or not a window exists. The
+    // coordinator's record is only written once the adapter has read the policy
+    // back, and the platform error stays anonymous on the way to the settings page.
+    bongocat_platform::set_dock_icon_visible(visible)
         .map_err(|_| SettingsError::new(SettingsErrorCode::DockIconUpdateFailed))?;
-    cx.global_mut::<ProductCoordinator>()
-        .background_dock_icon_visible = visible;
+    cx.global_mut::<ProductCoordinator>().dock_icon_visible = visible;
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-pub(crate) fn sync_product_dock_icon(cx: &mut App) -> Result<(), SettingsError> {
-    let visible = cx
-        .try_global::<ProductCoordinator>()
-        .map(|coordinator| coordinator.background_dock_icon_visible)
-        .ok_or_else(|| SettingsError::new(SettingsErrorCode::DockIconUpdateFailed))?;
-    apply_dock_icon_visibility(cx, visible)
-}
-
-/// The native Dock visibility and the visibility required by the background
-/// preference and the currently open product windows.
+/// What the process activation policy actually says, and what this thread last
+/// applied. Reading it needs no window, so the smoke can compare the shell and
+/// the coordinator's own record against the snapshot even with Settings closed.
 #[cfg(target_os = "macos")]
 pub(crate) fn product_dock_icon_state(cx: &mut App) -> Result<(bool, bool), String> {
     let applied = cx
         .try_global::<ProductCoordinator>()
-        .map(|coordinator| coordinator.background_dock_icon_visible || !cx.windows().is_empty())
+        .map(|coordinator| coordinator.dock_icon_visible)
         .ok_or_else(|| "product coordinator is unavailable".to_owned())?;
     bongocat_platform::dock_icon_is_visible()
         .map(|visible| (visible, applied))

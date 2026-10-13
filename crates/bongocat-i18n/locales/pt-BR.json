@@ -523,7 +523,7 @@
         "label": "Mostrar o ícone na barra de tarefas"
       },
       "dock_icon": {
-        "label": "Sempre mostrar o ícone no Dock"
+        "label": "Mostrar o ícone no Dock"
       },
       "auto_update": {
         "label": "Verificar atualizações automaticamente",

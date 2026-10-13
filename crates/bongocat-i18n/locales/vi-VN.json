@@ -523,7 +523,7 @@
         "label": "Hiện biểu tượng trên thanh tác vụ"
       },
       "dock_icon": {
-        "label": "Luôn hiện biểu tượng Dock"
+        "label": "Hiện biểu tượng trên Dock"
       },
       "auto_update": {
         "label": "Tự động kiểm tra cập nhật",

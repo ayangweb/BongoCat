@@ -523,7 +523,7 @@
         "label": "작업 표시줄 아이콘 표시"
       },
       "dock_icon": {
-        "label": "항상 Dock 아이콘 표시"
+        "label": "Dock 아이콘 표시"
       },
       "auto_update": {
         "label": "자동으로 업데이트 확인",
