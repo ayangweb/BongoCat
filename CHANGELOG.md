@@ -5,6 +5,7 @@
 ### 🐛 Bug Fixes
 
 - Fixed "Model window → Window behavior → Hide on mouse hover" hiding the window only sometimes while "Input & interaction → Mouse → Force mouse movement" was on.
+- The model window reserves a small transparent margin above the model canvas, so the preset cat's ascend halo and its glow are no longer clipped by the window edge, and the margin does not move the model on screen.
 
 ## 2.3.0 - 2026-10-12
 

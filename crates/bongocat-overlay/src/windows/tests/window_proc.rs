@@ -30,7 +30,8 @@ fn window_sizing_normalizes_programmatic_native_and_dpi_geometry() {
             let requested = OverlayWindowBounds::new(100, 100, width, 308);
             window.resize(requested).unwrap();
             let programmatic = window.bounds().unwrap();
-            let expected_height = (f64::from(programmatic.width) * 354.0 / 612.0).ceil() as u32;
+            let height_ratio = 354.0 / 612.0 * (1.0 + crate::CANVAS_HEADROOM_FRACTION);
+            let expected_height = (f64::from(programmatic.width) * height_ratio).ceil() as u32;
             assert_eq!(
                 programmatic.height, expected_height,
                 "mode {window_mode}, requested width {width}, actual {programmatic:?}"

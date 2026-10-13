@@ -78,6 +78,9 @@ impl OverlayWindow {
             bounds.filter(|bounds| options.keep_inside_screen || overlay_bounds_visible(*bounds));
         let sizing = WindowSizing::new(canvas)
             .ok_or_else(|| invariant_error("model canvas has an invalid aspect ratio"))?;
+        // The height the user last saw, kept for the bottom-edge repair below:
+        // `normalize` already rewrites the saved height to the current rule.
+        let saved_height = bounds.map(|bounds| bounds.height);
         let bounds = bounds.map(|bounds| sizing.normalize(bounds));
         let module = unsafe { GetModuleHandleW(None)? };
         let instance = HINSTANCE(module.0);
@@ -163,14 +166,24 @@ impl OverlayWindow {
         if dpi == 0 {
             return Err(invariant_error("GetDpiForWindow returned zero"));
         }
-        let (width, height) = bounds.map_or_else(
-            || sizing.dimensions_for_scale(dpi, scale),
-            |value| (value.width, value.height),
-        );
-        let (x, y) = bounds.map_or_else(
-            || centered_position(cursor, width, height),
-            |value| (value.x, value.y),
-        );
+        let (x, y, width, height) = match bounds {
+            Some(value) => {
+                // A box saved under an older sizing rule gets the current
+                // height with its bottom edge kept, so the model stays where
+                // the user left it and the new headroom appears above it.
+                match saved_height
+                    .and_then(|height| repair_stale_overlay_height(value.y, height, value.height))
+                {
+                    Some((y, height)) => (value.x, y, value.width, height),
+                    None => (value.x, value.y, value.width, value.height),
+                }
+            }
+            None => {
+                let (width, height) = sizing.dimensions_for_scale(dpi, scale);
+                let (x, y) = centered_position(cursor, width, height);
+                (x, y, width, height)
+            }
+        };
         let bounds = OverlayWindowBounds::new(x, y, width, height);
         // A brand new window has no drag to interrupt, so an unusable placement
         // is corrected immediately: this is the restore path for a saved box and

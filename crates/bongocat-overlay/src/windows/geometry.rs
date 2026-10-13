@@ -128,9 +128,19 @@ impl WindowSizing {
             })
     }
 
+    /// Canvas height per width, including the headroom kept above the canvas.
+    ///
+    /// The reserved margin keeps model effects drawn above the canvas (the
+    /// preset cat's halo and glow) inside the window. Every Windows sizing
+    /// entry point measures the window with this ratio, so a drag, a scale
+    /// change and a saved-box restore all produce the same box.
+    fn height_ratio(self) -> f64 {
+        self.canvas_height / self.canvas_width * (1.0 + crate::CANVAS_HEADROOM_FRACTION)
+    }
+
     pub(crate) fn resize_base(self, dpi: u32) -> Option<ResizeBase> {
         let width = f64::from(crate::DEFAULT_OVERLAY_WINDOW_WIDTH) * f64::from(dpi) / 96.0;
-        ResizeBase::new(width, width * self.canvas_height / self.canvas_width)
+        ResizeBase::new(width, width * self.height_ratio())
     }
 
     pub(crate) fn dimensions_for_scale(self, dpi: u32, scale_percent: u16) -> (u32, u32) {
@@ -165,18 +175,15 @@ impl WindowSizing {
     }
 
     pub(crate) fn width_for_height(self, height: u32) -> f64 {
-        f64::from(height) * self.canvas_width / self.canvas_height
+        f64::from(height) / self.height_ratio()
     }
 
     pub(crate) fn dimensions_for_width(self, width: f64) -> (u32, u32) {
         let minimum = f64::from(crate::MIN_OVERLAY_WINDOW_DIMENSION);
         let maximum = f64::from(crate::MAX_OVERLAY_WINDOW_DIMENSION);
-        let minimum_width = minimum
-            .max(minimum * self.canvas_width / self.canvas_height)
-            .ceil();
-        let maximum_width = maximum
-            .min(maximum * self.canvas_width / self.canvas_height)
-            .floor();
+        let height_ratio = self.height_ratio();
+        let minimum_width = minimum.max(minimum / height_ratio).ceil();
+        let maximum_width = maximum.min(maximum / height_ratio).floor();
         // Clamp the uniform size, not each axis independently. For canvases
         // whose extreme ratio cannot fit legal bounds, keep the existing limits.
         let width = if minimum_width <= maximum_width {
@@ -185,9 +192,7 @@ impl WindowSizing {
             width
         };
         let width = crate::cover_window_dimension(width);
-        let height = crate::cover_window_dimension(
-            f64::from(width) * self.canvas_height / self.canvas_width,
-        );
+        let height = crate::cover_window_dimension(f64::from(width) * height_ratio);
         (width, height)
     }
 

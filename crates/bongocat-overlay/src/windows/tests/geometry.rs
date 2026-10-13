@@ -52,8 +52,9 @@ fn window_sizing_uses_one_canvas_ratio_at_every_scale_and_dpi() {
             for scale in 25..=400 {
                 let (w, h) = sizing.dimensions_for_scale(dpi, scale);
                 assert!(w >= 64 && h >= 64);
-                let expected_height =
-                    (f64::from(w) * f64::from(height) / f64::from(width)).ceil() as u32;
+                let height_ratio =
+                    f64::from(height) / f64::from(width) * (1.0 + crate::CANVAS_HEADROOM_FRACTION);
+                let expected_height = (f64::from(w) * height_ratio).ceil() as u32;
                 assert_eq!(
                     h, expected_height,
                     "canvas {width}x{height}, DPI {dpi}, scale {scale}"

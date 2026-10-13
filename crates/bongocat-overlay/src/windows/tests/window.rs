@@ -22,7 +22,16 @@ fn window_mode_uses_model_client_size_when_switching_from_saved_pet_geometry() {
         None,
     )
     .unwrap();
-    let expected = crate::model_switch_window_bounds(saved, canvas);
+    // The saved box is stale (its height predates the canvas headroom), so the
+    // create path fixes the height and keeps the bottom edge; that top edge
+    // would sit above the display, so the placement correction pins the box to
+    // the top screen edge instead.
+    let expected = OverlayWindowBounds::new(
+        100,
+        0,
+        720,
+        crate::model_window_height_for_width(canvas, 720),
+    );
     assert_eq!(pet.bounds().unwrap(), expected);
     for scale_percent in [25, 100, 200] {
         let window = OverlayWindow::create(
@@ -85,7 +94,7 @@ fn overlay_window_creation_corrects_a_saved_box_off_the_desktop() {
         origin_y: 1_024.0,
         pixels_per_unit: 1_024.0,
     };
-    let candidate = OverlayWindowBounds::new(left_most.x - 10_000, left_most.y, 350, 350);
+    let candidate = OverlayWindowBounds::new(left_most.x - 10_000, left_most.y, 350, 420);
     let expected = correction_for_screens(&screens, candidate).expect("a display to correct into");
     let window = OverlayWindow::create(
         OverlaySessionOptions::default(),
@@ -98,6 +107,43 @@ fn overlay_window_creation_corrects_a_saved_box_off_the_desktop() {
     let created = window.bounds().expect("constrained bounds");
     assert_eq!(created, expected);
     assert!(bounds_inside_screens(&screen_bounds_all(), created));
+}
+
+/// A saved box whose height came from an older sizing rule is given the
+/// current height while its bottom edge stays where the user left it.
+#[test]
+fn overlay_window_creation_repairs_a_stale_saved_height_keeping_the_bottom_edge() {
+    let screens = screen_bounds_all();
+    let screen = screens.first().expect("at least one display");
+    let canvas = CanvasInfo {
+        width: 2_048.0,
+        height: 2_048.0,
+        origin_x: 1_024.0,
+        origin_y: 1_024.0,
+        pixels_per_unit: 1_024.0,
+    };
+    // 350 was the height rule before the canvas headroom; the current rule
+    // gives 420 at 100% scale.
+    let x = screen.x + 100;
+    let y = screen.y + 200;
+    let candidate = OverlayWindowBounds::new(x, y, 350, 350);
+    let window = OverlayWindow::create(
+        OverlaySessionOptions::default(),
+        canvas,
+        Some(candidate),
+        None,
+        None,
+    )
+    .expect("create overlay window with a stale saved height");
+    let created = window.bounds().expect("repaired bounds");
+    assert_eq!(created.width, 350);
+    // The square canvas with the headroom ratio gives 350 * 1.2 = 420.
+    assert_eq!(created.height, 420);
+    assert_eq!(
+        created.y + created.height as i32,
+        candidate.y + candidate.height as i32,
+        "the bottom edge stays where the user left the window"
+    );
 }
 
 /// The `show_taskbar_icon` preference owns the model window's taskbar button,

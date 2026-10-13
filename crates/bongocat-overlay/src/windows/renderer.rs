@@ -819,5 +819,14 @@ pub(crate) fn model_transform(
         scale_x = -scale_x;
         offset_x = -offset_x;
     }
-    [scale_x, scale_y, offset_x, -center_y * scale_y]
+    let mut offset_y = -center_y * scale_y;
+    if viewport_aspect <= model_aspect {
+        // Vertical slack: the window is taller than the model's canvas, so the
+        // canvas is anchored to the window's bottom edge and the margin sits
+        // above it. Models may draw effects above their declared canvas (the
+        // preset cat's ascend halo and glow do), and centering the model would
+        // leave only half of the margin above the canvas to show them.
+        offset_y -= 1.0 - scale_y * model_height * 0.5;
+    }
+    [scale_x, scale_y, offset_x, offset_y]
 }

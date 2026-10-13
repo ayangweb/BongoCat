@@ -683,8 +683,9 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
 - 应用：GPUI/Win32 主事件循环，单实例使用 named mutex + 唤醒消息。
 - Overlay：透明桌宠用 Win32 无边框 popup，普通窗口使用系统标题栏与 resize 边框（ADR-0089）。
   无已保存 bounds 时以 `350px` 作为 `100%` 的默认逻辑宽度，再应用当前 DPI 与缩放；高度按
-  Cubism Core 返回的模型 Canvas 宽高比推导。恢复保存位置时保留客户区宽度并校正高度。
-  只有呈现模式切换重建窗口资源；桌宠模式切换模型仍重建窗口，普通窗口切换模型保留 HWND。
+  Cubism Core 返回的模型 Canvas 宽高比推导，并另加画布高度 20% 的透明顶部余量（ADR-0090）。
+  恢复保存位置时保留客户区宽度并校正高度：尺寸与当前规则不一致时保留底边、只修复高度
+  （ADR-0090）。只有呈现模式切换重建窗口资源；桌宠模式切换模型仍重建窗口，普通窗口切换模型保留 HWND。
   scale/opacity、圆角和屏幕约束设置在现有窗口上更新。桌宠非 click-through 模式的
   客户区支持拖动，click-through 仍返回 `HTTRANSPARENT`。桌宠右键拖动缩放窗口：位移越过
   `3px` 后按 `(dx + dy) * 0.5` 改 `overlay.scale_percent`（钳制在 `25–400`），窗口左上角
@@ -729,7 +730,9 @@ Windows 验收覆盖 PixPin `Ctrl+Alt+A`、Win+L、PrintScreen、UAC、管理员
   （`LSMultipleInstancesProhibited`、`NSPrincipalClass`），打包入口在签名前验证元数据与资源存在。
 - Overlay：通过 `objc2` 创建透明 nonactivating `NSPanel`；无已保存 bounds 时以
   `350px` 作为 `100%` 的默认逻辑宽度，高度按 Cubism Core 返回的当前模型
-  Canvas 宽高比自适应，两者再应用缩放设置；已保存 bounds 优先，允许通过窗口背景拖动。
+  Canvas 宽高比自适应并另加画布高度 20% 的顶部余量（ADR-0090），两者再应用缩放设置；
+  已保存 bounds 优先（尺寸与当前规则不一致时保留底边、只修复高度，ADR-0090），
+  允许通过窗口背景拖动。
   右键拖动缩放窗口：位移越过 `3px` 后按 `(dx + dy) * 0.5` 改 `overlay.scale_percent`
   （钳制在 `25–400`），窗口顶边不动（AppKit frame 原点在左下角，因此修正 origin.y），尺寸
   逐帧经 `setFrame:display:` 与重设的 drawable size 生效，mask 纹理随 drawable 尺寸重建，

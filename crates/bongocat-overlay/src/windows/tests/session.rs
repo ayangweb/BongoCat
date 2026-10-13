@@ -293,9 +293,9 @@ fn assert_session_scale(session: &ProductOverlaySession, scale_percent: u16) {
     let canvas = session.last_frame.snapshot.canvas;
     // SAFETY: the session owns this HWND on the calling test thread.
     let dpi = unsafe { GetDpiForWindow(session.overlay.window.hwnd) };
-    let minimum_width = 64.0_f64
-        .max(64.0 * f64::from(canvas.width) / f64::from(canvas.height))
-        .ceil() as u32;
+    let height_ratio = f64::from(canvas.height) / f64::from(canvas.width)
+        * (1.0 + crate::CANVAS_HEADROOM_FRACTION);
+    let minimum_width = 64.0_f64.max(64.0 / height_ratio).ceil() as u32;
     let expected_width = (350.0 * f64::from(dpi) * f64::from(scale_percent) / 9600.0).ceil() as u32;
     assert_eq!(
         bounds.width,
@@ -304,8 +304,7 @@ fn assert_session_scale(session: &ProductOverlaySession, scale_percent: u16) {
     );
     assert_eq!(
         bounds.height,
-        (f64::from(bounds.width) * f64::from(canvas.height) / f64::from(canvas.width)).ceil()
-            as u32
+        (f64::from(bounds.width) * height_ratio).ceil() as u32
     );
     assert_eq!(
         (

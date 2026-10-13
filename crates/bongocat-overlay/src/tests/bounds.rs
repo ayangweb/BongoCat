@@ -3,6 +3,22 @@
 use super::*;
 
 #[test]
+fn a_saved_height_from_an_older_sizing_rule_is_repaired_keeping_the_bottom_edge() {
+    // A box saved by a previous sizing rule (204px) under the current one
+    // (243px): the top edge moves up so the bottom edge stays put.
+    assert_eq!(repair_stale_overlay_height(841, 204, 243), Some((802, 243)));
+    assert_eq!(841 + 204, 802 + 243);
+
+    // The same holds in the shrinking direction.
+    assert_eq!(repair_stale_overlay_height(800, 300, 243), Some((857, 243)));
+    assert_eq!(800 + 300, 857 + 243);
+
+    // Within the one-pixel tolerance the box is left alone.
+    assert_eq!(repair_stale_overlay_height(841, 243, 243), None);
+    assert_eq!(repair_stale_overlay_height(841, 244, 243), None);
+}
+
+#[test]
 fn persisted_overlay_bounds_are_bounded_and_scale_explicitly() {
     let bounds = OverlayWindowBounds::new(-640, 120, 400, 600)
         .validate()

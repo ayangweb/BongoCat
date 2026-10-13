@@ -46,6 +46,7 @@ use crate::{
     hover::{PointerHoverHide, PointerHoverObservation, pointer_inside_window},
     idle::{IdleHide, IdleObservation},
     placement::{OverlayPlacementConstraint, bounds_inside_screens, correction_for_screens},
+    repair_stale_overlay_height,
     resize_drag::{ResizeBase, ResizeDrag, ResizeOutcome},
     validate_frame_smoke, validate_model_generation_advance,
 };

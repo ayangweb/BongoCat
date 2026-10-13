@@ -26,6 +26,28 @@ pub(crate) fn model_switch_window_bounds(
     }
 }
 
+/// Repair a saved box whose height no longer matches the model dimensions,
+/// keeping the box's bottom edge where the user left it.
+///
+/// `y` is a top-anchored box's top edge (the Windows convention). A saved
+/// height that differs from the one the model and scale imply was written by
+/// an older sizing rule (or edited by hand); the render transform draws the
+/// model's canvas against the window's bottom edge, so keeping that edge keeps
+/// the model itself in place while a changed amount of reserved headroom
+/// appears above it. `None` means the box is already current.
+pub(crate) fn repair_stale_overlay_height(
+    y: i32,
+    height: u32,
+    expected_height: u32,
+) -> Option<(i32, u32)> {
+    if height.abs_diff(expected_height) <= 1 {
+        return None;
+    }
+    let delta = i64::from(height) - i64::from(expected_height);
+    let y = i32::try_from(i64::from(y) + delta).unwrap_or(y);
+    Some((y, expected_height))
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OverlaySessionOptions {
     pub window_mode: bool,

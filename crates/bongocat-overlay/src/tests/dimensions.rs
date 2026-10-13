@@ -41,8 +41,26 @@ fn default_overlay_height_follows_the_model_aspect_ratio() {
         pixels_per_unit: 350.0,
     };
 
-    assert_eq!(default_overlay_window_dimensions(landscape), (350, 200));
-    assert_eq!(default_overlay_window_dimensions(portrait), (350, 700));
+    assert_eq!(default_overlay_window_dimensions(landscape), (350, 240));
+    assert_eq!(default_overlay_window_dimensions(portrait), (350, 840));
+}
+
+#[test]
+fn the_default_height_reserves_headroom_above_the_canvas() {
+    let standard = CanvasInfo {
+        width: 612.0,
+        height: 354.0,
+        origin_x: 306.0,
+        origin_y: 177.0,
+        pixels_per_unit: 354.0,
+    };
+    let (width, height) = default_overlay_window_dimensions(standard);
+    let aspect_height = f64::from(width) * f64::from(standard.height) / f64::from(standard.width);
+    assert_eq!((width, height), (350, 243));
+    // The extra height over the canvas aspect ratio is exactly the headroom
+    // the render transform keeps above the canvas.
+    assert!(f64::from(height) >= aspect_height * (1.0 + CANVAS_HEADROOM_FRACTION));
+    assert!(f64::from(height) < aspect_height * (1.0 + CANVAS_HEADROOM_FRACTION) + 1.0);
 }
 
 #[test]
@@ -54,15 +72,16 @@ fn standard_model_switch_matches_the_initial_window_height() {
         origin_y: 177.0,
         pixels_per_unit: 354.0,
     };
-    let current = OverlayWindowBounds::new(0, 0, 350, 203);
+    let current = OverlayWindowBounds::new(0, 0, 350, 243);
 
-    assert_eq!(default_overlay_window_dimensions(standard), (350, 203));
+    assert_eq!(default_overlay_window_dimensions(standard), (350, 243));
     assert_eq!(
         model_switch_window_bounds(current, standard),
-        OverlayWindowBounds::new(0, 0, 350, 203)
+        OverlayWindowBounds::new(0, 0, 350, 243)
     );
 
     let (scaled_width, scaled_height) = model_window_dimensions(standard, 125);
+    assert_eq!((scaled_width, scaled_height), (438, 305));
     assert_eq!(
         model_switch_window_bounds(
             OverlayWindowBounds::new(0, 0, scaled_width, scaled_height),
@@ -92,11 +111,11 @@ fn model_switch_keeps_width_and_recomputes_height_at_the_live_scale() {
 
     assert_eq!(
         model_switch_window_bounds(current, landscape),
-        OverlayWindowBounds::new(-240, 180, 700, 400)
+        OverlayWindowBounds::new(-240, 180, 700, 480)
     );
     assert_eq!(
         model_switch_window_bounds(current, portrait),
-        OverlayWindowBounds::new(-240, 180, 700, 1_400)
+        OverlayWindowBounds::new(-240, 180, 700, 1_680)
     );
 }
 
@@ -109,11 +128,11 @@ fn model_switch_height_uses_the_existing_width_instead_of_rescaling_twice() {
         origin_y: 350.0,
         pixels_per_unit: 350.0,
     };
-    // 50% of the 350px base width is 175px. The new height must be 350px,
-    // not another 50% applied to an already scaled width.
+    // 50% of the 350px base width is 175px. The new height must be 350px of
+    // canvas plus headroom, not another 50% applied to an already scaled width.
     assert_eq!(
         model_switch_window_bounds(OverlayWindowBounds::new(0, 0, 175, 1), canvas),
-        OverlayWindowBounds::new(0, 0, 175, 350)
+        OverlayWindowBounds::new(0, 0, 175, 420)
     );
 
     // The result remains within the same bounds contract as a native window.
