@@ -14,6 +14,14 @@
 //! does not bundle a font: a panel is a label, a count or a timer, and the
 //! platform's own text face keeps the binary free of a font license obligation
 //! while matching what the user sees elsewhere in the system.
+//!
+//! A panel's palette and metrics come from the gpui-kit theme the settings
+//! window uses — the same `secondary`/`border`/`foreground` tones, the same
+//! `Theme::radius` and the same medium `Button` height and padding. The panel
+//! itself cannot be a gpui-kit `Button`: it is rasterized here into one bitmap
+//! for the overlay quad rather than composed by GPUI, and no GPUI element ever
+//! reaches this crate. Sharing the tokens is what makes the two surfaces look
+//! like one product without a second widget implementation.
 
 use bongocat_plugin_sdk::PluginView;
 use fontdue::{Font, FontSettings};
@@ -93,6 +101,16 @@ impl HudFont {
         self.font.rasterize(character, size)
     }
 
+    /// Whether this face can draw `character`.
+    ///
+    /// `fontdue` happily rasterizes a character the face has no glyph for, and
+    /// what comes back is the font's own "missing glyph" box. A plugin's label
+    /// is arbitrary UTF-8, so that box would appear as a placeholder next to the
+    /// real text instead of the character the plugin asked for.
+    pub fn has_glyph(&self, character: char) -> bool {
+        self.font.has_glyph(character)
+    }
+
     pub(crate) fn line_metrics(&self, size: f32) -> fontdue::LineMetrics {
         self.font
             .horizontal_line_metrics(size)
@@ -105,8 +123,12 @@ impl HudFont {
     }
 
     /// The advance width of a string at `size`, in logical pixels.
+    ///
+    /// A character the face cannot draw measures zero and takes no room, which
+    /// is what keeps a skipped character from leaving a hole in a label.
     pub fn measure_text(&self, text: &str, size: f32) -> f32 {
         text.chars()
+            .filter(|character| self.has_glyph(*character))
             .map(|character| self.font.metrics(character, size).advance_width)
             .sum()
     }
@@ -118,17 +140,40 @@ impl HudFont {
 }
 
 /// The default text color when a plugin does not choose one.
-pub(crate) const DEFAULT_TEXT_COLOR: [f32; 4] = [0.94, 0.94, 0.96, 1.0];
+///
+/// The settings window draws its labels with gpui-kit's `foreground` token, and
+/// a panel that sits over the same product should not read as a different
+/// application, so the palette below is taken from that theme rather than
+/// invented here.
+pub(crate) const DEFAULT_TEXT_COLOR: [f32; 4] = [0.98, 0.98, 0.98, 1.0];
 
 /// The default panel fill: a translucent dark card that stays legible over any
-/// model art without hiding it.
-pub(crate) const DEFAULT_PANEL_FILL: [f32; 4] = [0.078, 0.086, 0.11, 0.82];
+/// model art without hiding it. This is gpui-kit's `popover.background` /
+/// `secondary.background` step for the dark theme, held translucent so the
+/// model behind it still shows.
+pub(crate) const DEFAULT_PANEL_FILL: [f32; 4] = [0.078, 0.078, 0.078, 0.82];
 
-/// The default button fill.
-pub(crate) const DEFAULT_BUTTON_FILL: [f32; 4] = [0.27, 0.51, 0.86, 0.95];
+/// The default button fill: gpui-kit's `secondary.background` for the dark
+/// theme, so a panel button and a settings-window button share one tone.
+pub(crate) const DEFAULT_BUTTON_FILL: [f32; 4] = [0.271, 0.271, 0.271, 0.95];
 
-/// The default panel border.
-pub(crate) const DEFAULT_PANEL_BORDER: [f32; 4] = [1.0, 1.0, 1.0, 0.12];
+/// A button's label color: gpui-kit's `secondary.foreground` for the dark
+/// theme, which is the same near-white [`DEFAULT_TEXT_COLOR`] uses.
+pub(crate) const DEFAULT_BUTTON_TEXT_COLOR: [f32; 4] = [0.98, 0.98, 0.98, 1.0];
+
+/// The default panel border: gpui-kit's `border` token for the dark theme,
+/// which is what separates a card from the surface behind it. The tone is the
+/// token's; the alpha is held back so a one-pixel outline does not read as a
+/// hard outline over arbitrary model art.
+pub(crate) const DEFAULT_PANEL_BORDER: [f32; 4] = [0.204, 0.204, 0.204, 0.55];
+
+/// The corner radius of a button and of the panel card.
+///
+/// This is gpui-kit's `Theme::radius` (`px(6.)`), the value its own `Button`
+/// rounds a medium button by. The panel is rasterized into a bitmap by this
+/// crate rather than composed by GPUI, so it cannot call the component — the
+/// shared constant is what keeps the two looking like one product.
+pub const CORNER_RADIUS: f32 = 6.0;
 
 /// The padding inside a panel, in logical pixels.
 pub const PANEL_PADDING: f32 = 10.0;
@@ -139,8 +184,14 @@ pub const LABEL_SIZE: f32 = 15.0;
 /// The text size a plugin's primary value is drawn at, in logical pixels.
 pub const VALUE_SIZE: f32 = 22.0;
 /// The height of a plugin's button, in logical pixels.
-pub const BUTTON_HEIGHT: f32 = 24.0;
+///
+/// gpui-kit's medium `Button` is `h_8()`, and a panel that draws a visibly
+/// shorter button than the settings window does not look like the same
+/// control, so the medium height is what a panel button uses.
+pub const BUTTON_HEIGHT: f32 = 32.0;
 /// The horizontal padding inside a button, in logical pixels.
+///
+/// gpui-kit's medium `Button` is `px_2p5()` (10 logical pixels) on each side.
 pub const BUTTON_PADDING: f32 = 10.0;
 
 /// A node a user can activate, and the rectangle it occupies.

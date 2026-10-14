@@ -14,6 +14,13 @@
 
 - Added a "Plugin Center" destination to the settings sidebar, with localized plugin-list messages.
 - Renamed the focus timer plugin to "Pomodoro".
+- The Pomodoro panel now shows the session length before the timer starts, so the duration is visible before counting down begins.
+- Model-window plugin panels now use the same button size, corner radius and colors as the settings window.
+
+### 🐛 Bug Fixes
+
+- Fixed the Pomodoro plugin's "Start" and "Restart" buttons in the model window doing nothing, so the timer can now be started and reset without opening Settings.
+- Fixed unreadable characters in model-window plugin panels: labels containing non-Latin text no longer show a slash followed by a row of empty boxes.
 
 ## 2.3.1 - 2026-10-13
 

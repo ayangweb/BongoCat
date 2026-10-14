@@ -8,8 +8,9 @@
 
 use crate::layout::{placed_nodes, text_size};
 use crate::{
-    BUTTON_PADDING, DEFAULT_BUTTON_FILL, DEFAULT_PANEL_BORDER, DEFAULT_PANEL_FILL,
-    DEFAULT_TEXT_COLOR, HudFont, HudRect, LABEL_SIZE, PANEL_PADDING, PlacedNode,
+    BUTTON_PADDING, CORNER_RADIUS, DEFAULT_BUTTON_FILL, DEFAULT_BUTTON_TEXT_COLOR,
+    DEFAULT_PANEL_BORDER, DEFAULT_PANEL_FILL, DEFAULT_TEXT_COLOR, HudFont, HudRect, LABEL_SIZE,
+    PlacedNode,
 };
 use bongocat_plugin_sdk::{PluginView, UiNode};
 
@@ -112,12 +113,12 @@ impl HudRenderer {
         let offset = layout.panel;
         canvas.fill_rounded_rect(
             HudRect::new(0.0, 0.0, width as f32, height as f32),
-            PANEL_PADDING * scale,
+            CORNER_RADIUS * scale,
             DEFAULT_PANEL_FILL,
         );
         canvas.stroke_rounded_rect(
             HudRect::new(0.0, 0.0, width as f32, height as f32),
-            PANEL_PADDING * scale,
+            CORNER_RADIUS * scale,
             DEFAULT_PANEL_BORDER,
             (scale).max(1.0),
         );
@@ -146,18 +147,18 @@ impl HudRenderer {
                 canvas.draw_text(&self.font, text, rect.x, rect.y, size, DEFAULT_TEXT_COLOR);
             }
             UiNode::Button { label, .. } => {
-                canvas.fill_rounded_rect(rect, 6.0 * scale, DEFAULT_BUTTON_FILL);
+                canvas.fill_rounded_rect(rect, CORNER_RADIUS * scale, DEFAULT_BUTTON_FILL);
                 canvas.draw_text(
                     &self.font,
                     label,
                     rect.x + BUTTON_PADDING * scale,
                     rect.y + (rect.height - self.font.line_height(LABEL_SIZE * scale)) / 2.0,
                     LABEL_SIZE * scale,
-                    DEFAULT_TEXT_COLOR,
+                    DEFAULT_BUTTON_TEXT_COLOR,
                 );
             }
             UiNode::Toggle { label, value, .. } => {
-                canvas.fill_rounded_rect(rect, 6.0 * scale, DEFAULT_PANEL_FILL);
+                canvas.fill_rounded_rect(rect, CORNER_RADIUS * scale, DEFAULT_PANEL_FILL);
                 let track = HudRect::new(
                     rect.x + rect.width - 30.0 * scale,
                     rect.y + (rect.height - 16.0 * scale) / 2.0,
@@ -306,6 +307,13 @@ impl Canvas {
         let baseline = y + metrics.ascent;
         let mut pen = x;
         for character in text.chars() {
+            // A character the face has no glyph for rasterizes to the font's
+            // own placeholder box. Drawing it would put a row of boxes next to
+            // the label, so it is skipped instead and the rest of the string
+            // closes up over the gap.
+            if !font.has_glyph(character) {
+                continue;
+            }
             let (glyph, bitmap) = font.rasterize(character, size);
             if !bitmap.is_empty() {
                 for row in 0..glyph.height {
@@ -425,5 +433,38 @@ mod tests {
         let font: HudFont = crate::load_platform_font().expect("platform font");
         assert!(font.measure_text("00:00", LABEL_SIZE) > 0.0);
         assert!(font.line_height(LABEL_SIZE) > 0.0);
+    }
+
+    /// A plugin's label is arbitrary UTF-8, so the face the host picked has to
+    /// be able to draw what a plugin actually publishes.
+    ///
+    /// A Latin-only face does not fail here — it rasterizes a placeholder box
+    /// for every character it lacks, which is what put a row of squares next to
+    /// the timer's labels.
+    #[test]
+    fn the_platform_face_draws_the_scripts_a_plugin_may_publish() {
+        let font = crate::load_platform_font().expect("platform font");
+        for text in ["Ready", "Start / 开始", "Restart / 重新计时", "25:00"] {
+            for character in text.chars() {
+                assert!(
+                    font.has_glyph(character),
+                    "the loaded face cannot draw {character:?} from {text:?}"
+                );
+            }
+        }
+    }
+
+    /// A character the face lacks takes no space rather than a placeholder box.
+    #[test]
+    fn a_character_the_face_lacks_is_skipped_rather_than_drawn_as_a_box() {
+        let font = crate::load_platform_font().expect("platform font");
+        let missing = ['\u{10FFFD}', '\u{1F600}']
+            .into_iter()
+            .find(|character| !font.has_glyph(*character));
+        let Some(missing) = missing else {
+            // Nothing outside the face's coverage to test with.
+            return;
+        };
+        assert_eq!(font.measure_text(&missing.to_string(), LABEL_SIZE), 0.0);
     }
 }

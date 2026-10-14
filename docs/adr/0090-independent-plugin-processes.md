@@ -60,6 +60,18 @@ settings tree in the plugin center. The model view is a dedicated overlay layer,
 not part of the Live2D model draw: the platform overlay composites the plugin HUD
 into its own texture, quad and clip transform, and the layer's hit rectangles are
 routed back to the plugin as click messages on both macOS Metal and Windows D3D11.
+Those hit rectangles are in the window's device pixels, because that is the
+space a native window reports a pointer position in on both backends; a
+rectangle relative to the composed bitmap would sit `origin` away from where the
+panel is drawn and no click would ever resolve.
+ A panel's palette and metrics come from the gpui-kit theme the settings window
+uses — the same `secondary`/`border`/`foreground` tones, `Theme::radius` and the
+medium `Button` height and padding. The panel cannot itself be a gpui-kit
+`Button`: it is rasterized into one bitmap for the overlay quad and no GPUI
+element reaches that path, so the shared tokens are what keep the two surfaces
+consistent. Panel text is drawn with a platform face chosen for glyph coverage
+of what a plugin may publish, and a character the face lacks is skipped rather
+than rasterized as the font's missing-glyph box.
 The adapter is shared host code, not a per-plugin rule. Host owns
 per-environment/per-plugin storage and atomic writes. Config and state survive
 disable/upgrade; uninstall removes executable but preserves data until explicit
@@ -85,7 +97,11 @@ ID and `bongocat-pomodoro` binary. The plugin system is unreleased, so no
 persisted identity depends on the earlier `countdown` naming and it needed no
 migration path. It is a focus timer, not yet an automatic work/break-cycle
 implementation, and its model view is the countdown panel that the plugin keeps
-in sync with start, pause and reset.
+in sync with start, pause and reset. Before the first start the panel shows the
+same `MM:SS` shape it will count down from, so the session length is readable
+before the timer runs rather than after; a session that has run out stays at
+`00:00` instead of reading as a fresh one. That distinction is the plugin's own
+state, and state written before the field existed still loads.
 
 Installed packages live under `<plugin_dir>/packages/<id>/<version>/` with a
 `current` pointer, and per-plugin data under `<plugin_dir>/data/<id>/`. Install

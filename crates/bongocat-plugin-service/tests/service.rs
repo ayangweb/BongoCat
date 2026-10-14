@@ -142,14 +142,26 @@ fn the_composed_layer_matches_the_window_that_reported_itself() {
         .find(|target| target.id == "toggle")
         .expect("the toggle the plugin published is a target");
     assert_eq!(toggle.plugin, PLUGIN_ID);
+    // The rectangle is in the window's device pixels, which is the space a
+    // native window reports a pointer position in, so a click at the control's
+    // own centre resolves to it.
     assert!(
         layer
-            .target_at(toggle.rect.x + 1.0, toggle.rect.y + 1.0)
-            .is_some()
+            .target_at(
+                toggle.rect.x + toggle.rect.width / 2.0,
+                toggle.rect.y + toggle.rect.height / 2.0
+            )
+            .is_some_and(|target| target.id == "toggle")
+    );
+    assert!(
+        toggle.rect.right() <= layer.window_width as f32
+            && toggle.rect.bottom() <= layer.window_height as f32,
+        "a control sits inside the window that draws it"
     );
 
     // A click the window resolved travels to the plugin and comes back as a new
-    // frame: the pomodoro panel's text moves from its zero state to the full length.
+    // frame. The panel already previews the full length, so what proves the
+    // click landed is that the timer starts counting down from it.
     handles
         .interaction_sender
         .try_send(HudInteraction {
@@ -158,7 +170,12 @@ fn the_composed_layer_matches_the_window_that_reported_itself() {
         })
         .unwrap();
     assert!(
-        wait_for_text(&client),
+        wait_for_text(
+            &client,
+            &[
+                "24:59", "24:58", "24:57", "24:56", "24:55", "24:54", "24:53"
+            ],
+        ),
         "the click must reach the plugin that drew the control"
     );
     service.shutdown().unwrap();
@@ -207,19 +224,20 @@ fn wait_for_layer(consumer: &bongocat_plugin_hud::HudConsumer) -> bongocat_plugi
     panic!("no plugin layer was published");
 }
 
-/// Whether the plugin's own model view comes back carrying the restarted length.
+/// Whether the plugin's own model view comes back carrying one of `expected`.
 ///
 /// The view the plugin publishes is the same one the layer is drawn from, so
 /// reading it is what proves the click reached the plugin rather than only the
 /// queue.
-fn wait_for_text(client: &bongocat_plugin_service::PluginServiceClient) -> bool {
+fn wait_for_text(client: &bongocat_plugin_service::PluginServiceClient, expected: &[&str]) -> bool {
     for _ in 0..200 {
         let Ok(center) = client.read_center_blocking() else {
             return false;
         };
         let restarted = center.cards.first().is_some_and(|card| {
-            card.actions.iter().any(|node| {
-                matches!(node, bongocat_plugin_sdk::UiNode::Text { text } if text == "25:00")
+            card.actions.iter().any(|node| match node {
+                bongocat_plugin_sdk::UiNode::Text { text } => expected.contains(&text.as_str()),
+                _ => false,
             })
         });
         if restarted {

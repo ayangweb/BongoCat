@@ -112,7 +112,13 @@ pub struct HudLayer {
     /// composed frame matches.
     pub window_width: u32,
     pub window_height: u32,
-    /// Every interactive widget, in draw order.
+    /// Every interactive widget, in draw order, in the window's device pixels.
+    ///
+    /// The rectangles are window-relative, not bitmap-relative, because that is
+    /// the space a native window reports a pointer position in on both
+    /// backends. A control the compositor drew into the shared bitmap at
+    /// `(origin_x, origin_y)` is hit-tested at that same window coordinate, not
+    /// at the coordinate it occupies inside the bitmap.
     pub targets: Vec<HudTarget>,
 }
 
@@ -138,7 +144,8 @@ impl HudLayer {
     /// The interactive widget at a device-pixel point, if any.
     ///
     /// Later widgets win, because they are drawn on top: a point inside two
-    /// overlapping buttons activates the one the user can see.
+    /// overlapping buttons activates the one the user can see. The point is in
+    /// the window's device pixels, the same space [`Self::targets`] is in.
     pub fn target_at(&self, x: f32, y: f32) -> Option<&HudTarget> {
         self.targets
             .iter()
@@ -277,13 +284,15 @@ impl HudCompositor {
                 .max(0.0) as u32;
             canvas.blit(x, y, bitmap);
             for target in panel_targets {
-                let mut rect = target.rect;
-                rect.x -= origin_x;
-                rect.y -= origin_y;
+                // Targets stay in the window's device pixels rather than being
+                // shifted into the composed bitmap: a native host hit-tests the
+                // pointer position it reports, which is a window coordinate, and
+                // a layer-relative rectangle would put every control
+                // `origin` away from where it is actually drawn.
                 targets.push(HudTarget {
                     plugin: target.plugin.clone(),
                     id: target.id.clone(),
-                    rect,
+                    rect: target.rect,
                 });
             }
         }
@@ -539,6 +548,68 @@ mod tests {
             layer
                 .target_at(target.rect.x + 1.0, target.rect.y + 1.0)
                 .is_some()
+        );
+    }
+
+    /// A control is hit-tested where the window draws it.
+    ///
+    /// The composed bitmap is only the union of the panels' boxes, so its top
+    /// left corner is not the window's origin: an anchored panel sits at
+    /// `origin_x` inside the window. A target rectangle expressed relative to
+    /// that corner is offset from the pointer position a native window reports,
+    /// and every click on a panel that is not at the window's origin then lands
+    /// on nothing.
+    ///
+    /// The expectation comes from the layout rather than from the layer, so the
+    /// check is against where the panel is drawn and not against whatever the
+    /// compositor happened to record.
+    #[test]
+    fn a_targets_rectangle_is_in_window_pixels_not_bitmap_pixels() {
+        let frames = [PluginHudFrame::new("dev.example.timer", view())];
+        let viewport = HudViewport::new(800, 600, 2.0);
+        let layer = compositor().compose(viewport, &frames).unwrap();
+        assert!(
+            layer.origin_x > 1.0,
+            "the layer is not at the window origin"
+        );
+
+        // Where the layout puts the button, in the window's device pixels.
+        let drawn = {
+            let logical = HudRect::new(
+                0.0,
+                0.0,
+                viewport.logical_width() as f32,
+                viewport.logical_height() as f32,
+            );
+            let font = crate::load_platform_font().expect("platform font");
+            let mut interactive = Vec::new();
+            crate::layout::collect_interactive(
+                &frames[0].view,
+                crate::layout(&frames[0].view, logical, &font).panel,
+                &font,
+                &mut interactive,
+            );
+            let button = interactive
+                .into_iter()
+                .find(|node| node.id == "toggle")
+                .expect("the view publishes a button");
+            scale_rect(button.rect, viewport.scale)
+        };
+
+        let target = layer
+            .targets
+            .iter()
+            .find(|target| target.id == "toggle")
+            .expect("the button is a target");
+        assert_eq!(
+            target.rect, drawn,
+            "the recorded rectangle must be the one the panel was drawn at"
+        );
+        assert!(
+            drawn.x >= layer.origin_x,
+            "a window-relative rectangle starts at or after the layer's origin, \
+             got {drawn:?} for an origin of {}",
+            layer.origin_x
         );
     }
 

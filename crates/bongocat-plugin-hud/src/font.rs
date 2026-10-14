@@ -6,12 +6,23 @@
 //! while matching the surrounding text. A platform that has none of the expected
 //! faces reports that once, and the caller drops the panel rather than drawing
 //! labels in an invented fallback face.
+//!
+//! A plugin's label is arbitrary UTF-8 — the shipped timer writes both English
+//! and Chinese — so a face that only covers Latin would draw every non-Latin
+//! character as a placeholder box. The candidates are therefore ordered by
+//! coverage first and plain looks second, and a character the chosen face still
+//! lacks is skipped instead of being drawn as tofu. See [`crate::HudFont`].
 
 use crate::{HudFont, HudRendererError};
 
 /// The font files each platform ships, in preference order.
+///
+/// A face that covers the CJK ranges a localized label needs comes before the
+/// plainer Latin-only faces, because the width and the look of a missing glyph
+/// are both worse than a slightly heavier face.
 #[cfg(target_os = "macos")]
 const PLATFORM_FONT_CANDIDATES: &[(&str, u32)] = &[
+    ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
     ("/System/Library/Fonts/Supplemental/Arial.ttf", 0),
     ("/System/Library/Fonts/Helvetica.ttc", 0),
     ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0),
@@ -20,9 +31,11 @@ const PLATFORM_FONT_CANDIDATES: &[(&str, u32)] = &[
 
 #[cfg(target_os = "windows")]
 const PLATFORM_FONT_CANDIDATES: &[(&str, u32)] = &[
+    (r"C:\Windows\Fonts\msyh.ttc", 0),
     (r"C:\Windows\Fonts\segoeui.ttf", 0),
     (r"C:\Windows\Fonts\arial.ttf", 0),
     (r"C:\Windows\Fonts\tahoma.ttf", 0),
+    (r"C:\Windows\Fonts\malgun.ttf", 0),
 ];
 
 /// Load the platform's text face.
