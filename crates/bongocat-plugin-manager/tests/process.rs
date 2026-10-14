@@ -11,7 +11,7 @@ const BINARY_FILE: &str = "bongocat-countdown";
 fn source() -> Option<std::path::PathBuf> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
-        .join("plugins/countdown");
+        .join("plugins/pomodoro");
     root.join("plugin.json").is_file().then_some(root)
 }
 
@@ -29,7 +29,7 @@ fn discovery_lifecycle_config_and_ticks_run_a_real_process() {
         return;
     };
     let directory = tempfile::tempdir().unwrap();
-    let package = directory.path().join("countdown");
+    let package = directory.path().join("pomodoro");
     std::fs::create_dir_all(&package).unwrap();
     std::fs::copy(source.join("plugin.json"), package.join("plugin.json")).unwrap();
     std::fs::copy(&binary, package.join(BINARY_FILE)).unwrap();
@@ -60,6 +60,32 @@ fn discovery_lifecycle_config_and_ticks_run_a_real_process() {
         )
         .unwrap();
     manager.tick(250);
+    manager
+        .action_plugin("com.bongocat.countdown", "restart")
+        .unwrap();
+    assert!(
+        manager
+            .plugin_output("com.bongocat.countdown")
+            .unwrap()
+            .model
+            .nodes
+            .iter()
+            .any(|node| matches!(node,
+                bongocat_plugin_sdk::UiNode::Text { text } if text == "05:00"
+            ))
+    );
+    manager.tick(1250);
+    assert!(
+        manager
+            .plugin_output("com.bongocat.countdown")
+            .unwrap()
+            .model
+            .nodes
+            .iter()
+            .any(|node| matches!(node,
+                bongocat_plugin_sdk::UiNode::Text { text } if text == "04:59"
+            ))
+    );
     manager.disable_plugin("com.bongocat.countdown").unwrap();
     assert_eq!(manager.list_plugins()[0].1, PluginState::Disabled);
     manager.shutdown();

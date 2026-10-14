@@ -68,6 +68,18 @@ checks limit host calls, not their own filesystem/network access. Installation m
 explain that trust boundary. Production refuses unsigned catalogs/packages;
 Development scans its explicit local package directory and is not Production.
 
+`just dev` and `just dev-smoke` first invoke `just dev-plugins`: the packaging
+crate independently builds each local package and prepares its manifest and
+executable in Development storage. App bundles still contain no plugins. The
+center discovers those prepared packages, not source folders or an empty
+unprepared directory. Runtime directory overrides are not accepted; Production
+and Development always use their respective storage roots. Discovery runs on the
+background executor and distinguishes loading, failure/retry and an empty list.
+The example's display name is Pomodoro and its source package is `plugins/pomodoro`;
+its existing `com.bongocat.countdown` ID and binary name remain stable to avoid
+changing persisted identity.
+It is a focus countdown, not yet an automatic work/break-cycle implementation.
+
 Install/update prepare a versioned directory, verify signed bytes, then atomically
 switch the selected manifest; old running artifacts are stopped before switch.
 Failures leave the selected installed version unchanged. GitHub proxy prefixes and

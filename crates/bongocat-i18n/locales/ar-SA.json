@@ -29,9 +29,9 @@
       "title": "حول"
     },
     "plugins": {
-      "title": "الإضافات",
-      "subtitle": "Extend the model window with installable plugins.",
-      "empty": "No plugins found. Development builds scan the local plugin folder."
+      "title": "مركز الإضافات",
+      "subtitle": "وسّع نافذة النموذج باستخدام الإضافات.",
+      "empty": "لا توجد إضافات مثبّتة."
     }
   },
   "system_menu": {
@@ -547,8 +547,11 @@
     }
   },
   "plugins": {
-    "enable": "Enable",
-    "disable": "Disable",
-    "failed": "Load failed"
+    "enable": "تفعيل",
+    "disable": "تعطيل",
+    "failed": "فشل التحميل",
+    "loading": "جارٍ تحميل الإضافات…",
+    "discovery_failed": "تعذّر تحميل قائمة الإضافات. حاول مجددًا.",
+    "retry": "إعادة المحاولة"
   }
 }

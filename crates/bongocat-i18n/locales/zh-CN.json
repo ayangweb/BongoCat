@@ -29,9 +29,9 @@
       "title": "关于"
     },
     "plugins": {
-      "title": "插件",
-      "subtitle": "Extend the model window with installable plugins.",
-      "empty": "No plugins found. Development builds scan the local plugin folder."
+      "title": "插件中心",
+      "subtitle": "使用插件扩展模型窗口。",
+      "empty": "暂无已安装的插件。"
     }
   },
   "system_menu": {
@@ -547,8 +547,11 @@
     }
   },
   "plugins": {
-    "enable": "Enable",
-    "disable": "Disable",
-    "failed": "Load failed"
+    "enable": "启用",
+    "disable": "停用",
+    "failed": "加载失败",
+    "loading": "正在加载插件…",
+    "discovery_failed": "无法加载插件列表，请重试。",
+    "retry": "重试"
   }
 }

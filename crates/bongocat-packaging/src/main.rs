@@ -72,6 +72,7 @@
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+mod dev_plugins;
 // Only the macOS disk image has a Finder window to describe, so the encoder is
 // not compiled into any other platform's packaging run.
 #[cfg(target_os = "macos")]
@@ -412,6 +413,8 @@ impl ReleaseTarget {
 
 /// One parsed invocation of the packaging tool.
 enum Invocation {
+    /// Build standalone local plugins into the Development plugin directory.
+    PrepareDevPlugins,
     /// Build and package one release target.
     Package(Options),
     /// Merge the per-target fragments into the shared release manifest.
@@ -441,6 +444,8 @@ usage: cargo run -p bongocat-packaging -- [options]
 Builds the Production product and packages the host platform release artifacts.
 
 options:
+  --prepare-dev-plugins    build local plugin packages for Development only;
+                           takes no other option and never modifies app bundles
   --target <triple>        one of aarch64-apple-darwin,
                             x86_64-apple-darwin, x86_64-pc-windows-msvc;
                             defaults to the host target
@@ -472,6 +477,15 @@ environment:
                            and the passphrase used to unlock it when signing";
 
     fn parse(arguments: Vec<String>) -> Result<Self> {
+        if arguments
+            .iter()
+            .any(|argument| argument == "--prepare-dev-plugins")
+        {
+            if arguments.len() != 1 {
+                return failure("--prepare-dev-plugins takes no other option");
+            }
+            return Ok(Self::PrepareDevPlugins);
+        }
         let mut target = None;
         let mut environment = None;
         let mut formats = None;
@@ -633,6 +647,8 @@ fn main() -> std::process::ExitCode {
 /// Runs one parsed invocation, returning its closing line and the files it produced.
 fn execute(invocation: Invocation) -> Result<(&'static str, Vec<PathBuf>)> {
     match invocation {
+        Invocation::PrepareDevPlugins => dev_plugins::prepare(&workspace_root()?)
+            .map(|artifacts| ("Development plugins prepared successfully.", artifacts)),
         Invocation::Package(options) => {
             package(options).map(|artifacts| ("Build completed successfully.", artifacts))
         }

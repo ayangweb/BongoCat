@@ -4,6 +4,8 @@
 //! tree each plugin publishes and forwards typed commands to the host cache.
 use super::*;
 use gpui_kit::AnyElement;
+#[cfg(test)]
+use gpui_kit::base::TestSupportExt as _;
 use plugins_host::{PluginCardView, PluginHubState};
 
 pub(super) fn content(
@@ -13,24 +15,40 @@ pub(super) fn content(
 ) -> AnyElement {
     let state: PluginHubState = view.plugin_host.snapshot();
     let handle = cx.entity();
-    let mut column = div().flex().flex_col().gap_4().p_6().child(
+    let mut column = div().flex().flex_col().gap_4().w_full().child(
         div()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .child(div().text_xl().font_semibold().child(bongocat_i18n::text(
-                locale(language),
-                "navigation.plugins.title",
-            )))
-            .child(div().text_sm().child(bongocat_i18n::text(
+            .text_sm()
+            .text_color(cx.theme().muted_foreground)
+            .child(bongocat_i18n::text(
                 locale(language),
                 "navigation.plugins.subtitle",
-            ))),
+            )),
     );
-    if let Some(error) = state.error.clone() {
-        column = column.child(div().text_sm().child(error));
+    if state.error.is_some() {
+        let retry_view = handle.clone();
+        column = column
+            .child(div().text_sm().child(bongocat_i18n::text(
+                locale(language),
+                "plugins.discovery_failed",
+            )))
+            .child(
+                Button::new("plugin-retry")
+                    .label(bongocat_i18n::text(locale(language), "plugins.retry"))
+                    .on_click(move |_, _, cx| {
+                        retry_view.update(cx, |view, cx| {
+                            let environment = view.seed.environment;
+                            view.update_plugin_host(move |host| host.initialize(environment), cx);
+                        });
+                    }),
+            );
     }
-    if state.cards.is_empty() {
+    if state.loading {
+        column = column.child(
+            div()
+                .text_sm()
+                .child(bongocat_i18n::text(locale(language), "plugins.loading")),
+        );
+    } else if state.cards.is_empty() && state.error.is_none() {
         column = column.child(div().p_4().rounded_lg().border_1().text_sm().child(
             bongocat_i18n::text(locale(language), "navigation.plugins.empty"),
         ));
@@ -59,6 +77,13 @@ fn card_view(
     let toggle_view = view.clone();
     let toggle_id = card.id.clone();
     let mut body = div()
+        .id(SharedString::from(format!("plugin-card-{}", card.id)))
+        .map(|body| {
+            #[cfg(test)]
+            let body = body.test_support();
+            body
+        })
+        .w_full()
         .p_4()
         .rounded_lg()
         .border_1()
@@ -93,8 +118,7 @@ fn card_view(
                 .on_click(move |_, _, cx| {
                     let id = toggle_id.clone();
                     toggle_view.update(cx, |view, cx| {
-                        view.plugin_host.toggle(&id);
-                        cx.notify();
+                        view.update_plugin_host(move |host| host.toggle(&id), cx);
                     });
                 }),
         );
@@ -106,10 +130,14 @@ fn card_view(
         );
     }
     for node in card.actions {
-        body = body.child(node_view(node, card.id.clone(), view.clone()));
+        if enabled {
+            body = body.child(node_view(node, card.id.clone(), view.clone()));
+        }
     }
     for node in card.settings {
-        body = body.child(node_view(node, card.id.clone(), view.clone()));
+        if enabled {
+            body = body.child(node_view(node, card.id.clone(), view.clone()));
+        }
     }
     body
 }
@@ -131,8 +159,7 @@ fn node_view(
                     let plugin = plugin.clone();
                     let id = id.clone();
                     target.update(cx, |view, cx| {
-                        view.plugin_host.action(&plugin, &id);
-                        cx.notify();
+                        view.update_plugin_host(move |host| host.action(&plugin, &id), cx);
                     });
                 })
                 .into_any_element()

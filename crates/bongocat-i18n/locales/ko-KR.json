@@ -29,9 +29,9 @@
       "title": "정보"
     },
     "plugins": {
-      "title": "플러그인",
-      "subtitle": "Extend the model window with installable plugins.",
-      "empty": "No plugins found. Development builds scan the local plugin folder."
+      "title": "플러그인 센터",
+      "subtitle": "플러그인으로 모델 창을 확장하세요.",
+      "empty": "설치된 플러그인이 없습니다."
     }
   },
   "system_menu": {
@@ -547,8 +547,11 @@
     }
   },
   "plugins": {
-    "enable": "Enable",
-    "disable": "Disable",
-    "failed": "Load failed"
+    "enable": "활성화",
+    "disable": "비활성화",
+    "failed": "불러오기 실패",
+    "loading": "플러그인 불러오는 중…",
+    "discovery_failed": "플러그인 목록을 불러올 수 없습니다. 다시 시도하세요.",
+    "retry": "다시 시도"
   }
 }

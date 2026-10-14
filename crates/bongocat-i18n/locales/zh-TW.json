@@ -29,9 +29,9 @@
       "title": "關於"
     },
     "plugins": {
-      "title": "插件",
-      "subtitle": "Extend the model window with installable plugins.",
-      "empty": "No plugins found. Development builds scan the local plugin folder."
+      "title": "外掛中心",
+      "subtitle": "使用外掛擴充模型視窗。",
+      "empty": "尚未安裝任何外掛。"
     }
   },
   "system_menu": {
@@ -547,8 +547,11 @@
     }
   },
   "plugins": {
-    "enable": "Enable",
-    "disable": "Disable",
-    "failed": "Load failed"
+    "enable": "啟用",
+    "disable": "停用",
+    "failed": "載入失敗",
+    "loading": "正在載入外掛…",
+    "discovery_failed": "無法載入外掛清單，請重試。",
+    "retry": "重試"
   }
 }

@@ -9,6 +9,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+bongocat-config.workspace = true
+bongocat-plugin-manager.workspace = true
 cargo-packager.workspace = true
 flate2.workspace = true
 plist.workspace = true

@@ -29,9 +29,9 @@
       "title": "Giới thiệu"
     },
     "plugins": {
-      "title": "Tiện ích",
-      "subtitle": "Extend the model window with installable plugins.",
-      "empty": "No plugins found. Development builds scan the local plugin folder."
+      "title": "Trung tâm tiện ích",
+      "subtitle": "Mở rộng cửa sổ mô hình bằng tiện ích.",
+      "empty": "Chưa cài đặt tiện ích nào."
     }
   },
   "system_menu": {
@@ -547,8 +547,11 @@
     }
   },
   "plugins": {
-    "enable": "Enable",
-    "disable": "Disable",
-    "failed": "Load failed"
+    "enable": "Bật",
+    "disable": "Tắt",
+    "failed": "Tải thất bại",
+    "loading": "Đang tải tiện ích…",
+    "discovery_failed": "Không thể tải danh sách tiện ích. Vui lòng thử lại.",
+    "retry": "Thử lại"
   }
 }

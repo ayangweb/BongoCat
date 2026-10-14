@@ -23,7 +23,7 @@ members = [
     "crates/bongocat-storage",
     "crates/bongocat-ui",
     "crates/bongocat-update",
-    "plugins/countdown",
+    "plugins/pomodoro",
 ]
 
 [workspace.package]

@@ -11,6 +11,8 @@ pub enum RegistryError {
     NotFound(String),
     #[error("plugin is already running: {0}")]
     AlreadyRunning(String),
+    #[error("plugin is not running: {0}")]
+    NotRunning(String),
     #[error("plugin process failed: {0}")]
     Process(#[from] std::io::Error),
 }
@@ -108,6 +110,19 @@ impl PluginRegistry {
             return Ok(entry.last_output.clone());
         };
         let output = process.exchange(HostMessage::Configure { config })?;
+        entry.last_output = output.clone();
+        Ok(output)
+    }
+    pub fn action(&mut self, id: &str, action: &str) -> Result<PluginOutput, RegistryError> {
+        let entry = self
+            .entries
+            .get_mut(id)
+            .ok_or_else(|| RegistryError::NotFound(id.into()))?;
+        let process = entry
+            .process
+            .as_mut()
+            .ok_or_else(|| RegistryError::NotRunning(id.into()))?;
+        let output = process.exchange(HostMessage::Action { id: action.into() })?;
         entry.last_output = output.clone();
         Ok(output)
     }

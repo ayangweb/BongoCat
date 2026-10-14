@@ -77,6 +77,12 @@ impl PluginManager {
     pub fn disable_plugin(&mut self, id: &str) -> Result<(), PluginManagerError> {
         self.registry.disable(id).map_err(Into::into)
     }
+    pub fn action_plugin(&mut self, id: &str, action: &str) -> Result<(), PluginManagerError> {
+        self.registry
+            .action(id, action)
+            .map(|_| ())
+            .map_err(Into::into)
+    }
     pub fn configure_plugin(
         &mut self,
         id: &str,

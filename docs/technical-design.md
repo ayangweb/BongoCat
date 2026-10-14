@@ -64,6 +64,9 @@ Rust 2024 edition application
   本地/网络图片是后续扩展。主程序按 anchor 渲染到模型窗口，配置界面渲染到插件中心。
 - 插件按需分发：清单与包来自 GitHub release 资源，复用 `bongocat-update` 的代理前缀、
   HTTPS 与 Minisign 校验；主程序安装包不预置插件资源。
+- Development 的 `just dev` / `just dev-smoke` 先经打包工具独立构建本地插件包，
+  写入 Development 专属插件目录；插件中心异步扫描该目录，区分加载、空列表与失败重试。
+  Production 不读取本地源码目录，也不使用运行时目录覆盖。
 - 首个验证插件是番茄钟（#996）；其余候选 Issue（#905、#849、#90、#74、#945、#927）
   保留，未在本阶段实现。边界、取舍与限制见 ADR-0090。
 

@@ -20,29 +20,32 @@ pub(super) fn random_behavior_settings_after_mode_change(
 }
 
 impl SettingsView {
-    /// Keep the rendered snapshot current while the window is on screen.
-    ///
-    /// The window is created for each open and destroyed on close. The poll still
-    /// stops while it is being prepared or closed: nothing it renders can be seen,
-    /// the runtime keeps running, and a newly created window refreshes before it is
-    /// shown. Without this a window waiting for its first snapshot could ask the
-    /// service for a full snapshot — model catalog scan included — while invisible.
-    ///
-    /// The poll probes the revision before it asks for a snapshot. Building a
-    /// snapshot walks the model store on disk, so a window left open would
-    /// otherwise pay a directory scan every second to render a value that did not
-    /// move. Everything that advances the revision is observed by the probe
-    /// itself, so a snapshot is requested exactly when one would have changed.
     /// Drive plugin ticks and the plugin-center cache without blocking the frame.
-    pub(super) fn start_plugin_polling(&self, cx: &mut Context<Self>) {
+    pub(super) fn start_plugin_polling(
+        &self,
+        environment: bongocat_config::BuildEnvironment,
+        cx: &mut Context<Self>,
+    ) {
         let executor = cx.background_executor().clone();
         let host = self.plugin_host.clone();
         cx.spawn(async move |this, cx| {
+            let discovery = host.clone();
+            executor
+                .spawn(async move {
+                    discovery.initialize(environment);
+                })
+                .await;
+            let _ = this.update(cx, |_, cx| cx.notify());
             let started = Instant::now();
             loop {
                 executor.timer(Duration::from_millis(200)).await;
                 let elapsed = started.elapsed().as_millis() as u64;
-                host.tick(elapsed);
+                let ticking = host.clone();
+                executor
+                    .spawn(async move {
+                        ticking.tick(elapsed);
+                    })
+                    .await;
                 if this
                     .update(cx, |view, cx| {
                         if !view.window_hidden() {
@@ -58,6 +61,37 @@ impl SettingsView {
         .detach();
     }
 
+    pub(super) fn update_plugin_host(
+        &self,
+        operation: impl FnOnce(PluginHost) + Send + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        let executor = cx.background_executor().clone();
+        let host = self.plugin_host.clone();
+        cx.spawn(async move |this, cx| {
+            executor
+                .spawn(async move {
+                    operation(host);
+                })
+                .await;
+            let _ = this.update(cx, |_, cx| cx.notify());
+        })
+        .detach();
+    }
+
+    /// Keep the rendered snapshot current while the window is on screen.
+    ///
+    /// The window is created for each open and destroyed on close. The poll still
+    /// stops while it is being prepared or closed: nothing it renders can be seen,
+    /// the runtime keeps running, and a newly created window refreshes before it is
+    /// shown. Without this a window waiting for its first snapshot could ask the
+    /// service for a full snapshot — model catalog scan included — while invisible.
+    ///
+    /// The poll probes the revision before it asks for a snapshot. Building a
+    /// snapshot walks the model store on disk, so a window left open would
+    /// otherwise pay a directory scan every second to render a value that did not
+    /// move. Everything that advances the revision is observed by the probe
+    /// itself, so a snapshot is requested exactly when one would have changed.
     pub(super) fn start_snapshot_polling(&self, cx: &mut Context<Self>) {
         let executor = cx.background_executor().clone();
         let client = self.client.clone();

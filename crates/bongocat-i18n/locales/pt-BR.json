@@ -29,9 +29,9 @@
       "title": "Sobre"
     },
     "plugins": {
-      "title": "Plugins",
-      "subtitle": "Extend the model window with installable plugins.",
-      "empty": "No plugins found. Development builds scan the local plugin folder."
+      "title": "Central de plugins",
+      "subtitle": "Amplie a janela do modelo com plugins.",
+      "empty": "Nenhum plugin instalado."
     }
   },
   "system_menu": {
@@ -547,8 +547,11 @@
     }
   },
   "plugins": {
-    "enable": "Enable",
-    "disable": "Disable",
-    "failed": "Load failed"
+    "enable": "Ativar",
+    "disable": "Desativar",
+    "failed": "Falha ao carregar",
+    "loading": "Carregando plugins…",
+    "discovery_failed": "Não foi possível carregar a lista de plugins. Tente novamente.",
+    "retry": "Tentar novamente"
   }
 }

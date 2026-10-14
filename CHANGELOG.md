@@ -9,7 +9,8 @@
 
 ### 🎨 Interface
 
-- Added a "Plugins" destination to the settings sidebar.
+- Added a "Plugin Center" destination to the settings sidebar, with localized plugin-list messages.
+- Renamed the focus timer plugin to "Pomodoro".
 
 ## 2.3.1 - 2026-10-13
 

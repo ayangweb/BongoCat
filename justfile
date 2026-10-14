@@ -11,12 +11,16 @@ default:
     @just --list
 
 # Run the Development product until explicitly quit.
-dev:
+dev: dev-plugins
     cargo run --locked -p bongocat-app --release -- --run-seconds 0
 
 # Exercise settings close, reopen, and runtime continuity.
-dev-smoke:
+dev-smoke: dev-plugins
     cargo run --locked -p bongocat-app --release -- --run-seconds 4 --settings-window-smoke
+
+# Build independent local plugin packages into Development storage, not the app bundle.
+dev-plugins:
+    cargo run --locked -p bongocat-packaging -- --prepare-dev-plugins
 
 # Run a deterministic Live2D diagnostic preview.
 preview model="standard" seconds="30":

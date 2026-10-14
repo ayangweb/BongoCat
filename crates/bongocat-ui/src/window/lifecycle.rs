@@ -74,9 +74,8 @@ pub fn open_settings_window(
                     view
                 });
                 view.update(cx, |view, cx| {
-                    view.plugin_host.initialize(seed.environment);
                     view.start_snapshot_polling(cx);
-                    view.start_plugin_polling(cx);
+                    view.start_plugin_polling(seed.environment, cx);
                 });
                 opened_settings_view.borrow_mut().replace(view.clone());
                 let appearance_view = view.downgrade();
